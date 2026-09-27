@@ -397,6 +397,11 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         ("drifting.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
         ("drifting.toml", ["outputs.duration_s = 20"], "container_ship drift"),
         ("port-pod-loop.toml", ["outputs.duration_s = 30"], "yacht orbit's 40.0 s"),
+        (
+            "drifting.toml",
+            ["sea.swell = { height_m = 1.0, period_s = 40.0 }"],
+            "sea.swell's 40.0 s",
+        ),
     ],
 )
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
@@ -412,4 +417,14 @@ def test_an_orbit_sets_the_course_itself() -> None:
             bearing_deg=0.0,
             heading_deg=0.0,
             orbit=Orbit(period_s=60.0),
+        )
+
+
+def test_a_loop_too_short_for_its_waves_says_so() -> None:
+    with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
+        load(SCENARIOS / "drifting.toml", ["sea.wind_speed_mps = 20"])
+    with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
+        load(
+            SCENARIOS / "drifting.toml",
+            ["sea.swell = { height_m = 1.0, period_s = 13.0 }"],
         )

@@ -39,11 +39,21 @@ def _substream(seed: int, name: str) -> np.random.Generator:
 
 
 def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
-    return waves.components(
-        scenario.sea.wind_speed_mps,
-        scenario.sea.wind_from_deg,
-        scenario.outputs.period_s,
+    sea, snap = scenario.sea, scenario.outputs.period_s
+    wind = waves.components(
+        sea.wind_speed_mps,
+        sea.wind_from_deg,
+        snap,
         _substream(scenario.seed, "sea/surface"),
+    )
+    if sea.swell is None:
+        return wind
+    return wind + waves.swell(
+        sea.swell.height_m,
+        sea.swell.period_s,
+        sea.swell.from_deg,
+        snap,
+        _substream(scenario.seed, "sea/swell"),
     )
 
 

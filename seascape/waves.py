@@ -9,7 +9,7 @@ based on the similarity theory of S. A. Kitaigorodskii", Journal of Geophysical 
 Spreading: Mitsuyasu et al., "Observations of the directional spectrum of ocean waves
 using a cloverleaf buoy", Journal of Physical Oceanography 5(4) 750, 1975
 (doi:10.1175/1520-0485(1975)005<0750:OOTDSO>2.0.CO;2), in the form and with the s_max
-for wind waves given by Goda, "Random Seas and Design of Maritime Structures", 2nd ed.,
+values given by Goda, "Random Seas and Design of Maritime Structures", 2nd ed.,
 World Scientific 2000, section 2.3.
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
@@ -52,11 +52,16 @@ GRAVITY_MS2 = 9.81
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
+# Goda 2000: swell with a long decay distance.
+SWELL_S_MAX = 75.0
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 
 # A judgement: enough that no single wave shows.
 COMPONENTS = 48
+
+# A judgement: enough directions that a swell's crests do not read as one line.
+SWELL_COMPONENTS = 4
 
 # A judgement, as a fraction of the peak frequency: PM puts exp(-5/4 x^-4) of the
 # height variance below x.
@@ -161,6 +166,27 @@ def components(
             phase.tolist(),
             strict=True,
         )
+    )
+
+
+def swell(
+    height_m: float,
+    period_s: float,
+    from_deg: float,
+    snap: Callable[[float], float],
+    rng: np.random.Generator,
+) -> tuple[Wave, ...]:
+    """One period, its height split over directions: Hs = 4 sqrt(sum a^2 / 2)."""
+    omega = 2 * math.pi / snap(period_s)
+    spread = np.full(SWELL_COMPONENTS, SWELL_S_MAX)
+    toward = math.radians(from_deg + 180.0) + _off_mean_rad(
+        spread, rng.uniform(size=SWELL_COMPONENTS)
+    )
+    phase = rng.uniform(0.0, 2 * math.pi, SWELL_COMPONENTS)
+    amplitude = height_m / 4 * math.sqrt(2 / SWELL_COMPONENTS)
+    return tuple(
+        Wave(amplitude, omega, t, p)
+        for t, p in zip(toward.tolist(), phase.tolist(), strict=True)
     )
 
 

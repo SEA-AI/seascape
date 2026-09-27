@@ -157,6 +157,17 @@ class Rig(Model):
         return self
 
 
+class Swell(Model):
+    """Waves from a distant storm, whatever the local wind."""
+
+    height_m: float = Field(gt=0.0, description="Significant wave height.")
+    period_s: float = Field(gt=0.0, description="Seconds between crests.")
+    from_deg: float = Field(
+        default=0.0,
+        description="Where it comes from, clockwise from the ownship's bow.",
+    )
+
+
 class Sea(Model):
     """The temperature bound is the span of the shipped optical-constant table. `lwir`
     clamps to it; here it is an error.
@@ -168,13 +179,12 @@ class Sea(Model):
         le=311.0,
         description="Sea surface temperature. IR only.",
     )
-    wind_speed_mps: float = Field(
-        default=7.0, ge=0.0, description="Sets the waves' spectrum and slope."
-    )
+    wind_speed_mps: float = Field(default=7.0, ge=0.0, description="Sets the wind sea.")
     wind_from_deg: float = Field(
         default=0.0,
         description="Where the wind blows from, clockwise from the ownship's bow.",
     )
+    swell: Swell | None = Field(default=None, description="On top of the wind's sea.")
     # The atmosphere bends a ray down, so the sea curves at R / (1 - k). 0.13 is the
     # standard survey value for average air (0.13-0.16 usual). At k = 1 the effective
     # radius is infinite.
@@ -454,6 +464,7 @@ class Scenario(Model):
             ("ownship.heave", self.ownship.heave),
             *((f"{spec.asset} drift", spec.drift) for spec in self.objects),
             ("targets.drift", self.targets.drift if self.targets else None),
+            ("sea.swell", self.sea.swell),
         ]
         periods = [(n, m.period_s) for n, m in motions if m is not None] + [
             (f"{spec.asset} orbit", spec.orbit.period_s / spec.orbit.count)
@@ -468,12 +479,15 @@ class Scenario(Model):
                     f"a {span_s} s loop is shorter than {name}'s {period_s} s "
                     "period: make outputs.duration_s at least that"
                 )
-        error = waves.snap_error(self.sea.wind_speed_mps, self.outputs.period_s)
+        snap = self.outputs.period_s
+        error = waves.snap_error(self.sea.wind_speed_mps, snap)
+        if self.sea.swell is not None:
+            period_s = self.sea.swell.period_s
+            error = max(error, abs(snap(period_s) - period_s) / snap(period_s))
         if error > LOOP_SNAP_TOLERANCE:
             warnings.warn(
-                f"a {span_s} s loop shifts the waves' frequencies by {error:.1%} at "
-                f"{self.sea.wind_speed_mps} m/s; a longer outputs.duration_s shifts "
-                "them less",
+                f"a {span_s} s loop shifts the waves' frequencies by {error:.1%}; a "
+                "longer outputs.duration_s shifts them less",
                 stacklevel=2,
             )
         return self

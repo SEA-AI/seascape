@@ -123,3 +123,10 @@ def test_the_slope_is_the_height_s_gradient() -> None:
     ahead = waves.height_m(built, east, north + step, 1.3)
     behind = waves.height_m(built, east, north - step, 1.3)
     assert d_north == pytest.approx((ahead - behind) / (2 * step), rel=1e-4)
+
+
+def test_a_swell_carries_its_height_from_where_it_comes() -> None:
+    swell = waves.swell(2.0, 12.0, 90.0, lambda p: p, np.random.default_rng(0))
+    assert 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in swell)) == pytest.approx(2.0)
+    assert all(w.omega_rad_s == pytest.approx(2 * math.pi / 12.0) for w in swell)
+    assert np.mean([w.k_east_rad_m for w in swell]) < 0.0

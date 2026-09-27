@@ -733,6 +733,11 @@ class TestSeaEvolves:
             turns = wave.omega_rad_s * span_s / (2 * math.pi)
             assert turns == pytest.approx(round(turns), abs=1e-9)
 
+    def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
+        swell = load(BASELINE, ["sea.swell = { height_m = 1.5, period_s = 11.0 }"])
+        wind = scene.wave_field(SCENARIO)
+        assert scene.wave_field(swell)[: len(wind)] == wind
+
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(SCENARIO, "eo")
         assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
