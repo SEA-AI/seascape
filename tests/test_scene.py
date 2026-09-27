@@ -465,6 +465,17 @@ class TestEoBand:
             expected = waves.pixel_slope_variance(speed, field, footprints[i])
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
+    def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
+        wind = scene.wind_waves(SCENARIO)
+        speed = SCENARIO.sea.wind_speed_mps
+        tree = bpy.data.materials["sea"].node_tree
+        threshold = tree.nodes["whitecaps_threshold"].inputs["Value_001"].default_value
+        assert threshold == pytest.approx(
+            waves.breaking_threshold_g(wind, waves.whitecap_fraction(speed)), rel=1e-6
+        )
+        cosines = [n for n in tree.nodes if getattr(n, "operation", "") == "COSINE"]
+        assert len(cosines) == len(wind)
+
     def test_the_sky_is_lit(self) -> None:
         assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
 

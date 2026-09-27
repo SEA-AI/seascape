@@ -38,23 +38,31 @@ def _substream(seed: int, name: str) -> np.random.Generator:
     return np.random.default_rng([seed, *name.encode()])
 
 
-def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
-    sea, snap = scenario.sea, scenario.outputs.period_s
-    wind = waves.components(
+def wind_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
+    sea = scenario.sea
+    return waves.components(
         sea.wind_speed_mps,
         sea.wind_from_deg,
-        snap,
+        scenario.outputs.period_s,
         _substream(scenario.seed, "sea/surface"),
     )
-    if sea.swell is None:
-        return wind
-    return wind + waves.swell(
-        sea.swell.height_m,
-        sea.swell.period_s,
-        sea.swell.from_deg,
-        snap,
+
+
+def swell_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
+    swell = scenario.sea.swell
+    if swell is None:
+        return ()
+    return waves.swell(
+        swell.height_m,
+        swell.period_s,
+        swell.from_deg,
+        scenario.outputs.period_s,
         _substream(scenario.seed, "sea/swell"),
     )
+
+
+def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
+    return wind_waves(scenario) + swell_waves(scenario)
 
 
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
@@ -704,7 +712,8 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     mounts = [m for m in scenario.rig.mounts if m.camera.kind == band]
     # The finest pixel in the band, so its sharpest camera does not blur.
     pixel_rad = min(math.radians(m.camera.hfov_deg) / m.camera.width_px for m in mounts)
-    sea.water(scenario.sea, wave_field(scenario), reach_m, band, outputs, pixel_rad)
+    wind, swell = wind_waves(scenario), swell_waves(scenario)
+    sea.water(scenario.sea, wind, swell, reach_m, band, outputs, pixel_rad)
     rig = _rig(scenario.rig, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)

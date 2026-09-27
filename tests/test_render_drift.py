@@ -272,6 +272,37 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     assert rendered.max() > 0.2, "a grazing view is anisotropic"
 
 
+@pytest.mark.render
+def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
+    # Nothing but sea in view: a lit hull would count as foam.
+    windy = SCENARIO.model_copy(
+        update={
+            "sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0}),
+            "objects": [],
+            "ownship": SCENARIO.ownship.model_copy(update={"asset": None}),
+        }
+    )
+    scene.build(windy, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    emission = tree.nodes.new("ShaderNodeEmission")
+    output = tree.nodes["Material Output"]
+    tree.links.new(tree.nodes["whitecaps"].outputs["Color"], emission.inputs["Color"])
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    lens = bpy.data.cameras.new("probe")
+    lens.type, lens.ortho_scale = "ORTHO", 1500.0
+    camera = bpy.data.objects.new("probe", lens)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
+    camera.location = (0.0, 0.0, 10.0)
+    camera.rotation_euler = (0.0, 0.0, 0.0)
+    sc.camera = camera
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    sc.view_settings.view_transform = "Standard"
+    covered = float(np.mean(shoot((400, 400), "whitecap_probe")))
+    assert covered == pytest.approx(waves.whitecap_fraction(15.0), rel=0.2)
+
+
 def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     """The hull's heating takes the sun from that vector and the sky draws it from the
     bearing; a sign between them mirrors the disc and its glitter east to west."""
