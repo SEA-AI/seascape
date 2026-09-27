@@ -78,14 +78,14 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ## Sequences
 
-`outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the sea evolves. `scenarios/underway.toml` has all three:
+`outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:
 
 ```bash
 uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg, ...
 uv run seascape video out/                               # out/<camera>.mp4
 ```
 
-`outputs.loop = true` makes a seamless clip: every period rounds to a whole fraction of `duration_s`. A looping target cannot be underway; give it a `drift`, as `scenarios/drifting.toml` does.
+`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target cannot be underway; give it a `drift`, as `scenarios/drifting.toml` does.
 
 Every frame has its own entry in `calibration.json` and `labels.json`, stamped with `time_s`. `seascape video` paces the frames by it, so a clip re-encodes without re-rendering. The `.blend` from `seascape build` carries the motion as keyframes. `montage` and `panorama` take stills.
 

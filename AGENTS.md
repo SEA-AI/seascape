@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**Waves are bump normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging; a bump normal is evaluated per pixel, so the far field averages out on its own. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. It needs no distance fade, and a measured one changed the far-field texture by 3% and the aliasing not at all -- do not add one back without a render to show it earns its place. The accepted cost is that a bump normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
+**Waves are shading normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging; a normal is evaluated per pixel, so the far field averages out on its own. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. Do not add a distance fade without a render to show it earns its place. The accepted cost is that a normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -83,7 +83,6 @@ These produce wrong output with no error. They are the reason this file exists.
 - **The sequencer tones its strips through the scene's view transform.** The factory AgX takes a png's white to about 195. `Standard` passes a picture through.
 - **A missing strip frame encodes as black**, in silence. Check the files exist first.
 - **A movie `render.filepath` without an extension gets the frame range appended**: `cam` is written as `cam0001-0300.mp4`.
-- **4D noise carries less slope than 3D.** Switching `noise_dimensions` flattens the waves with no error, so each needs its own measured slope.
 - **The Sky Texture's `turbidity` does nothing under the scattering models.** It belongs to Preetham and Hosek-Wilkie. Haze there is `aerosol_density`. Setting the wrong one is accepted in silence and changes no pixel, which was verified by rendering both.
 
 ## Conventions
@@ -100,6 +99,7 @@ These produce wrong output with no error. They are the reason this file exists.
 ## Where code goes
 
 - **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
+- **One wave field.** `scene.wave_field` draws it; the shader takes that tuple.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 

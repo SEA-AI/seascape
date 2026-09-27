@@ -16,13 +16,14 @@ Rules:
 """
 
 import tomllib
+import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from seascape import lwir
+from seascape import lwir, waves
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
@@ -157,9 +158,7 @@ class Rig(Model):
 
 
 class Sea(Model):
-    """Sea state. Wind reaches the waves through wavelength and slope.
-
-    The temperature bound is the span of the shipped optical-constant table. `lwir`
+    """The temperature bound is the span of the shipped optical-constant table. `lwir`
     clamps to it; here it is an error.
     """
 
@@ -170,7 +169,11 @@ class Sea(Model):
         description="Sea surface temperature. IR only.",
     )
     wind_speed_mps: float = Field(
-        default=7.0, ge=0.0, description="Sets the waves' length and slope."
+        default=7.0, ge=0.0, description="Sets the waves' spectrum and slope."
+    )
+    wind_from_deg: float = Field(
+        default=0.0,
+        description="Where the wind blows from, clockwise from the ownship's bow.",
     )
     # The atmosphere bends a ray down, so the sea curves at R / (1 - k). 0.13 is the
     # standard survey value for average air (0.13-0.16 usual). At k = 1 the effective
@@ -413,6 +416,10 @@ class Outputs(Model):
         return self
 
 
+# A judgement.
+LOOP_SNAP_TOLERANCE = 0.05
+
+
 class Scenario(Model):
     """One scene: the rig, the world around it, and what a render writes."""
 
@@ -461,6 +468,14 @@ class Scenario(Model):
                     f"a {span_s} s loop is shorter than {name}'s {period_s} s "
                     "period: make outputs.duration_s at least that"
                 )
+        error = waves.snap_error(self.sea.wind_speed_mps, self.outputs.period_s)
+        if error > LOOP_SNAP_TOLERANCE:
+            warnings.warn(
+                f"a {span_s} s loop shifts the waves' frequencies by {error:.1%} at "
+                f"{self.sea.wind_speed_mps} m/s; a longer outputs.duration_s shifts "
+                "them less",
+                stacklevel=2,
+            )
         return self
 
 

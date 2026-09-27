@@ -6,21 +6,15 @@ import bpy
 import numpy as np
 
 from seascape import lwir
-from seascape.blend import CURVE_SAMPLES, animate, curve_image, place, sine
+from seascape.blend import CURVE_SAMPLES, animate, curve_image, place
 from seascape.config import Band, Outputs, Rig, Sea
 from seascape.waves import (
-    NOISE_DETAIL,
-    NOISE_ROUGHNESS,
-    NOISE_SLOPE_PER_UNIT,
-    NOISE_SLOPE_PER_UNIT_4D,
-    bump_slope,
+    Wave,
     earth_radius_m,
     horizon_m,
     sea_z_m,
     specular_roughness,
     unresolved_slope,
-    wave_length_m,
-    wave_period_s,
 )
 
 # Cells per side: enough for the tangent point to land on a face, not an accuracy
@@ -50,61 +44,102 @@ def _emissivity_image(t_sea_k: float, slope_sigma: float) -> bpy.types.Image:
     )
 
 
-def _wave_normals(
-    tree: bpy.types.NodeTree, sea: Sea, rng: np.random.Generator, outputs: Outputs
-) -> bpy.types.NodeSocket:
-    """Wave normals from world position.
-
-    Shading, not geometry. A bump normal is evaluated per pixel and varies
-    continuously, so distant water averages smooth; displaced geometry at any
-    affordable spacing goes sub-pixel before the horizon and aliases instead.
-    """
-    length_m = wave_length_m(sea.wind_speed_mps)
-    # z multiplier 0: seed and time own that axis, so the sea curving under it cannot
-    # slide the wave field. A unit of z decorrelates the isotropic noise as a wavelength
-    # of x does, so time advances z a unit per dominant period.
-    # Vector Math names all three inputs "Vector"; identifiers tell them apart.
-    scale = tree.nodes.new("ShaderNodeVectorMath")
-    scale.operation = "MULTIPLY_ADD"
-    scale.inputs["Vector_001"].default_value = (1.0 / length_m, 1.0 / length_m, 0.0)
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    noise = tree.nodes.new("ShaderNodeTexNoise")
-    # Scale stays 1 so the vector above carries the wavelength in metres.
-    noise.inputs["Scale"].default_value = 1.0
-    noise.inputs["Detail"].default_value = NOISE_DETAIL
-    noise.inputs["Roughness"].default_value = NOISE_ROUGHNESS
-
-    phase = rng.random() * 1e3
-    period_s = wave_period_s(sea.wind_speed_mps)
+def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocket:
+    """Seconds since the first frame, modulo the span in a loop."""
     times_s = outputs.times_s
-    offset = scale.inputs["Vector_002"]
-    slope_per_unit = NOISE_SLOPE_PER_UNIT
-    if outputs.loop:
-        # A line in z never returns; a circle in (z, W) does, at the same speed.
-        noise.noise_dimensions = "4D"
-        slope_per_unit = NOISE_SLOPE_PER_UNIT_4D
-        span_s = outputs.span_s
-        radius = span_s / (2.0 * math.pi * period_s)
-        animate(offset, "default_value", times_s, sine(phase, radius, span_s), 2)
+    if not outputs.loop:
+        clock = tree.nodes.new("ShaderNodeValue")
+        clock.name = "sea_time"
+        animate(clock.outputs["Value"], "default_value", times_s, lambda t: t)
+        return clock.outputs["Value"]
+    # A keyed t jumps at the wrap; every omega is a multiple of 2 pi / span, so t modulo
+    # the span is exact.
+    span_s = outputs.span_s
+    turn = [tree.nodes.new("ShaderNodeValue") for _ in range(2)]
+    names, trigs = ("sea_cos", "sea_sin"), (math.cos, math.sin)
+    for node, name, trig in zip(turn, names, trigs, strict=True):
+        node.name = name
         animate(
-            noise.inputs["W"],
+            node.outputs["Value"],
             "default_value",
             times_s,
-            lambda t: radius * (1.0 - math.cos(2.0 * math.pi * t / span_s)),
+            lambda t, trig=trig: trig(2 * math.pi * t / span_s),
         )
-    else:
-        animate(offset, "default_value", times_s, lambda t: phase + t / period_s, 2)
-
-    bump = tree.nodes.new("ShaderNodeBump")
-    bump.inputs["Distance"].default_value = (
-        bump_slope(sea.wind_speed_mps) * length_m / slope_per_unit
-    )
-
+    angle = tree.nodes.new("ShaderNodeMath")
+    angle.operation = "ARCTAN2"
+    clock = tree.nodes.new("ShaderNodeMath")
+    clock.operation = "MULTIPLY"
+    clock.name = "sea_time"
+    clock.inputs["Value_001"].default_value = span_s / (2 * math.pi)
     link = tree.links.new
-    link(geometry.outputs["Position"], scale.inputs["Vector"])
-    link(scale.outputs["Vector"], noise.inputs["Vector"])
-    link(noise.outputs["Fac"], bump.inputs["Height"])
-    return bump.outputs["Normal"]
+    link(turn[1].outputs["Value"], angle.inputs["Value"])
+    link(turn[0].outputs["Value"], angle.inputs["Value_001"])
+    link(angle.outputs["Value"], clock.inputs["Value"])
+    return clock.outputs["Value"]
+
+
+def _wave_normals(
+    tree: bpy.types.NodeTree, field: tuple[Wave, ...], outputs: Outputs
+) -> bpy.types.NodeSocket:
+    """The field's analytic slope, added to the curved grid's normal."""
+    link = tree.links.new
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    position = tree.nodes.new("ShaderNodeSeparateXYZ")
+    # Height is left out, so the sea curving under the field cannot slide it.
+    xyt = tree.nodes.new("ShaderNodeCombineXYZ")
+    link(geometry.outputs["Position"], position.inputs["Vector"])
+    link(position.outputs["X"], xyt.inputs["X"])
+    link(position.outputs["Y"], xyt.inputs["Y"])
+    link(_sea_time(tree, outputs), xyt.inputs["Z"])
+
+    relief = tree.nodes.new("ShaderNodeVectorMath")
+    relief.operation = "SCALE"
+    relief.name = "wave_relief"
+    relief.inputs["Scale"].default_value = 1.0
+    gradient = None
+    for i, wave in enumerate(field):
+        dot = tree.nodes.new("ShaderNodeVectorMath")
+        dot.operation = "DOT_PRODUCT"
+        dot.name = f"wave_{i}"
+        dot.inputs["Vector_001"].default_value = (
+            wave.k_east_rad_m,
+            wave.k_north_rad_m,
+            -wave.omega_rad_s,
+        )
+        phase = tree.nodes.new("ShaderNodeMath")
+        phase.operation = "ADD"
+        phase.name = f"wave_{i}_phase"
+        phase.inputs["Value_001"].default_value = wave.phase_rad
+        sine = tree.nodes.new("ShaderNodeMath")
+        sine.operation = "SINE"
+        # -d height / dx of a cos(phase) is a k_x sin(phase).
+        term = tree.nodes.new("ShaderNodeVectorMath")
+        term.operation = "MULTIPLY_ADD"
+        term.name = f"wave_{i}_slope"
+        term.inputs["Vector"].default_value = (
+            wave.amplitude_m * wave.k_east_rad_m,
+            wave.amplitude_m * wave.k_north_rad_m,
+            0.0,
+        )
+        link(xyt.outputs["Vector"], dot.inputs["Vector"])
+        link(dot.outputs["Value"], phase.inputs["Value"])
+        link(phase.outputs["Value"], sine.inputs["Value"])
+        link(sine.outputs["Value"], term.inputs["Vector_001"])
+        if gradient is not None:
+            link(gradient, term.inputs["Vector_002"])
+        gradient = term.outputs["Vector"]
+    if gradient is not None:
+        link(gradient, relief.inputs["Vector"])
+
+    tilted = tree.nodes.new("ShaderNodeVectorMath")
+    tilted.operation = "ADD"
+    normal = tree.nodes.new("ShaderNodeVectorMath")
+    normal.operation = "NORMALIZE"
+    normal.name = "wave_normal"
+    link(geometry.outputs["Normal"], tilted.inputs["Vector"])
+    link(relief.outputs["Vector"], tilted.inputs["Vector_001"])
+    link(tilted.outputs["Vector"], normal.inputs["Vector"])
+    return normal.outputs["Vector"]
 
 
 def _incidence_lookup(
@@ -137,7 +172,7 @@ def _incidence_lookup(
 
 
 def _thermal_sea(
-    sea: Sea, rng: np.random.Generator, outputs: Outputs
+    sea: Sea, field: tuple[Wave, ...], outputs: Outputs
 ) -> bpy.types.Material:
     """eps(theta) of the sea emitted, the remaining 1 - eps reflected from the sky.
 
@@ -147,9 +182,10 @@ def _thermal_sea(
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
     tree.nodes.clear()
+    unresolved = unresolved_slope(sea.wind_speed_mps, field)
     mirror = tree.nodes.new("ShaderNodeBsdfGlossy")
     # The same unresolved slope the emissivity curve is averaged over.
-    mirror.inputs["Roughness"].default_value = specular_roughness(sea.wind_speed_mps)
+    mirror.inputs["Roughness"].default_value = specular_roughness(unresolved)
     # Glossy BSDF ships at 0.8 grey. The Mix Shader already applies the 1 - eps
     # weighting, so anything but white here absorbs reflected sky and cuts a dark
     # notch along the horizon.
@@ -160,7 +196,7 @@ def _thermal_sea(
     output = tree.nodes.new("ShaderNodeOutputMaterial")
 
     link = tree.links.new
-    normal = _wave_normals(tree, sea, rng, outputs)
+    normal = _wave_normals(tree, field, outputs)
     link(normal, mirror.inputs["Normal"])
     # Mix Shader names both shader inputs "Shader", so they can only be indexed. Factor
     # is emissivity: 0 at grazing incidence takes the mirror, 1 head-on takes emission.
@@ -169,7 +205,7 @@ def _thermal_sea(
     link(
         _incidence_lookup(
             tree,
-            _emissivity_image(sea.t_sea_k, unresolved_slope(sea.wind_speed_mps)),
+            _emissivity_image(sea.t_sea_k, unresolved),
             normal,
         ),
         mix.inputs["Factor"],
@@ -179,21 +215,23 @@ def _thermal_sea(
 
 
 def _water_material(
-    sea: Sea, rng: np.random.Generator, outputs: Outputs
+    sea: Sea, field: tuple[Wave, ...], outputs: Outputs
 ) -> bpy.types.Material:
-    """Daylight water: rough enough to catch the sun, refracting at seawater's IOR."""
+    """Daylight water, refracting at seawater's IOR."""
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
     principled = tree.nodes["Principled BSDF"]
     principled.inputs["Base Color"].default_value = (0.004, 0.02, 0.035, 1.0)
-    principled.inputs["Roughness"].default_value = 0.05
+    principled.inputs["Roughness"].default_value = specular_roughness(
+        unresolved_slope(sea.wind_speed_mps, field)
+    )
     principled.inputs["IOR"].default_value = 1.33
-    tree.links.new(_wave_normals(tree, sea, rng, outputs), principled.inputs["Normal"])
+    tree.links.new(_wave_normals(tree, field, outputs), principled.inputs["Normal"])
     return material
 
 
 def water(
-    sea: Sea, rng: np.random.Generator, reach_m: float, band: Band, outputs: Outputs
+    sea: Sea, field: tuple[Wave, ...], reach_m: float, band: Band, outputs: Outputs
 ) -> bpy.types.Object:
     """A grid curved to the earth. The waves are in its material.
 
@@ -213,5 +251,5 @@ def water(
     for face in water.data.polygons:
         face.use_smooth = True
     material = _water_material if band == "eo" else _thermal_sea
-    water.data.materials.append(material(sea, rng, outputs))
+    water.data.materials.append(material(sea, field, outputs))
     return water

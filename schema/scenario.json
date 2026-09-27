@@ -483,7 +483,7 @@
     },
     "Sea": {
       "additionalProperties": false,
-      "description": "Sea state. Wind reaches the waves through wavelength and slope.\n\nThe temperature bound is the span of the shipped optical-constant table. `lwir`\nclamps to it; here it is an error.",
+      "description": "The temperature bound is the span of the shipped optical-constant table. `lwir`\nclamps to it; here it is an error.",
       "properties": {
         "t_sea_k": {
           "default": 288.0,
@@ -495,9 +495,15 @@
         },
         "wind_speed_mps": {
           "default": 7.0,
-          "description": "Sets the waves' length and slope.",
+          "description": "Sets the waves' spectrum and slope.",
           "minimum": 0.0,
           "title": "Wind Speed Mps",
+          "type": "number"
+        },
+        "wind_from_deg": {
+          "default": 0.0,
+          "description": "Where the wind blows from, clockwise from the ownship's bow.",
+          "title": "Wind From Deg",
           "type": "number"
         },
         "refraction_k": {

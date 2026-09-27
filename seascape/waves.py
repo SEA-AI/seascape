@@ -2,16 +2,19 @@
 
 Sources
 -------
-Dominant wavelength: Pierson & Moskowitz, "A proposed spectral form for fully developed
-wind seas based on the similarity theory of S. A. Kitaigorodskii", Journal of
-Geophysical Research 69(24) 5181, 1964 (doi:10.1029/JZ069i024p05181).
+Spectrum: Pierson & Moskowitz, "A proposed spectral form for fully developed wind seas
+based on the similarity theory of S. A. Kitaigorodskii", Journal of Geophysical Research
+69(24) 5181, 1964 (doi:10.1029/JZ069i024p05181).
+
+Spreading: Mitsuyasu et al., "Observations of the directional spectrum of ocean waves
+using a cloverleaf buoy", Journal of Physical Oceanography 5(4) 750, 1975
+(doi:10.1175/1520-0485(1975)005<0750:OOTDSO>2.0.CO;2), in the form and with the s_max
+for wind waves given by Goda, "Random Seas and Design of Maritime Structures", 2nd ed.,
+World Scientific 2000, section 2.3.
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
 clean-sea fit, equation 13.
-
-Slope spectrum: Phillips, "The equilibrium range in the spectrum of wind-generated
-waves", Journal of Fluid Mechanics 4(4) 426, 1958 (doi:10.1017/S0022112058000550).
 
 Microfacet lobe: Walter, Marschner, Li & Torrance, "Microfacet models for refraction
 through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for GGX; Burley,
@@ -23,96 +26,191 @@ IX; deep water, omega^2 = g k.
 """
 
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import numpy as np
 
 GRAVITY_MS2 = 9.81
 
 # Waves, end to end. Each step is a published relation or follows from one:
 #
-#   wavelength      2 pi U^2 / (0.877^2 g)          Pierson-Moskowitz 1964
-#   period          sqrt(2 pi lam / g)              deep-water dispersion, Lamb
-#   total slope     sqrt(0.003 + 0.00512 U)         Cox & Munk 1954, eq. 13
-#   resolved share  sqrt(octaves / log2(lam/1.7cm)) Phillips 1958 equilibrium range
-#   bump relief     resolved share x slope x lam    over the noise transfer below
-#   unresolved      sqrt(total^2 - resolved^2)      variances subtract
-#   emissivity      Fresnel over unresolved slopes  Masuda 1988, in lwir.py
-#   lobe roughness  sqrt(sqrt(2) x unresolved)      GGX alpha = roughness^2
-
+#   spectrum        alpha g^2 w^-5 exp(-5/4 (wp/w)^4)  Pierson-Moskowitz 1964
+#   peak            wp = 0.877 g / U                    Pierson-Moskowitz 1964
+#   direction       cos^2s(theta / 2)                   Mitsuyasu 1975, Goda 2000
+#   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
+#   total slope     sqrt(0.003 + 0.00512 U)             Cox & Munk 1954, eq. 13
+#   resolved slope  sum of a^2 k^2 / 2                  the waves built
+#   unresolved      sqrt(total^2 - resolved^2)          variances subtract
+#   emissivity      Fresnel over unresolved slopes      Masuda 1988
+#   lobe roughness  sqrt(sqrt(2) x unresolved)          GGX alpha = roughness^2
+PM_ALPHA = 8.1e-3
+PM_PEAK = 0.877
+SPREAD_S_MAX = 10.0
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
-PM_PEAK = 0.877
-MIN_WAVELENGTH_M = 1.0
 
-# 2 pi sqrt(gamma / rho g) = 1.73 cm at gamma = 0.074 N/m: the wavelength of minimum
-# phase speed, where surface tension takes over from gravity: the bottom of the slope
-# spectrum.
-CAPILLARY_WAVELENGTH_M = 0.0173
+# A judgement: enough that no single wave shows as a pattern.
+COMPONENTS = 32
 
-# Blender's Detail input, which is octaves *beyond* the first.
-NOISE_DETAIL = 4.0
+# A judgement, as a fraction of the peak frequency: PM puts exp(-5/4 x^-4) of the
+# height variance below x.
+LOWEST_OF_PEAK = 0.7
 
-# Amplitude ratio between octaves. Slope goes as amplitude x wavenumber and wavenumber
-# doubles each octave, so 0.5 is the ratio that puts equal slope variance in each --
-# which is what the Phillips equilibrium range says a wind sea does.
-NOISE_ROUGHNESS = 0.5
-
-# RMS gradient of the noise's Fac per noise unit, at 2 cm sampling: finer sampling
-# finds more.
-NOISE_SLOPE_PER_UNIT = 0.55
-NOISE_SLOPE_PER_UNIT_4D = 0.48
+# A judgement: shorter waves alias into grain past the near field, so their slope is
+# left to the roughness.
+SHORTEST_WAVE_M = 0.5
 
 # Mean radius, IUGG.
 EARTH_RADIUS_M = 6_371_000.0
 
 
-def wave_length_m(wind_speed_mps: float) -> float:
-    """Dominant wavelength of a fully developed sea, Pierson-Moskowitz."""
-    length = 2 * math.pi * wind_speed_mps**2 / (PM_PEAK**2 * GRAVITY_MS2)
-    return max(length, MIN_WAVELENGTH_M)
+@dataclass(frozen=True)
+class Wave:
+    """Height a cos(k . x - omega t + phase). k follows from omega, so a loop snapping
+    omega cannot break dispersion."""
+
+    amplitude_m: float
+    omega_rad_s: float
+    toward_rad: float  # clockwise from the ownship's bow
+    phase_rad: float
+
+    @property
+    def k_rad_m(self) -> float:
+        return self.omega_rad_s**2 / GRAVITY_MS2
+
+    @property
+    def k_east_rad_m(self) -> float:
+        return self.k_rad_m * math.sin(self.toward_rad)
+
+    @property
+    def k_north_rad_m(self) -> float:
+        return self.k_rad_m * math.cos(self.toward_rad)
 
 
-def wave_period_s(wind_speed_mps: float) -> float:
-    return math.sqrt(2 * math.pi * wave_length_m(wind_speed_mps) / GRAVITY_MS2)
+def peak_omega_rad_s(wind_speed_mps: float) -> float:
+    return PM_PEAK * GRAVITY_MS2 / wind_speed_mps
 
 
 def wave_slope(wind_speed_mps: float) -> float:
-    """Total RMS surface slope, Cox & Munk. Dimensionless, a tangent."""
+    """Total RMS surface slope. Dimensionless, a tangent."""
     return math.sqrt(SLOPE_VARIANCE_INTERCEPT + SLOPE_VARIANCE_PER_MPS * wind_speed_mps)
 
 
-def resolved_slope_fraction(wind_speed_mps: float) -> float:
-    """Fraction of the RMS slope the noise field can carry, over its octaves.
-
-    Cox & Munk measured the whole spectrum down to capillaries; the noise stops a few
-    octaves below the dominant wave. In the Phillips equilibrium range the slope
-    spectrum goes as 1/k, so mean-square slope accumulates equally per octave and the
-    captured share is a ratio of logs rather than an integral, square-rooted because
-    this is slope and that was variance.
-    """
-    octaves = math.log(wave_length_m(wind_speed_mps) / CAPILLARY_WAVELENGTH_M, 2.0)
-    return math.sqrt(min((NOISE_DETAIL + 1.0) / octaves, 1.0))
-
-
-def bump_slope(wind_speed_mps: float) -> float:
-    """The part of that slope the noise field can carry."""
-    return resolved_slope_fraction(wind_speed_mps) * wave_slope(wind_speed_mps)
-
-
-def unresolved_slope(wind_speed_mps: float) -> float:
-    """RMS slope the bump cannot carry, left for the shading to account for.
-
-    Variances add, so this is a difference of squares rather than of slopes.
-    """
-    u = wind_speed_mps
-    return math.sqrt(max(wave_slope(u) ** 2 - bump_slope(u) ** 2, 0.0))
+def _bins(wind_speed_mps: float) -> tuple[np.ndarray, np.ndarray]:
+    """Frequencies log-spaced from the longest wave to the shortest, and the height
+    variance each carries."""
+    if wind_speed_mps <= 0.0:
+        return np.empty(0), np.empty(0)
+    peak = peak_omega_rad_s(wind_speed_mps)
+    low = LOWEST_OF_PEAK * peak
+    high = math.sqrt(2 * math.pi * GRAVITY_MS2 / SHORTEST_WAVE_M)
+    if low >= high:
+        return np.empty(0), np.empty(0)
+    edges = np.geomspace(low, high, COMPONENTS + 1)
+    omega = np.sqrt(edges[:-1] * edges[1:])
+    density = (
+        PM_ALPHA * GRAVITY_MS2**2 * omega**-5 * np.exp(-1.25 * (peak / omega) ** 4)
+    )
+    return omega, density * np.diff(edges)
 
 
-def specular_roughness(wind_speed_mps: float) -> float:
-    """Blender roughness for a reflection lobe matching the unresolved slope.
+def _snapped(omega: np.ndarray, snap: Callable[[float], float]) -> np.ndarray:
+    """`snap` takes a period, so a loop can round it to a whole fraction of itself."""
+    return np.array([2 * math.pi / snap(2 * math.pi / w) for w in omega])
 
-    Cycles' GGX takes alpha = roughness^2, and a Gaussian slope of sigma maps to
-    alpha = sqrt(2) sigma.
-    """
-    return math.sqrt(min(math.sqrt(2.0) * unresolved_slope(wind_speed_mps), 1.0))
+
+def _off_mean_rad(s: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Angles off the mean direction, cos^2s(theta / 2) by inverse CDF, one per s."""
+    theta = np.linspace(-math.pi, math.pi, 721)
+    cdf = np.cumsum(np.cos(theta / 2)[None, :] ** (2 * s[:, None]), axis=1)
+    cdf /= cdf[:, -1:]
+    return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
+
+
+def components(
+    wind_speed_mps: float,
+    wind_from_deg: float,
+    snap: Callable[[float], float],
+    rng: np.random.Generator,
+) -> tuple[Wave, ...]:
+    omega, variance = _bins(wind_speed_mps)
+    if not len(omega):
+        return ()
+    ratio = omega / peak_omega_rad_s(wind_speed_mps)
+    s = SPREAD_S_MAX * np.where(ratio < 1.0, ratio**5, ratio**-2.5)
+    # Wind is named for where it blows from; waves run the other way.
+    toward = math.radians(wind_from_deg + 180.0) + _off_mean_rad(
+        s, rng.uniform(size=len(omega))
+    )
+    phase = rng.uniform(0.0, 2 * math.pi, len(omega))
+    return tuple(
+        Wave(math.sqrt(2 * v), w, t, p)
+        for v, w, t, p in zip(
+            variance.tolist(),
+            _snapped(omega, snap).tolist(),
+            toward.tolist(),
+            phase.tolist(),
+            strict=True,
+        )
+    )
+
+
+def snap_error(wind_speed_mps: float, snap: Callable[[float], float]) -> float:
+    """Relative frequency error a loop's snapping costs, weighted by height variance."""
+    omega, variance = _bins(wind_speed_mps)
+    if not len(omega):
+        return 0.0
+    error = np.abs(_snapped(omega, snap) - omega) / omega
+    return float(np.sum(error * variance) / np.sum(variance))
+
+
+def _phase(
+    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
+) -> np.ndarray:
+    return np.array(
+        [
+            w.k_east_rad_m * east_m
+            + w.k_north_rad_m * north_m
+            - w.omega_rad_s * t_s
+            + w.phase_rad
+            for w in field
+        ]
+    )
+
+
+def height_m(
+    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
+) -> np.ndarray:
+    amplitude = np.array([w.amplitude_m for w in field])
+    phase = _phase(field, np.asarray(east_m), np.asarray(north_m), t_s)
+    return np.tensordot(amplitude, np.cos(phase), axes=1)
+
+
+def slope(
+    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """d height / d east and d height / d north."""
+    sine = np.sin(_phase(field, np.asarray(east_m), np.asarray(north_m), t_s))
+    a_east = np.array([-w.amplitude_m * w.k_east_rad_m for w in field])
+    a_north = np.array([-w.amplitude_m * w.k_north_rad_m for w in field])
+    return np.tensordot(a_east, sine, axes=1), np.tensordot(a_north, sine, axes=1)
+
+
+def resolved_slope_variance(field: tuple[Wave, ...]) -> float:
+    return sum((w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field)
+
+
+def unresolved_slope(wind_speed_mps: float, field: tuple[Wave, ...]) -> float:
+    """RMS slope finer than the waves built, left for the shading to account for."""
+    total = wave_slope(wind_speed_mps) ** 2
+    return math.sqrt(max(total - resolved_slope_variance(field), 0.0))
+
+
+def specular_roughness(slope_sigma: float) -> float:
+    """Blender roughness for a GGX lobe of RMS slope sigma: alpha = roughness^2 and a
+    Gaussian slope of sigma maps to alpha = sqrt(2) sigma."""
+    return math.sqrt(min(math.sqrt(2.0) * slope_sigma, 1.0))
 
 
 def earth_radius_m(refraction_k: float) -> float:

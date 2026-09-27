@@ -88,13 +88,9 @@ def test_sea_texture_fades_with_range(frame) -> None:
 def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
     """The near sea of an ir frame, optionally with the wave relief flattened."""
     scene.build(scenario, "ir")
-    bump = next(
-        n
-        for n in bpy.data.materials["sea"].node_tree.nodes
-        if n.bl_idname == "ShaderNodeBump"
-    )
     if not waves:
-        bump.inputs["Distance"].default_value = 0.0
+        relief = bpy.data.materials["sea"].node_tree.nodes["wave_relief"]
+        relief.inputs["Scale"].default_value = 0.0
     sc = bpy.context.scene
     sc.camera = next(
         o for o in bpy.data.objects if o.type == "CAMERA" and "_ir_" in o.name
@@ -122,53 +118,58 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
     assert texture(rippled) > 2.5 * texture(flat)
 
 
+LOOP = load(
+    Path(__file__).parent.parent / "scenarios" / "baseline.toml",
+    ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"],
+)
+
+
 @pytest.mark.render
 @pytest.mark.parametrize(
-    ("dimensions", "slope_per_unit"),
-    [("3D", waves.NOISE_SLOPE_PER_UNIT), ("4D", waves.NOISE_SLOPE_PER_UNIT_4D)],
+    ("scenario", "frame"),
+    # Past half-way, a loop's time comes back off the angle a whole span early.
+    [(SCENARIO, 0), (LOOP, 20)],
 )
-def test_the_noise_delivers_the_slope_it_is_asked_for(
-    dimensions: str, slope_per_unit: float
+@pytest.mark.parametrize("axis", [0, 1])
+def test_the_shader_tilts_the_sea_by_the_field_s_slope(
+    scenario: Scenario, frame: int, axis: int
 ) -> None:
-    """A Blender change to the noise shows up as a number, not as a sea that looks
-    slightly wrong."""
-    span, px = 20.0, 1024  # 2 cm sampling
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    frame = bpy.context.scene
-    bpy.ops.mesh.primitive_plane_add(size=span)
-    material = bpy.data.materials.new("probe")
-    material.use_nodes = True
-    tree = material.node_tree
-    tree.nodes.clear()
-    noise = tree.nodes.new("ShaderNodeTexNoise")
-    noise.noise_dimensions = dimensions
-    noise.inputs["Scale"].default_value = 1.0  # one noise unit is one metre
-    noise.inputs["Detail"].default_value = waves.NOISE_DETAIL
-    noise.inputs["Roughness"].default_value = waves.NOISE_ROUGHNESS
+    span_m, px = 8.0, 64
+    scene.build(scenario, "eo")
+    bpy.context.scene.frame_set(frame)
+    tree = bpy.data.materials["sea"].node_tree
+    component = tree.nodes.new("ShaderNodeSeparateXYZ")
+    shown = tree.nodes.new("ShaderNodeMath")
+    shown.operation = "MULTIPLY_ADD"  # (n + 1) / 2, so the emission stays positive
+    shown.inputs["Value_001"].default_value = 0.5
+    shown.inputs["Value_002"].default_value = 0.5
     emission = tree.nodes.new("ShaderNodeEmission")
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    position = tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"]
-    tree.links.new(position, noise.inputs["Vector"])
-    tree.links.new(noise.outputs["Fac"], emission.inputs["Color"])
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    bpy.context.object.data.materials.append(material)
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    link = tree.links.new
+    link(tree.nodes["wave_normal"].outputs["Vector"], component.inputs["Vector"])
+    link(component.outputs["XY"[axis]], shown.inputs["Value"])
+    link(shown.outputs["Value"], emission.inputs["Color"])
+    link(emission.outputs["Emission"], output.inputs["Surface"])
 
     lens = bpy.data.cameras.new("probe")
-    lens.type, lens.ortho_scale = "ORTHO", span
+    lens.type, lens.ortho_scale = "ORTHO", span_m
     camera = bpy.data.objects.new("probe", lens)
-    frame.collection.objects.link(camera)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
     camera.location = (0.0, 0.0, 10.0)
-    frame.camera = camera
-    frame.render.engine = "CYCLES"
-    frame.cycles.samples = 1
-    frame.cycles.use_denoising = False
-    frame.render.resolution_x = frame.render.resolution_y = px
-    frame.view_settings.view_transform = "Standard"
+    camera.rotation_euler = (0.0, 0.0, 0.0)
+    sc.camera = camera
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
+    sc.view_settings.view_transform = "Standard"
+    rendered = 2 * shoot((px, px), "slope_probe") - 1
 
-    fac = shoot((px, px), "noise_probe")
-    gradient_y, gradient_x = np.gradient(fac.astype(np.float64), span / px)
-    measured = float(np.sqrt(np.mean(gradient_x**2 + gradient_y**2)))
-    assert measured == pytest.approx(slope_per_unit, abs=0.03)
+    centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
+    east, north = np.meshgrid(centres, centres[::-1])
+    t_s = scenario.outputs.times_s[frame]
+    slope = waves.slope(scene.wave_field(scenario), east, north, t_s)
+    expected = -slope[axis] / np.sqrt(1 + slope[0] ** 2 + slope[1] ** 2)
+    assert np.abs(rendered - expected).max() < 2e-3
 
 
 def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
