@@ -158,10 +158,11 @@ class TestGeometry:
         """The mesh arrives in its author's units; unfitted it is a speck at range."""
         for spec in SCENARIO.objects:
             anchor = bpy.data.objects[spec.asset]
-            into_hull = anchor.matrix_world.inverted()
+            (attitude,) = anchor.children
+            into_hull = attitude.matrix_world.inverted()
             corners = [
                 into_hull @ part.matrix_world @ Vector(corner)
-                for part in anchor.children
+                for part in anchor.children_recursive
                 if part.type == "MESH"
                 for corner in part.bound_box
             ]
@@ -805,6 +806,38 @@ def test_orbiting_hulls_share_a_lap_clockwise_bow_first() -> None:
             assert hull.rotation_euler.z == pytest.approx(blend.yaw(bearing_deg + 90))
 
 
+def test_a_hull_rides_the_sea_it_sits_on() -> None:
+    scenario = load(DRIFTING, ["outputs.fps = 2"])
+    built = scene.build(scenario)
+    (anchor,) = built.targets[scenario.objects[0].asset]
+    (attitude,) = anchor.children
+    local = attitude.matrix_world.inverted()
+    corners = [local @ c for c in scene._corners(scene._meshes([anchor]))]
+    length = max(c.y for c in corners) - min(c.y for c in corners)
+    beam = max(c.x for c in corners) - min(c.x for c in corners)
+    sc = bpy.context.scene
+    for frame in (0, 7, 31):
+        sc.frame_set(frame)
+        east, north, _ = anchor.matrix_world.translation
+        bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
+        heading = math.atan2(bow.x, bow.y)
+        assert math.degrees(heading) % 360 == pytest.approx(
+            scenario.objects[0].heading_deg % 360, abs=1e-4
+        )
+        pitch, roll = waves.attitude(
+            scene.wave_field(scenario),
+            east,
+            north,
+            heading,
+            length,
+            beam,
+            scenario.outputs.times_s[frame],
+        )
+        assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
+            (pitch, -roll), abs=1e-5
+        )
+
+
 def keyed() -> Iterator[tuple[str, np.ndarray]]:
     """Every keyed channel in the scene, its values frame by frame."""
     for action in bpy.data.actions:
@@ -823,8 +856,9 @@ def test_a_loop_runs_from_its_last_frame_into_its_first_like_any_other() -> None
     scene.build(load(DRIFTING, ["outputs.fps = 2"]))
     channels = dict(keyed())
 
-    assert len(channels) == 8, (
-        "the target's xyz, pitch, roll, heave, the sea's cos, sin"
+    assert len(channels) == 10, (
+        "the target's xyz, pitch, roll; the ownship's pitch, roll, heave; the sea's "
+        "cos, sin"
     )
     for name, values in channels.items():
         bend = np.abs(np.diff(np.append(values, values[:2]), 2))
