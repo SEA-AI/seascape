@@ -105,3 +105,14 @@ def test_a_missing_frame_names_itself(tmp_path) -> None:
 def test_an_odd_frame_size_cannot_be_h264(tmp_path) -> None:
     with pytest.raises(RuntimeError, match="divisible by 2"):
         video.encode(run(tmp_path, GREYS[:2], [0.0, 0.1], size=(63, 36)))
+
+
+def test_a_lower_quality_writes_a_smaller_video(tmp_path) -> None:
+    folder = run(tmp_path, GREYS[:3], [0.0, 0.1, 0.2])
+    noise = np.random.default_rng(0).integers(0, 256, (36, 64, 3), dtype=np.uint8)
+    for frame in (folder / "port").iterdir():
+        Picture.fromarray(noise).save(frame)
+
+    sizes = [video.encode(folder, q)[0].stat().st_size for q in ("LOSSLESS", "LOWEST")]
+
+    assert sizes[0] > sizes[1]
