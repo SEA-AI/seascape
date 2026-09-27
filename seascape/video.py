@@ -12,13 +12,14 @@ from seascape import agc
 from seascape.labels import FILENAME, Image, Labels
 
 
-def encode(run: Path) -> list[Path]:
+def encode(run: Path, quality: str = "PERC_LOSSLESS") -> list[Path]:
+    """`quality` is a Blender `constant_rate_factor` preset."""
     run = run.resolve()
     images = Labels.model_validate_json((run / FILENAME).read_text()).images
     cameras: dict[str, list[Image]] = {}
     for image in sorted(images, key=lambda image: image.time_s):
         cameras.setdefault(image.camera, []).append(image)
-    return [_encode(run, camera, frames) for camera, frames in cameras.items()]
+    return [_encode(run, camera, frames, quality) for camera, frames in cameras.items()]
 
 
 def _toned(paths: list[Path], step_s: float, into: Path) -> list[Path]:
@@ -37,7 +38,7 @@ def _toned(paths: list[Path], step_s: float, into: Path) -> list[Path]:
     return toned
 
 
-def _encode(run: Path, camera: str, frames: list[Image]) -> Path:
+def _encode(run: Path, camera: str, frames: list[Image], quality: str) -> Path:
     if len(frames) < 2:
         raise ValueError(f"{camera}: one frame is a still, not a video")
     times = [frame.time_s for frame in frames]
@@ -68,7 +69,7 @@ def _encode(run: Path, camera: str, frames: list[Image]) -> Path:
         sc.view_settings.view_transform = "Standard"
         r.image_settings.media_type = "VIDEO"
         r.ffmpeg.format, r.ffmpeg.codec = "MPEG4", "H264"
-        r.ffmpeg.constant_rate_factor = "PERC_LOSSLESS"
+        r.ffmpeg.constant_rate_factor = quality
         # With its extension: without one Blender appends the frame range to the name.
         out = run / f"{camera}.mp4"
         r.filepath = str(out)

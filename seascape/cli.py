@@ -108,6 +108,20 @@ def main(argv: list[str] | None = None) -> int:
         "video", help="encode each camera's frames as an mp4, from labels.json"
     )
     film.add_argument("folder", type=Path, help="a render's output directory")
+    film.add_argument(
+        "--quality",
+        default="perc_lossless",
+        choices=[
+            "lossless",
+            "perc_lossless",
+            "high",
+            "medium",
+            "low",
+            "verylow",
+            "lowest",
+        ],
+        help="Blender's H.264 constant-quality preset",
+    )
 
     commands.add_parser("schema", help="print the scenario JSON schema on stdout")
 
@@ -128,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "video":
             from seascape import video
 
-            for path in video.encode(args.folder):
+            for path in video.encode(args.folder, args.quality.upper()):
                 print(path)
         else:
             _build(args.scenario, args.output, args.band, args.overrides)
