@@ -24,7 +24,7 @@ jobs:
 
       # Full version because setup-uv publishes no major tag past v7; dependabot
       # moves it. Every other action here floats on its major.
-      - uses: astral-sh/setup-uv@v10.1.0
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
