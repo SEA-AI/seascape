@@ -181,12 +181,14 @@ def _thermal_sea(
 def _water_material(
     sea: Sea, rng: np.random.Generator, outputs: Outputs
 ) -> bpy.types.Material:
-    """Daylight water: rough enough to catch the sun, refracting at seawater's IOR."""
+    """Daylight water, refracting at seawater's IOR."""
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
     principled = tree.nodes["Principled BSDF"]
     principled.inputs["Base Color"].default_value = (0.004, 0.02, 0.035, 1.0)
-    principled.inputs["Roughness"].default_value = 0.05
+    principled.inputs["Roughness"].default_value = specular_roughness(
+        sea.wind_speed_mps
+    )
     principled.inputs["IOR"].default_value = 1.33
     tree.links.new(_wave_normals(tree, sea, rng, outputs), principled.inputs["Normal"])
     return material

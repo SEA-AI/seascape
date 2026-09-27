@@ -458,6 +458,12 @@ class TestEoBand:
         bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
         assert bsdf.inputs["IOR"].default_value == pytest.approx(1.33)
 
+    def test_the_glitter_spreads_over_the_slope_the_waves_leave_out(self) -> None:
+        bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
+        assert bsdf.inputs["Roughness"].default_value == pytest.approx(
+            waves.specular_roughness(SCENARIO.sea.wind_speed_mps)
+        )
+
     def test_the_sky_is_lit(self) -> None:
         assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
 
