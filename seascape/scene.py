@@ -645,7 +645,7 @@ def _ride(
 ) -> None:
     """Key each hull's pitch and roll to the sea under its keyed pose.
 
-    No heave: the rendered sea is flat, so a heaving hull would break its waterline.
+    No heave: waves are shading, so a heaving hull would break its waterline.
     """
     sc = bpy.context.scene
     # The parts' matrix_world is stale until the depsgraph runs.

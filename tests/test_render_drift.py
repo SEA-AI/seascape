@@ -1,4 +1,4 @@
-"""Properties of a rendered LWIR frame that a refactor must not shift.
+"""Properties of a rendered frame that a refactor must not shift.
 
 Skipped unless `--render` is given.
 """
@@ -128,7 +128,7 @@ LOOP = load(
 @pytest.mark.render
 @pytest.mark.parametrize(
     ("scenario", "frame"),
-    # Past half-way, a loop's time comes back off the angle a whole span early.
+    # Past half-way, a loop's atan2 clock reads t - span.
     [(SCENARIO, 0), (LOOP, 20)],
 )
 @pytest.mark.parametrize("axis", [0, 1])

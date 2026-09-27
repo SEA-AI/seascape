@@ -520,11 +520,7 @@ def water(
     outputs: Outputs,
     pixel_rad: float,
 ) -> bpy.types.Object:
-    """A grid curved to the earth. The waves are in its material.
-
-    z = -(x^2 + y^2) / 2R osculates the sphere, off by d^4 / 8R^3 at distance d.
-    Geometry here and not for waves: the bulge is kilometres across, never sub-pixel.
-    """
+    """A grid curved to the earth. The waves are in its material."""
     bpy.ops.mesh.primitive_grid_add(
         x_subdivisions=SEA_CELLS, y_subdivisions=SEA_CELLS, size=2 * reach_m
     )
