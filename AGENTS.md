@@ -97,6 +97,12 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Components are pydantic models; a second kind of one makes a discriminated union**, registered in one place. Not a registry dict, not entry points.
 - Annotate every function signature outside tests.
 
+## Where code goes
+
+- **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; `sea.py` and `scene.py` only turn its values into nodes and keyframes, and their tests check the graph carries those values without re-deriving them.
+- **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
+- **No Protocol or ABC before a second implementation.**
+
 ## Checks — run before committing
 
 These mirror CI; all must pass.

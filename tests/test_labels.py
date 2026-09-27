@@ -6,10 +6,10 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape import labels, scene
+from seascape import labels, waves
 from seascape.calibration import CameraCalibration
 
-RADIUS_M = scene.earth_radius_m(0.13)
+RADIUS_M = waves.earth_radius_m(0.13)
 
 
 def camera(

@@ -9,8 +9,10 @@ include = ["seascape", "tests"]
 # everywhere else.
 [[overrides]]
 include = [
+    "seascape/blend.py",
     "seascape/render.py",
     "seascape/scene.py",
+    "seascape/sea.py",
     "seascape/cli.py",
     "seascape/video.py",
     "tests/test_scene.py",

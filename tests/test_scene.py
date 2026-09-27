@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import lwir, scene
+from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Asset, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import Mount, load
@@ -88,29 +88,6 @@ def test_a_named_substream_is_reproducible_and_local_to_its_name() -> None:
     assert draw(7, "sea/surface") != draw(7, "sky/haze")
 
 
-def test_published_values_have_not_drifted() -> None:
-    # Cox & Munk 1954: RMS slope of a clean sea at 7 m/s, off sun glitter photographs.
-    assert scene.wave_slope(7.0) == pytest.approx(0.197, abs=5e-4)
-    # Surveying's rule of thumb for the horizon, 3.86 sqrt(h_m) km at k = 0.13.
-    rule_m = 3.86e3 * math.sqrt(51.8)
-    assert scene.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
-    # Pierson-Moskowitz: a fully developed sea at 7 m/s peaks near 41 m.
-    assert scene.wave_length_m(7.0) == pytest.approx(40.8, abs=0.2)
-    # Its peak frequency, 0.877 g / U, as a period.
-    assert scene.wave_period_s(7.0) == pytest.approx(2 * math.pi * 7.0 / (0.877 * 9.81))
-    # Minimum phase speed of a surface wave, where surface tension takes over.
-    assert abs(scene.CAPILLARY_WAVELENGTH_M - 0.0173) < 1e-4
-    # Masuda 1988 at this wind speed: near nadir, and at 80 deg where roughness has
-    # taken hold, lifting emissivity above flat Fresnel.
-    theta, eps = lwir.emissivity_curve(
-        t_sea_k=291.0, slope_sigma=scene.unresolved_slope(7.0)
-    )
-    assert float(np.interp(0.0, theta, eps)) == pytest.approx(0.985, abs=0.005)
-    assert float(np.interp(math.radians(80.0), theta, eps)) == pytest.approx(
-        0.76, abs=0.03
-    )
-
-
 class TestGeometry:
     """Everything the band does not change: where things are and where cameras look."""
 
@@ -139,7 +116,7 @@ class TestGeometry:
             assert data.clip_start < data.clip_end
 
     def test_every_3d_view_clips_past_the_sea(self) -> None:
-        corner_m = math.sqrt(2) * scene.sea_reach_m(SCENARIO.rig, SCENARIO.sea)
+        corner_m = math.sqrt(2) * sea.sea_reach_m(SCENARIO.rig, SCENARIO.sea)
         views = [
             space
             for screen in bpy.data.screens
@@ -199,8 +176,8 @@ class TestGeometry:
     def test_the_noise_carries_the_slope_its_octaves_reach(self) -> None:
         """A ratio of octaves, so more wind means a longer wave and less of it."""
         calm, blowing = (
-            scene.resolved_slope_fraction(2.0),
-            scene.resolved_slope_fraction(18.0),
+            waves.resolved_slope_fraction(2.0),
+            waves.resolved_slope_fraction(18.0),
         )
         assert 0.0 < blowing < calm < 1.0
 
@@ -210,16 +187,16 @@ class TestGeometry:
         wind = SCENARIO.sea.wind_speed_mps
         scaling = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeVectorMath")
         assert tuple(scaling.inputs[1].default_value) == pytest.approx(
-            (1.0 / scene.wave_length_m(wind), 1.0 / scene.wave_length_m(wind), 0.0)
+            (1.0 / waves.wave_length_m(wind), 1.0 / waves.wave_length_m(wind), 0.0)
         )
         bump = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeBump")
         assert bump.inputs["Distance"].default_value == pytest.approx(
-            scene.bump_slope(wind)
-            * scene.wave_length_m(wind)
-            / scene.NOISE_SLOPE_PER_UNIT
+            waves.bump_slope(wind)
+            * waves.wave_length_m(wind)
+            / waves.NOISE_SLOPE_PER_UNIT
         )
         noise = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeTexNoise")
-        assert noise.inputs["Detail"].default_value == scene.NOISE_DETAIL, (
+        assert noise.inputs["Detail"].default_value == waves.NOISE_DETAIL, (
             "the transfer was measured at this Detail"
         )
 
@@ -230,7 +207,7 @@ class TestGeometry:
             for c in bpy.data.objects["sea"].bound_box
         ]
         reach = min(max(abs(v.x), abs(v.y)) for v in corners)
-        horizon = scene.horizon_m(SCENARIO.rig.height_m, SCENARIO.sea.refraction_k)
+        horizon = waves.horizon_m(SCENARIO.rig.height_m, SCENARIO.sea.refraction_k)
 
         assert reach > horizon
         assert reach > max(spec.range_m for spec in SCENARIO.objects)
@@ -238,22 +215,22 @@ class TestGeometry:
     def test_a_hull_floats_on_the_sea_and_not_on_the_tangent_plane(self) -> None:
         """Hulls left at z = 0 fly with range and bearing still right, so nothing else
         catches it."""
-        radius = scene.earth_radius_m(SCENARIO.sea.refraction_k)
+        radius = waves.earth_radius_m(SCENARIO.sea.refraction_k)
 
         for spec in SCENARIO.objects:
             anchor = bpy.data.objects[spec.asset]
             east, north, up = anchor.matrix_world.translation
 
-            assert up == pytest.approx(scene.sea_z_m(east, north, radius), abs=1e-3)
+            assert up == pytest.approx(waves.sea_z_m(east, north, radius), abs=1e-3)
 
     def test_a_hull_beyond_the_horizon_is_cut_off(self) -> None:
         """A target past the horizon shows its waterline when it should be hull-down."""
         eye = Vector((0.0, 0.0, SCENARIO.rig.height_m))
-        radius = scene.earth_radius_m(SCENARIO.sea.refraction_k)
+        radius = waves.earth_radius_m(SCENARIO.sea.refraction_k)
         beyond = 18_000.0
         surface = beyond * beyond / (2.0 * radius)
-        horizon = scene.horizon_m(SCENARIO.rig.height_m, SCENARIO.sea.refraction_k)
-        assert horizon < beyond < scene.sea_reach_m(SCENARIO.rig, SCENARIO.sea)
+        horizon = waves.horizon_m(SCENARIO.rig.height_m, SCENARIO.sea.refraction_k)
+        assert horizon < beyond < sea.sea_reach_m(SCENARIO.rig, SCENARIO.sea)
 
         waterline = _blocked(eye, Vector((0.0, beyond, -surface)))
         mast = _blocked(eye, Vector((0.0, beyond, 30.0 - surface)))
@@ -272,7 +249,7 @@ class TestGeometry:
         after = len(bpy.data.objects["sea"].data.vertices)
         scene.build(SCENARIO, "eo")  # the class shares one scene; put it back
 
-        assert before == after == (scene.SEA_CELLS + 1) ** 2
+        assert before == after == (sea.SEA_CELLS + 1) ** 2
 
     def test_building_twice_leaves_the_same_scene(self) -> None:
         """Node trees leak when a build appends to what is already there."""
@@ -345,9 +322,8 @@ def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(
         f'[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = {yaw_deg}\n'
     )
     scenario = load(path)
-    # Through `_yaw`: Blender's +Z turns to port, so the sign follows the scene's.
     expected = math.degrees(
-        math.asin(math.sin(math.radians(pitch_deg)) * math.sin(scene._yaw(yaw_deg)))
+        math.asin(math.sin(math.radians(pitch_deg)) * math.sin(blend.yaw(yaw_deg)))
     )
 
     scene.build(scenario, "eo")
@@ -561,7 +537,7 @@ class TestIrBand:
             if n.bl_idname == "ShaderNodeBsdfAnisotropic"
         )
         assert mirror.inputs["Roughness"].default_value == pytest.approx(
-            scene.specular_roughness(SCENARIO.sea.wind_speed_mps)
+            waves.specular_roughness(SCENARIO.sea.wind_speed_mps)
         )
 
     def test_emissivity_is_averaged_over_the_slopes_the_bump_misses(self) -> None:
@@ -595,7 +571,7 @@ class TestIrBand:
 
         _, eps = lwir.emissivity_curve(
             t_sea_k=SCENARIO.sea.t_sea_k,
-            slope_sigma=scene.unresolved_slope(SCENARIO.sea.wind_speed_mps),
+            slope_sigma=waves.unresolved_slope(SCENARIO.sea.wind_speed_mps),
         )
         assert curve[-1] == pytest.approx(eps[0], rel=1e-4), "cos(theta)=1 is normal"
         assert curve[0] == pytest.approx(eps[-1], abs=2e-3), "cos(theta)=0 is grazing"
@@ -618,7 +594,7 @@ class TestAnimate:
 
     def test_every_frame_holds_the_value_at_its_time(self, empty) -> None:
         sc = bpy.context.scene
-        scene._animate(empty, "location", [0.0, 0.1, 0.2], lambda t: 10 * t, index=0)
+        blend.animate(empty, "location", [0.0, 0.1, 0.2], lambda t: 10 * t, index=0)
         assert (sc.frame_start, sc.frame_end, sc.render.fps, sc.render.fps_base) == (
             0,
             2,
@@ -630,7 +606,7 @@ class TestAnimate:
             assert empty.matrix_world.translation.x == pytest.approx(x)
 
     def test_a_still_is_set_and_not_keyed(self, empty) -> None:
-        scene._animate(empty, "location", [0.0], lambda t: (1.0, 2.0, 3.0))
+        blend.animate(empty, "location", [0.0], lambda t: (1.0, 2.0, 3.0))
         assert tuple(empty.location) == (1.0, 2.0, 3.0)
         assert empty.animation_data is None
 
@@ -638,7 +614,7 @@ class TestAnimate:
 def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
     scenario = load(UNDERWAY, ["outputs.duration_s = 0.3"])
     (spec,) = scenario.objects
-    radius = scene.earth_radius_m(scenario.sea.refraction_k)
+    radius = waves.earth_radius_m(scenario.sea.refraction_k)
     anchor = scene.build(scenario).targets[spec.asset][0]
     sc = bpy.context.scene
 
@@ -654,7 +630,7 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
         assert math.degrees(math.atan2(run_east, run_north)) % 360 == pytest.approx(
             spec.heading_deg % 360
         )
-        assert up == pytest.approx(scene.sea_z_m(east, north, radius), abs=1e-3)
+        assert up == pytest.approx(waves.sea_z_m(east, north, radius), abs=1e-3)
     sc.frame_set(0)
     assert anchor.matrix_world.translation == start
     assert start.xy.length == pytest.approx(spec.range_m)
@@ -708,7 +684,7 @@ class TestSeaEvolves:
     def test_the_phase_advances_a_unit_per_dominant_period(self, band) -> None:
         scene.build(self.SEQUENCE, band)
         phases = [o.inputs["Vector_002"].default_value[2] for o in self._frames()]
-        period_s = scene.wave_period_s(self.SEQUENCE.sea.wind_speed_mps)
+        period_s = waves.wave_period_s(self.SEQUENCE.sea.wind_speed_mps)
         step = 1 / (self.SEQUENCE.outputs.fps * period_s)
         assert len(phases) == 3
         assert list(np.diff(phases)) == pytest.approx([step, step], rel=1e-4)
@@ -722,7 +698,7 @@ class TestSeaEvolves:
 
     def test_the_wave_field_does_not_slide(self) -> None:
         scene.build(self.SEQUENCE, "eo")
-        per_m = 1 / scene.wave_length_m(self.SEQUENCE.sea.wind_speed_mps)
+        per_m = 1 / waves.wave_length_m(self.SEQUENCE.sea.wind_speed_mps)
         for offset in self._frames():
             scale = tuple(offset.inputs["Vector_001"].default_value)
             assert scale == pytest.approx((per_m, per_m, 0.0))
@@ -738,7 +714,7 @@ def test_a_drifting_hull_traces_a_figure_eight_about_its_pose() -> None:
     heading = math.radians(spec.heading_deg)
     ahead = Vector((math.sin(heading), math.cos(heading)))
     starboard = Vector((math.cos(heading), -math.sin(heading)))
-    radius = scene.earth_radius_m(scenario.sea.refraction_k)
+    radius = waves.earth_radius_m(scenario.sea.refraction_k)
     pose = anchor.matrix_world.translation.xy.copy()
     s = math.sqrt(0.5)
     eighths = [(0, 0), (s, 1), (1, 0), (s, -1), (0, 0), (-s, 1), (-1, 0), (-s, -1)]
@@ -753,8 +729,8 @@ def test_a_drifting_hull_traces_a_figure_eight_about_its_pose() -> None:
             across * spec.drift.sway_m, abs=1e-2
         )
         assert offset.dot(ahead) == pytest.approx(along * spec.drift.surge_m, abs=1e-2)
-        assert up == pytest.approx(scene.sea_z_m(east, north, radius), abs=1e-3)
-        assert anchor.rotation_euler.z == pytest.approx(scene._yaw(spec.heading_deg))
+        assert up == pytest.approx(waves.sea_z_m(east, north, radius), abs=1e-3)
+        assert anchor.rotation_euler.z == pytest.approx(blend.yaw(spec.heading_deg))
     assert pose.length == pytest.approx(spec.range_m)
 
 
@@ -776,7 +752,7 @@ def test_orbiting_hulls_share_a_lap_clockwise_bow_first() -> None:
             assert (east, north) == pytest.approx(
                 (200.0 * math.sin(bearing), 200.0 * math.cos(bearing)), abs=1e-3
             )
-            assert hull.rotation_euler.z == pytest.approx(scene._yaw(bearing_deg + 90))
+            assert hull.rotation_euler.z == pytest.approx(blend.yaw(bearing_deg + 90))
 
 
 def keyed() -> Iterator[tuple[str, np.ndarray]]:
