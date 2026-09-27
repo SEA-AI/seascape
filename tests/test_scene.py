@@ -315,6 +315,13 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     assert (fit @ long).y == pytest.approx(100.0), "and the bow ends up at +Y"
 
 
+def test_a_glb_asset_leaves_its_lights_behind() -> None:
+    yacht = 'objects = [{ asset = "yacht", range_m = 200.0, bearing_deg = 0.0 }]'
+    scene.build(load(BASELINE, [yacht]), "eo")
+
+    assert not [o for o in bpy.data.objects if o.type == "LIGHT"]
+
+
 @pytest.mark.parametrize("band", ["eo", "ir"])
 def test_the_active_camera_belongs_to_the_band_built(band) -> None:
     """Opened on the rig's first camera, an IR build could render through EO optics
@@ -749,6 +756,27 @@ def test_a_drifting_hull_traces_a_figure_eight_about_its_pose() -> None:
         assert up == pytest.approx(scene.sea_z_m(east, north, radius), abs=1e-3)
         assert anchor.rotation_euler.z == pytest.approx(scene._yaw(spec.heading_deg))
     assert pose.length == pytest.approx(spec.range_m)
+
+
+def test_orbiting_hulls_share_a_lap_clockwise_bow_first() -> None:
+    yachts = (
+        'objects = [{ asset = "yacht", range_m = 200.0, bearing_deg = -90.0,'
+        " orbit = { period_s = 80.0, count = 2 } }]"
+    )
+    scenario = load(DRIFTING, [yachts, "outputs.duration_s = 40", "outputs.fps = 1"])
+    first, second = scene.build(scenario).targets["yacht"]
+    sc = bpy.context.scene
+
+    for frame in (0, 10, 39):
+        sc.frame_set(frame)
+        for hull, start_deg in ((first, -90.0), (second, 90.0)):
+            bearing_deg = start_deg + 360.0 * frame / 80.0
+            bearing = math.radians(bearing_deg)
+            east, north, _ = hull.matrix_world.translation
+            assert (east, north) == pytest.approx(
+                (200.0 * math.sin(bearing), 200.0 * math.cos(bearing)), abs=1e-3
+            )
+            assert hull.rotation_euler.z == pytest.approx(scene._yaw(bearing_deg + 90))
 
 
 def keyed() -> Iterator[tuple[str, np.ndarray]]:

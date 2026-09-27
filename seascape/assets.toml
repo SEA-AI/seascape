@@ -8,3 +8,14 @@ draught_m = 10.0
 bow_deg = 180.0
 licence = "CC-BY-3.0"
 attribution = "Container Ship by Alex “SAFFY” Safayan, https://poly.pizza/m/3AmDGcCu6Ll"
+
+# Icosa serves this one only as a multi-file glTF; the archive keeps Poly's GLB.
+[yacht]
+url = "https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/c/fp/1620916947019758/9znU2c-dTSR/d-wfIKdABHE/Yacht.glb"
+sha256 = "641bce20710ceb963f6ddd295a883b4d09019c5344876fd861f83abe27ed7d36"
+length_m = 20.0
+# The mesh has no underwater body: its flat bottom is the authored waterline.
+draught_m = 0.3
+bow_deg = 90.0
+licence = "CC-BY-3.0"
+attribution = "Yacht by Alex “SAFFY” Safayan, https://poly.pizza/m/9znU2c-dTSR"

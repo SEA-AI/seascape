@@ -242,6 +242,17 @@ class Drift(Model):
     period_s: float = Field(gt=0.0, description="One full figure-eight.")
 
 
+class Orbit(Model):
+    """Round the ownship's origin clockwise from the hull's bearing, at its range, bow
+    along the circle.
+
+    Identical hulls share the lap evenly, so a loop need only last `period_s / count`.
+    """
+
+    period_s: float = Field(gt=0.0, description="One full lap.")
+    count: int = Field(default=1, gt=0, description="Hulls spaced evenly on it.")
+
+
 class Object(Model):
     """Something to detect."""
 
@@ -251,7 +262,17 @@ class Object(Model):
     heading_deg: float = Field(default=0.0, description=_HEADING)
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
+    orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: float = Field(default=293.0, ge=250.0, le=400.0, description=_T_HULL)
+
+    @model_validator(mode="after")
+    def _an_orbit_steers(self) -> "Object":
+        steered = {"heading_deg", "speed_mps", "drift"} & self.model_fields_set
+        if self.orbit is not None and steered:
+            raise ValueError(
+                f"{self.asset} orbits, which sets its course: drop {sorted(steered)}"
+            )
+        return self
 
 
 class Swing(Model):
@@ -335,9 +356,10 @@ class Samples(Model):
 class Outputs(Model):
     """What a render writes.
 
-    Every camera of a listed band is rendered. A png or jpg is 8-bit: EO through the
-    exposure and the film curve, LWIR auto-contrasted per camera over its frames, so a
-    thermal pixel is not a temperature. An exr keeps the radiance, in W m^-2 sr^-1.
+    Every camera of a listed band is rendered. An EO png or jpg is 8-bit, through the
+    exposure and the film curve. An LWIR png is 16-bit, a hundredth of a kelvin per
+    count; an LWIR jpg is 8-bit grey, auto-contrasted as a thermal camera does. An exr
+    keeps the radiance, in W m^-2 sr^-1.
     """
 
     # uniqueItems for editors validating against the schema; `_bands_are_distinct`
@@ -351,7 +373,7 @@ class Outputs(Model):
     samples: Samples = Field(default_factory=Samples)
     format: ImageFormat = Field(
         default="jpg",
-        description="jpg to look at, png lossless, exr to keep the radiance.",
+        description="jpg to look at, png lossless or LWIR in kelvin, exr the radiance.",
     )
     # Blender clamps to +/-32 in silence.
     exposure_ev: float = Field(
@@ -419,19 +441,24 @@ class Scenario(Model):
                     f"{spec.asset} has speed_mps > 0, and a straight run never comes "
                     "back to close a loop: give it a drift instead"
                 )
-        periods = [
+        motions = [
             ("ownship.roll", self.ownship.roll),
             ("ownship.pitch", self.ownship.pitch),
             ("ownship.heave", self.ownship.heave),
             *((f"{spec.asset} drift", spec.drift) for spec in self.objects),
             ("targets.drift", self.targets.drift if self.targets else None),
         ]
+        periods = [(n, m.period_s) for n, m in motions if m is not None] + [
+            (f"{spec.asset} orbit", spec.orbit.period_s / spec.orbit.count)
+            for spec in self.objects
+            if spec.orbit is not None
+        ]
         span_s = self.outputs.span_s
-        for name, motion in periods:
+        for name, period_s in periods:
             # Rounding it to the span would speed the motion up.
-            if motion is not None and motion.period_s > span_s:
+            if period_s > span_s:
                 raise ValueError(
-                    f"a {span_s} s loop is shorter than {name}'s {motion.period_s} s "
+                    f"a {span_s} s loop is shorter than {name}'s {period_s} s "
                     "period: make outputs.duration_s at least that"
                 )
         return self

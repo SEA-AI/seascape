@@ -14,6 +14,7 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
+from seascape import agc
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.montage import INK, MATTE
 
@@ -155,13 +156,22 @@ def stitch(
         scale *= min(1.0, max_width / span)
     warper = cv2.PyRotationWarper(kind, scale)
 
+    temps = [agc.kelvin(folder / camera.image) for camera in cameras]
+    # One span for all, so a temperature is one grey on both sides of a seam.
+    known = [t_k for t_k in temps if t_k is not None]
+    low_k = min((float(t_k.min()) for t_k in known), default=0.0)
+    high_k = max((float(t_k.max()) for t_k in known), default=0.0)
     warped = []
-    for camera, (k_full, r) in zip(cameras, poses, strict=True):
+    for camera, (k_full, r), t_k in zip(cameras, poses, temps, strict=True):
         path = folder / camera.image
-        image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        image = (
+            cv2.imread(str(path), cv2.IMREAD_COLOR)
+            if t_k is None
+            else cv2.cvtColor(agc.grey(t_k, low_k, high_k), cv2.COLOR_GRAY2BGR)
+        )
         if image is None:
             raise ValueError(
-                f"cannot read {path}: panorama takes the 8-bit frames that "
+                f"cannot read {path}: panorama takes the frames that "
                 'outputs.format = "png" or "jpg" writes'
             )
         image, k = _shrink(image, k_full, scale / float(k_full[0, 0]))

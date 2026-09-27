@@ -13,6 +13,8 @@ from seascape.config import (
     CFG_DIR,
     Band,
     Camera,
+    Object,
+    Orbit,
     Outputs,
     Pod,
     Rig,
@@ -394,8 +396,20 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         ),
         ("drifting.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
         ("drifting.toml", ["outputs.duration_s = 20"], "container_ship drift"),
+        ("port-pod-loop.toml", ["outputs.duration_s = 30"], "yacht orbit's 40.0 s"),
     ],
 )
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
     with pytest.raises(ValidationError, match=match):
         load(SCENARIOS / name, overrides)
+
+
+def test_an_orbit_sets_the_course_itself() -> None:
+    with pytest.raises(ValidationError, match=r"drop \['heading_deg'\]"):
+        Object(
+            asset="yacht",
+            range_m=200.0,
+            bearing_deg=0.0,
+            heading_deg=0.0,
+            orbit=Orbit(period_s=60.0),
+        )

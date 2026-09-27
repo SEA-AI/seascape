@@ -9,3 +9,22 @@ pods = [{ preset = "port" }]
 duration_s = 40.0
 fps = 9
 loop = true
+
+# A list replaces the one it extends, so twin-pod's ships come along by hand.
+[[objects]]
+preset = "container_ship"
+range_m = 3704.0
+bearing_deg = -10.0
+heading_deg = 80.0
+
+[[objects]]
+preset = "container_ship"
+range_m = 7408.0
+bearing_deg = 10.0
+heading_deg = 280.0
+
+[[objects]]
+asset = "yacht"
+range_m = 200.0
+bearing_deg = -90.0
+orbit = { period_s = 80.0, count = 2 }

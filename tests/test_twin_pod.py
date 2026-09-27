@@ -12,7 +12,7 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
-from seascape import panorama, scene
+from seascape import agc, panorama, scene
 from seascape.assets import manifest
 from seascape.calibration import Calibration
 from seascape.config import Mount, Pod, Scenario, load
@@ -288,6 +288,31 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
     row = image[image.shape[0] // 2]
     columns = [np.flatnonzero(row[:, c] > 127).mean() for c in range(len(mounts))]
     assert columns == sorted(columns)
+
+
+def test_a_thermal_panorama_is_one_grey_per_temperature(
+    tmp_path: Path, built: scene.Built
+) -> None:
+    first = SCENARIO.rig.mounts[0]
+    mounts = [
+        m
+        for m in SCENARIO.rig.mounts
+        if m.pod == first.pod and m.camera.kind == first.camera.kind
+    ][:2]
+    for hot_k, mount in zip((300.0, 290.0), mounts, strict=True):
+        t_k = np.full((mount.camera.height_px, mount.camera.width_px), 290.0)
+        t_k[:8] = hot_k  # only the first frame has anything warmer than the sea
+        cv2.imwrite(str(tmp_path / f"{mount.name}.png"), agc.counts(t_k))
+    Calibration(
+        cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
+    ).write(tmp_path)
+
+    paths = panorama.panoramas(tmp_path, "cylindrical", "pod", max_width=400)
+
+    image = cv2.imread(str(paths[0]))
+    assert image is not None
+    sea = image[image.shape[0] // 2, :, 0]
+    assert sea.max() <= 8, "the second frame's sea came out grey"
 
 
 def test_the_width_is_capped_and_never_raised(

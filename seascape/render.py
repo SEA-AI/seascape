@@ -1,23 +1,23 @@
 """Render the cameras a scenario asks for: one image each, per band and frame.
 
 EO reaches 8 bits through the exposure and Blender's film curve. LWIR cannot: its
-pixels are radiance in W m^-2 sr^-1, which Blender would clip to white, so an 8-bit ir
-frame is rendered float and stretched here from the coldest pixel a camera saw to its
-hottest.
+pixels are radiance in W m^-2 sr^-1, which Blender would clip to white, so an ir frame
+is rendered float and written here as a thermal camera writes one: a png as 16-bit
+centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
 import subprocess
 import tempfile
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
 import bpy
+import cv2
 import numpy as np
 
-from seascape import labels, lwir, scene
+from seascape import agc, labels, lwir, scene
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import ImageFormat, Scenario
 
@@ -38,39 +38,14 @@ def _temperatures_k(exr: Path) -> np.ndarray:
     return lwir.brightness_temperature(_pixels(exr)[..., 0])
 
 
-def _thermal_images(exrs: Sequence[Path], fmt: ImageFormat) -> None:
-    """Rewrite float LWIR renders as 8-bit grey `fmt` beside them, and delete the exrs.
-
-    One span for all, so a sequence does not flicker.
-    """
-    # Full span: a target is a small fraction of the frame, and trimming the tails
-    # flattens it to white. Read twice rather than held: a sequence outgrows memory.
-    spans = [(t_k.min(), t_k.max()) for t_k in map(_temperatures_k, exrs)]
-    low, high = min(s[0] for s in spans), max(s[1] for s in spans)
-    # One temperature throughout has no contrast to stretch; mid-grey, not NaN.
-    if high - low < 1e-6:
-        low, high = low - 0.5, low + 0.5
-    for exr in exrs:
-        t_k = _temperatures_k(exr)
-        height, width = t_k.shape
-        # float32: foreach_set takes the buffer's type literally and rejects a double.
-        grey = np.clip((t_k - low) / (high - low), 0.0, 1.0).astype(np.float32).ravel()
-        out = bpy.data.images.new(exr.stem, width, height)
-        try:
-            # Before the pixels, never after: assigning the colorspace second re-reads
-            # what is already there and leaves the image black, with no error.
-            out.colorspace_settings.name = "Non-Color"
-            out.pixels.foreach_set(
-                np.column_stack([grey, grey, grey, np.ones_like(grey)]).ravel()
-            )
-            out.file_format = scene.FORMATS[fmt][0]
-            out.filepath_raw = str(exr.with_suffix(f".{fmt}"))
-            out.save(quality=scene.JPEG_QUALITY)
-        finally:
-            bpy.data.images.remove(out)
-    # Last, so a failure keeps every exr for a retry without re-rendering.
-    for exr in exrs:
-        exr.unlink()
+def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> None:
+    """Rewrite a float LWIR render as `fmt` beside it, and delete the exr."""
+    t_k = _temperatures_k(exr)[::-1]  # cv2 writes the top row first
+    out = exr.with_suffix(f".{fmt}")
+    image = agc.counts(t_k) if fmt == "png" else tone(t_k)
+    if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
+        raise OSError(f"cannot write {out}")
+    exr.unlink()
 
 
 def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
@@ -149,22 +124,6 @@ def _info(scenario: Scenario) -> dict[str, Any]:
     }
 
 
-def _stretch(
-    exrs: dict[str, list[Path]],
-    fmt: ImageFormat,
-    cameras: list[CameraCalibration],
-    truth: labels.Labels,
-) -> None:
-    """Turn each camera's ir exrs into `fmt` over one span, and rename them."""
-    for frames in exrs.values():
-        _thermal_images(frames, fmt)
-    suffix = f".{fmt}"
-    for camera in cameras:
-        camera.image = str(Path(camera.image).with_suffix(suffix))
-    for image in truth.images:
-        image.file_name = str(Path(image.file_name).with_suffix(suffix))
-
-
 def render(scenario: Scenario, into: Path) -> list[Path]:
     """Write one image per camera and frame into `into`, their calibration and their
     labels. A sequence puts each camera's frames in a folder of its own."""
@@ -190,7 +149,7 @@ def render(scenario: Scenario, into: Path) -> list[Path]:
             truth.info = truth.info or _info(scenario)
             index_output = _index_output(passes)
             sc = bpy.context.scene
-            exrs: dict[str, list[Path]] = {}
+            tones = {m.name: agc.Agc(1 / outputs.fps) for m in mounts}
             for frame, time_s in enumerate(outputs.times_s):
                 sc.frame_set(frame)
                 # Both read matrix_world, which moves with the frame.
@@ -205,11 +164,12 @@ def render(scenario: Scenario, into: Path) -> list[Path]:
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
                     bpy.ops.render.render(write_still=True)
-                    written.append(into / f"{name}.{outputs.format}")
-                    # What exists on disk: an 8-bit ir frame waits for the band's span.
-                    file_name = f"{name}.{'exr' if thermal else outputs.format}"
                     if thermal:
-                        exrs.setdefault(mount.name, []).append(into / file_name)
+                        _write_thermal(
+                            into / f"{name}.exr", outputs.format, tones[mount.name]
+                        )
+                    file_name = f"{name}.{outputs.format}"
+                    written.append(into / file_name)
                     camera = scene.calibrate(built, mount, file_name)
                     cameras.append(camera)
                     index = _pixels(passes / f"{mount.name}.index.exr")[::-1, :, 0]
@@ -217,9 +177,6 @@ def render(scenario: Scenario, into: Path) -> list[Path]:
                         camera, time_s, np.rint(index).astype(int), targets, radius_m
                     )
                 # Every frame, so a render that dies keeps what it wrote.
-                _write_truth(into, cameras, truth)
-            if thermal:
-                _stretch(exrs, outputs.format, cameras, truth)
                 _write_truth(into, cameras, truth)
     if not written:
         raise ValueError(

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image as Picture
 
-from seascape import video
+from seascape import agc, video
 from seascape.labels import Image, Labels
 
 # cv2 decodes as BT.601 whatever the bt709 tag says: saturated colours shift, greys
@@ -69,6 +69,19 @@ def test_the_colours_pass_through_in_time_order(tmp_path) -> None:
     expected = [colour for _, colour in sorted(zip(times, GREYS, strict=True))]
     for frame, colour in zip(frames, expected, strict=True):
         assert np.abs(frame.astype(int) - colour).max() <= 4
+
+
+def test_a_16_bit_thermal_frame_is_toned_not_flattened(tmp_path) -> None:
+    """The sequencer would show centikelvin as one flat grey."""
+    folder = run(tmp_path, GREYS[:3], [0.0, 0.1, 0.2])
+    t_k = np.repeat([280.0, 300.0], [18, 18])[:, None] * np.ones(64)
+    for path in (folder / "port").glob("*.png"):
+        cv2.imwrite(str(path), agc.counts(t_k))
+
+    frames, _ = decoded(video.encode(folder)[0])
+
+    for frame in frames:
+        assert frame[0, 0, 0] <= 4 and frame[-1, 0, 0] >= 251
 
 
 def test_one_frame_is_not_a_video(tmp_path) -> None:

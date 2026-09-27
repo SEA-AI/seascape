@@ -9,6 +9,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 
+from seascape import agc
 from seascape.config import Scenario
 
 TILE_H = 260
@@ -26,7 +27,10 @@ def _font() -> FreeTypeFont | ImageFont.ImageFont:
 def _tile(
     path: Path, font: FreeTypeFont | ImageFont.ImageFont, caption: str
 ) -> Image.Image:
-    frame = Image.open(path).convert("RGB")
+    t_k = agc.kelvin(path)
+    frame = (
+        Image.open(path) if t_k is None else Image.fromarray(agc.Agc()(t_k))
+    ).convert("RGB")
     width = round(frame.width * TILE_H / frame.height)
     frame = frame.resize((width, TILE_H), Image.Resampling.LANCZOS)
 

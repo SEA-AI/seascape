@@ -180,6 +180,18 @@
           "default": null,
           "description": "A figure-eight about its pose."
         },
+        "orbit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Orbit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Round the ownship."
+        },
         "t_k": {
           "default": 293.0,
           "description": "Shaded hull temperature. IR only.",
@@ -197,9 +209,33 @@
       "title": "Object",
       "type": "object"
     },
+    "Orbit": {
+      "additionalProperties": false,
+      "description": "Round the ownship's origin clockwise from the hull's bearing, at its range, bow\nalong the circle.\n\nIdentical hulls share the lap evenly, so a loop need only last `period_s / count`.",
+      "properties": {
+        "period_s": {
+          "description": "One full lap.",
+          "exclusiveMinimum": 0.0,
+          "title": "Period S",
+          "type": "number"
+        },
+        "count": {
+          "default": 1,
+          "description": "Hulls spaced evenly on it.",
+          "exclusiveMinimum": 0,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "period_s"
+      ],
+      "title": "Orbit",
+      "type": "object"
+    },
     "Outputs": {
       "additionalProperties": false,
-      "description": "What a render writes.\n\nEvery camera of a listed band is rendered. A png or jpg is 8-bit: EO through the\nexposure and the film curve, LWIR auto-contrasted per camera over its frames, so a\nthermal pixel is not a temperature. An exr keeps the radiance, in W m^-2 sr^-1.",
+      "description": "What a render writes.\n\nEvery camera of a listed band is rendered. An EO png or jpg is 8-bit, through the\nexposure and the film curve. An LWIR png is 16-bit, a hundredth of a kelvin per\ncount; an LWIR jpg is 8-bit grey, auto-contrasted as a thermal camera does. An exr\nkeeps the radiance, in W m^-2 sr^-1.",
       "properties": {
         "bands": {
           "default": [
@@ -221,7 +257,7 @@
         "format": {
           "$ref": "#/$defs/ImageFormat",
           "default": "jpg",
-          "description": "jpg to look at, png lossless, exr to keep the radiance."
+          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance."
         },
         "exposure_ev": {
           "default": -5.0,
