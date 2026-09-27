@@ -217,8 +217,10 @@ def downward_acceleration_g(
 def breaking_threshold_g(wind: tuple[Wave, ...], fraction: float) -> float:
     """The downward acceleration a Gaussian sea of these waves exceeds over `fraction`
     of its area, where it whitecaps."""
-    if not 0.0 < fraction < 1.0:
-        return math.inf if fraction <= 0.0 else -math.inf
+    if not wind or fraction <= 0.0:
+        return math.inf
+    if fraction >= 1.0:
+        return -math.inf
     sigma = math.sqrt(resolved_slope_variance(wind))
     return sigma * NormalDist().inv_cdf(1.0 - fraction)
 

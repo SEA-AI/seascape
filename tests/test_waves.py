@@ -153,3 +153,5 @@ def test_a_pixel_whitecaps_over_monahan_s_cover_at_any_footprint(footprint_m) ->
 def test_calm_air_breaks_nothing() -> None:
     assert waves.whitecap_fraction(0.0) == 0.0
     assert waves.breaking_threshold_g((), 0.0) == math.inf
+    # A breath of wind builds no waves but has a whitecap fraction.
+    assert waves.breaking_threshold_g((), waves.whitecap_fraction(0.5)) == math.inf
