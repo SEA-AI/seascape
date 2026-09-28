@@ -228,7 +228,7 @@ def _sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], f
 
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
-    # EEVEE turns world light above this into a sun a mirror cannot see.
+    # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
     world.sun_threshold = 0.0
     tree = world.node_tree
     if band == "ir":
