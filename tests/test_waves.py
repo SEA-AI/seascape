@@ -244,3 +244,30 @@ def test_a_swell_adds_its_own_unresolved_slope_to_cox_and_munk_s() -> None:
     )
     near = waves.unresolved_slope_variance(7.0, wind, swell, 1e-3)
     assert near == pytest.approx(waves.unresolved_slope_variance(7.0, wind, (), 1e-3))
+
+
+def test_an_isotropic_gaussian_surface_has_e_det_h_of_m4_over_2_sqrt_3() -> None:
+    # h_xx, h_yy, h_xy of an isotropic surface of m4 = 1.
+    cov = np.array([[3.0, 1.0, 0.0], [1.0, 3.0, 0.0], [0.0, 0.0, 1.0]]) / 8
+    h = np.random.default_rng(0).multivariate_normal(np.zeros(3), cov, 1_000_000)
+    det = np.abs(h[:, 0] * h[:, 1] - h[:, 2] ** 2).mean()
+    assert det == pytest.approx(1 / (2 * math.sqrt(3)), rel=0.01)
+
+
+@pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 15.0])
+def test_glitter_follows_pierson_moskowitz_s_tail_to_the_capillary_cutoff(
+    wind_speed_mps,
+) -> None:
+    # alpha g^2 w^-5 is alpha / 2 k^-3 per k: m4 = alpha k^2 / 4, mean w^2 = 2/3 g k.
+    k = 2 * math.pi / waves.CAPILLARY_WAVELENGTH_M
+    sea = field(wind_speed_mps)
+    m4 = waves.PM_ALPHA * k**2 / 4
+    assert waves.specular_cell_m2(sea) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.05)
+    assert waves.twinkle_hz(sea) == pytest.approx(
+        math.sqrt(2 / 3 * waves.GRAVITY_MS2 * k) / (2 * math.pi), rel=0.05
+    )
+
+
+def test_calm_water_does_not_glitter() -> None:
+    assert waves.specular_cell_m2(()) == math.inf
+    assert waves.twinkle_hz(()) == 0.0

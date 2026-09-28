@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**Waves are shading normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging. Each pixel draws the waves longer than its footprint and takes the rest as roughness. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. The accepted cost is that a normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
+**Waves are shading normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging. Each pixel draws the waves longer than its footprint and takes the rest as roughness; in EO, part of the rest is a random tilt per cell of one specular point, so the sun glitters. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. The accepted cost is that a normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -60,6 +60,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **A camera's bearing is not `pod yaw + camera yaw`.** In the chain `scene._rig` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `scene.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` takes sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
+- **The glitter is tuned to `outputs.samples.eo`.** Each cell's lobe widens so that many samples count its glints right. Render the `.blend` at another sample count and it sparkles more or less, silently.
 - **A Math node's unlinked inputs default to 0.5.** A `MULTIPLY_ADD` chain picks up 0.5 from the first addend unless it is set to 0. Vector Math defaults to 0.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
 - **Objects can share a mesh datablock.** Material slots link to mesh data by default, so assigning a material to one object silently changes the other. Use `slot.link = "OBJECT"` when they must differ.

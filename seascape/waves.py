@@ -34,6 +34,11 @@ seamless transitions from geometry to BRDF", Computer Graphics Forum 29(2) 487, 
 (doi:10.1111/j.1467-8659.2009.01618.x): a pixel draws the waves longer than its
 footprint and takes the slope variance of the rest as roughness.
 
+Glitter: Longuet-Higgins, "Reflection and refraction at a random moving surface. II.
+Number of specular points in a Gaussian surface", JOSA 50(9) 845, 1960
+(doi:10.1364/JOSA.50.000845): specular points per area and slope are p(slope)
+E|det H|, H the surface's Hessian, independent of the slope at a point.
+
 Wind height: DNV, "DNV-RP-C205: Environmental conditions and environmental loads",
 Det Norske Veritas 2010, section 2.3.2.4: the neutral log profile with Charnock's
 roughness.
@@ -67,6 +72,7 @@ GRAVITY_MS2 = 9.81
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
+#   glitter         one specular point per 1 / E|det H| Longuet-Higgins 1960
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
@@ -336,6 +342,34 @@ def _lever(u: np.ndarray) -> np.ndarray:
 def slope_variance(field: tuple[Wave, ...]) -> float:
     """Also the downward acceleration's variance over g^2, as omega^2 = g k."""
     return sum((w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field)
+
+
+def curvature_variance(field: tuple[Wave, ...]) -> float:
+    """m4, the fourth moment of the spectrum: sum a^2 k^4 / 2."""
+    return sum((w.amplitude_m * w.k_rad_m**2) ** 2 / 2 for w in field)
+
+
+def specular_cell_m2(wind: tuple[Wave, ...]) -> float:
+    """The sea per specular point, per unit area of slope: 1 / E|det H|.
+
+    Isotropic, as the short waves that carry the curvature are: det H = A^2 - B, A
+    normal of variance m4 / 4 and B exponential of mean m4 / 4, so E|det H| =
+    m4 / (2 sqrt 3).
+    """
+    m4 = curvature_variance(wind)
+    return 2 * math.sqrt(3) / m4 if m4 > 0.0 else math.inf
+
+
+def twinkle_hz(wind: tuple[Wave, ...]) -> float:
+    """A judgement: specular points live as long as the curvature that makes them, so
+    they are re-drawn at its mean frequency, weighted by each wave's share of m4."""
+    m4 = curvature_variance(wind)
+    if m4 <= 0.0:
+        return 0.0
+    moment = sum(
+        w.omega_rad_s**2 * (w.amplitude_m * w.k_rad_m**2) ** 2 / 2 for w in wind
+    )
+    return math.sqrt(moment / m4) / (2 * math.pi)
 
 
 def fade_footprints_m(
