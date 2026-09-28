@@ -183,3 +183,8 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
 
 def test_calm_water_holds_a_hull_level() -> None:
     assert waves.attitude((), 0.0, 0.0, 0.0, 20.0, 5.0, 0.0) == (0.0, 0.0)
+
+
+def test_a_hull_rides_over_a_wave_shorter_than_its_samples() -> None:
+    ripple = waves.Wave(0.05, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
+    assert waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0) == (0.0, 0.0)

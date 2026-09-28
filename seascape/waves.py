@@ -39,7 +39,7 @@ IX; deep water, omega^2 = g k.
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import NormalDist
 
 import numpy as np
@@ -282,6 +282,15 @@ def attitude(
     The hull follows it at once: no inertia."""
     if not field:
         return 0.0, 0.0
+    # The samples alias a wave shorter than their spacing; the hull averages it out.
+    spacing_m = max(
+        length_m / (ATTITUDE_SAMPLES[0] - 1), beam_m / (ATTITUDE_SAMPLES[1] - 1)
+    )
+    shown, _ = _shown(field, spacing_m)
+    field = tuple(
+        replace(w, amplitude_m=w.amplitude_m * v)
+        for w, v in zip(field, shown.tolist(), strict=True)
+    )
     along, across = np.meshgrid(
         np.linspace(-length_m / 2, length_m / 2, ATTITUDE_SAMPLES[0]),
         np.linspace(-beam_m / 2, beam_m / 2, ATTITUDE_SAMPLES[1]),
