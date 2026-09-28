@@ -236,13 +236,14 @@ class Sky(Model):
         le=10.0,
         description="Haze, as the Sky Texture's own parameter. EO only.",
     )
-    # OPAC's maritime clean aerosol, 0.090 km^-1 at 550 nm and 80% humidity (Hess,
-    # Koepke & Schult, BAMS 79(5) 831, 1998), plus sea-level Rayleigh's 0.012 (the
-    # MODTRAN 2/3 report, eq. 26), is 38 km. The ocean's mean optical depth, 0.11 at
-    # 500 nm, gives 34 km in OPAC's profile (Smirnov et al., JGR 2009,
-    # doi:10.1029/2008JD011257).
+    # Judgement, after Adams: 42 km, inside the open ocean's measured spread. OPAC's
+    # maritime aerosols at 550 nm and 80% humidity (Hess, Koepke & Schult, BAMS 79(5)
+    # 831, 1998), plus sea-level Rayleigh's 0.012 km^-1 (the MODTRAN 2/3 report,
+    # eq. 26): clean, 0.090 km^-1, is 38 km; tropical, 0.043 km^-1, is 72 km. The
+    # ocean's mean optical depth, 0.11 at 500 nm, gives 34 km in OPAC's clean profile
+    # (Smirnov et al., JGR 2009, doi:10.1029/2008JD011257).
     visibility_km: float | None = Field(
-        default=35.0,
+        default=42.0,
         gt=0.0,
         description="Meteorological range at 550 nm; None is clear air. EO only.",
     )

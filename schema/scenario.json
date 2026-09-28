@@ -573,7 +573,7 @@
               "type": "null"
             }
           ],
-          "default": 35.0,
+          "default": 42.0,
           "description": "Meteorological range at 550 nm; None is clear air. EO only.",
           "title": "Visibility Km"
         },
