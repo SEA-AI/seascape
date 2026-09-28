@@ -1,0 +1,28 @@
+# Downwelling band radiance, 8-14 um, from 12 m, normalised by the horizon.
+#
+# LOWTRAN 7 (Kneizys et al., "Users guide to LOWTRAN 7", AFGL-TR-88-0177, 1988), each
+# model atmosphere, no aerosol, a slant path to space at each elevation, 5 cm^-1 steps.
+# Run with `lowtran` on PyPI, whose Python entry point fixes card 2 at IHAZE 0. After
+# those defaults, in lowtran7.f's `If (Python)` block:
+#         OPEN(98,FILE='card2.txt',STATUS='OLD',ERR=97)
+#         READ(98,*) IHAZE,ICSTL,VIS,WSS,WHH
+#         CLOSE(98)
+# 97      CONTINUE
+# with card2.txt holding "4 0 <VIS>. 0. 0.", or "0 0 0. 0. 0." for no aerosol.
+# The north_sea columns take the named standard profile's sky, as a station has no
+# vertical profile: north_sea from us_standard, _winter from midlatitude_winter,
+# _summer from midlatitude_summer.
+# elevation_deg,tropical,midlatitude_summer,midlatitude_winter,subarctic_summer,subarctic_winter,us_standard,north_sea,north_sea_winter,north_sea_summer
+0,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000
+1,0.9871,0.9898,0.9156,0.9841,0.8561,0.9589,0.9589,0.9156,0.9898
+2,0.9852,0.9863,0.8252,0.9672,0.7484,0.9035,0.9035,0.8252,0.9863
+3,0.9835,0.9789,0.7502,0.9406,0.6741,0.8448,0.8448,0.7502,0.9789
+5,0.9751,0.9507,0.6434,0.8762,0.5794,0.7442,0.7442,0.6434,0.9507
+7,0.9594,0.9129,0.5725,0.8138,0.5204,0.6688,0.6688,0.5725,0.9129
+10,0.9270,0.8535,0.5015,0.7349,0.4626,0.5875,0.5875,0.5015,0.8535
+15,0.8665,0.7663,0.4288,0.6381,0.4035,0.5002,0.5002,0.4288,0.7663
+20,0.8098,0.6973,0.3831,0.5704,0.3658,0.4442,0.4442,0.3831,0.6973
+30,0.7184,0.6001,0.3275,0.4830,0.3189,0.3754,0.3754,0.3275,0.6001
+45,0.6283,0.5143,0.2830,0.4108,0.2801,0.3206,0.3206,0.2830,0.5143
+60,0.5754,0.4671,0.2594,0.3724,0.2590,0.2918,0.2918,0.2594,0.4671
+90,0.5386,0.4352,0.2437,0.3469,0.2447,0.2729,0.2729,0.2437,0.4352

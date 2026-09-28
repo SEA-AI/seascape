@@ -178,7 +178,7 @@ class Sea(Model):
         default=lwir.T_SEA_K,
         ge=271.0,
         le=311.0,
-        description="Sea surface temperature. IR only.",
+        description="Sea surface temperature. IR only. Unset, the atmosphere's own.",
     )
     wind_speed_mps: float = Field(
         default=7.0,
@@ -204,12 +204,9 @@ class Sea(Model):
 class Sky(Model):
     """Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.
 
-    Haze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and
-    `visibility_km` for the air between the camera and what it sees, in both bands. In
-    LWIR the air's water vapour hazes it too, whatever the visibility.
-
-    `t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky
-    profile stays credible.
+    Haze is `aerosol_density` for the EO sky, the node's own, and `visibility_km` for
+    the air between the camera and what it sees, in both bands. In LWIR, `atmosphere`
+    adds its water vapour, shapes the sky, and gives `t_air_k` unless it is set.
     """
 
     sun_elevation_deg: float = Field(
@@ -248,12 +245,27 @@ class Sky(Model):
         gt=0.0,
         description="Meteorological range at 550 nm; None is no aerosol.",
     )
+    atmosphere: lwir.Atmosphere = Field(
+        default=lwir.ATMOSPHERE,
+        description="LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR "
+        "sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so "
+        "its horizon sky reads warmer than LOWTRAN's.",
+    )
     t_air_k: float = Field(
-        default=lwir.T_AIR_K,
+        default=lwir.SURFACE_AIR_K[lwir.ATMOSPHERE],
         ge=250.0,
         le=320.0,
-        description="Scales the IR sky. EO ignores it.",
+        description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _air_follows_the_atmosphere(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "t_air_k" not in data:
+            air_k = lwir.SURFACE_AIR_K.get(data.get("atmosphere", lwir.ATMOSPHERE))
+            if air_k is not None:  # an unknown profile fails its own validation
+                data = {**data, "t_air_k": air_k}
+        return data
 
     @property
     def extinction_per_m(self) -> float:
@@ -471,6 +483,18 @@ class Scenario(Model):
         default_factory=list, description="Vessels placed one by one."
     )
     outputs: Outputs = Field(default_factory=Outputs)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sea_follows_the_atmosphere(cls, data: Any) -> Any:
+        """The sea's own field cannot see the sky's, so the scenario fills it."""
+        if not isinstance(data, dict) or not isinstance(data.get("sea", {}), dict):
+            return data
+        sea = data.get("sea", {})
+        atmosphere = data.get("sky", {}).get("atmosphere", lwir.ATMOSPHERE)
+        if "t_sea_k" not in sea and atmosphere in lwir.SURFACE_SEA_K:
+            data = {**data, "sea": {**sea, "t_sea_k": lwir.SURFACE_SEA_K[atmosphere]}}
+        return data
 
     @model_validator(mode="after")
     def _a_loop_can_close(self) -> "Scenario":

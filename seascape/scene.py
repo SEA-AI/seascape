@@ -79,7 +79,7 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     world.sun_threshold = 0.0
     tree = world.node_tree
     if band == "ir":
-        return _thermal_sky(world, sky.t_air_k)
+        return _thermal_sky(world, sky)
     node = _sky_texture(tree, sky)
     tree.links.new(node.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     return world
@@ -183,8 +183,8 @@ def _haze_terms(
         return airlight.outputs["Color"], uniform.outputs["Value"]
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(direction, height.inputs["Vector"])
-    sky_ahead = lookup(tree, _sky_image(sky.t_air_k), height.outputs["Z"])
-    return sky_ahead, _extinction_by_range(tree, sky.visibility_km, far_m)
+    sky_ahead = lookup(tree, _sky_image(sky), height.outputs["Z"])
+    return sky_ahead, _extinction_by_range(tree, sky, far_m)
 
 
 def _haze_ranges_m(far_m: float) -> np.ndarray:
@@ -194,7 +194,7 @@ def _haze_ranges_m(far_m: float) -> np.ndarray:
 
 
 def _extinction_by_range(
-    tree: bpy.types.NodeTree, visibility_km: float | None, far_m: float
+    tree: bpy.types.NodeTree, sky: Sky, far_m: float
 ) -> bpy.types.NodeSocket:
     """The band's extinction at the shading point's distance from the camera, per m.
 
@@ -203,7 +203,7 @@ def _extinction_by_range(
     path; that needs the path's length so far, which a volume shader cannot read.
     """
     ranges = _haze_ranges_m(far_m)
-    depth = lwir.path_optical_depth(ranges, visibility_km)
+    depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
     image = curve_image("haze_extinction", np.gradient(depth, ranges))
     coord = tree.nodes.new("ShaderNodeTexCoord")
     distance = tree.nodes.new("ShaderNodeVectorMath")
@@ -216,7 +216,7 @@ def _extinction_by_range(
     return lookup(tree, image, texel)
 
 
-def _sky_image(t_air_k: float) -> bpy.types.Image:
+def _sky_image(sky: Sky) -> bpy.types.Image:
     """`lwir.sky_radiance` baked against sin(elevation) at texel centres, which is what
     the shader samples.
 
@@ -224,16 +224,16 @@ def _sky_image(t_air_k: float) -> bpy.types.Image:
     and no arcsine node is needed. Below the horizon Z is clamped to 0, where the curve
     holds at its first texel.
     """
-    # The world's, when the haze asks second: `build` starts from factory settings.
+    # The world baked it first; `build` starts from factory settings, so the name is
+    # this build's.
     if (baked := bpy.data.images.get("sky_radiance")) is not None:
         return baked
     sin_elevation = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    return curve_image(
-        "sky_radiance", lwir.sky_radiance(np.arcsin(sin_elevation), t_air_k)
-    )
+    radiance = lwir.sky_radiance(np.arcsin(sin_elevation), sky.t_air_k, sky.atmosphere)
+    return curve_image("sky_radiance", radiance)
 
 
-def _thermal_sky(world: bpy.types.World, t_air_k: float) -> bpy.types.World:
+def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     """Downwelling radiance against elevation, as raw W m^-2 sr^-1."""
     tree = world.node_tree
     tree.nodes.clear()
@@ -249,7 +249,7 @@ def _thermal_sky(world: bpy.types.World, t_air_k: float) -> bpy.types.World:
 
     link(coord.outputs["Generated"], height.inputs["Vector"])
     link(height.outputs["Z"], above.inputs["Value"])
-    radiance = lookup(tree, _sky_image(t_air_k), above.outputs["Value"])
+    radiance = lookup(tree, _sky_image(sky), above.outputs["Value"])
     link(radiance, background.inputs["Color"])
     link(background.outputs["Background"], output.inputs["Surface"])
     return world

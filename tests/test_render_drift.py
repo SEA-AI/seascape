@@ -76,7 +76,14 @@ def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> Non
     ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
     just_above = float(np.median(frame[horizon - 6 : horizon - 1]))
     assert just_above == pytest.approx(ambient, rel=0.02)
-    assert 0.80 <= float(np.median(frame[:5])) / ambient <= 0.95
+    # The top five rows' centre, on a level camera whose horizon is the middle row.
+    height, width = frame.shape
+    ir = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "ir")
+    half = math.tan(math.radians(ir.camera.hfov_deg) / 2) * height / width
+    top = math.atan(half * (1 - 5 / height))
+    sky = SCENARIO.sky
+    expected = float(lwir.sky_radiance(top, sky.t_air_k, sky.atmosphere))
+    assert float(np.median(frame[:5])) == pytest.approx(expected, rel=0.02)
 
 
 def test_sea_texture_fades_with_range(frame) -> None:
@@ -406,7 +413,10 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     if band == "eo":
         depth = hazy.sky.extinction_per_m * distance_m
     else:
-        depth = float(lwir.path_optical_depth(distance_m, hazy.sky.visibility_km))
+        air = hazy.sky
+        depth = float(
+            lwir.path_optical_depth(distance_m, air.visibility_km, air.atmosphere)
+        )
     # LWIR marches a density that falls along the path, a step at a time.
     assert np.median(seen / sky) == pytest.approx(
         1 - math.exp(-depth), rel=0.01 if band == "eo" else 0.02

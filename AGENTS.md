@@ -61,6 +61,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` takes sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
 - **The glitter is tuned to `outputs.samples.eo`.** Each cell's lobe widens so that many samples count its glints right. Render the `.blend` at another sample count and it sparkles more or less, silently.
+- **`model_copy` skips validation, and validation is what gives the air and sea their atmosphere's temperatures.** Swap `sky.atmosphere` with `model_copy` and the old profile's air and sea stay. Validate a dict instead.
 - **A Math node's unlinked inputs default to 0.5.** A `MULTIPLY_ADD` chain picks up 0.5 from the first addend unless it is set to 0. Vector Math defaults to 0.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
 - **Objects can share a mesh datablock.** Material slots link to mesh data by default, so assigning a material to one object silently changes the other. Use `slot.link = "OBJECT"` when they must differ.

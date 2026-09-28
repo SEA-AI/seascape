@@ -15,7 +15,7 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Asset, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Mount, load
+from seascape.config import Mount, Scenario, load
 
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 UNDERWAY = BASELINE.with_name("underway.toml")
@@ -534,6 +534,29 @@ class TestEoBand:
         assert into_sky.is_valid
 
 
+def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
+    """Not the default: a scene that dropped `atmosphere` would read lwir's own."""
+    # Validated, not `model_copy`: validation gives the air and sea the profile's own.
+    data = SCENARIO.model_dump()
+    data["sky"] = {k: v for k, v in data["sky"].items() if k != "t_air_k"}
+    data["sea"] = {k: v for k, v in data["sea"].items() if k != "t_sea_k"}
+    data["sky"]["atmosphere"] = "tropical"
+    tropical = Scenario.model_validate(data)
+    assert tropical.sea.t_sea_k == lwir.SURFACE_SEA_K["tropical"]
+    assert tropical.sky.atmosphere != lwir.ATMOSPHERE
+    assert tropical.sky.t_air_k == lwir.SURFACE_AIR_K["tropical"]
+    scene.build(tropical, "ir")
+    sky = tropical.sky
+    centres = (np.arange(scene.CURVE_SAMPLES) + 0.5) / scene.CURVE_SAMPLES
+    expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, "tropical")
+    assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
+    ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
+    depth = lwir.path_optical_depth(ranges, sky.visibility_km, "tropical")
+    assert baked("haze_extinction") == pytest.approx(
+        np.gradient(depth, ranges), rel=1e-5
+    )
+
+
 class TestIrBand:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -545,7 +568,8 @@ class TestIrBand:
         assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
         table = baked("haze_extinction")
         ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
-        depth = lwir.path_optical_depth(ranges, SCENARIO.sky.visibility_km)
+        sky = SCENARIO.sky
+        depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
         assert table == pytest.approx(np.gradient(depth, ranges), rel=1e-5)
 
     def test_the_sea_does_not_glitter(self) -> None:
@@ -566,7 +590,8 @@ class TestIrBand:
         curve = baked("sky_radiance")
 
         centres = (np.arange(len(curve)) + 0.5) / len(curve)
-        expected = lwir.sky_radiance(np.arcsin(centres), SCENARIO.sky.t_air_k)
+        sky = SCENARIO.sky
+        expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, sky.atmosphere)
         assert curve == pytest.approx(expected, rel=1e-5)
         ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
         assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"

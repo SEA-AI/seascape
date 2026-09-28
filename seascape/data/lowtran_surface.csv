@@ -1,0 +1,25 @@
+# Each profile's air at the sea surface (temperature, water vapour pressure, pressure)
+# and the sea's temperature.
+#
+# LOWTRAN 7's six model atmospheres: the first level of each, as lowtran7.f carries
+# them (Anderson et al., "AFGL atmospheric constituent profiles (0-120 km)",
+# AFGL-TR-86-0110, 1986); vapour pressure is the H2O mixing ratio times the pressure.
+# The north_sea profiles: DWD station 2115, Helgoland (54.175 N 7.892 E, 4 m), daily
+# climate records (CDC observations_germany/climate/daily/kl), means of TMK, VPM and PM
+# over 1991-2020: the year, Dec-Feb and Jun-Aug.
+# The sea: NOAA OISST v2.1, 0.25 deg, its 1991-2020 monthly means (Huang et al.,
+# J. Climate 34(8) 2923, 2021, doi:10.1175/JCLI-D-20-0166.1). LOWTRAN's profiles take
+# the zonal mean at the latitude and month AFGL-TR-86-0110 defines them for: tropical
+# 15 N over the year, midlatitude 45 N and subarctic 60 N in July or January, US
+# standard 45 N over the year. The north_sea profiles take the grid point nearest
+# Helgoland over the year, Dec-Feb and Jun-Aug.
+# profile,air_k,vapour_hpa,pressure_hpa,sea_k
+tropical,299.70,26.27,1013.0,300.45
+midlatitude_summer,294.20,19.00,1013.0,287.87
+midlatitude_winter,272.20,4.39,1018.0,280.86
+subarctic_summer,287.20,12.06,1010.0,281.88
+subarctic_winter,257.20,1.42,1013.0,276.12
+us_standard,288.20,7.85,1013.0,284.20
+north_sea,283.29,10.78,1013.5,283.88
+north_sea_winter,277.28,7.18,1013.2,278.53
+north_sea_summer,289.67,15.31,1013.9,289.57

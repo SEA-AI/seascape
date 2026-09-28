@@ -1,5 +1,19 @@
 {
   "$defs": {
+    "Atmosphere": {
+      "enum": [
+        "tropical",
+        "midlatitude_summer",
+        "midlatitude_winter",
+        "subarctic_summer",
+        "subarctic_winter",
+        "us_standard",
+        "north_sea",
+        "north_sea_winter",
+        "north_sea_summer"
+      ],
+      "type": "string"
+    },
     "Band": {
       "enum": [
         "eo",
@@ -486,8 +500,8 @@
       "description": "The temperature bound is the span of the shipped optical-constant table. `lwir`\nclamps to it; here it is an error.",
       "properties": {
         "t_sea_k": {
-          "default": 288.0,
-          "description": "Sea surface temperature. IR only.",
+          "default": 283.88,
+          "description": "Sea surface temperature. IR only. Unset, the atmosphere's own.",
           "maximum": 311.0,
           "minimum": 271.0,
           "title": "T Sea K",
@@ -532,7 +546,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility.\n\n`t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky\nprofile stays credible.",
+      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is `aerosol_density` for the EO sky, the node's own, and `visibility_km` for\nthe air between the camera and what it sees, in both bands. In LWIR, `atmosphere`\nadds its water vapour, shapes the sky, and gives `t_air_k` unless it is set.",
       "properties": {
         "sun_elevation_deg": {
           "default": 30.0,
@@ -577,9 +591,14 @@
           "description": "Meteorological range at 550 nm; None is no aerosol.",
           "title": "Visibility Km"
         },
+        "atmosphere": {
+          "$ref": "#/$defs/Atmosphere",
+          "default": "north_sea",
+          "description": "LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so its horizon sky reads warmer than LOWTRAN's."
+        },
         "t_air_k": {
-          "default": 288.0,
-          "description": "Scales the IR sky. EO ignores it.",
+          "default": 283.29,
+          "description": "Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
           "maximum": 320.0,
           "minimum": 250.0,
           "title": "T Air K",
