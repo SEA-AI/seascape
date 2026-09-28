@@ -197,8 +197,8 @@ def _substream(seed: int, name: str) -> np.random.Generator:
 def _place(obj: bpy.types.Object, east_m: float, north_m: float, up_m: float) -> None:
     """Position, with the rotation mode set first.
 
-    `rotation_mode` is often QUATERNION, where assigning `rotation_euler` afterwards is
-    ignored with no error.
+    A glTF import leaves `rotation_mode` QUATERNION, where assigning `rotation_euler`
+    afterwards is ignored with no error.
     """
     obj.rotation_mode = "XYZ"
     obj.location = (east_m, north_m, up_m)
@@ -234,8 +234,7 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     if band == "ir":
         return _thermal_sky(world, sky.t_air_k)
     node = tree.nodes.new("ShaderNodeTexSky")
-    # Blender 5's name for Nishita. `turbidity` belongs to Preetham and Hosek-Wilkie
-    # and is silently ignored here.
+    # `turbidity` belongs to Preetham and Hosek-Wilkie and is silently ignored here.
     node.sky_type = "MULTIPLE_SCATTERING"
     node.sun_elevation = math.radians(sky.sun_elevation_deg)
     # An azimuth, clockwise from +Y, though Blender calls it a rotation.
@@ -684,8 +683,8 @@ def _rows(m: Matrix) -> Matrix4:
 def _corners(objects: Iterable[bpy.types.Object]) -> list[Vector]:
     """World-space bounding corners of the meshes in `objects`.
 
-    An empty's `bound_box` is a unit cube at its origin, and an FBX rig is mostly
-    empties, so including them silently inflates the extent.
+    An empty's `bound_box` is a point at its origin, and an import is mostly empties,
+    so including them silently inflates the extent.
     """
     return [
         o.matrix_world @ Vector(corner)
