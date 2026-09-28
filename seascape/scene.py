@@ -224,7 +224,8 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
     and no arcsine node is needed. Below the horizon Z is clamped to 0, where the curve
     holds at its first texel.
     """
-    # The world's, when the haze asks second: `build` starts from factory settings.
+    # The world baked it first; `build` starts from factory settings, so the name is
+    # this build's.
     if (baked := bpy.data.images.get("sky_radiance")) is not None:
         return baked
     sin_elevation = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES

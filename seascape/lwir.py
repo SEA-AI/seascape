@@ -21,15 +21,11 @@ for the model sea surface in the infrared window regions", Remote Sensing of Env
 omits is in Wu & Smith, "Emissivity of rough sea surface for 8-13 um: modeling and
 verification", Applied Optics 36(12) 2609, 1997 (doi:10.1364/AO.36.002609).
 
-Sky emissivity and path transmittance: LOWTRAN7 (AFGL-TR-88-0177, public domain), each
-of its model atmospheres, observer at 12 m, integrated over the band;
-`data/lowtran_sky.csv` and `data/lowtran_path.csv` say how. A band model, not a
-radiometric reference. The sky is normalised by its horizon, taken as a blackbody at air
-temperature: a horizontal path is opaque in every profile but subarctic winter, whose
-dry air lets part of the horizon through to space. Along a path, water vapour takes
-most of the band and the maritime aerosol the rest. The north_sea profiles are the air
-measured at Helgoland, 1991-2020, along the path, under a standard profile's sky; the
-tables say which.
+Sky emissivity and path transmittance: LOWTRAN7 band models (AFGL-TR-88-0177, public
+domain), not a radiometric reference; the headers of `data/lowtran_*.csv` say how each
+was run and from what air. The sky is normalised by its horizon, taken as a blackbody
+at air temperature, which holds where a horizontal path is opaque: every profile but
+subarctic winter. Along a path, water vapour takes most of the band.
 
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:

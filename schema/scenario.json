@@ -546,7 +546,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`\nholds it.\n\n`t_air_k` scales the IR sky and nothing in EO. The sky's shape is `atmosphere`'s,\nand so is the air's temperature unless `t_air_k` is set.",
+      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is `aerosol_density` for the EO sky, the node's own, and `visibility_km` for\nthe air between the camera and what it sees, in both bands. In LWIR, `atmosphere`\nadds its water vapour, shapes the sky, and gives `t_air_k` unless it is set.",
       "properties": {
         "sun_elevation_deg": {
           "default": 30.0,
@@ -594,7 +594,7 @@
         "atmosphere": {
           "$ref": "#/$defs/Atmosphere",
           "default": "north_sea",
-          "description": "LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so its sky reads warm at the horizon."
+          "description": "LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so its horizon sky reads warmer than LOWTRAN's."
         },
         "t_air_k": {
           "default": 283.29,

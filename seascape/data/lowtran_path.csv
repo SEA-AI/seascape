@@ -13,9 +13,9 @@
 # The north_sea profiles are MODEL 0, one level of measured surface air (IM 1), from
 # lowtran_surface.csv; its vapour pressure goes in as relative humidity at its mean
 # temperature (saturation over water, WMO No. 8, 2008). The Python entry point takes
-# H2O as relative humidity and every other gas as partial pressure,
-# so LOWTRAN's surface amounts are given: CO2 330, O3 0.03, N2O 0.32, CO 0.15, CH4 1.7,
-# O2 209000 ppmv. At MODEL 3's own surface air this reproduces MODEL 3's path to 1e-4.
+# H2O as relative humidity and every other gas as partial pressure, so LOWTRAN's surface
+# amounts are given: CO2 330, O3 0.03, N2O 0.32, CO 0.15, CH4 1.7, O2 209000 ppmv. At
+# MODEL 3's own surface air this reproduces MODEL 3's path to 1e-4.
 # profile,range_m,none,vis_50km,vis_42km,vis_35km,vis_23km,vis_10km,vis_5km,vis_2km
 tropical,10,9.752573e-01,9.751562e-01,9.751334e-01,9.751051e-01,9.750163e-01,9.746761e-01,9.740766e-01,9.722856e-01
 tropical,12.4295,9.716171e-01,9.714921e-01,9.714641e-01,9.714288e-01,9.713188e-01,9.708975e-01,9.701558e-01,9.679394e-01

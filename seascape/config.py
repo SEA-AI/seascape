@@ -204,13 +204,9 @@ class Sea(Model):
 class Sky(Model):
     """Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.
 
-    Haze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and
-    `visibility_km` for the air between the camera and what it sees, in both bands. In
-    LWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`
-    holds it.
-
-    `t_air_k` scales the IR sky and nothing in EO. The sky's shape is `atmosphere`'s,
-    and so is the air's temperature unless `t_air_k` is set.
+    Haze is `aerosol_density` for the EO sky, the node's own, and `visibility_km` for
+    the air between the camera and what it sees, in both bands. In LWIR, `atmosphere`
+    adds its water vapour, shapes the sky, and gives `t_air_k` unless it is set.
     """
 
     sun_elevation_deg: float = Field(
@@ -253,7 +249,7 @@ class Sky(Model):
         default=lwir.ATMOSPHERE,
         description="LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR "
         "sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so "
-        "its sky reads warm at the horizon.",
+        "its horizon sky reads warmer than LOWTRAN's.",
     )
     t_air_k: float = Field(
         default=lwir.SURFACE_AIR_K[lwir.ATMOSPHERE],
