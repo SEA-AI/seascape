@@ -691,7 +691,10 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     reach_m = sea.sea_reach_m(scenario.rig, scenario.sea)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
-    sea.water(scenario.sea, wave_field(scenario), reach_m, band, outputs)
+    mounts = [m for m in scenario.rig.mounts if m.camera.kind == band]
+    # The finest pixel in the band, so its sharpest camera does not blur.
+    pixel_rad = min(math.radians(m.camera.hfov_deg) / m.camera.width_px for m in mounts)
+    sea.water(scenario.sea, wave_field(scenario), reach_m, band, outputs, pixel_rad)
     rig = _rig(scenario.rig, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)

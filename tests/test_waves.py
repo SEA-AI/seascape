@@ -23,16 +23,19 @@ def test_published_values_have_not_drifted() -> None:
     assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(40.8, abs=0.2)
 
 
-def test_the_unresolved_slope_lifts_grazing_emissivity() -> None:
-    # Masuda 1988 at this wind speed: near nadir, and at 80 deg where roughness has
-    # taken hold, lifting emissivity above flat Fresnel.
-    theta, eps = lwir.emissivity_curve(
-        t_sea_k=291.0, slope_sigma=waves.unresolved_slope(7.0, field(7.0))
+def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
+    """Masuda 1988: unresolved slope lifts grazing emissivity off flat Fresnel."""
+    built = field(7.0)
+    # lwir takes the slope per axis: half the total variance.
+    near, far = (
+        math.sqrt(waves.pixel_slope_variance(7.0, built, f) / 2) for f in (0.01, 50)
     )
-    assert float(np.interp(0.0, theta, eps)) == pytest.approx(0.985, abs=0.005)
-    assert float(np.interp(math.radians(80.0), theta, eps)) == pytest.approx(
-        0.76, abs=0.03
-    )
+    eps = {}
+    for name, sigma in (("near", near), ("far", far)):
+        theta, curve = lwir.emissivity_curve(t_sea_k=291.0, slope_sigma=sigma)
+        eps[name] = float(np.interp(math.radians(80.0), theta, curve))
+        assert float(np.interp(0.0, theta, curve)) == pytest.approx(0.985, abs=0.005)
+    assert eps["far"] > eps["near"]
 
 
 @pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 12.0, 20.0])
@@ -84,21 +87,35 @@ def test_a_longer_loop_snaps_the_frequencies_less() -> None:
     assert waves.snap_error(7.0, lambda p: p) == pytest.approx(0.0, abs=1e-12)
 
 
-def test_the_slope_the_waves_leave_out_is_the_rest_of_cox_and_munk() -> None:
+def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     built = field(7.0)
     total = waves.wave_slope(7.0) ** 2
-    rest = waves.unresolved_slope(7.0, built) ** 2
-    assert waves.resolved_slope_variance(built) + rest == pytest.approx(total)
+    sharp = waves.pixel_slope_variance(7.0, built, 1e-4)
+    assert sharp == pytest.approx(total - waves.resolved_slope_variance(built))
+    assert waves.pixel_slope_variance(7.0, built, 1e4) == pytest.approx(total)
+    footprints = [0.01, 0.1, 1.0, 10.0]
+    rest = [waves.pixel_slope_variance(7.0, built, f) for f in footprints]
+    assert rest == sorted(rest), "a coarser pixel leaves more"
+
+
+def test_a_wave_fades_out_before_it_aliases() -> None:
+    lo, hi = waves.FADE_FOOTPRINTS
+    per_footprint = np.array([lo, 2.5, 3.0, hi, 2 * hi])
+    shown = waves.visibility(per_footprint, 1.0)
+    assert (shown[0], shown[3], shown[4]) == (0.0, 1.0, 1.0)
+    assert np.all(np.diff(shown) >= 0)
 
 
 def test_calm_air_builds_no_waves() -> None:
     assert field(0.0) == ()
-    assert waves.unresolved_slope(0.0, ()) == pytest.approx(waves.wave_slope(0.0))
+    assert waves.pixel_slope_variance(0.0, (), 1.0) == pytest.approx(
+        waves.wave_slope(0.0) ** 2
+    )
 
 
 def test_the_slope_is_the_height_s_gradient() -> None:
     built = field(7.0)
-    east, north, step = np.array([12.0]), np.array([-7.0]), 1e-4
+    east, north, step = np.array([12.0]), np.array([-7.0]), 1e-5
     d_east, d_north = waves.slope(built, east, north, 1.3)
     ahead = waves.height_m(built, east + step, north, 1.3)
     behind = waves.height_m(built, east - step, north, 1.3)

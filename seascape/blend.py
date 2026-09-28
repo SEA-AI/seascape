@@ -49,9 +49,12 @@ def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], fl
 
 
 def curve_image(name: str, values: np.ndarray) -> bpy.types.Image:
-    """A 1-D lookup the shader samples with a Combine XYZ into an Image Texture."""
-    image = bpy.data.images.new(name, len(values), 1, float_buffer=True, is_data=True)
-    pixels = np.ones((len(values), 4), dtype=np.float32)
-    pixels[:, :3] = np.asarray(values, dtype=np.float32)[:, None]
+    """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
+    or rows bottom first."""
+    table = np.atleast_2d(np.asarray(values, dtype=np.float32))
+    height, width = table.shape
+    image = bpy.data.images.new(name, width, height, float_buffer=True, is_data=True)
+    pixels = np.ones((height, width, 4), dtype=np.float32)
+    pixels[..., :3] = table[..., None]
     image.pixels.foreach_set(pixels.ravel())
     return image

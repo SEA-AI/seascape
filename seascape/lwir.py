@@ -169,7 +169,7 @@ def emissivity_curve(
 ) -> tuple[FloatArray, FloatArray]:
     """Planck-weighted, band-integrated emissivity against viewing zenith (rad).
 
-    `slope_sigma` is the RMS surface slope the renderer does *not* resolve; at 0 this
+    `slope_sigma` is the RMS slope per axis the renderer does *not* resolve; at 0 this
     is flat-surface Fresnel. Above 0 it averages Fresnel over facets drawn from a
     Gaussian slope distribution, weighted by the area each presents to the viewer,
     which is the Masuda 1988 construction. Only the unresolved slope belongs here:

@@ -16,6 +16,11 @@ Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface fro
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
 clean-sea fit, equation 13.
 
+Filtering: Bruneton, Neyret & Holzschuch, "Real-time realistic ocean lighting using
+seamless transitions from geometry to BRDF", Computer Graphics Forum 29(2) 487, 2010
+(doi:10.1111/j.1467-8659.2009.01618.x): a pixel draws the waves longer than its
+footprint and takes the slope variance of the rest as roughness.
+
 Microfacet lobe: Walter, Marschner, Li & Torrance, "Microfacet models for refraction
 through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for GGX; Burley,
 "Physically-based shading at Disney", SIGGRAPH 2012 course notes, for the alpha =
@@ -40,26 +45,29 @@ GRAVITY_MS2 = 9.81
 #   direction       cos^2s(theta / 2)                   Mitsuyasu 1975, Goda 2000
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
 #   total slope     sqrt(0.003 + 0.00512 U)             Cox & Munk 1954, eq. 13
-#   resolved slope  sum of a^2 k^2 / 2                  the waves built
-#   unresolved      sqrt(total^2 - resolved^2)          variances subtract
+#   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
+#   unresolved      total^2 - drawn                     Bruneton 2010, per pixel
 #   emissivity      Fresnel over unresolved slopes      Masuda 1988
-#   lobe roughness  sqrt(sqrt(2) x unresolved)          GGX alpha = roughness^2
+#   lobe width      alpha = sqrt(2) sigma per axis      Beckmann; GGX alpha = r^2
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 
-# A judgement: enough that no single wave shows as a pattern.
-COMPONENTS = 32
+# A judgement: enough that no single wave shows.
+COMPONENTS = 48
 
 # A judgement, as a fraction of the peak frequency: PM puts exp(-5/4 x^-4) of the
 # height variance below x.
 LOWEST_OF_PEAK = 0.7
 
-# A judgement: shorter waves alias into grain past the near field, so their slope is
-# left to the roughness.
-SHORTEST_WAVE_M = 0.5
+# Minimum phase speed, 2 pi sqrt(gamma / rho g) at gamma = 0.074 N/m, rho = 1000
+# kg/m^3: below it omega^2 = g k fails.
+CAPILLARY_WAVELENGTH_M = 0.0173
+
+# Footprints per wavelength: gone at Nyquist, whole at a judgement.
+FADE_FOOTPRINTS = (2.0, 4.0)
 
 # Mean radius, IUGG.
 EARTH_RADIUS_M = 6_371_000.0
@@ -104,7 +112,7 @@ def _bins(wind_speed_mps: float) -> tuple[np.ndarray, np.ndarray]:
         return np.empty(0), np.empty(0)
     peak = peak_omega_rad_s(wind_speed_mps)
     low = LOWEST_OF_PEAK * peak
-    high = math.sqrt(2 * math.pi * GRAVITY_MS2 / SHORTEST_WAVE_M)
+    high = math.sqrt(2 * math.pi * GRAVITY_MS2 / CAPILLARY_WAVELENGTH_M)
     if low >= high:
         return np.empty(0), np.empty(0)
     edges = np.geomspace(low, high, COMPONENTS + 1)
@@ -201,16 +209,27 @@ def resolved_slope_variance(field: tuple[Wave, ...]) -> float:
     return sum((w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field)
 
 
-def unresolved_slope(wind_speed_mps: float, field: tuple[Wave, ...]) -> float:
-    """RMS slope finer than the waves built, left for the shading to account for."""
-    total = wave_slope(wind_speed_mps) ** 2
-    return math.sqrt(max(total - resolved_slope_variance(field), 0.0))
+def visibility(wavelength_m: np.ndarray, footprint_m: float) -> np.ndarray:
+    """How much of a wave a pixel of `footprint_m` draws: 1 whole, 0 left to the
+    roughness."""
+    # Smoothstep in footprint squared, as the shader's Map Range fades it.
+    low, high = FADE_FOOTPRINTS
+    gone, whole = (
+        (np.asarray(wavelength_m) / low) ** 2,
+        (np.asarray(wavelength_m) / high) ** 2,
+    )
+    x = np.clip((footprint_m**2 - gone) / (whole - gone), 0, 1)
+    return x * x * (3 - 2 * x)
 
 
-def specular_roughness(slope_sigma: float) -> float:
-    """Blender roughness for a GGX lobe of RMS slope sigma: alpha = roughness^2 and a
-    Gaussian slope of sigma maps to alpha = sqrt(2) sigma."""
-    return math.sqrt(min(math.sqrt(2.0) * slope_sigma, 1.0))
+def pixel_slope_variance(
+    wind_speed_mps: float, field: tuple[Wave, ...], footprint_m: float
+) -> float:
+    """The slope variance a pixel of `footprint_m` does not draw."""
+    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
+    drawn = np.array([(w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field])
+    shown = float(np.sum(visibility(wavelength, footprint_m) ** 2 * drawn))
+    return max(wave_slope(wind_speed_mps) ** 2 - shown, 0.0)
 
 
 def earth_radius_m(refraction_k: float) -> float:

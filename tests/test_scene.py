@@ -15,19 +15,13 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Asset, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Mount, Scenario, load
+from seascape.config import Mount, load
 
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 UNDERWAY = BASELINE.with_name("underway.toml")
 DRIFTING = BASELINE.with_name("drifting.toml")
 SCENARIO = load(BASELINE)
 RIG_ONLY = f'extends = "{BASELINE}"\nobjects = []\n'
-
-
-def unresolved(scenario: Scenario) -> float:
-    return waves.unresolved_slope(
-        scenario.sea.wind_speed_mps, scene.wave_field(scenario)
-    )
 
 
 def camera_of(mount: Mount) -> bpy.types.Object:
@@ -61,11 +55,12 @@ def test_the_sun_is_out_of_every_frame(name: str) -> None:
 
 
 def baked(name: str) -> np.ndarray:
-    """The red channel of a 1-D lookup image, as the shader samples it."""
+    """The red channel of a lookup image, rows bottom first."""
     image = bpy.data.images[name]
+    width, height = image.size
     pixels = np.empty(len(image.pixels), dtype=np.float32)
     image.pixels.foreach_get(pixels)
-    return pixels.reshape(-1, 4)[:, 0]
+    return np.squeeze(pixels.reshape(height, width, 4)[..., 0])
 
 
 def _blocked(origin: Vector, target: Vector) -> bool:
@@ -458,11 +453,17 @@ class TestEoBand:
         bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
         assert bsdf.inputs["IOR"].default_value == pytest.approx(1.33)
 
-    def test_the_glitter_spreads_over_the_slope_the_waves_leave_out(self) -> None:
-        bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
-        assert bsdf.inputs["Roughness"].default_value == pytest.approx(
-            waves.specular_roughness(unresolved(SCENARIO))
-        )
+    def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        assert nodes["Principled BSDF"].inputs["Roughness"].is_linked
+        table = baked("sea_unresolved_variance")
+        low, high = sea.FOOTPRINT_RANGE_M
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        footprints = low * (high / low) ** texel
+        field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+        for i in (0, len(table) // 2, len(table) - 1):
+            expected = waves.pixel_slope_variance(speed, field, footprints[i])
+            assert table[i] == pytest.approx(expected, rel=1e-5)
 
     def test_the_sky_is_lit(self) -> None:
         assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
@@ -535,23 +536,37 @@ class TestIrBand:
         assert mix.inputs[1].links[0].from_node.bl_idname == "ShaderNodeBsdfAnisotropic"
         assert mix.inputs[2].links[0].from_node.bl_idname == "ShaderNodeEmission"
 
-    def test_the_reflection_lobe_matches_the_emissivity_curve(self) -> None:
-        """Both come from the unresolved slope, and must move together."""
+    def test_the_reflection_lobe_and_the_emissivity_share_one_slope(self) -> None:
+        """Both come from the pixel's unresolved slope, and must move together."""
+        tree = bpy.data.materials["sea"].node_tree
         mirror = next(
+            n for n in tree.nodes if n.bl_idname == "ShaderNodeBsdfAnisotropic"
+        )
+        table = next(
             n
-            for n in bpy.data.materials["sea"].node_tree.nodes
-            if n.bl_idname == "ShaderNodeBsdfAnisotropic"
+            for n in tree.nodes
+            if n.bl_idname == "ShaderNodeTexImage" and n.image.name == "sea_emissivity"
         )
-        assert mirror.inputs["Roughness"].default_value == pytest.approx(
-            waves.specular_roughness(unresolved(SCENARIO))
-        )
+        lookup = table.inputs["Vector"].links[0].from_node
+
+        def upstream(socket: bpy.types.NodeSocket) -> set[str]:
+            seen, todo = set(), [socket]
+            while todo:
+                for link in todo.pop().links:
+                    if link.from_node.name not in seen:
+                        seen.add(link.from_node.name)
+                        todo.extend(link.from_node.inputs)
+            return seen
+
+        assert "sea_unresolved_variance" in upstream(mirror.inputs["Roughness"])
+        assert "sea_unresolved_variance" in upstream(lookup.inputs["Y"])
 
     def test_emissivity_is_averaged_over_the_unresolved_slopes(self) -> None:
         """Flat Fresnel collapses toward grazing, which is where distant targets sit."""
-        curve = baked("sea_emissivity")  # sampled over cos(theta), grazing first
+        table = baked("sea_emissivity")  # cos(theta) along, grazing first
         grazing = math.radians(89.0)
-        mu = np.linspace(0.0, 1.0, len(curve))
-        rough = float(np.interp(math.cos(grazing), mu, curve))
+        mu = (np.arange(table.shape[1]) + 0.5) / table.shape[1]
+        rough = float(np.interp(math.cos(grazing), mu, table[-1]))
 
         theta, flat = lwir.emissivity_curve(t_sea_k=SCENARIO.sea.t_sea_k)
         assert rough > 4 * float(np.interp(grazing, theta, flat)), (
@@ -572,16 +587,21 @@ class TestIrBand:
             )
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
-        """The shader reads this by cos(theta); the curve is sampled by theta."""
-        curve = baked("sea_emissivity")
-
-        _, eps = lwir.emissivity_curve(
-            t_sea_k=SCENARIO.sea.t_sea_k,
-            slope_sigma=unresolved(SCENARIO),
-        )
-        assert curve[-1] == pytest.approx(eps[0], rel=1e-4), "cos(theta)=1 is normal"
-        assert curve[0] == pytest.approx(eps[-1], abs=2e-3), "cos(theta)=0 is grazing"
-        assert np.all(np.diff(curve) >= -1e-6), "emissivity rises towards normal"
+        """The shader reads this by cos(theta) at texel centres; the curve is sampled by
+        theta. Rows run up the unresolved slope per axis, to all of Cox & Munk's."""
+        table = baked("sea_emissivity")
+        rows, width = table.shape
+        mu = (np.arange(width) + 0.5) / width
+        # Per axis: lwir draws each facet's two slopes with this sigma.
+        sigma_max = waves.wave_slope(SCENARIO.sea.wind_speed_mps) / math.sqrt(2)
+        for row in (0, rows // 2, rows - 1):
+            theta, eps = lwir.emissivity_curve(
+                t_sea_k=SCENARIO.sea.t_sea_k,
+                slope_sigma=(row + 0.5) / rows * sigma_max,
+            )
+            expected = np.interp(mu, np.cos(theta)[::-1], eps[::-1])
+            assert table[row] == pytest.approx(expected, rel=1e-5)
+            assert np.all(np.diff(table[row]) >= -1e-6), "rises towards normal"
 
     def test_radiance_is_not_sent_through_a_film_curve(self) -> None:
         """Blender defaults to AgX."""

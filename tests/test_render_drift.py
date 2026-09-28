@@ -3,6 +3,7 @@
 Skipped unless `--render` is given.
 """
 
+import math
 from pathlib import Path
 
 import bpy
@@ -170,6 +171,105 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     slope = waves.slope(scene.wave_field(scenario), east, north, t_s)
     expected = -slope[axis] / np.sqrt(1 + slope[0] ** 2 + slope[1] ** 2)
     assert np.abs(rendered - expected).max() < 2e-3
+
+
+@pytest.mark.render
+def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
+    """Top down from high enough that the footprint sits among the waves' fades."""
+    height_m, span_m, px = 1500.0, 600.0, 32
+    scene.build(SCENARIO, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    emission = tree.nodes.new("ShaderNodeEmission")
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    tree.links.new(
+        tree.nodes["sea_roughness"].outputs["Value"], emission.inputs["Color"]
+    )
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    lens = bpy.data.cameras.new("probe")
+    lens.type, lens.ortho_scale = "ORTHO", span_m
+    lens.clip_end = 2 * height_m  # the default far plane stops short of the sea
+    camera = bpy.data.objects.new("probe", lens)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
+    camera.location = (0.0, 0.0, height_m)
+    camera.rotation_euler = (0.0, 0.0, 0.0)
+    sc.camera = camera
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    sc.view_settings.view_transform = "Standard"
+    rendered = shoot((px, px), "roughness_probe")
+
+    mount = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "eo")
+    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+    centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
+    east, north = np.meshgrid(centres, centres[::-1])
+    distance = np.sqrt(east**2 + north**2 + height_m**2)
+    field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+    variance = np.array(
+        [
+            waves.pixel_slope_variance(speed, field, d * pixel_rad)
+            for d in distance.ravel()
+        ]
+    ).reshape(distance.shape)
+    # Top down, both footprints agree: alpha = sqrt(variance) on each axis.
+    expected = np.minimum(variance**0.25, 1.0)
+    assert np.abs(rendered - expected).max() < 5e-3
+
+
+@pytest.mark.render
+def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
+    """Principled's Anisotropic, read back at a grazing view, against the footprints
+    the pixel covers: 10 m up, looking 3 deg down, the sea from ~100 m to ~1 km."""
+    scene.build(SCENARIO, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    anisotropic = (
+        tree.nodes["Principled BSDF"].inputs["Anisotropic"].links[0].from_socket
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    tree.links.new(anisotropic, emission.inputs["Strength"])
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    lens = bpy.data.cameras.new("probe")
+    lens.clip_end = 1e5
+    camera = bpy.data.objects.new("probe", lens)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
+    camera.location = (0.0, 0.0, 10.0)
+    camera.rotation_euler = (math.radians(87.0), 0.0, 0.0)
+    sc.camera = camera
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    sc.view_settings.view_transform = "Standard"
+    px = (32, 24)
+    rendered = shoot(px, "anisotropy_probe")
+
+    bpy.context.view_layer.update()
+    corners = [camera.matrix_world @ c for c in lens.view_frame(scene=sc)]
+    top_right, bottom_right, bottom_left, top_left = (np.array(c) for c in corners)
+    origin = np.array(camera.matrix_world.translation)
+    mount = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "eo")
+    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+    field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+    checked = 0
+    for row in range(px[1]):
+        for col in range(px[0]):
+            u, v = (col + 0.5) / px[0], (row + 0.5) / px[1]
+            left = top_left + v * (bottom_left - top_left)
+            right = top_right + v * (bottom_right - top_right)
+            ray = left + u * (right - left) - origin
+            ray /= np.linalg.norm(ray)
+            if ray[2] > -0.02:  # the horizon's rows and the sky
+                continue
+            distance = origin[2] / -ray[2]
+            across = distance * pixel_rad
+            along = across / -ray[2]
+            v_along = waves.pixel_slope_variance(speed, field, along)
+            v_across = waves.pixel_slope_variance(speed, field, across)
+            expected = (1 - math.sqrt(v_across / v_along)) / 0.9
+            assert rendered[row, col] == pytest.approx(expected, abs=0.02), (row, col)
+            checked += 1
+    assert checked > 100
+    assert rendered.max() > 0.2, "a grazing view is anisotropic"
 
 
 def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
