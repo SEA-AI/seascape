@@ -121,6 +121,12 @@ class TestSettings:
 
         assert sc.render.engine == "CYCLES"
 
+    @pytest.mark.parametrize("band", get_args(Band.__value__))
+    def test_eevee_does_not_cap_reflections(self, band: Band) -> None:
+        sc = built(band)
+
+        assert (sc.world.sun_threshold, sc.eevee.clamp_surface_indirect) == (0.0, 0.0)
+
     def test_the_active_camera_sets_the_resolution(self) -> None:
         """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
         ir = next(m.camera for m in load(BASELINE).rig.mounts if m.camera.kind == "ir")

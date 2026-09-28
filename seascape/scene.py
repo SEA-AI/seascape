@@ -228,6 +228,8 @@ def _sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], f
 
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
+    # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
+    world.sun_threshold = 0.0
     tree = world.node_tree
     if band == "ir":
         return _thermal_sky(world, sky.t_air_k)
@@ -999,8 +1001,10 @@ def _enable_gpu() -> bool:
 def _output(outputs: Outputs, band: Band) -> None:
     """Render and display settings, in the .blend, so F12 renders what `render` does."""
     sc = bpy.context.scene
-    # Not EEVEE: no second bounce for world light, so the sea renders at half radiance.
+    # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
+    # Caps reflected light at 10, and LWIR radiance is tens of W m^-2 sr^-1.
+    sc.eevee.clamp_surface_indirect = 0.0
     sc.cycles.device = "GPU" if _enable_gpu() else "CPU"
     sc.cycles.samples = getattr(outputs.samples, band)
     # On by default. OIDN breaks the ir frame's R=G=B and blurs sub-pixel waves.
