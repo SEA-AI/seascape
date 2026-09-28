@@ -39,9 +39,9 @@ Det Norske Veritas 2010, section 2.3.2.4: the neutral log profile with Charnock'
 roughness.
 
 Hull attitude: Jensen, Mansour & Olsen, "Estimation of ship motions using closed-form
-expressions", Ocean Engineering 31(1) 61, 2004 (doi:10.1016/S0029-8018(03)00108-2),
-eqs. 2.6-2.7 without their dynamic factors: the least-squares plane under a box hull,
-per wave in closed form.
+expressions", Ocean Engineering 31(1) 61-85, 2004 (doi:10.1016/S0029-8018(03)00108-2):
+their pitch, static, without the dynamic or draft (exp(-kT)) factors, is the
+least-squares slope of each wave along a box hull; roll is the same across it.
 
 Dispersion: Lamb, "Hydrodynamics", 6th ed., Cambridge University Press 1932, chapter
 IX; deep water, omega^2 = g k.
@@ -318,15 +318,14 @@ def attitude(
     u, v = k_along * length_m / 2, k_across * beam_m / 2
     at = _phase(field, np.array(east_m), np.array(north_m), t_s)
     amplitude = np.array([w.amplitude_m for w in field])
-    # Each rise is -a k sin(phase), averaged over the hull's other axis by a sinc and
-    # its own by 3 (sin u - u cos u) / u^3.
+    # 1, x, y are orthogonal over a hull centred here, so each wave's slope separates.
     rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
     rise_across = -amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
     return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
 
 
 def _lever(u: np.ndarray) -> np.ndarray:
-    """3 (sin u - u cos u) / u^3, 1 at u = 0, where its series takes over."""
+    """3 (sin u - u cos u) / u^3; its series near 0, where the formula cancels."""
     small = np.abs(u) < 1e-3
     safe = np.where(small, 1.0, u)
     return np.where(
