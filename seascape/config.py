@@ -236,9 +236,12 @@ class Sky(Model):
         le=10.0,
         description="Haze, as the Sky Texture's own parameter. EO only.",
     )
-    # LOWTRAN 7's maritime aerosol default (IHAZE = 4); Kneizys et al., AFGL-TR-88-0177.
+    # OPAC's maritime clean aerosol, 0.090 km^-1 at 550 nm and 80% humidity, plus
+    # Rayleigh's 0.012, is 38 km (Hess, Koepke & Schult, BAMS 79(5) 831, 1998). The
+    # ocean's mean optical depth, 0.11 at 500 nm, gives 34 km in that profile
+    # (Smirnov et al., JGR 2009, doi:10.1029/2008JD011257).
     visibility_km: float | None = Field(
-        default=23.0,
+        default=35.0,
         gt=0.0,
         description="Meteorological range at 550 nm; None is clear air. EO only.",
     )
@@ -251,8 +254,8 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
-        """Koschmieder's: over `visibility_km` a dark target keeps 2% of its contrast
-        against the horizon sky."""
+        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
+        contrast against the horizon sky."""
         if self.visibility_km is None:
             return 0.0
         return math.log(1 / 0.02) / (self.visibility_km * 1000)
