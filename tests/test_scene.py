@@ -55,11 +55,12 @@ def test_the_sun_is_out_of_every_frame(name: str) -> None:
 
 
 def baked(name: str) -> np.ndarray:
-    """The red channel of a 1-D lookup image, as the shader samples it."""
+    """The red channel of a lookup image, rows bottom first."""
     image = bpy.data.images[name]
+    width, height = image.size
     pixels = np.empty(len(image.pixels), dtype=np.float32)
     image.pixels.foreach_get(pixels)
-    return pixels.reshape(-1, 4)[:, 0]
+    return np.squeeze(pixels.reshape(height, width, 4)[..., 0])
 
 
 def _blocked(origin: Vector, target: Vector) -> bool:
@@ -173,32 +174,26 @@ class TestGeometry:
             )
             assert max(axes[2]) > 0.0, "and the rest of it is above water"
 
-    def test_the_noise_carries_the_slope_its_octaves_reach(self) -> None:
-        """A ratio of octaves, so more wind means a longer wave and less of it."""
-        calm, blowing = (
-            waves.resolved_slope_fraction(2.0),
-            waves.resolved_slope_fraction(18.0),
-        )
-        assert 0.0 < blowing < calm < 1.0
-
-    def test_the_sea_takes_its_wind_from_the_scenario(self) -> None:
-        """Wind reaches the waves through wavelength and slope, or it is a dead knob."""
-        tree = bpy.data.materials["sea"].node_tree
-        wind = SCENARIO.sea.wind_speed_mps
-        scaling = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeVectorMath")
-        assert tuple(scaling.inputs[1].default_value) == pytest.approx(
-            (1.0 / waves.wave_length_m(wind), 1.0 / waves.wave_length_m(wind), 0.0)
-        )
-        bump = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeBump")
-        assert bump.inputs["Distance"].default_value == pytest.approx(
-            waves.bump_slope(wind)
-            * waves.wave_length_m(wind)
-            / waves.NOISE_SLOPE_PER_UNIT
-        )
-        noise = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeTexNoise")
-        assert noise.inputs["Detail"].default_value == waves.NOISE_DETAIL, (
-            "the transfer was measured at this Detail"
-        )
+    def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        field = scene.wave_field(SCENARIO)
+        assert len(field) == waves.COMPONENTS
+        for i, wave in enumerate(field):
+            k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
+            carried = (
+                tuple(nodes[f"wave_{i}"].inputs["Vector_001"].default_value),
+                nodes[f"wave_{i}_phase"].inputs["Value_001"].default_value,
+                tuple(nodes[f"wave_{i}_slope"].inputs["Vector"].default_value),
+            )
+            assert carried == (
+                pytest.approx((k_east, k_north, -wave.omega_rad_s), rel=1e-6),
+                pytest.approx(wave.phase_rad, rel=1e-6),
+                pytest.approx(
+                    (wave.amplitude_m * k_east, wave.amplitude_m * k_north, 0.0),
+                    rel=1e-6,
+                    abs=1e-9,
+                ),
+            )
 
     def test_the_sea_reaches_past_its_own_horizon(self) -> None:
         """The grid must contain the tangent point, or its edge becomes the horizon."""
@@ -458,6 +453,18 @@ class TestEoBand:
         bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
         assert bsdf.inputs["IOR"].default_value == pytest.approx(1.33)
 
+    def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        assert nodes["Principled BSDF"].inputs["Roughness"].is_linked
+        table = baked("sea_unresolved_variance")
+        low, high = sea.FOOTPRINT_RANGE_M
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        footprints = low * (high / low) ** texel
+        field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+        for i in (0, len(table) // 2, len(table) - 1):
+            expected = waves.pixel_slope_variance(speed, field, footprints[i])
+            assert table[i] == pytest.approx(expected, rel=1e-5)
+
     def test_the_sky_is_lit(self) -> None:
         assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
 
@@ -529,23 +536,37 @@ class TestIrBand:
         assert mix.inputs[1].links[0].from_node.bl_idname == "ShaderNodeBsdfAnisotropic"
         assert mix.inputs[2].links[0].from_node.bl_idname == "ShaderNodeEmission"
 
-    def test_the_reflection_lobe_matches_the_emissivity_curve(self) -> None:
-        """Both come from the slope the bump does not carry, and must move together."""
+    def test_the_reflection_lobe_and_the_emissivity_share_one_slope(self) -> None:
+        """Both come from the pixel's unresolved slope, and must move together."""
+        tree = bpy.data.materials["sea"].node_tree
         mirror = next(
+            n for n in tree.nodes if n.bl_idname == "ShaderNodeBsdfAnisotropic"
+        )
+        table = next(
             n
-            for n in bpy.data.materials["sea"].node_tree.nodes
-            if n.bl_idname == "ShaderNodeBsdfAnisotropic"
+            for n in tree.nodes
+            if n.bl_idname == "ShaderNodeTexImage" and n.image.name == "sea_emissivity"
         )
-        assert mirror.inputs["Roughness"].default_value == pytest.approx(
-            waves.specular_roughness(SCENARIO.sea.wind_speed_mps)
-        )
+        lookup = table.inputs["Vector"].links[0].from_node
 
-    def test_emissivity_is_averaged_over_the_slopes_the_bump_misses(self) -> None:
+        def upstream(socket: bpy.types.NodeSocket) -> set[str]:
+            seen, todo = set(), [socket]
+            while todo:
+                for link in todo.pop().links:
+                    if link.from_node.name not in seen:
+                        seen.add(link.from_node.name)
+                        todo.extend(link.from_node.inputs)
+            return seen
+
+        assert "sea_unresolved_variance" in upstream(mirror.inputs["Roughness"])
+        assert "sea_unresolved_variance" in upstream(lookup.inputs["Y"])
+
+    def test_emissivity_is_averaged_over_the_unresolved_slopes(self) -> None:
         """Flat Fresnel collapses toward grazing, which is where distant targets sit."""
-        curve = baked("sea_emissivity")  # sampled over cos(theta), grazing first
+        table = baked("sea_emissivity")  # cos(theta) along, grazing first
         grazing = math.radians(89.0)
-        mu = np.linspace(0.0, 1.0, len(curve))
-        rough = float(np.interp(math.cos(grazing), mu, curve))
+        mu = (np.arange(table.shape[1]) + 0.5) / table.shape[1]
+        rough = float(np.interp(math.cos(grazing), mu, table[-1]))
 
         theta, flat = lwir.emissivity_curve(t_sea_k=SCENARIO.sea.t_sea_k)
         assert rough > 4 * float(np.interp(grazing, theta, flat)), (
@@ -566,16 +587,21 @@ class TestIrBand:
             )
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
-        """The shader reads this by cos(theta); the curve is sampled by theta."""
-        curve = baked("sea_emissivity")
-
-        _, eps = lwir.emissivity_curve(
-            t_sea_k=SCENARIO.sea.t_sea_k,
-            slope_sigma=waves.unresolved_slope(SCENARIO.sea.wind_speed_mps),
-        )
-        assert curve[-1] == pytest.approx(eps[0], rel=1e-4), "cos(theta)=1 is normal"
-        assert curve[0] == pytest.approx(eps[-1], abs=2e-3), "cos(theta)=0 is grazing"
-        assert np.all(np.diff(curve) >= -1e-6), "emissivity rises towards normal"
+        """The shader reads this by cos(theta) at texel centres; the curve is sampled by
+        theta. Rows run up the unresolved slope per axis, to all of Cox & Munk's."""
+        table = baked("sea_emissivity")
+        rows, width = table.shape
+        mu = (np.arange(width) + 0.5) / width
+        # Per axis: lwir draws each facet's two slopes with this sigma.
+        sigma_max = waves.wave_slope(SCENARIO.sea.wind_speed_mps) / math.sqrt(2)
+        for row in (0, rows // 2, rows - 1):
+            theta, eps = lwir.emissivity_curve(
+                t_sea_k=SCENARIO.sea.t_sea_k,
+                slope_sigma=(row + 0.5) / rows * sigma_max,
+            )
+            expected = np.interp(mu, np.cos(theta)[::-1], eps[::-1])
+            assert table[row] == pytest.approx(expected, rel=1e-5)
+            assert np.all(np.diff(table[row]) >= -1e-6), "rises towards normal"
 
     def test_radiance_is_not_sent_through_a_film_curve(self) -> None:
         """Blender defaults to AgX."""
@@ -665,44 +691,52 @@ class TestOwnshipMotion:
         assert built.vessel.animation_data is None
 
 
-def _wave_offset() -> bpy.types.ShaderNode:
-    nodes = bpy.data.materials["sea"].node_tree.nodes
-    return next(n for n in nodes if getattr(n, "operation", "") == "MULTIPLY_ADD")
+def _sea_node(name: str) -> bpy.types.ShaderNode:
+    return bpy.data.materials["sea"].node_tree.nodes[name]
 
 
 class TestSeaEvolves:
     SEQUENCE = load(BASELINE, ["outputs.duration_s = 0.3"])
+    LOOP = load(
+        BASELINE, ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"]
+    )
 
-    def _frames(self) -> Iterator[bpy.types.ShaderNode]:
-        """Yields the same node each frame; read it before advancing."""
+    def _each_frame(self) -> Iterator[int]:
         sc = bpy.context.scene
         for frame in range(sc.frame_start, sc.frame_end + 1):
             sc.frame_set(frame)
-            yield _wave_offset()
+            yield frame
 
     @pytest.mark.parametrize("band", ["eo", "ir"])
-    def test_the_phase_advances_a_unit_per_dominant_period(self, band) -> None:
+    def test_the_sea_keeps_the_frames_time(self, band) -> None:
         scene.build(self.SEQUENCE, band)
-        phases = [o.inputs["Vector_002"].default_value[2] for o in self._frames()]
-        period_s = waves.wave_period_s(self.SEQUENCE.sea.wind_speed_mps)
-        step = 1 / (self.SEQUENCE.outputs.fps * period_s)
-        assert len(phases) == 3
-        assert list(np.diff(phases)) == pytest.approx([step, step], rel=1e-4)
+        times = [
+            _sea_node("sea_time").outputs["Value"].default_value
+            for _ in self._each_frame()
+        ]
+        assert times == pytest.approx(self.SEQUENCE.outputs.times_s)
 
-    def test_a_still_keeps_the_seed_phase_unkeyed(self) -> None:
+    def test_a_loop_keys_the_time_round_a_circle(self) -> None:
+        scene.build(self.LOOP, "eo")
+        span_s = self.LOOP.outputs.span_s
+        for frame in self._each_frame():
+            turn = 2 * math.pi * self.LOOP.outputs.times_s[frame] / span_s
+            cos = _sea_node("sea_cos").outputs["Value"].default_value
+            sin = _sea_node("sea_sin").outputs["Value"].default_value
+            assert (cos, sin) == pytest.approx(
+                (math.cos(turn), math.sin(turn)), abs=1e-6
+            )
+
+    def test_every_wave_in_a_loop_turns_a_whole_number_of_times(self) -> None:
+        span_s = self.LOOP.outputs.span_s
+        for wave in scene.wave_field(self.LOOP):
+            turns = wave.omega_rad_s * span_s / (2 * math.pi)
+            assert turns == pytest.approx(round(turns), abs=1e-9)
+
+    def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(SCENARIO, "eo")
-        seed_phase = scene._substream(SCENARIO.seed, "sea/surface").random() * 1e3
-        z = _wave_offset().inputs["Vector_002"].default_value[2]
-        assert z == pytest.approx(seed_phase)
+        assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
         assert bpy.data.materials["sea"].node_tree.animation_data is None
-
-    def test_the_wave_field_does_not_slide(self) -> None:
-        scene.build(self.SEQUENCE, "eo")
-        per_m = 1 / waves.wave_length_m(self.SEQUENCE.sea.wind_speed_mps)
-        for offset in self._frames():
-            scale = tuple(offset.inputs["Vector_001"].default_value)
-            assert scale == pytest.approx((per_m, per_m, 0.0))
-            assert tuple(offset.inputs["Vector_002"].default_value[:2]) == (0.0, 0.0)
 
 
 def test_a_drifting_hull_traces_a_figure_eight_about_its_pose() -> None:
@@ -773,7 +807,9 @@ def test_a_loop_runs_from_its_last_frame_into_its_first_like_any_other() -> None
     scene.build(load(DRIFTING, ["outputs.fps = 2"]))
     channels = dict(keyed())
 
-    assert len(channels) == 8, "the target's xyz, pitch, roll, heave, the sea's z, W"
+    assert len(channels) == 8, (
+        "the target's xyz, pitch, roll, heave, the sea's cos, sin"
+    )
     for name, values in channels.items():
         bend = np.abs(np.diff(np.append(values, values[:2]), 2))
         # A few ulps: F-curves are float32.

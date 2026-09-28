@@ -38,6 +38,15 @@ def _substream(seed: int, name: str) -> np.random.Generator:
     return np.random.default_rng([seed, *name.encode()])
 
 
+def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
+    return waves.components(
+        scenario.sea.wind_speed_mps,
+        scenario.sea.wind_from_deg,
+        scenario.outputs.period_s,
+        _substream(scenario.seed, "sea/surface"),
+    )
+
+
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
     # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
@@ -641,7 +650,7 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.eevee.clamp_surface_indirect = 0.0
     sc.cycles.device = "GPU" if _enable_gpu() else "CPU"
     sc.cycles.samples = getattr(outputs.samples, band)
-    # On by default. OIDN breaks the ir frame's R=G=B and blurs sub-pixel waves.
+    # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
     view = sc.view_settings
     if band == "eo":
@@ -682,8 +691,10 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     reach_m = sea.sea_reach_m(scenario.rig, scenario.sea)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
-    rng = _substream(scenario.seed, "sea/surface")
-    sea.water(scenario.sea, rng, reach_m, band, outputs)
+    mounts = [m for m in scenario.rig.mounts if m.camera.kind == band]
+    # The finest pixel in the band, so its sharpest camera does not blur.
+    pixel_rad = min(math.radians(m.camera.hfov_deg) / m.camera.width_px for m in mounts)
+    sea.water(scenario.sea, wave_field(scenario), reach_m, band, outputs, pixel_rad)
     rig = _rig(scenario.rig, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)

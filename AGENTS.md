@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**Waves are bump normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging; a bump normal is evaluated per pixel, so the far field averages out on its own. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. It needs no distance fade, and a measured one changed the far-field texture by 3% and the aliasing not at all -- do not add one back without a render to show it earns its place. The accepted cost is that a bump normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
+**Waves are shading normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging. Each pixel draws the waves longer than its footprint and takes the rest as roughness. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. The accepted cost is that a normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -58,6 +58,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `blend.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
 - **A camera's bearing is not `pod yaw + camera yaw`.** In the chain `scene._rig` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `scene.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
+- **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` takes sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
 - **Objects can share a mesh datablock.** Material slots link to mesh data by default, so assigning a material to one object silently changes the other. Use `slot.link = "OBJECT"` when they must differ.
 - **LWIR waves do not need `t_sea_k - t_air_k`.** A tilted facet reflects a different elevation of a sky that runs cold overhead to ambient at the horizon, so relief shows with the sea exactly at air temperature. Under a uniform ambient world it does not.
@@ -66,7 +67,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Both clip planes cut in silence.** `clip_end` defaults to 1000 m, so a target at 2 km renders as sky and the boundary reads as a convincing horizon. `rig.near_clip_m` does the same to anything nearer than itself, and Blender accepts a near plane beyond the far one by rendering an empty frame. Nothing warns at either end.
 - **`matrix_world` is stale until the depsgraph runs.** Parent an object, move the parent, read a child's `matrix_world`, and you get where it used to be. `view_layer.update()` first, or every measurement quietly describes the wrong scene.
 - **An empty's `bound_box` is a point at its origin.** An import is largely empties, so measuring the extent of "everything I just imported" inflates it and the fit comes out wrong.
-- **Cycles denoising is on by default and is not radiometric.** OIDN is an edge-aware image filter. On a world flat at 290.00 K it returns 282.43-293.00 K, worst at the frame border, and it breaks the R=G=B that an LWIR scene guarantees. It is off in both bands: in EO it also smooths the sea's sub-pixel wave texture.
+- **Cycles denoising is on by default and is not radiometric.** OIDN is an edge-aware image filter. On a world flat at 290.00 K it returns 282.43-293.00 K, worst at the frame border, and it breaks the R=G=B that an LWIR scene guarantees. It is off in both bands: in EO it also smooths the sea's waves.
 - **An image's `colorspace_settings` must be set before its pixels, never after.** Assigning it second re-reads the buffer that is already there and leaves the image black, with no error.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
@@ -83,7 +84,6 @@ These produce wrong output with no error. They are the reason this file exists.
 - **The sequencer tones its strips through the scene's view transform.** The factory AgX takes a png's white to about 195. `Standard` passes a picture through.
 - **A missing strip frame encodes as black**, in silence. Check the files exist first.
 - **A movie `render.filepath` without an extension gets the frame range appended**: `cam` is written as `cam0001-0300.mp4`.
-- **4D noise carries less slope than 3D.** Switching `noise_dimensions` flattens the waves with no error, so each needs its own measured slope.
 - **The Sky Texture's `turbidity` does nothing under the scattering models.** It belongs to Preetham and Hosek-Wilkie. Haze there is `aerosol_density`. Setting the wrong one is accepted in silence and changes no pixel, which was verified by rendering both.
 
 ## Conventions
@@ -100,6 +100,7 @@ These produce wrong output with no error. They are the reason this file exists.
 ## Where code goes
 
 - **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
+- **One wave field.** `scene.wave_field` draws it; the shader takes that tuple.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 
