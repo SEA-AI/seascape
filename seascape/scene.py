@@ -32,9 +32,9 @@ from seascape.config import (
 # colour does not matter, only how flat the finish is.
 PAINT_EMISSIVITY = 0.94
 
-# Judgement: above any camera or hull, so every path to a surface is hazed. A ray to the
-# sky leaves the haze as it entered it, so the height changes nothing there.
-HAZE_TOP_M = 200.0
+# The aerosol's boundary layer, 0 to 2 km (the MODTRAN 2/3 report, section 2.3.2). A ray
+# to the sky leaves the haze as it entered it, so the height changes nothing there.
+HAZE_TOP_M = 2000.0
 # Measured: fewer leave a path of kilometres short of its airlight.
 HAZE_STEPS = 32
 
