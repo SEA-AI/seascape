@@ -8,7 +8,13 @@ through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for GGX; Bu
 roughness^2 convention Cycles follows.
 
 Whitecaps: Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11)
-1816, 1984.
+1816, 1984 (doi:10.1364/AO.23.001816), for the Monahan coverage it multiplies.
+
+Seawater: Quan & Fry, "Empirical equation for the index of refraction of seawater",
+Applied Optics 34(18) 3477, 1995 (doi:10.1364/AO.34.003477); Morel & Maritorena, "Bio-
+optical properties of oceanic waters: a reappraisal", JGR 106(C4) 7163, 2001
+(doi:10.1029/2000JC000319); Lee et al., "Deriving inherent optical properties from water
+color", Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 """
 
 import math
@@ -38,6 +44,14 @@ from seascape.waves import (
 # Koepke 1984: a whitecap's effective reflectance in the visible, averaged over its
 # fresh and decaying foam.
 WHITECAP_REFLECTANCE = 0.22
+
+# Quan & Fry 1995 at 550 nm, salinity 35, 15 C.
+SEAWATER_IOR = 1.341
+
+# Morel & Maritorena 2001: open-ocean reflectance just below the surface, R(0-), at 0.2
+# mg/m^3 chlorophyll, through CIE 1931 under D65 to linear sRGB, times the t / n^2 of
+# the light leaving it (Lee et al. 2002) that Principled's coat does not apply: 0.54 R.
+WATER_BODY_COLOR = (0.0, 0.0065, 0.018)
 
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
@@ -435,8 +449,8 @@ def _daylight(
     """Water refracting at seawater's IOR, white where its crests break."""
     roughness, aspect = _lobe(tree, *unresolved)
     principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
-    principled.inputs["Base Color"].default_value = (0.004, 0.02, 0.035, 1.0)
-    principled.inputs["IOR"].default_value = 1.33
+    principled.inputs["Base Color"].default_value = (*WATER_BODY_COLOR, 1.0)
+    principled.inputs["IOR"].default_value = SEAWATER_IOR
     link = tree.links.new
     link(normal, principled.inputs["Normal"])
     link(tangent, principled.inputs["Tangent"])
@@ -473,7 +487,7 @@ def _material(
     normal, drawn = _waves(tree, field, outputs, pixel)
     table = _footprint_table(
         "sea_unresolved_variance",
-        lambda f: unresolved_slope_variance(sea.wind_speed_mps, field, f),
+        lambda f: unresolved_slope_variance(sea.wind_speed_mps, wind, swell, f),
     )
     unresolved = (
         _at_footprint(tree, table, pixel.along_m, "sea_unresolved_variance"),

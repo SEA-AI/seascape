@@ -463,7 +463,7 @@ class TestEoBand:
 
     def test_the_sea_refracts_at_seawater_ior(self) -> None:
         bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
-        assert bsdf.inputs["IOR"].default_value == pytest.approx(1.33)
+        assert bsdf.inputs["IOR"].default_value == pytest.approx(sea.SEAWATER_IOR)
 
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -474,7 +474,7 @@ class TestEoBand:
         footprints = low * (high / low) ** texel
         field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
         for i in (0, len(table) // 2, len(table) - 1):
-            expected = waves.unresolved_slope_variance(speed, field, footprints[i])
+            expected = waves.unresolved_slope_variance(speed, field, (), footprints[i])
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
     def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:

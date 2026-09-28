@@ -179,7 +179,9 @@ class Sea(Model):
         le=311.0,
         description="Sea surface temperature. IR only.",
     )
-    wind_speed_mps: float = Field(default=7.0, ge=0.0, description="Sets the wind sea.")
+    wind_speed_mps: float = Field(
+        default=7.0, ge=0.0, description="At 10 m. Sets the wind sea."
+    )
     wind_from_deg: float = Field(
         default=0.0,
         description="Where the wind blows from, clockwise from the ownship's bow.",

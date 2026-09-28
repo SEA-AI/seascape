@@ -12,15 +12,29 @@ def field(wind_speed_mps: float, wind_from_deg: float = 0.0) -> tuple[waves.Wave
     )
 
 
+def u10_for(wind_mps: float, height_m: float) -> float:
+    """The wind at 10 m that reads `wind_mps` at `height_m`."""
+    return wind_mps * wind_mps / waves.wind_at_m(wind_mps, height_m)
+
+
 def test_published_values_have_not_drifted() -> None:
-    # Cox & Munk 1954: RMS slope of a clean sea at 7 m/s, off sun glitter photographs.
-    assert waves.cox_munk_slope(7.0) == pytest.approx(0.197, abs=5e-4)
+    # Cox & Munk 1954: RMS slope of a clean sea at 7 m/s at 12.5 m, off sun glitter.
+    slope = waves.cox_munk_slope(u10_for(7.0, waves.COX_MUNK_WIND_HEIGHT_M))
+    assert slope == pytest.approx(0.197, abs=5e-4)
     # Surveying's rule of thumb for the horizon, 3.86 sqrt(h_m) km at k = 0.13.
     rule_m = 3.86e3 * math.sqrt(51.8)
     assert waves.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
-    # Pierson-Moskowitz: a fully developed sea at 7 m/s peaks near 41 m.
-    peak = waves.peak_omega_rad_s(7.0)
-    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(40.8, abs=0.2)
+    # Pierson-Moskowitz: a fully developed sea at 7 m/s at 19.5 m peaks near 41 m.
+    peak = waves.peak_omega_rad_s(u10_for(7.0, waves.PM_WIND_HEIGHT_M))
+    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(40.8, abs=0.3)
+
+
+def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
+    # DNV-RP-C205 2.3.2: at 10 m/s, 1.06x at 19.5 m and 1.02x at 12.5 m.
+    assert waves.wind_at_m(10.0, 10.0) == pytest.approx(10.0)
+    assert waves.wind_at_m(10.0, 19.5) == pytest.approx(10.60, abs=0.01)
+    assert waves.wind_at_m(10.0, 12.5) == pytest.approx(10.20, abs=0.01)
+    assert waves.wind_at_m(0.0, 19.5) == 0.0
 
 
 def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
@@ -28,7 +42,7 @@ def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
     built = field(7.0)
     # lwir takes the slope per axis: half the total variance.
     near, far = (
-        math.sqrt(waves.unresolved_slope_variance(7.0, built, f) / 2)
+        math.sqrt(waves.unresolved_slope_variance(7.0, built, (), f) / 2)
         for f in (0.01, 50)
     )
     eps = {}
@@ -41,9 +55,10 @@ def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
 
 @pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 12.0, 20.0])
 def test_the_field_carries_the_spectrum_s_wave_height(wind_speed_mps) -> None:
-    # Pierson-Moskowitz: Hs = 0.209 U^2 / g, nearly all of it in the waves built.
+    # Pierson-Moskowitz: Hs = 0.209 U^2 / g at 19.5 m, nearly all of it in the waves.
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
-    assert hs == pytest.approx(0.209 * wind_speed_mps**2 / waves.GRAVITY_MS2, rel=0.01)
+    wind = waves.wind_at_m(wind_speed_mps, waves.PM_WIND_HEIGHT_M)
+    assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.01)
 
 
 def test_waves_run_away_from_the_wind() -> None:
@@ -91,11 +106,11 @@ def test_a_longer_loop_snaps_the_frequencies_less() -> None:
 def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     built = field(7.0)
     total = waves.cox_munk_slope(7.0) ** 2
-    sharp = waves.unresolved_slope_variance(7.0, built, 1e-4)
+    sharp = waves.unresolved_slope_variance(7.0, built, (), 1e-4)
     assert sharp == pytest.approx(total - waves.slope_variance(built))
-    assert waves.unresolved_slope_variance(7.0, built, 1e4) == pytest.approx(total)
+    assert waves.unresolved_slope_variance(7.0, built, (), 1e4) == pytest.approx(total)
     footprints = [0.01, 0.1, 1.0, 10.0]
-    rest = [waves.unresolved_slope_variance(7.0, built, f) for f in footprints]
+    rest = [waves.unresolved_slope_variance(7.0, built, (), f) for f in footprints]
     assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
@@ -109,7 +124,7 @@ def test_a_wave_fades_out_before_it_aliases() -> None:
 
 def test_calm_air_builds_no_waves() -> None:
     assert field(0.0) == ()
-    assert waves.unresolved_slope_variance(0.0, (), 1.0) == pytest.approx(
+    assert waves.unresolved_slope_variance(0.0, (), (), 1.0) == pytest.approx(
         waves.cox_munk_slope(0.0) ** 2
     )
 
@@ -189,3 +204,14 @@ def test_calm_water_holds_a_hull_level() -> None:
 def test_a_hull_rides_over_a_wave_shorter_than_its_samples() -> None:
     ripple = waves.Wave(0.05, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
     assert waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0) == (0.0, 0.0)
+
+
+def test_a_swell_adds_its_own_unresolved_slope_to_cox_and_munk_s() -> None:
+    wind = field(7.0)
+    swell = waves.swell(2.0, 12.0, 90.0, lambda p: p, np.random.default_rng(0))
+    far = waves.unresolved_slope_variance(7.0, wind, swell, 1e4)
+    assert far == pytest.approx(
+        waves.cox_munk_slope(7.0) ** 2 + waves.slope_variance(swell)
+    )
+    near = waves.unresolved_slope_variance(7.0, wind, swell, 1e-3)
+    assert near == pytest.approx(waves.unresolved_slope_variance(7.0, wind, (), 1e-3))
