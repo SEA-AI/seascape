@@ -3,7 +3,12 @@
 # LOWTRAN 7 (Kneizys et al., "Users guide to LOWTRAN 7", AFGL-TR-88-0177, 1988),
 # midlatitude summer (MODEL 2), 5 cm^-1 steps, maritime aerosol (IHAZE 4) at each
 # meteorological range, or none. Run with `lowtran` on PyPI, whose Python entry point
-# fixes card 2 at IHAZE 0; it was patched to read IHAZE and VIS.
+# fixes card 2 at IHAZE 0. After those defaults, in lowtran7.f's `If (Python)` block:
+#         OPEN(98,FILE='card2.txt',STATUS='OLD',ERR=97)
+#         READ(98,*) IHAZE,ICSTL,VIS,WSS,WHH
+#         CLOSE(98)
+# 97      CONTINUE
+# with card2.txt holding "4 0 <VIS>. 0. 0.", or "0 0 0. 0. 0." for none.
 # range_m,none,vis_50km,vis_42km,vis_35km,vis_23km,vis_10km,vis_5km,vis_2km
 10,9.793792e-01,9.792747e-01,9.792512e-01,9.792218e-01,9.791300e-01,9.787781e-01,9.781583e-01,9.763064e-01
 12.4295,9.764456e-01,9.763162e-01,9.762869e-01,9.762506e-01,9.761366e-01,9.757007e-01,9.749331e-01,9.726397e-01

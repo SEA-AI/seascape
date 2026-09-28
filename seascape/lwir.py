@@ -265,9 +265,11 @@ def path_optical_depth(
     """-ln of the band transmittance along a horizontal path near the sea.
 
     Linear in 1 / visibility, which is how aerosol extinction scales, and in log range.
-    Short of the table it follows the power law of its first two rows: band depth
-    grows as a power of the path, not linearly, while the strongest lines saturate.
+    A visibility below the table's shortest is held at it. Short of the table it
+    follows the power law of its first two rows: band depth grows as a power of the
+    path, not linearly, while the strongest lines saturate.
     """
+
     ranges, inverse, depth = _path_table()
     x = 0.0 if visibility_km is None else 1 / visibility_km
     x = float(np.clip(x, inverse[0], inverse[-1]))
