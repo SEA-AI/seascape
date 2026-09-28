@@ -17,7 +17,7 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, lwir, scene
+from seascape import agc, labels, lwir, scene, waves
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import ImageFormat, Scenario
 
@@ -131,7 +131,7 @@ def render(scenario: Scenario, into: Path) -> list[Path]:
     into = into.resolve()
     into.mkdir(parents=True, exist_ok=True)
     outputs = scenario.outputs
-    radius_m = scene.earth_radius_m(scenario.sea.refraction_k)
+    radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
     sequence = len(outputs.times_s) > 1
     written: list[Path] = []
     cameras: list[CameraCalibration] = []

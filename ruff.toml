@@ -23,12 +23,19 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"seascape/{render,scene,video}.py" = ["TID253"]
+"seascape/{blend,render,scene,sea,video}.py" = ["TID253"]
 "tests/**" = ["TID253"]
 
 [lint.flake8-tidy-imports]
 # Imported where used, so `schema` and a failed validation skip loading bpy.
-banned-module-level-imports = ["bpy", "seascape.render", "seascape.scene", "seascape.video"]
+banned-module-level-imports = [
+    "bpy",
+    "seascape.blend",
+    "seascape.render",
+    "seascape.scene",
+    "seascape.sea",
+    "seascape.video",
+]
 
 [lint.pylint]
 max-args = 8

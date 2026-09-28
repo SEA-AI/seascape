@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import lwir, scene
+from seascape import lwir, scene, waves
 from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
@@ -125,7 +125,7 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
 @pytest.mark.render
 @pytest.mark.parametrize(
     ("dimensions", "slope_per_unit"),
-    [("3D", scene.NOISE_SLOPE_PER_UNIT), ("4D", scene.NOISE_SLOPE_PER_UNIT_4D)],
+    [("3D", waves.NOISE_SLOPE_PER_UNIT), ("4D", waves.NOISE_SLOPE_PER_UNIT_4D)],
 )
 def test_the_noise_delivers_the_slope_it_is_asked_for(
     dimensions: str, slope_per_unit: float
@@ -143,8 +143,8 @@ def test_the_noise_delivers_the_slope_it_is_asked_for(
     noise = tree.nodes.new("ShaderNodeTexNoise")
     noise.noise_dimensions = dimensions
     noise.inputs["Scale"].default_value = 1.0  # one noise unit is one metre
-    noise.inputs["Detail"].default_value = scene.NOISE_DETAIL
-    noise.inputs["Roughness"].default_value = scene.NOISE_ROUGHNESS
+    noise.inputs["Detail"].default_value = waves.NOISE_DETAIL
+    noise.inputs["Roughness"].default_value = waves.NOISE_ROUGHNESS
     emission = tree.nodes.new("ShaderNodeEmission")
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     position = tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"]
