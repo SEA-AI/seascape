@@ -35,8 +35,10 @@ PAINT_EMISSIVITY = 0.94
 # The aerosol's boundary layer, 0 to 2 km (the MODTRAN 2/3 report, section 2.3.2). A ray
 # to the sky leaves the haze as it entered it, so the height changes nothing there.
 HAZE_TOP_M = 2000.0
-# Measured: fewer leave a path of kilometres short of its airlight.
-HAZE_STEPS = 32
+# Measured: a coarser rate or fewer steps leave a path short of its airlight.
+HAZE_STEP_RATE, HAZE_STEPS = 0.1, 32
+# Judgement: nearer than a lens is to anything it sees.
+HAZE_NEAR_M = 0.1
 
 
 def _substream(seed: int, name: str) -> np.random.Generator:
@@ -94,24 +96,18 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     return node
 
 
-def _haze(sky: Sky, far_m: float, radius_m: float) -> None:
+def _haze(sky: Sky, band: Band, far_m: float, radius_m: float) -> None:
     """Koschmieder's airlight: air that absorbs at beta and emits beta times the sky
-    ahead of the ray, no lower than the horizon. A path of length d keeps exp(-beta d)
-    of the light it carries and takes the rest from that sky, so a ray to the sky
-    leaves unchanged."""
-    beta = sky.extinction_per_m
-    if not beta:
-        return
-    # Out to the far plane: a hull past the sea's edge can still show over the horizon.
-    bottom = waves.sea_z_m(far_m, far_m, radius_m)
-    bpy.ops.mesh.primitive_cube_add(size=2.0)
-    air = bpy.context.object
-    air.name = "haze"
-    air.scale = (far_m, far_m, (HAZE_TOP_M - bottom) / 2)
-    place(air, 0.0, 0.0, (HAZE_TOP_M + bottom) / 2)
-    # The Sky Texture's sun has already crossed the atmosphere.
-    air.visible_shadow = False
+    ahead of the ray, no lower than the horizon. A path keeps exp(-optical depth) of the
+    light it carries and takes the rest from that sky, so a ray to the sky leaves
+    unchanged.
 
+    EO's beta is uniform. LWIR's falls with the distance from the camera, as the band's
+    optical depth grows slower than the path.
+    """
+    if band == "eo" and not sky.extinction_per_m:
+        return
+    air = _haze_box(far_m, radius_m)
     material = bpy.data.materials.new("haze")
     tree = material.node_tree
     tree.nodes.clear()
@@ -127,22 +123,18 @@ def _haze(sky: Sky, far_m: float, radius_m: float) -> None:
     horizon.name = "haze_horizon"
     horizon.operation = "MAXIMUM"
     link(ahead.outputs["Vector"], horizon.inputs[0])
-    # Below the horizon the Sky Texture draws the ground, not air.
+    # Below the horizon the sky is the ground's, not the air's.
     horizon.inputs[1].default_value = (-1.0, -1.0, 0.0)
-    airlight = _sky_texture(tree, sky)
-    airlight.name = "haze_airlight"
-    # The sun disc disables the Vector input, and a link to it is then ignored.
-    airlight.sun_disc = False
-    link(horizon.outputs["Vector"], airlight.inputs["Vector"])
+    sky_ahead, beta = _haze_terms(tree, sky, band, horizon.outputs["Vector"], far_m)
     emission = tree.nodes.new("ShaderNodeEmission")
     emission.name = "haze_emission"
-    link(airlight.outputs["Color"], emission.inputs["Color"])
-    emission.inputs["Strength"].default_value = beta
+    link(sky_ahead, emission.inputs["Color"])
+    link(beta, emission.inputs["Strength"])
     absorption = tree.nodes.new("ShaderNodeVolumeAbsorption")
     absorption.name = "haze_absorption"
     # Black absorbs every channel at the full density.
     absorption.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
-    absorption.inputs["Density"].default_value = beta
+    link(beta, absorption.inputs["Density"])
     both = tree.nodes.new("ShaderNodeAddShader")
     link(emission.outputs["Emission"], both.inputs[0])
     link(absorption.outputs["Volume"], both.inputs[1])
@@ -154,7 +146,69 @@ def _haze(sky: Sky, far_m: float, radius_m: float) -> None:
     # Unbiased tracking takes the airlight lookup for air that varies in space and
     # slows down. Marching is exact once its steps are short against the path.
     cycles.volume_biased = True
-    cycles.volume_max_steps = HAZE_STEPS
+    cycles.volume_step_rate, cycles.volume_max_steps = HAZE_STEP_RATE, HAZE_STEPS
+
+
+def _haze_box(far_m: float, radius_m: float) -> bpy.types.Object:
+    # Out to the far plane: a hull past the sea's edge can still show over the horizon.
+    bottom = waves.sea_z_m(far_m, far_m, radius_m)
+    bpy.ops.mesh.primitive_cube_add(size=2.0)
+    air = bpy.context.object
+    air.name = "haze"
+    air.scale = (far_m, far_m, (HAZE_TOP_M - bottom) / 2)
+    place(air, 0.0, 0.0, (HAZE_TOP_M + bottom) / 2)
+    # The sky's sun has already crossed the atmosphere.
+    air.visible_shadow = False
+    return air
+
+
+def _haze_terms(
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    band: Band,
+    direction: bpy.types.NodeSocket,
+    far_m: float,
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """The band's sky in `direction`, and its extinction per metre."""
+    link = tree.links.new
+    if band == "eo":
+        airlight = _sky_texture(tree, sky)
+        airlight.name = "haze_airlight"
+        # The sun disc disables the Vector input, and a link to it is then ignored.
+        airlight.sun_disc = False
+        link(direction, airlight.inputs["Vector"])
+        uniform = tree.nodes.new("ShaderNodeValue")
+        uniform.name = "haze_beta"
+        uniform.outputs["Value"].default_value = sky.extinction_per_m
+        return airlight.outputs["Color"], uniform.outputs["Value"]
+    height = tree.nodes.new("ShaderNodeSeparateXYZ")
+    link(direction, height.inputs["Vector"])
+    sky_ahead = lookup(tree, _sky_image(sky.t_air_k), height.outputs["Z"])
+    return sky_ahead, _extinction_by_range(tree, sky.visibility_km, far_m)
+
+
+def _haze_ranges_m(far_m: float) -> np.ndarray:
+    """Texel centres of the LWIR extinction table, log-spaced out to the far plane."""
+    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    return HAZE_NEAR_M * (far_m / HAZE_NEAR_M) ** texel
+
+
+def _extinction_by_range(
+    tree: bpy.types.NodeTree, visibility_km: float | None, far_m: float
+) -> bpy.types.NodeSocket:
+    """The band's extinction at the shading point's distance from the camera, per m."""
+    ranges = _haze_ranges_m(far_m)
+    depth = lwir.path_optical_depth(ranges, visibility_km)
+    image = curve_image("haze_extinction", np.gradient(depth, ranges))
+    coord = tree.nodes.new("ShaderNodeTexCoord")
+    distance = tree.nodes.new("ShaderNodeVectorMath")
+    distance.operation = "LENGTH"
+    link = tree.links.new
+    link(coord.outputs["Camera"], distance.inputs["Vector"])
+    span = far_m / HAZE_NEAR_M
+    texel = sea._math(tree, "LOGARITHM", distance.outputs["Value"], span)
+    texel = sea._math(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
+    return lookup(tree, image, texel)
 
 
 def _sky_image(t_air_k: float) -> bpy.types.Image:
@@ -830,8 +884,7 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
-    if band == "eo":
-        _haze(scenario.sky, far_m, radius_m)
+    _haze(scenario.sky, band, far_m, radius_m)
     targets: dict[str, list[bpy.types.Object]] = {}
     for spec in scenario.objects:
         anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs)

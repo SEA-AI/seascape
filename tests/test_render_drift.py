@@ -355,9 +355,15 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
 
 
 @pytest.mark.render
-@pytest.mark.parametrize("range_m", [1000.0, 5000.0, 25000.0, 28000.0])
-def test_haze_leaves_a_black_card_koschmieder_s_share_of_the_sky(
-    range_m: float,
+@pytest.mark.parametrize(
+    ("band", "range_m"),
+    [
+        *(("eo", r) for r in (1000.0, 5000.0, 25000.0, 28000.0)),
+        *(("ir", r) for r in (1000.0, 5000.0, 25000.0)),
+    ],
+)
+def test_haze_leaves_a_black_card_its_share_of_the_sky(
+    band: Band, range_m: float
 ) -> None:
     """Looking just above the horizon, so without the card the ray reaches the sky."""
     hazy = load(Path(__file__).parent.parent / "scenarios" / "baseline.toml")
@@ -368,7 +374,7 @@ def test_haze_leaves_a_black_card_koschmieder_s_share_of_the_sky(
         }
     )
     assert hazy.sky.extinction_per_m > 0, "clear air would pass this vacuously"
-    scene.build(hazy, "eo")
+    scene.build(hazy, band)
     sc = bpy.context.scene
     assert range_m < sc.camera.data.clip_end, "past the far plane there is no haze"
     lens = bpy.data.cameras.new("probe")
@@ -397,5 +403,11 @@ def test_haze_leaves_a_black_card_koschmieder_s_share_of_the_sky(
     seen = shoot((16, 16), "haze_card")
 
     distance_m = range_m / math.cos(elevation)
-    expected = 1 - math.exp(-hazy.sky.extinction_per_m * distance_m)
-    assert np.median(seen / sky) == pytest.approx(expected, rel=0.01)
+    if band == "eo":
+        depth = hazy.sky.extinction_per_m * distance_m
+    else:
+        depth = float(lwir.path_optical_depth(distance_m, hazy.sky.visibility_km))
+    # LWIR marches a density that falls along the path, a step at a time.
+    assert np.median(seen / sky) == pytest.approx(
+        1 - math.exp(-depth), rel=0.01 if band == "eo" else 0.02
+    )

@@ -143,3 +143,19 @@ def test_brightness_temperature_inverts_band_radiance() -> None:
     t_k = np.array([250.05, 288.13, 311.37])
     radiance = [lwir.band_radiance(t) for t in t_k]
     assert lwir.brightness_temperature(radiance) == pytest.approx(t_k, abs=0.01)
+
+
+def test_a_path_of_no_length_keeps_all_its_light() -> None:
+    assert lwir.path_optical_depth(0.0, 42.0) == 0.0
+
+
+def test_below_the_table_the_power_law_meets_it() -> None:
+    first = lwir._path_table()[0][0]
+    below, above = lwir.path_optical_depth([first * 0.999, first * 1.001], 42.0)
+    assert below == pytest.approx(above, rel=1e-2)
+
+
+def test_aerosol_adds_to_water_vapour_which_takes_most_of_the_path() -> None:
+    clear, typical, hazy = (lwir.path_optical_depth(10_000.0, v) for v in (None, 42, 5))
+    assert clear < typical < hazy
+    assert clear / typical > 0.8
