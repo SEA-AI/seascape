@@ -15,7 +15,7 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Asset, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Mount, Sky, load
+from seascape.config import Mount, Scenario, load
 
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 UNDERWAY = BASELINE.with_name("underway.toml")
@@ -536,11 +536,13 @@ class TestEoBand:
 
 def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     """Not the default: a scene that dropped `atmosphere` would read lwir's own."""
-    # Validated, not `model_copy`: validation gives the air the profile's temperature.
-    sky = Sky.model_validate(
-        {**SCENARIO.sky.model_dump(exclude={"t_air_k"}), "atmosphere": "tropical"}
-    )
-    tropical = SCENARIO.model_copy(update={"sky": sky})
+    # Validated, not `model_copy`: validation gives the air and sea the profile's own.
+    data = SCENARIO.model_dump()
+    data["sky"] = {k: v for k, v in data["sky"].items() if k != "t_air_k"}
+    data["sea"] = {k: v for k, v in data["sea"].items() if k != "t_sea_k"}
+    data["sky"]["atmosphere"] = "tropical"
+    tropical = Scenario.model_validate(data)
+    assert tropical.sea.t_sea_k == lwir.SURFACE_SEA_K["tropical"]
     assert tropical.sky.atmosphere != lwir.ATMOSPHERE
     assert tropical.sky.t_air_k == lwir.SURFACE_AIR_K["tropical"]
     scene.build(tropical, "ir")
