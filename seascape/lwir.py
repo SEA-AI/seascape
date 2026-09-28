@@ -64,7 +64,7 @@ type Atmosphere = Literal[
     "north_sea_winter",
     "north_sea_summer",
 ]
-# European waters, as measured at Helgoland.
+# Judgement: European waters, as measured at Helgoland.
 ATMOSPHERE: Atmosphere = "north_sea"
 # Each model's air at the surface, the first level of its profile in LOWTRAN 7's data
 # (Anderson et al., "AFGL atmospheric constituent profiles", AFGL-TR-86-0110, 1986).
@@ -89,7 +89,6 @@ LIGHT_C = 2.99792458e8  # m s^-1
 BOLTZMANN_K = 1.380649e-23  # J K^-1
 
 T_SEA_K = 288.0
-T_AIR_K = 288.0
 
 
 def _checked_kelvin(t_k: float) -> float:
@@ -261,14 +260,17 @@ def _columns(csv: Path) -> list[str]:
 
 def sky_radiance(
     elev_rad: npt.ArrayLike,
-    t_air_k: float = T_AIR_K,
+    t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """Downwelling in-band sky radiance at an elevation above the horizon.
+    """Downwelling in-band sky radiance at an elevation above the horizon, under air at
+    `t_air_k`, or the atmosphere's own.
 
     Below the horizon the curve holds at ambient, which is what a ray that misses the
     sea should see.
     """
+    if t_air_k is None:
+        t_air_k = SURFACE_AIR_K[atmosphere]
     elev, curves = _sky_table()
     fraction = np.interp(
         np.asarray(elev_rad, dtype=np.float64), np.radians(elev), curves[atmosphere]
