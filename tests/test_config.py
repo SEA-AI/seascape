@@ -1,6 +1,7 @@
 """Loader rules and the shipped presets. No Blender."""
 
 import json
+import math
 import tomllib
 from pathlib import Path
 from typing import get_args
@@ -21,6 +22,7 @@ from seascape.config import (
     Samples,
     Scenario,
     Sea,
+    Sky,
     load,
 )
 
@@ -428,3 +430,9 @@ def test_a_loop_too_short_for_its_waves_says_so() -> None:
             SCENARIOS / "drifting.toml",
             ["sea.swell = { height_m = 1.0, period_s = 13.0 }"],
         )
+
+
+def test_over_the_visibility_a_dark_target_keeps_two_percent_contrast() -> None:
+    sky = Sky(visibility_km=23.0)
+    assert math.exp(-sky.extinction_per_m * 23_000) == pytest.approx(0.02)
+    assert Sky(visibility_km=None).extinction_per_m == 0.0

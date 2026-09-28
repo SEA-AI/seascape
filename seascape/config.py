@@ -15,6 +15,7 @@ Rules:
 3. Tables merge, everything else replaces. A list is replaced whole.
 """
 
+import math
 import tomllib
 import warnings
 from collections.abc import Iterable
@@ -203,7 +204,8 @@ class Sea(Model):
 class Sky(Model):
     """Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.
 
-    Haze is `aerosol_density`, the node's own parameter.
+    Haze is two parameters: `aerosol_density` for the sky itself, the node's own, and
+    `visibility_km` for the air between the camera and what it sees.
 
     `t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky
     profile stays credible.
@@ -234,12 +236,26 @@ class Sky(Model):
         le=10.0,
         description="Haze, as the Sky Texture's own parameter. EO only.",
     )
+    # LOWTRAN 7's maritime aerosol default (IHAZE = 4); Kneizys et al., AFGL-TR-88-0177.
+    visibility_km: float | None = Field(
+        default=23.0,
+        gt=0.0,
+        description="Meteorological range at 550 nm; None is clear air. EO only.",
+    )
     t_air_k: float = Field(
         default=lwir.T_AIR_K,
         ge=250.0,
         le=320.0,
         description="Scales the IR sky. EO ignores it.",
     )
+
+    @property
+    def extinction_per_m(self) -> float:
+        """Koschmieder's: over `visibility_km` a dark target keeps 2% of its contrast
+        against the horizon sky."""
+        if self.visibility_km is None:
+            return 0.0
+        return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
 
 _ASSET = "An asset name from the manifest."

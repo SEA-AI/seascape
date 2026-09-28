@@ -506,12 +506,29 @@ class TestEoBand:
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
 
+    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
+        nodes = bpy.data.materials["haze"].node_tree.nodes
+        beta = SCENARIO.sky.extinction_per_m
+        density = nodes["Volume Absorption"].inputs["Density"].default_value
+        assert density == pytest.approx(beta)
+        strength = nodes["Emission"].inputs["Strength"].default_value
+        assert strength == pytest.approx(beta)
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        airlight = nodes["Sky Texture"]
+        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
+            assert getattr(airlight, name) == getattr(sky, name)
+        assert not airlight.sun_disc
+
 
 class TestIrBand:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls) -> None:
         scene.build(SCENARIO, "ir")
+
+    def test_the_air_is_clear(self) -> None:
+        """Haze is EO's: `lwir` models no path extinction."""
+        assert "haze" not in bpy.data.objects
 
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""

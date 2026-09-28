@@ -16,7 +16,14 @@ from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
 
-SCENARIO = load(Path(__file__).parent.parent / "scenarios" / "baseline.toml")
+
+def _clear(scenario: Scenario) -> Scenario:
+    """The probes read the sea's shader; haze would add its airlight to every one."""
+    sky = scenario.sky.model_copy(update={"visibility_km": None})
+    return scenario.model_copy(update={"sky": sky})
+
+
+SCENARIO = _clear(load(Path(__file__).parent.parent / "scenarios" / "baseline.toml"))
 SAMPLES = 48
 
 
@@ -120,9 +127,11 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
     assert texture(rippled) > 2.5 * texture(flat)
 
 
-LOOP = load(
-    Path(__file__).parent.parent / "scenarios" / "baseline.toml",
-    ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"],
+LOOP = _clear(
+    load(
+        Path(__file__).parent.parent / "scenarios" / "baseline.toml",
+        ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"],
+    )
 )
 
 
