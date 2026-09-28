@@ -21,14 +21,13 @@ for the model sea surface in the infrared window regions", Remote Sensing of Env
 omits is in Wu & Smith, "Emissivity of rough sea surface for 8-13 um: modeling and
 verification", Applied Optics 36(12) 2609, 1997 (doi:10.1364/AO.36.002609).
 
-Sky emissivity: one LOWTRAN7 run, midlatitude summer profile without aerosol, observer
-at 12 m, integrated over the band. LOWTRAN7 is public-domain (AFGL-TR-88-0177); the run
-is reproducible with `lowtran` on PyPI. A band model with a fixed profile, not a
-radiometric reference.
-
-Path transmittance: LOWTRAN7 again, the same profile, a horizontal path at 12 m with
-the maritime aerosol at each meteorological range; `data/lowtran_path.csv` says how.
-Water vapour takes most of it.
+Sky emissivity and path transmittance: LOWTRAN7 (AFGL-TR-88-0177, public domain), each
+of its model atmospheres, observer at 12 m, integrated over the band;
+`data/lowtran_sky.csv` and `data/lowtran_path.csv` say how. A band model, not a
+radiometric reference. The sky is normalised by its horizon, taken as a blackbody at air
+temperature: a horizontal path is opaque in every profile but subarctic winter, whose
+dry air lets part of the horizon through to space. Along a path, water vapour takes
+most of the band and the maritime aerosol the rest.
 
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:
@@ -41,6 +40,7 @@ that fail silently:
 
 import functools
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -49,6 +49,18 @@ type FloatArray = npt.NDArray[np.float64]
 
 _TABLE_CSV = Path(__file__).parent / "data" / "water_nk.csv"
 _PATH_CSV = Path(__file__).parent / "data" / "lowtran_path.csv"
+_SKY_CSV = Path(__file__).parent / "data" / "lowtran_sky.csv"
+
+type Atmosphere = Literal[
+    "tropical",
+    "midlatitude_summer",
+    "midlatitude_winter",
+    "subarctic_summer",
+    "subarctic_winter",
+    "us_standard",
+]
+# Judgement: European waters.
+ATMOSPHERE: Atmosphere = "midlatitude_winter"
 
 BAND_M = (8.0e-6, 14.0e-6)
 
@@ -59,26 +71,6 @@ BOLTZMANN_K = 1.380649e-23  # J K^-1
 
 T_SEA_K = 288.0
 T_AIR_K = 288.0
-
-# Downwelling sky emissivity against elevation above the horizon, in degrees.
-# Normalised by the horizon value, which is ambient: a horizontal path is optically
-# thick, so the sky at the horizon is a blackbody at air temperature. One curve then
-# serves any air temperature, scaled by Planck.
-_SKY_EPS = (
-    (0.0, 1.0000),
-    (1.0, 0.9898),
-    (2.0, 0.9863),
-    (3.0, 0.9789),
-    (5.0, 0.9507),
-    (7.0, 0.9129),
-    (10.0, 0.8535),
-    (15.0, 0.7663),
-    (20.0, 0.6973),
-    (30.0, 0.6001),
-    (45.0, 0.5143),
-    (60.0, 0.4671),
-    (90.0, 0.4352),
-)
 
 
 def _checked_kelvin(t_k: float) -> float:
@@ -232,35 +224,64 @@ def brightness_temperature(radiance: npt.ArrayLike) -> FloatArray:
     return np.interp(np.asarray(radiance, dtype=np.float64), _TB_RADIANCE, _TB_GRID)
 
 
-def sky_radiance(elev_rad: npt.ArrayLike, t_air_k: float = T_AIR_K) -> FloatArray:
+@functools.lru_cache(maxsize=1)
+def _sky_table() -> tuple[FloatArray, dict[str, FloatArray]]:
+    """(elevation deg, each profile's sky against its horizon)."""
+    raw = np.loadtxt(_SKY_CSV, delimiter=",", comments="#")
+    raw.setflags(write=False)
+    curves = {name: raw[:, i + 1] for i, name in enumerate(_columns(_SKY_CSV))}
+    return raw[:, 0], curves
+
+
+def _columns(csv: Path) -> list[str]:
+    """The names after the first in the last comment line, the header."""
+    with csv.open() as f:
+        header = [line for line in f if line.startswith("#")][-1]
+    return header.removeprefix("#").strip().split(",")[1:]
+
+
+def sky_radiance(
+    elev_rad: npt.ArrayLike,
+    t_air_k: float = T_AIR_K,
+    atmosphere: Atmosphere = ATMOSPHERE,
+) -> FloatArray:
     """Downwelling in-band sky radiance at an elevation above the horizon.
 
     Below the horizon the curve holds at ambient, which is what a ray that misses the
     sea should see.
     """
-    elev, eps = np.array(_SKY_EPS, dtype=np.float64).T
-    fraction = np.interp(np.asarray(elev_rad, dtype=np.float64), np.radians(elev), eps)
+    elev, curves = _sky_table()
+    fraction = np.interp(
+        np.asarray(elev_rad, dtype=np.float64), np.radians(elev), curves[atmosphere]
+    )
     return fraction * band_radiance(t_air_k)
 
 
 @functools.lru_cache(maxsize=1)
-def _path_table() -> tuple[FloatArray, FloatArray, FloatArray]:
-    """(range m, 1 / visibility km with 0 for no aerosol, optical depth), the optical
-    depth shaped (range, visibility) and the visibilities ascending."""
-    with _PATH_CSV.open() as f:
-        header = [line for line in f if line.startswith("#")][-1]
-    columns = header.removeprefix("# range_m,").strip().split(",")
+def _path_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
+    """Per profile: (range m, 1 / visibility km with 0 for no aerosol, optical depth),
+    the optical depth shaped (range, visibility) and the visibilities ascending."""
+    columns = _columns(_PATH_CSV)[1:]
     inverse = np.array([0.0 if c == "none" else 1 / float(c[4:-2]) for c in columns])
-    raw = np.loadtxt(_PATH_CSV, delimiter=",", comments="#")
     order = np.argsort(inverse)
-    depth = -np.log(raw[:, 1:][:, order])
-    for a in (raw, inverse, depth):
-        a.setflags(write=False)
-    return raw[:, 0], inverse[order], depth
+    names = np.loadtxt(_PATH_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
+    raw = np.loadtxt(
+        _PATH_CSV, delimiter=",", comments="#", usecols=range(1, 2 + len(columns))
+    )
+    tables = {}
+    for name in np.unique(names):
+        rows = raw[names == name]
+        depth = -np.log(rows[:, 1:][:, order])
+        for a in (rows, depth):
+            a.setflags(write=False)
+        tables[str(name)] = (rows[:, 0], inverse[order], depth)
+    return tables
 
 
 def path_optical_depth(
-    range_m: npt.ArrayLike, visibility_km: float | None
+    range_m: npt.ArrayLike,
+    visibility_km: float | None,
+    atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
     """-ln of the band transmittance along a horizontal path near the sea.
 
@@ -269,8 +290,7 @@ def path_optical_depth(
     follows the power law of its first two rows: band depth grows as a power of the
     path, not linearly, while the strongest lines saturate.
     """
-
-    ranges, inverse, depth = _path_table()
+    ranges, inverse, depth = _path_table()[atmosphere]
     x = 0.0 if visibility_km is None else 1 / visibility_km
     x = float(np.clip(x, inverse[0], inverse[-1]))
     at = np.array([np.interp(x, inverse, row) for row in depth])

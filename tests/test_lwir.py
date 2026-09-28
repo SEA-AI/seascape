@@ -122,8 +122,17 @@ def test_sky_cools_toward_the_zenith() -> None:
 
 def test_zenith_sky_is_as_cold_as_a_real_clear_sky() -> None:
     """Published clear-sky zenith brightness temperature spans ~230-265 K in band."""
-    zenith = float(lwir.sky_radiance(np.pi / 2, 288.0))
+    zenith = float(lwir.sky_radiance(np.pi / 2, 288.0, "midlatitude_summer"))
     assert lwir.band_radiance(230.0) <= zenith <= lwir.band_radiance(265.0)
+
+
+def test_wetter_air_warms_the_zenith() -> None:
+    """Water vapour is what the band sees overhead, so the tropics glow most."""
+    zenith = [
+        float(lwir.sky_radiance(np.pi / 2, 288.0, a))
+        for a in ("tropical", "midlatitude_summer", "us_standard", "midlatitude_winter")
+    ]
+    assert zenith == sorted(zenith, reverse=True)
 
 
 def test_sky_below_the_horizon_holds_at_ambient() -> None:
@@ -150,7 +159,7 @@ def test_a_path_of_no_length_keeps_all_its_light() -> None:
 
 
 def test_below_the_table_the_power_law_meets_it() -> None:
-    first = lwir._path_table()[0][0]
+    first = lwir._path_table()[lwir.ATMOSPHERE][0][0]
     below, above = lwir.path_optical_depth([first * 0.999, first * 1.001], 42.0)
     assert below == pytest.approx(above, rel=1e-2)
 

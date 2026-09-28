@@ -545,7 +545,8 @@ class TestIrBand:
         assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
         table = baked("haze_extinction")
         ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
-        depth = lwir.path_optical_depth(ranges, SCENARIO.sky.visibility_km)
+        sky = SCENARIO.sky
+        depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
         assert table == pytest.approx(np.gradient(depth, ranges), rel=1e-5)
 
     def test_the_sea_does_not_glitter(self) -> None:
@@ -566,7 +567,8 @@ class TestIrBand:
         curve = baked("sky_radiance")
 
         centres = (np.arange(len(curve)) + 0.5) / len(curve)
-        expected = lwir.sky_radiance(np.arcsin(centres), SCENARIO.sky.t_air_k)
+        sky = SCENARIO.sky
+        expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, sky.atmosphere)
         assert curve == pytest.approx(expected, rel=1e-5)
         ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
         assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"

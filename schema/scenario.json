@@ -1,5 +1,16 @@
 {
   "$defs": {
+    "Atmosphere": {
+      "enum": [
+        "tropical",
+        "midlatitude_summer",
+        "midlatitude_winter",
+        "subarctic_summer",
+        "subarctic_winter",
+        "us_standard"
+      ],
+      "type": "string"
+    },
     "Band": {
       "enum": [
         "eo",
@@ -532,7 +543,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility.\n\n`t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky\nprofile stays credible.",
+      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`\nholds it.\n\n`t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky\nprofile stays credible.",
       "properties": {
         "sun_elevation_deg": {
           "default": 30.0,
@@ -576,6 +587,11 @@
           "default": 42.0,
           "description": "Meteorological range at 550 nm; None is no aerosol.",
           "title": "Visibility Km"
+        },
+        "atmosphere": {
+          "$ref": "#/$defs/Atmosphere",
+          "default": "midlatitude_winter",
+          "description": "LOWTRAN 7's model atmosphere, for the LWIR sky and air. EO ignores it."
         },
         "t_air_k": {
           "default": 288.0,

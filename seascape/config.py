@@ -206,7 +206,8 @@ class Sky(Model):
 
     Haze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and
     `visibility_km` for the air between the camera and what it sees, in both bands. In
-    LWIR the air's water vapour hazes it too, whatever the visibility.
+    LWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`
+    holds it.
 
     `t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky
     profile stays credible.
@@ -247,6 +248,11 @@ class Sky(Model):
         default=42.0,
         gt=0.0,
         description="Meteorological range at 550 nm; None is no aerosol.",
+    )
+    atmosphere: lwir.Atmosphere = Field(
+        default=lwir.ATMOSPHERE,
+        description="LOWTRAN 7's model atmosphere, for the LWIR sky and air. EO "
+        "ignores it.",
     )
     t_air_k: float = Field(
         default=lwir.T_AIR_K,
