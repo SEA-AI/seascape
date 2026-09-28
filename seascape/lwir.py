@@ -61,6 +61,16 @@ type Atmosphere = Literal[
 ]
 # Judgement: European waters.
 ATMOSPHERE: Atmosphere = "midlatitude_winter"
+# Each model's air at the surface, the first level of its profile in LOWTRAN 7's data
+# (Anderson et al., "AFGL atmospheric constituent profiles", AFGL-TR-86-0110, 1986).
+SURFACE_AIR_K: dict[Atmosphere, float] = {
+    "tropical": 299.7,
+    "midlatitude_summer": 294.2,
+    "midlatitude_winter": 272.2,
+    "subarctic_summer": 287.2,
+    "subarctic_winter": 257.2,
+    "us_standard": 288.2,
+}
 
 BAND_M = (8.0e-6, 14.0e-6)
 

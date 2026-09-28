@@ -543,7 +543,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`\nholds it.\n\n`t_air_k` scales the IR sky and nothing in EO; the sky's shape is `atmosphere`'s.",
+      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`\nholds it.\n\n`t_air_k` scales the IR sky and nothing in EO. The sky's shape is `atmosphere`'s,\nand so is the air's temperature unless `t_air_k` is set.",
       "properties": {
         "sun_elevation_deg": {
           "default": 30.0,
@@ -594,8 +594,8 @@
           "description": "LOWTRAN 7's model atmosphere, for the LWIR sky and air. EO ignores it."
         },
         "t_air_k": {
-          "default": 288.0,
-          "description": "Scales the IR sky. EO ignores it.",
+          "default": 272.2,
+          "description": "Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
           "maximum": 320.0,
           "minimum": 250.0,
           "title": "T Air K",

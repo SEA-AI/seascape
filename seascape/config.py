@@ -209,7 +209,8 @@ class Sky(Model):
     LWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`
     holds it.
 
-    `t_air_k` scales the IR sky and nothing in EO; the sky's shape is `atmosphere`'s.
+    `t_air_k` scales the IR sky and nothing in EO. The sky's shape is `atmosphere`'s,
+    and so is the air's temperature unless `t_air_k` is set.
     """
 
     sun_elevation_deg: float = Field(
@@ -254,11 +255,20 @@ class Sky(Model):
         "ignores it.",
     )
     t_air_k: float = Field(
-        default=lwir.T_AIR_K,
+        default=lwir.SURFACE_AIR_K[lwir.ATMOSPHERE],
         ge=250.0,
         le=320.0,
-        description="Scales the IR sky. EO ignores it.",
+        description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _air_follows_the_atmosphere(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "t_air_k" not in data:
+            air_k = lwir.SURFACE_AIR_K.get(data.get("atmosphere", lwir.ATMOSPHERE))
+            if air_k is not None:  # an unknown profile fails its own validation
+                data = {**data, "t_air_k": air_k}
+        return data
 
     @property
     def extinction_per_m(self) -> float:
