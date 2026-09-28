@@ -196,7 +196,12 @@ def _haze_ranges_m(far_m: float) -> np.ndarray:
 def _extinction_by_range(
     tree: bpy.types.NodeTree, visibility_km: float | None, far_m: float
 ) -> bpy.types.NodeSocket:
-    """The band's extinction at the shading point's distance from the camera, per m."""
+    """The band's extinction at the shading point's distance from the camera, per m.
+
+    ponytail: exact along camera rays. A secondary ray, a hull reflected in the sea,
+    takes the extinction at its distance from the camera rather than along its own
+    path; that needs the path's length so far, which a volume shader cannot read.
+    """
     ranges = _haze_ranges_m(far_m)
     depth = lwir.path_optical_depth(ranges, visibility_km)
     image = curve_image("haze_extinction", np.gradient(depth, ranges))
@@ -219,6 +224,9 @@ def _sky_image(t_air_k: float) -> bpy.types.Image:
     and no arcsine node is needed. Below the horizon Z is clamped to 0, where the curve
     holds at its first texel.
     """
+    # The world's, when the haze asks second: `build` starts from factory settings.
+    if (baked := bpy.data.images.get("sky_radiance")) is not None:
+        return baked
     sin_elevation = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     return curve_image(
         "sky_radiance", lwir.sky_radiance(np.arcsin(sin_elevation), t_air_k)

@@ -542,6 +542,7 @@ class TestIrBand:
 
     def test_the_air_takes_the_band_s_optical_depth_by_range(self) -> None:
         """The shader reads this by log range at texel centres."""
+        assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
         table = baked("haze_extinction")
         ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
         depth = lwir.path_optical_depth(ranges, SCENARIO.sky.visibility_km)
