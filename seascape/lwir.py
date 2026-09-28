@@ -64,8 +64,8 @@ type Atmosphere = Literal[
     "north_sea_winter",
     "north_sea_summer",
 ]
-# Judgement: European waters.
-ATMOSPHERE: Atmosphere = "midlatitude_winter"
+# European waters, as measured at Helgoland.
+ATMOSPHERE: Atmosphere = "north_sea"
 # Each model's air at the surface, the first level of its profile in LOWTRAN 7's data
 # (Anderson et al., "AFGL atmospheric constituent profiles", AFGL-TR-86-0110, 1986).
 SURFACE_AIR_K: dict[Atmosphere, float] = {

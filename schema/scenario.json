@@ -593,11 +593,11 @@
         },
         "atmosphere": {
           "$ref": "#/$defs/Atmosphere",
-          "default": "midlatitude_winter",
+          "default": "north_sea",
           "description": "LOWTRAN 7's model atmosphere, for the LWIR sky and air. EO ignores it."
         },
         "t_air_k": {
-          "default": 272.2,
+          "default": 282.25,
           "description": "Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
           "maximum": 320.0,
           "minimum": 250.0,
