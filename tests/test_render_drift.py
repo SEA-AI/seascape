@@ -355,7 +355,7 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
 
 
 @pytest.mark.render
-@pytest.mark.parametrize("range_m", [1000.0, 5000.0, 25000.0])
+@pytest.mark.parametrize("range_m", [1000.0, 5000.0, 25000.0, 28000.0])
 def test_haze_leaves_a_black_card_koschmieder_s_share_of_the_sky(
     range_m: float,
 ) -> None:
@@ -367,8 +367,10 @@ def test_haze_leaves_a_black_card_koschmieder_s_share_of_the_sky(
             "ownship": hazy.ownship.model_copy(update={"asset": None}),
         }
     )
+    assert hazy.sky.extinction_per_m > 0, "clear air would pass this vacuously"
     scene.build(hazy, "eo")
     sc = bpy.context.scene
+    assert range_m < sc.camera.data.clip_end, "past the far plane there is no haze"
     lens = bpy.data.cameras.new("probe")
     lens.angle, lens.clip_end = math.radians(0.2), 2 * range_m
     camera = bpy.data.objects.new("probe", lens)
