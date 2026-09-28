@@ -5,9 +5,6 @@ seed = 20260920
 [rig]
 preset = "twin_pod"
 
-[sea]
-t_sea_k = 291.0
-
 [sky]
 # Keeps the sun disc out of frame.
 sun_bearing_deg = 135.0

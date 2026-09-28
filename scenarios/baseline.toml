@@ -23,11 +23,6 @@ hfov_deg = 24.0
 width_px = 640
 height_px = 512
 
-[sea]
-# Warmer than the air: global-mean sea-air difference is under 1 K
-# (Kara et al. 2007, https://doi.org/10.1029/2006JC003833); exaggerated for a clearer scene.
-t_sea_k = 291.0
-
 [sky]
 # Keeps the sun disc out of frame.
 sun_bearing_deg = 135.0
