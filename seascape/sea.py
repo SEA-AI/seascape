@@ -148,11 +148,9 @@ def _math(
 
 
 class _Pixel(NamedTuple):
-    """A pixel's footprint on the sea, across the view and along it."""
-
     across_m: bpy.types.NodeSocket
     along_m: bpy.types.NodeSocket
-    along_dir: bpy.types.NodeSocket  # unit, level
+    along_dir: bpy.types.NodeSocket  # unit, horizontal
 
 
 def _pixel(tree: bpy.types.NodeTree, pixel_rad: float) -> _Pixel:
@@ -173,7 +171,25 @@ def _pixel(tree: bpy.types.NodeTree, pixel_rad: float) -> _Pixel:
 
 class _Drawn(NamedTuple):
     phase: bpy.types.NodeSocket
-    visibility: bpy.types.NodeSocket
+    footprint_sq: bpy.types.NodeSocket
+
+
+def _fade(
+    tree: bpy.types.NodeTree,
+    wave: Wave,
+    footprint_sq: bpy.types.NodeSocket,
+    whole: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`whole` scaled by `waves.visibility`."""
+    # From Min above From Max: a wider footprint fades the wave out.
+    fade = tree.nodes.new("ShaderNodeMapRange")
+    fade.interpolation_type = "SMOOTHSTEP"
+    gone, whole_m = fade_footprints_m(2 * math.pi / wave.k_rad_m)
+    fade.inputs["From Min"].default_value = float(gone) ** 2
+    fade.inputs["From Max"].default_value = float(whole_m) ** 2
+    tree.links.new(footprint_sq, fade.inputs["Value"])
+    tree.links.new(whole, fade.inputs["To Max"])
+    return fade.outputs["Result"]
 
 
 def _wave(
@@ -203,19 +219,9 @@ def _wave(
     )
     cos_sq = _math(tree, "MULTIPLY", heading, heading)
     footprint_sq = _math(tree, "MULTIPLY_ADD", cos_sq, stretch, across_sq)
-    # `waves.visibility`: From Min above From Max, so a wider footprint fades it out.
-    fade = tree.nodes.new("ShaderNodeMapRange")
-    fade.name = f"wave_{i}_fade"
-    fade.interpolation_type = "SMOOTHSTEP"
-    gone, whole = fade_footprints_m(2 * math.pi / wave.k_rad_m)
-    fade.inputs["From Min"].default_value = float(gone) ** 2
-    fade.inputs["From Max"].default_value = float(whole) ** 2
-    fade.inputs["To Min"].default_value = 0.0
-    fade.inputs["To Max"].default_value = 1.0
-    tree.links.new(footprint_sq, fade.inputs["Value"])
-    visibility = fade.outputs["Result"]
     # -d height / dx of a cos(phase) is a k_x sin(phase).
-    shown = _math(tree, "MULTIPLY", _math(tree, "SINE", phase), visibility)
+    shown = _fade(tree, wave, footprint_sq, _math(tree, "SINE", phase))
+    shown.node.name = f"wave_{i}_fade"
     term = _vector(tree, "MULTIPLY_ADD", name=f"wave_{i}_slope")
     term.node.inputs["Vector"].default_value = (
         wave.amplitude_m * wave.k_east_rad_m,
@@ -225,7 +231,7 @@ def _wave(
     tree.links.new(shown, term.node.inputs["Vector_001"])
     if gradient is not None:
         tree.links.new(gradient, term.node.inputs["Vector_002"])
-    return term, _Drawn(phase, visibility)
+    return term, _Drawn(phase, footprint_sq)
 
 
 def _waves(
@@ -272,7 +278,10 @@ def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types
 
 
 def _at_footprint(
-    tree: bpy.types.NodeTree, table: bpy.types.Image, footprint_m: bpy.types.NodeSocket
+    tree: bpy.types.NodeTree,
+    table: bpy.types.Image,
+    footprint_m: bpy.types.NodeSocket,
+    name: str,
 ) -> bpy.types.NodeSocket:
     low, high = FOOTPRINT_RANGE_M
     decades = math.log10(high / low)
@@ -284,7 +293,7 @@ def _at_footprint(
         -math.log10(low) / decades,
     )
     value = lookup(tree, table, x)
-    value.node.name = table.name
+    value.node.name = name
     return value
 
 
@@ -298,13 +307,10 @@ def _whitecaps(
     """How much of the pixel whitecaps, as `waves.whitecap_cover`."""
     acceleration: float | bpy.types.NodeSocket = 0.0
     for wave, one in zip(wind, drawn, strict=True):
-        shown = _math(
-            tree, "MULTIPLY", _math(tree, "COSINE", one.phase), one.visibility
-        )
+        shown = _fade(tree, wave, one.footprint_sq, _math(tree, "COSINE", one.phase))
         acceleration = _math(
             tree, "MULTIPLY_ADD", shown, wave.amplitude_m * wave.k_rad_m, acceleration
         )
-    # Along the view: the widest footprint, so the most left unresolved. A judgement.
     table = _footprint_table(
         "sea_unresolved_acceleration",
         lambda f: unresolved_acceleration_variance(wind, f),
@@ -312,7 +318,11 @@ def _whitecaps(
     sigma = _math(
         tree,
         "MAXIMUM",
-        _math(tree, "SQRT", _at_footprint(tree, table, footprint_m)),
+        _math(
+            tree,
+            "SQRT",
+            _at_footprint(tree, table, footprint_m, "sea_unresolved_acceleration"),
+        ),
         1e-6,
     )
     excess = _math(
@@ -397,7 +407,6 @@ def _thermal(
         _math(tree, "SUBTRACT", _math(tree, "SQRT", aspect), 1.0),
         mirror.inputs["Anisotropy"],
     )
-    # The RMS slope of the two footprints, as a fraction of the table's.
     slope_max = cox_munk_slope(sea.wind_speed_mps)
     mean = _math(tree, "MULTIPLY", _math(tree, "ADD", *unresolved), 0.5)
     fraction = _math(tree, "DIVIDE", _math(tree, "SQRT", mean), slope_max)
@@ -467,11 +476,12 @@ def _material(
         lambda f: unresolved_slope_variance(sea.wind_speed_mps, field, f),
     )
     unresolved = (
-        _at_footprint(tree, table, pixel.along_m),
-        _at_footprint(tree, table, pixel.across_m),
+        _at_footprint(tree, table, pixel.along_m, "sea_unresolved_variance"),
+        _at_footprint(tree, table, pixel.across_m, "sea_unresolved_variance"),
     )
     if band == "eo":
         fraction = whitecap_fraction(sea.wind_speed_mps)
+        # Along the view, the widest footprint, leaves the most unresolved. A judgement.
         whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, fraction)
         surface = _daylight(tree, sea, normal, pixel.along_dir, unresolved, whitecaps)
     else:

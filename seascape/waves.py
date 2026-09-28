@@ -17,8 +17,9 @@ whitecap coverage dependence on wind speed", Journal of Physical Oceanography 10
 2094, 1980, for how much; Snyder & Kennedy, "On the formation of whitecaps by a
 threshold mechanism. Part I: Basic formalism", Journal of Physical Oceanography 13(8)
 1482, 1983, for where: the downward acceleration past a threshold, set from the
-coverage as Tse, McGill & Kelly, SPIE Ocean Optics X 1302, 505, 1990, and Tessendorf,
-Reinhard & Gao, "Whitecap phenomenology for ocean surface simulation", 2023, do. Per
+coverage (Tse, McGill & Kelly, SPIE Ocean Optics X 1302, 505, 1990; Tessendorf, Reinhard
+& Gao, "Whitecap phenomenology for ocean surface simulation", Clemson University report,
+2023). Per
 pixel: Dupuy & Bruneton, "Real-time animation and rendering of ocean whitecaps",
 SIGGRAPH Asia 2012 Technical Briefs 15 (doi:10.1145/2407746.2407761), whose Jacobian
 criterion is this acceleration to first order in the choppiness; the drawn waves set the
@@ -55,7 +56,7 @@ GRAVITY_MS2 = 9.81
 #   total slope     sqrt(0.003 + 0.00512 U)             Cox & Munk 1954, eq. 13
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn                     Bruneton 2010, per pixel
-#   whitecaps       P(a k cos(phase) > threshold)       Snyder & Kennedy 1983
+#   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
@@ -302,7 +303,7 @@ def attitude(
 
 
 def slope_variance(field: tuple[Wave, ...]) -> float:
-    """Sum of a^2 k^2 / 2: also the downward acceleration's variance over g^2."""
+    """Also the downward acceleration's variance over g^2, as omega^2 = g k."""
     return sum((w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field)
 
 
@@ -334,7 +335,6 @@ def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
 def unresolved_slope_variance(
     wind_speed_mps: float, field: tuple[Wave, ...], footprint_m: float
 ) -> float:
-    """The slope variance a pixel of `footprint_m` does not draw."""
     drawn = slope_variance(filtered(field, footprint_m))
     return max(cox_munk_slope(wind_speed_mps) ** 2 - drawn, 0.0)
 
@@ -342,8 +342,7 @@ def unresolved_slope_variance(
 def unresolved_acceleration_variance(
     wind: tuple[Wave, ...], footprint_m: float
 ) -> float:
-    """The downward acceleration variance, over g^2, a pixel of `footprint_m` does not
-    draw."""
+    """Over g^2."""
     return slope_variance(wind) - slope_variance(filtered(wind, footprint_m))
 
 

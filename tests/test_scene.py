@@ -611,7 +611,7 @@ class TestIrBand:
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
-        theta. Rows run up the unresolved slope per axis, to all of Cox & Munk's."""
+        theta. Rows run up the unresolved RMS slope, to all of Cox & Munk's."""
         table = baked("sea_emissivity")
         rows, width = table.shape
         mu = (np.arange(width) + 0.5) / width
