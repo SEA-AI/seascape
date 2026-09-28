@@ -517,15 +517,19 @@ class TestEoBand:
         airlight = nodes["haze_airlight"]
         for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
             assert getattr(airlight, name) == getattr(sky, name)
-        assert not airlight.sun_disc
 
-    def test_the_airlight_is_the_horizon_the_ray_travels_towards(self) -> None:
-        """Incoming points back at the camera; unflipped, the haze would take the
-        horizon behind it."""
-        horizon = bpy.data.materials["haze"].node_tree.nodes["haze_horizon"]
-        assert horizon.inputs[0].links[0].from_socket.name == "Incoming"
+    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
+        """Incoming points back at the camera; unflipped, the haze would take the sky
+        behind it."""
+        nodes = bpy.data.materials["haze"].node_tree.nodes
+        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
+        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
+        assert ahead.inputs["Scale"].default_value == -1.0
+        assert horizon.inputs[0].links[0].from_node == ahead
         assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
-        assert horizon.outputs["Vector"].links[0].to_node.name == "haze_airlight"
+        (into_sky,) = horizon.outputs["Vector"].links
+        assert into_sky.to_node.name == "haze_airlight"
+        assert into_sky.is_valid
 
 
 class TestIrBand:

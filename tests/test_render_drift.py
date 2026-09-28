@@ -352,3 +352,48 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     frame = shoot((200, 150), "sun")
     row, col = np.unravel_index(frame.argmax(), frame.shape)
     assert abs(row - 75) <= 2 and abs(col - 100) <= 2
+
+
+@pytest.mark.render
+@pytest.mark.parametrize("range_m", [1000.0, 5000.0, 25000.0])
+def test_haze_leaves_a_black_card_koschmieder_s_share_of_the_sky(
+    range_m: float,
+) -> None:
+    """Looking just above the horizon, so without the card the ray reaches the sky."""
+    hazy = load(Path(__file__).parent.parent / "scenarios" / "baseline.toml")
+    hazy = hazy.model_copy(
+        update={
+            "objects": [],
+            "ownship": hazy.ownship.model_copy(update={"asset": None}),
+        }
+    )
+    scene.build(hazy, "eo")
+    sc = bpy.context.scene
+    lens = bpy.data.cameras.new("probe")
+    lens.angle, lens.clip_end = math.radians(0.2), 2 * range_m
+    camera = bpy.data.objects.new("probe", lens)
+    sc.collection.objects.link(camera)
+    elevation = math.radians(0.2)  # under the haze's top at every range
+    camera.location = (0.0, 0.0, hazy.rig.height_m)
+    camera.rotation_euler = (math.pi / 2 + elevation, 0.0, 0.0)  # towards +Y
+    sc.camera = camera
+    sc.cycles.samples = 16
+    sky = shoot((16, 16), "haze_sky")
+
+    black = bpy.data.materials.new("black")
+    tree = black.node_tree
+    tree.nodes.clear()
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.inputs["Strength"].default_value = 0.0
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    bpy.ops.mesh.primitive_plane_add(size=0.01 * range_m)
+    card = bpy.context.object
+    card.rotation_euler = (math.pi / 2, 0.0, 0.0)
+    card.location = (0.0, range_m, hazy.rig.height_m + range_m * math.tan(elevation))
+    card.data.materials.append(black)
+    seen = shoot((16, 16), "haze_card")
+
+    distance_m = range_m / math.cos(elevation)
+    expected = 1 - math.exp(-hazy.sky.extinction_per_m * distance_m)
+    assert np.median(seen / sky) == pytest.approx(expected, rel=0.01)

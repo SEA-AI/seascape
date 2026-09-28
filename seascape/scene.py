@@ -32,9 +32,11 @@ from seascape.config import (
 # colour does not matter, only how flat the finish is.
 PAINT_EMISSIVITY = 0.94
 
-# Judgement: above any camera or hull, so every path to a surface is hazed. The Sky
-# Texture already hazes the sky, and a ray to it crosses only this much again.
+# Judgement: above any camera or hull, so every path to a surface is hazed. A ray to the
+# sky leaves the haze as it entered it, so the height changes nothing there.
 HAZE_TOP_M = 200.0
+# Measured: fewer leave a path of kilometres short of its airlight.
+HAZE_STEPS = 32
 
 
 def _substream(seed: int, name: str) -> np.random.Generator:
@@ -92,18 +94,20 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     return node
 
 
-def _haze(sky: Sky, reach_m: float, radius_m: float) -> None:
-    """Koschmieder's airlight: air that absorbs at beta and emits beta times the horizon
-    sky in the ray's azimuth, so a path of length d keeps exp(-beta d) of the light it
-    carries and takes the rest from the horizon."""
+def _haze(sky: Sky, far_m: float, radius_m: float) -> None:
+    """Koschmieder's airlight: air that absorbs at beta and emits beta times the sky
+    ahead of the ray, no lower than the horizon. A path of length d keeps exp(-beta d)
+    of the light it carries and takes the rest from that sky, so a ray to the sky
+    leaves unchanged."""
     beta = sky.extinction_per_m
     if not beta:
         return
-    bottom = waves.sea_z_m(reach_m, reach_m, radius_m)  # the sea's corner, its lowest
+    # Out to the far plane: a hull past the sea's edge can still show over the horizon.
+    bottom = waves.sea_z_m(far_m, far_m, radius_m)
     bpy.ops.mesh.primitive_cube_add(size=2.0)
     air = bpy.context.object
     air.name = "haze"
-    air.scale = (reach_m, reach_m, (HAZE_TOP_M - bottom) / 2)
+    air.scale = (far_m, far_m, (HAZE_TOP_M - bottom) / 2)
     place(air, 0.0, 0.0, (HAZE_TOP_M + bottom) / 2)
     # The Sky Texture's sun has already crossed the atmosphere.
     air.visible_shadow = False
@@ -113,14 +117,21 @@ def _haze(sky: Sky, reach_m: float, radius_m: float) -> None:
     tree.nodes.clear()
     link = tree.links.new
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    ahead = tree.nodes.new("ShaderNodeVectorMath")
+    ahead.name = "haze_ahead"
+    ahead.operation = "SCALE"
+    link(geometry.outputs["Incoming"], ahead.inputs["Vector"])
+    # Incoming points back at the camera.
+    ahead.inputs["Scale"].default_value = -1.0
     horizon = tree.nodes.new("ShaderNodeVectorMath")
     horizon.name = "haze_horizon"
-    horizon.operation = "MULTIPLY"
-    link(geometry.outputs["Incoming"], horizon.inputs[0])
-    # Incoming points back at the camera.
+    horizon.operation = "MAXIMUM"
+    link(ahead.outputs["Vector"], horizon.inputs[0])
+    # Below the horizon the Sky Texture draws the ground, not air.
     horizon.inputs[1].default_value = (-1.0, -1.0, 0.0)
     airlight = _sky_texture(tree, sky)
     airlight.name = "haze_airlight"
+    # The sun disc disables the Vector input, and a link to it is then ignored.
     airlight.sun_disc = False
     link(horizon.outputs["Vector"], airlight.inputs["Vector"])
     emission = tree.nodes.new("ShaderNodeEmission")
@@ -140,10 +151,10 @@ def _haze(sky: Sky, reach_m: float, radius_m: float) -> None:
     air.data.materials.append(material)
 
     cycles = bpy.context.scene.cycles
-    # Unbiased tracking takes the airlight lookup for air that varies in space. It
-    # varies only between rays, so one marching step is exact.
+    # Unbiased tracking takes the airlight lookup for air that varies in space, and is
+    # twice as slow. Marching is exact once its steps are short against the path.
     cycles.volume_biased = True
-    cycles.volume_max_steps = 1
+    cycles.volume_max_steps = HAZE_STEPS
 
 
 def _sky_image(t_air_k: float) -> bpy.types.Image:
@@ -820,7 +831,7 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
     if band == "eo":
-        _haze(scenario.sky, reach_m, radius_m)
+        _haze(scenario.sky, far_m, radius_m)
     targets: dict[str, list[bpy.types.Object]] = {}
     for spec in scenario.objects:
         anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs)
