@@ -73,10 +73,9 @@ def _columns(csv: Path) -> list[str]:
 
 
 def _surface(column: str) -> dict[str, float]:
-    names = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    index = _columns(_SURFACE_CSV).index(column) + 1
-    values = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=index)
-    return {str(n): float(v) for n, v in zip(names, values, strict=True)}
+    names = ["profile", *_columns(_SURFACE_CSV)]
+    rows = np.genfromtxt(_SURFACE_CSV, delimiter=",", dtype=None, names=names)
+    return dict(zip(rows["profile"].tolist(), rows[column].tolist(), strict=True))
 
 
 # Each profile's air and sea at the surface; `data/lowtran_surface.csv` says whose.
@@ -289,8 +288,8 @@ def _path_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
     for name in np.unique(names):
         rows = raw[names == name]
         depth = -np.log(rows[:, 1:][:, order])
-        for a in (rows, depth):
-            a.setflags(write=False)
+        rows.setflags(write=False)
+        depth.setflags(write=False)
         tables[str(name)] = (rows[:, 0], inverse[order], depth)
     return tables
 

@@ -490,12 +490,8 @@ class Scenario(Model):
         """The sea's own field cannot see the sky's, so the scenario fills it."""
         if not isinstance(data, dict) or not isinstance(data.get("sea", {}), dict):
             return data
-        sea, sky = data.get("sea", {}), data.get("sky", {})
-        atmosphere = (
-            sky.get("atmosphere", lwir.ATMOSPHERE)
-            if isinstance(sky, dict)
-            else sky.atmosphere
-        )
+        sea = data.get("sea", {})
+        atmosphere = data.get("sky", {}).get("atmosphere", lwir.ATMOSPHERE)
         if "t_sea_k" not in sea and atmosphere in lwir.SURFACE_SEA_K:
             data = {**data, "sea": {**sea, "t_sea_k": lwir.SURFACE_SEA_K[atmosphere]}}
         return data
