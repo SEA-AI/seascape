@@ -151,8 +151,8 @@ def _haze(sky: Sky, far_m: float, radius_m: float) -> None:
     air.data.materials.append(material)
 
     cycles = bpy.context.scene.cycles
-    # Unbiased tracking takes the airlight lookup for air that varies in space, and is
-    # twice as slow. Marching is exact once its steps are short against the path.
+    # Unbiased tracking takes the airlight lookup for air that varies in space and
+    # slows down. Marching is exact once its steps are short against the path.
     cycles.volume_biased = True
     cycles.volume_max_steps = HAZE_STEPS
 
