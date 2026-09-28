@@ -650,7 +650,7 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.eevee.clamp_surface_indirect = 0.0
     sc.cycles.device = "GPU" if _enable_gpu() else "CPU"
     sc.cycles.samples = getattr(outputs.samples, band)
-    # On by default. OIDN breaks the ir frame's R=G=B and blurs sub-pixel waves.
+    # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
     view = sc.view_settings
     if band == "eo":
