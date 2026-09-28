@@ -506,12 +506,41 @@ class TestEoBand:
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
 
+    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
+        nodes = bpy.data.materials["haze"].node_tree.nodes
+        beta = SCENARIO.sky.extinction_per_m
+        density = nodes["haze_absorption"].inputs["Density"].default_value
+        assert density == pytest.approx(beta)
+        strength = nodes["haze_emission"].inputs["Strength"].default_value
+        assert strength == pytest.approx(beta)
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        airlight = nodes["haze_airlight"]
+        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
+            assert getattr(airlight, name) == getattr(sky, name)
+
+    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
+        """Incoming points back at the camera; unflipped, the haze would take the sky
+        behind it."""
+        nodes = bpy.data.materials["haze"].node_tree.nodes
+        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
+        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
+        assert ahead.inputs["Scale"].default_value == -1.0
+        assert horizon.inputs[0].links[0].from_node == ahead
+        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
+        (into_sky,) = horizon.outputs["Vector"].links
+        assert into_sky.to_node.name == "haze_airlight"
+        assert into_sky.is_valid
+
 
 class TestIrBand:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls) -> None:
         scene.build(SCENARIO, "ir")
+
+    def test_the_air_is_clear(self) -> None:
+        """Haze is EO's: `lwir` models no path extinction."""
+        assert "haze" not in bpy.data.objects
 
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""

@@ -87,6 +87,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **The sequencer tones its strips through the scene's view transform.** The factory AgX takes a png's white to about 195. `Standard` passes a picture through.
 - **A missing strip frame encodes as black**, in silence. Check the files exist first.
 - **A movie `render.filepath` without an extension gets the frame range appended**: `cam` is written as `cam0001-0300.mp4`.
+- **A Sky Texture with its sun disc on ignores its Vector input.** The socket is disabled, so a link to it stays in the tree and changes nothing, and `inputs["Vector"]` raises. Turn the disc off to point the node anywhere but the ray.
 - **The Sky Texture's `turbidity` does nothing under the scattering models.** It belongs to Preetham and Hosek-Wilkie. Haze there is `aerosol_density`. Setting the wrong one is accepted in silence and changes no pixel, which was verified by rendering both.
 
 ## Conventions

@@ -15,6 +15,7 @@ Rules:
 3. Tables merge, everything else replaces. A list is replaced whole.
 """
 
+import math
 import tomllib
 import warnings
 from collections.abc import Iterable
@@ -203,7 +204,8 @@ class Sea(Model):
 class Sky(Model):
     """Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.
 
-    Haze is `aerosol_density`, the node's own parameter.
+    Haze is two parameters: `aerosol_density` for the sky itself, the node's own, and
+    `visibility_km` for the air between the camera and what it sees.
 
     `t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky
     profile stays credible.
@@ -234,12 +236,31 @@ class Sky(Model):
         le=10.0,
         description="Haze, as the Sky Texture's own parameter. EO only.",
     )
+    # Judgement, after Adams: 42 km, inside the open ocean's measured spread. OPAC's
+    # maritime aerosols at 550 nm and 80% humidity (Hess, Koepke & Schult, BAMS 79(5)
+    # 831, 1998), plus sea-level Rayleigh's 0.012 km^-1 (the MODTRAN 2/3 report,
+    # eq. 26): clean, 0.090 km^-1, is 38 km; tropical, 0.043 km^-1, is 72 km. The
+    # ocean's mean optical depth, 0.11 at 500 nm, gives 34 km in OPAC's clean profile
+    # (Smirnov et al., JGR 2009, doi:10.1029/2008JD011257).
+    visibility_km: float | None = Field(
+        default=42.0,
+        gt=0.0,
+        description="Meteorological range at 550 nm; None is clear air. EO only.",
+    )
     t_air_k: float = Field(
         default=lwir.T_AIR_K,
         ge=250.0,
         le=320.0,
         description="Scales the IR sky. EO ignores it.",
     )
+
+    @property
+    def extinction_per_m(self) -> float:
+        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
+        contrast against the horizon sky."""
+        if self.visibility_km is None:
+            return 0.0
+        return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
 
 _ASSET = "An asset name from the manifest."

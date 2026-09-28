@@ -32,6 +32,12 @@ from seascape.config import (
 # colour does not matter, only how flat the finish is.
 PAINT_EMISSIVITY = 0.94
 
+# The aerosol's boundary layer, 0 to 2 km (the MODTRAN 2/3 report, section 2.3.2). A ray
+# to the sky leaves the haze as it entered it, so the height changes nothing there.
+HAZE_TOP_M = 2000.0
+# Measured: fewer leave a path of kilometres short of its airlight.
+HAZE_STEPS = 32
+
 
 def _substream(seed: int, name: str) -> np.random.Generator:
     """A named substream, so adding a component cannot perturb an existing one."""
@@ -72,6 +78,12 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     tree = world.node_tree
     if band == "ir":
         return _thermal_sky(world, sky.t_air_k)
+    node = _sky_texture(tree, sky)
+    tree.links.new(node.outputs["Color"], tree.nodes["Background"].inputs["Color"])
+    return world
+
+
+def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     node = tree.nodes.new("ShaderNodeTexSky")
     # `turbidity` belongs to Preetham and Hosek-Wilkie and is silently ignored here.
     node.sky_type = "MULTIPLE_SCATTERING"
@@ -79,8 +91,70 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     # An azimuth, clockwise from +Y, though Blender calls it a rotation.
     node.sun_rotation = math.radians(sky.sun_bearing_deg)
     node.aerosol_density = sky.aerosol_density
-    tree.links.new(node.outputs["Color"], tree.nodes["Background"].inputs["Color"])
-    return world
+    return node
+
+
+def _haze(sky: Sky, far_m: float, radius_m: float) -> None:
+    """Koschmieder's airlight: air that absorbs at beta and emits beta times the sky
+    ahead of the ray, no lower than the horizon. A path of length d keeps exp(-beta d)
+    of the light it carries and takes the rest from that sky, so a ray to the sky
+    leaves unchanged."""
+    beta = sky.extinction_per_m
+    if not beta:
+        return
+    # Out to the far plane: a hull past the sea's edge can still show over the horizon.
+    bottom = waves.sea_z_m(far_m, far_m, radius_m)
+    bpy.ops.mesh.primitive_cube_add(size=2.0)
+    air = bpy.context.object
+    air.name = "haze"
+    air.scale = (far_m, far_m, (HAZE_TOP_M - bottom) / 2)
+    place(air, 0.0, 0.0, (HAZE_TOP_M + bottom) / 2)
+    # The Sky Texture's sun has already crossed the atmosphere.
+    air.visible_shadow = False
+
+    material = bpy.data.materials.new("haze")
+    tree = material.node_tree
+    tree.nodes.clear()
+    link = tree.links.new
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    ahead = tree.nodes.new("ShaderNodeVectorMath")
+    ahead.name = "haze_ahead"
+    ahead.operation = "SCALE"
+    link(geometry.outputs["Incoming"], ahead.inputs["Vector"])
+    # Incoming points back at the camera.
+    ahead.inputs["Scale"].default_value = -1.0
+    horizon = tree.nodes.new("ShaderNodeVectorMath")
+    horizon.name = "haze_horizon"
+    horizon.operation = "MAXIMUM"
+    link(ahead.outputs["Vector"], horizon.inputs[0])
+    # Below the horizon the Sky Texture draws the ground, not air.
+    horizon.inputs[1].default_value = (-1.0, -1.0, 0.0)
+    airlight = _sky_texture(tree, sky)
+    airlight.name = "haze_airlight"
+    # The sun disc disables the Vector input, and a link to it is then ignored.
+    airlight.sun_disc = False
+    link(horizon.outputs["Vector"], airlight.inputs["Vector"])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "haze_emission"
+    link(airlight.outputs["Color"], emission.inputs["Color"])
+    emission.inputs["Strength"].default_value = beta
+    absorption = tree.nodes.new("ShaderNodeVolumeAbsorption")
+    absorption.name = "haze_absorption"
+    # Black absorbs every channel at the full density.
+    absorption.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+    absorption.inputs["Density"].default_value = beta
+    both = tree.nodes.new("ShaderNodeAddShader")
+    link(emission.outputs["Emission"], both.inputs[0])
+    link(absorption.outputs["Volume"], both.inputs[1])
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    link(both.outputs["Shader"], output.inputs["Volume"])
+    air.data.materials.append(material)
+
+    cycles = bpy.context.scene.cycles
+    # Unbiased tracking takes the airlight lookup for air that varies in space and
+    # slows down. Marching is exact once its steps are short against the path.
+    cycles.volume_biased = True
+    cycles.volume_max_steps = HAZE_STEPS
 
 
 def _sky_image(t_air_k: float) -> bpy.types.Image:
@@ -756,6 +830,8 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    if band == "eo":
+        _haze(scenario.sky, far_m, radius_m)
     targets: dict[str, list[bpy.types.Object]] = {}
     for spec in scenario.objects:
         anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs)
