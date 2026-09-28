@@ -509,10 +509,12 @@ class TestEoBand:
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
         nodes = bpy.data.materials["haze"].node_tree.nodes
         beta = SCENARIO.sky.extinction_per_m
-        density = nodes["haze_absorption"].inputs["Density"].default_value
-        assert density == pytest.approx(beta)
-        strength = nodes["haze_emission"].inputs["Strength"].default_value
-        assert strength == pytest.approx(beta)
+        assert nodes["haze_beta"].outputs["Value"].default_value == pytest.approx(beta)
+        for node, socket in (
+            ("haze_absorption", "Density"),
+            ("haze_emission", "Strength"),
+        ):
+            assert nodes[node].inputs[socket].links[0].from_node.name == "haze_beta"
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         airlight = nodes["haze_airlight"]
         for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
@@ -538,9 +540,13 @@ class TestIrBand:
     def built(cls) -> None:
         scene.build(SCENARIO, "ir")
 
-    def test_the_air_is_clear(self) -> None:
-        """Haze is EO's: `lwir` models no path extinction."""
-        assert "haze" not in bpy.data.objects
+    def test_the_air_takes_the_band_s_optical_depth_by_range(self) -> None:
+        """The shader reads this by log range at texel centres."""
+        assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
+        table = baked("haze_extinction")
+        ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
+        depth = lwir.path_optical_depth(ranges, SCENARIO.sky.visibility_km)
+        assert table == pytest.approx(np.gradient(depth, ranges), rel=1e-5)
 
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""

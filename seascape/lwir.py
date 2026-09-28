@@ -2,8 +2,7 @@
 
 Blender is an RGB renderer with no concept of the 8-14 um band, and its Fresnel node
 takes a scalar IOR where water needs a complex one (n + i*k). So these curves are
-evaluated here and the shader consumes them as 1D lookups. Path extinction is not
-modelled. Angles are radians.
+evaluated here and the shader consumes them as 1D lookups. Angles are radians.
 
 A sea surface emits and reflects, and the two are complements: `1 - eps` of what it does
 not emit comes back as reflected sky. Leave the reflection out and the sea goes black at
@@ -22,10 +21,14 @@ for the model sea surface in the infrared window regions", Remote Sensing of Env
 omits is in Wu & Smith, "Emissivity of rough sea surface for 8-13 um: modeling and
 verification", Applied Optics 36(12) 2609, 1997 (doi:10.1364/AO.36.002609).
 
-Sky emissivity: one LOWTRAN7 run, midlatitude summer profile with the navy maritime
-aerosol, observer at 12 m, integrated over the band. LOWTRAN7 is public-domain
-(AFGL-TR-88-0177); the run is reproducible with `lowtran` on PyPI. A band model with a
-fixed profile, not a radiometric reference.
+Sky emissivity: one LOWTRAN7 run, midlatitude summer profile without aerosol, observer
+at 12 m, integrated over the band. LOWTRAN7 is public-domain (AFGL-TR-88-0177); the run
+is reproducible with `lowtran` on PyPI. A band model with a fixed profile, not a
+radiometric reference.
+
+Path transmittance: LOWTRAN7 again, the same profile, a horizontal path at 12 m with
+the maritime aerosol at each meteorological range; `data/lowtran_path.csv` says how.
+Water vapour takes most of it.
 
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:
@@ -45,6 +48,7 @@ import numpy.typing as npt
 type FloatArray = npt.NDArray[np.float64]
 
 _TABLE_CSV = Path(__file__).parent / "data" / "water_nk.csv"
+_PATH_CSV = Path(__file__).parent / "data" / "lowtran_path.csv"
 
 BAND_M = (8.0e-6, 14.0e-6)
 
@@ -237,3 +241,41 @@ def sky_radiance(elev_rad: npt.ArrayLike, t_air_k: float = T_AIR_K) -> FloatArra
     elev, eps = np.array(_SKY_EPS, dtype=np.float64).T
     fraction = np.interp(np.asarray(elev_rad, dtype=np.float64), np.radians(elev), eps)
     return fraction * band_radiance(t_air_k)
+
+
+@functools.lru_cache(maxsize=1)
+def _path_table() -> tuple[FloatArray, FloatArray, FloatArray]:
+    """(range m, 1 / visibility km with 0 for no aerosol, optical depth), the optical
+    depth shaped (range, visibility) and the visibilities ascending."""
+    with _PATH_CSV.open() as f:
+        header = [line for line in f if line.startswith("#")][-1]
+    columns = header.removeprefix("# range_m,").strip().split(",")
+    inverse = np.array([0.0 if c == "none" else 1 / float(c[4:-2]) for c in columns])
+    raw = np.loadtxt(_PATH_CSV, delimiter=",", comments="#")
+    order = np.argsort(inverse)
+    depth = -np.log(raw[:, 1:][:, order])
+    for a in (raw, inverse, depth):
+        a.setflags(write=False)
+    return raw[:, 0], inverse[order], depth
+
+
+def path_optical_depth(
+    range_m: npt.ArrayLike, visibility_km: float | None
+) -> FloatArray:
+    """-ln of the band transmittance along a horizontal path near the sea.
+
+    Linear in 1 / visibility, which is how aerosol extinction scales, and in log range.
+    A visibility below the table's shortest is held at it. Short of the table it
+    follows the power law of its first two rows: band depth grows as a power of the
+    path, not linearly, while the strongest lines saturate.
+    """
+
+    ranges, inverse, depth = _path_table()
+    x = 0.0 if visibility_km is None else 1 / visibility_km
+    x = float(np.clip(x, inverse[0], inverse[-1]))
+    at = np.array([np.interp(x, inverse, row) for row in depth])
+    d = np.asarray(range_m, dtype=np.float64)
+    power = np.log(at[1] / at[0]) / np.log(ranges[1] / ranges[0])
+    near = at[0] * (np.maximum(d, 0.0) / ranges[0]) ** power
+    far = np.interp(np.log(np.maximum(d, ranges[0])), np.log(ranges), at)
+    return np.where(d < ranges[0], near, far)
