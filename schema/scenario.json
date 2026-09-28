@@ -543,7 +543,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`\nholds it.\n\n`t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky\nprofile stays credible.",
+      "description": "Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.\n\nHaze is two parameters: `aerosol_density` for the EO sky itself, the node's own, and\n`visibility_km` for the air between the camera and what it sees, in both bands. In\nLWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`\nholds it.\n\n`t_air_k` scales the IR sky and nothing in EO; the sky's shape is `atmosphere`'s.",
       "properties": {
         "sun_elevation_deg": {
           "default": 30.0,

@@ -209,8 +209,7 @@ class Sky(Model):
     LWIR the air's water vapour hazes it too, whatever the visibility, as `atmosphere`
     holds it.
 
-    `t_air_k` scales the IR sky and nothing in EO. Its bound is where the fixed sky
-    profile stays credible.
+    `t_air_k` scales the IR sky and nothing in EO; the sky's shape is `atmosphere`'s.
     """
 
     sun_elevation_deg: float = Field(

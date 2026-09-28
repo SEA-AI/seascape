@@ -534,6 +534,24 @@ class TestEoBand:
         assert into_sky.is_valid
 
 
+def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
+    """Not the default: a scene that dropped `atmosphere` would read lwir's own."""
+    tropical = SCENARIO.model_copy(
+        update={"sky": SCENARIO.sky.model_copy(update={"atmosphere": "tropical"})}
+    )
+    assert tropical.sky.atmosphere != lwir.ATMOSPHERE
+    scene.build(tropical, "ir")
+    sky = tropical.sky
+    centres = (np.arange(scene.CURVE_SAMPLES) + 0.5) / scene.CURVE_SAMPLES
+    expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, "tropical")
+    assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
+    ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
+    depth = lwir.path_optical_depth(ranges, sky.visibility_km, "tropical")
+    assert baked("haze_extinction") == pytest.approx(
+        np.gradient(depth, ranges), rel=1e-5
+    )
+
+
 class TestIrBand:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
