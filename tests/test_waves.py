@@ -208,9 +208,31 @@ def test_calm_water_holds_a_hull_level() -> None:
     assert waves.attitude((), 0.0, 0.0, 0.0, 20.0, 5.0, 0.0) == (0.0, 0.0)
 
 
-def test_a_hull_rides_over_a_wave_shorter_than_its_samples() -> None:
+def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     ripple = waves.Wave(0.05, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
-    assert waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0) == (0.0, 0.0)
+    pitch, roll = waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0)
+    own_slope = ripple.amplitude_m * ripple.k_rad_m
+    assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
+
+
+def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
+    sea = field(12.0, wind_from_deg=40.0)
+    east, north, heading, length, beam, t = 30.0, -15.0, 0.7, 40.0, 9.0, 2.0
+    along, across = np.meshgrid(
+        (np.arange(801) + 0.5) / 801 * length - length / 2,
+        (np.arange(181) + 0.5) / 181 * beam - beam / 2,
+    )
+    along, across = along.ravel(), across.ravel()
+    x = east + along * math.sin(heading) + across * math.cos(heading)
+    y = north + along * math.cos(heading) - across * math.sin(heading)
+    plane = np.column_stack([np.ones_like(along), along, across])
+    _, rise_along, rise_across = np.linalg.lstsq(
+        plane, waves.height_m(sea, x, y, t), rcond=None
+    )[0]
+    pitch, roll = waves.attitude(sea, east, north, heading, length, beam, t)
+    assert (pitch, roll) == pytest.approx(
+        (math.atan(rise_along), math.atan(rise_across)), abs=1e-5
+    )
 
 
 def test_a_swell_adds_its_own_unresolved_slope_to_cox_and_munk_s() -> None:

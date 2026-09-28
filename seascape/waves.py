@@ -38,6 +38,11 @@ Wind height: DNV, "DNV-RP-C205: Environmental conditions and environmental loads
 Det Norske Veritas 2010, section 2.3.2.4: the neutral log profile with Charnock's
 roughness.
 
+Hull attitude: Jensen, Mansour & Olsen, "Estimation of ship motions using closed-form
+expressions", Ocean Engineering 31(1) 61-85, 2004 (doi:10.1016/S0029-8018(03)00108-2):
+their pitch, static, without the dynamic or draft (exp(-kT)) factors, is the
+least-squares slope of each wave along a box hull; roll is the same across it.
+
 Dispersion: Lamb, "Hydrodynamics", 6th ed., Cambridge University Press 1932, chapter
 IX; deep water, omega^2 = g k.
 """
@@ -83,9 +88,6 @@ VON_KARMAN = 0.4
 
 # A judgement: enough that no single wave shows.
 COMPONENTS = 48
-
-# A judgement: points along and across a hull, enough to fit the plane under it.
-ATTITUDE_SAMPLES = (5, 3)
 
 # A judgement: enough directions that a swell's crests do not read as one line.
 SWELL_COMPONENTS = 4
@@ -308,24 +310,27 @@ def attitude(
     The hull follows it at once: no inertia."""
     if not field:
         return 0.0, 0.0
-    # The samples alias a wave shorter than their spacing; the hull averages it out.
-    spacing_m = max(
-        length_m / (ATTITUDE_SAMPLES[0] - 1), beam_m / (ATTITUDE_SAMPLES[1] - 1)
-    )
-    field = filtered(field, spacing_m)
-    along, across = np.meshgrid(
-        np.linspace(-length_m / 2, length_m / 2, ATTITUDE_SAMPLES[0]),
-        np.linspace(-beam_m / 2, beam_m / 2, ATTITUDE_SAMPLES[1]),
-    )
-    along, across = along.ravel(), across.ravel()
+    k_east = np.array([w.k_east_rad_m for w in field])
+    k_north = np.array([w.k_north_rad_m for w in field])
     # Starboard of the heading is (cos, -sin).
-    east = east_m + along * math.sin(heading_rad) + across * math.cos(heading_rad)
-    north = north_m + along * math.cos(heading_rad) - across * math.sin(heading_rad)
-    plane = np.column_stack([np.ones_like(along), along, across])
-    _, rise_along, rise_across = np.linalg.lstsq(
-        plane, height_m(field, east, north, t_s), rcond=None
-    )[0]
-    return math.atan(rise_along), math.atan(rise_across)
+    k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
+    k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
+    u, v = k_along * length_m / 2, k_across * beam_m / 2
+    at = _phase(field, np.array(east_m), np.array(north_m), t_s)
+    amplitude = np.array([w.amplitude_m for w in field])
+    # 1, x, y are orthogonal over a hull centred here, so each wave's slope separates.
+    rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
+    rise_across = -amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
+    return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
+
+
+def _lever(u: np.ndarray) -> np.ndarray:
+    """3 (sin u - u cos u) / u^3; its series near 0, where the formula cancels."""
+    small = np.abs(u) < 1e-3
+    safe = np.where(small, 1.0, u)
+    return np.where(
+        small, 1 - u**2 / 10, 3 * (np.sin(safe) - safe * np.cos(safe)) / safe**3
+    )
 
 
 def slope_variance(field: tuple[Wave, ...]) -> float:
