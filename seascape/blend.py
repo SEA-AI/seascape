@@ -51,3 +51,21 @@ def curve_image(name: str, values: np.ndarray) -> bpy.types.Image:
     pixels[..., :3] = table[..., None]
     image.pixels.foreach_set(pixels.ravel())
     return image
+
+
+def lookup(
+    tree: bpy.types.NodeTree,
+    image: bpy.types.Image,
+    x: bpy.types.NodeSocket,
+    y: bpy.types.NodeSocket | None = None,
+) -> bpy.types.NodeSocket:
+    """`image` sampled at (x, y) in [0, 1], held at its edge outside."""
+    coords = tree.nodes.new("ShaderNodeCombineXYZ")
+    texture = tree.nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    texture.extension = "EXTEND"
+    tree.links.new(x, coords.inputs["X"])
+    if y is not None:
+        tree.links.new(y, coords.inputs["Y"])
+    tree.links.new(coords.outputs["Vector"], texture.inputs["Vector"])
+    return texture.outputs["Color"]
