@@ -472,9 +472,12 @@ class TestEoBand:
         low, high = sea.FOOTPRINT_RANGE_M
         texel = (np.arange(len(table)) + 0.5) / len(table)
         footprints = low * (high / low) ** texel
-        field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+        wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
+        speed = SCENARIO.sea.wind_speed_mps
         for i in (0, len(table) // 2, len(table) - 1):
-            expected = waves.unresolved_slope_variance(speed, field, (), footprints[i])
+            expected = waves.unresolved_slope_variance(
+                speed, wind, swell, footprints[i]
+            )
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
     def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
@@ -508,13 +511,13 @@ class TestIrBand:
         assert background.inputs["Color"].is_linked
 
     def test_the_baked_sky_runs_cold_towards_the_zenith(self) -> None:
-        """The shader reads this by sin(elevation), not by the angle itself."""
+        """The shader reads this by sin(elevation) at texel centres."""
         curve = baked("sky_radiance")
 
+        centres = (np.arange(len(curve)) + 0.5) / len(curve)
+        expected = lwir.sky_radiance(np.arcsin(centres), SCENARIO.sky.t_air_k)
+        assert curve == pytest.approx(expected, rel=1e-5)
         ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
-        assert curve[0] == pytest.approx(ambient, rel=1e-4), (
-            "sin(elev)=0 is the horizon"
-        )
         assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"
         assert np.all(np.diff(curve) <= 1e-6), "radiance falls towards the zenith"
 

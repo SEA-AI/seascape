@@ -34,10 +34,9 @@ seamless transitions from geometry to BRDF", Computer Graphics Forum 29(2) 487, 
 (doi:10.1111/j.1467-8659.2009.01618.x): a pixel draws the waves longer than its
 footprint and takes the slope variance of the rest as roughness.
 
-Wind height: each relation is read at the height its wind was measured, from one
-wind at 10 m through the neutral log profile with Charnock's roughness, as DNV-RP-C205
-(2010) section 2.3.2 gives it: Pierson & Moskowitz at 19.5 m, Cox & Munk at 12.5 m,
-Monahan & O'Muircheartaigh at 10 m.
+Wind height: DNV, "DNV-RP-C205: Environmental conditions and environmental loads",
+Det Norske Veritas 2010, section 2.3.2.4: the neutral log profile with Charnock's
+roughness.
 
 Dispersion: Lamb, "Hydrodynamics", 6th ed., Cambridge University Press 1932, chapter
 IX; deep water, omega^2 = g k.
@@ -54,14 +53,14 @@ GRAVITY_MS2 = 9.81
 
 # Waves, end to end. Each step is a published relation or follows from one:
 #
-#   wind            U(z) = U10 ln(z / z0) / ln(10 / z0)  log profile, Charnock z0
+#   wind            U10 ln(z / z0) / ln(10 / z0)        DNV-RP-C205 2010
 #   spectrum        alpha g^2 w^-5 exp(-5/4 (wp/w)^4)  Pierson-Moskowitz 1964
 #   peak            wp = 0.877 g / U(19.5 m)            Pierson-Moskowitz 1964
 #   direction       cos^2s(theta / 2)                   Mitsuyasu 1975, Goda 2000
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
 #   total slope     sqrt(0.003 + 0.00512 U(12.5 m))     Cox & Munk 1954, eq. 13
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
-#   unresolved      total^2 - drawn                     Bruneton 2010, per pixel
+#   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
@@ -74,7 +73,7 @@ WHITECAP_EXPONENT = 3.41
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 
-# Where each relation's wind was measured.
+# Where each paper measured its wind: Pierson & Moskowitz 1964, Cox & Munk 1954.
 PM_WIND_HEIGHT_M = 19.5
 COX_MUNK_WIND_HEIGHT_M = 12.5
 
@@ -365,7 +364,7 @@ def unresolved_slope_variance(
     swell: tuple[Wave, ...],
     footprint_m: float,
 ) -> float:
-    """Cox & Munk's is a wind sea's; the swell adds what of it goes undrawn."""
+    """Cox & Munk's is the wind sea's variance; a swell adds its own undrawn part."""
     wind_left = cox_munk_slope(wind_speed_mps) ** 2 - slope_variance(
         filtered(wind, footprint_m)
     )

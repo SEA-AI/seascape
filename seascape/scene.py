@@ -84,15 +84,16 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
 
 
 def _sky_image(t_air_k: float) -> bpy.types.Image:
-    """`lwir.sky_radiance` baked against sin(elevation), which is what the shader has.
+    """`lwir.sky_radiance` baked against sin(elevation) at texel centres, which is what
+    the shader samples.
 
     A world shader's ray direction is a unit vector, so its Z is already sin(elevation)
     and no arcsine node is needed. Below the horizon Z is clamped to 0, where the curve
-    holds at ambient.
+    holds at its first texel.
     """
+    sin_elevation = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     return curve_image(
-        "sky_radiance",
-        lwir.sky_radiance(np.arcsin(np.linspace(0.0, 1.0, CURVE_SAMPLES)), t_air_k),
+        "sky_radiance", lwir.sky_radiance(np.arcsin(sin_elevation), t_air_k)
     )
 
 

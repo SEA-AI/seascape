@@ -13,7 +13,7 @@ def field(wind_speed_mps: float, wind_from_deg: float = 0.0) -> tuple[waves.Wave
 
 
 def u10_for(wind_mps: float, height_m: float) -> float:
-    """The wind at 10 m that reads `wind_mps` at `height_m`."""
+    """The wind at 10 m that reads about `wind_mps` at `height_m`, to first order."""
     return wind_mps * wind_mps / waves.wind_at_m(wind_mps, height_m)
 
 
@@ -26,14 +26,16 @@ def test_published_values_have_not_drifted() -> None:
     assert waves.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
     # Pierson-Moskowitz: a fully developed sea at 7 m/s at 19.5 m peaks near 41 m.
     peak = waves.peak_omega_rad_s(u10_for(7.0, waves.PM_WIND_HEIGHT_M))
-    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(40.8, abs=0.3)
+    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(40.8, abs=0.2)
 
 
 def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
-    # DNV-RP-C205 2.3.2: at 10 m/s, 1.06x at 19.5 m and 1.02x at 12.5 m.
+    # From DNV-RP-C205 2010, 2.3.2.4.
     assert waves.wind_at_m(10.0, 10.0) == pytest.approx(10.0)
     assert waves.wind_at_m(10.0, 19.5) == pytest.approx(10.60, abs=0.01)
     assert waves.wind_at_m(10.0, 12.5) == pytest.approx(10.20, abs=0.01)
+    assert waves.wind_at_m(3.0, 19.5) == pytest.approx(3 * 1.048, abs=0.01)
+    assert waves.wind_at_m(20.0, 19.5) == pytest.approx(20 * 1.071, abs=0.02)
     assert waves.wind_at_m(0.0, 19.5) == 0.0
 
 
@@ -55,7 +57,7 @@ def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
 
 @pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 12.0, 20.0])
 def test_the_field_carries_the_spectrum_s_wave_height(wind_speed_mps) -> None:
-    # Pierson-Moskowitz: Hs = 0.209 U^2 / g at 19.5 m, nearly all of it in the waves.
+    # Pierson-Moskowitz: Hs = 0.209 U(19.5 m)^2 / g, nearly all of it in the waves.
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
     wind = waves.wind_at_m(wind_speed_mps, waves.PM_WIND_HEIGHT_M)
     assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.01)
@@ -164,6 +166,11 @@ def test_a_pixel_whitecaps_over_monahan_s_cover_at_any_footprint(footprint_m) ->
     east, north = np.meshgrid(np.linspace(0, 3000, 600), np.linspace(0, 3000, 600))
     cover = waves.whitecap_cover(wind, east, north, 0.0, footprint_m, fraction)
     assert float(np.mean(cover)) == pytest.approx(fraction, rel=0.15)
+
+
+def test_whitecaps_read_the_wind_at_10_m() -> None:
+    # Monahan & O'Muircheartaigh 1980: 3.84e-6 U10^3.41, 0.99% at 10 m/s.
+    assert waves.whitecap_fraction(10.0) == pytest.approx(0.0099, abs=1e-4)
 
 
 def test_calm_air_breaks_nothing() -> None:

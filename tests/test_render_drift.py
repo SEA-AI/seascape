@@ -205,10 +205,11 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
     east, north = np.meshgrid(centres, centres[::-1])
     distance = np.sqrt(east**2 + north**2 + height_m**2)
-    field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+    wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
+    speed = SCENARIO.sea.wind_speed_mps
     variance = np.array(
         [
-            waves.unresolved_slope_variance(speed, field, (), d * pixel_rad)
+            waves.unresolved_slope_variance(speed, wind, swell, d * pixel_rad)
             for d in distance.ravel()
         ]
     ).reshape(distance.shape)
@@ -250,7 +251,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     origin = np.array(camera.matrix_world.translation)
     mount = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "eo")
     pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
-    field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
+    wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
+    speed = SCENARIO.sea.wind_speed_mps
     checked = 0
     for row in range(px[1]):
         for col in range(px[0]):
@@ -264,8 +266,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
             distance = origin[2] / -ray[2]
             across = distance * pixel_rad
             along = across / -ray[2]
-            v_along = waves.unresolved_slope_variance(speed, field, (), along)
-            v_across = waves.unresolved_slope_variance(speed, field, (), across)
+            v_along = waves.unresolved_slope_variance(speed, wind, swell, along)
+            v_across = waves.unresolved_slope_variance(speed, wind, swell, across)
             expected = (1 - math.sqrt(v_across / v_along)) / 0.9
             assert rendered[row, col] == pytest.approx(expected, abs=0.02), (row, col)
             checked += 1
