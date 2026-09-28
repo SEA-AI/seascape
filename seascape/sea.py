@@ -1,6 +1,8 @@
 """The sea's mesh and materials: waves as shading on a grid curved to the earth."""
 
 import math
+from collections.abc import Callable
+from statistics import NormalDist
 from typing import NamedTuple
 
 import bpy
@@ -12,12 +14,22 @@ from seascape.config import Band, Outputs, Rig, Sea
 from seascape.waves import (
     FADE_FOOTPRINTS,
     Wave,
+    breaking_threshold_g,
     earth_radius_m,
     horizon_m,
+    pixel_acceleration_variance,
     pixel_slope_variance,
     sea_z_m,
     wave_slope,
+    whitecap_fraction,
 )
+
+# Koepke 1984: a whitecap's effective reflectance in the visible, averaged over its
+# fresh and decaying foam.
+WHITECAP_REFLECTANCE = 0.22
+
+# Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
+CDF_SIGMAS = 6.0
 
 # A judgement: the footprints a sea pixel spans.
 FOOTPRINT_RANGE_M = (1e-3, 1e4)
@@ -137,6 +149,11 @@ def _pixel(tree: bpy.types.NodeTree, pixel_rad: float) -> _Pixel:
     return _Pixel(across, _math(tree, "DIVIDE", across, cosine), along)
 
 
+class _Drawn(NamedTuple):
+    phase: bpy.types.NodeSocket
+    footprint_sq: bpy.types.NodeSocket
+
+
 def _wave(
     tree: bpy.types.NodeTree,
     i: int,
@@ -145,7 +162,7 @@ def _wave(
     pixel: _Pixel,
     stretch: bpy.types.NodeSocket,
     gradient: bpy.types.NodeSocket | None,
-) -> bpy.types.NodeSocket:
+) -> tuple[bpy.types.NodeSocket, _Drawn]:
     """One wave's slope onto `gradient`, faded by how well the pixel resolves it along
     the wave's own direction: footprint^2 = across^2 + (along^2 - across^2) cos^2."""
     link = tree.links.new
@@ -174,17 +191,8 @@ def _wave(
         tree, "MULTIPLY", heading.node.outputs["Value"], heading.node.outputs["Value"]
     )
     footprint_sq = _math(tree, "MULTIPLY_ADD", cos_sq, stretch, across_sq)
-    # From Min above From Max: a wider footprint fades the wave out.
-    fade = tree.nodes.new("ShaderNodeMapRange")
-    fade.name = f"wave_{i}_fade"
-    fade.interpolation_type = "SMOOTHSTEP"
-    wavelength_m = 2 * math.pi / wave.k_rad_m
-    low, high = FADE_FOOTPRINTS
-    fade.inputs["From Min"].default_value = (wavelength_m / low) ** 2
-    fade.inputs["From Max"].default_value = (wavelength_m / high) ** 2
-    fade.inputs["To Min"].default_value = 0.0
-    link(footprint_sq, fade.inputs["Value"])
-    link(_math(tree, "SINE", phase.outputs["Value"]), fade.inputs["To Max"])
+    fade = _fade(tree, wave, footprint_sq, _math(tree, "SINE", phase.outputs["Value"]))
+    fade.node.name = f"wave_{i}_fade"
     # -d height / dx of a cos(phase) is a k_x sin(phase).
     term = tree.nodes.new("ShaderNodeVectorMath")
     term.operation = "MULTIPLY_ADD"
@@ -194,30 +202,50 @@ def _wave(
         wave.amplitude_m * wave.k_north_rad_m,
         0.0,
     )
-    link(fade.outputs["Result"], term.inputs["Vector_001"])
+    link(fade, term.inputs["Vector_001"])
     if gradient is not None:
         link(gradient, term.inputs["Vector_002"])
-    return term.outputs["Vector"]
+    return term.outputs["Vector"], _Drawn(phase.outputs["Value"], footprint_sq)
 
 
-def _unresolved_variance(
+def _fade(
     tree: bpy.types.NodeTree,
-    sea: Sea,
-    field: tuple[Wave, ...],
+    wave: Wave,
+    footprint_sq: bpy.types.NodeSocket,
+    whole: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`whole` where the pixel resolves `wave`, 0 where it cannot, as
+    `waves.visibility`."""
+    # From Min above From Max: a wider footprint fades the wave out.
+    fade = tree.nodes.new("ShaderNodeMapRange")
+    fade.interpolation_type = "SMOOTHSTEP"
+    wavelength_m = 2 * math.pi / wave.k_rad_m
+    low, high = FADE_FOOTPRINTS
+    fade.inputs["From Min"].default_value = (wavelength_m / low) ** 2
+    fade.inputs["From Max"].default_value = (wavelength_m / high) ** 2
+    fade.inputs["To Min"].default_value = 0.0
+    tree.links.new(footprint_sq, fade.inputs["Value"])
+    tree.links.new(whole, fade.inputs["To Max"])
+    return fade.outputs["Result"]
+
+
+def _by_footprint(
+    tree: bpy.types.NodeTree,
+    name: str,
+    value_at: Callable[[float], float],
     footprint: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`waves.pixel_slope_variance` at `footprint`, baked against log footprint: one
-    lookup, not a sum over the waves per sample."""
+    """`value_at(footprint)`, baked against log footprint: one lookup, not a sum over
+    the waves per sample."""
     low, high = FOOTPRINT_RANGE_M
     decades = math.log10(high / low)
     footprints = low * 10 ** (
         decades * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     )
-    table = [pixel_slope_variance(sea.wind_speed_mps, field, f) for f in footprints]
     lookup = tree.nodes.new("ShaderNodeCombineXYZ")
     texture = tree.nodes.new("ShaderNodeTexImage")
-    texture.name = "sea_unresolved_variance"
-    texture.image = curve_image("sea_unresolved_variance", np.array(table))
+    texture.name = name
+    texture.image = curve_image(name, np.array([value_at(f) for f in footprints]))
     texture.extension = "EXTEND"
     x = _math(
         tree,
@@ -239,6 +267,8 @@ class _Slopes(NamedTuple):
     along: bpy.types.NodeSocket
     across: bpy.types.NodeSocket
     tangent: bpy.types.NodeSocket
+    footprint_m: bpy.types.NodeSocket  # along the view, the pixel's longest
+    drawn: list[_Drawn]
 
 
 def _wave_normals(
@@ -267,8 +297,12 @@ def _wave_normals(
     relief.name = "wave_relief"
     relief.inputs["Scale"].default_value = 1.0
     gradient = None
+    drawn = []
     for i, wave in enumerate(field):
-        gradient = _wave(tree, i, wave, xyt.outputs["Vector"], pixel, stretch, gradient)
+        gradient, one = _wave(
+            tree, i, wave, xyt.outputs["Vector"], pixel, stretch, gradient
+        )
+        drawn.append(one)
     if gradient is not None:
         link(gradient, relief.inputs["Vector"])
 
@@ -280,12 +314,59 @@ def _wave_normals(
     link(geometry.outputs["Normal"], tilted.inputs["Vector"])
     link(relief.outputs["Vector"], tilted.inputs["Vector_001"])
     link(tilted.outputs["Vector"], normal.inputs["Vector"])
+
+    def unresolved(footprint_m: float) -> float:
+        return pixel_slope_variance(sea.wind_speed_mps, field, footprint_m)
+
     return _Slopes(
         normal.outputs["Vector"],
-        _unresolved_variance(tree, sea, field, pixel.along_m),
-        _unresolved_variance(tree, sea, field, pixel.across_m),
+        _by_footprint(tree, "sea_unresolved_variance", unresolved, pixel.along_m),
+        _by_footprint(tree, "sea_unresolved_variance", unresolved, pixel.across_m),
         pixel.along,
+        pixel.along_m,
+        drawn,
     )
+
+
+def _whitecaps(
+    tree: bpy.types.NodeTree, wind: tuple[Wave, ...], slopes: _Slopes, fraction: float
+) -> bpy.types.NodeSocket:
+    """How much of the pixel whitecaps, as `waves.whitecap_cover`, the wind's waves
+    being the first of `slopes.drawn`."""
+    acceleration: float | bpy.types.NodeSocket = 0.0
+    for wave, drawn in zip(wind, slopes.drawn, strict=False):
+        shown = _fade(
+            tree, wave, drawn.footprint_sq, _math(tree, "COSINE", drawn.phase)
+        )
+        acceleration = _math(
+            tree, "MULTIPLY_ADD", shown, wave.amplitude_m * wave.k_rad_m, acceleration
+        )
+    # Along the view: the widest footprint, so the most left unresolved. A judgement.
+    variance = _by_footprint(
+        tree,
+        "sea_unresolved_acceleration",
+        lambda f: pixel_acceleration_variance(wind, f),
+        slopes.footprint_m,
+    )
+    sigma = _math(tree, "MAXIMUM", _math(tree, "SQRT", variance), 1e-6)
+    threshold = _math(
+        tree, "SUBTRACT", acceleration, breaking_threshold_g(wind, fraction)
+    )
+    threshold.node.name = "whitecaps_threshold"
+    z = _math(tree, "DIVIDE", threshold, sigma)
+    # Clamped, so an infinite threshold reads the table's end.
+    x = _math(tree, "MULTIPLY_ADD", z, 1 / (2 * CDF_SIGMAS), 0.5)
+    x.node.use_clamp = True
+    sigmas = CDF_SIGMAS * (2 * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES - 1)
+    lookup = tree.nodes.new("ShaderNodeCombineXYZ")
+    texture = tree.nodes.new("ShaderNodeTexImage")
+    texture.image = curve_image("normal_cdf", np.vectorize(NormalDist().cdf)(sigmas))
+    texture.extension = "EXTEND"
+    tree.links.new(x, lookup.inputs["X"])
+    tree.links.new(lookup.outputs["Vector"], texture.inputs["Vector"])
+    cover = texture.outputs["Color"]
+    texture.name = "whitecaps"
+    return cover
 
 
 class _Lobe(NamedTuple):
@@ -336,7 +417,11 @@ def _incidence_lookup(
 
 
 def _thermal_sea(
-    sea: Sea, field: tuple[Wave, ...], outputs: Outputs, pixel_rad: float
+    sea: Sea,
+    wind: tuple[Wave, ...],
+    swell: tuple[Wave, ...],
+    outputs: Outputs,
+    pixel_rad: float,
 ) -> bpy.types.Material:
     """eps(theta) of the sea emitted, the remaining 1 - eps reflected from the sky.
 
@@ -346,6 +431,7 @@ def _thermal_sea(
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
     tree.nodes.clear()
+    field = wind + swell
     slopes = _wave_normals(tree, sea, field, outputs, pixel_rad)
     lobe = _lobe(tree, slopes)
     mirror = tree.nodes.new("ShaderNodeBsdfAnisotropic")
@@ -389,9 +475,14 @@ def _thermal_sea(
 
 
 def _water_material(
-    sea: Sea, field: tuple[Wave, ...], outputs: Outputs, pixel_rad: float
+    sea: Sea,
+    wind: tuple[Wave, ...],
+    swell: tuple[Wave, ...],
+    outputs: Outputs,
+    pixel_rad: float,
 ) -> bpy.types.Material:
-    """Daylight water, refracting at seawater's IOR."""
+    """Daylight water, refracting at seawater's IOR, white where its crests break."""
+    field = wind + swell
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
     principled = tree.nodes["Principled BSDF"]
@@ -408,12 +499,22 @@ def _water_material(
         _math(tree, "MULTIPLY", _math(tree, "SUBTRACT", 1.0, lobe.aspect), 1 / 0.9),
         principled.inputs["Anisotropic"],
     )
+    foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    foam.inputs["Color"].default_value = (*(WHITECAP_REFLECTANCE,) * 3, 1.0)
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    cover = _whitecaps(tree, wind, slopes, whitecap_fraction(sea.wind_speed_mps))
+    link(cover, mix.inputs["Factor"])
+    # Mix Shader names both shader inputs "Shader", so they can only be indexed.
+    link(principled.outputs["BSDF"], mix.inputs[1])
+    link(foam.outputs["BSDF"], mix.inputs[2])
+    link(mix.outputs["Shader"], tree.nodes["Material Output"].inputs["Surface"])
     return material
 
 
 def water(
     sea: Sea,
-    field: tuple[Wave, ...],
+    wind: tuple[Wave, ...],
+    swell: tuple[Wave, ...],
     reach_m: float,
     band: Band,
     outputs: Outputs,
@@ -437,5 +538,5 @@ def water(
     for face in water.data.polygons:
         face.use_smooth = True
     material = _water_material if band == "eo" else _thermal_sea
-    water.data.materials.append(material(sea, field, outputs, pixel_rad))
+    water.data.materials.append(material(sea, wind, swell, outputs, pixel_rad))
     return water

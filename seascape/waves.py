@@ -12,6 +12,13 @@ using a cloverleaf buoy", Journal of Physical Oceanography 5(4) 750, 1975
 values given by Goda, "Random Seas and Design of Maritime Structures", 2nd ed.,
 World Scientific 2000, section 2.3.
 
+Whitecaps: Monahan & O'Muircheartaigh, "Optimal power-law description of oceanic
+whitecap coverage dependence on wind speed", Journal of Physical Oceanography 10(12)
+2094, 1980, for how much; Snyder & Kennedy, "On the formation of whitecaps by a
+threshold mechanism. Part I: Basic formalism", Journal of Physical Oceanography 13(8)
+1482, 1983, for where: the downward acceleration past a threshold. A pixel whitecaps
+over the fraction of it whose unresolved acceleration carries it past.
+
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
 clean-sea fit, equation 13.
@@ -33,6 +40,7 @@ IX; deep water, omega^2 = g k.
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
+from statistics import NormalDist
 
 import numpy as np
 
@@ -54,6 +62,9 @@ PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
 # Goda 2000: swell with a long decay distance.
 SWELL_S_MAX = 75.0
+# Monahan & O'Muircheartaigh 1980, robust biweight fit, U at 10 m.
+WHITECAP_COEFFICIENT = 3.84e-6
+WHITECAP_EXPONENT = 3.41
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 
@@ -190,6 +201,30 @@ def swell(
     )
 
 
+def whitecap_fraction(wind_speed_mps: float) -> float:
+    return min(WHITECAP_COEFFICIENT * wind_speed_mps**WHITECAP_EXPONENT, 1.0)
+
+
+def downward_acceleration_g(
+    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
+) -> np.ndarray:
+    """-d^2 height / dt^2 over g: a k cos(phase) per wave, as omega^2 = g k."""
+    ak = np.array([w.amplitude_m * w.k_rad_m for w in field])
+    phase = _phase(field, np.asarray(east_m), np.asarray(north_m), t_s)
+    return np.tensordot(ak, np.cos(phase), axes=1)
+
+
+def breaking_threshold_g(wind: tuple[Wave, ...], fraction: float) -> float:
+    """The downward acceleration a Gaussian sea of these waves exceeds over `fraction`
+    of its area, where it whitecaps."""
+    if not wind or fraction <= 0.0:
+        return math.inf
+    if fraction >= 1.0:
+        return -math.inf
+    sigma = math.sqrt(resolved_slope_variance(wind))
+    return sigma * NormalDist().inv_cdf(1.0 - fraction)
+
+
 def snap_error(wind_speed_mps: float, snap: Callable[[float], float]) -> float:
     """Relative frequency error a loop's snapping costs, weighted by height variance."""
     omega, variance = _bins(wind_speed_mps)
@@ -248,14 +283,50 @@ def visibility(wavelength_m: np.ndarray, footprint_m: float) -> np.ndarray:
     return x * x * (3 - 2 * x)
 
 
+def _shown(
+    field: tuple[Wave, ...], footprint_m: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each wave's visibility at `footprint_m`, and its slope variance a^2 k^2 / 2,
+    which is also its downward acceleration's over g^2."""
+    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
+    variance = np.array([(w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field])
+    return visibility(wavelength, footprint_m), variance
+
+
 def pixel_slope_variance(
     wind_speed_mps: float, field: tuple[Wave, ...], footprint_m: float
 ) -> float:
     """The slope variance a pixel of `footprint_m` does not draw."""
-    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
-    drawn = np.array([(w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field])
-    shown = float(np.sum(visibility(wavelength, footprint_m) ** 2 * drawn))
-    return max(wave_slope(wind_speed_mps) ** 2 - shown, 0.0)
+    shown, variance = _shown(field, footprint_m)
+    return max(
+        wave_slope(wind_speed_mps) ** 2 - float(np.sum(shown**2 * variance)), 0.0
+    )
+
+
+def pixel_acceleration_variance(wind: tuple[Wave, ...], footprint_m: float) -> float:
+    """The downward acceleration variance, over g^2, a pixel of `footprint_m` does not
+    draw."""
+    shown, variance = _shown(wind, footprint_m)
+    return float(np.sum((1 - shown**2) * variance))
+
+
+def whitecap_cover(
+    wind: tuple[Wave, ...],
+    east_m: np.ndarray,
+    north_m: np.ndarray,
+    t_s: float,
+    footprint_m: float,
+    fraction: float,
+) -> np.ndarray:
+    """How much of a pixel of `footprint_m` whitecaps, for a sea that does over
+    `fraction`: its drawn waves' downward acceleration against the threshold, the rest
+    Gaussian."""
+    shown, _ = _shown(wind, footprint_m)
+    ak = np.array([w.amplitude_m * w.k_rad_m for w in wind]) * shown
+    drawn = np.tensordot(ak, np.cos(_phase(wind, east_m, north_m, t_s)), axes=1)
+    sigma = max(math.sqrt(pixel_acceleration_variance(wind, footprint_m)), 1e-6)
+    z = (drawn - breaking_threshold_g(wind, fraction)) / sigma
+    return np.vectorize(NormalDist().cdf)(z)
 
 
 def earth_radius_m(refraction_k: float) -> float:

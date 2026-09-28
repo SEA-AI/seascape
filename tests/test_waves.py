@@ -130,3 +130,28 @@ def test_a_swell_carries_its_height_from_where_it_comes() -> None:
     assert 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in swell)) == pytest.approx(2.0)
     assert all(w.omega_rad_s == pytest.approx(2 * math.pi / 12.0) for w in swell)
     assert np.mean([w.k_east_rad_m for w in swell]) < 0.0
+
+
+def test_whitecaps_cover_what_monahan_measured() -> None:
+    wind = field(15.0)
+    fraction = waves.whitecap_fraction(15.0)
+    threshold = waves.breaking_threshold_g(wind, fraction)
+    east, north = np.meshgrid(np.linspace(0, 3000, 600), np.linspace(0, 3000, 600))
+    covered = np.mean(waves.downward_acceleration_g(wind, east, north, 0.0) > threshold)
+    assert covered == pytest.approx(fraction, rel=0.15)
+
+
+@pytest.mark.parametrize("footprint_m", [1e-3, 5.0, 100.0])
+def test_a_pixel_whitecaps_over_monahan_s_cover_at_any_footprint(footprint_m) -> None:
+    wind = field(15.0)
+    fraction = waves.whitecap_fraction(15.0)
+    east, north = np.meshgrid(np.linspace(0, 3000, 600), np.linspace(0, 3000, 600))
+    cover = waves.whitecap_cover(wind, east, north, 0.0, footprint_m, fraction)
+    assert float(np.mean(cover)) == pytest.approx(fraction, rel=0.15)
+
+
+def test_calm_air_breaks_nothing() -> None:
+    assert waves.whitecap_fraction(0.0) == 0.0
+    assert waves.breaking_threshold_g((), 0.0) == math.inf
+    # A breath of wind builds no waves but has a whitecap fraction.
+    assert waves.breaking_threshold_g((), waves.whitecap_fraction(0.5)) == math.inf
