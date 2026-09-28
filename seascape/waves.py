@@ -39,7 +39,7 @@ IX; deep water, omega^2 = g k.
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import NormalDist
 
 import numpy as np
@@ -70,6 +70,9 @@ SLOPE_VARIANCE_PER_MPS = 0.00512
 
 # A judgement: enough that no single wave shows.
 COMPONENTS = 48
+
+# A judgement: points along and across a hull, enough to fit the plane under it.
+ATTITUDE_SAMPLES = (5, 3)
 
 # A judgement: enough directions that a swell's crests do not read as one line.
 SWELL_COMPONENTS = 4
@@ -264,6 +267,43 @@ def slope(
     a_east = np.array([-w.amplitude_m * w.k_east_rad_m for w in field])
     a_north = np.array([-w.amplitude_m * w.k_north_rad_m for w in field])
     return np.tensordot(a_east, sine, axes=1), np.tensordot(a_north, sine, axes=1)
+
+
+def attitude(
+    field: tuple[Wave, ...],
+    east_m: float,
+    north_m: float,
+    heading_rad: float,
+    length_m: float,
+    beam_m: float,
+    t_s: float,
+) -> tuple[float, float]:
+    """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull.
+    The hull follows it at once: no inertia."""
+    if not field:
+        return 0.0, 0.0
+    # The samples alias a wave shorter than their spacing; the hull averages it out.
+    spacing_m = max(
+        length_m / (ATTITUDE_SAMPLES[0] - 1), beam_m / (ATTITUDE_SAMPLES[1] - 1)
+    )
+    shown, _ = _shown(field, spacing_m)
+    field = tuple(
+        replace(w, amplitude_m=w.amplitude_m * v)
+        for w, v in zip(field, shown.tolist(), strict=True)
+    )
+    along, across = np.meshgrid(
+        np.linspace(-length_m / 2, length_m / 2, ATTITUDE_SAMPLES[0]),
+        np.linspace(-beam_m / 2, beam_m / 2, ATTITUDE_SAMPLES[1]),
+    )
+    along, across = along.ravel(), across.ravel()
+    # Starboard of the heading is (cos, -sin).
+    east = east_m + along * math.sin(heading_rad) + across * math.cos(heading_rad)
+    north = north_m + along * math.cos(heading_rad) - across * math.sin(heading_rad)
+    plane = np.column_stack([np.ones_like(along), along, across])
+    _, rise_along, rise_across = np.linalg.lstsq(
+        plane, height_m(field, east, north, t_s), rcond=None
+    )[0]
+    return math.atan(rise_along), math.atan(rise_across)
 
 
 def resolved_slope_variance(field: tuple[Wave, ...]) -> float:

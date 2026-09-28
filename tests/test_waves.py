@@ -155,3 +155,36 @@ def test_calm_air_breaks_nothing() -> None:
     assert waves.breaking_threshold_g((), 0.0) == math.inf
     # A breath of wind builds no waves but has a whitecap fraction.
     assert waves.breaking_threshold_g((), waves.whitecap_fraction(0.5)) == math.inf
+
+
+@pytest.mark.parametrize(
+    ("toward_deg", "heading_deg", "expected"),
+    [
+        (0.0, 0.0, "pitch"),
+        (90.0, 0.0, "roll"),
+        (0.0, 90.0, "roll"),
+    ],
+)
+def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected):
+    wave = waves.Wave(0.5, 0.2, math.radians(toward_deg), 1.0)  # 1.5 km long
+    east, north, t_s = 30.0, -40.0, 3.0
+    pitch, roll = waves.attitude(
+        (wave,), east, north, math.radians(heading_deg), 20.0, 5.0, t_s
+    )
+    d_east, d_north = waves.slope((wave,), np.array(east), np.array(north), t_s)
+    heading = math.radians(heading_deg)
+    rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
+    rise_starboard = d_east * math.cos(heading) - d_north * math.sin(heading)
+    assert (pitch, roll) == pytest.approx(
+        (math.atan(rise_along), math.atan(rise_starboard)), abs=1e-5
+    )
+    assert abs({"pitch": pitch, "roll": roll}[expected]) > 1e-4
+
+
+def test_calm_water_holds_a_hull_level() -> None:
+    assert waves.attitude((), 0.0, 0.0, 0.0, 20.0, 5.0, 0.0) == (0.0, 0.0)
+
+
+def test_a_hull_rides_over_a_wave_shorter_than_its_samples() -> None:
+    ripple = waves.Wave(0.05, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
+    assert waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0) == (0.0, 0.0)

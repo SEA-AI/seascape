@@ -309,8 +309,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
 def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
 
-    The waterline is the anchor's level: `_fit` puts the keel a draught below it and
-    `_pose` never tilts it.
+    The waterline is the anchor's level: `_fit` puts the keel a draught below it.
     """
     # ponytail: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.
@@ -436,10 +435,17 @@ def _vessel(
             slot.material = skin
 
     anchor = bpy.data.objects.new(name, None)
-    bpy.context.collection.objects.link(anchor)
+    # Pitch and roll go here, so the anchor keeps the pose labels read.
+    attitude = bpy.data.objects.new(f"{name}_attitude", None)
+    for obj in (anchor, attitude):
+        bpy.context.collection.objects.link(obj)
+    attitude.parent = anchor
     for part in parts:
-        part.parent = anchor
+        part.parent = attitude
     place(anchor, 0.0, 0.0, 0.0)
+    place(attitude, 0.0, 0.0, 0.0)
+    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
+    attitude.rotation_mode = "YXZ"
     return anchor
 
 
@@ -632,6 +638,42 @@ def _object(
     return anchors
 
 
+def _ride(
+    anchors: Sequence[bpy.types.Object],
+    field: tuple[waves.Wave, ...],
+    outputs: Outputs,
+) -> None:
+    """Key each hull's pitch and roll to the sea under its keyed pose.
+
+    No heave: waves are shading, so a heaving hull would break its waterline.
+    """
+    sc = bpy.context.scene
+    # The parts' matrix_world is stale until the depsgraph runs.
+    bpy.context.view_layer.update()
+    hulls = []
+    for anchor in anchors:
+        (attitude,) = anchor.children
+        local = anchor.matrix_world.inverted()
+        corners = [local @ corner for corner in _corners(_meshes([anchor]))]
+        xs, ys = [c.x for c in corners], [c.y for c in corners]
+        hulls.append((anchor, attitude, max(ys) - min(ys), max(xs) - min(xs)))
+    keyed = len(outputs.times_s) > 1
+    for frame, t_s in enumerate(outputs.times_s):
+        sc.frame_set(frame)
+        for anchor, attitude, length_m, beam_m in hulls:
+            east, north, _ = anchor.matrix_world.translation
+            bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
+            heading_rad = math.atan2(bow.x, bow.y)
+            pitch, roll = waves.attitude(
+                field, east, north, heading_rad, length_m, beam_m, t_s
+            )
+            # +x turns the bow up; +y turns starboard down.
+            attitude.rotation_euler = (pitch, -roll, 0.0)
+            if keyed:
+                attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
+                attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
+
+
 JPEG_QUALITY = 95
 
 # Blender's identifier and bit depth.
@@ -746,6 +788,8 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
+    _ride(list(chain(*targets.values())), wind + swell, outputs)
+    sc.frame_set(0)
     # Until the depsgraph runs, every child still reports its pre-parenting
     # matrix_world, so anything measuring the scene reads the wrong place.
     bpy.context.view_layer.update()

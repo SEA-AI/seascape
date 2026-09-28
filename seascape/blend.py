@@ -4,24 +4,17 @@ from collections.abc import Callable, Sequence
 import bpy
 import numpy as np
 
+# A judgement.
 CURVE_SAMPLES = 256
 
 
 def yaw(bearing_deg: float) -> float:
-    """Bearing to Blender yaw, in radians.
-
-    Blender's +Z rotation turns a forward-facing object to port, so a bearing is negated
-    on its way into a rotation. Only here: two negations cancel and look plausible.
-    """
+    """Bearing to Blender yaw, in radians: the one negation, as +Z turns to port."""
     return -math.radians(bearing_deg)
 
 
 def place(obj: bpy.types.Object, east_m: float, north_m: float, up_m: float) -> None:
-    """Position, with the rotation mode set first.
-
-    A glTF import leaves `rotation_mode` QUATERNION, where assigning `rotation_euler`
-    afterwards is ignored with no error.
-    """
+    """Position, rotation mode first: QUATERNION ignores `rotation_euler`."""
     obj.rotation_mode = "XYZ"
     obj.location = (east_m, north_m, up_m)
 
