@@ -78,12 +78,11 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Cycles denoising is on by default and is not radiometric.** OIDN is an edge-aware image filter. On a world flat at 290.00 K it returns 282.43-293.00 K, worst at the frame border, and it breaks the R=G=B that an LWIR scene guarantees. It is off in both bands: in EO it also smooths the sea's sub-pixel wave texture.
 - **An image's `colorspace_settings` must be set before its pixels, never after.** Assigning it second re-reads the buffer that is already there and leaves the image black, with no error.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
-- **EEVEE renders the sea at half its radiance, in both bands.** At grazing view most
-  wave facets reflect the sea into the sea; Cycles bounces that ray on to the horizon
-  sky, EEVEE has no second bounce for world light and reads black. A flat mirror or a
-  bump under a uniform sky is exact in both engines, so it only shows with a sky
-  gradient at grazing view. No probe or raytracing setting recovers it (best 0.82).
-  Cycles for anything a pixel value is read from.
+- **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
+  brighter into a sun a mirror cannot see, and `eevee.clamp_surface_indirect` clips
+  what is left; a mirror reflects a world of 40 only with both at 0. LWIR radiance is
+  tens of W m^-2 sr^-1, so the capped sea reads cold. Unclamped, EEVEE still darkens
+  rough reflections at grazing view: Cycles for anything a pixel value is read from.
 - **`refresh_devices()` is what actually enables the GPU.** Without it
   `compute_device_type` and `scene.cycles.device` leave Cycles on the CPU, silently, at
   about the same speed. `denoising_use_gpu` changes nothing measurable at 4K. Configure
