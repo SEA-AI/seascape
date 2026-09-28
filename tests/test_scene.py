@@ -509,15 +509,23 @@ class TestEoBand:
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
         nodes = bpy.data.materials["haze"].node_tree.nodes
         beta = SCENARIO.sky.extinction_per_m
-        density = nodes["Volume Absorption"].inputs["Density"].default_value
+        density = nodes["haze_absorption"].inputs["Density"].default_value
         assert density == pytest.approx(beta)
-        strength = nodes["Emission"].inputs["Strength"].default_value
+        strength = nodes["haze_emission"].inputs["Strength"].default_value
         assert strength == pytest.approx(beta)
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        airlight = nodes["Sky Texture"]
+        airlight = nodes["haze_airlight"]
         for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
             assert getattr(airlight, name) == getattr(sky, name)
         assert not airlight.sun_disc
+
+    def test_the_airlight_is_the_horizon_the_ray_travels_towards(self) -> None:
+        """Incoming points back at the camera; unflipped, the haze would take the
+        horizon behind it."""
+        horizon = bpy.data.materials["haze"].node_tree.nodes["haze_horizon"]
+        assert horizon.inputs[0].links[0].from_socket.name == "Incoming"
+        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
+        assert horizon.outputs["Vector"].links[0].to_node.name == "haze_airlight"
 
 
 class TestIrBand:

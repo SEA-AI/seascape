@@ -114,17 +114,21 @@ def _haze(sky: Sky, reach_m: float, radius_m: float) -> None:
     link = tree.links.new
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     horizon = tree.nodes.new("ShaderNodeVectorMath")
+    horizon.name = "haze_horizon"
     horizon.operation = "MULTIPLY"
     link(geometry.outputs["Incoming"], horizon.inputs[0])
     # Incoming points back at the camera.
     horizon.inputs[1].default_value = (-1.0, -1.0, 0.0)
     airlight = _sky_texture(tree, sky)
+    airlight.name = "haze_airlight"
     airlight.sun_disc = False
     link(horizon.outputs["Vector"], airlight.inputs["Vector"])
     emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "haze_emission"
     link(airlight.outputs["Color"], emission.inputs["Color"])
     emission.inputs["Strength"].default_value = beta
     absorption = tree.nodes.new("ShaderNodeVolumeAbsorption")
+    absorption.name = "haze_absorption"
     # Black absorbs every channel at the full density.
     absorption.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
     absorption.inputs["Density"].default_value = beta
