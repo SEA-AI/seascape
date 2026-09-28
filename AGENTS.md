@@ -22,7 +22,7 @@ If a new dependency looks necessary, say why Blender or the standard library can
 
 Do not add `sys.path` entries, `.pth` files, `importlib.reload`, symlinks into Blender's script directories, or an add-on wrapper to get around this. Every one of them exists to let Blender host your code, which is the thing to avoid.
 
-The loop is `seascape build`, then reload in Blender. Building a scene is cheap; process startup dominates a cycle.
+The loop is `seascape build`, then reload in Blender.
 
 To reload without losing where the user had the viewport, via MCP:
 
@@ -57,24 +57,15 @@ These produce wrong output with no error. They are the reason this file exists.
 
 - **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `_yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
 - **A camera's bearing is not `pod yaw + camera yaw`.** In the chain `scene._rig` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `scene.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
-- **`rotation_mode` is often `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
+- **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
 - **Objects can share a mesh datablock.** Material slots link to mesh data by default, so assigning a material to one object silently changes the other. Use `slot.link = "OBJECT"` when they must differ.
-- **LWIR waves do not need `t_sea_k - t_air_k`.** A tilted facet reflects a different elevation of a sky that runs cold overhead to ambient at the horizon, so relief shows with the sea exactly at air temperature. Wave signal as MAD within a row, baseline against a flat-sea control at equal samples:
-
-  | rows below the horizon | dT = 0 K | dT = 3 K |
-  |---|---|---|
-  | 4-12 | 0.105 | 0.112 |
-  | 12-30 | 0.137 | 0.155 |
-  | 30-80 | 0.259 | 0.303 |
-  | 80+ | 0.401 | 0.471 |
-
-  3 K buys 7-18%. Under a uniform ambient world the loss is nothing at the horizon and 5-6x in the near field, so measure rows well clear of it.
-- **The engine identifier is version-dependent.** `BLENDER_EEVEE` means EEVEE Legacy on ≤4.1 and EEVEE Next on ≥5.0, with `BLENDER_EEVEE_NEXT` in between. The Sky Texture moved the same way: `NISHITA` is `SINGLE_SCATTERING` and `MULTIPLE_SCATTERING` on ≥5.0.
+- **LWIR waves do not need `t_sea_k - t_air_k`.** A tilted facet reflects a different elevation of a sky that runs cold overhead to ambient at the horizon, so relief shows with the sea exactly at air temperature. Under a uniform ambient world it does not.
+- **The engine identifier is version-dependent.** `BLENDER_EEVEE` means EEVEE Legacy on ≤4.1 and EEVEE Next on ≥5.0, with `BLENDER_EEVEE_NEXT` in between. The Sky Texture's `NISHITA` is `SINGLE_SCATTERING` on ≥5.0; `MULTIPLE_SCATTERING` is a new model.
 - **Do not validate an engine against the enum.** Under the `bpy` module `render.engine` reports only `['BLENDER_EEVEE']`, on the class and the instance alike, because Cycles registers as an add-on. Assigning `CYCLES` works anyway and reads back. Assign it and let Blender raise: an identifier it does not know is a `TypeError`.
 - **Both clip planes cut in silence.** `clip_end` defaults to 1000 m, so a target at 2 km renders as sky and the boundary reads as a convincing horizon. `rig.near_clip_m` does the same to anything nearer than itself, and Blender accepts a near plane beyond the far one by rendering an empty frame. Nothing warns at either end.
 - **`matrix_world` is stale until the depsgraph runs.** Parent an object, move the parent, read a child's `matrix_world`, and you get where it used to be. `view_layer.update()` first, or every measurement quietly describes the wrong scene.
-- **An empty's `bound_box` is a unit cube at its origin.** An imported FBX is largely empties, so measuring the extent of "everything I just imported" inflates it and the fit comes out wrong.
+- **An empty's `bound_box` is a point at its origin.** An import is largely empties, so measuring the extent of "everything I just imported" inflates it and the fit comes out wrong.
 - **Cycles denoising is on by default and is not radiometric.** OIDN is an edge-aware image filter. On a world flat at 290.00 K it returns 282.43-293.00 K, worst at the frame border, and it breaks the R=G=B that an LWIR scene guarantees. It is off in both bands: in EO it also smooths the sea's sub-pixel wave texture.
 - **An image's `colorspace_settings` must be set before its pixels, never after.** Assigning it second re-reads the buffer that is already there and leaves the image black, with no error.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
@@ -103,9 +94,9 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Units in field names.** `height_m`, `t_sea_k`, `range_m`. No units library.
 - **Randomness comes from named substreams** off the scenario seed — `_substream(seed, "sea/surface")`. Never `np.random` module functions. Named streams mean adding a component doesn't perturb an existing one.
 - **Poses are functions of time.** Ground truth records a timestamp, not a frame index: sensors run at different rates, so frame *n* is not one instant.
-- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a gitignored cache.
-- **New components are pydantic models in a discriminated union**, registered in one place. Not a registry dict, not entry points.
-- Annotate every function signature.
+- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo.
+- **Components are pydantic models; a second kind of one makes a discriminated union**, registered in one place. Not a registry dict, not entry points.
+- Annotate every function signature outside tests.
 
 ## Checks — run before committing
 
