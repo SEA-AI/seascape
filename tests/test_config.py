@@ -442,3 +442,14 @@ def test_the_air_takes_its_atmosphere_s_temperature_unless_set() -> None:
     assert Sky().t_air_k == lwir.SURFACE_AIR_K[lwir.ATMOSPHERE]
     assert Sky(atmosphere="tropical").t_air_k == lwir.SURFACE_AIR_K["tropical"]
     assert Sky(atmosphere="tropical", t_air_k=280.0).t_air_k == 280.0
+
+
+def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:
+    base = load(BASELINE).model_dump()
+    sea = {k: v for k, v in base["sea"].items() if k != "t_sea_k"}
+    tropical = {**base, "sea": sea, "sky": {**base["sky"], "atmosphere": "tropical"}}
+    assert (
+        Scenario.model_validate(tropical).sea.t_sea_k == lwir.SURFACE_SEA_K["tropical"]
+    )
+    by_hand = {**tropical, "sea": {**sea, "t_sea_k": 290.0}}
+    assert Scenario.model_validate(by_hand).sea.t_sea_k == 290.0

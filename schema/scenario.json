@@ -500,8 +500,8 @@
       "description": "The temperature bound is the span of the shipped optical-constant table. `lwir`\nclamps to it; here it is an error.",
       "properties": {
         "t_sea_k": {
-          "default": 288.0,
-          "description": "Sea surface temperature. IR only.",
+          "default": 283.88,
+          "description": "Sea surface temperature. IR only. Unset, the atmosphere's own.",
           "maximum": 311.0,
           "minimum": 271.0,
           "title": "T Sea K",
@@ -594,7 +594,7 @@
         "atmosphere": {
           "$ref": "#/$defs/Atmosphere",
           "default": "north_sea",
-          "description": "LOWTRAN 7's model atmosphere, for the LWIR sky and air. EO ignores it."
+          "description": "LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so its sky reads warm at the horizon."
         },
         "t_air_k": {
           "default": 283.29,

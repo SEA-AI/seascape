@@ -76,10 +76,14 @@ def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> Non
     ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
     just_above = float(np.median(frame[horizon - 6 : horizon - 1]))
     assert just_above == pytest.approx(ambient, rel=0.02)
-    zenith = float(
-        lwir.sky_radiance(math.pi / 2, SCENARIO.sky.t_air_k, SCENARIO.sky.atmosphere)
-    )
-    assert zenith < float(np.median(frame[:5])) <= 0.95 * ambient
+    # The top five rows' centre, on a level camera whose horizon is the middle row.
+    height, width = frame.shape
+    ir = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "ir")
+    half = math.tan(math.radians(ir.camera.hfov_deg) / 2) * height / width
+    top = math.atan(half * (1 - 5 / height))
+    sky = SCENARIO.sky
+    expected = float(lwir.sky_radiance(top, sky.t_air_k, sky.atmosphere))
+    assert float(np.median(frame[:5])) == pytest.approx(expected, rel=0.02)
 
 
 def test_sea_texture_fades_with_range(frame) -> None:

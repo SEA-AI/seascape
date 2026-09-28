@@ -69,14 +69,23 @@ ATMOSPHERE: Atmosphere = "north_sea"
 _SURFACE_CSV = Path(__file__).parent / "data" / "lowtran_surface.csv"
 
 
-def _surface_air_k() -> dict[str, float]:
+def _columns(csv: Path) -> list[str]:
+    """The names after the first in the last comment line, the header."""
+    with csv.open() as f:
+        header = [line for line in f if line.startswith("#")][-1]
+    return header.removeprefix("#").strip().split(",")[1:]
+
+
+def _surface(column: str) -> dict[str, float]:
     names = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    air_k = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=1)
-    return {str(n): float(t) for n, t in zip(names, air_k, strict=True)}
+    index = _columns(_SURFACE_CSV).index(column) + 1
+    values = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=index)
+    return {str(n): float(v) for n, v in zip(names, values, strict=True)}
 
 
-# Each profile's air at the sea surface; `data/lowtran_surface.csv` says whose.
-SURFACE_AIR_K = _surface_air_k()
+# Each profile's air and sea at the surface; `data/lowtran_surface.csv` says whose.
+SURFACE_AIR_K = _surface("air_k")
+SURFACE_SEA_K = _surface("sea_k")
 
 BAND_M = (8.0e-6, 14.0e-6)
 
@@ -85,7 +94,7 @@ PLANCK_H = 6.62607015e-34  # J s
 LIGHT_C = 2.99792458e8  # m s^-1
 BOLTZMANN_K = 1.380649e-23  # J K^-1
 
-T_SEA_K = 288.0
+T_SEA_K = SURFACE_SEA_K[ATMOSPHERE]
 
 
 def _checked_kelvin(t_k: float) -> float:
@@ -248,13 +257,6 @@ def _sky_table() -> tuple[FloatArray, dict[str, FloatArray]]:
     return raw[:, 0], curves
 
 
-def _columns(csv: Path) -> list[str]:
-    """The names after the first in the last comment line, the header."""
-    with csv.open() as f:
-        header = [line for line in f if line.startswith("#")][-1]
-    return header.removeprefix("#").strip().split(",")[1:]
-
-
 def sky_radiance(
     elev_rad: npt.ArrayLike,
     t_air_k: float | None = None,
@@ -280,7 +282,8 @@ def _path_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
     """Per profile: (range m, 1 / visibility km with 0 for no aerosol, optical depth),
     the optical depth shaped (range, visibility) and the visibilities ascending."""
     columns = _columns(_PATH_CSV)[1:]
-    inverse = np.array([0.0 if c == "none" else 1 / float(c[4:-2]) for c in columns])
+    km = [c.removeprefix("vis_").removesuffix("km") for c in columns]
+    inverse = np.array([0.0 if c == "none" else 1 / float(c) for c in km])
     order = np.argsort(inverse)
     names = np.loadtxt(_PATH_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
     raw = np.loadtxt(

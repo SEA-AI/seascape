@@ -178,7 +178,7 @@ class Sea(Model):
         default=lwir.T_SEA_K,
         ge=271.0,
         le=311.0,
-        description="Sea surface temperature. IR only.",
+        description="Sea surface temperature. IR only. Unset, the atmosphere's own.",
     )
     wind_speed_mps: float = Field(
         default=7.0,
@@ -251,8 +251,9 @@ class Sky(Model):
     )
     atmosphere: lwir.Atmosphere = Field(
         default=lwir.ATMOSPHERE,
-        description="LOWTRAN 7's model atmosphere, for the LWIR sky and air. EO "
-        "ignores it.",
+        description="LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR "
+        "sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so "
+        "its sky reads warm at the horizon.",
     )
     t_air_k: float = Field(
         default=lwir.SURFACE_AIR_K[lwir.ATMOSPHERE],
@@ -486,6 +487,22 @@ class Scenario(Model):
         default_factory=list, description="Vessels placed one by one."
     )
     outputs: Outputs = Field(default_factory=Outputs)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sea_follows_the_atmosphere(cls, data: Any) -> Any:
+        """The sea's own field cannot see the sky's, so the scenario fills it."""
+        if not isinstance(data, dict) or not isinstance(data.get("sea", {}), dict):
+            return data
+        sea, sky = data.get("sea", {}), data.get("sky", {})
+        atmosphere = (
+            sky.get("atmosphere", lwir.ATMOSPHERE)
+            if isinstance(sky, dict)
+            else sky.atmosphere
+        )
+        if "t_sea_k" not in sea and atmosphere in lwir.SURFACE_SEA_K:
+            data = {**data, "sea": {**sea, "t_sea_k": lwir.SURFACE_SEA_K[atmosphere]}}
+        return data
 
     @model_validator(mode="after")
     def _a_loop_can_close(self) -> "Scenario":
