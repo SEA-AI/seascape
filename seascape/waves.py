@@ -34,6 +34,10 @@ seamless transitions from geometry to BRDF", Computer Graphics Forum 29(2) 487, 
 (doi:10.1111/j.1467-8659.2009.01618.x): a pixel draws the waves longer than its
 footprint and takes the slope variance of the rest as roughness.
 
+Wind height: DNV, "DNV-RP-C205: Environmental conditions and environmental loads",
+Det Norske Veritas 2010, section 2.3.2.4: the neutral log profile with Charnock's
+roughness.
+
 Dispersion: Lamb, "Hydrodynamics", 6th ed., Cambridge University Press 1932, chapter
 IX; deep water, omega^2 = g k.
 """
@@ -49,13 +53,14 @@ GRAVITY_MS2 = 9.81
 
 # Waves, end to end. Each step is a published relation or follows from one:
 #
+#   wind            U10 ln(z / z0) / ln(10 / z0)        DNV-RP-C205 2010
 #   spectrum        alpha g^2 w^-5 exp(-5/4 (wp/w)^4)  Pierson-Moskowitz 1964
-#   peak            wp = 0.877 g / U                    Pierson-Moskowitz 1964
+#   peak            wp = 0.877 g / U(19.5 m)            Pierson-Moskowitz 1964
 #   direction       cos^2s(theta / 2)                   Mitsuyasu 1975, Goda 2000
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
-#   total slope     sqrt(0.003 + 0.00512 U)             Cox & Munk 1954, eq. 13
+#   total slope     sqrt(0.003 + 0.00512 U(12.5 m))     Cox & Munk 1954, eq. 13
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
-#   unresolved      total^2 - drawn                     Bruneton 2010, per pixel
+#   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
@@ -67,6 +72,14 @@ WHITECAP_COEFFICIENT = 3.84e-6
 WHITECAP_EXPONENT = 3.41
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
+
+# Where each paper measured its wind: Pierson & Moskowitz 1964, Cox & Munk 1954.
+PM_WIND_HEIGHT_M = 19.5
+COX_MUNK_WIND_HEIGHT_M = 12.5
+
+# DNV-RP-C205 2.3.2.4: 0.011-0.014 over open sea; the von Karman constant.
+CHARNOCK = 0.011
+VON_KARMAN = 0.4
 
 # A judgement: enough that no single wave shows.
 COMPONENTS = 48
@@ -115,13 +128,26 @@ class Wave:
         return self.k_rad_m * math.cos(self.toward_rad)
 
 
+def wind_at_m(wind_speed_mps: float, height_m: float) -> float:
+    """The wind at `height_m` for `wind_speed_mps` at 10 m, over a neutral sea."""
+    if wind_speed_mps <= 0.0:
+        return 0.0
+    # z0 = A u*^2 / g and u* = kappa U10 / ln(10 / z0), to a fixed point.
+    z0_m = 1e-4
+    for _ in range(50):
+        friction_mps = VON_KARMAN * wind_speed_mps / math.log(10.0 / z0_m)
+        z0_m = CHARNOCK * friction_mps**2 / GRAVITY_MS2
+    return wind_speed_mps * math.log(height_m / z0_m) / math.log(10.0 / z0_m)
+
+
 def peak_omega_rad_s(wind_speed_mps: float) -> float:
-    return PM_PEAK * GRAVITY_MS2 / wind_speed_mps
+    return PM_PEAK * GRAVITY_MS2 / wind_at_m(wind_speed_mps, PM_WIND_HEIGHT_M)
 
 
 def cox_munk_slope(wind_speed_mps: float) -> float:
     """Total RMS surface slope. Dimensionless, a tangent."""
-    return math.sqrt(SLOPE_VARIANCE_INTERCEPT + SLOPE_VARIANCE_PER_MPS * wind_speed_mps)
+    wind = wind_at_m(wind_speed_mps, COX_MUNK_WIND_HEIGHT_M)
+    return math.sqrt(SLOPE_VARIANCE_INTERCEPT + SLOPE_VARIANCE_PER_MPS * wind)
 
 
 def _bins(wind_speed_mps: float) -> tuple[np.ndarray, np.ndarray]:
@@ -333,10 +359,17 @@ def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
 
 
 def unresolved_slope_variance(
-    wind_speed_mps: float, field: tuple[Wave, ...], footprint_m: float
+    wind_speed_mps: float,
+    wind: tuple[Wave, ...],
+    swell: tuple[Wave, ...],
+    footprint_m: float,
 ) -> float:
-    drawn = slope_variance(filtered(field, footprint_m))
-    return max(cox_munk_slope(wind_speed_mps) ** 2 - drawn, 0.0)
+    """Cox & Munk's is the wind sea's variance; a swell adds its own undrawn part."""
+    wind_left = cox_munk_slope(wind_speed_mps) ** 2 - slope_variance(
+        filtered(wind, footprint_m)
+    )
+    swell_left = slope_variance(swell) - slope_variance(filtered(swell, footprint_m))
+    return max(wind_left, 0.0) + swell_left
 
 
 def unresolved_acceleration_variance(

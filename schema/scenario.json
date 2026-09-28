@@ -495,7 +495,7 @@
         },
         "wind_speed_mps": {
           "default": 7.0,
-          "description": "Sets the wind sea.",
+          "description": "Measured 10 m above the sea. Sets the wind sea.",
           "minimum": 0.0,
           "title": "Wind Speed Mps",
           "type": "number"
