@@ -55,7 +55,7 @@ Building fresh each time is also what keeps a long-lived session from accumulati
 
 These produce wrong output with no error. They are the reason this file exists.
 
-- **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `_yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
+- **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `blend.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
 - **A camera's bearing is not `pod yaw + camera yaw`.** In the chain `scene._rig` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `scene.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
@@ -99,7 +99,7 @@ These produce wrong output with no error. They are the reason this file exists.
 
 ## Where code goes
 
-- **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; `sea.py` and `scene.py` only turn its values into nodes and keyframes, and their tests check the graph carries those values without re-deriving them.
+- **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 
