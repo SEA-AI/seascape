@@ -28,8 +28,8 @@ radiometric reference. The sky is normalised by its horizon, taken as a blackbod
 temperature: a horizontal path is opaque in every profile but subarctic winter, whose
 dry air lets part of the horizon through to space. Along a path, water vapour takes
 most of the band and the maritime aerosol the rest. The north_sea profiles are the air
-measured at Helgoland along the path, under a standard profile's sky; the tables say
-which.
+measured at Helgoland, 1991-2020, along the path, under a standard profile's sky; the
+tables say which.
 
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:
@@ -66,20 +66,17 @@ type Atmosphere = Literal[
 ]
 # Judgement: European waters, as measured at Helgoland.
 ATMOSPHERE: Atmosphere = "north_sea"
-# Each model's air at the surface, the first level of its profile in LOWTRAN 7's data
-# (Anderson et al., "AFGL atmospheric constituent profiles", AFGL-TR-86-0110, 1986).
-SURFACE_AIR_K: dict[Atmosphere, float] = {
-    "tropical": 299.7,
-    "midlatitude_summer": 294.2,
-    "midlatitude_winter": 272.2,
-    "subarctic_summer": 287.2,
-    "subarctic_winter": 257.2,
-    "us_standard": 288.2,
-    # DWD's Helgoland climate table, 1961-1990 daily means: the year, Dec-Feb, Jun-Aug.
-    "north_sea": 282.25,
-    "north_sea_winter": 276.15,
-    "north_sea_summer": 288.55,
-}
+_SURFACE_CSV = Path(__file__).parent / "data" / "lowtran_surface.csv"
+
+
+def _surface_air_k() -> dict[str, float]:
+    names = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
+    air_k = np.loadtxt(_SURFACE_CSV, delimiter=",", comments="#", usecols=1)
+    return {str(n): float(t) for n, t in zip(names, air_k, strict=True)}
+
+
+# Each profile's air at the sea surface; `data/lowtran_surface.csv` says whose.
+SURFACE_AIR_K = _surface_air_k()
 
 BAND_M = (8.0e-6, 14.0e-6)
 

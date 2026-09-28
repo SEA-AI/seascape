@@ -1,0 +1,18 @@
+# Each profile's air at the sea surface: temperature, water vapour pressure, pressure.
+#
+# LOWTRAN 7's six model atmospheres: the first level of each, as lowtran7.f carries
+# them (Anderson et al., "AFGL atmospheric constituent profiles (0-120 km)",
+# AFGL-TR-86-0110, 1986); vapour pressure is the H2O mixing ratio times the pressure.
+# The north_sea profiles: DWD station 2115, Helgoland (54.175 N 7.892 E, 4 m), daily
+# climate records (CDC observations_germany/climate/daily/kl), means of TMK, VPM and PM
+# over 1991-2020: the year, Dec-Feb and Jun-Aug.
+# profile,air_k,vapour_hpa,pressure_hpa
+tropical,299.70,26.27,1013.0
+midlatitude_summer,294.20,19.00,1013.0
+midlatitude_winter,272.20,4.39,1018.0
+subarctic_summer,287.20,12.06,1010.0
+subarctic_winter,257.20,1.42,1013.0
+us_standard,288.20,7.85,1013.0
+north_sea,283.29,10.78,1013.5
+north_sea_winter,277.28,7.18,1013.2
+north_sea_summer,289.67,15.31,1013.9
