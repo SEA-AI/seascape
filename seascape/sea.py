@@ -36,6 +36,8 @@ from seascape.waves import (
     fade_footprints_m,
     horizon_m,
     sea_z_m,
+    specular_cell_m2,
+    twinkle_hz,
     unresolved_acceleration_variance,
     unresolved_slope_variance,
     whitecap_fraction,
@@ -52,6 +54,10 @@ SEAWATER_IOR = 1.341
 # linear sRGB, times t / n^2 (Lee et al. 2002): Principled dims its diffuse by the
 # specular toward the viewer only.
 WATER_BODY_COLOR = (0.0, 0.0065, 0.018)
+
+# The Sky Texture's default sun_size, a diameter. A facet tilted by d turns the
+# reflection by 2 d, so the sun spans half its radius in slope.
+SUN_SLOPE_RADIUS = math.radians(0.545) / 4
 
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
@@ -251,7 +257,7 @@ def _wave(
 def _waves(
     tree: bpy.types.NodeTree,
     field: tuple[Wave, ...],
-    outputs: Outputs,
+    time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
 ) -> tuple[bpy.types.NodeSocket, list[_Drawn]]:
     """The normal of what the pixel resolves, and each wave as drawn."""
@@ -263,7 +269,7 @@ def _waves(
     link(geometry.outputs["Position"], position.inputs["Vector"])
     link(position.outputs["X"], xyt.inputs["X"])
     link(position.outputs["Y"], xyt.inputs["Y"])
-    link(_sea_time(tree, outputs), xyt.inputs["Z"])
+    link(time_s, xyt.inputs["Z"])
     across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
     along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
     stretch = _math(tree, "SUBTRACT", along_sq, across_sq)
@@ -360,6 +366,82 @@ def _whitecaps(
     cover = lookup(tree, cdf, x)
     cover.node.name = "whitecaps"
     return cover
+
+
+def _glitter(
+    tree: bpy.types.NodeTree,
+    wind: tuple[Wave, ...],
+    time_s: bpy.types.NodeSocket,
+    pixel: _Pixel,
+    unresolved: bpy.types.NodeSocket,
+    samples: int,
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
+    slope variance the tilts carry out of the lobe.
+
+    A pixel's `samples` samples of its n cells count glints as n cells do if each cell's
+    lobe catches the sun n / samples times as often: variance r^2 (n / samples - 1)
+    about a sun of slope radius r.
+    """
+    cell_m2 = specular_cell_m2(wind)
+    link = tree.links.new
+    cells = _math(
+        tree,
+        "DIVIDE",
+        _math(tree, "MULTIPLY", pixel.along_m, pixel.across_m),
+        cell_m2,
+    )
+    widen = _math(tree, "MULTIPLY_ADD", cells, 1 / samples, -1.0)
+    lobe = _math(
+        tree, "MULTIPLY", _math(tree, "MAXIMUM", widen, 0.0), SUN_SLOPE_RADIUS**2
+    )
+    carried = _math(
+        tree,
+        "MAXIMUM",
+        _math(tree, "SUBTRACT", unresolved, lobe),
+        0.0,
+        name="glitter_variance",
+    )
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    scaled = _vector(tree, "SCALE", geometry.outputs["Position"], name="glitter_cells")
+    scaled.node.inputs["Scale"].default_value = 1 / math.sqrt(cell_m2)
+    cell = _vector(tree, "FLOOR", scaled)
+    # Each cell twinkles at its own phase, or the whole sea would flip at once.
+    offset = tree.nodes.new("ShaderNodeTexWhiteNoise")
+    offset.noise_dimensions = "3D"
+    link(cell, offset.inputs["Vector"])
+    draw = _math(
+        tree,
+        "FLOOR",
+        _math(tree, "MULTIPLY_ADD", time_s, twinkle_hz(wind), offset.outputs["Value"]),
+        name="glitter_draw",
+    )
+    noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
+    noise.noise_dimensions = "4D"
+    link(cell, noise.inputs["Vector"])
+    link(draw, noise.inputs["W"])
+    uniform = tree.nodes.new("ShaderNodeSeparateXYZ")
+    link(noise.outputs["Color"], uniform.inputs["Vector"])
+    # Box-Muller: a radius from one uniform, an angle from the other.
+    log_u = _math(
+        tree, "LOGARITHM", _math(tree, "MAXIMUM", uniform.outputs["X"], 1e-7), math.e
+    )
+    sigma = _math(tree, "SQRT", _math(tree, "MULTIPLY", carried, 0.5))
+    radius = _math(
+        tree,
+        "MULTIPLY",
+        _math(tree, "SQRT", _math(tree, "MULTIPLY", log_u, -2.0)),
+        sigma,
+    )
+    angle = _math(tree, "MULTIPLY", uniform.outputs["Y"], 2 * math.pi)
+    east = tree.nodes.new("ShaderNodeCombineXYZ")
+    link(radius, east.inputs["X"])
+    tilt = tree.nodes.new("ShaderNodeVectorRotate")
+    tilt.rotation_type = "Z_AXIS"
+    tilt.name = "glitter_tilt"
+    link(east.outputs["Vector"], tilt.inputs["Vector"])
+    link(angle, tilt.inputs["Angle"])
+    return tilt.outputs["Vector"], carried
 
 
 def _lobe(
@@ -484,7 +566,8 @@ def _material(
     tree.nodes.clear()
     field = wind + swell
     pixel = _pixel(tree, pixel_rad)
-    normal, drawn = _waves(tree, field, outputs, pixel)
+    time_s = _sea_time(tree, outputs)
+    normal, drawn = _waves(tree, field, time_s, pixel)
 
     def unresolved_at(footprint_m: float) -> float:
         return unresolved_slope_variance(sea.wind_speed_mps, wind, swell, footprint_m)
@@ -495,6 +578,31 @@ def _material(
         _at_footprint(tree, table, pixel.across_m, "sea_unresolved_variance"),
     )
     if band == "eo":
+        if wind:
+            # The IR sky has no sun to glint, and its emissivity takes the whole slope.
+            tilt, carried = _glitter(
+                tree, wind, time_s, pixel, unresolved[1], outputs.samples.eo
+            )
+            normal = _vector(
+                tree,
+                "NORMALIZE",
+                _vector(tree, "ADD", normal, tilt),
+                name="glitter_normal",
+            )
+            along = _math(
+                tree,
+                "MAXIMUM",
+                _math(tree, "SUBTRACT", unresolved[0], carried),
+                0.0,
+            )
+            # Principled stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
+            across = _math(
+                tree,
+                "MAXIMUM",
+                _math(tree, "SUBTRACT", unresolved[1], carried),
+                _math(tree, "MULTIPLY", along, 0.01),
+            )
+            unresolved = (along, across)
         fraction = whitecap_fraction(sea.wind_speed_mps)
         # Along the view, the widest footprint, leaves the most unresolved. A judgement.
         whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, fraction)

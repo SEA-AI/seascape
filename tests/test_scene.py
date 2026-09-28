@@ -494,12 +494,28 @@ class TestEoBand:
     def test_the_sky_is_lit(self) -> None:
         assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
 
+    def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
+        wind = scene.wind_waves(SCENARIO)
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        scale = nodes["glitter_cells"].inputs["Scale"].default_value
+        assert scale == pytest.approx(1 / math.sqrt(waves.specular_cell_m2(wind)))
+        twinkle = nodes["glitter_draw"].inputs[0].links[0].from_node
+        assert twinkle.inputs[1].default_value == pytest.approx(waves.twinkle_hz(wind))
+
+    def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
+
 
 class TestIrBand:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls) -> None:
         scene.build(SCENARIO, "ir")
+
+    def test_the_sea_does_not_glitter(self) -> None:
+        """The emissivity table already takes the whole unresolved slope."""
+        assert "glitter_cells" not in bpy.data.materials["sea"].node_tree.nodes
 
     def test_the_sky_carries_downwelling_radiance(self) -> None:
         """What renders is the Background node, not `World.color`.

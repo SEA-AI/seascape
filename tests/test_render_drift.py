@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import lwir, scene, waves
+from seascape import lwir, scene, sea, waves
 from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
@@ -207,15 +207,31 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     distance = np.sqrt(east**2 + north**2 + height_m**2)
     wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
     speed = SCENARIO.sea.wind_speed_mps
-    variance = np.array(
-        [
-            waves.unresolved_slope_variance(speed, wind, swell, d * pixel_rad)
-            for d in distance.ravel()
-        ]
-    ).reshape(distance.shape)
-    # Top down, both footprints agree: alpha = sqrt(variance) on each axis.
-    expected = np.minimum(variance**0.25, 1.0)
+    footprints = distance.ravel() * pixel_rad
+    variance = [
+        waves.unresolved_slope_variance(speed, wind, swell, f) for f in footprints
+    ]
+    lobes = [lobe(v, v, f, f, wind) for v, f in zip(variance, footprints, strict=True)]
+    # Top down, both footprints agree.
+    expected = np.array([min((a * c) ** 0.125, 1.0) for a, c in lobes]).reshape(
+        distance.shape
+    )
     assert np.abs(rendered - expected).max() < 5e-3
+
+
+def lobe(
+    along: float,
+    across: float,
+    along_m: float,
+    across_m: float,
+    wind: tuple[waves.Wave, ...],
+) -> tuple[float, float]:
+    """The unresolved variance left to the lobe once the glitter takes its share."""
+    cells = along_m * across_m / waves.specular_cell_m2(wind)
+    widen = max(cells / SCENARIO.outputs.samples.eo - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
+    carried = max(across - widen, 0.0)
+    left = max(along - carried, 0.0)
+    return max(left, 1e-12), max(across - carried, left / 100, 1e-12)
 
 
 @pytest.mark.render
@@ -266,8 +282,13 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
             distance = origin[2] / -ray[2]
             across = distance * pixel_rad
             along = across / -ray[2]
-            v_along = waves.unresolved_slope_variance(speed, wind, swell, along)
-            v_across = waves.unresolved_slope_variance(speed, wind, swell, across)
+            v_along, v_across = lobe(
+                waves.unresolved_slope_variance(speed, wind, swell, along),
+                waves.unresolved_slope_variance(speed, wind, swell, across),
+                along,
+                across,
+                wind,
+            )
             expected = (1 - math.sqrt(v_across / v_along)) / 0.9
             assert rendered[row, col] == pytest.approx(expected, abs=0.02), (row, col)
             checked += 1
