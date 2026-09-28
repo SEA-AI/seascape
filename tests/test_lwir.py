@@ -1,5 +1,7 @@
 """Physics assertions for the LWIR band. No Blender."""
 
+from typing import get_args
+
 import numpy as np
 import pytest
 
@@ -168,3 +170,10 @@ def test_aerosol_adds_to_water_vapour_which_takes_most_of_the_path() -> None:
     clear, typical, hazy = (lwir.path_optical_depth(10_000.0, v) for v in (None, 42, 5))
     assert clear < typical < hazy
     assert clear / typical > 0.8
+
+
+def test_every_atmosphere_has_a_sky_a_path_and_a_surface_air() -> None:
+    names = set(get_args(lwir.Atmosphere.__value__))
+    assert set(lwir._sky_table()[1]) == names
+    assert set(lwir._path_table()) == names
+    assert set(lwir.SURFACE_AIR_K) == names

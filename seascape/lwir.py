@@ -27,7 +27,9 @@ of its model atmospheres, observer at 12 m, integrated over the band;
 radiometric reference. The sky is normalised by its horizon, taken as a blackbody at air
 temperature: a horizontal path is opaque in every profile but subarctic winter, whose
 dry air lets part of the horizon through to space. Along a path, water vapour takes
-most of the band and the maritime aerosol the rest.
+most of the band and the maritime aerosol the rest. The north_sea profiles are the air
+measured at Helgoland along the path, under a standard profile's sky; the tables say
+which.
 
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:
@@ -58,6 +60,9 @@ type Atmosphere = Literal[
     "subarctic_summer",
     "subarctic_winter",
     "us_standard",
+    "north_sea",
+    "north_sea_winter",
+    "north_sea_summer",
 ]
 # Judgement: European waters.
 ATMOSPHERE: Atmosphere = "midlatitude_winter"
@@ -70,6 +75,10 @@ SURFACE_AIR_K: dict[Atmosphere, float] = {
     "subarctic_summer": 287.2,
     "subarctic_winter": 257.2,
     "us_standard": 288.2,
+    # DWD's Helgoland climate table, 1961-1990 daily means: the year, Dec-Feb, Jun-Aug.
+    "north_sea": 282.25,
+    "north_sea_winter": 276.15,
+    "north_sea_summer": 288.55,
 }
 
 BAND_M = (8.0e-6, 14.0e-6)
