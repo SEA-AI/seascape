@@ -102,7 +102,7 @@ These produce wrong output with no error. They are the reason this file exists.
 ## Where code goes
 
 - **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
-- **One wave field.** `scene.wave_field` draws it; the shader takes that tuple.
+- **One wave field**, from `scene.wind_waves` and `scene.swell_waves`.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 
