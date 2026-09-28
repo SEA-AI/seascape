@@ -495,7 +495,7 @@
         },
         "wind_speed_mps": {
           "default": 7.0,
-          "description": "Sets the waves' spectrum and slope.",
+          "description": "Sets the wind sea.",
           "minimum": 0.0,
           "title": "Wind Speed Mps",
           "type": "number"
@@ -505,6 +505,18 @@
           "description": "Where the wind blows from, clockwise from the ownship's bow.",
           "title": "Wind From Deg",
           "type": "number"
+        },
+        "swell": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Swell"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "On top of the wind's sea."
         },
         "refraction_k": {
           "default": 0.13,
@@ -561,6 +573,36 @@
         }
       },
       "title": "Sky",
+      "type": "object"
+    },
+    "Swell": {
+      "additionalProperties": false,
+      "description": "Waves from a distant storm, whatever the local wind.",
+      "properties": {
+        "height_m": {
+          "description": "Significant wave height.",
+          "exclusiveMinimum": 0.0,
+          "title": "Height M",
+          "type": "number"
+        },
+        "period_s": {
+          "description": "Seconds between crests.",
+          "exclusiveMinimum": 0.0,
+          "title": "Period S",
+          "type": "number"
+        },
+        "from_deg": {
+          "default": 0.0,
+          "description": "Where it comes from, clockwise from the ownship's bow.",
+          "title": "From Deg",
+          "type": "number"
+        }
+      },
+      "required": [
+        "height_m",
+        "period_s"
+      ],
+      "title": "Swell",
       "type": "object"
     },
     "Swing": {

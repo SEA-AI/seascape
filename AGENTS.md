@@ -56,6 +56,7 @@ Building fresh each time is also what keeps a long-lived session from accumulati
 These produce wrong output with no error. They are the reason this file exists.
 
 - **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `blend.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
+- **Wind and swell are named for where they come from; waves run the other way.** `wind_from_deg` and `swell.from_deg` are bearings of origin, and `waves` turns them by 180 once. A second turn looks right in a still.
 - **A camera's bearing is not `pod yaw + camera yaw`.** In the chain `scene._rig` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `scene.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` takes sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
