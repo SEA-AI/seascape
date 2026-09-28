@@ -16,8 +16,14 @@ Whitecaps: Monahan & O'Muircheartaigh, "Optimal power-law description of oceanic
 whitecap coverage dependence on wind speed", Journal of Physical Oceanography 10(12)
 2094, 1980, for how much; Snyder & Kennedy, "On the formation of whitecaps by a
 threshold mechanism. Part I: Basic formalism", Journal of Physical Oceanography 13(8)
-1482, 1983, for where: the downward acceleration past a threshold. A pixel whitecaps
-over the fraction of it whose unresolved acceleration carries it past.
+1482, 1983, for where: the downward acceleration past a threshold, set from the
+coverage (Tse, McGill & Kelly, SPIE Ocean Optics X 1302, 505, 1990; Tessendorf, Reinhard
+& Gao, "Whitecap phenomenology for ocean surface simulation", Clemson University report,
+2023). Per
+pixel: Dupuy & Bruneton, "Real-time animation and rendering of ocean whitecaps",
+SIGGRAPH Asia 2012 Technical Briefs 15 (doi:10.1145/2407746.2407761), whose Jacobian
+criterion is this acceleration to first order in the choppiness; the drawn waves set the
+mean, the rest a Gaussian spread.
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
@@ -27,11 +33,6 @@ Filtering: Bruneton, Neyret & Holzschuch, "Real-time realistic ocean lighting us
 seamless transitions from geometry to BRDF", Computer Graphics Forum 29(2) 487, 2010
 (doi:10.1111/j.1467-8659.2009.01618.x): a pixel draws the waves longer than its
 footprint and takes the slope variance of the rest as roughness.
-
-Microfacet lobe: Walter, Marschner, Li & Torrance, "Microfacet models for refraction
-through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for GGX; Burley,
-"Physically-based shading at Disney", SIGGRAPH 2012 course notes, for the alpha =
-roughness^2 convention Cycles follows.
 
 Dispersion: Lamb, "Hydrodynamics", 6th ed., Cambridge University Press 1932, chapter
 IX; deep water, omega^2 = g k.
@@ -55,8 +56,7 @@ GRAVITY_MS2 = 9.81
 #   total slope     sqrt(0.003 + 0.00512 U)             Cox & Munk 1954, eq. 13
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn                     Bruneton 2010, per pixel
-#   emissivity      Fresnel over unresolved slopes      Masuda 1988
-#   lobe width      alpha = sqrt(2) sigma per axis      Beckmann; GGX alpha = r^2
+#   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
@@ -119,7 +119,7 @@ def peak_omega_rad_s(wind_speed_mps: float) -> float:
     return PM_PEAK * GRAVITY_MS2 / wind_speed_mps
 
 
-def wave_slope(wind_speed_mps: float) -> float:
+def cox_munk_slope(wind_speed_mps: float) -> float:
     """Total RMS surface slope. Dimensionless, a tangent."""
     return math.sqrt(SLOPE_VARIANCE_INTERCEPT + SLOPE_VARIANCE_PER_MPS * wind_speed_mps)
 
@@ -155,7 +155,7 @@ def _off_mean_rad(s: np.ndarray, u: np.ndarray) -> np.ndarray:
     return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
 
 
-def components(
+def wind_sea(
     wind_speed_mps: float,
     wind_from_deg: float,
     snap: Callable[[float], float],
@@ -224,7 +224,7 @@ def breaking_threshold_g(wind: tuple[Wave, ...], fraction: float) -> float:
         return math.inf
     if fraction >= 1.0:
         return -math.inf
-    sigma = math.sqrt(resolved_slope_variance(wind))
+    sigma = math.sqrt(slope_variance(wind))
     return sigma * NormalDist().inv_cdf(1.0 - fraction)
 
 
@@ -286,11 +286,7 @@ def attitude(
     spacing_m = max(
         length_m / (ATTITUDE_SAMPLES[0] - 1), beam_m / (ATTITUDE_SAMPLES[1] - 1)
     )
-    shown, _ = _shown(field, spacing_m)
-    field = tuple(
-        replace(w, amplitude_m=w.amplitude_m * v)
-        for w, v in zip(field, shown.tolist(), strict=True)
-    )
+    field = filtered(field, spacing_m)
     along, across = np.meshgrid(
         np.linspace(-length_m / 2, length_m / 2, ATTITUDE_SAMPLES[0]),
         np.linspace(-beam_m / 2, beam_m / 2, ATTITUDE_SAMPLES[1]),
@@ -306,48 +302,48 @@ def attitude(
     return math.atan(rise_along), math.atan(rise_across)
 
 
-def resolved_slope_variance(field: tuple[Wave, ...]) -> float:
+def slope_variance(field: tuple[Wave, ...]) -> float:
+    """Also the downward acceleration's variance over g^2, as omega^2 = g k."""
     return sum((w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field)
+
+
+def fade_footprints_m(
+    wavelength_m: np.ndarray | float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The footprints at which a wave is gone and whole."""
+    low, high = FADE_FOOTPRINTS
+    return np.asarray(wavelength_m) / low, np.asarray(wavelength_m) / high
 
 
 def visibility(wavelength_m: np.ndarray, footprint_m: float) -> np.ndarray:
     """How much of a wave a pixel of `footprint_m` draws: 1 whole, 0 left to the
-    roughness."""
-    # Smoothstep in footprint squared, as the shader's Map Range fades it.
-    low, high = FADE_FOOTPRINTS
-    gone, whole = (
-        (np.asarray(wavelength_m) / low) ** 2,
-        (np.asarray(wavelength_m) / high) ** 2,
-    )
-    x = np.clip((footprint_m**2 - gone) / (whole - gone), 0, 1)
+    roughness. Smoothstep in footprint squared, as the shader's Map Range."""
+    gone, whole = fade_footprints_m(wavelength_m)
+    x = np.clip((footprint_m**2 - gone**2) / (whole**2 - gone**2), 0, 1)
     return x * x * (3 - 2 * x)
 
 
-def _shown(
-    field: tuple[Wave, ...], footprint_m: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """Each wave's visibility at `footprint_m`, and its slope variance a^2 k^2 / 2,
-    which is also its downward acceleration's over g^2."""
-    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
-    variance = np.array([(w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field])
-    return visibility(wavelength, footprint_m), variance
-
-
-def pixel_slope_variance(
-    wind_speed_mps: float, field: tuple[Wave, ...], footprint_m: float
-) -> float:
-    """The slope variance a pixel of `footprint_m` does not draw."""
-    shown, variance = _shown(field, footprint_m)
-    return max(
-        wave_slope(wind_speed_mps) ** 2 - float(np.sum(shown**2 * variance)), 0.0
+def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
+    """The waves a pixel of `footprint_m` draws, each scaled by its visibility."""
+    shown = visibility(np.array([2 * math.pi / w.k_rad_m for w in field]), footprint_m)
+    return tuple(
+        replace(w, amplitude_m=w.amplitude_m * v)
+        for w, v in zip(field, shown.tolist(), strict=True)
     )
 
 
-def pixel_acceleration_variance(wind: tuple[Wave, ...], footprint_m: float) -> float:
-    """The downward acceleration variance, over g^2, a pixel of `footprint_m` does not
-    draw."""
-    shown, variance = _shown(wind, footprint_m)
-    return float(np.sum((1 - shown**2) * variance))
+def unresolved_slope_variance(
+    wind_speed_mps: float, field: tuple[Wave, ...], footprint_m: float
+) -> float:
+    drawn = slope_variance(filtered(field, footprint_m))
+    return max(cox_munk_slope(wind_speed_mps) ** 2 - drawn, 0.0)
+
+
+def unresolved_acceleration_variance(
+    wind: tuple[Wave, ...], footprint_m: float
+) -> float:
+    """Over g^2."""
+    return slope_variance(wind) - slope_variance(filtered(wind, footprint_m))
 
 
 def whitecap_cover(
@@ -361,10 +357,8 @@ def whitecap_cover(
     """How much of a pixel of `footprint_m` whitecaps, for a sea that does over
     `fraction`: its drawn waves' downward acceleration against the threshold, the rest
     Gaussian."""
-    shown, _ = _shown(wind, footprint_m)
-    ak = np.array([w.amplitude_m * w.k_rad_m for w in wind]) * shown
-    drawn = np.tensordot(ak, np.cos(_phase(wind, east_m, north_m, t_s)), axes=1)
-    sigma = max(math.sqrt(pixel_acceleration_variance(wind, footprint_m)), 1e-6)
+    drawn = downward_acceleration_g(filtered(wind, footprint_m), east_m, north_m, t_s)
+    sigma = max(math.sqrt(unresolved_acceleration_variance(wind, footprint_m)), 1e-6)
     z = (drawn - breaking_threshold_g(wind, fraction)) / sigma
     return np.vectorize(NormalDist().cdf)(z)
 

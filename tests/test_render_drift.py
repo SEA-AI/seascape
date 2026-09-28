@@ -90,8 +90,9 @@ def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
     """The near sea of an ir frame, optionally with the wave relief flattened."""
     scene.build(scenario, "ir")
     if not waves:
-        relief = bpy.data.materials["sea"].node_tree.nodes["wave_relief"]
-        relief.inputs["Scale"].default_value = 0.0
+        tree = bpy.data.materials["sea"].node_tree
+        flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
+        tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
     sc = bpy.context.scene
     sc.camera = next(
         o for o in bpy.data.objects if o.type == "CAMERA" and "_ir_" in o.name
@@ -207,7 +208,7 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
     variance = np.array(
         [
-            waves.pixel_slope_variance(speed, field, d * pixel_rad)
+            waves.unresolved_slope_variance(speed, field, d * pixel_rad)
             for d in distance.ravel()
         ]
     ).reshape(distance.shape)
@@ -263,8 +264,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
             distance = origin[2] / -ray[2]
             across = distance * pixel_rad
             along = across / -ray[2]
-            v_along = waves.pixel_slope_variance(speed, field, along)
-            v_across = waves.pixel_slope_variance(speed, field, across)
+            v_along = waves.unresolved_slope_variance(speed, field, along)
+            v_across = waves.unresolved_slope_variance(speed, field, across)
             expected = (1 - math.sqrt(v_across / v_along)) / 0.9
             assert rendered[row, col] == pytest.approx(expected, abs=0.02), (row, col)
             checked += 1

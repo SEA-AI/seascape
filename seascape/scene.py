@@ -12,7 +12,7 @@ from mathutils import Matrix, Vector
 
 from seascape import lwir, sea, waves
 from seascape.assets import Asset, fetch, manifest
-from seascape.blend import CURVE_SAMPLES, animate, curve_image, place, sine, yaw
+from seascape.blend import CURVE_SAMPLES, animate, curve_image, lookup, place, sine, yaw
 from seascape.calibration import CameraCalibration, Matrix4
 from seascape.config import (
     Band,
@@ -40,7 +40,7 @@ def _substream(seed: int, name: str) -> np.random.Generator:
 
 def wind_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
     sea = scenario.sea
-    return waves.components(
+    return waves.wind_sea(
         sea.wind_speed_mps,
         sea.wind_from_deg,
         scenario.outputs.period_s,
@@ -106,19 +106,14 @@ def _thermal_sky(world: bpy.types.World, t_air_k: float) -> bpy.types.World:
     above = tree.nodes.new("ShaderNodeMath")
     above.operation = "MAXIMUM"
     above.use_clamp = True
-    above.inputs[1].default_value = 0.0
-    lookup = tree.nodes.new("ShaderNodeCombineXYZ")
-    texture = tree.nodes.new("ShaderNodeTexImage")
-    texture.image = _sky_image(t_air_k)
-    texture.extension = "EXTEND"
+    above.inputs["Value_001"].default_value = 0.0
     background = tree.nodes.new("ShaderNodeBackground")
     output = tree.nodes.new("ShaderNodeOutputWorld")
 
     link(coord.outputs["Generated"], height.inputs["Vector"])
-    link(height.outputs["Z"], above.inputs[0])
-    link(above.outputs["Value"], lookup.inputs["X"])
-    link(lookup.outputs["Vector"], texture.inputs["Vector"])
-    link(texture.outputs["Color"], background.inputs["Color"])
+    link(height.outputs["Z"], above.inputs["Value"])
+    radiance = lookup(tree, _sky_image(t_air_k), above.outputs["Value"])
+    link(radiance, background.inputs["Color"])
     link(background.outputs["Background"], output.inputs["Surface"])
     return world
 

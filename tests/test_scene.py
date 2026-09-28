@@ -175,6 +175,17 @@ class TestGeometry:
             )
             assert max(axes[2]) > 0.0, "and the rest of it is above water"
 
+    def test_each_wave_fades_as_the_core_s_visibility(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        for i, wave in enumerate(scene.wave_field(SCENARIO)):
+            fade = nodes[f"wave_{i}_fade"]
+            gone, whole = waves.fade_footprints_m(2 * math.pi / wave.k_rad_m)
+            assert fade.interpolation_type == "SMOOTHSTEP"
+            assert (
+                fade.inputs["From Min"].default_value,
+                fade.inputs["From Max"].default_value,
+            ) == pytest.approx((gone**2, whole**2), rel=1e-6)
+
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         field = scene.wave_field(SCENARIO)
@@ -463,14 +474,14 @@ class TestEoBand:
         footprints = low * (high / low) ** texel
         field, speed = scene.wave_field(SCENARIO), SCENARIO.sea.wind_speed_mps
         for i in (0, len(table) // 2, len(table) - 1):
-            expected = waves.pixel_slope_variance(speed, field, footprints[i])
+            expected = waves.unresolved_slope_variance(speed, field, footprints[i])
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
     def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
         wind = scene.wind_waves(SCENARIO)
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
-        threshold = tree.nodes["whitecaps_threshold"].inputs["Value_001"].default_value
+        threshold = tree.nodes["whitecap_excess"].inputs["Value_001"].default_value
         assert threshold == pytest.approx(
             waves.breaking_threshold_g(wind, waves.whitecap_fraction(speed)), rel=1e-6
         )
@@ -600,12 +611,12 @@ class TestIrBand:
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
-        theta. Rows run up the unresolved slope per axis, to all of Cox & Munk's."""
+        theta. Rows run up the unresolved RMS slope, to all of Cox & Munk's."""
         table = baked("sea_emissivity")
         rows, width = table.shape
         mu = (np.arange(width) + 0.5) / width
         # Per axis: lwir draws each facet's two slopes with this sigma.
-        sigma_max = waves.wave_slope(SCENARIO.sea.wind_speed_mps) / math.sqrt(2)
+        sigma_max = waves.cox_munk_slope(SCENARIO.sea.wind_speed_mps) / math.sqrt(2)
         for row in (0, rows // 2, rows - 1):
             theta, eps = lwir.emissivity_curve(
                 t_sea_k=SCENARIO.sea.t_sea_k,

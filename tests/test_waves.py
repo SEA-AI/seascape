@@ -7,14 +7,14 @@ from seascape import lwir, waves
 
 
 def field(wind_speed_mps: float, wind_from_deg: float = 0.0) -> tuple[waves.Wave, ...]:
-    return waves.components(
+    return waves.wind_sea(
         wind_speed_mps, wind_from_deg, lambda p: p, np.random.default_rng(0)
     )
 
 
 def test_published_values_have_not_drifted() -> None:
     # Cox & Munk 1954: RMS slope of a clean sea at 7 m/s, off sun glitter photographs.
-    assert waves.wave_slope(7.0) == pytest.approx(0.197, abs=5e-4)
+    assert waves.cox_munk_slope(7.0) == pytest.approx(0.197, abs=5e-4)
     # Surveying's rule of thumb for the horizon, 3.86 sqrt(h_m) km at k = 0.13.
     rule_m = 3.86e3 * math.sqrt(51.8)
     assert waves.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
@@ -28,7 +28,8 @@ def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
     built = field(7.0)
     # lwir takes the slope per axis: half the total variance.
     near, far = (
-        math.sqrt(waves.pixel_slope_variance(7.0, built, f) / 2) for f in (0.01, 50)
+        math.sqrt(waves.unresolved_slope_variance(7.0, built, f) / 2)
+        for f in (0.01, 50)
     )
     eps = {}
     for name, sigma in (("near", near), ("far", far)):
@@ -67,7 +68,7 @@ def test_a_crest_travels_at_its_phase_speed() -> None:
 
 def test_a_snapped_field_repeats_after_the_loop() -> None:
     span_s = 40.0
-    snapped = waves.components(
+    snapped = waves.wind_sea(
         7.0,
         0.0,
         lambda p: span_s / max(1, round(span_s / p)),
@@ -89,12 +90,12 @@ def test_a_longer_loop_snaps_the_frequencies_less() -> None:
 
 def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     built = field(7.0)
-    total = waves.wave_slope(7.0) ** 2
-    sharp = waves.pixel_slope_variance(7.0, built, 1e-4)
-    assert sharp == pytest.approx(total - waves.resolved_slope_variance(built))
-    assert waves.pixel_slope_variance(7.0, built, 1e4) == pytest.approx(total)
+    total = waves.cox_munk_slope(7.0) ** 2
+    sharp = waves.unresolved_slope_variance(7.0, built, 1e-4)
+    assert sharp == pytest.approx(total - waves.slope_variance(built))
+    assert waves.unresolved_slope_variance(7.0, built, 1e4) == pytest.approx(total)
     footprints = [0.01, 0.1, 1.0, 10.0]
-    rest = [waves.pixel_slope_variance(7.0, built, f) for f in footprints]
+    rest = [waves.unresolved_slope_variance(7.0, built, f) for f in footprints]
     assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
@@ -108,8 +109,8 @@ def test_a_wave_fades_out_before_it_aliases() -> None:
 
 def test_calm_air_builds_no_waves() -> None:
     assert field(0.0) == ()
-    assert waves.pixel_slope_variance(0.0, (), 1.0) == pytest.approx(
-        waves.wave_slope(0.0) ** 2
+    assert waves.unresolved_slope_variance(0.0, (), 1.0) == pytest.approx(
+        waves.cox_munk_slope(0.0) ** 2
     )
 
 
