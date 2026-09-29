@@ -870,6 +870,9 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
     sc.render.use_persistent_data = True
+    # The GPU compositor, the factory's, keeps memory from every render, and a clip
+    # runs out of it.
+    sc.render.compositor_device = "CPU"
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True
 

@@ -116,6 +116,12 @@ class TestSettings:
         assert sc.cycles.use_denoising is False
 
     @pytest.mark.parametrize("band", get_args(Band.__value__))
+    def test_the_compositor_runs_on_the_cpu(self, band: Band) -> None:
+        sc = built(band)
+
+        assert sc.render.compositor_device == "CPU"
+
+    @pytest.mark.parametrize("band", get_args(Band.__value__))
     def test_both_bands_render_in_cycles(self, band: Band) -> None:
         sc = built(band)
 

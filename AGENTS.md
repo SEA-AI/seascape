@@ -75,6 +75,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **An image's `colorspace_settings` must be set before its pixels, never after.** Assigning it second re-reads the buffer that is already there and leaves the image black, with no error.
 - **A material made after `build` is seen through clear air.** The haze is a mix `build` puts in every material it makes; `scene.haze(material)` puts it in another.
 - **Persistent data keeps the first render's sampling.** `build` turns it on, and a change to `cycles.samples` or to a world's or material's light sampling between renders is ignored. Set them before the first render, or turn it off.
+- **Blender's GPU compositor keeps memory from every render**, about 65 MB a 1080p frame even through a tree that only passes the render on. A clip dies with SIGKILL and nothing in the log. `build` puts the compositor on the CPU.
 - **The compositor is the camera, and the build picks it by format.** An 8-bit EO build puts glare, blur and auto-exposure there; an exr build passes the radiance through. Switch the file format after `build` and an exr holds the look, a png the raw frame.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
