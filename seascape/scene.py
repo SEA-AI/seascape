@@ -808,6 +808,16 @@ def _ride(
 
 JPEG_QUALITY = 95
 
+# ISO 12232's saturation-based speed puts mid-grey at 10/78 of saturation; the
+# log-average luminance stands for a scene's mid-grey (Reinhard et al. 2002).
+MID_GREY = 10 / 78
+# A lens scatters in Harvey's form, (1 + (r / r0)^2)^(-g / 2) off the direct light
+# (Harvey 1976, the ABg model). Judgements, for a generic lens: the share of the light
+# it scatters, r0 in half the image's longer side, and g.
+GLARE_SHARE, GLARE_SHOULDER, GLARE_SLOPE = 0.02, 0.01, 3.0
+# Judgement: the Blur node's size, in the image's longer side; a pixel of a 4K frame.
+BLUR_OF_SIDE = 1 / 3840
+
 # Blender's identifier and bit depth.
 FORMATS: dict[ImageFormat, tuple[str, str]] = {
     "exr": ("OPEN_EXR", "32"),
@@ -844,21 +854,99 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.cycles.samples = getattr(outputs.samples, band)
     # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
+    # The factory AgX is a film curve; a camera clips, and LWIR radiance is no picture.
     view = sc.view_settings
-    if band == "eo":
-        view.exposure = outputs.exposure_ev
-    else:
-        # Radiance in W m^-2 sr^-1, not a picture; the default AgX film curve bends it.
-        view.view_transform, view.look = "Standard", "None"
-        view.exposure, view.gamma = 0.0, 1.0
+    view.view_transform, view.look = "Standard", "None"
+    view.exposure, view.gamma = 0.0, 1.0
     # 8-bit radiance is not radiance; `render` maps 8-bit ir from the exr.
     file_format, depth = FORMATS[outputs.format if band == "eo" else "exr"]
+    _compositor(outputs.exposure_compensation_ev if depth == "8" else None)
     sc.render.image_settings.file_format = file_format
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
     sc.render.use_persistent_data = True
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True
+
+
+def _compositor(compensation_ev: float | None) -> None:
+    """The render as a camera takes it, `compensation_ev` over auto-exposure; as
+    rendered for None."""
+    tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
+    tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+    bpy.context.scene.compositing_node_group = tree
+    image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
+    if compensation_ev is not None:
+        image = _camera(tree, image, compensation_ev)
+    tree.links.new(image, tree.nodes.new("NodeGroupOutput").inputs["Image"])
+
+
+def _camera(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket, compensation_ev: float
+) -> bpy.types.NodeSocket:
+    """A lens's glare and blur, then auto-exposure. The Standard view clips at white,
+    as a sensor does.
+
+    ponytail: each frame meters itself; a real camera's exposure lags, so add a time
+    constant if a sequence flickers.
+    """
+    nodes, links = tree.nodes, tree.links
+    coords, info = (
+        nodes.new(kind)
+        for kind in ("CompositorNodeImageCoordinates", "CompositorNodeImageInfo")
+    )
+    links.new(image, coords.inputs["Image"])
+    links.new(image, info.inputs["Image"])
+    # Uniform spans -1 to 1 along the longer side, so the kernel is a fixed share of
+    # the frame at any resolution. Fog Glow and Bloom change shape with it.
+    radius = sea._vector(tree, "LENGTH", coords.outputs["Uniform"])
+    shoulder = sea._math(tree, "DIVIDE", radius, GLARE_SHOULDER)
+    harvey = sea._math(
+        tree,
+        "POWER",
+        sea._math(tree, "MULTIPLY_ADD", shoulder, shoulder, 1.0),
+        -GLARE_SLOPE / 2,
+    )
+    glare = nodes.new("CompositorNodeGlare")
+    glare.inputs["Type"].default_value = "Kernel"
+    # Medium, the default, convolves at half the resolution.
+    glare.inputs["Quality"].default_value = "High"
+    # A lens scatters all the light, not only what clips.
+    glare.inputs["Threshold"].default_value = 0.0
+    # Glare adds its glow to the image; normalized, the glow is this share of the sum.
+    glare.inputs["Strength"].default_value = GLARE_SHARE / (1 - GLARE_SHARE)
+    kernel = next(s for s in glare.inputs if s.name == "Kernel" and s.type == "VALUE")
+    links.new(harvey, kernel)
+    links.new(image, glare.inputs["Image"])
+    side = nodes.new("ShaderNodeSeparateXYZ")
+    links.new(info.outputs["Resolution"], side.inputs["Vector"])
+    longer_px = sea._math(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
+    # A share of the frame, not a pixel count, so it blurs alike at any resolution.
+    size_px = sea._math(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
+    size = nodes.new("ShaderNodeCombineXYZ")
+    links.new(size_px, size.inputs["X"])
+    links.new(size_px, size.inputs["Y"])
+    blur = nodes.new("CompositorNodeBlur")
+    blur.inputs["Type"].default_value = "Gaussian"
+    links.new(size.outputs["Vector"], blur.inputs["Size"])
+    links.new(glare.outputs["Image"], blur.inputs["Image"])
+    image = blur.outputs["Image"]
+    luminance = nodes.new("CompositorNodeRGBToBW")
+    links.new(image, luminance.inputs["Image"])
+    # Blender's log of 0 is 0, which would count black as a luminance of 1.
+    lit = sea._math(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
+    levels = nodes.new("CompositorNodeLevels")
+    levels.inputs["Channel"].default_value = "Luminance"
+    links.new(sea._math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
+    log_average = sea._math(tree, "EXPONENT", levels.outputs["Mean"])
+    gain = sea._math(
+        tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
+    )
+    exposed = nodes.new("ShaderNodeVectorMath")
+    exposed.operation = "SCALE"
+    links.new(image, exposed.inputs["Vector"])
+    links.new(gain, exposed.inputs["Scale"])
+    return exposed.outputs["Vector"]
 
 
 def _viewport(near_m: float, far_m: float) -> None:

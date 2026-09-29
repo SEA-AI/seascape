@@ -249,7 +249,7 @@
     },
     "Outputs": {
       "additionalProperties": false,
-      "description": "What a render writes.\n\nEvery camera of a listed band is rendered. An EO png or jpg is 8-bit, through the\nexposure and the film curve. An LWIR png is 16-bit, a hundredth of a kelvin per\ncount; an LWIR jpg is 8-bit grey, auto-contrasted as a thermal camera does. An exr\nkeeps the radiance, in W m^-2 sr^-1.",
+      "description": "What a render writes.\n\nEvery camera of a listed band is rendered. An EO png or jpg is 8-bit, as a camera\nwith auto-exposure takes it. An LWIR png is 16-bit, a hundredth of a kelvin per\ncount; an LWIR jpg is 8-bit grey, auto-contrasted as a thermal camera does. An exr\nkeeps the radiance, in W m^-2 sr^-1.",
       "properties": {
         "bands": {
           "default": [
@@ -273,12 +273,12 @@
           "default": "jpg",
           "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance."
         },
-        "exposure_ev": {
-          "default": -5.0,
-          "description": "Exposure in stops. Applies to 8-bit EO only.",
-          "maximum": 32.0,
-          "minimum": -32.0,
-          "title": "Exposure Ev",
+        "exposure_compensation_ev": {
+          "default": 0.0,
+          "description": "Stops over auto-exposure. Applies to 8-bit EO only.",
+          "maximum": 126.0,
+          "minimum": -126.0,
+          "title": "Exposure Compensation Ev",
           "type": "number"
         },
         "duration_s": {

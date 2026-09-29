@@ -62,7 +62,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` takes sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
 - **The glitter is tuned to `outputs.samples.eo`.** Each cell's lobe widens so that many samples count its glints right. Render the `.blend` at another sample count and it sparkles more or less, silently.
 - **`model_copy` skips validation, and validation is what gives the air and sea their atmosphere's temperatures.** Swap `sky.atmosphere` with `model_copy` and the old profile's air and sea stay. Validate a dict instead.
-- **A Math node's unlinked inputs default to 0.5.** A `MULTIPLY_ADD` chain picks up 0.5 from the first addend unless it is set to 0. Vector Math defaults to 0.
+- **A Math node's unlinked inputs default to 0.5.** A `MULTIPLY_ADD` chain picks up 0.5 from the first addend unless it is set to 0. Vector Math defaults to 0. Its `DOT_PRODUCT` and `LENGTH` answer on `Value`; their `Vector` output is disabled, so `outputs["Vector"]` raises and `outputs[0]` reads 0.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
 - **Objects can share a mesh datablock.** Material slots link to mesh data by default, so assigning a material to one object silently changes the other. Use `slot.link = "OBJECT"` when they must differ.
 - **LWIR waves do not need `t_sea_k - t_air_k`.** A tilted facet reflects a different elevation of a sky that runs cold overhead to ambient at the horizon, so relief shows with the sea exactly at air temperature. Under a uniform ambient world it does not.
@@ -73,6 +73,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **An empty's `bound_box` is a point at its origin.** An import is largely empties, so measuring the extent of "everything I just imported" inflates it and the fit comes out wrong.
 - **Cycles denoising is on by default and is not radiometric.** OIDN is an edge-aware image filter. On a world flat at 290.00 K it returns 282.43-293.00 K, worst at the frame border, and it breaks the R=G=B that an LWIR scene guarantees. It is off in both bands: in EO it also smooths the sea's waves.
 - **An image's `colorspace_settings` must be set before its pixels, never after.** Assigning it second re-reads the buffer that is already there and leaves the image black, with no error.
+- **The compositor is the camera, and the build picks it by format.** An 8-bit EO build puts glare, blur and auto-exposure there; an exr build passes the radiance through. Switch the file format after `build` and an exr holds the look, a png the raw frame.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
   brighter into a sun a mirror cannot see, and `eevee.clamp_surface_indirect` clips

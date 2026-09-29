@@ -293,10 +293,10 @@ def test_every_shipped_preset_parses() -> None:
         tomllib.load(preset.open("rb"))
 
 
-@pytest.mark.parametrize("exposure_ev", [-50.0, 100.0])
-def test_an_exposure_blender_would_clamp_is_rejected(exposure_ev: float) -> None:
-    with pytest.raises(ValidationError, match="exposure_ev"):
-        Outputs(exposure_ev=exposure_ev)
+@pytest.mark.parametrize("stops", [-127.0, 127.0])
+def test_a_compensation_float32_cannot_hold_is_rejected(stops: float) -> None:
+    with pytest.raises(ValidationError, match="exposure_compensation_ev"):
+        Outputs(exposure_compensation_ev=stops)
 
 
 @pytest.mark.parametrize("name", ["../escaped", "/tmp/absolute", "sub/dir"])
