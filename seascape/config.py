@@ -426,8 +426,11 @@ class Outputs(Model):
         default="jpg",
         description="jpg to look at, png lossless or LWIR in kelvin, exr the radiance.",
     )
-    exposure_ev: float = Field(
+    # The compositor computes in float32, whose powers of two end at 2^+-126 (IEEE 754).
+    exposure_compensation_ev: float = Field(
         default=0.0,
+        ge=-126.0,
+        le=126.0,
         description="Stops over auto-exposure. Applies to 8-bit EO only.",
     )
     duration_s: float = Field(default=0.0, ge=0.0, description="0 is a still.")

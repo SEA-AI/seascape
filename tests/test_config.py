@@ -293,6 +293,12 @@ def test_every_shipped_preset_parses() -> None:
         tomllib.load(preset.open("rb"))
 
 
+@pytest.mark.parametrize("stops", [-127.0, 127.0])
+def test_a_compensation_float32_cannot_hold_is_rejected(stops: float) -> None:
+    with pytest.raises(ValidationError, match="exposure_compensation_ev"):
+        Outputs(exposure_compensation_ev=stops)
+
+
 @pytest.mark.parametrize("name", ["../escaped", "/tmp/absolute", "sub/dir"])
 def test_a_pod_cannot_be_path_text(name: str) -> None:
     with pytest.raises(ValidationError, match="name"):

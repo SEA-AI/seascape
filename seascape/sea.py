@@ -145,7 +145,8 @@ def _vector(
         node.name = name
     for socket, value in zip(node.inputs, inputs, strict=False):
         tree.links.new(value, socket)
-    return node.outputs["Value" if operation == "DOT_PRODUCT" else "Vector"]
+    scalar = operation in {"DOT_PRODUCT", "LENGTH", "DISTANCE"}
+    return node.outputs["Value" if scalar else "Vector"]
 
 
 def _math(

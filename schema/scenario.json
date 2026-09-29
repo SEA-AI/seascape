@@ -273,10 +273,12 @@
           "default": "jpg",
           "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance."
         },
-        "exposure_ev": {
+        "exposure_compensation_ev": {
           "default": 0.0,
           "description": "Stops over auto-exposure. Applies to 8-bit EO only.",
-          "title": "Exposure Ev",
+          "maximum": 126.0,
+          "minimum": -126.0,
+          "title": "Exposure Compensation Ev",
           "type": "number"
         },
         "duration_s": {

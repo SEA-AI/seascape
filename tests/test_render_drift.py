@@ -426,26 +426,67 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     )
 
 
-def through_the_camera(strength: float) -> np.ndarray:
-    """A uniform sky filling the frame, as the camera takes it, before the display."""
+def through_the_camera(
+    left: float,
+    right: float,
+    sun: float = 0.0,
+    size: tuple[int, int] = (96, 54),
+) -> np.ndarray:
+    """A camera looking straight up at a sky of `left` and `right` halves, with a disc
+    of `sun` overhead; what the camera makes of it, before the display."""
     png = SCENARIO.outputs.model_copy(update={"format": "png"})
     scene.build(SCENARIO.model_copy(update={"outputs": png}), "eo")
     sc = bpy.context.scene
     tree = sc.world.node_tree
+    generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
+    direction = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(generated, direction.inputs[0])
+    east = sea._math(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
+    halves = sea._math(tree, "MULTIPLY_ADD", east, right - left, left)
+    overhead = sea._math(tree, "GREATER_THAN", direction.outputs["Z"], 0.9995)
+    sky = sea._math(tree, "MULTIPLY_ADD", overhead, sun, halves)
     background = tree.nodes["Background"]
-    for link in background.inputs["Color"].links:
-        tree.links.remove(link)
-    background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    background.inputs["Strength"].default_value = strength
+    tree.links.new(sky, background.inputs["Color"])
+    background.inputs["Strength"].default_value = 1.0
     camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
     sc.collection.objects.link(camera)
     camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_euler = (math.pi, 0.0, 0.0)  # straight up, at nothing but sky
+    camera.rotation_euler = (math.pi, 0.0, 0.0)  # straight up; +X is the frame's right
     sc.camera = camera
-    sc.cycles.samples = 1
+    sc.cycles.samples = 16
     # The build put the camera in the compositor; an exr takes its output undisplayed.
-    return shoot((96, 54), "camera")
+    return shoot(size, "camera")
 
 
 def test_auto_exposure_takes_a_brighter_sky_to_the_same_picture() -> None:
-    assert through_the_camera(4.0) == pytest.approx(through_the_camera(1.0), rel=1e-3)
+    assert through_the_camera(4.0, 4.0) == pytest.approx(
+        through_the_camera(1.0, 1.0), rel=1e-3
+    )
+
+
+def test_auto_exposure_meters_the_log_average() -> None:
+    """Halves of 1 and 4 average 2 in log and 2.5 in linear, so a linear meter reads
+    each half 20% darker."""
+    frame = through_the_camera(1.0, 4.0)
+    width = frame.shape[1]
+    left, right = np.median(frame[:, : width // 4]), np.median(frame[:, -width // 4 :])
+    assert (left, right) == pytest.approx(
+        (scene.MID_GREY / 2, 2 * scene.MID_GREY), rel=0.03
+    )
+
+
+def srgb_counts(linear: np.ndarray) -> np.ndarray:
+    """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
+    x = np.clip(linear, 0.0, 1.0)
+    encoded = np.where(x <= 0.0031308, 12.92 * x, 1.055 * x ** (1 / 2.4) - 0.055)
+    return np.round(255 * encoded)
+
+
+def test_the_camera_takes_the_same_picture_at_any_resolution() -> None:
+    """The frame at twice the width, averaged back down, within 4 counts almost
+    everywhere. Below a few hundred pixels the glare's shoulder falls inside one."""
+    small = through_the_camera(1.0, 1.0, sun=1e4, size=(384, 216))
+    large = through_the_camera(1.0, 1.0, sun=1e4, size=(768, 432))
+    shrunk = large.reshape(216, 2, 384, 2).mean(axis=(1, 3))
+    off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
+    assert np.percentile(off, 99) <= 4

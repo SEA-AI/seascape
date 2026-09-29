@@ -139,8 +139,8 @@ class TestSettings:
             ir.height_px,
         )
 
-    def test_the_exposure_is_stops_over_auto_exposure(self) -> None:
-        sc = built("eo", format="png", exposure_ev=1.0)
+    def test_the_compensation_is_stops_over_auto_exposure(self) -> None:
+        sc = built("eo", format="png", exposure_compensation_ev=1.0)
 
         gain = sc.compositing_node_group.nodes["exposure"]
         assert gain.inputs[0].default_value == pytest.approx(2 * scene.MID_GREY)
