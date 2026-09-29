@@ -139,14 +139,17 @@ class TestSettings:
             ir.height_px,
         )
 
-    @pytest.mark.parametrize(
-        ("band", "exposure_ev"),
-        [("eo", load(BASELINE).outputs.exposure_ev), ("ir", 0.0)],
-    )
-    def test_only_eo_is_exposed(self, band: Band, exposure_ev: float) -> None:
-        sc = built(band)
+    def test_the_exposure_is_stops_over_auto_exposure(self) -> None:
+        sc = built("eo", format="png", exposure_ev=1.0)
 
-        assert sc.view_settings.exposure == exposure_ev
+        gain = sc.compositing_node_group.nodes["exposure"]
+        assert gain.inputs[0].default_value == pytest.approx(2 * scene.MID_GREY)
+
+    @pytest.mark.parametrize(("band", "fmt"), [("eo", "exr"), ("ir", "png")])
+    def test_radiance_skips_the_camera(self, band: Band, fmt: ImageFormat) -> None:
+        sc = built(band, format=fmt)
+
+        assert "exposure" not in sc.compositing_node_group.nodes
 
 
 def test_a_relative_output_reaches_blender_absolute(

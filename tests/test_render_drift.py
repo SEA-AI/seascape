@@ -18,9 +18,11 @@ pytestmark = pytest.mark.render
 
 
 def _clear(scenario: Scenario) -> Scenario:
-    """The probes read the sea's shader; haze would add its airlight to every one."""
+    """The probes read the sea's shader: haze would add its airlight to every one, and
+    an 8-bit format the camera's glare, blur and exposure."""
     sky = scenario.sky.model_copy(update={"visibility_km": None})
-    return scenario.model_copy(update={"sky": sky})
+    outputs = scenario.outputs.model_copy(update={"format": "exr"})
+    return scenario.model_copy(update={"sky": sky, "outputs": outputs})
 
 
 SCENARIO = _clear(load(Path(__file__).parent.parent / "scenarios" / "baseline.toml"))
@@ -378,6 +380,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
         update={
             "objects": [],
             "ownship": hazy.ownship.model_copy(update={"asset": None}),
+            "outputs": SCENARIO.outputs,
         }
     )
     assert hazy.sky.extinction_per_m > 0, "clear air would pass this vacuously"
@@ -421,3 +424,28 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     assert np.median(seen / sky) == pytest.approx(
         1 - math.exp(-depth), rel=0.01 if band == "eo" else 0.02
     )
+
+
+def through_the_camera(strength: float) -> np.ndarray:
+    """A uniform sky filling the frame, as the camera takes it, before the display."""
+    png = SCENARIO.outputs.model_copy(update={"format": "png"})
+    scene.build(SCENARIO.model_copy(update={"outputs": png}), "eo")
+    sc = bpy.context.scene
+    tree = sc.world.node_tree
+    background = tree.nodes["Background"]
+    for link in background.inputs["Color"].links:
+        tree.links.remove(link)
+    background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    background.inputs["Strength"].default_value = strength
+    camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
+    sc.collection.objects.link(camera)
+    camera.location = (0.0, 0.0, 10.0)
+    camera.rotation_euler = (math.pi, 0.0, 0.0)  # straight up, at nothing but sky
+    sc.camera = camera
+    sc.cycles.samples = 1
+    # The build put the camera in the compositor; an exr takes its output undisplayed.
+    return shoot((96, 54), "camera")
+
+
+def test_auto_exposure_takes_a_brighter_sky_to_the_same_picture() -> None:
+    assert through_the_camera(4.0) == pytest.approx(through_the_camera(1.0), rel=1e-3)

@@ -407,8 +407,8 @@ class Samples(Model):
 class Outputs(Model):
     """What a render writes.
 
-    Every camera of a listed band is rendered. An EO png or jpg is 8-bit, through the
-    exposure and the film curve. An LWIR png is 16-bit, a hundredth of a kelvin per
+    Every camera of a listed band is rendered. An EO png or jpg is 8-bit, as a camera
+    with auto-exposure takes it. An LWIR png is 16-bit, a hundredth of a kelvin per
     count; an LWIR jpg is 8-bit grey, auto-contrasted as a thermal camera does. An exr
     keeps the radiance, in W m^-2 sr^-1.
     """
@@ -426,12 +426,9 @@ class Outputs(Model):
         default="jpg",
         description="jpg to look at, png lossless or LWIR in kelvin, exr the radiance.",
     )
-    # Blender clamps to +/-32 in silence.
     exposure_ev: float = Field(
-        default=-5.0,
-        ge=-32.0,
-        le=32.0,
-        description="Exposure in stops. Applies to 8-bit EO only.",
+        default=0.0,
+        description="Stops over auto-exposure. Applies to 8-bit EO only.",
     )
     duration_s: float = Field(default=0.0, ge=0.0, description="0 is a still.")
     fps: int = Field(default=10, gt=0, description="Frames per second of a sequence.")

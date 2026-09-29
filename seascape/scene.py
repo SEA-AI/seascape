@@ -808,6 +808,13 @@ def _ride(
 
 JPEG_QUALITY = 95
 
+# ISO 12232's saturation-based speed puts mid-grey at 10/78 of saturation; the
+# log-average luminance stands for a scene's mid-grey (Reinhard et al. 2002).
+MID_GREY = 10 / 78
+# Judgements, for a generic lens: its veiling glare, and its blur in pixels.
+GLARE_STRENGTH, GLARE_SIZE = 0.02, 0.3
+BLUR_PX = 1.0
+
 # Blender's identifier and bit depth.
 FORMATS: dict[ImageFormat, tuple[str, str]] = {
     "exr": ("OPEN_EXR", "32"),
@@ -844,21 +851,71 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.cycles.samples = getattr(outputs.samples, band)
     # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
+    # The factory AgX is a film curve; a camera clips, and LWIR radiance is no picture.
     view = sc.view_settings
-    if band == "eo":
-        view.exposure = outputs.exposure_ev
-    else:
-        # Radiance in W m^-2 sr^-1, not a picture; the default AgX film curve bends it.
-        view.view_transform, view.look = "Standard", "None"
-        view.exposure, view.gamma = 0.0, 1.0
+    view.view_transform, view.look = "Standard", "None"
+    view.exposure, view.gamma = 0.0, 1.0
     # 8-bit radiance is not radiance; `render` maps 8-bit ir from the exr.
     file_format, depth = FORMATS[outputs.format if band == "eo" else "exr"]
+    _compositor(outputs.exposure_ev if depth == "8" else None)
     sc.render.image_settings.file_format = file_format
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
     sc.render.use_persistent_data = True
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True
+
+
+def _compositor(exposure_ev: float | None) -> None:
+    """The render as a camera takes it, at `exposure_ev` over auto-exposure; as
+    rendered for None."""
+    tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
+    tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+    bpy.context.scene.compositing_node_group = tree
+    image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
+    if exposure_ev is not None:
+        image = _camera(tree, image, exposure_ev)
+    tree.links.new(image, tree.nodes.new("NodeGroupOutput").inputs["Image"])
+
+
+def _camera(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket, exposure_ev: float
+) -> bpy.types.NodeSocket:
+    """A lens's glare and blur, then auto-exposure. The Standard view clips at white,
+    as a sensor does.
+
+    ponytail: each frame meters itself; a real camera's exposure lags, so add a time
+    constant if a sequence flickers.
+    """
+    nodes, links = tree.nodes, tree.links
+    glare = nodes.new("CompositorNodeGlare")
+    glare.inputs["Type"].default_value = "Fog Glow"
+    # A lens scatters all the light, not only what clips.
+    glare.inputs["Threshold"].default_value = 0.0
+    glare.inputs["Strength"].default_value = GLARE_STRENGTH
+    glare.inputs["Size"].default_value = GLARE_SIZE
+    links.new(image, glare.inputs["Image"])
+    blur = nodes.new("CompositorNodeBlur")
+    blur.inputs["Type"].default_value = "Gaussian"
+    blur.inputs["Size"].default_value = (BLUR_PX, BLUR_PX)
+    links.new(glare.outputs["Image"], blur.inputs["Image"])
+    image = blur.outputs["Image"]
+    luminance = nodes.new("CompositorNodeRGBToBW")
+    links.new(image, luminance.inputs["Image"])
+    # Blender's log of 0 is 0, which would count black as a luminance of 1.
+    lit = sea._math(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
+    levels = nodes.new("CompositorNodeLevels")
+    levels.inputs["Channel"].default_value = "Luminance"
+    links.new(sea._math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
+    log_average = sea._math(tree, "EXPONENT", levels.outputs["Mean"])
+    gain = sea._math(
+        tree, "DIVIDE", 2**exposure_ev * MID_GREY, log_average, name="exposure"
+    )
+    exposed = nodes.new("ShaderNodeVectorMath")
+    exposed.operation = "SCALE"
+    links.new(image, exposed.inputs["Vector"])
+    links.new(gain, exposed.inputs["Scale"])
+    return exposed.outputs["Vector"]
 
 
 def _viewport(near_m: float, far_m: float) -> None:

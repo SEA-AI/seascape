@@ -1,6 +1,6 @@
 """Render the cameras a scenario asks for: one image each, per band and frame.
 
-EO reaches 8 bits through the exposure and Blender's film curve. LWIR cannot: its
+EO reaches 8 bits through a camera the build puts in the compositor. LWIR cannot: its
 pixels are radiance in W m^-2 sr^-1, which Blender would clip to white, so an ir frame
 is rendered float and written here as a thermal camera writes one: a png as 16-bit
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
@@ -56,9 +56,9 @@ def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
     the pixel, whatever the pixel filter.
     """
     bpy.context.view_layer.use_pass_object_index = True
-    tree = bpy.data.node_groups.new("labels", "CompositorNodeTree")
-    bpy.context.scene.compositing_node_group = tree
-    layers = tree.nodes.new("CompositorNodeRLayers")
+    # The build's tree: a new one would drop what it does to the picture.
+    tree = bpy.context.scene.compositing_node_group
+    layers = next(n for n in tree.nodes if n.bl_idname == "CompositorNodeRLayers")
     output = tree.nodes.new("CompositorNodeOutputFile")
     output.directory = str(folder)
     output.format.media_type = "IMAGE"

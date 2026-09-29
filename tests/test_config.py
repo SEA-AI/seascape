@@ -293,12 +293,6 @@ def test_every_shipped_preset_parses() -> None:
         tomllib.load(preset.open("rb"))
 
 
-@pytest.mark.parametrize("exposure_ev", [-50.0, 100.0])
-def test_an_exposure_blender_would_clamp_is_rejected(exposure_ev: float) -> None:
-    with pytest.raises(ValidationError, match="exposure_ev"):
-        Outputs(exposure_ev=exposure_ev)
-
-
 @pytest.mark.parametrize("name", ["../escaped", "/tmp/absolute", "sub/dir"])
 def test_a_pod_cannot_be_path_text(name: str) -> None:
     with pytest.raises(ValidationError, match="name"):
