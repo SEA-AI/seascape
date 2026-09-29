@@ -426,7 +426,7 @@ class Outputs(Model):
         default="jpg",
         description="jpg to look at, png lossless or LWIR in kelvin, exr the radiance.",
     )
-    # The compositor computes in float32, whose powers of two end at 2^+-126 (IEEE 754).
+    # The compositor computes in float32, normal from 2^-126 to 2^127 (IEEE 754).
     exposure_compensation_ev: float = Field(
         default=0.0,
         ge=-126.0,
