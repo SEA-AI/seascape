@@ -410,6 +410,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     card.rotation_euler = (math.pi / 2, 0.0, 0.0)
     card.location = (0.0, range_m, hazy.rig.height_m + range_m * math.tan(elevation))
     card.data.materials.append(black)
+    scene.haze(black)
     seen = shoot((16, 16), "haze_card")
 
     distance_m = range_m / math.cos(elevation)
@@ -420,10 +421,28 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
         depth = float(
             lwir.path_optical_depth(distance_m, air.visibility_km, air.atmosphere)
         )
-    # LWIR marches a density that falls along the path, a step at a time.
-    assert np.median(seen / sky) == pytest.approx(
-        1 - math.exp(-depth), rel=0.01 if band == "eo" else 0.02
-    )
+    assert np.median(seen / sky) == pytest.approx(1 - math.exp(-depth), rel=0.01)
+
+
+@pytest.mark.render
+def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
+    """Light sampling and BSDF sampling estimate the same frame, unless a path one of
+    them takes skips the haze."""
+    hazy = load(Path(__file__).parent.parent / "scenarios" / "baseline.toml")
+    hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
+    scene.build(hazy, "ir")
+    sc = bpy.context.scene
+    sc.cycles.samples = 64
+    # Kept, the second render would sample as the first did.
+    sc.render.use_persistent_data = False
+    means = []
+    for sampled in (True, False):
+        sc.world.cycles.sampling_method = "AUTOMATIC" if sampled else "NONE"
+        for material in bpy.data.materials:
+            material.cycles.emission_sampling = "AUTO" if sampled else "NONE"
+        frame = shoot((160, 120), f"sampled_{sampled}")
+        means.append(lwir.brightness_temperature(frame.ravel()).mean())
+    assert means[0] == pytest.approx(means[1], abs=0.01)
 
 
 def through_the_camera(
