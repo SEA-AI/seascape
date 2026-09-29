@@ -152,6 +152,10 @@ def haze(material: bpy.types.Material) -> None:
     output = tree.get_output_node("CYCLES")
     if output is None or not output.inputs["Surface"].links:
         return
+    surface = output.inputs["Surface"].links[0].from_node
+    # Twice would haze it twice.
+    if getattr(surface, "node_tree", None) == group:
+        return
     node = tree.nodes.new("ShaderNodeGroup")
     node.name = "haze"
     node.node_tree = group

@@ -546,6 +546,11 @@ class TestEoBand:
             (surface,) = output.inputs["Surface"].links
             assert surface.from_node.name == "haze", material.name
 
+    def test_a_hazed_material_is_not_hazed_again(self) -> None:
+        material = bpy.data.materials["sea"]
+        scene.haze(material)
+        assert under_the_haze(material).bl_idname != "ShaderNodeGroup"
+
 
 def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     """Not the default: a scene that dropped `atmosphere` would read lwir's own."""
