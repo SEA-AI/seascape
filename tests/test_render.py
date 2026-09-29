@@ -202,6 +202,7 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     for obj in (plane, camera):
         sc.collection.objects.link(obj)
     sc.camera = camera
+    scene._compositor(None)  # as a build leaves it
     render._index_output(tmp_path).file_name = "probe."
     sc.render.filepath = str(tmp_path / "frame")
 
