@@ -73,6 +73,8 @@ These produce wrong output with no error. They are the reason this file exists.
 - **An empty's `bound_box` is a point at its origin.** An import is largely empties, so measuring the extent of "everything I just imported" inflates it and the fit comes out wrong.
 - **Cycles denoising is on by default and is not radiometric.** OIDN is an edge-aware image filter. On a world flat at 290.00 K it returns 282.43-293.00 K, worst at the frame border, and it breaks the R=G=B that an LWIR scene guarantees. It is off in both bands: in EO it also smooths the sea's waves.
 - **An image's `colorspace_settings` must be set before its pixels, never after.** Assigning it second re-reads the buffer that is already there and leaves the image black, with no error.
+- **A material made after `build` is seen through clear air.** The haze is a mix `build` puts in every material it makes; `scene.haze(material)` puts it in another.
+- **Persistent data keeps the first render's sampling.** `build` turns it on, and a change to `cycles.samples` or to a world's or material's light sampling between renders is ignored. Set them before the first render, or turn it off.
 - **The compositor is the camera, and the build picks it by format.** An 8-bit EO build puts glare, blur and auto-exposure there; an exr build passes the radiance through. Switch the file format after `build` and an exr holds the look, a png the raw frame.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything

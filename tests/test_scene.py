@@ -54,6 +54,12 @@ def test_the_sun_is_out_of_every_frame(name: str) -> None:
         assert not _in_frame(camera, sun), mount.name
 
 
+def under_the_haze(material: bpy.types.Material) -> bpy.types.Node:
+    output = material.node_tree.get_output_node("CYCLES")
+    haze = output.inputs["Surface"].links[0].from_node
+    return haze.inputs["Shader"].links[0].from_node
+
+
 def baked(name: str) -> np.ndarray:
     """The red channel of a lookup image, rows bottom first."""
     image = bpy.data.images[name]
@@ -507,31 +513,38 @@ class TestEoBand:
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
 
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
-        nodes = bpy.data.materials["haze"].node_tree.nodes
-        beta = SCENARIO.sky.extinction_per_m
-        assert nodes["haze_beta"].outputs["Value"].default_value == pytest.approx(beta)
-        for node, socket in (
-            ("haze_absorption", "Density"),
-            ("haze_emission", "Strength"),
-        ):
-            assert nodes[node].inputs[socket].links[0].from_node.name == "haze_beta"
+        nodes = bpy.data.node_groups["haze"].nodes
+        beta = nodes["haze_beta"]
+        assert beta.inputs[0].links[0].from_socket.name == "Ray Length"
+        assert beta.inputs[1].default_value == pytest.approx(
+            SCENARIO.sky.extinction_per_m
+        )
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        airlight = nodes["haze_airlight"]
+        airlight = nodes["haze_sky"]
         for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
             assert getattr(airlight, name) == getattr(sky, name)
 
     def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
         """Incoming points back at the camera; unflipped, the haze would take the sky
         behind it."""
-        nodes = bpy.data.materials["haze"].node_tree.nodes
+        nodes = bpy.data.node_groups["haze"].nodes
         ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
         assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
         assert ahead.inputs["Scale"].default_value == -1.0
         assert horizon.inputs[0].links[0].from_node == ahead
         assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
         (into_sky,) = horizon.outputs["Vector"].links
-        assert into_sky.to_node.name == "haze_airlight"
+        assert into_sky.to_node.name == "haze_sky"
         assert into_sky.is_valid
+
+    def test_every_surface_mixes_towards_the_airlight(self) -> None:
+        mix = bpy.data.node_groups["haze"].nodes["haze_mix"]
+        assert mix.inputs[1].links[0].from_node.bl_idname == "NodeGroupInput"
+        assert mix.inputs[2].links[0].from_node.name == "haze_airlight"
+        for material in bpy.data.materials:
+            output = material.node_tree.get_output_node("CYCLES")
+            (surface,) = output.inputs["Surface"].links
+            assert surface.from_node.name == "haze", material.name
 
 
 def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
@@ -552,9 +565,7 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
     ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
     depth = lwir.path_optical_depth(ranges, sky.visibility_km, "tropical")
-    assert baked("haze_extinction") == pytest.approx(
-        np.gradient(depth, ranges), rel=1e-5
-    )
+    assert baked("haze_depth") == pytest.approx(depth, rel=1e-5)
 
 
 class TestIrBand:
@@ -566,11 +577,11 @@ class TestIrBand:
     def test_the_air_takes_the_band_s_optical_depth_by_range(self) -> None:
         """The shader reads this by log range at texel centres."""
         assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
-        table = baked("haze_extinction")
+        table = baked("haze_depth")
         ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
         sky = SCENARIO.sky
         depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
-        assert table == pytest.approx(np.gradient(depth, ranges), rel=1e-5)
+        assert table == pytest.approx(depth, rel=1e-5)
 
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""
@@ -601,10 +612,7 @@ class TestIrBand:
         """A pure emitter renders a hull one flat value whichever way it is turned."""
         skin = next(m for m in bpy.data.materials if m.name.endswith("_ir"))
         # The outermost mix, not the one grading emission from shaded to sunlit.
-        output = next(
-            n for n in skin.node_tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial"
-        )
-        mix = output.inputs["Surface"].links[0].from_node
+        mix = under_the_haze(skin)
 
         assert scene.PAINT_EMISSIVITY < 1.0, "a blackbody has no angular structure"
         assert mix.inputs["Factor"].default_value == pytest.approx(
@@ -614,10 +622,7 @@ class TestIrBand:
 
     def test_a_vessel_is_hotter_on_the_side_the_sun_is_on(self) -> None:
         skin = next(m for m in bpy.data.materials if m.name.endswith("_ir"))
-        output = next(
-            n for n in skin.node_tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial"
-        )
-        grade = output.inputs["Surface"].links[0].from_node.inputs[2].links[0].from_node
+        grade = under_the_haze(skin).inputs[2].links[0].from_node
 
         shaded, sunlit = (grade.inputs[i].links[0].from_node for i in (1, 2))
         assert (shaded.bl_idname, sunlit.bl_idname) == (
