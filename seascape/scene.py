@@ -95,7 +95,7 @@ def _haze(sky: Sky, band: Band, far_m: float) -> None:
     """Koschmieder's airlight, in every surface: a ray keeps exp(-optical depth) of the
     light it brings back and takes the rest from the sky ahead of it, no lower than the
     horizon. That sky is constant along the ray, so the mix is exact over its length,
-    and a ray to the sky would leave unchanged: the world needs none.
+    and hazing a ray to the sky would change nothing: the world has none.
 
     EO's extinction is uniform. LWIR's optical depth grows slower than the path.
     """
@@ -186,10 +186,10 @@ def _optical_depth(
 ) -> bpy.types.NodeSocket:
     """The band's optical depth over the ray that reached the shading point.
 
-    ponytail: exact along camera rays. A secondary ray, a hull reflected in the sea,
-    takes LWIR's depth between its distance from the camera and that less its own
-    length, not along its own path; that needs the path's length so far, which a shader
-    cannot read.
+    ponytail: exact along camera rays. LWIR takes a secondary ray, a hull reflected in
+    the sea, as if it ran straight out from the camera, ending at the shading point's
+    distance; its true start needs the path's length so far, which a shader cannot
+    read.
     """
     length = tree.nodes.new("ShaderNodeLightPath").outputs["Ray Length"]
     if band == "eo":
