@@ -126,7 +126,7 @@ uv run pytest
 
 ruff and ty go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates the ruff lines.
 
-The render-drift check runs only with `--render` and needs a GPU to finish in reasonable time, which is also why CI never runs it. Run it locally before touching anything in the shader chain.
+The render-drift check runs only with `--render` and needs a GPU to finish in reasonable time, which is also why CI never runs it. Run it locally before touching anything in the shader chain. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 ## Working here
 

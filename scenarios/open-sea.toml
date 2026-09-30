@@ -1,0 +1,6 @@
+#:schema ../schema/scenario.json
+
+# The baseline without its ship.
+extends = "baseline.toml"
+
+objects = []

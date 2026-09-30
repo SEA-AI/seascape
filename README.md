@@ -165,7 +165,13 @@ uvx ty check
 uv run pytest
 ```
 
-`uv run pytest --render` adds the render-drift checks. They need a GPU, CI never runs them, and they are the only thing that catches a sea or sky shader rendering wrong. Run them before touching that chain.
+The render checks are the only thing that catches a sea or sky shader rendering wrong. They need a GPU, CI never runs them, and they belong before any change to that chain:
+
+| command | runs |
+|---|---|
+| `uv run pytest` | the suite, without the render checks, as CI does |
+| `uv run pytest --render` | the suite and the render checks |
+| `uv run pytest --render -m render` | the render checks alone |
 
 ## Licence
 
