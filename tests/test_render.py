@@ -109,30 +109,6 @@ class TestSettings:
 
         assert sc.render.image_settings.color_depth == "32"
 
-    @pytest.mark.parametrize("band", get_args(Band.__value__))
-    def test_no_band_is_denoised(self, band: Band) -> None:
-        sc = built(band)
-
-        assert sc.cycles.use_denoising is False
-
-    @pytest.mark.parametrize("band", get_args(Band.__value__))
-    def test_the_compositor_runs_on_the_cpu(self, band: Band) -> None:
-        sc = built(band)
-
-        assert sc.render.compositor_device == "CPU"
-
-    @pytest.mark.parametrize("band", get_args(Band.__value__))
-    def test_both_bands_render_in_cycles(self, band: Band) -> None:
-        sc = built(band)
-
-        assert sc.render.engine == "CYCLES"
-
-    @pytest.mark.parametrize("band", get_args(Band.__value__))
-    def test_eevee_does_not_cap_reflections(self, band: Band) -> None:
-        sc = built(band)
-
-        assert (sc.world.sun_threshold, sc.eevee.clamp_surface_indirect) == (0.0, 0.0)
-
     def test_the_active_camera_sets_the_resolution(self) -> None:
         """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
         ir = next(m.camera for m in load(BASELINE).rig.mounts if m.camera.kind == "ir")
@@ -156,6 +132,27 @@ class TestSettings:
         sc = built(band, format=fmt)
 
         assert "exposure" not in sc.compositing_node_group.nodes
+
+
+class TestEachBand:
+    """What a default build sets, whichever band."""
+
+    @pytest.fixture(scope="class", params=get_args(Band.__value__))
+    @classmethod
+    def sc(cls, request: pytest.FixtureRequest) -> bpy.types.Scene:
+        return built(request.param)
+
+    def test_no_band_is_denoised(self, sc: bpy.types.Scene) -> None:
+        assert sc.cycles.use_denoising is False
+
+    def test_the_compositor_runs_on_the_cpu(self, sc: bpy.types.Scene) -> None:
+        assert sc.render.compositor_device == "CPU"
+
+    def test_both_bands_render_in_cycles(self, sc: bpy.types.Scene) -> None:
+        assert sc.render.engine == "CYCLES"
+
+    def test_eevee_does_not_cap_reflections(self, sc: bpy.types.Scene) -> None:
+        assert (sc.world.sun_threshold, sc.eevee.clamp_surface_indirect) == (0.0, 0.0)
 
 
 def test_a_relative_output_reaches_blender_absolute(
