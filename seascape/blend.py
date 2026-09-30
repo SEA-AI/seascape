@@ -50,6 +50,9 @@ def curve_image(name: str, values: np.ndarray) -> bpy.types.Image:
     pixels = np.ones((height, width, 4), dtype=np.float32)
     pixels[..., :3] = table[..., None]
     image.pixels.foreach_set(pixels.ravel())
+    # Unpacked, a generated image saves as its fill colour; EXR keeps floats.
+    image.file_format = "OPEN_EXR"
+    image.pack()
     return image
 
 
