@@ -82,6 +82,7 @@ waves keep up with a gust.
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from functools import cache
 from statistics import NormalDist
 
 import numpy as np
@@ -327,6 +328,26 @@ def swell(
 
 def whitecap_fraction(wind_speed_mps: float) -> float:
     return min(WHITECAP_COEFFICIENT * wind_speed_mps**WHITECAP_EXPONENT, 1.0)
+
+
+@cache
+def _gust_mean_cover(wind_speed_mps: float) -> float:
+    sigma = turbulence_intensity(wind_speed_mps)
+    # Gauss-Hermite over the normal gust.
+    x, weight = np.polynomial.hermite_e.hermegauss(32)
+    local = [whitecap_fraction(wind_speed_mps * max(1 + sigma * g, 0.0)) for g in x]
+    return float(np.dot(weight, local) / weight.sum())
+
+
+def gusty_whitecap_fraction(wind_speed_mps: float, gust: float) -> float:
+    """The cover where the wind is `1 + gust` times its mean. Monahan measured the
+    mean wind over a gusty sea, so the cover is scaled to average his over the
+    gusts."""
+    mean = _gust_mean_cover(wind_speed_mps)
+    if mean <= 0.0:
+        return 0.0
+    cover = whitecap_fraction(wind_speed_mps * max(1 + gust, 0.0))
+    return min(cover * whitecap_fraction(wind_speed_mps) / mean, 1.0)
 
 
 def downward_acceleration_g(
