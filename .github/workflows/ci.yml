@@ -30,6 +30,12 @@ jobs:
 
       - run: uv sync --locked
 
+      # fetch verifies every asset's sha256, so a stale cache fails rather than passes.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/seascape
+          key: assets-${{ hashFiles('seascape/assets.toml') }}
+
       - run: uvx ruff check .
       - run: uvx ruff format --check .
       - run: uvx ty check
