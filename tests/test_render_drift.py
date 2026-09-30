@@ -25,7 +25,9 @@ def _clear(scenario: Scenario) -> Scenario:
     return scenario.model_copy(update={"sky": sky, "outputs": outputs})
 
 
-SCENARIO = _clear(load(Path(__file__).parent.parent / "scenarios" / "baseline.toml"))
+SCENARIOS = Path(__file__).parent.parent / "scenarios"
+OPEN_SEA = SCENARIOS / "open-sea.toml"
+SCENARIO = _clear(load(OPEN_SEA))
 SAMPLES = 48
 
 
@@ -57,11 +59,7 @@ def radiance(band: Band, kind: str, size: tuple[int, int]) -> np.ndarray:
 
 
 def texture(rows: np.ndarray) -> float:
-    """Spread within each row, robust to a target sitting in the band.
-
-    Median absolute deviation, not standard deviation: a hot hull is a handful of very
-    bright pixels and would otherwise swamp the sea it sits on.
-    """
+    """Spread within each row, as median absolute deviation."""
     return float(np.median(np.abs(rows - np.median(rows, axis=1, keepdims=True))))
 
 
@@ -71,9 +69,6 @@ def frame() -> np.ndarray:
 
 
 def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> None:
-    """Medians, not means: a target's superstructure stands above the horizon and lands
-    in the band this samples, and a hot hull is far enough off ambient to drag it.
-    """
     horizon = frame.shape[0] // 2
     ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
     just_above = float(np.median(frame[horizon - 6 : horizon - 1]))
@@ -138,8 +133,7 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
 
 LOOP = _clear(
     load(
-        Path(__file__).parent.parent / "scenarios" / "baseline.toml",
-        ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"],
+        OPEN_SEA, ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"]
     )
 )
 
@@ -318,11 +312,7 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
 def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     # Nothing but sea in view: a lit hull would count as foam.
     windy = SCENARIO.model_copy(
-        update={
-            "sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0}),
-            "objects": [],
-            "ownship": SCENARIO.ownship.model_copy(update={"asset": None}),
-        }
+        update={"sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0})}
     )
     scene.build(windy, "eo")
     tree = bpy.data.materials["sea"].node_tree
@@ -365,30 +355,23 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
 
 @pytest.mark.render
 @pytest.mark.parametrize(
-    ("band", "range_m"),
-    [
-        *(("eo", r) for r in (1000.0, 5000.0, 25000.0, 28000.0)),
-        *(("ir", r) for r in (1000.0, 5000.0, 25000.0)),
-    ],
+    ("band", "ranges_m"),
+    [("eo", (1000.0, 5000.0, 25000.0, 28000.0)), ("ir", (1000.0, 5000.0, 25000.0))],
 )
 def test_haze_leaves_a_black_card_its_share_of_the_sky(
-    band: Band, range_m: float
+    band: Band, ranges_m: tuple[float, ...]
 ) -> None:
-    """Looking just above the horizon, so without the card the ray reaches the sky."""
-    hazy = load(Path(__file__).parent.parent / "scenarios" / "baseline.toml")
-    hazy = hazy.model_copy(
-        update={
-            "objects": [],
-            "ownship": hazy.ownship.model_copy(update={"asset": None}),
-            "outputs": SCENARIO.outputs,
-        }
-    )
+    """Looking just above the horizon, so without the card the ray reaches the sky.
+    One build and one sky per band, a card per range."""
+    hazy = load(OPEN_SEA)
+    hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
     assert hazy.sky.extinction_per_m > 0, "clear air would pass this vacuously"
     scene.build(hazy, band)
     sc = bpy.context.scene
-    assert range_m < sc.camera.data.clip_end, "past the far plane there is no haze"
+    far_m = max(ranges_m)
+    assert far_m < sc.camera.data.clip_end, "past the far plane there is no haze"
     lens = bpy.data.cameras.new("probe")
-    lens.angle, lens.clip_end = math.radians(0.2), 2 * range_m
+    lens.angle, lens.clip_end = math.radians(0.2), 2 * far_m
     camera = bpy.data.objects.new("probe", lens)
     sc.collection.objects.link(camera)
     elevation = math.radians(0.2)  # under the haze's top at every range
@@ -405,30 +388,40 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     emission.inputs["Strength"].default_value = 0.0
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    bpy.ops.mesh.primitive_plane_add(size=0.01 * range_m)
-    card = bpy.context.object
-    card.rotation_euler = (math.pi / 2, 0.0, 0.0)
-    card.location = (0.0, range_m, hazy.rig.height_m + range_m * math.tan(elevation))
-    card.data.materials.append(black)
     scene.haze(black)
-    seen = shoot((16, 16), "haze_card")
-
-    distance_m = range_m / math.cos(elevation)
-    if band == "eo":
-        depth = hazy.sky.extinction_per_m * distance_m
-    else:
-        air = hazy.sky
-        depth = float(
-            lwir.path_optical_depth(distance_m, air.visibility_km, air.atmosphere)
+    for range_m in ranges_m:
+        bpy.ops.mesh.primitive_plane_add(size=0.01 * range_m)
+        card = bpy.context.object
+        card.rotation_euler = (math.pi / 2, 0.0, 0.0)
+        card.location = (
+            0.0,
+            range_m,
+            hazy.rig.height_m + range_m * math.tan(elevation),
         )
-    assert np.median(seen / sky) == pytest.approx(1 - math.exp(-depth), rel=0.01)
+        card.data.materials.append(black)
+        seen = shoot((16, 16), "haze_card")
+        mesh = card.data
+        bpy.data.objects.remove(card)
+        bpy.data.meshes.remove(mesh)
+
+        distance_m = range_m / math.cos(elevation)
+        if band == "eo":
+            depth = hazy.sky.extinction_per_m * distance_m
+        else:
+            air = hazy.sky
+            depth = float(
+                lwir.path_optical_depth(distance_m, air.visibility_km, air.atmosphere)
+            )
+        share = float(np.median(seen / sky))
+        assert share == pytest.approx(1 - math.exp(-depth), rel=0.01), range_m
 
 
 @pytest.mark.render
 def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
     """Light sampling and BSDF sampling estimate the same frame, unless a path one of
     them takes skips the haze."""
-    hazy = load(Path(__file__).parent.parent / "scenarios" / "baseline.toml")
+    # The hull stays: its emission is light the two samplings must agree on.
+    hazy = load(SCENARIOS / "baseline.toml")
     hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
     scene.build(hazy, "ir")
     sc = bpy.context.scene

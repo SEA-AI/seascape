@@ -7,7 +7,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--render",
         action="store_true",
-        help="run the render checks: they need Cycles and take seconds each",
+        help="add the render checks to the run; -m render runs them alone. They need "
+        "Cycles",
     )
 
 

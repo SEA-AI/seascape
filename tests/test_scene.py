@@ -20,8 +20,9 @@ from seascape.config import Band, Mount, Scenario, load
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 UNDERWAY = BASELINE.with_name("underway.toml")
 DRIFTING = BASELINE.with_name("drifting.toml")
+OPEN_SEA = BASELINE.with_name("open-sea.toml")
 SCENARIO = load(BASELINE)
-RIG_ONLY = f'extends = "{BASELINE}"\nobjects = []\n'
+RIG_ONLY = f'extends = "{OPEN_SEA}"\n'
 
 
 def camera_of(mount: Mount) -> bpy.types.Object:
@@ -260,7 +261,7 @@ class TestGeometry:
 
 def test_waves_cost_no_geometry() -> None:
     """A displaced sea would change its vertex count with the wind."""
-    scene.build(load(BASELINE, ["objects = []", "sea.wind_speed_mps = 18.0"]), "eo")
+    scene.build(load(OPEN_SEA, ["sea.wind_speed_mps = 18.0"]), "eo")
 
     assert len(bpy.data.objects["sea"].data.vertices) == (sea.SEA_CELLS + 1) ** 2
 
@@ -330,7 +331,7 @@ def test_the_active_camera_belongs_to_the_band_built(band) -> None:
     """Opened on the rig's first camera, an IR build could render through EO optics
     against IR materials, with nothing to say so.
     """
-    scene.build(SCENARIO.model_copy(update={"objects": []}), band)
+    scene.build(load(OPEN_SEA), band)
     assert f"_{band}_" in bpy.context.scene.camera.name
 
 
@@ -731,7 +732,7 @@ class TestIrBand:
 class TestAnimate:
     @pytest.fixture
     def empty(self) -> bpy.types.Object:
-        scene.build(load(BASELINE, ["objects = []", "outputs.duration_s = 0.3"]))
+        scene.build(load(OPEN_SEA, ["outputs.duration_s = 0.3"]))
         obj = bpy.data.objects.new("probe", None)
         bpy.context.scene.collection.objects.link(obj)
         return obj
@@ -782,7 +783,6 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
 
 class TestOwnshipMotion:
     MOTION = (
-        "objects = []",
         "outputs.duration_s = 2.0",
         "ownship = { roll_deg = 3.0, pitch_deg = -1.0,"
         " roll = { amplitude_deg = 5.0, period_s = 4.0 },"
@@ -791,7 +791,7 @@ class TestOwnshipMotion:
     )
 
     def test_a_quarter_period_in_is_the_peak(self) -> None:
-        built = scene.build(load(BASELINE, self.MOTION))
+        built = scene.build(load(OPEN_SEA, self.MOTION))
         anchor, camera = built.vessel, camera_of(SCENARIO.rig.mounts[0])
         mounted = anchor.matrix_world.inverted() @ camera.matrix_world
         bpy.context.scene.frame_set(10)
@@ -805,9 +805,7 @@ class TestOwnshipMotion:
 
     @pytest.mark.parametrize("duration_s", [0.0, 2.0])
     def test_an_ownship_without_motion_keys_nothing(self, duration_s) -> None:
-        built = scene.build(
-            load(BASELINE, ["objects = []", f"outputs.duration_s = {duration_s}"])
-        )
+        built = scene.build(load(OPEN_SEA, [f"outputs.duration_s = {duration_s}"]))
 
         assert built.vessel.animation_data is None
 
@@ -817,11 +815,10 @@ def _sea_node(name: str) -> bpy.types.ShaderNode:
 
 
 class TestSeaEvolves:
-    SEQUENCE = load(BASELINE, ["objects = []", "outputs.duration_s = 0.3"])
+    SEQUENCE = load(OPEN_SEA, ["outputs.duration_s = 0.3"])
     LOOP = load(
-        BASELINE,
+        OPEN_SEA,
         [
-            "objects = []",
             "outputs.duration_s = 30",
             "outputs.fps = 1",
             "outputs.loop = true",
@@ -866,7 +863,7 @@ class TestSeaEvolves:
         assert scene.wave_field(swell)[: len(wind)] == wind
 
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
-        scene.build(SCENARIO.model_copy(update={"objects": []}), "eo")
+        scene.build(load(OPEN_SEA), "eo")
         assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
         assert bpy.data.materials["sea"].node_tree.animation_data is None
 

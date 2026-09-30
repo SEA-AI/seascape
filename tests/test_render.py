@@ -16,6 +16,7 @@ from seascape.config import Band, ImageFormat, load
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 TWIN_POD = BASELINE.with_name("twin-pod.toml")
 UNDERWAY = BASELINE.with_name("underway.toml")
+OPEN_SEA = BASELINE.with_name("open-sea.toml")
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -78,13 +79,10 @@ class TestThermalImage:
 
 
 def built(band: Band, **outputs: object) -> bpy.types.Scene:
-    scenario = load(BASELINE)
     # No ship: these are render settings.
+    scenario = load(OPEN_SEA)
     scenario = scenario.model_copy(
-        update={
-            "objects": [],
-            "outputs": scenario.outputs.model_copy(update=outputs),
-        }
+        update={"outputs": scenario.outputs.model_copy(update=outputs)}
     )
     scene.build(scenario, band)
     return bpy.context.scene
@@ -167,13 +165,7 @@ def test_a_relative_output_reaches_blender_absolute(
     # bpy.ops.render is rebuilt on every access, so patch the attribute that holds it.
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=capture))
     monkeypatch.chdir(tmp_path)
-    scenario = load(BASELINE)
-    scenario = scenario.model_copy(
-        update={
-            "objects": [],
-            "outputs": scenario.outputs.model_copy(update={"bands": ("eo",)}),
-        }
-    )
+    scenario = load(OPEN_SEA, ['outputs.bands = ["eo"]'])
 
     with pytest.raises(RuntimeError, match="captured"):
         render.render(scenario, Path("out"))
@@ -221,10 +213,8 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
     tmp_path: Path,
 ) -> None:
     """Boxes are sampled at pixel centres, so a hull reaches half a pixel past one."""
-    scenario = load(TWIN_POD)
-    scenario = scenario.model_copy(
-        update={"outputs": scenario.outputs.model_copy(update={"bands": ("ir",)})}
-    )
+    # Boxes come from the index pass, which takes the pixel centre at any sample count.
+    scenario = load(TWIN_POD, ['outputs.bands = ["ir"]', "outputs.samples.ir = 1"])
 
     render.render(scenario, tmp_path)
 
@@ -285,7 +275,7 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scenario = load(
-        UNDERWAY,
+        OPEN_SEA,
         [
             "outputs.duration_s = 3.0",
             "outputs.fps = 1",
@@ -318,7 +308,7 @@ def test_an_ir_render_that_dies_names_the_frames_on_disk(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scenario = load(
-        UNDERWAY,
+        OPEN_SEA,
         [
             "outputs.duration_s = 3.0",
             "outputs.fps = 1",
