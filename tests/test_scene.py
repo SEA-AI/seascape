@@ -6,6 +6,7 @@ Blender is one global session, so each class rebuilds in its own band on entry.
 import math
 from collections.abc import Iterator
 from pathlib import Path
+from statistics import NormalDist
 
 import bpy
 import numpy as np
@@ -536,12 +537,17 @@ class TestEoBand:
         per_gust = tree.nodes["sea_gust_variance"].inputs[1].default_value
         assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
         tile = baked("sea_gust")
-        seeded = waves.gust_field(
+        seeded = waves.von_karman_field(
             scene._substream(SCENARIO.seed, "sea/gust"),
             sea.GUST_CELLS,
             sea.GUST_SPACING_M,
+            waves.GUST_LENGTH_M,
         )
         assert tile == pytest.approx(seeded, abs=1e-5)
+
+    def test_no_slicks_by_default(self) -> None:
+        names = [n.name for n in bpy.data.materials["sea"].node_tree.nodes]
+        assert not [n for n in names if n.startswith("slick") or n.endswith("_calm")]
 
     def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
         carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
@@ -875,6 +881,76 @@ class TestOwnshipMotion:
 
 def _sea_node(name: str) -> bpy.types.ShaderNode:
     return bpy.data.materials["sea"].node_tree.nodes[name]
+
+
+class TestSlicks:
+    SLICKS = load(BASELINE, ["sea.slick_cover = 0.3", "sea.wind_from_deg = 60.0"])
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls) -> None:
+        scene.build(cls.SLICKS, "eo")
+
+    def test_the_tile_s_top_cover_lies_under_a_slick(self) -> None:
+        threshold = _sea_node("slick").inputs[1].default_value
+        assert threshold == pytest.approx(NormalDist().inv_cdf(0.7))
+        spacing_m = waves.WINDROW_SPACING_S * self.SLICKS.sea.wind_speed_mps
+        seeded = waves.von_karman_field(
+            scene._substream(self.SLICKS.seed, "sea/slick"),
+            sea.GUST_CELLS,
+            sea.GUST_SPACING_M,
+            spacing_m,
+        )
+        assert baked("sea_slick") == pytest.approx(seeded, abs=1e-5)
+
+    def test_windrows_run_along_the_wind_at_faller_and_woodcock_s_spacing(
+        self,
+    ) -> None:
+        axes = _sea_node("slick_axes")
+        across, along = (
+            np.array(axes.inputs[i].links[0].from_node.inputs[1].default_value[:2])
+            for i in ("X", "Y")
+        )
+        toward = math.radians(self.SLICKS.sea.wind_from_deg + 180.0)
+        downwind = np.array([math.sin(toward), math.cos(toward)])
+        assert along @ downwind == pytest.approx(np.linalg.norm(along))
+        # Sockets hold float32.
+        assert across @ downwind == pytest.approx(
+            0.0, abs=1e-6 * np.linalg.norm(across)
+        )
+        assert np.linalg.norm(across) == pytest.approx(1 / sea.GUST_TILE_M)
+        assert np.linalg.norm(along) == pytest.approx(
+            np.linalg.norm(across) / waves.WINDROW_ASPECT
+        )
+        carry = np.array(_sea_node("slick_carry").inputs["Vector"].default_value[:2])
+        drift_mps = waves.SLICK_DRIFT * self.SLICKS.sea.wind_speed_mps
+        assert carry == pytest.approx([0.0, -drift_mps * np.linalg.norm(along)])
+
+    def test_a_slick_calms_the_waves_it_damps(self) -> None:
+        wind = scene.wind_waves(self.SLICKS)
+        left = set(waves.slick_survivors(self.SLICKS.sea.wind_speed_mps, wind))
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        calmed = {i for i, w in enumerate(wind) if f"wave_{i}_calm" in nodes}
+        assert calmed == {i for i, w in enumerate(wind) if w not in left}
+
+    def test_under_a_slick_the_pixel_leaves_what_the_slick_does(self) -> None:
+        table = baked("sea_unresolved_slick_variance")
+        low, high = sea.FOOTPRINT_RANGE_M
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        footprints = low * (high / low) ** texel
+        speed = self.SLICKS.sea.wind_speed_mps
+        left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS))
+        for i in (0, len(table) // 2, len(table) - 1):
+            expected = waves.unresolved_slope_variance(
+                speed,
+                left,
+                scene.swell_waves(self.SLICKS),
+                footprints[i],
+                waves.cox_munk_slick_slope,
+            )
+            assert table[i] == pytest.approx(expected, rel=1e-5, abs=1e-9)
+        roughness = _sea_node("Principled BSDF").inputs["Roughness"]
+        assert {"slick", "sea_unresolved_slick_variance"} <= upstream(roughness)
 
 
 class TestSeaEvolves:

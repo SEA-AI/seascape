@@ -983,8 +983,11 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     # The finest pixel in the band, so its sharpest camera does not blur.
     pixel_rad = min(math.radians(m.camera.hfov_deg) / m.camera.width_px for m in mounts)
     wind, swell = wind_waves(scenario), swell_waves(scenario)
-    gust = _substream(scenario.seed, "sea/gust")
-    sea.water(scenario.sea, wind, swell, reach_m, band, outputs, pixel_rad, gust)
+    rngs = (
+        _substream(scenario.seed, "sea/gust"),
+        _substream(scenario.seed, "sea/slick"),
+    )
+    sea.water(scenario.sea, wind, swell, reach_m, band, outputs, pixel_rad, rngs)
     rig = _rig(scenario.rig, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)
