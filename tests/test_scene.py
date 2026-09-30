@@ -568,10 +568,22 @@ class TestEoBand:
         wind = scene.wind_waves(SCENARIO)
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
-        threshold = tree.nodes["whitecap_excess"].inputs["Value_001"].default_value
-        assert threshold == pytest.approx(
-            waves.breaking_threshold_g(wind, waves.whitecap_fraction(speed)), rel=1e-6
+        assert "gust" in upstream(tree.nodes["whitecap_excess"].inputs["Value_001"])
+        table = baked("sea_breaking")
+        gust_max = (
+            math.sqrt(2)
+            * np.abs(baked("sea_gust")).max()
+            * waves.turbulence_intensity(speed)
         )
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        gusts = gust_max * (2 * texel - 1)
+        # The threshold at each texel's gust.
+        expected = [
+            waves.breaking_threshold_g(wind, waves.gusty_whitecap_fraction(speed, g))
+            for g in gusts
+        ]
+        assert table == pytest.approx(expected, rel=1e-5)
+        assert np.all(np.diff(table) < 0)
         cosines = [n for n in tree.nodes if getattr(n, "operation", "") == "COSINE"]
         assert len(cosines) == len(wind)
 

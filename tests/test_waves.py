@@ -107,6 +107,18 @@ def test_the_gust_tile_is_gaussian_so_its_tail_sets_the_slick_cover(
     assert (tile > threshold).mean() == pytest.approx(cover, abs=0.05)
 
 
+@pytest.mark.parametrize("speed", [5.0, 12.0, 20.0])
+def test_gusty_whitecaps_average_to_monahan_s_cover(speed: float) -> None:
+    """Monahan's fit is over gusty seas, so the local cover must not count the
+    gusts twice."""
+    sigma = waves.turbulence_intensity(speed)
+    gust = np.random.default_rng(0).normal(0.0, sigma, 20_000)
+    local = [waves.gusty_whitecap_fraction(speed, g) for g in gust]
+    assert np.mean(local) == pytest.approx(waves.whitecap_fraction(speed), rel=0.01)
+    assert waves.gusty_whitecap_fraction(speed, 0.2) > waves.whitecap_fraction(speed)
+    assert waves.gusty_whitecap_fraction(0.0, 0.2) == 0.0
+
+
 def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
     """Masuda 1988: unresolved slope lifts grazing emissivity off flat Fresnel."""
     built = field(7.0)

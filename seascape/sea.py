@@ -41,6 +41,7 @@ from seascape.waves import (
     earth_radius_m,
     fade_footprints_m,
     gust_slope_variance,
+    gusty_whitecap_fraction,
     horizon_m,
     sea_z_m,
     slick_survivors,
@@ -355,9 +356,10 @@ def _whitecaps(
     wind: tuple[Wave, ...],
     drawn: list[_Drawn],
     footprint_m: bpy.types.NodeSocket,
-    fraction: float,
+    threshold_g: float | bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """How much of the pixel whitecaps, as `waves.whitecap_cover`."""
+    """How much of the pixel whitecaps, as `waves.whitecap_cover`, past
+    `threshold_g`."""
     acceleration: float | bpy.types.NodeSocket = 0.0
     for wave, one in zip(wind, drawn, strict=True):
         shown = _fade(tree, wave, one.footprint_sq, _math(tree, "COSINE", one.phase))
@@ -384,7 +386,7 @@ def _whitecaps(
         tree,
         "SUBTRACT",
         acceleration,
-        breaking_threshold_g(wind, fraction),
+        threshold_g,
         name="whitecap_excess",
     )
     # Clamped, so an infinite threshold reads the table's end.
@@ -417,6 +419,10 @@ def _glitter(
     A pixel's `samples` samples of its n cells count glints as n cells do if each cell's
     lobe catches the sun n / samples times as often: variance r^2 (n / samples - 1)
     about a sun of slope radius r.
+
+    ponytail: the cells keep the mean wind's size through a gust, as a size that
+    varied over the sea would re-cut the grid as the gust moves; crossfade two fixed
+    grids by the local wind if glints should thin in the lulls.
     """
     cell_m2 = specular_cell_m2(wind)
     link = tree.links.new
@@ -758,6 +764,37 @@ def _gusty(
     )
 
 
+def _breaking(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    wind: tuple[Wave, ...],
+    gust: bpy.types.NodeSocket | None,
+    gust_max: float,
+) -> float | bpy.types.NodeSocket:
+    """The breaking threshold of Monahan's whitecap cover at the local wind.
+
+    ponytail: the cover answers the gust at once; follow it with a lag if the patches
+    track it too tightly.
+    """
+    speed = sea.wind_speed_mps
+    if gust is None:
+        return breaking_threshold_g(wind, whitecap_fraction(speed))
+    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    thresholds = [
+        breaking_threshold_g(wind, gusty_whitecap_fraction(speed, g))
+        for g in gust_max * (2 * texel - 1)
+    ]
+    # Finite, so the linear lookup never mixes an infinity into NaN.
+    big = float(np.finfo(np.float32).max)
+    table = curve_image(
+        "sea_breaking", np.nan_to_num(thresholds, posinf=big, neginf=-big)
+    )
+    at = _math(tree, "MULTIPLY_ADD", gust, 0.5 / gust_max, 0.5)
+    threshold = lookup(tree, table, at)
+    threshold.node.name = "sea_breaking"
+    return threshold
+
+
 def _material(
     sea: Sea,
     wind: tuple[Wave, ...],
@@ -776,7 +813,7 @@ def _material(
     pixel = _pixel(tree, pixel_rad)
     time_s = _sea_time(tree, outputs)
     speed = sea.wind_speed_mps
-    gust_max, slick = 0.0, None
+    gust_max, gust, slick = 0.0, None, None
     if speed > 0.0:
         tile = von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
         # A crossfade reaches sqrt(2) of the tile's peak at most.
@@ -847,9 +884,9 @@ def _material(
                 _math(tree, "MULTIPLY", along, 0.01),
             )
             unresolved = (along, across)
-        fraction = whitecap_fraction(sea.wind_speed_mps)
+        threshold = _breaking(tree, sea, wind, gust, gust_max)
         # Along the view, the widest footprint, leaves the most unresolved. A judgement.
-        whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, fraction)
+        whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, threshold)
         surface = _daylight(tree, sea, normal, pixel.along_dir, unresolved, whitecaps)
     else:
         # The coarsest footprint leaves the most, Cox & Munk's and all the swell's,
