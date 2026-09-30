@@ -307,7 +307,7 @@ def test_a_saved_build_reopens_with_its_lookup_tables(
 ) -> None:
     """`seascape build` saves a .blend for Blender to open; an unpacked table would
     reopen as its fill colour."""
-    scene.build(SCENARIO.model_copy(update={"objects": []}), band)
+    scene.build(load(OPEN_SEA), band)
     tables = [
         image
         for image in bpy.data.images
@@ -896,7 +896,7 @@ def _sea_node(name: str) -> bpy.types.ShaderNode:
 
 
 class TestSlicks:
-    SLICKS = load(BASELINE, ["sea.slick_cover = 0.3", "sea.wind_from_deg = 60.0"])
+    SLICKS = load(OPEN_SEA, ["sea.slick_cover = 0.3", "sea.wind_from_deg = 60.0"])
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
