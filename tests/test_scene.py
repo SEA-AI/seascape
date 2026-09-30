@@ -55,6 +55,40 @@ def test_the_sun_is_out_of_every_frame(name: str) -> None:
         assert not _in_frame(camera, sun), mount.name
 
 
+def upstream(socket: bpy.types.NodeSocket) -> set[str]:
+    """The names of every node feeding `socket`."""
+    seen, todo = set(), [socket]
+    while todo:
+        for link in todo.pop().links:
+            if link.from_node.name not in seen:
+                seen.add(link.from_node.name)
+                todo.extend(link.from_node.inputs)
+    return seen
+
+
+_MATH = {
+    "ADD": lambda a, b, c: a + b,
+    "SUBTRACT": lambda a, b, c: a - b,
+    "MULTIPLY": lambda a, b, c: a * b,
+    "MULTIPLY_ADD": lambda a, b, c: a * b + c,
+    "FRACT": lambda a, b, c: a - math.floor(a),
+    "ABSOLUTE": lambda a, b, c: abs(a),
+    "ARCTAN2": lambda a, b, c: math.atan2(a, b),
+}
+
+
+def _evaluated(socket: bpy.types.NodeSocket) -> float:
+    """A chain of Value and Math nodes, evaluated as Blender does."""
+    node = socket.node
+    if node.bl_idname == "ShaderNodeValue":
+        return socket.default_value
+    inputs = (
+        _evaluated(i.links[0].from_socket) if i.is_linked else i.default_value
+        for i in node.inputs
+    )
+    return _MATH[node.operation](*inputs)
+
+
 def under_the_haze(material: bpy.types.Material) -> bpy.types.Node:
     output = material.node_tree.get_output_node("CYCLES")
     haze = output.inputs["Surface"].links[0].from_node
@@ -492,6 +526,38 @@ class TestEoBand:
             )
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
+    def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
+        roughness = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
+        assert {"gust", "sea_gust_variance", "sea_unresolved_variance"} <= upstream(
+            roughness.inputs["Roughness"]
+        )
+        speed = SCENARIO.sea.wind_speed_mps
+        tree = bpy.data.materials["sea"].node_tree
+        per_gust = tree.nodes["sea_gust_variance"].inputs[1].default_value
+        assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
+        tile = baked("sea_gust")
+        seeded = waves.gust_field(
+            scene._substream(SCENARIO.seed, "sea/gust"),
+            sea.GUST_CELLS,
+            sea.GUST_SPACING_M,
+        )
+        assert tile == pytest.approx(seeded, abs=1e-5)
+
+    def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
+        carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
+        per_m = 1 / sea.GUST_TILE_M
+        downwind = math.radians(SCENARIO.sea.wind_from_deg + 180.0)
+        speed = SCENARIO.sea.wind_speed_mps
+        # The noise read at x - U t is the noise at x carried U t downwind.
+        assert tuple(carry.inputs["Vector"].default_value) == pytest.approx(
+            (
+                -speed * per_m * math.sin(downwind),
+                -speed * per_m * math.cos(downwind),
+                0,
+            ),
+            abs=1e-9,
+        )
+
     def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
         wind = scene.wind_waves(SCENARIO)
         speed = SCENARIO.sea.wind_speed_mps
@@ -667,18 +733,8 @@ class TestIrBand:
             if n.bl_idname == "ShaderNodeTexImage" and n.image.name == "sea_emissivity"
         )
         lookup = table.inputs["Vector"].links[0].from_node
-
-        def upstream(socket: bpy.types.NodeSocket) -> set[str]:
-            seen, todo = set(), [socket]
-            while todo:
-                for link in todo.pop().links:
-                    if link.from_node.name not in seen:
-                        seen.add(link.from_node.name)
-                        todo.extend(link.from_node.inputs)
-            return seen
-
-        assert "sea_unresolved_variance" in upstream(mirror.inputs["Roughness"])
-        assert "sea_unresolved_variance" in upstream(lookup.inputs["Y"])
+        for socket in (mirror.inputs["Roughness"], lookup.inputs["Y"]):
+            assert {"sea_unresolved_variance", "sea_gust_variance"} <= upstream(socket)
 
     def test_emissivity_is_averaged_over_the_unresolved_slopes(self) -> None:
         """Flat Fresnel collapses toward grazing, which is where distant targets sit."""
@@ -707,12 +763,19 @@ class TestIrBand:
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
-        theta. Rows run up the unresolved RMS slope, to all of Cox & Munk's."""
+        theta. Rows run up the unresolved RMS slope, to all of Cox & Munk's in the
+        strongest gust."""
         table = baked("sea_emissivity")
         rows, width = table.shape
         mu = (np.arange(width) + 0.5) / width
+        speed = SCENARIO.sea.wind_speed_mps
+        tile = baked("sea_gust")
+        gust_max = math.sqrt(2) * np.abs(tile).max() * waves.turbulence_intensity(speed)
+        strongest = waves.cox_munk_slope(
+            speed
+        ) ** 2 + gust_max * waves.gust_slope_variance(speed)
         # Per axis: lwir draws each facet's two slopes with this sigma.
-        sigma_max = waves.cox_munk_slope(SCENARIO.sea.wind_speed_mps) / math.sqrt(2)
+        sigma_max = math.sqrt(strongest / 2)
         for row in (0, rows // 2, rows - 1):
             theta, eps = lwir.emissivity_curve(
                 t_sea_k=SCENARIO.sea.t_sea_k,
@@ -856,6 +919,19 @@ class TestSeaEvolves:
         for wave in scene.wave_field(self.LOOP):
             turns = wave.omega_rad_s * span_s / (2 * math.pi)
             assert turns == pytest.approx(round(turns), abs=1e-9)
+
+    def test_a_loop_swaps_gust_layers_while_each_weighs_nothing(self) -> None:
+        scene.build(self.LOOP, "eo")
+        span_s = self.LOOP.outputs.span_s
+        for _ in self._each_frame():
+            weight, carried_s = (
+                [_evaluated(_sea_node(f"{name}_{i}").outputs["Value"]) for i in (0, 1)]
+                for name in ("gust_weight", "gust_carried")
+            )
+            assert sum(weight) == pytest.approx(1.0, abs=1e-6)
+            for w, c in zip(weight, carried_s, strict=True):
+                # A layer is carried back to the start where its weight reaches 0.
+                assert w == pytest.approx(2 * min(c, span_s - c) / span_s, abs=1e-6)
 
     def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
         swell = load(BASELINE, ["sea.swell = { height_m = 1.5, period_s = 11.0 }"])

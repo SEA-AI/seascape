@@ -78,7 +78,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ## Sequences
 
-`outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:
+`outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, and the gusts that roughen them, run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:
 
 ```bash
 uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg, ...
