@@ -27,7 +27,20 @@ mean, the rest a Gaussian spread.
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
-clean-sea fit, equation 13.
+clean-sea fit, equation 13, and the slick-surface fit beside it, over the oil they laid.
+
+Slicks: Leibovich, "The form and dynamics of Langmuir circulations", Annu. Rev. Fluid
+Mech. 15 391, 1983 (doi:10.1146/annurev.fl.15.010183.002135): films gather in windrows
+along the wind, within 20 degrees, spaced 4.8 s x U (Faller & Woodcock 1964), and none
+below 3 m/s. Thorpe, "Langmuir circulation", Annu. Rev. Fluid Mech. 36 55, 2004
+(doi:10.1146/annurev.fluid.36.052203.071431): three to ten times as long as their
+spacing. ASCE Task Committee on Modeling of Oil Spills, "State-of-the-art review of
+modeling transport and fate of oil spills", J. Hydraul. Eng. 122(11) 594, 1996
+(doi:10.1061/(ASCE)0733-9429(1996)122:11(594)): a slick drifts at about 3 % of the wind.
+Alpers & Huhnerfuss, "The damping of ocean waves by surface films: a new look at an old
+problem", JGR 94(C5) 6251, 1989 (doi:10.1029/JC094iC05p06251): on the long side of its
+Marangoni resonance, at centimetres, a film damps more the shorter the wave, so a slick
+takes the shortest waves first.
 
 Filtering: Bruneton, Neyret & Holzschuch, "Real-time realistic ocean lighting using
 seamless transitions from geometry to BRDF", Computer Graphics Forum 29(2) 487, 2010
@@ -90,6 +103,9 @@ GRAVITY_MS2 = 9.81
 #   gust            u / U, sigma 1 / ln(10 / z0)        DNV-RP-C205
 #   gust field      (k0^2 + k^2)^(-4/3), L of Kaimal's  von Karman 1948, IEC 61400-1
 #   gusty slope     + u / U dCM^2 / d ln U, undrawn     Cox & Munk, Plant 1982
+#   slick slope     sqrt(0.008 + 0.00156 U(12.5 m))     Cox & Munk 1954
+#   windrows        4.8 s x U apart, 3-10x as long      Leibovich 1983, Thorpe 2004
+#   windrow cutoff  none below 3 m/s                    Leibovich 1983
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
@@ -100,6 +116,13 @@ WHITECAP_COEFFICIENT = 3.84e-6
 WHITECAP_EXPONENT = 3.41
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
+SLICK_VARIANCE_INTERCEPT = 0.008
+SLICK_VARIANCE_PER_MPS = 0.00156
+WINDROW_SPACING_S = 4.8
+WINDROW_MIN_WIND_MPS = 3.0
+# A judgement inside Thorpe's three to ten.
+WINDROW_ASPECT = 5.0
+SLICK_DRIFT = 0.03
 
 # Where each paper measured its wind: Pierson & Moskowitz 1964, Cox & Munk 1954.
 PM_WIND_HEIGHT_M = 19.5
@@ -190,12 +213,12 @@ def gust_slope_variance(wind_speed_mps: float) -> float:
     return (up - down) / (2 * step)
 
 
-def gust_field(rng: np.random.Generator, cells: int, spacing_m: float) -> np.ndarray:
-    """A periodic tile of u / sigma_u, (cells, cells), von Karman's spectrum at
-    GUST_LENGTH_M, zero mean and unit variance."""
-    k0_rad_m = (
-        math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * GUST_LENGTH_M)
-    )
+def von_karman_field(
+    rng: np.random.Generator, cells: int, spacing_m: float, length_m: float
+) -> np.ndarray:
+    """A periodic tile, (cells, cells), of von Karman's spectrum at integral scale
+    `length_m`, zero mean and unit variance."""
+    k0_rad_m = math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * length_m)
     k = 2 * math.pi * np.fft.fftfreq(cells, spacing_m)
     k_sq = k[:, None] ** 2 + k[None, :] ** 2
     white = np.fft.fft2(rng.standard_normal((cells, cells)))
@@ -212,6 +235,14 @@ def cox_munk_slope(wind_speed_mps: float) -> float:
     """Total RMS surface slope. Dimensionless, a tangent."""
     wind = wind_at_m(wind_speed_mps, COX_MUNK_WIND_HEIGHT_M)
     return math.sqrt(SLOPE_VARIANCE_INTERCEPT + SLOPE_VARIANCE_PER_MPS * wind)
+
+
+def cox_munk_slick_slope(wind_speed_mps: float) -> float:
+    """Total RMS slope under a slick: Cox & Munk's slick fit, capped at the clean one,
+    as a slick never roughens the sea."""
+    wind = wind_at_m(wind_speed_mps, COX_MUNK_WIND_HEIGHT_M)
+    slick = SLICK_VARIANCE_INTERCEPT + SLICK_VARIANCE_PER_MPS * wind
+    return min(math.sqrt(slick), cox_munk_slope(wind_speed_mps))
 
 
 def _bins(wind_speed_mps: float) -> tuple[np.ndarray, np.ndarray]:
@@ -453,14 +484,28 @@ def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     )
 
 
+def slick_survivors(wind_speed_mps: float, wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
+    """The longest waves that fit in Cox & Munk's slick variance: what a slick leaves
+    of `wind`, damping the shortest first."""
+    budget = cox_munk_slick_slope(wind_speed_mps) ** 2
+    left = []
+    for wave in sorted(wind, key=lambda w: w.k_rad_m):
+        budget -= slope_variance((wave,))
+        if budget < 0.0:
+            break
+        left.append(wave)
+    return tuple(left)
+
+
 def unresolved_slope_variance(
     wind_speed_mps: float,
     wind: tuple[Wave, ...],
     swell: tuple[Wave, ...],
     footprint_m: float,
+    total_slope: Callable[[float], float] = cox_munk_slope,
 ) -> float:
     """Cox & Munk's is the wind sea's variance; a swell adds its own undrawn part."""
-    wind_left = cox_munk_slope(wind_speed_mps) ** 2 - slope_variance(
+    wind_left = total_slope(wind_speed_mps) ** 2 - slope_variance(
         filtered(wind, footprint_m)
     )
     swell_left = slope_variance(swell) - slope_variance(filtered(swell, footprint_m))

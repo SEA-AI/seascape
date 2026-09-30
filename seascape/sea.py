@@ -30,19 +30,26 @@ from seascape import lwir
 from seascape.blend import CURVE_SAMPLES, animate, curve_image, lookup, place
 from seascape.config import Band, Outputs, Rig, Sea
 from seascape.waves import (
+    GUST_LENGTH_M,
+    SLICK_DRIFT,
+    WINDROW_ASPECT,
+    WINDROW_MIN_WIND_MPS,
+    WINDROW_SPACING_S,
     Wave,
     breaking_threshold_g,
+    cox_munk_slick_slope,
     earth_radius_m,
     fade_footprints_m,
-    gust_field,
     gust_slope_variance,
     horizon_m,
     sea_z_m,
+    slick_survivors,
     specular_cell_m2,
     turbulence_intensity,
     twinkle_hz,
     unresolved_acceleration_variance,
     unresolved_slope_variance,
+    von_karman_field,
     whitecap_fraction,
 )
 
@@ -203,6 +210,7 @@ def _pixel(tree: bpy.types.NodeTree, pixel_rad: float) -> _Pixel:
 class _Drawn(NamedTuple):
     phase: bpy.types.NodeSocket
     footprint_sq: bpy.types.NodeSocket
+    calm: bpy.types.NodeSocket | None
 
 
 def _fade(
@@ -229,12 +237,14 @@ def _wave(
     wave: Wave,
     xyt: bpy.types.NodeSocket,
     pixel: _Pixel,
-    across_sq: bpy.types.NodeSocket,
-    stretch: bpy.types.NodeSocket,
+    squares: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
     gradient: bpy.types.NodeSocket | None,
+    calm: bpy.types.NodeSocket | None,
 ) -> tuple[bpy.types.NodeSocket, _Drawn]:
     """`gradient` plus this wave's slope, as far as the pixel resolves it along the
-    wave's own direction: footprint^2 = across^2 + (along^2 - across^2) cos^2."""
+    wave's own direction: footprint^2 = across^2 + (along^2 - across^2) cos^2, from
+    `squares`, across^2 and along^2 - across^2."""
+    across_sq, stretch = squares
     dot = _vector(tree, "DOT_PRODUCT", xyt, name=f"wave_{i}")
     dot.node.inputs["Vector_001"].default_value = (
         wave.k_east_rad_m,
@@ -253,6 +263,8 @@ def _wave(
     # -d height / dx of a cos(phase) is a k_x sin(phase).
     shown = _fade(tree, wave, footprint_sq, _math(tree, "SINE", phase))
     shown.node.name = f"wave_{i}_fade"
+    if calm is not None:
+        shown = _math(tree, "MULTIPLY", shown, calm, name=f"wave_{i}_calm")
     term = _vector(tree, "MULTIPLY_ADD", name=f"wave_{i}_slope")
     term.node.inputs["Vector"].default_value = (
         wave.amplitude_m * wave.k_east_rad_m,
@@ -262,7 +274,7 @@ def _wave(
     tree.links.new(shown, term.node.inputs["Vector_001"])
     if gradient is not None:
         tree.links.new(gradient, term.node.inputs["Vector_002"])
-    return term, _Drawn(phase, footprint_sq)
+    return term, _Drawn(phase, footprint_sq, calm)
 
 
 def _waves(
@@ -270,8 +282,11 @@ def _waves(
     field: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
+    calm: bpy.types.NodeSocket | None = None,
+    damped: frozenset[Wave] = frozenset(),
 ) -> tuple[bpy.types.NodeSocket, list[_Drawn]]:
-    """The normal of what the pixel resolves, and each wave as drawn."""
+    """The normal of what the pixel resolves, and each wave as drawn; `calm` scales
+    the `damped` ones."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     position = tree.nodes.new("ShaderNodeSeparateXYZ")
     # Height is left out, so the sea curving under the field cannot slide it.
@@ -289,7 +304,14 @@ def _waves(
     drawn = []
     for i, wave in enumerate(field):
         gradient, one = _wave(
-            tree, i, wave, xyt.outputs["Vector"], pixel, across_sq, stretch, gradient
+            tree,
+            i,
+            wave,
+            xyt.outputs["Vector"],
+            pixel,
+            (across_sq, stretch),
+            gradient,
+            calm if wave in damped else None,
         )
         drawn.append(one)
     tilted = geometry.outputs["Normal"]
@@ -339,6 +361,8 @@ def _whitecaps(
     acceleration: float | bpy.types.NodeSocket = 0.0
     for wave, one in zip(wind, drawn, strict=True):
         shown = _fade(tree, wave, one.footprint_sq, _math(tree, "COSINE", one.phase))
+        if one.calm is not None:
+            shown = _math(tree, "MULTIPLY", shown, one.calm)
         acceleration = _math(
             tree, "MULTIPLY_ADD", shown, wave.amplitude_m * wave.k_rad_m, acceleration
         )
@@ -563,6 +587,87 @@ def _daylight(
     return mix.outputs["Shader"]
 
 
+def _drifting(
+    tree: bpy.types.NodeTree,
+    time_s: bpy.types.NodeSocket,
+    outputs: Outputs,
+    tile: bpy.types.Image,
+    axes: tuple[tuple[float, float], tuple[float, float]],
+    velocity_mps: tuple[float, float],
+    start: float,
+    name: str,
+) -> bpy.types.NodeSocket:
+    """`tile` laid on the sea along `axes`, each an (east, north) tile axis in tiles
+    per metre, offset `start` tiles, frozen and carried at `velocity_mps`, (east,
+    north).
+
+    A loop crossfades two layers, each carried for one span and back while its weight
+    is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
+    their squared weights so the variance holds.
+    """
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    here = tree.nodes.new("ShaderNodeCombineXYZ")
+    here.name = f"{name}_axes"
+    for axis, out in zip(axes, ("X", "Y"), strict=True):
+        along = _vector(tree, "DOT_PRODUCT", geometry.outputs["Position"])
+        along.node.inputs["Vector_001"].default_value = (*axis, 0.0)
+        tree.links.new(along, here.inputs[out])
+    # The tile read at x - v t is the tile at x carried v t.
+    carry = [-(velocity_mps[0] * e + velocity_mps[1] * n) for e, n in axes]
+
+    def layer(carried_s: bpy.types.NodeSocket, shift: float) -> bpy.types.NodeSocket:
+        at = _vector(tree, "MULTIPLY_ADD", name=f"{name}_carry")
+        at.node.inputs["Vector"].default_value = (*carry, 0.0)
+        tree.links.new(carried_s, at.node.inputs["Vector_001"])
+        at.node.inputs["Vector_002"].default_value = (shift, shift, 0.0)
+        texture = tree.nodes.new("ShaderNodeTexImage")
+        texture.image = tile
+        texture.extension = "REPEAT"
+        tree.links.new(
+            _vector(tree, "ADD", here.outputs["Vector"], at), texture.inputs["Vector"]
+        )
+        return texture.outputs["Color"]
+
+    if not outputs.loop:
+        return layer(time_s, start)
+    span_s = outputs.span_s
+    weighted = []
+    # Half a tile apart, so the two layers are independent.
+    for i, lag in enumerate((0.0, 0.5)):
+        cycle = _math(
+            tree,
+            "FRACT",
+            _math(tree, "MULTIPLY_ADD", time_s, 1 / span_s, lag),
+        )
+        weight = _math(
+            tree,
+            "SUBTRACT",
+            1.0,
+            _math(tree, "ABSOLUTE", _math(tree, "MULTIPLY_ADD", cycle, 2.0, -1.0)),
+            name=f"{name}_weight_{i}",
+        )
+        carried_s = _math(tree, "MULTIPLY", cycle, span_s, name=f"{name}_carried_{i}")
+        weighted.append((weight, layer(carried_s, start + lag)))
+    (w0, n0), (w1, n1) = weighted
+    norm = _math(
+        tree,
+        "SQRT",
+        _math(tree, "MULTIPLY_ADD", w0, w0, _math(tree, "MULTIPLY", w1, w1)),
+    )
+    return _math(
+        tree,
+        "DIVIDE",
+        _math(tree, "MULTIPLY_ADD", w0, n0, _math(tree, "MULTIPLY", w1, n1)),
+        norm,
+    )
+
+
+def _downwind(sea: Sea) -> tuple[float, float]:
+    # Wind is named for where it blows from.
+    toward = math.radians(sea.wind_from_deg + 180.0)
+    return math.sin(toward), math.cos(toward)
+
+
 def _gust(
     tree: bpy.types.NodeTree,
     sea: Sea,
@@ -570,67 +675,58 @@ def _gust(
     outputs: Outputs,
     tile: bpy.types.Image,
 ) -> bpy.types.NodeSocket:
-    """The wind over its mean, less one, frozen and carried downwind.
+    """The wind over its mean, less one, carried downwind at the mean wind."""
+    per_m = 1 / GUST_TILE_M
+    east, north = _downwind(sea)
+    speed = sea.wind_speed_mps
+    unit = _drifting(
+        tree,
+        time_s,
+        outputs,
+        tile,
+        ((per_m, 0.0), (0.0, per_m)),
+        (speed * east, speed * north),
+        0.0,
+        "gust",
+    )
+    return _math(tree, "MULTIPLY", unit, turbulence_intensity(speed), name="gust")
 
-    A loop crossfades two layers, each carried for one span and back while its weight
-    is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
-    their squared weights so the variance holds.
+
+def _slick(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    time_s: bpy.types.NodeSocket,
+    outputs: Outputs,
+    rng: np.random.Generator,
+) -> bpy.types.NodeSocket:
+    """1 under a slick: the top `slick_cover` of a tile at the windrow spacing,
+    stretched along the wind and drifting with it.
+
+    ponytail: the integral scale stands for the windrow spacing, a judgement, and
+    there are rows at every wind, where below the cutoff real slicks lie in patches.
+    Give the slicks their own spectrum if the rows read wrong. Whitecaps lose the
+    damped waves but keep the clean sea's unresolved acceleration; mix in the
+    survivors' if slicks break too often.
     """
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    here = _vector(tree, "SCALE", geometry.outputs["Position"])
-    here.node.inputs["Scale"].default_value = 1 / GUST_TILE_M
-    # Wind is named for where it blows from; gusts run the other way.
-    toward = math.radians(sea.wind_from_deg + 180.0)
-    back = sea.wind_speed_mps / GUST_TILE_M
-    carry = (-back * math.sin(toward), -back * math.cos(toward), 0.0)
-
-    def layer(carried_s: bpy.types.NodeSocket, shift: float) -> bpy.types.NodeSocket:
-        at = _vector(tree, "MULTIPLY_ADD", name="gust_carry")
-        at.node.inputs["Vector"].default_value = carry
-        tree.links.new(carried_s, at.node.inputs["Vector_001"])
-        at.node.inputs["Vector_002"].default_value = (shift, shift, 0.0)
-        texture = tree.nodes.new("ShaderNodeTexImage")
-        texture.image = tile
-        texture.extension = "REPEAT"
-        tree.links.new(_vector(tree, "ADD", here, at), texture.inputs["Vector"])
-        return texture.outputs["Color"]
-
-    if not outputs.loop:
-        gust = layer(time_s, 0.0)
-    else:
-        span_s = outputs.span_s
-        weighted = []
-        # Half a tile apart, so the two layers are independent.
-        for i, lag in enumerate((0.0, 0.5)):
-            cycle = _math(
-                tree,
-                "FRACT",
-                _math(tree, "MULTIPLY_ADD", time_s, 1 / span_s, lag),
-            )
-            weight = _math(
-                tree,
-                "SUBTRACT",
-                1.0,
-                _math(tree, "ABSOLUTE", _math(tree, "MULTIPLY_ADD", cycle, 2.0, -1.0)),
-                name=f"gust_weight_{i}",
-            )
-            carried_s = _math(tree, "MULTIPLY", cycle, span_s, name=f"gust_carried_{i}")
-            weighted.append((weight, layer(carried_s, lag)))
-        (w0, n0), (w1, n1) = weighted
-        norm = _math(
-            tree,
-            "SQRT",
-            _math(tree, "MULTIPLY_ADD", w0, w0, _math(tree, "MULTIPLY", w1, w1)),
-        )
-        gust = _math(
-            tree,
-            "DIVIDE",
-            _math(tree, "MULTIPLY_ADD", w0, n0, _math(tree, "MULTIPLY", w1, n1)),
-            norm,
-        )
-    scaled = _math(tree, "MULTIPLY", gust, turbulence_intensity(sea.wind_speed_mps))
-    scaled.node.name = "gust"
-    return scaled
+    east, north = _downwind(sea)
+    speed = sea.wind_speed_mps
+    spacing_m = WINDROW_SPACING_S * max(speed, WINDROW_MIN_WIND_MPS)
+    tile = von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m)
+    across = 1 / GUST_TILE_M
+    along = across / WINDROW_ASPECT
+    unit = _drifting(
+        tree,
+        time_s,
+        outputs,
+        curve_image("sea_slick", tile),
+        ((north * across, -east * across), (east * along, north * along)),
+        (SLICK_DRIFT * speed * east, SLICK_DRIFT * speed * north),
+        0.0,
+        "slick",
+    )
+    # The tile is Gaussian, so its top `slick_cover` lies above this.
+    threshold = NormalDist().inv_cdf(1.0 - sea.slick_cover)
+    return _math(tree, "GREATER_THAN", unit, threshold, name="slick")
 
 
 def _gusty(
@@ -669,7 +765,8 @@ def _material(
     band: Band,
     outputs: Outputs,
     pixel_rad: float,
-    rng: np.random.Generator,
+    gust_rng: np.random.Generator,
+    slick_rng: np.random.Generator,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness."""
     material = bpy.data.materials.new("sea")
@@ -678,24 +775,52 @@ def _material(
     field = wind + swell
     pixel = _pixel(tree, pixel_rad)
     time_s = _sea_time(tree, outputs)
-    normal, drawn = _waves(tree, field, time_s, pixel)
+    speed = sea.wind_speed_mps
+    gust_max, slick = 0.0, None
+    if speed > 0.0:
+        tile = von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
+        # A crossfade reaches sqrt(2) of the tile's peak at most.
+        gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
+        gust = _gust(tree, sea, time_s, outputs, curve_image("sea_gust", tile))
+        if sea.slick_cover > 0.0:
+            slick = _slick(tree, sea, time_s, outputs, slick_rng)
+    survivors = wind if slick is None else slick_survivors(speed, wind)
+    damped = frozenset(wind) - frozenset(survivors)
+    calm = None
+    if slick is not None and damped:
+        calm = _math(tree, "SUBTRACT", 1.0, slick)
+    normal, drawn = _waves(tree, field, time_s, pixel, calm, damped)
 
     def unresolved_at(footprint_m: float) -> float:
-        return unresolved_slope_variance(sea.wind_speed_mps, wind, swell, footprint_m)
+        return unresolved_slope_variance(speed, wind, swell, footprint_m)
 
     table = _footprint_table("sea_unresolved_variance", unresolved_at)
-    unresolved = (
-        _at_footprint(tree, table, pixel.along_m, "sea_unresolved_variance"),
-        _at_footprint(tree, table, pixel.across_m, "sea_unresolved_variance"),
+    footprints = (pixel.along_m, pixel.across_m)
+    unresolved = tuple(
+        _at_footprint(tree, table, f, "sea_unresolved_variance") for f in footprints
     )
-    gust_max = 0.0
-    if sea.wind_speed_mps > 0.0:
-        tile = gust_field(rng, GUST_CELLS, GUST_SPACING_M)
-        # A crossfade reaches sqrt(2) of the tile's peak at most.
-        gust_max = math.sqrt(2) * np.abs(tile).max()
-        gust_max *= turbulence_intensity(sea.wind_speed_mps)
-        gust = _gust(tree, sea, time_s, outputs, curve_image("sea_gust", tile))
+    if speed > 0.0:
         unresolved = _gusty(tree, sea, gust, unresolved)
+    if slick is not None:
+
+        def slick_at(footprint_m: float) -> float:
+            return unresolved_slope_variance(
+                speed, survivors, swell, footprint_m, cox_munk_slick_slope
+            )
+
+        name = "sea_unresolved_slick_variance"
+        slick_table = _footprint_table(name, slick_at)
+        # The slick's own variance in place of the gusty sea's.
+        unresolved = tuple(
+            _math(
+                tree,
+                "MULTIPLY_ADD",
+                slick,
+                _math(tree, "SUBTRACT", _at_footprint(tree, slick_table, f, name), v),
+                v,
+            )
+            for v, f in zip(unresolved, footprints, strict=True)
+        )
     if band == "eo":
         if wind:
             # The IR sky has no sun to glint, and its emissivity takes the whole slope.
@@ -747,9 +872,10 @@ def water(
     band: Band,
     outputs: Outputs,
     pixel_rad: float,
-    rng: np.random.Generator,
+    rngs: tuple[np.random.Generator, np.random.Generator],
 ) -> bpy.types.Object:
-    """A grid curved to the earth. The waves are in its material."""
+    """A grid curved to the earth. The waves are in its material; `rngs` draw its
+    gusts and its slicks."""
     bpy.ops.mesh.primitive_grid_add(
         x_subdivisions=SEA_CELLS, y_subdivisions=SEA_CELLS, size=2 * reach_m
     )
@@ -763,6 +889,6 @@ def water(
     for face in water.data.polygons:
         face.use_smooth = True
     water.data.materials.append(
-        _material(sea, wind, swell, band, outputs, pixel_rad, rng)
+        _material(sea, wind, swell, band, outputs, pixel_rad, *rngs)
     )
     return water

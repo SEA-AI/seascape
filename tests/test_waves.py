@@ -1,4 +1,5 @@
 import math
+from statistics import NormalDist
 
 import numpy as np
 import pytest
@@ -63,7 +64,9 @@ def test_the_gust_field_has_kaimal_s_integral_scale() -> None:
     """One tile holds few of its largest eddies, so the scale is averaged over tiles."""
     scales_m = []
     for seed in range(8):
-        field = waves.gust_field(np.random.default_rng(seed), 1024, 2.0)
+        field = waves.von_karman_field(
+            np.random.default_rng(seed), 1024, 2.0, waves.GUST_LENGTH_M
+        )
         assert (field.mean(), field.std()) == pytest.approx((0.0, 1.0), abs=1e-9)
         # Periodic, so the autocorrelation along a row is exact through the FFT.
         power = np.abs(np.fft.fft(field, axis=1)) ** 2
@@ -71,6 +74,37 @@ def test_the_gust_field_has_kaimal_s_integral_scale() -> None:
         correlation /= correlation[0]
         scales_m.append(np.trapezoid(correlation[: len(correlation) // 2], dx=2.0))
     assert np.mean(scales_m) == pytest.approx(waves.GUST_LENGTH_M, rel=0.15)
+
+
+def test_a_slick_smooths_the_sea_as_cox_and_munk_measured() -> None:
+    for speed in (3.0, 7.0, 15.0):
+        wind = waves.wind_at_m(speed, waves.COX_MUNK_WIND_HEIGHT_M)
+        slick = waves.SLICK_VARIANCE_INTERCEPT + waves.SLICK_VARIANCE_PER_MPS * wind
+        assert waves.cox_munk_slick_slope(speed) ** 2 == pytest.approx(slick)
+        assert waves.cox_munk_slick_slope(speed) < waves.cox_munk_slope(speed)
+    # Below the fits' crossing, a slick is no rougher than clean water.
+    assert waves.cox_munk_slick_slope(0.5) == waves.cox_munk_slope(0.5)
+
+
+def test_a_slick_damps_the_shortest_waves_first() -> None:
+    built = field(7.0)
+    left = waves.slick_survivors(7.0, built)
+    gone = set(built) - set(left)
+    assert gone
+    assert max(w.k_rad_m for w in left) < min(w.k_rad_m for w in gone)
+    budget = waves.cox_munk_slick_slope(7.0) ** 2
+    shortest = min(gone, key=lambda w: w.k_rad_m)
+    assert waves.slope_variance(left) <= budget
+    assert waves.slope_variance((*left, shortest)) > budget
+
+
+@pytest.mark.parametrize("cover", [0.1, 0.3, 0.7])
+def test_the_gust_tile_is_gaussian_so_its_tail_sets_the_slick_cover(
+    cover: float,
+) -> None:
+    tile = waves.von_karman_field(np.random.default_rng(0), 512, 4.0, 50.0)
+    threshold = NormalDist().inv_cdf(1 - cover)
+    assert (tile > threshold).mean() == pytest.approx(cover, abs=0.05)
 
 
 def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:

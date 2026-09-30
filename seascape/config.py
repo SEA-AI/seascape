@@ -190,6 +190,14 @@ class Sea(Model):
         description="Where the wind blows from, clockwise from the ownship's bow.",
     )
     swell: Swell | None = Field(default=None, description="On top of the wind's sea.")
+    # Opt-in: surfactants come from the water.
+    slick_cover: float = Field(
+        default=0.0,
+        ge=0.0,
+        lt=1.0,
+        description="Fraction of the sea under slicks, gathered in windrows. None in "
+        "calm air, where slick and clean water are one.",
+    )
     # The atmosphere bends a ray down, so the sea curves at R / (1 - k). 0.13 is the
     # standard survey value for average air (0.13-0.16 usual). At k = 1 the effective
     # radius is infinite.
