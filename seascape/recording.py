@@ -206,7 +206,10 @@ def export(run: Path) -> list[Path]:
         pod = frames.setdefault(camera.pod or "pod", {})
         pod.setdefault(camera.name, []).append(camera)
 
-    # Checked before anything is written, so a missing video leaves no half folder.
+    # Checked before anything is written, so a bad run leaves no half folder.
+    shots = [s for cameras in frames.values() for c in cameras.values() for s in c]
+    if unlabelled := [shot.image for shot in shots if shot.image not in time_s]:
+        raise ValueError(f"{run / labels.FILENAME} has no frame {unlabelled}")
     names = [name for cameras in frames.values() for name in cameras]
     if missing := [name for name in names if not (run / f"{name}.mp4").exists()]:
         raise FileNotFoundError(f"no video for {missing}: run `seascape video`")

@@ -224,3 +224,11 @@ def test_core_draws_the_imu_horizon_on_the_rendered_one(tmp_path: Path) -> None:
         # the camera in the order right for small angles. A wrong sign tilts the line
         # or moves it by twice a pitch.
         assert drawn == pytest.approx(y, abs=1.0)
+
+
+def test_a_frame_labels_json_does_not_list_writes_nothing(run: Path) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    Labels(info=truth.info, images=truth.images[:1]).write(run)
+    with pytest.raises(ValueError, match=r"EO/0001\.jpg"):
+        recording.export(run)
+    assert not (run / "recordings").exists()
