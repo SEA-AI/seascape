@@ -15,7 +15,7 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Asset, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Mount, Scenario, load
+from seascape.config import Band, Mount, Scenario, load
 
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 UNDERWAY = BASELINE.with_name("underway.toml")
@@ -264,6 +264,32 @@ def test_waves_cost_no_geometry() -> None:
     scene.build(load(OPEN_SEA, ["sea.wind_speed_mps = 18.0"]), "eo")
 
     assert len(bpy.data.objects["sea"].data.vertices) == (sea.SEA_CELLS + 1) ** 2
+
+
+@pytest.mark.parametrize("band", ["eo", "ir"])
+def test_a_saved_build_reopens_with_its_lookup_tables(
+    band: Band, tmp_path: Path
+) -> None:
+    """`seascape build` saves a .blend for Blender to open; an unpacked table would
+    reopen as its fill colour."""
+    scene.build(SCENARIO.model_copy(update={"objects": []}), band)
+    tables = [
+        image
+        for image in bpy.data.images
+        if image.packed_file or image.source == "GENERATED"
+    ]
+    assert tables
+    path = tmp_path / f"{band}.blend"
+    # A copy, so the session keeps its own file.
+    bpy.ops.wm.save_as_mainfile(filepath=str(path), copy=True)
+    with bpy.data.libraries.load(str(path)) as (_, loaded):
+        loaded.images = [image.name for image in tables]
+    for written, read in zip(tables, loaded.images, strict=True):
+        before, after = (np.empty(len(written.pixels), np.float32) for _ in range(2))
+        written.pixels.foreach_get(before)
+        read.pixels.foreach_get(after)
+        bpy.data.images.remove(read)
+        assert np.array_equal(before, after), written.name
 
 
 @pytest.mark.parametrize(
