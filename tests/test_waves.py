@@ -39,6 +39,40 @@ def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
     assert waves.wind_at_m(0.0, 19.5) == 0.0
 
 
+def test_the_turbulence_intensity_is_the_log_profile_s_shear_at_10_m() -> None:
+    """DNV-RP-C205 2.3.2.10: 1 / ln(z / z0), with z0 the log profile's own."""
+    h = 1e-4
+    for speed in (3.0, 7.0, 15.0):
+        above, below = (waves.wind_at_m(speed, 10.0 * math.exp(s)) for s in (h, -h))
+        shear = (above - below) / (2 * h)
+        assert waves.turbulence_intensity(speed) == pytest.approx(shear / speed)
+    assert waves.turbulence_intensity(0.0) == 0.0
+
+
+@pytest.mark.parametrize("speed", [3.0, 7.0, 15.0])
+def test_a_gust_roughens_the_sea_as_cox_and_munk_s_wind_would(speed: float) -> None:
+    """Linear in the gust, so the sea's mean roughness keeps its tuning."""
+    per_gust = waves.gust_slope_variance(speed)
+    for gust in 4 * waves.turbulence_intensity(speed) * np.array([-1.0, 1.0]):
+        gusty = waves.cox_munk_slope(speed * (1 + gust)) ** 2
+        offset = gusty - waves.cox_munk_slope(speed) ** 2
+        assert per_gust * gust == pytest.approx(offset, rel=0.01)
+
+
+def test_the_gust_field_has_kaimal_s_integral_scale() -> None:
+    """One tile holds few of its largest eddies, so the scale is averaged over tiles."""
+    scales_m = []
+    for seed in range(8):
+        field = waves.gust_field(np.random.default_rng(seed), 1024, 2.0)
+        assert (field.mean(), field.std()) == pytest.approx((0.0, 1.0), abs=1e-9)
+        # Periodic, so the autocorrelation along a row is exact through the FFT.
+        power = np.abs(np.fft.fft(field, axis=1)) ** 2
+        correlation = np.fft.ifft(power, axis=1).real.mean(axis=0)
+        correlation /= correlation[0]
+        scales_m.append(np.trapezoid(correlation[: len(correlation) // 2], dx=2.0))
+    assert np.mean(scales_m) == pytest.approx(waves.GUST_LENGTH_M, rel=0.15)
+
+
 def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
     """Masuda 1988: unresolved slope lifts grazing emissivity off flat Fresnel."""
     built = field(7.0)

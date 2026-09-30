@@ -50,6 +50,20 @@ least-squares slope of each wave along a box hull; roll is the same across it.
 
 Dispersion: Lamb, "Hydrodynamics", 6th ed., Cambridge University Press 1932, chapter
 IX; deep water, omega^2 = g k.
+
+Gusts: DNV-RP-C205 2010, section 2.3.2.10, for the turbulence intensity 1 / ln(z / z0),
+and section 2.3.4.8, for IEC 61400-1's Kaimal integral scale; the Kaimal spectrum as
+IEC 61400-1 (2005) gives it, f S(f) / sigma^2 = 4 x / (1 + 6 x)^(5/3) at x = f L / U.
+von Karman, "Progress in the statistical theory of turbulence", PNAS 34(11) 530, 1948
+(doi:10.1073/pnas.34.11.530), for a von Karman-type isotropic spectrum,
+(k0^2 + k^2)^(-p), whose transects fall as Kaimal's -5/3 at p = 4/3 in 2D. It is a
+Matern field of nu = 1/3, whose transect integral scale is
+sqrt(pi) Gamma(5/6) / (Gamma(1/3) k0).
+Taylor, "The spectrum of turbulence", Proc. R. Soc. A 164(919) 476, 1938
+(doi:10.1098/rspa.1938.0032): the eddies are carried past at the mean wind, frozen.
+Plant, "A relationship between wind stress and wave slope", JGR 87(C3) 1961-1967, 1982
+(doi:10.1029/JC087iC03p01961): a wave grows at 0.04 (u* / c)^2 omega, so only the short
+waves keep up with a gust.
 """
 
 import math
@@ -73,6 +87,9 @@ GRAVITY_MS2 = 9.81
 #   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
 #   glitter         one specular point per 1 / E|det H| Longuet-Higgins 1960
+#   gust            u / U, sigma 1 / ln(10 / z0)        DNV-RP-C205
+#   gust field      (k0^2 + k^2)^(-4/3), L of Kaimal's  von Karman 1948, IEC 61400-1
+#   gusty slope     + u / U dCM^2 / d ln U, undrawn     Cox & Munk, Plant 1982
 PM_ALPHA = 8.1e-3
 PM_PEAK = 0.877
 SPREAD_S_MAX = 10.0
@@ -109,6 +126,10 @@ CAPILLARY_WAVELENGTH_M = 0.0173
 # Footprints per wavelength: gone at Nyquist, whole at a judgement.
 FADE_FOOTPRINTS = (2.0, 4.0)
 
+# IEC 61400-1 via DNV-RP-C205 2.3.4.8: L = 8.1 Lambda, Lambda = 0.7 z below 60 m, at the
+# 10 m the wind is given at.
+GUST_LENGTH_M = 8.1 * 0.7 * 10.0
+
 # Mean radius, IUGG.
 EARTH_RADIUS_M = 6_371_000.0
 
@@ -136,16 +157,51 @@ class Wave:
         return self.k_rad_m * math.cos(self.toward_rad)
 
 
-def wind_at_m(wind_speed_mps: float, height_m: float) -> float:
-    """The wind at `height_m` for `wind_speed_mps` at 10 m, over a neutral sea."""
-    if wind_speed_mps <= 0.0:
-        return 0.0
-    # z0 = A u*^2 / g and u* = kappa U10 / ln(10 / z0), to a fixed point.
+def _roughness_m(wind_speed_mps: float) -> float:
+    """Charnock's z0 = A u*^2 / g, with u* = kappa U10 / ln(10 / z0), to a fixed
+    point."""
     z0_m = 1e-4
     for _ in range(50):
         friction_mps = VON_KARMAN * wind_speed_mps / math.log(10.0 / z0_m)
         z0_m = CHARNOCK * friction_mps**2 / GRAVITY_MS2
+    return z0_m
+
+
+def wind_at_m(wind_speed_mps: float, height_m: float) -> float:
+    """The wind at `height_m` for `wind_speed_mps` at 10 m, over a neutral sea."""
+    if wind_speed_mps <= 0.0:
+        return 0.0
+    z0_m = _roughness_m(wind_speed_mps)
     return wind_speed_mps * math.log(height_m / z0_m) / math.log(10.0 / z0_m)
+
+
+def turbulence_intensity(wind_speed_mps: float) -> float:
+    """The wind's standard deviation over its mean, at 10 m."""
+    if wind_speed_mps <= 0.0:
+        return 0.0
+    return 1.0 / math.log(10.0 / _roughness_m(wind_speed_mps))
+
+
+def gust_slope_variance(wind_speed_mps: float) -> float:
+    """What a gust adds to Cox & Munk's slope variance, per unit u / U. Cox & Munk is
+    linear in the wind but for z0's drift, so this is the gust's whole effect."""
+    step = 1e-4
+    up, down = (cox_munk_slope(wind_speed_mps * (1 + s)) ** 2 for s in (step, -step))
+    return (up - down) / (2 * step)
+
+
+def gust_field(rng: np.random.Generator, cells: int, spacing_m: float) -> np.ndarray:
+    """A periodic tile of u / sigma_u, (cells, cells), von Karman's spectrum at
+    GUST_LENGTH_M, zero mean and unit variance."""
+    k0_rad_m = (
+        math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * GUST_LENGTH_M)
+    )
+    k = 2 * math.pi * np.fft.fftfreq(cells, spacing_m)
+    k_sq = k[:, None] ** 2 + k[None, :] ** 2
+    white = np.fft.fft2(rng.standard_normal((cells, cells)))
+    field = np.fft.ifft2(white * (k0_rad_m**2 + k_sq) ** (-2 / 3)).real
+    field -= field.mean()
+    return field / field.std()
 
 
 def peak_omega_rad_s(wind_speed_mps: float) -> float:
