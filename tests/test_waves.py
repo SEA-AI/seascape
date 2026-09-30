@@ -39,6 +39,24 @@ def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
     assert waves.wind_at_m(0.0, 19.5) == 0.0
 
 
+def test_the_turbulence_intensity_is_the_log_profile_s_shear_at_10_m() -> None:
+    """DNV-RP-C205 2.3.2.10: 1 / ln(z / z0) is dU / d ln z over U at the height."""
+    h = 1e-4
+    for speed in (3.0, 7.0, 15.0):
+        above, below = (waves.wind_at_m(speed, 10.0 * math.exp(s)) for s in (h, -h))
+        shear = (above - below) / (2 * h)
+        assert waves.turbulence_intensity(speed) == pytest.approx(shear / speed)
+    assert waves.turbulence_intensity(0.0) == 0.0
+
+
+def test_a_gust_roughens_the_sea_as_cox_and_munk_s_wind_would() -> None:
+    assert waves.gust_roughening(7.0, 0.0) == 1.0
+    stronger = waves.cox_munk_slope(8.4) ** 2 / waves.cox_munk_slope(7.0) ** 2
+    assert waves.gust_roughening(7.0, 0.2) == pytest.approx(stronger)
+    assert waves.gust_roughening(7.0, -0.2) < 1.0 < stronger
+    assert waves.gust_roughening(7.0, -2.0) == waves.gust_roughening(7.0, -1.0)
+
+
 def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
     """Masuda 1988: unresolved slope lifts grazing emissivity off flat Fresnel."""
     built = field(7.0)

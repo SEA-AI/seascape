@@ -30,16 +30,21 @@ from seascape import lwir
 from seascape.blend import CURVE_SAMPLES, animate, curve_image, lookup, place
 from seascape.config import Band, Outputs, Rig, Sea
 from seascape.waves import (
+    GUST_LENGTH_M,
+    GUST_OCTAVE_GAIN,
     Wave,
     breaking_threshold_g,
     earth_radius_m,
     fade_footprints_m,
+    gust_roughening,
     horizon_m,
     sea_z_m,
     specular_cell_m2,
+    turbulence_intensity,
     twinkle_hz,
     unresolved_acceleration_variance,
     unresolved_slope_variance,
+    unresolved_wind_slope_variance,
     whitecap_fraction,
 )
 
@@ -74,6 +79,15 @@ SEA_CELLS = 128
 
 # Margin on the horizon, or the grid's own edge becomes the horizon.
 SEA_MARGIN = 1.5
+
+# A judgement: octaves of gust from the integral scale down to about a metre.
+GUST_DETAIL = 8.0
+
+# Blender's normalised 2D fBm at GUST_DETAIL, lacunarity 2 and GUST_OCTAVE_GAIN,
+# measured: mean 0.5, this standard deviation, and this integral scale in its own units,
+# to the autocorrelation's first zero.
+NOISE_STD = 0.0615
+NOISE_INTEGRAL_SCALE = 0.198
 
 
 def sea_reach_m(rig: Rig, sea: Sea) -> float:
@@ -553,6 +567,137 @@ def _daylight(
     return mix.outputs["Shader"]
 
 
+def _noise(
+    tree: bpy.types.NodeTree, position: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """Blender's fBm at `position`, in its own units, as a zero-mean unit variate."""
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    noise.noise_dimensions = "2D"
+    noise.normalize = True
+    noise.inputs["Scale"].default_value = 1.0
+    noise.inputs["Detail"].default_value = GUST_DETAIL
+    noise.inputs["Roughness"].default_value = GUST_OCTAVE_GAIN
+    noise.inputs["Lacunarity"].default_value = 2.0
+    tree.links.new(position, noise.inputs["Vector"])
+    return _math(
+        tree, "MULTIPLY_ADD", noise.outputs["Fac"], 1 / NOISE_STD, -0.5 / NOISE_STD
+    )
+
+
+def _gust(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    time_s: bpy.types.NodeSocket,
+    outputs: Outputs,
+    rng: np.random.Generator,
+) -> bpy.types.NodeSocket:
+    """The wind over its mean, less one: Kaimal's turbulence, frozen and carried
+    downwind.
+
+    A loop crossfades two layers, each carried for one span and back while its weight
+    is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
+    their squared weights so the variance holds.
+    """
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    # The noise's own integral scale, stretched to L.
+    per_m = NOISE_INTEGRAL_SCALE / GUST_LENGTH_M
+    here = _vector(tree, "SCALE", geometry.outputs["Position"])
+    here.node.inputs["Scale"].default_value = per_m
+    # Wind is named for where it blows from; gusts run the other way.
+    toward = math.radians(sea.wind_from_deg + 180.0)
+    back = sea.wind_speed_mps * per_m
+    carry = (-back * math.sin(toward), -back * math.cos(toward), 0.0)
+
+    def layer(carried_s: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        # A layer apart from the other, so the two are independent.
+        offset = rng.uniform(-1e4, 1e4, 2)
+        at = _vector(tree, "MULTIPLY_ADD", name="gust_carry")
+        at.node.inputs["Vector"].default_value = carry
+        tree.links.new(carried_s, at.node.inputs["Vector_001"])
+        at.node.inputs["Vector_002"].default_value = (*offset, 0.0)
+        return _noise(tree, _vector(tree, "ADD", here, at))
+
+    if not outputs.loop:
+        gust = layer(time_s)
+    else:
+        span_s = outputs.span_s
+        weighted = []
+        for i, lag in enumerate((0.0, 0.5)):
+            cycle = _math(
+                tree,
+                "FRACT",
+                _math(tree, "MULTIPLY_ADD", time_s, 1 / span_s, lag),
+            )
+            weight = _math(
+                tree,
+                "SUBTRACT",
+                1.0,
+                _math(tree, "ABSOLUTE", _math(tree, "MULTIPLY_ADD", cycle, 2.0, -1.0)),
+                name=f"gust_weight_{i}",
+            )
+            carried_s = _math(tree, "MULTIPLY", cycle, span_s, name=f"gust_carried_{i}")
+            weighted.append((weight, layer(carried_s)))
+        (w0, n0), (w1, n1) = weighted
+        norm = _math(
+            tree,
+            "SQRT",
+            _math(tree, "MULTIPLY_ADD", w0, w0, _math(tree, "MULTIPLY", w1, w1)),
+        )
+        gust = _math(
+            tree,
+            "DIVIDE",
+            _math(tree, "MULTIPLY_ADD", w0, n0, _math(tree, "MULTIPLY", w1, n1)),
+            norm,
+        )
+    scaled = _math(tree, "MULTIPLY", gust, turbulence_intensity(sea.wind_speed_mps))
+    scaled.node.name = "gust"
+    return scaled
+
+
+def _gusty(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    wind: tuple[Wave, ...],
+    gust: bpy.types.NodeSocket,
+    gust_max: float,
+    pixel: _Pixel,
+    unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """`unresolved` with the wind's share roughened by the local gust.
+
+    ponytail: the drawn waves and the swell hold the mean wind, as waves longer than a
+    pixel grow too slowly to follow a gust; a close camera that draws its capillaries
+    sees no gust in them. The noise is not filtered to the footprint either: past the
+    pixel it is left to the samples to average.
+    """
+    speed = sea.wind_speed_mps
+    wind_table = _footprint_table(
+        "sea_unresolved_wind_variance",
+        lambda f: unresolved_wind_slope_variance(speed, wind, f),
+    )
+    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    roughening = curve_image(
+        "sea_gust_roughening",
+        np.array([gust_roughening(speed, g) for g in gust_max * (2 * texel - 1)]),
+    )
+    at = _math(tree, "MULTIPLY_ADD", gust, 0.5 / gust_max, 0.5)
+    extra = _math(
+        tree, "SUBTRACT", lookup(tree, roughening, at), 1.0, name="gust_roughening"
+    )
+
+    def roughened(
+        variance: bpy.types.NodeSocket, footprint_m: bpy.types.NodeSocket
+    ) -> bpy.types.NodeSocket:
+        name = "sea_unresolved_wind_variance"
+        wind_left = _at_footprint(tree, wind_table, footprint_m, name)
+        return _math(tree, "MULTIPLY_ADD", extra, wind_left, variance)
+
+    return (
+        roughened(unresolved[0], pixel.along_m),
+        roughened(unresolved[1], pixel.across_m),
+    )
+
+
 def _material(
     sea: Sea,
     wind: tuple[Wave, ...],
@@ -560,6 +705,7 @@ def _material(
     band: Band,
     outputs: Outputs,
     pixel_rad: float,
+    rng: np.random.Generator,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness."""
     material = bpy.data.materials.new("sea")
@@ -578,6 +724,11 @@ def _material(
         _at_footprint(tree, table, pixel.along_m, "sea_unresolved_variance"),
         _at_footprint(tree, table, pixel.across_m, "sea_unresolved_variance"),
     )
+    # Normalised, the noise spans 0 to 1 about 0.5.
+    gust_max = turbulence_intensity(sea.wind_speed_mps) * 0.5 / NOISE_STD
+    if gust_max > 0.0:
+        gust = _gust(tree, sea, time_s, outputs, rng)
+        unresolved = _gusty(tree, sea, wind, gust, gust_max, pixel, unresolved)
     if band == "eo":
         if wind:
             # The IR sky has no sun to glint, and its emissivity takes the whole slope.
@@ -609,8 +760,12 @@ def _material(
         whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, fraction)
         surface = _daylight(tree, sea, normal, pixel.along_dir, unresolved, whitecaps)
     else:
-        # The coarsest footprint leaves the most: Cox & Munk's and all the swell's.
-        slope_max = math.sqrt(unresolved_at(FOOTPRINT_RANGE_M[1]))
+        # The coarsest footprint leaves the most, Cox & Munk's and all the swell's,
+        # and the strongest gust roughens it most.
+        coarsest_m = FOOTPRINT_RANGE_M[1]
+        wind_left = unresolved_wind_slope_variance(sea.wind_speed_mps, wind, coarsest_m)
+        extra = gust_roughening(sea.wind_speed_mps, gust_max) - 1.0
+        slope_max = math.sqrt(unresolved_at(coarsest_m) + extra * wind_left)
         surface = _thermal(tree, sea, normal, pixel.along_dir, unresolved, slope_max)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])
@@ -625,6 +780,7 @@ def water(
     band: Band,
     outputs: Outputs,
     pixel_rad: float,
+    rng: np.random.Generator,
 ) -> bpy.types.Object:
     """A grid curved to the earth. The waves are in its material."""
     bpy.ops.mesh.primitive_grid_add(
@@ -639,5 +795,7 @@ def water(
     # Flat faces would show their edges in the specular.
     for face in water.data.polygons:
         face.use_smooth = True
-    water.data.materials.append(_material(sea, wind, swell, band, outputs, pixel_rad))
+    water.data.materials.append(
+        _material(sea, wind, swell, band, outputs, pixel_rad, rng)
+    )
     return water
