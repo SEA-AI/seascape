@@ -83,6 +83,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 ```bash
 uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg, ...
 uv run seascape video out/                               # out/<camera>.mp4
+uv run seascape recording out/                           # out/recordings/<pod>/Pod_recordings_<ts>/
 ```
 
 `outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target cannot be underway; give it a `drift`, as `scenarios/drifting.toml` does.

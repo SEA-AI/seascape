@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import get_args
 
-from seascape import montage, panorama
+from seascape import montage, panorama, recording
 from seascape.config import Band, Scenario, load
 
 
@@ -55,6 +55,28 @@ def _add_set(command: argparse.ArgumentParser) -> None:
         metavar="KEY=VALUE",
         help="override a field, written as TOML: 'rig.pitch_deg = -5'. Repeatable.",
     )
+
+
+def _run(args: argparse.Namespace) -> None:
+    if args.command == "render":
+        _render(args.scenario, args.output, args.overrides)
+    elif args.command == "montage":
+        _montage(args.scenario, args.output, args.overrides)
+    elif args.command == "panorama":
+        for path in panorama.panoramas(
+            args.folder, args.projection, args.frame, args.max_width, args.ruler
+        ):
+            print(path)
+    elif args.command == "video":
+        from seascape import video
+
+        for path in video.encode(args.folder, args.quality.upper()):
+            print(path)
+    elif args.command == "recording":
+        for path in recording.export(args.folder):
+            print(path)
+    else:
+        _build(args.scenario, args.output, args.band, args.overrides)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -123,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Blender's H.264 constant-quality preset",
     )
 
+    record = commands.add_parser(
+        "recording", help="lay each pod's videos out as a recording, after `video`"
+    )
+    record.add_argument("folder", type=Path, help="a render's output directory")
+
     commands.add_parser("schema", help="print the scenario JSON schema on stdout")
 
     args = parser.parse_args(argv)
@@ -130,22 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(Scenario.model_json_schema(), indent=2))
         return 0
     try:
-        if args.command == "render":
-            _render(args.scenario, args.output, args.overrides)
-        elif args.command == "montage":
-            _montage(args.scenario, args.output, args.overrides)
-        elif args.command == "panorama":
-            for path in panorama.panoramas(
-                args.folder, args.projection, args.frame, args.max_width, args.ruler
-            ):
-                print(path)
-        elif args.command == "video":
-            from seascape import video
-
-            for path in video.encode(args.folder, args.quality.upper()):
-                print(path)
-        else:
-            _build(args.scenario, args.output, args.band, args.overrides)
+        _run(args)
     except (
         OSError,
         ValueError,
