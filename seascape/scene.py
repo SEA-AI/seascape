@@ -12,7 +12,16 @@ from mathutils import Matrix, Vector
 
 from seascape import lwir, sea, wakes, waves
 from seascape.assets import Asset, fetch, manifest
-from seascape.blend import CURVE_SAMPLES, animate, curve_image, lookup, place, sine, yaw
+from seascape.blend import (
+    CURVE_SAMPLES,
+    animate,
+    curve_image,
+    drive,
+    lookup,
+    place,
+    sine,
+    yaw,
+)
 from seascape.calibration import CameraCalibration, Matrix4
 from seascape.config import (
     Band,
@@ -68,6 +77,11 @@ def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
     return wind_waves(scenario) + swell_waves(scenario)
 
 
+# On the world itself: a depsgraph links a driver to an ID's property, not to a node's
+# (https://projects.blender.org/blender/blender/issues/142601).
+SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
+
+
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
     # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
@@ -76,6 +90,11 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     if band == "ir":
         return _thermal_sky(world, sky)
     node = _sky_texture(tree, sky)
+    for prop in SUN:
+        world[prop] = getattr(node, prop)
+        drive(node, prop, "sky", world, sky=f'["{prop}"]')
+    for prop in SUN[:2]:
+        world.id_properties_ui(prop).update(subtype="ANGLE")
     tree.links.new(node.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     return world
 
@@ -170,6 +189,9 @@ def _sky_ahead(
     if band == "eo":
         node = _sky_texture(tree, sky)
         node.name = "haze_sky"
+        world = bpy.context.scene.world
+        for prop in SUN:
+            drive(node, prop, "sky", world, sky=f'["{prop}"]')
         # The sun disc disables the Vector input, and a link to it is then ignored.
         node.sun_disc = False
         tree.links.new(direction, node.inputs["Vector"])
@@ -1028,9 +1050,6 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     reach_m = sea.sea_reach_m(scenario.rig, scenario.sea)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
-    mounts = [m for m in scenario.rig.mounts if m.camera.kind == band]
-    # The finest pixel in the band, so its sharpest camera does not blur.
-    pixel_rad = min(math.radians(m.camera.hfov_deg) / m.camera.width_px for m in mounts)
     wind, swell = wind_waves(scenario), swell_waves(scenario)
     rngs = (
         _substream(scenario.seed, "sea/gust"),
@@ -1053,7 +1072,7 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         targets.setdefault(scenario.targets.asset, []).extend(anchors)
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(
-        scenario.sea, wind, swell, band, outputs, pixel_rad, rngs, tuple(trails)
+        scenario.sea, wind, swell, band, outputs, rngs, tuple(trails)
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.

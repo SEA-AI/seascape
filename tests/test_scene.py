@@ -1029,7 +1029,8 @@ class TestSeaEvolves:
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(load(OPEN_SEA), "eo")
         assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
-        assert bpy.data.materials["sea"].node_tree.animation_data is None
+        # Drivers make animation data; a still has no action.
+        assert bpy.data.materials["sea"].node_tree.animation_data.action is None
 
 
 class TestOrbitingYachts:
@@ -1204,3 +1205,46 @@ class TestWakes:
         )
         scene.build(scenario, "eo")
         assert "sea_foam" in bpy.data.images
+
+
+def _pixel_node() -> bpy.types.ShaderNode:
+    tree = bpy.data.materials["sea"].node_tree
+    return next(
+        n
+        for n in tree.nodes
+        if n.bl_idname == "ShaderNodeMath"
+        and n.inputs[0].links
+        and n.inputs[0].links[0].from_socket.name == "View Distance"
+    )
+
+
+def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
+    scenario = load(OPEN_SEA)
+    scene.build(scenario, "eo")
+    mount = next(m for m in scenario.rig.mounts if m.camera.kind == "eo")
+    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+    driver = next(
+        c.driver
+        for c in bpy.data.materials["sea"].node_tree.animation_data.drivers
+        if c.driver.expression == "angle / (width * percent / 100)"
+    )
+    assert driver.is_simple_expression
+    assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
+    bpy.context.scene.render.resolution_percentage = 50
+    bpy.context.view_layer.update()
+    assert _pixel_node().inputs[1].default_value == pytest.approx(2 * pixel_rad)
+
+
+def test_the_glitter_and_haze_drivers_run_without_python() -> None:
+    scene.build(load(OPEN_SEA), "eo")
+    drivers = [
+        curve.driver
+        for tree in (
+            bpy.data.materials["sea"].node_tree,
+            bpy.data.node_groups["haze"],
+            bpy.data.worlds["sky"].node_tree,
+        )
+        for curve in tree.animation_data.drivers
+    ]
+    assert {"1 / samples", "sky"} <= {d.expression for d in drivers}
+    assert all(d.is_valid and d.is_simple_expression for d in drivers)
