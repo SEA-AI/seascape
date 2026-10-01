@@ -48,9 +48,9 @@ def drive(
     source: bpy.types.ID,
     **paths: str,
 ) -> None:
-    """`owner.prop` as `expression` of `source`'s properties at `paths`, as a render
-    finds them. The live depsgraph may hold the old value for some sources, such as
-    `cycles.samples`, until something else updates it.
+    """`owner.prop` as `expression` of `source`'s properties at `paths`. A render
+    re-evaluates it; the live depsgraph keeps it stale after a change to
+    `cycles.samples` or to a world's node.
 
     Variables and arithmetic only: Blender evaluates such a simple expression itself,
     so the driver runs in a `.blend` opened with Python scripts off.

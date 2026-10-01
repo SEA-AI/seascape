@@ -85,7 +85,7 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     if band == "ir":
         return _thermal_sky(world, sky)
     node = _sky_texture(tree, sky)
-    # Named, as the haze's drivers read it by name.
+    # The haze's drivers read it by this name.
     node.name = "sky"
     tree.links.new(node.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     return world
@@ -181,7 +181,7 @@ def _sky_ahead(
     if band == "eo":
         node = _sky_texture(tree, sky)
         node.name = "haze_sky"
-        # The world's sun and aerosol, as a render finds them.
+        # Driven by the world's `sky` node.
         world = bpy.context.scene.world
         for prop in ("sun_elevation", "sun_rotation", "aerosol_density"):
             path = f'node_tree.nodes["sky"].{prop}'

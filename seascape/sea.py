@@ -219,8 +219,8 @@ class _Pixel(NamedTuple):
 
 
 def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
-    """The footprint of the pixel the scene's perspective camera renders, at its
-    resolution as the render takes it, Resolution % included."""
+    """The footprint of a pixel of the scene's perspective camera at the render's
+    resolution, Resolution % included."""
     camera = tree.nodes.new("ShaderNodeCameraData")
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = _vector(
@@ -228,8 +228,8 @@ def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
     )
     across = _math(tree, "MULTIPLY", camera.outputs["View Distance"], 0.0)
     # ponytail: the build's cameras fit their angle to the width; a camera added in
-    # Blender with another sensor fit gets the wrong pixel. Read `sensor_fit` too if
-    # one must render.
+    # Blender with another sensor fit gets the wrong pixel. Read `sensor_fit` when
+    # such a camera must render.
     drive(
         across.node.inputs[1],
         "default_value",
@@ -455,9 +455,9 @@ def _glitter(
     """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
     slope variance the tilts carry out of the lobe.
 
-    A pixel's samples of its n cells count glints as n cells do if each cell's lobe
-    catches the sun n / samples times as often: variance r^2 (n / samples - 1) about a
-    sun of slope radius r, at the sample count the render takes.
+    A pixel's s samples of its n cells count glints as n cells do if each cell's lobe
+    catches the sun n / s times as often: variance r^2 (n / s - 1) about a sun of slope
+    radius r, s being `cycles.samples`.
 
     ponytail: the cells keep the mean wind's size through a gust, as a size that
     varied over the sea would re-cut the grid as the gust moves; crossfade two fixed

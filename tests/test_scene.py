@@ -1029,7 +1029,7 @@ class TestSeaEvolves:
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(load(OPEN_SEA), "eo")
         assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
-        # Its drivers are animation data too, but no keyframes.
+        # Drivers make animation data; a still has no action.
         assert bpy.data.materials["sea"].node_tree.animation_data.action is None
 
 
@@ -1219,12 +1219,16 @@ def _pixel_node() -> bpy.types.ShaderNode:
 
 
 def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
-    """A driver, so another camera, resolution or Resolution % gets its own pixel."""
+    """A driver, so the pixel follows the render's camera and resolution."""
     scenario = load(OPEN_SEA)
     scene.build(scenario, "eo")
     mount = next(m for m in scenario.rig.mounts if m.camera.kind == "eo")
     pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
-    driver = bpy.data.materials["sea"].node_tree.animation_data.drivers[0].driver
+    driver = next(
+        c.driver
+        for c in bpy.data.materials["sea"].node_tree.animation_data.drivers
+        if c.driver.expression == "angle / (width * percent / 100)"
+    )
     assert driver.is_simple_expression
     assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
     bpy.context.scene.render.resolution_percentage = 50
@@ -1232,7 +1236,7 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
     assert _pixel_node().inputs[1].default_value == pytest.approx(2 * pixel_rad)
 
 
-def test_the_glitter_and_the_haze_follow_what_the_render_is_set_to() -> None:
+def test_the_glitter_and_haze_drivers_run_without_python() -> None:
     """Simple expressions, so they run with Python scripts off."""
     scene.build(load(OPEN_SEA), "eo")
     driven = {
