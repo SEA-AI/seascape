@@ -167,6 +167,9 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
 
     lens = bpy.data.cameras.new("probe")
     lens.type, lens.ortho_scale = "ORTHO", span_m
+    # The sea takes its pixel from the render's camera: one fine enough to draw every
+    # wave, as the numpy field does.
+    lens.angle_x = 1e-3
     camera = bpy.data.objects.new("probe", lens)
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
@@ -198,8 +201,12 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
         tree.nodes["sea_roughness"].outputs["Value"], emission.inputs["Color"]
     )
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    mount = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "eo")
+    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
     lens = bpy.data.cameras.new("probe")
     lens.type, lens.ortho_scale = "ORTHO", span_m
+    # The scenario camera's pixel, which the sea takes from the render's camera.
+    lens.angle_x = pixel_rad * px
     lens.clip_end = 2 * height_m  # the default far plane stops short of the sea
     camera = bpy.data.objects.new("probe", lens)
     sc = bpy.context.scene
@@ -212,8 +219,6 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     sc.view_settings.view_transform = "Standard"
     rendered = shoot((px, px), "roughness_probe")
 
-    mount = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "eo")
-    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
     east, north = np.meshgrid(centres, centres[::-1])
     distance = np.sqrt(east**2 + north**2 + height_m**2)
@@ -223,7 +228,10 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     variance = [
         waves.unresolved_slope_variance(speed, wind, swell, f) for f in footprints
     ]
-    lobes = [lobe(v, v, f, f, wind) for v, f in zip(variance, footprints, strict=True)]
+    lobes = [
+        lobe(v, v, f, f, wind, sc.cycles.samples)
+        for v, f in zip(variance, footprints, strict=True)
+    ]
     # Top down, both footprints agree.
     expected = np.array([min((a * c) ** 0.125, 1.0) for a, c in lobes]).reshape(
         distance.shape
@@ -237,10 +245,12 @@ def lobe(
     along_m: float,
     across_m: float,
     wind: tuple[waves.Wave, ...],
+    samples: int,
 ) -> tuple[float, float]:
-    """The unresolved variance left to the lobe once the glitter takes its share."""
+    """The unresolved variance left to the lobe once the glitter takes its share, at
+    the render's `samples`."""
     cells = along_m * across_m / waves.specular_cell_m2(wind)
-    widen = max(cells / SCENARIO.outputs.samples.eo - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
+    widen = max(cells / samples - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
     carried = max(across - widen, 0.0)
     left = max(along - carried, 0.0)
     return max(left, 1e-12), max(across - carried, left / 100, 1e-12)
@@ -277,8 +287,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     corners = [camera.matrix_world @ c for c in lens.view_frame(scene=sc)]
     top_right, bottom_right, bottom_left, top_left = (np.array(c) for c in corners)
     origin = np.array(camera.matrix_world.translation)
-    mount = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "eo")
-    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+    # The probe's own pixel, which the sea takes from the render.
+    pixel_rad = lens.angle_x / px[0]
     wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
     speed = SCENARIO.sea.wind_speed_mps
     checked = 0
@@ -300,6 +310,7 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
                 along,
                 across,
                 wind,
+                sc.cycles.samples,
             )
             expected = (1 - math.sqrt(v_across / v_along)) / 0.9
             assert rendered[row, col] == pytest.approx(expected, abs=0.02), (row, col)
@@ -320,8 +331,11 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     output = tree.nodes["Material Output"]
     tree.links.new(tree.nodes["whitecaps"].outputs["Color"], emission.inputs["Color"])
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    mount = next(m for m in windy.rig.mounts if m.camera.kind == "eo")
     lens = bpy.data.cameras.new("probe")
     lens.type, lens.ortho_scale = "ORTHO", 1500.0
+    # The scenario camera's pixel, which the sea takes from the render's camera.
+    lens.angle_x = math.radians(mount.camera.hfov_deg) / mount.camera.width_px * 400
     camera = bpy.data.objects.new("probe", lens)
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
@@ -549,3 +563,111 @@ def test_a_hull_s_foam_trails_behind_it() -> None:
     # A metre a pixel, east to the right; both slices sit clear of the hull.
     astern, ahead = frame[59:69, 24:44], frame[59:69, 84:104]
     assert astern.mean() > 1.5 * ahead.mean()
+
+
+def _same(rendered: np.ndarray, expected: np.ndarray) -> bool:
+    """One frame, as far as Cycles on the GPU repeats itself: a few pixels move by
+    float noise between identical renders."""
+    return float(np.abs(rendered - expected).mean() / expected.mean()) < 1e-4
+
+
+def _half(width_px: int, percent: int) -> np.ndarray:
+    """The open sea from a camera `width_px` wide, rendered at `percent`."""
+    camera = (
+        f'{{ kind = "eo", hfov_deg = 45.0, width_px = {width_px}, '
+        f"height_px = {width_px * 9 // 16} }}"
+    )
+    scenario = load(
+        OPEN_SEA,
+        [
+            'outputs.format = "exr"',
+            "rig.pitch_deg = -3.0",
+            f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}]',
+        ],
+    )
+    scene.build(scenario, "eo")
+    sc = bpy.context.scene
+    sc.render.resolution_percentage = percent
+    sc.cycles.samples = 16
+    sc.render.image_settings.file_format = "OPEN_EXR"
+    sc.render.filepath = str(Path(bpy.app.tempdir) / f"half_{width_px}_{percent}")
+    bpy.ops.render.render(write_still=True)
+    image = bpy.data.images.load(sc.render.filepath + ".exr")
+    pixels = np.empty(len(image.pixels), dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    return pixels.reshape(image.size[1], image.size[0], 4)[..., :3]
+
+
+def test_a_render_at_half_resolution_is_a_build_at_half_width() -> None:
+    """The sea takes its pixel from the render, not from the build."""
+    assert _same(_half(640, 50), _half(320, 100))
+
+
+def _set_after(setting: str, built: bool) -> np.ndarray:
+    """A small open-sea frame, with a ship far enough to haze, and `setting` given to
+    the build or set on the built scene before rendering."""
+    camera = '{ kind = "eo", hfov_deg = 45.0, width_px = 320, height_px = 180 }'
+    sets = [
+        'outputs.format = "exr"',
+        "rig.pitch_deg = -3.0",
+        f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}]',
+        "objects = [{ preset = 'container_ship', range_m = 3e3, bearing_deg = 0.0 }]",
+    ]
+    if built:
+        sets.append(
+            "outputs.samples.eo = 64"
+            if setting == "samples"
+            else "sky.sun_elevation_deg = 12.0"
+        )
+    scene.build(load(OPEN_SEA, sets), "eo")
+    sc = bpy.context.scene
+    if not built:
+        if setting == "samples":
+            sc.cycles.samples = 64
+        else:
+            sky = sc.world.node_tree.nodes["sky"]
+            sky.sun_elevation = math.radians(12.0)
+    return shoot((320, 180), f"after_{setting}_{built}")
+
+
+@pytest.mark.parametrize("setting", ["samples", "sun"])
+def test_a_setting_changed_after_the_build_renders_as_if_built(setting: str) -> None:
+    """The glitter takes the render's samples and the haze the world's sky, through
+    drivers a render evaluates."""
+    assert _same(_set_after(setting, built=False), _set_after(setting, built=True))
+
+
+def _rig(*widths_px: int) -> Scenario:
+    cameras = ", ".join(
+        f'{{ kind = "eo", hfov_deg = 45.0, width_px = {w}, height_px = {w * 9 // 16} }}'
+        for w in widths_px
+    )
+    return load(
+        OPEN_SEA,
+        [
+            'outputs.format = "exr"',
+            "rig.pitch_deg = -3.0",
+            f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{cameras}] }}]',
+        ],
+    )
+
+
+def test_each_camera_draws_for_its_own_pixel() -> None:
+    """As `render` takes them, one after another in one build: the second camera
+    renders as a build of it alone."""
+    pair = _rig(640, 320)
+    built = scene.build(pair, "eo")
+    sc = bpy.context.scene
+    sc.cycles.samples = 16
+    fine, coarse = (built.cameras[m.name] for m in pair.rig.mounts)
+    sc.camera = fine
+    shoot((640, 360), "fine")
+    sc.camera = coarse
+    after = shoot((320, 180), "coarse")
+    alone = _rig(320)
+    built = scene.build(alone, "eo")
+    # The build starts from factory settings, a new scene.
+    sc = bpy.context.scene
+    sc.cycles.samples = 16
+    sc.camera = built.cameras[alone.rig.mounts[0].name]
+    assert _same(after, shoot((320, 180), "alone"))

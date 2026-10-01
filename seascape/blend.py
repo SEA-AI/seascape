@@ -41,6 +41,31 @@ def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], fl
     return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
 
 
+def drive(
+    owner: bpy.types.bpy_struct,
+    prop: str,
+    expression: str,
+    source: bpy.types.ID,
+    **paths: str,
+) -> None:
+    """`owner.prop` as `expression` of `source`'s properties at `paths`, as a render
+    finds them. The live depsgraph may hold the old value for some sources, such as
+    `cycles.samples`, until something else updates it.
+
+    Variables and arithmetic only: Blender evaluates such a simple expression itself,
+    so the driver runs in a `.blend` opened with Python scripts off.
+    """
+    driver = owner.driver_add(prop).driver
+    driver.type = "SCRIPTED"
+    for name, path in paths.items():
+        variable = driver.variables.new()
+        variable.name, variable.type = name, "SINGLE_PROP"
+        variable.targets[0].id_type = source.id_type
+        variable.targets[0].id = source
+        variable.targets[0].data_path = path
+    driver.expression = expression
+
+
 def curve_image(name: str, values: np.ndarray) -> bpy.types.Image:
     """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
     or rows bottom first."""

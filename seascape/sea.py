@@ -27,7 +27,7 @@ import bpy
 import numpy as np
 
 from seascape import lwir
-from seascape.blend import CURVE_SAMPLES, animate, curve_image, lookup, place
+from seascape.blend import CURVE_SAMPLES, animate, curve_image, drive, lookup, place
 from seascape.config import Band, Outputs, Rig, Sea
 from seascape.wakes import (
     BUBBLE_EFOLD_S,
@@ -218,13 +218,27 @@ class _Pixel(NamedTuple):
     along_dir: bpy.types.NodeSocket  # unit, horizontal
 
 
-def _pixel(tree: bpy.types.NodeTree, pixel_rad: float) -> _Pixel:
+def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
+    """The footprint of the pixel the scene's perspective camera renders, at its
+    resolution as the render takes it, Resolution % included."""
     camera = tree.nodes.new("ShaderNodeCameraData")
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = _vector(
         tree, "DOT_PRODUCT", geometry.outputs["Incoming"], geometry.outputs["Normal"]
     )
-    across = _math(tree, "MULTIPLY", camera.outputs["View Distance"], pixel_rad)
+    across = _math(tree, "MULTIPLY", camera.outputs["View Distance"], 0.0)
+    # ponytail: the build's cameras fit their angle to the width; a camera added in
+    # Blender with another sensor fit gets the wrong pixel. Read `sensor_fit` too if
+    # one must render.
+    drive(
+        across.node.inputs[1],
+        "default_value",
+        "angle / (width * percent / 100)",
+        bpy.context.scene,
+        angle="camera.data.angle_x",
+        width="render.resolution_x",
+        percent="render.resolution_percentage",
+    )
     # Grazing stretches the pixel by 1 / cos along the view; the floor keeps it finite.
     cosine = _math(tree, "MAXIMUM", _math(tree, "ABSOLUTE", facing), 1e-3)
     tilt = _vector(tree, "SCALE", geometry.outputs["Normal"])
@@ -437,14 +451,13 @@ def _glitter(
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
     unresolved: bpy.types.NodeSocket,
-    samples: int,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
     slope variance the tilts carry out of the lobe.
 
-    A pixel's `samples` samples of its n cells count glints as n cells do if each cell's
-    lobe catches the sun n / samples times as often: variance r^2 (n / samples - 1)
-    about a sun of slope radius r.
+    A pixel's samples of its n cells count glints as n cells do if each cell's lobe
+    catches the sun n / samples times as often: variance r^2 (n / samples - 1) about a
+    sun of slope radius r, at the sample count the render takes.
 
     ponytail: the cells keep the mean wind's size through a gust, as a size that
     varied over the sea would re-cut the grid as the gust moves; crossfade two fixed
@@ -458,7 +471,14 @@ def _glitter(
         _math(tree, "MULTIPLY", pixel.along_m, pixel.across_m),
         cell_m2,
     )
-    widen = _math(tree, "MULTIPLY_ADD", cells, 1 / samples, -1.0)
+    widen = _math(tree, "MULTIPLY_ADD", cells, 0.0, -1.0)
+    drive(
+        widen.node.inputs[1],
+        "default_value",
+        "1 / samples",
+        bpy.context.scene,
+        samples="cycles.samples",
+    )
     lobe = _math(
         tree, "MULTIPLY", _math(tree, "MAXIMUM", widen, 0.0), SUN_SLOPE_RADIUS**2
     )
@@ -1267,7 +1287,6 @@ def material(
     swell: tuple[Wave, ...],
     band: Band,
     outputs: Outputs,
-    pixel_rad: float,
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
     wakes: tuple[Wake, ...] = (),
 ) -> bpy.types.Material:
@@ -1278,7 +1297,7 @@ def material(
     tree = material.node_tree
     tree.nodes.clear()
     field = wind + swell
-    pixel = _pixel(tree, pixel_rad)
+    pixel = _pixel(tree)
     time_s = _sea_time(tree, outputs)
     speed = sea.wind_speed_mps
     gust_max, gust, slick = 0.0, None, None
@@ -1315,9 +1334,7 @@ def material(
     if band == "eo":
         if wind:
             # The IR sky has no sun to glint, and its emissivity takes the whole slope.
-            tilt, carried = _glitter(
-                tree, wind, time_s, pixel, unresolved[1], outputs.samples.eo
-            )
+            tilt, carried = _glitter(tree, wind, time_s, pixel, unresolved[1])
             normal = _vector(
                 tree,
                 "NORMALIZE",

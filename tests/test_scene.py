@@ -588,7 +588,7 @@ class TestEoBand:
         assert len(cosines) == len(wind)
 
     def test_the_sky_is_lit(self) -> None:
-        assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        assert bpy.data.worlds["sky"].node_tree.nodes["sky"]
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
@@ -599,7 +599,7 @@ class TestEoBand:
         assert twinkle.inputs[1].default_value == pytest.approx(waves.twinkle_hz(wind))
 
     def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
-        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        sky = bpy.data.worlds["sky"].node_tree.nodes["sky"]
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
 
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
@@ -609,7 +609,7 @@ class TestEoBand:
         assert beta.inputs[1].default_value == pytest.approx(
             SCENARIO.sky.extinction_per_m
         )
-        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        sky = bpy.data.worlds["sky"].node_tree.nodes["sky"]
         airlight = nodes["haze_sky"]
         for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
             assert getattr(airlight, name) == getattr(sky, name)
@@ -1029,7 +1029,8 @@ class TestSeaEvolves:
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(load(OPEN_SEA), "eo")
         assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
-        assert bpy.data.materials["sea"].node_tree.animation_data is None
+        # Its drivers are animation data too, but no keyframes.
+        assert bpy.data.materials["sea"].node_tree.animation_data.action is None
 
 
 class TestOrbitingYachts:
@@ -1204,3 +1205,40 @@ class TestWakes:
         )
         scene.build(scenario, "eo")
         assert "sea_foam" in bpy.data.images
+
+
+def _pixel_node() -> bpy.types.ShaderNode:
+    tree = bpy.data.materials["sea"].node_tree
+    return next(
+        n
+        for n in tree.nodes
+        if n.bl_idname == "ShaderNodeMath"
+        and n.inputs[0].links
+        and n.inputs[0].links[0].from_socket.name == "View Distance"
+    )
+
+
+def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
+    """A driver, so another camera, resolution or Resolution % gets its own pixel."""
+    scenario = load(OPEN_SEA)
+    scene.build(scenario, "eo")
+    mount = next(m for m in scenario.rig.mounts if m.camera.kind == "eo")
+    pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+    driver = bpy.data.materials["sea"].node_tree.animation_data.drivers[0].driver
+    assert driver.is_simple_expression
+    assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
+    bpy.context.scene.render.resolution_percentage = 50
+    bpy.context.view_layer.update()
+    assert _pixel_node().inputs[1].default_value == pytest.approx(2 * pixel_rad)
+
+
+def test_the_glitter_and_the_haze_follow_what_the_render_is_set_to() -> None:
+    """Simple expressions, so they run with Python scripts off."""
+    scene.build(load(OPEN_SEA), "eo")
+    driven = {
+        curve.driver.expression: curve.driver
+        for tree in (bpy.data.materials["sea"].node_tree, bpy.data.node_groups["haze"])
+        for curve in tree.animation_data.drivers
+    }
+    assert {"1 / samples", "sky"} <= set(driven)
+    assert all(d.is_valid and d.is_simple_expression for d in driven.values())
