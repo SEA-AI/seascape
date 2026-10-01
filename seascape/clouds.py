@@ -14,8 +14,7 @@ data", JGR 94(D2) 2303, 1989 (doi:10.1029/JD094iD02p02303), and Zhao & Di Girola
 cloud fraction versus view angle technique for automatic in-scene evaluation of the
 MISR cloud mask", JAM 43(6) 860, 2004
 (doi:10.1175/1520-0450(2004)043<0860:ACFVVA>2.0.CO;2): seen aslant, cover grows, as
-cloud sides hide the gaps between; a layer without sides keeps gaps far narrower than
-its depth open, so the field stops short of them.
+cloud sides hide the gaps between.
 
 Thickness to optical depth: Brenguier et al., "Radiative properties of boundary layer
 clouds: droplet effective radius versus number concentration", JAS 57(6) 803, 2000
@@ -58,16 +57,15 @@ import numpy as np
 from seascape import waves
 
 CELLS = 512
-# Each tile's spacing; the finer takes the spectrum above the coarser one's Nyquist. The
-# coarser spans the layer edge to edge at its default base. Where the finer stops is a
-# judgement: a gap that narrow hides behind the layer's sides unless seen overhead.
+# Each tile's spacing; the finer takes the spectrum above the coarser one's Nyquist.
+# Where the finer stops is a judgement: a gap that narrow hides behind the layer's sides
+# unless seen overhead.
 BAND_SPACINGS_M = (400.0, 25.0)
 PEAK_PER_DEPTH = 35.0
 ASYMMETRY = 0.85
 DIFFUSION_CHI = 2 / 3
-# Marine Sc, Han et al. 1994.
 MEAN_LWP_KG_M2 = 86e-3
-# A judgement: the droplet Kokhanovsky tabulates g for.
+# The droplet Kokhanovsky's g is for.
 DROPLET_RADIUS_M = 10e-6
 WATER_DENSITY_KG_M3 = 1000.0
 MEAN_OPTICAL_DEPTH = 3 * MEAN_LWP_KG_M2 / (2 * WATER_DENSITY_KG_M3 * DROPLET_RADIUS_M)
@@ -108,8 +106,9 @@ def tiles(rng: np.random.Generator, base_m: float) -> list[np.ndarray]:
 
 
 def optical_depth(cover: float) -> tuple[float, float]:
-    """`threshold` and `scale` of tau = scale max(f - threshold, 0)^(5/3) on a unit
-    Gaussian f: `cover` of it seen as cloud, whose mean is `MEAN_OPTICAL_DEPTH`.
+    """`threshold` and `scale` of tau = scale max(f - threshold, 0)^THICKNESS_POWER on
+    a unit Gaussian f: `cover` of it above `SEEN_OPTICAL_DEPTH`, with mean
+    `MEAN_OPTICAL_DEPTH` there.
 
     f - threshold stands for the cloud's thickness, 0 at its edge.
     """

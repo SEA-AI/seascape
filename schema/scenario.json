@@ -99,7 +99,7 @@
         },
         "base_m": {
           "default": 600.0,
-          "description": "Height of its base above the sea.",
+          "description": "Above the sea.",
           "exclusiveMinimum": 0.0,
           "title": "Base M",
           "type": "number"

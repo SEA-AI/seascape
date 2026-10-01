@@ -111,8 +111,7 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
 
 
 def _clouds(scenario: Scenario, band: Band, rng: np.random.Generator) -> None:
-    """A shell at the base, curved with the sea; its material is the layer. After
-    `_haze`, which would otherwise haze what the layer lets through as well."""
+    """A shell at the base, curved with the sea."""
     layer = scenario.sky.clouds
     if layer is None:
         return
@@ -173,12 +172,10 @@ def _cloud_depth(
 def _cloud_material(
     scenario: Scenario, band: Band, rng: np.random.Generator
 ) -> bpy.types.Material:
-    """Optical depth from the layer's thickness, the field `clouds.tiles` draws.
-
-    EO leaves the light to Cycles: what diffusion lets through leaves the base through
-    Translucent, and what the cloud does not hide passes as Transparent, shadowing the
-    sea under it. LWIR emits at the base's temperature where the layer is opaque. Only
-    the cloud's own light is hazed.
+    """EO leaves the light to Cycles: what diffusion lets through leaves the base
+    through Translucent, and what the cloud does not hide passes as Transparent,
+    shadowing the sea under it. LWIR emits at the base's temperature where the layer is
+    opaque. Only the cloud's own light is hazed.
 
     ponytail: the direct beam is taken along the ray that asks, and the layer has no
     sides; scatter through a volume if they show at grazing view.
@@ -234,7 +231,7 @@ def _cloud_material(
             clouds.base_k(scenario.sky.t_air_k, layer.base_m)
         )
         light = body.outputs["Emission"]
-        # As `_haze` does for every other IR surface.
+        # Sampled as a light, it slows the render for light its rays bring back anyway.
         material.cycles.emission_sampling = "NONE"
     if (group := bpy.data.node_groups.get("haze")) is not None:
         hazed = tree.nodes.new("ShaderNodeGroup")
@@ -1223,8 +1220,8 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         scenario.sea, wind, swell, band, outputs, rngs, tuple(trails)
     )
     sea.water(scenario.sea, reach_m, material)
-    # After the last material but the layer's. Past the sea's corner only the layer
-    # lies, and the depth table holds its last value there.
+    # After the last material but the layer's, which hazes only its own light. Past the
+    # sea's corner only the layer lies, and the depth table holds its last value there.
     _haze(scenario.sky, band, sea_far_m)
     _clouds(scenario, band, _substream(scenario.seed, "sky/clouds"))
     # The object-index pass reads 0 for everything else: sky, sea and ownship.

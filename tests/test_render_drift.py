@@ -662,11 +662,11 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
     assert _same(after, shoot((320, 180), "alone"))
 
 
-def _looking(direction: tuple[float, float, float], at_m: float = 0.0) -> None:
-    """The scene's camera, unparented, at `at_m` up and looking along `direction`."""
+def _looking(direction: tuple[float, float, float]) -> None:
+    """The scene's camera, unparented, at the sea and looking along `direction`."""
     camera = bpy.context.scene.camera
     camera.parent = None
-    camera.location = (0.0, 0.0, at_m)
+    camera.location = (0.0, 0.0, 0.0)
     camera.rotation_mode = "QUATERNION"
     camera.rotation_quaternion = Vector(direction).to_track_quat("-Z", "Y")
 

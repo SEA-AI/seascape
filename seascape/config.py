@@ -221,7 +221,7 @@ class Clouds(Model):
     base_m: float = Field(
         default=clouds.STRATOCUMULUS_BASE_M,
         gt=0.0,
-        description="Height of its base above the sea.",
+        description="Above the sea.",
     )
 
 
