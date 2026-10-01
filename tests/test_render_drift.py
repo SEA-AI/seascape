@@ -295,7 +295,6 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     corners = [camera.matrix_world @ c for c in lens.view_frame(scene=sc)]
     top_right, bottom_right, bottom_left, top_left = (np.array(c) for c in corners)
     origin = np.array(camera.matrix_world.translation)
-    # The probe's own pixel.
     pixel_rad = lens.angle_x / px[0]
     wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
     speed = SCENARIO.sea.wind_speed_mps

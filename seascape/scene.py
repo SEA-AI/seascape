@@ -181,7 +181,6 @@ def _sky_ahead(
     if band == "eo":
         node = _sky_texture(tree, sky)
         node.name = "haze_sky"
-        # Driven by the world's `sky` node.
         world = bpy.context.scene.world
         for prop in ("sun_elevation", "sun_rotation", "aerosol_density"):
             path = f'node_tree.nodes["sky"].{prop}'
