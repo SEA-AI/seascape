@@ -524,3 +524,28 @@ def test_the_glare_scatters_its_share_in_harvey_s_form() -> None:
     far = r * width / 2 > beyond_px
     expected = scene.GLARE_SHARE * kernel[far].sum() / kernel.sum()
     assert frame[far].sum() / frame.sum() == pytest.approx(expected, rel=0.1)
+
+
+def test_a_hull_s_foam_trails_behind_it() -> None:
+    """From above, the sea astern of a hull heading east is brighter than ahead."""
+    scenario = load(
+        OPEN_SEA,
+        [
+            'outputs.format = "exr"',
+            'objects = [{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0, '
+            "heading_deg = 90.0, speed_mps = 10.0 }]",
+        ],
+    )
+    scene.build(scenario, "eo")
+    sc = bpy.context.scene
+    top = bpy.data.objects.new("top", bpy.data.cameras.new("top"))
+    sc.collection.objects.link(top)
+    top.data.type = "ORTHO"
+    top.data.ortho_scale = 128.0
+    top.location = (0.0, 300.0, 200.0)
+    sc.camera = top
+    sc.cycles.samples = 16
+    frame = shoot((128, 128), "wake")
+    # A metre a pixel, east to the right; both slices sit clear of the hull.
+    astern, ahead = frame[59:69, 24:44], frame[59:69, 84:104]
+    assert astern.mean() > 1.5 * ahead.mean()

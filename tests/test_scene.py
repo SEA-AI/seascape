@@ -1167,3 +1167,40 @@ class TestDrifting:
             # A few ulps: F-curves are float32.
             ulp = np.spacing(np.float32(np.abs(values).max()))
             assert bend[-2:].max() <= bend[:-2].max() + 4 * ulp, name
+
+
+class TestWakes:
+    def _built(self, objects: str) -> bpy.types.NodeTree:
+        scene.build(load(OPEN_SEA, [f"objects = [{objects}]"]), "eo")
+        return bpy.data.materials["sea"].node_tree
+
+    def test_a_still_hull_leaves_no_wake(self) -> None:
+        self._built('{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0 }')
+        assert "sea_foam" not in bpy.data.images
+
+    def test_a_hull_under_way_leaves_foam_and_arms(self) -> None:
+        tree = self._built(
+            '{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0, speed_mps = 8.0 }'
+        )
+        assert "sea_foam" in bpy.data.images
+        assert "wake_normal" in tree.nodes
+
+    def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
+        tree = self._built(
+            '{ preset = "container_ship", range_m = 2000.0, bearing_deg = 0.0, '
+            "speed_mps = 5.0 }"
+        )
+        assert "sea_foam" in bpy.data.images
+        assert "wake_normal" not in tree.nodes
+
+    def test_a_group_under_way_leaves_a_wake(self) -> None:
+        scenario = load(
+            OPEN_SEA,
+            [
+                'targets = { asset = "yacht", count = 2, range_m = 300.0, '
+                "bearing_deg = [-5.0, 5.0], heading_deg = [90.0, 90.0], "
+                "speed_mps = 8.0 }"
+            ],
+        )
+        scene.build(scenario, "eo")
+        assert "sea_foam" in bpy.data.images

@@ -10,7 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import lwir, sea, waves
+from seascape import lwir, sea, wakes, waves
 from seascape.assets import Asset, fetch, manifest
 from seascape.blend import CURVE_SAMPLES, animate, curve_image, lookup, place, sine, yaw
 from seascape.calibration import CameraCalibration, Matrix4
@@ -533,9 +533,13 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     # measuring only the roots would leave them out of the fit.
     parts = [o for o in imported if o.parent is None]
 
-    fit = _fit(_corners(imported), manifest()[name])
+    corners = _corners(imported)
+    fit = _fit(corners, manifest()[name])
     for part in parts:
         part.matrix_world = fit @ part.matrix_world
+    # Fitted bow to +Y, so the beam is the width along x.
+    across = [(fit @ c).x for c in corners]
+    parts[0]["beam_m"] = max(across) - min(across)
 
     if band == "ir":
         # The asset's own materials are albedo, which says nothing about 8-14 um.
@@ -572,6 +576,7 @@ def _vessel(
             slot.material = skin
 
     anchor = bpy.data.objects.new(name, None)
+    anchor["beam_m"] = parts[0]["beam_m"]
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -724,6 +729,7 @@ def _targets(
     sky: Sky,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
+    trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
     first = _vessel(spec.asset, spec.t_k, band, sky, hulls)
     poses = spec.poses()
@@ -742,6 +748,7 @@ def _targets(
             radius_m,
             outputs,
         )
+        trails.extend(_wake(spec, anchor, bearing_deg, heading_deg))
     return anchors
 
 
@@ -752,7 +759,9 @@ def _object(
     sky: Sky,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
+    trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
+    """`spec`'s hulls, each wake under way added to `trails`."""
     anchor = _vessel(spec.asset, spec.t_k, band, sky, hulls)
     orbit = spec.orbit
     if orbit is None:
@@ -766,13 +775,53 @@ def _object(
             radius_m,
             outputs,
         )
+        trails.extend(_wake(spec, anchor, spec.bearing_deg, spec.heading_deg))
         return [anchor]
     anchors = [anchor, *(_copy_tree(anchor, None) for _ in range(orbit.count - 1))]
     lap_s = orbit.count * outputs.period_s(orbit.period_s / orbit.count)
     for i, hull in enumerate(anchors):
         bearing_deg = spec.bearing_deg + 360.0 * i / orbit.count
         _orbit(hull, spec.range_m, bearing_deg, lap_s, radius_m, outputs.times_s)
+    trails.append(
+        wakes.Wake(
+            speed_mps=2 * math.pi * spec.range_m / lap_s,
+            length_m=manifest()[spec.asset].length_m,
+            beam_m=anchor["beam_m"],
+            orbit_m=spec.range_m,
+            start_bearing_rad=math.radians(spec.bearing_deg),
+            lap_s=lap_s,
+            count=orbit.count,
+        )
+    )
     return anchors
+
+
+def _wake(
+    spec: Object | Targets,
+    anchor: bpy.types.Object,
+    bearing_deg: float,
+    heading_deg: float,
+) -> list[wakes.Wake]:
+    """The wake `_pose` leaves, if the hull is under way.
+
+    ponytail: along the heading from the start, without the drift's figure-eight; give
+    the wake the drift's offset if a drifting hull under way shows its wake beside it.
+    """
+    if spec.speed_mps <= 0.0:
+        return []
+    bearing = math.radians(bearing_deg)
+    return [
+        wakes.Wake(
+            speed_mps=spec.speed_mps,
+            length_m=manifest()[spec.asset].length_m,
+            beam_m=anchor["beam_m"],
+            start_m=(
+                spec.range_m * math.sin(bearing),
+                spec.range_m * math.cos(bearing),
+            ),
+            heading_rad=math.radians(heading_deg),
+        )
+    ]
 
 
 def _ride(
@@ -986,21 +1035,27 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     rngs = (
         _substream(scenario.seed, "sea/gust"),
         _substream(scenario.seed, "sea/slick"),
+        _substream(scenario.seed, "sea/foam"),
     )
-    sea.water(scenario.sea, wind, swell, reach_m, band, outputs, pixel_rad, rngs)
     rig = _rig(scenario.rig, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
     targets: dict[str, list[bpy.types.Object]] = {}
+    trails: list[wakes.Wake] = []
     for spec in scenario.objects:
-        anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs)
+        anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs, trails)
         targets.setdefault(spec.asset, []).extend(anchors)
     if scenario.targets is not None:
         anchors = _targets(
-            scenario.targets, band, radius_m, scenario.sky, hulls, outputs
+            scenario.targets, band, radius_m, scenario.sky, hulls, outputs, trails
         )
         targets.setdefault(scenario.targets.asset, []).extend(anchors)
+    # After the hulls, whose poses and beams set the wakes.
+    material = sea.material(
+        scenario.sea, wind, swell, band, outputs, pixel_rad, rngs, tuple(trails)
+    )
+    sea.water(scenario.sea, reach_m, material)
     # After the last material.
     _haze(scenario.sky, band, far_m)
     # The object-index pass reads 0 for everything else: sky, sea and ownship.
