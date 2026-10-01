@@ -989,6 +989,9 @@ def _wakes(
     for wake in wakes:
         path = _path(tree, wake, time_s)
         behind = _math(tree, "GREATER_THAN", path.along, 0.0)
+        # Ahead of the hull nothing has aged: unclamped, the exponentials overflow
+        # there, and the power below takes a negative base.
+        astern = _math(tree, "MAXIMUM", path.along, 0.0)
         side = _math(tree, "ABSOLUTE", path.across)
         # A judgement: a beam wide at the stern, widening as distance^(1/5).
         width = _math(
@@ -997,7 +1000,7 @@ def _wakes(
             _math(
                 tree,
                 "POWER",
-                _math(tree, "MULTIPLY_ADD", path.along, 1 / wake.length_m, 1.0),
+                _math(tree, "MULTIPLY_ADD", astern, 1 / wake.length_m, 1.0),
                 0.2,
             ),
             wake.beam_m,
@@ -1009,7 +1012,7 @@ def _wakes(
             _gaussian(tree, side, _math(tree, "MULTIPLY", width, 0.5)),
         )
         band = _math(tree, "MAXIMUM", band, core)
-        age = _math(tree, "DIVIDE", path.along, wake.speed_mps)
+        age = _math(tree, "DIVIDE", astern, wake.speed_mps)
         fresh = _math(tree, "EXPONENT", _math(tree, "MULTIPLY", age, -1 / FOAM_EFOLD_S))
         stern = _math(tree, "MULTIPLY", behind, _gaussian(tree, side, wake.beam_m / 2))
         cover = _math(tree, "MULTIPLY", stern, fresh)
