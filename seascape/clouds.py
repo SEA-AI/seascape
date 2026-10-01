@@ -8,11 +8,14 @@ distributions in marine stratocumulus. Part I", JAS 53(11) 1538, 1996
 from 20 m to 20 km, near Kolmogorov's -5/3, hence `waves.von_karman_field`. Wood &
 Hartmann, "Spatial variability of liquid water path in marine low cloud: the importance
 of mesoscale cellular convection", J. Climate 19(9) 1748, 2006 (doi:10.1175/JCLI3702.1),
-section 4b: the spectrum peaks at 35 boundary-layer depths. Davis, Marshak, Cahalan &
-Wiscombe, "The Landsat scale break in stratocumulus as a three-dimensional radiative
-transfer effect", JAS 54(2) 241, 1997
-(doi:10.1175/1520-0469(1997)054<0241:TLSBIS>2.0.CO;2): below ~200 m the light smooths
-what the water does not; here the cut falls at the finest tile's longest wave.
+section 4b: the spectrum peaks at 35 boundary-layer depths. Minnis, "Viewing zenith
+angle dependence of cloudiness determined from coincident GOES East and GOES West
+data", JGR 94(D2) 2303, 1989 (doi:10.1029/JD094iD02p02303), and Zhao & Di Girolamo, "A
+cloud fraction versus view angle technique for automatic in-scene evaluation of the
+MISR cloud mask", JAM 43(6) 860, 2004
+(doi:10.1175/1520-0450(2004)043<0860:ACFVVA>2.0.CO;2): seen aslant, cover grows, as
+cloud sides hide the gaps between; a layer without sides keeps gaps far narrower than
+its depth open, so the field stops short of them.
 
 Thickness to optical depth: Brenguier et al., "Radiative properties of boundary layer
 clouds: droplet effective radius versus number concentration", JAS 57(6) 803, 2000
@@ -55,10 +58,10 @@ import numpy as np
 from seascape import waves
 
 CELLS = 512
-# Each tile's spacing; each takes the spectrum above the coarser one's Nyquist. The
-# coarsest spans the layer edge to edge at its default base, the finest is a pixel at
-# the nearest base a camera sees, and the 16:1 steps between are a judgement.
-BAND_SPACINGS_M = (400.0, 25.0, 25.0 / 16)
+# Each tile's spacing; the finer takes the spectrum above the coarser one's Nyquist. The
+# coarser spans the layer edge to edge at its default base. Where the finer stops is a
+# judgement: a gap that narrow hides behind the layer's sides unless seen overhead.
+BAND_SPACINGS_M = (400.0, 25.0)
 PEAK_PER_DEPTH = 35.0
 ASYMMETRY = 0.85
 DIFFUSION_CHI = 2 / 3

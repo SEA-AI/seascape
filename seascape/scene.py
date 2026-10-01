@@ -129,19 +129,15 @@ def _clouds(scenario: Scenario, band: Band, rng: np.random.Generator) -> None:
 
 
 def _cloud_depth(
-    tree: bpy.types.NodeTree,
-    scenario: Scenario,
-    rng: np.random.Generator,
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """Optical depth, and the same without the finest band, which radiative smoothing
-    takes from the base's light."""
+    tree: bpy.types.NodeTree, scenario: Scenario, rng: np.random.Generator
+) -> bpy.types.NodeSocket:
     layer = scenario.sky.clouds
     assert layer is not None
     time_s = sea._sea_time(tree, scenario.outputs)
     east, north = sea._downwind(scenario.sea)
     drift = clouds.drift_mps(scenario.sea.wind_speed_mps)
     tiles = clouds.tiles(rng, layer.base_m)
-    coarse, fine, finest = (
+    coarse, fine = (
         sea._drifting(
             tree,
             time_s,
@@ -159,49 +155,19 @@ def _cloud_depth(
             zip(tiles, clouds.BAND_SPACINGS_M, strict=True)
         )
     )
-    # Finer than a pixel, a band aliases into sample noise; past twice its spacing the
-    # pixel takes its mean, 0. From the camera, whichever segment of the path this is.
-    footprint = sea._pixel(tree).across_m
-    keep = sea._math(
-        tree,
-        "SUBTRACT",
-        2.0,
-        sea._math(tree, "DIVIDE", footprint, clouds.BAND_SPACINGS_M[-1]),
-    )
-    keep.node.use_clamp = True
-    # What fading the band takes from the field's unit variance, put back.
-    finest_var = float(tiles[-1].var())
-    spread = sea._math(
-        tree,
-        "SQRT",
-        sea._math(
-            tree,
-            "MULTIPLY_ADD",
-            sea._math(tree, "MULTIPLY", keep, keep),
-            finest_var,
-            1.0 - finest_var,
-        ),
-    )
     threshold, scale = clouds.optical_depth(layer.cover)
-
-    def depth(field: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        thickness = sea._math(
-            tree,
-            "MAXIMUM",
-            sea._math(
-                tree, "SUBTRACT", sea._math(tree, "DIVIDE", field, spread), threshold
-            ),
-            0.0,
-        )
-        return sea._math(
-            tree,
-            "MULTIPLY",
-            sea._math(tree, "POWER", thickness, clouds.THICKNESS_POWER),
-            scale,
-        )
-
-    smooth = sea._math(tree, "ADD", coarse, fine)
-    return depth(sea._math(tree, "MULTIPLY_ADD", finest, keep, smooth)), depth(smooth)
+    thickness = sea._math(
+        tree,
+        "MAXIMUM",
+        sea._math(tree, "SUBTRACT", sea._math(tree, "ADD", coarse, fine), threshold),
+        0.0,
+    )
+    return sea._math(
+        tree,
+        "MULTIPLY",
+        sea._math(tree, "POWER", thickness, clouds.THICKNESS_POWER),
+        scale,
+    )
 
 
 def _cloud_material(
@@ -214,9 +180,8 @@ def _cloud_material(
     sea under it. LWIR emits at the base's temperature where the layer is opaque. Only
     the cloud's own light is hazed.
 
-    ponytail: the direct beam is taken along the ray that asks, the diffuse part from
-    the smoothed field, and the layer has no sides; scatter through a volume if they
-    show at grazing view.
+    ponytail: the direct beam is taken along the ray that asks, and the layer has no
+    sides; scatter through a volume if they show at grazing view.
     """
     layer = scenario.sky.clouds
     assert layer is not None
@@ -224,7 +189,7 @@ def _cloud_material(
     tree = material.node_tree
     tree.nodes.clear()
     link = tree.links.new
-    tau, smooth_tau = _cloud_depth(tree, scenario, rng)
+    tau = _cloud_depth(tree, scenario, rng)
     incoming = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(
         tree.nodes.new("ShaderNodeNewGeometry").outputs["Incoming"], incoming.inputs[0]
@@ -241,7 +206,6 @@ def _cloud_material(
     )
     opaque = sea._math(tree, "SUBTRACT", 1.0, through)
     if band == "eo":
-        # The base's light keeps the bands that radiative smoothing leaves.
         total = sea._math(
             tree,
             "DIVIDE",
@@ -249,7 +213,7 @@ def _cloud_material(
             sea._math(
                 tree,
                 "MULTIPLY_ADD",
-                smooth_tau,
+                tau,
                 (1 - clouds.ASYMMETRY) / (2 * clouds.DIFFUSION_CHI),
                 1.0,
             ),
