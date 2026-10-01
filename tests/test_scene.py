@@ -1219,7 +1219,6 @@ def _pixel_node() -> bpy.types.ShaderNode:
 
 
 def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
-    """A driver, so the pixel follows the render's camera and resolution."""
     scenario = load(OPEN_SEA)
     scene.build(scenario, "eo")
     mount = next(m for m in scenario.rig.mounts if m.camera.kind == "eo")
@@ -1237,7 +1236,6 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
 
 
 def test_the_glitter_and_haze_drivers_run_without_python() -> None:
-    """Simple expressions, so they run with Python scripts off."""
     scene.build(load(OPEN_SEA), "eo")
     driven = {
         curve.driver.expression: curve.driver

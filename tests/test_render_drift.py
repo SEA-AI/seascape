@@ -255,8 +255,7 @@ def lobe(
     wind: tuple[waves.Wave, ...],
     samples: int,
 ) -> tuple[float, float]:
-    """The unresolved variance left to the lobe once the glitter takes its share, at
-    the render's `samples`."""
+    """The unresolved variance left to the lobe once the glitter takes its share."""
     cells = along_m * across_m / waves.specular_cell_m2(wind)
     widen = max(cells / samples - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
     carried = max(across - widen, 0.0)
@@ -592,7 +591,6 @@ def _same(rendered: np.ndarray, expected: np.ndarray) -> bool:
 
 
 def _rendered_at(width_px: int, percent: int) -> np.ndarray:
-    """The open sea from a camera `width_px` wide, rendered at `percent`."""
     scenario = _rig(width_px)
     scene.build(scenario, "eo")
     sc = bpy.context.scene
@@ -608,13 +606,11 @@ def _rendered_at(width_px: int, percent: int) -> np.ndarray:
 
 
 def test_a_render_at_half_resolution_is_a_build_at_half_width() -> None:
-    """The sea takes its pixel from the render, not from the build."""
     assert _same(_rendered_at(640, 50), _rendered_at(320, 100))
 
 
 def _set_after(setting: str, built: bool) -> np.ndarray:
-    """A small open-sea frame, with a ship far enough to haze, and `setting` given to
-    the build or set on the built scene before rendering."""
+    """With a ship far enough off to be hazed, so the haze's sun shows."""
     camera = '{ kind = "eo", hfov_deg = 45.0, width_px = 320, height_px = 180 }'
     sets = [
         'outputs.format = "exr"',
@@ -641,14 +637,11 @@ def _set_after(setting: str, built: bool) -> np.ndarray:
 
 @pytest.mark.parametrize("setting", ["samples", "sun"])
 def test_a_setting_changed_after_the_build_renders_as_if_built(setting: str) -> None:
-    """The glitter takes the render's samples and the haze the world's sky, through
-    drivers a render evaluates."""
     assert _same(_set_after(setting, built=False), _set_after(setting, built=True))
 
 
 def test_each_camera_draws_for_its_own_pixel() -> None:
-    """As `render` takes them, one after another in one build: the second camera
-    renders as a build of it alone."""
+    """As `render` takes them, one after another in one build."""
     pair = _rig(640, 320)
     built = scene.build(pair, "eo")
     sc = bpy.context.scene

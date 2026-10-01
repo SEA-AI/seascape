@@ -48,8 +48,7 @@ def drive(
     source: bpy.types.ID,
     **paths: str,
 ) -> None:
-    """`owner.prop` as `expression` of `source`'s properties at `paths`. A render
-    re-evaluates it; the live depsgraph keeps it stale after a change to
+    """A render re-evaluates it; the live depsgraph keeps it stale after a change to
     `cycles.samples` or to a world's node.
 
     Variables and arithmetic only: Blender evaluates such a simple expression itself,
