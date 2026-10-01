@@ -65,6 +65,12 @@ uv run seascape render scenarios/baseline.toml --set 'outputs.samples.eo = 8' --
 uv run seascape render scenarios/twin-pod.toml --set 'rig.pods = [{ preset = "port" }]'   # one pod
 ```
 
+`sky.clouds` adds a stratocumulus layer, as much of the sky as `cover` says, lit and shadowed by Cycles; a cloudy frame takes longer to render:
+
+```bash
+uv run seascape render scenarios/baseline.toml --set 'sky.clouds = { cover = 0.6, base_m = 800 }'
+```
+
 A variant worth keeping is a file, and `extends` makes it a diff:
 
 ```toml
@@ -78,7 +84,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ## Sequences
 
-`outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, and the gusts that roughen them, run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:
+`outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, the gusts that roughen them and any `sky.clouds` run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:
 
 ```bash
 uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg, ...

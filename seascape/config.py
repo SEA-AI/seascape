@@ -24,7 +24,7 @@ from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from seascape import lwir, waves
+from seascape import clouds, lwir, waves
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
@@ -209,6 +209,22 @@ class Sea(Model):
     )
 
 
+class Clouds(Model):
+    """One stratocumulus layer, lit by the sky above it and carried by the wind."""
+
+    cover: float = Field(
+        gt=0.0,
+        lt=1.0,
+        description="Fraction of the layer seen as cloud, as oktas over 8. A Gaussian "
+        "field is never cloud everywhere: overcast is near 1.",
+    )
+    base_m: float = Field(
+        default=clouds.STRATOCUMULUS_BASE_M,
+        gt=0.0,
+        description="Height of its base above the sea.",
+    )
+
+
 class Sky(Model):
     """Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.
 
@@ -265,6 +281,7 @@ class Sky(Model):
         le=320.0,
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
+    clouds: Clouds | None = Field(default=None, description="None is a clear sky.")
 
     @model_validator(mode="before")
     @classmethod

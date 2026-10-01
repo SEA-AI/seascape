@@ -86,6 +86,31 @@
       "title": "Camera",
       "type": "object"
     },
+    "Clouds": {
+      "additionalProperties": false,
+      "description": "One stratocumulus layer, lit by the sky above it and carried by the wind.",
+      "properties": {
+        "cover": {
+          "description": "Fraction of the layer seen as cloud, as oktas over 8. A Gaussian field is never cloud everywhere: overcast is near 1.",
+          "exclusiveMaximum": 1.0,
+          "exclusiveMinimum": 0.0,
+          "title": "Cover",
+          "type": "number"
+        },
+        "base_m": {
+          "default": 600.0,
+          "description": "Height of its base above the sea.",
+          "exclusiveMinimum": 0.0,
+          "title": "Base M",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cover"
+      ],
+      "title": "Clouds",
+      "type": "object"
+    },
     "Drift": {
       "additionalProperties": false,
       "description": "A hull at single anchor fishtails: across its heading once a period, along it\ntwice. Starts at its pose; the heading holds.",
@@ -611,6 +636,18 @@
           "minimum": 250.0,
           "title": "T Air K",
           "type": "number"
+        },
+        "clouds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Clouds"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None is a clear sky."
         }
       },
       "title": "Sky",

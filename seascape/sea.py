@@ -1374,19 +1374,27 @@ def material(
     return material
 
 
+def curved_grid(
+    name: str, half_m: float, cells: int, radius_m: float, height_m: float = 0.0
+) -> bpy.types.Object:
+    """A grid `cells` a side, out to `half_m` each way, `height_m` up and curved to a
+    sphere of `radius_m`."""
+    bpy.ops.mesh.primitive_grid_add(
+        x_subdivisions=cells, y_subdivisions=cells, size=2 * half_m
+    )
+    grid = bpy.context.object
+    grid.name = name
+    place(grid, 0.0, 0.0, 0.0)
+    for vertex in grid.data.vertices:
+        vertex.co.z = height_m + sea_z_m(vertex.co.x, vertex.co.y, radius_m)
+    # Flat faces would show their edges in the specular.
+    for face in grid.data.polygons:
+        face.use_smooth = True
+    return grid
+
+
 def water(sea: Sea, reach_m: float, material: bpy.types.Material) -> bpy.types.Object:
     """A grid curved to the earth, out to `reach_m`. The waves are in `material`."""
-    bpy.ops.mesh.primitive_grid_add(
-        x_subdivisions=SEA_CELLS, y_subdivisions=SEA_CELLS, size=2 * reach_m
-    )
-    water = bpy.context.object
-    water.name = "sea"
-    place(water, 0.0, 0.0, 0.0)
-    radius_m = earth_radius_m(sea.refraction_k)
-    for vertex in water.data.vertices:
-        vertex.co.z = sea_z_m(vertex.co.x, vertex.co.y, radius_m)
-    # Flat faces would show their edges in the specular.
-    for face in water.data.polygons:
-        face.use_smooth = True
+    water = curved_grid("sea", reach_m, SEA_CELLS, earth_radius_m(sea.refraction_k))
     water.data.materials.append(material)
     return water

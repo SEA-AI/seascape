@@ -10,7 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import lwir, sea, wakes, waves
+from seascape import clouds, lwir, sea, wakes, waves
 from seascape.assets import Asset, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
@@ -108,6 +108,183 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     node.sun_rotation = math.radians(sky.sun_bearing_deg)
     node.aerosol_density = sky.aerosol_density
     return node
+
+
+def _clouds(scenario: Scenario, band: Band, rng: np.random.Generator) -> None:
+    """A shell at the base, curved with the sea; its material is the layer. After
+    `_haze`, which would otherwise haze what the layer lets through as well."""
+    layer = scenario.sky.clouds
+    if layer is None:
+        return
+    earth_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    shell = sea.curved_grid(
+        "clouds",
+        clouds.reach_m(layer.base_m, earth_m),
+        # A judgement: quads whose sag from the sphere stays far under a pixel.
+        256,
+        earth_m + layer.base_m,
+        layer.base_m,
+    )
+    shell.data.materials.append(_cloud_material(scenario, band, rng))
+
+
+def _cloud_depth(
+    tree: bpy.types.NodeTree,
+    scenario: Scenario,
+    rng: np.random.Generator,
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """Optical depth, and the same without the finest band, which radiative smoothing
+    takes from the base's light."""
+    layer = scenario.sky.clouds
+    assert layer is not None
+    time_s = sea._sea_time(tree, scenario.outputs)
+    east, north = sea._downwind(scenario.sea)
+    drift = clouds.drift_mps(scenario.sea.wind_speed_mps)
+    tiles = clouds.tiles(rng, layer.base_m)
+    coarse, fine, finest = (
+        sea._drifting(
+            tree,
+            time_s,
+            scenario.outputs,
+            curve_image(f"cloud_{i}", tile),
+            (
+                (1 / (clouds.CELLS * spacing_m), 0.0),
+                (0.0, 1 / (clouds.CELLS * spacing_m)),
+            ),
+            (drift * east, drift * north),
+            0.0,
+            f"cloud_{i}",
+        )
+        for i, (tile, spacing_m) in enumerate(
+            zip(tiles, clouds.BAND_SPACINGS_M, strict=True)
+        )
+    )
+    # Finer than a pixel, a band aliases into sample noise; past twice its spacing the
+    # pixel takes its mean, 0. From the camera, whichever segment of the path this is.
+    footprint = sea._pixel(tree).across_m
+    keep = sea._math(
+        tree,
+        "SUBTRACT",
+        2.0,
+        sea._math(tree, "DIVIDE", footprint, clouds.BAND_SPACINGS_M[-1]),
+    )
+    keep.node.use_clamp = True
+    # What fading the band takes from the field's unit variance, put back.
+    finest_var = float(tiles[-1].var())
+    spread = sea._math(
+        tree,
+        "SQRT",
+        sea._math(
+            tree,
+            "MULTIPLY_ADD",
+            sea._math(tree, "MULTIPLY", keep, keep),
+            finest_var,
+            1.0 - finest_var,
+        ),
+    )
+    threshold, scale = clouds.optical_depth(layer.cover)
+
+    def depth(field: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        thickness = sea._math(
+            tree,
+            "MAXIMUM",
+            sea._math(
+                tree, "SUBTRACT", sea._math(tree, "DIVIDE", field, spread), threshold
+            ),
+            0.0,
+        )
+        return sea._math(
+            tree,
+            "MULTIPLY",
+            sea._math(tree, "POWER", thickness, clouds.THICKNESS_POWER),
+            scale,
+        )
+
+    smooth = sea._math(tree, "ADD", coarse, fine)
+    return depth(sea._math(tree, "MULTIPLY_ADD", finest, keep, smooth)), depth(smooth)
+
+
+def _cloud_material(
+    scenario: Scenario, band: Band, rng: np.random.Generator
+) -> bpy.types.Material:
+    """Optical depth from the layer's thickness, the field `clouds.tiles` draws.
+
+    EO leaves the light to Cycles: what diffusion lets through leaves the base through
+    Translucent, and what the cloud does not hide passes as Transparent, shadowing the
+    sea under it. LWIR emits at the base's temperature where the layer is opaque. Only
+    the cloud's own light is hazed.
+
+    ponytail: the direct beam is taken along the ray that asks, the diffuse part from
+    the smoothed field, and the layer has no sides; scatter through a volume if they
+    show at grazing view.
+    """
+    layer = scenario.sky.clouds
+    assert layer is not None
+    material = bpy.data.materials.new("clouds")
+    tree = material.node_tree
+    tree.nodes.clear()
+    link = tree.links.new
+    tau, smooth_tau = _cloud_depth(tree, scenario, rng)
+    incoming = tree.nodes.new("ShaderNodeSeparateXYZ")
+    link(
+        tree.nodes.new("ShaderNodeNewGeometry").outputs["Incoming"], incoming.inputs[0]
+    )
+    # A judgement, about a degree: a ray along the layer would divide by 0.
+    mu = sea._math(
+        tree, "MAXIMUM", sea._math(tree, "ABSOLUTE", incoming.outputs["Z"]), 0.02
+    )
+    absorbs = 1.0 if band == "eo" else clouds.LWIR_ABSORPTION
+    through = sea._math(
+        tree,
+        "EXPONENT",
+        sea._math(tree, "DIVIDE", sea._math(tree, "MULTIPLY", tau, -absorbs), mu),
+    )
+    opaque = sea._math(tree, "SUBTRACT", 1.0, through)
+    if band == "eo":
+        # The base's light keeps the bands that radiative smoothing leaves.
+        total = sea._math(
+            tree,
+            "DIVIDE",
+            1.0,
+            sea._math(
+                tree,
+                "MULTIPLY_ADD",
+                smooth_tau,
+                (1 - clouds.ASYMMETRY) / (2 * clouds.DIFFUSION_CHI),
+                1.0,
+            ),
+        )
+        diffuse = sea._math(
+            tree, "MAXIMUM", sea._math(tree, "SUBTRACT", total, through), 0.0
+        )
+        colour = sea._math(
+            tree, "DIVIDE", diffuse, sea._math(tree, "MAXIMUM", opaque, 1e-4)
+        )
+        colour.node.use_clamp = True
+        body = tree.nodes.new("ShaderNodeBsdfTranslucent")
+        link(colour, body.inputs["Color"])
+        light = body.outputs["BSDF"]
+    else:
+        body = tree.nodes.new("ShaderNodeEmission")
+        body.inputs["Strength"].default_value = lwir.band_radiance(
+            clouds.base_k(scenario.sky.t_air_k, layer.base_m)
+        )
+        light = body.outputs["Emission"]
+        # As `_haze` does for every other IR surface.
+        material.cycles.emission_sampling = "NONE"
+    if (group := bpy.data.node_groups.get("haze")) is not None:
+        hazed = tree.nodes.new("ShaderNodeGroup")
+        hazed.name = "haze"
+        hazed.node_tree = group
+        link(light, hazed.inputs["Shader"])
+        light = hazed.outputs["Shader"]
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    link(opaque, mix.inputs["Factor"])
+    link(tree.nodes.new("ShaderNodeBsdfTransparent").outputs["BSDF"], mix.inputs[1])
+    link(light, mix.inputs[2])
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    link(mix.outputs["Shader"], output.inputs["Surface"])
+    return material
 
 
 def _haze(sky: Sky, band: Band, far_m: float) -> None:
@@ -1048,7 +1225,14 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     _output(scenario.outputs, band)
     bpy.context.scene.world = _sky(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario.rig, scenario.sea)
-    far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
+    sea_far_m = far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
+    if scenario.sky.clouds is not None:
+        # Past the far plane the layer renders as sky, in silence.
+        layer_m = clouds.reach_m(
+            scenario.sky.clouds.base_m, waves.earth_radius_m(scenario.sea.refraction_k)
+        )
+        # The shell's corner.
+        far_m = max(far_m, math.sqrt(2) * layer_m)
     outputs = scenario.outputs
     wind, swell = wind_waves(scenario), swell_waves(scenario)
     rngs = (
@@ -1075,8 +1259,10 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         scenario.sea, wind, swell, band, outputs, rngs, tuple(trails)
     )
     sea.water(scenario.sea, reach_m, material)
-    # After the last material.
-    _haze(scenario.sky, band, far_m)
+    # After the last material but the layer's. Past the sea's corner only the layer
+    # lies, and the depth table holds its last value there.
+    _haze(scenario.sky, band, sea_far_m)
+    _clouds(scenario, band, _substream(scenario.seed, "sky/clouds"))
     # The object-index pass reads 0 for everything else: sky, sea and ownship.
     for index, anchor in enumerate(chain(*targets.values()), start=1):
         for part in [anchor, *anchor.children_recursive]:

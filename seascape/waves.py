@@ -214,18 +214,42 @@ def gust_slope_variance(wind_speed_mps: float) -> float:
     return (up - down) / (2 * step)
 
 
-def von_karman_field(
-    rng: np.random.Generator, cells: int, spacing_m: float, length_m: float
+def _von_karman_power(
+    cells: int, spacing_m: float, length_m: float, longest_m: float
 ) -> np.ndarray:
-    """A periodic tile, (cells, cells), of von Karman's spectrum at integral scale
-    `length_m`, zero mean and unit variance."""
+    """Von Karman's spectral density on a periodic tile's wavenumbers, 0 for waves
+    longer than `longest_m`."""
     k0_rad_m = math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * length_m)
     k = 2 * math.pi * np.fft.fftfreq(cells, spacing_m)
     k_sq = k[:, None] ** 2 + k[None, :] ** 2
+    return (k0_rad_m**2 + k_sq) ** (-4 / 3) * (k_sq >= (2 * math.pi / longest_m) ** 2)
+
+
+def von_karman_field(
+    rng: np.random.Generator,
+    cells: int,
+    spacing_m: float,
+    length_m: float,
+    longest_m: float = math.inf,
+) -> np.ndarray:
+    """A periodic tile, (cells, cells), of von Karman's spectrum at integral scale
+    `length_m`, without the waves longer than `longest_m`, zero mean and unit
+    variance."""
+    power = _von_karman_power(cells, spacing_m, length_m, longest_m)
     white = np.fft.fft2(rng.standard_normal((cells, cells)))
-    field = np.fft.ifft2(white * (k0_rad_m**2 + k_sq) ** (-2 / 3)).real
+    field = np.fft.ifft2(white * np.sqrt(power)).real
     field -= field.mean()
     return field / field.std()
+
+
+def von_karman_variance(
+    cells: int, spacing_m: float, length_m: float, longest_m: float = math.inf
+) -> float:
+    """The variance `von_karman_field` normalises away, in units shared by every tile of
+    one `length_m`, so tiles at other spacings add up to one spectrum."""
+    power = _von_karman_power(cells, spacing_m, length_m, longest_m)
+    power[0, 0] = 0.0
+    return float(power.sum() * (2 * math.pi / (cells * spacing_m)) ** 2)
 
 
 def peak_omega_rad_s(wind_speed_mps: float) -> float:

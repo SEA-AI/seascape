@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import blend, lwir, scene, sea, waves
+from seascape import blend, clouds, lwir, scene, sea, waves
 from seascape.assets import Asset, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import Band, Mount, Scenario, load
@@ -1248,3 +1248,52 @@ def test_the_glitter_and_haze_drivers_run_without_python() -> None:
     ]
     assert {"1 / samples", "sky"} <= {d.expression for d in drivers}
     assert all(d.is_valid and d.is_simple_expression for d in drivers)
+
+
+class TestClouds:
+    CLOUDY = load(OPEN_SEA, ["sky.clouds = {cover = 0.5}"])
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls) -> None:
+        scene.build(cls.CLOUDY, "eo")
+
+    def test_the_layer_curves_with_the_sea_out_to_the_horizon_ray(self) -> None:
+        layer = self.CLOUDY.sky.clouds
+        assert layer is not None
+        earth_m = waves.earth_radius_m(self.CLOUDY.sea.refraction_k)
+        reach_m = clouds.reach_m(layer.base_m, earth_m)
+        corners = np.array([v.co for v in bpy.data.objects["clouds"].data.vertices])
+        assert np.abs(corners[:, :2]).max() == pytest.approx(reach_m)
+        centre = corners[np.argmin(np.hypot(corners[:, 0], corners[:, 1]))]
+        assert centre[2] == pytest.approx(layer.base_m, abs=1.0)
+        for camera in bpy.data.cameras:
+            assert camera.clip_end >= math.sqrt(2) * reach_m
+
+    def test_its_tiles_are_the_seed_s(self) -> None:
+        layer = self.CLOUDY.sky.clouds
+        assert layer is not None
+        seeded = clouds.tiles(
+            scene._substream(self.CLOUDY.seed, "sky/clouds"), layer.base_m
+        )
+        for i, tile in enumerate(seeded):
+            assert baked(f"cloud_{i}") == pytest.approx(tile, abs=1e-5)
+
+    def test_the_lwir_base_emits_at_the_dry_adiabat_below_the_air(self) -> None:
+        scene.build(self.CLOUDY, "ir")
+        layer = self.CLOUDY.sky.clouds
+        assert layer is not None
+        emission = next(
+            n
+            for n in bpy.data.materials["clouds"].node_tree.nodes
+            if n.bl_idname == "ShaderNodeEmission"
+        )
+        base_k = clouds.base_k(self.CLOUDY.sky.t_air_k, layer.base_m)
+        assert emission.inputs["Strength"].default_value == pytest.approx(
+            lwir.band_radiance(base_k), rel=1e-6
+        )
+
+
+def test_a_clear_sky_has_no_layer() -> None:
+    scene.build(load(OPEN_SEA), "eo")
+    assert "clouds" not in bpy.data.objects

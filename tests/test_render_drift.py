@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import lwir, scene, sea, waves
+from seascape import clouds, lwir, scene, sea, waves
 from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
@@ -660,3 +660,48 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
     sc.cycles.samples = 16
     sc.camera = built.cameras[alone.rig.mounts[0].name]
     assert _same(after, shoot((320, 180), "alone"))
+
+
+def _looking(direction: tuple[float, float, float], at_m: float = 0.0) -> None:
+    """The scene's camera, unparented, at `at_m` up and looking along `direction`."""
+    camera = bpy.context.scene.camera
+    camera.parent = None
+    camera.location = (0.0, 0.0, at_m)
+    camera.rotation_mode = "QUATERNION"
+    camera.rotation_quaternion = Vector(direction).to_track_quat("-Z", "Y")
+
+
+def _sun_through(scenario: Scenario) -> float:
+    """What a camera looking at the sun takes in, disc and all."""
+    scene.build(scenario, "eo")
+    _looking(scene._sun_vector(scenario.sky))
+    bpy.context.scene.cycles.samples = 4
+    return float(shoot((200, 150), "sun_through").sum())
+
+
+def test_the_layer_s_gaps_pass_the_sun_whole() -> None:
+    """Only the cloud's own light is hazed: what passes a gap keeps the disc that the
+    airlight lacks."""
+    hazy = load(OPEN_SEA, ['outputs.format = "exr"'])
+    gaps = load(OPEN_SEA, ['outputs.format = "exr"', "sky.clouds = {cover = 1e-4}"])
+    assert _sun_through(gaps) == pytest.approx(_sun_through(hazy), rel=0.01)
+
+
+def test_an_overcast_lwir_zenith_reads_the_base_through_the_air_below() -> None:
+    overcast = load(OPEN_SEA, ["sky.clouds = {cover = 0.99}"])
+    layer = overcast.sky.clouds
+    assert layer is not None
+    scene.build(overcast, "ir")
+    _looking((0.0, 0.0, 1.0))
+    bpy.context.scene.cycles.samples = SAMPLES
+    zenith = float(np.median(shoot((32, 32), "overcast")))
+    kept = math.exp(
+        -lwir.path_optical_depth(
+            layer.base_m, overcast.sky.visibility_km, overcast.sky.atmosphere
+        )
+    )
+    base = lwir.band_radiance(clouds.base_k(overcast.sky.t_air_k, layer.base_m))
+    sky = float(
+        lwir.sky_radiance(math.pi / 2, overcast.sky.t_air_k, overcast.sky.atmosphere)
+    )
+    assert zenith == pytest.approx(kept * base + (1 - kept) * sky, rel=0.02)
