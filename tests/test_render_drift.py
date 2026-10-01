@@ -159,9 +159,8 @@ LOOP = _clear(
     # Past half-way, a loop's atan2 clock reads t - span.
     [(SCENARIO, 0), (LOOP, 20)],
 )
-@pytest.mark.parametrize("axis", [0, 1])
 def test_the_shader_tilts_the_sea_by_the_field_s_slope(
-    scenario: Scenario, frame: int, axis: int
+    scenario: Scenario, frame: int
 ) -> None:
     span_m, px = 8.0, 64
     scene.build(scenario, "eo")
@@ -176,7 +175,6 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
     link = tree.links.new
     link(tree.nodes["wave_normal"].outputs["Vector"], component.inputs["Vector"])
-    link(component.outputs["XY"[axis]], shown.inputs["Value"])
     link(shown.outputs["Value"], emission.inputs["Color"])
     link(emission.outputs["Emission"], output.inputs["Surface"])
 
@@ -191,14 +189,16 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
     sc.view_settings.view_transform = "Standard"
-    rendered = 2 * shoot((px, px), "slope_probe") - 1
-
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
     east, north = np.meshgrid(centres, centres[::-1])
     t_s = scenario.outputs.times_s[frame]
     slope = waves.slope(scene.wave_field(scenario), east, north, t_s)
-    expected = -slope[axis] / np.sqrt(1 + slope[0] ** 2 + slope[1] ** 2)
-    assert np.abs(rendered - expected).max() < 2e-3
+
+    for axis in (0, 1):
+        link(component.outputs["XY"[axis]], shown.inputs["Value"])
+        rendered = 2 * shoot((px, px), "slope_probe") - 1
+        expected = -slope[axis] / np.sqrt(1 + slope[0] ** 2 + slope[1] ** 2)
+        assert np.abs(rendered - expected).max() < 2e-3, "XY"[axis]
 
 
 @pytest.mark.render
@@ -463,9 +463,8 @@ def through_the_camera(
     size: tuple[int, int] = (96, 54),
 ) -> np.ndarray:
     """A camera looking straight up at a sky of `left` and `right` halves, with a disc
-    of `sun` overhead; what the camera makes of it, before the display."""
-    png = SCENARIO.outputs.model_copy(update={"format": "png"})
-    scene.build(SCENARIO.model_copy(update={"outputs": png}), "eo")
+    of `sun` overhead; what the camera makes of it, before the display. Needs an
+    8-bit EO build in place."""
     sc = bpy.context.scene
     tree = sc.world.node_tree
     generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
@@ -493,23 +492,6 @@ def through_the_camera(
     return shoot(size, "camera")
 
 
-def test_auto_exposure_takes_a_brighter_sky_to_the_same_picture() -> None:
-    assert through_the_camera(4.0, 4.0) == pytest.approx(
-        through_the_camera(1.0, 1.0), rel=1e-3
-    )
-
-
-def test_auto_exposure_meters_the_log_average() -> None:
-    """Halves of 1 and 4 average 2 in log and 2.5 in linear, so a linear meter reads
-    each half 20% darker."""
-    frame = through_the_camera(1.0, 4.0)
-    width = frame.shape[1]
-    left, right = np.median(frame[:, : width // 4]), np.median(frame[:, -width // 4 :])
-    assert (left, right) == pytest.approx(
-        (scene.MID_GREY / 2, 2 * scene.MID_GREY), rel=0.03
-    )
-
-
 def srgb_counts(linear: np.ndarray) -> np.ndarray:
     """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
     x = np.clip(linear, 0.0, 1.0)
@@ -517,30 +499,54 @@ def srgb_counts(linear: np.ndarray) -> np.ndarray:
     return np.round(255 * encoded)
 
 
-def test_the_camera_takes_the_same_picture_at_any_resolution() -> None:
-    """The frame at twice the width, averaged back down, within a few counts almost
-    everywhere. Below a few hundred pixels the glare's core falls inside one."""
-    small = through_the_camera(1.0, 1.0, sun=1e4, size=(384, 216))
-    large = through_the_camera(1.0, 1.0, sun=1e4, size=(768, 432))
-    shrunk = large.reshape(216, 2, 384, 2).mean(axis=(1, 3))
-    off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
-    assert np.percentile(off, 99) <= 4
+class TestCamera:
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls) -> None:
+        png = SCENARIO.outputs.model_copy(update={"format": "png"})
+        scene.build(SCENARIO.model_copy(update={"outputs": png}), "eo")
 
+    def test_auto_exposure_takes_a_brighter_sky_to_the_same_picture(self) -> None:
+        assert through_the_camera(4.0, 4.0) == pytest.approx(
+            through_the_camera(1.0, 1.0), rel=1e-3
+        )
 
-def test_the_glare_scatters_its_share_in_harvey_s_form() -> None:
-    """A sun of about a pixel on black sky: the light beyond a few pixels of it is the
-    glare's share of the kernel's weight there."""
-    width, height, beyond_px = 384, 216, 6
-    frame = through_the_camera(
-        0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
-    )
-    x = ((np.arange(width) + 0.5) / width * 2 - 1)[None, :]
-    y = ((np.arange(height) + 0.5) / height * 2 - 1)[:, None] * height / width
-    r = np.hypot(x, y)
-    kernel = (1 + (r / scene.GLARE_SHOULDER) ** 2) ** (-scene.GLARE_SLOPE / 2)
-    far = r * width / 2 > beyond_px
-    expected = scene.GLARE_SHARE * kernel[far].sum() / kernel.sum()
-    assert frame[far].sum() / frame.sum() == pytest.approx(expected, rel=0.1)
+    def test_auto_exposure_meters_the_log_average(self) -> None:
+        """Halves of 1 and 4 average 2 in log and 2.5 in linear, so a linear meter reads
+        each half 20% darker."""
+        frame = through_the_camera(1.0, 4.0)
+        width = frame.shape[1]
+        left, right = (
+            np.median(frame[:, : width // 4]),
+            np.median(frame[:, -width // 4 :]),
+        )
+        assert (left, right) == pytest.approx(
+            (scene.MID_GREY / 2, 2 * scene.MID_GREY), rel=0.03
+        )
+
+    def test_the_camera_takes_the_same_picture_at_any_resolution(self) -> None:
+        """The frame at twice the width, averaged back down, within a few counts almost
+        everywhere. Below a few hundred pixels the glare's core falls inside one."""
+        small = through_the_camera(1.0, 1.0, sun=1e4, size=(384, 216))
+        large = through_the_camera(1.0, 1.0, sun=1e4, size=(768, 432))
+        shrunk = large.reshape(216, 2, 384, 2).mean(axis=(1, 3))
+        off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
+        assert np.percentile(off, 99) <= 4
+
+    def test_the_glare_scatters_its_share_in_harvey_s_form(self) -> None:
+        """A sun of about a pixel on black sky: the light beyond a few pixels of it is
+        the glare's share of the kernel's weight there."""
+        width, height, beyond_px = 384, 216, 6
+        frame = through_the_camera(
+            0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
+        )
+        x = ((np.arange(width) + 0.5) / width * 2 - 1)[None, :]
+        y = ((np.arange(height) + 0.5) / height * 2 - 1)[:, None] * height / width
+        r = np.hypot(x, y)
+        kernel = (1 + (r / scene.GLARE_SHOULDER) ** 2) ** (-scene.GLARE_SLOPE / 2)
+        far = r * width / 2 > beyond_px
+        expected = scene.GLARE_SHARE * kernel[far].sum() / kernel.sum()
+        assert frame[far].sum() / frame.sum() == pytest.approx(expected, rel=0.1)
 
 
 def test_a_hull_s_foam_trails_behind_it() -> None:

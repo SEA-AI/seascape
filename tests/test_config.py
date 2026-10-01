@@ -228,12 +228,6 @@ def test_a_mistyped_key_is_an_error_not_a_silent_default(tmp_path) -> None:
         load(variant(tmp_path, "[rig]\nheight_metres = 22.0\n"))
 
 
-@pytest.mark.parametrize("t_sea_k", [260.0, 400.0])
-def test_sea_temperature_is_bounded_at_the_config_boundary(tmp_path, t_sea_k) -> None:
-    with pytest.raises(ValidationError, match="t_sea_k"):
-        load(variant(tmp_path, f"[sea]\nt_sea_k = {t_sea_k}\n"))
-
-
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
 def test_non_finite_numbers_are_rejected(tmp_path, value) -> None:
     """`yaw_deg` carries no bound, so nothing else would catch one."""

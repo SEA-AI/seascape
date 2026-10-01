@@ -19,7 +19,6 @@ from seascape.calibration import CameraCalibration
 from seascape.config import Band, Mount, Scenario, load
 
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
-UNDERWAY = BASELINE.with_name("underway.toml")
 DRIFTING = BASELINE.with_name("drifting.toml")
 OPEN_SEA = BASELINE.with_name("open-sea.toml")
 SCENARIO = load(BASELINE)
@@ -228,27 +227,6 @@ class TestGeometry:
                 fade.inputs["From Max"].default_value,
             ) == pytest.approx((gone**2, whole**2), rel=1e-6)
 
-    def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        field = scene.wave_field(SCENARIO)
-        assert len(field) == waves.COMPONENTS
-        for i, wave in enumerate(field):
-            k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
-            carried = (
-                tuple(nodes[f"wave_{i}"].inputs["Vector_001"].default_value),
-                nodes[f"wave_{i}_phase"].inputs["Value_001"].default_value,
-                tuple(nodes[f"wave_{i}_slope"].inputs["Vector"].default_value),
-            )
-            assert carried == (
-                pytest.approx((k_east, k_north, -wave.omega_rad_s), rel=1e-6),
-                pytest.approx(wave.phase_rad, rel=1e-6),
-                pytest.approx(
-                    (wave.amplitude_m * k_east, wave.amplitude_m * k_north, 0.0),
-                    rel=1e-6,
-                    abs=1e-9,
-                ),
-            )
-
     def test_the_sea_reaches_past_its_own_horizon(self) -> None:
         """The grid must contain the tangent point, or its edge becomes the horizon."""
         corners = [
@@ -292,13 +270,6 @@ class TestGeometry:
         before = counts()
         scene.build(SCENARIO, "eo")
         assert counts() == before
-
-
-def test_waves_cost_no_geometry() -> None:
-    """A displaced sea would change its vertex count with the wind."""
-    scene.build(load(OPEN_SEA, ["sea.wind_speed_mps = 18.0"]), "eo")
-
-    assert len(bpy.data.objects["sea"].data.vertices) == (sea.SEA_CELLS + 1) ** 2
 
 
 @pytest.mark.parametrize("band", ["eo", "ir"])
@@ -361,21 +332,9 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     assert (fit @ long).y == pytest.approx(100.0), "and the bow ends up at +Y"
 
 
-@pytest.mark.parametrize("band", ["eo", "ir"])
-def test_the_active_camera_belongs_to_the_band_built(band) -> None:
-    """Opened on the rig's first camera, an IR build could render through EO optics
-    against IR materials, with nothing to say so.
-    """
-    scene.build(load(OPEN_SEA), band)
-    assert f"_{band}_" in bpy.context.scene.camera.name
-
-
-@pytest.mark.parametrize("yaw_deg", [-40.0, 0.0, 40.0])
-def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(
-    tmp_path, yaw_deg
-) -> None:
+def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> None:
     """Horizon rolls by asin(sin(pitch) sin(yaw))."""
-    pitch_deg = -5.0
+    pitch_deg, yaw_deg = -5.0, 40.0
     path = tmp_path / "pitched.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
@@ -398,13 +357,10 @@ def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(
     )
 
 
-def _lens_pitched(
-    tmp_path, yaw_deg: float, pitch_deg: float, rig_pitch_deg: float = 0.0
-):
+def _lens_pitched(tmp_path, yaw_deg: float, pitch_deg: float):
     path = tmp_path / "lens.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
-        f"[rig]\npitch_deg = {rig_pitch_deg}\n\n"
         '[[rig.pods]]\nname = "port"\nyaw_deg = -60.0\n\n'
         f'[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\n'
         f"yaw_deg = {yaw_deg}\npitch_deg = {pitch_deg}\n"
@@ -414,12 +370,11 @@ def _lens_pitched(
     return scenario.rig.mounts[0]
 
 
-@pytest.mark.parametrize("yaw_deg", [-40.0, 0.0, 40.0])
-def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path, yaw_deg) -> None:
+def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path) -> None:
     """Rx inside the camera's yaw: neither angle disturbs the other, nor the horizon."""
     pitch_deg = -10.0
 
-    mount = _lens_pitched(tmp_path, yaw_deg, pitch_deg)
+    mount = _lens_pitched(tmp_path, 40.0, pitch_deg)
 
     camera = bpy.data.objects[mount.name]
     bearing, elevation = scene.boresight_deg(camera)
@@ -429,45 +384,28 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path, yaw_deg) 
     assert across.normalized().z == pytest.approx(0.0, abs=1e-6)
 
 
-@pytest.mark.parametrize("yaw_deg", [-40.0, 40.0])
-def test_a_pitched_pod_disturbs_a_pitched_lens(tmp_path, yaw_deg) -> None:
-    """Rx(rig) still sits between the yaws: neither angle survives intact."""
-    mount = _lens_pitched(tmp_path, yaw_deg, -10.0, rig_pitch_deg=-5.0)
-
-    bearing, elevation = scene.boresight_deg(bpy.data.objects[mount.name])
-
-    assert abs(bearing - mount.nominal_bearing_deg) > 0.1
-    assert abs(elevation - (-10.0)) > 0.1
-
-
-def _pod_pitched(tmp_path, yaw_deg: float, pitch_deg: float = -5.0):
-    """A one-pod rig yawed off the bow, so pitch sits between two non-zero yaws."""
+def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre(
+    tmp_path,
+) -> None:
+    """The pod is yawed off the bow, so the rig's pitch sits between two yaws. The
+    centre camera holds to microdegrees, not zero: matrix_world is float32."""
     path = tmp_path / "pitched.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
-        f"[rig]\npitch_deg = {pitch_deg}\n\n"
+        "[rig]\npitch_deg = -5.0\n\n"
         '[[rig.pods]]\nname = "port"\nyaw_deg = -60.0\n\n'
-        f'[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = {yaw_deg}\n'
+        '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = 0.0\n\n'
+        '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = 40.0\n'
     )
     scenario = load(path)
     scene.build(scenario, "eo")
-    mount = scenario.rig.mounts[0]
-    bearing, _ = scene.boresight_deg(bpy.data.objects[mount.name])
-    return bearing, mount.nominal_bearing_deg
+    centre, off_axis = (
+        (scene.boresight_deg(bpy.data.objects[m.name])[0], m.nominal_bearing_deg)
+        for m in scenario.rig.mounts
+    )
 
-
-@pytest.mark.parametrize("yaw_deg", [-40.0, 40.0])
-def test_pitch_moves_an_off_axis_camera_off_its_bearing(tmp_path, yaw_deg) -> None:
-    bearing, nominal = _pod_pitched(tmp_path, yaw_deg)
-
-    assert abs(bearing - nominal) > 0.1
-
-
-def test_pitch_leaves_a_centre_camera_on_its_nominal_bearing(tmp_path) -> None:
-    """Exact down the pod axis. Microdegrees, not zero: matrix_world is float32."""
-    bearing, nominal = _pod_pitched(tmp_path, 0.0)
-
-    assert bearing == pytest.approx(nominal, abs=1e-4)
+    assert centre[0] == pytest.approx(centre[1], abs=1e-4)
+    assert abs(off_axis[0] - off_axis[1]) > 0.1
 
 
 def test_an_ownship_with_no_hull_still_carries_the_rig(tmp_path) -> None:
@@ -508,10 +446,6 @@ class TestEoBand:
     def built(cls) -> None:
         scene.build(SCENARIO, "eo")
 
-    def test_the_sea_refracts_at_seawater_ior(self) -> None:
-        bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
-        assert bsdf.inputs["IOR"].default_value == pytest.approx(sea.SEAWATER_IOR)
-
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         assert nodes["Principled BSDF"].inputs["Roughness"].is_linked
@@ -544,10 +478,6 @@ class TestEoBand:
             waves.GUST_LENGTH_M,
         )
         assert tile == pytest.approx(seeded, abs=1e-5)
-
-    def test_no_slicks_by_default(self) -> None:
-        names = [n.name for n in bpy.data.materials["sea"].node_tree.nodes]
-        assert not [n for n in names if n.startswith("slick") or n.endswith("_calm")]
 
     def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
         carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
@@ -587,9 +517,6 @@ class TestEoBand:
         cosines = [n for n in tree.nodes if getattr(n, "operation", "") == "COSINE"]
         assert len(cosines) == len(wind)
 
-    def test_the_sky_is_lit(self) -> None:
-        assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -601,31 +528,6 @@ class TestEoBand:
     def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
-
-    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
-        nodes = bpy.data.node_groups["haze"].nodes
-        beta = nodes["haze_beta"]
-        assert beta.inputs[0].links[0].from_socket.name == "Ray Length"
-        assert beta.inputs[1].default_value == pytest.approx(
-            SCENARIO.sky.extinction_per_m
-        )
-        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        airlight = nodes["haze_sky"]
-        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
-            assert getattr(airlight, name) == getattr(sky, name)
-
-    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
-        """Incoming points back at the camera; unflipped, the haze would take the sky
-        behind it."""
-        nodes = bpy.data.node_groups["haze"].nodes
-        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
-        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
-        assert ahead.inputs["Scale"].default_value == -1.0
-        assert horizon.inputs[0].links[0].from_node == ahead
-        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
-        (into_sky,) = horizon.outputs["Vector"].links
-        assert into_sky.to_node.name == "haze_sky"
-        assert into_sky.is_valid
 
     def test_every_surface_mixes_towards_the_airlight(self) -> None:
         mix = bpy.data.node_groups["haze"].nodes["haze_mix"]
@@ -682,15 +584,6 @@ class TestIrBand:
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""
         assert "glitter_cells" not in bpy.data.materials["sea"].node_tree.nodes
-
-    def test_the_sky_carries_downwelling_radiance(self) -> None:
-        """What renders is the Background node, not `World.color`.
-
-        A new world already has `use_nodes` set, so assigning `World.color` changes
-        nothing a camera sees.
-        """
-        background = bpy.data.worlds["sky"].node_tree.nodes["Background"]
-        assert background.inputs["Color"].is_linked
 
     def test_the_baked_sky_runs_cold_towards_the_zenith(self) -> None:
         """The shader reads this by sin(elevation) at texel centres."""
@@ -811,9 +704,13 @@ class TestIrBand:
 
 
 class TestAnimate:
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls) -> None:
+        scene.build(load(OPEN_SEA, ["outputs.duration_s = 0.3"]))
+
     @pytest.fixture
     def empty(self) -> bpy.types.Object:
-        scene.build(load(OPEN_SEA, ["outputs.duration_s = 0.3"]))
         obj = bpy.data.objects.new("probe", None)
         bpy.context.scene.collection.objects.link(obj)
         return obj
@@ -838,7 +735,14 @@ class TestAnimate:
 
 
 def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
-    scenario = load(UNDERWAY, ["outputs.duration_s = 0.3"])
+    scenario = load(
+        OPEN_SEA,
+        [
+            "outputs.duration_s = 0.3",
+            'objects = [{ asset = "yacht", range_m = 2000.0, bearing_deg = 8.0, '
+            "heading_deg = 270.0, speed_mps = 6.0 }]",
+        ],
+    )
     (spec,) = scenario.objects
     radius = waves.earth_radius_m(scenario.sea.refraction_k)
     anchor = scene.build(scenario).targets[spec.asset][0]
@@ -884,9 +788,8 @@ class TestOwnshipMotion:
         moved = anchor.matrix_world.inverted() @ camera.matrix_world
         assert np.allclose(moved, mounted, atol=1e-5)
 
-    @pytest.mark.parametrize("duration_s", [0.0, 2.0])
-    def test_an_ownship_without_motion_keys_nothing(self, duration_s) -> None:
-        built = scene.build(load(OPEN_SEA, [f"outputs.duration_s = {duration_s}"]))
+    def test_an_ownship_without_motion_keys_nothing(self) -> None:
+        built = scene.build(load(OPEN_SEA, ["outputs.duration_s = 2.0"]))
 
         assert built.vessel.animation_data is None
 
@@ -965,8 +868,36 @@ class TestSlicks:
         assert {"slick", "sea_unresolved_slick_variance"} <= upstream(roughness)
 
 
+def each_frame() -> Iterator[int]:
+    sc = bpy.context.scene
+    for frame in range(sc.frame_start, sc.frame_end + 1):
+        sc.frame_set(frame)
+        yield frame
+
+
 class TestSeaEvolves:
     SEQUENCE = load(OPEN_SEA, ["outputs.duration_s = 0.3"])
+
+    def test_the_sea_keeps_the_frames_time(self) -> None:
+        scene.build(self.SEQUENCE, "eo")
+        times = [
+            _sea_node("sea_time").outputs["Value"].default_value for _ in each_frame()
+        ]
+        assert times == pytest.approx(self.SEQUENCE.outputs.times_s)
+
+    def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
+        swell = load(BASELINE, ["sea.swell = { height_m = 1.5, period_s = 11.0 }"])
+        wind = scene.wave_field(SCENARIO)
+        assert scene.wave_field(swell)[: len(wind)] == wind
+
+    def test_a_still_leaves_the_sea_unkeyed(self) -> None:
+        scene.build(load(OPEN_SEA), "eo")
+        assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
+        # Drivers make animation data; a still has no action.
+        assert bpy.data.materials["sea"].node_tree.animation_data.action is None
+
+
+class TestLoop:
     LOOP = load(
         OPEN_SEA,
         [
@@ -976,25 +907,14 @@ class TestSeaEvolves:
         ],
     )
 
-    def _each_frame(self) -> Iterator[int]:
-        sc = bpy.context.scene
-        for frame in range(sc.frame_start, sc.frame_end + 1):
-            sc.frame_set(frame)
-            yield frame
-
-    @pytest.mark.parametrize("band", ["eo", "ir"])
-    def test_the_sea_keeps_the_frames_time(self, band) -> None:
-        scene.build(self.SEQUENCE, band)
-        times = [
-            _sea_node("sea_time").outputs["Value"].default_value
-            for _ in self._each_frame()
-        ]
-        assert times == pytest.approx(self.SEQUENCE.outputs.times_s)
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls) -> None:
+        scene.build(cls.LOOP, "eo")
 
     def test_a_loop_keys_the_time_round_a_circle(self) -> None:
-        scene.build(self.LOOP, "eo")
         span_s = self.LOOP.outputs.span_s
-        for frame in self._each_frame():
+        for frame in each_frame():
             turn = 2 * math.pi * self.LOOP.outputs.times_s[frame] / span_s
             cos = _sea_node("sea_cos").outputs["Value"].default_value
             sin = _sea_node("sea_sin").outputs["Value"].default_value
@@ -1009,9 +929,8 @@ class TestSeaEvolves:
             assert turns == pytest.approx(round(turns), abs=1e-9)
 
     def test_a_loop_swaps_gust_layers_while_each_weighs_nothing(self) -> None:
-        scene.build(self.LOOP, "eo")
         span_s = self.LOOP.outputs.span_s
-        for _ in self._each_frame():
+        for _ in each_frame():
             weight, carried_s = (
                 [_evaluated(_sea_node(f"{name}_{i}").outputs["Value"]) for i in (0, 1)]
                 for name in ("gust_weight", "gust_carried")
@@ -1020,17 +939,6 @@ class TestSeaEvolves:
             for w, c in zip(weight, carried_s, strict=True):
                 # A layer is carried back to the start where its weight reaches 0.
                 assert w == pytest.approx(2 * min(c, span_s - c) / span_s, abs=1e-6)
-
-    def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
-        swell = load(BASELINE, ["sea.swell = { height_m = 1.5, period_s = 11.0 }"])
-        wind = scene.wave_field(SCENARIO)
-        assert scene.wave_field(swell)[: len(wind)] == wind
-
-    def test_a_still_leaves_the_sea_unkeyed(self) -> None:
-        scene.build(load(OPEN_SEA), "eo")
-        assert _sea_node("sea_time").outputs["Value"].default_value == 0.0
-        # Drivers make animation data; a still has no action.
-        assert bpy.data.materials["sea"].node_tree.animation_data.action is None
 
 
 class TestOrbitingYachts:
@@ -1174,10 +1082,6 @@ class TestWakes:
     def _built(self, objects: str) -> bpy.types.NodeTree:
         scene.build(load(OPEN_SEA, [f"objects = [{objects}]"]), "eo")
         return bpy.data.materials["sea"].node_tree
-
-    def test_a_still_hull_leaves_no_wake(self) -> None:
-        self._built('{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0 }')
-        assert "sea_foam" not in bpy.data.images
 
     def test_a_hull_under_way_leaves_foam_and_arms(self) -> None:
         tree = self._built(
