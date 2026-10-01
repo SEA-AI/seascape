@@ -77,8 +77,8 @@ def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
     return wind_waves(scenario) + swell_waves(scenario)
 
 
-# On the world itself: a depsgraph links a driver to an ID's property, not to a node
-# in another ID's tree.
+# On the world itself: a depsgraph links a driver to an ID's property, not to a node's
+# (https://projects.blender.org/blender/blender/issues/142601).
 SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
 
 

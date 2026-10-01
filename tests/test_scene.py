@@ -1237,10 +1237,14 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
 
 def test_the_glitter_and_haze_drivers_run_without_python() -> None:
     scene.build(load(OPEN_SEA), "eo")
-    driven = {
-        curve.driver.expression: curve.driver
-        for tree in (bpy.data.materials["sea"].node_tree, bpy.data.node_groups["haze"])
+    drivers = [
+        curve.driver
+        for tree in (
+            bpy.data.materials["sea"].node_tree,
+            bpy.data.node_groups["haze"],
+            bpy.data.worlds["sky"].node_tree,
+        )
         for curve in tree.animation_data.drivers
-    }
-    assert {"1 / samples", "sky"} <= set(driven)
-    assert all(d.is_valid and d.is_simple_expression for d in driven.values())
+    ]
+    assert {"1 / samples", "sky"} <= {d.expression for d in drivers}
+    assert all(d.is_valid and d.is_simple_expression for d in drivers)
