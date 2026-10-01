@@ -627,11 +627,13 @@ def _set_after(setting: str, built: bool) -> np.ndarray:
     scene.build(load(OPEN_SEA, sets), "eo")
     sc = bpy.context.scene
     if not built:
+        shoot((320, 180), f"before_{setting}")
         if setting == "samples":
             sc.cycles.samples = 64
         else:
-            sky = sc.world.node_tree.nodes["sky"]
-            sky.sun_elevation = math.radians(12.0)
+            sc.world["sun_elevation"] = math.radians(12.0)
+            # As the UI does; a Python assignment to an ID property tags nothing.
+            sc.world.update_tag()
     return shoot((320, 180), f"after_{setting}_{built}")
 
 

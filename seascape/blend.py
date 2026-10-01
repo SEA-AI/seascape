@@ -49,7 +49,7 @@ def drive(
     **paths: str,
 ) -> None:
     """A render re-evaluates it; the live depsgraph keeps it stale after a change to
-    `cycles.samples` or to a world's node.
+    `cycles.samples`.
 
     Variables and arithmetic only: Blender evaluates such a simple expression itself,
     so the driver runs in a `.blend` opened with Python scripts off.

@@ -77,6 +77,11 @@ def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
     return wind_waves(scenario) + swell_waves(scenario)
 
 
+# On the world itself: a depsgraph links a driver to an ID's property, not to a node
+# in another ID's tree.
+SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
+
+
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
     # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
@@ -85,8 +90,11 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     if band == "ir":
         return _thermal_sky(world, sky)
     node = _sky_texture(tree, sky)
-    # The haze's drivers read it by this name.
-    node.name = "sky"
+    for prop in SUN:
+        world[prop] = getattr(node, prop)
+        drive(node, prop, "sky", world, sky=f'["{prop}"]')
+    for prop in SUN[:2]:
+        world.id_properties_ui(prop).update(subtype="ANGLE")
     tree.links.new(node.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     return world
 
@@ -182,9 +190,8 @@ def _sky_ahead(
         node = _sky_texture(tree, sky)
         node.name = "haze_sky"
         world = bpy.context.scene.world
-        for prop in ("sun_elevation", "sun_rotation", "aerosol_density"):
-            path = f'node_tree.nodes["sky"].{prop}'
-            drive(node, prop, "sky", world, sky=path)
+        for prop in SUN:
+            drive(node, prop, "sky", world, sky=f'["{prop}"]')
         # The sun disc disables the Vector input, and a link to it is then ignored.
         node.sun_disc = False
         tree.links.new(direction, node.inputs["Vector"])

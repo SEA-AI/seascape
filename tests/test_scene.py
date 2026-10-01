@@ -588,7 +588,7 @@ class TestEoBand:
         assert len(cosines) == len(wind)
 
     def test_the_sky_is_lit(self) -> None:
-        assert bpy.data.worlds["sky"].node_tree.nodes["sky"]
+        assert bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
@@ -599,7 +599,7 @@ class TestEoBand:
         assert twinkle.inputs[1].default_value == pytest.approx(waves.twinkle_hz(wind))
 
     def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
-        sky = bpy.data.worlds["sky"].node_tree.nodes["sky"]
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
 
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
@@ -609,7 +609,7 @@ class TestEoBand:
         assert beta.inputs[1].default_value == pytest.approx(
             SCENARIO.sky.extinction_per_m
         )
-        sky = bpy.data.worlds["sky"].node_tree.nodes["sky"]
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         airlight = nodes["haze_sky"]
         for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
             assert getattr(airlight, name) == getattr(sky, name)
