@@ -3,6 +3,7 @@
 import json
 import math
 import tomllib
+import warnings
 from pathlib import Path
 from typing import get_args
 
@@ -489,3 +490,15 @@ def test_the_sky_texture_needs_a_sun() -> None:
 def test_an_hdri_that_is_no_name_is_a_validation_error() -> None:
     with pytest.raises(ValidationError, match="hdri"):
         Sky.model_validate({"hdri": []})
+
+
+def test_an_hdri_warns_that_it_ignores_the_sky_texture_s_haze() -> None:
+    with pytest.warns(UserWarning, match="aerosol_density is ignored"):
+        Sky.model_validate({"hdri": "overcast_soil", "aerosol_density": 5.0})
+
+
+def test_a_dumped_hdri_sky_validates_again_without_a_warning() -> None:
+    sky = Sky.model_validate({"hdri": "kloofendal_48d_partly_cloudy"})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert Sky.model_validate(sky.model_dump()) == sky

@@ -222,8 +222,8 @@ class Sky(Model):
         default=30.0,
         ge=-90.0,
         le=90.0,
-        description="Above the horizon; negative is below it. With `hdri`, the "
-        "photo's; None where its sun shows no disc.",
+        description="Above the horizon; negative is below it. With `hdri`, set from "
+        "the photo, and None where its sun shows no disc.",
     )
     sun_bearing_deg: float = Field(
         default=0.0, description="Clockwise from the ownship's bow."
@@ -271,8 +271,8 @@ class Sky(Model):
     hdri: str | None = Field(
         default=None,
         description="A photographed sky from seascape/skies.toml, in place of the Sky "
-        "Texture. LWIR keeps its own sky but takes the photo's sun, turned to "
-        "`sun_bearing_deg`.",
+        "Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR "
+        "keeps its own sky but takes the photo's sun, turned to `sun_bearing_deg`.",
     )
 
     @model_validator(mode="before")
@@ -284,13 +284,16 @@ class Sky(Model):
         photos = skies.library()
         if data["hdri"] not in photos:
             raise ValueError(f"no sky {data['hdri']!r} in {sorted(photos)}")
-        # Warned, not refused: `extends` and `--set` cannot remove a key.
-        for ignored in ("sun_elevation_deg", "aerosol_density"):
-            if ignored in data:
-                warnings.warn(
-                    f"the hdri sets the sky; {ignored} is ignored", stacklevel=2
-                )
         elevation = photos[data["hdri"]].sun_elevation_deg
+        # Warned, not refused: `extends` and `--set` cannot remove a key. A dumped
+        # scenario holds the photo's own values and is not warned about.
+        unread = {
+            "sun_elevation_deg": elevation,
+            "aerosol_density": cls.model_fields["aerosol_density"].default,
+        }
+        for key, value in unread.items():
+            if key in data and data[key] != value:
+                warnings.warn(f"the hdri sets the sky; {key} is ignored", stacklevel=2)
         data = {**data, "sun_elevation_deg": elevation}
         if elevation is None:
             # No disc, no direct beam: nothing warms a sunlit side over a shaded one.
@@ -300,7 +303,9 @@ class Sky(Model):
     @model_validator(mode="after")
     def _a_sky_texture_has_a_sun(self) -> "Sky":
         if self.hdri is None and self.sun_elevation_deg is None:
-            raise ValueError("sun_elevation_deg is None only for an hdri without a sun")
+            raise ValueError(
+                "sun_elevation_deg is None only for an hdri without a disc"
+            )
         return self
 
     @model_validator(mode="before")

@@ -1,4 +1,4 @@
-"""The README's sky library: each photo's upper half, with its measured sun circled.
+"""The README's sky library: each photo down to `LOWEST_DEG`, its measured sun circled.
 
 uv run python docs/skies.py docs/skies.jpg
 """
@@ -40,7 +40,12 @@ def main(out: Path) -> None:
     draw = ImageDraw.Draw(sheet)
     font = ImageFont.load_default(size=14)
     # Highest sun first, then the skies whose sun shows no disc.
-    order = sorted(photos.items(), key=lambda p: -(p[1].sun_elevation_deg or -90))
+    order = sorted(
+        photos.items(),
+        key=lambda p: (
+            90.0 if p[1].sun_elevation_deg is None else -p[1].sun_elevation_deg
+        ),
+    )
     for k, (name, photo) in enumerate(order):
         x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * (TILE[1] + LABEL_PX)
         sheet.paste(tile(name, photo), (x, y + LABEL_PX))

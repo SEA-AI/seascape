@@ -2,10 +2,9 @@
 
 Sources
 -------
-Poly Haven's pure skies, CC0 (https://polyhaven.com/license). Its FAQ
-(https://docs.polyhaven.com/en/faq): "All our HDRIs are unclipped", so a sun keeps its
-radiance. Hold-Geoffroy, Sunkavalli,
-Hadap, Gambaretto & Lalonde, "Deep outdoor illumination estimation", CVPR 2017
+Poly Haven's pure skies. Its FAQ (https://docs.polyhaven.com/en/faq): "All our HDRIs
+are unclipped", so a sun keeps its radiance. Hold-Geoffroy, Sunkavalli, Hadap,
+Gambaretto & Lalonde, "Deep outdoor illumination estimation", CVPR 2017
 (arXiv:1611.06403): an HDR panorama's sun is its brightest region. The Astronomical
 Almanac: the sun's mean semi-diameter is 16 arcminutes, so a uniform disc has an RMS
 radius of 0.19 degrees.
@@ -23,11 +22,13 @@ from pydantic import BaseModel, ConfigDict, Field
 LIBRARY = Path(__file__).parent / "skies.toml"
 # ITU-R BT.709.
 LUMINANCE = np.array([0.2126, 0.7152, 0.0722], np.float32)
-# A judgement: an unclipped sun outshines the ring round it by thousands, a sun behind
-# cloud or below the horizon by less than ten.
+# Judgements: the ring round the peak, and how much brighter than it the peak must be,
+# between an unclipped sun's contrast and that of a sun behind cloud or below the
+# horizon.
 DISC_CONTRAST = 100.0
 RING_DEG = (2.0, 5.0)
-# Judgements: the disc is what lies within a degree of the peak at a tenth of it.
+# Judgements: how far from the peak the disc reaches, and its floor as a fraction of
+# the peak.
 DISC_DEG = 1.0
 DISC_FLOOR = 0.1
 # A judgement round the disc's RMS radius: a star is one pixel, a glow degrees wide.

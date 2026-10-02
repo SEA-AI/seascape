@@ -568,7 +568,7 @@
             }
           ],
           "default": 30.0,
-          "description": "Above the horizon; negative is below it. With `hdri`, the photo's; None where its sun shows no disc.",
+          "description": "Above the horizon; negative is below it. With `hdri`, set from the photo, and None where its sun shows no disc.",
           "title": "Sun Elevation Deg"
         },
         "sun_bearing_deg": {
@@ -629,7 +629,7 @@
             }
           ],
           "default": null,
-          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture. LWIR keeps its own sky but takes the photo's sun, turned to `sun_bearing_deg`.",
+          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR keeps its own sky but takes the photo's sun, turned to `sun_bearing_deg`.",
           "title": "Hdri"
         }
       },
