@@ -161,6 +161,9 @@ class TestEachBand:
     def test_both_bands_render_in_cycles(self, sc: bpy.types.Scene) -> None:
         assert sc.render.engine == "CYCLES"
 
+    def test_eevee_does_not_cap_reflections(self, sc: bpy.types.Scene) -> None:
+        assert (sc.world.sun_threshold, sc.eevee.clamp_surface_indirect) == (0.0, 0.0)
+
     def test_the_active_camera_belongs_to_the_band_built(
         self, sc: bpy.types.Scene, band: Band
     ) -> None:

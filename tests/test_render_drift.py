@@ -455,43 +455,6 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
     assert means[0] == pytest.approx(means[1], abs=0.01)
 
 
-def through_the_camera(
-    left: float,
-    right: float,
-    sun: float = 0.0,
-    sun_radius_deg: float = 1.8,
-    size: tuple[int, int] = (96, 54),
-) -> np.ndarray:
-    """A camera looking straight up at a sky of `left` and `right` halves, with a disc
-    of `sun` overhead; what the camera makes of it, before the display. Needs an
-    8-bit EO build in place."""
-    sc = bpy.context.scene
-    tree = sc.world.node_tree
-    generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
-    direction = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(generated, direction.inputs[0])
-    east = sea._math(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
-    halves = sea._math(tree, "MULTIPLY_ADD", east, right - left, left)
-    overhead = sea._math(
-        tree,
-        "GREATER_THAN",
-        direction.outputs["Z"],
-        math.cos(math.radians(sun_radius_deg)),
-    )
-    sky = sea._math(tree, "MULTIPLY_ADD", overhead, sun, halves)
-    background = tree.nodes["Background"]
-    tree.links.new(sky, background.inputs["Color"])
-    background.inputs["Strength"].default_value = 1.0
-    camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
-    sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_euler = (math.pi, 0.0, 0.0)  # straight up; +X is the frame's right
-    sc.camera = camera
-    sc.cycles.samples = 16
-    # The build put the camera in the compositor; an exr takes its output undisplayed.
-    return shoot(size, "camera")
-
-
 def srgb_counts(linear: np.ndarray) -> np.ndarray:
     """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
     x = np.clip(linear, 0.0, 1.0)
@@ -506,15 +469,53 @@ class TestCamera:
         png = SCENARIO.outputs.model_copy(update={"format": "png"})
         scene.build(SCENARIO.model_copy(update={"outputs": png}), "eo")
 
+    def through_the_camera(
+        self,
+        left: float,
+        right: float,
+        sun: float = 0.0,
+        sun_radius_deg: float = 1.8,
+        size: tuple[int, int] = (96, 54),
+    ) -> np.ndarray:
+        """A camera looking straight up at a sky of `left` and `right` halves, with a
+        disc of `sun` overhead; what the camera makes of it, before the display."""
+        sc = bpy.context.scene
+        tree = sc.world.node_tree
+        generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
+        direction = tree.nodes.new("ShaderNodeSeparateXYZ")
+        tree.links.new(generated, direction.inputs[0])
+        east = sea._math(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
+        halves = sea._math(tree, "MULTIPLY_ADD", east, right - left, left)
+        overhead = sea._math(
+            tree,
+            "GREATER_THAN",
+            direction.outputs["Z"],
+            math.cos(math.radians(sun_radius_deg)),
+        )
+        sky = sea._math(tree, "MULTIPLY_ADD", overhead, sun, halves)
+        background = tree.nodes["Background"]
+        tree.links.new(sky, background.inputs["Color"])
+        background.inputs["Strength"].default_value = 1.0
+        camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
+        sc.collection.objects.link(camera)
+        camera.location = (0.0, 0.0, 10.0)
+        # Straight up; +X is the frame's right.
+        camera.rotation_euler = (math.pi, 0.0, 0.0)
+        sc.camera = camera
+        sc.cycles.samples = 16
+        # The build put the camera in the compositor; an exr takes its output
+        # undisplayed.
+        return shoot(size, "camera")
+
     def test_auto_exposure_takes_a_brighter_sky_to_the_same_picture(self) -> None:
-        assert through_the_camera(4.0, 4.0) == pytest.approx(
-            through_the_camera(1.0, 1.0), rel=1e-3
+        assert self.through_the_camera(4.0, 4.0) == pytest.approx(
+            self.through_the_camera(1.0, 1.0), rel=1e-3
         )
 
     def test_auto_exposure_meters_the_log_average(self) -> None:
         """Halves of 1 and 4 average 2 in log and 2.5 in linear, so a linear meter reads
         each half 20% darker."""
-        frame = through_the_camera(1.0, 4.0)
+        frame = self.through_the_camera(1.0, 4.0)
         width = frame.shape[1]
         left, right = (
             np.median(frame[:, : width // 4]),
@@ -527,8 +528,8 @@ class TestCamera:
     def test_the_camera_takes_the_same_picture_at_any_resolution(self) -> None:
         """The frame at twice the width, averaged back down, within a few counts almost
         everywhere. Below a few hundred pixels the glare's core falls inside one."""
-        small = through_the_camera(1.0, 1.0, sun=1e4, size=(384, 216))
-        large = through_the_camera(1.0, 1.0, sun=1e4, size=(768, 432))
+        small = self.through_the_camera(1.0, 1.0, sun=1e4, size=(384, 216))
+        large = self.through_the_camera(1.0, 1.0, sun=1e4, size=(768, 432))
         shrunk = large.reshape(216, 2, 384, 2).mean(axis=(1, 3))
         off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
         assert np.percentile(off, 99) <= 4
@@ -537,7 +538,7 @@ class TestCamera:
         """A sun of about a pixel on black sky: the light beyond a few pixels of it is
         the glare's share of the kernel's weight there."""
         width, height, beyond_px = 384, 216, 6
-        frame = through_the_camera(
+        frame = self.through_the_camera(
             0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
         )
         x = ((np.arange(width) + 0.5) / width * 2 - 1)[None, :]

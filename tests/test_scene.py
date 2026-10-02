@@ -227,6 +227,27 @@ class TestGeometry:
                 fade.inputs["From Max"].default_value,
             ) == pytest.approx((gone**2, whole**2), rel=1e-6)
 
+    def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        field = scene.wave_field(SCENARIO)
+        assert len(field) == waves.COMPONENTS
+        for i, wave in enumerate(field):
+            k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
+            carried = (
+                tuple(nodes[f"wave_{i}"].inputs["Vector_001"].default_value),
+                nodes[f"wave_{i}_phase"].inputs["Value_001"].default_value,
+                tuple(nodes[f"wave_{i}_slope"].inputs["Vector"].default_value),
+            )
+            assert carried == (
+                pytest.approx((k_east, k_north, -wave.omega_rad_s), rel=1e-6),
+                pytest.approx(wave.phase_rad, rel=1e-6),
+                pytest.approx(
+                    (wave.amplitude_m * k_east, wave.amplitude_m * k_north, 0.0),
+                    rel=1e-6,
+                    abs=1e-9,
+                ),
+            )
+
     def test_the_sea_reaches_past_its_own_horizon(self) -> None:
         """The grid must contain the tangent point, or its edge becomes the horizon."""
         corners = [
@@ -387,8 +408,9 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path) -> None:
 def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre(
     tmp_path,
 ) -> None:
-    """The pod is yawed off the bow, so the rig's pitch sits between two yaws. The
-    centre camera holds to microdegrees, not zero: matrix_world is float32."""
+    """The pod is yawed off the bow, so the rig's pitch sits between two yaws and
+    moves the off-axis lens off both its bearing and its own pitch. The centre camera
+    holds to microdegrees, not zero: matrix_world is float32."""
     path = tmp_path / "pitched.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
@@ -396,16 +418,19 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre(
         '[[rig.pods]]\nname = "port"\nyaw_deg = -60.0\n\n'
         '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = 0.0\n\n'
         '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = 40.0\n'
+        "pitch_deg = -10.0\n"
     )
     scenario = load(path)
     scene.build(scenario, "eo")
     centre, off_axis = (
-        (scene.boresight_deg(bpy.data.objects[m.name])[0], m.nominal_bearing_deg)
+        (scene.boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
         for m in scenario.rig.mounts
     )
 
-    assert centre[0] == pytest.approx(centre[1], abs=1e-4)
-    assert abs(off_axis[0] - off_axis[1]) > 0.1
+    assert centre[0][0] == pytest.approx(centre[1], abs=1e-4)
+    (bearing, elevation), nominal = off_axis
+    assert abs(bearing - nominal) > 0.1
+    assert abs(elevation - (-10.0)) > 0.1
 
 
 def test_an_ownship_with_no_hull_still_carries_the_rig(tmp_path) -> None:
@@ -445,6 +470,10 @@ class TestEoBand:
     @classmethod
     def built(cls) -> None:
         scene.build(SCENARIO, "eo")
+
+    def test_the_sea_refracts_at_seawater_ior(self) -> None:
+        bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
+        assert bsdf.inputs["IOR"].default_value == pytest.approx(sea.SEAWATER_IOR)
 
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -528,6 +557,31 @@ class TestEoBand:
     def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
+
+    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
+        nodes = bpy.data.node_groups["haze"].nodes
+        beta = nodes["haze_beta"]
+        assert beta.inputs[0].links[0].from_socket.name == "Ray Length"
+        assert beta.inputs[1].default_value == pytest.approx(
+            SCENARIO.sky.extinction_per_m
+        )
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        airlight = nodes["haze_sky"]
+        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
+            assert getattr(airlight, name) == getattr(sky, name)
+
+    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
+        """Incoming points back at the camera; unflipped, the haze would take the sky
+        behind it."""
+        nodes = bpy.data.node_groups["haze"].nodes
+        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
+        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
+        assert ahead.inputs["Scale"].default_value == -1.0
+        assert horizon.inputs[0].links[0].from_node == ahead
+        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
+        (into_sky,) = horizon.outputs["Vector"].links
+        assert into_sky.to_node.name == "haze_sky"
+        assert into_sky.is_valid
 
     def test_every_surface_mixes_towards_the_airlight(self) -> None:
         mix = bpy.data.node_groups["haze"].nodes["haze_mix"]
