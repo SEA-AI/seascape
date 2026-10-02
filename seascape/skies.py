@@ -46,8 +46,8 @@ class Photo(BaseModel):
 
     url: str
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    sun_bearing_deg: float
-    sun_elevation_deg: float | None = None
+    sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
+    sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 

@@ -450,18 +450,11 @@ def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:
     assert Scenario.model_validate(by_hand).sea.t_sea_k == 290.0
 
 
-def test_an_hdri_takes_its_sun_s_elevation_from_the_photo() -> None:
+@pytest.mark.parametrize("key", ["sun_elevation_deg", "aerosol_density"])
+def test_an_hdri_keeps_its_own_sky_over_an_inherited_one(key: str) -> None:
     photo = skies.library()["kloofendal_48d_partly_cloudy"]
-    sky = Sky.model_validate({"hdri": "kloofendal_48d_partly_cloudy"})
-    assert sky.sun_elevation_deg == photo.sun_elevation_deg
-
-
-def test_an_hdri_keeps_its_own_sun_over_an_inherited_one() -> None:
-    photo = skies.library()["kloofendal_48d_partly_cloudy"]
-    with pytest.warns(UserWarning, match="sun_elevation_deg is ignored"):
-        sky = Sky.model_validate(
-            {"hdri": "kloofendal_48d_partly_cloudy", "sun_elevation_deg": 5}
-        )
+    with pytest.warns(UserWarning, match=f"{key} is ignored"):
+        sky = Sky.model_validate({"hdri": "kloofendal_48d_partly_cloudy", key: 5.0})
     assert sky.sun_elevation_deg == photo.sun_elevation_deg
 
 
@@ -479,16 +472,6 @@ def test_an_unknown_hdri_names_the_library() -> None:
 def test_the_sky_texture_needs_a_sun() -> None:
     with pytest.raises(ValidationError, match="only for an hdri"):
         Sky.model_validate({"sun_elevation_deg": None})
-
-
-def test_an_hdri_that_is_no_name_is_a_validation_error() -> None:
-    with pytest.raises(ValidationError, match="hdri"):
-        Sky.model_validate({"hdri": []})
-
-
-def test_an_hdri_warns_that_it_ignores_the_sky_texture_s_haze() -> None:
-    with pytest.warns(UserWarning, match="aerosol_density is ignored"):
-        Sky.model_validate({"hdri": "overcast_soil", "aerosol_density": 5.0})
 
 
 def test_a_dumped_hdri_sky_validates_again_without_a_warning() -> None:

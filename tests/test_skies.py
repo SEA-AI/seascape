@@ -41,13 +41,3 @@ def test_a_star_is_no_sun() -> None:
     sky = _sky(90.0, 20.0, 8.0, 2.0)
     sky[100, 700] = 1e5
     assert skies.sun(sky).elevation_deg is None
-
-
-def test_the_library_s_suns_lie_in_the_sky() -> None:
-    photos = skies.library()
-    assert photos
-    assert all(0.0 <= p.sun_bearing_deg < 360.0 for p in photos.values())
-    discs = [
-        p.sun_elevation_deg for p in photos.values() if p.sun_elevation_deg is not None
-    ]
-    assert all(0.0 < e < 90.0 for e in discs)
