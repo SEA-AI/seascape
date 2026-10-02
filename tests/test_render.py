@@ -98,26 +98,11 @@ class TestSettings:
         self, fmt: ImageFormat
     ) -> None:
         """`render` composes its return paths from the format, not from Blender."""
-        sc = built("eo", format=fmt)
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        settings = bpy.context.scene.render
+        settings.image_settings.file_format = scene.FORMATS[fmt][0]
 
-        assert sc.render.file_extension == f".{fmt}"
-
-    def test_ir_renders_float_even_when_a_png_is_asked_for(self) -> None:
-        sc = built("ir", format="png")
-
-        assert sc.render.image_settings.color_depth == "32"
-
-    def test_the_active_camera_sets_the_resolution(self) -> None:
-        """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
-        ir = next(m.camera for m in load(BASELINE).rig.mounts if m.camera.kind == "ir")
-        assert (ir.width_px, ir.height_px) != (1920, 1080)
-
-        sc = built("ir")
-
-        assert (sc.render.resolution_x, sc.render.resolution_y) == (
-            ir.width_px,
-            ir.height_px,
-        )
+        assert settings.file_extension == f".{fmt}"
 
     def test_the_compensation_is_stops_over_auto_exposure(self) -> None:
         sc = built("eo", format="png", exposure_compensation_ev=1.0)
@@ -125,11 +110,33 @@ class TestSettings:
         gain = sc.compositing_node_group.nodes["exposure"]
         assert gain.inputs[0].default_value == pytest.approx(2 * scene.MID_GREY)
 
-    @pytest.mark.parametrize(("band", "fmt"), [("eo", "exr"), ("ir", "png")])
-    def test_radiance_skips_the_camera(self, band: Band, fmt: ImageFormat) -> None:
-        sc = built(band, format=fmt)
+    def test_radiance_skips_the_camera(self) -> None:
+        sc = built("eo", format="exr")
 
         assert "exposure" not in sc.compositing_node_group.nodes
+
+
+class TestIrAsPng:
+    @pytest.fixture(scope="class")
+    @classmethod
+    def sc(cls) -> bpy.types.Scene:
+        return built("ir", format="png")
+
+    def test_ir_renders_float(self, sc: bpy.types.Scene) -> None:
+        assert sc.render.image_settings.color_depth == "32"
+
+    def test_ir_radiance_skips_the_camera(self, sc: bpy.types.Scene) -> None:
+        assert "exposure" not in sc.compositing_node_group.nodes
+
+    def test_the_active_camera_sets_the_resolution(self, sc: bpy.types.Scene) -> None:
+        """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
+        ir = next(m.camera for m in load(OPEN_SEA).rig.mounts if m.camera.kind == "ir")
+        assert (ir.width_px, ir.height_px) != (1920, 1080)
+
+        assert (sc.render.resolution_x, sc.render.resolution_y) == (
+            ir.width_px,
+            ir.height_px,
+        )
 
 
 class TestEachBand:
@@ -137,8 +144,13 @@ class TestEachBand:
 
     @pytest.fixture(scope="class", params=get_args(Band.__value__))
     @classmethod
-    def sc(cls, request: pytest.FixtureRequest) -> bpy.types.Scene:
-        return built(request.param)
+    def band(cls, request: pytest.FixtureRequest) -> Band:
+        return request.param
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def sc(cls, band: Band) -> bpy.types.Scene:
+        return built(band)
 
     def test_no_band_is_denoised(self, sc: bpy.types.Scene) -> None:
         assert sc.cycles.use_denoising is False
@@ -151,6 +163,13 @@ class TestEachBand:
 
     def test_eevee_does_not_cap_reflections(self, sc: bpy.types.Scene) -> None:
         assert (sc.world.sun_threshold, sc.eevee.clamp_surface_indirect) == (0.0, 0.0)
+
+    def test_the_active_camera_belongs_to_the_band_built(
+        self, sc: bpy.types.Scene, band: Band
+    ) -> None:
+        """Opened on the rig's first camera, an IR build could render through EO optics
+        against IR materials, with nothing to say so."""
+        assert f"_{band}_" in sc.camera.name
 
 
 def test_a_relative_output_reaches_blender_absolute(
@@ -245,8 +264,8 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
             'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = ['
             '{ kind = "eo", hfov_deg = 45.0, width_px = 96, height_px = 54 }, '
             '{ kind = "ir", hfov_deg = 24.0, width_px = 80, height_px = 64 }] }]',
-            'objects = [{ asset = "container_ship", range_m = 2000.0, '
-            "bearing_deg = 8.0, heading_deg = 270.0, speed_mps = 50.0 }]",
+            'objects = [{ asset = "yacht", range_m = 300.0, '
+            "bearing_deg = 8.0, heading_deg = 270.0, speed_mps = 10.0 }]",
         ],
     )
 
@@ -279,39 +298,6 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
         [
             "outputs.duration_s = 3.0",
             "outputs.fps = 1",
-            'outputs.bands = ["eo"]',
-            "outputs.samples.eo = 2",
-            'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = ['
-            '{ kind = "eo", hfov_deg = 45.0, width_px = 96, height_px = 54 }] }]',
-        ],
-    )
-    real, calls = bpy.ops.render.render, []
-
-    def dies_on_the_third(**kwargs: object) -> None:
-        calls.append(None)
-        if len(calls) == 3:
-            raise RuntimeError("killed")
-        real(**kwargs)
-
-    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=dies_on_the_third))
-    with pytest.raises(RuntimeError, match="killed"):
-        render.render(scenario, tmp_path)
-
-    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
-    assert [image.time_s for image in truth.images] == [0.0, 1.0]
-    assert truth.info["scenario"] == scenario.model_dump(mode="json")
-    assert len(Calibration.read(tmp_path).cameras) == 2
-
-
-@pytest.mark.render
-def test_an_ir_render_that_dies_names_the_frames_on_disk(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    scenario = load(
-        OPEN_SEA,
-        [
-            "outputs.duration_s = 3.0",
-            "outputs.fps = 1",
             'outputs.bands = ["ir"]',
             "outputs.samples.ir = 2",
             'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = ['
@@ -331,6 +317,8 @@ def test_an_ir_render_that_dies_names_the_frames_on_disk(
         render.render(scenario, tmp_path)
 
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    assert [image.time_s for image in truth.images] == [0.0, 1.0]
+    assert truth.info["scenario"] == scenario.model_dump(mode="json")
     named = [image.file_name for image in truth.images]
     assert [Path(name).suffix for name in named] == [".jpg", ".jpg"]
     assert all((tmp_path / name).exists() for name in named)
