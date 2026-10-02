@@ -219,12 +219,11 @@ class TestGeometry:
     def test_each_wave_fades_as_the_core_s_visibility(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         for i, wave in enumerate(scene.wave_field(SCENARIO)):
-            fade = nodes[f"wave_{i}_fade"]
+            inputs = nodes[f"wave_{i}"].inputs
             gone, whole = waves.fade_footprints_m(2 * math.pi / wave.k_rad_m)
-            assert fade.interpolation_type == "SMOOTHSTEP"
             assert (
-                fade.inputs["From Min"].default_value,
-                fade.inputs["From Max"].default_value,
+                inputs["Gone Sq"].default_value,
+                inputs["Whole Sq"].default_value,
             ) == pytest.approx((gone**2, whole**2), rel=1e-6)
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
@@ -233,10 +232,11 @@ class TestGeometry:
         assert len(field) == waves.COMPONENTS
         for i, wave in enumerate(field):
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
+            inputs = nodes[f"wave_{i}"].inputs
             carried = (
-                tuple(nodes[f"wave_{i}"].inputs["Vector_001"].default_value),
-                nodes[f"wave_{i}_phase"].inputs["Value_001"].default_value,
-                tuple(nodes[f"wave_{i}_slope"].inputs["Vector"].default_value),
+                tuple(inputs["Wavenumber"].default_value),
+                inputs["Phase"].default_value,
+                tuple(inputs["Slope"].default_value),
             )
             assert carried == (
                 pytest.approx((k_east, k_north, -wave.omega_rad_s), rel=1e-6),
@@ -543,8 +543,6 @@ class TestEoBand:
         ]
         assert table == pytest.approx(expected, rel=1e-5)
         assert np.all(np.diff(table) < 0)
-        cosines = [n for n in tree.nodes if getattr(n, "operation", "") == "COSINE"]
-        assert len(cosines) == len(wind)
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
@@ -899,7 +897,9 @@ class TestSlicks:
         wind = scene.wind_waves(self.SLICKS)
         left = set(waves.slick_survivors(self.SLICKS.sea.wind_speed_mps, wind))
         nodes = bpy.data.materials["sea"].node_tree.nodes
-        calmed = {i for i, w in enumerate(wind) if f"wave_{i}_calm" in nodes}
+        calmed = {
+            i for i in range(len(wind)) if nodes[f"wave_{i}"].inputs["Calm"].is_linked
+        }
         assert calmed == {i for i, w in enumerate(wind) if w not in left}
 
     def test_under_a_slick_the_pixel_leaves_what_the_slick_does(self) -> None:
