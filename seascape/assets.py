@@ -1,4 +1,4 @@
-"""Asset manifest: where a mesh comes from, and the cache it lands in."""
+"""Asset manifest: where a mesh comes from, and the download cache."""
 
 import hashlib
 import os
@@ -45,11 +45,15 @@ def _verify(path: Path, sha256: str) -> None:
 
 
 def fetch(name: str) -> Path:
-    """The cached file for `name`, downloaded once. Verified on every call."""
     asset = manifest()[name]
-    path = CACHE / f"{name}{PurePosixPath(asset.url).suffix}"
+    return download(name, asset.url, asset.sha256)
+
+
+def download(name: str, url: str, sha256: str) -> Path:
+    """The cached file for `name`, downloaded once. Verified on every call."""
+    path = CACHE / f"{name}{PurePosixPath(url).suffix}"
     if path.exists():
-        _verify(path, asset.sha256)
+        _verify(path, sha256)
         return path
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,10 +63,10 @@ def fetch(name: str) -> Path:
     # The default socket timeout is None, so a server that stops sending hangs the
     # build forever.
     with (
-        urllib.request.urlopen(asset.url, timeout=30) as response,
+        urllib.request.urlopen(url, timeout=30) as response,
         part.open("wb") as out,
     ):
         shutil.copyfileobj(response, out)
-    _verify(part, asset.sha256)
+    _verify(part, sha256)
     part.replace(path)
     return path

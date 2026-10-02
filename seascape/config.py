@@ -24,7 +24,7 @@ from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from seascape import lwir, waves
+from seascape import lwir, skies, waves
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
@@ -210,18 +210,20 @@ class Sea(Model):
 
 
 class Sky(Model):
-    """Blender's Sky Texture in EO, and the downwelling radiance the sea reflects in IR.
+    """Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance
+    the sea reflects in IR.
 
     Haze is `aerosol_density` for the EO sky, the node's own, and `visibility_km` for
     the air between the camera and what it sees, in both bands. In LWIR, `atmosphere`
     adds its water vapour, shapes the sky, and gives `t_air_k` unless it is set.
     """
 
-    sun_elevation_deg: float = Field(
+    sun_elevation_deg: float | None = Field(
         default=30.0,
         ge=-90.0,
         le=90.0,
-        description="Above the horizon; negative is below it.",
+        description="Above the horizon; negative is below it. With `hdri`, the "
+        "photo's; None where its sun shows no disc.",
     )
     sun_bearing_deg: float = Field(
         default=0.0, description="Clockwise from the ownship's bow."
@@ -265,6 +267,40 @@ class Sky(Model):
         le=320.0,
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
+
+    hdri: str | None = Field(
+        default=None,
+        description="A photographed sky from seascape/skies.toml, in place of the Sky "
+        "Texture. LWIR keeps its own sky but takes the photo's sun, turned to "
+        "`sun_bearing_deg`.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sun_follows_the_photo(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or data.get("hdri") is None:
+            return data
+        photos = skies.library()
+        if data["hdri"] not in photos:
+            raise ValueError(f"no sky {data['hdri']!r} in {sorted(photos)}")
+        # Warned, not refused: `extends` and `--set` cannot remove a key.
+        for ignored in ("sun_elevation_deg", "aerosol_density"):
+            if ignored in data:
+                warnings.warn(
+                    f"the hdri sets the sky; {ignored} is ignored", stacklevel=2
+                )
+        elevation = photos[data["hdri"]].sun_elevation_deg
+        data = {**data, "sun_elevation_deg": elevation}
+        if elevation is None:
+            # No disc, no direct beam: nothing warms a sunlit side over a shaded one.
+            data.setdefault("solar_gain_k", 0.0)
+        return data
+
+    @model_validator(mode="after")
+    def _a_sky_texture_has_a_sun(self) -> "Sky":
+        if self.hdri is None and self.sun_elevation_deg is None:
+            raise ValueError("sun_elevation_deg is None only for an hdri without a sun")
+        return self
 
     @model_validator(mode="before")
     @classmethod

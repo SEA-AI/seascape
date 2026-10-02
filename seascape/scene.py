@@ -10,8 +10,8 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import lwir, sea, wakes, waves
-from seascape.assets import Asset, fetch, manifest
+from seascape import lwir, sea, skies, wakes, waves
+from seascape.assets import Asset, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
     animate,
@@ -89,6 +89,13 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     tree = world.node_tree
     if band == "ir":
         return _thermal_sky(world, sky)
+    if sky.hdri is not None:
+        direction = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
+        tree.links.new(
+            _photo(tree, sky.hdri, sky.sun_bearing_deg, direction),
+            tree.nodes["Background"].inputs["Color"],
+        )
+        return world
     node = _sky_texture(tree, sky)
     for prop in SUN:
         world[prop] = getattr(node, prop)
@@ -99,7 +106,34 @@ def _sky(sky: Sky, band: Band) -> bpy.types.World:
     return world
 
 
+def _photo(
+    tree: bpy.types.NodeTree,
+    name: str,
+    sun_bearing_deg: float,
+    direction: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """The photographed sky `name` in `direction`, turned so its sun sits at
+    `sun_bearing_deg`."""
+    photo = skies.library()[name]
+    image = bpy.data.images.load(
+        str(download(name, photo.url, photo.sha256)), check_existing=True
+    )
+    turn = tree.nodes.new("ShaderNodeMapping")
+    # Turning the lookup by d carries the image's sun clockwise by d: no negation.
+    turn.inputs["Rotation"].default_value = (
+        0.0,
+        0.0,
+        math.radians(sun_bearing_deg - photo.sun_bearing_deg),
+    )
+    tree.links.new(direction, turn.inputs["Vector"])
+    node = tree.nodes.new("ShaderNodeTexEnvironment")
+    node.image = image
+    tree.links.new(turn.outputs["Vector"], node.inputs["Vector"])
+    return node.outputs["Color"]
+
+
 def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
+    assert sky.sun_elevation_deg is not None
     node = tree.nodes.new("ShaderNodeTexSky")
     # `turbidity` belongs to Preetham and Hosek-Wilkie and is silently ignored here.
     node.sky_type = "MULTIPLE_SCATTERING"
@@ -186,6 +220,8 @@ def _sky_ahead(
     tree: bpy.types.NodeTree, sky: Sky, band: Band, direction: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """The band's sky in `direction`."""
+    if band == "eo" and sky.hdri is not None:
+        return _photo(tree, sky.hdri, sky.sun_bearing_deg, direction)
     if band == "eo":
         node = _sky_texture(tree, sky)
         node.name = "haze_sky"
@@ -285,6 +321,7 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
 def _sun_vector(sky: Sky) -> tuple[float, float, float]:
     """Unit vector towards the sun. A direction, so the bearing is not negated: that
     belongs to rotations, and `_pose` places by the same sin/cos."""
+    assert sky.sun_elevation_deg is not None
     elevation = math.radians(sky.sun_elevation_deg)
     bearing = math.radians(sky.sun_bearing_deg)
     return (
@@ -329,6 +366,8 @@ def _sunlit_emission(
     """
     shaded = tree.nodes.new("ShaderNodeEmission")
     shaded.inputs["Strength"].default_value = lwir.band_radiance(t_k)
+    if sky.sun_elevation_deg is None:
+        return shaded.outputs["Emission"]
     sunlit = tree.nodes.new("ShaderNodeEmission")
     sunlit.inputs["Strength"].default_value = lwir.band_radiance(t_k + sky.solar_gain_k)
 

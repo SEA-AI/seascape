@@ -9,7 +9,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from seascape import lwir
+from seascape import lwir, skies
 from seascape.config import (
     CFG_DIR,
     Band,
@@ -453,3 +453,34 @@ def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:
     )
     by_hand = {**tropical, "sea": {**sea, "t_sea_k": 290.0}}
     assert Scenario.model_validate(by_hand).sea.t_sea_k == 290.0
+
+
+def test_an_hdri_takes_its_sun_s_elevation_from_the_photo() -> None:
+    photo = skies.library()["kloofendal_48d_partly_cloudy"]
+    sky = Sky.model_validate({"hdri": "kloofendal_48d_partly_cloudy"})
+    assert sky.sun_elevation_deg == photo.sun_elevation_deg
+
+
+def test_an_hdri_keeps_its_own_sun_over_an_inherited_one() -> None:
+    photo = skies.library()["kloofendal_48d_partly_cloudy"]
+    with pytest.warns(UserWarning, match="sun_elevation_deg is ignored"):
+        sky = Sky.model_validate(
+            {"hdri": "kloofendal_48d_partly_cloudy", "sun_elevation_deg": 5}
+        )
+    assert sky.sun_elevation_deg == photo.sun_elevation_deg
+
+
+def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
+    sky = Sky.model_validate({"hdri": "overcast_soil"})
+    assert sky.sun_elevation_deg is None
+    assert sky.solar_gain_k == 0.0
+
+
+def test_an_unknown_hdri_names_the_library() -> None:
+    with pytest.raises(ValidationError, match="overcast_soil"):
+        Sky.model_validate({"hdri": "no_such_sky"})
+
+
+def test_the_sky_texture_needs_a_sun() -> None:
+    with pytest.raises(ValidationError, match="only for an hdri"):
+        Sky.model_validate({"sun_elevation_deg": None})

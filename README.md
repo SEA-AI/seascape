@@ -76,6 +76,20 @@ pitch_deg = -5.0
 
 Scenarios carry a `#:schema` line, so editors with a TOML language server give you key completion, inline validation and hover docs. `seascape schema > schema/scenario.json` regenerates it from the models.
 
+### Skies
+
+By default the sky is Blender's Sky Texture: clear, with the sun anywhere, twilight included. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/skies.toml`](seascape/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, so a scenario with `hdri` leaves `sun_elevation_deg` out. LWIR keeps its own sky but takes the photo's sun. A photo's radiance is its own exposure, not the Sky Texture's physical scale, so an exr build compares only with builds of the same sky.
+
+```bash
+uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain_1"' --set 'sky.sun_bearing_deg = 20'
+```
+
+<p align="center">
+  <img src="docs/skies.jpg" alt="Every photographed sky, highest sun first, with its measured sun circled">
+  <br>
+  <sub>The library, highest sun first, each sun circled where <code>seascape.skies</code> measures it (<a href="docs/skies.py"><code>docs/skies.py</code></a>).</sub>
+</p>
+
 ## Sequences
 
 `outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, and the gusts that roughen them, run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:
@@ -175,6 +189,6 @@ The render checks are the only thing that catches a sea or sky shader rendering 
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Bundled 3D assets carry their own licences, recorded in `seascape/assets.toml`; some require attribution, which travels with any released dataset.
+MIT, see [LICENSE](LICENSE). Bundled 3D assets carry their own licences, recorded in `seascape/assets.toml`; some require attribution, which travels with any released dataset. The photographed skies carry theirs in `seascape/skies.toml`.
 
 `seascape/data/water_nk.csv` is CC BY 4.0, from [Nalli et al. 2022](https://doi.org/10.6084/m9.figshare.19341533); the citation travels in the file's own header.
