@@ -278,7 +278,8 @@ class Sky(Model):
     @model_validator(mode="before")
     @classmethod
     def _sun_follows_the_photo(cls, data: Any) -> Any:
-        if not isinstance(data, dict) or data.get("hdri") is None:
+        # Anything but a name is left for the field's own validation to refuse.
+        if not isinstance(data, dict) or not isinstance(data.get("hdri"), str):
             return data
         photos = skies.library()
         if data["hdri"] not in photos:

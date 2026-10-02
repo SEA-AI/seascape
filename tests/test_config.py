@@ -484,3 +484,8 @@ def test_an_unknown_hdri_names_the_library() -> None:
 def test_the_sky_texture_needs_a_sun() -> None:
     with pytest.raises(ValidationError, match="only for an hdri"):
         Sky.model_validate({"sun_elevation_deg": None})
+
+
+def test_an_hdri_that_is_no_name_is_a_validation_error() -> None:
+    with pytest.raises(ValidationError, match="hdri"):
+        Sky.model_validate({"hdri": []})
