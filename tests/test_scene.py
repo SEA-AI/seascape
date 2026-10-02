@@ -232,10 +232,11 @@ class TestGeometry:
         assert len(field) == waves.COMPONENTS
         for i, wave in enumerate(field):
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
+            inputs = nodes[f"wave_{i}"].inputs
             carried = (
-                tuple(nodes[f"wave_{i}"].inputs["Vector_001"].default_value),
-                nodes[f"wave_{i}_phase"].inputs["Value_001"].default_value,
-                tuple(nodes[f"wave_{i}_slope"].inputs["Vector"].default_value),
+                tuple(inputs["Wavenumber"].default_value),
+                inputs["Phase"].default_value,
+                tuple(inputs["Slope"].default_value),
             )
             assert carried == (
                 pytest.approx((k_east, k_north, -wave.omega_rad_s), rel=1e-6),

@@ -270,51 +270,56 @@ def _wave_group() -> bpy.types.NodeTree:
         ("Slope", "Vector"),
         ("Lift", "Float"),
     )
-    for name, kind in inputs:
-        socket = group.interface.new_socket(
+    sockets = {
+        name: group.interface.new_socket(
             name, in_out="INPUT", socket_type=f"NodeSocket{kind}"
         )
-        if name == "Calm":
-            socket.default_value = 1.0
+        for name, kind in inputs
+    }
+    sockets["Calm"].default_value = 1.0
     for name, kind in (("Gradient", "Vector"), ("Acceleration", "Float")):
         group.interface.new_socket(
             name, in_out="OUTPUT", socket_type=f"NodeSocket{kind}"
         )
-    x = group.nodes.new("NodeGroupInput").outputs
+    given = group.nodes.new("NodeGroupInput").outputs
     out = group.nodes.new("NodeGroupOutput").inputs
     link = group.links.new
     phase = _math(
         group,
         "ADD",
-        _vector(group, "DOT_PRODUCT", x["Position"], x["Wavenumber"]),
-        x["Phase"],
+        _vector(group, "DOT_PRODUCT", given["Position"], given["Wavenumber"]),
+        given["Phase"],
     )
-    heading = _vector(group, "DOT_PRODUCT", x["Along"], x["Toward"])
+    heading = _vector(group, "DOT_PRODUCT", given["Along"], given["Toward"])
     footprint_sq = _math(
         group,
         "MULTIPLY_ADD",
         _math(group, "MULTIPLY", heading, heading),
-        x["Stretch"],
-        x["Across Sq"],
+        given["Stretch"],
+        given["Across Sq"],
     )
 
     def shown(trig: str) -> bpy.types.NodeSocket:
         # From Min above From Max: a wider footprint fades the wave out.
         fade = group.nodes.new("ShaderNodeMapRange")
         fade.interpolation_type = "SMOOTHSTEP"
-        link(x["Gone Sq"], fade.inputs["From Min"])
-        link(x["Whole Sq"], fade.inputs["From Max"])
+        link(given["Gone Sq"], fade.inputs["From Min"])
+        link(given["Whole Sq"], fade.inputs["From Max"])
         link(footprint_sq, fade.inputs["Value"])
         link(_math(group, trig, phase), fade.inputs["To Max"])
-        return _math(group, "MULTIPLY", fade.outputs["Result"], x["Calm"])
+        return _math(group, "MULTIPLY", fade.outputs["Result"], given["Calm"])
 
     # -d height / dx of a cos(phase) is a k_x sin(phase).
     link(
-        _vector(group, "MULTIPLY_ADD", x["Slope"], shown("SINE"), x["Gradient"]),
+        _vector(
+            group, "MULTIPLY_ADD", given["Slope"], shown("SINE"), given["Gradient"]
+        ),
         out["Gradient"],
     )
     link(
-        _math(group, "MULTIPLY_ADD", shown("COSINE"), x["Lift"], x["Acceleration"]),
+        _math(
+            group, "MULTIPLY_ADD", shown("COSINE"), given["Lift"], given["Acceleration"]
+        ),
         out["Acceleration"],
     )
     return group
@@ -350,35 +355,35 @@ def _waves(
         node = tree.nodes.new("ShaderNodeGroup")
         node.node_tree = group
         node.name = f"wave_{i}"
-        x = node.inputs
-        link(xyt.outputs["Vector"], x["Position"])
-        link(pixel.along_dir, x["Along"])
-        link(across_sq, x["Across Sq"])
-        link(stretch, x["Stretch"])
+        inputs = node.inputs
+        link(xyt.outputs["Vector"], inputs["Position"])
+        link(pixel.along_dir, inputs["Along"])
+        link(across_sq, inputs["Across Sq"])
+        link(stretch, inputs["Stretch"])
         if gradient is not None:
-            link(gradient, x["Gradient"])
+            link(gradient, inputs["Gradient"])
         if calm is not None and wave in damped:
-            link(calm, x["Calm"])
+            link(calm, inputs["Calm"])
         gone, whole = fade_footprints_m(2 * math.pi / wave.k_rad_m)
-        x["Wavenumber"].default_value = (
+        inputs["Wavenumber"].default_value = (
             wave.k_east_rad_m,
             wave.k_north_rad_m,
             -wave.omega_rad_s,
         )
-        x["Phase"].default_value = wave.phase_rad
-        x["Toward"].default_value = (
+        inputs["Phase"].default_value = wave.phase_rad
+        inputs["Toward"].default_value = (
             math.sin(wave.toward_rad),
             math.cos(wave.toward_rad),
             0.0,
         )
-        x["Gone Sq"].default_value = float(gone) ** 2
-        x["Whole Sq"].default_value = float(whole) ** 2
-        x["Slope"].default_value = (
+        inputs["Gone Sq"].default_value = float(gone) ** 2
+        inputs["Whole Sq"].default_value = float(whole) ** 2
+        inputs["Slope"].default_value = (
             wave.amplitude_m * wave.k_east_rad_m,
             wave.amplitude_m * wave.k_north_rad_m,
             0.0,
         )
-        x["Lift"].default_value = wave.amplitude_m * wave.k_rad_m
+        inputs["Lift"].default_value = wave.amplitude_m * wave.k_rad_m
         gradient = node.outputs["Gradient"]
         drawn.append(node)
     tilted = geometry.outputs["Normal"]
@@ -427,7 +432,7 @@ def _whitecaps(
     """How much of the pixel whitecaps, as `waves.whitecap_cover`, past
     `threshold_g`, from the `drawn` wind waves' acceleration."""
     acceleration: float | bpy.types.NodeSocket = 0.0
-    for node in drawn:
+    for _, node in zip(wind, drawn, strict=True):
         if isinstance(acceleration, bpy.types.NodeSocket):
             tree.links.new(acceleration, node.inputs["Acceleration"])
         acceleration = node.outputs["Acceleration"]
