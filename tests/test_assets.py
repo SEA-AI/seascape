@@ -3,11 +3,12 @@
 import hashlib
 import re
 import tomllib
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
 import pytest
 
-from seascape import assets
+from seascape import assets, cli, skies
 from seascape.config import CFG_DIR
 
 BODY = b"not really a mesh"
@@ -15,7 +16,7 @@ DIGEST = hashlib.sha256(BODY).hexdigest()
 
 
 @pytest.fixture
-def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A one-entry manifest served over `file://`, cached under `tmp_path`."""
     source = tmp_path / "source.fbx"
     source.write_bytes(BODY)
@@ -27,7 +28,9 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.setattr(assets, "MANIFEST", manifest)
     monkeypatch.setattr(assets, "CACHE", tmp_path / "cache")
-    return source
+    assets.manifest.cache_clear()
+    yield source
+    assets.manifest.cache_clear()
 
 
 def test_every_object_preset_names_an_asset() -> None:
@@ -65,3 +68,10 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     assert not (assets.CACHE / "ship.fbx").exists()
     (part,) = assets.CACHE.glob("*.part")
     assert part.read_bytes() == b"a different mesh"
+
+
+def test_the_listing_names_every_mesh_and_sky(capsys: pytest.CaptureFixture) -> None:
+    assert cli.main(["assets"]) == 0
+    listing = capsys.readouterr().out
+    for name in [*assets.manifest(), *skies.library()]:
+        assert name in listing, name

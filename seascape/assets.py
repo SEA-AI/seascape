@@ -6,9 +6,12 @@ import shutil
 import tomllib
 import urllib.request
 import uuid
+from functools import cache
 from pathlib import Path, PurePosixPath
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from seascape.model import Model
 
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
 _XDG = os.environ.get("XDG_CACHE_HOME", "")
@@ -16,10 +19,10 @@ CACHE = (Path(_XDG) if _XDG.startswith("/") else Path.home() / ".cache") / "seas
 MANIFEST = Path(__file__).parent / "assets.toml"
 
 
-class Asset(BaseModel):
+class Asset(Model):
     """One fetchable mesh."""
 
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
+    model_config = ConfigDict(frozen=True)
 
     description: str = Field(min_length=1)
     url: str
@@ -36,14 +39,19 @@ class Asset(BaseModel):
     attribution: str = Field(min_length=1)
 
 
+@cache
 def manifest() -> dict[str, Asset]:
     with MANIFEST.open("rb") as handle:
         return {name: Asset(**body) for name, body in tomllib.load(handle).items()}
 
 
-def _verify(path: Path, sha256: str) -> None:
+def digest(path: Path) -> str:
     with path.open("rb") as handle:
-        got = hashlib.file_digest(handle, "sha256").hexdigest()
+        return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+def _verify(path: Path, sha256: str) -> None:
+    got = digest(path)
     if got != sha256:
         raise ValueError(f"{path}: sha256 {got}, manifest says {sha256}")
 

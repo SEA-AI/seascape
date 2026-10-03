@@ -24,14 +24,13 @@ from typing import Annotated, Any, Literal, NamedTuple
 
 from pydantic import (
     AfterValidator,
-    BaseModel,
-    ConfigDict,
     Field,
     WithJsonSchema,
     model_validator,
 )
 
 from seascape import assets, lwir, skies, waves
+from seascape.model import Model
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
@@ -39,15 +38,6 @@ CFG_DIR = Path(__file__).parent / "cfg"
 type Band = Literal["eo", "ir"]
 
 type ImageFormat = Literal["exr", "png", "jpg"]
-
-
-class Model(BaseModel):
-    """Strictness shared by everything this package parses from TOML."""
-
-    # extra: a typo in a scenario is otherwise a silent wrong render.
-    # inf_nan: tomllib parses `nan` and `inf`; a nan bearing renders a camera pointing
-    # nowhere and reports no error.
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Camera(Model):

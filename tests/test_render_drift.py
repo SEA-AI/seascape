@@ -12,7 +12,7 @@ import pytest
 from mathutils import Vector
 
 from seascape import lwir, scene, sea, skies, waves
-from seascape.assets import download, manifest
+from seascape.assets import download, fetch, manifest
 from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
@@ -714,4 +714,4 @@ def test_the_committed_suns_are_what_the_photos_hold() -> None:
 def test_the_committed_meshes_are_what_the_files_hold() -> None:
     for name, mesh in manifest().items():
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        assert scene.measure(name) == (mesh.triangles, mesh.texture_px), name
+        assert scene.measure(fetch(name)) == (mesh.triangles, mesh.texture_px), name

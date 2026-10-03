@@ -22,11 +22,11 @@ Not usable:
 ## Adding one
 
 1. Find it in a source above and read its licence.
-2. Add an entry to [`seascape/assets.toml`](../seascape/assets.toml): `url`, `sha256` (`shasum -a 256` of the file), `licence`, and `attribution` with the author and the page.
-3. Set `length_m` and `draught_m` from a real vessel of the class, citing it beside them.
-4. Set `bow_deg` to where the bow points as authored, and check it in the sheet.
-5. Fill `triangles` and `texture_px` from `uv run python -c "from seascape import scene; print(scene.measure('<name>'))"`, and write a one-line `description` of what the camera sees.
-6. Regenerate the sheet with `uv run python docs/assets.py docs/assets.jpg` and the schema with `uv run seascape schema > schema/scenario.json`, then run `uv run pytest --render`.
+2. Download the file and run `uv run python docs/assets.py measure <file>`.
+3. Add the entry to [`seascape/assets.toml`](../seascape/assets.toml) with those lines, the `url`, the `licence`, `attribution` with the author and the page, and a one-line `description` of what the camera sees.
+4. Set `length_m` and `draught_m` from a real vessel of the class, citing it beside them.
+5. Set `bow_deg` to where the bow points as authored, and check it in the sheet.
+6. Regenerate the sheet with `uv run python docs/assets.py sheet docs/assets.jpg` and the schema with `uv run seascape schema > schema/scenario.json`, then run `uv run pytest --render`.
 
 ## Judging detail
 

@@ -14,7 +14,7 @@ import numpy as np
 from pydantic import Field
 
 from seascape.calibration import CameraCalibration
-from seascape.config import Model
+from seascape.model import Model
 
 FILENAME = "labels.json"
 

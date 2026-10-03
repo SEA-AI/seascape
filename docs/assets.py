@@ -1,6 +1,7 @@
-"""Every mesh rendered by seascape, side on and three-quarter on, for docs/assets.md.
+"""The asset sheet in docs/assets.md, and the measured lines of a new manifest entry.
 
-uv run python docs/assets.py docs/assets.jpg
+uv run python docs/assets.py sheet docs/assets.jpg
+uv run python docs/assets.py measure hull.glb
 """
 
 import math
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import assets, render
+from seascape import assets, render, scene
 from seascape.config import load
 
 OPEN_SEA = Path(__file__).parent.parent / "scenarios" / "open-sea.toml"
@@ -42,7 +43,8 @@ def shot(name: str, length_m: float, heading_deg: float, into: Path) -> Image.Im
     return Image.open(render.render(scenario, into)[0]).convert("RGB")
 
 
-def main(out: Path) -> None:
+def sheet(out: Path) -> None:
+    """Every mesh rendered by seascape, side on and three-quarter on."""
     meshes = assets.manifest()
     sheet = Image.new(
         "RGB", (TILE[0] * len(HEADINGS_DEG), (TILE[1] + LABEL_PX) * len(meshes))
@@ -64,5 +66,11 @@ def main(out: Path) -> None:
     sheet.save(out, quality=85)
 
 
+def measure(path: Path) -> None:
+    triangles, texture_px = scene.measure(path)
+    print(f'sha256 = "{assets.digest(path)}"')
+    print(f"triangles = {triangles}\ntexture_px = {texture_px}")
+
+
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    {"sheet": sheet, "measure": measure}[sys.argv[1]](Path(sys.argv[2]))

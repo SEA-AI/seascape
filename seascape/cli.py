@@ -79,7 +79,9 @@ def _add_set(command: argparse.ArgumentParser) -> None:
 
 
 def _run(args: argparse.Namespace) -> None:
-    if args.command == "render":
+    if args.command == "assets":
+        _assets()
+    elif args.command == "render":
         _render(args.scenario, args.output, args.overrides)
     elif args.command == "montage":
         _montage(args.scenario, args.output, args.overrides)
@@ -177,9 +179,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "schema":
         print(json.dumps(Scenario.model_json_schema(), indent=2))
-        return 0
-    if args.command == "assets":
-        _assets()
         return 0
     try:
         _run(args)
