@@ -319,6 +319,15 @@ def test_a_saved_build_reopens_with_its_lookup_tables(
         assert np.array_equal(before, after), written.name
 
 
+def test_an_image_inside_a_node_group_is_counted() -> None:
+    image = bpy.data.images.new("deep", 8, 4)
+    group = bpy.data.node_groups.new("wrap", "ShaderNodeTree")
+    group.nodes.new("ShaderNodeTexImage").image = image
+    outer = bpy.data.node_groups.new("outer", "ShaderNodeTree")
+    outer.nodes.new("ShaderNodeGroup").node_tree = group
+    assert scene._images(outer) == {image}
+
+
 @pytest.mark.parametrize(
     ("bow_deg", "bow_corner"),
     [(0.0, (0, 5, 0)), (90.0, (5, 0, 0)), (180.0, (0, -5, 0)), (270.0, (-5, 0, 0))],

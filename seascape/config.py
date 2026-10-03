@@ -22,7 +22,14 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated, Any, Literal, NamedTuple
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    WithJsonSchema,
+    model_validator,
+)
 
 from seascape import assets, lwir, skies, waves
 
@@ -268,7 +275,12 @@ class Sky(Model):
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
 
-    hdri: str | None = Field(
+    hdri: (
+        Annotated[
+            str, WithJsonSchema({"type": "string", "enum": sorted(skies.library())})
+        ]
+        | None
+    ) = Field(
         default=None,
         description="A photographed sky from seascape/skies.toml, in place of the Sky "
         "Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR "
@@ -333,7 +345,12 @@ def _in_the_manifest(name: str) -> str:
     return name
 
 
-AssetName = Annotated[str, AfterValidator(_in_the_manifest)]
+# The names go in the schema too, so an editor completes them.
+AssetName = Annotated[
+    str,
+    AfterValidator(_in_the_manifest),
+    WithJsonSchema({"type": "string", "enum": sorted(assets.manifest())}),
+]
 _ASSET = "An asset name from the manifest: `seascape assets` lists them."
 _T_HULL = "Shaded hull temperature. IR only."
 _HEADING = "Where its bow points, clockwise from the ownship's bow."

@@ -611,19 +611,31 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     return parts
 
 
+def _images(tree: bpy.types.NodeTree) -> set[bpy.types.Image]:
+    found = set()
+    for node in tree.nodes:
+        if node.type == "TEX_IMAGE" and node.image:
+            found.add(node.image)
+        elif node.type == "GROUP" and node.node_tree:
+            found |= _images(node.node_tree)
+    return found
+
+
 def measure(name: str) -> tuple[int, list[int]]:
     """An asset's triangles and the longest side of each image, as imported."""
     meshes = _meshes(_import(name, "eo"))
     for mesh in meshes:
         mesh.data.calc_loop_triangles()
-    images = {
-        node.image
-        for mesh in meshes
-        for material in mesh.data.materials
-        if material and material.node_tree
-        for node in material.node_tree.nodes
-        if node.type == "TEX_IMAGE" and node.image
-    }
+    images = set().union(
+        *(
+            _images(material.node_tree)
+            for mesh in meshes
+            for material in mesh.data.materials
+            if material and material.node_tree
+        )
+    )
+    if missing := sorted(image.name for image in images if 0 in image.size):
+        raise ValueError(f"{name}: no pixels in {missing}")
     return (
         sum(len(mesh.data.loop_triangles) for mesh in meshes),
         sorted((max(image.size) for image in images), reverse=True),
