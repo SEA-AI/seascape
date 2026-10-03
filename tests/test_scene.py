@@ -343,7 +343,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
         draught_m=5.0,
         bow_deg=bow_deg,
         triangles=1,
-        texture_px=[],
+        texture_px=(),
         licence="x",
         attribution="x",
     )

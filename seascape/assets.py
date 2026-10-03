@@ -32,9 +32,9 @@ class Asset(Model):
     draught_m: float = Field(ge=0.0)
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0
-    # As imported, to judge an asset by. `texture_px` is each image's longest side.
+    # As `scene.measure` reads them.
     triangles: int = Field(gt=0)
-    texture_px: list[int]
+    texture_px: tuple[int, ...]
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 
@@ -61,13 +61,13 @@ def fetch(name: str) -> Path:
     return download(name, asset.url, asset.sha256)
 
 
-def cached(name: str, url: str) -> Path:
+def cache_path(name: str, url: str) -> Path:
     return CACHE / f"{name}{PurePosixPath(url).suffix}"
 
 
 def download(name: str, url: str, sha256: str) -> Path:
     """The cached file for `name`, downloaded once. Verified on every call."""
-    path = cached(name, url)
+    path = cache_path(name, url)
     if path.exists():
         _verify(path, sha256)
         return path

@@ -627,7 +627,7 @@ def _images(tree: bpy.types.NodeTree) -> set[bpy.types.Image]:
     return found
 
 
-def measure(path: Path) -> tuple[int, list[int]]:
+def measure(path: Path) -> tuple[int, tuple[int, ...]]:
     """A mesh file's triangles and the longest side of each image, as imported."""
     meshes = [obj for obj in _load(path) if obj.type == "MESH"]
     for mesh in meshes:
@@ -644,7 +644,7 @@ def measure(path: Path) -> tuple[int, list[int]]:
         raise ValueError(f"{path}: no pixels in {missing}")
     return (
         sum(len(mesh.data.loop_triangles) for mesh in meshes),
-        sorted((max(image.size) for image in images), reverse=True),
+        tuple(sorted((max(image.size) for image in images), reverse=True)),
     )
 
 

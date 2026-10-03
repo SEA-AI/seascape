@@ -6,11 +6,10 @@
 
 ## Where a mesh may come from
 
-A build downloads each mesh itself, so it needs a URL that anyone can fetch without logging in and that always returns the same bytes.
+A build downloads each mesh itself, so it needs a URL that anyone can fetch without logging in and that always returns the same bytes: one `.glb` or `.fbx` with its textures inside.
 
 | Source | Licence | URL |
 |---|---|---|
-| [Poly Haven](https://polyhaven.com/models) | CC0 | `dl.polyhaven.org`, from `api.polyhaven.com/files/<id>` |
 | [Objaverse](https://huggingface.co/datasets/allenai/objaverse) | Each model's own: take CC0 or CC-BY only | `resolve/<commit>/glbs/...`, pinned to a commit, never `main`; `object-paths.json.gz` maps a Sketchfab uid to its path |
 | [Icosa Gallery](https://icosa.gallery) | CC-BY | `api.icosa.gallery/v1/assets/<id>`; skip `CREATIVE_COMMONS_BY_ND` |
 
@@ -18,6 +17,7 @@ Not usable:
 
 - A non-commercial or no-derivatives licence.
 - Sketchfab directly: its Download API needs an account and hands out links that expire.
+- Poly Haven: every format it serves keeps its textures in separate files.
 
 ## Adding one
 

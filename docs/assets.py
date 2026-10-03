@@ -44,12 +44,11 @@ def shot(name: str, length_m: float, heading_deg: float, into: Path) -> Image.Im
 
 
 def sheet(out: Path) -> None:
-    """Every mesh rendered by seascape, side on and three-quarter on."""
     meshes = assets.manifest()
-    sheet = Image.new(
+    page = Image.new(
         "RGB", (TILE[0] * len(HEADINGS_DEG), (TILE[1] + LABEL_PX) * len(meshes))
     )
-    draw = ImageDraw.Draw(sheet)
+    draw = ImageDraw.Draw(page)
     font = ImageFont.load_default(size=16)
     with tempfile.TemporaryDirectory() as tmp:
         for row, (name, mesh) in enumerate(meshes.items()):
@@ -62,15 +61,18 @@ def sheet(out: Path) -> None:
             for col, heading_deg in enumerate(HEADINGS_DEG):
                 into = Path(tmp) / f"{name}-{col}"
                 tile = shot(name, mesh.length_m, heading_deg, into)
-                sheet.paste(tile, (col * TILE[0], y + LABEL_PX))
-    sheet.save(out, quality=85)
+                page.paste(tile, (col * TILE[0], y + LABEL_PX))
+    page.save(out, quality=85)
 
 
 def measure(path: Path) -> None:
     triangles, texture_px = scene.measure(path)
     print(f'sha256 = "{assets.digest(path)}"')
-    print(f"triangles = {triangles}\ntexture_px = {texture_px}")
+    print(f"triangles = {triangles}\ntexture_px = {list(texture_px)}")
 
 
 if __name__ == "__main__":
-    {"sheet": sheet, "measure": measure}[sys.argv[1]](Path(sys.argv[2]))
+    commands = {"sheet": sheet, "measure": measure}
+    if len(sys.argv) != 3 or sys.argv[1] not in commands:
+        sys.exit(__doc__)
+    commands[sys.argv[1]](Path(sys.argv[2]))
