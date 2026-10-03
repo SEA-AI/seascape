@@ -1,0 +1,242 @@
+# Poly Haven's pure skies: its own photographs with the ground edited out.
+
+[kloofendal_28d_misty]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_28d_misty_puresky_8k.hdr"
+sha256 = "a33c17b9cb8609d641b0d0a0ebc3738a7583b3c0e7f8d9a76f3b37819f20555e"
+sun_bearing_deg = 79.2
+sun_elevation_deg = 28.5
+licence = "CC0-1.0"
+attribution = "kloofendal_28d_misty by Greg Zaal & Jenelle van Heerden, https://polyhaven.com/a/kloofendal_28d_misty_puresky"
+
+[kloofendal_38d_partly_cloudy]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_38d_partly_cloudy_puresky_8k.hdr"
+sha256 = "ba9b7c130a3637a8d4731ef85641e6a23bb5fb724d941d3c0b701c8c77c728f5"
+sun_bearing_deg = 125.9
+sun_elevation_deg = 38.0
+licence = "CC0-1.0"
+attribution = "kloofendal_38d_partly_cloudy by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloofendal_38d_partly_cloudy_puresky"
+
+[kloofendal_48d_partly_cloudy]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_48d_partly_cloudy_puresky_8k.hdr"
+sha256 = "30ff6bb1eec58c11b52254e89b5dc39aaf756dd332c9a14a4976d68f23feaa71"
+sun_bearing_deg = 124.3
+sun_elevation_deg = 47.9
+licence = "CC0-1.0"
+attribution = "kloofendal_48d_partly_cloudy by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky"
+
+[kloppenheim_03]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloppenheim_03_puresky_8k.hdr"
+sha256 = "c6e58ef3b5581264633c96a1b93a92b1f5df960071fe5499cfd11af49f8403d0"
+sun_bearing_deg = 126.1
+sun_elevation_deg = 58.6
+licence = "CC0-1.0"
+attribution = "kloppenheim_03 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloppenheim_03_puresky"
+
+[kloppenheim_05]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloppenheim_05_puresky_8k.hdr"
+sha256 = "d80ffef8da49a4c8db52fabbf8a1adda0dbf24564020a0c41b73319f73b25087"
+sun_bearing_deg = 125.9
+sun_elevation_deg = 74.5
+licence = "CC0-1.0"
+attribution = "kloppenheim_05 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloppenheim_05_puresky"
+
+[sunflowers]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/sunflowers_puresky_8k.hdr"
+sha256 = "1e7f02404d55a96bbe80f162cf4a77676d3159f2f813fd62284942b70a685920"
+sun_bearing_deg = 126.2
+sun_elevation_deg = 43.0
+licence = "CC0-1.0"
+attribution = "sunflowers by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/sunflowers_puresky"
+
+[rocky_ridge]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/rocky_ridge_puresky_8k.hdr"
+sha256 = "a653d868b595baab6594c035dcbe812a0a7d13549417ed6a8ae69beb312427ed"
+sun_bearing_deg = 140.1
+sun_elevation_deg = 5.7
+licence = "CC0-1.0"
+attribution = "rocky_ridge by Greg Zaal & Jarod Guest, https://polyhaven.com/a/rocky_ridge_puresky"
+
+[scythian_tombs]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/scythian_tombs_puresky_8k.hdr"
+sha256 = "aa3ba5daf723c6c636f8f9ce2919eeb37f429c336e961966ff5be09b7e25283a"
+sun_bearing_deg = 125.6
+sun_elevation_deg = 13.2
+licence = "CC0-1.0"
+attribution = "scythian_tombs by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/scythian_tombs_puresky"
+
+[table_mountain_1]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/table_mountain_1_puresky_8k.hdr"
+sha256 = "fa4e4d04ac82f4c79e6054e37e86120f4b9ae8cbf4acb24c84993d7813224777"
+sun_bearing_deg = 139.5
+sun_elevation_deg = 12.8
+licence = "CC0-1.0"
+attribution = "table_mountain_1 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/table_mountain_1_puresky"
+
+[table_mountain_2]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/table_mountain_2_puresky_8k.hdr"
+sha256 = "9f047ae66248853afa52f141deefcf27e39b8592572d0400381e86417cafc53b"
+sun_bearing_deg = 139.8
+sun_elevation_deg = 7.3
+licence = "CC0-1.0"
+attribution = "table_mountain_2 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/table_mountain_2_puresky"
+
+[wasteland_clouds]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/wasteland_clouds_puresky_8k.hdr"
+sha256 = "7d5bcce385925f13cf306d2ab248157a0d42a3974257917fd4a9e35f89d80d61"
+sun_bearing_deg = 126.0
+sun_elevation_deg = 7.7
+licence = "CC0-1.0"
+attribution = "wasteland_clouds by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/wasteland_clouds_puresky"
+
+[drackenstein_quarry]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/drackenstein_quarry_puresky_8k.hdr"
+sha256 = "11088a9d497c49ec802d17aa9c234313bffb8c5d84d49fc564de4cfae92a6013"
+sun_bearing_deg = 126.1
+sun_elevation_deg = 5.9
+licence = "CC0-1.0"
+attribution = "drackenstein_quarry by Andreas Mischok & Jarod Guest, https://polyhaven.com/a/drackenstein_quarry_puresky"
+
+[hilly_terrain_01]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/hilly_terrain_01_puresky_8k.hdr"
+sha256 = "9dd3a106e93a4685fdb544e41cd982ef3de9ad6fadddee4e018816d2a7a81820"
+sun_bearing_deg = 125.9
+sun_elevation_deg = 11.4
+licence = "CC0-1.0"
+attribution = "hilly_terrain_01 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/hilly_terrain_01_puresky"
+
+[industrial_sunset]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/industrial_sunset_puresky_8k.hdr"
+sha256 = "bbc9ac6d2bc103ad7f4b3db6e7736717e0f9c6dc9af3300c2e4fdda9b7a247e8"
+sun_bearing_deg = 126.5
+sun_elevation_deg = 4.1
+licence = "CC0-1.0"
+attribution = "industrial_sunset by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/industrial_sunset_puresky"
+
+[industrial_sunset_02]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/industrial_sunset_02_puresky_8k.hdr"
+sha256 = "589f6151b04a4641e88cf485cf6dca68e2adc35031217f77af17219c543ebfbb"
+sun_bearing_deg = 126.0
+sun_elevation_deg = 2.2
+licence = "CC0-1.0"
+attribution = "industrial_sunset_02 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/industrial_sunset_02_puresky"
+
+[quarry_04]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/quarry_04_puresky_8k.hdr"
+sha256 = "9e291ef20106e22cc35c7d8933268b18c6545ec64f5c238b07b4e44b89c8df5f"
+sun_bearing_deg = 126.1
+sun_elevation_deg = 5.8
+licence = "CC0-1.0"
+attribution = "quarry_04 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/quarry_04_puresky"
+
+[aristea_wreck]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/aristea_wreck_puresky_8k.hdr"
+sha256 = "7164a060ab81ebdc17581f9d42be996efed412eb1d6dc297d41e16a20772a650"
+sun_bearing_deg = 134.3
+licence = "CC0-1.0"
+attribution = "aristea_wreck by Greg Zaal & Jarod Guest, https://polyhaven.com/a/aristea_wreck_puresky"
+
+[belfast_sunset]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/belfast_sunset_puresky_8k.hdr"
+sha256 = "f2610ff3ed21171063bc7be641deb4608b05e44d4da357634966a4febc94bb65"
+sun_bearing_deg = 141.3
+licence = "CC0-1.0"
+attribution = "belfast_sunset by Greg Zaal & Dimitrios Savva & Jarod Guest, https://polyhaven.com/a/belfast_sunset_puresky"
+
+[citrus_orchard]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/citrus_orchard_puresky_8k.hdr"
+sha256 = "85cbf9636fb4b92b03df38ecd387b71c45791a8818e19091197b63658dc03b6e"
+sun_bearing_deg = 163.8
+licence = "CC0-1.0"
+attribution = "citrus_orchard by Dimitrios Savva & Jarod Guest, https://polyhaven.com/a/citrus_orchard_puresky"
+
+[citrus_orchard_road]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/citrus_orchard_road_puresky_8k.hdr"
+sha256 = "d6a88bb8c31d8f0e99033b8a2ca5b93a20ac7491eae7064edd00c22f2b348ac3"
+sun_bearing_deg = 118.6
+sun_elevation_deg = 3.6
+licence = "CC0-1.0"
+attribution = "citrus_orchard_road by Dimitrios Savva & Jarod Guest, https://polyhaven.com/a/citrus_orchard_road_puresky"
+
+[evening_road_01]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/evening_road_01_puresky_8k.hdr"
+sha256 = "867d7f775357901b368aa363296e86e482b3bc13f1d4a9a13c11d0d7efc02a9e"
+sun_bearing_deg = 127.3
+licence = "CC0-1.0"
+attribution = "evening_road_01 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/evening_road_01_puresky"
+
+[farm_field]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/farm_field_puresky_8k.hdr"
+sha256 = "8a8b745cfe52040d26953f9f8deab55cd40cc6a444365a756274fe7e1956883d"
+sun_bearing_deg = 125.9
+licence = "CC0-1.0"
+attribution = "farm_field by Dimitrios Savva & Jarod Guest, https://polyhaven.com/a/farm_field_puresky"
+
+[kloppenheim_01]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloppenheim_01_puresky_8k.hdr"
+sha256 = "83330ea8b9af7af4686cc960154453e3f9fed0e25a23e073f45a4421a436f1b1"
+sun_bearing_deg = 127.3
+licence = "CC0-1.0"
+attribution = "kloppenheim_01 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloppenheim_01_puresky"
+
+[kloppenheim_06]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloppenheim_06_puresky_8k.hdr"
+sha256 = "6a224eb99e2dd61c26179f6f18fdfb7724a7c2d0d9ddd86c0f483630f93f6938"
+sun_bearing_deg = 120.2
+licence = "CC0-1.0"
+attribution = "kloppenheim_06 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloppenheim_06_puresky"
+
+[kloofendal_overcast]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_overcast_puresky_8k.hdr"
+sha256 = "489b1552b02e8a15a39278476049ce82421f985064b4a888fa8d1fd49a5c7e77"
+sun_bearing_deg = 120.2
+licence = "CC0-1.0"
+attribution = "kloofendal_overcast by Greg Zaal, https://polyhaven.com/a/kloofendal_overcast_puresky"
+
+[kloofendal_misty_morning]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_misty_morning_puresky_8k.hdr"
+sha256 = "3c7ad177e2cf36c1750d31f325f5b4a6d7ba40a9ad09fdb3322c36937226648d"
+sun_bearing_deg = 130.1
+licence = "CC0-1.0"
+attribution = "kloofendal_misty_morning by Greg Zaal, https://polyhaven.com/a/kloofendal_misty_morning_puresky"
+
+[overcast_soil]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/overcast_soil_puresky_8k.hdr"
+sha256 = "bacac45822cecfd5f22135d96d85e0f6be07220f54a08b4d7ed730715040edd3"
+sun_bearing_deg = 78.0
+licence = "CC0-1.0"
+attribution = "overcast_soil by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/overcast_soil_puresky"
+
+[mud_road]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/mud_road_puresky_8k.hdr"
+sha256 = "fe64758b66ed2f5b85aa2d2341f59f0ad4da3f1cfad238906a2b9bed6f5f1842"
+sun_bearing_deg = 0.7
+licence = "CC0-1.0"
+attribution = "mud_road by Sergey Rudavin & Jarod Guest, https://polyhaven.com/a/mud_road_puresky"
+
+[snow_field]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/snow_field_puresky_8k.hdr"
+sha256 = "608f6c115e2917c182ce73956bbfabeb21345aec0bd863dac2e18a01c8285388"
+sun_bearing_deg = 127.3
+licence = "CC0-1.0"
+attribution = "snow_field by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/snow_field_puresky"
+
+[snow_field_2]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/snow_field_2_puresky_8k.hdr"
+sha256 = "76e902578b538589ae4acfe3e1fb18061b20d66974b1c81aeecd764eef7a46b1"
+sun_bearing_deg = 130.1
+licence = "CC0-1.0"
+attribution = "snow_field_2 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/snow_field_2_puresky"
+
+[qwantani_dusk_1]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/qwantani_dusk_1_puresky_8k.hdr"
+sha256 = "541f6c85f0e4668871703e00a8c4be1f159a2247805a63e75ee22a0299375636"
+sun_bearing_deg = 124.5
+licence = "CC0-1.0"
+attribution = "qwantani_dusk_1 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/qwantani_dusk_1_puresky"
+
+[qwantani_dusk_2]
+url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/qwantani_dusk_2_puresky_8k.hdr"
+sha256 = "2d99cddde139295411e81e2fe5eef409001fbf642c81581e8d7755cdf136ccb7"
+sun_bearing_deg = 127.3
+licence = "CC0-1.0"
+attribution = "qwantani_dusk_2 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/qwantani_dusk_2_puresky"

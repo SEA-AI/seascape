@@ -11,7 +11,8 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import lwir, scene, sea, waves
+from seascape import lwir, scene, sea, skies, waves
+from seascape.assets import download
 from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
@@ -667,3 +668,44 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
     sc.cycles.samples = 16
     sc.camera = built.cameras[alone.rig.mounts[0].name]
     assert _same(after, shoot((320, 180), "alone"))
+
+
+def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
+    scenario = load(
+        OPEN_SEA,
+        [
+            'sky.hdri = "kloofendal_48d_partly_cloudy"',
+            "sky.sun_bearing_deg = 70.0",
+            'outputs.format = "exr"',
+        ],
+    )
+    scene.build(scenario, "eo")
+    sc = bpy.context.scene
+    camera = sc.camera
+    camera.parent = None
+    camera.location = (0.0, 0.0, 10.0)
+    camera.rotation_mode = "QUATERNION"
+    sun = Vector(scene._sun_vector(scenario.sky))
+    camera.rotation_quaternion = sun.to_track_quat("-Z", "Y")
+    camera.data.angle_x = math.radians(10.0)
+    sc.cycles.samples = 4
+    frame = shoot((64, 64), "photo_sun")
+    row, col = np.unravel_index(np.argmax(frame), frame.shape)
+    assert abs(row - 31.5) <= 2 and abs(col - 31.5) <= 2
+
+
+def test_the_committed_suns_are_what_the_photos_hold() -> None:
+    for name, photo in skies.library().items():
+        image = bpy.data.images.load(str(download(name, photo.url, photo.sha256)))
+        w, h = image.size
+        pixels = np.empty(w * h * 4, np.float32)
+        image.pixels.foreach_get(pixels)
+        bpy.data.images.remove(image)
+        sun = skies.sun(pixels.reshape(h, w, 4)[::-1, :, :3])
+        assert sun.bearing_deg == pytest.approx(photo.sun_bearing_deg, abs=0.06), name
+        if photo.sun_elevation_deg is None:
+            assert sun.elevation_deg is None, name
+        else:
+            assert sun.elevation_deg == pytest.approx(
+                photo.sun_elevation_deg, abs=0.06
+            ), name

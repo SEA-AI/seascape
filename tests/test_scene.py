@@ -1206,3 +1206,43 @@ def test_the_glitter_and_haze_drivers_run_without_python() -> None:
     ]
     assert {"1 / samples", "sky"} <= {d.expression for d in drivers}
     assert all(d.is_valid and d.is_simple_expression for d in drivers)
+
+
+class TestPhotographedSky:
+    SKY = "kloofendal_48d_partly_cloudy"
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
+        """A tiny photo stands in for the download."""
+        path = tmp_path_factory.mktemp("sky") / "tiny.hdr"
+        image = bpy.data.images.new("tiny", 64, 32, float_buffer=True)
+        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+        image.filepath_raw = str(path)
+        image.file_format = "HDR"
+        image.save()
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(scene, "download", lambda *_: path)
+            scene.build(load(OPEN_SEA, [f'sky.hdri = "{cls.SKY}"']), "eo")
+
+    def _photos(self, tree: bpy.types.NodeTree) -> list[bpy.types.Node]:
+        return [n for n in tree.nodes if n.bl_idname == "ShaderNodeTexEnvironment"]
+
+    def test_the_photo_is_the_world(self) -> None:
+        tree = bpy.data.worlds["sky"].node_tree
+        background = tree.nodes["Background"].inputs["Color"].links[0].from_node
+        assert background.bl_idname == "ShaderNodeTexEnvironment"
+        assert not [n for n in tree.nodes if n.bl_idname == "ShaderNodeTexSky"]
+
+    def test_the_haze_takes_the_photo_s_horizon(self) -> None:
+        (world,) = self._photos(bpy.data.worlds["sky"].node_tree)
+        (haze,) = self._photos(bpy.data.node_groups["haze"])
+        assert haze.image == world.image
+
+
+def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:
+    sky = load(OPEN_SEA, ['sky.hdri = "overcast_soil"']).sky
+    tree = bpy.data.materials.new("hull").node_tree
+    assert (
+        scene._sunlit_emission(tree, 290.0, sky).node.bl_idname == "ShaderNodeEmission"
+    )
