@@ -20,11 +20,11 @@ import tomllib
 import warnings
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Annotated, Any, Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from seascape import lwir, skies, waves
+from seascape import assets, lwir, skies, waves
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
@@ -326,7 +326,15 @@ class Sky(Model):
         return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
 
-_ASSET = "An asset name from the manifest."
+def _in_the_manifest(name: str) -> str:
+    known = assets.manifest()
+    if name not in known:
+        raise ValueError(f"no asset {name!r} in {sorted(known)}")
+    return name
+
+
+AssetName = Annotated[str, AfterValidator(_in_the_manifest)]
+_ASSET = "An asset name from the manifest: `seascape assets` lists them."
 _T_HULL = "Shaded hull temperature. IR only."
 _HEADING = "Where its bow points, clockwise from the ownship's bow."
 _RANGE = "Horizontal, from the ownship's origin."
@@ -357,7 +365,7 @@ class Orbit(Model):
 class Object(Model):
     """Something to detect."""
 
-    asset: str = Field(description=_ASSET)
+    asset: AssetName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
     heading_deg: float = Field(default=0.0, description=_HEADING)
@@ -394,7 +402,7 @@ class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the attitude alone."""
 
-    asset: str | None = Field(default=None, description=_ASSET)
+    asset: AssetName | None = Field(default=None, description=_ASSET)
     t_k: float = Field(default=296.0, ge=250.0, le=400.0, description=_T_HULL)
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
@@ -415,7 +423,7 @@ class Targets(Model):
     Placed in the world, so nothing guarantees a camera sees one.
     """
 
-    asset: str = Field(description=_ASSET)
+    asset: AssetName = Field(description=_ASSET)
     count: int = Field(gt=0, description="How many.")
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: tuple[float, float] = Field(

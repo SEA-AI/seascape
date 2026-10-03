@@ -611,6 +611,25 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     return parts
 
 
+def measure(name: str) -> tuple[int, list[int]]:
+    """An asset's triangles and the longest side of each image, as imported."""
+    meshes = _meshes(_import(name, "eo"))
+    for mesh in meshes:
+        mesh.data.calc_loop_triangles()
+    images = {
+        node.image
+        for mesh in meshes
+        for material in mesh.data.materials
+        if material and material.node_tree
+        for node in material.node_tree.nodes
+        if node.type == "TEX_IMAGE" and node.image
+    }
+    return (
+        sum(len(mesh.data.loop_triangles) for mesh in meshes),
+        sorted((max(image.size) for image in images), reverse=True),
+    )
+
+
 def _vessel(
     name: str,
     t_k: float,

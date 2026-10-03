@@ -3,10 +3,11 @@
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import get_args
 
-from seascape import montage, panorama, recording
+from seascape import assets, montage, panorama, recording, skies
 from seascape.config import Band, Scenario, load
 
 
@@ -44,6 +45,26 @@ def _montage(scenario_path: Path, output: Path | None, overrides: list[str]) -> 
     scenario = load(scenario_path, overrides)
     into = output or scenario_path.with_suffix("")
     print(montage.compose(scenario, into))
+
+
+def _assets() -> None:
+    print(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
+    for name, mesh in assets.manifest().items():
+        sizes = Counter(mesh.texture_px)
+        textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
+        here = "cached" if assets.cached(name, mesh.url).exists() else "not fetched"
+        print(
+            f"  {name:<16} {mesh.length_m:>5.0f} m  {mesh.triangles:>9,} triangles  "
+            f"textures: {textures}  {mesh.licence}  {here}\n    {mesh.description}"
+        )
+    print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
+    photos = skies.library()
+    width = max(map(len, photos))
+    for name, photo in photos.items():
+        elevation = photo.sun_elevation_deg
+        sun = "no disc" if elevation is None else f"sun {elevation:.1f} deg"
+        here = "cached" if assets.cached(name, photo.url).exists() else "not fetched"
+        print(f"  {name:<{width}}  {sun:<14} {photo.licence}  {here}")
 
 
 def _add_set(command: argparse.ArgumentParser) -> None:
@@ -151,10 +172,14 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("folder", type=Path, help="a render's output directory")
 
     commands.add_parser("schema", help="print the scenario JSON schema on stdout")
+    commands.add_parser("assets", help="list the meshes and skies a scenario can name")
 
     args = parser.parse_args(argv)
     if args.command == "schema":
         print(json.dumps(Scenario.model_json_schema(), indent=2))
+        return 0
+    if args.command == "assets":
+        _assets()
         return 0
     try:
         _run(args)

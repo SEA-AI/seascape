@@ -8,9 +8,7 @@ import urllib.request
 import uuid
 from pathlib import Path, PurePosixPath
 
-from pydantic import Field
-
-from seascape.config import Model
+from pydantic import BaseModel, ConfigDict, Field
 
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
 _XDG = os.environ.get("XDG_CACHE_HOME", "")
@@ -18,9 +16,12 @@ CACHE = (Path(_XDG) if _XDG.startswith("/") else Path.home() / ".cache") / "seas
 MANIFEST = Path(__file__).parent / "assets.toml"
 
 
-class Asset(Model):
+class Asset(BaseModel):
     """One fetchable mesh."""
 
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, frozen=True)
+
+    description: str = Field(min_length=1)
     url: str
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     length_m: float = Field(gt=0.0)  # bow to stern; the mesh arrives in arbitrary units
@@ -28,6 +29,9 @@ class Asset(Model):
     draught_m: float = Field(ge=0.0)
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0
+    # As imported, to judge an asset by. `texture_px` is each image's longest side.
+    triangles: int = Field(gt=0)
+    texture_px: list[int]
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 
@@ -49,9 +53,13 @@ def fetch(name: str) -> Path:
     return download(name, asset.url, asset.sha256)
 
 
+def cached(name: str, url: str) -> Path:
+    return CACHE / f"{name}{PurePosixPath(url).suffix}"
+
+
 def download(name: str, url: str, sha256: str) -> Path:
     """The cached file for `name`, downloaded once. Verified on every call."""
-    path = CACHE / f"{name}{PurePosixPath(url).suffix}"
+    path = cached(name, url)
     if path.exists():
         _verify(path, sha256)
         return path

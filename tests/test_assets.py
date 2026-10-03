@@ -21,8 +21,9 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     source.write_bytes(BODY)
     manifest = tmp_path / "assets.toml"
     manifest.write_text(
-        f'[ship]\nurl = "{source.as_uri()}"\nsha256 = "{DIGEST}"\n'
-        'length_m = 1.0\ndraught_m = 0.1\nlicence = "CC0-1.0"\nattribution = "nobody"\n'
+        f'[ship]\ndescription = "A hull."\nurl = "{source.as_uri()}"\n'
+        f'sha256 = "{DIGEST}"\nlength_m = 1.0\ndraught_m = 0.1\ntriangles = 1\n'
+        'texture_px = []\nlicence = "CC0-1.0"\nattribution = "nobody"\n'
     )
     monkeypatch.setattr(assets, "MANIFEST", manifest)
     monkeypatch.setattr(assets, "CACHE", tmp_path / "cache")
@@ -30,7 +31,7 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_every_object_preset_names_an_asset() -> None:
-    """A preset naming a mesh nothing can fetch fails at render time, not load time."""
+    """A preset is validated only when a scenario uses it."""
     for preset in sorted((CFG_DIR / "objects").glob("*.toml")):
         with preset.open("rb") as handle:
             assert tomllib.load(handle)["asset"] in assets.manifest(), preset

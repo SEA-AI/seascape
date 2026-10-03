@@ -327,11 +327,14 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     """180 is its own inverse: the shipped hull passes with a sign error or the
     length measured along the beam. Any other bow catches both."""
     asset = Asset(
+        description="x",
         url="x",
         sha256="0" * 64,
         length_m=200.0,
         draught_m=5.0,
         bow_deg=bow_deg,
+        triangles=1,
+        texture_px=[],
         licence="x",
         attribution="x",
     )
