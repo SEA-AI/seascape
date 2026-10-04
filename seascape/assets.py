@@ -36,7 +36,6 @@ class _Mesh(Model):
     model_config = ConfigDict(frozen=True)
 
     description: str = Field(min_length=1)
-    # The class its labels carry; its kind's supercategory groups the classes.
     category: str = Field(min_length=1)
     url: str
     sha256: str = Field(pattern=SHA256)
