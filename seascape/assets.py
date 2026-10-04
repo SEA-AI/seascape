@@ -6,6 +6,7 @@ import shutil
 import tomllib
 import urllib.request
 import uuid
+from abc import abstractmethod
 from collections import Counter
 from functools import cache
 from pathlib import Path, PurePosixPath
@@ -53,9 +54,13 @@ class _Mesh(Model):
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 
+    @abstractmethod
+    def scale(self, size: tuple[float, float, float]) -> float:
+        """Metres per mesh unit, from the mesh's extent along x, y and z."""
+
     @property
-    def size(self) -> str:
-        raise NotImplementedError
+    @abstractmethod
+    def size(self) -> str: ...
 
     def summary(self) -> str:
         sizes = Counter(self.texture_px)
@@ -85,7 +90,6 @@ class Hull(_Mesh):
     bow_deg: float = 0.0
 
     def scale(self, size: tuple[float, float, float]) -> float:
-        """Metres per mesh unit, from the mesh's extent along x, y and z."""
         return self.length_m / size[1]
 
     @property
