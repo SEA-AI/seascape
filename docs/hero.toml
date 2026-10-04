@@ -1,0 +1,20 @@
+#:schema ../schema/scenario.json
+
+extends = "../scenarios/baseline.toml"
+
+[sky]
+hdri = "belfast_sunset"
+# The photo's glow inside the EO frame, outside the LWIR.
+sun_bearing_deg = -16.0
+
+[[objects]]
+preset = "container_ship"
+range_m = 2000.0
+bearing_deg = 8.0
+heading_deg = 250.0
+
+[[objects]]
+asset = "lateral_mark"
+range_m = 100.0
+# Inside both frames, clear of the ship.
+bearing_deg = -6.0

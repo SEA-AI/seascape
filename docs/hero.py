@@ -1,6 +1,6 @@
 """The README's hero: each frame of a render, side by side, with labels.json drawn on.
 
-uv run seascape render scenarios/baseline.toml -o out/
+uv run seascape render docs/hero.toml -o out/
 uv run python docs/hero.py out/ docs/hero.jpg
 """
 
