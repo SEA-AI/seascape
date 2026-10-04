@@ -5,7 +5,7 @@ import math
 import os
 import sys
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Any, get_args
 
@@ -59,17 +59,17 @@ def _with_scenario(command: Callable[..., None], output: str) -> Callable[..., N
 
 @contextmanager
 def _blender_log(path: Path) -> Iterator[None]:
-    """Blender writes its log to file descriptor 1 under Python's `sys.stdout`, where
-    it would tear the progress bar; it goes to `path` instead."""
+    """Blender logs to `sys.stdout` from Python and to file descriptor 1 from C, where
+    either would tear the progress bar and mix into stdout; both go to `path`."""
     path.parent.mkdir(parents=True, exist_ok=True)
     sys.stdout.flush()
     stdout = os.dup(1)
-    with path.open("ab") as log:
+    with path.open("a") as log, redirect_stdout(log):
         os.dup2(log.fileno(), 1)
         try:
             yield
         finally:
-            sys.stdout.flush()
+            log.flush()
             os.dup2(stdout, 1)
             os.close(stdout)
 
@@ -98,9 +98,10 @@ def build(
 
     from seascape import scene
 
-    scene.build(built, band)
     path = output or scenario.with_suffix(f".{band}.blend")
-    bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()))
+    with _blender_log(path.with_suffix(".log")):
+        scene.build(built, band)
+        bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()))
     mounts = built.rig.mounts
     kinds = ", ".join(sorted({mount.camera.kind for mount in mounts}))
     click.echo(

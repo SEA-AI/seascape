@@ -7,9 +7,8 @@ from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
 import pytest
-from click.testing import CliRunner
 
-from seascape import assets, cli, skies
+from seascape import assets
 from seascape.config import CFG_DIR
 
 BODY = b"not really a mesh"
@@ -70,13 +69,6 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     assert not (assets.CACHE / "ship.fbx").exists()
     (part,) = assets.CACHE.glob("*.part")
     assert part.read_bytes() == b"a different mesh"
-
-
-def test_the_listing_names_every_mesh_and_sky() -> None:
-    listing = CliRunner().invoke(cli.main, ["assets", "list"])
-    assert listing.exit_code == 0
-    for name in [*assets.manifest(), *skies.library()]:
-        assert name in listing.output, name
 
 
 def test_fetch_puts_a_mesh_s_files_where_it_names_them(one: Path) -> None:

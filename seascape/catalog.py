@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from seascape import assets, render, scene
-from seascape.config import Band, load
+from seascape.config import Band, Scenario, load
 
 TILE = (480, 270)
 COLUMNS = 4
@@ -50,8 +50,13 @@ def shot(
             f'objects = [{{ asset = "{name}", range_m = {range_m}, bearing_deg = 0.0, '
             f"heading_deg = {HEADING_DEG} }}]",
             f'outputs.bands = ["{band}"]',
+            "outputs.duration_s = 0.0",
         ],
     )
+    # The mesh alone: TOML cannot set the ring or the ownship's hull to none.
+    alone = built.model_dump(mode="json") | {"targets": None}
+    alone["ownship"] |= {"asset": None}
+    built = Scenario.model_validate(alone)
     frame = Image.open(render.render(built, into)[0]).convert("RGB")
     (label,) = json.loads((into / "labels.json").read_text())["annotations"]
     x, y, w, h = label["bbox"]

@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Recognition",
 ]
 dependencies = [
-    "click>=8.1",
+    "click>=8.2",
     "numpy>=2.0",
     "opencv-python-headless>=5.0.0.93",
     "pillow>=12.3.0",
