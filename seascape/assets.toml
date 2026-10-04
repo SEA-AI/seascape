@@ -1,21 +1,30 @@
 # poly.pizza blocks scripted clients; Icosa Gallery serves the same Google Poly asset.
 
 [container_ship]
+description = "Low-poly container ship in flat colours, containers stacked on deck."
 url = "https://s3.us-east-005.backblazeb2.com/icosa-gallery/poly/3AmDGcCu6Ll/model.fbx"
 sha256 = "70f5d10641245613e8887ac3f0ab1e180c1cc2d27b1401621e56d0fe56dcf9ab"
+# A 2,500 teu feeder: 190-210 m overall, design draught 10.0 m. MAN Energy Solutions,
+# "Propulsion of 2,200-3,000 teu container vessels", Table 1.
 length_m = 200.0
 draught_m = 10.0
 bow_deg = 180.0
+triangles = 1620
+texture_px = []
 licence = "CC-BY-3.0"
 attribution = "Container Ship by Alex “SAFFY” Safayan, https://poly.pizza/m/3AmDGcCu6Ll"
 
 # Icosa serves this one only as a multi-file glTF; the archive keeps Poly's GLB.
 [yacht]
+description = "Low-poly motor yacht in flat colours."
 url = "https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/c/fp/1620916947019758/9znU2c-dTSR/d-wfIKdABHE/Yacht.glb"
 sha256 = "641bce20710ceb963f6ddd295a883b4d09019c5344876fd861f83abe27ed7d36"
+# A flybridge motor yacht: the Princess F65 is 20.30 m overall, princess.co.uk.
 length_m = 20.0
 # The mesh has no underwater body: its flat bottom is the authored waterline.
 draught_m = 0.3
 bow_deg = 90.0
+triangles = 1206
+texture_px = []
 licence = "CC-BY-3.0"
 attribution = "Yacht by Alex “SAFFY” Safayan, https://poly.pizza/m/9znU2c-dTSR"

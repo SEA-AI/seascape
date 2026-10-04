@@ -3,10 +3,11 @@
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import get_args
 
-from seascape import montage, panorama, recording
+from seascape import assets, montage, panorama, recording, skies
 from seascape.config import Band, Scenario, load
 
 
@@ -46,6 +47,31 @@ def _montage(scenario_path: Path, output: Path | None, overrides: list[str]) -> 
     print(montage.compose(scenario, into))
 
 
+def _fetched(name: str, url: str) -> str:
+    return "cached" if assets.cache_path(name, url).exists() else "not fetched"
+
+
+def _assets() -> None:
+    print(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
+    for name, mesh in assets.manifest().items():
+        sizes = Counter(mesh.texture_px)
+        textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
+        print(
+            f"  {name:<16} {mesh.length_m:>5.0f} m  {mesh.triangles:>9,} triangles  "
+            f"textures: {textures}  {mesh.licence}  {_fetched(name, mesh.url)}\n"
+            f"    {mesh.description}"
+        )
+    print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
+    photos = skies.library()
+    width = max(map(len, photos))
+    for name, photo in photos.items():
+        elevation = photo.sun_elevation_deg
+        sun = "no disc" if elevation is None else f"sun {elevation:.1f} deg"
+        print(
+            f"  {name:<{width}}  {sun:<14} {photo.licence}  {_fetched(name, photo.url)}"
+        )
+
+
 def _add_set(command: argparse.ArgumentParser) -> None:
     command.add_argument(
         "--set",
@@ -58,7 +84,9 @@ def _add_set(command: argparse.ArgumentParser) -> None:
 
 
 def _run(args: argparse.Namespace) -> None:
-    if args.command == "render":
+    if args.command == "assets":
+        _assets()
+    elif args.command == "render":
         _render(args.scenario, args.output, args.overrides)
     elif args.command == "montage":
         _montage(args.scenario, args.output, args.overrides)
@@ -151,6 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("folder", type=Path, help="a render's output directory")
 
     commands.add_parser("schema", help="print the scenario JSON schema on stdout")
+    commands.add_parser("assets", help="list the meshes and skies a scenario can name")
 
     args = parser.parse_args(argv)
     if args.command == "schema":

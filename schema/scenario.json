@@ -154,7 +154,11 @@
       "description": "Something to detect.",
       "properties": {
         "asset": {
-          "description": "An asset name from the manifest.",
+          "description": "An asset name from the manifest: `seascape assets` lists them.",
+          "enum": [
+            "container_ship",
+            "yacht"
+          ],
           "title": "Asset",
           "type": "string"
         },
@@ -312,6 +316,10 @@
         "asset": {
           "anyOf": [
             {
+              "enum": [
+                "container_ship",
+                "yacht"
+              ],
               "type": "string"
             },
             {
@@ -319,7 +327,7 @@
             }
           ],
           "default": null,
-          "description": "An asset name from the manifest.",
+          "description": "An asset name from the manifest: `seascape assets` lists them.",
           "title": "Asset"
         },
         "t_k": {
@@ -622,6 +630,40 @@
         "hdri": {
           "anyOf": [
             {
+              "enum": [
+                "aristea_wreck",
+                "belfast_sunset",
+                "citrus_orchard",
+                "citrus_orchard_road",
+                "drackenstein_quarry",
+                "evening_road_01",
+                "farm_field",
+                "hilly_terrain_01",
+                "industrial_sunset",
+                "industrial_sunset_02",
+                "kloofendal_28d_misty",
+                "kloofendal_38d_partly_cloudy",
+                "kloofendal_48d_partly_cloudy",
+                "kloofendal_misty_morning",
+                "kloofendal_overcast",
+                "kloppenheim_01",
+                "kloppenheim_03",
+                "kloppenheim_05",
+                "kloppenheim_06",
+                "mud_road",
+                "overcast_soil",
+                "quarry_04",
+                "qwantani_dusk_1",
+                "qwantani_dusk_2",
+                "rocky_ridge",
+                "scythian_tombs",
+                "snow_field",
+                "snow_field_2",
+                "sunflowers",
+                "table_mountain_1",
+                "table_mountain_2",
+                "wasteland_clouds"
+              ],
               "type": "string"
             },
             {
@@ -696,7 +738,11 @@
       "description": "A ring of vessels at one range, spread over a span of bearings.\n\nPlaced in the world, so nothing guarantees a camera sees one.",
       "properties": {
         "asset": {
-          "description": "An asset name from the manifest.",
+          "description": "An asset name from the manifest: `seascape assets` lists them.",
+          "enum": [
+            "container_ship",
+            "yacht"
+          ],
           "title": "Asset",
           "type": "string"
         },

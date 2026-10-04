@@ -17,7 +17,9 @@ from functools import cache
 from pathlib import Path
 
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from seascape.model import Model
 
 LIBRARY = Path(__file__).parent / "skies.toml"
 # ITU-R BT.709.
@@ -38,11 +40,11 @@ GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 
 
-class Photo(BaseModel):
+class Photo(Model):
     """One sky, and its sun as the image holds it: a bearing clockwise from +Y as
     Cycles maps the image unrotated, and an elevation only where a disc shows."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(frozen=True)
 
     url: str
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")

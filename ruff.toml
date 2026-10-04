@@ -25,7 +25,7 @@ ignore = [
 [lint.per-file-ignores]
 "seascape/{blend,render,scene,sea,video}.py" = ["TID253"]
 "tests/**" = ["TID253"]
-"docs/skies.py" = ["TID253"]
+"docs/{assets,skies}.py" = ["TID253"]
 
 [lint.flake8-tidy-imports]
 # Imported where used, so `schema` and a failed validation skip loading bpy.

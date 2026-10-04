@@ -319,6 +319,15 @@ def test_a_saved_build_reopens_with_its_lookup_tables(
         assert np.array_equal(before, after), written.name
 
 
+def test_an_image_inside_a_node_group_is_counted() -> None:
+    image = bpy.data.images.new("deep", 8, 4)
+    group = bpy.data.node_groups.new("wrap", "ShaderNodeTree")
+    group.nodes.new("ShaderNodeTexImage").image = image
+    outer = bpy.data.node_groups.new("outer", "ShaderNodeTree")
+    outer.nodes.new("ShaderNodeGroup").node_tree = group
+    assert scene._images(outer) == {image}
+
+
 @pytest.mark.parametrize(
     ("bow_deg", "bow_corner"),
     [(0.0, (0, 5, 0)), (90.0, (5, 0, 0)), (180.0, (0, -5, 0)), (270.0, (-5, 0, 0))],
@@ -327,11 +336,14 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     """180 is its own inverse: the shipped hull passes with a sign error or the
     length measured along the beam. Any other bow catches both."""
     asset = Asset(
+        description="x",
         url="x",
         sha256="0" * 64,
         length_m=200.0,
         draught_m=5.0,
         bow_deg=bow_deg,
+        triangles=1,
+        texture_px=(),
         licence="x",
         attribution="x",
     )

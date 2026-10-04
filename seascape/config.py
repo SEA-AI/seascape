@@ -20,11 +20,17 @@ import tomllib
 import warnings
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Annotated, Any, Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    Field,
+    WithJsonSchema,
+    model_validator,
+)
 
-from seascape import lwir, skies, waves
+from seascape import assets, lwir, skies, waves
+from seascape.model import Model
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
@@ -32,15 +38,6 @@ CFG_DIR = Path(__file__).parent / "cfg"
 type Band = Literal["eo", "ir"]
 
 type ImageFormat = Literal["exr", "png", "jpg"]
-
-
-class Model(BaseModel):
-    """Strictness shared by everything this package parses from TOML."""
-
-    # extra: a typo in a scenario is otherwise a silent wrong render.
-    # inf_nan: tomllib parses `nan` and `inf`; a nan bearing renders a camera pointing
-    # nowhere and reports no error.
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Camera(Model):
@@ -268,7 +265,12 @@ class Sky(Model):
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
 
-    hdri: str | None = Field(
+    hdri: (
+        Annotated[
+            str, WithJsonSchema({"type": "string", "enum": sorted(skies.library())})
+        ]
+        | None
+    ) = Field(
         default=None,
         description="A photographed sky from seascape/skies.toml, in place of the Sky "
         "Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR "
@@ -326,7 +328,20 @@ class Sky(Model):
         return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
 
-_ASSET = "An asset name from the manifest."
+def _in_the_manifest(name: str) -> str:
+    known = assets.manifest()
+    if name not in known:
+        raise ValueError(f"no asset {name!r} in {sorted(known)}")
+    return name
+
+
+# The names go in the schema too, so an editor completes them.
+AssetName = Annotated[
+    str,
+    AfterValidator(_in_the_manifest),
+    WithJsonSchema({"type": "string", "enum": sorted(assets.manifest())}),
+]
+_ASSET = "An asset name from the manifest: `seascape assets` lists them."
 _T_HULL = "Shaded hull temperature. IR only."
 _HEADING = "Where its bow points, clockwise from the ownship's bow."
 _RANGE = "Horizontal, from the ownship's origin."
@@ -357,7 +372,7 @@ class Orbit(Model):
 class Object(Model):
     """Something to detect."""
 
-    asset: str = Field(description=_ASSET)
+    asset: AssetName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
     heading_deg: float = Field(default=0.0, description=_HEADING)
@@ -394,7 +409,7 @@ class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the attitude alone."""
 
-    asset: str | None = Field(default=None, description=_ASSET)
+    asset: AssetName | None = Field(default=None, description=_ASSET)
     t_k: float = Field(default=296.0, ge=250.0, le=400.0, description=_T_HULL)
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
@@ -415,7 +430,7 @@ class Targets(Model):
     Placed in the world, so nothing guarantees a camera sees one.
     """
 
-    asset: str = Field(description=_ASSET)
+    asset: AssetName = Field(description=_ASSET)
     count: int = Field(gt=0, description="How many.")
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: tuple[float, float] = Field(

@@ -3,11 +3,12 @@
 import hashlib
 import re
 import tomllib
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
 import pytest
 
-from seascape import assets
+from seascape import assets, cli, skies
 from seascape.config import CFG_DIR
 
 BODY = b"not really a mesh"
@@ -15,22 +16,25 @@ DIGEST = hashlib.sha256(BODY).hexdigest()
 
 
 @pytest.fixture
-def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """A one-entry manifest served over `file://`, cached under `tmp_path`."""
     source = tmp_path / "source.fbx"
     source.write_bytes(BODY)
     manifest = tmp_path / "assets.toml"
     manifest.write_text(
-        f'[ship]\nurl = "{source.as_uri()}"\nsha256 = "{DIGEST}"\n'
-        'length_m = 1.0\ndraught_m = 0.1\nlicence = "CC0-1.0"\nattribution = "nobody"\n'
+        f'[ship]\ndescription = "A hull."\nurl = "{source.as_uri()}"\n'
+        f'sha256 = "{DIGEST}"\nlength_m = 1.0\ndraught_m = 0.1\ntriangles = 1\n'
+        'texture_px = []\nlicence = "CC0-1.0"\nattribution = "nobody"\n'
     )
     monkeypatch.setattr(assets, "MANIFEST", manifest)
     monkeypatch.setattr(assets, "CACHE", tmp_path / "cache")
-    return source
+    assets.manifest.cache_clear()
+    yield source
+    assets.manifest.cache_clear()
 
 
 def test_every_object_preset_names_an_asset() -> None:
-    """A preset naming a mesh nothing can fetch fails at render time, not load time."""
+    """A preset is validated only when a scenario uses it."""
     for preset in sorted((CFG_DIR / "objects").glob("*.toml")):
         with preset.open("rb") as handle:
             assert tomllib.load(handle)["asset"] in assets.manifest(), preset
@@ -64,3 +68,10 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     assert not (assets.CACHE / "ship.fbx").exists()
     (part,) = assets.CACHE.glob("*.part")
     assert part.read_bytes() == b"a different mesh"
+
+
+def test_the_listing_names_every_mesh_and_sky(capsys: pytest.CaptureFixture) -> None:
+    assert cli.main(["assets"]) == 0
+    listing = capsys.readouterr().out
+    for name in [*assets.manifest(), *skies.library()]:
+        assert name in listing, name

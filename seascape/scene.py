@@ -4,6 +4,7 @@ import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import chain
+from pathlib import Path
 from typing import NamedTuple
 
 import bpy
@@ -576,13 +577,9 @@ def _meshes(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
     ]
 
 
-def _import(name: str, band: Band) -> list[bpy.types.Object]:
-    """Import an asset and fit it; returns the root parts.
-
-    An asset arrives in its author's units, off-origin, in many parts.
-    """
+def _load(path: Path) -> set[bpy.types.Object]:
+    """Import a mesh file; returns what it added."""
     before = set(bpy.data.objects)
-    path = fetch(name)
     importer = {".fbx": bpy.ops.import_scene.fbx, ".glb": bpy.ops.import_scene.gltf}
     importer[path.suffix](filepath=str(path))
     imported = set(bpy.data.objects) - before
@@ -590,6 +587,15 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     for obj in [o for o in imported if o.type in {"CAMERA", "LIGHT"}]:
         imported.remove(obj)
         bpy.data.objects.remove(obj)
+    return imported
+
+
+def _import(name: str, band: Band) -> list[bpy.types.Object]:
+    """Import an asset and fit it; returns the root parts.
+
+    An asset arrives in its author's units, off-origin, in many parts.
+    """
+    imported = _load(fetch(name))
     # Measure everything, move the roots. An FBX keeps meshes under empties, and
     # measuring only the roots would leave them out of the fit.
     parts = [o for o in imported if o.parent is None]
@@ -609,6 +615,37 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
             mesh.data.materials.clear()
             mesh.data.materials.append(None)
     return parts
+
+
+def _images(tree: bpy.types.NodeTree) -> set[bpy.types.Image]:
+    found = set()
+    for node in tree.nodes:
+        if node.type == "TEX_IMAGE" and node.image:
+            found.add(node.image)
+        elif node.type == "GROUP" and node.node_tree:
+            found |= _images(node.node_tree)
+    return found
+
+
+def measure(path: Path) -> tuple[int, tuple[int, ...]]:
+    """A mesh file's triangles and the longest side of each image, as imported."""
+    meshes = [obj for obj in _load(path) if obj.type == "MESH"]
+    for mesh in meshes:
+        mesh.data.calc_loop_triangles()
+    images = set().union(
+        *(
+            _images(material.node_tree)
+            for mesh in meshes
+            for material in mesh.data.materials
+            if material and material.node_tree
+        )
+    )
+    if missing := sorted(image.name for image in images if 0 in image.size):
+        raise ValueError(f"{path}: no pixels in {missing}")
+    return (
+        sum(len(mesh.data.loop_triangles) for mesh in meshes),
+        tuple(sorted((max(image.size) for image in images), reverse=True)),
+    )
 
 
 def _vessel(

@@ -469,6 +469,13 @@ def test_an_unknown_hdri_names_the_library() -> None:
         Sky.model_validate({"hdri": "no_such_sky"})
 
 
+def test_an_unknown_asset_names_the_manifest() -> None:
+    with pytest.raises(ValidationError, match="yacht"):
+        Object.model_validate(
+            {"asset": "no_such_hull", "range_m": 1.0, "bearing_deg": 0.0}
+        )
+
+
 def test_the_sky_texture_needs_a_sun() -> None:
     with pytest.raises(ValidationError, match="only for an hdri"):
         Sky.model_validate({"sun_elevation_deg": None})

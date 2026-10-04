@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pydantic import ConfigDict, Field
 
-from seascape.config import Model
+from seascape.model import Model
 
 FILENAME = "calibration.json"
 
