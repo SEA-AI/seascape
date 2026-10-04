@@ -95,6 +95,11 @@ def test_targets_of_one_category_share_it() -> None:
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
 
 
+def test_labels_written_without_supercategories_still_read() -> None:
+    old = '{"categories": [{"id": 1, "name": "container_ship"}]}'
+    assert labels.Labels.model_validate_json(old).categories[0].supercategory == ""
+
+
 def test_a_frame_carries_its_time() -> None:
     truth = labels.Labels()
 
