@@ -1,6 +1,7 @@
 """Command line entry point."""
 
 import json
+import math
 import os
 import sys
 from collections.abc import Callable, Iterator
@@ -239,13 +240,7 @@ def list_() -> None:
     photos = skies.library()
     order = sorted(
         photos,
-        key=lambda n: (
-            -(
-                -90.0
-                if photos[n].sun_elevation_deg is None
-                else photos[n].sun_elevation_deg
-            )
-        ),
+        key=lambda n: math.inf if (e := photos[n].sun_elevation_deg) is None else -e,
     )
     _table(
         ("SKY", "SUN ELEV", "LICENCE", "CACHED"),
