@@ -265,6 +265,15 @@ class Sky(Model):
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
 
+    # Judgement: inside the WMO International Cloud Atlas's low clouds, based from the
+    # surface to 2 km.
+    cloud_base_m: float = Field(
+        default=1000.0,
+        ge=0.0,
+        description="The photo's cloud base, which sets its clouds' temperature in IR. "
+        "EO ignores it.",
+    )
+
     hdri: (
         Annotated[
             str, WithJsonSchema({"type": "string", "enum": sorted(skies.library())})
@@ -274,7 +283,8 @@ class Sky(Model):
         default=None,
         description="A photographed sky from seascape/skies.toml, in place of the Sky "
         "Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR "
-        "keeps its own sky but takes the photo's sun, turned to `sun_bearing_deg`.",
+        "keeps its own clear sky and takes the photo's sun and clouds, turned to "
+        "`sun_bearing_deg`.",
     )
 
     @model_validator(mode="before")

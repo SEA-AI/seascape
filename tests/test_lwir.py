@@ -177,3 +177,23 @@ def test_every_atmosphere_has_a_sky_a_path_and_a_surface_air() -> None:
     assert set(lwir._sky_table()[1]) == names
     assert set(lwir._path_table()) == names
     assert set(lwir.SURFACE_AIR_K) == names
+
+
+def test_a_cloud_overhead_is_a_blackbody_at_its_base() -> None:
+    radiance = lwir.cloudy_sky_radiance(np.pi / 2, 1.0, 1000.0, 290.0)
+    assert float(radiance) == pytest.approx(lwir.band_radiance(280.2))
+
+
+def test_a_cloud_never_cools_the_sky_it_hides() -> None:
+    elevation = np.radians([0.0, 5.0, 45.0, 90.0])
+    clear = lwir.sky_radiance(elevation, 290.0)
+    cloudy = lwir.cloudy_sky_radiance(elevation, 1.0, 1000.0, 290.0)
+    assert np.all(cloudy >= clear)
+    assert float(cloudy[0]) == pytest.approx(float(clear[0]))
+
+
+def test_no_cloud_is_the_clear_sky() -> None:
+    elevation = np.radians([0.0, 30.0, 90.0])
+    assert lwir.cloudy_sky_radiance(elevation, 0.0, 1000.0) == pytest.approx(
+        lwir.sky_radiance(elevation)
+    )

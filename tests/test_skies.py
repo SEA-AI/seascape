@@ -41,3 +41,8 @@ def test_a_star_is_no_sun() -> None:
     sky = _sky(90.0, 20.0, 8.0, 2.0)
     sky[100, 700] = 1e5
     assert skies.sun(sky).elevation_deg is None
+
+
+def test_blue_sky_is_clear_and_white_cloud_is_cloud() -> None:
+    pixels = np.array([[0.2, 0.4, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]])
+    assert skies.cloud(pixels).tolist() == [0.0, 1.0, 0.0]

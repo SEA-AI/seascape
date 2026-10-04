@@ -651,6 +651,13 @@
           "title": "T Air K",
           "type": "number"
         },
+        "cloud_base_m": {
+          "default": 1000.0,
+          "description": "The photo's cloud base, which sets its clouds' temperature in IR. EO ignores it.",
+          "minimum": 0.0,
+          "title": "Cloud Base M",
+          "type": "number"
+        },
         "hdri": {
           "anyOf": [
             {
@@ -695,7 +702,7 @@
             }
           ],
           "default": null,
-          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR keeps its own sky but takes the photo's sun, turned to `sun_bearing_deg`.",
+          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR keeps its own clear sky and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
           "title": "Hdri"
         }
       },

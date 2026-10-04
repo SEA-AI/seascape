@@ -7,7 +7,9 @@ are unclipped", so a sun keeps its radiance. Hold-Geoffroy, Sunkavalli, Hadap,
 Gambaretto & Lalonde, "Deep outdoor illumination estimation", CVPR 2017
 (arXiv:1611.06403): an HDR panorama's sun is its brightest region. The Astronomical
 Almanac: the sun's mean semi-diameter is 16 arcminutes, so a uniform disc has an RMS
-radius of 0.19 degrees.
+radius of 0.19 degrees. Long, Sabburg, Calbo & Pages, "Retrieving cloud characteristics
+from ground-based daytime color all-sky images", J. Atmos. Oceanic Technol. 23(5) 633,
+2006: red over blue above 0.6 is cloud.
 """
 
 import math
@@ -39,6 +41,9 @@ DISC_RMS_DEG = (0.1, 0.6)
 # The grid a glow is found on, and its blur in cells: a judgement, a few degrees.
 GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
+# Long's ratio is of camera counts, which a display gamma of 2.2 encodes; a photo's
+# radiance is linear.
+CLOUD_RED_BLUE = 0.6**2.2
 
 
 class Photo(Model):
@@ -134,3 +139,8 @@ def sun(radiance: np.ndarray) -> Sun:
         math.degrees(math.atan2(centre[0], centre[1])) % 360.0,
         math.degrees(math.asin(centre[2])),
     )
+
+
+def cloud(radiance: np.ndarray) -> np.ndarray:
+    """1 where `radiance`, (..., 3), is cloud, 0 where it is clear sky."""
+    return (radiance[..., 0] > CLOUD_RED_BLUE * radiance[..., 2]).astype(np.float32)

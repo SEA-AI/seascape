@@ -27,6 +27,12 @@ was run and from what air. The sky is normalised by its horizon, taken as a blac
 at air temperature, which holds where a horizontal path is opaque: every profile but
 subarctic winter. Along a path, water vapour takes most of the band.
 
+Cloud: optically thick water cloud is close to a blackbody in this band (Stephens,
+"Radiation profiles in extended water clouds. II", J. Atmos. Sci. 35(11) 2123, 1978),
+which is what a ground-based thermal camera sees of one (Smith & Toumi, "Measuring
+cloud cover and brightness temperature with a ground-based thermal infrared camera",
+J. Appl. Meteor. Climatol. 47(2) 683, 2008).
+
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:
 
@@ -270,6 +276,31 @@ def sky_radiance(
         np.asarray(elev_rad, dtype=np.float64), np.radians(elev), curves[atmosphere]
     )
     return fraction * band_radiance(t_air_k)
+
+
+# g / c_p: below its base, convection mixes the air dry adiabatically up to where it
+# condenses (Wallace & Hobbs, Atmospheric Science, 2nd ed., 2006).
+DRY_LAPSE_K_PER_M = 9.8e-3
+
+
+def cloudy_sky_radiance(
+    elev_rad: npt.ArrayLike,
+    cloud: npt.ArrayLike,
+    cloud_base_m: float,
+    t_air_k: float | None = None,
+    atmosphere: Atmosphere = ATMOSPHERE,
+) -> FloatArray:
+    """`sky_radiance` with `cloud`, a fraction from 0 to 1, of it a blackbody at the
+    cloud base.
+
+    The air between the camera and the cloud is left out, except that the air above a
+    base is colder than it, so a cloud only warms the sky it hides.
+    """
+    if t_air_k is None:
+        t_air_k = SURFACE_AIR_K[atmosphere]
+    clear = sky_radiance(elev_rad, t_air_k, atmosphere)
+    base = band_radiance(t_air_k - DRY_LAPSE_K_PER_M * cloud_base_m)
+    return clear + np.asarray(cloud) * np.maximum(base - clear, 0.0)
 
 
 @functools.lru_cache(maxsize=1)
