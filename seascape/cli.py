@@ -59,7 +59,8 @@ def _assets() -> None:
         print(
             f"  {name:<20} {mesh.kind:<6} {mesh.size:>12}  {mesh.triangles:>9,} "
             f"triangles  textures: {textures}  {mesh.licence}  "
-            f"{_fetched(assets.cached(name))}\n    {mesh.description}"
+            f"{_fetched(assets.cached(name))}\n"
+            f"    {mesh.supercategory} / {mesh.category}: {mesh.description}"
         )
     print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
     photos = skies.library()

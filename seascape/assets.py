@@ -36,6 +36,8 @@ class _Mesh(Model):
     model_config = ConfigDict(frozen=True)
 
     description: str = Field(min_length=1)
+    # The class its labels carry; its kind's supercategory groups the classes.
+    category: str = Field(min_length=1)
     url: str
     sha256: str = Field(pattern=SHA256)
     # By path relative to the mesh, as it names them.
@@ -61,6 +63,7 @@ class Hull(_Mesh):
     """A vessel, fitted bow to stern."""
 
     kind: Literal["hull"]
+    supercategory: ClassVar[str] = "vessel"
     length_m: float = Field(gt=0.0)  # the mesh arrives in arbitrary units
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0
@@ -78,6 +81,7 @@ class Buoy(_Mesh):
     """A float with no bow, fitted keel to top."""
 
     kind: Literal["buoy"]
+    supercategory: ClassVar[str] = "buoy"
     height_m: float = Field(gt=0.0)
     bow_deg: ClassVar[float] = 0.0
 
@@ -93,6 +97,7 @@ class Debris(_Mesh):
     """Something adrift with no bow, fitted along its longest side."""
 
     kind: Literal["debris"]
+    supercategory: ClassVar[str] = "debris"
     length_m: float = Field(gt=0.0)
     bow_deg: ClassVar[float] = 0.0
 

@@ -341,6 +341,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     asset = Hull(
         kind="hull",
         description="x",
+        category="x",
         url="x",
         sha256="0" * 64,
         length_m=200.0,
@@ -373,6 +374,7 @@ def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None
     debris = Debris(
         kind="debris",
         description="x",
+        category="x",
         url="x",
         sha256="0" * 64,
         length_m=6.0,
@@ -395,6 +397,7 @@ def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
     buoy = Buoy(
         kind="buoy",
         description="x",
+        category="x",
         url="x",
         sha256="0" * 64,
         height_m=6.0,
