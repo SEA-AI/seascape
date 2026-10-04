@@ -1,6 +1,6 @@
 # Assets
 
-`seascape assets list` shows the meshes a scenario can name in `asset`, and the skies it can name in `sky.hdri`.
+Meshes are never committed. `seascape/assets.toml` records each one's source, sha256, licence and credit; they download on first use to `~/.cache/seascape`, or to `$XDG_CACHE_HOME/seascape` when that is set to an absolute path. Every run re-checks the digest. `seascape assets list` shows the meshes a scenario can name in `asset`, and the skies it can name in `sky.hdri`.
 
 ![Every mesh, three-quarter on](assets_eo.jpg)
 

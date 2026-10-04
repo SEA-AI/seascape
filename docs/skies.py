@@ -1,4 +1,4 @@
-"""The README's sky library: each photo down to `LOWEST_DEG`, its measured sun circled.
+"""The sky library: each photo down to `LOWEST_DEG`, its measured sun circled.
 
 uv run python docs/skies.py docs/skies.jpg
 """
