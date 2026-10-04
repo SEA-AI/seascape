@@ -29,6 +29,7 @@ from seascape.config import (
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
+HERO = SCENARIOS.parent / "docs" / "hero.toml"
 SCHEMA = Path(__file__).parents[1] / "schema" / "scenario.json"
 
 
@@ -268,11 +269,16 @@ def test_every_model_and_field_describes_itself() -> None:
     assert not missing
 
 
-def test_baseline_points_at_the_committed_schema() -> None:
+@pytest.mark.parametrize("path", [BASELINE, HERO])
+def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     """The `#:schema` line is a comment, so nothing else would ever notice it rot."""
-    line = BASELINE.read_text().splitlines()[0]
+    line = path.read_text().splitlines()[0]
     assert line.startswith("#:schema ")
-    assert (BASELINE.parent / line.removeprefix("#:schema ")).resolve() == SCHEMA
+    assert (path.parent / line.removeprefix("#:schema ")).resolve() == SCHEMA
+
+
+def test_the_readme_hero_loads() -> None:
+    load(HERO)
 
 
 def test_every_shipped_preset_parses() -> None:
