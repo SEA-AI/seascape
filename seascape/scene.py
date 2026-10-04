@@ -190,10 +190,6 @@ def _haze(sky: Sky, band: Band, far_m: float) -> None:
     link(mix.outputs["Shader"], group.nodes.new("NodeGroupOutput").inputs["Shader"])
     for material in bpy.data.materials:
         haze(material)
-        if band == "ir":
-            # Everything emits in LWIR. Sampled as lights, every surface slows the
-            # render for light the rays that hit it bring back anyway.
-            material.cycles.emission_sampling = "NONE"
 
 
 def haze(material: bpy.types.Material) -> None:
@@ -215,6 +211,9 @@ def haze(material: bpy.types.Material) -> None:
     node.node_tree = group
     tree.links.new(output.inputs["Surface"].links[0].from_socket, node.inputs["Shader"])
     tree.links.new(node.outputs["Shader"], output.inputs["Surface"])
+    # The airlight emits, and in LWIR so does every surface. As a light, each sample
+    # runs the whole shader for light the rays that hit it already bring back.
+    material.cycles.emission_sampling = "NONE"
 
 
 def _sky_ahead(
