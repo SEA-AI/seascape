@@ -37,24 +37,22 @@ class _Seascape(click.Group):
 
 
 def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None]]:
-    return lambda command: _with_scenario(command, output)
+    """The scenario argument and its `--output` and `--set`; `output` is its help."""
 
+    def add(command: Callable[..., None]) -> Callable[..., None]:
+        command = click.option(
+            "--set",
+            "overrides",
+            multiple=True,
+            metavar="KEY=VALUE",
+            help="Override a field, written as TOML: 'rig.pitch_deg = -5'. Repeatable.",
+        )(command)
+        command = click.option(
+            "-o", "--output", type=click.Path(path_type=Path), help=output
+        )(command)
+        return click.argument("scenario", type=_FILE)(command)
 
-def _with_scenario(command: Callable[..., None], output: str) -> Callable[..., None]:
-    command = click.option(
-        "--set",
-        "overrides",
-        multiple=True,
-        metavar="KEY=VALUE",
-        help="Override a field, written as TOML: 'rig.pitch_deg = -5'. Repeatable.",
-    )(command)
-    command = click.option(
-        "-o",
-        "--output",
-        type=click.Path(path_type=Path),
-        help=output,
-    )(command)
-    return click.argument("scenario", type=_FILE)(command)
+    return add
 
 
 @contextmanager

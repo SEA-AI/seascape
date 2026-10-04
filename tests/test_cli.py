@@ -1,4 +1,4 @@
-"""The command line, through Click's test runner: stdout, stderr and exit codes."""
+"""The command line."""
 
 import os
 from collections.abc import Callable
@@ -32,12 +32,8 @@ def _commands(group: cli.click.Group, path: tuple[str, ...] = ()) -> list[tuple]
     return found
 
 
-# A bare "render" id is the keyword conftest skips without --render.
-@pytest.mark.parametrize(
-    "command", _commands(cli.main), ids=lambda c: f"seascape {' '.join(c)}"
-)
+@pytest.mark.parametrize("command", _commands(cli.main), ids=" ".join)
 def test_every_command_has_help(run: Run, command: tuple[str, ...]) -> None:
-    """Click's exit after --help is a RuntimeError, which the error handler wraps."""
     helped = run(*command, "--help")
     assert helped.exit_code == 0
     assert helped.stdout.startswith(f"Usage: seascape {' '.join(command)}")
@@ -48,8 +44,7 @@ def test_version(run: Run) -> None:
     assert run("--version").stdout.startswith("seascape, version ")
 
 
-def test_a_scenario_mistake_is_one_line_on_stderr_and_exit_1(run: Run) -> None:
-    """Validation fails before bpy loads."""
+def test_a_scenario_mistake_is_an_error_on_stderr_and_exit_1(run: Run) -> None:
     failed = run("build", BASELINE, "--set", "rig.height_m = -1")
     assert failed.exit_code == 1
     assert failed.stderr.startswith("Error: ")
