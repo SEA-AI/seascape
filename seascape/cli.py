@@ -202,7 +202,6 @@ def assets_() -> None:
 
 
 def _table(header: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
-    """Columns as wide as their widest cell; a column of numbers aligns right."""
     widths = [max(map(len, column)) for column in zip(header, *rows, strict=True)]
     right = [
         all(c.replace(",", "").isdigit() for c in col)
@@ -238,10 +237,18 @@ def list_() -> None:
     )
     click.echo()
     photos = skies.library()
-    # Highest sun first; a sky with no disc after every sun.
-    order = sorted(photos, key=lambda n: -(photos[n].sun_elevation_deg or -90.0))
+    order = sorted(
+        photos,
+        key=lambda n: (
+            -(
+                -90.0
+                if photos[n].sun_elevation_deg is None
+                else photos[n].sun_elevation_deg
+            )
+        ),
+    )
     _table(
-        ("SKY", "SUN", "LICENCE", "CACHED"),
+        ("SKY", "SUN ELEV", "LICENCE", "CACHED"),
         [
             (
                 name,
@@ -264,7 +271,7 @@ def _names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[
 @assets_.command()
 @click.argument("name", shell_complete=_names)
 def show(name: str) -> None:
-    """Everything the manifest says about one mesh or sky."""
+    """Describe one mesh or sky."""
     if name in assets.manifest():
         mesh = assets.manifest()[name]
         fields = {
@@ -284,7 +291,7 @@ def show(name: str) -> None:
         photo = skies.library()[name]
         path = assets.cache_path(name, photo.url)
         fields = {
-            "sun": photo.sun,
+            "sun elevation": photo.sun,
             "sun bearing": f"{photo.sun_bearing_deg:.1f} deg",
             "licence": photo.licence,
             "attribution": photo.attribution,
@@ -292,7 +299,7 @@ def show(name: str) -> None:
             "cached": str(path) if path.exists() else "-",
         }
     else:
-        raise click.BadParameter(f"no mesh or sky {name!r}: `seascape assets list`")
+        raise click.BadParameter(f"no mesh or sky {name!r}; see `seascape assets list`")
     width = max(map(len, fields))
     for key, value in fields.items():
         click.echo(f"{click.style(key.ljust(width), bold=True)}  {value}")

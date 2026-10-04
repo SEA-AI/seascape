@@ -68,7 +68,6 @@ class _Mesh(Model):
         return ", ".join(f"{n} x {px} px" for px, n in sizes.items()) or "-"
 
     def row(self) -> tuple[str, ...]:
-        """Kind, class, size, triangles, textures and licence, for a table."""
         return (
             self.kind,
             self.category,
@@ -101,7 +100,7 @@ class Hull(_Mesh):
 
     @property
     def size(self) -> str:
-        return f"{self.length_m:.0f} m long"
+        return f"{self.length_m:.3g} m long"
 
 
 class Buoy(_Mesh):
@@ -117,7 +116,7 @@ class Buoy(_Mesh):
 
     @property
     def size(self) -> str:
-        return f"{self.height_m:.1f} m tall"
+        return f"{self.height_m:.3g} m tall"
 
 
 class Debris(_Mesh):
@@ -133,7 +132,7 @@ class Debris(_Mesh):
 
     @property
     def size(self) -> str:
-        return f"{self.length_m:.2f} m long"
+        return f"{self.length_m:.3g} m long"
 
 
 type Asset = Annotated[Hull | Buoy | Debris, Field(discriminator="kind")]
