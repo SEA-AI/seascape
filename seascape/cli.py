@@ -47,8 +47,8 @@ def _montage(scenario_path: Path, output: Path | None, overrides: list[str]) -> 
     print(montage.compose(scenario, into))
 
 
-def _fetched(name: str, url: str) -> str:
-    return "cached" if assets.cache_path(name, url).exists() else "not fetched"
+def _fetched(here: bool) -> str:
+    return "cached" if here else "not fetched"
 
 
 def _assets() -> None:
@@ -57,9 +57,9 @@ def _assets() -> None:
         sizes = Counter(mesh.texture_px)
         textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
         print(
-            f"  {name:<16} {mesh.length_m:>5.0f} m  {mesh.triangles:>9,} triangles  "
-            f"textures: {textures}  {mesh.licence}  {_fetched(name, mesh.url)}\n"
-            f"    {mesh.description}"
+            f"  {name:<20} {mesh.kind:<4} {mesh.size:>12}  {mesh.triangles:>9,} "
+            f"triangles  textures: {textures}  {mesh.licence}  "
+            f"{_fetched(assets.cached(name))}\n    {mesh.description}"
         )
     print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
     photos = skies.library()
@@ -67,9 +67,8 @@ def _assets() -> None:
     for name, photo in photos.items():
         elevation = photo.sun_elevation_deg
         sun = "no disc" if elevation is None else f"sun {elevation:.1f} deg"
-        print(
-            f"  {name:<{width}}  {sun:<14} {photo.licence}  {_fetched(name, photo.url)}"
-        )
+        here = _fetched(assets.cache_path(name, photo.url).exists())
+        print(f"  {name:<{width}}  {sun:<14} {photo.licence}  {here}")
 
 
 def _add_set(command: argparse.ArgumentParser) -> None:

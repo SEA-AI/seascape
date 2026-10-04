@@ -22,7 +22,7 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     source.write_bytes(BODY)
     manifest = tmp_path / "assets.toml"
     manifest.write_text(
-        f'[ship]\ndescription = "A hull."\nurl = "{source.as_uri()}"\n'
+        f'[ship]\nkind = "hull"\ndescription = "A hull."\nurl = "{source.as_uri()}"\n'
         f'sha256 = "{DIGEST}"\nlength_m = 1.0\ndraught_m = 0.1\ntriangles = 1\n'
         'texture_px = []\nlicence = "CC0-1.0"\nattribution = "nobody"\n'
     )
@@ -75,3 +75,21 @@ def test_the_listing_names_every_mesh_and_sky(capsys: pytest.CaptureFixture) -> 
     listing = capsys.readouterr().out
     for name in [*assets.manifest(), *skies.library()]:
         assert name in listing, name
+
+
+def test_fetch_puts_a_mesh_s_files_where_it_names_them(one: Path) -> None:
+    with assets.MANIFEST.open("a") as manifest:
+        manifest.write(
+            f'[ship.files."textures/skin.jpg"]\nurl = "{one.as_uri()}"\n'
+            f'sha256 = "{DIGEST}"\n'
+        )
+    mesh = assets.fetch("ship")
+    assert mesh == assets.CACHE / "ship" / "source.fbx"
+    assert (mesh.parent / "textures" / "skin.jpg").read_bytes() == BODY
+
+
+def test_a_file_outside_the_mesh_s_folder_is_refused() -> None:
+    entry = dict(assets.manifest()["yacht"])
+    entry["files"] = {"../../.bashrc": {"url": "x", "sha256": DIGEST}}
+    with pytest.raises(ValueError, match="outside the mesh's folder"):
+        assets.Hull.model_validate(entry)

@@ -550,14 +550,14 @@ def _corners(objects: Iterable[bpy.types.Object]) -> list[Vector]:
 
 
 def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
-    """Bow to +Y, scaled to the manifest length, centred, keel at the draught.
+    """Bow to +Y, scaled to the manifest size, centred, keel at the draught.
 
-    Turned first so the length is measured bow to stern whatever the authored axis.
+    Turned first so a hull's length is measured bow to stern whatever the authored axis.
     """
     turn = Matrix.Rotation(yaw(-asset.bow_deg), 4, "Z")
     axes = list(zip(*(turn @ c for c in corners), strict=True))
     low, high = Vector([min(a) for a in axes]), Vector([max(a) for a in axes])
-    scale = asset.length_m / (high.y - low.y)
+    scale = asset.scale(tuple(high - low))
     low, high = low * scale, high * scale
     return (
         Matrix.Translation(
@@ -580,7 +580,8 @@ def _meshes(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
 def _load(path: Path) -> set[bpy.types.Object]:
     """Import a mesh file; returns what it added."""
     before = set(bpy.data.objects)
-    importer = {".fbx": bpy.ops.import_scene.fbx, ".glb": bpy.ops.import_scene.gltf}
+    gltf = bpy.ops.import_scene.gltf
+    importer = {".fbx": bpy.ops.import_scene.fbx, ".glb": gltf, ".gltf": gltf}
     importer[path.suffix](filepath=str(path))
     imported = set(bpy.data.objects) - before
     # A Poly glTF brings its viewer's camera and lights, which would light the scene.
@@ -604,9 +605,10 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     fit = _fit(corners, manifest()[name])
     for part in parts:
         part.matrix_world = fit @ part.matrix_world
-    # Fitted bow to +Y, so the beam is the width along x.
-    across = [(fit @ c).x for c in corners]
-    parts[0]["beam_m"] = max(across) - min(across)
+    # Fitted bow to +Y, so the beam is the width along x and the length along y.
+    fitted = [fit @ c for c in corners]
+    parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
+    parts[0]["length_m"] = max(c.y for c in fitted) - min(c.y for c in fitted)
 
     if band == "ir":
         # The asset's own materials are albedo, which says nothing about 8-14 um.
@@ -675,6 +677,7 @@ def _vessel(
 
     anchor = bpy.data.objects.new(name, None)
     anchor["beam_m"] = parts[0]["beam_m"]
+    anchor["length_m"] = parts[0]["length_m"]
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -883,7 +886,7 @@ def _object(
     trails.append(
         wakes.Wake(
             speed_mps=2 * math.pi * spec.range_m / lap_s,
-            length_m=manifest()[spec.asset].length_m,
+            length_m=anchor["length_m"],
             beam_m=anchor["beam_m"],
             orbit_m=spec.range_m,
             start_bearing_rad=math.radians(spec.bearing_deg),
@@ -911,7 +914,7 @@ def _wake(
     return [
         wakes.Wake(
             speed_mps=spec.speed_mps,
-            length_m=manifest()[spec.asset].length_m,
+            length_m=anchor["length_m"],
             beam_m=anchor["beam_m"],
             start_m=(
                 spec.range_m * math.sin(bearing),

@@ -1,6 +1,7 @@
 # poly.pizza blocks scripted clients; Icosa Gallery serves the same Google Poly asset.
 
 [container_ship]
+kind = "hull"
 description = "Low-poly container ship in flat colours, containers stacked on deck."
 url = "https://s3.us-east-005.backblazeb2.com/icosa-gallery/poly/3AmDGcCu6Ll/model.fbx"
 sha256 = "70f5d10641245613e8887ac3f0ab1e180c1cc2d27b1401621e56d0fe56dcf9ab"
@@ -16,6 +17,7 @@ attribution = "Container Ship by Alex “SAFFY” Safayan, https://poly.pizza/m/
 
 # Icosa serves this one only as a multi-file glTF; the archive keeps Poly's GLB.
 [yacht]
+kind = "hull"
 description = "Low-poly motor yacht in flat colours."
 url = "https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/c/fp/1620916947019758/9znU2c-dTSR/d-wfIKdABHE/Yacht.glb"
 sha256 = "641bce20710ceb963f6ddd295a883b4d09019c5344876fd861f83abe27ed7d36"
@@ -30,6 +32,7 @@ licence = "CC-BY-3.0"
 attribution = "Yacht by Alex “SAFFY” Safayan, https://poly.pizza/m/9znU2c-dTSR"
 
 [small_container_ship]
+kind = "hull"
 description = "Small container ship, textured hull and containers, superstructure aft."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-126/6362d3e9b11e4396aaafa854c3aa6f06.glb"
 sha256 = "ff9c2b913f106f2b1e6b8964e6dfe9fa69bf80d4f50f12def6cf1f4a5ac93f46"
@@ -45,6 +48,7 @@ licence = "CC-BY-4.0"
 attribution = "Small Cargo Ship by 588276, https://sketchfab.com/3d-models/6362d3e9b11e4396aaafa854c3aa6f06"
 
 [cargo_ship]
+kind = "hull"
 description = "Multipurpose cargo ship with two deck cranes, textured, superstructure aft."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-070/b7c97df584824ca682d26daabf401f87.glb"
 sha256 = "20de84b0404a6e414543caeb7fc988fe12ef92c4b4b15bd5a94afcacfa628f2e"
@@ -60,6 +64,7 @@ licence = "CC-BY-4.0"
 attribution = "Cargo ship by hungry_drifter, https://sketchfab.com/3d-models/b7c97df584824ca682d26daabf401f87"
 
 [bulk_carrier]
+kind = "hull"
 description = "Geared bulk carrier with four deck cranes, black hull, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-131/93c076900f004102b78dfac989efae1d.glb"
 sha256 = "01d45a6c0840da5664c94bff4ad325a41ab9b5abfd50e280420da2e438d5a218"
@@ -73,3 +78,89 @@ triangles = 1627998
 texture_px = [1024]
 licence = "CC-BY-4.0"
 attribution = "Bulk Carrier by medialog, https://sketchfab.com/3d-models/93c076900f004102b78dfac989efae1d"
+
+[lateral_mark]
+kind = "buoy"
+description = "Red lateral mark: float, column, light and daymark, weathered, textured."
+url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/lateral_sea_marker/lateral_sea_marker_2k.gltf"
+sha256 = "b4a3ecfc84d2e26b4477f82214e179cbee732c27e5cc33bfd29b2b3c1a8f0c9c"
+# Poly Haven's measured height. A 3.0 m navigation buoy floats with 0.655 m of its
+# 1.1 m hull above water (Automatic Power, PMEB NAV 3.0M datasheet), and this mesh's
+# float starts 0.7 m above its lowest point: 0.7 + 1.1 - 0.655 deep.
+height_m = 6.84
+draught_m = 1.15
+triangles = 13014
+texture_px = [2048, 2048, 2048]
+licence = "CC0-1.0"
+attribution = "Lateral Sea Marker by Kuutti Siitonen, https://polyhaven.com/a/lateral_sea_marker"
+[lateral_mark.files."lateral_sea_marker.bin"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/lateral_sea_marker/lateral_sea_marker.bin"
+sha256 = "1e02ea4a18efac1221f73e0a2ad3a9999541eff967e62a5d6f572e0de1ebd488"
+[lateral_mark.files."textures/lateral_sea_marker_arm_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lateral_sea_marker/lateral_sea_marker_arm_2k.jpg"
+sha256 = "70e3fa8d95df212c2045af586891c3e975422aea95ccb285e402be6317e0453b"
+[lateral_mark.files."textures/lateral_sea_marker_diff_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lateral_sea_marker/lateral_sea_marker_diff_2k.jpg"
+sha256 = "1d3b6c78825af9d794a814804c0b21a6c4a0c992901820a8f9bc1b317b11db67"
+[lateral_mark.files."textures/lateral_sea_marker_nor_gl_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lateral_sea_marker/lateral_sea_marker_nor_gl_2k.jpg"
+sha256 = "904f59238995c859c6977ebcf34fab34cf724bcf376002c2a1c935683f7c70ff"
+
+[ocean_buoy]
+kind = "buoy"
+description = "Red steel buoy with cage light, bell and ring guard, weathered, textured."
+url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/ocean_buoy/ocean_buoy_2k.gltf"
+sha256 = "746e4213c2f86cc8eec4cb3909d8c0cca9062ee0e27c342ab9021c76ae638e98"
+# Poly Haven's measured height. A 1.0 m steel buoy keeps 0.37 m of its hull above
+# water (HZ Marine, FB-10 datasheet), and this mesh's hull tops out 1.25 m above its
+# lowest point.
+height_m = 2.66
+draught_m = 0.88
+triangles = 12240
+texture_px = [2048, 2048, 2048, 2048]
+licence = "CC0-1.0"
+attribution = "Ocean Buoy by Mateusz Sadek, https://polyhaven.com/a/ocean_buoy"
+[ocean_buoy.files."ocean_buoy.bin"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/ocean_buoy/ocean_buoy.bin"
+sha256 = "b3c1f9c8170b9c538f8540f324e4b3707b842d37705dda2dfc95d0548b521e80"
+[ocean_buoy.files."textures/ocean_buoy_arm_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_arm_2k.jpg"
+sha256 = "1d3a7da4792384cfaa84430b5f26b1902a34d87803f01c5e852c613c5b1f93c8"
+[ocean_buoy.files."textures/ocean_buoy_diff_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_diff_2k.jpg"
+sha256 = "bcbf400042943b38527d327adab17502fb5e672b5c86e684382193ee1daf730d"
+[ocean_buoy.files."textures/ocean_buoy_emission_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_emission_2k.jpg"
+sha256 = "9f1ae302f83eaa12f183f10b6883ab83c331fd55133d06dcef246573a645ceee"
+[ocean_buoy.files."textures/ocean_buoy_nor_gl_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_nor_gl_2k.jpg"
+sha256 = "bb302687cb174769a5c995842340cbd9569953b2d5afb643f94361ffd1d558f0"
+
+[pillar_buoy]
+kind = "buoy"
+description = "Green steel pillar buoy with lattice tower and light, weathered, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-076/cdd198814e874379b6cd2c0cc06bc22d.glb"
+sha256 = "d101d75fa54655b2817001e9ae1dcab10cb7cff6401cc7dd8b6350eca9099be3"
+# A 2.4 m steel pillar buoy: 7.6 m tall, 1 m freeboard (Jinbo Marine, JB2.4
+# datasheet). At that height this mesh's float is 2.47 m tall.
+height_m = 7.6
+draught_m = 1.47
+triangles = 247086
+texture_px = [1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Buoy by honix, https://sketchfab.com/3d-models/cdd198814e874379b6cd2c0cc06bc22d"
+
+[mooring_buoy]
+kind = "buoy"
+description = "Small white rigid mooring buoy with a lifting eye."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-034/da1a9915bd0446299998a896311e4d64.glb"
+sha256 = "249eee6fb02f4c544f80c4384743c56466a7227bb22ba4cee181b128ad39c00d"
+# A rigid mooring buoy 390 mm tall with 9.5 kg of buoyancy, 4.5 kg of it left in use
+# (Nuova Rade, rigid plastic mooring buoys). The 5 kg it then displaces floats this
+# mesh at its widest.
+height_m = 0.39
+draught_m = 0.16
+triangles = 32008
+texture_px = []
+licence = "CC-BY-4.0"
+attribution = "Buoy by ean47, https://sketchfab.com/3d-models/da1a9915bd0446299998a896311e4d64"
