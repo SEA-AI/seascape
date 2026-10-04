@@ -90,12 +90,13 @@ category = "patrol vessel"
 description = "Naval patrol vessel, faceted grey hull, helicopter deck aft, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-088/644999231c034c959c6091b00ed6c50f.glb"
 sha256 = "d874894dc3a7d5db18d574b2d58294ade898ba062fb632b92b4f4433e5d9c4ef"
-# The mesh is an Independence-class littoral mission vessel: 80 m overall, 3 m draught.
-# Naval Technology, "Independence-Class Littoral Mission Vessel (LMV)". The draught is
-# read to the keel; the mesh's rudders hang 1.2 m below it. This length makes the mesh
-# 16 m across, against the class's 12 m.
+# An Independence-class littoral mission vessel: 80 m overall, 12 m beam, 3 m draught.
+# Naval Technology, "Independence-Class Littoral Mission Vessel (LMV)". The class
+# draught is to the keel; the mesh's rudders hang 1.2 m below it. This length makes
+# the mesh 16 m across.
 length_m = 80.0
 draught_m = 4.2
+bow_deg = 0.0
 triangles = 362189
 texture_px = [
     1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
