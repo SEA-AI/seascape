@@ -8,10 +8,10 @@
 
 A build downloads each mesh itself, so it needs a URL that anyone can fetch without logging in and that always returns the same bytes: one `.glb` or `.fbx` with its textures inside.
 
-| Source | Licence | URL |
+| Source | Licence | The file's URL |
 |---|---|---|
 | [Objaverse](https://huggingface.co/datasets/allenai/objaverse) | Each model's own: take CC0 or CC-BY only | `resolve/<commit>/glbs/...`, pinned to a commit, never `main`; `object-paths.json.gz` maps a Sketchfab uid to its path |
-| [Icosa Gallery](https://icosa.gallery) | CC-BY | `api.icosa.gallery/v1/assets/<id>`; skip `CREATIVE_COMMONS_BY_ND` |
+| [Icosa Gallery](https://icosa.gallery) | CC-BY; skip `CREATIVE_COMMONS_BY_ND` | In `api.icosa.gallery/v1/assets/<id>`, the `root.url` of a `GLB` or `FBX` format with no `resources` |
 
 Not usable:
 
