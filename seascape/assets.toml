@@ -52,7 +52,7 @@ sha256 = "20de84b0404a6e414543caeb7fc988fe12ef92c4b4b15bd5a94afcacfa628f2e"
 # the mesh: 138.07 m overall, 21 m beam, 8.056 m summer draught. SMT Shipping, fleet
 # list, smtshipping.com/fleet.
 length_m = 138.0
-draught_m = 8.0
+draught_m = 8.06
 bow_deg = 90.0
 triangles = 73448
 texture_px = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]

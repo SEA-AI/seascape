@@ -720,6 +720,8 @@ def test_the_committed_meshes_are_what_the_files_hold() -> None:
 @pytest.mark.parametrize(
     ("name", "beam_m"), [("small_container_ship", 22.0), ("bulk_carrier", 32.2)]
 )
-def test_a_hull_sized_by_its_class_breadth_is_that_wide(name: str, beam_m: float):
+def test_a_hull_sized_by_its_class_breadth_is_that_wide(
+    name: str, beam_m: float
+) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     assert scene._import(name, "eo")[0]["beam_m"] == pytest.approx(beam_m, abs=0.1)
