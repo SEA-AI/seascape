@@ -14,7 +14,7 @@ import pytest
 from mathutils import Vector
 
 from seascape import blend, lwir, scene, sea, waves
-from seascape.assets import Asset, manifest
+from seascape.assets import Buoy, Hull, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import Band, Mount, Scenario, load
 
@@ -335,7 +335,8 @@ def test_an_image_inside_a_node_group_is_counted() -> None:
 def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     """180 is its own inverse: the shipped hull passes with a sign error or the
     length measured along the beam. Any other bow catches both."""
-    asset = Asset(
+    asset = Hull(
+        kind="hull",
         description="x",
         url="x",
         sha256="0" * 64,
@@ -363,6 +364,28 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     assert max(c.x for c in fitted) - min(c.x for c in fitted) == pytest.approx(40.0)
     assert min(c.z for c in fitted) == pytest.approx(-5.0), "keel at the draught"
     assert (fit @ long).y == pytest.approx(100.0), "and the bow ends up at +Y"
+
+
+def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
+    buoy = Buoy(
+        kind="buoy",
+        description="x",
+        url="x",
+        sha256="0" * 64,
+        height_m=6.0,
+        draught_m=1.5,
+        triangles=1,
+        texture_px=(),
+        licence="x",
+        attribution="x",
+    )
+    corners = [Vector((x, y, z)) for x in (9, 11) for y in (0, 1) for z in (3, 6)]
+
+    fitted = [scene._fit(corners, buoy) @ c for c in corners]
+
+    assert max(c.z for c in fitted) == pytest.approx(4.5), "6 m tall, 1.5 m under"
+    assert min(c.x for c in fitted) == pytest.approx(-2.0), "centred, not turned"
+    assert min(c.y for c in fitted) == pytest.approx(-1.0)
 
 
 def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> None:

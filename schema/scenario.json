@@ -159,6 +159,8 @@
             "bulk_carrier",
             "cargo_ship",
             "container_ship",
+            "lateral_mark",
+            "ocean_buoy",
             "small_container_ship",
             "yacht"
           ],
@@ -323,6 +325,8 @@
                 "bulk_carrier",
                 "cargo_ship",
                 "container_ship",
+                "lateral_mark",
+                "ocean_buoy",
                 "small_container_ship",
                 "yacht"
               ],
@@ -749,6 +753,8 @@
             "bulk_carrier",
             "cargo_ship",
             "container_ship",
+            "lateral_mark",
+            "ocean_buoy",
             "small_container_ship",
             "yacht"
           ],

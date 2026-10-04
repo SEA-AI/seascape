@@ -4,6 +4,7 @@ uv run python docs/assets.py sheet docs/assets.jpg
 uv run python docs/assets.py measure hull.glb
 """
 
+import json
 import math
 import sys
 import tempfile
@@ -15,54 +16,70 @@ from seascape import assets, render, scene
 from seascape.config import load
 
 OPEN_SEA = Path(__file__).parent.parent / "scenarios" / "open-sea.toml"
-TILE = (640, 360)
-LABEL_PX = 24
-HFOV_DEG = 45.0
-# The hull spans this much of the frame side on.
+TILE = (480, 270)
+COLUMNS = 4
+# A buoy through a long lens, as a ship sees one, not from a few metres where the
+# sea's cells show.
+HFOV_DEG = {"hull": 45.0, "buoy": 10.0}
+# A hull spans this much of the tile's width, a buoy's freeboard this much of its
+# height.
 FILL = 0.7
-# Side on, then three-quarter on.
-HEADINGS_DEG = (90.0, 210.0)
+# Three-quarter on, bow towards the camera's left.
+HEADING_DEG = 210.0
 
 
-def shot(name: str, length_m: float, heading_deg: float, into: Path) -> Image.Image:
-    range_m = length_m / (FILL * math.radians(HFOV_DEG))
+def shot(name: str, mesh: assets.Asset, into: Path) -> Image.Image:
+    """The tile, cut from a frame twice its size around the mesh's label."""
+    hfov_deg = HFOV_DEG[mesh.kind]
+    if isinstance(mesh, assets.Hull):
+        size_m, across_rad = mesh.length_m, math.radians(hfov_deg)
+    else:
+        size_m = mesh.height_m - mesh.draught_m
+        across_rad = math.radians(hfov_deg) * TILE[1] / TILE[0]
+    range_m = size_m / (FILL * across_rad)
+    # Twice the pixels over twice the tangent: the tile's pixel, with room to centre.
+    wide_deg = math.degrees(2 * math.atan(2 * math.tan(math.radians(hfov_deg) / 2)))
     camera = (
-        f'{{ kind = "eo", hfov_deg = {HFOV_DEG}, width_px = {TILE[0]}, '
-        f"height_px = {TILE[1]} }}"
+        f'{{ kind = "eo", hfov_deg = {wide_deg}, width_px = {2 * TILE[0]}, '
+        f"height_px = {2 * TILE[1]} }}"
     )
     scenario = load(
         OPEN_SEA,
         [
-            f"rig.height_m = {0.1 * length_m}",
+            # A tenth of the range up, aimed at the waterline.
+            f"rig.height_m = {0.1 * range_m}",
+            f"rig.pitch_deg = {-math.degrees(math.atan(0.1))}",
+            # The default clips the water in front of a camera this low.
+            f"rig.near_clip_m = {0.01 * size_m}",
             f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}]',
             f'objects = [{{ asset = "{name}", range_m = {range_m}, bearing_deg = 0.0, '
-            f"heading_deg = {heading_deg} }}]",
+            f"heading_deg = {HEADING_DEG} }}]",
             'outputs.bands = ["eo"]',
         ],
     )
-    return Image.open(render.render(scenario, into)[0]).convert("RGB")
+    frame = Image.open(render.render(scenario, into)[0]).convert("RGB")
+    (label,) = json.loads((into / "labels.json").read_text())["annotations"]
+    x, y, w, h = label["bbox"]
+    left = min(max(x + w // 2 - TILE[0] // 2, 0), TILE[0])
+    top = min(max(y + h // 2 - TILE[1] // 2, 0), TILE[1])
+    return frame.crop((left, top, left + TILE[0], top + TILE[1]))
 
 
 def sheet(out: Path) -> None:
     meshes = assets.manifest()
-    page = Image.new(
-        "RGB", (TILE[0] * len(HEADINGS_DEG), (TILE[1] + LABEL_PX) * len(meshes))
-    )
+    rows = math.ceil(len(meshes) / COLUMNS)
+    page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
     draw = ImageDraw.Draw(page)
-    font = ImageFont.load_default(size=16)
+    font = ImageFont.load_default(size=15)
     with tempfile.TemporaryDirectory() as tmp:
-        for row, (name, mesh) in enumerate(meshes.items()):
-            y = row * (TILE[1] + LABEL_PX)
+        for k, (name, mesh) in enumerate(meshes.items()):
+            x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * TILE[1]
+            page.paste(shot(name, mesh, Path(tmp) / name), (x, y))
             n = len(mesh.texture_px)
             textures = f"{n} texture{'s' * (n > 1)}" if n else "flat"
-            label = (
-                f"{name}  {mesh.length_m:.0f} m  {mesh.triangles:,} tris  {textures}"
-            )
-            draw.text((6, y + 4), label, fill="white", font=font)
-            for col, heading_deg in enumerate(HEADINGS_DEG):
-                into = Path(tmp) / f"{name}-{col}"
-                tile = shot(name, mesh.length_m, heading_deg, into)
-                page.paste(tile, (col * TILE[0], y + LABEL_PX))
+            label = f"{name}  {mesh.size}  {mesh.triangles:,} tris  {textures}"
+            draw.rectangle((x, y, x + TILE[0], y + 22), fill="black")
+            draw.text((x + 6, y + 3), label, fill="white", font=font)
     page.save(out, quality=85)
 
 
@@ -70,6 +87,12 @@ def measure(path: Path) -> None:
     triangles, texture_px = scene.measure(path)
     print(f'sha256 = "{assets.digest(path)}"')
     print(f"triangles = {triangles}\ntexture_px = {list(texture_px)}")
+    if path.suffix == ".gltf":
+        gltf = json.loads(path.read_text())
+        named = [*gltf.get("buffers", []), *gltf.get("images", [])]
+        for uri in sorted(item["uri"] for item in named if "uri" in item):
+            sha256 = assets.digest(path.parent / uri)
+            print(f'files."{uri}" = {{ url = "", sha256 = "{sha256}" }}')
 
 
 if __name__ == "__main__":
