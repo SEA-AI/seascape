@@ -3,7 +3,6 @@
 import argparse
 import json
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import get_args
 
@@ -54,22 +53,13 @@ def _fetched(here: bool) -> str:
 def _assets() -> None:
     print(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
     for name, mesh in assets.manifest().items():
-        sizes = Counter(mesh.texture_px)
-        textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
-        print(
-            f"  {name:<20} {mesh.kind:<6} {mesh.size:>12}  {mesh.triangles:>9,} "
-            f"triangles  textures: {textures}  {mesh.licence}  "
-            f"{_fetched(assets.cached(name))}\n"
-            f"    {mesh.supercategory} / {mesh.category}: {mesh.description}"
-        )
+        print(f"  {name:<20} {_fetched(assets.cached(name)):<11}  {mesh.summary()}")
     print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
     photos = skies.library()
     width = max(map(len, photos))
     for name, photo in photos.items():
-        elevation = photo.sun_elevation_deg
-        sun = "no disc" if elevation is None else f"sun {elevation:.1f} deg"
         here = _fetched(assets.cache_path(name, photo.url).exists())
-        print(f"  {name:<{width}}  {sun:<14} {photo.licence}  {here}")
+        print(f"  {name:<{width}}  {here:<11}  {photo.summary()}")
 
 
 def _add_set(command: argparse.ArgumentParser) -> None:

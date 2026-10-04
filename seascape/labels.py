@@ -48,7 +48,6 @@ class Image(Model):
 class Category(Model):
     id: int
     name: str
-    # A render from before supercategories still reads, for `video` and `recording`.
     supercategory: str = ""
 
 

@@ -6,6 +6,8 @@ import shutil
 import tomllib
 import urllib.request
 import uuid
+from abc import abstractmethod
+from collections import Counter
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Annotated, ClassVar, Literal
@@ -35,6 +37,9 @@ class File(Model):
 class _Mesh(Model):
     model_config = ConfigDict(frozen=True)
 
+    kind: str
+    supercategory: ClassVar[str]
+
     description: str = Field(min_length=1)
     category: str = Field(min_length=1)
     url: str
@@ -48,6 +53,23 @@ class _Mesh(Model):
     texture_px: tuple[int, ...]
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
+
+    @abstractmethod
+    def scale(self, size: tuple[float, float, float]) -> float:
+        """Metres per mesh unit, from the mesh's extent along x, y and z."""
+
+    @property
+    @abstractmethod
+    def size(self) -> str: ...
+
+    def summary(self) -> str:
+        sizes = Counter(self.texture_px)
+        textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
+        return (
+            f"{self.kind:<6} {self.size:>12}  {self.triangles:>9,} triangles  "
+            f"textures: {textures}  {self.licence}\n"
+            f"    {self.supercategory} / {self.category}: {self.description}"
+        )
 
     @field_validator("files")
     @classmethod
@@ -68,7 +90,6 @@ class Hull(_Mesh):
     bow_deg: float = 0.0
 
     def scale(self, size: tuple[float, float, float]) -> float:
-        """Metres per mesh unit, from the mesh's extent along x, y and z."""
         return self.length_m / size[1]
 
     @property
