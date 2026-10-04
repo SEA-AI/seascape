@@ -29,3 +29,20 @@ def test_a_subcommand_s_help_exits_cleanly() -> None:
     result = CliRunner().invoke(cli.main, ["assets", "--help"])
     assert result.exit_code == 0
     assert "Error" not in result.output
+
+
+def test_show_tells_one_asset_and_refuses_an_unknown_one() -> None:
+    shown = CliRunner().invoke(cli.main, ["assets", "show", "pallet"])
+    assert shown.exit_code == 0
+    assert "draught" in shown.output
+    assert CliRunner().invoke(cli.main, ["assets", "show", "no_such"]).exit_code == 2
+
+
+def test_asset_names_complete() -> None:
+    shell = {
+        "COMP_WORDS": "seascape assets show pa",
+        "COMP_CWORD": "3",
+        "_SEASCAPE_COMPLETE": "bash_complete",
+    }
+    completed = CliRunner().invoke(cli.main, env=shell, prog_name="seascape")
+    assert "pallet" in completed.output

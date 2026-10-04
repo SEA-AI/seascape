@@ -54,10 +54,10 @@ class Photo(Model):
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 
-    def summary(self) -> str:
+    @property
+    def sun(self) -> str:
         elevation = self.sun_elevation_deg
-        sun = "no disc" if elevation is None else f"sun {elevation:.1f} deg"
-        return f"{sun:<14} {self.licence}"
+        return "no disc" if elevation is None else f"{elevation:.1f} deg"
 
 
 @cache

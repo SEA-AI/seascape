@@ -40,6 +40,14 @@ Only touching the radiometry or the scenario config? `uv sync --no-group blender
 
 Meshes are never committed. `seascape/assets.toml` records each one's source, sha256, licence and credit; they download on first use to `~/.cache/seascape`, or to `$XDG_CACHE_HOME/seascape` when that is set to an absolute path. Every run re-checks the digest. `seascape assets list` shows them, and [docs/assets.md](docs/assets.md) shows each one rendered and how to add another.
 
+Commands, options and asset names complete with Tab once the shell knows how; with `seascape` on the `PATH` (an activated `.venv`, or `uv tool install`), in `~/.zshrc`:
+
+```bash
+eval "$(_SEASCAPE_COMPLETE=zsh_source seascape)"
+```
+
+For bash, `bash_source` in `~/.bashrc`.
+
 ## Quickstart
 
 ```bash

@@ -62,13 +62,20 @@ class _Mesh(Model):
     @abstractmethod
     def size(self) -> str: ...
 
-    def summary(self) -> str:
+    @property
+    def textures(self) -> str:
         sizes = Counter(self.texture_px)
-        textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
+        return ", ".join(f"{n} x {px} px" for px, n in sizes.items()) or "-"
+
+    def row(self) -> tuple[str, ...]:
+        """Kind, class, size, triangles, textures and licence, for a table."""
         return (
-            f"{self.kind:<6} {self.size:>12}  {self.triangles:>9,} triangles  "
-            f"textures: {textures}  {self.licence}\n"
-            f"    {self.supercategory} / {self.category}: {self.description}"
+            self.kind,
+            self.category,
+            self.size,
+            f"{self.triangles:,}",
+            self.textures,
+            self.licence,
         )
 
     @field_validator("files")

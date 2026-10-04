@@ -201,23 +201,101 @@ def assets_() -> None:
     """The meshes and skies a scenario can name."""
 
 
-def _fetched(here: bool) -> str:
-    return "cached" if here else "not fetched"
+def _table(header: tuple[str, ...], rows: list[tuple[str, ...]]) -> None:
+    """Columns as wide as their widest cell; a column of numbers aligns right."""
+    widths = [max(map(len, column)) for column in zip(header, *rows, strict=True)]
+    right = [
+        all(c.replace(",", "").isdigit() for c in col)
+        for col in zip(*rows, strict=True)
+    ]
+
+    def line(cells: tuple[str, ...]) -> str:
+        padded = (
+            cell.rjust(w) if r else cell.ljust(w)
+            for cell, w, r in zip(cells, widths, right, strict=True)
+        )
+        return "  ".join(padded).rstrip()
+
+    click.secho(line(header), bold=True)
+    for row in rows:
+        click.echo(line(row))
+
+
+def _cached(here: bool) -> str:
+    return "yes" if here else "-"
 
 
 @assets_.command("list")
 def list_() -> None:
     """List every mesh and sky, and whether it is cached."""
-    click.echo(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
-    for name, mesh in assets.manifest().items():
-        here = _fetched(assets.cached(name))
-        click.echo(f"  {name:<20} {here:<11}  {mesh.summary()}")
-    click.echo(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
+    meshes = assets.manifest()
+    _table(
+        ("MESH", "KIND", "CLASS", "SIZE", "TRIANGLES", "TEXTURES", "LICENCE", "CACHED"),
+        [
+            (name, *mesh.row(), _cached(assets.cached(name)))
+            for name, mesh in meshes.items()
+        ],
+    )
+    click.echo()
     photos = skies.library()
-    width = max(map(len, photos))
-    for name, photo in photos.items():
-        here = _fetched(assets.cache_path(name, photo.url).exists())
-        click.echo(f"  {name:<{width}}  {here:<11}  {photo.summary()}")
+    # Highest sun first; a sky with no disc after every sun.
+    order = sorted(photos, key=lambda n: -(photos[n].sun_elevation_deg or -90.0))
+    _table(
+        ("SKY", "SUN", "LICENCE", "CACHED"),
+        [
+            (
+                name,
+                photos[name].sun,
+                photos[name].licence,
+                _cached(assets.cache_path(name, photos[name].url).exists()),
+            )
+            for name in order
+        ],
+    )
+    click.echo("\nMeshes go in a scenario's `asset`, skies in `sky.hdri`.")
+
+
+def _names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    return [
+        n for n in [*assets.manifest(), *skies.library()] if n.startswith(incomplete)
+    ]
+
+
+@assets_.command()
+@click.argument("name", shell_complete=_names)
+def show(name: str) -> None:
+    """Everything the manifest says about one mesh or sky."""
+    if name in assets.manifest():
+        mesh = assets.manifest()[name]
+        fields = {
+            "kind": mesh.kind,
+            "class": f"{mesh.supercategory} / {mesh.category}",
+            "size": mesh.size,
+            "draught": f"{mesh.draught_m} m",
+            "triangles": f"{mesh.triangles:,}",
+            "textures": mesh.textures,
+            "description": mesh.description,
+            "licence": mesh.licence,
+            "attribution": mesh.attribution,
+            "url": mesh.url,
+            "cached": str(assets.local(name)) if assets.cached(name) else "-",
+        }
+    elif name in skies.library():
+        photo = skies.library()[name]
+        path = assets.cache_path(name, photo.url)
+        fields = {
+            "sun": photo.sun,
+            "sun bearing": f"{photo.sun_bearing_deg:.1f} deg",
+            "licence": photo.licence,
+            "attribution": photo.attribution,
+            "url": photo.url,
+            "cached": str(path) if path.exists() else "-",
+        }
+    else:
+        raise click.BadParameter(f"no mesh or sky {name!r}: `seascape assets list`")
+    width = max(map(len, fields))
+    for key, value in fields.items():
+        click.echo(f"{click.style(key.ljust(width), bold=True)}  {value}")
 
 
 @assets_.command()
