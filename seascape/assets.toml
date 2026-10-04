@@ -135,3 +135,32 @@ sha256 = "9f1ae302f83eaa12f183f10b6883ab83c331fd55133d06dcef246573a645ceee"
 [ocean_buoy.files."textures/ocean_buoy_nor_gl_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_nor_gl_2k.jpg"
 sha256 = "bb302687cb174769a5c995842340cbd9569953b2d5afb643f94361ffd1d558f0"
+
+[pillar_buoy]
+kind = "buoy"
+description = "Green steel pillar buoy with lattice tower and light, weathered, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-076/cdd198814e874379b6cd2c0cc06bc22d.glb"
+sha256 = "d101d75fa54655b2817001e9ae1dcab10cb7cff6401cc7dd8b6350eca9099be3"
+# A 2.4 m steel pillar buoy: 7.6 m tall, 1 m freeboard (Jinbo Marine, JB2.4
+# datasheet). At that height this mesh's float is 2.47 m tall.
+height_m = 7.6
+draught_m = 1.47
+triangles = 247086
+texture_px = [1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Buoy by honix, https://sketchfab.com/3d-models/cdd198814e874379b6cd2c0cc06bc22d"
+
+[mooring_buoy]
+kind = "buoy"
+description = "Small white rigid mooring pick-up buoy with ropeholds."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-034/da1a9915bd0446299998a896311e4d64.glb"
+sha256 = "249eee6fb02f4c544f80c4384743c56466a7227bb22ba4cee181b128ad39c00d"
+# A rigid mooring buoy 390 mm tall, 9.5 kg buoyancy, 4.5 kg in use (Nuova Rade,
+# rigid plastic mooring buoys). The 5 kg it then displaces floats this mesh at its
+# seam.
+height_m = 0.39
+draught_m = 0.16
+triangles = 32008
+texture_px = []
+licence = "CC-BY-4.0"
+attribution = "Buoy by ean47, https://sketchfab.com/3d-models/da1a9915bd0446299998a896311e4d64"

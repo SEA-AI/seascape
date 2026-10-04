@@ -4,6 +4,7 @@ Skipped unless `--render` is given.
 """
 
 import math
+from collections import defaultdict
 from pathlib import Path
 
 import bpy
@@ -731,14 +732,19 @@ def test_a_hull_sized_by_its_class_breadth_is_that_wide(
     "name", [n for n, a in manifest().items() if isinstance(a, Buoy)]
 )
 def test_a_buoy_floats_on_its_float(name: str) -> None:
-    """The water meets the float: within 5 cm of it the mesh is near its widest."""
+    """The water meets the float: the mesh is near its widest at the waterline."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     parts = scene._import(name, "eo")
     bpy.context.view_layer.update()
-    at_water = [
-        (mesh.matrix_world @ vertex.co).x
+    points = [
+        mesh.matrix_world @ vertex.co
         for mesh in scene._meshes(parts)
         for vertex in mesh.data.vertices
-        if abs((mesh.matrix_world @ vertex.co).z) < 0.05
     ]
-    assert max(at_water) - min(at_water) > 0.8 * parts[0]["beam_m"]
+    step = (max(p.z for p in points) - min(p.z for p in points)) / 100
+    rings = defaultdict(list)
+    for point in points:
+        rings[round(point.z / step)].append(point.x)
+    widths = {k: max(xs) - min(xs) for k, xs in rings.items()}
+    at_water = widths[min(widths, key=abs)]
+    assert at_water > 0.8 * max(widths.values())

@@ -160,7 +160,9 @@
             "cargo_ship",
             "container_ship",
             "lateral_mark",
+            "mooring_buoy",
             "ocean_buoy",
+            "pillar_buoy",
             "small_container_ship",
             "yacht"
           ],
@@ -326,7 +328,9 @@
                 "cargo_ship",
                 "container_ship",
                 "lateral_mark",
+                "mooring_buoy",
                 "ocean_buoy",
+                "pillar_buoy",
                 "small_container_ship",
                 "yacht"
               ],
@@ -754,7 +758,9 @@
             "cargo_ship",
             "container_ship",
             "lateral_mark",
+            "mooring_buoy",
             "ocean_buoy",
+            "pillar_buoy",
             "small_container_ship",
             "yacht"
           ],
