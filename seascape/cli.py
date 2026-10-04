@@ -53,13 +53,13 @@ def _fetched(here: bool) -> str:
 def _assets() -> None:
     print(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
     for name, mesh in assets.manifest().items():
-        print(f"  {name:<20} {_fetched(assets.cached(name)):<11}  {mesh}")
+        print(f"  {name:<20} {_fetched(assets.cached(name)):<11}  {mesh.summary()}")
     print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
     photos = skies.library()
     width = max(map(len, photos))
     for name, photo in photos.items():
         here = _fetched(assets.cache_path(name, photo.url).exists())
-        print(f"  {name:<{width}}  {here:<11}  {photo}")
+        print(f"  {name:<{width}}  {here:<11}  {photo.summary()}")
 
 
 def _add_set(command: argparse.ArgumentParser) -> None:

@@ -57,7 +57,7 @@ class _Mesh(Model):
     def size(self) -> str:
         raise NotImplementedError
 
-    def __str__(self) -> str:
+    def summary(self) -> str:
         sizes = Counter(self.texture_px)
         textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
         return (
