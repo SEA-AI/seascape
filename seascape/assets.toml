@@ -86,7 +86,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/lateral_sea_marker
 sha256 = "b4a3ecfc84d2e26b4477f82214e179cbee732c27e5cc33bfd29b2b3c1a8f0c9c"
 # Poly Haven's measured height. A 3.0 m navigation buoy floats with 0.655 m of its
 # 1.1 m hull above water (Automatic Power, PMEB NAV 3.0M datasheet), and this mesh's
-# float starts 0.7 m above its lowest point.
+# float starts 0.7 m above its lowest point: 0.7 + 1.1 - 0.655 deep.
 height_m = 6.84
 draught_m = 1.15
 triangles = 13014
@@ -152,12 +152,12 @@ attribution = "Buoy by honix, https://sketchfab.com/3d-models/cdd198814e874379b6
 
 [mooring_buoy]
 kind = "buoy"
-description = "Small white rigid mooring pick-up buoy with ropeholds."
+description = "Small white rigid mooring buoy with a lifting eye."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-034/da1a9915bd0446299998a896311e4d64.glb"
 sha256 = "249eee6fb02f4c544f80c4384743c56466a7227bb22ba4cee181b128ad39c00d"
-# A rigid mooring buoy 390 mm tall, 9.5 kg buoyancy, 4.5 kg in use (Nuova Rade,
-# rigid plastic mooring buoys). The 5 kg it then displaces floats this mesh at its
-# seam.
+# A rigid mooring buoy 390 mm tall with 9.5 kg of buoyancy, 4.5 kg of it left in use
+# (Nuova Rade, rigid plastic mooring buoys). The 5 kg it then displaces floats this
+# mesh at its widest.
 height_m = 0.39
 draught_m = 0.16
 triangles = 32008

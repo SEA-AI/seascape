@@ -61,7 +61,7 @@ class Hull(_Mesh):
     """A vessel, fitted bow to stern."""
 
     kind: Literal["hull"]
-    length_m: float = Field(gt=0.0)  # bow to stern; the mesh arrives in arbitrary units
+    length_m: float = Field(gt=0.0)  # the mesh arrives in arbitrary units
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0
 
