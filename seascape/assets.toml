@@ -222,14 +222,15 @@ attribution = "20ft Red by aidancallaghan, https://sketchfab.com/3d-models/f555c
 
 [sea_mine]
 kind = "debris"
-description = "Black horned contact mine adrift, only its top horn above water, textured."
+description = "Black horned contact mine broken from its mooring, upper case and horns above water, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-016/7f503538a0de4bfa93737ccfab193d36.glb"
 sha256 = "ba5ae18def82a4ad49481ccfe8fc82e934b7ce775b1dccc37158f0fb5090d329"
-# A US Mk 6 contact mine's case is 87 cm across (NavWeaps, "United States Mines"),
-# which makes this mesh 1.21 m horn to horn. A drifting mine is near-neutrally buoyant
-# (FAS, "Mines"), so the case's top is at the surface and only the top horn shows.
+# A US Mk 6 contact mine's case is 87 cm across and the mine 635 kg (NavWeaps, "United
+# States Mines"), which makes this mesh 1.21 m horn to horn. Broken from its 360 kg
+# anchor (Wikipedia, "North Sea Mine Barrage"), its 275 kg fill 78% of the case's
+# 353 kg of seawater: 70% of its diameter under.
 length_m = 1.21
-draught_m = 1.11
+draught_m = 0.81
 triangles = 23850
 texture_px = [1024, 1024, 1024]
 licence = "CC-BY-4.0"
