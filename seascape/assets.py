@@ -20,7 +20,7 @@ CACHE = (Path(_XDG) if _XDG.startswith("/") else Path.home() / ".cache") / "seas
 MANIFEST = Path(__file__).parent / "assets.toml"
 
 
-_SHA256 = r"^[0-9a-f]{64}$"
+SHA256 = r"^[0-9a-f]{64}$"
 
 
 class File(Model):
@@ -29,7 +29,7 @@ class File(Model):
     model_config = ConfigDict(frozen=True)
 
     url: str
-    sha256: str = Field(pattern=_SHA256)
+    sha256: str = Field(pattern=SHA256)
 
 
 class _Mesh(Model):
@@ -37,7 +37,7 @@ class _Mesh(Model):
 
     description: str = Field(min_length=1)
     url: str
-    sha256: str = Field(pattern=_SHA256)
+    sha256: str = Field(pattern=SHA256)
     # By path relative to the mesh, as it names them.
     files: dict[str, File] = Field(default_factory=dict)
     # Required: a default of zero floats the hull and looks almost right.
@@ -116,6 +116,12 @@ def fetch(name: str) -> Path:
     for path, file in asset.files.items():
         _get(local(name).parent / path, file.url, file.sha256)
     return _get(local(name), asset.url, asset.sha256)
+
+
+def cached(name: str) -> bool:
+    """Whether `fetch` would download nothing."""
+    files = [local(name).parent / path for path in manifest()[name].files]
+    return all(path.exists() for path in [local(name), *files])
 
 
 def local(name: str) -> Path:

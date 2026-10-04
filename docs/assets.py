@@ -77,7 +77,9 @@ def sheet(out: Path, band: Band = "eo") -> None:
             page.paste(shot(name, mesh, band, Path(tmp) / name), (x, y))
             n = len(mesh.texture_px)
             textures = f"{n} texture{'s' * (n > 1)}" if n else "flat"
-            label = f"{name}  {mesh.size}  {mesh.triangles:,} tris  {textures}"
+            # The LWIR build replaces every material, so textures show only in EO.
+            label = f"{name}  {mesh.size}  {mesh.triangles:,} tris"
+            label += f"  {textures}" if band == "eo" else ""
             draw.rectangle((x, y, x + TILE[0], y + 22), fill="black")
             draw.text((x + 6, y + 3), label, fill="white", font=font)
     page.save(out, quality=85)

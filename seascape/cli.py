@@ -47,8 +47,8 @@ def _montage(scenario_path: Path, output: Path | None, overrides: list[str]) -> 
     print(montage.compose(scenario, into))
 
 
-def _fetched(path: Path) -> str:
-    return "cached" if path.exists() else "not fetched"
+def _fetched(here: bool) -> str:
+    return "cached" if here else "not fetched"
 
 
 def _assets() -> None:
@@ -59,7 +59,7 @@ def _assets() -> None:
         print(
             f"  {name:<20} {mesh.kind:<4} {mesh.size:>12}  {mesh.triangles:>9,} "
             f"triangles  textures: {textures}  {mesh.licence}  "
-            f"{_fetched(assets.local(name))}\n    {mesh.description}"
+            f"{_fetched(assets.cached(name))}\n    {mesh.description}"
         )
     print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
     photos = skies.library()
@@ -67,7 +67,7 @@ def _assets() -> None:
     for name, photo in photos.items():
         elevation = photo.sun_elevation_deg
         sun = "no disc" if elevation is None else f"sun {elevation:.1f} deg"
-        here = _fetched(assets.cache_path(name, photo.url))
+        here = _fetched(assets.cache_path(name, photo.url).exists())
         print(f"  {name:<{width}}  {sun:<14} {photo.licence}  {here}")
 
 
