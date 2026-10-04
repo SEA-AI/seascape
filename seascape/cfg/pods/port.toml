@@ -1,9 +1,9 @@
-# Offsets are the bridge-wing tops of the container_ship mesh.
+# Offsets sit on the bridge wings of the bulk_carrier mesh.
 
 name = "port"
 yaw_deg = -60.0
-offset_x_m = -21.5
-offset_y_m = -68.2
+offset_x_m = -14.5
+offset_y_m = -61.5
 
 [[cameras]]
 preset = "eo_4k_49deg"

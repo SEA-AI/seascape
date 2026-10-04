@@ -1,5 +1,6 @@
-# Keeps the deck plate out of every lower frame edge.
-height_m = 51.8
+# The bulk_carrier's wing deck is 17.7 m up; 2 m of bracket keeps the deck plate out
+# of every lower frame edge.
+height_m = 19.7
 pitch_deg = 0.0
 
 [[pods]]

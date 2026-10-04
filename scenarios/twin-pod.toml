@@ -10,12 +10,13 @@ preset = "twin_pod"
 sun_bearing_deg = 135.0
 
 [ownship]
-asset = "container_ship"
+asset = "bulk_carrier"
 roll_deg = 2.0
 pitch_deg = 0.5
 
-# Roll period: IMO 2008 IS Code weather criterion, T = 2 C B / sqrt(GM), for a 200 m
-# hull of about 32 m beam and GM 1-1.5 m. Amplitudes are a judgement for this sea state.
+# Roll period: IMO 2008 IS Code weather criterion, T = 2 C B / sqrt(GM), for the
+# bulk_carrier's manifest dimensions and GM 1-1.5 m. Amplitudes are a judgement for
+# this sea state.
 [ownship.roll]
 amplitude_deg = 1.0
 period_s = 20.0
@@ -29,20 +30,20 @@ amplitude_m = 0.2
 period_s = 8.0
 
 [targets]
-asset = "container_ship"
+asset = ["cargo_ship", "small_container_ship", "bulk_carrier"]
 range_m = 12964.0
 # Enough that every camera sees one.
 count = 8
 bearing_deg = [-120.0, 120.0]
 
 [[objects]]
-preset = "container_ship"
+asset = "cargo_ship"
 range_m = 3704.0
 bearing_deg = -10.0
 heading_deg = 80.0  # beam-on, so it presents its length
 
 [[objects]]
-preset = "container_ship"
+asset = "small_container_ship"
 range_m = 7408.0
 bearing_deg = 10.0
 heading_deg = 280.0

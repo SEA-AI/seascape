@@ -762,25 +762,52 @@
       "description": "A ring of vessels at one range, spread over a span of bearings.\n\nPlaced in the world, so nothing guarantees a camera sees one.",
       "properties": {
         "asset": {
-          "description": "An asset name from the manifest: `seascape assets list` shows them.",
-          "enum": [
-            "bulk_carrier",
-            "cargo_ship",
-            "container",
-            "container_ship",
-            "lateral_mark",
-            "log",
-            "mooring_buoy",
-            "ocean_buoy",
-            "pallet",
-            "patrol_vessel",
-            "pillar_buoy",
-            "sea_mine",
-            "small_container_ship",
-            "yacht"
+          "anyOf": [
+            {
+              "enum": [
+                "bulk_carrier",
+                "cargo_ship",
+                "container",
+                "container_ship",
+                "lateral_mark",
+                "log",
+                "mooring_buoy",
+                "ocean_buoy",
+                "pallet",
+                "patrol_vessel",
+                "pillar_buoy",
+                "sea_mine",
+                "small_container_ship",
+                "yacht"
+              ],
+              "type": "string"
+            },
+            {
+              "items": {
+                "enum": [
+                  "bulk_carrier",
+                  "cargo_ship",
+                  "container",
+                  "container_ship",
+                  "lateral_mark",
+                  "log",
+                  "mooring_buoy",
+                  "ocean_buoy",
+                  "pallet",
+                  "patrol_vessel",
+                  "pillar_buoy",
+                  "sea_mine",
+                  "small_container_ship",
+                  "yacht"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
           ],
-          "title": "Asset",
-          "type": "string"
+          "description": "An asset name from the manifest: `seascape assets list` shows them. A list is taken in turn round the ring.",
+          "title": "Asset"
         },
         "count": {
           "description": "How many.",
@@ -891,7 +918,7 @@
         }
       ],
       "default": null,
-      "description": "A ring of identical vessels."
+      "description": "A ring of vessels."
     },
     "sea": {
       "$ref": "#/$defs/Sea"

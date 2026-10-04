@@ -830,13 +830,11 @@ def _targets(
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
     trails: list[wakes.Wake],
-) -> list[bpy.types.Object]:
-    first = _vessel(spec.asset, spec.t_k, band, sky, hulls)
-    poses = spec.poses()
-    anchors = [first, *(_copy_tree(first, None) for _ in poses[1:])]
-    for i, (anchor, (bearing_deg, heading_deg)) in enumerate(
-        zip(anchors, poses, strict=True)
-    ):
+) -> dict[str, list[bpy.types.Object]]:
+    """The ring's hulls, by asset."""
+    anchors: dict[str, list[bpy.types.Object]] = {}
+    for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
+        anchor = _vessel(asset, spec.t_k, band, sky, hulls)
         anchor.name = f"target_{i}"
         _pose(
             anchor,
@@ -849,6 +847,7 @@ def _targets(
             outputs,
         )
         trails.extend(_wake(spec, anchor, bearing_deg, heading_deg))
+        anchors.setdefault(asset, []).append(anchor)
     return anchors
 
 
@@ -1144,10 +1143,11 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs, trails)
         targets.setdefault(spec.asset, []).extend(anchors)
     if scenario.targets is not None:
-        anchors = _targets(
+        ring = _targets(
             scenario.targets, band, radius_m, scenario.sky, hulls, outputs, trails
         )
-        targets.setdefault(scenario.targets.asset, []).extend(anchors)
+        for asset, anchors in ring.items():
+            targets.setdefault(asset, []).extend(anchors)
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(
         scenario.sea, wind, swell, band, outputs, rngs, tuple(trails)

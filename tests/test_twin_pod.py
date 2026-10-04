@@ -157,21 +157,17 @@ def test_every_target_sits_at_the_configured_range() -> None:
     assert ranges_m == pytest.approx([SCENARIO.targets.range_m] * len(ranges_m))
 
 
-def test_the_ring_is_one_mesh_however_many_targets() -> None:
+def test_hulls_of_one_asset_share_its_meshes(built: scene.Built) -> None:
     """Clones share datablocks; copied meshes show only when a build runs out of RAM."""
     assert SCENARIO.targets is not None
-    hulls = [obj for obj in bpy.data.objects if obj.name.startswith("target_")]
+    for asset, anchors in built.targets.items():
+        meshes = {
+            frozenset(p.data.name for p in a.children_recursive if p.type == "MESH")
+            for a in anchors
+        }
 
-    meshes = {
-        part.data.name
-        for hull in hulls
-        for part in hull.children_recursive
-        if part.type == "MESH"
-    }
-    per_target = len([p for p in hulls[0].children_recursive if p.type == "MESH"])
-
-    assert len(hulls) == SCENARIO.targets.count
-    assert len(meshes) == per_target
+        assert len(meshes) == 1, asset
+    assert len(targets()) == SCENARIO.targets.count
 
 
 def test_the_calibration_projects_every_target_where_blender_draws_it(

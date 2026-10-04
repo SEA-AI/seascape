@@ -5,26 +5,40 @@ extends = "twin-pod.toml"
 [rig]
 pods = [{ preset = "port" }]
 
+[sky]
+hdri = "kloofendal_38d_partly_cloudy"
+
 [outputs]
 duration_s = 40.0
 fps = 9
 loop = true
 
-# A list replaces the one it extends, so twin-pod's ships come along by hand.
+# A list replaces the one it extends.
 [[objects]]
-preset = "container_ship"
+asset = "cargo_ship"
 range_m = 3704.0
 bearing_deg = -10.0
 heading_deg = 80.0
 
 [[objects]]
-preset = "container_ship"
+asset = "small_container_ship"
 range_m = 7408.0
-bearing_deg = 10.0
-heading_deg = 280.0
+bearing_deg = -50.0
+heading_deg = 300.0
 
 [[objects]]
 asset = "yacht"
 range_m = 200.0
 bearing_deg = -90.0
 orbit = { period_s = 80.0, count = 2 }
+
+[[objects]]
+asset = "lateral_mark"
+range_m = 600.0
+bearing_deg = -70.0
+
+[[objects]]
+asset = "container"
+range_m = 350.0
+bearing_deg = -30.0
+heading_deg = 40.0

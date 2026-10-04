@@ -24,6 +24,7 @@ from seascape.config import (
     Scenario,
     Sea,
     Sky,
+    Targets,
     load,
 )
 
@@ -95,7 +96,7 @@ def test_a_nominal_bearing_is_its_pod_plus_its_fan(twin_pod) -> None:
 
 
 def test_the_installed_rig_takes_its_height_from_the_preset(twin_pod) -> None:
-    assert twin_pod.rig.height_m == 51.8
+    assert twin_pod.rig.height_m == 19.7
 
 
 def test_samples_covers_every_band() -> None:
@@ -431,6 +432,19 @@ def test_a_loop_too_short_for_its_waves_says_so() -> None:
             SCENARIOS / "drifting.toml",
             ["sea.swell = { height_m = 1.0, period_s = 13.0 }"],
         )
+
+
+def test_a_ring_takes_a_list_of_assets_in_turn() -> None:
+    ring = Targets(
+        asset=["yacht", "cargo_ship"], count=3, range_m=900.0, bearing_deg=(0.0, 90.0)
+    )
+
+    assert [asset for asset, _, _ in ring.poses()] == ["yacht", "cargo_ship", "yacht"]
+
+
+def test_a_ring_needs_an_asset() -> None:
+    with pytest.raises(ValidationError, match="at least 1"):
+        Targets(asset=[], count=3, range_m=900.0, bearing_deg=(0.0, 90.0))
 
 
 def test_over_the_visibility_a_dark_target_keeps_two_percent_contrast() -> None:
