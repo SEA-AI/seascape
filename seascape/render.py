@@ -8,6 +8,7 @@ centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 
 import subprocess
 import tempfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -126,9 +127,23 @@ def _info(scenario: Scenario) -> dict[str, Any]:
     }
 
 
-def render(scenario: Scenario, into: Path) -> list[Path]:
+def images(scenario: Scenario) -> int:
+    """How many images `render` writes."""
+    outputs = scenario.outputs
+    mounts = [m for m in scenario.rig.mounts if m.camera.kind in outputs.bands]
+    return len(mounts) * len(outputs.times_s)
+
+
+def _nothing() -> None:
+    pass
+
+
+def render(
+    scenario: Scenario, into: Path, advance: Callable[[], None] = _nothing
+) -> list[Path]:
     """Write one image per camera and frame into `into`, their calibration and their
-    labels. A sequence puts each camera's frames in a folder of its own."""
+    labels. A sequence puts each camera's frames in a folder of its own. `advance` runs
+    after each image."""
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
     into.mkdir(parents=True, exist_ok=True)
@@ -172,6 +187,7 @@ def render(scenario: Scenario, into: Path) -> list[Path]:
                         )
                     file_name = f"{name}.{outputs.format}"
                     written.append(into / file_name)
+                    advance()
                     camera = scene.calibrate(built, mount, file_name)
                     cameras.append(camera)
                     index = _pixels(passes / f"{mount.name}.index.exr")[::-1, :, 0]

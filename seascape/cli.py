@@ -1,189 +1,244 @@
 """Command line entry point."""
 
-import argparse
 import json
+import os
 import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
+
+import click
 
 from seascape import assets, montage, panorama, recording, skies
 from seascape.config import Band, Scenario, load
 
+_BANDS = click.Choice(get_args(Band.__value__))
+_FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
+_FOLDER = click.Path(exists=True, file_okay=False, path_type=Path)
 
-def _build(
-    scenario_path: Path, output: Path | None, band: Band, overrides: list[str]
+
+class _Seascape(click.Group):
+    def invoke(self, ctx: click.Context) -> Any:
+        try:
+            return super().invoke(ctx)
+        # Click's own exit, after --help in a subcommand, is a RuntimeError too.
+        except (click.exceptions.Exit, click.ClickException, click.Abort):
+            raise
+        except (
+            OSError,
+            ValueError,  # pydantic and tomllib both raise it
+            TypeError,
+            RuntimeError,  # bpy.ops.render.render, e.g. an unwritable output directory
+        ) as error:
+            # A traceback buries a scenario mistake.
+            raise click.ClickException(str(error)) from error
+
+
+def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None]]:
+    return lambda command: _with_scenario(command, output)
+
+
+def _with_scenario(command: Callable[..., None], output: str) -> Callable[..., None]:
+    command = click.option(
+        "--set",
+        "overrides",
+        multiple=True,
+        metavar="KEY=VALUE",
+        help="Override a field, written as TOML: 'rig.pitch_deg = -5'. Repeatable.",
+    )(command)
+    command = click.option(
+        "-o",
+        "--output",
+        type=click.Path(path_type=Path),
+        help=output,
+    )(command)
+    return click.argument("scenario", type=_FILE)(command)
+
+
+@contextmanager
+def _blender_log(path: Path) -> Iterator[None]:
+    """Blender writes its log to file descriptor 1 under Python's `sys.stdout`, where
+    it would tear the progress bar; it goes to `path` instead."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sys.stdout.flush()
+    stdout = os.dup(1)
+    with path.open("ab") as log:
+        os.dup2(log.fileno(), 1)
+        try:
+            yield
+        finally:
+            sys.stdout.flush()
+            os.dup2(stdout, 1)
+            os.close(stdout)
+
+
+def _progress(length: int, label: str) -> Any:
+    return click.progressbar(length=length, label=label, file=sys.stderr)
+
+
+@click.group(cls=_Seascape)
+@click.version_option(package_name="seascape")
+def main() -> None:
+    """Synthetic maritime camera frames, with their calibration and labels."""
+
+
+@main.command()
+@_scenario("The .blend. Default: beside the scenario.")
+# A scene is one band or the other: EO and LWIR share no units.
+@click.option("--band", type=_BANDS, default="eo", show_default=True)
+def build(
+    scenario: Path, output: Path | None, overrides: tuple[str, ...], band: Band
 ) -> None:
-    scenario = load(scenario_path, overrides)
+    """Write a .blend from a scenario."""
+    built = load(scenario, list(overrides))
     # Deferred: `schema` and a failed validation should not wait for bpy to load.
     import bpy
 
     from seascape import scene
 
-    scene.build(scenario, band)
-    path = output or scenario_path.with_suffix(f".{band}.blend")
+    scene.build(built, band)
+    path = output or scenario.with_suffix(f".{band}.blend")
     bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()))
-    mounts = scenario.rig.mounts
+    mounts = built.rig.mounts
     kinds = ", ".join(sorted({mount.camera.kind for mount in mounts}))
-    print(
-        f"{path}: {band}, {len(mounts)} cameras ({kinds}) at {scenario.rig.height_m} m"
+    click.echo(
+        f"{path}: {band}, {len(mounts)} cameras ({kinds}) at {built.rig.height_m} m"
     )
 
 
-def _render(scenario_path: Path, output: Path | None, overrides: list[str]) -> None:
-    scenario = load(scenario_path, overrides)
-    from seascape import render
+@main.command()
+@_scenario("A directory. Default: beside the scenario.")
+def render(scenario: Path, output: Path | None, overrides: tuple[str, ...]) -> None:
+    """Write one image per camera and frame, and their labels."""
+    built = load(scenario, list(overrides))
+    from seascape import render as renderer
 
-    into = output or scenario_path.with_suffix("")
-    written = render.render(scenario, into)
+    into = output or scenario.with_suffix("")
+    with (
+        _progress(renderer.images(built), "Rendering") as bar,
+        _blender_log(into / "blender.log"),
+    ):
+        written = renderer.render(built, into, lambda: bar.update(1))
     for path in written:
-        print(path)
-    print(f"{len(written)} files in {into}")
+        click.echo(path)
+    click.echo(f"{len(written)} files in {into}", err=True)
 
 
-def _montage(scenario_path: Path, output: Path | None, overrides: list[str]) -> None:
-    scenario = load(scenario_path, overrides)
-    into = output or scenario_path.with_suffix("")
-    print(montage.compose(scenario, into))
+@main.command("montage")
+@_scenario("The directory the frames are in. Default: beside the scenario.")
+def montage_(scenario: Path, output: Path | None, overrides: tuple[str, ...]) -> None:
+    """Lay rendered frames out for review."""
+    built = load(scenario, list(overrides))
+    click.echo(montage.compose(built, output or scenario.with_suffix("")))
+
+
+@main.command("panorama")
+@click.argument("folder", type=_FOLDER)
+@click.option(
+    "--projection",
+    type=click.Choice(list(panorama.PROJECTIONS)),
+    default="cylindrical",
+    show_default=True,
+)
+@click.option(
+    "--frame",
+    default="world",
+    show_default=True,
+    help="An extrinsics frame in calibration.json, which sets what is level: world "
+    "the horizon, vessel the deck, pod the enclosure.",
+)
+@click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
+@click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
+def panorama_(
+    folder: Path, projection: str, frame: str, max_width: int | None, ruler: bool
+) -> None:
+    """Stitch each pod's frames, from calibration.json."""
+    for path in panorama.panoramas(folder, projection, frame, max_width, ruler):
+        click.echo(path)
+
+
+@main.command()
+@click.argument("folder", type=_FOLDER)
+@click.option(
+    "--quality",
+    type=click.Choice(
+        ["lossless", "perc_lossless", "high", "medium", "low", "verylow", "lowest"]
+    ),
+    default="perc_lossless",
+    show_default=True,
+    help="Blender's H.264 constant-quality preset.",
+)
+def video(folder: Path, quality: str) -> None:
+    """Encode each camera's frames as an mp4, from labels.json."""
+    from seascape import video as encoder
+
+    with (
+        _progress(len(encoder.cameras(folder)), "Encoding") as bar,
+        _blender_log(folder / "blender.log"),
+    ):
+        written = encoder.encode(folder, quality.upper(), lambda: bar.update(1))
+    for path in written:
+        click.echo(path)
+
+
+@main.command("recording")
+@click.argument("folder", type=_FOLDER)
+def recording_(folder: Path) -> None:
+    """Lay each pod's videos out as a recording, after video."""
+    for path in recording.export(folder):
+        click.echo(path)
+
+
+@main.command()
+def schema() -> None:
+    """Print the scenario JSON schema."""
+    click.echo(json.dumps(Scenario.model_json_schema(), indent=2))
+
+
+@main.group("assets")
+def assets_() -> None:
+    """The meshes and skies a scenario can name."""
 
 
 def _fetched(here: bool) -> str:
     return "cached" if here else "not fetched"
 
 
-def _assets() -> None:
-    print(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
+@assets_.command("list")
+def list_() -> None:
+    """List every mesh and sky, and whether it is cached."""
+    click.echo(f"Meshes, for `asset` ({assets.MANIFEST.name}):")
     for name, mesh in assets.manifest().items():
-        print(f"  {name:<20} {_fetched(assets.cached(name)):<11}  {mesh.summary()}")
-    print(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
+        here = _fetched(assets.cached(name))
+        click.echo(f"  {name:<20} {here:<11}  {mesh.summary()}")
+    click.echo(f"\nPhotographed skies, for `sky.hdri` ({skies.LIBRARY.name}):")
     photos = skies.library()
     width = max(map(len, photos))
     for name, photo in photos.items():
         here = _fetched(assets.cache_path(name, photo.url).exists())
-        print(f"  {name:<{width}}  {here:<11}  {photo.summary()}")
+        click.echo(f"  {name:<{width}}  {here:<11}  {photo.summary()}")
 
 
-def _add_set(command: argparse.ArgumentParser) -> None:
-    command.add_argument(
-        "--set",
-        action="append",
-        default=[],
-        dest="overrides",
-        metavar="KEY=VALUE",
-        help="override a field, written as TOML: 'rig.pitch_deg = -5'. Repeatable.",
-    )
+@assets_.command()
+@click.argument("mesh", type=_FILE)
+def measure(mesh: Path) -> None:
+    """Print the manifest lines measured from a mesh file."""
+    from seascape import catalog
+
+    with _blender_log(Path(os.devnull)):
+        lines = catalog.measure(mesh)
+    click.echo(lines)
 
 
-def _run(args: argparse.Namespace) -> None:
-    if args.command == "assets":
-        _assets()
-    elif args.command == "render":
-        _render(args.scenario, args.output, args.overrides)
-    elif args.command == "montage":
-        _montage(args.scenario, args.output, args.overrides)
-    elif args.command == "panorama":
-        for path in panorama.panoramas(
-            args.folder, args.projection, args.frame, args.max_width, args.ruler
-        ):
-            print(path)
-    elif args.command == "video":
-        from seascape import video
+@assets_.command()
+@click.argument("scenario", type=_FILE)
+@click.argument("out", type=click.Path(dir_okay=False, path_type=Path))
+@click.option("--band", type=_BANDS, default="eo", show_default=True)
+def sheet(scenario: Path, out: Path, band: Band) -> None:
+    """Render every mesh in a scenario's sea and sky, one tile each."""
+    from seascape import catalog
 
-        for path in video.encode(args.folder, args.quality.upper()):
-            print(path)
-    elif args.command == "recording":
-        for path in recording.export(args.folder):
-            print(path)
-    else:
-        _build(args.scenario, args.output, args.band, args.overrides)
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="seascape")
-    commands = parser.add_subparsers(dest="command", required=True)
-
-    build = commands.add_parser("build", help="write a .blend from a scenario")
-    build.add_argument("scenario", type=Path)
-    build.add_argument("-o", "--output", type=Path, help="default: alongside the input")
-    # A scene is one band or the other: EO and LWIR share no units.
-    build.add_argument("--band", choices=get_args(Band.__value__), default="eo")
-    _add_set(build)
-
-    shoot = commands.add_parser("render", help="write one image per camera")
-    shoot.add_argument("scenario", type=Path)
-    shoot.add_argument(
-        "-o", "--output", type=Path, help="directory, default: alongside the input"
-    )
-    _add_set(shoot)
-
-    lay = commands.add_parser("montage", help="lay rendered frames out for review")
-    lay.add_argument("scenario", type=Path)
-    lay.add_argument(
-        "-o", "--output", type=Path, help="directory the frames are in, and the montage"
-    )
-    _add_set(lay)
-
-    stitch = commands.add_parser(
-        "panorama", help="stitch each pod's frames, from calibration.json"
-    )
-    stitch.add_argument("folder", type=Path, help="a render's output directory")
-    stitch.add_argument(
-        "--projection",
-        choices=list(panorama.PROJECTIONS),
-        default="cylindrical",
-    )
-    stitch.add_argument(
-        "--frame",
-        default="world",
-        help="an extrinsics frame in calibration.json, which sets what is level: "
-        "world the horizon, vessel the deck, pod the enclosure",
-    )
-    stitch.add_argument(
-        "--max-width", type=int, help="pixels; native resolution when absent"
-    )
-    stitch.add_argument(
-        "--ruler", action="store_true", help="a strip of bearing ticks under the image"
-    )
-
-    film = commands.add_parser(
-        "video", help="encode each camera's frames as an mp4, from labels.json"
-    )
-    film.add_argument("folder", type=Path, help="a render's output directory")
-    film.add_argument(
-        "--quality",
-        default="perc_lossless",
-        choices=[
-            "lossless",
-            "perc_lossless",
-            "high",
-            "medium",
-            "low",
-            "verylow",
-            "lowest",
-        ],
-        help="Blender's H.264 constant-quality preset",
-    )
-
-    record = commands.add_parser(
-        "recording", help="lay each pod's videos out as a recording, after `video`"
-    )
-    record.add_argument("folder", type=Path, help="a render's output directory")
-
-    commands.add_parser("schema", help="print the scenario JSON schema on stdout")
-    commands.add_parser("assets", help="list the meshes and skies a scenario can name")
-
-    args = parser.parse_args(argv)
-    if args.command == "schema":
-        print(json.dumps(Scenario.model_json_schema(), indent=2))
-        return 0
-    try:
-        _run(args)
-    except (
-        OSError,
-        ValueError,
-        TypeError,
-        RuntimeError,  # bpy.ops.render.render, e.g. an unwritable output directory
-    ):  # pydantic and tomllib both raise ValueError
-        # A scenario mistake is the user's, not a crash; a traceback buries the line.
-        print(sys.exception(), file=sys.stderr)
-        return 1
-    return 0
+    with _blender_log(out.with_suffix(".log")):
+        catalog.sheet(scenario, out, band)
+    click.echo(out)

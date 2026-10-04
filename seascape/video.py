@@ -2,6 +2,7 @@
 
 import math
 import tempfile
+from collections.abc import Callable
 from itertools import pairwise
 from pathlib import Path
 
@@ -12,14 +13,30 @@ from seascape import agc
 from seascape.labels import FILENAME, Image, Labels
 
 
-def encode(run: Path, quality: str = "PERC_LOSSLESS") -> list[Path]:
-    """`quality` is a Blender `constant_rate_factor` preset."""
-    run = run.resolve()
+def _nothing() -> None:
+    pass
+
+
+def cameras(run: Path) -> dict[str, list[Image]]:
+    """Each camera's frames in a render, in time order."""
     images = Labels.model_validate_json((run / FILENAME).read_text()).images
-    cameras: dict[str, list[Image]] = {}
+    found: dict[str, list[Image]] = {}
     for image in sorted(images, key=lambda image: image.time_s):
-        cameras.setdefault(image.camera, []).append(image)
-    return [_encode(run, camera, frames, quality) for camera, frames in cameras.items()]
+        found.setdefault(image.camera, []).append(image)
+    return found
+
+
+def encode(
+    run: Path, quality: str = "PERC_LOSSLESS", advance: Callable[[], None] = _nothing
+) -> list[Path]:
+    """`quality` is a Blender `constant_rate_factor` preset. `advance` runs after each
+    camera's video."""
+    run = run.resolve()
+    written = []
+    for camera, frames in cameras(run).items():
+        written.append(_encode(run, camera, frames, quality))
+        advance()
+    return written
 
 
 def _toned(paths: list[Path], step_s: float, into: Path) -> list[Path]:

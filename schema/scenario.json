@@ -154,7 +154,7 @@
       "description": "Something to detect.",
       "properties": {
         "asset": {
-          "description": "An asset name from the manifest: `seascape assets` lists them.",
+          "description": "An asset name from the manifest: `seascape assets list` shows them.",
           "enum": [
             "bulk_carrier",
             "cargo_ship",
@@ -349,7 +349,7 @@
             }
           ],
           "default": null,
-          "description": "An asset name from the manifest: `seascape assets` lists them.",
+          "description": "An asset name from the manifest: `seascape assets list` shows them.",
           "title": "Asset"
         },
         "t_k": {
@@ -760,7 +760,7 @@
       "description": "A ring of vessels at one range, spread over a span of bearings.\n\nPlaced in the world, so nothing guarantees a camera sees one.",
       "properties": {
         "asset": {
-          "description": "An asset name from the manifest: `seascape assets` lists them.",
+          "description": "An asset name from the manifest: `seascape assets list` shows them.",
           "enum": [
             "bulk_carrier",
             "cargo_ship",

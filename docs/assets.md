@@ -1,6 +1,6 @@
 # Assets
 
-`seascape assets` lists the meshes a scenario can name in `asset`, and the skies it can name in `sky.hdri`.
+`seascape assets list` shows the meshes a scenario can name in `asset`, and the skies it can name in `sky.hdri`.
 
 ![Every mesh, three-quarter on](assets_eo.jpg)
 
@@ -24,10 +24,10 @@ Not usable:
 ## Adding one
 
 1. Find it in a source above and read its licence.
-2. Download the files and run `uv run python docs/assets.py measure <mesh>`. Fill in the `url` of each of a glTF's `files` it prints.
+2. Download the files and run `uv run seascape assets measure <mesh>`. Fill in the `url` of each of a glTF's `files` it prints.
 3. Add the entry to [`seascape/assets.toml`](../seascape/assets.toml) with those lines, its `kind`, the `category` its labels carry (shared by assets of one type), the `url`, the `licence`, `attribution` with the author and the page, and a one-line `description` of what the camera sees.
 4. A `hull` takes `length_m` and `draught_m` from a real vessel of the class, and `bow_deg` from where the bow points as authored; check it in the sheet. A `buoy` takes `height_m` and `draught_m` from a real buoy of the type. Cite the source beside them.
-5. Regenerate the sheets with `uv run python docs/assets.py sheet docs/assets_eo.jpg` and `uv run python docs/assets.py sheet docs/assets_ir.jpg ir`, and the schema with `uv run seascape schema > schema/scenario.json`. Then run `uv run pytest --render`.
+5. Regenerate the sheets with `uv run seascape assets sheet scenarios/open-sea.toml docs/assets_eo.jpg` and the same with `docs/assets_ir.jpg --band ir`, and the schema with `uv run seascape schema > schema/scenario.json`. Then run `uv run pytest --render`.
 
 ## Judging detail
 
