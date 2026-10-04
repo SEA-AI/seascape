@@ -54,7 +54,7 @@ def sheet(out: Path) -> None:
         for row, (name, mesh) in enumerate(meshes.items()):
             y = row * (TILE[1] + LABEL_PX)
             n = len(mesh.texture_px)
-            textures = {0: "flat", 1: "1 texture"}.get(n, f"{n} textures")
+            textures = f"{n} texture{'s' * (n > 1)}" if n else "flat"
             label = (
                 f"{name}  {mesh.length_m:.0f} m  {mesh.triangles:,} tris  {textures}"
             )

@@ -37,7 +37,7 @@ sha256 = "ff9c2b913f106f2b1e6b8964e6dfe9fa69bf80d4f50f12def6cf1f4a5ac93f46"
 # Solutions, "Propulsion trends in container vessels", Table 1. This length makes the
 # mesh 22 m across.
 length_m = 134.0
-draught_m = 8.0
+draught_m = 8.6
 bow_deg = 270.0
 triangles = 48018
 texture_px = [1024, 1024, 1024, 1024]
