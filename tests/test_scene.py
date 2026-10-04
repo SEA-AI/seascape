@@ -653,6 +653,10 @@ class TestEoBand:
             (surface,) = output.inputs["Surface"].links
             assert surface.from_node.name == "haze", material.name
 
+    def test_no_surface_is_sampled_as_a_light(self) -> None:
+        for material in bpy.data.materials:
+            assert material.cycles.emission_sampling == "NONE", material.name
+
     def test_a_hazed_material_is_not_hazed_again(self) -> None:
         material = bpy.data.materials["sea"]
         scene.haze(material)
