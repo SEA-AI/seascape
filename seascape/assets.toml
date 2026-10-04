@@ -164,3 +164,74 @@ triangles = 32008
 texture_px = []
 licence = "CC-BY-4.0"
 attribution = "Buoy by ean47, https://sketchfab.com/3d-models/da1a9915bd0446299998a896311e4d64"
+
+[log]
+kind = "debris"
+description = "Dead tree trunk, bark worn off in places, textured."
+url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/dead_tree_trunk/dead_tree_trunk_2k.gltf"
+sha256 = "63133e2cd4c8c9d08114ef158284403ba4fad802b7f1162f73a8323b509a1b53"
+# Poly Haven's measured length. Air-dry Douglas-fir is 545 kg/m3 (Oregon Wood
+# Innovation Center, from the USDA Wood Handbook): 545 / 1025 of its 0.29 m under.
+length_m = 3.05
+draught_m = 0.15
+triangles = 101802
+texture_px = [2048, 2048, 2048]
+licence = "CC0-1.0"
+attribution = "Dead Tree Trunk by Rob Tuytel, https://polyhaven.com/a/dead_tree_trunk"
+[log.files."dead_tree_trunk.bin"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dead_tree_trunk/dead_tree_trunk.bin"
+sha256 = "c1ac6b3195246e8647a28eee2fbfdd4712a045c7cf2dcb4f5abcc2d40a446ca6"
+[log.files."textures/dead_tree_trunk_arm_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/dead_tree_trunk/dead_tree_trunk_arm_2k.jpg"
+sha256 = "f244cfbfab760d877980065593710f74947bb70eac9d47d9a189537d23ba1f6b"
+[log.files."textures/dead_tree_trunk_diff_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/dead_tree_trunk/dead_tree_trunk_diff_2k.jpg"
+sha256 = "57b3f04a2b9b1017abfefbbca1b5d4f5421960fefd964a0b9dd4036be4d58d0c"
+[log.files."textures/dead_tree_trunk_nor_gl_2k.jpg"]
+url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/dead_tree_trunk/dead_tree_trunk_nor_gl_2k.jpg"
+sha256 = "9447959386aa3ee0e3552bd095c3dbbcb13c58cc6a87cb4b51cc4517b695040c"
+
+[pallet]
+kind = "debris"
+description = "EUR pallet in light wood, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-015/4f38d1e992e94966b6ceb2754cc16a22.glb"
+sha256 = "773e6df578ff331e4404bb390355efb5c7720bd7d8064e407bbc7478521a5a9c"
+# 1200 x 800 x 144 mm, about 25 kg (EPAL, "EPAL Euro Pallet"). Its boards and blocks
+# (palletunion.com, "EPAL Euro Pallet Specifications") hold the 24 L of seawater that
+# weighs up to 0.11 m above its lowest point.
+length_m = 1.2
+draught_m = 0.11
+triangles = 15736
+texture_px = [1024, 1024, 1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Euro-pallet by wittybacon, https://sketchfab.com/3d-models/4f38d1e992e94966b6ceb2754cc16a22"
+
+[container]
+kind = "debris"
+description = "Weathered red 20 ft ISO container, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-150/f555ce5532d84cac8ad963dec5833934.glb"
+sha256 = "6363ea3e10f072000a58834f5d84196c3bf5c7c78ac2fabcc8caac2b419a39e4"
+# 20 ft: 6.058 m long (ISO 668, via Wikipedia, "Intermodal container"). Breivik et al.
+# (arXiv:1111.0750) immerse theirs 70%, a typical loading; this mesh is 2.46 m tall.
+length_m = 6.058
+draught_m = 1.72
+triangles = 190810
+texture_px = [1024, 1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "20ft Red by aidancallaghan, https://sketchfab.com/3d-models/f555ce5532d84cac8ad963dec5833934"
+
+[sea_mine]
+kind = "debris"
+description = "Black horned contact mine broken from its mooring, upper case and horns above water, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-016/7f503538a0de4bfa93737ccfab193d36.glb"
+sha256 = "ba5ae18def82a4ad49481ccfe8fc82e934b7ce775b1dccc37158f0fb5090d329"
+# A US Mk 6 contact mine's case is 87 cm across and the mine 635 kg (NavWeaps, "United
+# States Mines"), which makes this mesh 1.21 m horn to horn. Broken from its 360 kg
+# anchor (Wikipedia, "North Sea Mine Barrage"), its 275 kg fill 78% of the case's
+# 353 kg of seawater: 70% of its diameter under.
+length_m = 1.21
+draught_m = 0.81
+triangles = 23850
+texture_px = [1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Sea Mine Black by AbsoluteMadLadd, https://sketchfab.com/3d-models/7f503538a0de4bfa93737ccfab193d36"

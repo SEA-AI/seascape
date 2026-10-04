@@ -158,11 +158,15 @@
           "enum": [
             "bulk_carrier",
             "cargo_ship",
+            "container",
             "container_ship",
             "lateral_mark",
+            "log",
             "mooring_buoy",
             "ocean_buoy",
+            "pallet",
             "pillar_buoy",
+            "sea_mine",
             "small_container_ship",
             "yacht"
           ],
@@ -326,11 +330,15 @@
               "enum": [
                 "bulk_carrier",
                 "cargo_ship",
+                "container",
                 "container_ship",
                 "lateral_mark",
+                "log",
                 "mooring_buoy",
                 "ocean_buoy",
+                "pallet",
                 "pillar_buoy",
+                "sea_mine",
                 "small_container_ship",
                 "yacht"
               ],
@@ -756,11 +764,15 @@
           "enum": [
             "bulk_carrier",
             "cargo_ship",
+            "container",
             "container_ship",
             "lateral_mark",
+            "log",
             "mooring_buoy",
             "ocean_buoy",
+            "pallet",
             "pillar_buoy",
+            "sea_mine",
             "small_container_ship",
             "yacht"
           ],
