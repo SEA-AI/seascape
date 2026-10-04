@@ -18,8 +18,7 @@ from seascape.config import load
 OPEN_SEA = Path(__file__).parent.parent / "scenarios" / "open-sea.toml"
 TILE = (480, 270)
 COLUMNS = 4
-# A buoy through a long lens, as a ship sees one, not from a few metres where the
-# sea's cells show.
+# A buoy through a long lens, as a ship sees one.
 HFOV_DEG = {"hull": 45.0, "buoy": 10.0}
 # A hull spans this much of the tile's width, a buoy's freeboard this much of its
 # height.
@@ -90,7 +89,8 @@ def measure(path: Path) -> None:
     if path.suffix == ".gltf":
         gltf = json.loads(path.read_text())
         named = [*gltf.get("buffers", []), *gltf.get("images", [])]
-        for uri in sorted(item["uri"] for item in named if "uri" in item):
+        uris = (item.get("uri", "") for item in named)
+        for uri in sorted(u for u in uris if u and not u.startswith("data:")):
             sha256 = assets.digest(path.parent / uri)
             print(f'files."{uri}" = {{ url = "", sha256 = "{sha256}" }}')
 

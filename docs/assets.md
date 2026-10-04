@@ -6,11 +6,11 @@
 
 ## Where a mesh may come from
 
-A build downloads each mesh itself, so it needs URLs that anyone can fetch without logging in and that always return the same bytes. A `.glb` or `.fbx` holds its textures; a `.gltf` lists its buffer and textures under `files`, by the paths it names them. Look in the sources in this order:
+A build downloads each mesh itself, so it needs URLs that anyone can fetch without logging in and that always return the same bytes. A `.glb` or `.fbx` holds its textures; a `.gltf` lists its buffer and textures under `files`, by the paths it names them. Prefer the sources top to bottom: Poly Haven's models are curated and come at real size.
 
 | Source | Licence | The file's URL |
 |---|---|---|
-| [Poly Haven](https://polyhaven.com/models) | CC0; real size, curated | The `gltf` entry of `api.polyhaven.com/files/<id>`, its `include` the `files` |
+| [Poly Haven](https://polyhaven.com/models) | CC0 | The `gltf` entry of `api.polyhaven.com/files/<id>`, its `include` the `files` |
 | [Objaverse](https://huggingface.co/datasets/allenai/objaverse) | Each model's own: take CC0 or CC-BY only | `resolve/<commit>/glbs/...`, pinned to a commit, never `main`; `object-paths.json.gz` maps a Sketchfab uid to its path |
 | [Icosa Gallery](https://icosa.gallery) | CC-BY; skip `CREATIVE_COMMONS_BY_ND` | In `api.icosa.gallery/v1/assets/<id>`, the `root.url` of a `GLB` or `FBX` format with no `resources` |
 

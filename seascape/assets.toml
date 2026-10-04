@@ -88,7 +88,7 @@ sha256 = "b4a3ecfc84d2e26b4477f82214e179cbee732c27e5cc33bfd29b2b3c1a8f0c9c"
 # 1.1 m hull above water (Automatic Power, PMEB NAV 3.0M datasheet), and this mesh's
 # float starts 0.7 m above its lowest point.
 height_m = 6.84
-draught_m = 1.2
+draught_m = 1.15
 triangles = 13014
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"

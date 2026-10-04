@@ -12,7 +12,7 @@ import pytest
 from mathutils import Vector
 
 from seascape import lwir, scene, sea, skies, waves
-from seascape.assets import download, fetch, manifest
+from seascape.assets import Buoy, download, fetch, manifest
 from seascape.config import Band, Scenario, load
 
 pytestmark = pytest.mark.render
@@ -725,3 +725,20 @@ def test_a_hull_sized_by_its_class_breadth_is_that_wide(
 ) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     assert scene._import(name, "eo")[0]["beam_m"] == pytest.approx(beam_m, abs=0.1)
+
+
+@pytest.mark.parametrize(
+    "name", [n for n, a in manifest().items() if isinstance(a, Buoy)]
+)
+def test_a_buoy_floats_on_its_float(name: str) -> None:
+    """The water meets the float: within 5 cm of it the mesh is near its widest."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = scene._import(name, "eo")
+    bpy.context.view_layer.update()
+    at_water = [
+        (mesh.matrix_world @ vertex.co).x
+        for mesh in scene._meshes(parts)
+        for vertex in mesh.data.vertices
+        if abs((mesh.matrix_world @ vertex.co).z) < 0.05
+    ]
+    assert max(at_water) - min(at_water) > 0.8 * parts[0]["beam_m"]
