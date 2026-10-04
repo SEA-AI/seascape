@@ -341,7 +341,7 @@ AssetName = Annotated[
     AfterValidator(_in_the_manifest),
     WithJsonSchema({"type": "string", "enum": sorted(assets.manifest())}),
 ]
-_ASSET = "An asset name from the manifest: `seascape assets` lists them."
+_ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = "Shaded hull temperature. IR only."
 _HEADING = "Where its bow points, clockwise from the ownship's bow."
 _RANGE = "Horizontal, from the ownship's origin."

@@ -1,22 +1,15 @@
-"""The asset sheets in docs/assets.md, and the measured lines of a new manifest entry.
-
-uv run python docs/assets.py sheet docs/assets_eo.jpg
-uv run python docs/assets.py sheet docs/assets_ir.jpg ir
-uv run python docs/assets.py measure hull.glb
-"""
+"""Asset sheets, and the manifest lines measured from a mesh file."""
 
 import json
 import math
-import sys
 import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from seascape import assets, render, scene
-from seascape.config import Band, load
+from seascape.config import Band, Scenario, load
 
-OPEN_SEA = Path(__file__).parent.parent / "scenarios" / "open-sea.toml"
 TILE = (480, 270)
 COLUMNS = 4
 # Buoys and debris through a long lens, as a ship sees them.
@@ -28,7 +21,9 @@ FILL = 0.7
 HEADING_DEG = 210.0
 
 
-def shot(name: str, mesh: assets.Asset, band: Band, into: Path) -> Image.Image:
+def shot(
+    name: str, mesh: assets.Asset, scenario: Path, band: Band, into: Path
+) -> Image.Image:
     """The tile, cut from a frame twice its size around the mesh's label."""
     hfov_deg = HFOV_DEG[mesh.kind]
     if isinstance(mesh, assets.Hull | assets.Debris):
@@ -43,8 +38,8 @@ def shot(name: str, mesh: assets.Asset, band: Band, into: Path) -> Image.Image:
         f'{{ kind = "{band}", hfov_deg = {wide_deg}, width_px = {2 * TILE[0]}, '
         f"height_px = {2 * TILE[1]} }}"
     )
-    scenario = load(
-        OPEN_SEA,
+    built = load(
+        scenario,
         [
             # A tenth of the range up, aimed at the waterline.
             f"rig.height_m = {0.1 * range_m}",
@@ -55,9 +50,14 @@ def shot(name: str, mesh: assets.Asset, band: Band, into: Path) -> Image.Image:
             f'objects = [{{ asset = "{name}", range_m = {range_m}, bearing_deg = 0.0, '
             f"heading_deg = {HEADING_DEG} }}]",
             f'outputs.bands = ["{band}"]',
+            "outputs.duration_s = 0.0",
         ],
     )
-    frame = Image.open(render.render(scenario, into)[0]).convert("RGB")
+    # The mesh alone: TOML cannot set the ring or the ownship's hull to none.
+    alone = built.model_dump(mode="json") | {"targets": None}
+    alone["ownship"] |= {"asset": None}
+    built = Scenario.model_validate(alone)
+    frame = Image.open(render.render(built, into)[0]).convert("RGB")
     (label,) = json.loads((into / "labels.json").read_text())["annotations"]
     x, y, w, h = label["bbox"]
     left = min(max(x + w // 2 - TILE[0] // 2, 0), TILE[0])
@@ -65,7 +65,7 @@ def shot(name: str, mesh: assets.Asset, band: Band, into: Path) -> Image.Image:
     return frame.crop((left, top, left + TILE[0], top + TILE[1]))
 
 
-def sheet(out: Path, band: Band = "eo") -> None:
+def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
     meshes = assets.manifest()
     rows = math.ceil(len(meshes) / COLUMNS)
     page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
@@ -74,7 +74,7 @@ def sheet(out: Path, band: Band = "eo") -> None:
     with tempfile.TemporaryDirectory() as tmp:
         for k, (name, mesh) in enumerate(meshes.items()):
             x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * TILE[1]
-            page.paste(shot(name, mesh, band, Path(tmp) / name), (x, y))
+            page.paste(shot(name, mesh, scenario, band, Path(tmp) / name), (x, y))
             n = len(mesh.texture_px)
             textures = f"{n} texture{'s' * (n > 1)}" if n else "flat"
             # The LWIR build replaces every material, so textures show only in EO.
@@ -85,26 +85,18 @@ def sheet(out: Path, band: Band = "eo") -> None:
     page.save(out, quality=85)
 
 
-def measure(path: Path) -> None:
+def measure(path: Path) -> str:
     triangles, texture_px = scene.measure(path)
-    print(f'sha256 = "{assets.digest(path)}"')
-    print(f"triangles = {triangles}\ntexture_px = {list(texture_px)}")
+    lines = [
+        f'sha256 = "{assets.digest(path)}"',
+        f"triangles = {triangles}",
+        f"texture_px = {list(texture_px)}",
+    ]
     if path.suffix == ".gltf":
         gltf = json.loads(path.read_text())
         named = [*gltf.get("buffers", []), *gltf.get("images", [])]
         uris = (item.get("uri", "") for item in named)
         for uri in sorted(u for u in uris if u and not u.startswith("data:")):
             sha256 = assets.digest(path.parent / uri)
-            print(f'files."{uri}" = {{ url = "", sha256 = "{sha256}" }}')
-
-
-if __name__ == "__main__":
-    match sys.argv[1:]:
-        case ["sheet", out]:
-            sheet(Path(out))
-        case ["sheet", out, "eo" | "ir" as band]:
-            sheet(Path(out), band)
-        case ["measure", mesh]:
-            measure(Path(mesh))
-        case _:
-            sys.exit(__doc__)
+            lines.append(f'files."{uri}" = {{ url = "", sha256 = "{sha256}" }}')
+    return "\n".join(lines)

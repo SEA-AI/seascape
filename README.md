@@ -38,7 +38,15 @@ uv sync
 
 Only touching the radiometry or the scenario config? `uv sync --no-group blender` skips the Blender wheel, hundreds of MB. Those parts are plain NumPy and run without it.
 
-Meshes are never committed. `seascape/assets.toml` records each one's source, sha256, licence and credit; they download on first use to `~/.cache/seascape`, or to `$XDG_CACHE_HOME/seascape` when that is set to an absolute path. Every run re-checks the digest. `seascape assets` lists them, and [docs/assets.md](docs/assets.md) shows each one rendered and how to add another.
+Meshes are never committed. `seascape/assets.toml` records each one's source, sha256, licence and credit; they download on first use to `~/.cache/seascape`, or to `$XDG_CACHE_HOME/seascape` when that is set to an absolute path. Every run re-checks the digest. `seascape assets list` shows them, and [docs/assets.md](docs/assets.md) shows each one rendered and how to add another.
+
+Tab completes commands, options and asset names. With `seascape` on the `PATH`, add to `~/.zshrc`:
+
+```bash
+eval "$(_SEASCAPE_COMPLETE=zsh_source seascape)"
+```
+
+For bash, `bash_source` in `~/.bashrc`.
 
 ## Quickstart
 
@@ -46,7 +54,7 @@ Meshes are never committed. `seascape/assets.toml` records each one's source, sh
 uv run seascape render scenarios/baseline.toml -o out/
 ```
 
-That writes one image per camera, `calibration.json` and `labels.json` to `out/`. To open the scene in Blender instead, `seascape build` writes the `.blend`:
+That writes one image per camera, `calibration.json` and `labels.json` to `out/`, and Blender's own log to `out/blender.log`. To open the scene in Blender instead, `seascape build` writes the `.blend`:
 
 ```bash
 uv run seascape build scenarios/baseline.toml            # scenarios/baseline.eo.blend

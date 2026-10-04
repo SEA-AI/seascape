@@ -19,5 +19,5 @@ def pytest_collection_modifyitems(
         return
     skip = pytest.mark.skip(reason="needs --render")
     for item in items:
-        if "render" in item.keywords:
+        if item.get_closest_marker("render"):
             item.add_marker(skip)

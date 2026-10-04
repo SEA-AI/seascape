@@ -62,13 +62,19 @@ class _Mesh(Model):
     @abstractmethod
     def size(self) -> str: ...
 
-    def summary(self) -> str:
+    @property
+    def textures(self) -> str:
         sizes = Counter(self.texture_px)
-        textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
+        return ", ".join(f"{n} x {px} px" for px, n in sizes.items()) or "-"
+
+    def row(self) -> tuple[str, ...]:
         return (
-            f"{self.kind:<6} {self.size:>12}  {self.triangles:>9,} triangles  "
-            f"textures: {textures}  {self.licence}\n"
-            f"    {self.supercategory} / {self.category}: {self.description}"
+            self.kind,
+            self.category,
+            self.size,
+            f"{self.triangles:,}",
+            self.textures,
+            self.licence,
         )
 
     @field_validator("files")
@@ -94,7 +100,7 @@ class Hull(_Mesh):
 
     @property
     def size(self) -> str:
-        return f"{self.length_m:.0f} m long"
+        return f"{self.length_m:.3g} m long"
 
 
 class Buoy(_Mesh):
@@ -110,7 +116,7 @@ class Buoy(_Mesh):
 
     @property
     def size(self) -> str:
-        return f"{self.height_m:.1f} m tall"
+        return f"{self.height_m:.3g} m tall"
 
 
 class Debris(_Mesh):
@@ -126,7 +132,7 @@ class Debris(_Mesh):
 
     @property
     def size(self) -> str:
-        return f"{self.length_m:.2f} m long"
+        return f"{self.length_m:.3g} m long"
 
 
 type Asset = Annotated[Hull | Buoy | Debris, Field(discriminator="kind")]
