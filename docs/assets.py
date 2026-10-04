@@ -1,6 +1,7 @@
-"""The asset sheet in docs/assets.md, and the measured lines of a new manifest entry.
+"""The asset sheets in docs/assets.md, and the measured lines of a new manifest entry.
 
-uv run python docs/assets.py sheet docs/assets.jpg
+uv run python docs/assets.py sheet docs/assets_eo.jpg
+uv run python docs/assets.py sheet docs/assets_ir.jpg ir
 uv run python docs/assets.py measure hull.glb
 """
 
@@ -13,7 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from seascape import assets, render, scene
-from seascape.config import load
+from seascape.config import Band, load
 
 OPEN_SEA = Path(__file__).parent.parent / "scenarios" / "open-sea.toml"
 TILE = (480, 270)
@@ -27,7 +28,7 @@ FILL = 0.7
 HEADING_DEG = 210.0
 
 
-def shot(name: str, mesh: assets.Asset, into: Path) -> Image.Image:
+def shot(name: str, mesh: assets.Asset, band: Band, into: Path) -> Image.Image:
     """The tile, cut from a frame twice its size around the mesh's label."""
     hfov_deg = HFOV_DEG[mesh.kind]
     if isinstance(mesh, assets.Hull):
@@ -39,7 +40,7 @@ def shot(name: str, mesh: assets.Asset, into: Path) -> Image.Image:
     # Twice the pixels over twice the tangent: the tile's pixel, with room to centre.
     wide_deg = math.degrees(2 * math.atan(2 * math.tan(math.radians(hfov_deg) / 2)))
     camera = (
-        f'{{ kind = "eo", hfov_deg = {wide_deg}, width_px = {2 * TILE[0]}, '
+        f'{{ kind = "{band}", hfov_deg = {wide_deg}, width_px = {2 * TILE[0]}, '
         f"height_px = {2 * TILE[1]} }}"
     )
     scenario = load(
@@ -53,7 +54,7 @@ def shot(name: str, mesh: assets.Asset, into: Path) -> Image.Image:
             f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}]',
             f'objects = [{{ asset = "{name}", range_m = {range_m}, bearing_deg = 0.0, '
             f"heading_deg = {HEADING_DEG} }}]",
-            'outputs.bands = ["eo"]',
+            f'outputs.bands = ["{band}"]',
         ],
     )
     frame = Image.open(render.render(scenario, into)[0]).convert("RGB")
@@ -64,7 +65,7 @@ def shot(name: str, mesh: assets.Asset, into: Path) -> Image.Image:
     return frame.crop((left, top, left + TILE[0], top + TILE[1]))
 
 
-def sheet(out: Path) -> None:
+def sheet(out: Path, band: Band = "eo") -> None:
     meshes = assets.manifest()
     rows = math.ceil(len(meshes) / COLUMNS)
     page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
@@ -73,7 +74,7 @@ def sheet(out: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         for k, (name, mesh) in enumerate(meshes.items()):
             x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * TILE[1]
-            page.paste(shot(name, mesh, Path(tmp) / name), (x, y))
+            page.paste(shot(name, mesh, band, Path(tmp) / name), (x, y))
             n = len(mesh.texture_px)
             textures = f"{n} texture{'s' * (n > 1)}" if n else "flat"
             label = f"{name}  {mesh.size}  {mesh.triangles:,} tris  {textures}"
@@ -96,7 +97,12 @@ def measure(path: Path) -> None:
 
 
 if __name__ == "__main__":
-    commands = {"sheet": sheet, "measure": measure}
-    if len(sys.argv) != 3 or sys.argv[1] not in commands:
-        sys.exit(__doc__)
-    commands[sys.argv[1]](Path(sys.argv[2]))
+    match sys.argv[1:]:
+        case ["sheet", out]:
+            sheet(Path(out))
+        case ["sheet", out, "eo" | "ir" as band]:
+            sheet(Path(out), band)
+        case ["measure", mesh]:
+            measure(Path(mesh))
+        case _:
+            sys.exit(__doc__)
