@@ -27,6 +27,12 @@ bearing_deg = -50.0
 heading_deg = 300.0
 
 [[objects]]
+asset = "patrol_vessel"
+range_m = 1200.0
+bearing_deg = -85.0
+heading_deg = 150.0
+
+[[objects]]
 asset = "yacht"
 range_m = 200.0
 bearing_deg = -90.0
