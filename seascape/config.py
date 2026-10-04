@@ -453,7 +453,7 @@ class Targets(Model):
         return low + (high - low) * i / max(self.count - 1, 1)
 
     def poses(self) -> list[tuple[str, float, float]]:
-        """Asset, bearing and heading per target, in degrees."""
+        """Asset, bearing_deg and heading_deg per target."""
         names = [self.asset] if isinstance(self.asset, str) else self.asset
         return [
             (
