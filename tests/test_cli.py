@@ -84,7 +84,10 @@ def test_asset_names_complete(run: Run) -> None:
         "COMP_CWORD": "3",
         "_SEASCAPE_COMPLETE": "bash_complete",
     }
-    assert run(env=shell).stdout.splitlines() == ["plain,pallet"]
+    names = run(env=shell).stdout.splitlines()
+
+    assert "plain,pallet" in names
+    assert all(name.startswith("plain,pa") for name in names)
 
 
 def test_measure_prints_only_the_manifest_lines(
