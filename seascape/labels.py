@@ -29,6 +29,7 @@ class Target(NamedTuple):
     pass_index: int
     name: str
     category: str
+    supercategory: str
     centre_m: tuple[float, float]  # world east, north
     waterline_m: np.ndarray  # (N, 2) world east, north along the hull's waterline
 
@@ -47,6 +48,8 @@ class Image(Model):
 class Category(Model):
     id: int
     name: str
+    # A render from before supercategories still reads, for `video` and `recording`.
+    supercategory: str = ""
 
 
 class Annotation(Model):
@@ -106,7 +109,7 @@ class Labels(Model):
                 Annotation(
                     id=len(self.annotations) + 1,
                     image_id=image.id,
-                    category_id=self._category(target.category),
+                    category_id=self._category(target.category, target.supercategory),
                     bbox=(x0, y0, x1 - x0 + 1, y1 - y0 + 1),
                     area=len(xs),
                     name=target.name,
@@ -122,11 +125,13 @@ class Labels(Model):
                 )
             )
 
-    def _category(self, name: str) -> int:
+    def _category(self, name: str, supercategory: str) -> int:
         found = next((c.id for c in self.categories if c.name == name), None)
         if found is None:
             found = len(self.categories) + 1
-            self.categories.append(Category(id=found, name=name))
+            self.categories.append(
+                Category(id=found, name=name, supercategory=supercategory)
+            )
         return found
 
     def write(self, folder: Path) -> Path:

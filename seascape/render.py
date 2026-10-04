@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 
 from seascape import agc, labels, lwir, scene, waves
+from seascape.assets import manifest
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import ImageFormat, Scenario
 
@@ -74,7 +75,8 @@ def _targets(built: scene.Built) -> list[labels.Target]:
         labels.Target(
             pass_index=anchor.pass_index,
             name=anchor.name,
-            category=asset,
+            category=manifest()[asset].category,
+            supercategory=manifest()[asset].supercategory,
             centre_m=tuple(anchor.matrix_world.translation.xy),
             waterline_m=scene.waterline_m(anchor),
         )

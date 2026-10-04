@@ -106,7 +106,7 @@ Every frame has its own entry in `calibration.json` and `labels.json`, stamped w
 
 ## Outputs
 
-`labels.json` is the ground truth, in [COCO's detection format](https://cocodataset.org/#format-data): per frame, a box around each target with its range and bearing from the camera, the horizon, and what rendered it. FiftyOne reads the boxes and their fields as they are; the per-frame keys (`horizon_px`, `camera`, `band`, `time_s`) stay in the JSON:
+`labels.json` is the ground truth, in [COCO's detection format](https://cocodataset.org/#format-data): per frame, a box around each target with its range and bearing from the camera, the horizon, and what rendered it. A box's category is its asset's type, under its kind as supercategory. FiftyOne reads the boxes and their fields as they are; the per-frame keys (`horizon_px`, `camera`, `band`, `time_s`) stay in the JSON:
 
 ```python
 import fiftyone as fo

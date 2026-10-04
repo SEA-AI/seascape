@@ -43,6 +43,7 @@ def target(pass_index: int, category: str = "ship") -> labels.Target:
         pass_index=pass_index,
         name=f"t{pass_index}",
         category=category,
+        supercategory="vessel",
         centre_m=(0.0, 1000.0),
         waterline_m=np.array([[0.0, 990.0], [5.0, 1010.0]]),
     )
@@ -81,6 +82,22 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
 
     assert [a.name for a in truth.annotations] == ["t1"]
     assert [c.name for c in truth.categories] == ["ship"]
+
+
+def test_targets_of_one_category_share_it() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10], index[20, 20] = 1, 2
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, [target(1), target(2)], RADIUS_M)
+
+    assert {a.category_id for a in truth.annotations} == {1}
+    assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
+
+
+def test_labels_written_without_supercategories_still_read() -> None:
+    old = '{"categories": [{"id": 1, "name": "container_ship"}]}'
+    assert labels.Labels.model_validate_json(old).categories[0].supercategory == ""
 
 
 def test_a_frame_carries_its_time() -> None:
