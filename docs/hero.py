@@ -1,6 +1,6 @@
 """The README's hero: each frame of a render, side by side, with labels.json drawn on.
 
-uv run seascape render scenarios/baseline.toml -o out/
+uv run seascape render docs/hero.toml -o out/
 uv run python docs/hero.py out/ docs/hero.jpg
 """
 
@@ -26,7 +26,9 @@ def frame(run: Path, image: dict, annotations: list[dict]) -> Image.Image:
     for a in annotations:
         x, y, w, h = (v * s for v in a["bbox"])
         draw.rectangle([x, y, x + w, y + h], outline=BOX, width=2)
-        text = f"{a['name']}  {a['range_m'] / 1000:.1f} km  {a['bearing_deg']:.1f}°"
+        r = a["range_m"]
+        dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
+        text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
         left, top, right, bottom = draw.textbbox((x, y - 20), text, font=font)
         draw.rectangle([left - 3, top - 2, right + 3, bottom + 2], fill="black")
         draw.text((x, y - 20), text, fill=BOX, font=font)

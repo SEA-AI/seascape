@@ -13,9 +13,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/hero.jpg" alt="The baseline scenario in EO and LWIR, with its ground truth drawn on">
+  <img src="docs/hero.jpg" alt="A ship and a buoy at sunset in EO and LWIR, with their ground truth drawn on">
   <br>
-  <sub><code>scenarios/baseline.toml</code> in both bands, with its <code>labels.json</code> drawn on (<a href="docs/hero.py"><code>docs/hero.py</code></a>).</sub>
+  <sub><a href="docs/hero.toml"><code>docs/hero.toml</code></a> in both bands, with its <code>labels.json</code> drawn on (<a href="docs/hero.py"><code>docs/hero.py</code></a>).</sub>
 </p>
 
 Real footage can't put a vessel at exactly 7 NM, hold the visibility constant, or show you the same ship from eight aspects. `seascape` renders maritime scenes where you choose all of that, and tells you exactly where everything was.
