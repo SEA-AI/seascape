@@ -6,7 +6,7 @@ extends = "twin-pod.toml"
 pods = [{ preset = "port" }]
 
 [sky]
-hdri = "kloofendal_38d_partly_cloudy"
+hdri = "kloofendal_48d_partly_cloudy"
 
 [outputs]
 duration_s = 40.0
