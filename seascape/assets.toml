@@ -28,3 +28,48 @@ triangles = 1206
 texture_px = []
 licence = "CC-BY-3.0"
 attribution = "Yacht by Alex “SAFFY” Safayan, https://poly.pizza/m/9znU2c-dTSR"
+
+[small_container_ship]
+description = "Small container ship, textured hull and containers, superstructure aft."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-126/6362d3e9b11e4396aaafa854c3aa6f06.glb"
+sha256 = "ff9c2b913f106f2b1e6b8964e6dfe9fa69bf80d4f50f12def6cf1f4a5ac93f46"
+# Under 1,000 teu: under 145 m overall, 22 m breadth and 8.6 m draught. MAN Energy
+# Solutions, "Propulsion trends in container vessels", Table 1. This length makes the
+# mesh 22 m across.
+length_m = 134.0
+draught_m = 8.0
+bow_deg = 270.0
+triangles = 48018
+texture_px = [1024, 1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Small Cargo Ship by 588276, https://sketchfab.com/3d-models/6362d3e9b11e4396aaafa854c3aa6f06"
+
+[cargo_ship]
+description = "Multipurpose cargo ship with two deck cranes, textured, superstructure aft."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-070/b7c97df584824ca682d26daabf401f87.glb"
+sha256 = "20de84b0404a6e414543caeb7fc988fe12ef92c4b4b15bd5a94afcacfa628f2e"
+# A 12,900 dwt multipurpose cargo ship with two 80 t cranes, as long for its beam as
+# the mesh: 138.07 m overall, 21 m beam, 8.056 m summer draught. SMT Shipping, fleet
+# list, smtshipping.com/fleet.
+length_m = 138.0
+draught_m = 8.0
+bow_deg = 90.0
+triangles = 73448
+texture_px = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Cargo ship by hungry_drifter, https://sketchfab.com/3d-models/b7c97df584824ca682d26daabf401f87"
+
+[bulk_carrier]
+description = "Geared bulk carrier with four deck cranes, black hull, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-131/93c076900f004102b78dfac989efae1d.glb"
+sha256 = "01d45a6c0840da5664c94bff4ad325a41ab9b5abfd50e280420da2e438d5a218"
+# A Handymax: 150-200 m overall, 32.2 m breadth, 10-12 m draught. MAN Energy
+# Solutions, "Propulsion trends in bulk carriers", Table 1. This length makes the mesh
+# 32.2 m across.
+length_m = 184.0
+draught_m = 11.0
+bow_deg = 180.0
+triangles = 1627998
+texture_px = [1024]
+licence = "CC-BY-4.0"
+attribution = "Bulk Carrier by medialog, https://sketchfab.com/3d-models/93c076900f004102b78dfac989efae1d"

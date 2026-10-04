@@ -156,7 +156,10 @@
         "asset": {
           "description": "An asset name from the manifest: `seascape assets` lists them.",
           "enum": [
+            "bulk_carrier",
+            "cargo_ship",
             "container_ship",
+            "small_container_ship",
             "yacht"
           ],
           "title": "Asset",
@@ -317,7 +320,10 @@
           "anyOf": [
             {
               "enum": [
+                "bulk_carrier",
+                "cargo_ship",
                 "container_ship",
+                "small_container_ship",
                 "yacht"
               ],
               "type": "string"
@@ -740,7 +746,10 @@
         "asset": {
           "description": "An asset name from the manifest: `seascape assets` lists them.",
           "enum": [
+            "bulk_carrier",
+            "cargo_ship",
             "container_ship",
+            "small_container_ship",
             "yacht"
           ],
           "title": "Asset",

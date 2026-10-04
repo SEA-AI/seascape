@@ -53,7 +53,8 @@ def sheet(out: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         for row, (name, mesh) in enumerate(meshes.items()):
             y = row * (TILE[1] + LABEL_PX)
-            textures = f"{len(mesh.texture_px)} textures" if mesh.texture_px else "flat"
+            n = len(mesh.texture_px)
+            textures = {0: "flat", 1: "1 texture"}.get(n, f"{n} textures")
             label = (
                 f"{name}  {mesh.length_m:.0f} m  {mesh.triangles:,} tris  {textures}"
             )
