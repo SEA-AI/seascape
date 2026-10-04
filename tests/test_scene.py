@@ -14,7 +14,7 @@ import pytest
 from mathutils import Vector
 
 from seascape import blend, lwir, scene, sea, waves
-from seascape.assets import Buoy, Hull, manifest
+from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import Band, Mount, Scenario, load
 
@@ -211,7 +211,7 @@ class TestGeometry:
             asset = manifest()[spec.asset]
             if isinstance(asset, Hull):
                 assert max(axes[1]) - min(axes[1]) == pytest.approx(asset.length_m)
-            else:
+            elif isinstance(asset, Buoy):
                 assert max(axes[2]) - min(axes[2]) == pytest.approx(asset.height_m)
             # 1 mm: the fit runs through float32 mesh coordinates.
             assert min(axes[2]) == pytest.approx(-asset.draught_m, abs=1e-3), (
@@ -367,6 +367,28 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     assert max(c.x for c in fitted) - min(c.x for c in fitted) == pytest.approx(40.0)
     assert min(c.z for c in fitted) == pytest.approx(-5.0), "keel at the draught"
     assert (fit @ long).y == pytest.approx(100.0), "and the bow ends up at +Y"
+
+
+def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None:
+    debris = Debris(
+        kind="debris",
+        description="x",
+        url="x",
+        sha256="0" * 64,
+        length_m=6.0,
+        draught_m=1.5,
+        triangles=1,
+        texture_px=(),
+        licence="x",
+        attribution="x",
+    )
+    corners = [Vector((x, y, z)) for x in (0, 1) for y in (0, 3) for z in (0, 1)]
+
+    fitted = [scene._fit(corners, debris) @ c for c in corners]
+
+    assert max(c.y for c in fitted) - min(c.y for c in fitted) == pytest.approx(6.0)
+    assert max(c.x for c in fitted) == pytest.approx(1.0), "not turned to its bow"
+    assert min(c.z for c in fitted) == pytest.approx(-1.5)
 
 
 def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:

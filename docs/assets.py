@@ -19,10 +19,10 @@ from seascape.config import Band, load
 OPEN_SEA = Path(__file__).parent.parent / "scenarios" / "open-sea.toml"
 TILE = (480, 270)
 COLUMNS = 4
-# A buoy through a long lens, as a ship sees one.
-HFOV_DEG = {"hull": 45.0, "buoy": 10.0}
-# A hull spans this much of the tile's width, a buoy's freeboard this much of its
-# height.
+# Buoys and debris through a long lens, as a ship sees them.
+HFOV_DEG = {"hull": 45.0, "buoy": 10.0, "debris": 10.0}
+# A hull or debris spans this much of the tile's width, a buoy's freeboard this much
+# of its height.
 FILL = 0.7
 # Three-quarter on, bow towards the camera's left.
 HEADING_DEG = 210.0
@@ -31,7 +31,7 @@ HEADING_DEG = 210.0
 def shot(name: str, mesh: assets.Asset, band: Band, into: Path) -> Image.Image:
     """The tile, cut from a frame twice its size around the mesh's label."""
     hfov_deg = HFOV_DEG[mesh.kind]
-    if isinstance(mesh, assets.Hull):
+    if isinstance(mesh, assets.Hull | assets.Debris):
         size_m, across_rad = mesh.length_m, math.radians(hfov_deg)
     else:
         size_m = mesh.height_m - mesh.draught_m

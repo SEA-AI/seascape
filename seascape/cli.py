@@ -57,7 +57,7 @@ def _assets() -> None:
         sizes = Counter(mesh.texture_px)
         textures = ", ".join(f"{n} x {px}px" for px, n in sizes.items()) or "none"
         print(
-            f"  {name:<20} {mesh.kind:<4} {mesh.size:>12}  {mesh.triangles:>9,} "
+            f"  {name:<20} {mesh.kind:<6} {mesh.size:>12}  {mesh.triangles:>9,} "
             f"triangles  textures: {textures}  {mesh.licence}  "
             f"{_fetched(assets.cached(name))}\n    {mesh.description}"
         )

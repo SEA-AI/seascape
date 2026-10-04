@@ -89,7 +89,22 @@ class Buoy(_Mesh):
         return f"{self.height_m:.1f} m tall"
 
 
-type Asset = Annotated[Hull | Buoy, Field(discriminator="kind")]
+class Debris(_Mesh):
+    """Something adrift with no bow, fitted along its longest side."""
+
+    kind: Literal["debris"]
+    length_m: float = Field(gt=0.0)
+    bow_deg: ClassVar[float] = 0.0
+
+    def scale(self, size: tuple[float, float, float]) -> float:
+        return self.length_m / max(size[0], size[1])
+
+    @property
+    def size(self) -> str:
+        return f"{self.length_m:.2f} m long"
+
+
+type Asset = Annotated[Hull | Buoy | Debris, Field(discriminator="kind")]
 
 
 @cache
