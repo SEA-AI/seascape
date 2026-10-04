@@ -193,13 +193,14 @@ sha256 = "9447959386aa3ee0e3552bd095c3dbbcb13c58cc6a87cb4b51cc4517b695040c"
 
 [pallet]
 kind = "debris"
-description = "EUR pallet in light wood with EPAL brands, textured."
+description = "EUR pallet in light wood, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-015/4f38d1e992e94966b6ceb2754cc16a22.glb"
 sha256 = "773e6df578ff331e4404bb390355efb5c7720bd7d8064e407bbc7478521a5a9c"
-# 1200 x 800 x 144 mm (EN 13698-1, via Wikipedia, "EUR-pallet"). Air-dry ponderosa
-# pine is 449 kg/m3 (Oregon Wood Innovation Center): 449 / 1025 of its height under.
+# 1200 x 800 x 144 mm, about 25 kg (EPAL, "EPAL Euro Pallet"). Its boards and blocks
+# (palletunion.com, "EPAL Euro Pallet Specifications") hold the 24 L of seawater that
+# weighs up to 0.11 m above its lowest point.
 length_m = 1.2
-draught_m = 0.063
+draught_m = 0.11
 triangles = 15736
 texture_px = [1024, 1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"
@@ -207,12 +208,11 @@ attribution = "Euro-pallet by wittybacon, https://sketchfab.com/3d-models/4f38d1
 
 [container]
 kind = "debris"
-description = "Weathered red 20 ft ISO container, doors shut, markings, textured."
+description = "Weathered red 20 ft ISO container, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-150/f555ce5532d84cac8ad963dec5833934.glb"
 sha256 = "6363ea3e10f072000a58834f5d84196c3bf5c7c78ac2fabcc8caac2b419a39e4"
-# 20 ft: 6.058 m long (ISO 668, via Wikipedia, "Intermodal container"). A container
-# adrift floats about 70% under (Breivik et al., arXiv:1111.0750); this mesh is 2.46 m
-# tall at that length.
+# 20 ft: 6.058 m long (ISO 668, via Wikipedia, "Intermodal container"). Breivik et al.
+# (arXiv:1111.0750) immerse theirs 70%, a typical loading; this mesh is 2.46 m tall.
 length_m = 6.058
 draught_m = 1.72
 triangles = 190810
