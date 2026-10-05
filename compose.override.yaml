@@ -1,0 +1,4 @@
+# A checkout builds the image; compose.yaml alone pulls it.
+services:
+  seascape:
+    build: .
