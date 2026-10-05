@@ -75,7 +75,7 @@ def frame(
     return captioned(img, caption)
 
 
-def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
+def column(run: Path) -> tuple[Image.Image, Image.Image]:
     """EO cropped to the LWIR field of view, and LWIR, both at LWIR size."""
     labels = json.loads((run / "labels.json").read_text())
     calibration = json.loads((run / "calibration.json").read_text())
@@ -98,7 +98,7 @@ def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
             boxes(eo),
             ((eo["width"] - w) / 2, (eo["height"] - h) / 2, w, h),
             size,
-            caption,
+            "EO",
         ),
         frame(run, ir, boxes(ir), (0.0, 0.0, *map(float, size)), size, "LWIR"),
     )
@@ -110,7 +110,7 @@ def main(hero: Path) -> None:
         for name, overrides in SKIES.items():
             run = Path(tmp) / name
             render(SCENARIO, overrides, run)
-            columns.append(column(run, ", ".join(overrides)))
+            columns.append(column(run))
     w, h = columns[0][0].size
     sheet = Image.new(
         "RGB", (len(columns) * (w + GAP_PX) - GAP_PX, 2 * h + GAP_PX), "white"
