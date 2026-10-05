@@ -1,0 +1,20 @@
+#:schema ../schema/scenario.json
+
+extends = "baseline.toml"
+
+[sky]
+sun_elevation_deg = { uniform = [3.0, 60.0] }
+# Behind the cameras, so the sun disc stays out of frame.
+sun_bearing_deg = { uniform = [90.0, 270.0] }
+visibility_km = { uniform = [5.0, 42.0] }
+
+[sea]
+wind_speed_mps = { uniform = [2.0, 12.0] }
+wind_from_deg = { uniform = [0.0, 360.0] }
+
+[[objects]]
+asset = { choice = ["container_ship", "cargo_ship", "patrol_vessel", "yacht"] }
+range_m = { uniform = [300.0, 3000.0] }
+# Inside the cameras' frames.
+bearing_deg = { uniform = [-10.0, 10.0] }
+heading_deg = { uniform = [0.0, 360.0] }

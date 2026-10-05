@@ -127,13 +127,6 @@ def _info(scenario: Scenario) -> dict[str, Any]:
     }
 
 
-def images(scenario: Scenario) -> int:
-    """How many images `render` writes."""
-    outputs = scenario.outputs
-    mounts = [m for m in scenario.rig.mounts if m.camera.kind in outputs.bands]
-    return len(mounts) * len(outputs.times_s)
-
-
 def _nothing() -> None:
     pass
 

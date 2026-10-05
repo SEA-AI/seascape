@@ -16,7 +16,7 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Band, Mount, Scenario, load
+from seascape.config import Band, Mount, Scenario, load, substream
 
 BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
 DRIFTING = BASELINE.with_name("drifting.toml")
@@ -119,15 +119,6 @@ def counts() -> tuple[int, ...]:
     return tuple(
         len(block) for block in (bpy.data.objects, bpy.data.materials, bpy.data.images)
     )
-
-
-def test_a_named_substream_is_reproducible_and_local_to_its_name() -> None:
-    def draw(seed: int, name: str) -> int:
-        return int(scene._substream(seed, name).integers(2**31))
-
-    assert draw(7, "sea/surface") == draw(7, "sea/surface")
-    assert draw(7, "sea/surface") != draw(8, "sea/surface")
-    assert draw(7, "sea/surface") != draw(7, "sky/haze")
 
 
 class TestGeometry:
@@ -585,7 +576,7 @@ class TestEoBand:
         assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
         tile = baked("sea_gust")
         seeded = waves.von_karman_field(
-            scene._substream(SCENARIO.seed, "sea/gust"),
+            substream(SCENARIO.seed, "sea/gust"),
             sea.GUST_CELLS,
             sea.GUST_SPACING_M,
             waves.GUST_LENGTH_M,
@@ -951,7 +942,7 @@ class TestSlicks:
         assert threshold == pytest.approx(NormalDist().inv_cdf(0.7))
         spacing_m = waves.WINDROW_SPACING_S * self.SLICKS.sea.wind_speed_mps
         seeded = waves.von_karman_field(
-            scene._substream(self.SLICKS.seed, "sea/slick"),
+            substream(self.SLICKS.seed, "sea/slick"),
             sea.GUST_CELLS,
             sea.GUST_SPACING_M,
             spacing_m,

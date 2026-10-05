@@ -13,6 +13,9 @@ Rules:
    anything with `/` or ending in `.toml` is a path relative to the including file.
    Never try one form and fall back to the other.
 3. Tables merge, everything else replaces. A list is replaced whole.
+
+Any field can instead be a draw, `{ uniform = [lo, hi] }` or `{ choice = [...] }`,
+resolved after both forms of reuse and before validation.
 """
 
 import math
@@ -22,6 +25,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated, Any, Literal, NamedTuple
 
+import numpy as np
 from pydantic import (
     AfterValidator,
     Field,
@@ -38,6 +42,32 @@ CFG_DIR = Path(__file__).parent / "cfg"
 type Band = Literal["eo", "ir"]
 
 type ImageFormat = Literal["exr", "png", "jpg"]
+
+
+def substream(seed: int, name: str) -> np.random.Generator:
+    """A named substream, so adding a component cannot perturb an existing one."""
+    return np.random.default_rng([seed, *name.encode()])
+
+
+class Uniform(Model):
+    """A float drawn evenly between two bounds."""
+
+    uniform: tuple[float, float] = Field(description="The bounds.")
+
+    def draw(self, rng: np.random.Generator) -> float:
+        return float(rng.uniform(*self.uniform))
+
+
+class Choice(Model):
+    """One of several values, each as likely."""
+
+    choice: list[Any] = Field(min_length=1, description="The values.")
+
+    def draw(self, rng: np.random.Generator) -> Any:
+        return self.choice[rng.integers(len(self.choice))]
+
+
+_DRAWS: dict[str, type[Uniform | Choice]] = {"uniform": Uniform, "choice": Choice}
 
 
 class Camera(Model):
@@ -562,6 +592,13 @@ class Scenario(Model):
     )
     outputs: Outputs = Field(default_factory=Outputs)
 
+    @property
+    def images(self) -> int:
+        """How many images a render writes."""
+        bands = self.outputs.bands
+        mounts = [m for m in self.rig.mounts if m.camera.kind in bands]
+        return len(mounts) * len(self.outputs.times_s)
+
     @model_validator(mode="before")
     @classmethod
     def _sea_follows_the_atmosphere(cls, data: Any) -> Any:
@@ -675,8 +712,22 @@ def _read(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
     return data
 
 
+def _draw(node: Any, seed: int, path: str) -> Any:
+    """Replace every draw in the tree by a value from a substream named for where it
+    sits, `draw/objects/0/range_m`."""
+    if isinstance(node, list):
+        return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
+    if not isinstance(node, dict):
+        return node
+    if len(node) == 1 and (kind := next(iter(node))) in _DRAWS:
+        value = _DRAWS[kind].model_validate(node).draw(substream(seed, path))
+        return _draw(value, seed, path)  # a choice of tables may hold draws
+    return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
+
+
 def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
-    """Read a scenario TOML, resolving `extends` and `preset`, and validate it.
+    """Read a scenario TOML, resolving `extends` and `preset`, draw every random
+    field, and validate it.
 
     Each override is a TOML assignment merged over the file, `rig.pitch_deg = -5`,
     and resolved as if it were a line in it.
@@ -685,4 +736,24 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
     data = _read(path)
     for assignment in overrides:
         data = _merge(data, _expand(tomllib.loads(assignment), None, path.parent, ()))
-    return Scenario.model_validate(data)
+    seed = data.get("seed", Scenario.model_fields["seed"].default)
+    if isinstance(seed, dict):
+        raise ValueError("seed cannot be drawn: it seeds the draws")
+    return Scenario.model_validate(_draw(data, seed, "draw"))
+
+
+def json_schema() -> dict[str, Any]:
+    """The scenario's JSON schema, in which any field can be a draw."""
+    schema = Scenario.model_json_schema()
+    draws = [{"$ref": f"#/$defs/{model.__name__}"} for model in _DRAWS.values()]
+    for model in (schema, *schema["$defs"].values()):
+        for name, spec in model.get("properties", {}).items():
+            # Outside the anyOf, where an editor finds the hover doc.
+            outer = {
+                k: spec.pop(k) for k in ("title", "description", "default") if k in spec
+            }
+            values = spec.pop("anyOf", None) or [spec]
+            model["properties"][name] = {**outer, "anyOf": [*values, *draws]}
+    for model in _DRAWS.values():
+        schema["$defs"][model.__name__] = model.model_json_schema()
+    return schema
