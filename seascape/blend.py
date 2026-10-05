@@ -54,7 +54,11 @@ def drive(
     Variables and arithmetic only: Blender evaluates such a simple expression itself,
     so the driver runs in a `.blend` opened with Python scripts off.
     """
-    driver = owner.driver_add(prop).driver
+    curve = owner.driver_add(prop)
+    # Its keyframes map the value through (0, 0) and (1, 1), and Blender snaps a value
+    # within 1e-4 of a keyframe onto it. Without them the value passes through.
+    curve.keyframe_points.clear()
+    driver = curve.driver
     driver.type = "SCRIPTED"
     for name, path in paths.items():
         variable = driver.variables.new()

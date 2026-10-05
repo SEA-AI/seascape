@@ -1278,6 +1278,16 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
     assert _pixel_node().inputs[1].default_value == pytest.approx(2 * pixel_rad)
 
 
+def test_a_long_lens_draws_for_its_own_pixel() -> None:
+    """A pixel under 1e-4 rad: a zero footprint leaves the sea a mirror."""
+    camera = '{ kind = "eo", hfov_deg = 1.5, width_px = 640, height_px = 360 }'
+    pod = f'{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}'
+    scene.build(load(OPEN_SEA, [f"rig.pods = [{pod}]"]), "eo")
+    bpy.context.view_layer.update()
+    pixel_rad = math.radians(1.5) / 640
+    assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
+
+
 def test_the_glitter_and_haze_drivers_run_without_python() -> None:
     scene.build(load(OPEN_SEA), "eo")
     drivers = [
