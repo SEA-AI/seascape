@@ -6,7 +6,7 @@ seascape renders synthetic scenes at sea. You describe a scene in a TOML file (w
 
 ## What it's for
 
-Real footage doesn't come with exact ground truth. Nobody knows the exact range to that ship, and you can't ask it to come back tomorrow at the same distance in the same haze. In seascape you set all of that, and the answer is exact.
+Labelling real footage is slow, and some things can't be labelled at all: the exact range to a ship, its bearing to a tenth of a degree, where the horizon really is. And you get whatever weather the day brings. In seascape you decide where everything goes and what the weather is, so the ground truth is exact and you can render the same scene again with one thing changed.
 
 You can train detectors on it, with boxes nobody had to draw. Note that nobody has checked yet how well that carries over to real footage, so evaluate on real data. It's probably more useful for testing what comes after detection (e.g. distance estimation, tracking, motion compensation) against numbers that are actually right, and for trying an idea on a scene that's hard to get at sea before going out to collect the data.
 
