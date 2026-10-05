@@ -1,0 +1,2 @@
+# Written by docs/primer/charts.py.
+docs/primer/charts/*.svg -diff linguist-generated
