@@ -48,5 +48,12 @@ def test_broken_cloud_splits_from_the_blue_between() -> None:
     assert skies.cloud(pixels).tolist() == [0.0, 0.0, 0.0, 1.0, 1.0]
 
 
+def test_a_pixel_between_the_classes_is_part_cloud() -> None:
+    blue, white = [0.2, 0.4, 1.0], [1.0, 1.0, 1.0]
+    between = np.sqrt(np.multiply(blue, white))
+    pixels = np.array([blue] * 4 + [white] * 4 + [between])
+    assert 0.0 < skies.cloud(pixels)[-1] < 1.0
+
+
 def test_a_sky_of_one_grey_is_overcast() -> None:
     assert skies.cloud(np.full((4, 3), 0.7)).tolist() == [1.0] * 4
