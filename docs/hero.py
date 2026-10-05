@@ -1,5 +1,4 @@
-"""The README's hero: docs/hero.toml under each sky in SKIES, EO above LWIR, with
-labels.json drawn on.
+"""The README's hero: EO above LWIR under each sky, with labels.json drawn on.
 
 uv run python docs/hero.py docs/hero.jpg
 """
@@ -71,8 +70,7 @@ def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
     fx = {c["band"]: c["K"][0][0] for c in calibration["cameras"]}
     eo, ir = by_band["eo"], by_band["ir"]
     size = (ir["width"], ir["height"])
-    # Assumes coaxial cameras: LWIR's view is fx_eo / fx_ir times its size, in EO
-    # pixels.
+    # Assumes coaxial cameras.
     w, h = size[0] * fx["eo"] / fx["ir"], size[1] * fx["eo"] / fx["ir"]
 
     def boxes(im: dict) -> list[dict]:
