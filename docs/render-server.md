@@ -25,7 +25,9 @@ Claude Desktop, through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 
 Then ask for what you want: *"render the baseline at sunset with a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
-A job's files are served at `http://<host>:8765/renders/<job>/`, with everything in `<job>.zip`.
+A job's files are served at `http://<host>:8765/renders/<job>/`, with everything in `<job>.zip`. `jobs` lists the jobs since the server started, and the disk left.
+
+A job past the limits at the top of [`seascape/server.py`](../seascape/server.py) is refused.
 
 > [!WARNING]
 > No authentication: anyone who can reach the port can queue renders and download what they write. Keep it on a trusted network.
@@ -41,6 +43,6 @@ docker compose up -d --build
 docker compose logs   # names the GPU backend
 ```
 
-To update, `git pull` and run `docker compose up -d --build` again.
+Renders land in `renders/` beside `compose.yaml`; `SEASCAPE_RENDERS=/data/seascape` in a `.env` there puts them elsewhere. To update, `git pull` and run `docker compose up -d --build` again.
 
 Without Docker, `uv run seascape serve --host 0.0.0.0` serves from a checkout.

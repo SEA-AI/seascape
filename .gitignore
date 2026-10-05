@@ -225,3 +225,4 @@ __marimo__/
 # Renders
 #   Where the README's commands write; frames and videos are not source.
 /out/
+/renders/
