@@ -516,6 +516,24 @@ def test_a_near_clip_past_the_far_plane_is_an_error(tmp_path) -> None:
         scene.build(load(path), "eo")
 
 
+def test_the_far_clip_clears_a_hull_down_target() -> None:
+    """Hull down from a low camera, past the sea's own reach, upperworks still up."""
+    range_m = 20000.0
+    ship = f'{{ preset = "container_ship", range_m = {range_m}, bearing_deg = 0.0 }}'
+    scenario = load(OPEN_SEA, ["rig.height_m = 5.0", f"objects = [{ship}]"])
+    built = scene.build(scenario, "eo")
+    (anchor,) = built.targets["container_ship"]
+    corners = scene._corners(scene._meshes([anchor]))
+    top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
+    k = scenario.sea.refraction_k
+    reach_m = 1.5 * sea.sea_reach_m(scenario.rig, scenario.sea)
+    sightline_m = waves.horizon_m(5.0, k) + waves.horizon_m(top_m, k)
+    assert reach_m < range_m < sightline_m
+    for camera in built.cameras.values():
+        eye = camera.matrix_world.translation
+        assert camera.data.clip_end > max((c - eye).length for c in corners)
+
+
 def test_a_band_the_rig_cannot_see_is_an_error(tmp_path) -> None:
     """Otherwise `next()` raises StopIteration, naming nothing."""
     path = tmp_path / "eo_only.toml"

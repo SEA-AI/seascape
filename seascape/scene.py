@@ -1171,6 +1171,22 @@ def _viewport(near_m: float, far_m: float) -> None:
                     space.clip_start, space.clip_end = near_m, far_m
 
 
+def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
+    """Past the camera's horizon plus the tallest hull's own, every hull is below the
+    horizon."""
+    # The parts' matrix_world is stale until the depsgraph runs.
+    bpy.context.view_layer.update()
+    tops_m = [
+        max(c.z for c in _corners(_meshes([anchor])))
+        - anchor.matrix_world.translation.z
+        for anchor in anchors
+    ]
+    if not tops_m:
+        return 0.0
+    k = scenario.sea.refraction_k
+    return waves.horizon_m(scenario.rig.height_m, k) + waves.horizon_m(max(tops_m), k)
+
+
 def build(scenario: Scenario, band: Band = "eo") -> Built:
     """Replace the current Blender session's contents with `scenario` in one band."""
     if not any(mount.camera.kind == band for mount in scenario.rig.mounts):
@@ -1202,6 +1218,9 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         )
         for asset, anchors in ring.items():
             targets.setdefault(asset, []).extend(anchors)
+    far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
+    for camera in rig.cameras.values():
+        camera.data.clip_end = far_m
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(
         scenario.sea, wind, swell, band, outputs, rngs, tuple(trails)
