@@ -1,35 +1,30 @@
-# Primer
+# How seascape works
 
-Blender, light, heat and the sea, for people who read seascape's output or code without having driven Blender. Each section opens with a question, answers it, mostly with a render, and ends with somewhere to go deeper. The figures are real renders of [`primer.toml`](primer.toml), each row one setting apart, so every panel is also a command you can run.
+This is a tour of how seascape makes its pictures, for anyone on the team who uses what it renders, or wants to change it, without having spent much time in Blender. I'll go through the main pieces in roughly the order a frame passes through them. It skips most of the details on purpose. The code has those, and every physical number in it cites its source in a comment.
+
+All the pictures here are real renders of [`primer.toml`](primer.toml), a small open-sea scenario that renders in seconds on a laptop. So you can rerun any of them and poke at it:
 
 ```bash
 uv run seascape render docs/primer/primer.toml -o out/ --set 'sea.wind_speed_mps = 14'
 ```
 
-`primer.toml` is the open sea at 640×360, quick even on a laptop CPU. [`figures.py`](figures.py) redraws every render and [`charts.py`](charts.py) every chart, the charts straight from seascape's own physics functions.
+[`figures.py`](figures.py) redraws the renders and [`charts.py`](charts.py) the charts.
 
-**Contents:** [the pipeline](#the-pipeline) · [rendering](#rendering-a-picture-is-an-average) · [shaders](#shaders-tiny-programs-at-every-point) · [HDR and skies](#light-as-numbers) · [EO and LWIR](#eo-and-lwir-two-different-worlds) · [the sea](#the-sea) · [haze](#haze) · [the horizon](#the-horizon-is-closer-than-you-think) · [ground truth](#ground-truth-for-free) · [limitations](#limitations) · [glossary](#glossary)
+## The big picture
 
-## The pipeline
-
-> Is seascape a Blender plugin?
-
-No. Blender ships as a Python wheel, `bpy`, and seascape imports it like NumPy: it builds a scene from nothing in its own process, renders it and writes files. The Blender application only looks.
+seascape is a Python program that happens to use Blender as a library. Blender ships as a Python wheel, `bpy`, so seascape imports it like it imports NumPy, builds a scene from nothing, renders it and writes the files. You never need to open the Blender app, though it's nice for looking around.
 
 ```mermaid
 flowchart LR
-    toml["scenario.toml"] -->|config.py| model["Scenario<br/>(pydantic)"]
-    model -->|"scene.build (bpy)"| blend[".blend<br/>one per band"]
-    blend -->|Cycles| radiance["float radiance"]
-    radiance -->|"compositor (EO)<br/>agc.py (LWIR)"| images["jpg / png / exr"]
-    model --> truth["labels.json<br/>calibration.json"]
-    blend --> truth
+    toml["scenario.toml"] --> scene["a Blender scene"]
+    scene -->|Cycles| frames["EO and LWIR frames"]
+    scene --> truth["labels and calibration"]
 ```
 
-Physics with a published source (waves, emissivity, the thermal sky) is plain NumPy in `waves.py`, `lwir.py` and `wakes.py`, tested without Blender. `scene.py` and `sea.py` turn those numbers into Blender nodes.
+The split I care most about: physics that has a published source (waves, thermal emission, the thermal sky) is plain NumPy, tested without Blender. The Blender side only turns those numbers into nodes. If Blender already does something well, like the sky or the render passes, we use Blender's and write nothing.
 
 <details>
-<summary><b>Try it:</b> a five-minute tour of the scene in Blender</summary>
+<summary>Five minutes in the Blender app</summary>
 
 ```bash
 uv run seascape build docs/primer/primer.toml -o out/primer.blend
@@ -37,310 +32,146 @@ uv run seascape build docs/primer/primer.toml -o out/primer.blend
 
 Open `out/primer.blend` in [Blender](https://www.blender.org/download/), then:
 
-1. Hover over the 3D view and press <kbd>Numpad 0</kbd>: you are looking through the bow camera.
-2. Press <kbd>Z</kbd> → *Rendered*. Cycles starts refining the picture; watch the noise fade (next section).
-3. Click the *Shading* tab at the top, then click the sea in the viewport. The bottom half is the `sea` material's node graph: every wave, the glitter and the whitecaps are in there.
-4. In the node editor's header, switch *Object* to *World*: that graph is the sky.
+1. Hover over the 3D view and press <kbd>Numpad 0</kbd> to look through the bow camera.
+2. Press <kbd>Z</kbd> and pick *Rendered*. Watch the noise fade (next section).
+3. Click the *Shading* tab, then click the sea. The node graph at the bottom is the sea: every wave, the glitter and the foam live in there.
+4. In the node editor's header, switch *Object* to *World*. That graph is the sky.
 5. <kbd>F12</kbd> renders exactly what `seascape render` would.
 
-Nothing you change there survives the next `seascape build`. Put it in the code.
-
-Never opened Blender? Blender Guru's [donut tutorial](https://www.youtube.com/watch?v=z-Xl9tGqH14) is how most people start.
+Anything you change in there is gone on the next build, so put it in the code. If you've never touched Blender, Blender Guru's [donut tutorial](https://www.youtube.com/watch?v=z-Xl9tGqH14) is where everyone starts.
 
 </details>
 
-## Rendering: a picture is an average
+## Rendering is averaging
 
-> Why does a fresh render look like TV static?
+A scene is some meshes, a material on each (how its surface treats light), a world (the sky, which lights everything) and cameras.
 
-A **scene** is meshes (geometry), **materials** (how each surface treats light), a **world** (the sky, which lights everything and is what a ray sees when it escapes) and **cameras**.
+Blender's renderer, Cycles, is a path tracer. For every pixel it shoots a ray into the scene, lets it bounce around at random the way light would, and records what it brings back. One such path is a sample, and a pixel is the average of its samples. A few samples give a noisy average, and halving the noise takes four times as many:
 
-**Cycles**, Blender's path tracer, works like counting votes. For each pixel it fires a ray into the scene, lets it bounce off surfaces, at random by how each one scatters, until it reaches the sky, and records what light it brought back. One such path is a **sample**. A pixel's value is the mean over its samples, and a mean of few votes is noisy: halving the noise takes four times the samples.
+<p align="center"><img src="samples.jpg" alt="The same frame at 1, 4 and 64 samples per pixel"></p>
 
-![The same frame at 1, 4 and 64 samples per pixel](samples.jpg)
+Blender has a second, faster engine, EEVEE, which works like a game engine. It cheats on reflections at grazing angles, and a sea seen from a ship is almost all grazing angles, so seascape only uses Cycles. I also turn off Cycles' denoiser. It's a neural network that guesses what the noise is hiding, and a guess is not a measurement.
 
-**EEVEE**, Blender's other engine, rasterizes like a game engine: fast, but it caps and darkens reflections at grazing angles, which is most of a sea. seascape renders with Cycles only.
+**Go deeper:** [Disney's Practical Guide to Path Tracing](https://www.youtube.com/watch?v=frLwRLS_ZR0) (a few minutes, the best intuition there is) · [Coding Adventure: Ray Tracing](https://www.youtube.com/watch?v=Qz0KTGYJtUk) (Sebastian Lague builds one from scratch)
 
-Two Cycles defaults are off on purpose:
+## Shaders
 
-- **Denoising.** Intel's OIDN is a clever image filter, trained to guess what the noise hides. Guessing is not physics: it smooths waves away and moves LWIR temperatures by kelvins.
-- **The far clip.** A camera draws nothing past `clip_end`, 1 km by default, and the cut-off looks just like a horizon. seascape puts it past the sea's edge.
+A material in Blender is a node graph, a little program that runs at every point a ray hits. It takes in things like the position, the direction the surface faces and the direction the ray came from, and it decides how light scatters off that point, or how much light the point gives off itself.
 
-**Go deeper:** [Disney's Practical Guide to Path Tracing](https://www.youtube.com/watch?v=frLwRLS_ZR0) (Walt Disney Animation Studios, a few minutes, the best intuition there is) · [Coding Adventure: Ray Tracing](https://www.youtube.com/watch?v=Qz0KTGYJtUk) (Sebastian Lague, builds one from scratch, noise and all)
+Two ideas from shaders carry most of seascape:
 
-## Shaders: tiny programs at every point
+- **The normal can lie.** The mesh says *where* a surface is. The normal says *which way it faces* when light bounces off it. A shader is free to tilt the normal without moving the surface, and the surface will catch light as if it were tilted. Every wave in seascape works this way (more below).
+- **Roughness is detail too small to draw.** A rough surface is treated as millions of tiny mirrors with random tilts. Roughness says how spread out those tilts are: zero and the sun reflects as a dot, more and the dot smears into a highlight.
 
-> How does a flat sheet look like a rough sea?
+**Go deeper:** [The Book of Shaders](https://thebookofshaders.com/) (you edit them live in the browser) · [LearnOpenGL: PBR Theory](https://learnopengl.com/PBR/Theory) (roughness and Fresnel on one page)
 
-A material is a **node graph** that runs at every point a ray hits. Inputs (position, surface normal, view direction, textures) flow through math nodes into a **BSDF**, which says where incoming light scatters, or an **Emission**, which is light the surface gives off.
+## Light, HDR and skies
 
-Three ideas carry most of seascape:
+Inside the renderer light is just numbers, and they get big. The sun is more than a hundred thousand times brighter than the shade under a hull. That's high dynamic range (HDR), and float formats like `exr` keep all of it. A `png` or `jpg` has 256 levels, so getting there means picking an exposure and clipping whatever is brighter, which is what a camera does too. For 8-bit EO frames seascape adds a small camera after the render: a bit of lens glare and blur, then auto-exposure. That auto-exposure is why these three skies look about as bright as each other, although the high sun sends far more light:
 
-- **The normal is a lie the shader may tell.** The mesh decides *where* a surface is; the normal decides *which way it faces* when light bounces. A shader can tilt the normal without moving anything. That is bump mapping, and it is every wave in seascape ([why](#why-waves-are-normals)).
-- **Roughness is detail too small to draw.** A rough BSDF (GGX here) treats the surface as millions of tiny mirrors with random tilts. Roughness sets how wide the tilts spread: 0 is a mirror and the sun reflects as a dot; more, and the dot smears into a highlight.
-- **Lookup tables.** Some physics has no Blender node: band-averaged emissivity, the LWIR sky against elevation. NumPy evaluates it once, `blend.curve_image` bakes it into a 1D float image, and the shader reads it like a texture.
+<p align="center"><img src="sun.jpg" alt="Blender's Sky Texture with the sun at 60°, 10° and 2°"></p>
 
-**Go deeper:** [The Book of Shaders](https://thebookofshaders.com/) (edit shaders live in the browser) · [LearnOpenGL: Normal Mapping](https://learnopengl.com/Advanced-Lighting/Normal-Mapping) · [LearnOpenGL: PBR Theory](https://learnopengl.com/PBR/Theory) (microfacets, roughness and Fresnel on one page)
-
-## Light as numbers
-
-### HDR
-
-> Why can't a jpg hold the sun?
-
-A renderer counts light as linear **radiance**: unbounded floats proportional to power. Looking into the sun and into the shade under a hull differ by a factor of more than a hundred thousand. An 8-bit `png` or `jpg` has 256 levels.
-
-- **HDR** (high dynamic range) keeps the floats. `exr` is the file format for it, and what you want when a pixel value is measured.
-- **8-bit** needs a scale (exposure), a clip at white and a display curve. That chain is the **view transform**. Blender's default, AgX, is a film look; seascape uses `Standard`, which clips as a sensor does.
-
-An 8-bit EO render passes through a camera seascape builds in Blender's **compositor** (the post-processing node graph): lens glare, a slight blur and auto-exposure on the frame's mean log luminance. That auto-exposure is why the three skies below look about equally bright, though the high sun's sky sends many times the light of the low one's. An `exr` skips the camera and holds the radiance as rendered.
-
-### Skies
-
-> Where does the light come from?
-
-![Blender's Sky Texture with the sun at 60°, 10° and 2°](sun.jpg)
-
-- **Sky Texture**, the default: Blender's physically based clear sky, light scattered by air and aerosols, right down to twilight. Low sun means a long path through air, which strips the blue and leaves the red. `sky.sun_elevation_deg`, `sky.sun_bearing_deg` and `sky.aerosol_density` drive it.
-- **HDRI** (`sky.hdri`): a 360° photograph of a real sky, stored in HDR as an **equirectangular** image, a world map of the sky with longitude across and latitude up. Its sun is unclipped, so the photo lights the scene as that sky did and shows in every reflection. seascape turns it so its sun lands on `sky.sun_bearing_deg`. The README's hero is `belfast_sunset`; `seascape assets list` shows the rest.
+The default sky is Blender's Sky Texture, a physical model of sunlight scattering through clear air. A low sun goes through a lot more air, which scatters the blue away and leaves the red. The other option is an HDRI: a 360° photo of a real sky, stored in HDR so the sun keeps its real brightness. It lights the scene the way that sky did and shows up in every reflection. seascape turns the photo so its sun lands where the scenario wants it.
 
 ```bash
 uv run seascape render docs/primer/primer.toml -o out/ --set 'sky.hdri = "belfast_sunset"'
 ```
 
-**Go deeper:** [LearnOpenGL: HDR](https://learnopengl.com/Advanced-Lighting/HDR) (exposure and tone mapping with pictures) · [Filmic Blender](https://sobotka.github.io/filmic-blender/) (Troy Sobotka on scene light versus display, the idea behind Blender's view transforms)
+**Go deeper:** [LearnOpenGL: HDR](https://learnopengl.com/Advanced-Lighting/HDR) · [Filmic Blender](https://sobotka.github.io/filmic-blender/) (Troy Sobotka on scene light versus what a screen can show)
 
-## EO and LWIR: two different worlds
-
-> Why does the sky look black to a thermal camera?
+## Seeing heat
 
 <p align="center"><img src="../hero.jpg" alt="The same scene in EO and LWIR"></p>
 
-| | EO | LWIR |
-|---|---|---|
-| Wavelength | 0.4-0.7 µm, visible | 8-14 µm, thermal |
-| The light comes from | The sun, direct and scattered by the sky | Everything, by its own temperature |
-| A pixel says | How much sunlight came back, in colour | How warm the scene looks: a brightness temperature |
-| The sky | Bright, blue | Cold overhead, near air temperature at the horizon |
-| The sea | Reflects the sky, glitters in the sun, dark beneath | Emits by its temperature, reflects the cold sky by what it does not emit |
-| A hull | Its paint, lit by the sun | Painted steel, warmer where sunlit (`sky.solar_gain_k`) |
-| Files | RGB `jpg`/`png` through the camera, or `exr` | 16-bit centikelvin `png`, or 8-bit grey `jpg` after AGC |
+A thermal camera doesn't see light bouncing off things. It sees things glowing. Everything glows a little, and the warmer it is the more it glows and the shorter the wavelength (Planck's law). The sun is hot enough to glow in the visible. The sea, at a few hundred kelvin, glows around 10 µm, right in the band a long-wave infrared (LWIR) camera sees:
 
-### Everything glows
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.svg">
+    <img src="charts/glow-light.svg" alt="Planck curves for the sun and a 288 K sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
+  </picture>
+</p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.svg">
-  <img src="charts/glow-light.svg" alt="Planck curves for the sun at 5772 K, the sea at 288 K and the zenith sky at 225 K: the sun peaks near 0.5 µm inside the EO band, sea and sky near 10 µm inside the LWIR band">
-</picture>
+The sea is the fun part, because it's also a mirror. Water emits about 98% of what a perfect glower would when you look straight down, and less and less toward the horizon. Whatever it doesn't emit, it reflects. What it reflects is the sky, and in this band clear sky is cold overhead and close to air temperature at the horizon. So a wave facet tilted one way shows a colder patch of sky than one tilted the other way, and the waves show up in LWIR even when sea and air are at exactly the same temperature:
 
-You glow too. Anything at a few hundred kelvin radiates, mostly in 8-14 µm. **Planck's law** gives how much a perfect emitter, a **blackbody**, sends at each wavelength and temperature. A real surface sends a fraction of that, its **emissivity** ε. Seawater is opaque in this band, so whatever it does not emit, it reflects (**Kirchhoff's law**, ε = 1 − R):
+<p align="center"><img src="lwir.jpg" alt="LWIR with the sea 5 K below, equal to and 5 K above the air"></p>
 
-$$L_\text{sea} = \varepsilon(\theta)\,B(T_\text{sea}) + \big(1-\varepsilon(\theta)\big)\,L_\text{sky}$$
+Blender knows nothing about any of this. It renders red, green and blue, and its reflection node can't handle water in this band. So the thermal physics is NumPy: emissivity from measured optical constants of water, and the sky from LOWTRAN 7, a standard atmospheric model. Blender gets the results as lookup tables. It renders grey radiance, and seascape turns that back into a temperature per pixel. The `png` it writes keeps kelvins (divide by 100). The `jpg` goes through AGC, which is how a thermal camera squeezes a few kelvin of contrast into 256 greys.
 
-ε depends on the angle θ between the view and the vertical. From `lwir.py`, for flat water at 288 K:
-
-| Looking | θ | ε | The sea is |
-|---|---|---|---|
-| Straight down | 0° | 0.985 | almost a blackbody: you see its temperature |
-| Down at 30° | 60° | 0.946 | still mostly itself |
-| Toward the horizon, 700 m out from 12 m up | 89° | 0.105 | 90% mirror |
-
-And the mirror shows a cold sky. The North Sea profile seascape uses by default puts the zenith at about 225 K (−48 °C) and the sky 5° up at about 271 K, with the air at 288 K. Clear air hardly emits, so looking up you see the cold upper atmosphere and space beyond.
-
-Put the two together and the sea's apparent temperature depends on where you look, even when sea and air are the same temperature:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/sea-temperature-dark.svg">
-  <img src="charts/sea-temperature-light.svg" alt="Brightness temperature of a flat 288 K sea seen from 12 m: 287 K at 10 m, a minimum of 278 K near 100 m, back to 288 K toward the horizon">
-</picture>
-
-<details>
-<summary><b>Puzzle:</b> sea and air at exactly the same temperature. Can a thermal camera see the waves?</summary>
-
-Yes. Each wave facet tilts toward a different height of the sky, and the sky runs from cold overhead to air temperature at the horizon. A facet tilted toward the camera reflects a higher, colder patch of sky, and one tilted away a lower, warmer one, so each reads a different temperature. The middle panel below is that case.
-
-</details>
-
-![LWIR with the sea 5 K below, equal to and 5 K above the air](lwir.jpg)
-
-Each panel has its own AGC, so their greys do not compare: what changes is the contrast between sea and sky at the horizon.
-
-Why NumPy? Blender has no 8-14 µm band, and its Fresnel node takes a real index of refraction, where water's is complex (n + ik: it absorbs). `lwir.py` computes emissivity from measured optical constants (Nalli et al. 2022), averages it over the wave slopes and hands the shader a lookup table. Blender renders grey radiance, R = G = B, and `render.py` turns it back into a temperature per pixel.
-
-**AGC.** A thermal camera stretches a span of a few kelvin across its 256 grey levels, and **automatic gain control** picks that span from each frame. `agc.py` does the same, damped over time so a clip does not flicker. The 16-bit `png` keeps the temperatures: `cv2.imread(path, cv2.IMREAD_UNCHANGED) / 100` is kelvin.
-
-**Go deeper:** [Thermal imaging guidebook](http://www.flirmedia.com/MMC/THG/Brochures/T820264/T820264_EN.pdf) (FLIR, PDF; emissivity and reflected temperature, for people who point real cameras) · [Radiative sky cooling](https://www.osti.gov/servlets/purl/1424949) (Sun et al. 2017, PDF; why the 8-14 µm sky is cold)
+**Go deeper:** [FLIR's thermal imaging guidebook](http://www.flirmedia.com/MMC/THG/Brochures/T820264/T820264_EN.pdf) (emissivity and reflections, for people who point real cameras) · [Radiative sky cooling](https://www.osti.gov/servlets/purl/1424949) (why the 8-14 µm sky is cold)
 
 ## The sea
 
-### Waves are a chord
+To an oceanographer a sea is a sum of sine waves, the way a chord is a sum of notes. The wind sets how much energy goes into each wavelength: stronger wind, longer and taller waves. Swell is long waves that arrive from a storm somewhere else. Long waves travel faster than short ones, which is how swell gets to you before the storm does. seascape draws its waves from the textbook spectrum for the wind you give it, with phases from the scenario's seed, so the same seed gives the same sea.
 
-> What is a sea, to a physicist?
+The obvious way to make waves in Blender is the Ocean modifier, which moves the vertices of a mesh up and down. Up close it looks great. Far away it shimmers, and far away is where a maritime camera spends most of its pixels. The problem is how much sea one pixel covers:
 
-A sum of sine waves, like a chord is a sum of notes. Oceanographers describe a sea by its **spectrum**: how much energy sits at each frequency, the way an equaliser shows music.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.svg">
+    <img src="charts/footprint-light.svg" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
+  </picture>
+</p>
 
-- **Wind sea.** The Pierson-Moskowitz spectrum gives a fully developed sea for a wind speed; the stronger the wind, the longer its peak wave. Directions spread around downwind.
-- **Swell.** Long waves from a distant storm, one period, arriving in neat lines.
-- **Dispersion.** In deep water ω² = gk: a wave's length fixes its speed, and long waves outrun short ones. That is how swell reaches you before the storm does.
+A wave shorter than a pixel can't be drawn. Draw it anyway and it aliases into shimmer and moiré. So I followed Bruneton, Neyret & Holzschuch (2010): each pixel draws the waves it can resolve by tilting the normal, and everything smaller becomes roughness. How rough in total comes from Cox & Munk, who in the 1950s photographed sun glitter from a plane and measured how sea slope grows with wind. The glitter is where you see it best. A calm sea reflects a narrow column of sun, a windy one spreads it wide:
 
-| Wind at 10 m | Peak wavelength (`waves.peak_omega_rad_s`) | Peak period |
-|---|---|---|
-| 2 m/s | 3.6 m | 1.5 s |
-| 7 m/s | 45 m | 5.4 s |
-| 14 m/s | 185 m | 11 s |
+<p align="center"><img src="wind.jpg" alt="Sun glitter at 2, 7 and 14 m/s"></p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/spectrum-dark.svg">
-  <img src="charts/spectrum-light.svg" alt="Pierson-Moskowitz spectra at 2, 7 and 14 m/s on log axes: each peak sits at a longer period and far higher energy than the last">
-</picture>
+The mesh under all this is flat apart from the earth's curve, which is kilometres across and never too small for a pixel. The cost of the trick is that a tilted normal can't hide anything, so a wave never covers a target.
 
-Each wave is `a cos(k·x − ωt + φ)`, its phase drawn from the scenario's seed: same seed, same sea.
+On top of the waves: whitecaps where the wind is strong enough, gusts that roughen patches of sea as they blow past, slicks that smooth streaks along the wind, and wakes behind hulls under way, with Kelvin's 19.5° wedge.
 
-### Why waves are normals
+**Go deeper:** [I Tried Simulating The Entire Ocean](https://www.youtube.com/watch?v=yPfagLeUa7k) (Acerola) · [Simulating Ocean Water](https://jtessen.people.clemson.edu/reports/papers_files/coursenotes2004.pdf) (Tessendorf, the classic behind most film oceans) · [Glittering Light on Water](https://psl.noaa.gov/outreach/education/science/glitter/) (NOAA) · [Bruneton et al. 2010](https://inria.hal.science/inria-00443630) (the paper the sea follows)
 
-> Why not just model the waves as geometry?
+## Far away
 
-Because of how much sea one pixel sees. Take a 1920-pixel camera with a 45° field of view, 12 m above the water:
+Two things happen to a ship as it gets farther away. The air between you and it scatters some of its light away and some sky light in, so it fades toward the colour of the sky. That's haze, and `sky.visibility_km` sets how much:
 
-| Range | Pixel footprint across | Grazing angle | Pixel footprint along the view |
-|---|---|---|---|
-| 50 m | 2 cm | 13.8° | 9 cm |
-| 200 m | 8 cm | 3.4° | 1.4 m |
-| 1 km | 41 cm | 0.7° | 34 m |
-| 5 km | 2 m | 0.1° | about 1 km |
+<p align="center"><img src="haze.jpg" alt="A container ship at 2 km with visibility 42, 10 and 3 km"></p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.svg">
-  <img src="charts/footprint-light.svg" alt="Pixel footprint against distance on log axes: along the view it crosses a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays under 4 m">
-</picture>
+And the earth curves away under it. From 12 m up the horizon is about 13 km out. A ship past it sinks hull-down: the sea hides its bottom first. Here's one through a long lens from a 30 m mast, where the horizon is 21 km out:
 
-Around 1 km one pixel grows as long as a 7 m/s sea's peak wave, and every shorter wave fits inside it. Geometry smaller than a pixel does not average out; it **aliases**, into shimmer, moiré and crawling lines, the way a striped shirt strobes on TV. Blender's Ocean modifier displaces a mesh, so it breaks exactly where a maritime camera looks.
-
-So every pixel draws the waves longer than its own footprint, as a tilt of the shading normal, and folds the slope of all the shorter ones into the BSDF's roughness (Bruneton, Neyret & Holzschuch 2010). How rough in total comes from **Cox & Munk** (1954), who flew over Hawaii photographing sun glitter and found the sea's slope variance grows in a straight line with wind speed. Near the camera you see waves; far off the same sea becomes a sheen; in between they blend.
-
-![Sun glitter at 2, 7 and 14 m/s](wind.jpg)
-
-The glitter is the best place to watch it: a calm sea reflects a narrow column of sun, a windy one spreads it wide and breaks it into sparkles. The column's width *is* Cox & Munk's measurement, run backwards.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/slope-dark.svg">
-  <img src="charts/slope-light.svg" alt="Cox and Munk RMS sea slope against wind: about 3 degrees in calm air, 18 degrees at 20 m/s; under a slick it grows about half as fast">
-</picture>
-
-The sea's mesh exists only for the earth's curve, kilometres across and never sub-pixel. The cost of all this: a normal cannot hide anything, so a wave never occludes a target.
-
-### Glitter, whitecaps, slicks, gusts, wakes
-
-| Effect | What it is | In a scenario | Source |
-|---|---|---|---|
-| Glitter | The sun's reflection broken into points that twinkle | sun low and ahead | Longuet-Higgins 1960 |
-| Whitecaps | Foam where waves accelerate down faster than a threshold; cover grows as U^3.41 | `sea.wind_speed_mps` | Monahan 1980, Snyder & Kennedy 1983 |
-| Gusts | Patches of stronger wind, cat's paws, drifting downwind | always, from the wind | Kaimal, von Kármán |
-| Slicks | Natural films gathered into streaks along the wind, damping the short waves | `sea.slick_cover` | Cox & Munk, Leibovich 1983 |
-| Wakes | A hull's Kelvin wedge, half-angle arcsin ⅓ ≈ 19.5°, its brightest arms narrowing at speed; a turbulent band and stern foam | a target with `speed_mps` | Kelvin, Rabaud & Moisy 2013 |
-
-```bash
-uv run seascape render docs/primer/primer.toml -o out/ --set 'sea.wind_speed_mps = 5' --set 'sea.slick_cover = 0.3'
-```
-
-Every physical number in the code cites its source in a comment beside it; the module docstrings of `waves.py`, `sea.py` and `wakes.py` list them all.
-
-**Go deeper:** [I Tried Simulating The Entire Ocean](https://www.youtube.com/watch?v=yPfagLeUa7k) (Acerola, video; spectra and dispersion, game-dev style) · [Simulating Ocean Water](https://jtessen.people.clemson.edu/reports/papers_files/coursenotes2004.pdf) (Tessendorf, the classic course notes behind most film oceans) · [Glittering Light on Water](https://psl.noaa.gov/outreach/education/science/glitter/) (NOAA, ends on Cox & Munk) · [Seamless transitions from geometry to BRDF](https://inria.hal.science/inria-00443630) (Bruneton et al. 2010, the paper seascape's sea follows) · [Sampling and Reconstruction](https://pbr-book.org/3ed-2018/Sampling_and_Reconstruction) (PBR book, free; aliasing properly) · [Kelvin wake](https://en.wikipedia.org/wiki/Kelvin_wake) (Wikipedia)
-
-## Haze
-
-> Why do far ships fade to the colour of the sky?
-
-Air between the camera and a ship takes away part of the ship's light and adds sky light scattered into the line of sight. **Koschmieder** wrote it down in 1924:
-
-$$L_\text{seen} = e^{-\tau} L_\text{ship} + (1 - e^{-\tau})\,L_\text{sky}$$
-
-The optical depth τ grows with distance. At the **meteorological visibility**, `sky.visibility_km`, a black target keeps 2% of its contrast against the sky. In LWIR water vapour does most of the absorbing, and τ comes from LOWTRAN 7's band models for `sky.atmosphere`. `scene._haze` slips the mix into every material the build makes.
-
-![A container ship at 2 km with visibility 42, 10 and 3 km](haze.jpg)
-
-Which camera sees farther depends on the air. In clear air water vapour absorbs LWIR and EO keeps more. Haze particles are small next to 10 µm and scatter LWIR far less than visible light, so in haze LWIR wins:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/haze-dark.svg">
-  <img src="charts/haze-light.svg" alt="Two panels. Clear air, visibility 42 km: at 20 km EO keeps 16 percent, LWIR 6 percent. Haze, visibility 3 km: at 5 km EO keeps almost nothing, LWIR about 10 percent">
-</picture>
-
-**Go deeper:** [Visibility](https://en.wikipedia.org/wiki/Visibility) (Wikipedia, Koschmieder's relation) · [Aerial perspective](https://en.wikipedia.org/wiki/Aerial_perspective) (Wikipedia; painters knew first)
-
-## The horizon is closer than you think
-
-> How far can a camera 12 m up see the sea?
-
-About 13 km. The earth curves away, and the horizon from height h is where a ray grazes it:
-
-$$d = \sqrt{2\,h\,R/(1-k)}$$
-
-R is the earth's radius. The air bends rays slightly downward, which surveyors model as a bigger earth, R / (1 − k), with k ≈ 0.13 for average air (`sea.refraction_k`). Beyond the horizon a ship sinks **hull-down**: the sea hides its bottom first.
-
-From a mast top 30 m up the horizon is 21 km out. Through a 1.5° telephoto, in clear air:
-
-![A container ship at 15, 30 and 45 km, seen from 30 m up](horizon.jpg)
-
-At 15 km the ship sits on a mirror: at that grazing angle the sea reflects almost everything. At 45 km the curve hides about 39 m, the whole hull, and only the bridge and the mast tip are left.
+<p align="center"><img src="horizon.jpg" alt="A container ship at 15, 30 and 45 km, seen from 30 m up"></p>
 
 The same arithmetic for any camera height:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.svg">
-  <img src="charts/hidden-light.svg" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon: 6.6, 13.3 and 21 km; the 45 km ship from 30 m has 39 m hidden">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.svg">
+    <img src="charts/hidden-light.svg" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
+  </picture>
+</p>
 
-Every frame's labels say where the horizon falls in the image: `horizon_px`, a polyline, since a wide field of view sees the horizon slightly bowed.
+The air bends light down a little, which surveyors account for by pretending the earth is bigger than it is. seascape does the same.
 
-**Go deeper:** [Dip of the Horizon](https://aty.sdsu.edu/explain/atmos_refr/dip.html) (Andrew T. Young, with and without refraction) · [Horizon](https://en.wikipedia.org/wiki/Horizon) (Wikipedia, the distance formulas)
+**Go deeper:** [Dip of the Horizon](https://aty.sdsu.edu/explain/atmos_refr/dip.html) (Andrew T. Young) · [Visibility](https://en.wikipedia.org/wiki/Visibility) (Wikipedia)
 
 ## Ground truth for free
 
-> Who labels the boxes?
+Nobody labels anything, because seascape put every object where it is. Boxes come from a render pass where each target's pixels carry its own number instead of a colour, so a box covers only what the camera actually sees. Range and bearing come straight from the scene. The camera is an ideal pinhole, with calibration in OpenCV's conventions. Every frame carries a timestamp rather than a frame number, because two sensors running at different rates don't share frame numbers. [Outputs](../outputs.md) has the formats.
 
-Nobody: seascape placed everything, so the truth is computed.
+## What it can't do
 
-- **Boxes** come from Blender's object-index pass, a render layer in which each target's pixels carry its own integer instead of a colour. Only the pixels you can see count, so a target half behind another gets the box of its visible half.
-- **Range and bearing** come from the geometry, measured on the camera as built rather than as the scenario asked for.
-- **Calibration** is a pinhole camera with no distortion, intrinsics and extrinsics in OpenCV's conventions.
-- **Time.** Every frame is stamped with `time_s`. Sensors run at different rates, so a frame number is not an instant.
+- Waves never hide a target, cast a shadow or throw spray.
+- Hulls ride the waves with no inertia.
+- The sky is clear, or a still photo. No moving clouds, rain or fog banks.
+- The cameras are perfect: no lens distortion, sensor noise or rolling shutter.
+- The LWIR is good enough to look at and to regression-test against. It's not a radiometric reference, so a detection range or contrast read off a render needs a second look before anyone acts on it.
+- It wants a GPU. A CPU works, slowly.
 
-[Outputs](../outputs.md) has the formats, and how to load them into FiftyOne.
+## Words
 
-## Limitations
-
-| Limitation | So |
+| | |
 |---|---|
-| Waves are normals | A wave never hides a target or casts a shadow; the horizon line is smooth; no spray |
-| Hulls follow the sea at once | Pitch and roll are the plane fitted to the waves under the hull, with no inertia |
-| Skies are clear or a still photo | No moving clouds, rain or fog banks; haze is uniform |
-| Ideal sensor | Pinhole, no lens distortion, no sensor noise, no rolling shutter. EO gets glare, blur and auto-exposure; LWIR gets AGC |
-| LWIR approximations | Fixed model atmospheres; band emissivity assumes a flat sensor response; haze on reflected rays is approximate |
-| Not a radiometric reference | Good to look at and to regression-test against. A detection range or contrast read off a render needs review before anyone acts on it |
-| Speed | Cycles wants a GPU; a CPU works, slowly |
-
-## Glossary
-
-| Term | Meaning |
-|---|---|
-| AGC | Automatic gain control: a thermal camera's per-frame choice of which temperatures map to black and white |
+| AGC | A thermal camera's automatic choice of which temperatures map to black and white |
 | Aliasing | Detail finer than a pixel showing up as false patterns |
-| BSDF | A function describing where a surface scatters light |
-| Blackbody | A perfect emitter; Planck's law gives its radiance |
-| Brightness temperature | The temperature a blackbody would need to send the measured radiance |
-| Compositor | Blender's post-processing node graph, applied to the rendered image |
-| Emissivity (ε) | The fraction of a blackbody's radiance a surface emits, 0 to 1 |
-| EO | Electro-optical: a visible-light camera |
-| Equirectangular | A 360° image laid out as longitude by latitude |
-| EXR | OpenEXR, a float image format for HDR |
+| Emissivity | How much a surface glows compared with a perfect glower, 0 to 1 |
+| EO | Electro-optical: an ordinary visible-light camera |
+| EXR | A float image format that keeps HDR |
 | Footprint | The patch of sea one pixel covers |
-| Fresnel | How reflection grows toward grazing angles |
-| GGX | The microfacet distribution behind Blender's rough BSDFs |
-| HDR / HDRI | High dynamic range; an HDRI is an HDR panorama used as a sky |
-| IOR | Index of refraction |
-| LWIR | Long-wave infrared, 8-14 µm |
-| Node graph | Blender's visual programs for shaders and the compositor |
-| Path tracing | Rendering by following random light paths per pixel and averaging |
-| Sample | One such path; more samples, less noise |
-| Swell | Long waves from distant weather |
+| HDR, HDRI | High dynamic range; an HDRI is an HDR panorama used as a sky |
+| LWIR | Long-wave infrared, 8-14 µm: what thermal cameras see |
+| Normal | The direction a surface faces, as far as light is concerned |
+| Path tracing | Rendering by following random light paths and averaging them |
+| Sample | One of those paths, per pixel |
+| Swell | Long waves from weather far away |

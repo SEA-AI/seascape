@@ -25,783 +25,2925 @@ L 518.4 273.6
 L 518.4 0 
 L 0 0 
 z
-" style="fill: #1a1a19"/>
+" style="fill: #0b1731"/>
   </g>
   <g id="axes_1">
    <g id="patch_2">
-    <path d="M 53.90692 216.834207 
-L 443.244135 216.834207 
-L 443.244135 37.840251 
-L 53.90692 37.840251 
+    <path d="M 50.205553 216.990707 
+L 454.14976 216.990707 
+L 454.14976 45.829158 
+L 50.205553 45.829158 
 z
-" style="fill: #1a1a19"/>
+" style="fill: #0b1731"/>
    </g>
    <g id="matplotlib.axis_1">
     <g id="xtick_1">
      <g id="line2d_1">
-      <path d="M 53.90692 216.834207 
-L 53.90692 37.840251 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 216.990707 
+L 50.205553 45.829158 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_2">
       <defs>
-       <path id="m7faac25f1c" d="M 0 0 
+       <path id="m006dc12c6f" d="M 0 0 
 L 0 3.5 
-" style="stroke: #383835; stroke-width: 0.8"/>
+" style="stroke: #7b9194; stroke-width: 0.8"/>
       </defs>
       <g>
-       <use xlink:href="#m7faac25f1c" x="53.90692" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m006dc12c6f" x="50.205553" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_1">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: middle; fill: #c3c2b7" x="53.90692" y="231.05198" transform="rotate(-0 53.90692 231.05198)">20 m</text>
+      <!-- 20 m -->
+      <g style="fill: #dfded9" transform="translate(40.177232 234.490707) scale(0.105 -0.105)">
+       <defs>
+        <path id="BarlowSemiCondensed-Regular-1e1" d="M 890 429 
+Q 870 397 902 397 
+L 2662 397 
+Q 2726 397 2726 333 
+L 2726 64 
+Q 2726 0 2662 0 
+L 384 0 
+Q 320 0 320 64 
+L 320 346 
+Q 320 384 346 429 
+Q 922 1210 1632 2221 
+Q 2138 2957 2138 3398 
+Q 2138 3731 1946 3932 
+Q 1754 4134 1440 4134 
+Q 1133 4134 947 3932 
+Q 762 3731 768 3398 
+L 768 3181 
+Q 768 3117 704 3117 
+L 371 3117 
+Q 307 3117 307 3181 
+L 307 3437 
+Q 320 3930 637 4230 
+Q 954 4531 1453 4531 
+Q 1965 4531 2278 4217 
+Q 2592 3904 2592 3398 
+Q 2592 2835 2067 2067 
+Q 1741 1594 1037 634 
+L 890 429 
+z
+" transform="scale(0.015625)"/>
+        <path id="BarlowSemiCondensed-Regular-1df" d="M 1606 -64 
+Q 1056 -64 723 269 
+Q 390 602 390 1158 
+L 390 3322 
+Q 390 3872 723 4205 
+Q 1056 4538 1606 4538 
+Q 2163 4538 2499 4205 
+Q 2835 3872 2835 3322 
+L 2835 1158 
+Q 2835 602 2499 269 
+Q 2163 -64 1606 -64 
+z
+M 1606 333 
+Q 1958 333 2169 550 
+Q 2381 768 2381 1126 
+L 2381 3347 
+Q 2381 3706 2169 3923 
+Q 1958 4141 1606 4141 
+Q 1267 4141 1056 3923 
+Q 845 3706 845 3347 
+L 845 1126 
+Q 845 774 1056 553 
+Q 1267 333 1606 333 
+z
+" transform="scale(0.015625)"/>
+        <path id="BarlowSemiCondensed-Regular-3" transform="scale(0.015625)"/>
+        <path id="BarlowSemiCondensed-Regular-109" d="M 3386 3283 
+Q 3814 3283 4060 2998 
+Q 4307 2714 4307 2214 
+L 4307 64 
+Q 4307 0 4243 0 
+L 3923 0 
+Q 3859 0 3859 64 
+L 3859 2150 
+Q 3859 2490 3689 2688 
+Q 3520 2886 3245 2886 
+Q 2957 2886 2781 2691 
+Q 2605 2496 2605 2163 
+L 2605 64 
+Q 2605 0 2541 0 
+L 2214 0 
+Q 2150 0 2150 64 
+L 2150 2150 
+Q 2150 2490 1980 2688 
+Q 1811 2886 1536 2886 
+Q 1248 2886 1075 2691 
+Q 902 2496 902 2163 
+L 902 64 
+Q 902 0 838 0 
+L 512 0 
+Q 448 0 448 64 
+L 448 3174 
+Q 448 3238 512 3238 
+L 838 3238 
+Q 902 3238 902 3174 
+L 902 2950 
+Q 902 2938 912 2934 
+Q 922 2931 934 2944 
+Q 1062 3117 1260 3200 
+Q 1459 3283 1683 3283 
+Q 1965 3283 2176 3155 
+Q 2387 3027 2496 2797 
+Q 2509 2765 2528 2797 
+Q 2656 3046 2883 3164 
+Q 3110 3283 3386 3283 
+z
+" transform="scale(0.015625)"/>
+       </defs>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e1"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(46.90625 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(97.3125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(117.3125 0)"/>
+      </g>
      </g>
     </g>
     <g id="xtick_2">
      <g id="line2d_3">
-      <path d="M 158.491378 216.834207 
-L 158.491378 37.840251 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 158.713767 216.990707 
+L 158.713767 45.829158 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_4">
       <g>
-       <use xlink:href="#m7faac25f1c" x="158.491378" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m006dc12c6f" x="158.713767" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_2">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: middle; fill: #c3c2b7" x="158.491378" y="231.05198" transform="rotate(-0 158.491378 231.05198)">100 m</text>
+      <!-- 100 m -->
+      <g style="fill: #dfded9" transform="translate(146.911111 234.490707) scale(0.105 -0.105)">
+       <defs>
+        <path id="BarlowSemiCondensed-Regular-1e0" d="M 960 4461 
+Q 998 4480 1043 4480 
+L 1389 4480 
+Q 1453 4480 1453 4416 
+L 1453 64 
+Q 1453 0 1389 0 
+L 1062 0 
+Q 998 0 998 64 
+L 998 3955 
+Q 998 3968 988 3974 
+Q 979 3981 966 3974 
+L 326 3738 
+Q 314 3731 294 3731 
+Q 262 3731 250 3782 
+L 218 4019 
+L 218 4032 
+Q 218 4064 262 4096 
+L 960 4461 
+z
+" transform="scale(0.015625)"/>
+       </defs>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(80.703125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(131.109375 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(151.109375 0)"/>
+      </g>
      </g>
     </g>
     <g id="xtick_3">
      <g id="line2d_5">
-      <path d="M 308.117911 216.834207 
-L 308.117911 37.840251 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 313.953927 216.990707 
+L 313.953927 45.829158 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_6">
       <g>
-       <use xlink:href="#m7faac25f1c" x="308.117911" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m006dc12c6f" x="313.953927" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_3">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: middle; fill: #c3c2b7" x="308.117911" y="231.052723" transform="rotate(-0 308.117911 231.052723)">1 km</text>
+      <!-- 1 km -->
+      <g style="fill: #dfded9" transform="translate(305.065841 234.490707) scale(0.105 -0.105)">
+       <defs>
+        <path id="BarlowSemiCondensed-Regular-101" d="M 512 0 
+Q 448 0 448 64 
+L 448 4416 
+Q 448 4480 512 4480 
+L 838 4480 
+Q 902 4480 902 4416 
+L 902 1818 
+Q 902 1805 915 1798 
+Q 928 1792 934 1805 
+L 2093 3200 
+Q 2125 3238 2170 3238 
+L 2534 3238 
+Q 2573 3238 2585 3216 
+Q 2598 3194 2573 3162 
+L 1843 2253 
+Q 1830 2234 1837 2221 
+L 2701 77 
+L 2707 51 
+Q 2707 0 2650 0 
+L 2310 0 
+Q 2259 0 2240 51 
+L 1542 1882 
+Q 1536 1894 1523 1897 
+Q 1510 1901 1504 1888 
+L 915 1178 
+Q 902 1152 902 1146 
+L 902 64 
+Q 902 0 838 0 
+L 512 0 
+z
+" transform="scale(0.015625)"/>
+       </defs>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-101" transform="translate(50.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(95.59375 0)"/>
+      </g>
      </g>
     </g>
     <g id="xtick_4">
      <g id="line2d_7">
-      <path d="M 443.244135 216.834207 
-L 443.244135 37.840251 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 454.14976 216.990707 
+L 454.14976 45.829158 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_8">
       <g>
-       <use xlink:href="#m7faac25f1c" x="443.244135" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m006dc12c6f" x="454.14976" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_4">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: middle; fill: #c3c2b7" x="443.244135" y="231.052723" transform="rotate(-0 443.244135 231.052723)">8 km</text>
+      <!-- 8 km -->
+      <g style="fill: #dfded9" transform="translate(444.374096 234.490707) scale(0.105 -0.105)">
+       <defs>
+        <path id="BarlowSemiCondensed-Regular-1e7" d="M 2528 1933 
+Q 2656 1645 2656 1254 
+Q 2656 851 2515 570 
+Q 2387 275 2124 112 
+Q 1862 -51 1510 -51 
+Q 1158 -51 892 115 
+Q 627 282 493 582 
+Q 358 870 358 1254 
+Q 358 1626 480 1920 
+Q 602 2214 902 2368 
+Q 934 2381 902 2400 
+Q 685 2522 557 2739 
+Q 384 3021 384 3379 
+Q 384 3750 550 4026 
+Q 685 4269 937 4406 
+Q 1190 4544 1510 4544 
+Q 1837 4544 2080 4413 
+Q 2323 4282 2464 4032 
+Q 2630 3757 2630 3379 
+Q 2630 3021 2464 2739 
+Q 2349 2541 2118 2406 
+Q 2086 2387 2118 2374 
+Q 2400 2227 2528 1933 
+z
+M 934 3782 
+Q 838 3603 838 3360 
+Q 838 3098 954 2886 
+Q 1037 2733 1177 2649 
+Q 1318 2566 1504 2566 
+Q 1696 2566 1843 2656 
+Q 1990 2746 2074 2906 
+Q 2176 3091 2176 3366 
+Q 2176 3622 2080 3795 
+Q 1997 3962 1849 4054 
+Q 1702 4147 1504 4147 
+Q 1306 4147 1158 4051 
+Q 1011 3955 934 3782 
+z
+M 2099 749 
+Q 2202 973 2202 1280 
+Q 2202 1587 2112 1805 
+Q 2035 1997 1878 2102 
+Q 1722 2208 1504 2208 
+Q 1075 2208 902 1805 
+Q 813 1587 813 1280 
+Q 813 960 915 749 
+Q 992 557 1145 451 
+Q 1299 346 1510 346 
+Q 1926 346 2099 749 
+z
+" transform="scale(0.015625)"/>
+       </defs>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e7"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(47.203125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-101" transform="translate(67.203125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(112.5 0)"/>
+      </g>
      </g>
     </g>
     <g id="xtick_5">
      <g id="line2d_9">
       <defs>
-       <path id="m3809898504" d="M 0 0 
+       <path id="mff8d281d00" d="M 0 0 
 L 0 2 
-" style="stroke: #383835; stroke-width: 0.6"/>
+" style="stroke: #7b9194; stroke-width: 0.6"/>
       </defs>
       <g>
-       <use xlink:href="#m3809898504" x="80.254844" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="77.541988" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_6">
      <g id="line2d_10">
       <g>
-       <use xlink:href="#m3809898504" x="98.948994" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="96.937497" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_7">
      <g id="line2d_11">
       <g>
-       <use xlink:href="#m3809898504" x="113.449304" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="111.981823" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_8">
      <g id="line2d_12">
       <g>
-       <use xlink:href="#m3809898504" x="125.296919" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="124.273932" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_9">
      <g id="line2d_13">
       <g>
-       <use xlink:href="#m3809898504" x="135.313935" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="134.666762" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_10">
      <g id="line2d_14">
       <g>
-       <use xlink:href="#m3809898504" x="143.991069" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="143.669441" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_11">
      <g id="line2d_15">
       <g>
-       <use xlink:href="#m3809898504" x="151.644843" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="151.610367" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_12">
      <g id="line2d_16">
       <g>
-       <use xlink:href="#m3809898504" x="203.533453" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="205.445712" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_13">
      <g id="line2d_17">
       <g>
-       <use xlink:href="#m3809898504" x="229.881377" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="232.782147" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_14">
      <g id="line2d_18">
       <g>
-       <use xlink:href="#m3809898504" x="248.575527" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="252.177656" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_15">
      <g id="line2d_19">
       <g>
-       <use xlink:href="#m3809898504" x="263.075837" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="267.221982" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_16">
      <g id="line2d_20">
       <g>
-       <use xlink:href="#m3809898504" x="274.923452" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="279.514091" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_17">
      <g id="line2d_21">
       <g>
-       <use xlink:href="#m3809898504" x="284.940468" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="289.906922" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_18">
      <g id="line2d_22">
       <g>
-       <use xlink:href="#m3809898504" x="293.617602" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="298.909601" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_19">
      <g id="line2d_23">
       <g>
-       <use xlink:href="#m3809898504" x="301.271377" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="306.850526" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_20">
      <g id="line2d_24">
       <g>
-       <use xlink:href="#m3809898504" x="353.159986" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="360.685871" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_21">
      <g id="line2d_25">
       <g>
-       <use xlink:href="#m3809898504" x="379.50791" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="388.022306" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_22">
      <g id="line2d_26">
       <g>
-       <use xlink:href="#m3809898504" x="398.20206" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="407.417816" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_23">
      <g id="line2d_27">
       <g>
-       <use xlink:href="#m3809898504" x="412.70237" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="422.462141" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_24">
      <g id="line2d_28">
       <g>
-       <use xlink:href="#m3809898504" x="424.549985" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="434.754251" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="xtick_25">
      <g id="line2d_29">
       <g>
-       <use xlink:href="#m3809898504" x="434.567001" y="216.834207" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mff8d281d00" x="445.147081" y="216.990707" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="text_5">
-     <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: middle; fill: #c3c2b7" x="248.575527" y="244.553465" transform="rotate(-0 248.575527 244.553465)">distance from the camera</text>
+     <!-- distance from the camera -->
+     <g style="fill: #dfded9" transform="translate(199.860586 251.090707) scale(0.105 -0.105)">
+      <defs>
+       <path id="BarlowSemiCondensed-Regular-cc" d="M 2195 4416 
+Q 2195 4480 2259 4480 
+L 2586 4480 
+Q 2650 4480 2650 4416 
+L 2650 64 
+Q 2650 0 2586 0 
+L 2259 0 
+Q 2195 0 2195 64 
+L 2195 320 
+Q 2195 339 2185 339 
+Q 2176 339 2163 326 
+Q 1926 -51 1421 -51 
+Q 1018 -51 778 163 
+Q 538 378 422 845 
+Q 339 1197 339 1587 
+Q 339 2035 410 2349 
+Q 506 2829 765 3056 
+Q 1024 3283 1453 3283 
+Q 1722 3283 1891 3190 
+Q 2061 3098 2163 2912 
+Q 2170 2893 2182 2896 
+Q 2195 2899 2195 2918 
+L 2195 4416 
+z
+M 2086 813 
+Q 2182 1101 2182 1619 
+Q 2182 2144 2080 2445 
+Q 2003 2662 1872 2777 
+Q 1741 2893 1523 2893 
+Q 1101 2893 922 2458 
+Q 800 2138 800 1619 
+Q 800 1101 902 819 
+Q 986 582 1130 460 
+Q 1274 339 1517 339 
+Q 1741 339 1875 460 
+Q 2010 582 2086 813 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-f0" d="M 742 3827 
+Q 582 3827 483 3929 
+Q 384 4032 384 4186 
+Q 384 4346 483 4445 
+Q 582 4544 742 4544 
+Q 896 4544 998 4445 
+Q 1101 4346 1101 4186 
+Q 1101 4032 998 3929 
+Q 896 3827 742 3827 
+z
+M 570 0 
+Q 506 0 506 64 
+L 506 3174 
+Q 506 3238 570 3238 
+L 896 3238 
+Q 960 3238 960 3174 
+L 960 64 
+Q 960 0 896 0 
+L 570 0 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-12e" d="M 1402 -32 
+Q 909 -32 608 205 
+Q 307 442 307 813 
+L 307 870 
+Q 307 934 371 934 
+L 685 934 
+Q 749 934 749 870 
+L 749 826 
+Q 749 621 931 470 
+Q 1114 320 1402 320 
+Q 1683 320 1856 467 
+Q 2029 614 2029 838 
+Q 2029 998 1933 1107 
+Q 1837 1216 1696 1280 
+Q 1555 1344 1306 1427 
+Q 1005 1530 806 1632 
+Q 608 1734 470 1916 
+Q 333 2099 333 2381 
+Q 333 2790 621 3030 
+Q 909 3270 1382 3270 
+Q 1869 3270 2160 3020 
+Q 2451 2771 2451 2381 
+L 2451 2368 
+Q 2451 2304 2387 2304 
+L 2093 2304 
+Q 2029 2304 2029 2368 
+L 2029 2394 
+Q 2029 2611 1853 2755 
+Q 1677 2899 1382 2899 
+Q 1107 2899 937 2761 
+Q 768 2624 768 2406 
+Q 768 2182 937 2067 
+Q 1107 1952 1472 1824 
+Q 1786 1722 1990 1619 
+Q 2195 1517 2339 1334 
+Q 2483 1152 2483 864 
+Q 2483 454 2188 211 
+Q 1894 -32 1402 -32 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-134" d="M 1747 2944 
+Q 1747 2880 1683 2880 
+L 1075 2880 
+Q 1050 2880 1050 2854 
+L 1050 934 
+Q 1050 634 1168 515 
+Q 1286 397 1549 397 
+L 1658 397 
+Q 1722 397 1722 333 
+L 1722 64 
+Q 1722 0 1658 0 
+L 1459 -6 
+Q 1043 -6 825 163 
+Q 608 333 608 794 
+L 608 2854 
+Q 608 2880 582 2880 
+L 262 2880 
+Q 198 2880 198 2944 
+L 198 3174 
+Q 198 3238 262 3238 
+L 582 3238 
+Q 608 3238 608 3264 
+L 608 3994 
+Q 608 4058 672 4058 
+L 986 4058 
+Q 1050 4058 1050 3994 
+L 1050 3264 
+Q 1050 3238 1075 3238 
+L 1683 3238 
+Q 1747 3238 1747 3174 
+L 1747 2944 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-ad" d="M 1485 3290 
+Q 1997 3290 2288 2995 
+Q 2579 2701 2579 2214 
+L 2579 64 
+Q 2579 0 2515 0 
+L 2189 0 
+Q 2125 0 2125 64 
+L 2125 294 
+Q 2125 307 2115 313 
+Q 2106 320 2093 307 
+Q 1952 128 1734 38 
+Q 1517 -51 1248 -51 
+Q 845 -51 560 166 
+Q 275 384 275 877 
+Q 275 1389 604 1654 
+Q 934 1920 1504 1920 
+L 2099 1920 
+Q 2125 1920 2125 1946 
+L 2125 2189 
+Q 2125 2515 1961 2704 
+Q 1798 2893 1478 2893 
+Q 1229 2893 1062 2768 
+Q 896 2643 864 2438 
+Q 858 2381 794 2381 
+L 442 2400 
+Q 410 2400 394 2419 
+Q 378 2438 384 2464 
+Q 429 2835 733 3062 
+Q 1037 3290 1485 3290 
+z
+M 1338 346 
+Q 1658 346 1891 522 
+Q 2125 698 2125 1011 
+L 2125 1530 
+Q 2125 1555 2099 1555 
+L 1536 1555 
+Q 1171 1555 953 1385 
+Q 736 1216 736 902 
+Q 736 621 902 483 
+Q 1069 346 1338 346 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-10a" d="M 1702 3283 
+Q 2150 3283 2409 2998 
+Q 2669 2714 2669 2221 
+L 2669 64 
+Q 2669 0 2605 0 
+L 2278 0 
+Q 2214 0 2214 64 
+L 2214 2157 
+Q 2214 2490 2041 2688 
+Q 1869 2886 1568 2886 
+Q 1267 2886 1084 2684 
+Q 902 2483 902 2144 
+L 902 64 
+Q 902 0 838 0 
+L 512 0 
+Q 448 0 448 64 
+L 448 3174 
+Q 448 3238 512 3238 
+L 838 3238 
+Q 902 3238 902 3174 
+L 902 2925 
+Q 902 2912 912 2905 
+Q 922 2899 934 2912 
+Q 1184 3283 1702 3283 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-c6" d="M 1530 -51 
+Q 1069 -51 768 201 
+Q 467 454 403 883 
+Q 365 1210 365 1626 
+Q 365 1952 403 2362 
+Q 461 2778 768 3034 
+Q 1075 3290 1530 3290 
+Q 1984 3290 2294 3046 
+Q 2605 2803 2656 2438 
+L 2675 2304 
+L 2675 2291 
+Q 2675 2266 2659 2250 
+Q 2643 2234 2618 2234 
+L 2291 2214 
+Q 2234 2214 2221 2272 
+Q 2221 2330 2214 2349 
+Q 2182 2573 1993 2733 
+Q 1805 2893 1530 2893 
+Q 1248 2893 1065 2720 
+Q 883 2547 851 2272 
+Q 819 1997 819 1619 
+Q 819 1235 851 960 
+Q 883 678 1065 512 
+Q 1248 346 1530 346 
+Q 1811 346 2000 506 
+Q 2189 666 2214 896 
+L 2221 947 
+Q 2234 1018 2291 1005 
+L 2611 979 
+Q 2669 966 2669 922 
+L 2669 896 
+Q 2669 870 2656 819 
+Q 2611 442 2300 195 
+Q 1990 -51 1530 -51 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-d0" d="M 1542 346 
+Q 1786 346 1962 470 
+Q 2138 595 2214 806 
+Q 2234 864 2291 851 
+L 2586 794 
+Q 2618 787 2627 764 
+Q 2637 742 2630 717 
+Q 2522 358 2234 153 
+Q 1946 -51 1536 -51 
+Q 1069 -51 774 195 
+Q 480 442 410 864 
+Q 384 1024 377 1241 
+Q 371 1459 371 1603 
+Q 371 1747 371 1805 
+Q 371 2131 397 2336 
+Q 448 2765 752 3027 
+Q 1056 3290 1517 3290 
+Q 2010 3290 2317 3008 
+Q 2624 2726 2662 2266 
+Q 2682 2054 2682 1491 
+Q 2682 1427 2618 1427 
+L 851 1427 
+Q 826 1427 826 1402 
+Q 826 1203 838 960 
+Q 870 685 1059 515 
+Q 1248 346 1542 346 
+z
+M 1523 2893 
+Q 1235 2893 1052 2723 
+Q 870 2554 838 2278 
+Q 826 2010 826 1830 
+Q 826 1805 851 1805 
+L 2202 1805 
+Q 2227 1805 2227 1830 
+Q 2227 2016 2202 2272 
+Q 2170 2547 1987 2720 
+Q 1805 2893 1523 2893 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-e5" d="M 1606 4109 
+Q 1312 4109 1197 3949 
+Q 1082 3789 1082 3424 
+L 1082 3264 
+Q 1082 3238 1107 3238 
+L 1709 3238 
+Q 1773 3238 1773 3174 
+L 1773 2925 
+Q 1773 2861 1709 2861 
+L 1107 2861 
+Q 1082 2861 1082 2835 
+L 1082 64 
+Q 1082 0 1018 0 
+L 691 0 
+Q 627 0 627 64 
+L 627 2835 
+Q 627 2861 602 2861 
+L 262 2861 
+Q 198 2861 198 2925 
+L 198 3174 
+Q 198 3238 262 3238 
+L 602 3238 
+Q 627 3238 627 3264 
+L 627 3443 
+Q 627 4013 841 4256 
+Q 1056 4499 1587 4499 
+L 1722 4499 
+Q 1786 4499 1786 4435 
+L 1786 4173 
+Q 1786 4109 1722 4109 
+L 1606 4109 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-12b" d="M 1651 3270 
+Q 1843 3270 1978 3194 
+Q 2022 3174 2010 3117 
+L 1933 2784 
+Q 1926 2720 1856 2746 
+Q 1754 2790 1632 2790 
+L 1555 2784 
+Q 1274 2778 1088 2541 
+Q 902 2304 902 1965 
+L 902 64 
+Q 902 0 838 0 
+L 512 0 
+Q 448 0 448 64 
+L 448 3174 
+Q 448 3238 512 3238 
+L 838 3238 
+Q 902 3238 902 3174 
+L 902 2758 
+Q 902 2739 912 2739 
+Q 922 2739 928 2752 
+Q 1037 2995 1219 3132 
+Q 1402 3270 1651 3270 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-10f" d="M 1536 -51 
+Q 1069 -51 768 201 
+Q 467 454 403 883 
+Q 365 1203 365 1626 
+Q 365 2048 403 2355 
+Q 461 2778 765 3034 
+Q 1069 3290 1536 3290 
+Q 2003 3290 2307 3034 
+Q 2611 2778 2669 2355 
+Q 2707 2099 2707 1626 
+Q 2707 1139 2669 883 
+Q 2611 454 2307 201 
+Q 2003 -51 1536 -51 
+z
+M 1536 346 
+Q 1811 346 2000 515 
+Q 2189 685 2227 966 
+Q 2253 1203 2253 1619 
+Q 2253 2042 2227 2272 
+Q 2195 2554 2006 2723 
+Q 1818 2893 1536 2893 
+Q 1254 2893 1068 2723 
+Q 883 2554 845 2272 
+Q 819 2042 819 1619 
+Q 819 1197 845 966 
+Q 877 685 1065 515 
+Q 1254 346 1536 346 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-ec" d="M 1702 3283 
+Q 2150 3283 2409 2998 
+Q 2669 2714 2669 2221 
+L 2669 64 
+Q 2669 0 2605 0 
+L 2278 0 
+Q 2214 0 2214 64 
+L 2214 2157 
+Q 2214 2490 2041 2688 
+Q 1869 2886 1568 2886 
+Q 1267 2886 1084 2684 
+Q 902 2483 902 2144 
+L 902 64 
+Q 902 0 838 0 
+L 512 0 
+Q 448 0 448 64 
+L 448 4416 
+Q 448 4480 512 4480 
+L 838 4480 
+Q 902 4480 902 4416 
+L 902 2925 
+Q 902 2912 912 2905 
+Q 922 2899 934 2912 
+Q 1184 3283 1702 3283 
+z
+" transform="scale(0.015625)"/>
+      </defs>
+      <use xlink:href="#BarlowSemiCondensed-Regular-cc"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(48.40625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(71.609375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(114.40625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(145.90625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(192.109375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(239.90625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(285.90625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(332.90625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-e5" transform="translate(352.90625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(384.609375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(417.015625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(465.015625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(538.71875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(558.71875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(590.21875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(638.015625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(685.015625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(705.015625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(751.109375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(797.3125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(870.609375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(917.609375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(950.3125 0)"/>
+     </g>
     </g>
    </g>
    <g id="matplotlib.axis_2">
     <g id="ytick_1">
      <g id="line2d_30">
-      <path d="M 53.90692 206.175038 
-L 443.244135 206.175038 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 206.797962 
+L 454.14976 206.797962 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_31">
       <defs>
-       <path id="mb13590bf91" d="M 0 0 
+       <path id="m161b2fba5a" d="M 0 0 
 L -3.5 0 
-" style="stroke: #383835; stroke-width: 0.8"/>
+" style="stroke: #7b9194; stroke-width: 0.8"/>
       </defs>
       <g>
-       <use xlink:href="#mb13590bf91" x="53.90692" y="206.175038" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m161b2fba5a" x="50.205553" y="206.797962" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_6">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #c3c2b7" x="46.90692" y="209.783925" transform="rotate(-0 46.90692 209.783925)">1 cm</text>
+      <!-- 1 cm -->
+      <g style="fill: #dfded9" transform="translate(25.345709 212.047962) scale(0.105 -0.105)">
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(50.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(96.390625 0)"/>
+      </g>
      </g>
     </g>
     <g id="ytick_2">
      <g id="line2d_32">
-      <path d="M 53.90692 177.23445 
-L 443.244135 177.23445 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 179.123754 
+L 454.14976 179.123754 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_33">
       <g>
-       <use xlink:href="#mb13590bf91" x="53.90692" y="177.23445" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m161b2fba5a" x="50.205553" y="179.123754" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_7">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #c3c2b7" x="46.90692" y="180.843337" transform="rotate(-0 46.90692 180.843337)">10 cm</text>
+      <!-- 10 cm -->
+      <g style="fill: #dfded9" transform="translate(20.053053 184.373754) scale(0.105 -0.105)">
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(80.703125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(100.703125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(146.796875 0)"/>
+      </g>
      </g>
     </g>
     <g id="ytick_3">
      <g id="line2d_34">
-      <path d="M 53.90692 148.293861 
-L 443.244135 148.293861 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 151.449545 
+L 454.14976 151.449545 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_35">
       <g>
-       <use xlink:href="#mb13590bf91" x="53.90692" y="148.293861" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m161b2fba5a" x="50.205553" y="151.449545" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_8">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #c3c2b7" x="46.90692" y="151.902748" transform="rotate(-0 46.90692 151.902748)">1 m</text>
+      <!-- 1 m -->
+      <g style="fill: #dfded9" transform="translate(30.185553 156.699545) scale(0.105 -0.105)">
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(50.296875 0)"/>
+      </g>
      </g>
     </g>
     <g id="ytick_4">
      <g id="line2d_36">
-      <path d="M 53.90692 119.353273 
-L 443.244135 119.353273 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 123.775337 
+L 454.14976 123.775337 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_37">
       <g>
-       <use xlink:href="#mb13590bf91" x="53.90692" y="119.353273" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m161b2fba5a" x="50.205553" y="123.775337" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_9">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #c3c2b7" x="46.90692" y="122.962159" transform="rotate(-0 46.90692 122.962159)">10 m</text>
+      <!-- 10 m -->
+      <g style="fill: #dfded9" transform="translate(24.892896 129.025337) scale(0.105 -0.105)">
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(80.703125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(100.703125 0)"/>
+      </g>
      </g>
     </g>
     <g id="ytick_5">
      <g id="line2d_38">
-      <path d="M 53.90692 90.412684 
-L 443.244135 90.412684 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 96.101129 
+L 454.14976 96.101129 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_39">
       <g>
-       <use xlink:href="#mb13590bf91" x="53.90692" y="90.412684" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m161b2fba5a" x="50.205553" y="96.101129" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_10">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #c3c2b7" x="46.90692" y="94.021571" transform="rotate(-0 46.90692 94.021571)">100 m</text>
+      <!-- 100 m -->
+      <g style="fill: #dfded9" transform="translate(19.60024 101.351129) scale(0.105 -0.105)">
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(80.703125 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(131.109375 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(151.109375 0)"/>
+      </g>
      </g>
     </g>
     <g id="ytick_6">
      <g id="line2d_40">
-      <path d="M 53.90692 61.472096 
-L 443.244135 61.472096 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+      <path d="M 50.205553 68.426921 
+L 454.14976 68.426921 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #06404c; stroke-width: 0.8; stroke-linecap: square"/>
      </g>
      <g id="line2d_41">
       <g>
-       <use xlink:href="#mb13590bf91" x="53.90692" y="61.472096" style="fill: #383835; stroke: #383835; stroke-width: 0.8"/>
+       <use xlink:href="#m161b2fba5a" x="50.205553" y="68.426921" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.8"/>
       </g>
      </g>
      <g id="text_11">
-      <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #c3c2b7" x="46.90692" y="65.081353" transform="rotate(-0 46.90692 65.081353)">1 km</text>
+      <!-- 1 km -->
+      <g style="fill: #dfded9" transform="translate(25.429381 73.676921) scale(0.105 -0.105)">
+       <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(30.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-101" transform="translate(50.296875 0)"/>
+       <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(95.59375 0)"/>
+      </g>
      </g>
     </g>
     <g id="ytick_7">
      <g id="line2d_42">
       <defs>
-       <path id="mfeea6895b5" d="M 0 0 
+       <path id="mbef115ac8f" d="M 0 0 
 L -2 0 
-" style="stroke: #383835; stroke-width: 0.6"/>
+" style="stroke: #7b9194; stroke-width: 0.6"/>
       </defs>
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="214.887024" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="215.128728" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_8">
      <g id="line2d_43">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="212.595472" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="212.93745" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_9">
      <g id="line2d_44">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="210.657992" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="211.084751" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_10">
      <g id="line2d_45">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="208.979671" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="209.47987" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_11">
      <g id="line2d_46">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="207.499287" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="208.064264" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_12">
      <g id="line2d_47">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="197.463053" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="198.467195" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_13">
      <g id="line2d_48">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="192.366869" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="193.594009" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_14">
      <g id="line2d_49">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="188.751068" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="190.136428" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_15">
      <g id="line2d_50">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="185.946435" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="187.45452" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_16">
      <g id="line2d_51">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="183.654883" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="185.263242" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_17">
      <g id="line2d_52">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="181.717404" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="183.410543" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_18">
      <g id="line2d_53">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="180.039083" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="181.805661" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_19">
      <g id="line2d_54">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="178.558699" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="180.390056" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_20">
      <g id="line2d_55">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="168.522465" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="170.792987" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_21">
      <g id="line2d_56">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="163.42628" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="165.919801" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_22">
      <g id="line2d_57">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="159.810479" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="162.46222" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_23">
      <g id="line2d_58">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="157.005847" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="159.780312" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_24">
      <g id="line2d_59">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="154.714295" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="157.589034" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_25">
      <g id="line2d_60">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="152.776815" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="155.736335" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_26">
      <g id="line2d_61">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="151.098494" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="154.131453" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_27">
      <g id="line2d_62">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="149.61811" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="152.715848" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_28">
      <g id="line2d_63">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="139.581876" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="143.118779" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_29">
      <g id="line2d_64">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="134.485691" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="138.245593" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_30">
      <g id="line2d_65">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="130.869891" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="134.788012" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_31">
      <g id="line2d_66">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="128.065258" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="132.106104" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_32">
      <g id="line2d_67">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="125.773706" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="129.914826" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_33">
      <g id="line2d_68">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="123.836227" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="128.062126" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_34">
      <g id="line2d_69">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="122.157906" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="126.457245" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_35">
      <g id="line2d_70">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="120.677521" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="125.04164" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_36">
      <g id="line2d_71">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="110.641287" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="115.444571" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_37">
      <g id="line2d_72">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="105.545103" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="110.571384" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_38">
      <g id="line2d_73">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="101.929302" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="107.113804" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_39">
      <g id="line2d_74">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="99.124669" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="104.431896" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_40">
      <g id="line2d_75">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="96.833118" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="102.240618" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_41">
      <g id="line2d_76">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="94.895638" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="100.387918" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_42">
      <g id="line2d_77">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="93.217317" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="98.783037" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_43">
      <g id="line2d_78">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="91.736933" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="97.367432" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_44">
      <g id="line2d_79">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="81.700699" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="87.770362" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_45">
      <g id="line2d_80">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="76.604514" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="82.897176" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_46">
      <g id="line2d_81">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="72.988714" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="79.439596" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_47">
      <g id="line2d_82">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="70.184081" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="76.757688" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_48">
      <g id="line2d_83">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="67.892529" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="74.56641" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_49">
      <g id="line2d_84">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="65.955049" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="72.71371" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_50">
      <g id="line2d_85">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="64.276728" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="71.108829" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_51">
      <g id="line2d_86">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="62.796344" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="69.693223" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_52">
      <g id="line2d_87">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="52.76011" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="60.096154" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_53">
      <g id="line2d_88">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="47.663926" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="55.222968" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_54">
      <g id="line2d_89">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="44.048125" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="51.765388" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_55">
      <g id="line2d_90">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="41.243492" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="49.08348" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="ytick_56">
      <g id="line2d_91">
       <g>
-       <use xlink:href="#mfeea6895b5" x="53.90692" y="38.95194" style="fill: #383835; stroke: #383835; stroke-width: 0.6"/>
+       <use xlink:href="#mbef115ac8f" x="50.205553" y="46.892201" style="fill: #7b9194; stroke: #7b9194; stroke-width: 0.6"/>
       </g>
      </g>
     </g>
     <g id="text_12">
-     <text style="font-size: 9.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: middle; fill: #c3c2b7" x="10.218756" y="127.337229" transform="rotate(-90 10.218756 127.337229)">one pixel's footprint</text>
+     <!-- one pixel's footprint -->
+     <g style="fill: #dfded9" transform="translate(13.50024 171.204932) rotate(-90) scale(0.105 -0.105)">
+      <defs>
+       <path id="BarlowSemiCondensed-Regular-128" d="M 2714 2387 
+Q 2797 2048 2797 1651 
+Q 2797 1216 2733 890 
+Q 2630 410 2371 182 
+Q 2112 -45 1683 -45 
+Q 1421 -45 1251 44 
+Q 1082 134 979 307 
+Q 973 326 960 323 
+Q 947 320 947 301 
+L 947 -1178 
+Q 947 -1242 883 -1242 
+L 557 -1242 
+Q 493 -1242 493 -1178 
+L 493 3174 
+Q 493 3238 557 3238 
+L 883 3238 
+Q 947 3238 947 3174 
+L 947 2931 
+Q 947 2912 960 2909 
+Q 973 2906 979 2925 
+Q 1210 3290 1715 3290 
+Q 2118 3290 2358 3075 
+Q 2598 2861 2714 2387 
+z
+M 2214 774 
+Q 2336 1101 2336 1619 
+Q 2336 2131 2240 2419 
+Q 2157 2656 2009 2777 
+Q 1862 2899 1626 2899 
+Q 1402 2899 1264 2777 
+Q 1126 2656 1050 2426 
+Q 954 2138 954 1619 
+Q 954 1088 1062 794 
+Q 1139 576 1267 461 
+Q 1395 346 1613 346 
+Q 2035 346 2214 774 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-158" d="M 211 0 
+Q 173 0 160 22 
+Q 147 45 166 77 
+L 1088 1600 
+Q 1101 1619 1088 1638 
+L 166 3162 
+Q 154 3187 154 3200 
+Q 154 3238 211 3238 
+L 570 3238 
+Q 614 3238 646 3194 
+L 1344 2022 
+Q 1350 2016 1363 2016 
+Q 1376 2016 1382 2022 
+L 2074 3194 
+Q 2106 3238 2150 3238 
+L 2515 3238 
+Q 2554 3238 2566 3216 
+Q 2579 3194 2560 3162 
+L 1638 1638 
+Q 1632 1619 1638 1600 
+L 2560 77 
+Q 2573 51 2573 38 
+Q 2573 0 2515 0 
+L 2163 0 
+Q 2118 0 2086 45 
+L 1389 1222 
+Q 1382 1235 1369 1235 
+Q 1357 1235 1350 1222 
+L 653 45 
+Q 621 0 576 0 
+L 211 0 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-103" d="M 493 0 
+Q 429 0 429 64 
+L 429 4416 
+Q 429 4480 493 4480 
+L 819 4480 
+Q 883 4480 883 4416 
+L 883 64 
+Q 883 0 819 0 
+L 493 0 
+z
+" transform="scale(0.015625)"/>
+       <path id="BarlowSemiCondensed-Regular-23e" d="M 282 3155 
+Q 218 3155 218 3219 
+L 166 4403 
+Q 166 4467 230 4467 
+L 570 4467 
+Q 634 4467 634 4403 
+L 582 3219 
+Q 582 3155 518 3155 
+L 282 3155 
+z
+" transform="scale(0.015625)"/>
+      </defs>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10f"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(48 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(95.796875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(142.796875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-128" transform="translate(162.796875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(211.796875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-158" transform="translate(235 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(276.09375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-103" transform="translate(323.09375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-23e" transform="translate(343.6875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(353.78125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(396.578125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-e5" transform="translate(416.578125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(445.984375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(493.984375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(541.6875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-128" transform="translate(573.1875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(622.1875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(655.09375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(678.296875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(726.5 0)"/>
+     </g>
     </g>
    </g>
    <g id="line2d_92">
-    <path d="M 53.90692 100.318461 
-L 443.244135 100.318461 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke-dasharray: 4,3; stroke-dashoffset: 0; stroke: #898781"/>
+    <path d="M 50.205553 105.573449 
+L 454.14976 105.573449 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke-dasharray: 4,3; stroke-dashoffset: 0; stroke: #7b9194"/>
    </g>
    <g id="line2d_93">
-    <path d="M 53.90692 199.505711 
-L 443.244135 199.505711 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke-dasharray: 4,3; stroke-dashoffset: 0; stroke: #898781"/>
+    <path d="M 50.205553 200.42047 
+L 454.14976 200.42047 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke-dasharray: 4,3; stroke-dashoffset: 0; stroke: #7b9194"/>
    </g>
    <g id="line2d_94">
-    <path d="M 53.90692 200.345309 
-L 68.230362 195.427376 
-L 85.158067 189.37837 
-L 105.992166 181.689384 
-L 134.639051 170.861327 
-L 181.515773 152.867928 
-L 281.779872 114.093977 
-L 341.677905 90.754189 
-L 370.32479 79.380429 
-L 389.856758 71.401817 
-L 404.1802 65.322137 
-L 415.899381 60.099422 
-L 425.014299 55.791847 
-L 432.827086 51.839914 
-L 439.337742 48.277544 
-L 443.244135 45.97634 
-L 443.244135 45.97634 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #3987e5; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 50.205553 201.223329 
+L 66.41736 196.083489 
+L 85.331136 189.829176 
+L 108.297863 181.984888 
+L 140.721479 170.652944 
+L 196.111821 151.020041 
+L 309.594475 110.528918 
+L 359.580882 92.500381 
+L 386.600561 82.529722 
+L 404.163353 75.836113 
+L 417.673193 70.473316 
+L 428.481065 65.962771 
+L 437.937952 61.765897 
+L 444.692872 58.55672 
+L 451.447792 55.091384 
+L 454.14976 53.609228 
+L 454.14976 53.609228 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #cb0d00; stroke-width: 2; stroke-linecap: square"/>
    </g>
    <g id="line2d_95">
-    <path d="M 53.90692 208.698118 
-L 443.244135 133.39297 
-L 443.244135 133.39297 
-" clip-path="url(#pc510dacf0a)" style="fill: none; stroke: #d95926; stroke-width: 2; stroke-linecap: square"/>
+    <path d="M 50.205553 209.210637 
+L 454.14976 137.200687 
+L 454.14976 137.200687 
+" clip-path="url(#p6b4913301d)" style="fill: none; stroke: #dfded9; stroke-width: 2; stroke-linecap: square"/>
    </g>
    <g id="patch_3">
-    <path d="M 53.90692 216.834207 
-L 53.90692 37.840251 
-" style="fill: none; stroke: #383835; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+    <path d="M 50.205553 216.990707 
+L 50.205553 45.829157 
+" style="fill: none; stroke: #7b9194; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="patch_4">
-    <path d="M 53.90692 216.834207 
-L 443.244135 216.834207 
-" style="fill: none; stroke: #383835; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+    <path d="M 50.205553 216.990707 
+L 454.14976 216.990707 
+" style="fill: none; stroke: #7b9194; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
    </g>
    <g id="text_13">
-    <text style="font-size: 8.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #898781" x="57.800292" y="96.318461" transform="rotate(-0 57.800292 96.318461)">a 7 m/s sea's peak wave, 45 m</text>
+    <!-- a 7 m/s sea's peak wave, 45 m -->
+    <g style="fill: #7b9194" transform="translate(54.244995 101.573449) scale(0.095 -0.095)">
+     <defs>
+      <path id="BarlowSemiCondensed-Regular-1e6" d="M 838 0 
+Q 768 0 787 70 
+L 2074 4051 
+Q 2080 4064 2070 4073 
+Q 2061 4083 2048 4083 
+L 602 4083 
+Q 576 4083 576 4058 
+L 576 3782 
+Q 576 3718 512 3718 
+L 256 3718 
+Q 192 3718 192 3782 
+L 192 4416 
+Q 192 4480 256 4480 
+L 2496 4480 
+Q 2560 4480 2560 4416 
+L 2560 4122 
+Q 2560 4096 2547 4045 
+L 1267 51 
+Q 1248 0 1190 0 
+L 838 0 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-225" d="M 243 0 
+Q 211 0 195 19 
+Q 179 38 186 70 
+L 1478 4429 
+Q 1498 4480 1549 4480 
+L 1862 4480 
+Q 1894 4480 1910 4461 
+Q 1926 4442 1920 4410 
+L 634 51 
+Q 614 0 563 0 
+L 243 0 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-153" d="M 1043 0 
+Q 986 0 973 58 
+L 186 3168 
+L 179 3194 
+Q 179 3238 237 3238 
+L 557 3238 
+Q 614 3238 627 3181 
+L 1203 723 
+Q 1210 704 1216 704 
+Q 1222 704 1229 723 
+L 1811 3181 
+Q 1824 3238 1882 3238 
+L 2176 3238 
+Q 2240 3238 2246 3181 
+L 2842 730 
+Q 2848 710 2854 710 
+Q 2861 710 2867 730 
+L 3450 3181 
+Q 3462 3238 3520 3238 
+L 3846 3232 
+Q 3878 3232 3894 3213 
+Q 3910 3194 3898 3162 
+L 3098 58 
+Q 3091 0 3027 0 
+L 2694 0 
+Q 2637 0 2624 58 
+L 2042 2426 
+Q 2035 2445 2025 2445 
+Q 2016 2445 2010 2426 
+L 1446 58 
+Q 1434 0 1376 0 
+L 1043 0 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-152" d="M 1184 0 
+Q 1133 0 1114 51 
+L 186 3168 
+L 179 3187 
+Q 179 3238 243 3238 
+L 602 3238 
+Q 659 3238 672 3181 
+L 1350 685 
+Q 1357 672 1366 672 
+Q 1376 672 1382 685 
+L 2054 3181 
+Q 2067 3238 2125 3238 
+L 2490 3232 
+Q 2522 3232 2538 3213 
+Q 2554 3194 2547 3162 
+L 1626 51 
+Q 1606 0 1555 0 
+L 1184 0 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-219" d="M 397 -506 
+Q 365 -506 349 -486 
+Q 333 -467 339 -435 
+L 576 934 
+Q 589 992 646 992 
+L 934 992 
+Q 966 992 982 973 
+Q 998 954 986 922 
+L 666 -448 
+Q 653 -506 595 -506 
+L 397 -506 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-1e3" d="M 2765 1638 
+Q 2829 1638 2829 1574 
+L 2829 1293 
+Q 2829 1229 2765 1229 
+L 2528 1229 
+Q 2502 1229 2502 1203 
+L 2502 64 
+Q 2502 0 2438 0 
+L 2112 0 
+Q 2048 0 2048 64 
+L 2048 1203 
+Q 2048 1229 2022 1229 
+L 288 1229 
+Q 224 1229 224 1293 
+L 224 1536 
+Q 224 1581 237 1613 
+L 1376 4429 
+Q 1395 4480 1446 4480 
+L 1798 4480 
+Q 1830 4480 1843 4457 
+Q 1856 4435 1843 4403 
+L 755 1670 
+Q 749 1658 755 1648 
+Q 762 1638 774 1638 
+L 2022 1638 
+Q 2048 1638 2048 1664 
+L 2048 2675 
+Q 2048 2739 2112 2739 
+L 2438 2739 
+Q 2502 2739 2502 2675 
+L 2502 1664 
+Q 2502 1638 2528 1638 
+L 2765 1638 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-1e4" d="M 2592 2067 
+Q 2675 1766 2675 1376 
+Q 2675 1050 2618 813 
+Q 2522 397 2237 173 
+Q 1952 -51 1523 -51 
+Q 1088 -51 800 179 
+Q 512 410 422 826 
+Q 390 941 384 1062 
+L 384 1075 
+Q 384 1126 442 1126 
+L 774 1126 
+Q 832 1126 838 1075 
+L 838 1050 
+L 864 922 
+Q 922 646 1091 499 
+Q 1261 352 1523 352 
+Q 1779 352 1948 502 
+Q 2118 653 2176 928 
+Q 2221 1107 2221 1370 
+Q 2221 1613 2170 1869 
+Q 2112 2125 1945 2256 
+Q 1779 2387 1523 2387 
+Q 1280 2387 1104 2275 
+Q 928 2163 858 1952 
+L 845 1926 
+Q 838 1882 781 1882 
+L 442 1882 
+Q 378 1882 378 1946 
+L 378 4416 
+Q 378 4480 442 4480 
+L 2470 4480 
+Q 2534 4480 2534 4416 
+L 2534 4147 
+Q 2534 4083 2470 4083 
+L 858 4083 
+Q 832 4083 832 4058 
+L 832 2490 
+Q 832 2477 841 2473 
+Q 851 2470 864 2483 
+Q 992 2624 1187 2704 
+Q 1382 2784 1606 2784 
+Q 1984 2784 2237 2601 
+Q 2490 2419 2592 2067 
+z
+" transform="scale(0.015625)"/>
+     </defs>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(46.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e6" transform="translate(66.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(108.109375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(128.109375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-225" transform="translate(201.71875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(236.625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(279.421875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(299.421875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(342.21875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(388.8125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-23e" transform="translate(432.609375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(442.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(485.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-128" transform="translate(505.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(554.09375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(600.6875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-101" transform="translate(646.890625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(692.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-153" transform="translate(712.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(775.078125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-152" transform="translate(820.6875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(862.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-219" transform="translate(907.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(929.875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e3" transform="translate(949.875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e4" transform="translate(998.171875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1044.265625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(1064.265625 0)"/>
+    </g>
    </g>
    <g id="text_14">
-    <text style="font-size: 8.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: end; fill: #898781" x="439.350763" y="195.505711" transform="rotate(-0 439.350763 195.505711)">the shortest gravity wave, 1.7 cm</text>
+    <!-- the shortest gravity wave, 1.7 cm -->
+    <g style="fill: #7b9194" transform="translate(331.709146 196.42047) scale(0.095 -0.095)">
+     <defs>
+      <path id="BarlowSemiCondensed-Regular-e6" d="M 2189 3174 
+Q 2189 3238 2253 3238 
+L 2579 3238 
+Q 2643 3238 2643 3174 
+L 2643 90 
+Q 2643 -1357 1062 -1286 
+Q 998 -1280 998 -1216 
+L 1005 -928 
+Q 1005 -896 1024 -880 
+Q 1043 -864 1069 -870 
+Q 1670 -890 1929 -650 
+Q 2189 -410 2189 115 
+L 2189 326 
+Q 2189 339 2179 345 
+Q 2170 352 2157 339 
+Q 1907 -19 1414 -19 
+Q 1005 -19 729 227 
+Q 454 474 390 896 
+Q 352 1178 352 1619 
+Q 352 2099 397 2374 
+Q 448 2790 720 3040 
+Q 992 3290 1402 3290 
+Q 1901 3290 2157 2938 
+Q 2170 2925 2179 2928 
+Q 2189 2931 2189 2944 
+L 2189 3174 
+z
+M 2170 986 
+Q 2189 1235 2189 1626 
+Q 2189 2010 2170 2278 
+Q 2144 2547 1968 2720 
+Q 1792 2893 1517 2893 
+Q 1242 2893 1059 2720 
+Q 877 2547 838 2278 
+Q 813 2048 813 1626 
+Q 813 1306 838 986 
+Q 870 717 1056 544 
+Q 1242 371 1517 371 
+Q 1792 371 1968 544 
+Q 2144 717 2170 986 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-159" d="M 326 -1280 
+Q 282 -1280 282 -1216 
+L 282 -960 
+Q 282 -896 346 -896 
+L 358 -896 
+Q 582 -890 707 -819 
+Q 832 -749 918 -569 
+Q 1005 -390 1094 -19 
+Q 1101 -13 1097 3 
+Q 1094 19 1094 19 
+L 141 3168 
+L 134 3187 
+Q 134 3238 198 3238 
+L 544 3238 
+Q 602 3238 614 3181 
+L 1312 627 
+Q 1318 614 1328 614 
+Q 1338 614 1344 627 
+L 2042 3181 
+Q 2054 3238 2112 3238 
+L 2451 3238 
+Q 2483 3238 2499 3219 
+Q 2515 3200 2509 3168 
+L 1466 -282 
+Q 1338 -710 1213 -915 
+Q 1088 -1120 899 -1200 
+Q 710 -1280 365 -1280 
+L 326 -1280 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-218" d="M 742 13 
+Q 582 13 483 115 
+Q 384 218 384 372 
+Q 384 532 483 631 
+Q 582 730 742 730 
+Q 896 730 998 631 
+Q 1100 532 1100 372 
+Q 1100 218 998 115 
+Q 896 13 742 13 
+z
+" transform="scale(0.015625)"/>
+     </defs>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(31.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(79.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(126.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(146.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(189.09375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(236.890625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(284.890625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(318.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(349.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(395.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(438.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(470 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-e6" transform="translate(490 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(537.40625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(570.109375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-152" transform="translate(615.71875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(658.421875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(681.625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-159" transform="translate(713.125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(754.53125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-153" transform="translate(774.53125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(837.421875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-152" transform="translate(883.03125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(924.53125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-219" transform="translate(970.125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(992.21875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e0" transform="translate(1012.21875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-218" transform="translate(1042.515625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e6" transform="translate(1064.625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1106.53125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(1126.53125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(1172.625 0)"/>
+    </g>
    </g>
    <g id="text_15">
-    <text style="font-size: 9px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #c3c2b7" x="449.244135" y="48.314582" transform="rotate(-0 449.244135 48.314582)">along the view</text>
+    <!-- along the view -->
+    <g style="fill: #dfded9" transform="translate(460.14976 57.549072) scale(0.1 -0.1)">
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-103" transform="translate(46.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(66.796875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(114.796875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-e6" transform="translate(163 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(210.40625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(230.40625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(261.90625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(309.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(356.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-152" transform="translate(376.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(419.40625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(442.609375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-153" transform="translate(488.703125 0)"/>
+    </g>
    </g>
    <g id="text_16">
-    <text style="font-size: 9px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #c3c2b7" x="449.244135" y="135.730861" transform="rotate(-0 449.244135 135.730861)">across</text>
+    <!-- across -->
+    <g style="fill: #dfded9" transform="translate(460.14976 141.200687) scale(0.1 -0.1)">
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(46.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(92.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(124.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(172.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(213.5 0)"/>
+    </g>
    </g>
    <g id="text_17">
-    <text style="font-size: 9px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #c3c2b7" x="53.90692" y="27.840251" transform="rotate(-0 53.90692 27.840251)">1920 px across 45°, 12 m up. A wave shorter than the footprint is drawn as roughness.</text>
+    <!-- 1920 px across 45°, 12 m up. A wave shorter than the footprint is drawn as roughness. -->
+    <g style="fill: #7b9194" transform="translate(50.205553 35.829158) scale(0.1 -0.1)">
+     <defs>
+      <path id="BarlowSemiCondensed-Regular-1e8" d="M 2477 3738 
+Q 2573 3482 2573 3117 
+L 2573 1069 
+Q 2573 557 2259 253 
+Q 1946 -51 1440 -51 
+Q 960 -51 656 249 
+Q 352 550 352 1043 
+L 352 1139 
+Q 352 1203 416 1203 
+L 742 1203 
+Q 806 1203 806 1139 
+L 806 1069 
+Q 806 749 985 550 
+Q 1165 352 1440 352 
+Q 1734 352 1926 553 
+Q 2118 755 2118 1094 
+L 2118 2029 
+Q 2118 2042 2105 2048 
+Q 2093 2054 2086 2042 
+Q 1965 1862 1779 1776 
+Q 1594 1690 1363 1690 
+Q 973 1690 723 1888 
+Q 474 2086 358 2458 
+Q 269 2707 269 3110 
+Q 269 3456 333 3667 
+Q 435 4083 710 4307 
+Q 986 4531 1414 4531 
+Q 1824 4531 2096 4323 
+Q 2368 4115 2477 3738 
+z
+M 1427 2067 
+Q 1670 2067 1836 2208 
+Q 2003 2349 2061 2592 
+Q 2118 2771 2118 3104 
+Q 2118 3386 2074 3571 
+Q 2016 3834 1849 3981 
+Q 1683 4128 1427 4128 
+Q 1171 4128 1001 3981 
+Q 832 3834 768 3552 
+Q 730 3373 730 3098 
+Q 730 2771 787 2579 
+Q 851 2336 1014 2201 
+Q 1178 2067 1427 2067 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-270" d="M 1184 3123 
+Q 902 3123 668 3257 
+Q 435 3392 300 3629 
+Q 166 3866 166 4147 
+Q 166 4429 300 4665 
+Q 435 4902 668 5036 
+Q 902 5171 1184 5171 
+Q 1466 5171 1699 5036 
+Q 1933 4902 2067 4665 
+Q 2202 4429 2202 4147 
+Q 2202 3866 2067 3629 
+Q 1933 3392 1699 3257 
+Q 1466 3123 1184 3123 
+z
+M 1184 3443 
+Q 1478 3443 1676 3648 
+Q 1875 3853 1875 4147 
+Q 1875 4448 1676 4653 
+Q 1478 4858 1184 4858 
+Q 890 4858 688 4653 
+Q 486 4448 486 4147 
+Q 486 3853 688 3648 
+Q 890 3443 1184 3443 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-137" d="M 2170 3174 
+Q 2170 3238 2234 3238 
+L 2560 3238 
+Q 2624 3238 2624 3174 
+L 2624 64 
+Q 2624 0 2560 0 
+L 2234 0 
+Q 2170 0 2170 64 
+L 2170 314 
+Q 2170 333 2160 333 
+Q 2150 333 2138 320 
+Q 1914 -45 1395 -45 
+Q 960 -45 685 211 
+Q 410 467 410 954 
+L 410 3174 
+Q 410 3238 474 3238 
+L 800 3238 
+Q 864 3238 864 3174 
+L 864 1069 
+Q 864 730 1030 541 
+Q 1197 352 1498 352 
+Q 1811 352 1990 553 
+Q 2170 755 2170 1094 
+L 2170 3174 
+z
+" transform="scale(0.015625)"/>
+      <path id="BarlowSemiCondensed-Regular-4" d="M 2701 0 
+Q 2643 0 2630 58 
+L 2419 858 
+Q 2413 877 2387 877 
+L 858 877 
+Q 832 877 826 858 
+L 614 58 
+Q 602 0 544 0 
+L 211 0 
+Q 179 0 163 19 
+Q 147 38 154 70 
+L 1350 4422 
+Q 1363 4480 1421 4480 
+L 1830 4480 
+Q 1888 4480 1901 4422 
+L 3098 70 
+L 3104 51 
+Q 3104 0 3040 0 
+L 2701 0 
+z
+M 934 1274 
+Q 928 1267 937 1257 
+Q 947 1248 960 1248 
+L 2285 1248 
+Q 2298 1248 2307 1257 
+Q 2317 1267 2310 1274 
+L 1632 3846 
+Q 1626 3859 1619 3859 
+Q 1613 3859 1606 3846 
+L 934 1274 
+z
+" transform="scale(0.015625)"/>
+     </defs>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e0"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e8" transform="translate(30.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e1" transform="translate(76.390625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1df" transform="translate(123.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(173.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-128" transform="translate(193.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-158" transform="translate(242.40625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(285 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(305 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(351.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(397.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(429.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(477.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(518.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(561.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e3" transform="translate(581.296875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e4" transform="translate(629.59375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-270" transform="translate(675.6875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-219" transform="translate(712.6875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(734.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e0" transform="translate(754.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-1e1" transform="translate(785.171875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(832.078125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-109" transform="translate(852.078125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(925.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-137" transform="translate(945.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-128" transform="translate(993.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-218" transform="translate(1040.984375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1064.390625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-4" transform="translate(1084.390625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1135.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-153" transform="translate(1155.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(1218.078125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-152" transform="translate(1263.6875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(1305.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1352.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(1372.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(1414.984375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(1462.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(1510.78125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(1544.390625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(1575.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(1622.1875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1655.09375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(1675.09375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(1706.59375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(1754.796875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(1801 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1849.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(1869.203125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(1900.703125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(1948.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(1995.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-e5" transform="translate(2015.5 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(2044.90625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(2092.90625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(2140.609375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-128" transform="translate(2172.109375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(2221.109375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(2254.015625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(2277.21875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(2325.421875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(2356.921875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(2376.921875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(2400.125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(2442.921875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-cc" transform="translate(2462.921875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(2511.328125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(2544.03125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-153" transform="translate(2589.640625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(2653.4375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(2701.640625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ad" transform="translate(2721.640625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(2767.84375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(2810.640625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(2830.640625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(2863.046875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-137" transform="translate(2911.046875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-e6" transform="translate(2959.046875 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(3006.453125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(3054.65625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(3102.453125 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(3148.859375 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(3189.65625 0)"/>
+     <use xlink:href="#BarlowSemiCondensed-Regular-218" transform="translate(3232.453125 0)"/>
+    </g>
    </g>
    <g id="legend_1">
     <g id="line2d_96">
-     <path d="M 61.55692 263.76667 
-L 70.05692 263.76667 
-L 78.55692 263.76667 
-" style="fill: none; stroke: #3987e5; stroke-width: 2; stroke-linecap: square"/>
+     <path d="M 57.855553 264.398017 
+L 66.355553 264.398017 
+L 74.855553 264.398017 
+" style="fill: none; stroke: #cb0d00; stroke-width: 2; stroke-linecap: square"/>
     </g>
     <g id="text_18">
-     <text style="font-size: 8.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #c3c2b7" x="85.35692" y="266.74167" transform="rotate(-0 85.35692 266.74167)">along the view</text>
+     <!-- along the view -->
+     <g style="fill: #dfded9" transform="translate(81.655552 267.373017) scale(0.085 -0.085)">
+      <use xlink:href="#BarlowSemiCondensed-Regular-ad"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-103" transform="translate(46.203125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(66.796875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10a" transform="translate(114.796875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-e6" transform="translate(163 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(210.40625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-134" transform="translate(230.40625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-ec" transform="translate(261.90625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(309.703125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-3" transform="translate(356.703125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-152" transform="translate(376.703125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-f0" transform="translate(419.40625 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-d0" transform="translate(442.609375 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-153" transform="translate(488.703125 0)"/>
+     </g>
     </g>
     <g id="line2d_97">
-     <path d="M 164.837232 263.76667 
-L 173.337232 263.76667 
-L 181.837232 263.76667 
-" style="fill: none; stroke: #d95926; stroke-width: 2; stroke-linecap: square"/>
+     <path d="M 145.618053 264.398017 
+L 154.118053 264.398017 
+L 162.618053 264.398017 
+" style="fill: none; stroke: #dfded9; stroke-width: 2; stroke-linecap: square"/>
     </g>
     <g id="text_19">
-     <text style="font-size: 8.5px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #c3c2b7" x="188.637232" y="266.74167" transform="rotate(-0 188.637232 266.74167)">across</text>
+     <!-- across -->
+     <g style="fill: #dfded9" transform="translate(169.418053 267.373017) scale(0.085 -0.085)">
+      <use xlink:href="#BarlowSemiCondensed-Regular-ad"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-c6" transform="translate(46.203125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12b" transform="translate(92.296875 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-10f" transform="translate(124.703125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(172.703125 0)"/>
+      <use xlink:href="#BarlowSemiCondensed-Regular-12e" transform="translate(213.5 0)"/>
+     </g>
     </g>
    </g>
   </g>
   <g id="text_20">
-   <text style="font-weight: 700; font-size: 12px; font-family: 'Helvetica', 'Arial', 'DejaVu Sans'; text-anchor: start; fill: #ffffff" x="5.184" y="12.118365" transform="rotate(-0 5.184 12.118365)">By 1 km, one pixel is as long as the biggest waves</text>
+   <!-- By 1 km, one pixel is as long as the biggest waves -->
+   <g style="fill: #ffffff" transform="translate(5.184 17.00024) scale(0.14 -0.14)">
+    <defs>
+     <path id="BarlowSemiCondensed-Bold-1c" d="M 3258 1242 
+Q 3258 634 2864 317 
+Q 2470 0 1850 0 
+L 416 0 
+Q 384 0 361 22 
+Q 339 45 339 77 
+L 339 4403 
+Q 339 4435 361 4457 
+Q 384 4480 416 4480 
+L 1754 4480 
+Q 2438 4480 2816 4176 
+Q 3194 3872 3194 3251 
+Q 3194 2618 2701 2336 
+Q 2669 2317 2694 2298 
+Q 3258 1978 3258 1242 
+z
+M 1274 3706 
+Q 1242 3706 1242 3674 
+L 1242 2669 
+Q 1242 2637 1274 2637 
+L 1760 2637 
+Q 2016 2637 2163 2777 
+Q 2310 2918 2310 3168 
+Q 2310 3424 2166 3565 
+Q 2022 3706 1760 3706 
+L 1274 3706 
+z
+M 1811 781 
+Q 2067 781 2211 931 
+Q 2355 1082 2355 1357 
+Q 2355 1632 2211 1789 
+Q 2067 1946 1811 1946 
+L 1274 1946 
+Q 1242 1946 1242 1914 
+L 1242 813 
+Q 1242 781 1274 781 
+L 1811 781 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-159" d="M 282 -1274 
+Q 262 -1274 249 -1251 
+Q 237 -1229 237 -1197 
+L 237 -608 
+Q 237 -531 307 -531 
+Q 672 -525 829 -425 
+Q 986 -326 1030 -19 
+L 1024 19 
+L 102 3206 
+L 96 3232 
+Q 96 3296 166 3296 
+L 973 3296 
+Q 1043 3296 1056 3226 
+L 1472 1235 
+Q 1478 1210 1491 1210 
+Q 1504 1210 1510 1235 
+L 1926 3226 
+Q 1939 3296 2010 3296 
+L 2803 3290 
+Q 2842 3290 2858 3267 
+Q 2874 3245 2867 3206 
+L 1888 -122 
+Q 1747 -589 1590 -822 
+Q 1434 -1056 1146 -1165 
+Q 858 -1274 320 -1274 
+L 282 -1274 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-3" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-1e0" d="M 800 4461 
+Q 851 4480 896 4480 
+L 1670 4480 
+Q 1702 4480 1724 4457 
+Q 1747 4435 1747 4403 
+L 1747 77 
+Q 1747 45 1724 22 
+Q 1702 0 1670 0 
+L 922 0 
+Q 890 0 867 22 
+Q 845 45 845 77 
+L 845 3571 
+Q 845 3584 835 3597 
+Q 826 3610 813 3603 
+L 243 3494 
+L 218 3488 
+Q 160 3488 160 3558 
+L 141 4109 
+Q 141 4173 198 4198 
+L 800 4461 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-101" d="M 365 0 
+Q 333 0 310 22 
+Q 288 45 288 77 
+L 288 4403 
+Q 288 4435 310 4457 
+Q 333 4480 365 4480 
+L 1114 4480 
+Q 1146 4480 1168 4457 
+Q 1190 4435 1190 4403 
+L 1190 2266 
+Q 1190 2246 1203 2240 
+Q 1216 2234 1229 2253 
+L 1946 3245 
+Q 1978 3290 2035 3290 
+L 2848 3290 
+Q 2912 3290 2912 3245 
+Q 2912 3226 2893 3194 
+L 2138 2144 
+Q 2125 2125 2138 2099 
+L 3008 90 
+Q 3014 77 3014 51 
+Q 3014 0 2950 0 
+L 2163 0 
+Q 2093 0 2074 64 
+L 1555 1440 
+Q 1549 1459 1536 1459 
+Q 1523 1459 1510 1446 
+L 1203 1024 
+Q 1190 998 1190 986 
+L 1190 77 
+Q 1190 45 1168 22 
+Q 1146 0 1114 0 
+L 365 0 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-109" d="M 3610 3341 
+Q 4077 3341 4323 3043 
+Q 4570 2746 4570 2208 
+L 4570 77 
+Q 4570 45 4547 22 
+Q 4525 0 4493 0 
+L 3750 0 
+Q 3718 0 3696 22 
+Q 3674 45 3674 77 
+L 3674 2080 
+Q 3674 2304 3568 2435 
+Q 3462 2566 3283 2566 
+Q 3098 2566 2989 2435 
+Q 2880 2304 2880 2086 
+L 2880 77 
+Q 2880 45 2857 22 
+Q 2835 0 2803 0 
+L 2061 0 
+Q 2029 0 2006 22 
+Q 1984 45 1984 77 
+L 1984 2080 
+Q 1984 2304 1875 2435 
+Q 1766 2566 1587 2566 
+Q 1402 2566 1293 2435 
+Q 1184 2304 1184 2086 
+L 1184 77 
+Q 1184 45 1161 22 
+Q 1139 0 1107 0 
+L 365 0 
+Q 333 0 310 22 
+Q 288 45 288 77 
+L 288 3213 
+Q 288 3245 310 3267 
+Q 333 3290 365 3290 
+L 1107 3290 
+Q 1139 3290 1161 3267 
+Q 1184 3245 1184 3213 
+L 1184 3046 
+Q 1184 3027 1197 3020 
+Q 1210 3014 1222 3034 
+Q 1357 3194 1536 3267 
+Q 1715 3341 1920 3341 
+Q 2208 3341 2416 3222 
+Q 2624 3104 2739 2880 
+Q 2746 2867 2758 2870 
+Q 2771 2874 2784 2893 
+Q 2925 3130 3142 3235 
+Q 3360 3341 3610 3341 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-219" d="M 301 -627 
+Q 218 -627 230 -544 
+L 410 941 
+Q 416 1011 486 1011 
+L 1133 1011 
+Q 1222 1011 1203 928 
+L 838 -563 
+Q 819 -627 749 -627 
+L 301 -627 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-10f" d="M 1613 -51 
+Q 1056 -51 701 227 
+Q 346 506 275 992 
+Q 224 1286 224 1651 
+Q 224 2022 275 2310 
+Q 346 2784 701 3062 
+Q 1056 3341 1613 3341 
+Q 2163 3341 2512 3062 
+Q 2861 2784 2938 2310 
+Q 2989 2022 2989 1651 
+Q 2989 1293 2938 998 
+Q 2867 506 2518 227 
+Q 2170 -51 1613 -51 
+z
+M 1613 723 
+Q 1779 723 1897 832 
+Q 2016 941 2054 1126 
+Q 2086 1395 2086 1651 
+Q 2086 1914 2054 2170 
+Q 2022 2355 1904 2460 
+Q 1786 2566 1606 2566 
+Q 1434 2566 1315 2460 
+Q 1197 2355 1165 2170 
+Q 1133 1978 1133 1651 
+Q 1133 1331 1158 1126 
+Q 1197 941 1318 832 
+Q 1440 723 1613 723 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-10a" d="M 1914 3341 
+Q 2381 3341 2646 3043 
+Q 2912 2746 2912 2214 
+L 2912 77 
+Q 2912 45 2889 22 
+Q 2867 0 2835 0 
+L 2086 0 
+Q 2054 0 2032 22 
+Q 2010 45 2010 77 
+L 2010 2086 
+Q 2010 2310 1901 2438 
+Q 1792 2566 1606 2566 
+Q 1414 2566 1302 2435 
+Q 1190 2304 1190 2080 
+L 1190 77 
+Q 1190 45 1168 22 
+Q 1146 0 1114 0 
+L 365 0 
+Q 333 0 310 22 
+Q 288 45 288 77 
+L 288 3213 
+Q 288 3245 310 3267 
+Q 333 3290 365 3290 
+L 1114 3290 
+Q 1146 3290 1168 3267 
+Q 1190 3245 1190 3213 
+L 1190 3034 
+Q 1190 3014 1203 3011 
+Q 1216 3008 1235 3034 
+Q 1466 3341 1914 3341 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-d0" d="M 2931 2144 
+Q 2950 1933 2950 1677 
+L 2944 1427 
+Q 2944 1350 2867 1350 
+L 1171 1350 
+Q 1139 1350 1139 1318 
+Q 1152 1171 1165 1101 
+Q 1197 922 1321 819 
+Q 1446 717 1632 717 
+Q 1946 723 2067 1005 
+Q 2099 1069 2163 1056 
+L 2842 922 
+Q 2918 902 2893 826 
+Q 2752 403 2429 176 
+Q 2106 -51 1632 -51 
+Q 1062 -51 726 208 
+Q 390 467 288 954 
+Q 230 1216 230 1754 
+Q 230 2061 269 2272 
+Q 339 2758 691 3049 
+Q 1043 3341 1581 3341 
+Q 2163 3341 2528 3011 
+Q 2893 2682 2931 2144 
+z
+M 1587 2566 
+Q 1414 2566 1302 2464 
+Q 1190 2362 1158 2182 
+Q 1139 2067 1139 1939 
+Q 1139 1907 1171 1907 
+L 2003 1907 
+Q 2035 1907 2035 1939 
+Q 2035 2067 2016 2182 
+Q 1990 2355 1875 2460 
+Q 1760 2566 1587 2566 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-128" d="M 2931 2330 
+Q 2995 2042 2995 1613 
+Q 2995 1216 2938 947 
+Q 2842 461 2589 205 
+Q 2336 -51 1914 -51 
+Q 1696 -51 1536 9 
+Q 1376 70 1254 211 
+Q 1242 230 1229 224 
+Q 1216 218 1216 198 
+L 1216 -1114 
+Q 1216 -1146 1193 -1168 
+Q 1171 -1190 1139 -1190 
+L 390 -1190 
+Q 358 -1190 336 -1168 
+Q 314 -1146 314 -1114 
+L 314 3213 
+Q 314 3245 336 3267 
+Q 358 3290 390 3290 
+L 1139 3290 
+Q 1171 3290 1193 3267 
+Q 1216 3245 1216 3213 
+L 1216 3085 
+Q 1216 3066 1229 3059 
+Q 1242 3053 1254 3066 
+Q 1491 3341 1933 3341 
+Q 2707 3341 2931 2330 
+z
+M 2035 1069 
+Q 2093 1280 2093 1645 
+Q 2093 1971 2042 2195 
+Q 2003 2368 1904 2467 
+Q 1805 2566 1645 2566 
+Q 1350 2566 1267 2195 
+Q 1216 2010 1216 1645 
+Q 1216 1299 1267 1075 
+Q 1350 723 1645 723 
+Q 1933 723 2035 1069 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-f0" d="M 755 3661 
+Q 538 3661 397 3805 
+Q 256 3949 256 4166 
+Q 256 4390 393 4531 
+Q 531 4672 755 4672 
+Q 979 4672 1120 4531 
+Q 1261 4390 1261 4166 
+Q 1261 3949 1117 3805 
+Q 973 3661 755 3661 
+z
+M 384 0 
+Q 352 0 329 22 
+Q 307 45 307 77 
+L 307 3213 
+Q 307 3245 329 3267 
+Q 352 3290 384 3290 
+L 1133 3290 
+Q 1165 3290 1187 3267 
+Q 1210 3245 1210 3213 
+L 1210 77 
+Q 1210 45 1187 22 
+Q 1165 0 1133 0 
+L 384 0 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-158" d="M 186 0 
+Q 141 0 121 25 
+Q 102 51 128 90 
+L 1011 1626 
+Q 1024 1645 1011 1664 
+L 128 3200 
+L 115 3238 
+Q 115 3290 186 3290 
+L 992 3290 
+Q 1056 3290 1088 3238 
+L 1530 2432 
+Q 1549 2406 1568 2432 
+L 2010 3238 
+Q 2042 3290 2106 3290 
+L 2938 3290 
+Q 2982 3290 3001 3264 
+Q 3021 3238 2995 3200 
+L 2112 1664 
+Q 2106 1645 2112 1626 
+L 2995 90 
+L 3008 51 
+Q 3008 0 2938 0 
+L 2138 0 
+Q 2074 0 2042 51 
+L 1594 870 
+Q 1574 902 1555 870 
+L 1114 51 
+Q 1088 0 1018 0 
+L 186 0 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-103" d="M 352 0 
+Q 320 0 297 22 
+Q 275 45 275 77 
+L 275 4403 
+Q 275 4435 297 4457 
+Q 320 4480 352 4480 
+L 1101 4480 
+Q 1133 4480 1155 4457 
+Q 1178 4435 1178 4403 
+L 1178 77 
+Q 1178 45 1155 22 
+Q 1133 0 1101 0 
+L 352 0 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-12e" d="M 1491 -45 
+Q 896 -45 544 217 
+Q 192 480 192 909 
+L 192 960 
+Q 192 992 214 1014 
+Q 237 1037 269 1037 
+L 973 1037 
+Q 1005 1037 1027 1014 
+Q 1050 992 1050 960 
+L 1050 947 
+Q 1050 806 1178 716 
+Q 1306 627 1491 627 
+Q 1664 627 1766 707 
+Q 1869 787 1869 909 
+Q 1869 1030 1757 1094 
+Q 1645 1158 1395 1242 
+Q 1293 1267 1088 1344 
+Q 704 1472 464 1689 
+Q 224 1907 224 2317 
+Q 224 2784 563 3059 
+Q 902 3334 1459 3334 
+Q 2035 3334 2377 3049 
+Q 2720 2765 2720 2291 
+Q 2720 2221 2643 2221 
+L 1952 2221 
+Q 1920 2221 1897 2243 
+Q 1875 2266 1875 2298 
+L 1875 2317 
+Q 1875 2451 1766 2540 
+Q 1658 2630 1472 2630 
+Q 1299 2630 1193 2547 
+Q 1088 2464 1088 2342 
+Q 1088 2208 1216 2134 
+Q 1344 2061 1606 1984 
+Q 1664 1965 1718 1949 
+Q 1773 1933 1818 1914 
+Q 2253 1766 2515 1558 
+Q 2778 1350 2778 941 
+Q 2778 480 2429 217 
+Q 2080 -45 1491 -45 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-ad" d="M 1542 3341 
+Q 1926 3341 2227 3203 
+Q 2528 3066 2697 2819 
+Q 2867 2573 2867 2259 
+L 2867 77 
+Q 2867 45 2844 22 
+Q 2822 0 2790 0 
+L 2042 0 
+Q 2010 0 1987 22 
+Q 1965 45 1965 77 
+L 1965 256 
+Q 1965 275 1952 281 
+Q 1939 288 1926 269 
+Q 1683 -51 1171 -51 
+Q 736 -51 445 173 
+Q 154 397 154 922 
+Q 154 1965 1459 1965 
+L 1933 1965 
+Q 1965 1965 1965 1997 
+L 1965 2144 
+Q 1965 2336 1853 2451 
+Q 1741 2566 1549 2566 
+Q 1395 2566 1292 2496 
+Q 1190 2426 1165 2304 
+Q 1146 2240 1075 2240 
+L 301 2285 
+Q 269 2285 246 2304 
+Q 224 2323 230 2355 
+Q 269 2797 630 3069 
+Q 992 3341 1542 3341 
+z
+M 1440 634 
+Q 1658 634 1811 755 
+Q 1965 877 1965 1075 
+L 1965 1344 
+Q 1965 1376 1933 1376 
+L 1574 1376 
+Q 1338 1376 1203 1273 
+Q 1069 1171 1069 979 
+Q 1069 813 1171 723 
+Q 1274 634 1440 634 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-e6" d="M 2022 3213 
+Q 2022 3245 2044 3267 
+Q 2067 3290 2099 3290 
+L 2848 3290 
+Q 2880 3290 2902 3267 
+Q 2925 3245 2925 3213 
+L 2925 224 
+Q 2925 -544 2499 -918 
+Q 2074 -1293 1280 -1293 
+Q 1107 -1293 915 -1274 
+Q 838 -1267 838 -1190 
+L 858 -544 
+Q 858 -474 941 -474 
+Q 1037 -486 1210 -486 
+Q 1638 -486 1830 -304 
+Q 2022 -122 2022 275 
+L 2022 275 
+Q 2022 294 2009 300 
+Q 1997 307 1984 288 
+Q 1747 13 1331 13 
+Q 915 13 627 256 
+Q 339 499 262 979 
+Q 218 1146 218 1658 
+Q 218 2170 275 2374 
+Q 346 2829 614 3085 
+Q 883 3341 1312 3341 
+Q 1734 3341 1984 3053 
+Q 1997 3034 2009 3040 
+Q 2022 3046 2022 3066 
+L 2022 3213 
+z
+M 1997 1133 
+Q 2022 1338 2022 1658 
+Q 2022 1984 1997 2189 
+Q 1965 2362 1856 2464 
+Q 1747 2566 1581 2566 
+Q 1421 2566 1309 2460 
+Q 1197 2355 1165 2189 
+Q 1126 1958 1126 1658 
+Q 1126 1376 1158 1139 
+Q 1190 966 1302 864 
+Q 1414 762 1587 762 
+Q 1754 762 1862 864 
+Q 1971 966 1997 1133 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-134" d="M 1984 2688 
+Q 1984 2656 1961 2633 
+Q 1939 2611 1907 2611 
+L 1414 2611 
+Q 1382 2611 1382 2579 
+L 1382 1139 
+Q 1382 941 1462 854 
+Q 1542 768 1709 774 
+L 1837 774 
+Q 1869 774 1891 752 
+Q 1914 730 1914 698 
+L 1914 77 
+Q 1914 0 1837 0 
+Q 1728 -6 1517 -6 
+Q 1011 -6 764 160 
+Q 518 326 518 787 
+L 518 2579 
+Q 518 2611 486 2611 
+L 192 2611 
+Q 160 2611 137 2633 
+Q 115 2656 115 2688 
+L 115 3213 
+Q 115 3245 137 3267 
+Q 160 3290 192 3290 
+L 486 3290 
+Q 518 3290 518 3322 
+L 518 4058 
+Q 518 4090 540 4112 
+Q 563 4134 595 4134 
+L 1306 4134 
+Q 1338 4134 1360 4112 
+Q 1382 4090 1382 4058 
+L 1382 3322 
+Q 1382 3290 1414 3290 
+L 1907 3290 
+Q 1939 3290 1961 3267 
+Q 1984 3245 1984 3213 
+L 1984 2688 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-ec" d="M 1914 3341 
+Q 2381 3341 2646 3043 
+Q 2912 2746 2912 2214 
+L 2912 77 
+Q 2912 45 2889 22 
+Q 2867 0 2835 0 
+L 2086 0 
+Q 2054 0 2032 22 
+Q 2010 45 2010 77 
+L 2010 2086 
+Q 2010 2310 1901 2438 
+Q 1792 2566 1606 2566 
+Q 1414 2566 1302 2435 
+Q 1190 2304 1190 2080 
+L 1190 77 
+Q 1190 45 1168 22 
+Q 1146 0 1114 0 
+L 365 0 
+Q 333 0 310 22 
+Q 288 45 288 77 
+L 288 4403 
+Q 288 4435 310 4457 
+Q 333 4480 365 4480 
+L 1114 4480 
+Q 1146 4480 1168 4457 
+Q 1190 4435 1190 4403 
+L 1190 3034 
+Q 1190 3014 1203 3011 
+Q 1216 3008 1235 3034 
+Q 1466 3341 1914 3341 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-c5" d="M 2918 2349 
+Q 2976 2067 2976 1677 
+Q 2976 1248 2912 966 
+Q 2701 -51 1914 -51 
+Q 1472 -51 1235 224 
+Q 1222 243 1209 236 
+Q 1197 230 1197 211 
+L 1197 77 
+Q 1197 45 1174 22 
+Q 1152 0 1120 0 
+L 371 0 
+Q 339 0 316 22 
+Q 294 45 294 77 
+L 294 4403 
+Q 294 4435 316 4457 
+Q 339 4480 371 4480 
+L 1120 4480 
+Q 1152 4480 1174 4457 
+Q 1197 4435 1197 4403 
+L 1197 3091 
+Q 1197 3072 1209 3065 
+Q 1222 3059 1235 3078 
+Q 1357 3219 1520 3280 
+Q 1683 3341 1901 3341 
+Q 2317 3341 2573 3085 
+Q 2829 2829 2918 2349 
+z
+M 2022 1101 
+Q 2074 1312 2074 1651 
+Q 2074 2035 2016 2221 
+Q 1914 2566 1626 2566 
+Q 1331 2566 1248 2214 
+Q 1197 1990 1197 1651 
+Q 1197 1280 1248 1094 
+Q 1331 723 1626 723 
+Q 1939 723 2022 1101 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-153" d="M 1011 0 
+Q 941 0 922 64 
+L 122 3213 
+L 122 3238 
+Q 122 3296 192 3296 
+L 928 3296 
+Q 998 3296 1011 3226 
+L 1389 1440 
+Q 1395 1414 1408 1414 
+Q 1421 1414 1427 1440 
+L 1805 3226 
+Q 1818 3296 1888 3296 
+L 2547 3296 
+Q 2618 3296 2630 3226 
+L 3034 1446 
+Q 3040 1421 3053 1421 
+Q 3066 1421 3072 1446 
+L 3456 3226 
+Q 3469 3296 3539 3296 
+L 4275 3283 
+Q 4365 3283 4346 3200 
+L 3539 64 
+Q 3520 0 3450 0 
+L 2701 0 
+Q 2637 0 2618 64 
+L 2227 1741 
+Q 2221 1766 2208 1766 
+Q 2195 1766 2189 1741 
+L 1830 70 
+Q 1818 0 1747 0 
+L 1011 0 
+z
+" transform="scale(0.015625)"/>
+     <path id="BarlowSemiCondensed-Bold-152" d="M 1114 0 
+Q 1043 0 1024 64 
+L 128 3213 
+L 122 3238 
+Q 122 3296 192 3296 
+L 1011 3296 
+Q 1082 3296 1094 3226 
+L 1510 1312 
+Q 1517 1286 1529 1286 
+Q 1542 1286 1549 1312 
+L 1958 3226 
+Q 1971 3296 2042 3296 
+L 2861 3283 
+Q 2944 3283 2925 3200 
+L 2042 64 
+Q 2022 0 1952 0 
+L 1114 0 
+z
+" transform="scale(0.015625)"/>
+    </defs>
+    <use xlink:href="#BarlowSemiCondensed-Bold-1c"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-159" transform="translate(54 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(100.40625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-1e0" transform="translate(120.40625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(152.3125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-101" transform="translate(172.3125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-109" transform="translate(221.40625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-219" transform="translate(296.203125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(320 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-10f" transform="translate(340 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-10a" transform="translate(390.296875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-d0" transform="translate(439.90625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(489.109375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-128" transform="translate(509.109375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-f0" transform="translate(559.90625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-158" transform="translate(583.609375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-d0" transform="translate(629.5 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-103" transform="translate(678.703125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(701.40625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-f0" transform="translate(721.40625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-12e" transform="translate(745.109375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(790.8125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-ad" transform="translate(810.8125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-12e" transform="translate(859.515625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(905.21875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-103" transform="translate(925.21875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-10f" transform="translate(947.921875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-10a" transform="translate(998.21875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-e6" transform="translate(1047.921875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(1097.71875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-ad" transform="translate(1117.71875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-12e" transform="translate(1166.421875 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(1212.125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-134" transform="translate(1232.125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-ec" transform="translate(1265.625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-d0" transform="translate(1315.234375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(1364.4375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-c5" transform="translate(1384.4375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-f0" transform="translate(1434.9375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-e6" transform="translate(1458.640625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-e6" transform="translate(1508.4375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-d0" transform="translate(1558.234375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-12e" transform="translate(1607.03125 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-134" transform="translate(1652.640625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-3" transform="translate(1686.140625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-153" transform="translate(1706.140625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-ad" transform="translate(1773.84375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-152" transform="translate(1821.140625 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-d0" transform="translate(1866.4375 0)"/>
+    <use xlink:href="#BarlowSemiCondensed-Bold-12e" transform="translate(1915.234375 0)"/>
+   </g>
   </g>
  </g>
  <defs>
-  <clipPath id="pc510dacf0a">
-   <rect x="53.90692" y="37.840251" width="389.337215" height="178.993956"/>
+  <clipPath id="p6b4913301d">
+   <rect x="50.205553" y="45.829158" width="403.944208" height="171.161549"/>
   </clipPath>
  </defs>
 </svg>

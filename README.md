@@ -86,7 +86,7 @@ For bash, `bash_source` in `~/.bashrc`.
 
 | | |
 |---|---|
-| [Primer](docs/primer/) | Blender, HDR, EO and LWIR, the sea's physics, limitations, for anyone new to them |
+| [How seascape works](docs/primer/) | a tour for anyone new to Blender: rendering, HDR, EO and LWIR, the sea, limitations |
 | [Scenarios](docs/scenarios.md) | `--set`, `extends`, skies, sequences |
 | [Outputs](docs/outputs.md) | labels, LWIR radiometry, montage, panorama |
 | [Assets](docs/assets.md) | the meshes, where they come from, adding one |
