@@ -1,0 +1,23 @@
+#:schema ../../schema/scenario.json
+
+# Small and fast: every figure in the primer renders this with one change.
+extends = "../../scenarios/open-sea.toml"
+
+[[rig.pods]]
+name = "bow"
+yaw_deg = 0.0
+
+[[rig.pods.cameras]]
+kind = "eo"
+hfov_deg = 45.0
+width_px = 640
+height_px = 360
+
+[[rig.pods.cameras]]
+kind = "ir"
+hfov_deg = 45.0
+width_px = 640
+height_px = 360
+
+[outputs]
+bands = ["eo"]
