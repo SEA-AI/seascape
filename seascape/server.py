@@ -6,6 +6,7 @@ it. Its files are served under /renders/ and deleted after `KEEP_S`.
 
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -36,11 +37,18 @@ WAIT_S = 45.0
 # The longest side a model reads without downscaling.
 PREVIEW_PX = 1568
 PREVIEWS = 8
+
+
+def _limit(name: str, default: float) -> float:
+    """`SEASCAPE_<name>` from the environment, else `default`."""
+    return float(os.environ.get(f"SEASCAPE_{name}", default))
+
+
 # What one job may ask of a shared machine.
-MAX_DURATION_S = 60.0
-MAX_PIXELS = 3840 * 2160
-MAX_IMAGES = 10_000
-MIN_FREE_BYTES = 10 * 2**30
+MAX_DURATION_S = _limit("MAX_DURATION_S", 60.0)
+MAX_PIXELS = int(_limit("MAX_PIXELS", 3840 * 2160))
+MAX_IMAGES = int(_limit("MAX_IMAGES", 10_000))
+MIN_FREE_GB = _limit("MIN_FREE_GB", 10.0)
 
 server = MCPServer(
     "seascape",
@@ -180,10 +188,8 @@ async def render(
     _refuse_oversized(scenes)
     RENDERS.mkdir(parents=True, exist_ok=True)
     _prune()
-    if (free := shutil.disk_usage(RENDERS).free) < MIN_FREE_BYTES:
-        raise ToolError(
-            f"{free / 2**30:.0f} GB free; a job needs {MIN_FREE_BYTES / 2**30:.0f}"
-        )
+    if (free_gb := shutil.disk_usage(RENDERS).free / 2**30) < MIN_FREE_GB:
+        raise ToolError(f"{free_gb:.0f} GB free; a job needs {MIN_FREE_GB:.0f}")
     ahead = sum(job.waiting for job in _jobs.values())
     name = uuid.uuid4().hex
     job = _jobs[name] = Job(RENDERS / name, scenario, scenes)

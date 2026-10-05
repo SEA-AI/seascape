@@ -43,6 +43,19 @@ docker compose up -d --build
 docker compose logs   # names the GPU backend
 ```
 
-Renders land in `renders/` beside `compose.yaml`; `SEASCAPE_RENDERS=/data/seascape` in a `.env` there puts them elsewhere. To update, `git pull` and run `docker compose up -d --build` again.
+Compose reads these from the shell or from a `.env` beside `compose.yaml`:
+
+| variable | sets |
+|---|---|
+| `SEASCAPE_RENDERS` | the renders' folder, `renders/` beside `compose.yaml` unless set |
+| `SEASCAPE_PORT` | the port |
+| `SEASCAPE_MAX_DURATION_S`, `SEASCAPE_MAX_PIXELS`, `SEASCAPE_MAX_IMAGES`, `SEASCAPE_MIN_FREE_GB` | a job's limits, per camera for pixels |
+
+```bash
+echo "SEASCAPE_MAX_DURATION_S=120" >> .env
+docker compose up -d
+```
+
+To update, `git pull` and run `docker compose up -d --build` again.
 
 Without Docker, `uv run seascape serve --host 0.0.0.0` serves from a checkout.

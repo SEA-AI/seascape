@@ -1,7 +1,13 @@
 services:
   seascape:
     build: .
-    ports: ["8765:8765"]
+    ports: ["${SEASCAPE_PORT:-8765}:8765"]
+    # Unset, each keeps the default in seascape/server.py.
+    environment:
+      - SEASCAPE_MAX_DURATION_S
+      - SEASCAPE_MAX_PIXELS
+      - SEASCAPE_MAX_IMAGES
+      - SEASCAPE_MIN_FREE_GB
     volumes:
       - cache:/root/.cache/seascape
       - ${SEASCAPE_RENDERS:-./renders}:/root/.cache/seascape/renders

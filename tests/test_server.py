@@ -69,7 +69,7 @@ def test_a_full_disk_refuses_a_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(server, "RENDERS", tmp_path)
-    monkeypatch.setattr(server, "MIN_FREE_BYTES", 2**80)
+    monkeypatch.setattr(server, "MIN_FREE_GB", 2.0**50)
     result = _call("render")
     assert result.is_error
     assert "GB free" in result.content[0].text
