@@ -430,7 +430,9 @@ class Targets(Model):
     Placed in the world, so nothing guarantees a camera sees one.
     """
 
-    asset: AssetName = Field(description=_ASSET)
+    asset: AssetName | Annotated[list[AssetName], Field(min_length=1)] = Field(
+        description=f"{_ASSET} A list is taken in turn round the ring."
+    )
     count: int = Field(gt=0, description="How many.")
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: tuple[float, float] = Field(
@@ -450,10 +452,15 @@ class Targets(Model):
         low, high = span
         return low + (high - low) * i / max(self.count - 1, 1)
 
-    def poses(self) -> list[tuple[float, float]]:
-        """Bearing and heading per target, in degrees."""
+    def poses(self) -> list[tuple[str, float, float]]:
+        """Asset, bearing_deg and heading_deg per target."""
+        names = [self.asset] if isinstance(self.asset, str) else self.asset
         return [
-            (self._spread(self.bearing_deg, i), self._spread(self.heading_deg, i))
+            (
+                names[i % len(names)],
+                self._spread(self.bearing_deg, i),
+                self._spread(self.heading_deg, i),
+            )
             for i in range(self.count)
         ]
 
@@ -539,9 +546,7 @@ class Scenario(Model):
     seed: int = Field(default=0, description="Seeds every random draw.")
     rig: Rig
     ownship: Ownship = Field(default_factory=Ownship)
-    targets: Targets | None = Field(
-        default=None, description="A ring of identical vessels."
-    )
+    targets: Targets | None = Field(default=None, description="A ring of vessels.")
     sea: Sea = Field(default_factory=Sea)
     sky: Sky = Field(default_factory=Sky)
     objects: list[Object] = Field(
