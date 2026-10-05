@@ -62,7 +62,7 @@ The obvious way to make waves in Blender is the Ocean modifier, which moves a me
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.png">
-    <img src="charts/footprint-light.png" width="70%" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
+    <img src="charts/footprint-light.png" width="60%" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
   </picture>
 </p>
 
@@ -77,7 +77,7 @@ A thermal camera sees the light that objects give off because they're warm. Ever
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.png">
-    <img src="charts/glow-light.png" width="70%" alt="Planck curves for the sun and the sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
+    <img src="charts/glow-light.png" width="60%" alt="Planck curves for the sun and the sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
   </picture>
 </p>
 
@@ -104,7 +104,7 @@ And the earth curves away under it. From a 30 m mast the horizon is 21 km out, a
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.png">
-    <img src="charts/hidden-light.png" width="70%" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
+    <img src="charts/hidden-light.png" width="60%" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
   </picture>
 </p>
 

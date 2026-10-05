@@ -131,17 +131,20 @@ def footprint(ax: Axes, t: dict) -> None:
 def hidden(ax: Axes, t: dict) -> None:
     radius_m = waves.earth_radius_m(REFRACTION_K)
     r_km = np.linspace(0, 50, 500)
-    for colour, h in zip(t["series"], (3.0, 12.0, 30.0), strict=True):
+    # Each label at a height where it clears its neighbours.
+    for colour, h, at_m in zip(
+        t["series"], (3.0, 12.0, 30.0), (60.0, 45.0, 22.0), strict=True
+    ):
         horizon_km = waves.horizon_m(h, REFRACTION_K) / 1000
         beyond = r_km >= horizon_km
         x = r_km[beyond]
         y = (x - horizon_km) ** 2 * 1e6 / (2 * radius_m)
-        ax.plot(x, y, color=colour, lw=2, label=f"camera {h:.0f} m up")
+        ax.plot(x, y, color=colour, lw=2, label=f"{h:.0f} m")
         ax.plot(horizon_km, 0, "o", ms=8, color=colour, mec=t["surface"], mew=2)
-        at_km = horizon_km + math.sqrt(2 * radius_m * 30.0) / 1000
+        at_km = horizon_km + math.sqrt(2 * radius_m * at_m) / 1000
         ax.annotate(
-            f"{h:.0f} m up",
-            (at_km, 30.0),
+            f"{h:.0f} m",
+            (at_km, at_m),
             xytext=(-8, 0),
             textcoords="offset points",
             va="center",
@@ -154,7 +157,7 @@ def hidden(ax: Axes, t: dict) -> None:
     ax.annotate(
         f"the 45 km ship above:\n{seen:.0f} m hidden",
         (45, seen),
-        xytext=(49.5, 6),
+        xytext=(49.5, 2),
         textcoords="data",
         ha="right",
         color=t["secondary"],
@@ -175,13 +178,13 @@ CHARTS = {
     ),
     "footprint": (
         "Around 1 km, one pixel is as long as the biggest waves",
-        f"{WIDTH_PX} px across {HFOV_DEG:.0f}°, {HEIGHT_M:.0f} m up. "
-        "A wave shorter than the footprint is drawn as roughness.",
+        f"{WIDTH_PX} px across {HFOV_DEG:.0f}°, {HEIGHT_M:.0f} m up. Shorter waves "
+        "become roughness.",
         footprint,
     ),
     "hidden": (
         "Raise the camera and the horizon moves out",
-        "How much of a target the curve hides. Each line starts at its horizon.",
+        "Hidden height for three camera heights, each from its horizon.",
         hidden,
     ),
 }
@@ -211,7 +214,7 @@ def draw(name: str, theme: str) -> None:
             "ytick.labelcolor": t["secondary"],
         }
     ):
-        fig, ax = plt.subplots(figsize=(5.4, 3.0), layout="constrained")
+        fig, ax = plt.subplots(figsize=(4.6, 2.6), layout="constrained")
         chart(ax, t)
         ax.minorticks_off()
         ax.spines["left"].set_visible(False)
