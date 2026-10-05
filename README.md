@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/hero.jpg" alt="A ship and a buoy at sunset in EO and LWIR, with their ground truth drawn on">
+  <img src="docs/hero.jpg" alt="One scene under a clear sky, broken cumulus and haze, EO above LWIR, with its ground truth drawn on">
 </p>
 
 Real footage can't put a vessel at exactly 7 NM, hold the visibility constant, or show you the same ship from eight aspects. `seascape` renders maritime scenes where you choose all of that, and tells you exactly where everything was.

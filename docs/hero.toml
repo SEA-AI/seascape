@@ -2,9 +2,12 @@
 
 extends = "../scenarios/baseline.toml"
 
+[rig]
+pitch_deg = 4.0
+
 [sky]
-hdri = "belfast_sunset"
-sun_bearing_deg = -16.0
+sun_elevation_deg = 35.0
+sun_bearing_deg = 150.0
 
 [[objects]]
 preset = "container_ship"
@@ -14,5 +17,5 @@ heading_deg = 250.0
 
 [[objects]]
 asset = "lateral_mark"
-range_m = 100.0
+range_m = 200.0
 bearing_deg = -6.0
