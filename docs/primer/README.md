@@ -8,13 +8,18 @@ seascape renders synthetic scenes at sea. You describe a scene in a TOML file (w
 
 Labelling real footage is slow, and some things can't be labelled at all: the exact range to a ship, its bearing to a tenth of a degree, where the horizon really is. And you get whatever weather the day brings. In seascape you decide where everything goes and what the weather is, so the ground truth is exact and you can render the same scene again with one thing changed.
 
-You can train detectors on it, with boxes nobody had to draw. Note that nobody has checked yet how well that carries over to real footage, so evaluate on real data. It's probably more useful for testing what comes after detection (e.g. distance estimation, tracking, motion compensation) against numbers that are actually right, and for trying an idea on a scene that's hard to get at sea before going out to collect the data.
+Training detectors on it is the obvious use, especially when real data is scarce (how well that transfers to real footage is untested so far). But that's not really what it's for. Mostly it's a way to get a good-enough picture of a situation, with all the ground truth attached, e.g.:
 
-Every frame comes with `labels.json` (a COCO box per target, with its range and bearing, plus where the horizon falls) and `calibration.json` (the camera's intrinsics and pose). The boxes come straight from Blender, which can render each target's pixels as its own number, so a box only covers what the camera actually sees. [Outputs](../outputs.md) has the details.
+- mocking up a new product or a new combination of cameras
+- seeing how mounting height changes what the cameras see
+- testing distance estimation against exact ranges
+- recreating tricky situations that are hard to stage at sea, like a collision course
+
+Every frame comes with `labels.json` (a COCO box per target, with its range and bearing, plus where the horizon falls) and `calibration.json` (the camera's intrinsics and pose). The boxes come from a render pass that writes each target's ID into its pixels, so every box is tight to the target's visible pixels. [Outputs](../outputs.md) has the details.
 
 ## Limitations
 
-seascape simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). The cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate until it's compared with real data.
+seascape simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). The cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
 
 ## Rendering
 
@@ -86,7 +91,7 @@ The ship is warm. The clouds are warm too: a thick cloud glows at the temperatur
 
 Blender only knows red, green and blue, so all of this is NumPy: emissivity from measured optical constants of water, the sky from a standard atmospheric model. Blender just gets lookup tables.
 
-## Distance
+## Haze and horizon
 
 Two things happen as a ship gets farther away. The air scatters its light away and sky light in, so it fades into the sky:
 
