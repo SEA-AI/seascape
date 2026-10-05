@@ -40,9 +40,10 @@ Issues = "https://github.com/SEA-AI/seascape/issues"
 [dependency-groups]
 dev = ["pytest>=9.0"]
 blender = ["bpy>=5.2"]
+serve = ["mcp>=2.3"]
 
 [tool.uv]
-default-groups = ["dev", "blender"]
+default-groups = ["dev", "blender", "serve"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

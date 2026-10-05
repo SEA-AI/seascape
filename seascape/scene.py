@@ -1031,8 +1031,11 @@ FORMATS: dict[ImageFormat, tuple[str, str]] = {
 }
 
 
-def _enable_gpu() -> bool:
-    """Point Cycles at a GPU. Without `refresh_devices()` it stays on the CPU."""
+def enable_gpu() -> str | None:
+    """Point Cycles at a GPU and name its backend; None leaves it on the CPU.
+
+    Without `refresh_devices()` it stays on the CPU.
+    """
     preferences = bpy.context.preferences.addons["cycles"].preferences
     for backend in ("METAL", "OPTIX", "CUDA", "HIP", "ONEAPI"):
         try:
@@ -1044,8 +1047,8 @@ def _enable_gpu() -> bool:
             for device in preferences.devices:
                 # CPU alongside the GPU wins nothing here.
                 device.use = device.type != "CPU"
-            return True
-    return False
+            return backend
+    return None
 
 
 def _output(outputs: Outputs, band: Band) -> None:
@@ -1055,7 +1058,7 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.render.engine = "CYCLES"
     # Caps reflected light at 10, and LWIR radiance is tens of W m^-2 sr^-1.
     sc.eevee.clamp_surface_indirect = 0.0
-    sc.cycles.device = "GPU" if _enable_gpu() else "CPU"
+    sc.cycles.device = "GPU" if enable_gpu() else "CPU"
     sc.cycles.samples = getattr(outputs.samples, band)
     # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
