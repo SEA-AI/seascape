@@ -45,7 +45,7 @@ PAINT_EMISSIVITY = 0.94
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
 
-# Judgement: texels across the LWIR sky's width.
+# Judgement.
 THERMAL_SKY_PX = 2048
 
 
