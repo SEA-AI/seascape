@@ -22,9 +22,6 @@ REFRACTION_K = Sea().refraction_k
 HEIGHT_M, WIDTH_PX, HFOV_DEG = 12.0, 1920, 45.0
 # IAU 2015 Resolution B3: the sun's nominal effective temperature.
 SUN_K = 5772.0
-# The shortest gravity wave, where capillarity takes over: lambda = 2 pi sqrt(sigma /
-# rho g), 1.7 cm for seawater (Lamb, Hydrodynamics, section 267).
-CAPILLARY_M = 0.017
 
 THEMES = {
     "light": {
@@ -105,27 +102,38 @@ def footprint(ax: Axes, t: dict) -> None:
     across = d_m * math.radians(HFOV_DEG) / WIDTH_PX
     along = across / np.sin(np.arctan(HEIGHT_M / d_m) - d_m / (2 * radius_m))
     peak_m = 2 * math.pi * waves.GRAVITY_MS2 / waves.peak_omega_rad_s(7.0) ** 2
-    reference(ax, t, peak_m, f"a 7 m/s sea's peak wave, {peak_m:.0f} m")
-    reference(
-        ax,
-        t,
-        CAPILLARY_M,
-        f"the shortest gravity wave, {CAPILLARY_M * 100:.1f} cm",
-        x=0.99,
+    bottom = 0.005
+    ax.fill_between(d_m, bottom, along, color=t["grid"], lw=0, zorder=0)
+    ax.plot(d_m, along, color=t["series"][0], lw=2)
+    reference(ax, t, peak_m, f"main wavelength in a 7 m/s wind, {peak_m:.0f} m")
+    cross_m = float(np.interp(peak_m, along, d_m))
+    ax.plot(cross_m, peak_m, "o", ms=8, color=t["series"][0], mec=t["surface"], mew=2)
+    ax.annotate(
+        f"≈ {cross_m / 1000:.1f} km",
+        (cross_m, peak_m),
+        xytext=(10, -14),
+        textcoords="offset points",
+        color=t["secondary"],
+        fontsize=10,
     )
-    for colour, y, name in zip(
-        t["series"], (along, across), ("along the view", "across"), strict=False
-    ):
-        ax.plot(d_m, y, color=colour, lw=2, label=name)
-        label_end(ax, t, d_m[-1], y[-1], name)
+    ax.text(25, 2000, "longer waves: drawn as shapes", color=t["secondary"], size=10)
+    ax.text(
+        1500,
+        0.02,
+        "shorter waves:\nfolded into roughness",
+        color=t["secondary"],
+        size=10,
+        ha="center",
+    )
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(20, 8000)
+    ax.set_ylim(bottom, 5000)
     ax.set_xticks([20, 100, 1000, 8000], ["20 m", "100 m", "1 km", "8 km"])
     ticks = [0.01, 0.1, 1, 10, 100, 1000]
     ax.set_yticks(ticks, ["1 cm", "10 cm", "1 m", "10 m", "100 m", "1 km"])
     ax.set_xlabel("distance from the camera")
-    ax.set_ylabel("one pixel's footprint")
+    ax.set_ylabel("length of sea in one pixel")
 
 
 def hidden(ax: Axes, t: dict) -> None:
@@ -174,9 +182,9 @@ CHARTS = {
         glow,
     ),
     "footprint": (
-        "Around 1 km, one pixel is as long as the biggest waves",
-        f"{WIDTH_PX} px across {HFOV_DEG:.0f}°, {HEIGHT_M:.0f} m up. "
-        "A wave shorter than the footprint is drawn as roughness.",
+        "Far out, a whole wave fits inside one pixel",
+        f"Looking out from {HEIGHT_M:.0f} m "
+        f"with a {WIDTH_PX} px, {HFOV_DEG:.0f}° camera.",
         footprint,
     ),
     "hidden": (

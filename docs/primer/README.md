@@ -62,7 +62,7 @@ The obvious way to make waves in Blender is the Ocean modifier, which moves a me
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.png">
-    <img src="charts/footprint-light.png" width="60%" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
+    <img src="charts/footprint-light.png" width="60%" alt="Length of sea one pixel covers against distance: it passes the 45 m main wavelength of a 7 m/s wind near 1 km, and shorter waves become roughness">
   </picture>
 </p>
 
