@@ -355,6 +355,9 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
             sky.sun_bearing_deg,
             coord.outputs["Generated"],
         )
+        # A texel spans several pixels of a narrow camera; linear leaves cloud edges
+        # stepped.
+        radiance.node.interpolation = "Cubic"
         link(radiance, background.inputs["Color"])
         return world
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
