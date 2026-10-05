@@ -99,7 +99,7 @@ def glow(ax: Axes, t: Theme) -> None:
     ticks = [0.2, 0.5, 1, 2, 5, 10, 20, 50]
     ax.set_xticks(ticks, [f"{x:g}" for x in ticks])
     ax.set_xlabel("wavelength, µm")
-    ax.set_ylabel("glow, scaled to each peak")
+    ax.set_yticks([])
 
 
 def footprint(ax: Axes, t: Theme) -> None:
@@ -152,7 +152,7 @@ def hidden(ax: Axes, t: Theme) -> None:
     )
     ax.set_xlim(0, 50)
     ax.set_ylim(0, 80)
-    ax.set_xlabel("range to the target, km (dots: the horizon)")
+    ax.set_xlabel("range to the target, km")
     ax.set_ylabel("height hidden by the sea, m")
 
 
@@ -170,7 +170,7 @@ CHARTS: dict[str, tuple[str, str, Chart]] = {
     ),
     "hidden": (
         "Raise the camera and the horizon moves out",
-        "How much of a target the earth's curve hides, refraction k = 0.13.",
+        "How much of a target the curve hides. Each line starts at its horizon.",
         hidden,
     ),
 }
@@ -191,6 +191,7 @@ def draw(name: str, theme: str) -> None:
             "axes.spines.top": False,
             "axes.spines.right": False,
             "axes.grid": True,
+            "axes.grid.axis": "y",
             "axes.axisbelow": True,
             "grid.color": t["grid"],
             "grid.linewidth": 0.8,
@@ -198,14 +199,14 @@ def draw(name: str, theme: str) -> None:
             "ytick.color": t["axis"],
             "xtick.labelcolor": t["secondary"],
             "ytick.labelcolor": t["secondary"],
-            "legend.frameon": False,
-            "legend.labelcolor": t["secondary"],
         }
     ):
         fig, ax = plt.subplots(figsize=(7.2, 3.8), layout="constrained")
         chart(ax, t)
-        if len(ax.get_legend_handles_labels()[0]) > 1:
-            ax.legend(loc="upper left", bbox_to_anchor=(0, -0.2), ncols=4, fontsize=8.5)
+        # The gridlines carry the y scale.
+        ax.minorticks_off()
+        ax.spines["left"].set_visible(False)
+        ax.tick_params(axis="y", length=0)
         fig.suptitle(
             title, x=0.01, ha="left", color=t["text"], fontsize=14, fontweight="bold"
         )

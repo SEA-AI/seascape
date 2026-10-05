@@ -37,10 +37,6 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         SUN_AHEAD,
         [(f"wind {u} m/s", [f"sea.wind_speed_mps = {u}.0"]) for u in (2, 7, 14)],
     ),
-    "sun": (
-        [],
-        [(f"sun at {e}°", [f"sky.sun_elevation_deg = {e}.0"]) for e in (60, 10, 2)],
-    ),
     "lwir": (
         LWIR,
         [
