@@ -6,9 +6,9 @@ seascape renders synthetic scenes at sea. You describe a scene in a TOML file (w
 
 ## What it's for
 
-Labelling real footage is slow, and some things can't be labelled at all: the exact range to a ship, its bearing to a tenth of a degree, where the horizon really is. And you get whatever weather the day brings. In seascape you decide where everything goes and what the weather is, so the ground truth is exact and you can render the same scene again with one thing changed.
+Labelling real footage is slow, and some things can't be labelled at all: the exact range to a ship, its bearing to a tenth of a degree, where the horizon really is. And you get whatever weather the day brings. In a synthetic scene you decide where everything goes and what the weather is, so the ground truth is exact and you can render the same scene again with one thing changed.
 
-Training detectors on it is the obvious use, especially when real data is scarce (how well that transfers to real footage is untested so far). But that's not really what it's for. Mostly it's a way to get a good-enough picture of a situation, with all the ground truth attached, e.g.:
+Training detectors on synthetic data is the obvious use, especially when real data is scarce (how well that transfers to real footage is untested so far). But that's not really what it's for. Mostly it's a way to get a good-enough picture of a situation, with all the ground truth attached, e.g.:
 
 - mocking up a new product or a new combination of cameras
 - seeing how mounting height changes what the cameras see
