@@ -14,7 +14,7 @@ import tomllib
 import uuid
 from collections.abc import Iterator
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -36,6 +36,11 @@ WAIT_S = 45.0
 # The longest side a model reads without downscaling.
 PREVIEW_PX = 1568
 PREVIEWS = 8
+# What one job may ask of a shared machine.
+MAX_DURATION_S = 60.0
+MAX_PIXELS = 3840 * 2160
+MAX_IMAGES = 10_000
+MIN_FREE_BYTES = 10 * 2**30
 
 server = MCPServer(
     "seascape",
@@ -50,7 +55,10 @@ _gpu = asyncio.Lock()
 @dataclass
 class Job:
     folder: Path
+    scenario: str
     scenes: list[Scenario]
+    created: float = field(default_factory=time.time)
+    started: float | None = None
     state: str = "queued"
     error: str | None = None
     task: asyncio.Task[None] | None = None
@@ -60,9 +68,19 @@ class Job:
         return folders(self.folder, self.scenes)
 
     @property
+    def total(self) -> int:
+        return sum(scene.images for scene in self.scenes)
+
+    @property
     def images(self) -> int:
+        """Written so far; a jpg job's preview.jpg shares the suffix."""
         suffix = f".{self.scenes[0].outputs.format}"
-        return sum(path.suffix == suffix for path in self.folder.rglob("*"))
+        written = sum(path.suffix == suffix for path in self.folder.rglob("*"))
+        return min(written, self.total)
+
+    @property
+    def waiting(self) -> bool:
+        return self.state in ("queued", "running")
 
 
 _jobs: dict[str, Job] = {}
@@ -82,6 +100,27 @@ def _includes(node: Any) -> Iterator[str]:
             if key in ("extends", "preset") and isinstance(value, str):
                 yield value
             yield from _includes(value)
+
+
+def _url(ctx: Context) -> str:
+    """Where this client reaches the jobs' files."""
+    return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
+
+
+def _refuse_oversized(scenes: list[Scenario]) -> None:
+    images = sum(scene.images for scene in scenes)
+    if images > MAX_IMAGES:
+        raise ToolError(f"{images} images; a job writes at most {MAX_IMAGES}")
+    for scene in scenes:
+        if scene.outputs.duration_s > MAX_DURATION_S:
+            raise ToolError(f"a clip lasts at most {MAX_DURATION_S} s")
+        for mount in scene.rig.mounts:
+            camera = mount.camera
+            if camera.width_px * camera.height_px > MAX_PIXELS:
+                raise ToolError(
+                    f"{mount.name} is {camera.width_px} x {camera.height_px}; a "
+                    f"camera has at most {MAX_PIXELS} pixels"
+                )
 
 
 def _prune() -> None:
@@ -115,7 +154,8 @@ def catalog() -> dict[str, Any]:
 async def render(
     scenario: str = "baseline",
     overrides: list[str] | None = None,
-    variants: Annotated[int, Field(ge=1)] = 1,
+    # Each variant writes an image at least, so the bound refuses before loading.
+    variants: Annotated[int, Field(ge=1, le=MAX_IMAGES)] = 1,
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
 
@@ -137,12 +177,18 @@ async def render(
         scenes = await asyncio.to_thread(load_variants, path, lines, variants)
     except ValueError as error:  # pydantic and tomllib both raise it
         raise ToolError(str(error)) from error
+    _refuse_oversized(scenes)
     RENDERS.mkdir(parents=True, exist_ok=True)
     _prune()
+    if (free := shutil.disk_usage(RENDERS).free) < MIN_FREE_BYTES:
+        raise ToolError(
+            f"{free / 2**30:.0f} GB free; a job needs {MIN_FREE_BYTES / 2**30:.0f}"
+        )
+    ahead = sum(job.waiting for job in _jobs.values())
     name = uuid.uuid4().hex
-    job = _jobs[name] = Job(RENDERS / name, scenes)
+    job = _jobs[name] = Job(RENDERS / name, scenario, scenes)
     job.task = asyncio.create_task(_run(job, path, lines, variants))
-    return {"job": name, "images": sum(scene.images for scene in scenes)}
+    return {"job": name, "images": job.total, "jobs_ahead": ahead}
 
 
 async def _seascape(*args: str) -> None:
@@ -163,7 +209,7 @@ async def _run(job: Job, path: Path, overrides: list[str], variants: int) -> Non
     sets = [arg for line in overrides for arg in ("--set", line)]
     try:
         async with _gpu:
-            job.state = "running"
+            job.state, job.started = "running", time.time()
             await _seascape(
                 "render", str(path), "-o", str(job.folder), "--variants",
                 str(variants), *sets,
@@ -199,14 +245,12 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
         )
     with suppress(TimeoutError):
         await asyncio.wait_for(asyncio.shield(found.task), WAIT_S)
-    total = sum(scene.images for scene in found.scenes)
     report: dict[str, Any] = {"status": found.state}
     previews: list[Image] = []
     if found.state == "failed":
         report["error"] = found.error
     elif found.state == "done":
-        host = (ctx.headers or {}).get("host", "localhost")
-        url = f"http://{host}/renders"
+        url = _url(ctx)
         # A sequence's frames are in the archive only.
         report["files"] = [f"{url}/{job}.zip"] + [
             f"{url}/{path.relative_to(RENDERS)}"
@@ -218,9 +262,46 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
             for folder in found.folders
             if (preview := folder / "preview.jpg").exists()
         ]
+    elif found.state == "queued":
+        jobs = list(_jobs.values())
+        report["jobs_ahead"] = sum(j.waiting for j in jobs[: jobs.index(found)])
     else:
-        report["images"] = f"{min(found.images, total)} of {total}"
+        done, total = found.images, found.total
+        report["images"] = f"{done} of {total}"
+        if done and found.started is not None:
+            pace_s = (time.time() - found.started) / done
+            report["remaining_s"] = round(pace_s * (total - done))
     return [json.dumps(report, indent=1), *previews]
+
+
+@server.tool()
+def jobs(ctx: Context) -> dict[str, Any]:
+    """Every job the server remembers, newest first, and the disk left for more."""
+    url = _url(ctx)
+    return {
+        "free_gb": round(shutil.disk_usage(RENDERS).free / 2**30, 1),
+        "jobs": [
+            {
+                "job": name,
+                "scenario": job.scenario,
+                "status": job.state,
+                "images": job.total,
+                "age_s": round(time.time() - job.created),
+                # A running job deletes files as it goes, so only a finished one.
+                **(
+                    {
+                        "archive_mb": round(
+                            Path(f"{job.folder}.zip").stat().st_size / 2**20
+                        ),
+                        "archive": f"{url}/{name}.zip",
+                    }
+                    if job.state == "done"
+                    else {}
+                ),
+            }
+            for name, job in reversed(_jobs.items())
+        ],
+    }
 
 
 def serve(host: str, port: int) -> None:

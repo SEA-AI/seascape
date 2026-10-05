@@ -2,7 +2,9 @@ services:
   seascape:
     build: .
     ports: ["8765:8765"]
-    volumes: ["cache:/root/.cache/seascape"]
+    volumes:
+      - cache:/root/.cache/seascape
+      - ${SEASCAPE_RENDERS:-./renders}:/root/.cache/seascape/renders
     restart: unless-stopped
     deploy:
       resources:
