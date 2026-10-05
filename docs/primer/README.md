@@ -1,22 +1,22 @@
 # How seascape works
 
-seascape makes fake sea. You describe a scene in a TOML file (where the camera sits, the weather, which ships at what range) and it renders what an EO and a thermal camera would see, along with the answer key for every frame.
+seascape renders synthetic scenes at sea. You describe a scene in a TOML file (where the camera sits, the weather, which ships at what range) and it renders what an EO and a thermal camera would see, along with the answer key for every frame.
 
 <p align="center"><img src="../hero.jpg" alt="One scene under three skies, clear, cumulus and hazy overcast, EO above LWIR, with the ground truth drawn on"></p>
 
-## Why bother
+## What it's for
 
-Real footage is great right up until you need the truth. Nobody knows the exact range to that ship, and you can't ask it to come back tomorrow at the same distance in the same haze. Here you can.
+Real footage doesn't come with exact ground truth. Nobody knows the exact range to that ship, and you can't ask it to come back tomorrow at the same distance in the same haze. In seascape you set all of that, and the answer is exact.
 
-That's handy for training detectors on boxes nobody had to draw, though nobody has checked yet how well that carries over to real footage, so evaluate on the real thing. It's maybe more handy for testing everything after detection (distance estimation, tracking, motion compensation) against numbers that are actually right. And for trying an idea on a scene you'd never get at sea, before going out to collect the data.
+You can train detectors on it, with boxes nobody had to draw. Note that nobody has checked yet how well that carries over to real footage, so evaluate on real data. It's probably more useful for testing what comes after detection (e.g. distance estimation, tracking, motion compensation) against numbers that are actually right, and for trying an idea on a scene that's hard to get at sea before going out to collect the data.
 
 Every frame comes with `labels.json` (a COCO box per target, with its range and bearing, plus where the horizon falls) and `calibration.json` (the camera's intrinsics and pose). The boxes come straight from Blender, which can render each target's pixels as its own number, so a box only covers what the camera actually sees. [Outputs](../outputs.md) has the details.
 
-## The catch
+## Limitations
 
-It's a model, and some corners are cut on purpose. The big one: waves are drawn by tilting the surface's shading, not by moving it, so a wave can never hide a target or cast a shadow (the sea section says why it's worth it). The cameras are perfect, with no noise, distortion or rolling shutter. The sky is clear or a still photo. And the LWIR is fine for looking at and for regression tests, but it isn't a radiometric reference: if you read a detection range off a render, get someone to check it before acting on it.
+seascape simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). The cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate until it's compared with real data.
 
-## Making a picture
+## Rendering
 
 seascape is a Python program that uses Blender as a library. Blender ships as a package, `bpy`, so seascape imports it like NumPy, builds the scene from nothing and renders it. Physics with a published source (waves, thermal emission, the thermal sky) is plain NumPy, tested without Blender, and the Blender side only turns those numbers into nodes.
 
@@ -52,27 +52,27 @@ Open it in [Blender](https://www.blender.org/download/), hover over the 3D view 
 
 ## The sea
 
-The obvious way to make waves in Blender is the Ocean modifier, which moves a mesh up and down. Up close it looks great. Far away it shimmers, and far away is where a maritime camera spends most of its pixels. The camera sees the sea almost edge-on, so each pixel lands on it as a long thin strip:
+The obvious way to make waves in Blender is the Ocean modifier, which moves a mesh up and down. That works up close but shimmers in the distance, which is where a maritime camera spends most of its pixels. The camera sees the sea almost edge-on, so each pixel lands on it as a long thin strip:
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.png">
-    <img src="charts/footprint-light.png" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
+    <img src="charts/footprint-light.png" width="80%" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
   </picture>
 </p>
 
-A wave shorter than its pixel can't be drawn, only aliased. So the sea works out each pixel's strip from the camera, draws the waves longer than it by tilting the normal, and turns the rest into roughness. How rough in total comes from Cox & Munk, who photographed sun glitter from a plane in the fifties. The glitter is where you see it:
+A wave shorter than its pixel can't be drawn, only aliased. So the sea works out each pixel's strip from the camera, draws the waves longer than it by tilting the normal, and turns the rest into roughness. How rough in total comes from Cox & Munk, who photographed sun glitter from a plane in the fifties. You can see it in the sun's glitter, which widens with the wind:
 
 <p align="center"><img src="wind.jpg" alt="Sun glitter at 2, 7 and 14 m/s"></p>
 
-## Seeing heat
+## Thermal
 
-A thermal camera doesn't see light bouncing off things. It sees things glowing. Everything glows, and warmer things glow more and at shorter wavelengths, so the sun lands in the visible and the sea in the band an LWIR camera sees:
+A thermal camera sees the light that objects give off because they're warm. Everything glows a little, and warmer things glow more and at shorter wavelengths, so the sun lands in the visible and the sea in the band an LWIR camera sees:
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.png">
-    <img src="charts/glow-light.png" alt="Planck curves for the sun and a 288 K sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
+    <img src="charts/glow-light.png" width="80%" alt="Planck curves for the sun and a 288 K sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
   </picture>
 </p>
 
@@ -80,13 +80,13 @@ Same scene, both cameras:
 
 <p align="center"><img src="eo-ir.jpg" alt="The same scene under a cumulus sky, EO and LWIR side by side"></p>
 
-The ship is warm. The clouds are warm too: a thick cloud glows at the temperature of the air at its base, while the clear sky between them is cold. And the sea is a mirror. Water mostly glows like itself when you look straight down, and mostly reflects the sky as you look toward the horizon. That's why the waves show up even when sea and air are at exactly the same temperature (middle panel; each panel sets its own grey scale, like a thermal camera does):
+The ship is warm. The clouds are warm too: a thick cloud glows at the temperature of the air at its base, while the clear sky between them is cold. The sea also acts as a mirror: water mostly glows like itself when you look straight down, and mostly reflects the sky as you look toward the horizon. That's why the waves show up even when sea and air are at exactly the same temperature (middle panel; each panel sets its own grey scale, like a thermal camera does):
 
 <p align="center"><img src="lwir.jpg" alt="LWIR with the sea 5 K below, equal to and 5 K above the air"></p>
 
 Blender only knows red, green and blue, so all of this is NumPy: emissivity from measured optical constants of water, the sky from a standard atmospheric model. Blender just gets lookup tables.
 
-## Far away
+## Distance
 
 Two things happen as a ship gets farther away. The air scatters its light away and sky light in, so it fades into the sky:
 
@@ -99,7 +99,7 @@ And the earth curves away under it. From a 30 m mast the horizon is 21 km out, a
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.png">
-    <img src="charts/hidden-light.png" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
+    <img src="charts/hidden-light.png" width="80%" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
   </picture>
 </p>
 
