@@ -237,6 +237,16 @@ def schema() -> None:
     click.echo(json.dumps(json_schema(), indent=2))
 
 
+@main.command()
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8765, show_default=True)
+def serve(host: str, port: int) -> None:
+    """Render for MCP clients, at http://HOST:PORT/mcp."""
+    from seascape import server
+
+    server.serve(host, port)
+
+
 @main.group("assets")
 def assets_() -> None:
     """The meshes and skies a scenario can name."""
@@ -362,3 +372,7 @@ def sheet(scenario: Path, out: Path, band: Band) -> None:
     with _blender_log(out.with_suffix(".log")):
         catalog.sheet(scenario, out, band)
     click.echo(out)
+
+
+if __name__ == "__main__":
+    main()
