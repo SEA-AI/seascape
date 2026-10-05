@@ -2,6 +2,7 @@
 
 import json
 import math
+import runpy
 import tomllib
 import warnings
 from pathlib import Path
@@ -278,8 +279,13 @@ def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     assert (path.parent / line.removeprefix("#:schema ")).resolve() == SCHEMA
 
 
-def test_the_readme_hero_loads() -> None:
-    load(HERO)
+@pytest.mark.parametrize(
+    "overrides", runpy.run_path(str(HERO.with_suffix(".py")))["SKIES"].values()
+)
+def test_every_readme_hero_sky_loads_without_a_warning(overrides: list[str]) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        load(HERO, overrides)
 
 
 def test_every_shipped_preset_parses() -> None:

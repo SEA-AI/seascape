@@ -6,7 +6,6 @@ extends = "../scenarios/baseline.toml"
 pitch_deg = 4.0
 
 [sky]
-sun_elevation_deg = 35.0
 sun_bearing_deg = 150.0
 
 [[objects]]
