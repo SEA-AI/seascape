@@ -1,6 +1,6 @@
 """The primer's charts, each in a light and a dark PNG, from seascape's own physics.
 
-uv run --with matplotlib python docs/primer/charts.py
+uv run --with matplotlib python -m docs.primer.charts
 """
 
 import math
@@ -12,11 +12,11 @@ import numpy as np
 from matplotlib import font_manager
 from matplotlib.axes import Axes
 
+from docs.brand import FOCUS_RED, FOG_WHITE, FONT, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY
 from seascape import lwir, waves
 from seascape.config import Sea
 
 OUT = Path(__file__).parent / "charts"
-FONT = "Barlow Semi Condensed"
 REFRACTION_K = Sea().refraction_k
 # The footprint chart's camera.
 HEIGHT_M, WIDTH_PX, HFOV_DEG = 12.0, 1920, 45.0
@@ -26,23 +26,22 @@ SUN_K = 5772.0
 # rho g), 1.7 cm for seawater (Lamb, Hydrodynamics, section 267).
 CAPILLARY_M = 0.017
 
-# SEA.AI brand colours.
 THEMES = {
     "light": {
-        "series": ("#CB0D00", "#06404C", "#7B9194"),
+        "series": (FOCUS_RED, OCEAN_TEAL, SKY_GREY),
         "surface": "#FFFFFF",
         "text": "#000000",
         "secondary": "#000000",
-        "muted": "#7B9194",
-        "grid": "#DFDED9",
+        "muted": SKY_GREY,
+        "grid": FOG_WHITE,
     },
     "dark": {
-        "series": ("#CB0D00", "#DFDED9", "#7B9194"),
-        "surface": "#0B1731",
+        "series": (FOCUS_RED, FOG_WHITE, SKY_GREY),
+        "surface": NIGHT_BLUE,
         "text": "#FFFFFF",
-        "secondary": "#DFDED9",
-        "muted": "#7B9194",
-        "grid": "#06404C",
+        "secondary": FOG_WHITE,
+        "muted": SKY_GREY,
+        "grid": OCEAN_TEAL,
     },
 }
 

@@ -1,6 +1,6 @@
-# How seascape works
+# How `seascape` works
 
-seascape renders synthetic scenes at sea. You describe a scene in a TOML file (where the camera sits, the weather, which ships at what range) and it renders what an EO and a thermal camera would see, along with the answer key for every frame.
+`seascape` renders synthetic scenes at sea. You describe a scene in a TOML file (where the camera sits, the weather, which ships at what range) and it renders what an EO and a thermal camera would see, along with the answer key for every frame.
 
 <p align="center"><img src="../hero.jpg" alt="One scene under three skies, clear, cumulus and hazy overcast, EO above LWIR, with the ground truth drawn on"></p>
 
@@ -19,11 +19,11 @@ Every frame comes with `labels.json` (a COCO box per target, with its range and 
 
 ## Limitations
 
-seascape simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). The cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
+`seascape` simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). The cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
 
 ## Rendering
 
-seascape is a Python program that uses Blender as a library. Blender ships as a package, `bpy`, so seascape imports it like NumPy, builds the scene from nothing and renders it. Physics with a published source (waves, thermal emission, the thermal sky) is plain NumPy, tested without Blender, and the Blender side only turns those numbers into nodes.
+`seascape` is a Python program that uses Blender as a library. Blender ships as a package, `bpy`, so `seascape` imports it like NumPy, builds the scene from nothing and renders it. Physics with a published source (waves, thermal emission, the thermal sky) is plain NumPy, tested without Blender, and the Blender side only turns those numbers into nodes.
 
 ```mermaid
 flowchart LR

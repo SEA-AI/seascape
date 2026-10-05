@@ -1,6 +1,6 @@
 """The README's hero: EO above LWIR under each sky, with labels.json drawn on.
 
-uv run python docs/hero.py docs/hero.jpg
+uv run python -m docs.hero docs/hero.jpg
 """
 
 import json
@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from docs.brand import FOCUS_RED, FOG_WHITE, FONT_FILE, NIGHT_BLUE
+
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
     "clear": ["sky.sun_elevation_deg = 35"],
@@ -19,8 +21,6 @@ SKIES = {
     "haze": ['sky.hdri = "overcast_soil"', "sky.visibility_km = 3"],
 }
 GAP_PX = 8
-BOX = (255, 214, 0)
-HORIZON = (80, 220, 255)
 
 
 def render(scenario: Path, overrides: list[str], out: Path) -> None:
@@ -30,12 +30,17 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
     )
 
 
-def captioned(img: Image.Image, text: str, size: int = 14) -> Image.Image:
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default(size=size)
-    tb = draw.textbbox((10, 8), text, font=font)
-    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill="black")
-    draw.text((10, 8), text, fill="white", font=font)
+def tag(
+    draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
+) -> None:
+    font = ImageFont.truetype(FONT_FILE, size)
+    tb = draw.textbbox(at, text, font=font)
+    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill=fill)
+    draw.text(at, text, fill="white", font=font)
+
+
+def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
+    tag(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
     return img
 
 
@@ -54,22 +59,19 @@ def frame(
     box = (left, top, left + width, top + height)
     img = img.resize(size, Image.Resampling.LANCZOS, box=box)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default(size=14)
 
     def at(x: float, y: float) -> tuple[float, float]:
         return (x - left) * s, (y - top) * s
 
-    draw.line([at(x, y) for x, y in image["horizon_px"]], fill=HORIZON)
+    draw.line([at(x, y) for x, y in image["horizon_px"]], fill=FOG_WHITE)
     for a in annotations:
         x, y, w, h = a["bbox"]
         (x0, y0), (x1, y1) = at(x, y), at(x + w, y + h)
-        draw.rectangle([x0, y0, x1, y1], outline=BOX, width=2)
+        draw.rectangle([x0, y0, x1, y1], outline=FOCUS_RED, width=2)
         r = a["range_m"]
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
-        tb = draw.textbbox((x0, y0 - 18), text, font=font)
-        draw.rectangle([tb[0] - 3, tb[1] - 2, tb[2] + 3, tb[3] + 2], fill="black")
-        draw.text((x0, y0 - 18), text, fill=BOX, font=font)
+        tag(draw, (x0 + 4, y0 - 20), text, FOCUS_RED, 15)
     return captioned(img, caption)
 
 
