@@ -45,7 +45,7 @@ PAINT_EMISSIVITY = 0.94
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
 
-# Judgement: texels across the LWIR sky's width, about 0.2 degrees each.
+# Judgement: texels across the LWIR sky's width.
 THERMAL_SKY_PX = 2048
 
 
@@ -355,8 +355,7 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
             sky.sun_bearing_deg,
             coord.outputs["Generated"],
         )
-        # A texel spans several pixels of a narrow camera; linear leaves cloud edges
-        # stepped.
+        # Linear shows the texel grid where a texel spans several pixels.
         radiance.node.interpolation = "Cubic"
         link(radiance, background.inputs["Color"])
         return world

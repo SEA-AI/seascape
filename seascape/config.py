@@ -265,11 +265,12 @@ class Sky(Model):
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
     )
 
-    # Judgement: inside the WMO International Cloud Atlas's low clouds, based from the
-    # surface to 2 km.
+    # Judgement: low cloud, whose base is below 2 km (WMO International Cloud Atlas),
+    # the only cloud `lwir.cloudy_sky_radiance` holds for.
     cloud_base_m: float = Field(
         default=1000.0,
         ge=0.0,
+        le=2000.0,
         description="The photo's cloud base, which sets its clouds' temperature in IR. "
         "EO ignores it.",
     )

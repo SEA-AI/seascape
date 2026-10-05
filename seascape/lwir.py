@@ -28,10 +28,9 @@ at air temperature, which holds where a horizontal path is opaque: every profile
 subarctic winter. Along a path, water vapour takes most of the band.
 
 Cloud: optically thick water cloud is close to a blackbody in this band (Stephens,
-"Radiation profiles in extended water clouds. II", J. Atmos. Sci. 35(11) 2123, 1978),
-which is what a ground-based thermal camera sees of one (Smith & Toumi, "Measuring
-cloud cover and brightness temperature with a ground-based thermal infrared camera",
-J. Appl. Meteor. Climatol. 47(2) 683, 2008).
+"Radiation profiles in extended water clouds. II", J. Atmos. Sci. 35(11) 2123, 1978;
+Smith & Toumi, "Measuring cloud cover and brightness temperature with a ground-based
+thermal infrared camera", J. Appl. Meteor. Climatol. 47(2) 683, 2008).
 
 Planck's law and Fresnel for an absorbing medium are textbook, but carry two assumptions
 that fail silently:
@@ -278,8 +277,8 @@ def sky_radiance(
     return fraction * band_radiance(t_air_k)
 
 
-# g / c_p: below its base, convection mixes the air dry adiabatically up to where it
-# condenses (Wallace & Hobbs, Atmospheric Science, 2nd ed., 2006).
+# g / c_p: air lifted from the surface cools at it to the cloud base, where it condenses
+# (Wallace & Hobbs, Atmospheric Science, 2nd ed., 2006).
 DRY_LAPSE_K_PER_M = 9.8e-3
 
 
@@ -290,13 +289,12 @@ def cloudy_sky_radiance(
     t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """`sky_radiance` with `cloud`, a fraction from 0 to 1, of it a blackbody at the
-    cloud base, seen through the clear column.
+    """`sky_radiance` with a `cloud` fraction, 0 to 1, a blackbody at the cloud base
+    seen through the clear column.
 
-    The column transmits 1 - eps of what lies behind it (Kirchhoff), its emissivity eps
-    the clear sky over a blackbody at air temperature. All of it is taken to lie under
-    the cloud, which holds for a low one: water vapour, which takes most of the band,
-    sits low.
+    The column, emissivity eps the clear sky over a blackbody at air temperature,
+    transmits 1 - eps of what lies behind it (Kirchhoff). It is taken to lie wholly
+    under the cloud, which holds for a low one: water vapour sits low.
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]

@@ -654,6 +654,7 @@
         "cloud_base_m": {
           "default": 1000.0,
           "description": "The photo's cloud base, which sets its clouds' temperature in IR. EO ignores it.",
+          "maximum": 2000.0,
           "minimum": 0.0,
           "title": "Cloud Base M",
           "type": "number"

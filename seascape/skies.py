@@ -11,10 +11,10 @@ radius of 0.19 degrees.
 
 Cloud: Li, Lu & Yang, "A hybrid thresholding algorithm for cloud detection on
 ground-based color images", J. Atmos. Oceanic Technol. 28(10) 1286, 2011. Clear sky is
-bluer than cloud in (B - R) / (B + R) of camera counts; a sky with one mode is all one
-or the other, and one with two is split adaptively. Otsu's split ("A threshold
-selection method from gray-level histograms", IEEE Trans. SMC 9(1) 62, 1979) stands in
-for their minimum cross entropy.
+bluer than cloud in (B - R) / (B + R) of camera counts. A sky of one mode is taken as
+all cloud; one of two is split at Otsu's threshold ("A threshold selection method from
+gray-level histograms", IEEE Trans. SMC 9(1) 62, 1979), which stands in for their
+minimum cross entropy.
 """
 
 import math
@@ -46,10 +46,9 @@ DISC_RMS_DEG = (0.1, 0.6)
 # The grid a glow is found on, and its blur in cells: a judgement, a few degrees.
 GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
-# Camera counts are radiance under a display gamma of 2.2.
+# sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgement: below it a sky has one mode. This library's overcast photos sit under it,
-# its broken cloud well over.
+# Judgement: the (B - R) / (B + R) spread below which a sky has one mode.
 ONE_MODE_STD = 0.03
 
 
@@ -157,14 +156,15 @@ def _otsu(values: np.ndarray) -> float:
     sums = np.cumsum(counts * centres)
     mean_below = sums[:-1] / np.maximum(below, 1)
     mean_above = (sums[-1] - sums[:-1]) / np.maximum(above, 1)
-    return float(centres[np.argmax(below * above * (mean_below - mean_above) ** 2)])
+    return float(edges[1:-1][np.argmax(below * above * (mean_below - mean_above) ** 2)])
 
 
 def cloud(radiance: np.ndarray) -> np.ndarray:
     """1 where `radiance`, (..., 3) of one sky, is cloud, 0 where it is clear.
 
-    ponytail: colour alone, so the white glow round a sun and a dusk's red read as
-    cloud; a clear-sky reference per photo when that matters.
+    ponytail: colour alone, so a sun's glow, a dusk's red, a clear sky of one mode and
+    the haze low over a clear horizon read as cloud; a clear-sky reference per photo
+    when that matters.
     """
     counts = np.maximum(radiance, 0.0) ** (1.0 / GAMMA)
     red, blue = counts[..., 0], counts[..., 2]
