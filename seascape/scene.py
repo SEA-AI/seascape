@@ -323,11 +323,12 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     pixels = np.empty(w * h * 4, np.float32)
     photo.pixels.foreach_get(pixels)
     bpy.data.images.remove(photo)
-    cloud = skies.cloud(pixels.reshape(h, w, 4)[..., :3])
+    # Bottom row first, as Blender stores an image: the sky is the top half.
+    cloud = np.zeros((h, w), np.float32)
+    cloud[h // 2 :] = skies.cloud(pixels.reshape(h, w, 4)[h // 2 :, :, :3])
     f = max(1, w // THERMAL_SKY_PX)
     cloud = cloud[: h // f * f, : w // f * f]
     cloud = cloud.reshape(h // f, f, w // f, f).mean(axis=(1, 3))
-    # Bottom row first, as Blender stores an image.
     rows = cloud.shape[0]
     elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
     radiance = lwir.cloudy_sky_radiance(

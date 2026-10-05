@@ -1328,15 +1328,17 @@ class TestPhotographedThermalSky:
         background = tree.nodes["Background"].inputs["Color"].links[0].from_node
         assert background.image.name == "cloudy_sky_radiance"
 
-    def test_overhead_reads_the_cloud_base(self) -> None:
+    def test_overhead_reads_a_cloud(self) -> None:
         image = bpy.data.images["cloudy_sky_radiance"]
         w, h = image.size
         pixels = np.empty(w * h * 4, np.float32)
         image.pixels.foreach_get(pixels)
         top = pixels.reshape(h, w, 4)[-1, :, 0]
         sky = load(OPEN_SEA, ['sky.hdri = "overcast_soil"']).sky
-        base = lwir.band_radiance(sky.t_air_k - lwir.DRY_LAPSE_K_PER_M * 1000.0)
-        assert top == pytest.approx(base, rel=1e-5)
+        expected = lwir.cloudy_sky_radiance(
+            np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+        )
+        assert top == pytest.approx(float(expected), rel=1e-3)
 
     def test_the_photo_is_not_kept(self) -> None:
         assert "white.hdr" not in bpy.data.images

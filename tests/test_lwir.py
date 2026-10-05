@@ -179,9 +179,10 @@ def test_every_atmosphere_has_a_sky_a_path_and_a_surface_air() -> None:
     assert set(lwir.SURFACE_AIR_K) == names
 
 
-def test_a_cloud_overhead_is_a_blackbody_at_its_base() -> None:
-    radiance = lwir.cloudy_sky_radiance(np.pi / 2, 1.0, 1000.0, 290.0)
-    assert float(radiance) == pytest.approx(lwir.band_radiance(280.2))
+def test_a_cloud_overhead_reads_between_the_clear_sky_and_its_base() -> None:
+    clear = float(lwir.sky_radiance(np.pi / 2, 290.0))
+    cloudy = float(lwir.cloudy_sky_radiance(np.pi / 2, 1.0, 1000.0, 290.0))
+    assert clear < cloudy < lwir.band_radiance(290.0)
 
 
 def test_a_cloud_never_cools_the_sky_it_hides() -> None:

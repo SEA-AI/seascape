@@ -7,9 +7,14 @@ are unclipped", so a sun keeps its radiance. Hold-Geoffroy, Sunkavalli, Hadap,
 Gambaretto & Lalonde, "Deep outdoor illumination estimation", CVPR 2017
 (arXiv:1611.06403): an HDR panorama's sun is its brightest region. The Astronomical
 Almanac: the sun's mean semi-diameter is 16 arcminutes, so a uniform disc has an RMS
-radius of 0.19 degrees. Long, Sabburg, Calbo & Pages, "Retrieving cloud characteristics
-from ground-based daytime color all-sky images", J. Atmos. Oceanic Technol. 23(5) 633,
-2006: red over blue above 0.6 is cloud.
+radius of 0.19 degrees.
+
+Cloud: Li, Lu & Yang, "A hybrid thresholding algorithm for cloud detection on
+ground-based color images", J. Atmos. Oceanic Technol. 28(10) 1286, 2011. Clear sky is
+bluer than cloud in (B - R) / (B + R) of camera counts; a sky with one mode is all one
+or the other, and one with two is split adaptively. Otsu's split ("A threshold
+selection method from gray-level histograms", IEEE Trans. SMC 9(1) 62, 1979) stands in
+for their minimum cross entropy.
 """
 
 import math
@@ -41,9 +46,11 @@ DISC_RMS_DEG = (0.1, 0.6)
 # The grid a glow is found on, and its blur in cells: a judgement, a few degrees.
 GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
-# Long's ratio is of camera counts, which a display gamma of 2.2 encodes; a photo's
-# radiance is linear.
-CLOUD_RED_BLUE = 0.6**2.2
+# Camera counts are radiance under a display gamma of 2.2.
+GAMMA = 2.2
+# Judgement: below it a sky has one mode. This library's overcast photos sit under it,
+# its broken cloud well over.
+ONE_MODE_STD = 0.03
 
 
 class Photo(Model):
@@ -141,6 +148,27 @@ def sun(radiance: np.ndarray) -> Sun:
     )
 
 
+def _otsu(values: np.ndarray) -> float:
+    """The split that maximises the variance between the two sides."""
+    counts, edges = np.histogram(values, 256)
+    centres = (edges[:-1] + edges[1:]) / 2
+    below = np.cumsum(counts)[:-1]
+    above = values.size - below
+    sums = np.cumsum(counts * centres)
+    mean_below = sums[:-1] / np.maximum(below, 1)
+    mean_above = (sums[-1] - sums[:-1]) / np.maximum(above, 1)
+    return float(centres[np.argmax(below * above * (mean_below - mean_above) ** 2)])
+
+
 def cloud(radiance: np.ndarray) -> np.ndarray:
-    """1 where `radiance`, (..., 3), is cloud, 0 where it is clear sky."""
-    return (radiance[..., 0] > CLOUD_RED_BLUE * radiance[..., 2]).astype(np.float32)
+    """1 where `radiance`, (..., 3) of one sky, is cloud, 0 where it is clear.
+
+    ponytail: colour alone, so the white glow round a sun and a dusk's red read as
+    cloud; a clear-sky reference per photo when that matters.
+    """
+    counts = np.maximum(radiance, 0.0) ** (1.0 / GAMMA)
+    red, blue = counts[..., 0], counts[..., 2]
+    blueness = (blue - red) / np.maximum(blue + red, 1e-6)
+    if blueness.std() < ONE_MODE_STD:
+        return np.ones(blueness.shape, np.float32)
+    return (blueness < _otsu(blueness)).astype(np.float32)

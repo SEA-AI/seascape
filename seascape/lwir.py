@@ -291,16 +291,19 @@ def cloudy_sky_radiance(
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
     """`sky_radiance` with `cloud`, a fraction from 0 to 1, of it a blackbody at the
-    cloud base.
+    cloud base, seen through the clear column.
 
-    The air between the camera and the cloud is left out, except that the air above a
-    base is colder than it, so a cloud only warms the sky it hides.
+    The column transmits 1 - eps of what lies behind it (Kirchhoff), its emissivity eps
+    the clear sky over a blackbody at air temperature. All of it is taken to lie under
+    the cloud, which holds for a low one: water vapour, which takes most of the band,
+    sits low.
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     clear = sky_radiance(elev_rad, t_air_k, atmosphere)
+    transmitted = 1.0 - clear / band_radiance(t_air_k)
     base = band_radiance(t_air_k - DRY_LAPSE_K_PER_M * cloud_base_m)
-    return clear + np.asarray(cloud) * np.maximum(base - clear, 0.0)
+    return clear + np.asarray(cloud) * transmitted * base
 
 
 @functools.lru_cache(maxsize=1)
