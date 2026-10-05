@@ -81,7 +81,9 @@ uv run seascape render docs/primer/primer.toml -o out/ --set 'sky.hdri = "belfas
 
 ## Seeing heat
 
-<p align="center"><img src="../hero.jpg" alt="The same scene in EO and LWIR"></p>
+<p align="center"><img src="../hero.jpg" alt="One scene under three skies, clear, cumulus and hazy overcast, EO above LWIR"></p>
+
+The same scene under three skies, EO on top and LWIR below. Keep it in mind for the rest of this section and the next.
 
 A thermal camera doesn't see light bouncing off things. It sees things glowing. Everything glows a little, and the warmer it is the more it glows and the shorter the wavelength (Planck's law). The sun is hot enough to glow in the visible. The sea, at a few hundred kelvin, glows around 10 µm, right in the band a long-wave infrared (LWIR) camera sees:
 
@@ -95,6 +97,8 @@ A thermal camera doesn't see light bouncing off things. It sees things glowing. 
 The sea is the fun part, because it's also a mirror. Water emits about 98% of what a perfect glower would when you look straight down, and less and less toward the horizon. Whatever it doesn't emit, it reflects. What it reflects is the sky, and in this band clear sky is cold overhead and close to air temperature at the horizon. So a wave facet tilted one way shows a colder patch of sky than one tilted the other way, and the waves show up in LWIR even when sea and air are at exactly the same temperature:
 
 <p align="center"><img src="lwir.jpg" alt="LWIR with the sea 5 K below, equal to and 5 K above the air"></p>
+
+Clouds are the other warm thing up there. A thick cloud is close to a blackbody, at the temperature of the air at its base, so against the cold clear sky it shows up bright. With a photographed sky, seascape finds the clouds in the photo by colour (clear sky is bluer than cloud) and gives each one the cloud base's temperature. That's the middle column of the image at the top of this section.
 
 Blender knows nothing about any of this. It renders red, green and blue, and its reflection node can't handle water in this band. So the thermal physics is NumPy: emissivity from measured optical constants of water, and the sky from LOWTRAN 7, a standard atmospheric model. Blender gets the results as lookup tables. It renders grey radiance, and seascape turns that back into a temperature per pixel. The `png` it writes keeps kelvins (divide by 100). The `jpg` goes through AGC, which is how a thermal camera squeezes a few kelvin of contrast into 256 greys.
 
@@ -128,6 +132,8 @@ On top of the waves: whitecaps where the wind is strong enough, gusts that rough
 Two things happen to a ship as it gets farther away. The air between you and it scatters some of its light away and some sky light in, so it fades toward the colour of the sky. That's haze, and `sky.visibility_km` sets how much:
 
 <p align="center"><img src="haze.jpg" alt="A container ship at 2 km with visibility 42, 10 and 3 km"></p>
+
+The right-hand column of the image at the top of *Seeing heat* is the same idea at 3 km visibility: the ship is gone in EO and still there in LWIR.
 
 And the earth curves away under it. From 12 m up the horizon is about 13 km out. A ship past it sinks hull-down: the sea hides its bottom first. Here's one through a long lens from a 30 m mast, where the horizon is 21 km out:
 
