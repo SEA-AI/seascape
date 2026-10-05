@@ -1,4 +1,4 @@
-"""The primer's charts, each in a light and a dark SVG, from seascape's own physics.
+"""The primer's charts, each in a light and a dark PNG, from seascape's own physics.
 
 uv run --with matplotlib python docs/primer/charts.py
 """
@@ -181,11 +181,9 @@ def draw(name: str, theme: str) -> None:
     title, subtitle, chart = CHARTS[name]
     with mpl.rc_context(
         {
-            # Google Fonts; installed, matplotlib finds it. Drawn as paths, so a
-            # viewer needs no font.
+            # From Google Fonts; matplotlib finds it once installed.
             "font.family": ["Barlow Semi Condensed", "DejaVu Sans"],
             "font.size": 10.5,
-            "svg.fonttype": "path",
             "figure.facecolor": t["surface"],
             "axes.facecolor": t["surface"],
             "axes.edgecolor": t["axis"],
@@ -212,7 +210,8 @@ def draw(name: str, theme: str) -> None:
             title, x=0.01, ha="left", color=t["text"], fontsize=14, fontweight="bold"
         )
         ax.set_title(subtitle, loc="left", color=t["muted"], fontsize=10, pad=10)
-        fig.savefig(OUT / f"{name}-{theme}.svg", metadata={"Date": None})
+        # Twice the width it displays at, for high-density screens.
+        fig.savefig(OUT / f"{name}-{theme}.png", dpi=200)
         plt.close(fig)
 
 

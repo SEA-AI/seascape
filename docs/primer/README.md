@@ -89,8 +89,8 @@ A thermal camera doesn't see light bouncing off things. It sees things glowing. 
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.svg">
-    <img src="charts/glow-light.svg" alt="Planck curves for the sun and a 288 K sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
+    <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.png">
+    <img src="charts/glow-light.png" alt="Planck curves for the sun and a 288 K sea: the sun peaks near 0.5 µm inside the EO band, the sea near 10 µm inside the LWIR band">
   </picture>
 </p>
 
@@ -112,8 +112,8 @@ The obvious way to make waves in Blender is the Ocean modifier, which moves the 
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.svg">
-    <img src="charts/footprint-light.svg" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
+    <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.png">
+    <img src="charts/footprint-light.png" alt="Pixel footprint against distance: along the view it grows past a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays a few metres">
   </picture>
 </p>
 
@@ -143,8 +143,8 @@ The same arithmetic for any camera height:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.svg">
-    <img src="charts/hidden-light.svg" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
+    <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.png">
+    <img src="charts/hidden-light.png" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon">
   </picture>
 </p>
 
