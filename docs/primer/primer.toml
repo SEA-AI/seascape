@@ -1,6 +1,5 @@
 #:schema ../../schema/scenario.json
 
-# Small and fast: every figure in the primer renders this with one change.
 extends = "../../scenarios/open-sea.toml"
 
 [[rig.pods]]

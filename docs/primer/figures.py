@@ -1,15 +1,17 @@
 """The primer's figures: each a row of renders of `primer.toml`, one `--set` apart.
 
-uv run python docs/primer/figures.py            # every figure
-uv run python docs/primer/figures.py wind haze  # some
+uv run python -m docs.primer.figures            # every figure
+uv run python -m docs.primer.figures wind haze  # some
 """
 
-import subprocess
+import json
 import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
+
+from docs.hero import SKIES, captioned, render
 
 HERE = Path(__file__).parent
 GAP_PX = 6
@@ -24,7 +26,6 @@ TELE = (
     '{ kind = "eo", hfov_deg = 1.5, width_px = 640, height_px = 360 }] }]'
 )
 
-# name: (shared overrides, [(caption, overrides), ...])
 FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
     "samples": (
         SUN_AHEAD,
@@ -38,12 +39,7 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         [(f"wind {u} m/s", [f"sea.wind_speed_mps = {u}.0"]) for u in (2, 7, 14)],
     ),
     "eo-ir": (
-        # The hero's cumulus, turned so its broken cloud is in view.
-        [
-            'sky.hdri = "sunflowers"',
-            "sky.sun_bearing_deg = -83.8",
-            f"objects = [{SHIP % 2000.0}]",
-        ],
+        [*SKIES["cumulus"], f"objects = [{SHIP % 2000.0}]"],
         [
             (name, [f'outputs.bands = ["{band}"]'])
             for name, band in (("EO", "eo"), ("LWIR", "ir"))
@@ -75,31 +71,17 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
 }
 
 
-def render(overrides: list[str], out: Path) -> Path:
-    sets = [arg for o in overrides for arg in ("--set", o)]
-    subprocess.run(
-        ["seascape", "render", str(HERE / "primer.toml"), "-o", str(out), *sets],
-        check=True,
-        capture_output=True,
-    )
-    return next(p for p in sorted(out.glob("*_0.*")) if p.suffix in (".jpg", ".png"))
-
-
-def captioned(path: Path, caption: str) -> Image.Image:
-    img = Image.open(path).convert("RGB")
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default(size=18)
-    left, top, right, bottom = draw.textbbox((10, 8), caption, font=font)
-    draw.rectangle([left - 4, top - 3, right + 4, bottom + 3], fill="black")
-    draw.text((10, 8), caption, fill="white", font=font)
-    return img
+def frame(overrides: list[str], out: Path, caption: str) -> Image.Image:
+    render(HERE / "primer.toml", overrides, out)
+    (image,) = json.loads((out / "labels.json").read_text())["images"]
+    return captioned(Image.open(out / image["file_name"]).convert("RGB"), caption, 18)
 
 
 def figure(name: str) -> None:
     shared, panels = FIGURES[name]
     with tempfile.TemporaryDirectory() as tmp:
         frames = [
-            captioned(render(shared + sets, Path(tmp) / str(i)), caption)
+            frame(shared + sets, Path(tmp) / str(i), caption)
             for i, (caption, sets) in enumerate(panels)
         ]
     width = sum(f.width for f in frames) + GAP_PX * (len(frames) - 1)

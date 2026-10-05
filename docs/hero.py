@@ -23,6 +23,22 @@ BOX = (255, 214, 0)
 HORIZON = (80, 220, 255)
 
 
+def render(scenario: Path, overrides: list[str], out: Path) -> None:
+    sets = [arg for o in overrides for arg in ("--set", o)]
+    subprocess.run(
+        ["seascape", "render", str(scenario), "-o", str(out), *sets], check=True
+    )
+
+
+def captioned(img: Image.Image, text: str, size: int = 14) -> Image.Image:
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=size)
+    tb = draw.textbbox((10, 8), text, font=font)
+    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill="black")
+    draw.text((10, 8), text, fill="white", font=font)
+    return img
+
+
 def frame(
     run: Path,
     image: dict,
@@ -54,10 +70,7 @@ def frame(
         tb = draw.textbbox((x0, y0 - 18), text, font=font)
         draw.rectangle([tb[0] - 3, tb[1] - 2, tb[2] + 3, tb[3] + 2], fill="black")
         draw.text((x0, y0 - 18), text, fill=BOX, font=font)
-    tb = draw.textbbox((10, 8), caption, font=font)
-    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill="black")
-    draw.text((10, 8), caption, fill="white", font=font)
-    return img
+    return captioned(img, caption)
 
 
 def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
@@ -94,11 +107,7 @@ def main(hero: Path) -> None:
         columns = []
         for name, overrides in SKIES.items():
             run = Path(tmp) / name
-            sets = [arg for o in overrides for arg in ("--set", o)]
-            subprocess.run(
-                ["seascape", "render", str(SCENARIO), "-o", str(run), *sets],
-                check=True,
-            )
+            render(SCENARIO, overrides, run)
             columns.append(column(run, ", ".join(overrides)))
     w, h = columns[0][0].size
     sheet = Image.new(
