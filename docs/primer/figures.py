@@ -37,6 +37,18 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         SUN_AHEAD,
         [(f"wind {u} m/s", [f"sea.wind_speed_mps = {u}.0"]) for u in (2, 7, 14)],
     ),
+    "eo-ir": (
+        # The hero's cumulus, turned so its broken cloud is in view.
+        [
+            'sky.hdri = "sunflowers"',
+            "sky.sun_bearing_deg = -83.8",
+            f"objects = [{SHIP % 2000.0}]",
+        ],
+        [
+            (name, [f'outputs.bands = ["{band}"]'])
+            for name, band in (("EO", "eo"), ("LWIR", "ir"))
+        ],
+    ),
     "lwir": (
         LWIR,
         [
