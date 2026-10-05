@@ -1307,6 +1307,43 @@ class TestPhotographedSky:
         assert haze.image == world.image
 
 
+class TestPhotographedThermalSky:
+    """A white photo, all cloud, stands in for the download."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
+        path = tmp_path_factory.mktemp("sky") / "white.hdr"
+        image = bpy.data.images.new("white", 64, 32, float_buffer=True)
+        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+        image.filepath_raw = str(path)
+        image.file_format = "HDR"
+        image.save()
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(scene, "download", lambda *_: path)
+            scene.build(load(OPEN_SEA, ['sky.hdri = "overcast_soil"']), "ir")
+
+    def test_the_clouds_are_the_world(self) -> None:
+        tree = bpy.data.worlds["sky"].node_tree
+        background = tree.nodes["Background"].inputs["Color"].links[0].from_node
+        assert background.image.name == "cloudy_sky_radiance"
+
+    def test_overhead_reads_a_cloud(self) -> None:
+        image = bpy.data.images["cloudy_sky_radiance"]
+        w, h = image.size
+        pixels = np.empty(w * h * 4, np.float32)
+        image.pixels.foreach_get(pixels)
+        top = pixels.reshape(h, w, 4)[-1, :, 0]
+        sky = load(OPEN_SEA, ['sky.hdri = "overcast_soil"']).sky
+        expected = lwir.cloudy_sky_radiance(
+            np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+        )
+        assert top == pytest.approx(float(expected), rel=1e-3)
+
+    def test_the_photo_is_not_kept(self) -> None:
+        assert "white.hdr" not in bpy.data.images
+
+
 def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:
     sky = load(OPEN_SEA, ['sky.hdri = "overcast_soil"']).sky
     tree = bpy.data.materials.new("hull").node_tree

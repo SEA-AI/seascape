@@ -45,6 +45,9 @@ PAINT_EMISSIVITY = 0.94
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
 
+# Judgement.
+THERMAL_SKY_PX = 2048
+
 
 def _substream(seed: int, name: str) -> np.random.Generator:
     """A named substream, so adding a component cannot perturb an existing one."""
@@ -115,10 +118,26 @@ def _photo(
 ) -> bpy.types.NodeSocket:
     """The photographed sky `name` in `direction`, turned so its sun sits at
     `sun_bearing_deg`."""
+    return _turned(tree, _photo_image(name), name, sun_bearing_deg, direction)
+
+
+def _photo_image(name: str) -> bpy.types.Image:
     photo = skies.library()[name]
-    image = bpy.data.images.load(
+    return bpy.data.images.load(
         str(download(name, photo.url, photo.sha256)), check_existing=True
     )
+
+
+def _turned(
+    tree: bpy.types.NodeTree,
+    image: bpy.types.Image,
+    name: str,
+    sun_bearing_deg: float,
+    direction: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`image`, laid out as the photographed sky `name`, in `direction`, turned so the
+    photo's sun sits at `sun_bearing_deg`."""
+    photo = skies.library()[name]
     turn = tree.nodes.new("ShaderNodeMapping")
     # Turning the lookup by d carries the image's sun clockwise by d: no negation.
     turn.inputs["Rotation"].default_value = (
@@ -296,25 +315,60 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
     return curve_image("sky_radiance", radiance)
 
 
+def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
+    """`lwir.cloudy_sky_radiance` under the photo's clouds, laid out as the photo."""
+    assert sky.hdri is not None
+    photo = _photo_image(sky.hdri)
+    w, h = photo.size
+    pixels = np.empty(w * h * 4, np.float32)
+    photo.pixels.foreach_get(pixels)
+    bpy.data.images.remove(photo)
+    # Bottom row first, as Blender stores an image: the sky is the top half.
+    cloud = np.zeros((h, w), np.float32)
+    cloud[h // 2 :] = skies.cloud(pixels.reshape(h, w, 4)[h // 2 :, :, :3])
+    f = max(1, w // THERMAL_SKY_PX)
+    cloud = cloud[: h // f * f, : w // f * f]
+    cloud = cloud.reshape(h // f, f, w // f, f).mean(axis=(1, 3))
+    rows = cloud.shape[0]
+    elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
+    radiance = lwir.cloudy_sky_radiance(
+        elevation[:, None], cloud, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+    )
+    return curve_image("cloudy_sky_radiance", radiance)
+
+
 def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
-    """Downwelling radiance against elevation, as raw W m^-2 sr^-1."""
+    """Downwelling radiance, as raw W m^-2 sr^-1: against elevation, or under the
+    photo's clouds."""
     tree = world.node_tree
     tree.nodes.clear()
     link = tree.links.new
     coord = tree.nodes.new("ShaderNodeTexCoord")
+    background = tree.nodes.new("ShaderNodeBackground")
+    output = tree.nodes.new("ShaderNodeOutputWorld")
+    link(background.outputs["Background"], output.inputs["Surface"])
+    if sky.hdri is not None:
+        radiance = _turned(
+            tree,
+            _cloudy_sky_image(sky),
+            sky.hdri,
+            sky.sun_bearing_deg,
+            coord.outputs["Generated"],
+        )
+        # Linear shows the texel grid where a texel spans several pixels.
+        radiance.node.interpolation = "Cubic"
+        link(radiance, background.inputs["Color"])
+        return world
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     above = tree.nodes.new("ShaderNodeMath")
     above.operation = "MAXIMUM"
     above.use_clamp = True
     above.inputs["Value_001"].default_value = 0.0
-    background = tree.nodes.new("ShaderNodeBackground")
-    output = tree.nodes.new("ShaderNodeOutputWorld")
 
     link(coord.outputs["Generated"], height.inputs["Vector"])
     link(height.outputs["Z"], above.inputs["Value"])
     radiance = lookup(tree, _sky_image(sky), above.outputs["Value"])
     link(radiance, background.inputs["Color"])
-    link(background.outputs["Background"], output.inputs["Surface"])
     return world
 
 

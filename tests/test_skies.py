@@ -41,3 +41,12 @@ def test_a_star_is_no_sun() -> None:
     sky = _sky(90.0, 20.0, 8.0, 2.0)
     sky[100, 700] = 1e5
     assert skies.sun(sky).elevation_deg is None
+
+
+def test_broken_cloud_splits_from_the_blue_between() -> None:
+    pixels = np.array([[0.2, 0.4, 1.0]] * 3 + [[1.0, 1.0, 1.0]] * 2)
+    assert skies.cloud(pixels).tolist() == [0.0, 0.0, 0.0, 1.0, 1.0]
+
+
+def test_a_sky_of_one_grey_is_overcast() -> None:
+    assert skies.cloud(np.full((4, 3), 0.7)).tolist() == [1.0] * 4
