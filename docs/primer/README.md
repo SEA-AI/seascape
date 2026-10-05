@@ -6,7 +6,7 @@ Blender, light, heat and the sea, for people who read seascape's output or code 
 uv run seascape render docs/primer/primer.toml -o out/ --set 'sea.wind_speed_mps = 14'
 ```
 
-`primer.toml` is the open sea at 640×360, quick even on a laptop CPU. [`figures.py`](figures.py) redraws every figure.
+`primer.toml` is the open sea at 640×360, quick even on a laptop CPU. [`figures.py`](figures.py) redraws every render and [`charts.py`](charts.py) every chart, the charts straight from seascape's own physics functions.
 
 **Contents:** [the pipeline](#the-pipeline) · [rendering](#rendering-a-picture-is-an-average) · [shaders](#shaders-tiny-programs-at-every-point) · [HDR and skies](#light-as-numbers) · [EO and LWIR](#eo-and-lwir-two-different-worlds) · [the sea](#the-sea) · [haze](#haze) · [the horizon](#the-horizon-is-closer-than-you-think) · [ground truth](#ground-truth-for-free) · [limitations](#limitations) · [glossary](#glossary)
 
@@ -128,6 +128,11 @@ uv run seascape render docs/primer/primer.toml -o out/ --set 'sky.hdri = "belfas
 
 ### Everything glows
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/glow-dark.svg">
+  <img src="charts/glow-light.svg" alt="Planck curves for the sun at 5772 K, the sea at 288 K and the zenith sky at 225 K: the sun peaks near 0.5 µm inside the EO band, sea and sky near 10 µm inside the LWIR band">
+</picture>
+
 You glow too. Anything at a few hundred kelvin radiates, mostly in 8-14 µm. **Planck's law** gives how much a perfect emitter, a **blackbody**, sends at each wavelength and temperature. A real surface sends a fraction of that, its **emissivity** ε. Seawater is opaque in this band, so whatever it does not emit, it reflects (**Kirchhoff's law**, ε = 1 − R):
 
 $$L_\text{sea} = \varepsilon(\theta)\,B(T_\text{sea}) + \big(1-\varepsilon(\theta)\big)\,L_\text{sky}$$
@@ -141,6 +146,13 @@ $$L_\text{sea} = \varepsilon(\theta)\,B(T_\text{sea}) + \big(1-\varepsilon(\thet
 | Toward the horizon, 700 m out from 12 m up | 89° | 0.105 | 90% mirror |
 
 And the mirror shows a cold sky. The North Sea profile seascape uses by default puts the zenith at about 225 K (−48 °C) and the sky 5° up at about 271 K, with the air at 288 K. Clear air hardly emits, so looking up you see the cold upper atmosphere and space beyond.
+
+Put the two together and the sea's apparent temperature depends on where you look, even when sea and air are the same temperature:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/sea-temperature-dark.svg">
+  <img src="charts/sea-temperature-light.svg" alt="Brightness temperature of a flat 288 K sea seen from 12 m: 287 K at 10 m, a minimum of 278 K near 100 m, back to 288 K toward the horizon">
+</picture>
 
 <details>
 <summary><b>Puzzle:</b> sea and air at exactly the same temperature. Can a thermal camera see the waves?</summary>
@@ -174,8 +186,13 @@ A sum of sine waves, like a chord is a sum of notes. Oceanographers describe a s
 | Wind at 10 m | Peak wavelength (`waves.peak_omega_rad_s`) | Peak period |
 |---|---|---|
 | 2 m/s | 3.6 m | 1.5 s |
-| 7 m/s | 46 m | 5.4 s |
+| 7 m/s | 45 m | 5.4 s |
 | 14 m/s | 185 m | 11 s |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/spectrum-dark.svg">
+  <img src="charts/spectrum-light.svg" alt="Pierson-Moskowitz spectra at 2, 7 and 14 m/s on log axes: each peak sits at a longer period and far higher energy than the last">
+</picture>
 
 Each wave is `a cos(k·x − ωt + φ)`, its phase drawn from the scenario's seed: same seed, same sea.
 
@@ -192,13 +209,23 @@ Because of how much sea one pixel sees. Take a 1920-pixel camera with a 45° fie
 | 1 km | 41 cm | 0.7° | 34 m |
 | 5 km | 2 m | 0.1° | about 1 km |
 
-At 1 km one pixel spans a 7 m/s sea's whole peak wavelength. Geometry smaller than a pixel does not average out; it **aliases**, into shimmer, moiré and crawling lines, the way a striped shirt strobes on TV. Blender's Ocean modifier displaces a mesh, so it breaks exactly where a maritime camera looks.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.svg">
+  <img src="charts/footprint-light.svg" alt="Pixel footprint against distance on log axes: along the view it crosses a 7 m/s sea's 45 m peak wave near 1 km; across the view it stays under 4 m">
+</picture>
+
+Around 1 km one pixel grows as long as a 7 m/s sea's peak wave, and every shorter wave fits inside it. Geometry smaller than a pixel does not average out; it **aliases**, into shimmer, moiré and crawling lines, the way a striped shirt strobes on TV. Blender's Ocean modifier displaces a mesh, so it breaks exactly where a maritime camera looks.
 
 So every pixel draws the waves longer than its own footprint, as a tilt of the shading normal, and folds the slope of all the shorter ones into the BSDF's roughness (Bruneton, Neyret & Holzschuch 2010). How rough in total comes from **Cox & Munk** (1954), who flew over Hawaii photographing sun glitter and found the sea's slope variance grows in a straight line with wind speed. Near the camera you see waves; far off the same sea becomes a sheen; in between they blend.
 
 ![Sun glitter at 2, 7 and 14 m/s](wind.jpg)
 
 The glitter is the best place to watch it: a calm sea reflects a narrow column of sun, a windy one spreads it wide and breaks it into sparkles. The column's width *is* Cox & Munk's measurement, run backwards.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/slope-dark.svg">
+  <img src="charts/slope-light.svg" alt="Cox and Munk RMS sea slope against wind: about 3 degrees in calm air, 18 degrees at 20 m/s; under a slick it grows about half as fast">
+</picture>
 
 The sea's mesh exists only for the earth's curve, kilometres across and never sub-pixel. The cost of all this: a normal cannot hide anything, so a wave never occludes a target.
 
@@ -232,6 +259,13 @@ The optical depth τ grows with distance. At the **meteorological visibility**, 
 
 ![A container ship at 2 km with visibility 42, 10 and 3 km](haze.jpg)
 
+Which camera sees farther depends on the air. In clear air water vapour absorbs LWIR and EO keeps more. Haze particles are small next to 10 µm and scatter LWIR far less than visible light, so in haze LWIR wins:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/haze-dark.svg">
+  <img src="charts/haze-light.svg" alt="Two panels. Clear air, visibility 42 km: at 20 km EO keeps 16 percent, LWIR 6 percent. Haze, visibility 3 km: at 5 km EO keeps almost nothing, LWIR about 10 percent">
+</picture>
+
 **Go deeper:** [Visibility](https://en.wikipedia.org/wiki/Visibility) (Wikipedia, Koschmieder's relation) · [Aerial perspective](https://en.wikipedia.org/wiki/Aerial_perspective) (Wikipedia; painters knew first)
 
 ## The horizon is closer than you think
@@ -249,6 +283,13 @@ From a mast top 30 m up the horizon is 21 km out. Through a 1.5° telephoto, in 
 ![A container ship at 15, 30 and 45 km, seen from 30 m up](horizon.jpg)
 
 At 15 km the ship sits on a mirror: at that grazing angle the sea reflects almost everything. At 45 km the curve hides about 39 m, the whole hull, and only the bridge and the mast tip are left.
+
+The same arithmetic for any camera height:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="charts/hidden-dark.svg">
+  <img src="charts/hidden-light.svg" alt="Height hidden by the earth's curve against range for cameras 3, 12 and 30 m up, each starting at its horizon: 6.6, 13.3 and 21 km; the 45 km ship from 30 m has 39 m hidden">
+</picture>
 
 Every frame's labels say where the horizon falls in the image: `horizon_px`, a polyline, since a wide field of view sees the horizon slightly bowed.
 
