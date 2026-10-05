@@ -1,55 +1,114 @@
-"""The README's hero: each frame of a render, side by side, with labels.json drawn on.
+"""The README's hero: EO above LWIR under each sky, with labels.json drawn on.
 
-uv run seascape render docs/hero.toml -o out/
-uv run python docs/hero.py out/ docs/hero.jpg
+uv run python docs/hero.py docs/hero.jpg
 """
 
 import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-HEIGHT_PX = 540
+SCENARIO = Path(__file__).with_name("hero.toml")
+SKIES = {
+    "clear": ["sky.sun_elevation_deg = 35"],
+    # The turn brings the photo's broken cloud into view.
+    "cumulus": ['sky.hdri = "sunflowers"', "sky.sun_bearing_deg = -83.8"],
+    "haze": ['sky.hdri = "overcast_soil"', "sky.visibility_km = 3"],
+}
 GAP_PX = 8
 BOX = (255, 214, 0)
 HORIZON = (80, 220, 255)
 
 
-def frame(run: Path, image: dict, annotations: list[dict]) -> Image.Image:
+def frame(
+    run: Path,
+    image: dict,
+    annotations: list[dict],
+    window: tuple[float, float, float, float],
+    size: tuple[int, int],
+    caption: str,
+) -> Image.Image:
+    """`window` is (left, top, width, height) in source pixels."""
+    left, top, width, height = window
+    s = size[0] / width
     img = Image.open(run / image["file_name"]).convert("RGB")
-    s = HEIGHT_PX / img.height
-    img = img.resize((round(img.width * s), HEIGHT_PX), Image.Resampling.LANCZOS)
+    box = (left, top, left + width, top + height)
+    img = img.resize(size, Image.Resampling.LANCZOS, box=box)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default(size=15)
-    draw.line([(x * s, y * s) for x, y in image["horizon_px"]], fill=HORIZON)
+    font = ImageFont.load_default(size=14)
+
+    def at(x: float, y: float) -> tuple[float, float]:
+        return (x - left) * s, (y - top) * s
+
+    draw.line([at(x, y) for x, y in image["horizon_px"]], fill=HORIZON)
     for a in annotations:
-        x, y, w, h = (v * s for v in a["bbox"])
-        draw.rectangle([x, y, x + w, y + h], outline=BOX, width=2)
+        x, y, w, h = a["bbox"]
+        (x0, y0), (x1, y1) = at(x, y), at(x + w, y + h)
+        draw.rectangle([x0, y0, x1, y1], outline=BOX, width=2)
         r = a["range_m"]
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
-        left, top, right, bottom = draw.textbbox((x, y - 20), text, font=font)
-        draw.rectangle([left - 3, top - 2, right + 3, bottom + 2], fill="black")
-        draw.text((x, y - 20), text, fill=BOX, font=font)
-    draw.text((10, 8), image["band"].upper(), fill="white", font=font)
+        tb = draw.textbbox((x0, y0 - 18), text, font=font)
+        draw.rectangle([tb[0] - 3, tb[1] - 2, tb[2] + 3, tb[3] + 2], fill="black")
+        draw.text((x0, y0 - 18), text, fill=BOX, font=font)
+    tb = draw.textbbox((10, 8), caption, font=font)
+    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill="black")
+    draw.text((10, 8), caption, fill="white", font=font)
     return img
 
 
-def main(run: Path, out: Path) -> None:
+def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
+    """EO cropped to the LWIR field of view, and LWIR, both at LWIR size."""
     labels = json.loads((run / "labels.json").read_text())
-    frames = [
-        frame(run, im, [a for a in labels["annotations"] if a["image_id"] == im["id"]])
-        for im in labels["images"]
-    ]
-    width = sum(f.width for f in frames) + GAP_PX * (len(frames) - 1)
-    sheet = Image.new("RGB", (width, HEIGHT_PX), "white")
-    x = 0
-    for f in frames:
-        sheet.paste(f, (x, 0))
-        x += f.width + GAP_PX
-    sheet.save(out, quality=85)
+    calibration = json.loads((run / "calibration.json").read_text())
+    by_band = {im["band"]: im for im in labels["images"]}
+    if len(by_band) != len(labels["images"]):
+        raise ValueError(f"{run}: one camera per band, got {len(labels['images'])}")
+    fx = {c["band"]: c["K"][0][0] for c in calibration["cameras"]}
+    eo, ir = by_band["eo"], by_band["ir"]
+    size = (ir["width"], ir["height"])
+    # Assumes coaxial cameras.
+    w, h = size[0] * fx["eo"] / fx["ir"], size[1] * fx["eo"] / fx["ir"]
+
+    def boxes(im: dict) -> list[dict]:
+        return [a for a in labels["annotations"] if a["image_id"] == im["id"]]
+
+    return (
+        frame(
+            run,
+            eo,
+            boxes(eo),
+            ((eo["width"] - w) / 2, (eo["height"] - h) / 2, w, h),
+            size,
+            caption,
+        ),
+        frame(run, ir, boxes(ir), (0.0, 0.0, *map(float, size)), size, "LWIR"),
+    )
+
+
+def main(hero: Path) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        columns = []
+        for name, overrides in SKIES.items():
+            run = Path(tmp) / name
+            sets = [arg for o in overrides for arg in ("--set", o)]
+            subprocess.run(
+                ["seascape", "render", str(SCENARIO), "-o", str(run), *sets],
+                check=True,
+            )
+            columns.append(column(run, ", ".join(overrides)))
+    w, h = columns[0][0].size
+    sheet = Image.new(
+        "RGB", (len(columns) * (w + GAP_PX) - GAP_PX, 2 * h + GAP_PX), "white"
+    )
+    for i, pair in enumerate(columns):
+        for j, img in enumerate(pair):
+            sheet.paste(img, (i * (w + GAP_PX), j * (h + GAP_PX)))
+    sheet.save(hero, quality=85)
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
+    main(Path(sys.argv[1]))
