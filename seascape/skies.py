@@ -12,9 +12,9 @@ radius of 0.19 degrees.
 Cloud: Li, Lu & Yang, "A hybrid thresholding algorithm for cloud detection on
 ground-based color images", J. Atmos. Oceanic Technol. 28(10) 1286, 2011. Clear sky is
 bluer than cloud in (B - R) / (B + R) of camera counts. A sky of one mode is taken as
-all cloud; one of two is split at Otsu's threshold ("A threshold selection method from
-gray-level histograms", IEEE Trans. SMC 9(1) 62, 1979), which stands in for their
-minimum cross entropy.
+all cloud; one of two is split into Otsu's classes ("A threshold selection method from
+gray-level histograms", IEEE Trans. SMC 9(1) 62, 1979), which stand in for their
+minimum cross entropy, and graded between the two classes' means.
 """
 
 import math
@@ -147,8 +147,7 @@ def sun(radiance: np.ndarray) -> Sun:
     )
 
 
-def _otsu(values: np.ndarray) -> float:
-    """The split that maximises the variance between the two sides."""
+def _otsu_means(values: np.ndarray) -> tuple[float, float]:
     counts, edges = np.histogram(values, 256)
     centres = (edges[:-1] + edges[1:]) / 2
     below = np.cumsum(counts)[:-1]
@@ -156,19 +155,21 @@ def _otsu(values: np.ndarray) -> float:
     sums = np.cumsum(counts * centres)
     mean_below = sums[:-1] / np.maximum(below, 1)
     mean_above = (sums[-1] - sums[:-1]) / np.maximum(above, 1)
-    return float(edges[1:-1][np.argmax(below * above * (mean_below - mean_above) ** 2)])
+    best = np.argmax(below * above * (mean_below - mean_above) ** 2)
+    return float(mean_below[best]), float(mean_above[best])
 
 
 def cloud(radiance: np.ndarray) -> np.ndarray:
-    """1 where `radiance`, (..., 3) of one sky, is cloud, 0 where it is clear.
+    """How much of `radiance`, (..., 3) of one sky, is cloud: 1 as grey as the cloud's
+    mean, 0 as blue as the clear sky's.
 
-    ponytail: colour alone, so a sun's glow, a dusk's red, a clear sky of one mode and
-    the haze low over a clear horizon read as cloud; a clear-sky reference per photo
-    when that matters.
+    ponytail: colour alone, so a sun's glow, a dusk's red and a clear sky of one mode
+    read as cloud; a clear-sky reference per photo when that matters.
     """
     counts = np.maximum(radiance, 0.0) ** (1.0 / GAMMA)
     red, blue = counts[..., 0], counts[..., 2]
     blueness = (blue - red) / np.maximum(blue + red, 1e-6)
     if blueness.std() < ONE_MODE_STD:
         return np.ones(blueness.shape, np.float32)
-    return (blueness < _otsu(blueness)).astype(np.float32)
+    cloudy, clear = _otsu_means(blueness)
+    return np.clip((clear - blueness) / (clear - cloudy), 0.0, 1.0).astype(np.float32)
