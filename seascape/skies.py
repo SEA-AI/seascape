@@ -148,7 +148,6 @@ def sun(radiance: np.ndarray) -> Sun:
 
 
 def _otsu_means(values: np.ndarray) -> tuple[float, float]:
-    """The means below and above the split that maximises the variance between them."""
     counts, edges = np.histogram(values, 256)
     centres = (edges[:-1] + edges[1:]) / 2
     below = np.cumsum(counts)[:-1]
