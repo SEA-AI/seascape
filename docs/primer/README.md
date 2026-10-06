@@ -57,13 +57,14 @@ Open it in [Blender](https://www.blender.org/download/), hover over the 3D view 
 
 ## The sea
 
-The obvious way to make waves in Blender is the Ocean modifier, which moves a mesh up and down. That works up close but shimmers in the distance, which is where a maritime camera spends most of its pixels. The camera sees the sea almost edge-on, so each pixel lands on it as a long thin strip:
+The obvious way to make waves in Blender is the Ocean modifier, which moves a mesh up and down. That works up close but shimmers in the distance, which is where a maritime camera spends most of its pixels. The camera sees the sea almost edge-on, so each pixel lands on it as a long thin strip, and the strip gets a hundred times longer between 100 m and 1 km. On the right, the same frame at those two distances, pixels blown up:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="charts/footprint-dark.png">
-    <img src="charts/footprint-light.png" width="60%" alt="Length of sea one pixel covers against distance: it passes the 45 m main wavelength of a 7 m/s wind near 1 km, and shorter waves become roughness">
+    <source media="(prefers-color-scheme: dark)" srcset="charts/rays-dark.png">
+    <img src="charts/rays-light.png" width="49%" alt="Side view of two neighbouring pixels' rays: 34 cm apart where they land 100 m out, 34 m apart 1 km out">
   </picture>
+  <img src="crops.jpg" width="49%" alt="The same frame 100 m out, where individual waves show, and 1 km out, where the sea is a uniform texture">
 </p>
 
 A wave shorter than its pixel can't be drawn, only aliased. So the sea works out each pixel's strip from the camera, draws the waves longer than it by tilting the normal, and turns the rest into roughness. How rough in total comes from Cox & Munk, who photographed sun glitter from a plane in the fifties. You can see it in the sun's glitter, which widens with the wind:

@@ -18,7 +18,7 @@ from seascape.config import Sea
 
 OUT = Path(__file__).parent / "charts"
 REFRACTION_K = Sea().refraction_k
-# The footprint chart's camera.
+# The rays chart's camera.
 HEIGHT_M, WIDTH_PX, HFOV_DEG = 12.0, 1920, 45.0
 # IAU 2015 Resolution B3: the sun's nominal effective temperature.
 SUN_K = 5772.0
@@ -96,44 +96,48 @@ def glow(ax: Axes, t: dict) -> None:
     ax.set_yticks([])
 
 
-def footprint(ax: Axes, t: dict) -> None:
+def rays(ax: Axes, t: dict) -> None:
+    """Not to scale: the angles are opened up so the rays can be seen at all."""
     radius_m = waves.earth_radius_m(REFRACTION_K)
-    d_m = np.geomspace(20, 8000, 300)
-    across = d_m * math.radians(HFOV_DEG) / WIDTH_PX
-    along = across / np.sin(np.arctan(HEIGHT_M / d_m) - d_m / (2 * radius_m))
-    peak_m = 2 * math.pi * waves.GRAVITY_MS2 / waves.peak_omega_rad_s(7.0) ** 2
-    bottom = 0.005
-    ax.fill_between(d_m, bottom, along, color=t["grid"], lw=0, zorder=0)
-    ax.plot(d_m, along, color=t["series"][0], lw=2)
-    reference(ax, t, peak_m, f"main wavelength in a 7 m/s wind, {peak_m:.0f} m")
-    cross_m = float(np.interp(peak_m, along, d_m))
-    ax.plot(cross_m, peak_m, "o", ms=8, color=t["series"][0], mec=t["surface"], mew=2)
-    ax.annotate(
-        f"≈ {cross_m / 1000:.1f} km",
-        (cross_m, peak_m),
-        xytext=(10, -14),
-        textcoords="offset points",
-        color=t["secondary"],
-        fontsize=10,
-    )
-    ax.text(25, 2000, "longer waves: drawn as shapes", color=t["secondary"], size=10)
-    ax.text(
-        1500,
-        0.02,
-        "shorter waves:\nfolded into roughness",
-        color=t["secondary"],
-        size=10,
-        ha="center",
-    )
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlim(20, 8000)
-    ax.set_ylim(bottom, 5000)
-    ax.set_xticks([20, 100, 1000, 8000], ["20 m", "100 m", "1 km", "8 km"])
-    ticks = [0.01, 0.1, 1, 10, 100, 1000]
-    ax.set_yticks(ticks, ["1 cm", "10 cm", "1 m", "10 m", "100 m", "1 km"])
-    ax.set_xlabel("distance from the camera")
-    ax.set_ylabel("length of sea in one pixel")
+    pixel_rad = math.radians(HFOV_DEG) / WIDTH_PX
+
+    def along_m(d_m: float) -> float:
+        grazing = math.atan(HEIGHT_M / d_m) - d_m / (2 * radius_m)
+        return d_m * pixel_rad / math.sin(grazing)
+
+    def length(m: float) -> str:
+        if m >= 1000:
+            return f"{m / 1000:.0f} km"
+        return f"{m:.0f} m" if m >= 1 else f"{m * 100:.0f} cm"
+
+    ax.plot([-0.3, 10], [0, 0], color=t["series"][1], lw=2)
+    ax.plot([0, 0], [0, 1], color=t["muted"], lw=3)
+    ax.plot(0, 1, "o", ms=10, color=t["text"])
+    ax.text(0.15, 1.03, "camera", color=t["secondary"], fontsize=10)
+    for land, spread, d_m in ((1.6, 0.12, 100.0), (8.0, 1.6, 1000.0)):
+        for x in (land, land + spread):
+            ax.plot([0, x], [1, 0], color=t["series"][0], lw=1.2)
+        ax.annotate(
+            "",
+            (land, -0.08),
+            (land + spread, -0.08),
+            arrowprops={"arrowstyle": "<->", "color": t["secondary"], "lw": 1},
+        )
+        ax.text(
+            land + spread / 2,
+            -0.18,
+            f"{length(d_m)} out: {length(along_m(d_m))} apart",
+            ha="center",
+            va="top",
+            color=t["secondary"],
+            fontsize=10,
+        )
+    ax.set_xlim(-0.5, 10.2)
+    ax.set_ylim(-0.5, 1.25)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.grid(False)
+    ax.spines["bottom"].set_visible(False)
 
 
 def hidden(ax: Axes, t: dict) -> None:
@@ -175,17 +179,19 @@ def hidden(ax: Axes, t: dict) -> None:
     ax.set_ylabel("height hidden by the sea, m")
 
 
+# Shown at half width beside the crops, so drawn smaller to keep its text legible.
+FIGSIZE = {"rays": (4.2, 2.6)}
 CHARTS = {
     "glow": (
         "The sun glows in the visible, the sea in the thermal",
         "Planck's law, each curve scaled to its peak. Shaded: what each camera sees.",
         glow,
     ),
-    "footprint": (
-        "Far out, a whole wave fits inside one pixel",
-        f"Looking out from {HEIGHT_M:.0f} m "
-        f"with a {WIDTH_PX} px, {HFOV_DEG:.0f}° camera.",
-        footprint,
+    "rays": (
+        "Far out, one pixel covers a lot of sea",
+        f"Side view, not to scale. {WIDTH_PX} px, {HFOV_DEG:.0f}° camera, "
+        f"{HEIGHT_M:.0f} m up.",
+        rays,
     ),
     "hidden": (
         "Raise the camera and the horizon moves out",
@@ -219,7 +225,9 @@ def draw(name: str, theme: str) -> None:
             "ytick.labelcolor": t["secondary"],
         }
     ):
-        fig, ax = plt.subplots(figsize=(5.4, 3.0), layout="constrained")
+        fig, ax = plt.subplots(
+            figsize=FIGSIZE.get(name, (5.4, 3.0)), layout="constrained"
+        )
         chart(ax, t)
         ax.minorticks_off()
         ax.spines["left"].set_visible(False)
