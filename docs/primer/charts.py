@@ -12,13 +12,21 @@ from matplotlib import font_manager
 from matplotlib.axes import Axes
 
 from docs.brand import FOCUS_RED, FOG_WHITE, FONT, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY
-from docs.primer.figures import CROP_PX, CROP_SCALE, FULL_HD, GAP_PX, HERE, HULL_DOWN_KM
+from docs.primer.figures import (
+    CROP_PX,
+    CROP_SCALE,
+    FULL_HD,
+    GAP_PX,
+    HERE,
+    HULL_DOWN_KM,
+    PRIMER,
+)
 from seascape import lwir, waves
 from seascape.config import load
 
 OUT = HERE / "charts"
 # The crops' scenario, so the rays chart describes the camera that took them.
-SCENARIO = load(HERE / "primer.toml", [FULL_HD])
+SCENARIO = load(PRIMER, [FULL_HD])
 (CAMERA,) = (mount.camera for mount in SCENARIO.rig.mounts)
 REFRACTION_K = SCENARIO.sea.refraction_k
 # IAU 2015 Resolution B3: the sun's nominal effective temperature.
@@ -103,14 +111,15 @@ def hidden(ax: Axes, t: dict) -> None:
     for colour, h in zip(t["series"], (3.0, 12.0, 30.0), strict=True):
         horizon_km = waves.horizon_m(h, REFRACTION_K) / 1000
         x = r_km[r_km >= horizon_km]
-        ax.plot(x, (x - horizon_km) ** 2 * 1e6 / (2 * radius_m), color=colour, lw=2)
+        hidden_m = [-waves.sea_z_m((r - horizon_km) * 1000, 0.0, radius_m) for r in x]
+        ax.plot(x, hidden_m, color=colour, lw=2)
         ax.plot(horizon_km, 0, "o", ms=8, color=colour, mec=t["surface"], mew=2)
-        at_km = horizon_km + math.sqrt(2 * radius_m * 30.0) / 1000
+        at_km = horizon_km + waves.horizon_m(30.0, REFRACTION_K) / 1000
         note(ax, t, (at_km, 30.0), f"{h:.0f} m up", xytext=(-8, 0),
              textcoords="offset points", va="center", ha="right")  # fmt: skip
     far_km = HULL_DOWN_KM[-1]
     behind_km = far_km - waves.horizon_m(30.0, REFRACTION_K) / 1000
-    seen = behind_km**2 * 1e6 / (2 * radius_m)
+    seen = -waves.sea_z_m(behind_km * 1000, 0.0, radius_m)
     ax.plot(far_km, seen, "o", ms=8, color=t["series"][2], mec=t["surface"], mew=2)
     arrow = {"arrowstyle": "-", "color": t["muted"], "lw": 1}
     text = f"the {far_km} km ship above:\n{seen:.0f} m hidden"

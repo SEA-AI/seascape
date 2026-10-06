@@ -46,4 +46,5 @@ default-groups = ["dev", "blender"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["render: needs Cycles, run with --render"]
