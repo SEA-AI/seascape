@@ -30,6 +30,7 @@ FULL_HD = (
     '{ kind = "eo", hfov_deg = 45.0, width_px = 1920, height_px = 1080 }] }]'
 )
 CROP_PX, CROP_SCALE = (192, 56), 4
+HULL_DOWN_KM = (15, 30, 40)
 TELE = (
     'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = ['
     '{ kind = "eo", hfov_deg = 1.5, width_px = 640, height_px = 360 }] }]'
@@ -74,7 +75,7 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         [TELE, "rig.height_m = 30.0", "sky.visibility_km = 1000.0"],
         [
             (f"ship at {r} km", [f"objects = [{SHIP % (r * 1000.0)}]"])
-            for r in (15, 30, 45)
+            for r in HULL_DOWN_KM
         ],
     ),
 }

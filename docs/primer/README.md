@@ -100,7 +100,7 @@ Two things happen as a ship gets farther away. The air scatters its light away a
 
 And the earth curves away under it. Past the horizon a ship sinks hull-down:
 
-<p align="center"><img src="horizon.jpg" alt="A container ship at 15, 30 and 45 km, seen from 30 m up"></p>
+<p align="center"><img src="horizon.jpg" alt="A container ship at 15, 30 and 40 km, seen from 30 m up"></p>
 
 <p align="center">
   <picture>

@@ -12,7 +12,7 @@ from matplotlib import font_manager
 from matplotlib.axes import Axes
 
 from docs.brand import FOCUS_RED, FOG_WHITE, FONT, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY
-from docs.primer.figures import CROP_PX, CROP_SCALE, FULL_HD, GAP_PX, HERE
+from docs.primer.figures import CROP_PX, CROP_SCALE, FULL_HD, GAP_PX, HERE, HULL_DOWN_KM
 from seascape import lwir, waves
 from seascape.config import load
 
@@ -108,11 +108,13 @@ def hidden(ax: Axes, t: dict) -> None:
         at_km = horizon_km + math.sqrt(2 * radius_m * 30.0) / 1000
         note(ax, t, (at_km, 30.0), f"{h:.0f} m up", xytext=(-8, 0),
              textcoords="offset points", va="center", ha="right")  # fmt: skip
-    seen = (45 - waves.horizon_m(30.0, REFRACTION_K) / 1000) ** 2 * 1e6 / (2 * radius_m)
-    ax.plot(45, seen, "o", ms=8, color=t["series"][2], mec=t["surface"], mew=2)
+    far_km = HULL_DOWN_KM[-1]
+    behind_km = far_km - waves.horizon_m(30.0, REFRACTION_K) / 1000
+    seen = behind_km**2 * 1e6 / (2 * radius_m)
+    ax.plot(far_km, seen, "o", ms=8, color=t["series"][2], mec=t["surface"], mew=2)
     arrow = {"arrowstyle": "-", "color": t["muted"], "lw": 1}
-    text = f"the 45 km ship above:\n{seen:.0f} m hidden"
-    note(ax, t, (45, seen), text, xytext=(49.5, 6), ha="right", arrowprops=arrow)
+    text = f"the {far_km} km ship above:\n{seen:.0f} m hidden"
+    note(ax, t, (far_km, seen), text, xytext=(49.5, 6), ha="right", arrowprops=arrow)
     ax.set_xlim(0, 50)
     ax.set_ylim(0, 80)
     ax.set_xlabel("range to the target, km")
