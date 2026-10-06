@@ -425,3 +425,42 @@ def test_a_killed_job_leaves_no_temporary_files(
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(server._seascape("render"))
     assert not seen["tmp"].exists()
+
+
+async def _statuses(served: Any, path: str, *hosts: str) -> list[int]:
+    async with served.router.lifespan_context(served):
+        transport = httpx2.ASGITransport(app=served)
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            return [
+                (await client.post(path, json={}, headers={"host": h})).status_code
+                for h in hosts
+            ]
+
+
+@pytest.mark.parametrize(
+    ("secret", "path", "found"),
+    [
+        (None, "/mcp", True),
+        ("s3cret", "/mcp", False),
+        ("s3cret", "/mcp/wrong", False),
+        ("s3cret", "/mcp/s3cret", True),
+    ],
+)
+def test_a_secret_is_the_only_path_to_mcp(
+    secret: str | None, path: str, found: bool, tmp_path: Path
+) -> None:
+    served = server.app(_state(tmp_path, mcp_secret=secret), "0.0.0.0")
+    [status] = asyncio.run(_statuses(served, path, "localhost:8765"))
+    assert (status != 404) is found
+
+
+def test_the_public_urls_host_is_allowed(tmp_path: Path) -> None:
+    state = _state(tmp_path, public_url="https://seascape.ngrok.app")
+    served = server.app(state, "0.0.0.0")
+    tunnel, other = asyncio.run(
+        _statuses(served, "/mcp", "seascape.ngrok.app", "evil.example")
+    )
+    assert tunnel != 421
+    assert other == 421

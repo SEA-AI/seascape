@@ -20,13 +20,14 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 import uvicorn
 from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from PIL import Image as Picture
-from pydantic import Field, PositiveFloat, PositiveInt, field_validator
+from pydantic import Field, PositiveFloat, PositiveInt, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
@@ -75,6 +76,11 @@ class Settings(BaseSettings):
     min_free_gb: PositiveFloat = 10.0
     max_run_s: PositiveFloat = 12 * 3600.0
     max_queued: PositiveInt = 20
+    # A claude.ai connector may send no header, so on a public URL the path is the
+    # credential.
+    mcp_secret: SecretStr | None = None
+    # The public URL of a tunnel in front; its host is forwarded unchanged.
+    public_url: str = ""
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
@@ -177,8 +183,10 @@ def _includes(node: Any) -> Iterator[str]:
 
 
 def _url(ctx: Context[Any, Any]) -> str:
-    """Where this client reaches the jobs' files."""
-    return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
+    """Where this client reaches the jobs' files, through any HTTPS proxy in front."""
+    headers = ctx.headers or {}
+    scheme = headers.get("x-forwarded-proto", "http")
+    return f"{scheme}://{headers.get('host', 'localhost')}/renders"
 
 
 def _bytes(scene: Scenario) -> float:
@@ -525,18 +533,32 @@ def serve(state: State, host: str, port: int) -> None:
             f"Cycles renders on {'the CPU' if backend == 'None' else backend}",
             flush=True,
         )
-    uvicorn.run(app(state, host), host=host, port=port)
+    # The access log would write the secret path.
+    uvicorn.run(
+        app(state, host),
+        host=host,
+        port=port,
+        access_log=state.settings.mcp_secret is None,
+    )
 
 
 def app(state: State, host: str) -> Starlette:
-    """MCP at /mcp and the jobs' files at /renders/."""
+    """MCP at /mcp, or at /mcp/<secret> when one is set, and the jobs' files at
+    /renders/.
+    """
+    secret = state.settings.mcp_secret
+    path = f"/mcp/{secret.get_secret_value()}" if secret else "/mcp"
     # A web page can point a browser on the network at this port by DNS rebinding,
     # so MCP refuses any Host or Origin not listed.
     hosts = list(state.settings.allowed_hosts)
+    if tunnel := urlsplit(state.settings.public_url).hostname:
+        hosts.append(tunnel)
     security = TransportSecuritySettings(
         allowed_hosts=hosts,
         allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
     )
-    served = mcp(state).streamable_http_app(host=host, transport_security=security)
+    served = mcp(state).streamable_http_app(
+        host=host, streamable_http_path=path, transport_security=security
+    )
     served.mount("/renders", StaticFiles(directory=state.renders))
     return served
