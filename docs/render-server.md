@@ -35,7 +35,7 @@ A job's files are served at `http://<host>:8765/renders/<job>/`, with everything
 On a machine with an NVIDIA GPU, Docker and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/):
 
 ```bash
-git clone https://github.com/kevinconka/seascape.git
+git clone https://github.com/SEA-AI/seascape.git
 cd seascape
 docker compose up -d --build
 docker compose logs   # names the GPU backend
