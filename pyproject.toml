@@ -38,10 +38,7 @@ Repository = "https://github.com/kevinconka/seascape"
 Issues = "https://github.com/kevinconka/seascape/issues"
 
 [dependency-groups]
-dev = [
-    "matplotlib>=3.11.2",
-    "pytest>=9.0",
-]
+dev = ["pytest>=9.0"]
 blender = ["bpy>=5.2"]
 
 [tool.uv]
@@ -49,4 +46,5 @@ default-groups = ["dev", "blender"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["render: needs Cycles, run with --render"]

@@ -18,6 +18,7 @@ from seascape.calibration import Calibration
 from seascape.config import load
 
 HERE = Path(__file__).parent
+PRIMER = HERE / "primer.toml"
 GAP_PX = 6
 SHIP = (
     '{ preset = "container_ship", range_m = %s, '
@@ -82,16 +83,16 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
 
 
 def frame(overrides: list[str], out: Path, caption: str) -> Image.Image:
-    render(HERE / "primer.toml", overrides, out)
+    render(PRIMER, overrides, out)
     (image,) = json.loads((out / "labels.json").read_text())["images"]
     return captioned(Image.open(out / image["file_name"]).convert("RGB"), caption, 18)
 
 
 def crops() -> None:
     """The sea at 100 m and at 1 km in one full-size frame, pixels blown up."""
-    radius_m = waves.earth_radius_m(load(HERE / "primer.toml").sea.refraction_k)
+    radius_m = waves.earth_radius_m(load(PRIMER).sea.refraction_k)
     with tempfile.TemporaryDirectory() as tmp:
-        render(HERE / "primer.toml", [FULL_HD], Path(tmp))
+        render(PRIMER, [FULL_HD], Path(tmp))
         (camera,) = Calibration.read(Path(tmp)).cameras
         full = Image.open(Path(tmp) / camera.image).convert("RGB")
     pose = np.array(camera.extrinsics["world"])

@@ -26,3 +26,10 @@ include = [
 [overrides.rules]
 unresolved-attribute = "ignore"
 unresolved-import = "ignore"
+
+# matplotlib draws the docs' charts and is run with `uv run --with`, not installed.
+[[overrides]]
+include = ["docs/primer/charts.py"]
+
+[overrides.rules]
+unresolved-import = "ignore"

@@ -1,10 +1,9 @@
 """The primer's charts, each in a light and a dark PNG, from seascape's own physics.
 
-uv run python -m docs.primer.charts
+uv run --with matplotlib python -m docs.primer.charts
 """
 
 import math
-from typing import Any
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -13,13 +12,21 @@ from matplotlib import font_manager
 from matplotlib.axes import Axes
 
 from docs.brand import FOCUS_RED, FOG_WHITE, FONT, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY
-from docs.primer.figures import CROP_PX, CROP_SCALE, FULL_HD, GAP_PX, HERE, HULL_DOWN_KM
+from docs.primer.figures import (
+    CROP_PX,
+    CROP_SCALE,
+    FULL_HD,
+    GAP_PX,
+    HERE,
+    HULL_DOWN_KM,
+    PRIMER,
+)
 from seascape import lwir, waves
 from seascape.config import load
 
 OUT = HERE / "charts"
 # The crops' scenario, so the rays chart describes the camera that took them.
-SCENARIO = load(HERE / "primer.toml", [FULL_HD])
+SCENARIO = load(PRIMER, [FULL_HD])
 (CAMERA,) = (mount.camera for mount in SCENARIO.rig.mounts)
 REFRACTION_K = SCENARIO.sea.refraction_k
 # IAU 2015 Resolution B3: the sun's nominal effective temperature.
@@ -43,9 +50,8 @@ THEMES = {
 }
 
 
-def note(ax: Axes, t: dict, xy: tuple[float, float], text: str, **kw: Any) -> None:
-    style: dict[str, Any] = {"color": t["ink"], "fontsize": 10}
-    ax.annotate(text, xy, **style | kw)
+def note(ax: Axes, t: dict, xy: tuple[float, float], text: str, **kw) -> None:
+    ax.annotate(text, xy, **{"color": t["ink"], "fontsize": 10, **kw})
 
 
 def glow(ax: Axes, t: dict) -> None:
