@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import httpx2
 import pytest
 from mcp import Client
 from PIL import Image
@@ -133,3 +134,35 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
     ] * 2
+
+
+@pytest.mark.parametrize(("secret", "path", "found"), [
+    (None, "/mcp", True),
+    ("s3cret", "/mcp", False),
+    ("s3cret", "/mcp/wrong", False),
+    ("s3cret", "/mcp/s3cret", True),
+])  # fmt: skip
+def test_a_secret_is_the_only_path_to_mcp(
+    secret: str | None,
+    path: str,
+    found: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    if secret:
+        monkeypatch.setenv("SEASCAPE_MCP_SECRET", secret)
+    else:
+        monkeypatch.delenv("SEASCAPE_MCP_SECRET", raising=False)
+    served = server.app("0.0.0.0")
+
+    async def post() -> int:
+        async with served.router.lifespan_context(served):
+            transport = httpx2.ASGITransport(app=served)
+            async with httpx2.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                response = await client.post(path, json={})
+                return response.status_code
+
+    assert (asyncio.run(post()) != 404) is found

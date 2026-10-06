@@ -24,6 +24,7 @@ from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from PIL import Image as Picture
 from pydantic import Field
+from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
 from seascape import assets, montage, skies
@@ -111,8 +112,10 @@ def _includes(node: Any) -> Iterator[str]:
 
 
 def _url(ctx: Context) -> str:
-    """Where this client reaches the jobs' files."""
-    return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
+    """Where this client reaches the jobs' files, through any HTTPS proxy in front."""
+    headers = ctx.headers or {}
+    scheme = headers.get("x-forwarded-proto", "http")
+    return f"{scheme}://{headers.get('host', 'localhost')}/renders"
 
 
 def _refuse_oversized(scenes: list[Scenario]) -> None:
@@ -310,8 +313,21 @@ def jobs(ctx: Context) -> dict[str, Any]:
     }
 
 
+def app(host: str) -> Starlette:
+    """MCP at /mcp, or at /mcp/<SEASCAPE_MCP_SECRET> when that is set, and the jobs'
+    files at /renders/."""
+    # A claude.ai connector may send no header, so on a public URL the path is the
+    # credential. The job folders under /renders are random UUIDs.
+    secret = os.environ.get("SEASCAPE_MCP_SECRET")
+    path = f"/mcp/{secret}" if secret else "/mcp"
+    RENDERS.mkdir(parents=True, exist_ok=True)
+    served = server.streamable_http_app(host=host, streamable_http_path=path)
+    served.mount("/renders", StaticFiles(directory=RENDERS))
+    return served
+
+
 def serve(host: str, port: int) -> None:
-    """Serve MCP at /mcp and the jobs' files at /renders/."""
+    """Serve `app` on `port`."""
     # In a process of its own, so the server never holds Blender.
     probe = subprocess.run(
         [sys.executable, "-c", "from seascape import scene; print(scene.enable_gpu())"],
@@ -323,7 +339,4 @@ def serve(host: str, port: int) -> None:
     print(
         f"Cycles renders on {'the CPU' if backend == 'None' else backend}", flush=True
     )
-    RENDERS.mkdir(parents=True, exist_ok=True)
-    app = server.streamable_http_app(host=host)
-    app.mount("/renders", StaticFiles(directory=RENDERS))
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app(host), host=host, port=port)
