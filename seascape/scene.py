@@ -1045,8 +1045,9 @@ def enable_gpu() -> str | None:
         preferences.refresh_devices()
         if any(device.type != "CPU" for device in preferences.devices):
             for device in preferences.devices:
-                # CPU alongside the GPU wins nothing here.
-                device.use = device.type != "CPU"
+                # Devices lists every backend's entries, so one card is there as CUDA
+                # and OPTIX. CPU alongside the GPU wins nothing here.
+                device.use = device.type == backend
             return backend
     return None
 
