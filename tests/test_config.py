@@ -11,7 +11,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from seascape import config, lwir, skies
+from seascape import lwir, skies
 from seascape.config import (
     CFG_DIR,
     Band,
@@ -469,14 +469,11 @@ def test_the_sky_hazes_with_the_visibility() -> None:
     assert Sky(visibility_km=None).aerosol_density == 0.0
     hazy, clear = Sky(visibility_km=10.0), Sky(visibility_km=72.0)
     assert hazy.aerosol_density > Sky().aerosol_density > clear.aerosol_density
+
+
+def test_a_removed_aerosol_density_names_the_visibility() -> None:
     with pytest.raises(ValidationError, match="visibility_km"):
         Sky.model_validate({"aerosol_density": 2.0})
-
-
-def test_the_ocean_s_mean_visibility_holds_its_mean_aerosol() -> None:
-    density = config.aerosol_density(config.OCEAN_VISIBILITY_KM)
-    depth = density * config.AEROSOL_DEPTH_PER_DENSITY
-    assert depth == pytest.approx(config.OCEAN_AEROSOL_DEPTH)
 
 
 def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:

@@ -527,9 +527,9 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
     k = scenario.sea.refraction_k
     assert range_m < waves.horizon_m(5.0, k) + waves.horizon_m(top_m, k)
-    for camera in built.cameras.values():
-        eye = camera.matrix_world.translation
-        assert camera.data.clip_end > max((c - eye).length for c in corners)
+    (camera,) = built.cameras.values()
+    eye = camera.matrix_world.translation
+    assert camera.data.clip_end > max((c - eye).length for c in corners)
 
 
 def test_a_band_the_rig_cannot_see_is_an_error(tmp_path) -> None:
