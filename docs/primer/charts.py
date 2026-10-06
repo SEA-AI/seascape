@@ -1,9 +1,10 @@
 """The primer's charts, each in a light and a dark PNG, from seascape's own physics.
 
-uv run --with matplotlib python -m docs.primer.charts
+uv run python -m docs.primer.charts
 """
 
 import math
+from typing import Any
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -42,8 +43,9 @@ THEMES = {
 }
 
 
-def note(ax: Axes, t: dict, xy: tuple[float, float], text: str, **kw) -> None:
-    ax.annotate(text, xy, **{"color": t["ink"], "fontsize": 10, **kw})
+def note(ax: Axes, t: dict, xy: tuple[float, float], text: str, **kw: Any) -> None:
+    style: dict[str, Any] = {"color": t["ink"], "fontsize": 10}
+    ax.annotate(text, xy, **style | kw)
 
 
 def glow(ax: Axes, t: dict) -> None:
@@ -103,14 +105,15 @@ def hidden(ax: Axes, t: dict) -> None:
     for colour, h in zip(t["series"], (3.0, 12.0, 30.0), strict=True):
         horizon_km = waves.horizon_m(h, REFRACTION_K) / 1000
         x = r_km[r_km >= horizon_km]
-        ax.plot(x, (x - horizon_km) ** 2 * 1e6 / (2 * radius_m), color=colour, lw=2)
+        hidden_m = [-waves.sea_z_m((r - horizon_km) * 1000, 0.0, radius_m) for r in x]
+        ax.plot(x, hidden_m, color=colour, lw=2)
         ax.plot(horizon_km, 0, "o", ms=8, color=colour, mec=t["surface"], mew=2)
-        at_km = horizon_km + math.sqrt(2 * radius_m * 30.0) / 1000
+        at_km = horizon_km + waves.horizon_m(30.0, REFRACTION_K) / 1000
         note(ax, t, (at_km, 30.0), f"{h:.0f} m up", xytext=(-8, 0),
              textcoords="offset points", va="center", ha="right")  # fmt: skip
     far_km = HULL_DOWN_KM[-1]
     behind_km = far_km - waves.horizon_m(30.0, REFRACTION_K) / 1000
-    seen = behind_km**2 * 1e6 / (2 * radius_m)
+    seen = -waves.sea_z_m(behind_km * 1000, 0.0, radius_m)
     ax.plot(far_km, seen, "o", ms=8, color=t["series"][2], mec=t["surface"], mew=2)
     arrow = {"arrowstyle": "-", "color": t["muted"], "lw": 1}
     text = f"the {far_km} km ship above:\n{seen:.0f} m hidden"

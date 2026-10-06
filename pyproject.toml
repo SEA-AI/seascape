@@ -38,7 +38,10 @@ Repository = "https://github.com/kevinconka/seascape"
 Issues = "https://github.com/kevinconka/seascape/issues"
 
 [dependency-groups]
-dev = ["pytest>=9.0"]
+dev = [
+    "matplotlib>=3.11.2",
+    "pytest>=9.0",
+]
 blender = ["bpy>=5.2"]
 
 [tool.uv]

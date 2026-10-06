@@ -99,8 +99,8 @@ def crops() -> None:
     (w, h), size = CROP_PX, (CROP_PX[0] * CROP_SCALE, CROP_PX[1] * CROP_SCALE)
     sheet = Image.new("RGB", (size[0], 2 * size[1] + GAP_PX), "white")
     for i, (d_m, caption) in enumerate(((100.0, "100 m away"), (1000.0, "1 km away"))):
-        # Straight ahead on the sea, which falls d^2 / 2R below the tangent plane.
-        sea = np.append(pose[:2, 3] + d_m * ahead, -(d_m**2) / (2 * radius_m))
+        east_m, north_m = pose[:2, 3] + d_m * ahead
+        sea = np.array([east_m, north_m, waves.sea_z_m(east_m, north_m, radius_m)])
         u, v, z = np.array(camera.K) @ pose[:3, :3].T @ (sea - pose[:3, 3])
         left, top = round(u / z - w / 2), round(v / z - h / 2)
         panel = full.crop((left, top, left + w, top + h))

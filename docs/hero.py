@@ -99,7 +99,7 @@ def column(run: Path) -> tuple[Image.Image, Image.Image]:
             size,
             "EO",
         ),
-        frame(run, ir, boxes(ir), (0.0, 0.0, *map(float, size)), size, "LWIR"),
+        frame(run, ir, boxes(ir), (0.0, 0.0, *size), size, "LWIR"),
     )
 
 
