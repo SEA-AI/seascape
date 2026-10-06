@@ -41,7 +41,8 @@ server = MCPServer(
     "seascape",
     instructions="Synthetic maritime camera frames with exact ground truth. Read "
     "`catalog` once, start a job with `render`, then call `render_result` until it "
-    "is done.",
+    "is done. Without draws, variants differ only in their waves: for varied "
+    "images, render `randomized`, or draw fields in `overrides`.",
 )
 _gpu = asyncio.Lock()
 
