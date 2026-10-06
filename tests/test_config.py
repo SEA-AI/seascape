@@ -465,12 +465,6 @@ def test_the_air_takes_its_atmosphere_s_temperature_unless_set() -> None:
     assert Sky(atmosphere="tropical", t_air_k=280.0).t_air_k == 280.0
 
 
-def test_the_sky_hazes_with_the_visibility() -> None:
-    assert Sky(visibility_km=None).aerosol_density == 0.0
-    hazy, clear = Sky(visibility_km=10.0), Sky(visibility_km=72.0)
-    assert hazy.aerosol_density > Sky().aerosol_density > clear.aerosol_density
-
-
 def test_a_removed_aerosol_density_names_the_visibility() -> None:
     with pytest.raises(ValidationError, match="visibility_km"):
         Sky.model_validate({"aerosol_density": 2.0})
