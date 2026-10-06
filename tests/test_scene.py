@@ -520,7 +520,12 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     """Hull down from a low camera, its upperworks still up."""
     range_m = 20000.0
     ship = f'{{ preset = "container_ship", range_m = {range_m}, bearing_deg = 0.0 }}'
-    scenario = load(OPEN_SEA, ["rig.height_m = 5.0", f"objects = [{ship}]"])
+    camera = '{ kind = "eo", hfov_deg = 2.0, width_px = 960, height_px = 540 }'
+    pod = f'{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}'
+    scenario = load(
+        OPEN_SEA,
+        ["rig.height_m = 5.0", f"rig.pods = [{pod}]", f"objects = [{ship}]"],
+    )
     built = scene.build(scenario, "eo")
     (anchor,) = built.targets["container_ship"]
     corners = scene._corners(scene._meshes([anchor]))
