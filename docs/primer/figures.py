@@ -5,7 +5,6 @@ uv run python -m docs.primer.figures wind haze  # some
 """
 
 import json
-import math
 import sys
 import tempfile
 from pathlib import Path
@@ -15,6 +14,7 @@ from PIL import Image
 
 from docs.hero import SKIES, captioned, render
 from seascape import waves
+from seascape.calibration import Calibration
 from seascape.config import load
 
 HERE = Path(__file__).parent
@@ -88,33 +88,22 @@ def frame(overrides: list[str], out: Path, caption: str) -> Image.Image:
 
 def crops() -> None:
     """The sea at 100 m and at 1 km in one full-size frame, pixels blown up."""
-    scenario = load(HERE / "primer.toml", [FULL_HD])
-    radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
-    height_m = scenario.rig.height_m
+    radius_m = waves.earth_radius_m(load(HERE / "primer.toml").sea.refraction_k)
     with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp)
-        render(HERE / "primer.toml", [FULL_HD], out)
-        (image,) = json.loads((out / "labels.json").read_text())["images"]
-        (camera,) = json.loads((out / "calibration.json").read_text())["cameras"]
-        frame = Image.open(out / image["file_name"]).convert("RGB")
-    fx, cx = camera["K"][0][0], camera["K"][0][2]
-    xs, ys = zip(*image["horizon_px"], strict=True)
-    horizon_px = float(np.interp(cx, xs, ys))
-
-    def depression(d_m: float) -> float:
-        return math.atan(height_m / d_m) + d_m / (2 * radius_m)
-
-    dip = math.sqrt(2 * height_m / radius_m)
-    w, h = CROP_PX
-    panels = []
-    for d_m, caption in ((100.0, "100 m away"), (1000.0, "1 km away")):
-        y = horizon_px + fx * (math.tan(depression(d_m)) - math.tan(dip))
-        box = (round(cx - w / 2), round(y - h / 2), round(cx + w / 2), round(y + h / 2))
-        size = (w * CROP_SCALE, h * CROP_SCALE)
-        panel = frame.crop(box).resize(size, Image.Resampling.NEAREST)
-        panels.append(captioned(panel, caption, 18))
+        render(HERE / "primer.toml", [FULL_HD], Path(tmp))
+        (camera,) = Calibration.read(Path(tmp)).cameras
+        full = Image.open(Path(tmp) / camera.image).convert("RGB")
+    pose = np.array(camera.extrinsics["world"])
+    ahead = pose[:2, 2] / np.hypot(*pose[:2, 2])
+    (w, h), size = CROP_PX, (CROP_PX[0] * CROP_SCALE, CROP_PX[1] * CROP_SCALE)
     sheet = Image.new("RGB", (size[0], 2 * size[1] + GAP_PX), "white")
-    for i, panel in enumerate(panels):
+    for i, (d_m, caption) in enumerate(((100.0, "100 m away"), (1000.0, "1 km away"))):
+        # Straight ahead on the sea, which falls d^2 / 2R below the tangent plane.
+        sea = np.append(pose[:2, 3] + d_m * ahead, -(d_m**2) / (2 * radius_m))
+        u, v, z = np.array(camera.K) @ pose[:3, :3].T @ (sea - pose[:3, 3])
+        left, top = round(u / z - w / 2), round(v / z - h / 2)
+        panel = full.crop((left, top, left + w, top + h))
+        panel = captioned(panel.resize(size, Image.Resampling.NEAREST), caption, 18)
         sheet.paste(panel, (0, i * (size[1] + GAP_PX)))
     sheet.save(HERE / "crops.jpg", quality=90)
 

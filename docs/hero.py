@@ -9,9 +9,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-from docs.brand import FOCUS_RED, FOG_WHITE, FONT_FILE, NIGHT_BLUE
+from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, font
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
@@ -33,10 +33,9 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
 def tag(
     draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
 ) -> None:
-    font = ImageFont.truetype(FONT_FILE, size)
-    tb = draw.textbbox(at, text, font=font)
+    tb = draw.textbbox(at, text, font=font(size))
     draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill=fill)
-    draw.text(at, text, fill="white", font=font)
+    draw.text(at, text, fill="white", font=font(size))
 
 
 def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:

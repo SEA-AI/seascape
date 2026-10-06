@@ -8,7 +8,7 @@
 
 Labelling real footage is slow, and some things can't be labelled at all: the exact range to a ship, its bearing to a tenth of a degree, where the horizon really is. And you get whatever weather the day brings. In a synthetic scene you decide where everything goes and what the weather is, so the ground truth is exact and you can render the same scene again with one thing changed.
 
-Training detectors on synthetic data is the obvious use, especially when real data is scarce (how well that transfers to real footage is untested so far). But that's not really what it's for. Mostly it's a way to get a good-enough picture of a situation, with all the ground truth attached, e.g.:
+Training detectors on synthetic data is the obvious use, especially when real data is scarce, though real footage isn't going anywhere. But that's not really what it's for. Mostly it's a way to get a good-enough picture of a situation, with all the ground truth attached, e.g.:
 
 - mocking up a new product or a new combination of cameras
 - seeing how mounting height changes what the cameras see
@@ -57,12 +57,12 @@ Open it in [Blender](https://www.blender.org/download/), hover over the 3D view 
 
 ## The sea
 
-The obvious way to make waves in Blender is the Ocean modifier, which moves a mesh up and down. That works up close but shimmers in the distance, which is where a maritime camera spends most of its pixels. The camera sees the sea almost edge-on, so each pixel lands on it as a long thin strip, and the strip gets a hundred times longer between 100 m and 1 km. On the right, the same frame at those two distances, pixels blown up:
+The obvious way to make waves in Blender is the Ocean modifier, which moves a mesh up and down. That works up close but shimmers in the distance, which is where a maritime camera spends most of its pixels. The camera sees the sea almost edge-on, so each pixel lands on it as a long thin strip, and the strip stretches fast with range. On the right, the same frame at those two distances, pixels blown up:
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="charts/rays-dark.png">
-    <img src="charts/rays-light.png" width="49%" alt="Side view of two neighbouring pixels' rays: 34 cm apart where they land 100 m out, 34 m apart 1 km out">
+    <img src="charts/rays-light.png" width="49%" alt="Side view of two neighbouring pixels' rays: centimetres apart where they land 100 m out, metres apart 1 km out">
   </picture>
   <img src="crops.jpg" width="49%" alt="The same frame 100 m out, where individual waves show, and 1 km out, where the sea is a uniform texture">
 </p>
@@ -98,7 +98,7 @@ Two things happen as a ship gets farther away. The air scatters its light away a
 
 <p align="center"><img src="haze.jpg" alt="A container ship at 2 km with visibility 42, 10 and 3 km"></p>
 
-And the earth curves away under it. From a 30 m mast the horizon is 21 km out, and past it a ship sinks hull-down:
+And the earth curves away under it. Past the horizon a ship sinks hull-down:
 
 <p align="center"><img src="horizon.jpg" alt="A container ship at 15, 30 and 45 km, seen from 30 m up"></p>
 
