@@ -1183,8 +1183,10 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     ]
     if not tops_m:
         return 0.0
+    heave = scenario.ownship.heave
+    eye_m = scenario.rig.height_m + (heave.amplitude_m if heave is not None else 0.0)
     k = scenario.sea.refraction_k
-    return waves.horizon_m(scenario.rig.height_m, k) + waves.horizon_m(max(tops_m), k)
+    return waves.horizon_m(eye_m, k) + waves.horizon_m(max(tops_m), k)
 
 
 def build(scenario: Scenario, band: Band = "eo") -> Built:

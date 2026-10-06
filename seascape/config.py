@@ -206,11 +206,14 @@ class Sea(Model):
     )
 
 
-# Judgement, after Adams: 42 km, inside the open ocean's measured spread. OPAC's
+# Judgement: 42 km, inside the open ocean's measured spread. OPAC's
 # maritime aerosols at 550 nm and 80% humidity (Hess, Koepke & Schult, BAMS 79(5) 831,
 # 1998), plus sea-level Rayleigh: clean, 0.090 km^-1, is 38 km; tropical, 0.043 km^-1,
-# is 72 km.
+# is 71 km.
 VISIBILITY_KM = 42.0
+# Koschmieder: over the visibility a dark target keeps 2% of its contrast against the
+# horizon sky.
+KOSCHMIEDER = math.log(1 / 0.02)
 # The MODTRAN 2/3 report, eq. 26: sea-level Rayleigh extinction at 550 nm.
 RAYLEIGH_PER_KM = 0.012
 # Smirnov et al., JGR 2009, doi:10.1029/2008JD011257: the open ocean's mean aerosol
@@ -218,20 +221,19 @@ RAYLEIGH_PER_KM = 0.012
 OCEAN_AEROSOL_DEPTH = 0.11
 OCEAN_VISIBILITY_KM = 34.0
 # The Sky Texture's aerosol optical depth at 550 nm per unit of its `aerosol_density`,
-# off its sun disc. Measured in Blender.
+# read from its sun disc's dimming at the zenith. Measured in Blender.
 AEROSOL_DEPTH_PER_DENSITY = 0.0137
 
 
 def aerosol_density(visibility_km: float | None) -> float:
-    """The Sky Texture's haze for `visibility_km`: the open ocean's mean aerosol,
-    scaled by its share of the extinction, the profile's shape kept. 500 nm is taken as
-    550."""
+    """The Sky Texture's haze for `visibility_km`: the open ocean's mean aerosol
+    depth, scaled by the aerosol extinction `visibility_km` implies. Smirnov's 500 nm
+    is taken as 550."""
     if visibility_km is None:
         return 0.0
 
     def aerosol_per_km(range_km: float) -> float:
-        # Koschmieder: 2% of the contrast left over the visibility.
-        return math.log(1 / 0.02) / range_km - RAYLEIGH_PER_KM
+        return KOSCHMIEDER / range_km - RAYLEIGH_PER_KM
 
     depth = OCEAN_AEROSOL_DEPTH * aerosol_per_km(visibility_km)
     depth /= aerosol_per_km(OCEAN_VISIBILITY_KM)
@@ -339,6 +341,13 @@ class Sky(Model):
 
     @model_validator(mode="before")
     @classmethod
+    def _aerosol_is_the_visibility_s(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "aerosol_density" in data:
+            raise ValueError("aerosol_density is gone: visibility_km hazes the sky")
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
     def _air_follows_the_atmosphere(cls, data: Any) -> Any:
         if isinstance(data, dict) and "t_air_k" not in data:
             air_k = lwir.SURFACE_AIR_K.get(data.get("atmosphere", lwir.ATMOSPHERE))
@@ -353,11 +362,10 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
-        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
-        contrast against the horizon sky."""
+        """Koschmieder's law over `visibility_km`."""
         if self.visibility_km is None:
             return 0.0
-        return math.log(1 / 0.02) / (self.visibility_km * 1000)
+        return KOSCHMIEDER / (self.visibility_km * 1000)
 
 
 def _in_the_manifest(name: str) -> str:

@@ -751,7 +751,8 @@ def test_a_buoy_floats_on_its_float(name: str) -> None:
 
 
 def _zenith_disc(aerosol_density: float) -> np.ndarray:
-    """The build's Sky Texture's sun disc at the zenith, through a lens inside it."""
+    """The build's Sky Texture's sun disc at the zenith, through a lens narrower than
+    the disc."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"

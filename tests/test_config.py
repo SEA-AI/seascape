@@ -469,6 +469,8 @@ def test_the_sky_hazes_with_the_visibility() -> None:
     assert Sky(visibility_km=None).aerosol_density == 0.0
     hazy, clear = Sky(visibility_km=10.0), Sky(visibility_km=72.0)
     assert hazy.aerosol_density > Sky().aerosol_density > clear.aerosol_density
+    with pytest.raises(ValidationError, match="visibility_km"):
+        Sky.model_validate({"aerosol_density": 2.0})
 
 
 def test_the_ocean_s_mean_visibility_holds_its_mean_aerosol() -> None:
