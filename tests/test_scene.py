@@ -516,6 +516,27 @@ def test_a_near_clip_past_the_far_plane_is_an_error(tmp_path) -> None:
         scene.build(load(path), "eo")
 
 
+def test_the_far_clip_clears_a_hull_down_target() -> None:
+    """Hull down from a low camera, its upperworks still up."""
+    range_m = 20000.0
+    ship = f'{{ preset = "container_ship", range_m = {range_m}, bearing_deg = 0.0 }}'
+    camera = '{ kind = "eo", hfov_deg = 2.0, width_px = 960, height_px = 540 }'
+    pod = f'{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}'
+    scenario = load(
+        OPEN_SEA,
+        ["rig.height_m = 5.0", f"rig.pods = [{pod}]", f"objects = [{ship}]"],
+    )
+    built = scene.build(scenario, "eo")
+    (anchor,) = built.targets["container_ship"]
+    corners = scene._corners(scene._meshes([anchor]))
+    top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
+    k = scenario.sea.refraction_k
+    assert range_m < waves.horizon_m(5.0, k) + waves.horizon_m(top_m, k)
+    (camera,) = built.cameras.values()
+    eye = camera.matrix_world.translation
+    assert camera.data.clip_end > max((c - eye).length for c in corners)
+
+
 def test_a_band_the_rig_cannot_see_is_an_error(tmp_path) -> None:
     """Otherwise `next()` raises StopIteration, naming nothing."""
     path = tmp_path / "eo_only.toml"
@@ -1258,6 +1279,16 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
     bpy.context.scene.render.resolution_percentage = 50
     bpy.context.view_layer.update()
     assert _pixel_node().inputs[1].default_value == pytest.approx(2 * pixel_rad)
+
+
+def test_a_long_lens_draws_for_its_own_pixel() -> None:
+    """A pixel under 1e-4 rad: a zero footprint leaves the sea a mirror."""
+    camera = '{ kind = "eo", hfov_deg = 1.5, width_px = 640, height_px = 360 }'
+    pod = f'{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}'
+    scene.build(load(OPEN_SEA, [f"rig.pods = [{pod}]"]), "eo")
+    bpy.context.view_layer.update()
+    pixel_rad = math.radians(1.5) / 640
+    assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
 
 
 def test_the_glitter_and_haze_drivers_run_without_python() -> None:

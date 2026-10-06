@@ -586,7 +586,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance\nthe sea reflects in IR.\n\nHaze is `aerosol_density` for the EO sky, the node's own, and `visibility_km` for\nthe air between the camera and what it sees, in both bands. In LWIR, `atmosphere`\nadds its water vapour, shapes the sky, and gives `t_air_k` unless it is set.",
+      "description": "Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance\nthe sea reflects in IR.\n\nHaze is `visibility_km`: in the air between the camera and what it sees, in both\nbands, and in the EO sky. In LWIR, `atmosphere` adds its water vapour, shapes the\nsky, and gives `t_air_k` unless it is set.",
       "properties": {
         "sun_elevation_deg": {
           "anyOf": [
@@ -616,14 +616,6 @@
           "title": "Solar Gain K",
           "type": "number"
         },
-        "aerosol_density": {
-          "default": 1.0,
-          "description": "Haze, as the Sky Texture's own parameter. EO only.",
-          "maximum": 10.0,
-          "minimum": 0.0,
-          "title": "Aerosol Density",
-          "type": "number"
-        },
         "visibility_km": {
           "anyOf": [
             {
@@ -635,7 +627,7 @@
             }
           ],
           "default": 42.0,
-          "description": "Meteorological range at 550 nm; None is no aerosol.",
+          "description": "Meteorological range at 550 nm, which also hazes the EO sky; None is no aerosol.",
           "title": "Visibility Km"
         },
         "atmosphere": {
@@ -703,7 +695,7 @@
             }
           ],
           "default": null,
-          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg` and ignores `aerosol_density`. LWIR keeps its own clear sky and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
+          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg`. LWIR keeps its own clear sky and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
           "title": "Hdri"
         }
       },

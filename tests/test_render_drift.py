@@ -14,7 +14,7 @@ from mathutils import Vector
 
 from seascape import lwir, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
-from seascape.config import Band, Scenario, load
+from seascape.config import AEROSOL_DEPTH_PER_DENSITY, Band, Scenario, Sky, load
 
 pytestmark = pytest.mark.render
 
@@ -748,3 +748,41 @@ def test_a_buoy_floats_on_its_float(name: str) -> None:
     widths = {k: max(xs) - min(xs) for k, xs in rings.items()}
     at_water = widths[min(widths, key=abs)]
     assert at_water > 0.8 * max(widths.values())
+
+
+def _zenith_disc(aerosol_density: float) -> np.ndarray:
+    """The build's Sky Texture's sun disc at the zenith, through a lens narrower than
+    the disc."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    sc.world = bpy.data.worlds.new("sky")
+    tree = sc.world.node_tree
+    texture = scene._sky_texture(tree, Sky(sun_elevation_deg=90.0))
+    texture.aerosol_density = aerosol_density
+    tree.links.new(texture.outputs["Color"], tree.nodes["Background"].inputs["Color"])
+    lens = bpy.data.cameras.new("probe")
+    lens.angle = math.radians(0.05)
+    camera = bpy.data.objects.new("probe", lens)
+    sc.collection.objects.link(camera)
+    # An unturned camera looks down.
+    camera.rotation_euler = (math.pi, 0.0, 0.0)
+    sc.camera = camera
+    sc.render.image_settings.file_format = "OPEN_EXR"
+    sc.render.resolution_x = sc.render.resolution_y = 5
+    sc.render.filepath = str(Path(bpy.app.tempdir) / "zenith")
+    bpy.ops.render.render(write_still=True)
+    image = bpy.data.images.load(sc.render.filepath + ".exr")
+    pixels = np.empty(len(image.pixels), dtype=np.float32)
+    image.pixels.foreach_get(pixels)
+    bpy.data.images.remove(image)
+    return pixels.reshape(5, 5, 4)[2, 2, :3]
+
+
+def test_aerosol_density_is_the_optical_depth_config_takes_it_for() -> None:
+    """Green, about 550 nm, straight up: depth = ln(clear / hazy)."""
+    density = 8.0
+    depth = math.log(_zenith_disc(0.0)[1] / _zenith_disc(density)[1])
+    assert depth / density == pytest.approx(AEROSOL_DEPTH_PER_DENSITY, rel=0.01)

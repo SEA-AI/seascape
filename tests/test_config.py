@@ -465,6 +465,17 @@ def test_the_air_takes_its_atmosphere_s_temperature_unless_set() -> None:
     assert Sky(atmosphere="tropical", t_air_k=280.0).t_air_k == 280.0
 
 
+def test_the_sky_hazes_with_the_visibility() -> None:
+    assert Sky(visibility_km=None).aerosol_density == 0.0
+    hazy, clear = Sky(visibility_km=10.0), Sky(visibility_km=72.0)
+    assert hazy.aerosol_density > Sky().aerosol_density > clear.aerosol_density
+
+
+def test_a_removed_aerosol_density_names_the_visibility() -> None:
+    with pytest.raises(ValidationError, match="visibility_km"):
+        Sky.model_validate({"aerosol_density": 2.0})
+
+
 def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:
     base = load(BASELINE).model_dump()
     sea = {k: v for k, v in base["sea"].items() if k != "t_sea_k"}
@@ -476,11 +487,12 @@ def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:
     assert Scenario.model_validate(by_hand).sea.t_sea_k == 290.0
 
 
-@pytest.mark.parametrize("key", ["sun_elevation_deg", "aerosol_density"])
-def test_an_hdri_keeps_its_own_sky_over_an_inherited_one(key: str) -> None:
+def test_an_hdri_keeps_its_own_sky_over_an_inherited_one() -> None:
     photo = skies.library()["kloofendal_48d_partly_cloudy"]
-    with pytest.warns(UserWarning, match=f"{key} is ignored"):
-        sky = Sky.model_validate({"hdri": "kloofendal_48d_partly_cloudy", key: 5.0})
+    with pytest.warns(UserWarning, match="sun_elevation_deg is ignored"):
+        sky = Sky.model_validate(
+            {"hdri": "kloofendal_48d_partly_cloudy", "sun_elevation_deg": 5.0}
+        )
     assert sky.sun_elevation_deg == photo.sun_elevation_deg
 
 
