@@ -586,7 +586,7 @@
     },
     "Sky": {
       "additionalProperties": false,
-      "description": "Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance\nthe sea reflects in IR.\n\nHaze is `visibility_km`: in the air between the camera and what it sees, in both\nbands, and in the EO sky. In LWIR, `atmosphere` adds its water vapour, shapes the\nsky, and gives `t_air_k` unless it is set.",
+      "description": "Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance\nthe sea reflects in IR.\n\nHaze is `visibility_km`, in the air between the camera and what it sees, in both\nbands. In LWIR, `atmosphere` adds its water vapour, shapes the sky, and gives\n`t_air_k` unless it is set.",
       "properties": {
         "sun_elevation_deg": {
           "anyOf": [
@@ -627,7 +627,7 @@
             }
           ],
           "default": 42.0,
-          "description": "Meteorological range at 550 nm, which also hazes the EO sky; None is no aerosol.",
+          "description": "Meteorological range at 550 nm; None is no aerosol.",
           "title": "Visibility Km"
         },
         "atmosphere": {

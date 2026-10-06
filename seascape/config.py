@@ -208,45 +208,18 @@ class Sea(Model):
 
 # Judgement: 42 km, inside the open ocean's measured spread. OPAC's
 # maritime aerosols at 550 nm and 80% humidity (Hess, Koepke & Schult, BAMS 79(5) 831,
-# 1998), plus sea-level Rayleigh: clean, 0.090 km^-1, is 38 km; tropical, 0.043 km^-1,
-# is 71 km.
+# 1998), plus sea-level Rayleigh's 0.012 km^-1 (the MODTRAN 2/3 report, eq. 26): clean,
+# 0.090 km^-1, is 38 km; tropical, 0.043 km^-1, is 71 km.
 VISIBILITY_KM = 42.0
-# Koschmieder: over the visibility a dark target keeps 2% of its contrast against the
-# horizon sky.
-KOSCHMIEDER = math.log(1 / 0.02)
-# The MODTRAN 2/3 report, eq. 26: sea-level Rayleigh extinction at 550 nm.
-RAYLEIGH_PER_KM = 0.012
-# Smirnov et al., JGR 2009, doi:10.1029/2008JD011257: the open ocean's mean aerosol
-# optical depth, 0.11 at 500 nm, which OPAC's clean profile puts at 34 km.
-OCEAN_AEROSOL_DEPTH = 0.11
-OCEAN_VISIBILITY_KM = 34.0
-# The Sky Texture's aerosol optical depth at 550 nm per unit of its `aerosol_density`,
-# read from its sun disc's dimming at the zenith. Measured in Blender.
-AEROSOL_DEPTH_PER_DENSITY = 0.0137
-
-
-def aerosol_density(visibility_km: float | None) -> float:
-    """The Sky Texture's haze for `visibility_km`: the open ocean's mean aerosol
-    depth, scaled by the aerosol extinction `visibility_km` implies. Smirnov's 500 nm
-    is taken as 550."""
-    if visibility_km is None:
-        return 0.0
-
-    def aerosol_per_km(range_km: float) -> float:
-        return KOSCHMIEDER / range_km - RAYLEIGH_PER_KM
-
-    depth = OCEAN_AEROSOL_DEPTH * aerosol_per_km(visibility_km)
-    depth /= aerosol_per_km(OCEAN_VISIBILITY_KM)
-    return max(depth, 0.0) / AEROSOL_DEPTH_PER_DENSITY
 
 
 class Sky(Model):
     """Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance
     the sea reflects in IR.
 
-    Haze is `visibility_km`: in the air between the camera and what it sees, in both
-    bands, and in the EO sky. In LWIR, `atmosphere` adds its water vapour, shapes the
-    sky, and gives `t_air_k` unless it is set.
+    Haze is `visibility_km`, in the air between the camera and what it sees, in both
+    bands. In LWIR, `atmosphere` adds its water vapour, shapes the sky, and gives
+    `t_air_k` unless it is set.
     """
 
     sun_elevation_deg: float | None = Field(
@@ -272,8 +245,7 @@ class Sky(Model):
     visibility_km: float | None = Field(
         default=VISIBILITY_KM,
         gt=0.0,
-        description="Meteorological range at 550 nm, which also hazes the EO sky; "
-        "None is no aerosol.",
+        description="Meteorological range at 550 nm; None is no aerosol.",
     )
     atmosphere: lwir.Atmosphere = Field(
         default=lwir.ATMOSPHERE,
@@ -341,9 +313,9 @@ class Sky(Model):
 
     @model_validator(mode="before")
     @classmethod
-    def _aerosol_is_the_visibility_s(cls, data: Any) -> Any:
+    def _aerosol_density_is_gone(cls, data: Any) -> Any:
         if isinstance(data, dict) and "aerosol_density" in data:
-            raise ValueError("aerosol_density is gone: visibility_km hazes the sky")
+            raise ValueError("aerosol_density is gone: visibility_km is the haze")
         return data
 
     @model_validator(mode="before")
@@ -356,16 +328,12 @@ class Sky(Model):
         return data
 
     @property
-    def aerosol_density(self) -> float:
-        """The Sky Texture's own haze parameter, for `visibility_km`."""
-        return aerosol_density(self.visibility_km)
-
-    @property
     def extinction_per_m(self) -> float:
-        """Koschmieder's law over `visibility_km`."""
+        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
+        contrast against the horizon sky."""
         if self.visibility_km is None:
             return 0.0
-        return KOSCHMIEDER / (self.visibility_km * 1000)
+        return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
 
 def _in_the_manifest(name: str) -> str:

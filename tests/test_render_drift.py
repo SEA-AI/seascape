@@ -14,7 +14,7 @@ from mathutils import Vector
 
 from seascape import lwir, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
-from seascape.config import AEROSOL_DEPTH_PER_DENSITY, Band, Scenario, Sky, load
+from seascape.config import Band, Scenario, Sky, load
 
 pytestmark = pytest.mark.render
 
@@ -750,9 +750,8 @@ def test_a_buoy_floats_on_its_float(name: str) -> None:
     assert at_water > 0.8 * max(widths.values())
 
 
-def _zenith_disc(aerosol_density: float) -> np.ndarray:
-    """The build's Sky Texture's sun disc at the zenith, through a lens narrower than
-    the disc."""
+def _horizon(aerosol_density: float) -> np.ndarray:
+    """The build's Sky Texture at the horizon, with the sun behind the camera."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
@@ -760,19 +759,18 @@ def _zenith_disc(aerosol_density: float) -> np.ndarray:
     sc.cycles.filter_width = 0.01
     sc.world = bpy.data.worlds.new("sky")
     tree = sc.world.node_tree
-    texture = scene._sky_texture(tree, Sky(sun_elevation_deg=90.0))
+    texture = scene._sky_texture(tree, Sky(sun_bearing_deg=180.0))
     texture.aerosol_density = aerosol_density
     tree.links.new(texture.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     lens = bpy.data.cameras.new("probe")
     lens.angle = math.radians(0.05)
     camera = bpy.data.objects.new("probe", lens)
     sc.collection.objects.link(camera)
-    # An unturned camera looks down.
-    camera.rotation_euler = (math.pi, 0.0, 0.0)
+    camera.rotation_euler = (math.pi / 2, 0.0, 0.0)  # level, towards +Y
     sc.camera = camera
     sc.render.image_settings.file_format = "OPEN_EXR"
     sc.render.resolution_x = sc.render.resolution_y = 5
-    sc.render.filepath = str(Path(bpy.app.tempdir) / "zenith")
+    sc.render.filepath = str(Path(bpy.app.tempdir) / "horizon")
     bpy.ops.render.render(write_still=True)
     image = bpy.data.images.load(sc.render.filepath + ".exr")
     pixels = np.empty(len(image.pixels), dtype=np.float32)
@@ -781,8 +779,8 @@ def _zenith_disc(aerosol_density: float) -> np.ndarray:
     return pixels.reshape(5, 5, 4)[2, 2, :3]
 
 
-def test_aerosol_density_is_the_optical_depth_config_takes_it_for() -> None:
-    """Green, about 550 nm, straight up: depth = ln(clear / hazy)."""
-    density = 8.0
-    depth = math.log(_zenith_disc(0.0)[1] / _zenith_disc(density)[1])
-    assert depth / density == pytest.approx(AEROSOL_DEPTH_PER_DENSITY, rel=0.01)
+def test_blender_s_aerosol_darkens_its_horizon() -> None:
+    """Why the sky keeps Blender's default aerosol and `visibility_km` hazes only
+    what is in front of it."""
+    clear, hazy = _horizon(1.0), _horizon(6.0)
+    assert hazy.sum() < 0.8 * clear.sum()
