@@ -779,7 +779,7 @@ def _horizon(aerosol_density: float) -> np.ndarray:
     return pixels.reshape(5, 5, 4)[2, 2, :3]
 
 
-def test_blender_s_aerosol_darkens_its_horizon_where_haze_whitens() -> None:
+def test_blender_s_aerosol_darkens_its_horizon() -> None:
     """Why the sky keeps Blender's default aerosol and `visibility_km` hazes only
     what is in front of it."""
     clear, hazy = _horizon(1.0), _horizon(6.0)

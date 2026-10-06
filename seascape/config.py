@@ -211,9 +211,6 @@ class Sea(Model):
 # 1998), plus sea-level Rayleigh's 0.012 km^-1 (the MODTRAN 2/3 report, eq. 26): clean,
 # 0.090 km^-1, is 38 km; tropical, 0.043 km^-1, is 71 km.
 VISIBILITY_KM = 42.0
-# Koschmieder: over the visibility a dark target keeps 2% of its contrast against the
-# horizon sky.
-KOSCHMIEDER = math.log(1 / 0.02)
 
 
 class Sky(Model):
@@ -221,8 +218,8 @@ class Sky(Model):
     the sea reflects in IR.
 
     Haze is `visibility_km`, in the air between the camera and what it sees, in both
-    bands. In LWIR, `atmosphere` adds its water vapour, shapes the
-    sky, and gives `t_air_k` unless it is set.
+    bands. In LWIR, `atmosphere` adds its water vapour, shapes the sky, and gives
+    `t_air_k` unless it is set.
     """
 
     sun_elevation_deg: float | None = Field(
@@ -316,7 +313,7 @@ class Sky(Model):
 
     @model_validator(mode="before")
     @classmethod
-    def _aerosol_is_the_visibility_s(cls, data: Any) -> Any:
+    def _aerosol_density_is_gone(cls, data: Any) -> Any:
         if isinstance(data, dict) and "aerosol_density" in data:
             raise ValueError("aerosol_density is gone: visibility_km is the haze")
         return data
@@ -332,10 +329,11 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
-        """Koschmieder's law over `visibility_km`."""
+        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
+        contrast against the horizon sky."""
         if self.visibility_km is None:
             return 0.0
-        return KOSCHMIEDER / (self.visibility_km * 1000)
+        return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
 
 def _in_the_manifest(name: str) -> str:

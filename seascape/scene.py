@@ -160,9 +160,9 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     node.sun_elevation = math.radians(sky.sun_elevation_deg)
     # An azimuth, clockwise from +Y, though Blender calls it a rotation.
     node.sun_rotation = math.radians(sky.sun_bearing_deg)
-    # Its aerosol stays at Blender's default: more darkens and blues its horizon, where
-    # maritime aerosol, scattering nearly all it meets (Hess et al. 1998), whitens it.
-    # The haze in front of it is `visibility_km`'s.
+    # Its aerosol stays at Blender's default: more darkens its horizon, where maritime
+    # aerosol, nearly non-absorbing and grey across the visible (Hess et al. 1998),
+    # whitens it. `visibility_km` hazes what is in front of it.
     return node
 
 
