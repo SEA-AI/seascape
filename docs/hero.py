@@ -1,6 +1,6 @@
 """The README's hero: EO above LWIR under each sky, with labels.json drawn on.
 
-uv run python docs/hero.py docs/hero.jpg
+uv run python -m docs.hero docs/hero.jpg
 """
 
 import json
@@ -9,7 +9,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+
+from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, font
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
@@ -19,8 +21,26 @@ SKIES = {
     "haze": ['sky.hdri = "overcast_soil"', "sky.visibility_km = 3"],
 }
 GAP_PX = 8
-BOX = (255, 214, 0)
-HORIZON = (80, 220, 255)
+
+
+def render(scenario: Path, overrides: list[str], out: Path) -> None:
+    sets = [arg for o in overrides for arg in ("--set", o)]
+    subprocess.run(
+        ["seascape", "render", str(scenario), "-o", str(out), *sets], check=True
+    )
+
+
+def tag(
+    draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
+) -> None:
+    tb = draw.textbbox(at, text, font=font(size))
+    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill=fill)
+    draw.text(at, text, fill="white", font=font(size))
+
+
+def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
+    tag(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
+    return img
 
 
 def frame(
@@ -38,29 +58,23 @@ def frame(
     box = (left, top, left + width, top + height)
     img = img.resize(size, Image.Resampling.LANCZOS, box=box)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default(size=14)
 
     def at(x: float, y: float) -> tuple[float, float]:
         return (x - left) * s, (y - top) * s
 
-    draw.line([at(x, y) for x, y in image["horizon_px"]], fill=HORIZON)
+    draw.line([at(x, y) for x, y in image["horizon_px"]], fill=FOG_WHITE)
     for a in annotations:
         x, y, w, h = a["bbox"]
         (x0, y0), (x1, y1) = at(x, y), at(x + w, y + h)
-        draw.rectangle([x0, y0, x1, y1], outline=BOX, width=2)
+        draw.rectangle([x0, y0, x1, y1], outline=FOCUS_RED, width=2)
         r = a["range_m"]
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
-        tb = draw.textbbox((x0, y0 - 18), text, font=font)
-        draw.rectangle([tb[0] - 3, tb[1] - 2, tb[2] + 3, tb[3] + 2], fill="black")
-        draw.text((x0, y0 - 18), text, fill=BOX, font=font)
-    tb = draw.textbbox((10, 8), caption, font=font)
-    draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill="black")
-    draw.text((10, 8), caption, fill="white", font=font)
-    return img
+        tag(draw, (x0 + 4, y0 - 20), text, FOCUS_RED, 15)
+    return captioned(img, caption)
 
 
-def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
+def column(run: Path) -> tuple[Image.Image, Image.Image]:
     """EO cropped to the LWIR field of view, and LWIR, both at LWIR size."""
     labels = json.loads((run / "labels.json").read_text())
     calibration = json.loads((run / "calibration.json").read_text())
@@ -83,7 +97,7 @@ def column(run: Path, caption: str) -> tuple[Image.Image, Image.Image]:
             boxes(eo),
             ((eo["width"] - w) / 2, (eo["height"] - h) / 2, w, h),
             size,
-            caption,
+            "EO",
         ),
         frame(run, ir, boxes(ir), (0.0, 0.0, *map(float, size)), size, "LWIR"),
     )
@@ -94,12 +108,8 @@ def main(hero: Path) -> None:
         columns = []
         for name, overrides in SKIES.items():
             run = Path(tmp) / name
-            sets = [arg for o in overrides for arg in ("--set", o)]
-            subprocess.run(
-                ["seascape", "render", str(SCENARIO), "-o", str(run), *sets],
-                check=True,
-            )
-            columns.append(column(run, ", ".join(overrides)))
+            render(SCENARIO, overrides, run)
+            columns.append(column(run))
     w, h = columns[0][0].size
     sheet = Image.new(
         "RGB", (len(columns) * (w + GAP_PX) - GAP_PX, 2 * h + GAP_PX), "white"
