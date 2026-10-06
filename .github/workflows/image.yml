@@ -31,6 +31,7 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           push: true
+          build-args: SEASCAPE_COMMIT=${{ github.sha }}
           tags: |
             ghcr.io/sea-ai/seascape:latest
             ghcr.io/sea-ai/seascape:${{ github.sha }}
