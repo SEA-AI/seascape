@@ -324,6 +324,21 @@ def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
     assert len(sways) == 20
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        ['sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'],
+        [
+            'sky = { choice = [{ hdri = "sunflowers" }] }',
+            "sky = { sun_elevation_deg = 10.0 }",
+        ],
+    ],
+)
+def test_a_draw_replaces_the_table_it_meets(overrides: list[str]) -> None:
+    """A draw merged into a table, or a table into a draw, is neither."""
+    load(BASELINE, overrides)
+
+
 def test_the_seed_is_never_drawn() -> None:
     with pytest.raises(ValueError, match="seed cannot be drawn"):
         load(BASELINE, ["seed = { choice = [1, 2] }"])

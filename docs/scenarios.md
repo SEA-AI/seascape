@@ -23,16 +23,20 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ## Randomization
 
-Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ choice = [...] }` for one of several values, integers and tables included. For example, from [`scenarios/randomized.toml`](../scenarios/randomized.toml):
+Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ choice = [...] }` for one of several values, integers and tables included. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
 
 ```toml
-[sky]
-sun_elevation_deg = { uniform = [3.0, 60.0] }
+[rig]
+pitch_deg = { uniform = [-3.0, 1.0] }
 
-[[objects]]
-asset = { choice = ["container_ship", "cargo_ship", "patrol_vessel", "yacht"] }
-range_m = { uniform = [300.0, 3000.0] }
+[[sky.choice]]
+sun_elevation_deg = { uniform = [2.0, 60.0] }
+
+[[sky.choice]]
+hdri = { choice = ["belfast_sunset", "kloofendal_overcast"] }
 ```
+
+[`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
 
 `seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed:
 

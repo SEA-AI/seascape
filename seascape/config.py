@@ -658,14 +658,20 @@ class Scenario(Model):
         return self
 
 
+def _is_draw(node: Any) -> bool:
+    return isinstance(node, dict) and len(node) == 1 and next(iter(node)) in _DRAWS
+
+
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
-    """`over` wins. Two tables merge; anything else replaces outright."""
+    """`over` wins. Two tables merge; anything else, a draw included, replaces
+    outright."""
     out = dict(base)
     for key, value in over.items():
         current = out.get(key)
+        tables = isinstance(current, dict) and isinstance(value, dict)
         out[key] = (
             _merge(current, value)
-            if isinstance(current, dict) and isinstance(value, dict)
+            if tables and not (_is_draw(current) or _is_draw(value))
             else value
         )
     return out
@@ -719,8 +725,10 @@ def _draw(node: Any, seed: int, path: str) -> Any:
         return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
     if not isinstance(node, dict):
         return node
-    if len(node) == 1 and (kind := next(iter(node))) in _DRAWS:
-        value = _DRAWS[kind].model_validate(node).draw(substream(seed, path))
+    if _is_draw(node):
+        value = (
+            _DRAWS[next(iter(node))].model_validate(node).draw(substream(seed, path))
+        )
         return _draw(value, seed, path)  # a choice of tables may hold draws
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
 

@@ -2,19 +2,72 @@
 
 extends = "baseline.toml"
 
-[sky]
-sun_elevation_deg = { uniform = [3.0, 60.0] }
-# Behind the cameras, so the sun disc stays out of frame.
-sun_bearing_deg = { uniform = [90.0, 270.0] }
-visibility_km = { uniform = [5.0, 42.0] }
+[rig]
+height_m = { uniform = [4.0, 25.0] }
+pitch_deg = { uniform = [-3.0, 1.0] }
+
+[[rig.pods]]
+name = "bow"
+yaw_deg = { uniform = [-8.0, 8.0] }
+
+[[rig.pods.cameras]]
+kind = "eo"
+hfov_deg = { uniform = [15.0, 70.0] }
+width_px = 1920
+height_px = 1080
+
+[[rig.pods.cameras]]
+kind = "ir"
+hfov_deg = { uniform = [12.0, 40.0] }
+width_px = 640
+height_px = 512
+
+[ownship]
+roll_deg = { uniform = [-4.0, 4.0] }
+pitch_deg = { uniform = [-1.5, 1.5] }
+
+# Blender's sky or a photographed one. The sun sits behind the cameras, out of frame.
+[[sky.choice]]
+sun_elevation_deg = { uniform = [2.0, 60.0] }
+sun_bearing_deg = { uniform = [100.0, 260.0] }
+visibility_km = { uniform = [4.0, 42.0] }
+atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
+
+[[sky.choice]]
+hdri = { choice = [
+    "belfast_sunset",
+    "industrial_sunset",
+    "kloofendal_28d_misty",
+    "kloofendal_48d_partly_cloudy",
+    "kloofendal_overcast",
+    "kloppenheim_06",
+    "qwantani_dusk_2",
+    "table_mountain_1",
+] }
+sun_bearing_deg = { uniform = [100.0, 260.0] }
+visibility_km = { uniform = [4.0, 42.0] }
+atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
 
 [sea]
-wind_speed_mps = { uniform = [2.0, 12.0] }
+wind_speed_mps = { uniform = [1.0, 14.0] }
 wind_from_deg = { uniform = [0.0, 360.0] }
 
+[sea.swell]
+height_m = { uniform = [0.2, 2.5] }
+period_s = { uniform = [6.0, 14.0] }
+from_deg = { uniform = [0.0, 360.0] }
+
 [[objects]]
-asset = { choice = ["container_ship", "cargo_ship", "patrol_vessel", "yacht"] }
-range_m = { uniform = [300.0, 3000.0] }
-# Inside the cameras' frames.
-bearing_deg = { uniform = [-10.0, 10.0] }
+asset = { choice = [
+    "container_ship",
+    "cargo_ship",
+    "bulk_carrier",
+    "patrol_vessel",
+    "yacht",
+    "lateral_mark",
+    "pillar_buoy",
+] }
+range_m = { uniform = [200.0, 2500.0] }
+# Not always in a narrow frame: an empty one is a negative.
+bearing_deg = { uniform = [-8.0, 8.0] }
 heading_deg = { uniform = [0.0, 360.0] }
