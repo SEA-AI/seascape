@@ -179,8 +179,9 @@ def hidden(ax: Axes, t: dict) -> None:
     ax.set_ylabel("height hidden by the sea, m")
 
 
-# Shown at half width beside the crops, so drawn smaller to keep its text legible.
-FIGSIZE = {"rays": (4.2, 2.6)}
+# Half width beside crops.jpg, so drawn smaller to keep its text legible, and at the
+# crops' aspect so the two sit at one height.
+FIGSIZE = {"rays": (4.2, 2.48)}
 CHARTS = {
     "glow": (
         "The sun glows in the visible, the sea in the thermal",
