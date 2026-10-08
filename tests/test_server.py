@@ -41,6 +41,50 @@ def test_an_unknown_scenario_is_refused() -> None:
     assert not server._jobs
 
 
+@pytest.mark.parametrize(
+    ("overrides", "variants", "refusal"),
+    [
+        (["outputs.duration_s = 61.0"], 1, "a clip lasts"),
+        (
+            [
+                'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = [{ kind = "eo", '
+                "hfov_deg = 45.0, width_px = 7680, height_px = 4320 }] }]"
+            ],
+            1,
+            "pixels",
+        ),
+        (["outputs.duration_s = 60.0", "outputs.fps = 100"], 2, "images"),
+    ],
+)
+def test_an_oversized_job_is_refused(
+    overrides: list[str], variants: int, refusal: str
+) -> None:
+    result = _call("render", overrides=overrides, variants=variants)
+    assert result.is_error
+    assert refusal in result.content[0].text
+    assert not server._jobs
+
+
+def test_a_full_disk_refuses_a_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.setattr(server, "MIN_FREE_GB", 2.0**50)
+    result = _call("render")
+    assert result.is_error
+    assert "GB free" in result.content[0].text
+    assert not server._jobs
+
+
+def test_jobs_reports_the_free_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    listed = _call("jobs").structured_content
+    assert listed["jobs"] == []
+    assert listed["free_gb"] > 0
+
+
 def test_a_job_older_than_a_day_is_deleted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
