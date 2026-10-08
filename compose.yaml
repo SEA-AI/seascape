@@ -1,6 +1,6 @@
 services:
   seascape:
-    build: .
+    image: ghcr.io/sea-ai/seascape:latest
     ports: ["${SEASCAPE_PORT:-8765}:8765"]
     # Unset, each keeps the default in seascape/server.py.
     environment:

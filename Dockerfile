@@ -12,9 +12,9 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
 
 WORKDIR /seascape
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
 COPY . .
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 EXPOSE 8765
 CMD ["uv", "run", "--no-sync", "seascape", "serve", "--host", "0.0.0.0"]
