@@ -329,19 +329,21 @@ def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
     assert len(sways) == 20
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [
+def test_a_draw_replaces_the_table_it_meets() -> None:
+    load(
+        BASELINE,
         ['sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'],
-        [
-            'sky = { choice = [{ hdri = "sunflowers" }] }',
-            "sky = { sun_elevation_deg = 10.0 }",
-        ],
-    ],
-)
-def test_a_draw_replaces_the_table_it_meets(overrides: list[str]) -> None:
-    """A draw merged into a table, or a table into a draw, is neither."""
-    load(BASELINE, overrides)
+    )
+
+
+def test_a_table_over_a_choice_of_tables_goes_into_every_option() -> None:
+    skies = 'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'
+    for seed in range(8):
+        drawn = load(BASELINE, [skies, f"seed = {seed}"]).sky
+        fixed = load(
+            BASELINE, [skies, f"seed = {seed}", "sky.visibility_km = 10.0"]
+        ).sky
+        assert fixed == drawn.model_copy(update={"visibility_km": 10.0})
 
 
 def test_a_preset_in_a_choice_is_a_preset_of_the_field() -> None:

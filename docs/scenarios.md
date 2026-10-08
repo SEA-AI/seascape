@@ -36,7 +36,7 @@ sun_elevation_deg = { uniform = [2.0, 60.0] }
 hdri = { choice = ["belfast_sunset", "kloofendal_overcast"] }
 ```
 
-[`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
+A table set over a choice of tables goes into every option, so `--set sky.visibility_km=10` keeps the sky drawn and fixes only its visibility. [`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
 
 `seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed when there are several:
 

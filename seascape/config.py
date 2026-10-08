@@ -663,17 +663,24 @@ def _is_draw(node: Any) -> bool:
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
-    """`over` wins. Two tables merge; anything else, a draw included, replaces
-    outright."""
+    """`over` wins. Two tables merge, and a table over a choice of tables merges into
+    each option; anything else, a draw included, replaces outright."""
     out = dict(base)
     for key, value in over.items():
         current = out.get(key)
-        tables = isinstance(current, dict) and isinstance(value, dict)
-        out[key] = (
-            _merge(current, value)
-            if tables and not (_is_draw(current) or _is_draw(value))
-            else value
-        )
+        out[key] = value
+        if (
+            not isinstance(value, dict)
+            or _is_draw(value)
+            or not isinstance(current, dict)
+        ):
+            continue
+        if not _is_draw(current):
+            out[key] = _merge(current, value)
+        elif isinstance(options := current.get("choice"), list) and all(
+            isinstance(option, dict) and not _is_draw(option) for option in options
+        ):
+            out[key] = {"choice": [_merge(option, value) for option in options]}
     return out
 
 
