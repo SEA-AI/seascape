@@ -6,6 +6,7 @@ is rendered float and written here as a thermal camera writes one: a png as 16-b
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
+import os
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -93,12 +94,13 @@ def _write_truth(
 
 
 def _commit() -> str | None:
-    """The source checkout's commit, or None for an installed package."""
+    """The source checkout's commit, else the image's, else None."""
     root = Path(__file__).parents[1]
     # A wheel installed into another project's .venv sits inside that project's work
     # tree, and git would answer with its commit.
     if not (root / ".git").exists():
-        return None
+        # The Dockerfile's build arg: an image carries no .git.
+        return os.environ.get("SEASCAPE_COMMIT") or None
     try:
         return subprocess.run(
             # --exclude: a tag would otherwise replace the hash with its own name.
