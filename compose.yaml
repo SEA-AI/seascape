@@ -8,6 +8,7 @@ services:
       - SEASCAPE_MAX_PIXELS
       - SEASCAPE_MAX_IMAGES
       - SEASCAPE_MIN_FREE_GB
+      - SEASCAPE_MCP_SECRET
     volumes:
       - cache:/root/.cache/seascape
       - ${SEASCAPE_RENDERS:-./renders}:/root/.cache/seascape/renders
@@ -16,6 +17,15 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  # Only with `--profile ngrok`: a public HTTPS URL that dials out, so no inbound port.
+  ngrok:
+    image: ngrok/ngrok:latest
+    profiles: [ngrok]
+    command: [http, "seascape:8765", --url, "${NGROK_URL:-}"]
+    environment:
+      - NGROK_AUTHTOKEN
+    restart: unless-stopped
 
 volumes:
   cache:
