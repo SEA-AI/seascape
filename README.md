@@ -90,6 +90,7 @@ For bash, `bash_source` in `~/.bashrc`.
 | [Scenarios](docs/scenarios.md) | `--set`, `extends`, skies, sequences |
 | [Outputs](docs/outputs.md) | labels, LWIR radiometry, montage, panorama |
 | [Assets](docs/assets.md) | the meshes, where they come from, adding one |
+| [Render server](docs/render-server.md) | render from Claude, on a shared GPU |
 | [Blender MCP](docs/blender-mcp.md) | an AI agent in the open Blender scene |
 | [Contributing](CONTRIBUTING.md) | checks, render tests, conventions |
 

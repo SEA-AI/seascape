@@ -12,7 +12,7 @@ from typing import Any, get_args
 import click
 
 from seascape import assets, montage, panorama, recording, skies
-from seascape.config import Band, json_schema, load
+from seascape.config import Band, folders, json_schema, load, load_variants
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -120,24 +120,17 @@ def render(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
 ) -> None:
     """Write one image per camera and frame, and their labels."""
-    built = load(scenario, list(overrides))
+    scenes = load_variants(scenario, overrides, variants)
     into = output or scenario.with_suffix("")
-    scenes = [(into, built)]
-    if variants > 1:
-        seeds = range(built.seed, built.seed + variants)
-        scenes = [
-            (into / str(seed), load(scenario, [*overrides, f"seed = {seed}"]))
-            for seed in seeds
-        ]
     from seascape import render as renderer
 
     with (
-        _progress(sum(s.images for _, s in scenes), "Rendering") as bar,
+        _progress(sum(s.images for s in scenes), "Rendering") as bar,
         _blender_log(into / "blender.log"),
     ):
         written = [
             path
-            for folder, scene in scenes
+            for scene, folder in zip(scenes, folders(into, scenes), strict=True)
             for path in renderer.render(scene, folder, lambda: bar.update(1))
         ]
     for path in written:
@@ -214,6 +207,16 @@ def recording_(folder: Path) -> None:
 def schema() -> None:
     """Print the scenario JSON schema."""
     click.echo(json.dumps(json_schema(), indent=2))
+
+
+@main.command()
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8765, show_default=True)
+def serve(host: str, port: int) -> None:
+    """Render for MCP clients, at http://HOST:PORT/mcp."""
+    from seascape import server
+
+    server.serve(host, port)
 
 
 @main.group("assets")
@@ -341,3 +344,7 @@ def sheet(scenario: Path, out: Path, band: Band) -> None:
     with _blender_log(out.with_suffix(".log")):
         catalog.sheet(scenario, out, band)
     click.echo(out)
+
+
+if __name__ == "__main__":
+    main()

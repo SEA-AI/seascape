@@ -762,6 +762,21 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
+def load_variants(
+    path: str | Path, overrides: Iterable[str] = (), count: int = 1
+) -> list[Scenario]:
+    """`count` scenarios from consecutive seeds, the file's own first."""
+    overrides = list(overrides)
+    first = load(path, overrides)
+    seeds = range(first.seed + 1, first.seed + count)
+    return [first, *(load(path, [*overrides, f"seed = {seed}"]) for seed in seeds)]
+
+
+def folders(into: Path, scenes: list[Scenario]) -> list[Path]:
+    """Where `render` writes each variant: a folder per seed when there are several."""
+    return [into] if len(scenes) == 1 else [into / str(s.seed) for s in scenes]
+
+
 def json_schema() -> dict[str, Any]:
     """The scenario's JSON schema, in which any field can be a draw."""
     schema = Scenario.model_json_schema()
