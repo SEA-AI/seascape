@@ -303,6 +303,11 @@ def test_a_new_draw_leaves_the_others_alone() -> None:
     assert _sun(3) == _sun(3, "sea.wind_speed_mps = { uniform = [2.0, 12.0] }")
 
 
+def test_a_chosen_draw_is_drawn_apart_from_the_pick() -> None:
+    chosen = "sky.sun_elevation_deg = { choice = [{ uniform = [5.0, 60.0] }] }"
+    assert all(_sun(seed) != _sun(seed, chosen) for seed in range(20))
+
+
 def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
     path = variant(
         tmp_path,

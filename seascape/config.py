@@ -726,10 +726,10 @@ def _draw(node: Any, seed: int, path: str) -> Any:
     if not isinstance(node, dict):
         return node
     if _is_draw(node):
-        value = (
-            _DRAWS[next(iter(node))].model_validate(node).draw(substream(seed, path))
-        )
-        return _draw(value, seed, path)  # a choice of tables may hold draws
+        kind = next(iter(node))
+        value = _DRAWS[kind].model_validate(node).draw(substream(seed, path))
+        # A chosen draw on the pick's own substream would replay the pick's state.
+        return _draw(value, seed, f"{path}/{kind}" if _is_draw(value) else path)
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
 
 
