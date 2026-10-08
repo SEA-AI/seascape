@@ -662,26 +662,27 @@ def _is_draw(node: Any) -> bool:
     return isinstance(node, dict) and len(node) == 1 and next(iter(node)) in _DRAWS
 
 
+def _is_table(node: Any) -> bool:
+    return isinstance(node, dict) and not _is_draw(node)
+
+
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
-    """`over` wins. Two tables merge, and a table over a choice of tables merges into
-    each option; anything else, a draw included, replaces outright."""
-    out = dict(base)
-    for key, value in over.items():
-        current = out.get(key)
-        out[key] = value
-        if (
-            not isinstance(value, dict)
-            or _is_draw(value)
-            or not isinstance(current, dict)
-        ):
-            continue
-        if not _is_draw(current):
-            out[key] = _merge(current, value)
-        elif isinstance(options := current.get("choice"), list) and all(
-            isinstance(option, dict) and not _is_draw(option) for option in options
-        ):
-            out[key] = {"choice": [_merge(option, value) for option in options]}
-    return out
+    return base | {
+        key: _merge_value(base.get(key), value) for key, value in over.items()
+    }
+
+
+def _merge_value(base: Any, over: Any) -> Any:
+    """Two tables merge, and a table over a choice of tables merges into each option;
+    anything else, a draw included, replaces outright."""
+    if not _is_table(over):
+        return over
+    if _is_table(base):
+        return _merge(base, over)
+    options = base.get("choice") if _is_draw(base) else None
+    if isinstance(options, list) and all(_is_table(option) for option in options):
+        return {"choice": [_merge(option, over) for option in options]}
+    return over
 
 
 def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
