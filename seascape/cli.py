@@ -4,7 +4,7 @@ import json
 import math
 import os
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Any, get_args
@@ -56,7 +56,7 @@ def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None
 
 
 @contextmanager
-def _blender_log(path: Path) -> Iterator[None]:
+def _blender_log(path: Path) -> Generator[None]:
     """Blender logs to `sys.stdout` from Python and to file descriptor 1 from C, where
     either would tear the progress bar and mix into stdout; both go to `path`."""
     path.parent.mkdir(parents=True, exist_ok=True)
