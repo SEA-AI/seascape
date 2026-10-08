@@ -36,6 +36,7 @@ from seascape.config import (
     Scenario,
     Sky,
     Targets,
+    substream,
 )
 
 # Flat paint over steel, 8-14 um. Paints sit at 0.94-0.96 across this band and the
@@ -49,18 +50,13 @@ HAZE_NEAR_M = 0.1
 THERMAL_SKY_PX = 2048
 
 
-def _substream(seed: int, name: str) -> np.random.Generator:
-    """A named substream, so adding a component cannot perturb an existing one."""
-    return np.random.default_rng([seed, *name.encode()])
-
-
 def wind_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
     sea = scenario.sea
     return waves.wind_sea(
         sea.wind_speed_mps,
         sea.wind_from_deg,
         scenario.outputs.period_s,
-        _substream(scenario.seed, "sea/surface"),
+        substream(scenario.seed, "sea/surface"),
     )
 
 
@@ -73,7 +69,7 @@ def swell_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
         swell.period_s,
         swell.from_deg,
         scenario.outputs.period_s,
-        _substream(scenario.seed, "sea/swell"),
+        substream(scenario.seed, "sea/swell"),
     )
 
 
@@ -1203,9 +1199,9 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     outputs = scenario.outputs
     wind, swell = wind_waves(scenario), swell_waves(scenario)
     rngs = (
-        _substream(scenario.seed, "sea/gust"),
-        _substream(scenario.seed, "sea/slick"),
-        _substream(scenario.seed, "sea/foam"),
+        substream(scenario.seed, "sea/gust"),
+        substream(scenario.seed, "sea/slick"),
+        substream(scenario.seed, "sea/foam"),
     )
     rig = _rig(scenario.rig, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}

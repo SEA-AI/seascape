@@ -4,7 +4,7 @@ import json
 import math
 import os
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Any, get_args
@@ -12,7 +12,7 @@ from typing import Any, get_args
 import click
 
 from seascape import assets, montage, panorama, recording, skies
-from seascape.config import Band, Scenario, load
+from seascape.config import Band, json_schema, load
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -56,7 +56,7 @@ def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None
 
 
 @contextmanager
-def _blender_log(path: Path) -> Iterator[None]:
+def _blender_log(path: Path) -> Generator[None]:
     """Blender logs to `sys.stdout` from Python and to file descriptor 1 from C, where
     either would tear the progress bar and mix into stdout; both go to `path`."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,17 +109,37 @@ def build(
 
 @main.command()
 @_scenario("A directory. Default: beside the scenario.")
-def render(scenario: Path, output: Path | None, overrides: tuple[str, ...]) -> None:
+@click.option(
+    "--variants",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Scenes from consecutive seeds, in a folder per seed when there are several.",
+)
+def render(
+    scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
+) -> None:
     """Write one image per camera and frame, and their labels."""
     built = load(scenario, list(overrides))
+    into = output or scenario.with_suffix("")
+    scenes = [(into, built)]
+    if variants > 1:
+        seeds = range(built.seed, built.seed + variants)
+        scenes = [
+            (into / str(seed), load(scenario, [*overrides, f"seed = {seed}"]))
+            for seed in seeds
+        ]
     from seascape import render as renderer
 
-    into = output or scenario.with_suffix("")
     with (
-        _progress(renderer.images(built), "Rendering") as bar,
+        _progress(sum(s.images for _, s in scenes), "Rendering") as bar,
         _blender_log(into / "blender.log"),
     ):
-        written = renderer.render(built, into, lambda: bar.update(1))
+        written = [
+            path
+            for folder, scene in scenes
+            for path in renderer.render(scene, folder, lambda: bar.update(1))
+        ]
     for path in written:
         click.echo(path)
     click.echo(f"{len(written)} files in {into}", err=True)
@@ -193,7 +213,7 @@ def recording_(folder: Path) -> None:
 @main.command()
 def schema() -> None:
     """Print the scenario JSON schema."""
-    click.echo(json.dumps(Scenario.model_json_schema(), indent=2))
+    click.echo(json.dumps(json_schema(), indent=2))
 
 
 @main.group("assets")

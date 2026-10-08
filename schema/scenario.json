@@ -26,24 +26,57 @@
       "description": "One camera in a pod: its band, its aim relative to the pod, its image.",
       "properties": {
         "kind": {
-          "$ref": "#/$defs/Band",
-          "description": "The band it sees in: eo visible, ir LWIR."
+          "description": "The band it sees in: eo visible, ir LWIR.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Band"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "yaw_deg": {
-          "default": 0.0,
-          "description": "Relative to the pod axis, positive to starboard.",
           "title": "Yaw Deg",
-          "type": "number"
+          "description": "Relative to the pod axis, positive to starboard.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "pitch_deg": {
-          "default": 0.0,
-          "description": "Relative to the pod, negative is down.",
-          "exclusiveMaximum": 90.0,
-          "exclusiveMinimum": -90.0,
           "title": "Pitch Deg",
-          "type": "number"
+          "description": "Relative to the pod, negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "name": {
+          "title": "Name",
+          "description": "Its image's filename. Derived from its place in the pod when absent.",
+          "default": null,
           "anyOf": [
             {
               "pattern": "^[A-Za-z0-9_-]+$",
@@ -51,30 +84,63 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "Its image's filename. Derived from its place in the pod when absent.",
-          "title": "Name"
+          ]
         },
         "hfov_deg": {
-          "description": "Measured across the image width, even in portrait.",
-          "exclusiveMaximum": 180.0,
-          "exclusiveMinimum": 0.0,
           "title": "Hfov Deg",
-          "type": "number"
+          "description": "Measured across the image width, even in portrait.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 180.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "width_px": {
-          "description": "Image width.",
-          "exclusiveMinimum": 0,
           "title": "Width Px",
-          "type": "integer"
+          "description": "Image width.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "height_px": {
-          "description": "Image height.",
-          "exclusiveMinimum": 0,
           "title": "Height Px",
-          "type": "integer"
+          "description": "Image height.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -91,22 +157,52 @@
       "description": "A hull at single anchor fishtails: across its heading once a period, along it\ntwice. Starts at its pose; the heading holds.",
       "properties": {
         "sway_m": {
-          "description": "Peak, across the heading.",
-          "minimum": 0.0,
           "title": "Sway M",
-          "type": "number"
+          "description": "Peak, across the heading.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "surge_m": {
-          "description": "Peak, along the heading.",
-          "minimum": 0.0,
           "title": "Surge M",
-          "type": "number"
+          "description": "Peak, along the heading.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "period_s": {
-          "description": "One full figure-eight.",
-          "exclusiveMinimum": 0.0,
           "title": "Period S",
-          "type": "number"
+          "description": "One full figure-eight.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -122,16 +218,36 @@
       "description": "A sinusoid about the waterline, starting at it.",
       "properties": {
         "amplitude_m": {
-          "description": "Peak, either way.",
-          "minimum": 0.0,
           "title": "Amplitude M",
-          "type": "number"
+          "description": "Peak, either way.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "period_s": {
-          "description": "One full cycle.",
-          "exclusiveMinimum": 0.0,
           "title": "Period S",
-          "type": "number"
+          "description": "One full cycle.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -154,81 +270,153 @@
       "description": "Something to detect.",
       "properties": {
         "asset": {
-          "description": "An asset name from the manifest: `seascape assets list` shows them.",
-          "enum": [
-            "bulk_carrier",
-            "cargo_ship",
-            "container",
-            "container_ship",
-            "lateral_mark",
-            "log",
-            "mooring_buoy",
-            "ocean_buoy",
-            "pallet",
-            "patrol_vessel",
-            "pillar_buoy",
-            "sea_mine",
-            "small_container_ship",
-            "yacht"
-          ],
           "title": "Asset",
-          "type": "string"
+          "description": "An asset name from the manifest: `seascape assets list` shows them.",
+          "anyOf": [
+            {
+              "enum": [
+                "bulk_carrier",
+                "cargo_ship",
+                "container",
+                "container_ship",
+                "lateral_mark",
+                "log",
+                "mooring_buoy",
+                "ocean_buoy",
+                "pallet",
+                "patrol_vessel",
+                "pillar_buoy",
+                "sea_mine",
+                "small_container_ship",
+                "yacht"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "range_m": {
-          "description": "Horizontal, from the ownship's origin.",
-          "exclusiveMinimum": 0.0,
           "title": "Range M",
-          "type": "number"
+          "description": "Horizontal, from the ownship's origin.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "bearing_deg": {
-          "description": "Clockwise from the ownship's bow.",
           "title": "Bearing Deg",
-          "type": "number"
+          "description": "Clockwise from the ownship's bow.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "heading_deg": {
-          "default": 0.0,
-          "description": "Where its bow points, clockwise from the ownship's bow.",
           "title": "Heading Deg",
-          "type": "number"
+          "description": "Where its bow points, clockwise from the ownship's bow.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "speed_mps": {
-          "default": 0.0,
-          "description": "Along its heading.",
-          "minimum": 0.0,
           "title": "Speed Mps",
-          "type": "number"
+          "description": "Along its heading.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "drift": {
+          "description": "A figure-eight about its pose.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Drift"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "A figure-eight about its pose."
+          ]
         },
         "orbit": {
+          "description": "Round the ownship.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Orbit"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "Round the ownship."
+          ]
         },
         "t_k": {
-          "default": 293.0,
-          "description": "Shaded hull temperature. IR only.",
-          "maximum": 400.0,
-          "minimum": 250.0,
           "title": "T K",
-          "type": "number"
+          "description": "Shaded hull temperature. IR only.",
+          "default": 293.0,
+          "anyOf": [
+            {
+              "maximum": 400.0,
+              "minimum": 250.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -244,17 +432,37 @@
       "description": "Round the ownship's origin clockwise from the hull's bearing, at its range, bow\nalong the circle.\n\nIdentical hulls share the lap evenly, so a loop need only last `period_s / count`.",
       "properties": {
         "period_s": {
-          "description": "One full lap.",
-          "exclusiveMinimum": 0.0,
           "title": "Period S",
-          "type": "number"
+          "description": "One full lap.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "count": {
-          "default": 1,
-          "description": "Hulls spaced evenly on it.",
-          "exclusiveMinimum": 0,
           "title": "Count",
-          "type": "integer"
+          "description": "Hulls spaced evenly on it.",
+          "default": 1,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -268,54 +476,124 @@
       "description": "What a render writes.\n\nEvery camera of a listed band is rendered. An EO png or jpg is 8-bit, as a camera\nwith auto-exposure takes it. An LWIR png is 16-bit, a hundredth of a kelvin per\ncount; an LWIR jpg is 8-bit grey, auto-contrasted as a thermal camera does. An exr\nkeeps the radiance, in W m^-2 sr^-1.",
       "properties": {
         "bands": {
+          "title": "Bands",
+          "description": "Bands to render; one with no camera is skipped.",
           "default": [
             "eo",
             "ir"
           ],
-          "description": "Bands to render; one with no camera is skipped.",
-          "items": {
-            "$ref": "#/$defs/Band"
-          },
-          "minItems": 1,
-          "title": "Bands",
-          "type": "array",
-          "uniqueItems": true
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Band"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "samples": {
-          "$ref": "#/$defs/Samples"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Samples"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "format": {
-          "$ref": "#/$defs/ImageFormat",
+          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance.",
           "default": "jpg",
-          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageFormat"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "exposure_compensation_ev": {
-          "default": 0.0,
-          "description": "Stops over auto-exposure. Applies to 8-bit EO only.",
-          "maximum": 126.0,
-          "minimum": -126.0,
           "title": "Exposure Compensation Ev",
-          "type": "number"
+          "description": "Stops over auto-exposure. Applies to 8-bit EO only.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 126.0,
+              "minimum": -126.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "duration_s": {
-          "default": 0.0,
-          "description": "0 is a still.",
-          "minimum": 0.0,
           "title": "Duration S",
-          "type": "number"
+          "description": "0 is a still.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "fps": {
-          "default": 10,
-          "description": "Frames per second of a sequence.",
-          "exclusiveMinimum": 0,
           "title": "Fps",
-          "type": "integer"
+          "description": "Frames per second of a sequence.",
+          "default": 10,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "loop": {
-          "default": false,
-          "description": "Repeats seamlessly: each period rounds to a whole fraction of duration_s.",
           "title": "Loop",
-          "type": "boolean"
+          "description": "Repeats seamlessly: each period rounds to a whole fraction of duration_s.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Outputs",
@@ -326,6 +604,9 @@
       "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.",
       "properties": {
         "asset": {
+          "title": "Asset",
+          "description": "An asset name from the manifest: `seascape assets list` shows them.",
+          "default": null,
           "anyOf": [
             {
               "enum": [
@@ -348,71 +629,122 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "An asset name from the manifest: `seascape assets list` shows them.",
-          "title": "Asset"
+          ]
         },
         "t_k": {
-          "default": 296.0,
-          "description": "Shaded hull temperature. IR only.",
-          "maximum": 400.0,
-          "minimum": 250.0,
           "title": "T K",
-          "type": "number"
+          "description": "Shaded hull temperature. IR only.",
+          "default": 296.0,
+          "anyOf": [
+            {
+              "maximum": 400.0,
+              "minimum": 250.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "roll_deg": {
-          "default": 0.0,
-          "description": "Positive is starboard down.",
-          "exclusiveMaximum": 90.0,
-          "exclusiveMinimum": -90.0,
           "title": "Roll Deg",
-          "type": "number"
+          "description": "Positive is starboard down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "pitch_deg": {
-          "default": 0.0,
-          "description": "Positive is bow up.",
-          "exclusiveMaximum": 90.0,
-          "exclusiveMinimum": -90.0,
           "title": "Pitch Deg",
-          "type": "number"
+          "description": "Positive is bow up.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "roll": {
+          "description": "About roll_deg.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Swing"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "About roll_deg."
+          ]
         },
         "pitch": {
+          "description": "About pitch_deg.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Swing"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "About pitch_deg."
+          ]
         },
         "heave": {
+          "description": "About the waterline.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Heave"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "About the waterline."
+          ]
         }
       },
       "title": "Ownship",
@@ -423,36 +755,86 @@
       "description": "One enclosure: several cameras behind one yaw and one mount point.\n\nPods a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
       "properties": {
         "name": {
-          "description": "Prefixes the filenames of its unnamed cameras.",
-          "pattern": "^[A-Za-z0-9_-]+$",
           "title": "Name",
-          "type": "string"
+          "description": "Prefixes the filenames of its unnamed cameras.",
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "yaw_deg": {
-          "description": "Pod axis relative to the bow, positive to starboard.",
           "title": "Yaw Deg",
-          "type": "number"
+          "description": "Pod axis relative to the bow, positive to starboard.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "offset_x_m": {
-          "default": 0.0,
-          "description": "From the centreline, positive to starboard.",
           "title": "Offset X M",
-          "type": "number"
+          "description": "From the centreline, positive to starboard.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "offset_y_m": {
-          "default": 0.0,
-          "description": "From midships, positive forward.",
           "title": "Offset Y M",
-          "type": "number"
+          "description": "From midships, positive forward.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "cameras": {
-          "description": "The cameras in this pod.",
-          "items": {
-            "$ref": "#/$defs/Camera"
-          },
-          "minItems": 1,
           "title": "Cameras",
-          "type": "array"
+          "description": "The cameras in this pod.",
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Camera"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -468,34 +850,74 @@
       "description": "The pods on the ownship.",
       "properties": {
         "height_m": {
-          "description": "Pod height above the waterline.",
-          "exclusiveMinimum": 0.0,
           "title": "Height M",
-          "type": "number"
+          "description": "Pod height above the waterline.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "pitch_deg": {
-          "default": 0.0,
-          "description": "Every pod, about its own transverse axis. Negative is down.",
-          "exclusiveMaximum": 90.0,
-          "exclusiveMinimum": -90.0,
           "title": "Pitch Deg",
-          "type": "number"
+          "description": "Every pod, about its own transverse axis. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "near_clip_m": {
-          "default": 5.0,
-          "description": "Anything nearer a camera is not rendered.",
-          "exclusiveMinimum": 0.0,
           "title": "Near Clip M",
-          "type": "number"
+          "description": "Anything nearer a camera is not rendered.",
+          "default": 5.0,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "pods": {
-          "description": "The camera enclosures on the ownship.",
-          "items": {
-            "$ref": "#/$defs/Pod"
-          },
-          "minItems": 1,
           "title": "Pods",
-          "type": "array"
+          "description": "The camera enclosures on the ownship.",
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Pod"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -510,18 +932,38 @@
       "description": "Cycles samples per band.\n\nA model so an override merges field by field; a dict would replace it whole\nand drop the band left out.",
       "properties": {
         "eo": {
-          "default": 16,
-          "description": "Per pixel, for EO frames.",
-          "exclusiveMinimum": 0,
           "title": "Eo",
-          "type": "integer"
+          "description": "Per pixel, for EO frames.",
+          "default": 16,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "ir": {
-          "default": 64,
-          "description": "Per pixel, for IR frames.",
-          "exclusiveMinimum": 0,
           "title": "Ir",
-          "type": "integer"
+          "description": "Per pixel, for IR frames.",
+          "default": 64,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Samples",
@@ -532,53 +974,109 @@
       "description": "The temperature bound is the span of the shipped optical-constant table. `lwir`\nclamps to it; here it is an error.",
       "properties": {
         "t_sea_k": {
-          "default": 283.88,
-          "description": "Sea surface temperature. IR only. Unset, the atmosphere's own.",
-          "maximum": 311.0,
-          "minimum": 271.0,
           "title": "T Sea K",
-          "type": "number"
+          "description": "Sea surface temperature. IR only. Unset, the atmosphere's own.",
+          "default": 283.88,
+          "anyOf": [
+            {
+              "maximum": 311.0,
+              "minimum": 271.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "wind_speed_mps": {
-          "default": 7.0,
-          "description": "Measured 10 m above the sea. Sets the wind sea.",
-          "minimum": 0.0,
           "title": "Wind Speed Mps",
-          "type": "number"
+          "description": "Measured 10 m above the sea. Sets the wind sea.",
+          "default": 7.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "wind_from_deg": {
-          "default": 0.0,
-          "description": "Where the wind blows from, clockwise from the ownship's bow.",
           "title": "Wind From Deg",
-          "type": "number"
+          "description": "Where the wind blows from, clockwise from the ownship's bow.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "swell": {
+          "description": "On top of the wind's sea.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Swell"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "On top of the wind's sea."
+          ]
         },
         "slick_cover": {
-          "default": 0.0,
-          "description": "Fraction of the sea under slicks, gathered in windrows. None in calm air, where slick and clean water are one.",
-          "exclusiveMaximum": 1.0,
-          "minimum": 0.0,
           "title": "Slick Cover",
-          "type": "number"
+          "description": "Fraction of the sea under slicks, gathered in windrows. None in calm air, where slick and clean water are one.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "refraction_k": {
-          "default": 0.13,
-          "description": "Coefficient of terrestrial refraction; 0 is none.",
-          "exclusiveMaximum": 1.0,
-          "minimum": 0.0,
           "title": "Refraction K",
-          "type": "number"
+          "description": "Coefficient of terrestrial refraction; 0 is none.",
+          "default": 0.13,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Sea",
@@ -589,6 +1087,9 @@
       "description": "Blender's Sky Texture or a photographed sky in EO, and the downwelling radiance\nthe sea reflects in IR.\n\nHaze is `visibility_km`, in the air between the camera and what it sees, in both\nbands. In LWIR, `atmosphere` adds its water vapour, shapes the sky, and gives\n`t_air_k` unless it is set.",
       "properties": {
         "sun_elevation_deg": {
+          "title": "Sun Elevation Deg",
+          "description": "Above the horizon; negative is below it. With `hdri`, set from the photo, and None where its sun shows no disc.",
+          "default": 30.0,
           "anyOf": [
             {
               "maximum": 90.0,
@@ -597,26 +1098,52 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": 30.0,
-          "description": "Above the horizon; negative is below it. With `hdri`, set from the photo, and None where its sun shows no disc.",
-          "title": "Sun Elevation Deg"
+          ]
         },
         "sun_bearing_deg": {
-          "default": 0.0,
-          "description": "Clockwise from the ownship's bow.",
           "title": "Sun Bearing Deg",
-          "type": "number"
+          "description": "Clockwise from the ownship's bow.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "solar_gain_k": {
-          "default": 8.5,
-          "description": "How much warmer a sunlit surface is than a shaded one. IR only.",
-          "minimum": 0.0,
           "title": "Solar Gain K",
-          "type": "number"
+          "description": "How much warmer a sunlit surface is than a shaded one. IR only.",
+          "default": 8.5,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "visibility_km": {
+          "title": "Visibility Km",
+          "description": "Meteorological range at 550 nm; None is no aerosol.",
+          "default": 42.0,
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -624,34 +1151,70 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": 42.0,
-          "description": "Meteorological range at 550 nm; None is no aerosol.",
-          "title": "Visibility Km"
+          ]
         },
         "atmosphere": {
-          "$ref": "#/$defs/Atmosphere",
+          "description": "LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so its horizon sky reads warmer than LOWTRAN's.",
           "default": "north_sea",
-          "description": "LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so its horizon sky reads warmer than LOWTRAN's."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Atmosphere"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "t_air_k": {
-          "default": 283.29,
-          "description": "Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
-          "maximum": 320.0,
-          "minimum": 250.0,
           "title": "T Air K",
-          "type": "number"
+          "description": "Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
+          "default": 283.29,
+          "anyOf": [
+            {
+              "maximum": 320.0,
+              "minimum": 250.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "cloud_base_m": {
-          "default": 1000.0,
-          "description": "The photo's cloud base, which sets its clouds' temperature in IR. EO ignores it.",
-          "maximum": 2000.0,
-          "minimum": 0.0,
           "title": "Cloud Base M",
-          "type": "number"
+          "description": "The photo's cloud base, which sets its clouds' temperature in IR. EO ignores it.",
+          "default": 1000.0,
+          "anyOf": [
+            {
+              "maximum": 2000.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "hdri": {
+          "title": "Hdri",
+          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg`. LWIR keeps its own clear sky and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
+          "default": null,
           "anyOf": [
             {
               "enum": [
@@ -692,11 +1255,14 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "A photographed sky from seascape/skies.toml, in place of the Sky Texture, which sets `sun_elevation_deg`. LWIR keeps its own clear sky and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
-          "title": "Hdri"
+          ]
         }
       },
       "title": "Sky",
@@ -707,22 +1273,52 @@
       "description": "Waves from a distant storm, whatever the local wind.",
       "properties": {
         "height_m": {
-          "description": "Significant wave height.",
-          "exclusiveMinimum": 0.0,
           "title": "Height M",
-          "type": "number"
+          "description": "Significant wave height.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "period_s": {
-          "description": "Seconds between crests.",
-          "exclusiveMinimum": 0.0,
           "title": "Period S",
-          "type": "number"
+          "description": "Seconds between crests.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "from_deg": {
-          "default": 0.0,
-          "description": "Where it comes from, clockwise from the ownship's bow.",
           "title": "From Deg",
-          "type": "number"
+          "description": "Where it comes from, clockwise from the ownship's bow.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -737,17 +1333,37 @@
       "description": "A sinusoid about the mean attitude, starting at the mean.",
       "properties": {
         "amplitude_deg": {
-          "description": "Peak, either way.",
-          "exclusiveMaximum": 90.0,
-          "minimum": 0.0,
           "title": "Amplitude Deg",
-          "type": "number"
+          "description": "Peak, either way.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "period_s": {
-          "description": "One full cycle.",
-          "exclusiveMinimum": 0.0,
           "title": "Period S",
-          "type": "number"
+          "description": "One full cycle.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -762,6 +1378,8 @@
       "description": "A ring of vessels at one range, spread over a span of bearings.\n\nPlaced in the world, so nothing guarantees a camera sees one.",
       "properties": {
         "asset": {
+          "title": "Asset",
+          "description": "An asset name from the manifest: `seascape assets list` shows them. A list is taken in turn round the ring.",
           "anyOf": [
             {
               "enum": [
@@ -804,83 +1422,153 @@
               },
               "minItems": 1,
               "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "description": "An asset name from the manifest: `seascape assets list` shows them. A list is taken in turn round the ring.",
-          "title": "Asset"
+          ]
         },
         "count": {
-          "description": "How many.",
-          "exclusiveMinimum": 0,
           "title": "Count",
-          "type": "integer"
+          "description": "How many.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "range_m": {
-          "description": "Horizontal, from the ownship's origin.",
-          "exclusiveMinimum": 0.0,
           "title": "Range M",
-          "type": "number"
-        },
-        "bearing_deg": {
-          "description": "First and last, clockwise from the ownship's bow. Both ends get a target.",
-          "maxItems": 2,
-          "minItems": 2,
-          "prefixItems": [
+          "description": "Horizontal, from the ownship's origin.",
+          "anyOf": [
             {
+              "exclusiveMinimum": 0.0,
               "type": "number"
             },
             {
-              "type": "number"
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
+          ]
+        },
+        "bearing_deg": {
           "title": "Bearing Deg",
-          "type": "array"
+          "description": "First and last, clockwise from the ownship's bow. Both ends get a target.",
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
         "heading_deg": {
+          "title": "Heading Deg",
+          "description": "First and last, spread evenly, clockwise from the ownship's bow.",
           "default": [
             0.0,
             315.0
           ],
-          "description": "First and last, spread evenly, clockwise from the ownship's bow.",
-          "maxItems": 2,
-          "minItems": 2,
-          "prefixItems": [
+          "anyOf": [
             {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "speed_mps": {
+          "title": "Speed Mps",
+          "description": "Along its heading.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
               "type": "number"
             },
             {
-              "type": "number"
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "title": "Heading Deg",
-          "type": "array"
-        },
-        "speed_mps": {
-          "default": 0.0,
-          "description": "Along its heading.",
-          "minimum": 0.0,
-          "title": "Speed Mps",
-          "type": "number"
+          ]
         },
         "drift": {
+          "description": "A figure-eight about its pose.",
+          "default": null,
           "anyOf": [
             {
               "$ref": "#/$defs/Drift"
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
             }
-          ],
-          "default": null,
-          "description": "A figure-eight about its pose."
+          ]
         },
         "t_k": {
-          "default": 293.0,
-          "description": "Shaded hull temperature. IR only.",
-          "maximum": 400.0,
-          "minimum": 250.0,
           "title": "T K",
-          "type": "number"
+          "description": "Shaded hull temperature. IR only.",
+          "default": 293.0,
+          "anyOf": [
+            {
+              "maximum": 400.0,
+              "minimum": 250.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -890,6 +1578,50 @@
         "bearing_deg"
       ],
       "title": "Targets",
+      "type": "object"
+    },
+    "Uniform": {
+      "additionalProperties": false,
+      "description": "A float drawn evenly between two bounds.",
+      "properties": {
+        "uniform": {
+          "description": "The bounds.",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Uniform",
+          "type": "array"
+        }
+      },
+      "required": [
+        "uniform"
+      ],
+      "title": "Uniform",
+      "type": "object"
+    },
+    "Choice": {
+      "additionalProperties": false,
+      "description": "One of several values, each as likely.",
+      "properties": {
+        "choice": {
+          "description": "The values.",
+          "items": {},
+          "minItems": 1,
+          "title": "Choice",
+          "type": "array"
+        }
+      },
+      "required": [
+        "choice"
+      ],
+      "title": "Choice",
       "type": "object"
     }
   },
@@ -903,39 +1635,105 @@
       "type": "integer"
     },
     "rig": {
-      "$ref": "#/$defs/Rig"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Rig"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
     },
     "ownship": {
-      "$ref": "#/$defs/Ownship"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Ownship"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
     },
     "targets": {
+      "description": "A ring of vessels.",
+      "default": null,
       "anyOf": [
         {
           "$ref": "#/$defs/Targets"
         },
         {
           "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
         }
-      ],
-      "default": null,
-      "description": "A ring of vessels."
+      ]
     },
     "sea": {
-      "$ref": "#/$defs/Sea"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sea"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
     },
     "sky": {
-      "$ref": "#/$defs/Sky"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sky"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
     },
     "objects": {
-      "description": "Vessels placed one by one.",
-      "items": {
-        "$ref": "#/$defs/Object"
-      },
       "title": "Objects",
-      "type": "array"
+      "description": "Vessels placed one by one.",
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Object"
+          },
+          "type": "array"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
     },
     "outputs": {
-      "$ref": "#/$defs/Outputs"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Outputs"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
     }
   },
   "required": [

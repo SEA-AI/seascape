@@ -21,6 +21,31 @@ pitch_deg = -5.0
 
 Scenarios carry a `#:schema` line, so editors with a TOML language server give you key completion, inline validation and hover docs. `seascape schema > schema/scenario.json` regenerates it from the models.
 
+## Randomization
+
+Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ choice = [...] }` for one of several values, integers and tables included. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
+
+```toml
+[rig]
+pitch_deg = { uniform = [-3.0, 1.0] }
+
+[[sky.choice]]
+sun_elevation_deg = { uniform = [2.0, 60.0] }
+
+[[sky.choice]]
+hdri = { choice = ["belfast_sunset", "kloofendal_overcast"] }
+```
+
+A table set over a choice of tables goes into every option, so `--set sky.visibility_km=10` keeps the sky drawn and fixes only its visibility. [`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
+
+`seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed when there are several:
+
+```bash
+uv run seascape render scenarios/randomized.toml --variants 8 -o out/
+```
+
+Each draw comes from a stream named for the field, so a new draw leaves the others as they were; a list item is named by its position. `labels.json` records the values drawn, under `info.scenario`.
+
 ## Skies
 
 By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/skies.toml`](../seascape/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, so a scenario with `hdri` leaves `sun_elevation_deg` out. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.

@@ -26,12 +26,15 @@ from seascape.config import (
     Sea,
     Sky,
     Targets,
+    json_schema,
     load,
+    substream,
 )
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
 HERO = SCENARIOS.parent / "docs" / "hero.toml"
+RANDOMIZED = SCENARIOS / "randomized.toml"
 SCHEMA = Path(__file__).parents[1] / "schema" / "scenario.json"
 
 
@@ -247,7 +250,7 @@ def test_non_finite_numbers_are_rejected(tmp_path, value) -> None:
 
 def test_committed_schema_matches_the_models() -> None:
     """Editors validate against the committed file; a stale one is worse than none."""
-    assert json.loads(SCHEMA.read_text()) == Scenario.model_json_schema(), (
+    assert json.loads(SCHEMA.read_text()) == json_schema(), (
         "schema/scenario.json is stale. Regenerate it:\n"
         "    uv run seascape schema > schema/scenario.json"
     )
@@ -271,7 +274,98 @@ def test_every_model_and_field_describes_itself() -> None:
     assert not missing
 
 
-@pytest.mark.parametrize("path", [BASELINE, HERO])
+def test_a_named_substream_is_reproducible_and_local_to_its_name() -> None:
+    def draw(seed: int, name: str) -> int:
+        return int(substream(seed, name).integers(2**31))
+
+    assert draw(7, "sea/surface") == draw(7, "sea/surface")
+    assert draw(7, "sea/surface") != draw(8, "sea/surface")
+    assert draw(7, "sea/surface") != draw(7, "sky/haze")
+
+
+SUN = "sky.sun_elevation_deg = { uniform = [5.0, 60.0] }"
+
+
+def _sun(seed: int, *more: str) -> float:
+    sun = load(BASELINE, [SUN, f"seed = {seed}", *more]).sky.sun_elevation_deg
+    assert sun is not None
+    return sun
+
+
+def test_a_uniform_draw_is_inside_its_bounds_and_follows_the_seed() -> None:
+    suns = [_sun(seed) for seed in range(20)]
+    assert all(5.0 <= sun <= 60.0 for sun in suns)
+    assert len(set(suns)) == len(suns)
+    assert _sun(3) == _sun(3)
+
+
+def test_a_new_draw_leaves_the_others_alone() -> None:
+    assert _sun(3) == _sun(3, "sea.wind_speed_mps = { uniform = [2.0, 12.0] }")
+
+
+def test_a_chosen_draw_is_drawn_apart_from_the_pick() -> None:
+    chosen = "sky.sun_elevation_deg = { choice = [{ uniform = [5.0, 60.0] }] }"
+    assert all(_sun(seed) != _sun(seed, chosen) for seed in range(20))
+
+
+def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
+    path = variant(
+        tmp_path,
+        "[[objects]]\n"
+        'asset = { choice = ["yacht", "cargo_ship"] }\n'
+        "range_m = 500.0\n"
+        "bearing_deg = 0.0\n"
+        "drift = { choice = [{ sway_m = { uniform = [1.0, 2.0] }, surge_m = 1.0, "
+        "period_s = 30.0 }] }\n",
+    )
+    assets, sways = set(), set()
+    for seed in range(20):
+        (ship,) = load(path, [f"seed = {seed}"]).objects
+        assert ship.drift is not None
+        assets.add(ship.asset)
+        sways.add(ship.drift.sway_m)
+    assert assets == {"yacht", "cargo_ship"}
+    assert all(1.0 <= sway <= 2.0 for sway in sways)
+    assert len(sways) == 20
+
+
+def test_a_draw_replaces_the_table_it_meets() -> None:
+    load(
+        BASELINE,
+        ['sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'],
+    )
+
+
+def test_a_table_over_a_choice_of_tables_goes_into_every_option() -> None:
+    skies = 'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'
+    for seed in range(8):
+        drawn = load(BASELINE, [skies, f"seed = {seed}"]).sky
+        fixed = load(
+            BASELINE, [skies, f"seed = {seed}", "sky.visibility_km = 10.0"]
+        ).sky
+        assert fixed == drawn.model_copy(update={"visibility_km": 10.0})
+
+
+def test_a_preset_in_a_choice_is_a_preset_of_the_field() -> None:
+    drawn = load(BASELINE, ['rig = { choice = [{ preset = "twin_pod" }] }']).rig
+    assert drawn == load(BASELINE, ['rig = { preset = "twin_pod" }']).rig
+
+
+def test_the_schema_never_offers_a_drawn_seed() -> None:
+    assert "$ref" not in str(json_schema()["properties"]["seed"])
+
+
+def test_the_seed_is_never_drawn() -> None:
+    with pytest.raises(ValueError, match="seed cannot be drawn"):
+        load(BASELINE, ["seed = { choice = [1, 2] }"])
+
+
+def test_a_draw_is_validated_as_the_field_it_lands_in() -> None:
+    with pytest.raises(ValidationError, match="sun_elevation_deg"):
+        load(BASELINE, ["sky.sun_elevation_deg = { uniform = [100.0, 120.0] }"])
+
+
+@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED])
 def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     """The `#:schema` line is a comment, so nothing else would ever notice it rot."""
     line = path.read_text().splitlines()[0]
@@ -286,6 +380,10 @@ def test_every_readme_hero_sky_loads_without_a_warning(overrides: list[str]) -> 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         load(HERO, overrides)
+
+
+def test_the_randomized_example_loads() -> None:
+    load(RANDOMIZED)
 
 
 def test_every_shipped_preset_parses() -> None:

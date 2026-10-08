@@ -33,9 +33,9 @@ dependencies = [
 seascape = "seascape.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/kevinconka/seascape"
-Repository = "https://github.com/kevinconka/seascape"
-Issues = "https://github.com/kevinconka/seascape/issues"
+Homepage = "https://github.com/SEA-AI/seascape"
+Repository = "https://github.com/SEA-AI/seascape"
+Issues = "https://github.com/SEA-AI/seascape/issues"
 
 [dependency-groups]
 dev = ["pytest>=9.0"]
