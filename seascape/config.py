@@ -694,7 +694,11 @@ def _expand(node: Any, block: str | None, base: Path, chain: tuple[Path, ...]) -
         return [_expand(item, block, base, chain) for item in node]
     if not isinstance(node, dict):
         return node
-    out = {key: _expand(value, key, base, chain) for key, value in node.items()}
+    # A draw's options are presets of the field it sits on, never of `choice`.
+    out = {
+        key: _expand(value, block if _is_draw(node) else key, base, chain)
+        for key, value in node.items()
+    }
     if (name := out.pop("preset", None)) is None:
         return out
     return _merge(_read(_include_path(name, base, block), chain), out)
@@ -756,6 +760,8 @@ def json_schema() -> dict[str, Any]:
     draws = [{"$ref": f"#/$defs/{model.__name__}"} for model in _DRAWS.values()]
     for model in (schema, *schema["$defs"].values()):
         for name, spec in model.get("properties", {}).items():
+            if model is schema and name == "seed":
+                continue  # `load` refuses a drawn seed
             # Outside the anyOf, where an editor finds the hover doc.
             outer = {
                 k: spec.pop(k) for k in ("title", "description", "default") if k in spec

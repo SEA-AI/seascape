@@ -344,6 +344,15 @@ def test_a_draw_replaces_the_table_it_meets(overrides: list[str]) -> None:
     load(BASELINE, overrides)
 
 
+def test_a_preset_in_a_choice_is_a_preset_of_the_field() -> None:
+    drawn = load(BASELINE, ['rig = { choice = [{ preset = "twin_pod" }] }']).rig
+    assert drawn == load(BASELINE, ['rig = { preset = "twin_pod" }']).rig
+
+
+def test_the_schema_never_offers_a_drawn_seed() -> None:
+    assert "$ref" not in str(json_schema()["properties"]["seed"])
+
+
 def test_the_seed_is_never_drawn() -> None:
     with pytest.raises(ValueError, match="seed cannot be drawn"):
         load(BASELINE, ["seed = { choice = [1, 2] }"])

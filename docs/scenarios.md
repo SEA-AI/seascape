@@ -38,7 +38,7 @@ hdri = { choice = ["belfast_sunset", "kloofendal_overcast"] }
 
 [`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
 
-`seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed:
+`seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed when there are several:
 
 ```bash
 uv run seascape render scenarios/randomized.toml --variants 8 -o out/

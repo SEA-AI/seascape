@@ -114,7 +114,7 @@ def build(
     type=click.IntRange(min=1),
     default=1,
     show_default=True,
-    help="Scenes from consecutive seeds, each in a folder named for its seed.",
+    help="Scenes from consecutive seeds, in a folder per seed when there are several.",
 )
 def render(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int

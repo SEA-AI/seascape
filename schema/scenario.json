@@ -1629,20 +1629,10 @@
   "description": "One scene: the rig, the world around it, and what a render writes.",
   "properties": {
     "seed": {
-      "title": "Seed",
-      "description": "Seeds every random draw.",
       "default": 0,
-      "anyOf": [
-        {
-          "type": "integer"
-        },
-        {
-          "$ref": "#/$defs/Uniform"
-        },
-        {
-          "$ref": "#/$defs/Choice"
-        }
-      ]
+      "description": "Seeds every random draw.",
+      "title": "Seed",
+      "type": "integer"
     },
     "rig": {
       "anyOf": [
