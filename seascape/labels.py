@@ -37,7 +37,7 @@ _SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
 RING_PX, RING_GAP_PX = 3, 2
 # The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
 THRESHOLD_CONTRAST = 0.05
-# Rose (1948): a target is seen at a signal-to-noise ratio near 5.
+# Rose (1948): a target is seen at an SNR near 5, summed over its area.
 ROSE_SNR = 5.0
 
 
@@ -106,7 +106,7 @@ class Labels(Model):
         frame: np.ndarray,
         targets: Sequence[Target],
         radius_m: float,
-        netd_k: float | None = None,
+        netd_k: float | None,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
         the EO image as written or the IR brightness temperature in kelvin without
@@ -124,8 +124,10 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        eo = camera.band == "eo"
-        values = luminance(frame) if eo else frame
+        if camera.band == "eo":
+            values, measure, floor = luminance(frame), contrast, THRESHOLD_CONTRAST
+        else:
+            values, measure, floor = frame, _snr_k, ROSE_SNR * (netd_k or 0.0)
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -133,8 +135,8 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
-            # Too faint to see is as unseen as hidden.
-            if _too_faint(index, values, target.pass_index, eo, netd_k):
+            seen_by = measure(index, values, target.pass_index)
+            if seen_by is not None and seen_by < floor:
                 continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             east, north = np.subtract(target.centre_m, at)
@@ -225,23 +227,6 @@ def luminance(frame: np.ndarray) -> np.ndarray:
     return frame @ BT709
 
 
-def _too_faint(
-    index: np.ndarray,
-    values: np.ndarray,
-    pass_index: int,
-    eo: bool,
-    netd_k: float | None,
-) -> bool:
-    """EO by the WMO's threshold contrast, IR by its camera's noise."""
-    if eo:
-        c = contrast(index, values, pass_index)
-        return c is not None and c < THRESHOLD_CONTRAST
-    if netd_k is None:
-        return False
-    c = contrast_k(index, values, pass_index)
-    return c is not None and c < ROSE_SNR * netd_k
-
-
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
     """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
     superstructure does not cancel."""
@@ -258,6 +243,12 @@ def contrast_k(index: np.ndarray, t_k: np.ndarray, pass_index: int) -> float | N
     """O'Kane et al.'s (1995) RSS temperature contrast."""
     found = _rss(index, t_k, pass_index)
     return None if found is None else found[0]
+
+
+def _snr_k(index: np.ndarray, t_k: np.ndarray, pass_index: int) -> float | None:
+    """`contrast_k` summed over the target's area, in units of a pixel's NETD."""
+    found = contrast_k(index, t_k, pass_index)
+    return None if found is None else found * math.sqrt((index == pass_index).sum())
 
 
 def _rss(

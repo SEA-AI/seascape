@@ -1,5 +1,5 @@
-# Jenoptik EVIDIR alpha 640 behind its 25 mm f/1.0 lens: NETD < 20 mK at f/1.0
-# (EVIDIR alpha user guide v3.0, datasheet).
+# Jenoptik EVIDIR alpha 640 with its 17.6 deg, 25 mm f/1.0 lens. NETD < 20 mK at f/1.0,
+# measured with the lens, so not derated (EVIDIR alpha user guide v3.0).
 band = "ir"
 hfov_deg = 17.6
 width_px = 640

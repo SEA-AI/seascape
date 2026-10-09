@@ -59,10 +59,9 @@ def _write_thermal(
     rng: np.random.Generator,
 ) -> np.ndarray:
     """Rewrite a float LWIR render as `fmt` beside it with the camera's noise, delete
-    the exr, and return its temperatures without it."""
+    the exr, and return its temperatures before the noise."""
     t_k = _temperatures_k(exr)
-    # Temporal noise only: a shutter's non-uniformity correction removes the fixed
-    # pattern, and no datasheet gives what it leaves.
+    # Temporal only: the shutter's NUC removes the fixed pattern.
     shown_k = t_k if netd_k is None else t_k + rng.normal(0.0, netd_k, t_k.shape)
     out = exr.with_suffix(f".{fmt}")
     image = agc.counts(shown_k) if fmt == "png" else tone(shown_k)

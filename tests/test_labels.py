@@ -70,7 +70,7 @@ def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     index[10:13, 20:25] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M, None)
 
     (found,) = truth.annotations
     assert found.bbox == (20, 10, 5, 3)
@@ -83,7 +83,7 @@ def test_a_box_on_the_frame_edge_is_truncated() -> None:
     index[40:, 60:] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M, None)
 
     assert truth.annotations[0].truncated
 
@@ -94,7 +94,13 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     truth = labels.Labels()
 
     truth.add(
-        camera(), 0.0, index, shown(index), [target(1), target(2, "buoy", 6)], RADIUS_M
+        camera(),
+        0.0,
+        index,
+        shown(index),
+        [target(1), target(2, "buoy", 6)],
+        RADIUS_M,
+        None,
     )
 
     assert [a.name for a in truth.annotations] == ["t1"]
@@ -106,7 +112,9 @@ def test_targets_of_one_category_share_it() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1), target(2)], RADIUS_M)
+    truth.add(
+        camera(), 0.0, index, shown(index), [target(1), target(2)], RADIUS_M, None
+    )
 
     assert {a.category_id for a in truth.annotations} == {1}
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
@@ -118,7 +126,13 @@ def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
     truth = labels.Labels()
 
     truth.add(
-        camera(), 0.0, index, shown(index), [target(1, "buoy", 6), target(2)], RADIUS_M
+        camera(),
+        0.0,
+        index,
+        shown(index),
+        [target(1, "buoy", 6), target(2)],
+        RADIUS_M,
+        None,
     )
 
     assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
@@ -129,7 +143,13 @@ def test_an_image_carries_its_cameras_field_of_view() -> None:
     truth = labels.Labels()
 
     truth.add(
-        camera(hfov_deg=42.0), 0.0, np.zeros((48, 64), dtype=int), FLAT, [], RADIUS_M
+        camera(hfov_deg=42.0),
+        0.0,
+        np.zeros((48, 64), dtype=int),
+        FLAT,
+        [],
+        RADIUS_M,
+        None,
     )
 
     assert truth.images[0].hfov_deg == pytest.approx(42.0)
@@ -140,7 +160,7 @@ def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M, None)
 
     (annotation,) = truth.annotations
     assert (annotation.heading_deg, annotation.dims_m) == (90.0, (20.0, 5.0, 4.0))
@@ -149,7 +169,7 @@ def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
 def test_a_frame_carries_its_time() -> None:
     truth = labels.Labels()
 
-    truth.add(camera(), 2.5, np.zeros((48, 64), dtype=int), FLAT, [], RADIUS_M)
+    truth.add(camera(), 2.5, np.zeros((48, 64), dtype=int), FLAT, [], RADIUS_M, None)
 
     assert truth.images[0].time_s == 2.5
 
@@ -160,7 +180,13 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
     truth = labels.Labels()
 
     truth.add(
-        camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, shown(index), [target(1)], RADIUS_M
+        camera(at_m=(0.0, 0.0, 50.0)),
+        0.0,
+        index,
+        shown(index),
+        [target(1)],
+        RADIUS_M,
+        None,
     )
 
     found = truth.annotations[0]
@@ -268,6 +294,7 @@ def test_an_eo_target_too_faint_to_see_gets_no_box(
         grey(np.where(index == 1, target_l, 0.4)),
         [target(1)],
         RADIUS_M,
+        None,
     )
 
     assert bool(truth.annotations) is boxed
@@ -278,21 +305,26 @@ def test_an_ir_target_without_a_netd_is_never_dropped() -> None:
     ir = camera().model_copy(update={"band": "ir"})
     truth = labels.Labels()
 
-    truth.add(ir, 0.0, index, np.full((48, 64), 280.0), [target(1)], RADIUS_M)
+    truth.add(ir, 0.0, index, np.full((48, 64), 280.0), [target(1)], RADIUS_M, None)
 
     assert truth.annotations
 
 
-@pytest.mark.parametrize(("target_k", "boxed"), [(280.24, False), (280.26, True)])
-def test_an_ir_target_below_five_times_the_netd_gets_no_box(
-    target_k: float, boxed: bool
+@pytest.mark.parametrize(
+    ("side_px", "delta_k", "boxed"),
+    [(1, 0.24, False), (1, 0.26, True), (10, 0.024, False), (10, 0.026, True)],
+)
+def test_an_ir_target_under_roses_snr_over_its_area_gets_no_box(
+    side_px: int, delta_k: float, boxed: bool
 ) -> None:
-    index = square()
+    """At a NETD of 50 mK an SNR of 5 is 0.25 K over one pixel, 0.025 K over 100."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10 : 10 + side_px, 20 : 20 + side_px] = 1
     ir = camera().model_copy(update={"band": "ir"})
     truth = labels.Labels()
 
-    t_k = np.where(index == 1, target_k, 280.0)
-    truth.add(ir, 0.0, index, t_k, [target(1)], RADIUS_M, netd_k=0.05)
+    t_k = np.where(index == 1, 280.0 + delta_k, 280.0)
+    truth.add(ir, 0.0, index, t_k, [target(1)], RADIUS_M, 0.05)
 
     assert bool(truth.annotations) is boxed
 
@@ -300,7 +332,9 @@ def test_an_ir_target_below_five_times_the_netd_gets_no_box(
 def test_a_target_with_no_background_to_measure_keeps_its_box() -> None:
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, np.ones((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M)
+    truth.add(
+        camera(), 0.0, np.ones((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M, None
+    )
 
     assert truth.annotations
 
@@ -358,7 +392,9 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {"seed": seed}, "version": "x"})
-        truth.add(camera(), 0.0, index, shown(index), [target(1, *category)], RADIUS_M)
+        truth.add(
+            camera(), 0.0, index, shown(index), [target(1, *category)], RADIUS_M, None
+        )
         folders.append(tmp_path / str(seed))
         folders[-1].mkdir()
         truth.write(folders[-1])
@@ -386,7 +422,9 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {}})
-        truth.add(camera(), 0.0, index, shown(index), [target(1, name, 1)], RADIUS_M)
+        truth.add(
+            camera(), 0.0, index, shown(index), [target(1, name, 1)], RADIUS_M, None
+        )
         folders.append(tmp_path / name)
         folders[-1].mkdir()
         truth.write(folders[-1])

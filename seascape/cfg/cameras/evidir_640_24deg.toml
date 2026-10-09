@@ -1,5 +1,6 @@
-# Jenoptik EVIDIR alpha 640 behind a custom lens: NETD < 20 mK at f/1.0 (EVIDIR alpha
-# user guide v3.0, datasheet). Judgement: the lens is f/1.0 like the catalogue's.
+# Jenoptik EVIDIR alpha 640. NETD < 20 mK at f/1.0, measured with the lens, so not
+# derated (EVIDIR alpha user guide v3.0).
+# Judgement: the custom lens is f/1.0.
 band = "ir"
 hfov_deg = 24.0
 width_px = 640

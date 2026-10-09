@@ -133,8 +133,9 @@ class Camera(Model):
     netd_k: float | None = Field(
         default=None,
         gt=0.0,
-        description="Noise-equivalent temperature difference, added to the frame as "
-        "white noise; None is none. IR only.",
+        description="Noise-equivalent temperature difference: the sigma of the "
+        "frames' white noise, and with the target's area the floor below which it gets "
+        "no box. IR only; None does neither.",
     )
 
     @model_validator(mode="after")

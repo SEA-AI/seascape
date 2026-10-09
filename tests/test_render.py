@@ -73,7 +73,6 @@ class TestThermalImage:
     def test_it_returns_the_temperatures_without_the_noise(
         self, tmp_path: Path
     ) -> None:
-        """What `labels` measures a target's contrast on."""
         exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=64)
         t_k = render._write_thermal(exr, "png", agc.Agc(), 0.5, RNG)
         assert t_k == pytest.approx(np.full_like(t_k, 290.0), abs=0.01)
@@ -361,3 +360,52 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     assert [Path(name).suffix for name in named] == [".jpg", ".jpg"]
     assert all((tmp_path / name).exists() for name in named)
     assert [c.image for c in Calibration.read(tmp_path).cameras] == named
+
+
+@pytest.mark.render
+@pytest.mark.parametrize(("netd_k", "boxed"), [(1e3, False), (1e-3, True)])
+def test_an_ir_cameras_netd_sets_which_targets_get_a_box(
+    tmp_path: Path, netd_k: float, boxed: bool
+) -> None:
+    scenario = variant(
+        cameras={"ir": {"width_px": 80, "height_px": 64, "netd_k": netd_k}},
+        objects=[target("yacht", 300.0)],
+        outputs={"bands": ["ir"], "samples": {"ir": 4}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    assert bool(truth.annotations) is boxed
+
+
+@pytest.mark.render
+def test_an_ir_png_carries_noise_that_changes_per_frame(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names: list[str] = []
+
+    def recorded(seed: int, name: str) -> np.random.Generator:
+        names.append(name)
+        return substream(seed, name)
+
+    monkeypatch.setattr(render, "substream", recorded)
+    scenario = variant(
+        cameras={"ir": {"width_px": 80, "height_px": 64, "netd_k": 0.5}},
+        outputs={
+            "bands": ["ir"],
+            "format": "png",
+            "duration_s": 2.0,
+            "fps": 1,
+            "samples": {"ir": 4},
+        },
+    )
+
+    render.render(scenario, tmp_path)
+
+    (mount,) = [m for m in scenario.mounts if m.camera.band == "ir"]
+    assert names == [f"noise/{mount.name}/0", f"noise/{mount.name}/1"]
+    t_k = agc.kelvin(tmp_path / mount.name / "0000.png")
+    assert t_k is not None
+    # The sky is smooth, so neighbouring pixels differ by the noise alone.
+    assert np.diff(t_k[:4], axis=1).std() == pytest.approx(0.5 * 2**0.5, rel=0.2)
