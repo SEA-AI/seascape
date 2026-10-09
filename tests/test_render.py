@@ -11,8 +11,10 @@ import pytest
 
 from seascape import agc, labels, lwir, render, scene
 from seascape.calibration import Calibration
-from seascape.config import Band, ImageFormat, load
+from seascape.config import Band, ImageFormat, load, substream
 from tests.scenarios import OPEN_SEA, TWIN_POD, UNDERWAY, target, variant
+
+RNG = np.random.default_rng(0)
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -44,26 +46,56 @@ class TestThermalImage:
 
     def test_a_png_is_centikelvin_with_the_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        render._write_thermal(exr, "png", agc.Agc())
+        render._write_thermal(exr, "png", agc.Agc(), None, RNG)
         t_k = agc.kelvin(exr.with_suffix(".png"))
         assert t_k is not None
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
 
     def test_a_jpg_is_grey_through_the_agc(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (270.0, 285.0, 300.0)])
-        render._write_thermal(exr, "jpg", agc.Agc())
+        render._write_thermal(exr, "jpg", agc.Agc(), None, RNG)
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
     def test_it_returns_the_temperatures_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        t_k = render._write_thermal(exr, "jpg", agc.Agc())
+        t_k = render._write_thermal(exr, "jpg", agc.Agc(), None, RNG)
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
+
+    def test_the_noise_is_the_cameras_netd(self, tmp_path: Path) -> None:
+        exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=4096)
+        render._write_thermal(exr, "png", agc.Agc(), 0.5, np.random.default_rng(1))
+        t_k = agc.kelvin(exr.with_suffix(".png"))
+        assert t_k is not None
+        assert t_k.std() == pytest.approx(0.5, rel=0.05)
+
+    def test_it_returns_the_temperatures_without_the_noise(
+        self, tmp_path: Path
+    ) -> None:
+        """What `labels` measures a target's contrast on."""
+        exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=64)
+        t_k = render._write_thermal(exr, "png", agc.Agc(), 0.5, RNG)
+        assert t_k == pytest.approx(np.full_like(t_k, 290.0), abs=0.01)
+
+    @pytest.mark.parametrize(
+        ("frame", "same"), [("noise/bow_ir/0", True), ("noise/bow_ir/1", False)]
+    )
+    def test_the_noise_repeats_per_seed_and_changes_per_frame(
+        self, tmp_path: Path, frame: str, same: bool
+    ) -> None:
+        noisy = []
+        for name in ("noise/bow_ir/0", frame):
+            exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=64, name=name[-1])
+            render._write_thermal(exr, "png", agc.Agc(), 0.5, substream(7, name))
+            t_k = agc.kelvin(exr.with_suffix(".png"))
+            assert t_k is not None
+            noisy.append(t_k)
+        assert np.array_equal(noisy[0], noisy[1]) is same
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
-        render._write_thermal(exr, "png", agc.Agc())
+        render._write_thermal(exr, "png", agc.Agc(), None, RNG)
         assert not exr.exists()
 
     def test_a_failure_keeps_the_float_render_and_leaks_nothing(
@@ -74,7 +106,7 @@ class TestThermalImage:
         before = len(bpy.data.images)
         monkeypatch.setattr(render.lwir, "brightness_temperature", _raise)
         with pytest.raises(RuntimeError):
-            render._write_thermal(exr, "png", agc.Agc())
+            render._write_thermal(exr, "png", agc.Agc(), None, RNG)
         assert exr.exists()
         assert len(bpy.data.images) == before
 
@@ -267,8 +299,6 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
         assert left - 0.5 <= u <= left + width + 0.5, found.name
         assert top - 0.5 <= v <= top + height + 0.5, found.name
         assert found.waterline_range_m < found.range_m
-        assert found.contrast is None
-        assert found.contrast_k is not None and found.contrast_k > 0
 
 
 @pytest.mark.render
@@ -301,12 +331,6 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
         # Heading west, across a camera facing north.
         assert left == sorted(left, reverse=True), mount.name
         assert left[0] > left[-1], mount.name
-        for found in truth.annotations:
-            if found.image_id in {image.id for image in frames}:
-                eo = mount.camera.band == "eo"
-                measured = found.contrast if eo else found.contrast_k
-                assert measured is not None and measured > 0, mount.name
-                assert (found.contrast_k if eo else found.contrast) is None
     assert not list(tmp_path.rglob("*.exr"))
 
 

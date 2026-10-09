@@ -37,6 +37,8 @@ _SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
 RING_PX, RING_GAP_PX = 3, 2
 # The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
 THRESHOLD_CONTRAST = 0.05
+# Rose (1948): a target is seen at a signal-to-noise ratio near 5.
+ROSE_SNR = 5.0
 
 
 class Target(NamedTuple):
@@ -104,10 +106,11 @@ class Labels(Model):
         frame: np.ndarray,
         targets: Sequence[Target],
         radius_m: float,
+        netd_k: float | None = None,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the EO image as written or the IR brightness temperature in kelvin, both top
-        row first."""
+        the EO image as written or the IR brightness temperature in kelvin without
+        noise, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -131,10 +134,8 @@ class Labels(Model):
             if not len(xs):
                 continue
             # Too faint to see is as unseen as hidden.
-            if eo:
-                c = contrast(index, values, target.pass_index)
-                if c is not None and c < THRESHOLD_CONTRAST:
-                    continue
+            if _too_faint(index, values, target.pass_index, eo, netd_k):
+                continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             east, north = np.subtract(target.centre_m, at)
             self.annotations.append(
@@ -222,6 +223,23 @@ def luminance(frame: np.ndarray) -> np.ndarray:
         r, g, b = (_SHARE[frame[..., c], c] for c in range(3))
         return r + g + b
     return frame @ BT709
+
+
+def _too_faint(
+    index: np.ndarray,
+    values: np.ndarray,
+    pass_index: int,
+    eo: bool,
+    netd_k: float | None,
+) -> bool:
+    """EO by `visibility_km`'s threshold, IR by its camera's noise."""
+    if eo:
+        c = contrast(index, values, pass_index)
+        return c is not None and c < THRESHOLD_CONTRAST
+    if netd_k is None:
+        return False
+    c = contrast_k(index, values, pass_index)
+    return c is not None and c < ROSE_SNR * netd_k
 
 
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:

@@ -273,7 +273,7 @@ def test_an_eo_target_too_faint_to_see_gets_no_box(
     assert bool(truth.annotations) is boxed
 
 
-def test_an_ir_target_is_never_dropped_for_its_contrast() -> None:
+def test_an_ir_target_without_a_netd_is_never_dropped() -> None:
     index = square()
     ir = camera().model_copy(update={"band": "ir"})
     truth = labels.Labels()
@@ -281,6 +281,20 @@ def test_an_ir_target_is_never_dropped_for_its_contrast() -> None:
     truth.add(ir, 0.0, index, np.full((48, 64), 280.0), [target(1)], RADIUS_M)
 
     assert truth.annotations
+
+
+@pytest.mark.parametrize(("target_k", "boxed"), [(280.24, False), (280.26, True)])
+def test_an_ir_target_below_five_times_the_netd_gets_no_box(
+    target_k: float, boxed: bool
+) -> None:
+    index = square()
+    ir = camera().model_copy(update={"band": "ir"})
+    truth = labels.Labels()
+
+    t_k = np.where(index == 1, target_k, 280.0)
+    truth.add(ir, 0.0, index, t_k, [target(1)], RADIUS_M, netd_k=0.05)
+
+    assert bool(truth.annotations) is boxed
 
 
 def test_a_target_with_no_background_to_measure_keeps_its_box() -> None:

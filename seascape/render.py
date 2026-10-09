@@ -22,7 +22,7 @@ import numpy as np
 from seascape import agc, labels, lwir, scene, waves
 from seascape.assets import manifest
 from seascape.calibration import Calibration, CameraCalibration
-from seascape.config import ImageFormat, Scenario
+from seascape.config import ImageFormat, Scenario, substream
 
 
 def _pixels(path: Path) -> np.ndarray:
@@ -51,12 +51,21 @@ def _temperatures_k(exr: Path) -> np.ndarray:
     return lwir.brightness_temperature(_pixels(exr)[::-1, :, 0])
 
 
-def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> np.ndarray:
-    """Rewrite a float LWIR render as `fmt` beside it, delete the exr, and return
-    its temperatures."""
+def _write_thermal(
+    exr: Path,
+    fmt: ImageFormat,
+    tone: agc.Agc,
+    netd_k: float | None,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Rewrite a float LWIR render as `fmt` beside it with the camera's noise, delete
+    the exr, and return its temperatures without it."""
     t_k = _temperatures_k(exr)
+    # Temporal noise only: a shutter's non-uniformity correction removes the fixed
+    # pattern, and no datasheet gives what it leaves.
+    shown_k = t_k if netd_k is None else t_k + rng.normal(0.0, netd_k, t_k.shape)
     out = exr.with_suffix(f".{fmt}")
-    image = agc.counts(t_k) if fmt == "png" else tone(t_k)
+    image = agc.counts(shown_k) if fmt == "png" else tone(shown_k)
     if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
         raise OSError(f"cannot write {out}")
     exr.unlink()
@@ -194,7 +203,11 @@ def render(
                     # IR is measured before the AGC, so every format reads alike.
                     if thermal:
                         seen = _write_thermal(
-                            into / f"{name}.exr", outputs.format, tones[mount.name]
+                            into / f"{name}.exr",
+                            outputs.format,
+                            tones[mount.name],
+                            mount.camera.netd_k,
+                            substream(scenario.seed, f"noise/{mount.name}/{frame}"),
                         )
                     elif band == "ir":
                         seen = _temperatures_k(into / f"{name}.exr")
@@ -212,6 +225,7 @@ def render(
                         seen,
                         targets,
                         radius_m,
+                        netd_k=mount.camera.netd_k,
                     )
                 # Every frame, so a render that dies keeps what it wrote.
                 _write_truth(into, cameras, truth)

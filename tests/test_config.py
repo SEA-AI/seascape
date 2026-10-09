@@ -208,6 +208,24 @@ def test_a_preset_replaces_what_it_lands_on(tmp_path, baseline) -> None:
     assert baseline.rigs["bow"].cameras["ir"].height_px != 480
 
 
+@pytest.mark.parametrize(
+    ("preset", "netd_k"),
+    [
+        ("boson_plus_640_24deg", 0.036),
+        ("evidir_640_18deg", 0.020),
+        ("evidir_640_24deg", 0.020),
+    ],
+)
+def test_an_ir_preset_carries_its_netd(preset: str, netd_k: float) -> None:
+    scenario = load(BASELINE, [f'rigs.bow.cameras.ir = {{ preset = "{preset}" }}'])
+    assert scenario.rigs["bow"].cameras["ir"].netd_k == netd_k
+
+
+def test_an_eo_camera_refuses_a_netd() -> None:
+    with pytest.raises(ValidationError, match="netd_k is for an ir camera"):
+        Camera(band="eo", hfov_deg=40.0, width_px=64, height_px=48, netd_k=0.05)
+
+
 def test_an_override_swaps_a_rig_for_a_product(baseline) -> None:
     scenario = load(BASELINE, ['rigs.bow = { preset = "port" }'])
     assert list(scenario.rigs["bow"].cameras) == ["eo_p", "eo_c", "eo_s", "ir"]

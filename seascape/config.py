@@ -130,6 +130,18 @@ class Camera(Model):
     )
     width_px: int = Field(gt=0, description="Image width.")
     height_px: int = Field(gt=0, description="Image height.")
+    netd_k: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Noise-equivalent temperature difference, added to the frame as "
+        "white noise; None is none. IR only.",
+    )
+
+    @model_validator(mode="after")
+    def _netd_is_ir(self) -> "Camera":
+        if self.netd_k is not None and self.band != "ir":
+            raise ValueError(f"netd_k is for an ir camera, not {self.band}")
+        return self
 
 
 class Rig(Model):

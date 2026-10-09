@@ -139,6 +139,29 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "netd_k": {
+          "title": "Netd K",
+          "description": "Noise-equivalent temperature difference, added to the frame as white noise; None is none. IR only.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
