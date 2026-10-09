@@ -130,7 +130,7 @@ class TestIrAsPng:
 
     def test_the_active_camera_sets_the_resolution(self, sc: bpy.types.Scene) -> None:
         """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
-        ir = next(m.camera for m in load(OPEN_SEA).rig.mounts if m.camera.kind == "ir")
+        ir = next(m.camera for m in load(OPEN_SEA).mounts if m.camera.band == "ir")
         assert (ir.width_px, ir.height_px) != (1920, 1080)
 
         assert (sc.render.resolution_x, sc.render.resolution_y) == (
@@ -169,7 +169,7 @@ class TestEachBand:
     ) -> None:
         """Opened on the rig's first camera, an IR build could render through EO optics
         against IR materials, with nothing to say so."""
-        assert f"_{band}_" in sc.camera.name
+        assert sc.camera.name == f"bow_{band}"
 
 
 def test_a_relative_output_reaches_blender_absolute(
@@ -261,9 +261,8 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
             "outputs.duration_s = 3.0",
             "outputs.fps = 1",
             "outputs.samples = { eo = 2, ir = 4 }",
-            'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = ['
-            '{ kind = "eo", hfov_deg = 45.0, width_px = 96, height_px = 54 }, '
-            '{ kind = "ir", hfov_deg = 24.0, width_px = 80, height_px = 64 }] }]',
+            "rigs.bow.cameras.eo = { width_px = 96, height_px = 54 }",
+            "rigs.bow.cameras.ir = { width_px = 80, height_px = 64 }",
             'objects = [{ asset = "yacht", range_m = 300.0, '
             "bearing_deg = 8.0, heading_deg = 270.0, speed_mps = 10.0 }]",
         ],
@@ -272,7 +271,7 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
     render.render(scenario, tmp_path)
 
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
-    for mount in scenario.rig.mounts:
+    for mount in scenario.mounts:
         frames = [image for image in truth.images if image.camera == mount.name]
         assert [image.file_name for image in frames] == [
             f"{mount.name}/{f:04d}.jpg" for f in range(3)
@@ -300,8 +299,7 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
             "outputs.fps = 1",
             'outputs.bands = ["ir"]',
             "outputs.samples.ir = 2",
-            'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = ['
-            '{ kind = "ir", hfov_deg = 24.0, width_px = 80, height_px = 64 }] }]',
+            "rigs.bow.cameras.ir = { width_px = 80, height_px = 64 }",
         ],
     )
     real, calls = bpy.ops.render.render, []

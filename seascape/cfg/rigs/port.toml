@@ -1,0 +1,11 @@
+# A Pod on the bulk_carrier's port bridge wing. 2 m above the wing deck keeps the deck
+# plate out of every lower frame edge.
+extends = "pod.toml"
+
+height_m = 19.7
+yaw_deg = -60.0
+offset_x_m = -14.5
+offset_y_m = -61.5
+
+# Inboard, so the pair straddles the bow.
+cameras.ir.yaw_deg = 50.0

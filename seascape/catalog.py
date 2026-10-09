@@ -34,27 +34,33 @@ def shot(
     range_m = size_m / (FILL * across_rad)
     # Twice the pixels over twice the tangent: the tile's pixel, with room to centre.
     wide_deg = math.degrees(2 * math.atan(2 * math.tan(math.radians(hfov_deg) / 2)))
-    camera = (
-        f'{{ kind = "{band}", hfov_deg = {wide_deg}, width_px = {2 * TILE[0]}, '
-        f"height_px = {2 * TILE[1]} }}"
-    )
+    rig = {
+        # A tenth of the range up, aimed at the waterline.
+        "height_m": 0.1 * range_m,
+        "pitch_deg": -math.degrees(math.atan(0.1)),
+        # The default clips the water in front of a camera this low.
+        "near_clip_m": 0.01 * size_m,
+        "cameras": {
+            band: {
+                "band": band,
+                "hfov_deg": wide_deg,
+                "width_px": 2 * TILE[0],
+                "height_px": 2 * TILE[1],
+            }
+        },
+    }
     built = load(
         scenario,
         [
-            # A tenth of the range up, aimed at the waterline.
-            f"rig.height_m = {0.1 * range_m}",
-            f"rig.pitch_deg = {-math.degrees(math.atan(0.1))}",
-            # The default clips the water in front of a camera this low.
-            f"rig.near_clip_m = {0.01 * size_m}",
-            f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}]',
             f'objects = [{{ asset = "{name}", range_m = {range_m}, bearing_deg = 0.0, '
             f"heading_deg = {HEADING_DEG} }}]",
             f'outputs.bands = ["{band}"]',
             "outputs.duration_s = 0.0",
         ],
     )
-    # The mesh alone: TOML cannot set the ring or the ownship's hull to none.
-    alone = built.model_dump(mode="json") | {"targets": None}
+    # The mesh alone, through one camera: TOML cannot set the ring or the ownship's
+    # hull to none, and the scenario's rigs merge with any it is given.
+    alone = built.model_dump(mode="json") | {"targets": None, "rigs": {"bow": rig}}
     alone["ownship"] |= {"asset": None}
     built = Scenario.model_validate(alone)
     frame = Image.open(render.render(built, into)[0]).convert("RGB")

@@ -32,7 +32,8 @@ class CameraCalibration(_Record):
     name: str
     band: str
     image: str = Field(description="relative to the calibration file's folder")
-    pod: str | None = None
+    rig: str
+    model: str | None = None
     width_px: int = Field(gt=0)
     height_px: int = Field(gt=0)
     K: Matrix3
@@ -41,7 +42,7 @@ class CameraCalibration(_Record):
         description=(
             "camera to each named frame: world (+X east, +Y north, +Z up, at sea "
             "level), vessel (+X starboard, +Y bow, +Z up, moving with "
-            "the hull) and pod (the enclosure, +Y along its axis)"
+            "the hull) and rig (the product, +Y along its axis)"
         ),
     )
 

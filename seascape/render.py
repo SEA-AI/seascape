@@ -149,8 +149,8 @@ def render(
     with tempfile.TemporaryDirectory() as tmp:
         passes = Path(tmp)
         for band in outputs.bands:
-            # The default bands can name one the rig has no camera for.
-            mounts = [m for m in scenario.rig.mounts if m.camera.kind == band]
+            # The default bands can name one no rig has a camera for.
+            mounts = [m for m in scenario.mounts if m.camera.band == band]
             if not mounts:
                 continue
             thermal = band == "ir" and outputs.format != "exr"
@@ -191,6 +191,6 @@ def render(
                 _write_truth(into, cameras, truth)
     if not written:
         raise ValueError(
-            f"the rig has no camera in any of {outputs.bands}: nothing to render"
+            f"no rig has a camera in any of {outputs.bands}: nothing to render"
         )
     return written + _write_truth(into, cameras, truth)

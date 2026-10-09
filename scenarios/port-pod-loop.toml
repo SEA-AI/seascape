@@ -1,9 +1,6 @@
 #:schema ../schema/scenario.json
 
-extends = "twin-pod.toml"
-
-[rig]
-pods = [{ preset = "port" }]
+extends = "port-pod.toml"
 
 [sky]
 hdri = "kloofendal_48d_partly_cloudy"

@@ -27,7 +27,7 @@ from seascape.config import load
 OUT = HERE / "charts"
 # The crops' scenario, so the rays chart describes the camera that took them.
 SCENARIO = load(PRIMER, [FULL_HD])
-(CAMERA,) = (mount.camera for mount in SCENARIO.rig.mounts)
+CAMERA = SCENARIO.rigs["bow"].cameras["eo"]
 REFRACTION_K = SCENARIO.sea.refraction_k
 # IAU 2015 Resolution B3: the sun's nominal effective temperature.
 SUN_K = 5772.0
@@ -79,7 +79,7 @@ def glow(ax: Axes, t: dict) -> None:
 def rays(ax: Axes, t: dict) -> None:
     """Not to scale: the angles are opened up so the rays can be seen at all."""
     radius_m = waves.earth_radius_m(REFRACTION_K)
-    height_m = SCENARIO.rig.height_m
+    height_m = SCENARIO.rigs["bow"].height_m
 
     def apart(d_m: float) -> str:
         grazing = math.atan(height_m / d_m) - d_m / (2 * radius_m)
@@ -143,7 +143,7 @@ CHARTS = {
     "rays": (
         "Far out, one pixel covers a lot of sea",
         f"Side view, not to scale. {CAMERA.width_px} px, {CAMERA.hfov_deg:.0f}° "
-        f"camera, {SCENARIO.rig.height_m:.0f} m up.",
+        f"camera, {SCENARIO.rigs['bow'].height_m:.0f} m up.",
         rays,
     ),
     "hidden": (

@@ -3,7 +3,7 @@
 A scenario is a TOML file. Two forms of reuse, both resolved here:
 
 - `extends = "baseline.toml"` at the top level, for a variant that is a diff.
-- `preset = "twin_pod"` inside a block, next to the overrides it applies to.
+- `preset = "pod"` inside a block, next to the overrides it applies to.
 
 Rules:
 
@@ -38,7 +38,6 @@ from seascape.model import Model
 
 CFG_DIR = Path(__file__).parent / "cfg"
 
-# A camera's kind is the band it sees in.
 type Band = Literal["eo", "ir"]
 
 type ImageFormat = Literal["exr", "png", "jpg"]
@@ -70,24 +69,22 @@ class Choice(Model):
 _DRAWS: dict[str, type[Uniform | Choice]] = {"uniform": Uniform, "choice": Choice}
 
 
-class Camera(Model):
-    """One camera in a pod: its band, its aim relative to the pod, its image."""
+# Path text would write outside the output directory.
+type Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
 
-    kind: Band = Field(description="The band it sees in: eo visible, ir LWIR.")
+
+class Camera(Model):
+    """One camera on a rig: its band, its aim relative to the rig, its image."""
+
+    band: Band = Field(description="The band it sees in: eo visible, ir LWIR.")
     yaw_deg: float = Field(
-        default=0.0, description="Relative to the pod axis, positive to starboard."
+        default=0.0, description="Relative to the rig's axis, positive to starboard."
     )
     pitch_deg: float = Field(
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="Relative to the pod, negative is down.",
-    )
-    name: str | None = Field(
-        default=None,
-        pattern=r"^[A-Za-z0-9_-]+$",
-        description="Its image's filename. Derived from its place in the pod when "
-        "absent.",
+        description="Relative to the rig, negative is down.",
     )
     hfov_deg: float = Field(
         gt=0.0,
@@ -98,20 +95,26 @@ class Camera(Model):
     height_px: int = Field(gt=0, description="Image height.")
 
 
-class Pod(Model):
-    """One enclosure: several cameras behind one yaw and one mount point.
+class Rig(Model):
+    """One installed product: the frame its cameras sit in, at one mount point.
 
-    Pods a beam apart overlap in angle before they overlap in space, which leaves a
+    Rigs a beam apart overlap in angle before they overlap in space, which leaves a
     blind wedge over the bow; coincident cameras would hide it.
     """
 
-    # Path text would write outside the output directory.
-    name: str = Field(
-        pattern=r"^[A-Za-z0-9_-]+$",
-        description="Prefixes the filenames of its unnamed cameras.",
+    model: str | None = Field(
+        default=None, description="The product, such as Pod. A recording needs it."
     )
+    height_m: float = Field(gt=0.0, description="Above the waterline.")
     yaw_deg: float = Field(
-        description="Pod axis relative to the bow, positive to starboard."
+        default=0.0, description="Its axis relative to the bow, positive to starboard."
+    )
+    pitch_deg: float = Field(
+        default=0.0,
+        gt=-90.0,
+        lt=90.0,
+        description="About its own transverse axis, after its yaw and before its "
+        "cameras'. Negative is down.",
     )
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
@@ -119,70 +122,33 @@ class Pod(Model):
     offset_y_m: float = Field(
         default=0.0, description="From midships, positive forward."
     )
-    cameras: list[Camera] = Field(min_length=1, description="The cameras in this pod.")
+    # Depth precision goes as far / near, so larger is better. The bound is a lens's
+    # clearance from its own structure.
+    near_clip_m: float = Field(
+        default=5.0, gt=0.0, description="Anything nearer a camera is not rendered."
+    )
+    cameras: dict[Name, Camera] = Field(
+        min_length=1, description="Its cameras, by name."
+    )
 
 
 class Mount(NamedTuple):
-    pod: Pod
+    rig_name: str
+    rig: Rig
+    camera_name: str
     camera: Camera
-    index: int
 
     @property
     def name(self) -> str:
         """Never an angle: re-aiming a rig would invalidate every filename it wrote."""
-        return self.camera.name or f"{self.pod.name}_{self.camera.kind}_{self.index}"
+        return f"{self.rig_name}_{self.camera_name}"
 
     @property
     def nominal_bearing_deg(self) -> float:
         """Not the achieved boresight: the rig's pitch sits between the two yaws, so
         an off-axis camera points elsewhere. `scene.boresight_deg` measures the
         built camera."""
-        return self.pod.yaw_deg + self.camera.yaw_deg
-
-
-class Rig(Model):
-    """The pods on the ownship."""
-
-    height_m: float = Field(gt=0.0, description="Pod height above the waterline.")
-    pitch_deg: float = Field(
-        default=0.0,
-        gt=-90.0,
-        lt=90.0,
-        description="Every pod, about its own transverse axis. Negative is down.",
-    )
-    # Depth precision goes as far / near, so larger is better. The bound is a lens's
-    # clearance from its own structure.
-    near_clip_m: float = Field(
-        default=5.0, gt=0.0, description="Anything nearer a camera is not rendered."
-    )
-    pods: list[Pod] = Field(
-        min_length=1, description="The camera enclosures on the ownship."
-    )
-
-    @property
-    def mounts(self) -> list[Mount]:
-        """Counted, not searched: two cameras with the same fields are equal to
-        pydantic, so `index()` would give both the same number."""
-        mounts: list[Mount] = []
-        for pod in self.pods:
-            seen: dict[Band, int] = {}
-            for camera in pod.cameras:
-                index = seen.get(camera.kind, 0)
-                seen[camera.kind] = index + 1
-                mounts.append(Mount(pod, camera, index))
-        return mounts
-
-    @model_validator(mode="after")
-    def _names_are_unique(self) -> "Rig":
-        """Cameras are parented by pod name, so two pods of one name send every
-        camera to the last one built, with nothing raised."""
-        pods = [pod.name for pod in self.pods]
-        if len(set(pods)) != len(pods):
-            raise ValueError(f"two pods share a name: {sorted(pods)}")
-        names = [mount.name for mount in self.mounts]
-        if len(set(names)) != len(names):
-            raise ValueError(f"two cameras share a name: {sorted(names)}")
-        return self
+        return self.rig.yaw_deg + self.camera.yaw_deg
 
 
 class Swell(Model):
@@ -579,10 +545,12 @@ LOOP_SNAP_TOLERANCE = 0.05
 
 
 class Scenario(Model):
-    """One scene: the rig, the world around it, and what a render writes."""
+    """One scene: the rigs, the world around them, and what a render writes."""
 
     seed: int = Field(default=0, description="Seeds every random draw.")
-    rig: Rig
+    rigs: dict[Name, Rig] = Field(
+        min_length=1, description="The products on the ownship, by name."
+    )
     ownship: Ownship = Field(default_factory=Ownship)
     targets: Targets | None = Field(default=None, description="A ring of vessels.")
     sea: Sea = Field(default_factory=Sea)
@@ -593,11 +561,28 @@ class Scenario(Model):
     outputs: Outputs = Field(default_factory=Outputs)
 
     @property
+    def mounts(self) -> list[Mount]:
+        return [
+            Mount(rig_name, rig, camera_name, camera)
+            for rig_name, rig in self.rigs.items()
+            for camera_name, camera in rig.cameras.items()
+        ]
+
+    @property
     def images(self) -> int:
         """How many images a render writes."""
         bands = self.outputs.bands
-        mounts = [m for m in self.rig.mounts if m.camera.kind in bands]
+        mounts = [m for m in self.mounts if m.camera.band in bands]
         return len(mounts) * len(self.outputs.times_s)
+
+    @model_validator(mode="after")
+    def _camera_names_are_unique(self) -> "Scenario":
+        """A camera's name joins its rig's, so rig `a_b` with camera `c` and rig `a`
+        with camera `b_c` would write one file."""
+        names = [mount.name for mount in self.mounts]
+        if len(set(names)) != len(names):
+            raise ValueError(f"two cameras share a name: {sorted(names)}")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -696,15 +681,29 @@ def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
     return CFG_DIR / block / f"{name}.toml"
 
 
-def _expand(node: Any, block: str | None, base: Path, chain: tuple[Path, ...]) -> Any:
+# Tables of named entries: an entry's preset is one of its table's, never of its name.
+_KEYED = {"rigs", "cameras"}
+
+
+def _expand(
+    node: Any,
+    block: str | None,
+    base: Path,
+    chain: tuple[Path, ...],
+    keyed: bool = False,
+) -> Any:
     """Resolve every `preset` key in the tree, innermost first."""
     if isinstance(node, list):
-        return [_expand(item, block, base, chain) for item in node]
+        return [_expand(item, block, base, chain, keyed) for item in node]
     if not isinstance(node, dict):
         return node
     # A draw's options are presets of the field it sits on, never of `choice`.
+    if _is_draw(node):
+        return {key: _expand(v, block, base, chain, keyed) for key, v in node.items()}
+    if keyed:
+        return {key: _expand(v, block, base, chain) for key, v in node.items()}
     out = {
-        key: _expand(value, block if _is_draw(node) else key, base, chain)
+        key: _expand(value, key, base, chain, key in _KEYED)
         for key, value in node.items()
     }
     if (name := out.pop("preset", None)) is None:
@@ -749,7 +748,7 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
     """Read a scenario TOML, resolving `extends` and `preset`, draw every random
     field, and validate it.
 
-    Each override is a TOML assignment merged over the file, `rig.pitch_deg = -5`,
+    Each override is a TOML assignment merged over the file, `rigs.bow.pitch_deg = -5`,
     and resolved as if it were a line in it.
     """
     path = Path(path)

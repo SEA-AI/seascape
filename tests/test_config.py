@@ -19,7 +19,6 @@ from seascape.config import (
     Object,
     Orbit,
     Outputs,
-    Pod,
     Rig,
     Samples,
     Scenario,
@@ -36,10 +35,6 @@ BASELINE = SCENARIOS / "baseline.toml"
 HERO = SCENARIOS.parent / "docs" / "hero.toml"
 RANDOMIZED = SCENARIOS / "randomized.toml"
 SCHEMA = Path(__file__).parents[1] / "schema" / "scenario.json"
-
-
-# One camera in one pod; overriding `rig.pods` replaces the whole list.
-ONE_POD = '[[rig.pods]]\nname = "bow"\nyaw_deg = 0.0\n\n[[rig.pods.cameras]]\n'
 
 
 def variant(tmp_path: Path, body: str) -> Path:
@@ -60,9 +55,7 @@ def twin_pod() -> Scenario:
 
 
 def test_the_baseline_states_its_own_rig(baseline) -> None:
-    kinds = [mount.camera.kind for mount in baseline.rig.mounts]
-
-    assert kinds == ["eo", "ir"]
+    assert [mount.name for mount in baseline.mounts] == ["bow_eo", "bow_ir"]
 
 
 def test_the_baseline_carries_no_scenario_a_variant_would_inherit(baseline) -> None:
@@ -71,7 +64,7 @@ def test_the_baseline_carries_no_scenario_a_variant_would_inherit(baseline) -> N
 
 
 def test_a_preset_supplies_optics_and_the_block_supplies_the_mount(twin_pod) -> None:
-    eo, ir = twin_pod.rig.mounts[0], twin_pod.rig.mounts[-1]
+    eo, ir = twin_pod.mounts[0], twin_pod.mounts[-1]
 
     assert (eo.camera.hfov_deg, eo.camera.width_px, eo.camera.height_px) == (
         49.0,
@@ -83,15 +76,21 @@ def test_a_preset_supplies_optics_and_the_block_supplies_the_mount(twin_pod) -> 
         640,
         480,
     )
-    assert (eo.pod.name, eo.nominal_bearing_deg) == ("port", -100.0)
+    assert (eo.rig_name, eo.nominal_bearing_deg) == ("port", -100.0)
+    assert (ir.rig_name, ir.nominal_bearing_deg) == ("starboard", 10.0)
 
 
-def test_a_nominal_bearing_is_its_pod_plus_its_fan(twin_pod) -> None:
-    port = twin_pod.rig.pods[0]
+def test_a_nominal_bearing_is_its_rig_plus_its_fan(twin_pod) -> None:
+    port = twin_pod.rigs["port"]
 
     assert port.yaw_deg == -60.0
-    assert [camera.yaw_deg for camera in port.cameras] == [-40.0, 0.0, 40.0, 50.0]
-    assert [mount.nominal_bearing_deg for mount in twin_pod.rig.mounts][:4] == [
+    assert [camera.yaw_deg for camera in port.cameras.values()] == [
+        -40.0,
+        0.0,
+        40.0,
+        50.0,
+    ]
+    assert [mount.nominal_bearing_deg for mount in twin_pod.mounts][:4] == [
         -100.0,
         -60.0,
         -20.0,
@@ -99,8 +98,13 @@ def test_a_nominal_bearing_is_its_pod_plus_its_fan(twin_pod) -> None:
     ]
 
 
-def test_the_installed_rig_takes_its_height_from_the_preset(twin_pod) -> None:
-    assert twin_pod.rig.height_m == 19.7
+def test_an_installation_takes_its_model_and_height_from_its_presets(
+    twin_pod,
+) -> None:
+    assert {name: (rig.model, rig.height_m) for name, rig in twin_pod.rigs.items()} == {
+        "port": ("Pod", 19.7),
+        "starboard": ("Pod", 19.7),
+    }
 
 
 def test_samples_covers_every_band() -> None:
@@ -110,16 +114,29 @@ def test_samples_covers_every_band() -> None:
 
 
 def test_an_override_is_the_toml_line_it_would_be_written_as(baseline) -> None:
-    scenario = load(BASELINE, ["rig.pitch_deg = -5"])
+    scenario = load(BASELINE, ["rigs.bow.pitch_deg = -5"])
 
-    assert scenario.rig.pitch_deg == -5.0
-    assert scenario.rig.height_m == baseline.rig.height_m
+    assert scenario.rigs["bow"].pitch_deg == -5.0
+    assert scenario.rigs["bow"].height_m == baseline.rigs["bow"].height_m
 
 
-def test_an_override_resolves_presets_like_a_line_in_the_file() -> None:
-    scenario = load(SCENARIOS / "twin-pod.toml", ['rig.pods = [{ preset = "port" }]'])
-    assert [pod.name for pod in scenario.rig.pods] == ["port"]
-    assert len(scenario.rig.mounts) == 4
+def test_an_override_resolves_presets_like_a_line_in_the_file(baseline) -> None:
+    scenario = load(BASELINE, ['rigs.port = { preset = "port" }'])
+
+    assert list(scenario.rigs) == ["bow", "port"]
+    assert scenario.rigs["port"].cameras["ir"].yaw_deg == 50.0
+
+
+def test_an_override_changes_one_camera_and_leaves_the_others(twin_pod) -> None:
+    override = "rigs.port.cameras.eo_c.hfov_deg = 30"
+    scenario = load(SCENARIOS / "twin-pod.toml", [override])
+
+    changed = [
+        m.name
+        for m, n in zip(twin_pod.mounts, scenario.mounts, strict=True)
+        if m.camera != n.camera
+    ]
+    assert changed == ["port_eo_c"]
 
 
 def test_an_override_merges_a_table_rather_than_replacing_it() -> None:
@@ -129,15 +146,15 @@ def test_an_override_merges_a_table_rather_than_replacing_it() -> None:
 
 
 def test_overrides_apply_in_order() -> None:
-    scenario = load(BASELINE, ["rig.pitch_deg = -5", "rig.pitch_deg = -10"])
+    scenario = load(BASELINE, ["rigs.bow.pitch_deg = -5", "rigs.bow.pitch_deg = -10"])
 
-    assert scenario.rig.pitch_deg == -10.0
+    assert scenario.rigs["bow"].pitch_deg == -10.0
 
 
 @pytest.mark.parametrize(
     ("override", "error"),
     [
-        pytest.param("rig.tlit_deg = -5", ValidationError, id="misspelt-key"),
+        pytest.param("rigs.bow.tlit_deg = -5", ValidationError, id="misspelt-key"),
         pytest.param("outputs.format = png", ValueError, id="unquoted-string"),
         pytest.param("garbage", ValueError, id="not-an-assignment"),
     ],
@@ -160,10 +177,10 @@ def test_a_block_overrides_its_own_preset(tmp_path) -> None:
     scenario = load(
         variant(
             tmp_path,
-            ONE_POD + 'preset = "eo_4k_49deg"\nhfov_deg = 10.0\n',
+            '[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\nhfov_deg = 10.0\n',
         )
     )
-    camera = scenario.rig.mounts[0].camera
+    camera = scenario.rigs["bow"].cameras["eo"]
     assert camera.hfov_deg == 10.0
     assert camera.width_px == 3840  # untouched by the block
 
@@ -171,37 +188,34 @@ def test_a_block_overrides_its_own_preset(tmp_path) -> None:
 def test_a_preset_outranks_an_inherited_value(tmp_path) -> None:
     """Expanding after the parent merge inverts this, and nothing else notices."""
     (tmp_path / "single.toml").write_text(
-        'height_m = 2.0\n\n[[pods]]\nname = "bow"\nyaw_deg = 0.0\n\n'
-        '[[pods.cameras]]\npreset = "ir_vga_24deg"\n'
+        'height_m = 2.0\n\n[cameras.ir]\npreset = "ir_vga_24deg"\n'
     )
-    scenario = load(variant(tmp_path, '[rig]\npreset = "./single.toml"\n'))
-    assert scenario.rig.height_m == 2.0
-    assert [mount.camera.kind for mount in scenario.rig.mounts] == ["ir"]
+    scenario = load(variant(tmp_path, '[rigs.bow]\npreset = "./single.toml"\n'))
+    bow = scenario.rigs["bow"]
+    assert bow.height_m == 2.0
+    assert bow.cameras["ir"].height_px == 480  # the baseline's is 512
 
 
 def test_tables_merge_and_lists_replace(tmp_path, baseline) -> None:
     scenario = load(
         variant(
             tmp_path,
-            "[sea]\nwind_speed_mps = 3.0\n\n" + ONE_POD + 'preset = "ir_vga_24deg"\n',
+            "[sea]\nwind_speed_mps = 3.0\n\n[rigs.bow.cameras.eo]\nhfov_deg = 30.0\n\n"
+            '[[objects]]\nasset = "yacht"\nrange_m = 300.0\nbearing_deg = 0.0\n',
         )
     )
     assert scenario.sea.wind_speed_mps == 3.0
     assert scenario.sea.t_sea_k == baseline.sea.t_sea_k
-    assert scenario.rig.height_m == baseline.rig.height_m
-    assert len(scenario.rig.mounts) == 1
+    assert scenario.rigs["bow"].cameras["eo"].hfov_deg == 30.0
+    assert scenario.rigs["bow"].cameras["ir"] == baseline.rigs["bow"].cameras["ir"]
+    assert [spec.asset for spec in scenario.objects] == ["yacht"]
 
 
 @pytest.mark.parametrize("name", ["./mine.toml", "mine.toml"])
 def test_preset_can_be_a_path(tmp_path, name) -> None:
-    (tmp_path / "mine.toml").write_text('kind = "eo"\nhfov_deg = 12.0\n')
-    scenario = load(
-        variant(
-            tmp_path,
-            ONE_POD + f'preset = "{name}"\nwidth_px = 1920\nheight_px = 1080\n',
-        )
-    )
-    assert scenario.rig.mounts[0].camera.hfov_deg == 12.0
+    (tmp_path / "mine.toml").write_text('band = "eo"\nhfov_deg = 12.0\n')
+    scenario = load(variant(tmp_path, f'[rigs.bow.cameras.eo]\npreset = "{name}"\n'))
+    assert scenario.rigs["bow"].cameras["eo"].hfov_deg == 12.0
 
 
 @pytest.mark.parametrize(
@@ -213,7 +227,7 @@ def test_preset_can_be_a_path(tmp_path, name) -> None:
 )
 def test_bad_presets_fail_loudly(tmp_path, preset, error, match) -> None:
     with pytest.raises(error, match=match):
-        load(variant(tmp_path, f"[rig]\npreset = {json.dumps(preset)}\n"))
+        load(variant(tmp_path, f"[rigs.bow]\npreset = {json.dumps(preset)}\n"))
 
 
 def test_extends_demands_a_path(tmp_path) -> None:
@@ -232,20 +246,14 @@ def test_circular_extends_raises_rather_than_recursing(tmp_path) -> None:
 
 def test_a_mistyped_key_is_an_error_not_a_silent_default(tmp_path) -> None:
     with pytest.raises(ValidationError, match="height_metres"):
-        load(variant(tmp_path, "[rig]\nheight_metres = 22.0\n"))
+        load(variant(tmp_path, "[rigs.bow]\nheight_metres = 22.0\n"))
 
 
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
 def test_non_finite_numbers_are_rejected(tmp_path, value) -> None:
     """`yaw_deg` carries no bound, so nothing else would catch one."""
     with pytest.raises(ValidationError, match="yaw_deg"):
-        load(
-            variant(
-                tmp_path,
-                f'[[rig.pods]]\nname = "bow"\nyaw_deg = {value}\n\n'
-                '[[rig.pods.cameras]]\npreset = "ir_vga_24deg"\n',
-            )
-        )
+        load(variant(tmp_path, f"[rigs.bow]\nyaw_deg = {value}\n"))
 
 
 def test_committed_schema_matches_the_models() -> None:
@@ -347,8 +355,14 @@ def test_a_table_over_a_choice_of_tables_goes_into_every_option() -> None:
 
 
 def test_a_preset_in_a_choice_is_a_preset_of_the_field() -> None:
-    drawn = load(BASELINE, ['rig = { choice = [{ preset = "twin_pod" }] }']).rig
-    assert drawn == load(BASELINE, ['rig = { preset = "twin_pod" }']).rig
+    drawn = load(BASELINE, ['rigs.bow = { choice = [{ preset = "port" }] }']).rigs
+    assert drawn == {"bow": load(SCENARIOS / "port-pod.toml").rigs["port"]}
+
+
+def test_a_preset_in_a_choice_of_cameras_is_a_camera_preset() -> None:
+    cameras = '{ choice = [{ eo = { preset = "eo_4k_49deg" } }] }'
+    drawn = load(BASELINE, [f"rigs.bow.cameras = {cameras}"]).rigs["bow"]
+    assert drawn.cameras["eo"].width_px == 3840
 
 
 def test_the_schema_never_offers_a_drawn_seed() -> None:
@@ -389,12 +403,7 @@ def test_the_randomized_example_loads() -> None:
 def test_every_shipped_preset_parses() -> None:
     """A preset directory is named after the block it serves, and holds valid TOML."""
     presets = sorted(CFG_DIR.rglob("*.toml"))
-    assert {path.parent.name for path in presets} == {
-        "rig",
-        "pods",
-        "cameras",
-        "objects",
-    }
+    assert {path.parent.name for path in presets} == {"rigs", "cameras", "objects"}
     for preset in presets:
         tomllib.load(preset.open("rb"))
 
@@ -405,67 +414,31 @@ def test_a_compensation_float32_cannot_hold_is_rejected(stops: float) -> None:
         Outputs(exposure_compensation_ev=stops)
 
 
+EO = Camera(band="eo", hfov_deg=45.0, width_px=8, height_px=8)
+
+
 @pytest.mark.parametrize("name", ["../escaped", "/tmp/absolute", "sub/dir"])
-def test_a_pod_cannot_be_path_text(name: str) -> None:
-    with pytest.raises(ValidationError, match="name"):
-        Pod(
-            name=name,
-            yaw_deg=0.0,
-            cameras=[Camera(kind="eo", hfov_deg=60.0, width_px=8, height_px=8)],
-        )
+def test_a_camera_cannot_be_path_text(name: str) -> None:
+    with pytest.raises(ValidationError, match="pattern"):
+        Rig(height_m=12.0, cameras={name: EO})
+
+
+def test_a_camera_is_named_for_its_rig_and_itself() -> None:
+    rigs = {
+        "port": Rig(height_m=12.0, cameras={"eo": EO}),
+        "starboard": Rig(height_m=12.0, cameras={"eo": EO}),
+    }
+    assert [m.name for m in Scenario(rigs=rigs).mounts] == ["port_eo", "starboard_eo"]
 
 
 def test_two_cameras_cannot_share_a_name() -> None:
     """They would share a datablock and overwrite each other's render."""
-    camera = {"kind": "eo", "hfov_deg": 45.0, "width_px": 8, "height_px": 8}
+    rigs = {
+        "a_b": Rig(height_m=12.0, cameras={"c": EO}),
+        "a": Rig(height_m=12.0, cameras={"b_c": EO}),
+    }
     with pytest.raises(ValidationError, match="share a name"):
-        Rig(
-            height_m=12.0,
-            pods=[
-                Pod(name="bow", yaw_deg=0.0, cameras=[Camera(**camera, name="fwd")]),
-                Pod(name="mast", yaw_deg=0.0, cameras=[Camera(**camera, name="fwd")]),
-            ],
-        )
-
-
-def test_two_pods_cannot_share_a_name() -> None:
-    """Mount names miss it: cameras of different bands still differ."""
-    eo = Camera(kind="eo", hfov_deg=45.0, width_px=8, height_px=8)
-    ir = Camera(kind="ir", hfov_deg=24.0, width_px=8, height_px=8)
-
-    with pytest.raises(ValidationError, match="two pods share a name"):
-        Rig(
-            height_m=12.0,
-            pods=[
-                Pod(name="port", yaw_deg=-60.0, offset_x_m=-20.0, cameras=[eo]),
-                Pod(name="port", yaw_deg=+60.0, offset_x_m=+20.0, cameras=[ir]),
-            ],
-        )
-
-
-def test_an_authored_name_wins_over_the_derived_one() -> None:
-    named = Camera(kind="eo", hfov_deg=45.0, width_px=8, height_px=8, name="EO_PORT_C")
-    plain = Camera(kind="eo", hfov_deg=45.0, width_px=8, height_px=8)
-
-    rig = Rig(
-        height_m=12.0, pods=[Pod(name="port", yaw_deg=0.0, cameras=[named, plain])]
-    )
-
-    assert [mount.name for mount in rig.mounts] == ["EO_PORT_C", "port_eo_1"]
-
-
-def test_the_same_camera_on_two_pods_is_fine() -> None:
-    camera = Camera(kind="eo", yaw_deg=0.0, hfov_deg=45.0, width_px=8, height_px=8)
-
-    rig = Rig(
-        height_m=12.0,
-        pods=[
-            Pod(name="port", yaw_deg=-60.0, cameras=[camera]),
-            Pod(name="starboard", yaw_deg=+60.0, cameras=[camera]),
-        ],
-    )
-
-    assert [mount.name for mount in rig.mounts] == ["port_eo_0", "starboard_eo_0"]
+        Scenario(rigs=rigs)
 
 
 def test_sea_temperature_bounds_are_the_tables_span() -> None:

@@ -23,9 +23,9 @@
     },
     "Camera": {
       "additionalProperties": false,
-      "description": "One camera in a pod: its band, its aim relative to the pod, its image.",
+      "description": "One camera on a rig: its band, its aim relative to the rig, its image.",
       "properties": {
-        "kind": {
+        "band": {
           "description": "The band it sees in: eo visible, ir LWIR.",
           "anyOf": [
             {
@@ -41,7 +41,7 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Relative to the pod axis, positive to starboard.",
+          "description": "Relative to the rig's axis, positive to starboard.",
           "default": 0.0,
           "anyOf": [
             {
@@ -57,33 +57,13 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "Relative to the pod, negative is down.",
+          "description": "Relative to the rig, negative is down.",
           "default": 0.0,
           "anyOf": [
             {
               "exclusiveMaximum": 90.0,
               "exclusiveMinimum": -90.0,
               "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "name": {
-          "title": "Name",
-          "description": "Its image's filename. Derived from its place in the pod when absent.",
-          "default": null,
-          "anyOf": [
-            {
-              "pattern": "^[A-Za-z0-9_-]+$",
-              "type": "string"
-            },
-            {
-              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -144,7 +124,7 @@
         }
       },
       "required": [
-        "kind",
+        "band",
         "hfov_deg",
         "width_px",
         "height_px"
@@ -263,6 +243,10 @@
         "png",
         "jpg"
       ],
+      "type": "string"
+    },
+    "Name": {
+      "pattern": "^[A-Za-z0-9_-]+$",
       "type": "string"
     },
     "Object": {
@@ -750,17 +734,36 @@
       "title": "Ownship",
       "type": "object"
     },
-    "Pod": {
+    "Rig": {
       "additionalProperties": false,
-      "description": "One enclosure: several cameras behind one yaw and one mount point.\n\nPods a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
+      "description": "One installed product: the frame its cameras sit in, at one mount point.\n\nRigs a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
       "properties": {
-        "name": {
-          "title": "Name",
-          "description": "Prefixes the filenames of its unnamed cameras.",
+        "model": {
+          "title": "Model",
+          "description": "The product, such as Pod. A recording needs it.",
+          "default": null,
           "anyOf": [
             {
-              "pattern": "^[A-Za-z0-9_-]+$",
               "type": "string"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "height_m": {
+          "title": "Height M",
+          "description": "Above the waterline.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -772,9 +775,28 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Pod axis relative to the bow, positive to starboard.",
+          "description": "Its axis relative to the bow, positive to starboard.",
+          "default": 0.0,
           "anyOf": [
             {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "pitch_deg": {
+          "title": "Pitch Deg",
+          "description": "About its own transverse axis, after its yaw and before its cameras'. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
               "type": "number"
             },
             {
@@ -817,72 +839,6 @@
             }
           ]
         },
-        "cameras": {
-          "title": "Cameras",
-          "description": "The cameras in this pod.",
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/Camera"
-              },
-              "minItems": 1,
-              "type": "array"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "required": [
-        "name",
-        "yaw_deg",
-        "cameras"
-      ],
-      "title": "Pod",
-      "type": "object"
-    },
-    "Rig": {
-      "additionalProperties": false,
-      "description": "The pods on the ownship.",
-      "properties": {
-        "height_m": {
-          "title": "Height M",
-          "description": "Pod height above the waterline.",
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "pitch_deg": {
-          "title": "Pitch Deg",
-          "description": "Every pod, about its own transverse axis. Negative is down.",
-          "default": 0.0,
-          "anyOf": [
-            {
-              "exclusiveMaximum": 90.0,
-              "exclusiveMinimum": -90.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
         "near_clip_m": {
           "title": "Near Clip M",
           "description": "Anything nearer a camera is not rendered.",
@@ -900,16 +856,19 @@
             }
           ]
         },
-        "pods": {
-          "title": "Pods",
-          "description": "The camera enclosures on the ownship.",
+        "cameras": {
+          "title": "Cameras",
+          "description": "Its cameras, by name.",
           "anyOf": [
             {
-              "items": {
-                "$ref": "#/$defs/Pod"
+              "additionalProperties": {
+                "$ref": "#/$defs/Camera"
               },
-              "minItems": 1,
-              "type": "array"
+              "minProperties": 1,
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              },
+              "type": "object"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -922,7 +881,7 @@
       },
       "required": [
         "height_m",
-        "pods"
+        "cameras"
       ],
       "title": "Rig",
       "type": "object"
@@ -1626,7 +1585,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One scene: the rig, the world around it, and what a render writes.",
+  "description": "One scene: the rigs, the world around them, and what a render writes.",
   "properties": {
     "seed": {
       "default": 0,
@@ -1634,10 +1593,19 @@
       "title": "Seed",
       "type": "integer"
     },
-    "rig": {
+    "rigs": {
+      "title": "Rigs",
+      "description": "The products on the ownship, by name.",
       "anyOf": [
         {
-          "$ref": "#/$defs/Rig"
+          "additionalProperties": {
+            "$ref": "#/$defs/Rig"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/Name"
+          },
+          "type": "object"
         },
         {
           "$ref": "#/$defs/Uniform"
@@ -1737,7 +1705,7 @@
     }
   },
   "required": [
-    "rig"
+    "rigs"
   ],
   "title": "Scenario",
   "type": "object"

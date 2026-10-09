@@ -2,7 +2,7 @@
 
 extends = "../scenarios/baseline.toml"
 
-[rig]
+[rigs.bow]
 pitch_deg = 4.0
 
 [sky]

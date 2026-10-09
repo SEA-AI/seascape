@@ -1,4 +1,4 @@
-kind = "eo"
+band = "eo"
 hfov_deg = 49.0
 width_px = 3840
 height_px = 2160

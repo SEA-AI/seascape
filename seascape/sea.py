@@ -28,7 +28,7 @@ import numpy as np
 
 from seascape import lwir
 from seascape.blend import CURVE_SAMPLES, animate, curve_image, drive, lookup, place
-from seascape.config import Band, Outputs, Rig, Sea
+from seascape.config import Band, Outputs, Scenario, Sea
 from seascape.wakes import (
     BUBBLE_EFOLD_S,
     BUBBLE_GAIN,
@@ -114,9 +114,10 @@ FOAM_TILE_M = FOAM_CELLS * FOAM_SPACING_M
 FOAM_STREAK = 4.0
 
 
-def sea_reach_m(rig: Rig, sea: Sea) -> float:
-    """Half-width of the sea, a margin past the horizon."""
-    return SEA_MARGIN * horizon_m(rig.height_m, sea.refraction_k)
+def sea_reach_m(scenario: Scenario) -> float:
+    """Half-width of the sea, a margin past the highest rig's horizon."""
+    height_m = max(rig.height_m for rig in scenario.rigs.values())
+    return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k)
 
 
 def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
