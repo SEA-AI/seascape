@@ -85,7 +85,10 @@ class Choice(Model):
             raise ValueError(
                 f"{len(self.weights)} weights for {len(self.choice)} values"
             )
-        if not sum(self.weights):
+        total = sum(self.weights)
+        if not math.isfinite(total):
+            raise ValueError(f"the weights sum to {total}")
+        if not total:
             raise ValueError("the weights sum to 0")
         return self
 
@@ -705,7 +708,7 @@ class Scenario(Model):
 
 
 def _kind(node: Any) -> str | None:
-    """The draw `node` is: one draw's key, beside only that draw's own fields."""
+    """`node`'s draw key, if it holds one and nothing but that draw's fields."""
     if not isinstance(node, dict):
         return None
     kinds = [key for key in node if key in _DRAWS]
@@ -737,7 +740,10 @@ def _merge_value(base: Any, over: Any) -> Any:
         return _merge(base, over)
     options = base.get("choice") if _is_draw(base) else None
     if isinstance(options, list) and all(_is_table(option) for option in options):
-        return base | {"choice": [_merge(option, over) for option in options]}
+        # The choice's own fields, its weights, stay with the choice.
+        own = {k: v for k, v in over.items() if k in Choice.model_fields}
+        rest = {k: v for k, v in over.items() if k not in own}
+        return base | own | {"choice": [_merge(option, rest) for option in options]}
     return over
 
 

@@ -737,7 +737,7 @@ def test_a_value_of_weight_zero_is_never_drawn() -> None:
 @pytest.mark.parametrize(
     ("weights", "match"),
     [([1.0], "1 weights for 2 values"), ([-1.0, 2.0], "greater than or equal"),
-     ([0.0, 0.0], "sum to 0")],
+     ([0.0, 0.0], "sum to 0"), ([1e308, 1e308], "sum to inf")],
 )  # fmt: skip
 def test_weights_that_cannot_weigh_the_values_are_refused(weights, match) -> None:
     with pytest.raises(ValidationError, match=match):
@@ -751,6 +751,15 @@ def test_a_table_over_a_weighted_choice_keeps_the_weights() -> None:
     )
     drawn = {
         load(BASELINE, [skies, "sky.visibility_km = 10.0", f"seed = {s}"]).sky.hdri
+        for s in range(20)
+    }
+    assert drawn == {None}
+
+
+def test_weights_set_over_an_inherited_choice_weigh_it() -> None:
+    skies = 'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'
+    drawn = {
+        load(BASELINE, [skies, "sky.weights = [0, 1]", f"seed = {s}"]).sky.hdri
         for s in range(20)
     }
     assert drawn == {None}
