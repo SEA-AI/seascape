@@ -1,5 +1,6 @@
 """Physics assertions for the LWIR band. No Blender."""
 
+import math
 from typing import get_args
 
 import numpy as np
@@ -197,4 +198,65 @@ def test_no_cloud_is_the_clear_sky() -> None:
     elevation = np.radians([0.0, 30.0, 90.0])
     assert lwir.cloudy_sky_radiance(elevation, 0.0, 1000.0) == pytest.approx(
         lwir.sky_radiance(elevation)
+    )
+
+
+def test_the_facets_carry_their_slope_sigma() -> None:
+    """Per axis, as `emissivity_curve` and `reflected_sky` read it."""
+    normal = lwir._facets(0.1)
+    slope = -normal[:, :2] / normal[:, 2:]
+    assert slope.mean(axis=0) == pytest.approx([0.0, 0.0], abs=1e-12)
+    assert slope.std(axis=0) == pytest.approx([0.1, 0.1], rel=1e-9)
+
+
+def test_a_flat_sea_reflects_the_sky_in_its_mirror_direction() -> None:
+    elev = np.radians(np.linspace(0.0, 90.0, 91))
+    sky = lwir.sky_radiance(elev)
+    mirror = np.radians([1.0, 10.0, 45.0])
+    assert lwir.reflected_sky(mirror, elev, sky) == pytest.approx(
+        lwir.sky_radiance(mirror)
+    )
+
+
+def test_a_rough_sea_seen_grazing_reflects_sky_from_above_its_mirror() -> None:
+    elev = np.radians(np.linspace(0.0, 90.0, 91))
+    sky = lwir.sky_radiance(elev)
+    mirror = np.radians(1.0)
+    flat = lwir.reflected_sky(mirror, elev, sky)
+    smooth, rough = (
+        lwir.reflected_sky(mirror, elev, sky, slope_sigma=s) for s in (0.05, 0.15)
+    )
+    assert rough < smooth < flat
+
+
+@pytest.mark.parametrize("mirror_deg", [0.2, 1.0, 3.0, 10.0])
+def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
+    mirror_deg: float,
+) -> None:
+    """The shader takes eps B + (1 - eps) S of facet means; each facet emits and
+    reflects in its own proportion."""
+    t_sea_k, sigma = lwir.T_SEA_K, 0.1
+    elev = np.radians(np.linspace(0.0, 90.0, 181))
+    sky = lwir.sky_radiance(elev)
+    mirror = math.radians(mirror_deg)
+    reflected = lwir.reflected_sky(
+        mirror, elev, sky, t_sea_k=t_sea_k, slope_sigma=sigma
+    )
+    theta, eps = lwir.emissivity_curve(t_sea_k=t_sea_k, slope_sigma=sigma)
+    mean_eps = np.interp(math.pi / 2 - mirror, theta, eps)
+    hot = lwir.band_radiance(t_sea_k)
+
+    normal = lwir._facets(sigma)
+    view = np.array([math.cos(mirror), 0.0, math.sin(mirror)])
+    cos_i = normal @ view
+    area = np.clip(cos_i, 0.0, None)
+    flat_theta, flat = lwir.emissivity_curve(t_sea_k=t_sea_k)
+    own = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), flat_theta, flat)
+    up = np.arcsin(np.clip(2 * cos_i * normal[:, 2] - view[2], -1.0, 1.0))
+    each = own * hot + (1 - own) * np.interp(up, elev, sky)
+    exact = (area * each).sum() / area.sum()
+
+    shaded = mean_eps * hot + (1 - mean_eps) * reflected
+    assert lwir.brightness_temperature(shaded) == pytest.approx(
+        lwir.brightness_temperature(exact), abs=0.006
     )

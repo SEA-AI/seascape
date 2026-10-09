@@ -744,26 +744,52 @@ class TestIrBand:
 
     def test_the_sea_reflects_what_it_does_not_emit(self) -> None:
         """Emission alone goes dark toward grazing, where emissivity falls to zero."""
-        mix = bpy.data.materials["sea"].node_tree.nodes["Mix Shader"]
-        assert mix.inputs["Factor"].is_linked
-        # ShaderNodeBsdfGlossy still reports its pre-4.0 bl_idname.
-        assert mix.inputs[1].links[0].from_node.bl_idname == "ShaderNodeBsdfAnisotropic"
-        assert mix.inputs[2].links[0].from_node.bl_idname == "ShaderNodeEmission"
+        tree = bpy.data.materials["sea"].node_tree
+        radiance = tree.nodes["sea_radiance"]
+        assert radiance.operation == "MULTIPLY_ADD"
+        assert "sea_reflection" in upstream(radiance.inputs[2])
+        emission = radiance.outputs["Value"].links[0].to_node
+        assert emission.bl_idname == "ShaderNodeEmission"
 
-    def test_the_reflection_lobe_and_the_emissivity_share_one_slope(self) -> None:
+    def test_the_sea_reflects_by_lookup_not_by_sampling(self) -> None:
+        kinds = {n.bl_idname for n in bpy.data.materials["sea"].node_tree.nodes}
+        assert not any(k.startswith("ShaderNodeBsdf") for k in kinds)
+
+    def test_the_reflection_and_the_emissivity_share_one_slope(self) -> None:
         """Both come from the pixel's unresolved slope, and must move together."""
         tree = bpy.data.materials["sea"].node_tree
-        mirror = next(
-            n for n in tree.nodes if n.bl_idname == "ShaderNodeBsdfAnisotropic"
-        )
-        table = next(
-            n
-            for n in tree.nodes
-            if n.bl_idname == "ShaderNodeTexImage" and n.image.name == "sea_emissivity"
-        )
-        lookup = table.inputs["Vector"].links[0].from_node
-        for socket in (mirror.inputs["Roughness"], lookup.inputs["Y"]):
-            assert {"sea_unresolved_variance", "sea_gust_variance"} <= upstream(socket)
+        for name in ("sea_emissivity", "sea_reflection"):
+            table = next(
+                n
+                for n in tree.nodes
+                if n.bl_idname == "ShaderNodeTexImage" and n.image.name == name
+            )
+            lookup = table.inputs["Vector"].links[0].from_node
+            assert {"sea_unresolved_variance", "sea_gust_variance"} <= upstream(
+                lookup.inputs["Y"]
+            ), name
+
+    def test_the_baked_reflection_matches_the_sky_it_reflects(self) -> None:
+        table = baked("sea_reflection")
+        rows, width = table.shape
+        mirror = np.arcsin((np.arange(width) + 0.5) / width)
+        sky = scene._sky_round(SCENARIO.sky)
+        tree = bpy.data.materials["sea"].node_tree
+        slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
+        sigmas = sea._row_sigmas(slope_max)
+        top = baked("sea_emissivity")
+        assert table.shape == top.shape
+        grazing = mirror < math.radians(5.0)
+        flat = lwir.reflected_sky(mirror[grazing], *sky)
+        assert np.all(table[-1][grazing] < flat), "facets seen grazing lean to the eye"
+        for row in (0, rows - 1):
+            scale = table[row] / lwir.reflected_sky(
+                mirror,
+                *sky,
+                t_sea_k=SCENARIO.sea.t_sea_k,
+                slope_sigma=sigmas[row],
+            )
+            assert scale == pytest.approx(1.0, rel=1e-5)
 
     def test_emissivity_is_averaged_over_the_unresolved_slopes(self) -> None:
         """Flat Fresnel collapses toward grazing, which is where distant targets sit."""
@@ -1336,6 +1362,16 @@ class TestPhotographedThermalSky:
             np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
         )
         assert top == pytest.approx(float(expected), rel=1e-3)
+
+    def test_the_sea_reflects_the_clouds(self) -> None:
+        """A sea under overcast reflecting a clear sky would read cold."""
+        table = baked("sea_reflection")
+        mirror = np.arcsin((np.arange(table.shape[1]) + 0.5) / table.shape[1])
+        sky = variant(sky={"hdri": "overcast_soil"}).sky
+        # Off the horizon, where a clear sky runs cold.
+        high = mirror[mirror > math.radians(30.0)]
+        clear = lwir.sky_radiance(high, sky.t_air_k, sky.atmosphere)
+        assert np.all(table[0][mirror > math.radians(30.0)] > clear)
 
     def test_the_photo_is_not_kept(self) -> None:
         assert "white.hdr" not in bpy.data.images

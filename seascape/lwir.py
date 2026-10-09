@@ -42,7 +42,9 @@ that fail silently:
 """
 
 import functools
+import math
 from pathlib import Path
+from statistics import NormalDist
 from typing import Literal
 
 import numpy as np
@@ -181,6 +183,7 @@ def fresnel_emissivity(
 
 
 CURVE_ANGLES = 91
+# Judgement; a square, as `_facets` lays it on a grid.
 FACET_SAMPLES = 4096
 
 
@@ -190,8 +193,8 @@ def emissivity_curve(
     """Planck-weighted, band-integrated emissivity against viewing zenith (rad).
 
     `slope_sigma` is the RMS slope per axis the renderer does *not* resolve; at 0 this
-    is flat-surface Fresnel. Above 0 it averages Fresnel over facets drawn from a
-    Gaussian slope distribution, weighted by the area each presents to the viewer,
+    is flat-surface Fresnel. Above 0 it averages Fresnel over facets with Gaussian
+    slopes, weighted by the area each presents to the viewer,
     which is the Masuda 1988 construction. Only the unresolved slope belongs here:
     slope the wave normals carry is applied per pixel by the shader, and integrating it
     again would count it twice.
@@ -210,16 +213,61 @@ def emissivity_curve(
         return theta, flat / band
 
     table = flat / band
-    rng = np.random.default_rng(0)
-    slope = rng.normal(0.0, slope_sigma, size=(FACET_SAMPLES, 2))
-    normal = np.stack([-slope[:, 0], -slope[:, 1], np.ones(FACET_SAMPLES)], axis=-1)
-    normal /= np.linalg.norm(normal, axis=-1, keepdims=True)
-
+    normal = _facets(slope_sigma)
     view = np.stack([np.sin(theta), np.zeros(CURVE_ANGLES), np.cos(theta)], axis=-1)
     cos_i = view @ normal.T  # (angle, facet)
     area = np.clip(cos_i, 0.0, None)
     eps = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, table)
     return theta, (eps * area).sum(axis=1) / area.sum(axis=1)
+
+
+def _facets(slope_sigma: float) -> FloatArray:
+    """Unit normals of facets whose slopes are Gaussian, `slope_sigma` per axis.
+
+    On a grid of the normal's quantiles: a random draw's error would be a bias every
+    pixel shares. The grid's midpoints stop short of the tails, so it is rescaled to
+    the sigma.
+    """
+    side = math.isqrt(FACET_SAMPLES)
+    quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(side) + 0.5) / side)
+    quantiles /= quantiles.std()
+    east, north = np.meshgrid(slope_sigma * quantiles, slope_sigma * quantiles)
+    normal = np.stack([-east.ravel(), -north.ravel(), np.ones(side**2)], axis=-1)
+    return normal / np.linalg.norm(normal, axis=-1, keepdims=True)
+
+
+def reflected_sky(
+    mirror_rad: npt.ArrayLike,
+    sky_elev_rad: npt.ArrayLike,
+    sky: npt.ArrayLike,
+    *,
+    t_sea_k: float = T_SEA_K,
+    slope_sigma: float = 0.0,
+) -> FloatArray:
+    """The sky a rough sea reflects, against the elevation of the viewer's mirror
+    direction off the mean surface; `sky` is radiance at the ascending `sky_elev_rad`.
+
+    Masuda 1988's facet average, applied to the reflected sky: each facet reflects
+    the sky in its own mirror direction, weighted by the area it presents to the
+    viewer and by its own reflectance. The facets seen at grazing lean toward the
+    viewer, so they reflect sky above the mirror direction. Weighted so, eps B +
+    (1 - eps) times this is the facets' own sum, eps from `emissivity_curve`. A
+    reflection below the horizon reads the sky's lowest elevation, as the world does.
+    """
+    mirror = np.asarray(mirror_rad, dtype=np.float64)
+    elev = np.asarray(sky_elev_rad, dtype=np.float64)
+    radiance = np.asarray(sky, dtype=np.float64)
+    if slope_sigma <= 0.0:
+        return np.interp(mirror, elev, radiance)
+    normal = _facets(slope_sigma)
+    view = np.stack([np.cos(mirror), np.zeros_like(mirror), np.sin(mirror)], axis=-1)
+    cos_i = view @ normal.T  # (angle, facet)
+    up = 2 * cos_i * normal[:, 2] - view[..., 2:]
+    theta, flat = emissivity_curve(t_sea_k=t_sea_k)
+    reflectance = 1.0 - np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, flat)
+    weight = np.clip(cos_i, 0.0, None) * reflectance
+    seen = np.interp(np.arcsin(np.clip(up, -1.0, 1.0)), elev, radiance)
+    return (seen * weight).sum(axis=-1) / weight.sum(axis=-1)
 
 
 _BAND_LAM = np.linspace(*BAND_M, 512)
