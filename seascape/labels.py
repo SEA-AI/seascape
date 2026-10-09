@@ -232,7 +232,7 @@ def _too_faint(
     eo: bool,
     netd_k: float | None,
 ) -> bool:
-    """EO by `visibility_km`'s threshold, IR by its camera's noise."""
+    """EO by the WMO's threshold contrast, IR by its camera's noise."""
     if eo:
         c = contrast(index, values, pass_index)
         return c is not None and c < THRESHOLD_CONTRAST
