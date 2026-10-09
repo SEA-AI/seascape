@@ -23,16 +23,15 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# Luminance from linear BT.709 R, G, B: the Y row of sRGB's RGB to XYZ (IEC 61966-2-1).
+# The Y row of sRGB's linear RGB to XYZ (IEC 61966-2-1).
 BT709 = np.array([0.2126, 0.7152, 0.0722])
 # 8-bit sRGB to linear (IEC 61966-2-1), one entry per code.
 _SRGB = np.arange(256) / 255
 SRGB_TO_LINEAR = np.where(
     _SRGB <= 0.04045, _SRGB / 12.92, ((_SRGB + 0.055) / 1.055) ** 2.4
 )
-# Judgement: a contrast's background is a ring this wide, this far off the target.
-# Cycles' default 1.5 px pixel filter and the compositor's blur spread a target past
-# its index.
+# Judgement: the background ring's width, and its gap past where the pixel filter and
+# the compositor's blur spread a target.
 RING_PX, RING_GAP_PX = 3, 2
 
 
@@ -213,16 +212,14 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 
 def luminance(frame: np.ndarray) -> np.ndarray:
-    """A frame's relative luminance: 8-bit RGB decoded from sRGB (IEC 61966-2-1),
-    float RGB as linear."""
     if frame.dtype == np.uint8:
         return SRGB_TO_LINEAR[frame] @ BT709
     return frame @ BT709
 
 
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
-    """Weber's, root-sum-squared over the target's pixels (O'Kane et al. 1995), so a
-    dark hull under a bright superstructure does not cancel."""
+    """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
+    superstructure does not cancel."""
     mask = (index == pass_index).astype(np.uint8)
     others = ((index > 0) & (index != pass_index)).astype(np.uint8)
     gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)

@@ -14,7 +14,6 @@ FLAT = np.ones((48, 64, 3))
 
 
 def grey(luminance: np.ndarray) -> np.ndarray:
-    """Linear RGB of that luminance."""
     return np.repeat(luminance[..., None], 3, axis=2)
 
 
@@ -270,7 +269,6 @@ def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
 
 
 def test_8bit_primaries_weigh_as_bt709() -> None:
-    """A BGR frame read as RGB swaps red's weight for blue's."""
     primaries = np.eye(3, dtype=np.uint8)[None] * 255
 
     assert labels.luminance(primaries)[0] == pytest.approx(labels.BT709)

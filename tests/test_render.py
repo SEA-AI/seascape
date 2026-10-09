@@ -75,9 +75,6 @@ class TestThermalImage:
 
 
 class TestFrame:
-    """What `labels` measures: the image as written, RGB or one channel, top row
-    first."""
-
     def test_a_png_keeps_its_one_16bit_channel(self, tmp_path: Path) -> None:
         counts = np.array([[29500], [27200]], np.uint16).repeat(4, axis=1)
         cv2.imwrite(str(tmp_path / "f.png"), counts)

@@ -1420,3 +1420,17 @@ def test_a_target_inside_the_ownship_is_refused() -> None:
 
     with pytest.raises(scene.OverlapError, match="ownship"):
         scene.build(aboard, "eo")
+
+
+def test_the_ownship_is_indexed_after_every_target() -> None:
+    built = scene.build(
+        variant(
+            objects=[target("yacht", 900.0)], ownship={"asset": "small_container_ship"}
+        ),
+        "eo",
+    )
+
+    (anchor,) = built.targets["yacht"]
+    hull = [p for p in built.vessel.children_recursive if p.type == "MESH"]
+    assert hull, "the ownship has no mesh: nothing below ran"
+    assert {p.pass_index for p in hull} == {anchor.pass_index + 1}

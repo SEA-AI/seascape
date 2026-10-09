@@ -8,7 +8,7 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-Each box's `contrast` is how visible its target is in the frame as written: `sqrt(mean((L - L_background)^2)) / L_background` over the target's index-pass pixels (O'Kane et al. 1995), against a thin ring of background around them, `null` without a background above 0. It is luminance, decoded from sRGB in a jpg or png, and `null` for IR. Koschmieder (1924) took 2 % and the WMO's meteorological optical range takes 5 % as the threshold contrast of a large target seen by eye; a small one needs more (Blackwell 1946), so calibrate a loader's ignore threshold on detector recall against contrast.
+Each box's `contrast` is how visible its target is in the frame as written: `sqrt(mean((L - L_background)^2)) / L_background` over the target's index-pass pixels (O'Kane et al. 1995), against a thin ring of background around them, `null` without a background above 0. It is luminance, decoded from sRGB in a jpg or png, and `null` for IR.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 
