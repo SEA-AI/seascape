@@ -8,7 +8,7 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-Each box's `contrast` is how visible its target is in the frame as written: Weber's, unsigned and averaged over the target's index-pass pixels, `mean(|L - L_background|) / L_background`, against a thin ring of background around them, `null` with none. 0 is invisible; a dark hull under a bright superstructure does not cancel, and a uniform target reads its plain Weber contrast. EO takes luminance, decoded from sRGB in a jpg or png; IR takes the values written, grey in a jpg, centikelvin in a png, radiance in an exr. Koschmieder's limit of visibility is a luminance contrast of 2%, so a loader can mark an EO box with `contrast < 0.02` as `iscrowd`, or ignore it.
+Each box's `contrast` is how visible its target is in the frame as written: `mean(|L - L_background|) / L_background` over the target's index-pass pixels, against a thin ring of background around them, `null` without a background above 0. EO takes luminance, decoded from sRGB in a jpg or png; IR takes the values written. Koschmieder (1924) took 2 % as the threshold contrast of visibility, so a loader can mark an EO box with `contrast < 0.02` as `iscrowd`.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 

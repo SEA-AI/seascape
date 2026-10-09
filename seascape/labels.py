@@ -25,9 +25,15 @@ HORIZON_POINTS = 17
 
 # Luminance from linear BT.709 R, G, B: the Y row of sRGB's RGB to XYZ (IEC 61966-2-1).
 BT709 = np.array([0.2126, 0.7152, 0.0722])
-# A contrast's background is a ring this wide around the target, this far off it: the
-# pixel filter spreads the target into the pixels its index does not reach.
-RING_PX, RING_GAP_PX = 3, 1
+# 8-bit sRGB to linear (IEC 61966-2-1), one entry per code.
+_SRGB = np.arange(256) / 255
+SRGB_TO_LINEAR = np.where(
+    _SRGB <= 0.04045, _SRGB / 12.92, ((_SRGB + 0.055) / 1.055) ** 2.4
+)
+# Judgement: a contrast's background is a ring this wide, this far off the target.
+# Cycles' default 1.5 px pixel filter and the compositor's blur spread a target past
+# its index.
+RING_PX, RING_GAP_PX = 3, 2
 
 
 class Target(NamedTuple):
@@ -79,7 +85,7 @@ class Annotation(Model):
     # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
-    # Weber's, unsigned, in the frame as written; None with no background around it.
+    # Weber's, unsigned, in the frame as written; None without a background above 0.
     contrast: float | None
 
 
@@ -210,19 +216,18 @@ def luminance(frame: np.ndarray) -> np.ndarray:
     if frame.ndim == 2:
         return frame.astype(float)
     if frame.dtype == np.uint8:
-        c = frame / 255
-        frame = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+        return SRGB_TO_LINEAR[frame] @ BT709
     return frame @ BT709
 
 
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
-    """The mean of |L - L_background| / L_background over the target's pixels, the
-    background a ring of pixels no target covers. Unsigned, so a dark hull under a
-    bright superstructure does not cancel to nothing."""
+    """Weber's, averaged unsigned over the target's pixels so a dark hull under a
+    bright superstructure does not cancel."""
     mask = (index == pass_index).astype(np.uint8)
-    near = cv2.dilate(mask, np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8))
+    others = ((index > 0) & (index != pass_index)).astype(np.uint8)
+    gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
     far = cv2.dilate(mask, np.ones((2 * (RING_GAP_PX + RING_PX) + 1,) * 2, np.uint8))
-    ring = (far > near) & (index == 0)
+    ring = (far > cv2.dilate(mask, gap)) & ~cv2.dilate(others, gap).astype(bool)
     if not ring.any():
         return None
     background = lum[ring].mean()

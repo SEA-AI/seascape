@@ -207,8 +207,24 @@ def test_contrasts_background_is_no_other_target() -> None:
 def test_contrasts_background_skips_the_pixels_the_filter_blurs_into() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10:20, 20:30] = 1
-    blurred = cv2.dilate(index.astype(np.uint8), np.ones((3, 3), np.uint8))
+    width = 2 * labels.RING_GAP_PX + 1
+    blurred = cv2.dilate(index.astype(np.uint8), np.ones((width, width), np.uint8))
     frame = np.where(blurred == 1, 0.8, 0.4)
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == pytest.approx(1.0)
+
+
+def test_contrasts_background_skips_another_targets_blur() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30], index[10:20, 34:44] = 1, 2
+    width = 2 * labels.RING_GAP_PX + 1
+    blurred = cv2.dilate(
+        (index == 2).astype(np.uint8), np.ones((width, width), np.uint8)
+    )
+    frame = np.where(index == 1, 0.8, np.where(blurred == 1, 9.0, 0.4))
     truth = labels.Labels()
 
     truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
@@ -235,6 +251,13 @@ def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
     truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(0.5, abs=0.003)
+
+
+def test_8bit_primaries_weigh_as_bt709() -> None:
+    """A BGR frame read as RGB swaps red's weight for blue's."""
+    primaries = np.eye(3, dtype=np.uint8)[None] * 255
+
+    assert labels.luminance(primaries)[0] == pytest.approx(labels.BT709)
 
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
