@@ -1,7 +1,7 @@
-"""Scenarios for tests, as a shipped one with changes in Python.
+"""Scenarios for tests: a shipped one, changed in Python.
 
-Tests say what they change; how a scenario spells it lives here alone. Loader and CLI
-tests write TOML on purpose: the spelling is what they test.
+Tests say what they change; how a scenario spells it lives here. Loader and CLI tests
+write TOML, since the spelling is what they test.
 """
 
 import tomllib
@@ -22,7 +22,6 @@ TWIN_POD = SCENARIOS / "twin-pod.toml"
 
 
 def preset_camera(preset: str, **fields: Any) -> Camera:
-    """A shipped camera preset, with `fields` changed."""
     with (CFG_DIR / "cameras" / f"{preset}.toml").open("rb") as handle:
         return Camera.model_validate(tomllib.load(handle) | fields)
 
@@ -60,12 +59,15 @@ def variant(
     objects: Sequence[Object | dict[str, Any]] | None = None,
     **sections: Any,
 ) -> Scenario:
-    """`base` loaded with its only rig's fields, some of its cameras, its objects and
-    any other section overridden, as `--set` would. A camera model sets every field of
-    the camera it names; a dict, only its own."""
+    """`base` with these sections overridden, as `--set` would. `rig` and `cameras`
+    apply to its only rig. A `Camera` sets every field of the camera it names; a dict,
+    only its own."""
     table = _plain(sections)
     if rig is not None or cameras is not None:
-        (name,) = load(base).rigs
+        rigs = list(load(base).rigs)
+        if len(rigs) != 1:
+            raise ValueError(f"rig= and cameras= need a base with one rig, not {rigs}")
+        (name,) = rigs
         whole = {
             key: value.model_dump(mode="json") if isinstance(value, Camera) else value
             for key, value in (cameras or {}).items()

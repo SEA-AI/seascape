@@ -851,8 +851,8 @@ def load(
     """Read a scenario TOML, resolving `extends` and `preset`, draw every random
     field, and validate it.
 
-    Each override is a TOML assignment merged over the file, `rigs.bow.pitch_deg = -5`,
-    or the table it parses to, and resolved as if it were a line in it.
+    Each override, a TOML assignment such as `rigs.bow.pitch_deg = -5` or the table it
+    parses to, merges over the file and resolves as if it were a line in it.
     """
     path = Path(path)
     data = _read(path)
