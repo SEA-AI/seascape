@@ -79,7 +79,7 @@ class Annotation(Model):
     # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
-    # Weber's, in the frame as written; None with no background around the target.
+    # Weber's, unsigned, in the frame as written; None with no background around it.
     contrast: float | None
 
 
@@ -216,8 +216,9 @@ def luminance(frame: np.ndarray) -> np.ndarray:
 
 
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
-    """(L_target - L_background) / L_background, the background a ring of pixels no
-    target covers."""
+    """The mean of |L - L_background| / L_background over the target's pixels, the
+    background a ring of pixels no target covers. Unsigned, so a dark hull under a
+    bright superstructure does not cancel to nothing."""
     mask = (index == pass_index).astype(np.uint8)
     near = cv2.dilate(mask, np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8))
     far = cv2.dilate(mask, np.ones((2 * (RING_GAP_PX + RING_PX) + 1,) * 2, np.uint8))
@@ -225,7 +226,9 @@ def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | Non
     if not ring.any():
         return None
     background = lum[ring].mean()
-    return float(lum[mask > 0].mean() / background - 1) if background > 0 else None
+    if background <= 0:
+        return None
+    return float(np.abs(lum[mask > 0] - background).mean() / background)
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

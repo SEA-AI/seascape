@@ -167,8 +167,10 @@ def test_a_target_like_its_background_has_no_contrast() -> None:
     assert truth.annotations[0].contrast == 0.0
 
 
-@pytest.mark.parametrize(("target_l", "contrast"), [(0.3, -0.25), (1.0, 1.5)])
-def test_contrast_is_webers_signed(target_l: float, contrast: float) -> None:
+@pytest.mark.parametrize(("target_l", "contrast"), [(0.3, 0.25), (1.0, 1.5)])
+def test_a_uniform_targets_contrast_is_webers_unsigned(
+    target_l: float, contrast: float
+) -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10:20, 20:30] = 1
     frame = np.where(index == 1, target_l, 0.4)
@@ -177,6 +179,18 @@ def test_contrast_is_webers_signed(target_l: float, contrast: float) -> None:
     truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(contrast)
+
+
+def test_a_dark_and_a_bright_half_do_not_cancel() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30] = 1
+    frame = np.full((48, 64), 0.4)
+    frame[10:15, 20:30], frame[15:20, 20:30] = 0.2, 0.6
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == pytest.approx(0.5)
 
 
 def test_contrasts_background_is_no_other_target() -> None:
@@ -220,7 +234,7 @@ def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
 
     truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
 
-    assert truth.annotations[0].contrast == pytest.approx(-0.5, abs=0.003)
+    assert truth.annotations[0].contrast == pytest.approx(0.5, abs=0.003)
 
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
