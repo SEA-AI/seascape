@@ -25,13 +25,15 @@ HORIZON_POINTS = 17
 
 # The Y row of sRGB's linear RGB to XYZ (IEC 61966-2-1).
 BT709 = np.array([0.2126, 0.7152, 0.0722])
-# 8-bit sRGB to linear (IEC 61966-2-1), one entry per code.
+# IEC 61966-2-1.
 _SRGB = np.arange(256) / 255
 SRGB_TO_LINEAR = np.where(
     _SRGB <= 0.04045, _SRGB / 12.92, ((_SRGB + 0.055) / 1.055) ** 2.4
 )
-# Judgement: the background ring's width, and its gap past where the pixel filter and
-# the compositor's blur spread a target.
+# Per 8-bit code, each channel's share of luminance: float32, as a 4K frame of float64
+# RGB is 200 MB.
+_SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
+# Judgement: the gap clears the pixel filter's and the compositor's blur.
 RING_PX, RING_GAP_PX = 3, 2
 # The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
 THRESHOLD_CONTRAST = 0.05
@@ -215,7 +217,8 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 def luminance(frame: np.ndarray) -> np.ndarray:
     if frame.dtype == np.uint8:
-        return SRGB_TO_LINEAR[frame] @ BT709
+        r, g, b = (_SHARE[frame[..., c], c] for c in range(3))
+        return r + g + b
     return frame @ BT709
 
 
@@ -230,9 +233,10 @@ def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | Non
     if not ring.any():
         return None
     background = lum[ring].mean()
+    rss = float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)))
     if background <= 0:
-        return None
-    return float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)) / background)
+        return 0.0 if rss == 0 else math.inf
+    return rss / background
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

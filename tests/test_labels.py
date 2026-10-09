@@ -227,6 +227,15 @@ def test_contrasts_background_skips_another_targets_blur() -> None:
     assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(("target_l", "expected"), [(0.0, 0.0), (0.1, math.inf)])
+def test_against_a_black_background_only_a_black_target_is_invisible(
+    target_l: float, expected: float
+) -> None:
+    index = square()
+
+    assert labels.contrast(index, np.where(index == 1, target_l, 0.0), 1) == expected
+
+
 def test_a_target_with_no_background_around_it_has_no_contrast() -> None:
     assert labels.contrast(np.ones((48, 64), dtype=int), np.ones((48, 64)), 1) is None
 
@@ -238,7 +247,7 @@ def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
     assert labels.luminance(frame)[0] == pytest.approx([1.0, 0.5], abs=0.003)
 
 
-@pytest.mark.parametrize(("target_l", "boxed"), [(0.39, False), (0.425, True)])
+@pytest.mark.parametrize(("target_l", "boxed"), [(0.381, False), (0.421, True)])
 def test_an_eo_target_too_faint_to_see_gets_no_box(
     target_l: float, boxed: bool
 ) -> None:
