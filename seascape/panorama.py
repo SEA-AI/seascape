@@ -240,14 +240,14 @@ def panoramas(
     max_width: int | None = None,
     ruler: bool = False,
 ) -> list[Path]:
-    """One panorama per pod and band, written beside the frames."""
-    groups: dict[tuple[str | None, str], list[CameraCalibration]] = {}
+    """One panorama per rig and band, written beside the frames."""
+    groups: dict[tuple[str, str], list[CameraCalibration]] = {}
     for camera in Calibration.read(folder).cameras:
-        groups.setdefault((camera.pod, camera.band), []).append(camera)
+        groups.setdefault((camera.rig, camera.band), []).append(camera)
 
     written = []
-    for (pod, band), cameras in groups.items():
-        name = "_".join(part for part in (pod, band, projection, frame) if part)
+    for (rig, band), cameras in groups.items():
+        name = "_".join((rig, band, projection, frame))
         path = folder / f"panorama_{name}.png"
         try:
             image, layout = stitch(folder, cameras, projection, frame, max_width)

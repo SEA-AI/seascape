@@ -63,7 +63,8 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
                 name="EO",
                 band="eo",
                 image=name,
-                pod="port",
+                rig="port",
+                model="Pod",
                 width_px=WIDTH,
                 height_px=HEIGHT,
                 K=(
@@ -74,7 +75,7 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
                 extrinsics={
                     "world": rows(vessel_to_world @ camera_to_vessel),
                     "vessel": rows(camera_to_vessel),
-                    "pod": rows(camera_to_pod),
+                    "rig": rows(camera_to_pod),
                 },
             )
         )
@@ -92,7 +93,7 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
         )
     Calibration(cameras=cameras[::-1]).write(into)
     scenario = {
-        "rig": {"height_m": 51.8},
+        "rigs": {"port": {"height_m": 51.8}},
         "sky": {"t_air_k": 283.15},
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
     }
@@ -107,7 +108,7 @@ def run(tmp_path: Path) -> Path:
     return make_run(tmp_path, CAMERA_YAW_DEG)
 
 
-def test_a_pod_becomes_one_recording_folder(run: Path) -> None:
+def test_a_rig_becomes_one_recording_folder_named_for_its_model(run: Path) -> None:
     into = run / "recordings/port/Pod_recordings_2026_09_29_03_55_21"
     assert sorted(recording.export(run)) == sorted(
         [
@@ -166,6 +167,15 @@ def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
 def test_a_missing_video_writes_nothing(run: Path) -> None:
     (run / "EO.mp4").unlink()
     with pytest.raises(FileNotFoundError, match="seascape video"):
+        recording.export(run)
+    assert not (run / "recordings").exists()
+
+
+def test_a_rig_without_a_model_writes_nothing(run: Path) -> None:
+    calibration = Calibration.read(run)
+    unmodelled = [c.model_copy(update={"model": None}) for c in calibration.cameras]
+    Calibration(cameras=unmodelled).write(run)
+    with pytest.raises(ValueError, match=r"\['port'\] have no model"):
         recording.export(run)
     assert not (run / "recordings").exists()
 

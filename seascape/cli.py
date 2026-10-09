@@ -45,7 +45,7 @@ def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None
             "overrides",
             multiple=True,
             metavar="KEY=VALUE",
-            help="Override a field, written as TOML: 'rig.pitch_deg = -5'. Repeatable.",
+            help="Override a field as TOML: 'rigs.bow.pitch_deg = -5'. Repeatable.",
         )(command)
         command = click.option(
             "-o", "--output", type=click.Path(path_type=Path), help=output
@@ -100,11 +100,10 @@ def build(
     with _blender_log(path.with_suffix(".log")):
         scene.build(built, band)
         bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()))
-    mounts = built.rig.mounts
-    kinds = ", ".join(sorted({mount.camera.kind for mount in mounts}))
-    click.echo(
-        f"{path}: {band}, {len(mounts)} cameras ({kinds}) at {built.rig.height_m} m"
-    )
+    mounts = built.mounts
+    bands = ", ".join(sorted({mount.camera.band for mount in mounts}))
+    heights = ", ".join(f"{rig.height_m} m" for rig in built.rigs.values())
+    click.echo(f"{path}: {band}, {len(mounts)} cameras ({bands}) at {heights}")
 
 
 @main.command()
@@ -166,14 +165,14 @@ def montage_(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
     default="world",
     show_default=True,
     help="An extrinsics frame in calibration.json, which sets what is level: world "
-    "the horizon, vessel the deck, pod the enclosure.",
+    "the horizon, vessel the deck, rig the product.",
 )
 @click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
 @click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
 def panorama_(
     folder: Path, projection: str, frame: str, max_width: int | None, ruler: bool
 ) -> None:
-    """Stitch each pod's frames, from calibration.json."""
+    """Stitch each rig's frames, from calibration.json."""
     for path in panorama.panoramas(folder, projection, frame, max_width, ruler):
         click.echo(path)
 
@@ -205,7 +204,7 @@ def video(folder: Path, quality: str) -> None:
 @main.command("recording")
 @click.argument("folder", type=_FOLDER)
 def recording_(folder: Path) -> None:
-    """Lay each pod's videos out as a recording, after video."""
+    """Lay each rig's videos out as a recording, after video."""
     for path in recording.export(folder):
         click.echo(path)
 

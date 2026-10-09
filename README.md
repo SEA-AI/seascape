@@ -46,8 +46,8 @@ uv run seascape render scenarios/baseline.toml -o out/
 
 ```text
 out/
-├── bow_eo_0.jpg
-├── bow_ir_0.jpg
+├── bow_eo.jpg
+├── bow_ir.jpg
 ├── calibration.json
 ├── labels.json
 └── blender.log

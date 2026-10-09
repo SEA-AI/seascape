@@ -45,7 +45,7 @@ def test_version(run: Run) -> None:
 
 
 def test_a_scenario_mistake_is_an_error_on_stderr_and_exit_1(run: Run) -> None:
-    failed = run("build", BASELINE, "--set", "rig.height_m = -1")
+    failed = run("build", BASELINE, "--set", "rigs.bow.height_m = -1")
     assert failed.exit_code == 1
     assert failed.stderr.startswith("Error: ")
     assert "Traceback" not in failed.stderr

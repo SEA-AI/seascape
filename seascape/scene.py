@@ -32,7 +32,6 @@ from seascape.config import (
     Object,
     Outputs,
     Ownship,
-    Rig,
     Scenario,
     Sky,
     Targets,
@@ -444,49 +443,46 @@ def _sunlit_emission(
 
 class _RigObjects(NamedTuple):
     root: bpy.types.Object
-    pods: dict[str, bpy.types.Object]
+    rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
 
 
-def _rig(rig: Rig, far_m: float) -> _RigObjects:
-    # Blender takes an inverted frustum without complaint and renders nothing.
-    if rig.near_clip_m >= far_m:
-        raise ValueError(
-            f"near clip {rig.near_clip_m} m is past the far plane at {far_m:.0f} m"
-        )
-    root = bpy.data.objects.new("rig", None)
+def _rigs(scenario: Scenario, far_m: float) -> _RigObjects:
+    root = bpy.data.objects.new("rigs", None)
     bpy.context.collection.objects.link(root)
-    place(root, 0.0, 0.0, rig.height_m)
+    place(root, 0.0, 0.0, 0.0)
 
-    pods: dict[str, bpy.types.Object] = {}
-    for pod in rig.pods:
-        empty = bpy.data.objects.new(f"pod_{pod.name}", None)
+    rigs: dict[str, bpy.types.Object] = {}
+    for name, rig in scenario.rigs.items():
+        # Blender takes an inverted frustum without complaint and renders nothing.
+        if rig.near_clip_m >= far_m:
+            raise ValueError(
+                f"{name}: near clip {rig.near_clip_m} m is past the far plane at "
+                f"{far_m:.0f} m"
+            )
+        empty = bpy.data.objects.new(f"rig_{name}", None)
         bpy.context.collection.objects.link(empty)
         empty.parent = root
-        place(empty, pod.offset_x_m, pod.offset_y_m, 0.0)
-        # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the pod's own transverse
-        # axis, so a pitched pod rolls the horizon of its off-axis cameras.
-        empty.rotation_euler = (
-            math.radians(rig.pitch_deg),
-            0.0,
-            yaw(pod.yaw_deg),
-        )
-        pods[pod.name] = empty
+        place(empty, rig.offset_x_m, rig.offset_y_m, rig.height_m)
+        # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the rig's own transverse
+        # axis, so a pitched rig rolls the horizon of its off-axis cameras.
+        empty.rotation_euler = (math.radians(rig.pitch_deg), 0.0, yaw(rig.yaw_deg))
+        rigs[name] = empty
 
     cameras: dict[str, bpy.types.Object] = {}
-    for mount in rig.mounts:
+    for mount in scenario.mounts:
         data = bpy.data.cameras.new(mount.name)
         # AUTO fits the field of view to whichever image dimension is larger, so a
         # portrait sensor would silently reinterpret hfov as a vertical angle.
         data.sensor_fit = "HORIZONTAL"
         data.angle_x = math.radians(mount.camera.hfov_deg)
-        data.clip_start = rig.near_clip_m
+        data.clip_start = mount.rig.near_clip_m
         # The default 1000 m renders a target past it as sky, and the clip boundary
         # reads as the horizon. Nothing warns.
         data.clip_end = far_m
         camera = bpy.data.objects.new(data.name, data)
         bpy.context.collection.objects.link(camera)
-        camera.parent = pods[mount.pod.name]
+        camera.parent = rigs[mount.rig_name]
         camera.rotation_mode = "XYZ"
         # A camera looks down its local -Z; +90 deg about X aims it at the horizon.
         camera.rotation_euler = (
@@ -495,7 +491,7 @@ def _rig(rig: Rig, far_m: float) -> _RigObjects:
             yaw(mount.camera.yaw_deg),
         )
         cameras[mount.name] = camera
-    return _RigObjects(root, pods, cameras)
+    return _RigObjects(root, rigs, cameras)
 
 
 def boresight_deg(
@@ -525,7 +521,7 @@ class Built:
     belongs to whoever took it first, and an imported asset can carry any name."""
 
     vessel: bpy.types.Object
-    pods: dict[str, bpy.types.Object]
+    rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
 
@@ -535,14 +531,15 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     camera = built.cameras[mount.name]
     world = camera.matrix_world @ _BLENDER_TO_CV
     vessel = built.vessel.matrix_world
-    pod = built.pods[mount.pod.name].matrix_world
+    rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
     f = (width / 2) / math.tan(camera.data.angle_x / 2)
     return CameraCalibration(
         name=mount.name,
-        band=mount.camera.kind,
+        band=mount.camera.band,
         image=image,
-        pod=mount.pod.name,
+        rig=mount.rig_name,
+        model=mount.rig.model,
         width_px=width,
         height_px=height,
         # Blender's frame spans pixel edges, so its centre is half a pixel past
@@ -551,7 +548,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         extrinsics={
             "world": _rows(world),
             "vessel": _rows(vessel.inverted() @ world),
-            "pod": _rows(pod.inverted() @ world),
+            "rig": _rows(rig.inverted() @ world),
         },
     )
 
@@ -747,11 +744,11 @@ def _ownship(
     ownship: Ownship,
     band: Band,
     sky: Sky,
-    rig: bpy.types.Object,
+    rigs: bpy.types.Object,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rig: its offsets are in this frame."""
+    """At the origin, bow to +Y, carrying the rigs: their offsets are in this frame."""
     if ownship.asset is None:
         anchor = bpy.data.objects.new("ownship", None)
         bpy.context.collection.objects.link(anchor)
@@ -759,7 +756,7 @@ def _ownship(
     else:
         anchor = _vessel(ownship.asset, ownship.t_k, band, sky, hulls)
     anchor.name = "ownship"
-    rig.parent = anchor
+    rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     anchor.rotation_mode = "YXZ"
     anchor.rotation_euler = (
@@ -1182,19 +1179,21 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     if not tops_m:
         return 0.0
     heave = scenario.ownship.heave
-    eye_m = scenario.rig.height_m + (heave.amplitude_m if heave is not None else 0.0)
+    eye_m = max(rig.height_m for rig in scenario.rigs.values()) + (
+        heave.amplitude_m if heave is not None else 0.0
+    )
     k = scenario.sea.refraction_k
     return waves.horizon_m(eye_m, k) + waves.horizon_m(max(tops_m), k)
 
 
 def build(scenario: Scenario, band: Band = "eo") -> Built:
     """Replace the current Blender session's contents with `scenario` in one band."""
-    if not any(mount.camera.kind == band for mount in scenario.rig.mounts):
-        raise ValueError(f"the rig has no {band} camera to build a {band} scene for")
+    if not any(mount.camera.band == band for mount in scenario.mounts):
+        raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _output(scenario.outputs, band)
     bpy.context.scene.world = _sky(scenario.sky, band)
-    reach_m = sea.sea_reach_m(scenario.rig, scenario.sea)
+    reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
     wind, swell = wind_waves(scenario), swell_waves(scenario)
@@ -1203,9 +1202,9 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         substream(scenario.seed, "sea/slick"),
         substream(scenario.seed, "sea/foam"),
     )
-    rig = _rig(scenario.rig, far_m)
+    rigs = _rigs(scenario, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
-    vessel = _ownship(scenario.ownship, band, scenario.sky, rig.root, hulls, outputs)
+    vessel = _ownship(scenario.ownship, band, scenario.sky, rigs.root, hulls, outputs)
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
     targets: dict[str, list[bpy.types.Object]] = {}
     trails: list[wakes.Wake] = []
@@ -1219,7 +1218,7 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         for asset, anchors in ring.items():
             targets.setdefault(asset, []).extend(anchors)
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
-    for camera in rig.cameras.values():
+    for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(
@@ -1232,16 +1231,15 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     for index, anchor in enumerate(chain(*targets.values()), start=1):
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
-    # The band's first camera, not the rig's: an IR build would otherwise open on a
-    # camera whose optics belong to the other band.
-    first = next(mount for mount in scenario.rig.mounts if mount.camera.kind == band)
+    # The first camera may belong to the other band, whose optics this build lacks.
+    first = next(mount for mount in scenario.mounts if mount.camera.band == band)
     sc = bpy.context.scene
-    sc.camera = rig.cameras[first.name]
+    sc.camera = rigs.cameras[first.name]
     sc.render.resolution_x, sc.render.resolution_y = (
         first.camera.width_px,
         first.camera.height_px,
     )
-    _viewport(scenario.rig.near_clip_m, far_m)
+    _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
     sc.frame_start = sc.frame_current = 0
@@ -1252,4 +1250,4 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     # Until the depsgraph runs, every child still reports its pre-parenting
     # matrix_world, so anything measuring the scene reads the wrong place.
     bpy.context.view_layer.update()
-    return Built(vessel, rig.pods, rig.cameras, targets)
+    return Built(vessel, rigs.rigs, rigs.cameras, targets)

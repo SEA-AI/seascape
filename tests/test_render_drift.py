@@ -48,7 +48,7 @@ def shoot(size: tuple[int, int], name: str) -> np.ndarray:
 
 
 def eo_pixel_rad(scenario: Scenario) -> float:
-    mount = next(m for m in scenario.rig.mounts if m.camera.kind == "eo")
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
     return math.radians(mount.camera.hfov_deg) / mount.camera.width_px
 
 
@@ -62,13 +62,14 @@ def overhead(span_m: float, pixel_rad: float, px: int) -> bpy.types.Camera:
     return lens
 
 
-def radiance(band: Band, kind: str, size: tuple[int, int]) -> np.ndarray:
-    """Build for a band, render the named camera, return its radiance."""
-    scene.build(SCENARIO, band)
+def _camera(built: scene.Built, scenario: Scenario, band: Band) -> bpy.types.Object:
+    return built.cameras[next(m.name for m in scenario.mounts if m.camera.band == band)]
+
+
+def radiance(band: Band, size: tuple[int, int]) -> np.ndarray:
+    built = scene.build(SCENARIO, band)
     sc = bpy.context.scene
-    sc.camera = next(
-        o for o in bpy.data.objects if o.type == "CAMERA" and f"_{kind}_" in o.name
-    )
+    sc.camera = _camera(built, SCENARIO, band)
     # Build already set the band's engine and denoiser; only the sample count is the
     # test's own.
     sc.cycles.samples = SAMPLES
@@ -82,7 +83,7 @@ def texture(rows: np.ndarray) -> float:
 
 @pytest.fixture(scope="module")
 def frame() -> np.ndarray:
-    return radiance("ir", "ir", (640, 512))
+    return radiance("ir", (640, 512))
 
 
 def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> None:
@@ -92,7 +93,7 @@ def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> Non
     assert just_above == pytest.approx(ambient, rel=0.02)
     # The top five rows' centre, on a level camera whose horizon is the middle row.
     height, width = frame.shape
-    ir = next(m for m in SCENARIO.rig.mounts if m.camera.kind == "ir")
+    ir = next(m for m in SCENARIO.mounts if m.camera.band == "ir")
     half = math.tan(math.radians(ir.camera.hfov_deg) / 2) * height / width
     top = math.atan(half * (1 - 5 / height))
     sky = SCENARIO.sky
@@ -116,15 +117,13 @@ def test_sea_texture_fades_with_range(frame) -> None:
 
 def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
     """The near sea of an ir frame, optionally with the wave relief flattened."""
-    scene.build(scenario, "ir")
+    built = scene.build(scenario, "ir")
     if not waves:
         tree = bpy.data.materials["sea"].node_tree
         flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
         tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
     sc = bpy.context.scene
-    sc.camera = next(
-        o for o in bpy.data.objects if o.type == "CAMERA" and "_ir_" in o.name
-    )
+    sc.camera = _camera(built, scenario, "ir")
     # Flat sea is the control, so grain must sit well under the relief.
     sc.cycles.samples = 256
     frame = shoot((320, 256), "isothermal")
@@ -394,7 +393,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     camera = bpy.data.objects.new("probe", lens)
     sc.collection.objects.link(camera)
     elevation = math.radians(0.2)  # under the haze's top at every range
-    camera.location = (0.0, 0.0, hazy.rig.height_m)
+    camera.location = (0.0, 0.0, hazy.rigs["bow"].height_m)
     camera.rotation_euler = (math.pi / 2 + elevation, 0.0, 0.0)  # towards +Y
     sc.camera = camera
     sc.cycles.samples = 16
@@ -415,7 +414,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
         card.location = (
             0.0,
             range_m,
-            hazy.rig.height_m + range_m * math.tan(elevation),
+            hazy.rigs["bow"].height_m + range_m * math.tan(elevation),
         )
         card.data.materials.append(black)
         seen = shoot((16, 16), "haze_card")
@@ -578,17 +577,14 @@ def test_a_hull_s_foam_trails_behind_it() -> None:
 
 
 def _rig(*widths_px: int) -> Scenario:
-    cameras = ", ".join(
-        f'{{ kind = "eo", hfov_deg = 45.0, width_px = {w}, height_px = {w * 9 // 16} }}'
-        for w in widths_px
-    )
+    names = ["eo", *(f"eo_{i}" for i in range(1, len(widths_px)))]
+    cameras = [
+        f'rigs.bow.cameras.{name} = {{ band = "eo", hfov_deg = 45.0, width_px = {w}, '
+        f"height_px = {w * 9 // 16} }}"
+        for name, w in zip(names, widths_px, strict=True)
+    ]
     return load(
-        OPEN_SEA,
-        [
-            'outputs.format = "exr"',
-            "rig.pitch_deg = -3.0",
-            f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{cameras}] }}]',
-        ],
+        OPEN_SEA, ['outputs.format = "exr"', "rigs.bow.pitch_deg = -3.0", *cameras]
     )
 
 
@@ -620,11 +616,10 @@ def test_a_render_at_half_resolution_is_a_build_at_half_width() -> None:
 
 def _set_after(setting: str, built: bool) -> np.ndarray:
     """With a ship far enough off to be hazed, so the haze's sun shows."""
-    camera = '{ kind = "eo", hfov_deg = 45.0, width_px = 320, height_px = 180 }'
     sets = [
         'outputs.format = "exr"',
-        "rig.pitch_deg = -3.0",
-        f'rig.pods = [{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}]',
+        "rigs.bow.pitch_deg = -3.0",
+        "rigs.bow.cameras.eo = { width_px = 320, height_px = 180 }",
         "objects = [{ preset = 'container_ship', range_m = 3e3, bearing_deg = 0.0 }]",
     ]
     if built:
@@ -657,7 +652,7 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
     built = scene.build(pair, "eo")
     sc = bpy.context.scene
     sc.cycles.samples = 16
-    fine, coarse = (built.cameras[m.name] for m in pair.rig.mounts)
+    fine, coarse = (built.cameras[m.name] for m in pair.mounts if m.camera.band == "eo")
     sc.camera = fine
     shoot((640, 360), "fine")
     sc.camera = coarse
@@ -667,7 +662,7 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
     # The build starts from factory settings, a new scene.
     sc = bpy.context.scene
     sc.cycles.samples = 16
-    sc.camera = built.cameras[alone.rig.mounts[0].name]
+    sc.camera = built.cameras[alone.mounts[0].name]
     assert _same(after, shoot((320, 180), "alone"))
 
 

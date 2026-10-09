@@ -5,9 +5,9 @@ A scenario is a TOML file describing the world, the platform, the sensors and th
 `--set` overrides any field for one run, as the TOML line it would be written as, presets included:
 
 ```bash
-uv run seascape render scenarios/twin-pod.toml --set 'rig.pitch_deg = -5'
+uv run seascape render scenarios/twin-pod.toml --set 'rigs.port.pitch_deg = -5'
 uv run seascape render scenarios/baseline.toml --set 'outputs.samples.eo = 8' --set 'sky.sun_elevation_deg = 5'
-uv run seascape render scenarios/twin-pod.toml --set 'rig.pods = [{ preset = "port" }]'   # one pod
+uv run seascape render scenarios/baseline.toml --set 'rigs.bow.cameras.eo.hfov_deg = 30'   # one camera
 ```
 
 A variant worth keeping is a file, and `extends` makes it a diff:
@@ -15,9 +15,36 @@ A variant worth keeping is a file, and `extends` makes it a diff:
 ```toml
 extends = "twin-pod.toml"
 
-[rig]
+[rigs.port]
 pitch_deg = -5.0
 ```
+
+## Rigs and cameras
+
+A rig is one installed product; a camera is its optics and its aim within the rig. Both are tables keyed by name, so `extends`, `preset` and `--set` change one of them and leave the rest; a camera's files are named `<rig>_<camera>`.
+
+```toml
+[rigs.bow]
+height_m = 12.0
+
+[rigs.bow.cameras.eo]
+band = "eo"
+hfov_deg = 45.0
+width_px = 1920
+height_px = 1080
+```
+
+A product is a preset under `seascape/cfg/rigs/`; `scenarios/twin-pod.toml` installs two:
+
+```toml
+[rigs.port]
+preset = "port"
+
+[rigs.starboard]
+preset = "starboard"
+```
+
+A table that names a preset replaces whatever it lands on, so `--set 'rigs.bow = { preset = "port" }'` turns the bow into a Pod; keys beside the `preset` still change it. Nothing else removes a rig or a camera: a scenario with fewer extends a narrower parent, as `twin-pod.toml` extends `port-pod.toml`.
 
 Scenarios carry a `#:schema` line, so editors with a TOML language server give you key completion, inline validation and hover docs. `seascape schema > schema/scenario.json` regenerates it from the models.
 
@@ -26,7 +53,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ choice = [...] }` for one of several values, integers and tables included. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
 
 ```toml
-[rig]
+[rigs.bow]
 pitch_deg = { uniform = [-3.0, 1.0] }
 
 [[sky.choice]]
@@ -67,7 +94,14 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
 ```bash
 uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg, ...
 uv run seascape video out/                               # out/<camera>.mp4
-uv run seascape recording out/                           # out/recordings/<pod>/Pod_recordings_<ts>/
+```
+
+`seascape recording` lays the videos out as a rig's `model` records them, so it takes a rig that names one, such as the Pod in `scenarios/port-pod-loop.toml`:
+
+```bash
+uv run seascape render scenarios/port-pod-loop.toml -o out/
+uv run seascape video out/
+uv run seascape recording out/                           # out/recordings/<rig>/<model>_recordings_<ts>/
 ```
 
 `outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target cannot be underway; give it a `drift`, as `scenarios/drifting.toml` does.

@@ -31,6 +31,7 @@ def camera(
         name="C",
         band="eo",
         image="C.png",
+        rig="bow",
         width_px=width,
         height_px=height,
         K=((f, 0, (width - 1) / 2), (0, f, (height - 1) / 2), (0, 0, 1)),

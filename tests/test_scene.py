@@ -50,7 +50,7 @@ def test_the_sun_is_out_of_every_frame(name: str) -> None:
     )
     built = scene.build(bare, "eo")
     sun = np.array(scene._sun_vector(scenario.sky))
-    for mount in scenario.rig.mounts:
+    for mount in scenario.mounts:
         camera = scene.calibrate(built, mount, "")
         assert not _in_frame(camera, sun), mount.name
 
@@ -131,25 +131,25 @@ class TestGeometry:
 
     def test_a_flat_rig_points_where_the_scenario_asked(self) -> None:
         """The one negation. Two of them cancel and the whole rig mirrors unnoticed."""
-        for mount in SCENARIO.rig.mounts:
+        for mount in SCENARIO.mounts:
             bearing, _ = scene.boresight_deg(camera_of(mount))
             assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-6)
 
     def test_cameras_carry_their_field_of_view_horizontally(self) -> None:
         """AUTO fits the angle to the longer image side, flipping a portrait sensor."""
-        for mount in SCENARIO.rig.mounts:
+        for mount in SCENARIO.mounts:
             data = camera_of(mount).data
             assert data.sensor_fit == "HORIZONTAL"
             assert math.degrees(data.angle_x) == pytest.approx(mount.camera.hfov_deg)
 
     def test_the_near_clip_leaves_the_depth_buffer_usable_at_range(self) -> None:
-        for mount in SCENARIO.rig.mounts:
+        for mount in SCENARIO.mounts:
             data = camera_of(mount).data
-            assert data.clip_start == SCENARIO.rig.near_clip_m
+            assert data.clip_start == mount.rig.near_clip_m
             assert data.clip_start < data.clip_end
 
     def test_every_3d_view_clips_past_the_sea(self) -> None:
-        corner_m = math.sqrt(2) * sea.sea_reach_m(SCENARIO.rig, SCENARIO.sea)
+        corner_m = math.sqrt(2) * sea.sea_reach_m(SCENARIO)
         views = [
             space
             for screen in bpy.data.screens
@@ -161,12 +161,12 @@ class TestGeometry:
 
         assert views, "no 3D view to clip: the assertions below would pass on nothing"
         for space in views:
-            assert space.clip_start == SCENARIO.rig.near_clip_m
+            assert space.clip_start == SCENARIO.rigs["bow"].near_clip_m
             assert space.clip_end > corner_m
 
     def test_the_far_clip_clears_every_target(self) -> None:
         furthest = max(spec.range_m for spec in SCENARIO.objects)
-        for mount in SCENARIO.rig.mounts:
+        for mount in SCENARIO.mounts:
             assert camera_of(mount).data.clip_end > furthest
 
     def test_a_target_lands_at_its_range_and_bearing(self) -> None:
@@ -181,7 +181,7 @@ class TestGeometry:
         """Both bands' tests measure the one ship."""
         (spec,) = SCENARIO.objects
         ship = bpy.data.objects[spec.asset].matrix_world.translation
-        for mount in SCENARIO.rig.mounts:
+        for mount in SCENARIO.mounts:
             eye = camera_of(mount).matrix_world.translation
             camera = scene.calibrate(built, mount, "")
             assert _in_frame(camera, ship - eye), mount.name
@@ -249,7 +249,9 @@ class TestGeometry:
             for c in bpy.data.objects["sea"].bound_box
         ]
         reach = min(max(abs(v.x), abs(v.y)) for v in corners)
-        horizon = waves.horizon_m(SCENARIO.rig.height_m, SCENARIO.sea.refraction_k)
+        horizon = waves.horizon_m(
+            SCENARIO.rigs["bow"].height_m, SCENARIO.sea.refraction_k
+        )
 
         assert reach > horizon
         assert reach > max(spec.range_m for spec in SCENARIO.objects)
@@ -267,12 +269,14 @@ class TestGeometry:
 
     def test_a_hull_beyond_the_horizon_is_cut_off(self) -> None:
         """A target past the horizon shows its waterline when it should be hull-down."""
-        eye = Vector((0.0, 0.0, SCENARIO.rig.height_m))
+        eye = Vector((0.0, 0.0, SCENARIO.rigs["bow"].height_m))
         radius = waves.earth_radius_m(SCENARIO.sea.refraction_k)
         beyond = 18_000.0
         surface = beyond * beyond / (2.0 * radius)
-        horizon = waves.horizon_m(SCENARIO.rig.height_m, SCENARIO.sea.refraction_k)
-        assert horizon < beyond < sea.sea_reach_m(SCENARIO.rig, SCENARIO.sea)
+        horizon = waves.horizon_m(
+            SCENARIO.rigs["bow"].height_m, SCENARIO.sea.refraction_k
+        )
+        assert horizon < beyond < sea.sea_reach_m(SCENARIO)
 
         waterline = _blocked(eye, Vector((0.0, beyond, -surface)))
         mast = _blocked(eye, Vector((0.0, beyond, 30.0 - surface)))
@@ -407,15 +411,14 @@ def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
     assert min(c.y for c in fitted) == pytest.approx(-1.0)
 
 
-def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> None:
+def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> None:
     """Horizon rolls by asin(sin(pitch) sin(yaw))."""
     pitch_deg, yaw_deg = -5.0, 40.0
     path = tmp_path / "pitched.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
-        f"[rig]\npitch_deg = {pitch_deg}\n\n"
-        '[[rig.pods]]\nname = "bow"\nyaw_deg = 0.0\n\n'
-        f'[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = {yaw_deg}\n'
+        f"[rigs.bow]\npitch_deg = {pitch_deg}\n\n"
+        f'[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\nyaw_deg = {yaw_deg}\n'
     )
     scenario = load(path)
     expected = math.degrees(
@@ -423,9 +426,9 @@ def test_a_pitched_pod_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> No
     )
 
     scene.build(scenario, "eo")
-    across = bpy.data.objects[
-        scenario.rig.mounts[0].name
-    ].matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))
+    across = bpy.data.objects[scenario.mounts[0].name].matrix_world.to_3x3() @ Vector(
+        (1.0, 0.0, 0.0)
+    )
 
     assert math.degrees(math.asin(across.normalized().z)) == pytest.approx(
         expected, abs=1e-6
@@ -436,13 +439,13 @@ def _lens_pitched(tmp_path, yaw_deg: float, pitch_deg: float):
     path = tmp_path / "lens.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
-        '[[rig.pods]]\nname = "port"\nyaw_deg = -60.0\n\n'
-        f'[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\n'
+        "[rigs.bow]\nyaw_deg = -60.0\n\n"
+        '[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\n'
         f"yaw_deg = {yaw_deg}\npitch_deg = {pitch_deg}\n"
     )
     scenario = load(path)
     scene.build(scenario, "eo")
-    return scenario.rig.mounts[0]
+    return scenario.mounts[0]
 
 
 def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path) -> None:
@@ -462,23 +465,23 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path) -> None:
 def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre(
     tmp_path,
 ) -> None:
-    """The pod is yawed off the bow, so the rig's pitch sits between two yaws and
+    """The rig is yawed off the bow, so its pitch sits between two yaws and
     moves the off-axis lens off both its bearing and its own pitch. The centre camera
     holds to microdegrees, not zero: matrix_world is float32."""
     path = tmp_path / "pitched.toml"
     path.write_text(
         f"{RIG_ONLY}\n"
-        "[rig]\npitch_deg = -5.0\n\n"
-        '[[rig.pods]]\nname = "port"\nyaw_deg = -60.0\n\n'
-        '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = 0.0\n\n'
-        '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\nyaw_deg = 40.0\n'
+        "[rigs.bow]\npitch_deg = -5.0\nyaw_deg = -60.0\n\n"
+        '[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\nyaw_deg = 0.0\n\n'
+        '[rigs.bow.cameras.eo_off]\npreset = "eo_4k_49deg"\nyaw_deg = 40.0\n'
         "pitch_deg = -10.0\n"
     )
     scenario = load(path)
     scene.build(scenario, "eo")
     centre, off_axis = (
         (scene.boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
-        for m in scenario.rig.mounts
+        for m in scenario.mounts
+        if m.camera.band == "eo"
     )
 
     assert centre[0][0] == pytest.approx(centre[1], abs=1e-4)
@@ -492,7 +495,7 @@ def test_an_ownship_with_no_hull_still_carries_the_rig(tmp_path) -> None:
     path.write_text(f"{RIG_ONLY}\n[ownship]\nroll_deg = 5.0\n")
     scene.build(load(path), "eo")
 
-    right = camera_of(SCENARIO.rig.mounts[0]).matrix_world.to_3x3() @ Vector(
+    right = camera_of(SCENARIO.mounts[0]).matrix_world.to_3x3() @ Vector(
         (1.0, 0.0, 0.0)
     )
 
@@ -501,7 +504,7 @@ def test_an_ownship_with_no_hull_still_carries_the_rig(tmp_path) -> None:
 
 def test_a_near_clip_past_the_far_plane_is_an_error(tmp_path) -> None:
     path = tmp_path / "deep.toml"
-    path.write_text(f'extends = "{BASELINE}"\n\n[rig]\nnear_clip_m = 500000.0\n')
+    path.write_text(f'extends = "{BASELINE}"\n\n[rigs.bow]\nnear_clip_m = 500000.0\n')
 
     with pytest.raises(ValueError, match="near clip"):
         scene.build(load(path), "eo")
@@ -511,11 +514,14 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     """Hull down from a low camera, its upperworks still up."""
     range_m = 20000.0
     ship = f'{{ preset = "container_ship", range_m = {range_m}, bearing_deg = 0.0 }}'
-    camera = '{ kind = "eo", hfov_deg = 2.0, width_px = 960, height_px = 540 }'
-    pod = f'{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}'
+    camera = "{ hfov_deg = 2.0, width_px = 960, height_px = 540 }"
     scenario = load(
         OPEN_SEA,
-        ["rig.height_m = 5.0", f"rig.pods = [{pod}]", f"objects = [{ship}]"],
+        [
+            "rigs.bow.height_m = 5.0",
+            f"rigs.bow.cameras.eo = {camera}",
+            f"objects = [{ship}]",
+        ],
     )
     built = scene.build(scenario, "eo")
     (anchor,) = built.targets["container_ship"]
@@ -523,7 +529,7 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
     k = scenario.sea.refraction_k
     assert range_m < waves.horizon_m(5.0, k) + waves.horizon_m(top_m, k)
-    (camera,) = built.cameras.values()
+    camera = built.cameras["bow_eo"]
     eye = camera.matrix_world.translation
     assert camera.data.clip_end > max((c - eye).length for c in corners)
 
@@ -532,11 +538,9 @@ def test_a_band_the_rig_cannot_see_is_an_error(tmp_path) -> None:
     """Otherwise `next()` raises StopIteration, naming nothing."""
     path = tmp_path / "eo_only.toml"
     path.write_text(
-        f'extends = "{BASELINE}"\n\n'
-        '[[rig.pods]]\nname = "bow"\nyaw_deg = 0.0\n\n'
-        '[[rig.pods.cameras]]\npreset = "eo_4k_49deg"\n'
+        '[rigs.bow]\nheight_m = 12.0\n\n[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\n'
     )
-    with pytest.raises(ValueError, match="no ir camera"):
+    with pytest.raises(ValueError, match="no rig has an ir camera"):
         scene.build(load(path), "ir")
 
 
@@ -908,7 +912,7 @@ class TestOwnshipMotion:
 
     def test_a_quarter_period_in_is_the_peak(self) -> None:
         built = scene.build(load(OPEN_SEA, self.MOTION))
-        anchor, camera = built.vessel, camera_of(SCENARIO.rig.mounts[0])
+        anchor, camera = built.vessel, camera_of(SCENARIO.mounts[0])
         mounted = anchor.matrix_world.inverted() @ camera.matrix_world
         bpy.context.scene.frame_set(10)
 
@@ -1258,7 +1262,7 @@ def _pixel_node() -> bpy.types.ShaderNode:
 def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
     scenario = load(OPEN_SEA)
     scene.build(scenario, "eo")
-    mount = next(m for m in scenario.rig.mounts if m.camera.kind == "eo")
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
     pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
     driver = next(
         c.driver
@@ -1274,9 +1278,8 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
 
 def test_a_long_lens_draws_for_its_own_pixel() -> None:
     """A pixel under 1e-4 rad: a zero footprint leaves the sea a mirror."""
-    camera = '{ kind = "eo", hfov_deg = 1.5, width_px = 640, height_px = 360 }'
-    pod = f'{{ name = "bow", yaw_deg = 0.0, cameras = [{camera}] }}'
-    scene.build(load(OPEN_SEA, [f"rig.pods = [{pod}]"]), "eo")
+    camera = "{ hfov_deg = 1.5, width_px = 640, height_px = 360 }"
+    scene.build(load(OPEN_SEA, [f"rigs.bow.cameras.eo = {camera}"]), "eo")
     bpy.context.view_layer.update()
     pixel_rad = math.radians(1.5) / 640
     assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)

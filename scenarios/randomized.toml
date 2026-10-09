@@ -2,25 +2,12 @@
 
 extends = "baseline.toml"
 
-[rig]
+[rigs.bow]
 height_m = { uniform = [4.0, 25.0] }
 pitch_deg = { uniform = [-3.0, 1.0] }
-
-[[rig.pods]]
-name = "bow"
 yaw_deg = { uniform = [-8.0, 8.0] }
-
-[[rig.pods.cameras]]
-kind = "eo"
-hfov_deg = { uniform = [15.0, 70.0] }
-width_px = 1920
-height_px = 1080
-
-[[rig.pods.cameras]]
-kind = "ir"
-hfov_deg = { uniform = [12.0, 40.0] }
-width_px = 640
-height_px = 512
+cameras.eo.hfov_deg = { uniform = [15.0, 70.0] }
+cameras.ir.hfov_deg = { uniform = [12.0, 40.0] }
 
 [ownship]
 roll_deg = { uniform = [-4.0, 4.0] }

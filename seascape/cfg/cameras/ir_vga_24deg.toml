@@ -1,4 +1,4 @@
-kind = "ir"
+band = "ir"
 hfov_deg = 24.0
 width_px = 640
 height_px = 480

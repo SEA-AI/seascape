@@ -1,4 +1,4 @@
-"""A render's videos laid out as a pod recording, for tools that replay recordings.
+"""A render's videos laid out as a rig model's recording, for tools that replay them.
 
 Imports no Blender: everything comes from the files a render and `seascape video`
 wrote.
@@ -17,8 +17,6 @@ import numpy as np
 
 from seascape import labels
 from seascape.calibration import Calibration, CameraCalibration
-
-PREFIX = "Pod"
 
 COLUMNS = [
     "counter",
@@ -80,13 +78,13 @@ def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
 
 
 def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> dict:
-    roll, pitch, yaw = attitude_deg(_to(camera, "pod"))
+    roll, pitch, yaw = attitude_deg(_to(camera, "rig"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
     bb_roll, bb_pitch, bb_yaw = np.radians(attitude_deg(_to(camera, "vessel")))
     # Rounded first, as in attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
-    # pan and tilt stay 0: a pod is bolted on, with no pan-tilt unit.
+    # pan and tilt stay 0: a rig is bolted on, with no pan-tilt unit.
     row = dict.fromkeys(COLUMNS, 0.0)
     row |= {
         "counter": counter,
@@ -116,8 +114,8 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
-    pod = np.array(camera.extrinsics["pod"])
-    roll, pitch, yaw = attitude_deg(pod[:3, :3] @ _BODY_TO_CV)
+    rig = np.array(camera.extrinsics["rig"])
+    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ _BODY_TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw
@@ -126,7 +124,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     return {
         # Never a hardware model's name: a live pipeline picks its driver by it.
         "camera_type": f"Blender {camera.band.upper()}",
-        "position": _unit([float(v) * 1000.0 for v in pod[:3, 3]], "mm"),
+        "position": _unit([float(v) * 1000.0 for v in rig[:3, 3]], "mm"),
         "focal_length": _unit(fx * pixel_mm, "mm"),
         "barrel_distortion": _unit(None, "1"),
         "distortion_model": "pinhole",
@@ -148,7 +146,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
 
 
 def _pod_sensors(cameras: list[CameraCalibration], created: datetime) -> dict:
-    """The simulated IMU sits exactly on the pod's axes, so its corrections are 0."""
+    """The simulated IMU sits exactly on the rig's axes, so its corrections are 0."""
     zero = {"value": 0.0, "unit": "deg"}
     return {
         "calibration_info": {
@@ -190,7 +188,8 @@ def _write_json(path: Path, data: Any) -> None:
 
 
 def export(run: Path) -> list[Path]:
-    """One recording folder per pod, under `run/recordings/<pod>/`."""
+    """One recording folder per rig, under `run/recordings/<rig>/`, named for its
+    model."""
     truth = labels.Labels.model_validate_json((run / labels.FILENAME).read_text())
     if "scenario" not in truth.info or "date_created" not in truth.info:
         raise ValueError(f"{run / labels.FILENAME}: no scenario or date in its info")
@@ -202,11 +201,16 @@ def export(run: Path) -> list[Path]:
     time_s = {image.file_name: image.time_s for image in truth.images}
 
     frames: dict[str, dict[str, list[CameraCalibration]]] = {}
+    models: dict[str, str | None] = {}
     for camera in Calibration.read(run).cameras:
-        pod = frames.setdefault(camera.pod or "pod", {})
-        pod.setdefault(camera.name, []).append(camera)
+        frames.setdefault(camera.rig, {}).setdefault(camera.name, []).append(camera)
+        models[camera.rig] = camera.model
 
     # Checked before anything is written, so a bad run leaves no half folder.
+    if unnamed := sorted(rig for rig, model in models.items() if model is None):
+        raise ValueError(
+            f"rigs {unnamed} have no model, whose format a recording takes"
+        )
     shots = [s for cameras in frames.values() for c in cameras.values() for s in c]
     if unlabelled := [shot.image for shot in shots if shot.image not in time_s]:
         raise ValueError(f"{run / labels.FILENAME} has no frame {unlabelled}")
@@ -215,12 +219,13 @@ def export(run: Path) -> list[Path]:
         raise FileNotFoundError(f"no video for {missing}: run `seascape video`")
 
     written = []
-    for pod, cameras in frames.items():
-        into = run / "recordings" / pod / f"{PREFIX}_recordings_{ts}"
+    for rig, cameras in frames.items():
+        model = models[rig]
+        into = run / "recordings" / rig / f"{model}_recordings_{ts}"
         (into / "POWER_Const").mkdir(parents=True, exist_ok=True)
         for name, shots in cameras.items():
             shots.sort(key=lambda shot: time_s[shot.image])
-            video = into / f"{PREFIX}_{name}_record_{ts}.mp4"
+            video = into / f"{model}_{name}_record_{ts}.mp4"
             video.unlink(missing_ok=True)
             # A hard link keeps the render's own layout valid without a copy; a
             # filesystem without them gets the copy.
@@ -228,7 +233,7 @@ def export(run: Path) -> list[Path]:
                 os.link(run / f"{name}.mp4", video)
             except OSError:
                 shutil.copy2(run / f"{name}.mp4", video)
-            table = into / f"{PREFIX}_{name}_metadata_{ts}.csv"
+            table = into / f"{model}_{name}_metadata_{ts}.csv"
             with table.open("w", newline="") as f:
                 writer = csv.DictWriter(f, COLUMNS, lineterminator="\n")
                 writer.writeheader()
@@ -240,7 +245,7 @@ def export(run: Path) -> list[Path]:
             settings,
             {
                 "boat_setup": {
-                    "mounting_height": scenario["rig"]["height_m"],
+                    "mounting_height": scenario["rigs"][rig]["height_m"],
                     "mast_to_bow_length": 0.0,
                 }
             },

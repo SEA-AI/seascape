@@ -1,0 +1,9 @@
+# The bulk_carrier's starboard bridge wing.
+extends = "pod.toml"
+
+height_m = 19.7
+yaw_deg = 60.0
+offset_x_m = 14.5
+offset_y_m = -61.5
+
+cameras.ir.yaw_deg = -50.0
