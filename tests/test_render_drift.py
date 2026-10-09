@@ -67,7 +67,6 @@ def _camera(built: scene.Built, scenario: Scenario, band: Band) -> bpy.types.Obj
 
 
 def radiance(band: Band, size: tuple[int, int]) -> np.ndarray:
-    """Build for a band, render its camera, return its radiance."""
     built = scene.build(SCENARIO, band)
     sc = bpy.context.scene
     sc.camera = _camera(built, SCENARIO, band)
@@ -578,8 +577,6 @@ def test_a_hull_s_foam_trails_behind_it() -> None:
 
 
 def _rig(*widths_px: int) -> Scenario:
-    """The baseline's EO camera at the first width, and one more EO camera for each
-    further width."""
     names = ["eo", *(f"eo_{i}" for i in range(1, len(widths_px)))]
     cameras = [
         f'rigs.bow.cameras.{name} = {{ band = "eo", hfov_deg = 45.0, width_px = {w}, '

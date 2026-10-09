@@ -185,7 +185,7 @@ def test_a_block_overrides_its_own_preset(tmp_path) -> None:
     assert camera.width_px == 3840  # untouched by the block
 
 
-def test_a_preset_outranks_an_inherited_value(tmp_path) -> None:
+def test_a_preset_outranks_an_inherited_value(tmp_path, baseline) -> None:
     """Expanding after the parent merge inverts this, and nothing else notices."""
     (tmp_path / "single.toml").write_text(
         'height_m = 2.0\n\n[cameras.ir]\npreset = "ir_vga_24deg"\n'
@@ -193,7 +193,8 @@ def test_a_preset_outranks_an_inherited_value(tmp_path) -> None:
     scenario = load(variant(tmp_path, '[rigs.bow]\npreset = "./single.toml"\n'))
     bow = scenario.rigs["bow"]
     assert bow.height_m == 2.0
-    assert bow.cameras["ir"].height_px == 480  # the baseline's is 512
+    assert bow.cameras["ir"].height_px == 480
+    assert baseline.rigs["bow"].cameras["ir"].height_px != 480
 
 
 def test_tables_merge_and_lists_replace(tmp_path, baseline) -> None:

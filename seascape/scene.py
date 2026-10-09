@@ -1231,8 +1231,7 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     for index, anchor in enumerate(chain(*targets.values()), start=1):
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
-    # The band's first camera, not the first camera: an IR build would otherwise open
-    # on a camera whose optics belong to the other band.
+    # The first camera may belong to the other band, whose optics this build lacks.
     first = next(mount for mount in scenario.mounts if mount.camera.band == band)
     sc = bpy.context.scene
     sc.camera = rigs.cameras[first.name]

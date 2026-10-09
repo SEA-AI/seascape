@@ -1,5 +1,5 @@
-# A Pod on the bulk_carrier's port bridge wing. 2 m above the wing deck keeps the deck
-# plate out of every lower frame edge.
+# The bulk_carrier's port bridge wing. 2 m above the wing deck keeps the deck plate out
+# of every lower frame edge.
 extends = "pod.toml"
 
 height_m = 19.7

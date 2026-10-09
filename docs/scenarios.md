@@ -21,7 +21,7 @@ pitch_deg = -5.0
 
 ## Rigs and cameras
 
-A rig is one installed product, the frame its cameras sit in: its height, yaw, pitch and place on the ownship. A camera is its optics and its aim within the rig. Both are tables keyed by name, so `extends`, `preset` and `--set` change one of them and leave the rest; a camera's files are named `<rig>_<camera>`.
+A rig is one installed product; a camera is its optics and its aim within the rig. Both are tables keyed by name, so `extends`, `preset` and `--set` change one of them and leave the rest; a camera's files are named `<rig>_<camera>`.
 
 ```toml
 [rigs.bow]
@@ -34,7 +34,7 @@ width_px = 1920
 height_px = 1080
 ```
 
-A product is a preset under `seascape/cfg/rigs/`: `pod.toml` is a Pod's cameras and its `model`, which a recording is named for, and `port.toml` installs one on the bulk carrier's port wing. `scenarios/twin-pod.toml` is two of them:
+A product is a preset under `seascape/cfg/rigs/`; `scenarios/twin-pod.toml` installs two:
 
 ```toml
 [rigs.port]
@@ -92,6 +92,13 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
 ```bash
 uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg, ...
 uv run seascape video out/                               # out/<camera>.mp4
+```
+
+`seascape recording` lays the videos out as a rig's `model` records them, so it takes a rig that names one, such as the Pod in `scenarios/port-pod-loop.toml`:
+
+```bash
+uv run seascape render scenarios/port-pod-loop.toml -o out/
+uv run seascape video out/
 uv run seascape recording out/                           # out/recordings/<rig>/<model>_recordings_<ts>/
 ```
 

@@ -74,7 +74,7 @@ type Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
 
 
 class Camera(Model):
-    """One camera on a rig: its band, its aim relative to the rig, its image."""
+    """One camera on a rig."""
 
     band: Band = Field(description="The band it sees in: eo visible, ir LWIR.")
     yaw_deg: float = Field(
@@ -140,7 +140,6 @@ class Mount(NamedTuple):
 
     @property
     def name(self) -> str:
-        """Never an angle: re-aiming a rig would invalidate every filename it wrote."""
         return f"{self.rig_name}_{self.camera_name}"
 
     @property

@@ -1,4 +1,4 @@
-# A Pod on the bulk_carrier's starboard bridge wing, mirroring port.toml.
+# The bulk_carrier's starboard bridge wing.
 extends = "pod.toml"
 
 height_m = 19.7

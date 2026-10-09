@@ -23,7 +23,7 @@
     },
     "Camera": {
       "additionalProperties": false,
-      "description": "One camera on a rig: its band, its aim relative to the rig, its image.",
+      "description": "One camera on a rig.",
       "properties": {
         "band": {
           "description": "The band it sees in: eo visible, ir LWIR.",
