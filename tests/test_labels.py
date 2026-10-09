@@ -10,6 +10,7 @@ from seascape import labels, waves
 from seascape.calibration import CameraCalibration
 
 RADIUS_M = waves.earth_radius_m(0.13)
+FLAT = np.ones((48, 64))
 
 
 def camera(
@@ -61,7 +62,7 @@ def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     index[10:13, 20:25] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     (found,) = truth.annotations
     assert found.bbox == (20, 10, 5, 3)
@@ -74,7 +75,7 @@ def test_a_box_on_the_frame_edge_is_truncated() -> None:
     index[40:, 60:] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     assert truth.annotations[0].truncated
 
@@ -84,7 +85,7 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1), target(2, "buoy", 6)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2, "buoy", 6)], RADIUS_M)
 
     assert [a.name for a in truth.annotations] == ["t1"]
     assert [c.name for c in truth.categories] == ["ship"]
@@ -95,7 +96,7 @@ def test_targets_of_one_category_share_it() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1), target(2)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2)], RADIUS_M)
 
     assert {a.category_id for a in truth.annotations} == {1}
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
@@ -106,7 +107,7 @@ def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1, "buoy", 6), target(2)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1, "buoy", 6), target(2)], RADIUS_M)
 
     assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
     assert [a.category_id for a in truth.annotations] == [6, 1]
@@ -115,7 +116,9 @@ def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
 def test_an_image_carries_its_cameras_field_of_view() -> None:
     truth = labels.Labels()
 
-    truth.add(camera(hfov_deg=42.0), 0.0, np.zeros((48, 64), dtype=int), [], RADIUS_M)
+    truth.add(
+        camera(hfov_deg=42.0), 0.0, np.zeros((48, 64), dtype=int), FLAT, [], RADIUS_M
+    )
 
     assert truth.images[0].hfov_deg == pytest.approx(42.0)
 
@@ -125,7 +128,7 @@ def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     (annotation,) = truth.annotations
     assert (annotation.heading_deg, annotation.dims_m) == (90.0, (20.0, 5.0, 4.0))
@@ -134,7 +137,7 @@ def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
 def test_a_frame_carries_its_time() -> None:
     truth = labels.Labels()
 
-    truth.add(camera(), 2.5, np.zeros((48, 64), dtype=int), [], RADIUS_M)
+    truth.add(camera(), 2.5, np.zeros((48, 64), dtype=int), FLAT, [], RADIUS_M)
 
     assert truth.images[0].time_s == 2.5
 
@@ -144,7 +147,7 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, [target(1)], RADIUS_M)
+    truth.add(camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     found = truth.annotations[0]
     assert (found.range_m, found.waterline_range_m, found.bearing_deg) == (
@@ -152,6 +155,72 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
         pytest.approx(990.0),
         pytest.approx(0.0),
     )
+
+
+def test_a_target_like_its_background_has_no_contrast() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30] = 1
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == 0.0
+
+
+@pytest.mark.parametrize(("target_l", "contrast"), [(0.3, -0.25), (1.0, 1.5)])
+def test_contrast_is_webers_signed(target_l: float, contrast: float) -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30] = 1
+    frame = np.where(index == 1, target_l, 0.4)
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == pytest.approx(contrast)
+
+
+def test_contrasts_background_is_no_other_target() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30], index[10:20, 30:40] = 1, 2
+    frame = np.where(index == 1, 0.8, np.where(index == 2, 9.0, 0.4))
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == pytest.approx(1.0)
+
+
+def test_contrasts_background_skips_the_pixels_the_filter_blurs_into() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30] = 1
+    blurred = cv2.dilate(index.astype(np.uint8), np.ones((3, 3), np.uint8))
+    frame = np.where(blurred == 1, 0.8, 0.4)
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == pytest.approx(1.0)
+
+
+def test_a_target_with_no_background_around_it_has_no_contrast() -> None:
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, np.ones((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast is None
+
+
+def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
+    """sRGB 188 is linear 0.5, and grey is its own luminance."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30] = 1
+    frame = np.full((48, 64, 3), 255, np.uint8)
+    frame[index == 1] = 188
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast == pytest.approx(-0.5, abs=0.003)
 
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
@@ -201,7 +270,7 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {"seed": seed}, "version": "x"})
-        truth.add(camera(), 0.0, index, [target(1, *category)], RADIUS_M)
+        truth.add(camera(), 0.0, index, FLAT, [target(1, *category)], RADIUS_M)
         folders.append(tmp_path / str(seed))
         folders[-1].mkdir()
         truth.write(folders[-1])
@@ -229,7 +298,7 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {}})
-        truth.add(camera(), 0.0, index, [target(1, name, 1)], RADIUS_M)
+        truth.add(camera(), 0.0, index, FLAT, [target(1, name, 1)], RADIUS_M)
         folders.append(tmp_path / name)
         folders[-1].mkdir()
         truth.write(folders[-1])

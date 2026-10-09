@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import cv2
 import numpy as np
 from pydantic import Field
 
@@ -21,6 +22,12 @@ FILENAME = "labels.json"
 # The horizon bows f dip (sec(hfov / 2) - 1) off its chord, and a segment's bow falls
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
+
+# Luminance from linear BT.709 R, G, B: the Y row of sRGB's RGB to XYZ (IEC 61966-2-1).
+BT709 = np.array([0.2126, 0.7152, 0.0722])
+# A contrast's background is a ring this wide around the target, this far off it: the
+# pixel filter spreads the target into the pixels its index does not reach.
+RING_PX, RING_GAP_PX = 3, 1
 
 
 class Target(NamedTuple):
@@ -72,6 +79,8 @@ class Annotation(Model):
     # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
+    # Weber's, in the frame as written; None with no background around the target.
+    contrast: float | None
 
 
 class Labels(Model):
@@ -85,11 +94,12 @@ class Labels(Model):
         camera: CameraCalibration,
         time_s: float,
         index: np.ndarray,
+        frame: np.ndarray,
         targets: Sequence[Target],
         radius_m: float,
     ) -> None:
-        """One frame: `index` is its object-index pass, (height, width), top row
-        first."""
+        """One frame: `index` is its object-index pass, (height, width), and `frame`
+        the image as written, RGB or one channel, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -103,6 +113,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
+        lum = luminance(frame)
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -131,6 +142,7 @@ class Labels(Model):
                     or y0 == 0
                     or x1 == image.width - 1
                     or y1 == image.height - 1,
+                    contrast=contrast(index, lum, target.pass_index),
                 )
             )
 
@@ -190,6 +202,30 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
     merged.info["scenarios"] = scenarios
     return merged
+
+
+def luminance(frame: np.ndarray) -> np.ndarray:
+    """A frame's relative luminance: 8-bit RGB decoded from sRGB (IEC 61966-2-1),
+    float RGB as linear, one channel as written."""
+    if frame.ndim == 2:
+        return frame.astype(float)
+    if frame.dtype == np.uint8:
+        c = frame / 255
+        frame = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    return frame @ BT709
+
+
+def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
+    """(L_target - L_background) / L_background, the background a ring of pixels no
+    target covers."""
+    mask = (index == pass_index).astype(np.uint8)
+    near = cv2.dilate(mask, np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8))
+    far = cv2.dilate(mask, np.ones((2 * (RING_GAP_PX + RING_PX) + 1,) * 2, np.uint8))
+    ring = (far > near) & (index == 0)
+    if not ring.any():
+        return None
+    background = lum[ring].mean()
+    return float(lum[mask > 0].mean() / background - 1) if background > 0 else None
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

@@ -8,6 +8,8 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
+Each box's `contrast` is how visible its target is in the frame as written: Weber's, `(L_target - L_background) / L_background`, over the target's index-pass pixels against a thin ring of background around them, `null` with none. Negative is darker than its surroundings, 0 invisible. EO takes luminance, decoded from sRGB in a jpg or png; IR takes the values written, grey in a jpg, centikelvin in a png, radiance in an exr. Koschmieder's limit of visibility is a luminance contrast of 2%, so a loader can mark an EO box with `abs(contrast) < 0.02` as `iscrowd`, or ignore it.
+
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 
 An LWIR jpg is what a thermal camera shows: 8-bit grey, its contrast span damped so a clip does not flicker. An LWIR png is what it measures: 16-bit centikelvin, the unit radiometric thermal cameras write, so `cv2.imread(path, cv2.IMREAD_UNCHANGED) / 100` is kelvin. A viewer shows that as flat grey; `montage`, `panorama` and `video` tone it through the same AGC as the jpg.
