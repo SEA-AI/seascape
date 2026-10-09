@@ -157,17 +157,16 @@ def stitch(
     warper = cv2.PyRotationWarper(kind, scale)
 
     temps = [agc.kelvin(folder / camera.image) for camera in cameras]
-    # One span for all, so a temperature is one grey on both sides of a seam.
-    known = [t_k for t_k in temps if t_k is not None]
-    low_k = min((float(t_k.min()) for t_k in known), default=0.0)
-    high_k = max((float(t_k.max()) for t_k in known), default=0.0)
+    # One curve for all, so a temperature is one grey on both sides of a seam.
+    known = [t_k.ravel() for t_k in temps if t_k is not None]
+    curve = agc.transfer(np.concatenate(known)) if known else None
     warped = []
     for camera, (k_full, r), t_k in zip(cameras, poses, temps, strict=True):
         path = folder / camera.image
         image = (
             cv2.imread(str(path), cv2.IMREAD_COLOR)
-            if t_k is None
-            else cv2.cvtColor(agc.grey(t_k, low_k, high_k), cv2.COLOR_GRAY2BGR)
+            if t_k is None or curve is None
+            else cv2.cvtColor(agc.grey(t_k, curve), cv2.COLOR_GRAY2BGR)
         )
         if image is None:
             raise ValueError(

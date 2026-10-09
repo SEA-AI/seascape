@@ -54,7 +54,7 @@ class TestThermalImage:
         render._write_thermal(exr, "jpg", agc.Agc())
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
-        assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
+        assert jpg[:, 0].astype(int) == pytest.approx([255, 128, 0], abs=3)
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
