@@ -57,7 +57,6 @@ class TestThermalImage:
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
     def test_it_returns_the_temperatures_top_row_first(self, tmp_path: Path) -> None:
-        """What `labels` measures in IR, before the AGC."""
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
         t_k = render._write_thermal(exr, "jpg", agc.Agc())
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
@@ -268,6 +267,8 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
         assert left - 0.5 <= u <= left + width + 0.5, found.name
         assert top - 0.5 <= v <= top + height + 0.5, found.name
         assert found.waterline_range_m < found.range_m
+        assert found.contrast is None
+        assert found.contrast_k is not None and found.contrast_k > 0
 
 
 @pytest.mark.render
@@ -300,6 +301,12 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
         # Heading west, across a camera facing north.
         assert left == sorted(left, reverse=True), mount.name
         assert left[0] > left[-1], mount.name
+        for found in truth.annotations:
+            if found.image_id in {image.id for image in frames}:
+                eo = mount.camera.band == "eo"
+                measured = found.contrast if eo else found.contrast_k
+                assert measured is not None and measured > 0, mount.name
+                assert (found.contrast_k if eo else found.contrast) is None
     assert not list(tmp_path.rglob("*.exr"))
 
 

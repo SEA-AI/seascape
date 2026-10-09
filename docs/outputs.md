@@ -10,7 +10,7 @@ fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 
 An EO target whose contrast against its surroundings is under 5 %, the threshold of the WMO's meteorological optical range (WMO-No. 8, ch. 9), gets no box, as an occluded one gets none. `visibility_km` takes Koschmieder's 2 %, so a target loses its box nearer than the scenario's visibility. Its contrast is O'Kane et al.'s (1995) RSS Weber contrast in luminance, against a thin ring of background around its index-pass pixels.
 
-Each IR box's `contrast_k` is the same RSS of its brightness temperature against the same ring, in K, taken before the AGC so every format gives one number; `null` for EO. ΔT is how IR detectability is quoted, and seascape renders no sensor noise, so a loader's threshold stands in for the camera's NETD: detection needs an SNR near 5 (Rose 1948), about 0.25 K for a 50 mK camera. Calibrate it as for EO.
+Each IR box's `contrast_k` is the same RSS of its brightness temperature against the same ring, in K, taken before the AGC so every format gives one number; `null` for EO. seascape renders no sensor noise, so a threshold near 5 × the camera's NETD (Rose 1948) stands in for it.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 

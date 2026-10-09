@@ -122,7 +122,7 @@ class Labels(Model):
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
         eo = camera.band == "eo"
-        lum = luminance(frame) if eo else frame
+        values = luminance(frame) if eo else frame
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -132,7 +132,7 @@ class Labels(Model):
                 continue
             # Too faint to see is as unseen as hidden.
             if eo:
-                c = contrast(index, lum, target.pass_index)
+                c = contrast(index, values, target.pass_index)
                 if c is not None and c < THRESHOLD_CONTRAST:
                     continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
@@ -237,8 +237,7 @@ def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | Non
 
 
 def contrast_k(index: np.ndarray, t_k: np.ndarray, pass_index: int) -> float | None:
-    """The target's temperature difference from its background, root-sum-squared over
-    its pixels (O'Kane et al. 1995)."""
+    """O'Kane et al.'s (1995) RSS temperature contrast."""
     found = _rss(index, t_k, pass_index)
     return None if found is None else found[0]
 

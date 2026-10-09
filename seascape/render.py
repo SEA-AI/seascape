@@ -41,20 +41,20 @@ def _frame(path: Path) -> np.ndarray:
     """An EO image as written, RGB, top row first."""
     if path.suffix == ".exr":
         return _pixels(path)[::-1, :, :3]
-    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    image = cv2.imread(str(path))
     if image is None:
         raise OSError(f"cannot read {path}")
-    return image[..., 2::-1]  # cv2 reads BGR(A)
+    return image[..., ::-1]  # cv2 reads BGR
 
 
 def _temperatures_k(exr: Path) -> np.ndarray:
-    return lwir.brightness_temperature(_pixels(exr)[..., 0])
+    return lwir.brightness_temperature(_pixels(exr)[::-1, :, 0])
 
 
 def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> np.ndarray:
     """Rewrite a float LWIR render as `fmt` beside it, delete the exr, and return
     its temperatures."""
-    t_k = _temperatures_k(exr)[::-1]  # cv2 writes the top row first
+    t_k = _temperatures_k(exr)
     out = exr.with_suffix(f".{fmt}")
     image = agc.counts(t_k) if fmt == "png" else tone(t_k)
     if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
@@ -191,12 +191,13 @@ def render(
                     index_output.file_name = f"{mount.name}."
                     bpy.ops.render.render(write_still=True)
                     file_name = f"{name}.{outputs.format}"
-                    exr = into / f"{name}.exr"
                     # IR is measured before the AGC, so every format reads alike.
                     if thermal:
-                        seen = _write_thermal(exr, outputs.format, tones[mount.name])
+                        seen = _write_thermal(
+                            into / f"{name}.exr", outputs.format, tones[mount.name]
+                        )
                     elif band == "ir":
-                        seen = _temperatures_k(exr)[::-1]
+                        seen = _temperatures_k(into / f"{name}.exr")
                     else:
                         seen = _frame(into / file_name)
                     written.append(into / file_name)
