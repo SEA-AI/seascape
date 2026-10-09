@@ -22,7 +22,7 @@ resolved after both forms of reuse and before validation.
 import math
 import tomllib
 import warnings
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Any, Literal, NamedTuple
 
@@ -845,17 +845,20 @@ def _copies(objects: list[Any], seed: int) -> list[Any]:
     return out
 
 
-def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
+def load(
+    path: str | Path, overrides: Iterable[str | Mapping[str, Any]] = ()
+) -> Scenario:
     """Read a scenario TOML, resolving `extends` and `preset`, draw every random
     field, and validate it.
 
     Each override is a TOML assignment merged over the file, `rigs.bow.pitch_deg = -5`,
-    and resolved as if it were a line in it.
+    or the table it parses to, and resolved as if it were a line in it.
     """
     path = Path(path)
     data = _read(path)
-    for assignment in overrides:
-        data = _expand(_merge(data, tomllib.loads(assignment)), None, path.parent, ())
+    for override in overrides:
+        table = tomllib.loads(override) if isinstance(override, str) else dict(override)
+        data = _expand(_merge(data, table), None, path.parent, ())
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")

@@ -143,6 +143,13 @@ def test_an_override_changes_one_camera_and_leaves_the_others(twin_pod) -> None:
     assert changed == ["port_eo_c"]
 
 
+def test_an_override_can_be_the_table_its_line_parses_to() -> None:
+    line = load(BASELINE, ['rigs.bow = { pitch_deg = -5.0, preset = "port" }'])
+    table = load(BASELINE, [{"rigs": {"bow": {"pitch_deg": -5.0, "preset": "port"}}}])
+
+    assert table == line
+
+
 def test_an_override_merges_a_table_rather_than_replacing_it() -> None:
     scenario = load(BASELINE, ["outputs.samples.eo = 8"])
 
