@@ -35,6 +35,7 @@ def run(
                 height=size[1],
                 camera="port",
                 band="eo",
+                hfov_deg=45.0,
                 time_s=time_s,
                 horizon_px=[],
             )

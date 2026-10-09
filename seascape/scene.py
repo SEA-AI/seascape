@@ -3,7 +3,7 @@
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, combinations
 from pathlib import Path
 from typing import NamedTuple
 
@@ -553,6 +553,12 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     )
 
 
+def heading_rad(anchor: bpy.types.Object) -> float:
+    """Where a hull's bow points, clockwise from north: bow to +Y, as fitted."""
+    bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
+    return math.atan2(bow.x, bow.y)
+
+
 def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
 
@@ -657,6 +663,8 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     fitted = [fit @ c for c in corners]
     parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
     parts[0]["length_m"] = max(c.y for c in fitted) - min(c.y for c in fitted)
+    # Above the waterline, which the fit puts at z = 0.
+    parts[0]["height_m"] = max(c.z for c in fitted)
 
     if band == "ir":
         # The asset's own materials are albedo, which says nothing about 8-14 um.
@@ -724,8 +732,8 @@ def _vessel(
             slot.material = skin
 
     anchor = bpy.data.objects.new(name, None)
-    anchor["beam_m"] = parts[0]["beam_m"]
-    anchor["length_m"] = parts[0]["length_m"]
+    for size in ("beam_m", "length_m", "height_m"):
+        anchor[size] = parts[0][size]
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -917,13 +925,13 @@ def _object(
             anchor,
             spec.range_m,
             spec.bearing_deg,
-            spec.heading_deg,
+            spec.course_deg,
             spec.speed_mps,
             spec.drift,
             radius_m,
             outputs,
         )
-        trails.extend(_wake(spec, anchor, spec.bearing_deg, spec.heading_deg))
+        trails.extend(_wake(spec, anchor, spec.bearing_deg, spec.course_deg))
         return [anchor]
     anchors = [anchor, *(_copy_tree(anchor, None) for _ in range(orbit.count - 1))]
     lap_s = orbit.count * outputs.period_s(orbit.period_s / orbit.count)
@@ -996,10 +1004,8 @@ def _ride(
         sc.frame_set(frame)
         for anchor, attitude, length_m, beam_m in hulls:
             east, north, _ = anchor.matrix_world.translation
-            bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
-            heading_rad = math.atan2(bow.x, bow.y)
             pitch, roll = waves.attitude(
-                field, east, north, heading_rad, length_m, beam_m, t_s
+                field, east, north, heading_rad(anchor), length_m, beam_m, t_s
             )
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
@@ -1154,6 +1160,25 @@ def _camera(
     return exposed.outputs["Vector"]
 
 
+class OverlapError(ValueError):
+    """Two targets' hulls meet."""
+
+
+def _overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, str]]:
+    """Pairs of hulls whose footprints meet in any frame: each a circle of half its
+    larger horizontal extent about its anchor, where the frame has moved it."""
+    radius_m = {a.name: max(a["length_m"], a["beam_m"]) / 2 for a in anchors}
+    sc = bpy.context.scene
+    found = set()
+    for frame in range(frames):
+        sc.frame_set(frame)
+        for a, b in combinations(anchors, 2):
+            apart_m = (a.matrix_world.translation - b.matrix_world.translation).xy
+            if apart_m.length < radius_m[a.name] + radius_m[b.name]:
+                found.add((a.name, b.name))
+    return sorted(found)
+
+
 def _viewport(near_m: float, far_m: float) -> None:
     """Blender's view clip defaults to 0.01-1000 m, which cuts a sea reaching tens
     of km."""
@@ -1246,6 +1271,8 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     _ride(list(chain(*targets.values())), wind + swell, outputs)
+    if meeting := _overlaps(list(chain(*targets.values())), len(outputs.times_s)):
+        raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)
     # Until the depsgraph runs, every child still reports its pre-parenting
     # matrix_world, so anything measuring the scene reads the wrong place.

@@ -8,7 +8,8 @@ import bpy
 import pytest
 from click.testing import CliRunner, Result
 
-from seascape import assets, cli, skies
+from seascape import assets, cli, labels, skies
+from seascape.config import load
 
 BASELINE = Path(__file__).parents[1] / "scenarios" / "baseline.toml"
 
@@ -127,3 +128,67 @@ def test_blenders_own_output_goes_to_the_log(
         os.write(1, b"Fra:1 Mem:12M\n")
     assert log.read_bytes() == b"Fra:1 Mem:12M\n"
     assert not capfd.readouterr().out
+
+
+YACHT = '{ asset = "yacht", range_m = 900.0, bearing_deg = { choice = [0.0, 20.0] } }'
+TINY = [
+    f"objects = [{YACHT}, {YACHT}]",
+    'outputs.bands = ["eo"]',
+    'outputs.format = "png"',
+    "outputs.samples.eo = 1",
+    "rigs.bow.cameras.eo = { width_px = 64, height_px = 36 }",
+]
+
+
+def _meet(seed: int) -> bool:
+    """Two yachts at one range meet when they draw one bearing."""
+    a, b = load(BASELINE.with_name("open-sea.toml"), [*TINY, f"seed = {seed}"]).objects
+    return a.bearing_deg == b.bearing_deg
+
+
+@pytest.mark.render
+def test_variants_skip_a_seed_whose_hulls_meet_and_merge_the_rest(
+    run: Run, tmp_path: Path
+) -> None:
+    first = next(s for s in range(1000) if _meet(s) and not _meet(s + 1) + _meet(s + 2))
+    sets = [x for line in [*TINY, f"seed = {first}"] for x in ("--set", line)]
+
+    result = run(
+        "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
+        *sets,
+    )  # fmt: skip
+
+    assert result.exit_code == 0, result.output
+    assert f"seed {first} skipped" in result.stderr
+    folders = sorted(p.name for p in tmp_path.iterdir() if p.is_dir())
+    assert folders == [str(first + 1), str(first + 2)]
+    merged = labels.Labels.model_validate_json((tmp_path / "labels.json").read_text())
+    assert sorted(merged.info["scenarios"]) == folders
+    assert all((tmp_path / image.file_name).exists() for image in merged.images)
+
+
+THREE = [x for line in TINY for x in ("--set", line)]
+# Three yachts on two bearings: two always share one.
+THREE += ["--set", f"objects = [{YACHT}, {YACHT}, {YACHT}]"]
+
+
+@pytest.mark.render
+def test_one_scene_whose_hulls_meet_is_an_error(run: Run, tmp_path: Path) -> None:
+    result = run("render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, *THREE)
+
+    assert result.exit_code == 1
+    assert "inside each other" in result.stderr
+
+
+@pytest.mark.render
+def test_variants_give_up_when_every_seed_has_hulls_meeting(
+    run: Run, tmp_path: Path
+) -> None:
+    result = run(
+        "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
+        *THREE,
+    )  # fmt: skip
+
+    assert result.exit_code == 1
+    assert "0 of 2 variants in 20 seeds" in result.stderr
+    assert not [p for p in tmp_path.iterdir() if p.is_dir()]

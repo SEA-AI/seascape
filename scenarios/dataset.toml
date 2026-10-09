@@ -1,0 +1,35 @@
+#:schema ../schema/scenario.json
+
+# Frames for a detector: one to five hulls bow-on or stern-on, anywhere across the
+# frame, from a mast of any height, through either lens, under any sky.
+extends = "randomized.toml"
+
+[rigs.bow]
+height_m = { uniform = [5.0, 60.0] }
+yaw_deg = 0.0
+
+# Both bands through one lens, so both frame the same hulls.
+[[rigs.bow.cameras.choice]]
+eo = { band = "eo", hfov_deg = 42.0, width_px = 1920, height_px = 1080 }
+ir = { band = "ir", hfov_deg = 42.0, width_px = 640, height_px = 512 }
+
+[[rigs.bow.cameras.choice]]
+eo = { band = "eo", hfov_deg = 49.0, width_px = 1920, height_px = 1080 }
+ir = { band = "ir", hfov_deg = 49.0, width_px = 640, height_px = 512 }
+
+[[objects]]
+count = { integer = [1, 5] }
+asset = { choice = [
+    "container_ship",
+    "small_container_ship",
+    "cargo_ship",
+    "bulk_carrier",
+    "patrol_vessel",
+    "yacht",
+] }
+heading_from = "line_of_sight"
+heading_deg = { choice = [0.0, 180.0] }
+# Across the wider lens; a hull outside the narrower one is a negative.
+bearing_deg = { uniform = [-24.5, 24.5] }
+# Nearer, a tall mast looks down past a long hull's near end and cuts its box.
+range_m = { uniform = [500.0, 2500.0] }

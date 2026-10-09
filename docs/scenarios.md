@@ -50,7 +50,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ## Randomization
 
-Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ choice = [...] }` for one of several values, integers and tables included. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
+Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
 
 ```toml
 [rigs.bow]
@@ -65,10 +65,22 @@ hdri = { choice = ["belfast_sunset", "kloofendal_overcast"] }
 
 A table set over a choice of tables goes into every option, so `--set sky.visibility_km=10` keeps the sky drawn and fixes only its visibility. [`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
 
-`seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed when there are several:
+An object's `count` makes that many, each drawn anew, and `heading_from = "line_of_sight"` turns its `heading_deg` from the line from the ownship to it, so 0 points away and 180 towards. [`scenarios/dataset.toml`](../scenarios/dataset.toml) draws one to five hulls that way:
+
+```toml
+[[objects]]
+count = { integer = [1, 5] }
+asset = { choice = ["cargo_ship", "patrol_vessel", "yacht"] }
+heading_from = "line_of_sight"
+heading_deg = { choice = [0.0, 180.0] }
+bearing_deg = { uniform = [-24.5, 24.5] }
+range_m = { uniform = [500.0, 2500.0] }
+```
+
+`seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed when there are several. A seed whose hulls meet, each a circle of half its larger extent wherever the clip moves it, is skipped for the next:
 
 ```bash
-uv run seascape render scenarios/randomized.toml --variants 8 -o out/
+uv run seascape render scenarios/dataset.toml --variants 8 -o out/
 ```
 
 Each draw comes from a stream named for the field, so a new draw leaves the others as they were; a list item is named by its position. `labels.json` records the values drawn, under `info.scenario`.

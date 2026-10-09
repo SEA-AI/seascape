@@ -35,6 +35,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -49,6 +52,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -69,6 +75,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -84,6 +93,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -102,6 +114,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -116,6 +131,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -148,6 +166,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -164,6 +185,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -178,6 +202,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -209,6 +236,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -223,6 +253,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -280,6 +313,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -294,6 +330,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -311,13 +350,16 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
         },
         "heading_deg": {
           "title": "Heading Deg",
-          "description": "Where its bow points, clockwise from the ownship's bow.",
+          "description": "Where its bow points, clockwise.",
           "default": 0.0,
           "anyOf": [
             {
@@ -325,6 +367,32 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "heading_from": {
+          "title": "Heading From",
+          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it, where 0 points away and 180 towards.",
+          "default": "ownship",
+          "anyOf": [
+            {
+              "enum": [
+                "ownship",
+                "line_of_sight"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -342,6 +410,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -362,6 +433,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -380,6 +454,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -396,6 +473,29 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "count": {
+          "title": "Count",
+          "description": "How many, each drawn anew. `load` makes the copies, so a loaded scenario holds only 1.",
+          "default": 1,
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -427,6 +527,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -442,6 +545,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -479,6 +585,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -490,6 +599,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -505,6 +617,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -525,6 +640,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -540,6 +658,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -559,6 +680,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -573,6 +697,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -618,6 +745,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -634,6 +764,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -654,6 +787,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -670,6 +806,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -690,6 +829,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -708,6 +850,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -724,6 +869,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -753,6 +901,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -769,6 +920,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -783,6 +937,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -803,6 +960,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -817,6 +977,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -835,6 +998,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -850,6 +1016,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -872,6 +1041,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -903,6 +1075,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -918,6 +1093,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -946,6 +1124,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -963,6 +1144,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -977,6 +1161,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -997,6 +1184,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1015,6 +1205,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1031,6 +1224,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1062,6 +1258,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1076,6 +1275,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1093,6 +1295,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1115,6 +1320,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1128,6 +1336,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1148,6 +1359,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1164,6 +1378,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1219,6 +1436,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1243,6 +1463,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1259,6 +1482,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1273,6 +1499,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1304,6 +1533,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1318,6 +1550,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1386,6 +1621,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1402,6 +1640,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1416,6 +1657,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1441,6 +1685,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1472,6 +1719,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1487,6 +1737,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1507,6 +1760,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/Integer"
+            },
+            {
               "$ref": "#/$defs/Choice"
             }
           ]
@@ -1523,6 +1779,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
             },
             {
               "$ref": "#/$defs/Choice"
@@ -1563,6 +1822,32 @@
         "uniform"
       ],
       "title": "Uniform",
+      "type": "object"
+    },
+    "Integer": {
+      "additionalProperties": false,
+      "description": "A whole number drawn evenly between two bounds, both included.",
+      "properties": {
+        "integer": {
+          "description": "The bounds, both included.",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Integer",
+          "type": "array"
+        }
+      },
+      "required": [
+        "integer"
+      ],
+      "title": "Integer",
       "type": "object"
     },
     "Choice": {
@@ -1611,6 +1896,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/Integer"
+        },
+        {
           "$ref": "#/$defs/Choice"
         }
       ]
@@ -1622,6 +1910,9 @@
         },
         {
           "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Integer"
         },
         {
           "$ref": "#/$defs/Choice"
@@ -1642,6 +1933,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/Integer"
+        },
+        {
           "$ref": "#/$defs/Choice"
         }
       ]
@@ -1655,6 +1949,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/Integer"
+        },
+        {
           "$ref": "#/$defs/Choice"
         }
       ]
@@ -1666,6 +1963,9 @@
         },
         {
           "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Integer"
         },
         {
           "$ref": "#/$defs/Choice"
@@ -1686,6 +1986,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/Integer"
+        },
+        {
           "$ref": "#/$defs/Choice"
         }
       ]
@@ -1697,6 +2000,9 @@
         },
         {
           "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/Integer"
         },
         {
           "$ref": "#/$defs/Choice"
