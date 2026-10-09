@@ -50,7 +50,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ## Randomization
 
-Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
+Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included, each as likely unless `weights` beside it says otherwise: `{ choice = ["a", "b"], weights = [1, 4] }` draws `b` four times as often. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
 
 ```toml
 [rigs.bow]

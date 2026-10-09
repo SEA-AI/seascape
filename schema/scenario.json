@@ -1852,7 +1852,7 @@
     },
     "Choice": {
       "additionalProperties": false,
-      "description": "One of several values, each as likely.",
+      "description": "One of several values, each as likely unless weighted.",
       "properties": {
         "choice": {
           "description": "The values.",
@@ -1860,6 +1860,23 @@
           "minItems": 1,
           "title": "Choice",
           "type": "array"
+        },
+        "weights": {
+          "anyOf": [
+            {
+              "items": {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How likely each value is, relative to the others: [8, 2] is 80 and 20 percent.",
+          "title": "Weights"
         }
       },
       "required": [

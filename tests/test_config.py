@@ -17,6 +17,7 @@ from seascape.config import (
     CFG_DIR,
     Band,
     Camera,
+    Choice,
     Integer,
     Object,
     Orbit,
@@ -718,3 +719,38 @@ def test_a_drawn_object_cannot_carry_a_count() -> None:
     )
     with pytest.raises(ValueError, match="drawn object cannot carry a count"):
         load(BASELINE, [picked])
+
+
+def test_a_weighted_choice_draws_each_value_as_often_as_its_weight() -> None:
+    picks = [
+        Choice(choice=["a", "b"], weights=[1, 4]).draw(substream(seed, "w"))
+        for seed in range(20_000)
+    ]
+    assert picks.count("b") / len(picks) == pytest.approx(0.8, abs=0.01)
+
+
+def test_a_value_of_weight_zero_is_never_drawn() -> None:
+    choice = Choice(choice=["never", "always"], weights=[0, 1])
+    assert {choice.draw(substream(seed, "w")) for seed in range(200)} == {"always"}
+
+
+@pytest.mark.parametrize(
+    ("weights", "match"),
+    [([1.0], "1 weights for 2 values"), ([-1.0, 2.0], "greater than or equal"),
+     ([0.0, 0.0], "sum to 0")],
+)  # fmt: skip
+def test_weights_that_cannot_weigh_the_values_are_refused(weights, match) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Choice(choice=["a", "b"], weights=weights)
+
+
+def test_a_table_over_a_weighted_choice_keeps_the_weights() -> None:
+    skies = (
+        'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }], '
+        "weights = [0, 1] }"
+    )
+    drawn = {
+        load(BASELINE, [skies, "sky.visibility_km = 10.0", f"seed = {s}"]).sky.hdri
+        for s in range(20)
+    }
+    assert drawn == {None}

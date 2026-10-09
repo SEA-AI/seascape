@@ -68,12 +68,32 @@ class Integer(Model):
 
 
 class Choice(Model):
-    """One of several values, each as likely."""
+    """One of several values, each as likely unless weighted."""
 
     choice: list[Any] = Field(min_length=1, description="The values.")
+    weights: list[Annotated[float, Field(ge=0.0)]] | None = Field(
+        default=None,
+        description="How likely each value is, relative to the others: [8, 2] is 80 "
+        "and 20 percent.",
+    )
+
+    @model_validator(mode="after")
+    def _a_weight_per_value(self) -> "Choice":
+        if self.weights is None:
+            return self
+        if len(self.weights) != len(self.choice):
+            raise ValueError(
+                f"{len(self.weights)} weights for {len(self.choice)} values"
+            )
+        if not sum(self.weights):
+            raise ValueError("the weights sum to 0")
+        return self
 
     def draw(self, rng: np.random.Generator) -> Any:
-        return self.choice[rng.integers(len(self.choice))]
+        if self.weights is None:
+            return self.choice[rng.integers(len(self.choice))]
+        p = np.array(self.weights) / sum(self.weights)
+        return self.choice[rng.choice(len(self.choice), p=p)]
 
 
 _DRAWS: dict[str, type[Uniform | Integer | Choice]] = {
@@ -684,8 +704,18 @@ class Scenario(Model):
         return self
 
 
+def _kind(node: Any) -> str | None:
+    """The draw `node` is: one draw's key, beside only that draw's own fields."""
+    if not isinstance(node, dict):
+        return None
+    kinds = [key for key in node if key in _DRAWS]
+    if len(kinds) == 1 and set(node) <= set(_DRAWS[kinds[0]].model_fields):
+        return kinds[0]
+    return None
+
+
 def _is_draw(node: Any) -> bool:
-    return isinstance(node, dict) and len(node) == 1 and next(iter(node)) in _DRAWS
+    return _kind(node) is not None
 
 
 def _is_table(node: Any) -> bool:
@@ -707,7 +737,7 @@ def _merge_value(base: Any, over: Any) -> Any:
         return _merge(base, over)
     options = base.get("choice") if _is_draw(base) else None
     if isinstance(options, list) and all(_is_table(option) for option in options):
-        return {"choice": [_merge(option, over) for option in options]}
+        return base | {"choice": [_merge(option, over) for option in options]}
     return over
 
 
@@ -779,8 +809,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
         return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
     if not isinstance(node, dict):
         return node
-    if _is_draw(node):
-        kind = next(iter(node))
+    if (kind := _kind(node)) is not None:
         value = _DRAWS[kind].model_validate(node).draw(substream(seed, path))
         # A chosen draw on the pick's own substream would replay the pick's state.
         return _draw(value, seed, f"{path}/{kind}" if _is_draw(value) else path)
