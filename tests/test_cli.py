@@ -192,3 +192,20 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
     assert result.exit_code == 1
     assert "0 of 2 variants in 20 seeds" in result.stderr
     assert not [p for p in tmp_path.iterdir() if p.is_dir()]
+
+
+@pytest.mark.render
+def test_a_skipped_seed_leaves_a_folder_from_an_earlier_run(
+    run: Run, tmp_path: Path
+) -> None:
+    earlier = tmp_path / str(load(BASELINE).seed)
+    earlier.mkdir()
+    (earlier / "kept.txt").write_text("from an earlier run")
+
+    result = run(
+        "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
+        *THREE,
+    )  # fmt: skip
+
+    assert "0 of 2 variants" in result.stderr
+    assert (earlier / "kept.txt").exists()

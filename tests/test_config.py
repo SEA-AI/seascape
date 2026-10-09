@@ -651,7 +651,7 @@ def test_a_drawn_count_takes_the_value_it_drew() -> None:
 
 
 def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
-    """A render's labels carry this dump, and recording and the merge read it."""
+    """Labels carry this dump, and readers rebuild the scene from it."""
     drawn = (
         'objects = [{ asset = "yacht", count = { integer = [2, 4] }, '
         "range_m = { uniform = [500.0, 2500.0] }, bearing_deg = 0.0 }]"
@@ -709,3 +709,12 @@ def test_an_orbit_refuses_a_heading_from() -> None:
             heading_from="line_of_sight",
             orbit=Orbit(period_s=80.0),
         )
+
+
+def test_a_drawn_object_cannot_carry_a_count() -> None:
+    picked = (
+        'objects = [{ choice = [{ asset = "yacht", range_m = 900.0, '
+        "bearing_deg = 0.0, count = 3 }] }]"
+    )
+    with pytest.raises(ValueError, match="drawn object cannot carry a count"):
+        load(BASELINE, [picked])

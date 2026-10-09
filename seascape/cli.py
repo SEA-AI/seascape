@@ -72,7 +72,6 @@ def _blender_log(path: Path) -> Generator[None]:
             os.close(stdout)
 
 
-# Seeds tried per variant before giving up on a scenario whose hulls keep meeting.
 TRIES_PER_VARIANT = 10
 
 
@@ -122,8 +121,8 @@ def build(
 def render(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
 ) -> None:
-    """Write one image per camera and frame, and their labels. Variants whose hulls
-    meet are skipped for the next seed, and their labels merged into one file."""
+    """Write one image per camera and frame, and their labels. With --variants, a seed
+    whose hulls meet is skipped for the next, and the labels merge into one file."""
     built = load(scenario, list(overrides))
     into = output or scenario.with_suffix("")
     from seascape import render as renderer
@@ -151,10 +150,12 @@ def render(
                 folder = into / str(seed)
                 variant = load(scenario, [*overrides, f"seed = {seed}"])
                 seed += 1
+                ours = not folder.exists()
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
-                    folder.rmdir()  # the build refuses before anything is written
+                    if ours:  # the build refuses before anything is written
+                        folder.rmdir()
                     click.echo(f"\nseed {variant.seed} skipped: {error}", err=True)
                     continue
                 folders.append(folder)

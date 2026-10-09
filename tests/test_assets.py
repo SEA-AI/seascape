@@ -43,10 +43,9 @@ def test_every_object_preset_names_an_asset() -> None:
 
 
 def test_a_category_has_one_id_and_an_id_one_category() -> None:
-    """Every labels.json takes its ids from here, so two merge only if they agree."""
     pairs = {(mesh.category, mesh.category_id) for mesh in assets.manifest().values()}
     assert len({name for name, _ in pairs}) == len({i for _, i in pairs}) == len(pairs)
-    # torchvision reads label 0 as the background.
+    # Category ids start at 1, as COCO's do.
     assert min(i for _, i in pairs) == 1
 
 

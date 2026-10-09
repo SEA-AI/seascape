@@ -42,7 +42,7 @@ class _Mesh(Model):
 
     description: str = Field(min_length=1)
     category: str = Field(min_length=1)
-    # COCO's id for the category: fixed here, so every labels.json agrees.
+    # One per category, so labels.json files merge.
     category_id: int = Field(ge=1)
     url: str
     sha256: str = Field(pattern=SHA256)

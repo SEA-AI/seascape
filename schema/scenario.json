@@ -1826,7 +1826,7 @@
     },
     "Integer": {
       "additionalProperties": false,
-      "description": "A whole number drawn evenly between two bounds, both included.",
+      "description": "A whole number drawn evenly between two bounds.",
       "properties": {
         "integer": {
           "description": "The bounds, both included.",

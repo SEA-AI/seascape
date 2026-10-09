@@ -1271,7 +1271,10 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     _ride(list(chain(*targets.values())), wind + swell, outputs)
-    if meeting := _overlaps(list(chain(*targets.values())), len(outputs.times_s)):
+    solid = list(chain(*targets.values()))
+    if scenario.ownship.asset is not None:
+        solid.append(vessel)
+    if meeting := _overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)
     # Until the depsgraph runs, every child still reports its pre-parenting

@@ -59,7 +59,7 @@ class Uniform(Model):
 
 
 class Integer(Model):
-    """A whole number drawn evenly between two bounds, both included."""
+    """A whole number drawn evenly between two bounds."""
 
     integer: tuple[int, int] = Field(description="The bounds, both included.")
 
@@ -360,7 +360,6 @@ AssetName = Annotated[
 ]
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = "Shaded hull temperature. IR only."
-_HEADING = "Where its bow points, clockwise."
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -392,7 +391,9 @@ class Object(Model):
     asset: AssetName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
-    heading_deg: float = Field(default=0.0, description=_HEADING)
+    heading_deg: float = Field(
+        default=0.0, description="Where its bow points, clockwise."
+    )
     heading_from: Literal["ownship", "line_of_sight"] = Field(
         default="ownship",
         description="What `heading_deg` turns from: the ownship's bow, or the line "
@@ -773,7 +774,7 @@ def _read(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
 
 def _draw(node: Any, seed: int, path: str) -> Any:
     """Replace every draw in the tree by a value from a substream named for where it
-    sits, `draw/objects/0/range_m`."""
+    sits, `draw/sky/visibility_km`."""
     if isinstance(node, list):
         return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
     if not isinstance(node, dict):
@@ -796,10 +797,16 @@ def _copies(objects: list[Any], seed: int) -> list[Any]:
         path = f"draw/objects/{i}"
         count = _draw(spec.get("count", 1), seed, f"{path}/count")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-            raise ValueError(f"objects[{i}]: count must be a whole number, not {count}")
+            raise ValueError(
+                f"objects[{i}]: count must be a whole number from 1, not {count}"
+            )
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
-        out += [_draw(spec, seed, f"{path}/{k}") | {"count": 1} for k in range(count)]
+        copies = [_draw(spec, seed, f"{path}/{k}") for k in range(count)]
+        # A pick's count would come after the copies were made.
+        if _is_draw(spec) and any(c.get("count", 1) != 1 for c in copies):
+            raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
+        out += [c | {"count": 1} for c in copies]
     return out
 
 

@@ -1,7 +1,6 @@
 #:schema ../schema/scenario.json
 
-# Frames for a detector: one to five hulls bow-on or stern-on, anywhere across the
-# frame, from a mast of any height, through either lens, under any sky.
+# Frames for a detector.
 extends = "randomized.toml"
 
 [rigs.bow]

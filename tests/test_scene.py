@@ -1440,3 +1440,9 @@ def test_a_built_target_measures_what_the_manifest_says(asset: str) -> None:
         assert anchor["height_m"] + mesh.draught_m == pytest.approx(
             mesh.height_m, rel=1e-6
         )
+
+
+def test_a_target_inside_the_ownship_is_refused() -> None:
+    yacht = '{ asset = "yacht", range_m = 30.0, bearing_deg = 0.0 }'
+    with pytest.raises(scene.OverlapError, match="ownship"):
+        scene.build(_objects(yacht, more=('ownship.asset = "bulk_carrier"',)), "eo")

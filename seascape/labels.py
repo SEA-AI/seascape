@@ -69,8 +69,7 @@ class Annotation(Model):
     waterline_range_m: float
     bearing_deg: float  # true, clockwise from north
     heading_deg: float  # true, clockwise from north
-    # Length and beam along its own axes, and height above the waterline, of the mesh
-    # as built.
+    # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
 
@@ -154,8 +153,7 @@ class Labels(Model):
 
 
 def merge(root: Path, folders: Sequence[Path]) -> Labels:
-    """The labels in `folders` as one set for `root`: ids renumbered, file names from
-    `root`, and each folder's scenario under `info["scenarios"]` by its path."""
+    """The labels in `folders` as one set for `root`."""
     merged = Labels()
     scenarios: dict[str, Any] = {}
     for folder in folders:
