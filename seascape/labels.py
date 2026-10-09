@@ -85,7 +85,7 @@ class Annotation(Model):
     # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
-    # Weber's, unsigned, in the frame as written; None without a background above 0.
+    # RSS Weber, in the frame as written; None for IR, or without a background above 0.
     contrast: float | None
 
 
@@ -105,7 +105,7 @@ class Labels(Model):
         radius_m: float,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, RGB or one channel, both top row first."""
+        the image as written, both top row first. An IR frame's contrast is None."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -119,7 +119,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        lum = luminance(frame)
+        lum = luminance(frame) if camera.band == "eo" else None
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -148,7 +148,9 @@ class Labels(Model):
                     or y0 == 0
                     or x1 == image.width - 1
                     or y1 == image.height - 1,
-                    contrast=contrast(index, lum, target.pass_index),
+                    contrast=None
+                    if lum is None
+                    else contrast(index, lum, target.pass_index),
                 )
             )
 
@@ -212,17 +214,15 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 def luminance(frame: np.ndarray) -> np.ndarray:
     """A frame's relative luminance: 8-bit RGB decoded from sRGB (IEC 61966-2-1),
-    float RGB as linear, one channel as written."""
-    if frame.ndim == 2:
-        return frame.astype(float)
+    float RGB as linear."""
     if frame.dtype == np.uint8:
         return SRGB_TO_LINEAR[frame] @ BT709
     return frame @ BT709
 
 
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
-    """Weber's, averaged unsigned over the target's pixels so a dark hull under a
-    bright superstructure does not cancel."""
+    """Weber's, root-sum-squared over the target's pixels (O'Kane et al. 1995), so a
+    dark hull under a bright superstructure does not cancel."""
     mask = (index == pass_index).astype(np.uint8)
     others = ((index > 0) & (index != pass_index)).astype(np.uint8)
     gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
@@ -233,7 +233,7 @@ def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | Non
     background = lum[ring].mean()
     if background <= 0:
         return None
-    return float(np.abs(lum[mask > 0] - background).mean() / background)
+    return float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)) / background)
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

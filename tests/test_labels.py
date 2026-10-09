@@ -10,7 +10,12 @@ from seascape import labels, waves
 from seascape.calibration import CameraCalibration
 
 RADIUS_M = waves.earth_radius_m(0.13)
-FLAT = np.ones((48, 64))
+FLAT = np.ones((48, 64, 3))
+
+
+def grey(luminance: np.ndarray) -> np.ndarray:
+    """Linear RGB of that luminance."""
+    return np.repeat(luminance[..., None], 3, axis=2)
 
 
 def camera(
@@ -176,7 +181,7 @@ def test_a_uniform_targets_contrast_is_webers_unsigned(
     frame = np.where(index == 1, target_l, 0.4)
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, grey(frame), [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(contrast)
 
@@ -188,7 +193,7 @@ def test_a_dark_and_a_bright_half_do_not_cancel() -> None:
     frame[10:15, 20:30], frame[15:20, 20:30] = 0.2, 0.6
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, grey(frame), [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(0.5)
 
@@ -199,7 +204,7 @@ def test_contrasts_background_is_no_other_target() -> None:
     frame = np.where(index == 1, 0.8, np.where(index == 2, 9.0, 0.4))
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, grey(frame), [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(1.0)
 
@@ -212,7 +217,7 @@ def test_contrasts_background_skips_the_pixels_the_filter_blurs_into() -> None:
     frame = np.where(blurred == 1, 0.8, 0.4)
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, grey(frame), [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(1.0)
 
@@ -227,9 +232,20 @@ def test_contrasts_background_skips_another_targets_blur() -> None:
     frame = np.where(index == 1, 0.8, np.where(blurred == 1, 9.0, 0.4))
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, grey(frame), [target(1)], RADIUS_M)
 
     assert truth.annotations[0].contrast == pytest.approx(1.0)
+
+
+def test_an_ir_frame_has_no_contrast() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 20:30] = 1
+    ir = camera().model_copy(update={"band": "ir"})
+    truth = labels.Labels()
+
+    truth.add(ir, 0.0, index, np.where(index == 1, 300.0, 280.0), [target(1)], RADIUS_M)
+
+    assert truth.annotations[0].contrast is None
 
 
 def test_a_target_with_no_background_around_it_has_no_contrast() -> None:
