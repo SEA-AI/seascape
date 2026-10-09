@@ -238,11 +238,10 @@ def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
     assert labels.luminance(frame)[0] == pytest.approx([1.0, 0.5], abs=0.003)
 
 
-@pytest.mark.parametrize(("target_l", "boxed"), [(0.395, False), (0.41, True)])
+@pytest.mark.parametrize(("target_l", "boxed"), [(0.39, False), (0.425, True)])
 def test_an_eo_target_too_faint_to_see_gets_no_box(
     target_l: float, boxed: bool
 ) -> None:
-    """Under 2 % against its surroundings, as `visibility_km` defines seeing."""
     index = square()
     truth = labels.Labels()
 

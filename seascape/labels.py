@@ -15,7 +15,6 @@ import numpy as np
 from pydantic import Field
 
 from seascape.calibration import CameraCalibration
-from seascape.config import THRESHOLD_CONTRAST
 from seascape.model import Model
 
 FILENAME = "labels.json"
@@ -34,6 +33,8 @@ SRGB_TO_LINEAR = np.where(
 # Judgement: the background ring's width, and its gap past where the pixel filter and
 # the compositor's blur spread a target.
 RING_PX, RING_GAP_PX = 3, 2
+# The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
+THRESHOLD_CONTRAST = 0.05
 
 
 class Target(NamedTuple):
@@ -125,7 +126,7 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
-            # Too faint to see is as unseen as hidden, by `visibility_km`'s threshold.
+            # Too faint to see is as unseen as hidden.
             if lum is not None:
                 c = contrast(index, lum, target.pass_index)
                 if c is not None and c < THRESHOLD_CONTRAST:
