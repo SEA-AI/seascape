@@ -15,6 +15,7 @@ import numpy as np
 from pydantic import Field
 
 from seascape.calibration import CameraCalibration
+from seascape.config import THRESHOLD_CONTRAST
 from seascape.model import Model
 
 FILENAME = "labels.json"
@@ -84,8 +85,6 @@ class Annotation(Model):
     # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
-    # RSS Weber, in the frame as written; None for IR, or without a background above 0.
-    contrast: float | None
 
 
 class Labels(Model):
@@ -104,7 +103,7 @@ class Labels(Model):
         radius_m: float,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, both top row first. An IR frame's contrast is None."""
+        the image as written, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -126,6 +125,11 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
+            # Too faint to see is as unseen as hidden, by `visibility_km`'s threshold.
+            if lum is not None:
+                c = contrast(index, lum, target.pass_index)
+                if c is not None and c < THRESHOLD_CONTRAST:
+                    continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             east, north = np.subtract(target.centre_m, at)
             self.annotations.append(
@@ -147,9 +151,6 @@ class Labels(Model):
                     or y0 == 0
                     or x1 == image.width - 1
                     or y1 == image.height - 1,
-                    contrast=None
-                    if lum is None
-                    else contrast(index, lum, target.pass_index),
                 )
             )
 

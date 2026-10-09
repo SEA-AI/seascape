@@ -49,6 +49,10 @@ def substream(seed: int, name: str) -> np.random.Generator:
     return np.random.default_rng([seed, *name.encode()])
 
 
+# Koschmieder's (1924) threshold contrast: the least an eye sees a target by.
+THRESHOLD_CONTRAST = 0.02
+
+
 class Uniform(Model):
     """A float drawn evenly between two bounds."""
 
@@ -361,11 +365,11 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
-        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
-        contrast against the horizon sky."""
+        """Koschmieder's law: over `visibility_km` a dark target keeps
+        `THRESHOLD_CONTRAST` of its contrast against the horizon sky."""
         if self.visibility_km is None:
             return 0.0
-        return math.log(1 / 0.02) / (self.visibility_km * 1000)
+        return math.log(1 / THRESHOLD_CONTRAST) / (self.visibility_km * 1000)
 
 
 def _in_the_manifest(name: str) -> str:
