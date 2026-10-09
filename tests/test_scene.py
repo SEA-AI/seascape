@@ -7,6 +7,7 @@ import math
 from collections.abc import Iterator
 from pathlib import Path
 from statistics import NormalDist
+from typing import Any
 
 import bpy
 import numpy as np
@@ -17,7 +18,15 @@ from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import Band, Mount, Object, Rig, Scenario, load, substream
-from tests.scenarios import BASELINE, DRIFTING, OPEN_SEA, preset_camera, target, variant
+from tests.scenarios import (
+    BASELINE,
+    DRIFTING,
+    OPEN_SEA,
+    preset_camera,
+    preset_target,
+    target,
+    variant,
+)
 
 SCENARIO = load(BASELINE)
 
@@ -496,7 +505,7 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     scenario = variant(
         rig={"height_m": 5.0},
         cameras={"eo": {"hfov_deg": 2.0, "width_px": 960, "height_px": 540}},
-        objects=[target("container_ship", range_m)],
+        objects=[preset_target("container_ship", range_m)],
     )
     built = scene.build(scenario, "eo")
     (anchor,) = built.targets["container_ship"]
@@ -1183,7 +1192,7 @@ class TestDrifting:
 
 
 class TestWakes:
-    def _built(self, spec: Object) -> bpy.types.NodeTree:
+    def _built(self, spec: Object | dict[str, Any]) -> bpy.types.NodeTree:
         scene.build(variant(objects=[spec]), "eo")
         return bpy.data.materials["sea"].node_tree
 
@@ -1193,7 +1202,7 @@ class TestWakes:
         assert "wake_normal" in tree.nodes
 
     def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
-        tree = self._built(target("container_ship", 2000.0, speed_mps=5.0))
+        tree = self._built(preset_target("container_ship", 2000.0, speed_mps=5.0))
         assert "sea_foam" in bpy.data.images
         assert "wake_normal" not in tree.nodes
 

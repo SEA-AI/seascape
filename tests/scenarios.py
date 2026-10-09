@@ -5,7 +5,7 @@ tests write TOML on purpose: the spelling is what they test.
 """
 
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,13 @@ def target(
     return Object(asset=asset, range_m=range_m, bearing_deg=bearing_deg, **fields)
 
 
+def preset_target(
+    preset: str, range_m: float, bearing_deg: float = 0.0, **fields: Any
+) -> dict[str, Any]:
+    """A shipped object preset at a place, resolved by the loader as a scenario's."""
+    return {"preset": preset, "range_m": range_m, "bearing_deg": bearing_deg, **fields}
+
+
 def _plain(value: Any) -> Any:
     """Models as the tables they were given as: an unset default stays unset, so a
     validator that reads which fields were set reads the same."""
@@ -50,7 +57,7 @@ def variant(
     *,
     rig: dict[str, Any] | None = None,
     cameras: Mapping[str, Camera | dict[str, Any]] | None = None,
-    objects: list[Object] | None = None,
+    objects: Sequence[Object | dict[str, Any]] | None = None,
     **sections: Any,
 ) -> Scenario:
     """`base` loaded with its only rig's fields, some of its cameras, its objects and

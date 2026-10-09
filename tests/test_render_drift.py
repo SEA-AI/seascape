@@ -15,7 +15,7 @@ from mathutils import Vector
 from seascape import lwir, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
 from seascape.config import Band, Camera, Scenario, Sky, load
-from tests.scenarios import BASELINE, OPEN_SEA, target, variant
+from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render
 
@@ -613,7 +613,7 @@ def _set_after(setting: str, built: bool) -> np.ndarray:
     scenario = variant(
         rig={"pitch_deg": -3.0},
         cameras={"eo": {"width_px": 320, "height_px": 180}},
-        objects=[target("container_ship", 3e3)],
+        objects=[preset_target("container_ship", 3e3)],
         outputs=outputs,
         sky=sky,
     )
