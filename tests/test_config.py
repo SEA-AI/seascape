@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from seascape import lwir, skies
 from seascape.config import (
+    _DRAWS,
     CFG_DIR,
     Band,
     Camera,
@@ -185,16 +186,27 @@ def test_a_block_overrides_its_own_preset(tmp_path) -> None:
     assert camera.width_px == 3840  # untouched by the block
 
 
-def test_a_preset_outranks_an_inherited_value(tmp_path, baseline) -> None:
-    """Expanding after the parent merge inverts this, and nothing else notices."""
+def test_a_preset_replaces_what_it_lands_on(tmp_path, baseline) -> None:
     (tmp_path / "single.toml").write_text(
         'height_m = 2.0\n\n[cameras.ir]\npreset = "ir_vga_24deg"\n'
     )
     scenario = load(variant(tmp_path, '[rigs.bow]\npreset = "./single.toml"\n'))
     bow = scenario.rigs["bow"]
     assert bow.height_m == 2.0
+    assert list(bow.cameras) == ["ir"]
     assert bow.cameras["ir"].height_px == 480
     assert baseline.rigs["bow"].cameras["ir"].height_px != 480
+
+
+def test_an_override_swaps_a_rig_for_a_product(baseline) -> None:
+    scenario = load(BASELINE, ['rigs.bow = { preset = "port" }'])
+    assert list(scenario.rigs["bow"].cameras) == ["eo_p", "eo_c", "eo_s", "ir"]
+
+
+def test_a_partial_preset_inherits_nothing_from_what_it_replaces(tmp_path) -> None:
+    (tmp_path / "optics.toml").write_text('band = "eo"\nhfov_deg = 12.0\n')
+    with pytest.raises(ValidationError, match="width_px"):
+        load(variant(tmp_path, '[rigs.bow.cameras.eo]\npreset = "optics.toml"\n'))
 
 
 def test_tables_merge_and_lists_replace(tmp_path, baseline) -> None:
@@ -214,7 +226,9 @@ def test_tables_merge_and_lists_replace(tmp_path, baseline) -> None:
 
 @pytest.mark.parametrize("name", ["./mine.toml", "mine.toml"])
 def test_preset_can_be_a_path(tmp_path, name) -> None:
-    (tmp_path / "mine.toml").write_text('band = "eo"\nhfov_deg = 12.0\n')
+    (tmp_path / "mine.toml").write_text(
+        'band = "eo"\nhfov_deg = 12.0\nwidth_px = 64\nheight_px = 36\n'
+    )
     scenario = load(variant(tmp_path, f'[rigs.bow.cameras.eo]\npreset = "{name}"\n'))
     assert scenario.rigs["bow"].cameras["eo"].hfov_deg == 12.0
 
@@ -590,3 +604,16 @@ def test_a_dumped_hdri_sky_validates_again_without_a_warning() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert Sky.model_validate(sky.model_dump()) == sky
+
+
+@pytest.mark.parametrize("draw", sorted(_DRAWS))
+def test_a_camera_cannot_take_a_draws_name(tmp_path, draw) -> None:
+    camera = '{ band = "eo", hfov_deg = 45.0, width_px = 64, height_px = 36 }'
+    with pytest.raises(ValueError, match=f"'{draw}' is a draw, not a name"):
+        load(BASELINE, [f"rigs.bow.cameras.{draw} = {camera}"])
+    (tmp_path / "lone.toml").write_text(
+        f"[rigs.bow]\nheight_m = 12.0\n[rigs.bow.cameras.{draw}]\n"
+        'band = "eo"\nhfov_deg = 45.0\nwidth_px = 64\nheight_px = 36\n'
+    )
+    with pytest.raises(ValueError, match="is a draw, not a name"):
+        load(tmp_path / "lone.toml")

@@ -12,7 +12,8 @@ Rules:
 2. Syntax decides what a name is. A bare name is a preset shipped under `cfg/`,
    anything with `/` or ending in `.toml` is a path relative to the including file.
    Never try one form and fall back to the other.
-3. Tables merge, everything else replaces. A list is replaced whole.
+3. Tables merge, everything else replaces. A list, or a table naming a preset, is
+   replaced whole.
 
 Any field can instead be a draw, `{ uniform = [lo, hi] }` or `{ choice = [...] }`,
 resolved after both forms of reuse and before validation.
@@ -658,8 +659,8 @@ def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
 
 def _merge_value(base: Any, over: Any) -> Any:
     """Two tables merge, and a table over a choice of tables merges into each option;
-    anything else, a draw included, replaces outright."""
-    if not _is_table(over):
+    anything else, a draw or a table naming a preset included, replaces outright."""
+    if not _is_table(over) or "preset" in over:
         return over
     if _is_table(base):
         return _merge(base, over)
@@ -696,6 +697,11 @@ def _expand(
         return [_expand(item, block, base, chain, keyed) for item in node]
     if not isinstance(node, dict):
         return node
+    # A draw holds a list of options; an entry by a draw's name would read as one.
+    if keyed and (
+        named := [k for k in node if k in _DRAWS and not isinstance(node[k], list)]
+    ):
+        raise ValueError(f"{named[0]!r} is a draw, not a name: rename it")
     # A draw's options are presets of the field it sits on, never of `choice`.
     if _is_draw(node):
         return {key: _expand(v, block, base, chain, keyed) for key, v in node.items()}
@@ -720,12 +726,9 @@ def _read(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
     with path.open("rb") as handle:  # TOML is UTF-8 by spec, so never read_text
         data = tomllib.load(handle)
 
-    # This file's presets resolve before the parent merges in, or an inherited value
-    # would outrank a preset this file names explicitly.
-    data = _expand(data, None, path.parent, chain)
     if (parent := data.pop("extends", None)) is not None:
         data = _merge(_read(_include_path(parent, path.parent), chain), data)
-    return data
+    return _expand(data, None, path.parent, chain)
 
 
 def _draw(node: Any, seed: int, path: str) -> Any:
@@ -753,7 +756,7 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
     path = Path(path)
     data = _read(path)
     for assignment in overrides:
-        data = _merge(data, _expand(tomllib.loads(assignment), None, path.parent, ()))
+        data = _expand(_merge(data, tomllib.loads(assignment)), None, path.parent, ())
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")

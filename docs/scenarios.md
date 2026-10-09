@@ -44,6 +44,8 @@ preset = "port"
 preset = "starboard"
 ```
 
+A table that names a preset replaces whatever it lands on, so `--set 'rigs.bow = { preset = "port" }'` turns the bow into a Pod; keys beside the `preset` still change it. Nothing else removes a rig or a camera: a scenario with fewer extends a narrower parent, as `twin-pod.toml` extends `port-pod.toml`.
+
 Scenarios carry a `#:schema` line, so editors with a TOML language server give you key completion, inline validation and hover docs. `seascape schema > schema/scenario.json` regenerates it from the models.
 
 ## Randomization
