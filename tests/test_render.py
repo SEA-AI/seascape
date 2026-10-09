@@ -74,6 +74,27 @@ class TestThermalImage:
         assert len(bpy.data.images) == before
 
 
+class TestFrame:
+    def test_a_png_keeps_its_one_16bit_channel(self, tmp_path: Path) -> None:
+        counts = np.array([[29500], [27200]], np.uint16).repeat(4, axis=1)
+        cv2.imwrite(str(tmp_path / "f.png"), counts)
+        assert (render._frame(tmp_path / "f.png") == counts).all()
+
+    def test_a_jpg_reads_as_rgb(self, tmp_path: Path) -> None:
+        bgr = np.zeros((16, 16, 3), np.uint8)
+        bgr[..., 2] = 255  # red
+        cv2.imwrite(str(tmp_path / "f.jpg"), bgr)
+        assert render._frame(tmp_path / "f.jpg")[8, 8] == pytest.approx(
+            [255, 0, 0], abs=3
+        )
+
+    def test_an_exr_reads_top_row_first(self, tmp_path: Path) -> None:
+        exr = exr_of(tmp_path, [1.0, 2.0])
+        assert render._frame(exr)[:, 0] == pytest.approx(
+            np.array([[2.0] * 3, [1.0] * 3])
+        )
+
+
 def built(band: Band, **outputs: object) -> bpy.types.Scene:
     # No ship: these are render settings.
     scenario = load(OPEN_SEA)

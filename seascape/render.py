@@ -37,6 +37,16 @@ def _pixels(path: Path) -> np.ndarray:
     return buffer.reshape(height, width, 4)
 
 
+def _frame(path: Path) -> np.ndarray:
+    """An image as written, top row first: RGB, or its one channel."""
+    if path.suffix == ".exr":
+        return _pixels(path)[::-1, :, :3]
+    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        raise OSError(f"cannot read {path}")
+    return image if image.ndim == 2 else image[..., 2::-1]  # cv2 reads BGR(A)
+
+
 def _temperatures_k(exr: Path) -> np.ndarray:
     return lwir.brightness_temperature(_pixels(exr)[..., 0])
 
@@ -189,7 +199,12 @@ def render(
                     cameras.append(camera)
                     index = _pixels(passes / f"{mount.name}.index.exr")[::-1, :, 0]
                     truth.add(
-                        camera, time_s, np.rint(index).astype(int), targets, radius_m
+                        camera,
+                        time_s,
+                        np.rint(index).astype(int),
+                        _frame(into / file_name),
+                        targets,
+                        radius_m,
                     )
                 # Every frame, so a render that dies keeps what it wrote.
                 _write_truth(into, cameras, truth)

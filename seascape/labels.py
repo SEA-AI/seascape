@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import cv2
 import numpy as np
 from pydantic import Field
 
@@ -21,6 +22,21 @@ FILENAME = "labels.json"
 # The horizon bows f dip (sec(hfov / 2) - 1) off its chord, and a segment's bow falls
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
+
+# The Y row of sRGB's linear RGB to XYZ (IEC 61966-2-1).
+BT709 = np.array([0.2126, 0.7152, 0.0722])
+# IEC 61966-2-1.
+_SRGB = np.arange(256) / 255
+SRGB_TO_LINEAR = np.where(
+    _SRGB <= 0.04045, _SRGB / 12.92, ((_SRGB + 0.055) / 1.055) ** 2.4
+)
+# Per 8-bit code, each channel's share of luminance: float32, as a 4K frame of float64
+# RGB is 200 MB.
+_SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
+# Judgement: the gap clears the pixel filter's and the compositor's blur.
+RING_PX, RING_GAP_PX = 3, 2
+# The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
+THRESHOLD_CONTRAST = 0.05
 
 
 class Target(NamedTuple):
@@ -85,11 +101,12 @@ class Labels(Model):
         camera: CameraCalibration,
         time_s: float,
         index: np.ndarray,
+        frame: np.ndarray,
         targets: Sequence[Target],
         radius_m: float,
     ) -> None:
-        """One frame: `index` is its object-index pass, (height, width), top row
-        first."""
+        """One frame: `index` is its object-index pass, (height, width), and `frame`
+        the image as written, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -103,6 +120,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
+        lum = luminance(frame) if camera.band == "eo" else None
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -110,6 +128,11 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
+            # Too faint to see is as unseen as hidden.
+            if lum is not None:
+                c = contrast(index, lum, target.pass_index)
+                if c is not None and c < THRESHOLD_CONTRAST:
+                    continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             east, north = np.subtract(target.centre_m, at)
             self.annotations.append(
@@ -190,6 +213,30 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
     merged.info["scenarios"] = scenarios
     return merged
+
+
+def luminance(frame: np.ndarray) -> np.ndarray:
+    if frame.dtype == np.uint8:
+        r, g, b = (_SHARE[frame[..., c], c] for c in range(3))
+        return r + g + b
+    return frame @ BT709
+
+
+def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
+    """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
+    superstructure does not cancel."""
+    mask = (index == pass_index).astype(np.uint8)
+    others = ((index > 0) & (index != pass_index)).astype(np.uint8)
+    gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
+    far = cv2.dilate(mask, np.ones((2 * (RING_GAP_PX + RING_PX) + 1,) * 2, np.uint8))
+    ring = (far > cv2.dilate(mask, gap)) & ~cv2.dilate(others, gap).astype(bool)
+    if not ring.any():
+        return None
+    background = lum[ring].mean()
+    rss = float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)))
+    if background <= 0:
+        return 0.0 if rss == 0 else math.inf
+    return rss / background
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

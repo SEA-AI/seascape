@@ -8,6 +8,8 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
+An EO target whose contrast against its surroundings is under 5 %, the threshold of the WMO's meteorological optical range (WMO-No. 8, ch. 9), gets no box, as an occluded one gets none. `visibility_km` takes Koschmieder's 2 %, so a target loses its box nearer than the scenario's visibility. Its contrast is O'Kane et al.'s (1995) RSS Weber contrast in luminance, against a thin ring of background around its index-pass pixels.
+
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 
 An LWIR jpg is what a thermal camera shows: 8-bit grey, its contrast span damped so a clip does not flicker. An LWIR png is what it measures: 16-bit centikelvin, the unit radiometric thermal cameras write, so `cv2.imread(path, cv2.IMREAD_UNCHANGED) / 100` is kelvin. A viewer shows that as flat grey; `montage`, `panorama` and `video` tone it through the same AGC as the jpg.

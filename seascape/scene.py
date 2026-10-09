@@ -1252,8 +1252,10 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     sea.water(scenario.sea, reach_m, material)
     # After the last material.
     _haze(scenario.sky, band, far_m)
-    # The object-index pass reads 0 for everything else: sky, sea and ownship.
-    for index, anchor in enumerate(chain(*targets.values()), start=1):
+    # The object-index pass reads 0 for sky and sea. The ownship takes the index after
+    # the targets: no box, and no target's background.
+    anchors = [*chain(*targets.values()), vessel]
+    for index, anchor in enumerate(anchors, start=1):
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
