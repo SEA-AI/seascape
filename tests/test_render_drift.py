@@ -14,7 +14,8 @@ from mathutils import Vector
 
 from seascape import lwir, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
-from seascape.config import Band, Scenario, Sky, load
+from seascape.config import Band, Camera, Scenario, Sky, load
+from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render
 
@@ -27,8 +28,6 @@ def _clear(scenario: Scenario) -> Scenario:
     return scenario.model_copy(update={"sky": sky, "outputs": outputs})
 
 
-SCENARIOS = Path(__file__).parent.parent / "scenarios"
-OPEN_SEA = SCENARIOS / "open-sea.toml"
 SCENARIO = _clear(load(OPEN_SEA))
 SAMPLES = 48
 
@@ -147,11 +146,7 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
     assert texture(rippled) > 2.5 * texture(flat)
 
 
-LOOP = _clear(
-    load(
-        OPEN_SEA, ["outputs.duration_s = 30", "outputs.fps = 1", "outputs.loop = true"]
-    )
-)
+LOOP = _clear(variant(outputs={"duration_s": 30.0, "fps": 1, "loop": True}))
 
 
 @pytest.mark.render
@@ -439,7 +434,7 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
     """Light sampling and BSDF sampling estimate the same frame, unless a path one of
     them takes skips the haze."""
     # The hull stays: its emission is light the two samplings must agree on.
-    hazy = load(SCENARIOS / "baseline.toml")
+    hazy = load(BASELINE)
     hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
     scene.build(hazy, "ir")
     sc = bpy.context.scene
@@ -553,13 +548,9 @@ class TestCamera:
 
 def test_a_hull_s_foam_trails_behind_it() -> None:
     """From above, the sea astern of a hull heading east is brighter than ahead."""
-    scenario = load(
-        OPEN_SEA,
-        [
-            'outputs.format = "exr"',
-            'objects = [{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0, '
-            "heading_deg = 90.0, speed_mps = 10.0 }]",
-        ],
+    scenario = variant(
+        objects=[target("yacht", 300.0, heading_deg=90.0, speed_mps=10.0)],
+        outputs={"format": "exr"},
     )
     scene.build(scenario, "eo")
     sc = bpy.context.scene
@@ -578,14 +569,11 @@ def test_a_hull_s_foam_trails_behind_it() -> None:
 
 def _rig(*widths_px: int) -> Scenario:
     names = ["eo", *(f"eo_{i}" for i in range(1, len(widths_px)))]
-    cameras = [
-        f'rigs.bow.cameras.{name} = {{ band = "eo", hfov_deg = 45.0, width_px = {w}, '
-        f"height_px = {w * 9 // 16} }}"
+    cameras = {
+        name: Camera(band="eo", hfov_deg=45.0, width_px=w, height_px=w * 9 // 16)
         for name, w in zip(names, widths_px, strict=True)
-    ]
-    return load(
-        OPEN_SEA, ['outputs.format = "exr"', "rigs.bow.pitch_deg = -3.0", *cameras]
-    )
+    }
+    return variant(rig={"pitch_deg": -3.0}, cameras=cameras, outputs={"format": "exr"})
 
 
 def _same(rendered: np.ndarray, expected: np.ndarray) -> bool:
@@ -616,19 +604,20 @@ def test_a_render_at_half_resolution_is_a_build_at_half_width() -> None:
 
 def _set_after(setting: str, built: bool) -> np.ndarray:
     """With a ship far enough off to be hazed, so the haze's sun shows."""
-    sets = [
-        'outputs.format = "exr"',
-        "rigs.bow.pitch_deg = -3.0",
-        "rigs.bow.cameras.eo = { width_px = 320, height_px = 180 }",
-        "objects = [{ preset = 'container_ship', range_m = 3e3, bearing_deg = 0.0 }]",
-    ]
-    if built:
-        sets.append(
-            "outputs.samples.eo = 64"
-            if setting == "samples"
-            else "sky.sun_elevation_deg = 12.0"
-        )
-    scene.build(load(OPEN_SEA, sets), "eo")
+    outputs: dict[str, object] = {"format": "exr"}
+    sky: dict[str, object] = {}
+    if built and setting == "samples":
+        outputs["samples"] = {"eo": 64}
+    elif built:
+        sky["sun_elevation_deg"] = 12.0
+    scenario = variant(
+        rig={"pitch_deg": -3.0},
+        cameras={"eo": {"width_px": 320, "height_px": 180}},
+        objects=[preset_target("container_ship", 3e3)],
+        outputs=outputs,
+        sky=sky,
+    )
+    scene.build(scenario, "eo")
     sc = bpy.context.scene
     if not built:
         shoot((320, 180), f"before_{setting}")
@@ -667,13 +656,9 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
 
 
 def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
-    scenario = load(
-        OPEN_SEA,
-        [
-            'sky.hdri = "kloofendal_48d_partly_cloudy"',
-            "sky.sun_bearing_deg = 70.0",
-            'outputs.format = "exr"',
-        ],
+    scenario = variant(
+        sky={"hdri": "kloofendal_48d_partly_cloudy", "sun_bearing_deg": 70.0},
+        outputs={"format": "exr"},
     )
     scene.build(scenario, "eo")
     sc = bpy.context.scene

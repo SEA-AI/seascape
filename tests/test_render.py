@@ -12,11 +12,7 @@ import pytest
 from seascape import agc, labels, lwir, render, scene
 from seascape.calibration import Calibration
 from seascape.config import Band, ImageFormat, load
-
-BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
-TWIN_POD = BASELINE.with_name("twin-pod.toml")
-UNDERWAY = BASELINE.with_name("underway.toml")
-OPEN_SEA = BASELINE.with_name("open-sea.toml")
+from tests.scenarios import OPEN_SEA, TWIN_POD, UNDERWAY, target, variant
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -184,7 +180,7 @@ def test_a_relative_output_reaches_blender_absolute(
     # bpy.ops.render is rebuilt on every access, so patch the attribute that holds it.
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=capture))
     monkeypatch.chdir(tmp_path)
-    scenario = load(OPEN_SEA, ['outputs.bands = ["eo"]'])
+    scenario = variant(outputs={"bands": ["eo"]})
 
     with pytest.raises(RuntimeError, match="captured"):
         render.render(scenario, Path("out"))
@@ -233,7 +229,7 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
 ) -> None:
     """Boxes are sampled at pixel centres, so a hull reaches half a pixel past one."""
     # Boxes come from the index pass, which takes the pixel centre at any sample count.
-    scenario = load(TWIN_POD, ['outputs.bands = ["ir"]', "outputs.samples.ir = 1"])
+    scenario = variant(TWIN_POD, outputs={"bands": ["ir"], "samples": {"ir": 1}})
 
     render.render(scenario, tmp_path)
 
@@ -255,17 +251,14 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
 @pytest.mark.render
 def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> None:
     """Fast enough that the ship crosses pixels between frames."""
-    scenario = load(
+    scenario = variant(
         UNDERWAY,
-        [
-            "outputs.duration_s = 3.0",
-            "outputs.fps = 1",
-            "outputs.samples = { eo = 2, ir = 4 }",
-            "rigs.bow.cameras.eo = { width_px = 96, height_px = 54 }",
-            "rigs.bow.cameras.ir = { width_px = 80, height_px = 64 }",
-            'objects = [{ asset = "yacht", range_m = 300.0, '
-            "bearing_deg = 8.0, heading_deg = 270.0, speed_mps = 10.0 }]",
-        ],
+        cameras={
+            "eo": {"width_px": 96, "height_px": 54},
+            "ir": {"width_px": 80, "height_px": 64},
+        },
+        objects=[target("yacht", 300.0, 8.0, heading_deg=270.0, speed_mps=10.0)],
+        outputs={"duration_s": 3.0, "fps": 1, "samples": {"eo": 2, "ir": 4}},
     )
 
     render.render(scenario, tmp_path)
@@ -292,15 +285,9 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
 def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    scenario = load(
-        OPEN_SEA,
-        [
-            "outputs.duration_s = 3.0",
-            "outputs.fps = 1",
-            'outputs.bands = ["ir"]',
-            "outputs.samples.ir = 2",
-            "rigs.bow.cameras.ir = { width_px = 80, height_px = 64 }",
-        ],
+    scenario = variant(
+        cameras={"ir": {"width_px": 80, "height_px": 64}},
+        outputs={"duration_s": 3.0, "fps": 1, "bands": ["ir"], "samples": {"ir": 2}},
     )
     real, calls = bpy.ops.render.render, []
 

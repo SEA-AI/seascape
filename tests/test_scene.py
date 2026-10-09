@@ -7,6 +7,7 @@ import math
 from collections.abc import Iterator
 from pathlib import Path
 from statistics import NormalDist
+from typing import Any
 
 import bpy
 import numpy as np
@@ -16,13 +17,18 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Band, Mount, Scenario, load, substream
+from seascape.config import Band, Mount, Object, Rig, Scenario, load, substream
+from tests.scenarios import (
+    BASELINE,
+    DRIFTING,
+    OPEN_SEA,
+    preset_camera,
+    preset_target,
+    target,
+    variant,
+)
 
-BASELINE = Path(__file__).parent.parent / "scenarios" / "baseline.toml"
-DRIFTING = BASELINE.with_name("drifting.toml")
-OPEN_SEA = BASELINE.with_name("open-sea.toml")
 SCENARIO = load(BASELINE)
-RIG_ONLY = f'extends = "{OPEN_SEA}"\n'
 
 
 def camera_of(mount: Mount) -> bpy.types.Object:
@@ -414,16 +420,13 @@ def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
     assert min(c.y for c in fitted) == pytest.approx(-1.0)
 
 
-def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> None:
+def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
     """Horizon rolls by asin(sin(pitch) sin(yaw))."""
     pitch_deg, yaw_deg = -5.0, 40.0
-    path = tmp_path / "pitched.toml"
-    path.write_text(
-        f"{RIG_ONLY}\n"
-        f"[rigs.bow]\npitch_deg = {pitch_deg}\n\n"
-        f'[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\nyaw_deg = {yaw_deg}\n'
+    scenario = variant(
+        rig={"pitch_deg": pitch_deg},
+        cameras={"eo": preset_camera("eo_4k_49deg", yaw_deg=yaw_deg)},
     )
-    scenario = load(path)
     expected = math.degrees(
         math.asin(math.sin(math.radians(pitch_deg)) * math.sin(blend.yaw(yaw_deg)))
     )
@@ -438,24 +441,14 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras(tmp_path) -> No
     )
 
 
-def _lens_pitched(tmp_path, yaw_deg: float, pitch_deg: float):
-    path = tmp_path / "lens.toml"
-    path.write_text(
-        f"{RIG_ONLY}\n"
-        "[rigs.bow]\nyaw_deg = -60.0\n\n"
-        '[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\n'
-        f"yaw_deg = {yaw_deg}\npitch_deg = {pitch_deg}\n"
-    )
-    scenario = load(path)
-    scene.build(scenario, "eo")
-    return scenario.mounts[0]
-
-
-def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path) -> None:
+def test_a_pitched_lens_points_exactly_where_it_was_asked_to() -> None:
     """Rx inside the camera's yaw: neither angle disturbs the other, nor the horizon."""
     pitch_deg = -10.0
+    lens = preset_camera("eo_4k_49deg", yaw_deg=40.0, pitch_deg=pitch_deg)
+    scenario = variant(rig={"yaw_deg": -60.0}, cameras={"eo": lens})
 
-    mount = _lens_pitched(tmp_path, 40.0, pitch_deg)
+    scene.build(scenario, "eo")
+    mount = scenario.mounts[0]
 
     camera = bpy.data.objects[mount.name]
     bearing, elevation = scene.boresight_deg(camera)
@@ -465,21 +458,17 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to(tmp_path) -> None:
     assert across.normalized().z == pytest.approx(0.0, abs=1e-6)
 
 
-def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre(
-    tmp_path,
-) -> None:
+def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() -> None:
     """The rig is yawed off the bow, so its pitch sits between two yaws and
     moves the off-axis lens off both its bearing and its own pitch. The centre camera
     holds to microdegrees, not zero: matrix_world is float32."""
-    path = tmp_path / "pitched.toml"
-    path.write_text(
-        f"{RIG_ONLY}\n"
-        "[rigs.bow]\npitch_deg = -5.0\nyaw_deg = -60.0\n\n"
-        '[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\nyaw_deg = 0.0\n\n'
-        '[rigs.bow.cameras.eo_off]\npreset = "eo_4k_49deg"\nyaw_deg = 40.0\n'
-        "pitch_deg = -10.0\n"
+    scenario = variant(
+        rig={"pitch_deg": -5.0, "yaw_deg": -60.0},
+        cameras={
+            "eo": preset_camera("eo_4k_49deg"),
+            "eo_off": preset_camera("eo_4k_49deg", yaw_deg=40.0, pitch_deg=-10.0),
+        },
     )
-    scenario = load(path)
     scene.build(scenario, "eo")
     centre, off_axis = (
         (scene.boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
@@ -493,10 +482,8 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre(
     assert abs(elevation - (-10.0)) > 0.1
 
 
-def test_an_ownship_with_no_hull_still_carries_the_rig(tmp_path) -> None:
-    path = tmp_path / "rolled.toml"
-    path.write_text(f"{RIG_ONLY}\n[ownship]\nroll_deg = 5.0\n")
-    scene.build(load(path), "eo")
+def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
+    scene.build(variant(ownship={"roll_deg": 5.0}), "eo")
 
     right = camera_of(SCENARIO.mounts[0]).matrix_world.to_3x3() @ Vector(
         (1.0, 0.0, 0.0)
@@ -505,26 +492,20 @@ def test_an_ownship_with_no_hull_still_carries_the_rig(tmp_path) -> None:
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
-def test_a_near_clip_past_the_far_plane_is_an_error(tmp_path) -> None:
-    path = tmp_path / "deep.toml"
-    path.write_text(f'extends = "{BASELINE}"\n\n[rigs.bow]\nnear_clip_m = 500000.0\n')
+def test_a_near_clip_past_the_far_plane_is_an_error() -> None:
+    deep = variant(BASELINE, rig={"near_clip_m": 500000.0})
 
     with pytest.raises(ValueError, match="near clip"):
-        scene.build(load(path), "eo")
+        scene.build(deep, "eo")
 
 
 def test_the_far_clip_clears_a_hull_down_target() -> None:
     """Hull down from a low camera, its upperworks still up."""
     range_m = 20000.0
-    ship = f'{{ preset = "container_ship", range_m = {range_m}, bearing_deg = 0.0 }}'
-    camera = "{ hfov_deg = 2.0, width_px = 960, height_px = 540 }"
-    scenario = load(
-        OPEN_SEA,
-        [
-            "rigs.bow.height_m = 5.0",
-            f"rigs.bow.cameras.eo = {camera}",
-            f"objects = [{ship}]",
-        ],
+    scenario = variant(
+        rig={"height_m": 5.0},
+        cameras={"eo": {"hfov_deg": 2.0, "width_px": 960, "height_px": 540}},
+        objects=[preset_target("container_ship", range_m)],
     )
     built = scene.build(scenario, "eo")
     (anchor,) = built.targets["container_ship"]
@@ -537,14 +518,13 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     assert camera.data.clip_end > max((c - eye).length for c in corners)
 
 
-def test_a_band_the_rig_cannot_see_is_an_error(tmp_path) -> None:
+def test_a_band_the_rig_cannot_see_is_an_error() -> None:
     """Otherwise `next()` raises StopIteration, naming nothing."""
-    path = tmp_path / "eo_only.toml"
-    path.write_text(
-        '[rigs.bow]\nheight_m = 12.0\n\n[rigs.bow.cameras.eo]\npreset = "eo_4k_49deg"\n'
+    eo_only = Scenario(
+        rigs={"bow": Rig(height_m=12.0, cameras={"eo": preset_camera("eo_4k_49deg")})}
     )
     with pytest.raises(ValueError, match="no rig has an ir camera"):
-        scene.build(load(path), "ir")
+        scene.build(eo_only, "ir")
 
 
 class TestEoBand:
@@ -845,7 +825,7 @@ class TestAnimate:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls) -> None:
-        scene.build(load(OPEN_SEA, ["outputs.duration_s = 0.3"]))
+        scene.build(variant(outputs={"duration_s": 0.3}))
 
     @pytest.fixture
     def empty(self) -> bpy.types.Object:
@@ -905,16 +885,19 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
 
 
 class TestOwnshipMotion:
-    MOTION = (
-        "outputs.duration_s = 2.0",
-        "ownship = { roll_deg = 3.0, pitch_deg = -1.0,"
-        " roll = { amplitude_deg = 5.0, period_s = 4.0 },"
-        " pitch = { amplitude_deg = 2.0, period_s = 4.0 },"
-        " heave = { amplitude_m = 0.5, period_s = 4.0 } }",
+    MOTION = variant(
+        outputs={"duration_s": 2.0},
+        ownship={
+            "roll_deg": 3.0,
+            "pitch_deg": -1.0,
+            "roll": {"amplitude_deg": 5.0, "period_s": 4.0},
+            "pitch": {"amplitude_deg": 2.0, "period_s": 4.0},
+            "heave": {"amplitude_m": 0.5, "period_s": 4.0},
+        },
     )
 
     def test_a_quarter_period_in_is_the_peak(self) -> None:
-        built = scene.build(load(OPEN_SEA, self.MOTION))
+        built = scene.build(self.MOTION)
         anchor, camera = built.vessel, camera_of(SCENARIO.mounts[0])
         mounted = anchor.matrix_world.inverted() @ camera.matrix_world
         bpy.context.scene.frame_set(10)
@@ -927,7 +910,7 @@ class TestOwnshipMotion:
         assert np.allclose(moved, mounted, atol=1e-5)
 
     def test_an_ownship_without_motion_keys_nothing(self) -> None:
-        built = scene.build(load(OPEN_SEA, ["outputs.duration_s = 2.0"]))
+        built = scene.build(variant(outputs={"duration_s": 2.0}))
 
         assert built.vessel.animation_data is None
 
@@ -937,7 +920,7 @@ def _sea_node(name: str) -> bpy.types.ShaderNode:
 
 
 class TestSlicks:
-    SLICKS = load(OPEN_SEA, ["sea.slick_cover = 0.3", "sea.wind_from_deg = 60.0"])
+    SLICKS = variant(sea={"slick_cover": 0.3, "wind_from_deg": 60.0})
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -1016,7 +999,7 @@ def each_frame() -> Iterator[int]:
 
 
 class TestSeaEvolves:
-    SEQUENCE = load(OPEN_SEA, ["outputs.duration_s = 0.3"])
+    SEQUENCE = variant(outputs={"duration_s": 0.3})
 
     def test_the_sea_keeps_the_frames_time(self) -> None:
         scene.build(self.SEQUENCE, "eo")
@@ -1026,7 +1009,7 @@ class TestSeaEvolves:
         assert times == pytest.approx(self.SEQUENCE.outputs.times_s)
 
     def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
-        swell = load(BASELINE, ["sea.swell = { height_m = 1.5, period_s = 11.0 }"])
+        swell = variant(BASELINE, sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
         wind = scene.wave_field(SCENARIO)
         assert scene.wave_field(swell)[: len(wind)] == wind
 
@@ -1038,14 +1021,7 @@ class TestSeaEvolves:
 
 
 class TestLoop:
-    LOOP = load(
-        OPEN_SEA,
-        [
-            "outputs.duration_s = 30",
-            "outputs.fps = 1",
-            "outputs.loop = true",
-        ],
-    )
+    LOOP = variant(outputs={"duration_s": 30.0, "fps": 1, "loop": True})
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -1085,12 +1061,9 @@ class TestOrbitingYachts:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls) -> scene.Built:
-        yachts = (
-            'objects = [{ asset = "yacht", range_m = 200.0, bearing_deg = -90.0,'
-            " orbit = { period_s = 80.0, count = 2 } }]"
-        )
+        yachts = target("yacht", 200.0, -90.0, orbit={"period_s": 80.0, "count": 2})
         return scene.build(
-            load(DRIFTING, [yachts, "outputs.duration_s = 40", "outputs.fps = 1"])
+            variant(DRIFTING, objects=[yachts], outputs={"duration_s": 40.0, "fps": 1})
         )
 
     def test_a_glb_asset_leaves_its_lights_behind(self) -> None:
@@ -1131,7 +1104,7 @@ def keyed() -> Iterator[tuple[str, np.ndarray]]:
 
 class TestDrifting:
     # Every eighth of the drift lands on a frame.
-    SCENARIO = load(DRIFTING, ["outputs.fps = 4"])
+    SCENARIO = variant(DRIFTING, outputs={"fps": 4})
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -1219,34 +1192,30 @@ class TestDrifting:
 
 
 class TestWakes:
-    def _built(self, objects: str) -> bpy.types.NodeTree:
-        scene.build(load(OPEN_SEA, [f"objects = [{objects}]"]), "eo")
+    def _built(self, spec: Object | dict[str, Any]) -> bpy.types.NodeTree:
+        scene.build(variant(objects=[spec]), "eo")
         return bpy.data.materials["sea"].node_tree
 
     def test_a_hull_under_way_leaves_foam_and_arms(self) -> None:
-        tree = self._built(
-            '{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0, speed_mps = 8.0 }'
-        )
+        tree = self._built(target("yacht", 300.0, speed_mps=8.0))
         assert "sea_foam" in bpy.data.images
         assert "wake_normal" in tree.nodes
 
     def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
-        tree = self._built(
-            '{ preset = "container_ship", range_m = 2000.0, bearing_deg = 0.0, '
-            "speed_mps = 5.0 }"
-        )
+        tree = self._built(preset_target("container_ship", 2000.0, speed_mps=5.0))
         assert "sea_foam" in bpy.data.images
         assert "wake_normal" not in tree.nodes
 
     def test_a_group_under_way_leaves_a_wake(self) -> None:
-        scenario = load(
-            OPEN_SEA,
-            [
-                'targets = { asset = "yacht", count = 2, range_m = 300.0, '
-                "bearing_deg = [-5.0, 5.0], heading_deg = [90.0, 90.0], "
-                "speed_mps = 8.0 }"
-            ],
-        )
+        ring = {
+            "asset": "yacht",
+            "count": 2,
+            "range_m": 300.0,
+            "bearing_deg": [-5.0, 5.0],
+            "heading_deg": [90.0, 90.0],
+            "speed_mps": 8.0,
+        }
+        scenario = variant(targets=ring)
         scene.build(scenario, "eo")
         assert "sea_foam" in bpy.data.images
 
@@ -1281,8 +1250,8 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
 
 def test_a_long_lens_draws_for_its_own_pixel() -> None:
     """A pixel under 1e-4 rad: a zero footprint leaves the sea a mirror."""
-    camera = "{ hfov_deg = 1.5, width_px = 640, height_px = 360 }"
-    scene.build(load(OPEN_SEA, [f"rigs.bow.cameras.eo = {camera}"]), "eo")
+    lens = {"hfov_deg": 1.5, "width_px": 640, "height_px": 360}
+    scene.build(variant(cameras={"eo": lens}), "eo")
     bpy.context.view_layer.update()
     pixel_rad = math.radians(1.5) / 640
     assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
@@ -1318,7 +1287,7 @@ class TestPhotographedSky:
         image.save()
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(scene, "download", lambda *_: path)
-            scene.build(load(OPEN_SEA, [f'sky.hdri = "{cls.SKY}"']), "eo")
+            scene.build(variant(sky={"hdri": cls.SKY}), "eo")
 
     def _photos(self, tree: bpy.types.NodeTree) -> list[bpy.types.Node]:
         return [n for n in tree.nodes if n.bl_idname == "ShaderNodeTexEnvironment"]
@@ -1349,7 +1318,7 @@ class TestPhotographedThermalSky:
         image.save()
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(scene, "download", lambda *_: path)
-            scene.build(load(OPEN_SEA, ['sky.hdri = "overcast_soil"']), "ir")
+            scene.build(variant(sky={"hdri": "overcast_soil"}), "ir")
 
     def test_the_clouds_are_the_world(self) -> None:
         tree = bpy.data.worlds["sky"].node_tree
@@ -1362,7 +1331,7 @@ class TestPhotographedThermalSky:
         pixels = np.empty(w * h * 4, np.float32)
         image.pixels.foreach_get(pixels)
         top = pixels.reshape(h, w, 4)[-1, :, 0]
-        sky = load(OPEN_SEA, ['sky.hdri = "overcast_soil"']).sky
+        sky = variant(sky={"hdri": "overcast_soil"}).sky
         expected = lwir.cloudy_sky_radiance(
             np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
         )
@@ -1373,76 +1342,81 @@ class TestPhotographedThermalSky:
 
 
 def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:
-    sky = load(OPEN_SEA, ['sky.hdri = "overcast_soil"']).sky
+    sky = variant(sky={"hdri": "overcast_soil"}).sky
     tree = bpy.data.materials.new("hull").node_tree
     assert (
         scene._sunlit_emission(tree, 290.0, sky).node.bl_idname == "ShaderNodeEmission"
     )
 
 
-def _objects(*specs: str, more: tuple[str, ...] = ()) -> Scenario:
-    return load(OPEN_SEA, [f"objects = [{', '.join(specs)}]", *more])
-
-
 def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
-    spec = (
-        '{ asset = "yacht", range_m = 900.0, bearing_deg = 30.0, heading_deg = 180.0, '
-        'heading_from = "line_of_sight" }'
+    yacht = target(
+        "yacht", 900.0, 30.0, heading_deg=180.0, heading_from="line_of_sight"
     )
-    built = scene.build(_objects(spec), "eo")
-    (anchor,) = built.targets["yacht"]
 
+    built = scene.build(variant(objects=[yacht]), "eo")
+
+    (anchor,) = built.targets["yacht"]
     assert math.degrees(scene.heading_rad(anchor)) % 360.0 == pytest.approx(210.0)
 
 
 def test_hulls_inside_each_other_are_refused() -> None:
-    yacht = '{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }'
+    yachts = variant(objects=[target("yacht", 900.0), target("yacht", 900.0)])
+
     with pytest.raises(scene.OverlapError, match="yacht"):
-        scene.build(_objects(yacht, yacht), "eo")
+        scene.build(yachts, "eo")
 
 
 def test_a_buoy_has_a_footprint_too() -> None:
-    yacht = '{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }'
-    buoy = '{ asset = "lateral_mark", range_m = 902.0, bearing_deg = 0.0 }'
+    near = variant(objects=[target("yacht", 900.0), target("lateral_mark", 902.0)])
+
     with pytest.raises(scene.OverlapError, match="lateral_mark"):
-        scene.build(_objects(yacht, buoy), "eo")
+        scene.build(near, "eo")
+
+
+EAST_M, NORTH_M = 100.0, 1000.0
+CROSSING = [
+    target("yacht", 1000.0, heading_deg=90.0, speed_mps=20.0),
+    target(
+        "yacht",
+        math.hypot(EAST_M, NORTH_M),
+        math.degrees(math.atan2(EAST_M, NORTH_M)),
+    ),
+]
 
 
 def test_a_hull_that_sails_into_another_is_refused() -> None:
     """Apart at the first frame: only the clip's later frames catch it."""
-    east_m, north_m = 100.0, 1000.0
-    fast = (
-        '{ asset = "yacht", range_m = 1000.0, bearing_deg = 0.0, heading_deg = 90.0, '
-    )
-    fast += "speed_mps = 20.0 }"
-    still = (
-        f'{{ asset = "yacht", range_m = {math.hypot(east_m, north_m)}, '
-        f"bearing_deg = {math.degrees(math.atan2(east_m, north_m))} }}"
-    )
-    clip = ("outputs.duration_s = 5.0", "outputs.fps = 1")
+    clip = variant(objects=CROSSING, outputs={"duration_s": 5.0, "fps": 1})
+
     with pytest.raises(scene.OverlapError):
-        scene.build(_objects(fast, still, more=clip), "eo")
-    scene.build(_objects(fast, still), "eo")  # a still of the same two is fine
+        scene.build(clip, "eo")
 
 
-@pytest.mark.parametrize("asset", ["yacht", "lateral_mark"])
-def test_a_built_target_measures_what_the_manifest_says(asset: str) -> None:
-    built = scene.build(
-        _objects(f'{{ asset = "{asset}", range_m = 900.0, bearing_deg = 0.0 }}'), "eo"
-    )
-    (anchor,) = built.targets[asset]
-    mesh = manifest()[asset]
+def test_a_still_of_two_hulls_apart_builds() -> None:
+    scene.build(variant(objects=CROSSING), "eo")
 
-    if isinstance(mesh, Hull):
-        assert anchor["length_m"] == pytest.approx(mesh.length_m, rel=1e-6)
-    else:
-        assert isinstance(mesh, Buoy)
-        assert anchor["height_m"] + mesh.draught_m == pytest.approx(
-            mesh.height_m, rel=1e-6
-        )
+
+def test_a_built_hull_measures_its_manifest_length() -> None:
+    built = scene.build(variant(objects=[target("yacht", 900.0)]), "eo")
+
+    (anchor,) = built.targets["yacht"]
+    hull = manifest()["yacht"]
+    assert isinstance(hull, Hull)
+    assert anchor["length_m"] == pytest.approx(hull.length_m, rel=1e-6)
+
+
+def test_a_built_buoy_measures_its_manifest_height() -> None:
+    built = scene.build(variant(objects=[target("lateral_mark", 900.0)]), "eo")
+
+    (anchor,) = built.targets["lateral_mark"]
+    buoy = manifest()["lateral_mark"]
+    assert isinstance(buoy, Buoy)
+    assert anchor["height_m"] + buoy.draught_m == pytest.approx(buoy.height_m, rel=1e-6)
 
 
 def test_a_target_inside_the_ownship_is_refused() -> None:
-    yacht = '{ asset = "yacht", range_m = 30.0, bearing_deg = 0.0 }'
+    aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "bulk_carrier"})
+
     with pytest.raises(scene.OverlapError, match="ownship"):
-        scene.build(_objects(yacht, more=('ownship.asset = "bulk_carrier"',)), "eo")
+        scene.build(aboard, "eo")

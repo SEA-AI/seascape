@@ -6,14 +6,13 @@ import pytest
 from PIL import Image
 
 from seascape import montage
-from seascape.config import Scenario, load
-
-SCENARIOS = Path(__file__).parents[1] / "scenarios"
+from seascape.config import Scenario
+from tests.scenarios import TWIN_POD, variant
 
 
 @pytest.fixture
 def twin_pod() -> Scenario:
-    return load(SCENARIOS / "twin-pod.toml", ['outputs.format = "png"'])
+    return variant(TWIN_POD, outputs={"format": "png"})
 
 
 def frames(scenario: Scenario, into: Path, size: tuple[int, int] = (64, 36)) -> Path:
