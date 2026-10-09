@@ -6,6 +6,7 @@ is rendered float and written here as a thermal camera writes one: a png as 16-b
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
+import math
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -76,10 +77,13 @@ def _targets(built: scene.Built) -> list[labels.Target]:
         labels.Target(
             pass_index=anchor.pass_index,
             name=anchor.name,
+            category_id=manifest()[asset].category_id,
             category=manifest()[asset].category,
             supercategory=manifest()[asset].supercategory,
             centre_m=tuple(anchor.matrix_world.translation.xy),
             waterline_m=scene.waterline_m(anchor),
+            heading_deg=math.degrees(scene.heading_rad(anchor)) % 360.0,
+            dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
         )
         for asset, anchors in built.targets.items()
         for anchor in anchors

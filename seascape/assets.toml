@@ -3,6 +3,7 @@
 [container_ship]
 kind = "hull"
 category = "container ship"
+category_id = 1
 description = "Low-poly container ship in flat colours, containers stacked on deck."
 url = "https://s3.us-east-005.backblazeb2.com/icosa-gallery/poly/3AmDGcCu6Ll/model.fbx"
 sha256 = "70f5d10641245613e8887ac3f0ab1e180c1cc2d27b1401621e56d0fe56dcf9ab"
@@ -20,6 +21,7 @@ attribution = "Container Ship by Alex “SAFFY” Safayan, https://poly.pizza/m/
 [yacht]
 kind = "hull"
 category = "motor yacht"
+category_id = 5
 description = "Low-poly motor yacht in flat colours."
 url = "https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/c/fp/1620916947019758/9znU2c-dTSR/d-wfIKdABHE/Yacht.glb"
 sha256 = "641bce20710ceb963f6ddd295a883b4d09019c5344876fd861f83abe27ed7d36"
@@ -36,6 +38,7 @@ attribution = "Yacht by Alex “SAFFY” Safayan, https://poly.pizza/m/9znU2c-dT
 [small_container_ship]
 kind = "hull"
 category = "container ship"
+category_id = 1
 description = "Small container ship, textured hull and containers, superstructure aft."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-126/6362d3e9b11e4396aaafa854c3aa6f06.glb"
 sha256 = "ff9c2b913f106f2b1e6b8964e6dfe9fa69bf80d4f50f12def6cf1f4a5ac93f46"
@@ -53,6 +56,7 @@ attribution = "Small Cargo Ship by 588276, https://sketchfab.com/3d-models/6362d
 [cargo_ship]
 kind = "hull"
 category = "general cargo ship"
+category_id = 2
 description = "Multipurpose cargo ship with two deck cranes, textured, superstructure aft."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-070/b7c97df584824ca682d26daabf401f87.glb"
 sha256 = "20de84b0404a6e414543caeb7fc988fe12ef92c4b4b15bd5a94afcacfa628f2e"
@@ -70,6 +74,7 @@ attribution = "Cargo ship by hungry_drifter, https://sketchfab.com/3d-models/b7c
 [bulk_carrier]
 kind = "hull"
 category = "bulk carrier"
+category_id = 3
 description = "Geared bulk carrier with four deck cranes, black hull, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-131/93c076900f004102b78dfac989efae1d.glb"
 sha256 = "01d45a6c0840da5664c94bff4ad325a41ab9b5abfd50e280420da2e438d5a218"
@@ -87,6 +92,7 @@ attribution = "Bulk Carrier by medialog, https://sketchfab.com/3d-models/93c0769
 [patrol_vessel]
 kind = "hull"
 category = "patrol vessel"
+category_id = 4
 description = "Naval patrol vessel, faceted grey hull, helicopter deck aft, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-088/644999231c034c959c6091b00ed6c50f.glb"
 sha256 = "d874894dc3a7d5db18d574b2d58294ade898ba062fb632b92b4f4433e5d9c4ef"
@@ -110,6 +116,7 @@ attribution = "littoral mission vessel by fxmdeveloper, https://sketchfab.com/3d
 [lateral_mark]
 kind = "buoy"
 category = "lateral mark"
+category_id = 6
 description = "Red lateral mark: float, column, light and daymark, weathered, textured."
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/lateral_sea_marker/lateral_sea_marker_2k.gltf"
 sha256 = "b4a3ecfc84d2e26b4477f82214e179cbee732c27e5cc33bfd29b2b3c1a8f0c9c"
@@ -138,6 +145,7 @@ sha256 = "904f59238995c859c6977ebcf34fab34cf724bcf376002c2a1c935683f7c70ff"
 [ocean_buoy]
 kind = "buoy"
 category = "lateral mark"
+category_id = 6
 description = "Red steel buoy with cage light, bell and ring guard, weathered, textured."
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/ocean_buoy/ocean_buoy_2k.gltf"
 sha256 = "746e4213c2f86cc8eec4cb3909d8c0cca9062ee0e27c342ab9021c76ae638e98"
@@ -169,6 +177,7 @@ sha256 = "bb302687cb174769a5c995842340cbd9569953b2d5afb643f94361ffd1d558f0"
 [pillar_buoy]
 kind = "buoy"
 category = "lateral mark"
+category_id = 6
 description = "Green steel pillar buoy with lattice tower and light, weathered, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-076/cdd198814e874379b6cd2c0cc06bc22d.glb"
 sha256 = "d101d75fa54655b2817001e9ae1dcab10cb7cff6401cc7dd8b6350eca9099be3"
@@ -184,6 +193,7 @@ attribution = "Buoy by honix, https://sketchfab.com/3d-models/cdd198814e874379b6
 [mooring_buoy]
 kind = "buoy"
 category = "mooring buoy"
+category_id = 7
 description = "Small white rigid mooring buoy with a lifting eye."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-034/da1a9915bd0446299998a896311e4d64.glb"
 sha256 = "249eee6fb02f4c544f80c4384743c56466a7227bb22ba4cee181b128ad39c00d"
@@ -200,6 +210,7 @@ attribution = "Buoy by ean47, https://sketchfab.com/3d-models/da1a9915bd04462999
 [log]
 kind = "debris"
 category = "log"
+category_id = 8
 description = "Dead tree trunk, bark worn off in places, textured."
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/2k/dead_tree_trunk/dead_tree_trunk_2k.gltf"
 sha256 = "63133e2cd4c8c9d08114ef158284403ba4fad802b7f1162f73a8323b509a1b53"
@@ -227,6 +238,7 @@ sha256 = "9447959386aa3ee0e3552bd095c3dbbcb13c58cc6a87cb4b51cc4517b695040c"
 [pallet]
 kind = "debris"
 category = "pallet"
+category_id = 9
 description = "EUR pallet in light wood, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-015/4f38d1e992e94966b6ceb2754cc16a22.glb"
 sha256 = "773e6df578ff331e4404bb390355efb5c7720bd7d8064e407bbc7478521a5a9c"
@@ -243,6 +255,7 @@ attribution = "Euro-pallet by wittybacon, https://sketchfab.com/3d-models/4f38d1
 [container]
 kind = "debris"
 category = "container"
+category_id = 10
 description = "Weathered red 20 ft ISO container, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-150/f555ce5532d84cac8ad963dec5833934.glb"
 sha256 = "6363ea3e10f072000a58834f5d84196c3bf5c7c78ac2fabcc8caac2b419a39e4"
@@ -258,6 +271,7 @@ attribution = "20ft Red by aidancallaghan, https://sketchfab.com/3d-models/f555c
 [sea_mine]
 kind = "debris"
 category = "sea mine"
+category_id = 11
 description = "Black horned contact mine broken from its mooring, upper case and horns above water, textured."
 url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-016/7f503538a0de4bfa93737ccfab193d36.glb"
 sha256 = "ba5ae18def82a4ad49481ccfe8fc82e934b7ce775b1dccc37158f0fb5090d329"

@@ -23,6 +23,7 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     manifest = tmp_path / "assets.toml"
     manifest.write_text(
         f'[ship]\nkind = "hull"\ndescription = "A hull."\ncategory = "ship"\n'
+        "category_id = 1\n"
         f'url = "{source.as_uri()}"\n'
         f'sha256 = "{DIGEST}"\nlength_m = 1.0\ndraught_m = 0.1\ntriangles = 1\n'
         'texture_px = []\nlicence = "CC0-1.0"\nattribution = "nobody"\n'
@@ -39,6 +40,13 @@ def test_every_object_preset_names_an_asset() -> None:
     for preset in sorted((CFG_DIR / "objects").glob("*.toml")):
         with preset.open("rb") as handle:
             assert tomllib.load(handle)["asset"] in assets.manifest(), preset
+
+
+def test_a_category_has_one_id_and_an_id_one_category() -> None:
+    pairs = {(mesh.category, mesh.category_id) for mesh in assets.manifest().values()}
+    assert len({name for name, _ in pairs}) == len({i for _, i in pairs}) == len(pairs)
+    # Category ids start at 1, as COCO's do.
+    assert min(i for _, i in pairs) == 1
 
 
 def test_every_url_ends_in_a_bare_extension() -> None:

@@ -58,16 +58,52 @@ class Uniform(Model):
         return float(rng.uniform(*self.uniform))
 
 
+class Integer(Model):
+    """A whole number drawn evenly between two bounds."""
+
+    integer: tuple[int, int] = Field(description="The bounds, both included.")
+
+    def draw(self, rng: np.random.Generator) -> int:
+        return int(rng.integers(*self.integer, endpoint=True))
+
+
 class Choice(Model):
-    """One of several values, each as likely."""
+    """One of several values, each as likely unless weighted."""
 
     choice: list[Any] = Field(min_length=1, description="The values.")
+    weights: list[Annotated[float, Field(ge=0.0)]] | None = Field(
+        default=None,
+        description="How likely each value is, relative to the others: [8, 2] is 80 "
+        "and 20 percent.",
+    )
+
+    @model_validator(mode="after")
+    def _a_weight_per_value(self) -> "Choice":
+        if self.weights is None:
+            return self
+        if len(self.weights) != len(self.choice):
+            raise ValueError(
+                f"{len(self.weights)} weights for {len(self.choice)} values"
+            )
+        total = sum(self.weights)
+        if not math.isfinite(total):
+            raise ValueError(f"the weights sum to {total}")
+        if not total:
+            raise ValueError("the weights sum to 0")
+        return self
 
     def draw(self, rng: np.random.Generator) -> Any:
-        return self.choice[rng.integers(len(self.choice))]
+        if self.weights is None:
+            return self.choice[rng.integers(len(self.choice))]
+        p = np.array(self.weights) / sum(self.weights)
+        return self.choice[rng.choice(len(self.choice), p=p)]
 
 
-_DRAWS: dict[str, type[Uniform | Choice]] = {"uniform": Uniform, "choice": Choice}
+_DRAWS: dict[str, type[Uniform | Integer | Choice]] = {
+    "uniform": Uniform,
+    "integer": Integer,
+    "choice": Choice,
+}
 
 
 # Path text would write outside the output directory.
@@ -347,7 +383,6 @@ AssetName = Annotated[
 ]
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = "Shaded hull temperature. IR only."
-_HEADING = "Where its bow points, clockwise from the ownship's bow."
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -379,15 +414,44 @@ class Object(Model):
     asset: AssetName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
-    heading_deg: float = Field(default=0.0, description=_HEADING)
+    heading_deg: float = Field(
+        default=0.0, description="Where its bow points, clockwise."
+    )
+    heading_from: Literal["ownship", "line_of_sight"] = Field(
+        default="ownship",
+        description="What `heading_deg` turns from: the ownship's bow, or the line "
+        "from the ownship to it, where 0 points away and 180 towards.",
+    )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: float = Field(default=293.0, ge=250.0, le=400.0, description=_T_HULL)
+    count: int = Field(
+        default=1,
+        ge=1,
+        description="How many, each drawn anew. `load` makes the copies, so a "
+        "loaded scenario holds only 1.",
+    )
+
+    @property
+    def course_deg(self) -> float:
+        """`heading_deg` from the ownship's bow, whatever it was given from."""
+        if self.heading_from == "line_of_sight":
+            return self.bearing_deg + self.heading_deg
+        return self.heading_deg
+
+    @model_validator(mode="after")
+    def _copies_are_made_on_load(self) -> "Object":
+        if self.count != 1:
+            raise ValueError(
+                f"{self.asset}: count {self.count} is expanded when a scenario loads"
+            )
+        return self
 
     @model_validator(mode="after")
     def _an_orbit_steers(self) -> "Object":
-        steered = {"heading_deg", "speed_mps", "drift"} & self.model_fields_set
+        steered = {"heading_deg", "heading_from", "speed_mps", "drift"}
+        steered &= self.model_fields_set
         if self.orbit is not None and steered:
             raise ValueError(
                 f"{self.asset} orbits, which sets its course: drop {sorted(steered)}"
@@ -643,8 +707,18 @@ class Scenario(Model):
         return self
 
 
+def _kind(node: Any) -> str | None:
+    """`node`'s draw key, if it holds one and nothing but that draw's fields."""
+    if not isinstance(node, dict):
+        return None
+    kinds = [key for key in node if key in _DRAWS]
+    if len(kinds) == 1 and set(node) <= set(_DRAWS[kinds[0]].model_fields):
+        return kinds[0]
+    return None
+
+
 def _is_draw(node: Any) -> bool:
-    return isinstance(node, dict) and len(node) == 1 and next(iter(node)) in _DRAWS
+    return _kind(node) is not None
 
 
 def _is_table(node: Any) -> bool:
@@ -666,7 +740,10 @@ def _merge_value(base: Any, over: Any) -> Any:
         return _merge(base, over)
     options = base.get("choice") if _is_draw(base) else None
     if isinstance(options, list) and all(_is_table(option) for option in options):
-        return {"choice": [_merge(option, over) for option in options]}
+        # The choice's own fields, its weights, stay with the choice.
+        own = {k: v for k, v in over.items() if k in Choice.model_fields}
+        rest = {k: v for k, v in over.items() if k not in own}
+        return base | own | {"choice": [_merge(option, rest) for option in options]}
     return over
 
 
@@ -733,17 +810,39 @@ def _read(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
 
 def _draw(node: Any, seed: int, path: str) -> Any:
     """Replace every draw in the tree by a value from a substream named for where it
-    sits, `draw/objects/0/range_m`."""
+    sits, `draw/sky/visibility_km`."""
     if isinstance(node, list):
         return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
     if not isinstance(node, dict):
         return node
-    if _is_draw(node):
-        kind = next(iter(node))
+    if (kind := _kind(node)) is not None:
         value = _DRAWS[kind].model_validate(node).draw(substream(seed, path))
         # A chosen draw on the pick's own substream would replay the pick's state.
         return _draw(value, seed, f"{path}/{kind}" if _is_draw(value) else path)
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
+
+
+def _copies(objects: list[Any], seed: int) -> list[Any]:
+    """Each entry `count` times, every copy drawn from a substream of its own."""
+    out = []
+    for i, spec in enumerate(objects):
+        if not isinstance(spec, dict):
+            out.append(spec)  # validation names what it should have been
+            continue
+        path = f"draw/objects/{i}"
+        count = _draw(spec.get("count", 1), seed, f"{path}/count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError(
+                f"objects[{i}]: count must be a whole number from 1, not {count}"
+            )
+        if count > 1 and "orbit" in spec:
+            raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
+        copies = [_draw(spec, seed, f"{path}/{k}") for k in range(count)]
+        # A pick's count would come after the copies were made.
+        if _is_draw(spec) and any(c.get("count", 1) != 1 for c in copies):
+            raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
+        out += [c | {"count": 1} for c in copies]
+    return out
 
 
 def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
@@ -760,6 +859,8 @@ def load(path: str | Path, overrides: Iterable[str] = ()) -> Scenario:
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")
+    if isinstance(objects := data.get("objects"), list):
+        data["objects"] = _copies(objects, seed)
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 

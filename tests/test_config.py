@@ -17,6 +17,8 @@ from seascape.config import (
     CFG_DIR,
     Band,
     Camera,
+    Choice,
+    Integer,
     Object,
     Orbit,
     Outputs,
@@ -35,6 +37,7 @@ SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
 HERO = SCENARIOS.parent / "docs" / "hero.toml"
 RANDOMIZED = SCENARIOS / "randomized.toml"
+DATASET = SCENARIOS / "dataset.toml"
 SCHEMA = Path(__file__).parents[1] / "schema" / "scenario.json"
 
 
@@ -394,7 +397,7 @@ def test_a_draw_is_validated_as_the_field_it_lands_in() -> None:
         load(BASELINE, ["sky.sun_elevation_deg = { uniform = [100.0, 120.0] }"])
 
 
-@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED])
+@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED, DATASET])
 def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     """The `#:schema` line is a comment, so nothing else would ever notice it rot."""
     line = path.read_text().splitlines()[0]
@@ -411,8 +414,9 @@ def test_every_readme_hero_sky_loads_without_a_warning(overrides: list[str]) -> 
         load(HERO, overrides)
 
 
-def test_the_randomized_example_loads() -> None:
-    load(RANDOMIZED)
+@pytest.mark.parametrize("path", [RANDOMIZED, DATASET])
+def test_a_randomized_example_loads(path: Path) -> None:
+    load(path)
 
 
 def test_every_shipped_preset_parses() -> None:
@@ -617,3 +621,145 @@ def test_a_camera_cannot_take_a_draws_name(tmp_path, draw) -> None:
     )
     with pytest.raises(ValueError, match="is a draw, not a name"):
         load(tmp_path / "lone.toml")
+
+
+def test_an_integer_draw_reaches_both_bounds_and_only_whole_numbers() -> None:
+    drawn = {Integer(integer=(1, 3)).draw(substream(seed, "n")) for seed in range(200)}
+    assert drawn == {1, 2, 3}
+    assert all(type(n) is int for n in drawn)
+
+
+SHIP = 'objects = [{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }]'
+
+
+def test_count_makes_copies_each_drawn_anew() -> None:
+    drawn = (
+        'objects = [{ asset = "yacht", count = 3, '
+        "range_m = { uniform = [500.0, 2500.0] }, bearing_deg = 0.0 }]"
+    )
+    scenario = load(BASELINE, [drawn])
+
+    assert len(scenario.objects) == 3
+    assert len({spec.range_m for spec in scenario.objects}) == 3
+    assert {spec.count for spec in scenario.objects} == {1}
+
+
+def test_a_drawn_count_takes_the_value_it_drew() -> None:
+    drawn = 'objects = [{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0, '
+    drawn += "count = { integer = [1, 3] } }]"
+    counts = {len(load(BASELINE, [drawn, f"seed = {s}"]).objects) for s in range(40)}
+    assert counts == {1, 2, 3}
+
+
+def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
+    """Labels carry this dump, and readers rebuild the scene from it."""
+    drawn = (
+        'objects = [{ asset = "yacht", count = { integer = [2, 4] }, '
+        "range_m = { uniform = [500.0, 2500.0] }, bearing_deg = 0.0 }]"
+    )
+    scenario = load(RANDOMIZED, [drawn])
+
+    assert Scenario.model_validate(scenario.model_dump(mode="json")) == scenario
+    assert load(RANDOMIZED, [drawn]) == scenario
+
+
+@pytest.mark.parametrize(
+    ("count", "match"),
+    [("2.5", "whole number"), ("0", "whole number"), ("true", "whole number")],
+)
+def test_a_count_that_is_not_a_whole_number_is_refused(count, match) -> None:
+    spec = f"{{ asset = 'yacht', range_m = 900.0, bearing_deg = 0.0, count = {count} }}"
+    with pytest.raises(ValueError, match=match):
+        load(BASELINE, [f"objects = [{spec}]"])
+
+
+def test_an_object_built_with_a_count_is_refused() -> None:
+    with pytest.raises(ValidationError, match="expanded when a scenario loads"):
+        Object(asset="yacht", range_m=900.0, bearing_deg=0.0, count=2)
+
+
+def test_a_count_cannot_join_an_orbit() -> None:
+    orbit = (
+        'objects = [{ asset = "yacht", range_m = 200.0, bearing_deg = 0.0, '
+        "count = 2, orbit = { period_s = 80.0 } }]"
+    )
+    with pytest.raises(ValueError, match=r"orbit\.count"):
+        load(BASELINE, [orbit])
+
+
+@pytest.mark.parametrize(
+    ("heading_from", "course"), [("ownship", 180.0), ("line_of_sight", 210.0)]
+)
+def test_a_heading_turns_from_what_heading_from_names(heading_from, course) -> None:
+    spec = Object(
+        asset="yacht",
+        range_m=900.0,
+        bearing_deg=30.0,
+        heading_deg=180.0,
+        heading_from=heading_from,
+    )
+    assert spec.course_deg == course
+
+
+def test_an_orbit_refuses_a_heading_from() -> None:
+    with pytest.raises(ValidationError, match="heading_from"):
+        Object(
+            asset="yacht",
+            range_m=200.0,
+            bearing_deg=0.0,
+            heading_from="line_of_sight",
+            orbit=Orbit(period_s=80.0),
+        )
+
+
+def test_a_drawn_object_cannot_carry_a_count() -> None:
+    picked = (
+        'objects = [{ choice = [{ asset = "yacht", range_m = 900.0, '
+        "bearing_deg = 0.0, count = 3 }] }]"
+    )
+    with pytest.raises(ValueError, match="drawn object cannot carry a count"):
+        load(BASELINE, [picked])
+
+
+def test_a_weighted_choice_draws_each_value_as_often_as_its_weight() -> None:
+    picks = [
+        Choice(choice=["a", "b"], weights=[1, 4]).draw(substream(seed, "w"))
+        for seed in range(20_000)
+    ]
+    assert picks.count("b") / len(picks) == pytest.approx(0.8, abs=0.01)
+
+
+def test_a_value_of_weight_zero_is_never_drawn() -> None:
+    choice = Choice(choice=["never", "always"], weights=[0, 1])
+    assert {choice.draw(substream(seed, "w")) for seed in range(200)} == {"always"}
+
+
+@pytest.mark.parametrize(
+    ("weights", "match"),
+    [([1.0], "1 weights for 2 values"), ([-1.0, 2.0], "greater than or equal"),
+     ([0.0, 0.0], "sum to 0"), ([1e308, 1e308], "sum to inf")],
+)  # fmt: skip
+def test_weights_that_cannot_weigh_the_values_are_refused(weights, match) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Choice(choice=["a", "b"], weights=weights)
+
+
+def test_a_table_over_a_weighted_choice_keeps_the_weights() -> None:
+    skies = (
+        'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }], '
+        "weights = [0, 1] }"
+    )
+    drawn = {
+        load(BASELINE, [skies, "sky.visibility_km = 10.0", f"seed = {s}"]).sky.hdri
+        for s in range(20)
+    }
+    assert drawn == {None}
+
+
+def test_weights_set_over_an_inherited_choice_weigh_it() -> None:
+    skies = 'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'
+    drawn = {
+        load(BASELINE, [skies, "sky.weights = [0, 1]", f"seed = {s}"]).sky.hdri
+        for s in range(20)
+    }
+    assert drawn == {None}

@@ -11,7 +11,7 @@ from typing import Any, get_args
 
 import click
 
-from seascape import assets, montage, panorama, recording, skies
+from seascape import assets, labels, montage, panorama, recording, skies
 from seascape.config import Band, json_schema, load
 
 _BANDS = click.Choice(get_args(Band.__value__))
@@ -72,6 +72,9 @@ def _blender_log(path: Path) -> Generator[None]:
             os.close(stdout)
 
 
+TRIES_PER_VARIANT = 10
+
+
 def _progress(length: int, label: str) -> Any:
     return click.progressbar(length=length, label=label, file=sys.stderr)
 
@@ -118,27 +121,46 @@ def build(
 def render(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
 ) -> None:
-    """Write one image per camera and frame, and their labels."""
+    """Write one image per camera and frame, and their labels. With --variants, a seed
+    whose hulls meet is skipped for the next, and the labels merge into one file."""
     built = load(scenario, list(overrides))
     into = output or scenario.with_suffix("")
-    scenes = [(into, built)]
-    if variants > 1:
-        seeds = range(built.seed, built.seed + variants)
-        scenes = [
-            (into / str(seed), load(scenario, [*overrides, f"seed = {seed}"]))
-            for seed in seeds
-        ]
     from seascape import render as renderer
+    from seascape.scene import OverlapError
 
-    with (
-        _progress(sum(s.images for _, s in scenes), "Rendering") as bar,
-        _blender_log(into / "blender.log"),
-    ):
-        written = [
-            path
-            for folder, scene in scenes
-            for path in renderer.render(scene, folder, lambda: bar.update(1))
-        ]
+    if variants == 1:
+        with (
+            _progress(built.images, "Rendering") as bar,
+            _blender_log(into / "blender.log"),
+        ):
+            written = renderer.render(built, into, lambda: bar.update(1))
+    else:
+        written, folders = [], []
+        with (
+            _progress(variants, "Rendering") as bar,
+            _blender_log(into / "blender.log"),
+        ):
+            seed = built.seed
+            while len(folders) < variants:
+                if seed == built.seed + TRIES_PER_VARIANT * variants:
+                    raise click.ClickException(
+                        f"{len(folders)} of {variants} variants in "
+                        f"{seed - built.seed} seeds: hulls meet in the rest"
+                    )
+                folder = into / str(seed)
+                variant = load(scenario, [*overrides, f"seed = {seed}"])
+                seed += 1
+                ours = not folder.exists()
+                try:
+                    written += renderer.render(variant, folder)
+                except OverlapError as error:
+                    if ours:  # the build refuses before anything is written
+                        folder.rmdir()
+                    click.echo(f"\nseed {variant.seed} skipped: {error}", err=True)
+                    continue
+                folders.append(folder)
+                bar.update(1)
+        written.append(labels.merge(into, folders).write(into))
     for path in written:
         click.echo(path)
     click.echo(f"{len(written)} files in {into}", err=True)

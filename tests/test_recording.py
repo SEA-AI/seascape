@@ -87,6 +87,7 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
                 height=HEIGHT,
                 camera="EO",
                 band="eo",
+                hfov_deg=45.0,
                 time_s=i / 10,
                 horizon_px=horizon_px(cameras[-1], RADIUS_M),
             )

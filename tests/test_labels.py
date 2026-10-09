@@ -39,14 +39,19 @@ def camera(
     )
 
 
-def target(pass_index: int, category: str = "ship") -> labels.Target:
+def target(
+    pass_index: int, category: str = "ship", category_id: int = 1
+) -> labels.Target:
     return labels.Target(
         pass_index=pass_index,
         name=f"t{pass_index}",
+        category_id=category_id,
         category=category,
         supercategory="vessel",
         centre_m=(0.0, 1000.0),
         waterline_m=np.array([[0.0, 990.0], [5.0, 1010.0]]),
+        heading_deg=90.0,
+        dims_m=(20.0, 5.0, 4.0),
     )
 
 
@@ -79,7 +84,7 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, [target(1), target(2, "buoy")], RADIUS_M)
+    truth.add(camera(), 0.0, index, [target(1), target(2, "buoy", 6)], RADIUS_M)
 
     assert [a.name for a in truth.annotations] == ["t1"]
     assert [c.name for c in truth.categories] == ["ship"]
@@ -96,9 +101,34 @@ def test_targets_of_one_category_share_it() -> None:
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
 
 
-def test_labels_written_without_supercategories_still_read() -> None:
-    old = '{"categories": [{"id": 1, "name": "container_ship"}]}'
-    assert labels.Labels.model_validate_json(old).categories[0].supercategory == ""
+def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10], index[20, 20] = 1, 2
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, [target(1, "buoy", 6), target(2)], RADIUS_M)
+
+    assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
+    assert [a.category_id for a in truth.annotations] == [6, 1]
+
+
+def test_an_image_carries_its_cameras_field_of_view() -> None:
+    truth = labels.Labels()
+
+    truth.add(camera(hfov_deg=42.0), 0.0, np.zeros((48, 64), dtype=int), [], RADIUS_M)
+
+    assert truth.images[0].hfov_deg == pytest.approx(42.0)
+
+
+def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, [target(1)], RADIUS_M)
+
+    (annotation,) = truth.annotations
+    assert (annotation.heading_deg, annotation.dims_m) == (90.0, (20.0, 5.0, 4.0))
 
 
 def test_a_frame_carries_its_time() -> None:
@@ -161,3 +191,48 @@ def test_the_horizon_lies_where_rays_graze_the_sea(
 
 def test_no_horizon_in_a_frame_that_looks_at_the_sea_only() -> None:
     assert labels.horizon_px(camera(pitch_deg=-60.0), RADIUS_M) == []
+
+
+def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
+    tmp_path,
+) -> None:
+    folders = []
+    for seed, category in ((7, ("ship", 1)), (8, ("buoy", 6))):
+        index = np.zeros((48, 64), dtype=int)
+        index[10, 10] = 1
+        truth = labels.Labels(info={"scenario": {"seed": seed}, "version": "x"})
+        truth.add(camera(), 0.0, index, [target(1, *category)], RADIUS_M)
+        folders.append(tmp_path / str(seed))
+        folders[-1].mkdir()
+        truth.write(folders[-1])
+
+    merged = labels.merge(tmp_path, folders)
+
+    assert [(i.id, i.file_name) for i in merged.images] == [
+        (1, "7/C.png"),
+        (2, "8/C.png"),
+    ]
+    assert [(a.id, a.image_id, a.category_id) for a in merged.annotations] == [
+        (1, 1, 1),
+        (2, 2, 6),
+    ]
+    assert [c.id for c in merged.categories] == [1, 6]
+    assert merged.info == {
+        "version": "x",
+        "scenarios": {"7": {"seed": 7}, "8": {"seed": 8}},
+    }
+
+
+def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
+    folders = []
+    for name in ("ship", "buoy"):
+        index = np.zeros((48, 64), dtype=int)
+        index[10, 10] = 1
+        truth = labels.Labels(info={"scenario": {}})
+        truth.add(camera(), 0.0, index, [target(1, name, 1)], RADIUS_M)
+        folders.append(tmp_path / name)
+        folders[-1].mkdir()
+        truth.write(folders[-1])
+
+    with pytest.raises(ValueError, match="category 1 is ship"):
+        labels.merge(tmp_path, folders)

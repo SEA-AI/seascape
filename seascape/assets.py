@@ -42,6 +42,8 @@ class _Mesh(Model):
 
     description: str = Field(min_length=1)
     category: str = Field(min_length=1)
+    # One per category, so labels.json files merge.
+    category_id: int = Field(ge=1)
     url: str
     sha256: str = Field(pattern=SHA256)
     # By path relative to the mesh, as it names them.

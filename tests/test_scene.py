@@ -337,6 +337,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
         kind="hull",
         description="x",
         category="x",
+        category_id=1,
         url="x",
         sha256="0" * 64,
         length_m=200.0,
@@ -370,6 +371,7 @@ def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None
         kind="debris",
         description="x",
         category="x",
+        category_id=1,
         url="x",
         sha256="0" * 64,
         length_m=6.0,
@@ -393,6 +395,7 @@ def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
         kind="buoy",
         description="x",
         category="x",
+        category_id=1,
         url="x",
         sha256="0" * 64,
         height_m=6.0,
@@ -1375,3 +1378,71 @@ def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:
     assert (
         scene._sunlit_emission(tree, 290.0, sky).node.bl_idname == "ShaderNodeEmission"
     )
+
+
+def _objects(*specs: str, more: tuple[str, ...] = ()) -> Scenario:
+    return load(OPEN_SEA, [f"objects = [{', '.join(specs)}]", *more])
+
+
+def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
+    spec = (
+        '{ asset = "yacht", range_m = 900.0, bearing_deg = 30.0, heading_deg = 180.0, '
+        'heading_from = "line_of_sight" }'
+    )
+    built = scene.build(_objects(spec), "eo")
+    (anchor,) = built.targets["yacht"]
+
+    assert math.degrees(scene.heading_rad(anchor)) % 360.0 == pytest.approx(210.0)
+
+
+def test_hulls_inside_each_other_are_refused() -> None:
+    yacht = '{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }'
+    with pytest.raises(scene.OverlapError, match="yacht"):
+        scene.build(_objects(yacht, yacht), "eo")
+
+
+def test_a_buoy_has_a_footprint_too() -> None:
+    yacht = '{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }'
+    buoy = '{ asset = "lateral_mark", range_m = 902.0, bearing_deg = 0.0 }'
+    with pytest.raises(scene.OverlapError, match="lateral_mark"):
+        scene.build(_objects(yacht, buoy), "eo")
+
+
+def test_a_hull_that_sails_into_another_is_refused() -> None:
+    """Apart at the first frame: only the clip's later frames catch it."""
+    east_m, north_m = 100.0, 1000.0
+    fast = (
+        '{ asset = "yacht", range_m = 1000.0, bearing_deg = 0.0, heading_deg = 90.0, '
+    )
+    fast += "speed_mps = 20.0 }"
+    still = (
+        f'{{ asset = "yacht", range_m = {math.hypot(east_m, north_m)}, '
+        f"bearing_deg = {math.degrees(math.atan2(east_m, north_m))} }}"
+    )
+    clip = ("outputs.duration_s = 5.0", "outputs.fps = 1")
+    with pytest.raises(scene.OverlapError):
+        scene.build(_objects(fast, still, more=clip), "eo")
+    scene.build(_objects(fast, still), "eo")  # a still of the same two is fine
+
+
+@pytest.mark.parametrize("asset", ["yacht", "lateral_mark"])
+def test_a_built_target_measures_what_the_manifest_says(asset: str) -> None:
+    built = scene.build(
+        _objects(f'{{ asset = "{asset}", range_m = 900.0, bearing_deg = 0.0 }}'), "eo"
+    )
+    (anchor,) = built.targets[asset]
+    mesh = manifest()[asset]
+
+    if isinstance(mesh, Hull):
+        assert anchor["length_m"] == pytest.approx(mesh.length_m, rel=1e-6)
+    else:
+        assert isinstance(mesh, Buoy)
+        assert anchor["height_m"] + mesh.draught_m == pytest.approx(
+            mesh.height_m, rel=1e-6
+        )
+
+
+def test_a_target_inside_the_ownship_is_refused() -> None:
+    yacht = '{ asset = "yacht", range_m = 30.0, bearing_deg = 0.0 }'
+    with pytest.raises(scene.OverlapError, match="ownship"):
+        scene.build(_objects(yacht, more=('ownship.asset = "bulk_carrier"',)), "eo")

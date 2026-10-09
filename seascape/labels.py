@@ -28,10 +28,13 @@ class Target(NamedTuple):
 
     pass_index: int
     name: str
+    category_id: int
     category: str
     supercategory: str
     centre_m: tuple[float, float]  # world east, north
     waterline_m: np.ndarray  # (N, 2) world east, north along the hull's waterline
+    heading_deg: float  # true, clockwise from north
+    dims_m: tuple[float, float, float]  # length, beam, height above the waterline
 
 
 class Image(Model):
@@ -41,6 +44,7 @@ class Image(Model):
     height: int
     camera: str
     band: str
+    hfov_deg: float
     time_s: float
     horizon_px: list[tuple[float, float]]
 
@@ -48,7 +52,7 @@ class Image(Model):
 class Category(Model):
     id: int
     name: str
-    supercategory: str = ""
+    supercategory: str
 
 
 class Annotation(Model):
@@ -64,6 +68,9 @@ class Annotation(Model):
     range_m: float
     waterline_range_m: float
     bearing_deg: float  # true, clockwise from north
+    heading_deg: float  # true, clockwise from north
+    # length, beam, height above the waterline, as built
+    dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
 
 
@@ -90,6 +97,7 @@ class Labels(Model):
             height=camera.height_px,
             camera=camera.name,
             band=camera.band,
+            hfov_deg=math.degrees(2 * math.atan(camera.width_px / 2 / camera.K[0][0])),
             time_s=time_s,
             horizon_px=horizon_px(camera, radius_m),
         )
@@ -108,7 +116,7 @@ class Labels(Model):
                 Annotation(
                     id=len(self.annotations) + 1,
                     image_id=image.id,
-                    category_id=self._category(target.category, target.supercategory),
+                    category_id=self._category(target),
                     bbox=(x0, y0, x1 - x0 + 1, y1 - y0 + 1),
                     area=len(xs),
                     name=target.name,
@@ -117,6 +125,8 @@ class Labels(Model):
                         np.linalg.norm(target.waterline_m - at, axis=1).min()
                     ),
                     bearing_deg=math.degrees(math.atan2(east, north)),
+                    heading_deg=target.heading_deg,
+                    dims_m=target.dims_m,
                     truncated=x0 == 0
                     or y0 == 0
                     or x1 == image.width - 1
@@ -124,20 +134,62 @@ class Labels(Model):
                 )
             )
 
-    def _category(self, name: str, supercategory: str) -> int:
-        found = next((c.id for c in self.categories if c.name == name), None)
-        if found is None:
-            found = len(self.categories) + 1
+    def _category(self, target: Target) -> int:
+        if all(c.id != target.category_id for c in self.categories):
             self.categories.append(
-                Category(id=found, name=name, supercategory=supercategory)
+                Category(
+                    id=target.category_id,
+                    name=target.category,
+                    supercategory=target.supercategory,
+                )
             )
-        return found
+        return target.category_id
 
     def write(self, folder: Path) -> Path:
         path = folder / FILENAME
         partial = path.with_name(f"{path.name}.partial")
         partial.write_text(self.model_dump_json(indent=2) + "\n")
         return partial.replace(path)
+
+
+def merge(root: Path, folders: Sequence[Path]) -> Labels:
+    """The labels in `folders` as one set for `root`."""
+    merged = Labels()
+    scenarios: dict[str, Any] = {}
+    for folder in folders:
+        part = Labels.model_validate_json((folder / FILENAME).read_text())
+        prefix = folder.relative_to(root).as_posix()
+        merged.info = merged.info or part.info
+        scenarios[prefix] = part.info["scenario"]
+        ids: dict[int, int] = {}
+        for image in part.images:
+            ids[image.id] = len(merged.images) + 1
+            merged.images.append(
+                image.model_copy(
+                    update={
+                        "id": ids[image.id],
+                        "file_name": f"{prefix}/{image.file_name}",
+                    }
+                )
+            )
+        for annotation in part.annotations:
+            merged.annotations.append(
+                annotation.model_copy(
+                    update={
+                        "id": len(merged.annotations) + 1,
+                        "image_id": ids[annotation.image_id],
+                    }
+                )
+            )
+        for category in part.categories:
+            known = next((c for c in merged.categories if c.id == category.id), None)
+            if known is None:
+                merged.categories.append(category)
+            elif known != category:
+                raise ValueError(f"{folder}: category {category.id} is {known.name}")
+    merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
+    merged.info["scenarios"] = scenarios
+    return merged
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:
