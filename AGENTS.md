@@ -59,7 +59,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Wind and swell are named for where they come from; waves run the other way.** `wind_from_deg` and `swell.from_deg` are bearings of origin, and `waves` turns them by 180 once. A second turn looks right in a still.
 - **A camera's bearing is not `rig yaw + camera yaw`.** In the chain `scene._rigs` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `scene.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
-- **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` takes sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
+- **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha, which GGX borrows, is sqrt(2) sigma per axis; `lwir.emissivity_curve` and `reflected_sky` take sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
 - **`model_copy` skips validation, and validation is what gives the air and sea their atmosphere's temperatures.** Swap `sky.atmosphere` with `model_copy` and the old profile's air and sea stay. Validate a dict instead.
 - **A Math node's unlinked inputs default to 0.5.** A `MULTIPLY_ADD` chain picks up 0.5 from the first addend unless it is set to 0. Vector Math defaults to 0. Its `DOT_PRODUCT` and `LENGTH` answer on `Value`; their `Vector` output is disabled, so `outputs["Vector"]` raises and `outputs[0]` reads 0.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
@@ -83,7 +83,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
   brighter into a sun a mirror cannot see, and `eevee.clamp_surface_indirect` clips
   what is left; a mirror reflects a world of 40 only with both at 0. LWIR radiance is
-  tens of W m^-2 sr^-1, so the capped sea reads cold. Unclamped, EEVEE still darkens
+  tens of W m^-2 sr^-1, so capped hull paint reads cold. Unclamped, EEVEE still darkens
   rough reflections at grazing view: Cycles for anything a pixel value is read from.
 - **`refresh_devices()` is what actually enables the GPU.** Without it
   `compute_device_type` and `scene.cycles.device` leave Cycles on the CPU, silently, at

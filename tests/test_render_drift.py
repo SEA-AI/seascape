@@ -123,8 +123,6 @@ def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
         tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
     sc = bpy.context.scene
     sc.camera = _camera(built, scenario, "ir")
-    # Flat sea is the control, so grain must sit well under the relief.
-    sc.cycles.samples = 256
     frame = shoot((320, 256), "isothermal")
     horizon = frame.shape[0] // 2
     return frame[horizon + 30 : horizon + 80]

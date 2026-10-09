@@ -264,10 +264,10 @@ def _optical_depth(
 ) -> bpy.types.NodeSocket:
     """The band's optical depth over the ray that reached the shading point.
 
-    ponytail: exact along camera rays. LWIR takes a secondary ray, a hull reflected in
-    the sea, as if it ran straight out from the camera, ending at the shading point's
-    distance; its true start needs the path's length so far, which a shader cannot
-    read.
+    ponytail: exact along camera rays. LWIR takes a secondary ray, the sea reflected in
+    a hull's paint, as if it ran straight out from the camera, ending at the shading
+    point's distance; its true start needs the path's length so far, which a shader
+    cannot read.
     """
     length = tree.nodes.new("ShaderNodeLightPath").outputs["Ray Length"]
     if band == "eo":
@@ -332,6 +332,21 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
         elevation[:, None], cloud, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
     )
     return curve_image("cloudy_sky_radiance", radiance)
+
+
+def _sky_round(sky: Sky) -> sea.SkyCurve:
+    """The IR world's radiance against elevation, averaged round the horizon: its clear
+    sky's table, or the rows of its clouds' image, which the world baked first."""
+    if sky.hdri is None:
+        elevation = np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
+        return elevation, lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+    image = bpy.data.images["cloudy_sky_radiance"]
+    w, h = image.size
+    pixels = np.empty(w * h * 4, np.float32)
+    image.pixels.foreach_get(pixels)
+    # Bottom row first, as `_cloudy_sky_image` lays it out.
+    elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
+    return elevation, pixels.reshape(h, w, 4)[..., 0].mean(axis=1)
 
 
 def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
@@ -1246,8 +1261,9 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
     # After the hulls, whose poses and beams set the wakes.
+    sky = _sky_round(scenario.sky) if band == "ir" else None
     material = sea.material(
-        scenario.sea, wind, swell, band, outputs, rngs, tuple(trails)
+        scenario.sea, wind, swell, band, outputs, rngs, tuple(trails), sky
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.
