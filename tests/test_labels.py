@@ -236,6 +236,13 @@ def test_against_a_black_background_only_a_black_target_is_invisible(
     assert labels.contrast(index, np.where(index == 1, target_l, 0.0), 1) == expected
 
 
+def test_contrast_k_is_the_rss_temperature_difference() -> None:
+    t_k = np.where(square() == 1, 300.0, 280.0)
+    t_k[10:15, 20:30] = 260.0
+
+    assert labels.contrast_k(square(), t_k, 1) == pytest.approx(20.0)
+
+
 def test_a_target_with_no_background_around_it_has_no_contrast() -> None:
     assert labels.contrast(np.ones((48, 64), dtype=int), np.ones((48, 64)), 1) is None
 

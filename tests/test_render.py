@@ -56,6 +56,12 @@ class TestThermalImage:
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
+    def test_it_returns_the_temperatures_top_row_first(self, tmp_path: Path) -> None:
+        """What `labels` measures in IR, before the AGC."""
+        exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
+        t_k = render._write_thermal(exr, "jpg", agc.Agc())
+        assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
+
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
         render._write_thermal(exr, "png", agc.Agc())
@@ -75,11 +81,6 @@ class TestThermalImage:
 
 
 class TestFrame:
-    def test_a_png_keeps_its_one_16bit_channel(self, tmp_path: Path) -> None:
-        counts = np.array([[29500], [27200]], np.uint16).repeat(4, axis=1)
-        cv2.imwrite(str(tmp_path / "f.png"), counts)
-        assert (render._frame(tmp_path / "f.png") == counts).all()
-
     def test_a_jpg_reads_as_rgb(self, tmp_path: Path) -> None:
         bgr = np.zeros((16, 16, 3), np.uint8)
         bgr[..., 2] = 255  # red

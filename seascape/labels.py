@@ -106,7 +106,8 @@ class Labels(Model):
         radius_m: float,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, both top row first."""
+        the EO image as written or the IR brightness temperature in kelvin, both top
+        row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -120,7 +121,8 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        lum = luminance(frame) if camera.band == "eo" else None
+        eo = camera.band == "eo"
+        lum = luminance(frame) if eo else frame
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -129,7 +131,7 @@ class Labels(Model):
             if not len(xs):
                 continue
             # Too faint to see is as unseen as hidden.
-            if lum is not None:
+            if eo:
                 c = contrast(index, lum, target.pass_index)
                 if c is not None and c < THRESHOLD_CONTRAST:
                     continue
@@ -225,6 +227,27 @@ def luminance(frame: np.ndarray) -> np.ndarray:
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
     """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
     superstructure does not cancel."""
+    found = _rss(index, lum, pass_index)
+    if found is None:
+        return None
+    rss, background = found
+    if background <= 0:
+        return 0.0 if rss == 0 else math.inf
+    return rss / background
+
+
+def contrast_k(index: np.ndarray, t_k: np.ndarray, pass_index: int) -> float | None:
+    """The target's temperature difference from its background, root-sum-squared over
+    its pixels (O'Kane et al. 1995)."""
+    found = _rss(index, t_k, pass_index)
+    return None if found is None else found[0]
+
+
+def _rss(
+    index: np.ndarray, values: np.ndarray, pass_index: int
+) -> tuple[float, float] | None:
+    """The root-mean-square of a target's values less its background's mean, and that
+    mean; None without a background. The background is a ring no target covers."""
     mask = (index == pass_index).astype(np.uint8)
     others = ((index > 0) & (index != pass_index)).astype(np.uint8)
     gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
@@ -232,11 +255,8 @@ def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | Non
     ring = (far > cv2.dilate(mask, gap)) & ~cv2.dilate(others, gap).astype(bool)
     if not ring.any():
         return None
-    background = lum[ring].mean()
-    rss = float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)))
-    if background <= 0:
-        return 0.0 if rss == 0 else math.inf
-    return rss / background
+    background = float(values[ring].mean())
+    return float(np.sqrt(np.mean((values[mask > 0] - background) ** 2))), background
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:
