@@ -262,19 +262,17 @@ def lobe(
 
 @pytest.mark.render
 def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
-    """Principled's Anisotropic, read back at a grazing view, against the footprints
+    """The specular's Anisotropy, read back at a grazing view, against the footprints
     the pixel covers: 10 m up, looking 3 deg down, the sea from ~100 m to ~1 km. The
     sun has set and the gusts are stilled: the lobe holds the footprints' variance
     alone."""
     scene.build(_clear(variant(sky={"sun_elevation_deg": -5.0})), "eo")
     tree = bpy.data.materials["sea"].node_tree
     tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value = 0.0
-    anisotropic = (
-        tree.nodes["Principled BSDF"].inputs["Anisotropic"].links[0].from_socket
-    )
+    anisotropy = tree.nodes["sea_specular"].inputs["Anisotropy"].links[0].from_socket
     emission = tree.nodes.new("ShaderNodeEmission")
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
-    tree.links.new(anisotropic, emission.inputs["Strength"])
+    tree.links.new(anisotropy, emission.inputs["Strength"])
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
     lens = bpy.data.cameras.new("probe")
     lens.clip_end = 1e5
@@ -366,6 +364,66 @@ def test_the_glitter_tilts_only_facets_that_can_mirror_the_sun(
     changed = _glitter_off_changes(sun_elevation_deg, sun_bearing_deg)
 
     assert (changed > 0.01) == glints, changed
+
+
+def _gaussian_sea_reflectance(wind_speed_mps: float, depression_deg: float) -> float:
+    """What a sea of Cox & Munk's Gaussian slopes reflects of a uniform sky: each
+    facet mirrors F of it, weighted by the area it shows the view, less the share of
+    its mirror ray that Smith's Beckmann shadowing (Walter et al. 2007) sends into
+    another wave."""
+    sigma = waves.cox_munk_slope(wind_speed_mps) / math.sqrt(2)
+    facet = lwir._facets(sigma).T
+    d = math.radians(depression_deg)
+    view = np.array([0.0, -math.cos(d), math.sin(d)])
+    facing = view @ facet
+    area = np.maximum(facing, 0.0) / facet[2]
+    mirror_up = (2 * facing * facet - view[:, None])[2]
+    a = np.tan(np.arcsin(np.clip(mirror_up, 1e-6, 1.0))) / (math.sqrt(2) * sigma)
+    lam = (np.exp(-a * a) / (a * math.sqrt(math.pi)) - np.vectorize(math.erfc)(a)) / 2
+    lit = np.where(mirror_up > 0.0, 1 / (1 + lam), 0.0)
+    mirrored = 1 - lwir.fresnel_emissivity(
+        np.arccos(np.clip(facing, 0, 1)), sea.SEAWATER_IOR, 0.0
+    )
+    return float(np.sum(area * mirrored * lit) / np.sum(area))
+
+
+def _uniform_sky_reflectance(depression_deg: float) -> float:
+    """The sea's reflection alone of a white sky. A steep frame sees a few metres of sea
+    tilted by the long wave under it; frames a long wave apart average to the sea's."""
+    scene.build(SCENARIO, "eo")
+    world = bpy.context.scene.world.node_tree
+    background = world.nodes["Background"]
+    for link in list(background.inputs["Color"].links):
+        world.links.remove(link)
+    background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    nodes = bpy.data.materials["sea"].node_tree.nodes
+    nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
+    lens = bpy.data.cameras.new("probe")
+    lens.clip_end, lens.angle_x = 1e5, math.radians(4.0)
+    camera = bpy.data.objects.new("probe", lens)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
+    sc.camera = camera
+    camera.rotation_euler = (math.radians(90.0 - depression_deg), 0.0, 0.0)
+    frames = []
+    for i in range(32):
+        camera.location = (97.0 * i, 59.0 * i, 15.0)
+        frames.append(shoot((64, 16), f"reflectance_{i}").mean())
+    return float(np.mean(frames))
+
+
+@pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
+def test_the_sea_reflects_a_uniform_sky_as_gaussian_slopes_do(
+    depression_deg: float,
+) -> None:
+    """The lobe's distribution sets how much sky the sea returns near the horizon."""
+    expected = _gaussian_sea_reflectance(SCENARIO.sea.wind_speed_mps, depression_deg)
+
+    rendered = _uniform_sky_reflectance(depression_deg)
+
+    # A judgement: the reference shadows the drawn waves too, which the render draws as
+    # normals that shadow nothing.
+    assert rendered == pytest.approx(expected, rel=0.12)
 
 
 @pytest.mark.render
