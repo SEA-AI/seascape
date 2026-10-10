@@ -6,13 +6,12 @@ import pytest
 
 from docs.hero import SCENARIO, SKIES
 from docs.primer.figures import FIGURES, FULL_HD, PRIMER
-from docs.visibility import SCENARIO as VISIBILITY
 from seascape.config import load
 
 RUNS = {
     **{f"hero {sky}": (SCENARIO, sets) for sky, sets in SKIES.items()},
     "crops": (PRIMER, [FULL_HD]),
-    "visibility": (VISIBILITY, []),
+    "visibility": (Path(__file__).parents[1] / "docs" / "visibility.toml", []),
     **{
         f"{name}: {caption}": (PRIMER, shared + sets)
         for name, (shared, panels) in FIGURES.items()

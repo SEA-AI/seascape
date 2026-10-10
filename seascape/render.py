@@ -53,7 +53,7 @@ def _temperatures_k(exr: Path) -> np.ndarray:
 
 def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> np.ndarray:
     """Rewrite a float LWIR render as `fmt` beside it, and delete the exr. Returns the
-    grey a jpg shows, whichever was written."""
+    AGC's grey before compression, whichever was written."""
     t_k = _temperatures_k(exr)[::-1]  # cv2 writes the top row first
     out = exr.with_suffix(f".{fmt}")
     grey = tone(t_k)
@@ -192,7 +192,6 @@ def render(
                     index_output.file_name = f"{mount.name}."
                     bpy.ops.render.render(write_still=True)
                     file_name = f"{name}.{outputs.format}"
-                    # An LWIR png is judged on the grey its jpg shows.
                     shown = (
                         _write_thermal(
                             into / f"{name}.exr", outputs.format, tones[mount.name]

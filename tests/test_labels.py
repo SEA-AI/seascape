@@ -267,14 +267,18 @@ def test_a_frame_is_read_as_rgb() -> None:
     assert boxed(index, frame)
 
 
-def test_a_row_with_no_flank_takes_the_nearest_rows_background() -> None:
+@pytest.mark.parametrize(("value", "seen"), [(60, False), (200, True)])
+def test_a_row_with_no_flank_takes_the_nearest_rows_background(
+    value: int, seen: bool
+) -> None:
+    """Sky over sea, the target the colour of each row but its flankless sea row."""
     index = square()
-    index[15, 12:20] = index[15, 30:38] = 2
+    index[17, 12:20] = index[17, 30:38] = 2
+    frame = np.full(index.shape, 200, np.uint8)
+    frame[15:] = 60
+    frame[17][index[17] == 1] = value
 
-    frame = eight_bit(index, {2: 146})
-    frame[15][index[15] == 1] = 146
-
-    assert boxed(index, frame)
+    assert boxed(index, frame) is seen
 
 
 @pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
@@ -283,6 +287,7 @@ def test_a_target_on_the_left_edge_is_judged_on_its_flanks(
 ) -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10:20, 2:12] = 1
+    index[10:20, 12:20] = 2
 
     assert boxed(index, eight_bit(index, {1: value})) is seen
 

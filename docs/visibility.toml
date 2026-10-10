@@ -7,6 +7,7 @@ width_px = 960
 height_px = 540
 
 [sky]
+# Visibility puts one hull either side of the JND.
 visibility_km = 2.5
 
 [outputs]

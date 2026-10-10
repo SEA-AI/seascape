@@ -23,8 +23,8 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# Judgement: at about 1 arcmin a pixel. Ricco's area is 2.4 arcmin across (Tuten et al.
-# 2018), about 4 pixels.
+# Judgement: about 1 arcmin a pixel, so Ricco's area, 2.4 arcmin across (Tuten et al.
+# 2018), covers π·1.2² ≈ 4 pixels.
 RICCO_PX = 4
 # The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
 JND_DELTA_E = 2.3
@@ -114,7 +114,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        # An exr's radiance has no display to judge by; it keeps every box.
+        # An exr's radiance has no display to judge by.
         judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
@@ -228,15 +228,14 @@ def cielab(frame: np.ndarray) -> np.ndarray:
 
 
 def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
-    """Up to FLANK_PX pixels left and right of the target on each of its rows, that no
-    object covers."""
+    """Up to FLANK_PX pixels left and right of the target on each of its rows that no
+    object, the ownship included, covers."""
     mask = index == pass_index
     beside = np.zeros_like(mask)
     for y in np.flatnonzero(mask.any(axis=1)):
         xs = np.flatnonzero(mask[y])
         beside[y, max(xs[0] - FLANK_PX, 0) : xs[0]] = True
         beside[y, xs[-1] + 1 : xs[-1] + 1 + FLANK_PX] = True
-    # Another object, the ownship included, is not background.
     return beside & (index == 0)
 
 

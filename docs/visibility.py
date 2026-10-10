@@ -1,5 +1,5 @@
-"""How labels.json decides a target is too faint for a box, and the check against the
-same scene rendered without it.
+"""docs/outputs.md's figure: how labels.json drops a target too faint to see, checked
+against the scene rendered without it.
 
 uv run python -m docs.visibility docs/visibility.png
 """
@@ -20,7 +20,7 @@ from seascape.config import load
 SCENARIO = Path(__file__).with_name("visibility.toml")
 TILE_PX = (260, 200)
 PAD_PX, GAP_PX = 18, 20
-# The colour scale's top: the JND sits mid-scale.
+# The JND sits mid-scale.
 DELTA_E_MAX = 2 * labels.JND_DELTA_E
 MASK, FLANK, TOP, UNLIT = (213, 122, 46), (46, 134, 193), (36, 199, 150), (34, 34, 38)
 type Tile = tuple[Image.Image, str, tuple[str, str] | None]
@@ -33,7 +33,7 @@ def shots(
     hidden, the object-index pass, all top row first, and each target's range by pass
     index.
 
-    Hidden rather than removed: the hulls set the far clip, which the haze spans.
+    Hidden rather than removed: the hulls can set the far clip, which the haze spans.
     """
     scenario = load(SCENARIO)
     (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")

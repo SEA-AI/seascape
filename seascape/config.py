@@ -565,8 +565,9 @@ class Outputs(Model):
     format: ImageFormat = Field(
         default="jpg",
         description=(
-            "jpg to look at, png lossless or LWIR in kelvin, exr the radiance. An exr "
-            "has no display to judge visibility by, so every target in view gets a box."
+            "jpg to look at, png lossless or LWIR in kelvin, exr the radiance. "
+            "An exr boxes every target in view: radiance has no display to judge "
+            "visibility by."
         ),
     )
     # The compositor computes in float32, normal from 2^-126 to 2^127 (IEEE 754).

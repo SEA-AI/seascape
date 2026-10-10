@@ -609,7 +609,7 @@
           ]
         },
         "format": {
-          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance. An exr has no display to judge visibility by, so every target in view gets a box.",
+          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance. An exr boxes every target in view: radiance has no display to judge visibility by.",
           "default": "jpg",
           "anyOf": [
             {
