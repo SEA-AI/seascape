@@ -27,7 +27,7 @@ Not usable:
 1. Find it in a source above and read its licence.
 2. Download the files and run `uv run seascape assets measure <mesh>`. Fill in the `url` of each of a glTF's `files` it prints.
 3. Add the entry to [`seascape/assets.toml`](../seascape/assets.toml) with those lines, its `kind`, the `category` its labels carry (shared by assets of one type), the `url`, the `licence`, `attribution` with the author and the page, and a one-line `description` of what the camera sees.
-4. A `hull` takes `length_m` and `draught_m` from a real vessel of the class, and `bow_deg` from where the bow points as authored; check it in the sheet. A hull carrying a standard part, such as an ISO 668 container, can take its length from that part measured in the mesh instead. With no published draught, its bottom paint marks a lower bound. A `buoy` takes `height_m` and `draught_m` from a real buoy of the type. Cite the source beside them.
+4. A `hull` takes `length_m` and `draught_m` from a real vessel of the class, and `bow_deg` from where the bow points as authored; check it in the sheet. A hull carrying a standard part, such as an ISO 668 container, can take its length from that part measured in the mesh instead. With no published draught, take `draught_m` from a real vessel of the class's draught-to-length ratio, or else from where the mesh's bottom paint ends. A `buoy` takes `height_m` and `draught_m` from a real buoy of the type. Cite the source beside them.
 5. Regenerate the sheets with `uv run seascape assets sheet scenarios/open-sea.toml docs/assets_eo.jpg` and the same with `docs/assets_ir.jpg --band ir`, and the schema with `uv run seascape schema > schema/scenario.json`. Then run `uv run pytest --render`.
 
 ## Judging detail
