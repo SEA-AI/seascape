@@ -3,9 +3,9 @@
 Sources
 -------
 Microfacet lobe: Walter, Marschner, Li & Torrance, "Microfacet models for refraction
-through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for GGX; Burley,
-"Physically-based shading at Disney", SIGGRAPH 2012 course notes, for the alpha =
-roughness^2 convention Cycles follows.
+through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for Beckmann's
+distribution and its Smith shadowing; Burley, "Physically-based shading at Disney",
+SIGGRAPH 2012 course notes, for the alpha = roughness^2 convention Cycles follows.
 
 Whitecaps: Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11)
 1816, 1984 (doi:10.1364/AO.23.001816), for the Monahan coverage it multiplies.
@@ -84,8 +84,8 @@ WHITECAP_REFLECTANCE = 0.22
 SEAWATER_IOR = 1.341
 
 # Morel & Maritorena 2001 R(0-) at 0.2 mg/m^3 chlorophyll, CIE 1931 under D65 to
-# linear sRGB, times t / n^2 (Lee et al. 2002): Principled dims its diffuse by the
-# specular toward the viewer only.
+# linear sRGB, times t / n^2 (Lee et al. 2002): the shader dims it by 1 - F toward the
+# viewer only.
 WATER_BODY_COLOR = (0.0, 0.0065, 0.018)
 
 # The Sky Texture's default sun_size, a diameter. A facet tilted by d turns the
@@ -668,8 +668,8 @@ def _lobe(
     along: bpy.types.NodeSocket,
     across: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """GGX roughness and aspect, alpha across / alpha along, for the unresolved slope
-    variance at the two footprints. Per axis alpha = sqrt(2) sigma_axis =
+    """Beckmann roughness and aspect, alpha across / alpha along, for the unresolved
+    slope variance at the two footprints. Per axis alpha = sqrt(2) sigma_axis =
     sqrt(variance); Blender's roughness is their geometric mean's square root."""
     along = _math(tree, "MAXIMUM", along, 1e-12)
     across = _math(tree, "MAXIMUM", across, 1e-12)
@@ -760,33 +760,52 @@ def _daylight(
     whitecaps: bpy.types.NodeSocket,
     wake: "_Wakes | None" = None,
 ) -> bpy.types.NodeSocket:
-    """Water refracting at seawater's IOR, white where its crests break and where a
-    hull leaves foam."""
+    """Water reflecting at seawater's IOR over its body's colour, white where its crests
+    break and where a hull leaves foam.
+
+    Beckmann, as Cox & Munk's slopes are Gaussian; Principled has only GGX, whose long
+    tail darkens the sea near the horizon. A conductor's Fresnel at zero extinction is
+    the dielectric's.
+    """
     roughness, aspect = _lobe(tree, *unresolved)
-    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
-    principled.inputs["Base Color"].default_value = (*WATER_BODY_COLOR, 1.0)
-    if wake is not None:
-        body = tree.nodes.new("ShaderNodeVectorMath")
-        body.operation = "SCALE"
-        body.inputs["Vector"].default_value = WATER_BODY_COLOR
-        tree.links.new(_math(tree, "ADD", wake.bubbles, 1.0), body.inputs["Scale"])
-        tree.links.new(body.outputs["Vector"], principled.inputs["Base Color"])
-    principled.inputs["IOR"].default_value = SEAWATER_IOR
     link = tree.links.new
-    link(normal, principled.inputs["Normal"])
-    link(tangent, principled.inputs["Tangent"])
-    link(roughness, principled.inputs["Roughness"])
-    # Principled's alpha_y / alpha_x = 1 - 0.9 a, so a = (1 - aspect) / 0.9.
+    mirror = tree.nodes.new("ShaderNodeBsdfMetallic")
+    mirror.name = "sea_specular"
+    mirror.distribution = "BECKMANN"
+    mirror.fresnel_type = "PHYSICAL_CONDUCTOR"
+    mirror.inputs["IOR"].default_value = (SEAWATER_IOR,) * 3
+    mirror.inputs["Extinction"].default_value = (0.0, 0.0, 0.0)
+    link(normal, mirror.inputs["Normal"])
+    link(tangent, mirror.inputs["Tangent"])
+    link(roughness, mirror.inputs["Roughness"])
+    # Cycles' alpha_y / alpha_x = 1 - 0.9 a, so a = (1 - aspect) / 0.9.
     link(
         _math(tree, "MULTIPLY", _math(tree, "SUBTRACT", 1.0, aspect), 1 / 0.9),
-        principled.inputs["Anisotropic"],
+        mirror.inputs["Anisotropy"],
     )
+    fresnel = tree.nodes.new("ShaderNodeFresnel")
+    fresnel.inputs["IOR"].default_value = SEAWATER_IOR
+    link(normal, fresnel.inputs["Normal"])
+    through = _math(tree, "SUBTRACT", 1.0, fresnel.outputs["Fac"])
+    if wake is not None:
+        through = _math(
+            tree, "MULTIPLY", through, _math(tree, "ADD", wake.bubbles, 1.0)
+        )
+    body = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    link(normal, body.inputs["Normal"])
+    link(
+        _vector(tree, "SCALE", WATER_BODY_COLOR, through, name="sea_body_color"),
+        body.inputs["Color"],
+    )
+    water = tree.nodes.new("ShaderNodeAddShader")
+    link(mirror.outputs["BSDF"], water.inputs[0])
+    link(body.outputs["BSDF"], water.inputs[1])
     foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
     foam.inputs["Color"].default_value = (*(WHITECAP_REFLECTANCE,) * 3, 1.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(whitecaps, mix.inputs["Factor"])
     # Mix Shader names both shader inputs "Shader", so they can only be indexed.
-    link(principled.outputs["BSDF"], mix.inputs[1])
+    link(water.outputs["Shader"], mix.inputs[1])
     link(foam.outputs["BSDF"], mix.inputs[2])
     if wake is None:
         return mix.outputs["Shader"]
@@ -1492,7 +1511,7 @@ def material(
         along = _math(
             tree, "MAXIMUM", _math(tree, "SUBTRACT", unresolved[0], carried), 0.0
         )
-        # Principled stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
+        # Cycles stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
         across = _math(
             tree,
             "MAXIMUM",
