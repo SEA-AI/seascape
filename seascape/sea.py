@@ -303,10 +303,9 @@ def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
 
 
 def _wave_group() -> bpy.types.NodeTree:
-    """One wave, as far as the pixel resolves it along the wave's own direction:
-    footprint^2 = across^2 + (along^2 - across^2) cos^2. It adds its slope to `Gradient`
-    and `Lift` cos(phase) to `Acceleration`, in g when `Lift` is a k. One group shared
-    by every wave: each node in a tree slows every edit to it."""
+    """One wave, as far as `_fade` says the pixel resolves it. It adds its slope to
+    `Gradient` and `Lift` cos(phase) to `Acceleration`, in g when `Lift` is a k. One
+    group shared by every wave: each node in a tree slows every edit to it."""
     group = bpy.data.node_groups.new("wave", "ShaderNodeTree")
     inputs = (
         ("Position", "Vector"),
@@ -344,24 +343,10 @@ def _wave_group() -> bpy.types.NodeTree:
         _vector(group, "DOT_PRODUCT", given["Position"], given["Wavenumber"]),
         given["Phase"],
     )
-    heading = _vector(group, "DOT_PRODUCT", given["Along"], given["Toward"])
-    footprint_sq = _math(
-        group,
-        "MULTIPLY_ADD",
-        _math(group, "MULTIPLY", heading, heading),
-        given["Stretch"],
-        given["Across Sq"],
-    )
+    seen = _math(group, "MULTIPLY", _fade(group, given), given["Calm"])
 
     def shown(trig: str) -> bpy.types.NodeSocket:
-        # From Min above From Max: a wider footprint fades the wave out.
-        fade = group.nodes.new("ShaderNodeMapRange")
-        fade.interpolation_type = "SMOOTHSTEP"
-        link(given["Gone Sq"], fade.inputs["From Min"])
-        link(given["Whole Sq"], fade.inputs["From Max"])
-        link(footprint_sq, fade.inputs["Value"])
-        link(_math(group, trig, phase), fade.inputs["To Max"])
-        return _math(group, "MULTIPLY", fade.outputs["Result"], given["Calm"])
+        return _math(group, "MULTIPLY", _math(group, trig, phase), seen)
 
     # -d height / dx of a cos(phase) is a k_x sin(phase).
     link(
