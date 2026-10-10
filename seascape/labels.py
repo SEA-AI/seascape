@@ -23,20 +23,14 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# The Y row of sRGB's linear RGB to XYZ (IEC 61966-2-1).
-BT709 = np.array([0.2126, 0.7152, 0.0722])
-# IEC 61966-2-1.
-_SRGB = np.arange(256) / 255
-SRGB_TO_LINEAR = np.where(
-    _SRGB <= 0.04045, _SRGB / 12.92, ((_SRGB + 0.055) / 1.055) ** 2.4
-)
-# Per 8-bit code, each channel's share of luminance: float32, as a 4K frame of float64
-# RGB is 200 MB.
-_SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
-# Judgement: the gap clears the pixel filter's and the compositor's blur.
-RING_PX, RING_GAP_PX = 3, 2
-# The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
-THRESHOLD_CONTRAST = 0.05
+# Judgement: about 1 arcmin a pixel, so Ricco's area, 2.4 arcmin across (Tuten et al.
+# 2018), covers π·1.2² ≈ 4 pixels.
+RICCO_PX = 4
+# The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
+JND_DELTA_E = 2.3
+# Judgement: enough of a row for its median to outvote a wave, near enough to be the
+# target's own background.
+FLANK_PX = 8
 
 
 class Target(NamedTuple):
@@ -106,7 +100,7 @@ class Labels(Model):
         radius_m: float,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, both top row first."""
+        the picture a viewer sees, or an exr's radiance, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -120,7 +114,8 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        lum = luminance(frame) if camera.band == "eo" else None
+        # An exr's radiance has no display to judge by.
+        judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -128,12 +123,10 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
-            # Too faint to see is as unseen as hidden.
-            if lum is not None:
-                c = contrast(index, lum, target.pass_index)
-                if c is not None and c < THRESHOLD_CONTRAST:
-                    continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+            window = np.s_[y0 : y1 + 1, max(x0 - FLANK_PX, 0) : x1 + 1 + FLANK_PX]
+            if judged and not visible(index[window], frame[window], target.pass_index):
+                continue
             east, north = np.subtract(target.centre_m, at)
             self.annotations.append(
                 Annotation(
@@ -215,28 +208,59 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
-def luminance(frame: np.ndarray) -> np.ndarray:
-    if frame.dtype == np.uint8:
-        r, g, b = (_SHARE[frame[..., c], c] for c in range(3))
-        return r + g + b
-    return frame @ BT709
+def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
+    """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
+    frame."""
+    lab = cielab(frame)
+    behind = background(index, lab, pass_index)
+    if behind is None:
+        return True
+    mask = index == pass_index
+    return ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1)) >= JND_DELTA_E
 
 
-def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
-    """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
-    superstructure does not cancel."""
-    mask = (index == pass_index).astype(np.uint8)
-    others = ((index > 0) & (index != pass_index)).astype(np.uint8)
-    gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
-    far = cv2.dilate(mask, np.ones((2 * (RING_GAP_PX + RING_PX) + 1,) * 2, np.uint8))
-    ring = (far > cv2.dilate(mask, gap)) & ~cv2.dilate(others, gap).astype(bool)
-    if not ring.any():
+def cielab(frame: np.ndarray) -> np.ndarray:
+    """An 8-bit RGB or grey frame in CIE 1976 L*a*b* (ISO/CIE 11664-4)."""
+    if frame.ndim == 2:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+    # Float, as 8-bit Lab is rescaled to 0 to 255.
+    return cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
+
+
+def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
+    """Up to FLANK_PX pixels left and right of the target on each of its rows that no
+    object, the ownship included, covers."""
+    mask = index == pass_index
+    beside = np.zeros_like(mask)
+    for y in np.flatnonzero(mask.any(axis=1)):
+        xs = np.flatnonzero(mask[y])
+        beside[y, max(xs[0] - FLANK_PX, 0) : xs[0]] = True
+        beside[y, xs[-1] + 1 : xs[-1] + 1 + FLANK_PX] = True
+    return beside & (index == 0)
+
+
+def background(
+    index: np.ndarray, lab: np.ndarray, pass_index: int
+) -> np.ndarray | None:
+    """At each of the target's pixels, the median Lab of its row's flanks, or of the
+    nearest row's that has any; NaN elsewhere. None if no row has a flank."""
+    mask = index == pass_index
+    beside = flanks(index, pass_index)
+    rows = np.flatnonzero(mask.any(axis=1))
+    medians = {y: np.median(lab[y, beside[y]], axis=0) for y in rows if beside[y].any()}
+    if not medians:
         return None
-    background = lum[ring].mean()
-    rss = float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)))
-    if background <= 0:
-        return 0.0 if rss == 0 else math.inf
-    return rss / background
+    measured = np.array(list(medians))
+    behind = np.full(lab.shape, np.nan, np.float32)
+    for y in rows:
+        behind[y, mask[y]] = medians[measured[np.abs(measured - y).argmin()]]
+    return behind
+
+
+def ricco(delta_e: np.ndarray) -> float:
+    """The mean of the RICCO_PX largest; a target under RICCO_PX pixels pads with
+    zeros."""
+    return float(np.sort(delta_e)[-RICCO_PX:].sum() / RICCO_PX)
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

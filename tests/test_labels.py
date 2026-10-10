@@ -177,117 +177,119 @@ def square() -> np.ndarray:
     return index
 
 
-@pytest.mark.parametrize(
-    ("target_l", "expected"), [(0.4, 0.0), (0.3, 0.25), (1.0, 1.5)]
-)
-def test_a_uniform_targets_contrast_is_webers_unsigned(
-    target_l: float, expected: float
-) -> None:
-    index = square()
-
-    found = labels.contrast(index, np.where(index == 1, target_l, 0.4), 1)
-
-    assert found == pytest.approx(expected)
-
-
-def test_a_dark_and_a_bright_half_do_not_cancel() -> None:
-    lum = np.full((48, 64), 0.4)
-    lum[10:15, 20:30], lum[15:20, 20:30] = 0.2, 0.6
-
-    assert labels.contrast(square(), lum, 1) == pytest.approx(0.5)
-
-
-def test_contrasts_background_is_no_other_target() -> None:
-    index = square()
-    index[10:20, 30:40] = 2
-    lum = np.where(index == 1, 0.8, np.where(index == 2, 9.0, 0.4))
-
-    assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
-
-
-def test_contrasts_background_skips_the_pixels_the_filter_blurs_into() -> None:
-    index = square()
-    width = 2 * labels.RING_GAP_PX + 1
-    blurred = cv2.dilate(index.astype(np.uint8), np.ones((width, width), np.uint8))
-
-    lum = np.where(blurred == 1, 0.8, 0.4)
-
-    assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
-
-
-def test_contrasts_background_skips_another_targets_blur() -> None:
-    index = square()
-    index[10:20, 34:44] = 2
-    width = 2 * labels.RING_GAP_PX + 1
-    blurred = cv2.dilate(
-        (index == 2).astype(np.uint8), np.ones((width, width), np.uint8)
-    )
-    lum = np.where(index == 1, 0.8, np.where(blurred == 1, 9.0, 0.4))
-
-    assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
-
-
-@pytest.mark.parametrize(("target_l", "expected"), [(0.0, 0.0), (0.1, math.inf)])
-def test_against_a_black_background_only_a_black_target_is_invisible(
-    target_l: float, expected: float
-) -> None:
-    index = square()
-
-    assert labels.contrast(index, np.where(index == 1, target_l, 0.0), 1) == expected
-
-
-def test_a_target_with_no_background_around_it_has_no_contrast() -> None:
-    assert labels.contrast(np.ones((48, 64), dtype=int), np.ones((48, 64)), 1) is None
-
-
-def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
-    """sRGB 188 is linear 0.5."""
-    frame = np.array([[[255] * 3, [188] * 3]], np.uint8)
-
-    assert labels.luminance(frame)[0] == pytest.approx([1.0, 0.5], abs=0.003)
-
-
-@pytest.mark.parametrize(("target_l", "boxed"), [(0.381, False), (0.421, True)])
-def test_an_eo_target_too_faint_to_see_gets_no_box(
-    target_l: float, boxed: bool
-) -> None:
-    index = square()
+def boxed(
+    index: np.ndarray, frame: np.ndarray, band: str = "eo", pass_index: int = 1
+) -> bool:
     truth = labels.Labels()
-
-    truth.add(
-        camera(),
-        0.0,
-        index,
-        grey(np.where(index == 1, target_l, 0.4)),
-        [target(1)],
-        RADIUS_M,
-    )
-
-    assert bool(truth.annotations) is boxed
+    cam = camera().model_copy(update={"band": band})
+    truth.add(cam, 0.0, index, frame, [target(pass_index)], RADIUS_M)
+    return bool(truth.annotations)
 
 
-def test_an_ir_target_is_never_dropped_for_its_contrast() -> None:
+def eight_bit(index: np.ndarray, values: dict[int, int], rest: int = 120) -> np.ndarray:
+    frame = np.full(index.shape, rest, np.uint8)
+    for pass_index, value in values.items():
+        frame[index == pass_index] = value
+    return frame
+
+
+# Against grey 120, OpenCV puts grey 125 at ΔE*ab 1.98 and 127 at 2.95.
+@pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
+@pytest.mark.parametrize("band", ["eo", "ir"])
+def test_a_target_is_seen_at_the_jnd(value: int, seen: bool, band: str) -> None:
     index = square()
-    ir = camera().model_copy(update={"band": "ir"})
-    truth = labels.Labels()
+    grey = eight_bit(index, {1: value})
+    frame = grey if band == "ir" else cv2.cvtColor(grey, cv2.COLOR_GRAY2RGB)
 
-    truth.add(ir, 0.0, index, np.full((48, 64), 280.0), [target(1)], RADIUS_M)
+    assert boxed(index, frame, band) is seen
 
-    assert truth.annotations
+
+# Against grey 120, OpenCV puts grey 141 at ΔE*ab 8.38 and 146 at 10.29.
+@pytest.mark.parametrize(("value", "seen"), [(141, False), (146, True)])
+def test_one_pixel_needs_the_contrast_of_four(value: int, seen: bool) -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[20, 30] = 1
+
+    assert boxed(index, eight_bit(index, {1: value})) is seen
+
+
+@pytest.mark.parametrize(("swapped", "seen"), [(False, False), (True, True)])
+def test_each_row_is_judged_against_its_own_background(
+    swapped: bool, seen: bool
+) -> None:
+    """Across the horizon a target the colour of its row's sky or sea is unseen, though
+    it differs from the mean around it."""
+    index = square()
+    sky, sea = (60, 200) if swapped else (200, 60)
+    frame = np.full(index.shape, 200, np.uint8)
+    frame[15:] = 60
+    frame[10:15][index[10:15] == 1] = sky
+    frame[15:20][index[15:20] == 1] = sea
+
+    assert boxed(index, frame) is seen
+
+
+def test_another_object_in_the_flank_is_not_background() -> None:
+    """Counted, the neighbour would halve the target's ΔE*ab to under the JND."""
+    index = square()
+    index[10:20, 30:38] = 2
+
+    assert boxed(index, eight_bit(index, {1: 128, 2: 128}))
+
+
+def test_a_target_as_bright_as_its_background_is_seen_by_its_colour() -> None:
+    index = square()
+    frame = cv2.cvtColor(eight_bit(index, {}), cv2.COLOR_GRAY2RGB)
+    frame[index == 1] = (182, 91, 120)  # BT.709 luminance within 0.01 % of grey 120
+
+    assert boxed(index, frame)
 
 
 def test_a_target_with_no_background_to_measure_keeps_its_box() -> None:
-    truth = labels.Labels()
+    index = np.ones((48, 64), dtype=int)
 
-    truth.add(camera(), 0.0, np.ones((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M)
-
-    assert truth.annotations
+    assert boxed(index, eight_bit(index, {}))
 
 
-def test_8bit_primaries_weigh_as_bt709() -> None:
-    primaries = np.eye(3, dtype=np.uint8)[None] * 255
+def test_a_float_frame_keeps_every_box() -> None:
+    index = square()
 
-    assert labels.luminance(primaries)[0] == pytest.approx(labels.BT709)
+    assert boxed(index, np.ones((*index.shape, 3), np.float32))
+
+
+def test_a_frame_is_read_as_rgb() -> None:
+    """As BGR the difference would be ΔE*ab 0.69, under the JND; as RGB it is 2.63."""
+    index = square()
+    frame = np.empty((*index.shape, 3), np.uint8)
+    frame[:] = (150, 60, 30)
+    frame[index == 1] = (150, 60, 35)
+
+    assert boxed(index, frame)
+
+
+@pytest.mark.parametrize(("value", "seen"), [(60, False), (200, True)])
+def test_a_row_with_no_flank_takes_the_nearest_rows_background(
+    value: int, seen: bool
+) -> None:
+    """Sky over sea, the target the colour of each row but its flankless sea row."""
+    index = square()
+    index[17, 12:20] = index[17, 30:38] = 2
+    frame = np.full(index.shape, 200, np.uint8)
+    frame[15:] = 60
+    frame[17][index[17] == 1] = value
+
+    assert boxed(index, frame) is seen
+
+
+@pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
+def test_a_target_on_the_left_edge_is_judged_on_its_flanks(
+    value: int, seen: bool
+) -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 2:12] = 1
+    index[10:20, 12:20] = 2
+
+    assert boxed(index, eight_bit(index, {1: value})) is seen
 
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
