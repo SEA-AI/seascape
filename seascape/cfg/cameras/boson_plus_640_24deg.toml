@@ -1,8 +1,6 @@
-# Teledyne FLIR Boson+ 640 Professional. NETD <= 30 mK at f/1.0, scaled by
-# (f/#)^2 / tau; lens 22640A024: 24.3 deg HFOV, f/1.04, tau 0.90 (Teledyne FLIR Boson+
-# datasheet 102-2013-45, Table 11).
+# Teledyne FLIR Boson+ 640 with lens 22640A024: 24.3 deg HFOV, 640 x 512 (Teledyne FLIR
+# Boson+ datasheet 102-2013-45, Table 11).
 band = "ir"
 hfov_deg = 24.3
 width_px = 640
 height_px = 512
-netd_k = 0.036

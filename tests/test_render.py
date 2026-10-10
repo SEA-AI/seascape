@@ -56,11 +56,6 @@ class TestThermalImage:
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
-    def test_it_returns_the_temperatures_top_row_first(self, tmp_path: Path) -> None:
-        exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        t_k = render._write_thermal(exr, "jpg", agc.Agc())
-        assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
-
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
         render._write_thermal(exr, "png", agc.Agc())
@@ -80,6 +75,11 @@ class TestThermalImage:
 
 
 class TestFrame:
+    def test_a_png_keeps_its_one_16bit_channel(self, tmp_path: Path) -> None:
+        counts = np.array([[29500], [27200]], np.uint16).repeat(4, axis=1)
+        cv2.imwrite(str(tmp_path / "f.png"), counts)
+        assert (render._frame(tmp_path / "f.png") == counts).all()
+
     def test_a_jpg_reads_as_rgb(self, tmp_path: Path) -> None:
         bgr = np.zeros((16, 16, 3), np.uint8)
         bgr[..., 2] = 255  # red
@@ -329,20 +329,3 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     assert [Path(name).suffix for name in named] == [".jpg", ".jpg"]
     assert all((tmp_path / name).exists() for name in named)
     assert [c.image for c in Calibration.read(tmp_path).cameras] == named
-
-
-@pytest.mark.render
-@pytest.mark.parametrize(("netd_k", "boxed"), [(1e3, False), (1e-3, True)])
-def test_an_ir_cameras_netd_sets_which_targets_get_a_box(
-    tmp_path: Path, netd_k: float, boxed: bool
-) -> None:
-    scenario = variant(
-        cameras={"ir": {"width_px": 80, "height_px": 64, "netd_k": netd_k}},
-        objects=[target("yacht", 300.0)],
-        outputs={"bands": ["ir"], "samples": {"ir": 4}},
-    )
-
-    render.render(scenario, tmp_path)
-
-    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
-    assert bool(truth.annotations) is boxed

@@ -37,8 +37,6 @@ _SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
 RING_PX, RING_GAP_PX = 3, 2
 # The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
 THRESHOLD_CONTRAST = 0.05
-# Rose (1948): a target is seen at an SNR near 5, summed over its area.
-ROSE_SNR = 5.0
 
 
 class Target(NamedTuple):
@@ -106,11 +104,9 @@ class Labels(Model):
         frame: np.ndarray,
         targets: Sequence[Target],
         radius_m: float,
-        netd_k: float | None,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the EO image as written or the IR brightness temperature in kelvin, both top
-        row first."""
+        the image as written, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -124,10 +120,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        if camera.band == "eo":
-            values, measure, floor = luminance(frame), contrast, THRESHOLD_CONTRAST
-        else:
-            values, measure, floor = frame, _snr_k, ROSE_SNR * (netd_k or 0.0)
+        lum = luminance(frame) if camera.band == "eo" else None
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -135,9 +128,11 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
-            seen_by = measure(index, values, target.pass_index)
-            if seen_by is not None and seen_by < floor:
-                continue
+            # Too faint to see is as unseen as hidden.
+            if lum is not None:
+                c = contrast(index, lum, target.pass_index)
+                if c is not None and c < THRESHOLD_CONTRAST:
+                    continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             east, north = np.subtract(target.centre_m, at)
             self.annotations.append(
@@ -230,32 +225,6 @@ def luminance(frame: np.ndarray) -> np.ndarray:
 def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
     """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
     superstructure does not cancel."""
-    found = _rss(index, lum, pass_index)
-    if found is None:
-        return None
-    rss, background = found
-    if background <= 0:
-        return 0.0 if rss == 0 else math.inf
-    return rss / background
-
-
-def contrast_k(index: np.ndarray, t_k: np.ndarray, pass_index: int) -> float | None:
-    """O'Kane et al.'s (1995) RSS temperature contrast."""
-    found = _rss(index, t_k, pass_index)
-    return None if found is None else found[0]
-
-
-def _snr_k(index: np.ndarray, t_k: np.ndarray, pass_index: int) -> float | None:
-    """`contrast_k` summed over the target's area, in units of a pixel's NETD."""
-    found = contrast_k(index, t_k, pass_index)
-    return None if found is None else found * math.sqrt((index == pass_index).sum())
-
-
-def _rss(
-    index: np.ndarray, values: np.ndarray, pass_index: int
-) -> tuple[float, float] | None:
-    """The root-mean-square of a target's values less its background's mean, and that
-    mean; None without a background. The background is a ring no target covers."""
     mask = (index == pass_index).astype(np.uint8)
     others = ((index > 0) & (index != pass_index)).astype(np.uint8)
     gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
@@ -263,8 +232,11 @@ def _rss(
     ring = (far > cv2.dilate(mask, gap)) & ~cv2.dilate(others, gap).astype(bool)
     if not ring.any():
         return None
-    background = float(values[ring].mean())
-    return float(np.sqrt(np.mean((values[mask > 0] - background) ** 2))), background
+    background = lum[ring].mean()
+    rss = float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)))
+    if background <= 0:
+        return 0.0 if rss == 0 else math.inf
+    return rss / background
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

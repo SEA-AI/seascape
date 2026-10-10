@@ -34,7 +34,7 @@ width_px = 1920
 height_px = 1080
 ```
 
-An IR camera's `netd_k`, in K, is its NETD: it sets which faint targets get a box, and adds no noise to frames. `seascape/cfg/cameras/` holds presets of real cores and lenses: `preset = "evidir_640_18deg"` in a camera's table.
+`seascape/cfg/cameras/` holds camera presets, real IR cores and lenses among them: `preset = "evidir_640_18deg"` in a camera's table.
 
 A product is a preset under `seascape/cfg/rigs/`; `scenarios/twin-pod.toml` installs two:
 

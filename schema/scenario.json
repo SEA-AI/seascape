@@ -139,29 +139,6 @@
               "$ref": "#/$defs/Choice"
             }
           ]
-        },
-        "netd_k": {
-          "title": "Netd K",
-          "description": "Noise-equivalent temperature difference: with a target's area, the floor below which it gets no box. No noise is added to frames. IR only; None drops no target.",
-          "default": null,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
         }
       },
       "required": [

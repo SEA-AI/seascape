@@ -38,29 +38,27 @@ def _pixels(path: Path) -> np.ndarray:
 
 
 def _frame(path: Path) -> np.ndarray:
-    """An EO image as written, RGB, top row first."""
+    """An image as written, top row first: RGB, or its one channel."""
     if path.suffix == ".exr":
         return _pixels(path)[::-1, :, :3]
-    image = cv2.imread(str(path))
+    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if image is None:
         raise OSError(f"cannot read {path}")
-    return image[..., ::-1]  # cv2 reads BGR
+    return image if image.ndim == 2 else image[..., 2::-1]  # cv2 reads BGR(A)
 
 
 def _temperatures_k(exr: Path) -> np.ndarray:
-    return lwir.brightness_temperature(_pixels(exr)[::-1, :, 0])
+    return lwir.brightness_temperature(_pixels(exr)[..., 0])
 
 
-def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> np.ndarray:
-    """Rewrite a float LWIR render as `fmt` beside it, delete the exr, and return
-    its temperatures."""
-    t_k = _temperatures_k(exr)
+def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> None:
+    """Rewrite a float LWIR render as `fmt` beside it, and delete the exr."""
+    t_k = _temperatures_k(exr)[::-1]  # cv2 writes the top row first
     out = exr.with_suffix(f".{fmt}")
     image = agc.counts(t_k) if fmt == "png" else tone(t_k)
     if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
         raise OSError(f"cannot write {out}")
     exr.unlink()
-    return t_k
 
 
 def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
@@ -190,16 +188,11 @@ def render(
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
                     bpy.ops.render.render(write_still=True)
-                    file_name = f"{name}.{outputs.format}"
-                    # IR is measured before the AGC, so every format reads alike.
                     if thermal:
-                        seen = _write_thermal(
+                        _write_thermal(
                             into / f"{name}.exr", outputs.format, tones[mount.name]
                         )
-                    elif band == "ir":
-                        seen = _temperatures_k(into / f"{name}.exr")
-                    else:
-                        seen = _frame(into / file_name)
+                    file_name = f"{name}.{outputs.format}"
                     written.append(into / file_name)
                     advance()
                     camera = scene.calibrate(built, mount, file_name)
@@ -209,10 +202,9 @@ def render(
                         camera,
                         time_s,
                         np.rint(index).astype(int),
-                        seen,
+                        _frame(into / file_name),
                         targets,
                         radius_m,
-                        netd_k=mount.camera.netd_k,
                     )
                 # Every frame, so a render that dies keeps what it wrote.
                 _write_truth(into, cameras, truth)
