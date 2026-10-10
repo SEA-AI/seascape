@@ -9,7 +9,7 @@ pitch_deg = 4.0
 sun_bearing_deg = 150.0
 
 [[objects]]
-preset = "container_ship"
+preset = "multipurpose_freighter"
 range_m = 2000.0
 bearing_deg = 8.0
 heading_deg = 250.0

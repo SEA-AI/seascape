@@ -25,7 +25,7 @@ sun_bearing_deg = { uniform = [0.0, 360.0] }
 [[objects]]
 count = { integer = [1, 5] }
 asset = { choice = [
-    "container_ship",
+    "multipurpose_freighter",
     "small_container_ship",
     "cargo_ship",
     "bulk_carrier",

@@ -21,7 +21,7 @@ HERE = Path(__file__).parent
 PRIMER = HERE / "primer.toml"
 GAP_PX = 6
 SHIP = (
-    '{ preset = "container_ship", range_m = %s, '
+    '{ preset = "multipurpose_freighter", range_m = %s, '
     "bearing_deg = 0.0, heading_deg = 250.0 }"
 )
 SUN_AHEAD = ["sky.sun_bearing_deg = 0.0", "sky.sun_elevation_deg = 12.0"]
