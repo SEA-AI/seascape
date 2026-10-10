@@ -27,8 +27,16 @@ import bpy
 import numpy as np
 
 from seascape import lwir
-from seascape.blend import CURVE_SAMPLES, animate, curve_image, drive, lookup, place
-from seascape.config import Band, Outputs, Scenario, Sea
+from seascape.blend import (
+    CURVE_SAMPLES,
+    SUN,
+    animate,
+    curve_image,
+    drive,
+    lookup,
+    place,
+)
+from seascape.config import Outputs, Scenario, Sea
 from seascape.wakes import (
     BUBBLE_EFOLD_S,
     BUBBLE_GAIN,
@@ -84,6 +92,11 @@ WATER_BODY_COLOR = (0.0, 0.0065, 0.018)
 # reflection by 2 d, so the sun spans half its radius in slope.
 SUN_SLOPE_RADIUS = math.radians(0.545) / 4
 
+# A judgement: the span of d^2 / v over which the glitter's tilt fades out, d the tilt
+# off the drawn normal of the facet that mirrors the sun, v the unresolved variance. The
+# slope density there is exp(-d^2 / v) of its peak.
+GLINT_REACH = (9.0, 16.0)
+
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
 
@@ -95,6 +108,15 @@ SLOPE_ROWS = 16
 
 # Elevation (rad, ascending) and the IR sky's radiance there.
 type SkyCurve = tuple[np.ndarray, np.ndarray]
+
+
+class Light(NamedTuple):
+    """The ir sky round the horizon, or the unit vector an eo sea glints towards. A sky
+    makes the sea ir."""
+
+    sky: SkyCurve | None = None
+    sun: tuple[float, float, float] | None = None
+
 
 # Cells per side: enough for the tangent point to land on a face, not an accuracy
 # knob. A cell's sagitta, width^2 / 8R, is far under a pixel at the horizon.
@@ -493,12 +515,72 @@ def _whitecaps(
     return cover
 
 
+def _glinting(
+    tree: bpy.types.NodeTree,
+    normal: bpy.types.NodeSocket,
+    sun: tuple[float, float, float],
+    variance: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """1 where an unresolved facet can mirror a sun above the horizon, fading to 0 by
+    `GLINT_REACH`.
+
+    A tilt per cell counts the sun's glints but turns the sky behind each cell into a
+    random patch of itself; where nothing can glint, the lobe takes the whole slope.
+    """
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    toward = tree.nodes.new("ShaderNodeCombineXYZ")
+    toward.name = "glint_sun"
+    world = bpy.context.scene.world
+    for axis, value, expression in zip(
+        "XYZ", sun, ("cos(e) * sin(b)", "cos(e) * cos(b)", "sin(e)"), strict=True
+    ):
+        toward.inputs[axis].default_value = value
+        if SUN[0] in world:
+            drive(
+                toward.inputs[axis],
+                "default_value",
+                expression,
+                world,
+                e=f'["{SUN[0]}"]',
+                b=f'["{SUN[1]}"]',
+            )
+    rising = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(toward.outputs["Vector"], rising.inputs["Vector"])
+    risen = _math(tree, "GREATER_THAN", rising.outputs["Z"], 0.0, name="glint_risen")
+    # Incoming points at the camera: the mirroring facet faces the half-way vector.
+    mirror = _vector(
+        tree,
+        "NORMALIZE",
+        _vector(tree, "ADD", geometry.outputs["Incoming"], toward.outputs["Vector"]),
+    )
+    # 2 (1 - cos d) = d^2 - d^4 / 12.
+    off_sq = _math(
+        tree,
+        "MULTIPLY",
+        _math(tree, "SUBTRACT", 1.0, _vector(tree, "DOT_PRODUCT", normal, mirror)),
+        2.0,
+    )
+    fade = tree.nodes.new("ShaderNodeMapRange")
+    fade.name = "glint_reach"
+    fade.interpolation_type = "SMOOTHSTEP"
+    tree.links.new(
+        _math(tree, "DIVIDE", off_sq, _math(tree, "MAXIMUM", variance, 1e-12)),
+        fade.inputs["Value"],
+    )
+    fade.inputs["From Min"].default_value, fade.inputs["From Max"].default_value = (
+        GLINT_REACH
+    )
+    fade.inputs["To Min"].default_value, fade.inputs["To Max"].default_value = 1.0, 0.0
+    return _math(tree, "MULTIPLY", fade.outputs["Result"], risen)
+
+
 def _glitter(
     tree: bpy.types.NodeTree,
     wind: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
     unresolved: bpy.types.NodeSocket,
+    glinting: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
     slope variance the tilts carry out of the lobe.
@@ -532,9 +614,9 @@ def _glitter(
     )
     carried = _math(
         tree,
-        "MAXIMUM",
-        _math(tree, "SUBTRACT", unresolved, lobe),
-        0.0,
+        "MULTIPLY",
+        _math(tree, "MAXIMUM", _math(tree, "SUBTRACT", unresolved, lobe), 0.0),
+        glinting,
         name="glitter_variance",
     )
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
@@ -1345,14 +1427,14 @@ def material(
     sea: Sea,
     wind: tuple[Wave, ...],
     swell: tuple[Wave, ...],
-    band: Band,
     outputs: Outputs,
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
-    wakes: tuple[Wake, ...] = (),
-    sky: SkyCurve | None = None,
+    wakes: tuple[Wake, ...],
+    light: Light,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
-    `rngs` draw its gusts, its slicks and its wakes' foam. An ir sea reflects `sky`."""
+    `rngs` draw its gusts, its slicks and its wakes' foam. With a sky the sea is ir and
+    reflects it; without, eo, glittering towards the light's sun if it has one."""
     gust_rng, slick_rng, foam_rng = rngs
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
@@ -1392,30 +1474,29 @@ def material(
     def unresolved_at(footprint_m: float) -> float:
         return unresolved_slope_variance(speed, wind, swell, footprint_m)
 
-    if band == "eo":
-        if wind:
-            # The IR sky has no sun to glint, and its emissivity takes the whole slope.
-            tilt, carried = _glitter(tree, wind, time_s, pixel, unresolved[1])
+    if light.sky is None:
+        carried: float | bpy.types.NodeSocket = 0.0
+        if wind and light.sun is not None:
+            # Along the view, the wider spread, reaches the most facets. A judgement.
+            glinting = _glinting(tree, normal, light.sun, unresolved[0])
+            tilt, carried = _glitter(tree, wind, time_s, pixel, unresolved[1], glinting)
             normal = _vector(
                 tree,
                 "NORMALIZE",
                 _vector(tree, "ADD", normal, tilt),
                 name="glitter_normal",
             )
-            along = _math(
-                tree,
-                "MAXIMUM",
-                _math(tree, "SUBTRACT", unresolved[0], carried),
-                0.0,
-            )
-            # Principled stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
-            across = _math(
-                tree,
-                "MAXIMUM",
-                _math(tree, "SUBTRACT", unresolved[1], carried),
-                _math(tree, "MULTIPLY", along, 0.01),
-            )
-            unresolved = (along, across)
+        along = _math(
+            tree, "MAXIMUM", _math(tree, "SUBTRACT", unresolved[0], carried), 0.0
+        )
+        # Principled stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
+        across = _math(
+            tree,
+            "MAXIMUM",
+            _math(tree, "SUBTRACT", unresolved[1], carried),
+            _math(tree, "MULTIPLY", along, 0.01),
+        )
+        unresolved = (along, across)
         threshold = _breaking(tree, sea, wind, gust, gust_max)
         # Along the view, the widest footprint, leaves the most unresolved. A judgement.
         whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, threshold)
@@ -1429,8 +1510,7 @@ def material(
             unresolved_at(FOOTPRINT_RANGE_M[1])
             + gust_max * gust_slope_variance(sea.wind_speed_mps)
         )
-        assert sky is not None
-        surface = _thermal(tree, sea, normal, unresolved, slope_max, sky)
+        surface = _thermal(tree, sea, normal, unresolved, slope_max, light.sky)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])
     return material
