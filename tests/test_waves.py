@@ -199,6 +199,18 @@ def test_each_frequency_runs_both_sides_of_the_wind() -> None:
     assert all(min(o) < 0.0 < max(o) for o in off.values())
 
 
+@pytest.mark.parametrize("share", [0.9, 0.999])
+def test_the_tallest_waves_are_the_fewest_carrying_the_share(share: float) -> None:
+    built = field(7.0)
+    total = sum(w.amplitude_m**2 for w in built)
+
+    kept = waves.tallest(built, share)
+
+    carried = sum(w.amplitude_m**2 for w in kept)
+    smallest = min(w.amplitude_m**2 for w in kept)
+    assert carried >= share * total > carried - smallest
+
+
 def test_waves_run_away_from_the_wind() -> None:
     from_east = field(7.0, wind_from_deg=90.0)
     assert np.mean([w.k_east_rad_m for w in from_east]) < 0.0
