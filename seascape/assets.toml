@@ -122,8 +122,7 @@ url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e585019ccd6ac92e
 sha256 = "021333ff336f774fb752f31039860d472e5468281ab98c3b6ca4618272ec7a33"
 # Scaled by its 20 ft containers: ISO 668 makes one 6.058 m long and 2.591 m high,
 # and the mesh's are 1.155 and 0.505 units, 5.25 and 5.13 m a unit. Their mean gives
-# 62.4 m overall. No published draught: 3.55 m is where the bottom paint ends, a lower
-# bound on the loaded waterline.
+# 62.4 m overall. No published draught: 3.55 m, where the mesh's bottom paint ends.
 length_m = 62.4
 draught_m = 3.55
 bow_deg = 180.0
@@ -147,8 +146,7 @@ url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e585019ccd6ac92e
 sha256 = "7eaaffea5e75661349c242e1c378c14ce090259576c7f406e01d655d832cb274"
 # A Damen Combi Freighter 3850: 89.75 m overall, 12.50 m beam, 5.48 m maximum draught
 # to the keel, below which the mesh hangs nothing. damen.com, "Combi Freighter 3850".
-# Its 20 ft containers agree: ISO 668 sizes put the mesh at 83-90 m. This length makes
-# the hull 12.8 m across.
+# This length makes the mesh 12.8 m across.
 length_m = 89.75
 draught_m = 5.48
 bow_deg = 180.0
@@ -170,10 +168,11 @@ description = "Multipurpose cargo ship with containers stacked five high and two
 url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e585019ccd6ac92ea3aa8174cae4149689953237/multi_purpose_vessel_ii/multi_purpose_vessel_ii.glb"
 sha256 = "138d9fcb2547cfcd089e4e21d7d14ebabe4389139b9dab9eff570d9ce7db7edc"
 # Scaled by its 20 ft containers: ISO 668 makes one 6.058 m long and 2.591 m high,
-# and the mesh's are 1.997 and 0.856 units, 3.03 m a unit either way. No published
-# draught: 6.45 m is where the bottom paint ends, a lower bound on the loaded waterline.
+# and the mesh's are 1.997 and 0.856 units, 3.03 m a unit either way. A Damen Combi
+# Freighter 8200 draws 7.21 m on 118.14 m overall (damen.com, "Combi Freighter 8200");
+# that ratio gives this length 7.48 m, to the keel, below which the mesh hangs nothing.
 length_m = 122.6
-draught_m = 6.45
+draught_m = 7.48
 bow_deg = 180.0
 triangles = 336146
 texture_px = [
