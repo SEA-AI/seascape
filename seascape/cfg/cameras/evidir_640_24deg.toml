@@ -1,0 +1,6 @@
+# Jenoptik EVIDIR alpha 640 (EVIDIR alpha user guide v3.0), custom lens.
+# Judgement: hfov_deg.
+band = "ir"
+hfov_deg = 24.0
+width_px = 640
+height_px = 480

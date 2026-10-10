@@ -198,7 +198,7 @@ def test_a_block_overrides_its_own_preset(tmp_path) -> None:
 
 def test_a_preset_replaces_what_it_lands_on(tmp_path, baseline) -> None:
     (tmp_path / "single.toml").write_text(
-        'height_m = 2.0\n\n[cameras.ir]\npreset = "ir_vga_24deg"\n'
+        'height_m = 2.0\n\n[cameras.ir]\npreset = "evidir_640_24deg"\n'
     )
     scenario = load(variant(tmp_path, '[rigs.bow]\npreset = "./single.toml"\n'))
     bow = scenario.rigs["bow"]

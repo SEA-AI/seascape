@@ -1,0 +1,5 @@
+# Teledyne FLIR Boson+ 640, lens 22640A032 (datasheet 102-2013-45, Table 11).
+band = "ir"
+hfov_deg = 32.0
+width_px = 640
+height_px = 512

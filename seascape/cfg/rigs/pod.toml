@@ -16,5 +16,5 @@ yaw_deg = 40.0
 pitch_deg = -10.0
 
 [cameras.ir]
-preset = "ir_vga_24deg"
+preset = "evidir_640_24deg"
 pitch_deg = -6.0
