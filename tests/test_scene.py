@@ -17,7 +17,16 @@ from mathutils import Vector
 from seascape import blend, lwir, scene, sea, waves
 from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
-from seascape.config import Band, Mount, Object, Rig, Scenario, load, substream
+from seascape.config import (
+    Band,
+    Mount,
+    Object,
+    Outputs,
+    Rig,
+    Scenario,
+    load,
+    substream,
+)
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
@@ -505,10 +514,10 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     scenario = variant(
         rig={"height_m": 5.0},
         cameras={"eo": {"hfov_deg": 2.0, "width_px": 960, "height_px": 540}},
-        objects=[preset_target("container_ship", range_m)],
+        objects=[preset_target("multipurpose_freighter", range_m)],
     )
     built = scene.build(scenario, "eo")
-    (anchor,) = built.targets["container_ship"]
+    (anchor,) = built.targets["multipurpose_freighter"]
     corners = scene._corners(scene._meshes([anchor]))
     top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
     k = scenario.sea.refraction_k
@@ -1200,21 +1209,30 @@ class TestDrifting:
                 (pitch, -roll), abs=1e-5
             )
 
-    def test_a_loop_runs_from_its_last_frame_into_its_first_like_any_other(
-        self,
-    ) -> None:
-        """Wrapped round, no channel bends at the seam more than anywhere else."""
-        channels = dict(keyed())
 
-        assert len(channels) == 10, (
-            "the target's xyz, pitch, roll; the ownship's pitch, roll, heave; "
-            "the sea's cos, sin"
-        )
-        for name, values in channels.items():
-            bend = np.abs(np.diff(np.append(values, values[:2]), 2))
-            # A few ulps: F-curves are float32.
-            ulp = np.spacing(np.float32(np.abs(values).max()))
-            assert bend[-2:].max() <= bend[:-2].max() + 4 * ulp, name
+def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
+    """Keyed at the span, every channel is back at its frame-0 value."""
+    outputs = TestDrifting.SCENARIO.outputs
+    times_s, span_s = outputs.times_s, outputs.span_s
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Outputs, "times_s", property(lambda _: [*times_s, span_s]))
+        # span_s counts times_s; hold it at the real clip's.
+        patch.setattr(Outputs, "span_s", property(lambda _: span_s))
+        scene.build(TestDrifting.SCENARIO)
+
+    channels = dict(keyed())
+
+    assert len(channels) == 10, (
+        "the target's xyz, pitch, roll; the ownship's pitch, roll, heave; "
+        "the sea's cos, sin"
+    )
+    # A few ulps: F-curves are float32.
+    unclosed = [
+        name
+        for name, values in channels.items()
+        if abs(values[-1] - values[0]) > 4 * np.spacing(np.float32(abs(values).max()))
+    ]
+    assert unclosed == []
 
 
 class TestWakes:
@@ -1228,7 +1246,9 @@ class TestWakes:
         assert "wake_normal" in tree.nodes
 
     def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
-        tree = self._built(preset_target("container_ship", 2000.0, speed_mps=5.0))
+        tree = self._built(
+            preset_target("multipurpose_freighter", 2000.0, speed_mps=5.0)
+        )
         assert "sea_foam" in bpy.data.images
         assert "wake_normal" not in tree.nodes
 

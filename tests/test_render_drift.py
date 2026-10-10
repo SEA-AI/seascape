@@ -611,7 +611,7 @@ def _set_after(setting: str, built: bool) -> np.ndarray:
     scenario = variant(
         rig={"pitch_deg": -3.0},
         cameras={"eo": {"width_px": 320, "height_px": 180}},
-        objects=[preset_target("container_ship", 3e3)],
+        objects=[preset_target("multipurpose_freighter", 3e3)],
         outputs=outputs,
         sky=sky,
     )

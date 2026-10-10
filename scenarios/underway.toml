@@ -15,7 +15,7 @@ amplitude_m = 0.5
 period_s = 8.0
 
 [[objects]]
-preset = "container_ship"
+preset = "multipurpose_freighter"
 range_m = 2000.0
 bearing_deg = 8.0
 # Crossing the bow to port.

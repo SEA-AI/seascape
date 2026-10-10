@@ -70,7 +70,10 @@ def frame(
         r = a["range_m"]
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
-        tag(draw, (x0 + 4, y0 - 20), text, FOCUS_RED, 15)
+        # Off the right edge a label shifts left, off the top it drops below the edge.
+        width = draw.textlength(text, font=font(15))
+        x = max(4, min(x0 + 4, img.width - width - 8))
+        tag(draw, (x, max(4, y0 - 20)), text, FOCUS_RED, 15)
     return captioned(img, caption)
 
 

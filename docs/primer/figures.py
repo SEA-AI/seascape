@@ -21,15 +21,18 @@ HERE = Path(__file__).parent
 PRIMER = HERE / "primer.toml"
 GAP_PX = 6
 SHIP = (
-    '{ preset = "container_ship", range_m = %s, '
+    '{ preset = "multipurpose_freighter", range_m = %s, '
     "bearing_deg = 0.0, heading_deg = 250.0 }"
 )
 SUN_AHEAD = ["sky.sun_bearing_deg = 0.0", "sky.sun_elevation_deg = 12.0"]
 LWIR = ['outputs.bands = ["ir"]', "sky.t_air_k = 288.0"]
 FULL_HD = "rigs.bow.cameras.eo = { hfov_deg = 45.0, width_px = 1920, height_px = 1080 }"
 CROP_PX, CROP_SCALE = (192, 56), 4
-HULL_DOWN_KM = (15, 30, 40)
-TELE = "rigs.bow.cameras.eo = { hfov_deg = 1.5, width_px = 640, height_px = 360 }"
+EYE_M = 30.0
+# In front of the horizon seen from EYE_M up, on it, and hull-down behind it.
+HORIZON_KM = round(waves.horizon_m(EYE_M, load(PRIMER).sea.refraction_k) / 1000)
+HULL_DOWN_KM = (12, HORIZON_KM, 35)
+TELE = "rigs.bow.cameras.eo = { hfov_deg = 0.75, width_px = 640, height_px = 360 }"
 
 FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
     "samples": (
@@ -67,10 +70,20 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
     ),
     "horizon": (
         # Clear air and a mast-top camera, so the sea hides most of the far hull.
-        [TELE, "rigs.bow.height_m = 30.0", "sky.visibility_km = 1000.0"],
+        # Tilted down to bring the horizon to mid-frame.
         [
-            (f"ship at {r} km", [f"objects = [{SHIP % (r * 1000.0)}]"])
-            for r in HULL_DOWN_KM
+            TELE,
+            f"rigs.bow.height_m = {EYE_M}",
+            "rigs.bow.pitch_deg = -0.15",
+            "sky.visibility_km = 1000.0",
+        ],
+        [
+            (f"{r} km, {where}", [f"objects = [{SHIP % (r * 1000.0)}]"])
+            for r, where in zip(
+                HULL_DOWN_KM,
+                ("in front of the horizon", "on it", "behind it"),
+                strict=True,
+            )
         ],
     ),
 }
