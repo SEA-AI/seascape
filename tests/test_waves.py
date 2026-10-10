@@ -1,4 +1,5 @@
 import math
+from collections import defaultdict
 from statistics import NormalDist
 
 import numpy as np
@@ -93,9 +94,11 @@ def test_a_slick_damps_the_shortest_waves_first() -> None:
     assert gone
     assert max(w.k_rad_m for w in left) < min(w.k_rad_m for w in gone)
     budget = waves.cox_munk_slick_slope(7.0) ** 2
-    shortest = min(gone, key=lambda w: w.k_rad_m)
+    k = min(w.k_rad_m for w in gone)
+    next_frequency = tuple(w for w in gone if w.k_rad_m == k)
+    assert len(next_frequency) == waves.WIND_HEADINGS
     assert waves.slope_variance(left) <= budget
-    assert waves.slope_variance((*left, shortest)) > budget
+    assert waves.slope_variance((*left, *next_frequency)) > budget
 
 
 @pytest.mark.parametrize("cover", [0.1, 0.3, 0.7])
@@ -141,6 +144,19 @@ def test_the_field_carries_the_spectrum_s_wave_height(wind_speed_mps) -> None:
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
     wind = waves.wind_at_m(wind_speed_mps, waves.PM_WIND_HEIGHT_M)
     assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.01)
+
+
+def test_each_frequency_runs_both_sides_of_the_wind() -> None:
+    built = field(7.0)
+
+    # A wind from the north runs its waves toward pi.
+    off = defaultdict(list)
+    for wave in built:
+        off[wave.omega_rad_s].append(
+            math.remainder(wave.toward_rad - math.pi, 2 * math.pi)
+        )
+
+    assert all(min(o) < 0.0 < max(o) for o in off.values())
 
 
 def test_waves_run_away_from_the_wind() -> None:

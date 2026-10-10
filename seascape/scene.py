@@ -15,6 +15,7 @@ from seascape import lwir, sea, skies, wakes, waves
 from seascape.assets import Asset, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
+    SUN,
     animate,
     curve_image,
     drive,
@@ -74,11 +75,6 @@ def swell_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
 
 def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
     return wind_waves(scenario) + swell_waves(scenario)
-
-
-# On the world itself: a depsgraph links a driver to an ID's property, not to a node's
-# (https://projects.blender.org/blender/blender/issues/142601).
-SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
 
 
 def _sky(sky: Sky, band: Band) -> bpy.types.World:
@@ -395,6 +391,14 @@ def _sun_vector(sky: Sky) -> tuple[float, float, float]:
         math.cos(elevation) * math.cos(bearing),
         math.sin(elevation),
     )
+
+
+def _light(sky: Sky, band: Band) -> sea.Light:
+    if band == "ir":
+        return sea.Light(sky=_sky_round(sky))
+    if sky.sun_elevation_deg is None:
+        return sea.Light()
+    return sea.Light(sun=_sun_vector(sky))
 
 
 def _thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
@@ -1261,9 +1265,14 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
     # After the hulls, whose poses and beams set the wakes.
-    sky = _sky_round(scenario.sky) if band == "ir" else None
     material = sea.material(
-        scenario.sea, wind, swell, band, outputs, rngs, tuple(trails), sky
+        scenario.sea,
+        wind,
+        swell,
+        outputs,
+        rngs,
+        tuple(trails),
+        _light(scenario.sky, band),
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.

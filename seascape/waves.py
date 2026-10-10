@@ -133,11 +133,15 @@ COX_MUNK_WIND_HEIGHT_M = 12.5
 CHARNOCK = 0.011
 VON_KARMAN = 0.4
 
-# A judgement: enough that no single wave shows.
-COMPONENTS = 48
+# A judgement: frequencies, enough that no single wave shows.
+FREQUENCIES = 32
 
-# A judgement: enough directions that a swell's crests do not read as one line.
-SWELL_COMPONENTS = 4
+# A judgement: each frequency at several headings, so its crests cross and break off
+# instead of running across the frame as one line.
+WIND_HEADINGS = 3
+
+# A judgement: enough headings that a swell's crests do not read as one line.
+SWELL_HEADINGS = 4
 
 # A judgement, as a fraction of the peak frequency: PM puts exp(-5/4 x^-4) of the
 # height variance below x.
@@ -256,7 +260,7 @@ def _bins(wind_speed_mps: float) -> tuple[np.ndarray, np.ndarray]:
     high = math.sqrt(2 * math.pi * GRAVITY_MS2 / CAPILLARY_WAVELENGTH_M)
     if low >= high:
         return np.empty(0), np.empty(0)
-    edges = np.geomspace(low, high, COMPONENTS + 1)
+    edges = np.geomspace(low, high, FREQUENCIES + 1)
     omega = np.sqrt(edges[:-1] * edges[1:])
     density = (
         PM_ALPHA * GRAVITY_MS2**2 * omega**-5 * np.exp(-1.25 * (peak / omega) ** 4)
@@ -286,11 +290,15 @@ def wind_sea(
     omega, variance = _bins(wind_speed_mps)
     if not len(omega):
         return ()
+    # Stratified, so a frequency's headings fall in separate shares of the spread.
+    share = np.tile(np.arange(WIND_HEADINGS), len(omega))
+    omega = np.repeat(omega, WIND_HEADINGS)
+    variance = np.repeat(variance / WIND_HEADINGS, WIND_HEADINGS)
     ratio = omega / peak_omega_rad_s(wind_speed_mps)
     s = SPREAD_S_MAX * np.where(ratio < 1.0, ratio**5, ratio**-2.5)
     # Wind is named for where it blows from; waves run the other way.
     toward = math.radians(wind_from_deg + 180.0) + _off_mean_rad(
-        s, rng.uniform(size=len(omega))
+        s, (share + rng.uniform(size=len(omega))) / WIND_HEADINGS
     )
     phase = rng.uniform(0.0, 2 * math.pi, len(omega))
     return tuple(
@@ -314,12 +322,12 @@ def swell(
 ) -> tuple[Wave, ...]:
     """One period, its height split over directions: Hs = 4 sqrt(sum a^2 / 2)."""
     omega = 2 * math.pi / snap(period_s)
-    spread = np.full(SWELL_COMPONENTS, SWELL_S_MAX)
+    spread = np.full(SWELL_HEADINGS, SWELL_S_MAX)
     toward = math.radians(from_deg + 180.0) + _off_mean_rad(
-        spread, rng.uniform(size=SWELL_COMPONENTS)
+        spread, rng.uniform(size=SWELL_HEADINGS)
     )
-    phase = rng.uniform(0.0, 2 * math.pi, SWELL_COMPONENTS)
-    amplitude = height_m / 4 * math.sqrt(2 / SWELL_COMPONENTS)
+    phase = rng.uniform(0.0, 2 * math.pi, SWELL_HEADINGS)
+    amplitude = height_m / 4 * math.sqrt(2 / SWELL_HEADINGS)
     return tuple(
         Wave(amplitude, omega, t, p)
         for t, p in zip(toward.tolist(), phase.tolist(), strict=True)
@@ -509,12 +517,14 @@ def slick_survivors(wind_speed_mps: float, wind: tuple[Wave, ...]) -> tuple[Wave
     """The longest waves that fit in Cox & Munk's slick variance: what a slick leaves
     of `wind`, damping the shortest first."""
     budget = cox_munk_slick_slope(wind_speed_mps) ** 2
-    left = []
-    for wave in sorted(wind, key=lambda w: w.k_rad_m):
-        budget -= slope_variance((wave,))
+    left: list[Wave] = []
+    # A wavelength goes at every heading at once.
+    for k in sorted({w.k_rad_m for w in wind}):
+        same = tuple(w for w in wind if w.k_rad_m == k)
+        budget -= slope_variance(same)
         if budget < 0.0:
             break
-        left.append(wave)
+        left.extend(same)
     return tuple(left)
 
 
