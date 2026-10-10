@@ -93,9 +93,11 @@ def test_a_slick_damps_the_shortest_waves_first() -> None:
     assert gone
     assert max(w.k_rad_m for w in left) < min(w.k_rad_m for w in gone)
     budget = waves.cox_munk_slick_slope(7.0) ** 2
-    shortest = min(gone, key=lambda w: w.k_rad_m)
+    k = min(w.k_rad_m for w in gone)
+    next_frequency = tuple(w for w in gone if w.k_rad_m == k)
+    assert len(next_frequency) == waves.WIND_HEADINGS
     assert waves.slope_variance(left) <= budget
-    assert waves.slope_variance((*left, shortest)) > budget
+    assert waves.slope_variance((*left, *next_frequency)) > budget
 
 
 @pytest.mark.parametrize("cover", [0.1, 0.3, 0.7])
@@ -141,6 +143,16 @@ def test_the_field_carries_the_spectrum_s_wave_height(wind_speed_mps) -> None:
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
     wind = waves.wind_at_m(wind_speed_mps, waves.PM_WIND_HEIGHT_M)
     assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.01)
+
+
+def test_each_frequency_runs_at_headings_of_its_own() -> None:
+    built = field(7.0)
+
+    _, per_frequency = np.unique([w.omega_rad_s for w in built], return_counts=True)
+    headings = {(w.omega_rad_s, w.toward_rad) for w in built}
+
+    assert set(per_frequency) == {waves.WIND_HEADINGS}
+    assert len(headings) == len(built)
 
 
 def test_waves_run_away_from_the_wind() -> None:
