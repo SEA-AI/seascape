@@ -96,11 +96,11 @@ Blender only knows red, green and blue, so all of this is NumPy: emissivity from
 
 Two things happen as a ship gets farther away. The air scatters its light away and sky light in, so it fades into the sky:
 
-<p align="center"><img src="haze.jpg" alt="A container ship at 2 km with visibility 42, 10 and 3 km"></p>
+<p align="center"><img src="haze.jpg" alt="A freighter at 2 km with visibility 42, 10 and 3 km"></p>
 
 And the earth curves away under it. Past the horizon a ship sinks hull-down:
 
-<p align="center"><img src="horizon.jpg" alt="A container ship at 15, 30 and 40 km, seen from 30 m up"></p>
+<p align="center"><img src="horizon.jpg" alt="A freighter at 15, 30 and 40 km, seen from 30 m up"></p>
 
 <p align="center">
   <picture>

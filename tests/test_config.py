@@ -179,7 +179,7 @@ def test_a_bad_override_is_refused(override: str, error: type[Exception]) -> Non
 def test_objects_merge_their_preset(baseline) -> None:
     """A list-of-tables preset: asset and temperature from cfg, pose here."""
     obj = baseline.objects[0]
-    assert (obj.asset, obj.t_k) == ("container_ship", 295.0)
+    assert (obj.asset, obj.t_k) == ("multipurpose_freighter", 295.0)
     assert (obj.range_m, obj.bearing_deg) == (2000.0, 8.0)
 
 
@@ -496,13 +496,13 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         (
             "drifting.toml",
             [
-                'targets = { asset = "container_ship", count = 2, range_m = 900.0,'
-                " bearing_deg = [-5.0, 5.0], speed_mps = 1.0 }"
+                'targets = { asset = "multipurpose_freighter", count = 2,'
+                " range_m = 900.0, bearing_deg = [-5.0, 5.0], speed_mps = 1.0 }"
             ],
             "drift",
         ),
         ("drifting.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
-        ("drifting.toml", ["outputs.duration_s = 20"], "container_ship drift"),
+        ("drifting.toml", ["outputs.duration_s = 20"], "multipurpose_freighter drift"),
         ("port-pod-loop.toml", ["outputs.duration_s = 30"], "yacht orbit's 40.0 s"),
         (
             "drifting.toml",
