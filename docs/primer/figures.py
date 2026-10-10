@@ -28,8 +28,8 @@ SUN_AHEAD = ["sky.sun_bearing_deg = 0.0", "sky.sun_elevation_deg = 12.0"]
 LWIR = ['outputs.bands = ["ir"]', "sky.t_air_k = 288.0"]
 FULL_HD = "rigs.bow.cameras.eo = { hfov_deg = 45.0, width_px = 1920, height_px = 1080 }"
 CROP_PX, CROP_SCALE = (192, 56), 4
-HULL_DOWN_KM = (15, 30, 40)
-TELE = "rigs.bow.cameras.eo = { hfov_deg = 1.5, width_px = 640, height_px = 360 }"
+HULL_DOWN_KM = (15, 30, 35)
+TELE = "rigs.bow.cameras.eo = { hfov_deg = 0.75, width_px = 640, height_px = 360 }"
 
 FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
     "samples": (

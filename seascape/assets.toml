@@ -1,4 +1,5 @@
-# Icosa serves this one only as a multi-file glTF; the archive keeps Poly's GLB.
+# poly.pizza blocks scripted clients, and Icosa serves this one only as a multi-file
+# glTF; the archive keeps Poly's GLB.
 [yacht]
 kind = "hull"
 category = "motor yacht"
