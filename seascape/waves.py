@@ -519,6 +519,15 @@ def slope_variance(field: tuple[Wave, ...]) -> float:
     return sum((w.amplitude_m * w.k_rad_m) ** 2 / 2 for w in field)
 
 
+def tallest(field: tuple[Wave, ...], share: float) -> tuple[Wave, ...]:
+    """The fewest waves carrying `share` of the height variance, in field order."""
+    variance = np.array([w.amplitude_m**2 for w in field])
+    order = np.argsort(variance)[::-1]
+    count = int(np.searchsorted(np.cumsum(variance[order]), share * variance.sum())) + 1
+    kept = set(order[:count].tolist())
+    return tuple(w for i, w in enumerate(field) if i in kept)
+
+
 def curvature_variance(field: tuple[Wave, ...]) -> float:
     """m4, the fourth moment of the spectrum: sum a^2 k^4 / 2."""
     return sum((w.amplitude_m * w.k_rad_m**2) ** 2 / 2 for w in field)
