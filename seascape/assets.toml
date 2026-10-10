@@ -113,6 +113,78 @@ texture_px = [
 licence = "CC-BY-4.0"
 attribution = "littoral mission vessel by fxmdeveloper, https://sketchfab.com/3d-models/644999231c034c959c6091b00ed6c50f"
 
+[coaster]
+kind = "hull"
+category = "container ship"
+category_id = 1
+description = "Small coaster with one tier of containers stowed athwartships, bridge aft, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e585019ccd6ac92ea3aa8174cae4149689953237/coaster_01/coaster_01.glb"
+sha256 = "021333ff336f774fb752f31039860d472e5468281ab98c3b6ca4618272ec7a33"
+# Scaled by its 20 ft containers: ISO 668 makes one 6.058 m long and 2.591 m high,
+# and the mesh's are 1.155 and 0.505 units, 5.25 and 5.13 m a unit. Their mean gives
+# 62.4 m overall. No published draught: 3.55 m is where the bottom paint ends, a lower
+# bound on the loaded waterline.
+length_m = 62.4
+draught_m = 3.55
+bow_deg = 180.0
+triangles = 821196
+texture_px = [
+    2048, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
+    1024, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 256, 256, 256, 256,
+]
+licence = "CC-BY-4.0"
+attribution = "Coaster 01 by gogiart, https://sketchfab.com/3d-models/e7cd3749189445fa8a0b928e5fb95814"
+
+[short_sea_freighter]
+kind = "hull"
+category = "general cargo ship"
+category_id = 2
+description = "Short-sea multipurpose ship with containers and box cranes, bridge forward, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e585019ccd6ac92ea3aa8174cae4149689953237/multi_purpose_vessel_v/multi_purpose_vessel_v.glb"
+sha256 = "7eaaffea5e75661349c242e1c378c14ce090259576c7f406e01d655d832cb274"
+# A Damen Combi Freighter 3850: 89.75 m overall, 12.50 m beam, 5.48 m maximum draught
+# to the keel, below which the mesh hangs nothing. damen.com, "Combi Freighter 3850".
+# Its 20 ft containers agree: ISO 668 sizes put the mesh at 83-90 m. This length makes
+# the hull 12.8 m across.
+length_m = 89.75
+draught_m = 5.48
+bow_deg = 180.0
+triangles = 322533
+texture_px = [
+    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
+    1024, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 256, 256, 256, 256, 256, 256,
+]
+licence = "CC-BY-4.0"
+attribution = "Multi-purpose Vessel V by gogiart, https://sketchfab.com/3d-models/2f685e27d6a14e3fb65a12b9316b399f"
+
+[multipurpose_freighter]
+kind = "hull"
+category = "general cargo ship"
+category_id = 2
+description = "Multipurpose cargo ship with containers stacked five high and two deck cranes, bridge aft, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e585019ccd6ac92ea3aa8174cae4149689953237/multi_purpose_vessel_ii/multi_purpose_vessel_ii.glb"
+sha256 = "138d9fcb2547cfcd089e4e21d7d14ebabe4389139b9dab9eff570d9ce7db7edc"
+# Scaled by its 20 ft containers: ISO 668 makes one 6.058 m long and 2.591 m high,
+# and the mesh's are 1.997 and 0.856 units, 3.03 m a unit either way. No published
+# draught: 6.45 m is where the bottom paint ends, a lower bound on the loaded waterline.
+length_m = 122.6
+draught_m = 6.45
+bow_deg = 180.0
+triangles = 336146
+texture_px = [
+    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 256, 256, 256, 256,
+    256,
+]
+licence = "CC-BY-4.0"
+attribution = "Multi-purpose Vessel II by gogiart, https://sketchfab.com/3d-models/e212591a799d4b568cf4df9279444adb"
+
 [lateral_mark]
 kind = "buoy"
 category = "lateral mark"
