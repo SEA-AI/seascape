@@ -23,20 +23,14 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# The Y row of sRGB's linear RGB to XYZ (IEC 61966-2-1).
-BT709 = np.array([0.2126, 0.7152, 0.0722])
-# IEC 61966-2-1.
-_SRGB = np.arange(256) / 255
-SRGB_TO_LINEAR = np.where(
-    _SRGB <= 0.04045, _SRGB / 12.92, ((_SRGB + 0.055) / 1.055) ** 2.4
-)
-# Per 8-bit code, each channel's share of luminance: float32, as a 4K frame of float64
-# RGB is 200 MB.
-_SHARE = (SRGB_TO_LINEAR[:, None] * BT709).astype(np.float32)
-# Judgement: the gap clears the pixel filter's and the compositor's blur.
-RING_PX, RING_GAP_PX = 3, 2
-# The threshold contrast of the meteorological optical range (WMO-No. 8, ch. 9).
-THRESHOLD_CONTRAST = 0.05
+# Judgement: viewed at about 1 arcmin a pixel, the fovea sums contrast over about 4 of
+# them, its Ricco area (Tuten et al. 2018).
+RICCO_PX = 4
+# The just-noticeable difference in CIELAB (Mahy, Van Eycken & Oosterlinck 1994).
+JND_DELTA_E = 2.3
+# Judgement: enough of a row for its median to outvote a wave, near enough to be the
+# target's own background.
+FLANK_PX = 8
 
 
 class Target(NamedTuple):
@@ -120,7 +114,9 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        lum = luminance(frame) if camera.band == "eo" else None
+        # A viewer sees 8 bits; exr radiance and 16-bit centikelvin have no one display,
+        # so their targets all keep a box.
+        judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
@@ -128,12 +124,11 @@ class Labels(Model):
             ys, xs = rows[mine], columns[mine]
             if not len(xs):
                 continue
-            # Too faint to see is as unseen as hidden.
-            if lum is not None:
-                c = contrast(index, lum, target.pass_index)
-                if c is not None and c < THRESHOLD_CONTRAST:
-                    continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+            # Too faint to see is as unseen as hidden.
+            window = np.s_[y0 : y1 + 1, max(x0 - FLANK_PX, 0) : x1 + 1 + FLANK_PX]
+            if judged and not visible(index[window], frame[window], target.pass_index):
+                continue
             east, north = np.subtract(target.centre_m, at)
             self.annotations.append(
                 Annotation(
@@ -215,28 +210,38 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
-def luminance(frame: np.ndarray) -> np.ndarray:
-    if frame.dtype == np.uint8:
-        r, g, b = (_SHARE[frame[..., c], c] for c in range(3))
-        return r + g + b
-    return frame @ BT709
-
-
-def contrast(index: np.ndarray, lum: np.ndarray, pass_index: int) -> float | None:
-    """Weber's, as O'Kane et al.'s (1995) RSS, so a dark hull under a bright
-    superstructure does not cancel."""
-    mask = (index == pass_index).astype(np.uint8)
-    others = ((index > 0) & (index != pass_index)).astype(np.uint8)
-    gap = np.ones((2 * RING_GAP_PX + 1,) * 2, np.uint8)
-    far = cv2.dilate(mask, np.ones((2 * (RING_GAP_PX + RING_PX) + 1,) * 2, np.uint8))
-    ring = (far > cv2.dilate(mask, gap)) & ~cv2.dilate(others, gap).astype(bool)
-    if not ring.any():
-        return None
-    background = lum[ring].mean()
-    rss = float(np.sqrt(np.mean((lum[mask > 0] - background) ** 2)))
-    if background <= 0:
-        return 0.0 if rss == 0 else math.inf
-    return rss / background
+def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
+    """Whether a viewer tells a target from its background in an 8-bit RGB or grey
+    frame: its RICCO_PX largest CIELAB differences from the median of its row's
+    flanks, zero-padded, sum to at least JND_DELTA_E each."""
+    if frame.ndim == 2:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+    # CIE 1976 L*a*b* (ISO/CIE 11664-4); OpenCV decodes sRGB on float input.
+    lab = cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
+    mask = index == pass_index
+    width = index.shape[1]
+    rows = np.flatnonzero(mask.any(axis=1))
+    background = {}
+    for y in rows:
+        xs = np.flatnonzero(mask[y])
+        flank = np.r_[
+            max(xs[0] - FLANK_PX, 0) : xs[0],
+            xs[-1] + 1 : min(xs[-1] + 1 + FLANK_PX, width),
+        ]
+        # Another object, the ownship included, is not background.
+        flank = flank[index[y, flank] == 0]
+        if len(flank):
+            background[y] = np.median(lab[y, flank], axis=0)
+    if not background:
+        return True
+    measured = np.array(list(background))
+    delta_e = []
+    for y in rows:
+        # A row with no flank of its own takes the nearest row's.
+        near = measured[np.abs(measured - y).argmin()]
+        delta_e.append(np.linalg.norm(lab[y, mask[y]] - background[near], axis=1))
+    largest = np.sort(np.concatenate(delta_e))[-RICCO_PX:]
+    return float(largest.sum()) >= JND_DELTA_E * RICCO_PX
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

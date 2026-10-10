@@ -8,7 +8,7 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-An EO target whose contrast against its surroundings is under 5 %, the threshold of the WMO's meteorological optical range (WMO-No. 8, ch. 9), gets no box, as an occluded one gets none. `visibility_km` takes Koschmieder's 2 %, so a target loses its box nearer than the scenario's visibility. Its contrast is O'Kane et al.'s (1995) RSS Weber contrast in luminance, against a thin ring of background around its index-pass pixels.
+A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Each of its pixels is compared, in CIELAB, with the median of the background beside it on its row, and its largest differences, pooled over the fovea's Ricco area (Tuten et al. 2018), must average the just-noticeable ΔE*ab of 2.3 (Mahy, Van Eycken & Oosterlinck 1994). The rule reads the 8-bit frame as written, so it holds for EO and LWIR alike; an exr or a 16-bit LWIR png keeps every box.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 
