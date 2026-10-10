@@ -216,7 +216,7 @@ def emissivity_curve(
     normal = _facets(slope_sigma)
     view = np.stack([np.sin(theta), np.zeros(CURVE_ANGLES), np.cos(theta)], axis=-1)
     cos_i = view @ normal.T  # (angle, facet)
-    area = np.clip(cos_i, 0.0, None)
+    area = _seen_area(cos_i, normal)
     eps = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, table)
     return theta, (eps * area).sum(axis=1) / area.sum(axis=1)
 
@@ -234,6 +234,12 @@ def _facets(slope_sigma: float) -> FloatArray:
     east, north = np.meshgrid(slope_sigma * quantiles, slope_sigma * quantiles)
     normal = np.stack([-east.ravel(), -north.ravel(), np.ones(side**2)], axis=-1)
     return normal / np.linalg.norm(normal, axis=-1, keepdims=True)
+
+
+def _seen_area(cos_i: FloatArray, normal: FloatArray) -> FloatArray:
+    """The area each facet of `_facets` shows the viewer per unit of mean surface: its
+    own area, 1 / n_z of the surface it covers, foreshortened by cos_i."""
+    return np.clip(cos_i, 0.0, None) / normal[:, 2]
 
 
 def reflected_sky(
@@ -265,7 +271,7 @@ def reflected_sky(
     up = 2 * cos_i * normal[:, 2] - view[..., 2:]
     theta, flat = emissivity_curve(t_sea_k=t_sea_k)
     reflectance = 1.0 - np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, flat)
-    weight = np.clip(cos_i, 0.0, None) * reflectance
+    weight = _seen_area(cos_i, normal) * reflectance
     seen = np.interp(np.arcsin(np.clip(up, -1.0, 1.0)), elev, radiance)
     return (seen * weight).sum(axis=-1) / weight.sum(axis=-1)
 
