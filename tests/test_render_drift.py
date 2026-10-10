@@ -424,7 +424,7 @@ def test_the_sea_reflects_a_uniform_sky_as_gaussian_slopes_do(
 
     rendered = _uniform_sky_reflectance(depression_deg)
 
-    assert rendered == pytest.approx(expected, rel=0.12)
+    assert rendered == pytest.approx(expected, rel=0.06)
 
 
 @pytest.mark.render
