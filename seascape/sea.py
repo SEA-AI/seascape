@@ -74,6 +74,7 @@ from seascape.waves import (
     slick_survivors,
     slope_variance,
     specular_cell_m2,
+    tallest,
     turbulence_intensity,
     twinkle_hz,
     unresolved_acceleration_variance,
@@ -110,6 +111,9 @@ PARALLAX_STEPS = 2
 # (Cox & Munk 1954), capping the run at 1 / z the rms slope covers facets within z
 # sigma, two-sided.
 PARALLAX_CONVERGED = 0.996
+# A judgement: parallax reads the fewest waves carrying this share of their own sea's
+# height variance.
+PARALLAX_HEIGHT_SHARE = 0.999
 
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
@@ -509,13 +513,14 @@ def _parallax(
 def _waves(
     tree: bpy.types.NodeTree,
     field: tuple[Wave, ...],
+    tall: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
     calm: bpy.types.NodeSocket | None = None,
     damped: frozenset[Wave] = frozenset(),
 ) -> tuple[bpy.types.NodeSocket, list[bpy.types.Node]]:
-    """The normal of what the pixel resolves, and each wave's node; `calm` scales the
-    `damped` ones."""
+    """The normal of what the pixel resolves, read at the `tall` waves' height, and each
+    wave's node; `calm` scales the `damped` ones."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     link = tree.links.new
     across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
@@ -528,7 +533,7 @@ def _waves(
         link(stretch, inputs["Stretch"])
 
     group = _wave_group()
-    heights = _height_group(field, damped, group)
+    heights = _height_group(tall, damped, group)
 
     def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         node = tree.nodes.new("ShaderNodeGroup")
@@ -1622,7 +1627,9 @@ def material(
     calm = None
     if slick is not None and damped:
         calm = _math(tree, "SUBTRACT", 1.0, slick)
-    normal, drawn = _waves(tree, field, time_s, pixel, calm, damped)
+    # Each sea on its own, or a swell's height would decide which wind waves count.
+    tall = tallest(wind, PARALLAX_HEIGHT_SHARE) + tallest(swell, PARALLAX_HEIGHT_SHARE)
+    normal, drawn = _waves(tree, field, tall, time_s, pixel, calm, damped)
     if wake is not None and wake.tilt is not None:
         normal = _vector(
             tree,
