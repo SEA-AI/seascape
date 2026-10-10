@@ -7,6 +7,13 @@ through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for Beckman
 distribution and its Smith shadowing; Burley, "Physically-based shading at Disney",
 SIGGRAPH 2012 course notes, for the alpha = roughness^2 convention Cycles follows.
 
+Parallax: Kaneko et al., "Detailed shape representation with parallax mapping", ICAT
+2001 205-208: a height field drawn as a normal is read where the view ray meets it,
+iterated here towards its fixed point. Its run along the ray is capped, as Welsh,
+"Parallax mapping with offset limiting: a per-pixel approximation of uneven surfaces",
+Infiscape 2004, caps the offset, here where the drawn slope would stop the fixed point
+contracting.
+
 Whitecaps: Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11)
 1816, 1984 (doi:10.1364/AO.23.001816), for the Monahan coverage it multiplies.
 
@@ -62,11 +69,13 @@ from seascape.waves import (
     cox_munk_slope,
     earth_radius_m,
     fade_footprints_m,
+    filtered,
     gust_slope_variance,
     gusty_whitecap_fraction,
     horizon_m,
     sea_z_m,
     slick_survivors,
+    slope_variance,
     specular_cell_m2,
     turbulence_intensity,
     twinkle_hz,
@@ -96,6 +105,16 @@ SUN_SLOPE_RADIUS = math.radians(0.545) / 4
 # drawn normal of the facet that mirrors the sun, v the unresolved variance; the
 # Gaussian slope density there is exp(-d^2 / v) of its peak.
 GLINT_REACH = (9.0, 16.0)
+
+# Judgements: two fixed-point steps to where the view ray meets the drawn height, and a
+# rise floored at 3 degrees, or the step runs to infinity at the horizon.
+PARALLAX_STEPS = 2
+PARALLAX_MIN_RISE = 0.05
+# A judgement: the share of facets on which each fixed-point step contracts. A step
+# contracts where slope times run is under 1 (Banach); with slopes Gaussian per axis
+# (Cox & Munk 1954), capping the run at 1 / z the rms slope covers facets within z
+# sigma, two-sided.
+PARALLAX_CONVERGED = 0.996
 
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
@@ -367,6 +386,134 @@ def _wave_group() -> bpy.types.NodeTree:
     return group
 
 
+def _set_wave(inputs: bpy.types.NodeInputs, wave: Wave) -> None:
+    """The inputs of `_wave_group` that place `wave` and fade it by footprint."""
+    gone, whole = fade_footprints_m(2 * math.pi / wave.k_rad_m)
+    inputs["Wavenumber"].default_value = (
+        wave.k_east_rad_m,
+        wave.k_north_rad_m,
+        -wave.omega_rad_s,
+    )
+    inputs["Phase"].default_value = wave.phase_rad
+    inputs["Toward"].default_value = (
+        math.sin(wave.toward_rad),
+        math.cos(wave.toward_rad),
+        0.0,
+    )
+    inputs["Gone Sq"].default_value = float(gone) ** 2
+    inputs["Whole Sq"].default_value = float(whole) ** 2
+
+
+def _height_group(
+    field: tuple[Wave, ...], damped: frozenset[Wave], wave: bpy.types.NodeTree
+) -> bpy.types.NodeTree:
+    """The drawn height at `Position`, (east, north, time): each `wave` lifted by its
+    amplitude, sloped by nothing, so it fades and calms as the normal does. One group,
+    so each fixed-point step adds one node to the sea's tree."""
+    group = bpy.data.node_groups.new("sea_height", "ShaderNodeTree")
+    for name, kind in (
+        ("Position", "Vector"),
+        ("Along", "Vector"),
+        ("Across Sq", "Float"),
+        ("Stretch", "Float"),
+        ("Calm", "Float"),
+    ):
+        socket = group.interface.new_socket(
+            name, in_out="INPUT", socket_type=f"NodeSocket{kind}"
+        )
+    socket.default_value = 1.0
+    group.interface.new_socket("Height", in_out="OUTPUT", socket_type="NodeSocketFloat")
+    given = group.nodes.new("NodeGroupInput").outputs
+    height = None
+    for each in field:
+        node = group.nodes.new("ShaderNodeGroup")
+        node.node_tree = wave
+        for name in ("Position", "Along", "Across Sq", "Stretch"):
+            group.links.new(given[name], node.inputs[name])
+        if each in damped:
+            group.links.new(given["Calm"], node.inputs["Calm"])
+        if height is not None:
+            group.links.new(height, node.inputs["Acceleration"])
+        _set_wave(node.inputs, each)
+        node.inputs["Lift"].default_value = each.amplitude_m
+        height = node.outputs["Acceleration"]
+    out = group.nodes.new("NodeGroupOutput").inputs["Height"]
+    if height is not None:
+        group.links.new(height, out)
+    return group
+
+
+def _parallax(
+    tree: bpy.types.NodeTree,
+    time_s: bpy.types.NodeSocket,
+    height_at: Callable[[bpy.types.NodeSocket], bpy.types.NodeSocket],
+    drawn_variance: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """Where the view ray meets the drawn height, (east, north, time), iterated from the
+    flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
+    face tilted from the camera then takes the little of the frame it shows. Glitter,
+    gusts and foam still read the flat sea.
+
+    The run is capped so the step contracts on `PARALLAX_CONVERGED` of the facets the
+    `drawn_variance` slope spreads. Past a facet's convergence the ray crosses more than
+    one crest; the first crossing hides the rest, which a normal cannot draw, and an
+    uncapped step reads the waves from scattered points.
+    """
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    flat = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geometry.outputs["Position"], flat.inputs["Vector"])
+    toward = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geometry.outputs["Incoming"], toward.inputs["Vector"])
+    rise = _math(tree, "MAXIMUM", toward.outputs["Z"], PARALLAX_MIN_RISE)
+    run = _math(
+        tree,
+        "SQRT",
+        _math(
+            tree,
+            "MULTIPLY_ADD",
+            toward.outputs["X"],
+            toward.outputs["X"],
+            _math(tree, "MULTIPLY", toward.outputs["Y"], toward.outputs["Y"]),
+        ),
+    )
+    # Per axis, half the total; the run is horizontal over rise.
+    slope = _math(tree, "SQRT", _math(tree, "MULTIPLY", drawn_variance, 0.5))
+    reach = _math(
+        tree,
+        "DIVIDE",
+        1 / NormalDist().inv_cdf((1 + PARALLAX_CONVERGED) / 2),
+        _math(tree, "MAXIMUM", _math(tree, "MULTIPLY", slope, run), 1e-9),
+    )
+    scale = _math(
+        tree,
+        "MINIMUM",
+        _math(tree, "DIVIDE", 1.0, rise),
+        reach,
+        name="parallax_scale",
+    )
+    run_east = _math(tree, "MULTIPLY", toward.outputs["X"], scale)
+    run_north = _math(tree, "MULTIPLY", toward.outputs["Y"], scale)
+
+    def at(
+        east: bpy.types.NodeSocket, north: bpy.types.NodeSocket
+    ) -> bpy.types.NodeSocket:
+        # Height is left out, so the sea curving under the field cannot slide it.
+        xyt = tree.nodes.new("ShaderNodeCombineXYZ")
+        tree.links.new(east, xyt.inputs["X"])
+        tree.links.new(north, xyt.inputs["Y"])
+        tree.links.new(time_s, xyt.inputs["Z"])
+        return xyt.outputs["Vector"]
+
+    position = at(flat.outputs["X"], flat.outputs["Y"])
+    for _ in range(PARALLAX_STEPS):
+        height = height_at(position)
+        position = at(
+            _math(tree, "MULTIPLY_ADD", run_east, height, flat.outputs["X"]),
+            _math(tree, "MULTIPLY_ADD", run_north, height, flat.outputs["Y"]),
+        )
+    return position
+
+
 def _waves(
     tree: bpy.types.NodeTree,
     field: tuple[Wave, ...],
@@ -378,19 +525,37 @@ def _waves(
     """The normal of what the pixel resolves, and each wave's node; `calm` scales the
     `damped` ones."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    position = tree.nodes.new("ShaderNodeSeparateXYZ")
-    # Height is left out, so the sea curving under the field cannot slide it.
-    xyt = tree.nodes.new("ShaderNodeCombineXYZ")
     link = tree.links.new
-    link(geometry.outputs["Position"], position.inputs["Vector"])
-    link(position.outputs["X"], xyt.inputs["X"])
-    link(position.outputs["Y"], xyt.inputs["Y"])
-    link(time_s, xyt.inputs["Z"])
     across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
     along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
     stretch = _math(tree, "SUBTRACT", along_sq, across_sq)
 
+    def footprint(inputs: bpy.types.NodeInputs) -> None:
+        link(pixel.along_dir, inputs["Along"])
+        link(across_sq, inputs["Across Sq"])
+        link(stretch, inputs["Stretch"])
+
     group = _wave_group()
+    heights = _height_group(field, damped, group)
+
+    def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        node = tree.nodes.new("ShaderNodeGroup")
+        node.node_tree = heights
+        link(position, node.inputs["Position"])
+        footprint(node.inputs)
+        if calm is not None:
+            link(calm, node.inputs["Calm"])
+        return node.outputs["Height"]
+
+    drawn = _footprint_table(
+        "sea_drawn_variance", lambda f: slope_variance(filtered(field, f))
+    )
+    position = _parallax(
+        tree,
+        time_s,
+        height_at,
+        _at_footprint(tree, drawn, pixel.along_m, "sea_drawn_variance"),
+    )
     gradient = None
     drawn = []
     for i, wave in enumerate(field):
@@ -398,28 +563,13 @@ def _waves(
         node.node_tree = group
         node.name = f"wave_{i}"
         inputs = node.inputs
-        link(xyt.outputs["Vector"], inputs["Position"])
-        link(pixel.along_dir, inputs["Along"])
-        link(across_sq, inputs["Across Sq"])
-        link(stretch, inputs["Stretch"])
+        link(position, inputs["Position"])
+        footprint(inputs)
         if gradient is not None:
             link(gradient, inputs["Gradient"])
         if calm is not None and wave in damped:
             link(calm, inputs["Calm"])
-        gone, whole = fade_footprints_m(2 * math.pi / wave.k_rad_m)
-        inputs["Wavenumber"].default_value = (
-            wave.k_east_rad_m,
-            wave.k_north_rad_m,
-            -wave.omega_rad_s,
-        )
-        inputs["Phase"].default_value = wave.phase_rad
-        inputs["Toward"].default_value = (
-            math.sin(wave.toward_rad),
-            math.cos(wave.toward_rad),
-            0.0,
-        )
-        inputs["Gone Sq"].default_value = float(gone) ** 2
-        inputs["Whole Sq"].default_value = float(whole) ** 2
+        _set_wave(inputs, wave)
         inputs["Slope"].default_value = (
             wave.amplitude_m * wave.k_east_rad_m,
             wave.amplitude_m * wave.k_north_rad_m,
