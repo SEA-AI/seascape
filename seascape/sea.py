@@ -12,7 +12,8 @@ Parallax: Kaneko et al., "Detailed shape representation with parallax mapping", 
 iterated here towards its fixed point. Its run along the ray is capped, as Welsh,
 "Parallax mapping with offset limiting: a per-pixel approximation of uneven surfaces",
 Infiscape 2004, caps the offset, here where the drawn slope would stop the fixed point
-contracting.
+contracting. Its height is the longest waves', as Bruneton, Neyret & Holzschuch 2010
+(see `waves`) give the shape to the longest waves alone.
 
 Whitecaps: Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11)
 1816, 1984 (doi:10.1364/AO.23.001816), for the Monahan coverage it multiplies.
@@ -77,6 +78,7 @@ from seascape.waves import (
     slick_survivors,
     slope_variance,
     specular_cell_m2,
+    tallest,
     turbulence_intensity,
     twinkle_hz,
     unresolved_acceleration_variance,
@@ -115,6 +117,9 @@ PARALLAX_MIN_RISE = 0.05
 # (Cox & Munk 1954), capping the run at 1 / z the rms slope covers facets within z
 # sigma, two-sided.
 PARALLAX_CONVERGED = 0.996
+# A judgement: the height parallax reads, from the tallest waves carrying this share of
+# their own sea's height variance; the rest are ripples millimetres high.
+PARALLAX_HEIGHT_SHARE = 0.999
 
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
@@ -518,13 +523,14 @@ def _parallax(
 def _waves(
     tree: bpy.types.NodeTree,
     field: tuple[Wave, ...],
+    tall: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
     calm: bpy.types.NodeSocket | None = None,
     damped: frozenset[Wave] = frozenset(),
 ) -> tuple[bpy.types.NodeSocket, list[bpy.types.Node]]:
-    """The normal of what the pixel resolves, and each wave's node; `calm` scales the
-    `damped` ones."""
+    """The normal of what the pixel resolves, read where the view meets the height of
+    the `tall` waves, and each wave's node; `calm` scales the `damped` ones."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     link = tree.links.new
     across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
@@ -537,7 +543,7 @@ def _waves(
         link(stretch, inputs["Stretch"])
 
     group = _wave_group()
-    heights = _height_group(field, damped, group)
+    heights = _height_group(tall, damped, group)
 
     def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         node = tree.nodes.new("ShaderNodeGroup")
@@ -1633,7 +1639,9 @@ def material(
     calm = None
     if slick is not None and damped:
         calm = _math(tree, "SUBTRACT", 1.0, slick)
-    normal, drawn = _waves(tree, field, time_s, pixel, calm, damped)
+    # Each sea on its own, or a swell's height would decide which wind waves count.
+    tall = tallest(wind, PARALLAX_HEIGHT_SHARE) + tallest(swell, PARALLAX_HEIGHT_SHARE)
+    normal, drawn = _waves(tree, field, tall, time_s, pixel, calm, damped)
     if wake is not None and wake.tilt is not None:
         normal = _vector(
             tree,
