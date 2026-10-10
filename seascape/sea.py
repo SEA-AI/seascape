@@ -360,15 +360,16 @@ def _wave_group() -> bpy.types.NodeTree:
         given["Across Sq"],
     )
 
+    # From Min above From Max: a wider footprint fades the wave out.
+    fade = group.nodes.new("ShaderNodeMapRange")
+    fade.interpolation_type = "SMOOTHSTEP"
+    link(given["Gone Sq"], fade.inputs["From Min"])
+    link(given["Whole Sq"], fade.inputs["From Max"])
+    link(footprint_sq, fade.inputs["Value"])
+    seen = _math(group, "MULTIPLY", fade.outputs["Result"], given["Calm"])
+
     def shown(trig: str) -> bpy.types.NodeSocket:
-        # From Min above From Max: a wider footprint fades the wave out.
-        fade = group.nodes.new("ShaderNodeMapRange")
-        fade.interpolation_type = "SMOOTHSTEP"
-        link(given["Gone Sq"], fade.inputs["From Min"])
-        link(given["Whole Sq"], fade.inputs["From Max"])
-        link(footprint_sq, fade.inputs["Value"])
-        link(_math(group, trig, phase), fade.inputs["To Max"])
-        return _math(group, "MULTIPLY", fade.outputs["Result"], given["Calm"])
+        return _math(group, "MULTIPLY", _math(group, trig, phase), seen)
 
     # -d height / dx of a cos(phase) is a k_x sin(phase).
     link(
