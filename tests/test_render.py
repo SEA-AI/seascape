@@ -11,10 +11,8 @@ import pytest
 
 from seascape import agc, labels, lwir, render, scene
 from seascape.calibration import Calibration
-from seascape.config import Band, ImageFormat, load, substream
+from seascape.config import Band, ImageFormat, load
 from tests.scenarios import OPEN_SEA, TWIN_POD, UNDERWAY, target, variant
-
-RNG = np.random.default_rng(0)
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -46,55 +44,26 @@ class TestThermalImage:
 
     def test_a_png_is_centikelvin_with_the_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        render._write_thermal(exr, "png", agc.Agc(), None, RNG)
+        render._write_thermal(exr, "png", agc.Agc())
         t_k = agc.kelvin(exr.with_suffix(".png"))
         assert t_k is not None
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
 
     def test_a_jpg_is_grey_through_the_agc(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (270.0, 285.0, 300.0)])
-        render._write_thermal(exr, "jpg", agc.Agc(), None, RNG)
+        render._write_thermal(exr, "jpg", agc.Agc())
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
     def test_it_returns_the_temperatures_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        t_k = render._write_thermal(exr, "jpg", agc.Agc(), None, RNG)
+        t_k = render._write_thermal(exr, "jpg", agc.Agc())
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
-
-    def test_the_noise_is_the_cameras_netd(self, tmp_path: Path) -> None:
-        exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=4096)
-        render._write_thermal(exr, "png", agc.Agc(), 0.5, np.random.default_rng(1))
-        t_k = agc.kelvin(exr.with_suffix(".png"))
-        assert t_k is not None
-        assert t_k.std() == pytest.approx(0.5, rel=0.05)
-
-    def test_it_returns_the_temperatures_without_the_noise(
-        self, tmp_path: Path
-    ) -> None:
-        exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=64)
-        t_k = render._write_thermal(exr, "png", agc.Agc(), 0.5, RNG)
-        assert t_k == pytest.approx(np.full_like(t_k, 290.0), abs=0.01)
-
-    @pytest.mark.parametrize(
-        ("frame", "same"), [("noise/bow_ir/0", True), ("noise/bow_ir/1", False)]
-    )
-    def test_the_noise_repeats_per_seed_and_changes_per_frame(
-        self, tmp_path: Path, frame: str, same: bool
-    ) -> None:
-        noisy = []
-        for name in ("noise/bow_ir/0", frame):
-            exr = exr_of(tmp_path, [lwir.band_radiance(290.0)], width=64, name=name[-1])
-            render._write_thermal(exr, "png", agc.Agc(), 0.5, substream(7, name))
-            t_k = agc.kelvin(exr.with_suffix(".png"))
-            assert t_k is not None
-            noisy.append(t_k)
-        assert np.array_equal(noisy[0], noisy[1]) is same
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
-        render._write_thermal(exr, "png", agc.Agc(), None, RNG)
+        render._write_thermal(exr, "png", agc.Agc())
         assert not exr.exists()
 
     def test_a_failure_keeps_the_float_render_and_leaks_nothing(
@@ -105,7 +74,7 @@ class TestThermalImage:
         before = len(bpy.data.images)
         monkeypatch.setattr(render.lwir, "brightness_temperature", _raise)
         with pytest.raises(RuntimeError):
-            render._write_thermal(exr, "png", agc.Agc(), None, RNG)
+            render._write_thermal(exr, "png", agc.Agc())
         assert exr.exists()
         assert len(bpy.data.images) == before
 
@@ -377,35 +346,3 @@ def test_an_ir_cameras_netd_sets_which_targets_get_a_box(
 
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
     assert bool(truth.annotations) is boxed
-
-
-@pytest.mark.render
-def test_an_ir_png_carries_noise_that_changes_per_frame(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    names: list[str] = []
-
-    def recorded(seed: int, name: str) -> np.random.Generator:
-        names.append(name)
-        return substream(seed, name)
-
-    monkeypatch.setattr(render, "substream", recorded)
-    scenario = variant(
-        cameras={"ir": {"width_px": 80, "height_px": 64, "netd_k": 0.5}},
-        outputs={
-            "bands": ["ir"],
-            "format": "png",
-            "duration_s": 2.0,
-            "fps": 1,
-            "samples": {"ir": 4},
-        },
-    )
-
-    render.render(scenario, tmp_path)
-
-    (mount,) = [m for m in scenario.mounts if m.camera.band == "ir"]
-    assert names == [f"noise/{mount.name}/0", f"noise/{mount.name}/1"]
-    t_k = agc.kelvin(tmp_path / mount.name / "0000.png")
-    assert t_k is not None
-    # The sky is smooth, so neighbouring pixels differ by the noise alone.
-    assert np.diff(t_k[:4], axis=1).std() == pytest.approx(0.5 * 2**0.5, rel=0.2)

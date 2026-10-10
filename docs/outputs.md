@@ -10,7 +10,7 @@ fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 
 An EO target whose contrast against its surroundings is under 5 %, the threshold of the WMO's meteorological optical range (WMO-No. 8, ch. 9), gets no box, as an occluded one gets none. `visibility_km` takes Koschmieder's 2 %, so a target loses its box nearer than the scenario's visibility. Its contrast is O'Kane et al.'s (1995) RSS Weber contrast in luminance, against a thin ring of background around its index-pass pixels.
 
-An IR target whose RSS temperature contrast against the same ring is under 5 × its camera's `netd_k` (Rose 1948) gets no box; without a `netd_k` none is dropped. Contrast is measured before the noise; an exr carries none.
+An IR target whose RSS temperature contrast against the same ring, times the square root of its pixel count, is under 5 × its camera's `netd_k` (Rose 1948) gets no box; without a `netd_k` none is dropped.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 

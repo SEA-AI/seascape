@@ -19,7 +19,7 @@ Every frame comes with `labels.json` (a COCO box per target, with its range and 
 
 ## Limitations
 
-`seascape` simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). An IR camera with a `netd_k` adds temporal noise; otherwise the cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
+`seascape` simplifies a few things on purpose. The main one is that waves are drawn by tilting the surface's shading rather than moving it, so a wave never hides a target or casts a shadow (the sea section explains why). The cameras are ideal, with no noise, distortion or rolling shutter, and the sky is either clear or a still photo. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
 
 ## Rendering
 

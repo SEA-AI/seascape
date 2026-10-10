@@ -109,8 +109,8 @@ class Labels(Model):
         netd_k: float | None,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the EO image as written or the IR brightness temperature in kelvin without
-        noise, both top row first."""
+        the EO image as written or the IR brightness temperature in kelvin, both top
+        row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
