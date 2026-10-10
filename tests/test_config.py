@@ -208,14 +208,6 @@ def test_a_preset_replaces_what_it_lands_on(tmp_path, baseline) -> None:
     assert baseline.rigs["bow"].cameras["ir"].height_px != 480
 
 
-@pytest.mark.parametrize(
-    "preset", ["boson_plus_640_24deg", "evidir_640_18deg", "evidir_640_24deg"]
-)
-def test_an_ir_preset_is_an_ir_camera(preset: str) -> None:
-    scenario = load(BASELINE, [f'rigs.bow.cameras.ir = {{ preset = "{preset}" }}'])
-    assert scenario.rigs["bow"].cameras["ir"].band == "ir"
-
-
 def test_an_override_swaps_a_rig_for_a_product(baseline) -> None:
     scenario = load(BASELINE, ['rigs.bow = { preset = "port" }'])
     assert list(scenario.rigs["bow"].cameras) == ["eo_p", "eo_c", "eo_s", "ir"]
@@ -435,11 +427,14 @@ def test_a_randomized_example_loads(path: Path) -> None:
 
 
 def test_every_shipped_preset_parses() -> None:
-    """A preset directory is named after the block it serves, and holds valid TOML."""
+    """A preset directory is named after the block it serves, and holds valid TOML;
+    a camera preset is a valid camera."""
     presets = sorted(CFG_DIR.rglob("*.toml"))
     assert {path.parent.name for path in presets} == {"rigs", "cameras", "objects"}
     for preset in presets:
-        tomllib.load(preset.open("rb"))
+        table = tomllib.load(preset.open("rb"))
+        if preset.parent.name == "cameras":
+            Camera.model_validate(table)
 
 
 @pytest.mark.parametrize("stops", [-127.0, 127.0])

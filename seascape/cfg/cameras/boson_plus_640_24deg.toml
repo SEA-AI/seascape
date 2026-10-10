@@ -1,5 +1,4 @@
-# Teledyne FLIR Boson+ 640 with lens 22640A024: 24.3 deg HFOV, 640 x 512 (Teledyne FLIR
-# Boson+ datasheet 102-2013-45, Table 11).
+# Teledyne FLIR Boson+ 640, lens 22640A024 (datasheet 102-2013-45, Table 11).
 band = "ir"
 hfov_deg = 24.3
 width_px = 640

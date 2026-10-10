@@ -1,5 +1,4 @@
-# Jenoptik EVIDIR alpha 640 with its 25 mm lens: 17.6 deg HFOV, 640 x 480 (EVIDIR alpha
-# user guide v3.0).
+# Jenoptik EVIDIR alpha 640, 25 mm lens (EVIDIR alpha user guide v3.0).
 band = "ir"
 hfov_deg = 17.6
 width_px = 640

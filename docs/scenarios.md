@@ -34,7 +34,7 @@ width_px = 1920
 height_px = 1080
 ```
 
-`seascape/cfg/cameras/` holds camera presets, real IR cores and lenses among them: `preset = "evidir_640_18deg"` in a camera's table.
+A camera is a preset under `seascape/cfg/cameras/`: `preset = "evidir_640_18deg"`.
 
 A product is a preset under `seascape/cfg/rigs/`; `scenarios/twin-pod.toml` installs two:
 
