@@ -23,10 +23,10 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# Judgement: viewed at about 1 arcmin a pixel, the fovea sums contrast over about 4 of
-# them, its Ricco area (Tuten et al. 2018).
+# Judgement: at about 1 arcmin a pixel. Ricco's area is 2.4 arcmin across (Tuten et al.
+# 2018), about 4 pixels.
 RICCO_PX = 4
-# The just-noticeable difference in CIELAB (Mahy, Van Eycken & Oosterlinck 1994).
+# The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
 JND_DELTA_E = 2.3
 # Judgement: enough of a row for its median to outvote a wave, near enough to be the
 # target's own background.
@@ -100,7 +100,7 @@ class Labels(Model):
         radius_m: float,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, both top row first."""
+        the picture a viewer sees, or an exr's radiance, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -114,8 +114,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        # A viewer sees 8 bits; exr radiance and 16-bit centikelvin have no one display,
-        # so their targets all keep a box.
+        # An exr's radiance has no display to judge by; it keeps every box.
         judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
@@ -125,7 +124,6 @@ class Labels(Model):
             if not len(xs):
                 continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-            # Too faint to see is as unseen as hidden.
             window = np.s_[y0 : y1 + 1, max(x0 - FLANK_PX, 0) : x1 + 1 + FLANK_PX]
             if judged and not visible(index[window], frame[window], target.pass_index):
                 continue
@@ -211,37 +209,59 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 
 def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
-    """Whether a viewer tells a target from its background in an 8-bit RGB or grey
-    frame: its RICCO_PX largest CIELAB differences from the median of its row's
-    flanks, zero-padded, sum to at least JND_DELTA_E each."""
+    """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
+    frame."""
+    lab = cielab(frame)
+    behind = background(index, lab, pass_index)
+    if behind is None:
+        return True
+    mask = index == pass_index
+    return ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1)) >= JND_DELTA_E
+
+
+def cielab(frame: np.ndarray) -> np.ndarray:
+    """An 8-bit RGB or grey frame in CIE 1976 L*a*b* (ISO/CIE 11664-4)."""
     if frame.ndim == 2:
         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-    # CIE 1976 L*a*b* (ISO/CIE 11664-4); OpenCV decodes sRGB on float input.
-    lab = cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
+    # Float, as 8-bit Lab is rescaled to 0 to 255.
+    return cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
+
+
+def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
+    """Up to FLANK_PX pixels left and right of the target on each of its rows, that no
+    object covers."""
     mask = index == pass_index
-    width = index.shape[1]
-    rows = np.flatnonzero(mask.any(axis=1))
-    background = {}
-    for y in rows:
+    beside = np.zeros_like(mask)
+    for y in np.flatnonzero(mask.any(axis=1)):
         xs = np.flatnonzero(mask[y])
-        flank = np.r_[
-            max(xs[0] - FLANK_PX, 0) : xs[0],
-            xs[-1] + 1 : min(xs[-1] + 1 + FLANK_PX, width),
-        ]
-        # Another object, the ownship included, is not background.
-        flank = flank[index[y, flank] == 0]
-        if len(flank):
-            background[y] = np.median(lab[y, flank], axis=0)
-    if not background:
-        return True
-    measured = np.array(list(background))
-    delta_e = []
+        beside[y, max(xs[0] - FLANK_PX, 0) : xs[0]] = True
+        beside[y, xs[-1] + 1 : xs[-1] + 1 + FLANK_PX] = True
+    # Another object, the ownship included, is not background.
+    return beside & (index == 0)
+
+
+def background(
+    index: np.ndarray, lab: np.ndarray, pass_index: int
+) -> np.ndarray | None:
+    """At each of the target's pixels, the median Lab of its row's flanks, or of the
+    nearest row's that has any; NaN elsewhere. None if no row has a flank."""
+    mask = index == pass_index
+    beside = flanks(index, pass_index)
+    rows = np.flatnonzero(mask.any(axis=1))
+    medians = {y: np.median(lab[y, beside[y]], axis=0) for y in rows if beside[y].any()}
+    if not medians:
+        return None
+    measured = np.array(list(medians))
+    behind = np.full(lab.shape, np.nan, np.float32)
     for y in rows:
-        # A row with no flank of its own takes the nearest row's.
-        near = measured[np.abs(measured - y).argmin()]
-        delta_e.append(np.linalg.norm(lab[y, mask[y]] - background[near], axis=1))
-    largest = np.sort(np.concatenate(delta_e))[-RICCO_PX:]
-    return float(largest.sum()) >= JND_DELTA_E * RICCO_PX
+        behind[y, mask[y]] = medians[measured[np.abs(measured - y).argmin()]]
+    return behind
+
+
+def ricco(delta_e: np.ndarray) -> float:
+    """The mean of the RICCO_PX largest; a target under RICCO_PX pixels pads with
+    zeros."""
+    return float(np.sort(delta_e)[-RICCO_PX:].sum() / RICCO_PX)
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

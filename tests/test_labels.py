@@ -187,14 +187,13 @@ def boxed(
 
 
 def eight_bit(index: np.ndarray, values: dict[int, int], rest: int = 120) -> np.ndarray:
-    """Grey: each pass index's pixels at its value, the rest at `rest`."""
     frame = np.full(index.shape, rest, np.uint8)
     for pass_index, value in values.items():
         frame[index == pass_index] = value
     return frame
 
 
-# Against grey 120, sRGB grey 125 is ΔE*ab 2.0 and 127 is 2.8 (CIE 15:2004).
+# Against grey 120, OpenCV puts grey 125 at ΔE*ab 1.98 and 127 at 2.95.
 @pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
 @pytest.mark.parametrize("band", ["eo", "ir"])
 def test_a_target_is_seen_at_the_jnd(value: int, seen: bool, band: str) -> None:
@@ -205,7 +204,7 @@ def test_a_target_is_seen_at_the_jnd(value: int, seen: bool, band: str) -> None:
     assert boxed(index, frame, band) is seen
 
 
-# ΔE*ab 8.2 and 10.1 against grey 120 (CIE 15:2004).
+# Against grey 120, OpenCV puts grey 141 at ΔE*ab 8.38 and 146 at 10.29.
 @pytest.mark.parametrize(("value", "seen"), [(141, False), (146, True)])
 def test_one_pixel_needs_the_contrast_of_four(value: int, seen: bool) -> None:
     index = np.zeros((48, 64), dtype=int)
@@ -252,11 +251,40 @@ def test_a_target_with_no_background_to_measure_keeps_its_box() -> None:
     assert boxed(index, eight_bit(index, {}))
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.uint16])
-def test_a_frame_deeper_than_8_bits_keeps_every_box(dtype: type) -> None:
+def test_a_float_frame_keeps_every_box() -> None:
     index = square()
 
-    assert boxed(index, np.ones(index.shape, dtype), "ir")
+    assert boxed(index, np.ones((*index.shape, 3), np.float32))
+
+
+def test_a_frame_is_read_as_rgb() -> None:
+    """As BGR the difference would be ΔE*ab 0.69, under the JND; as RGB it is 2.63."""
+    index = square()
+    frame = np.empty((*index.shape, 3), np.uint8)
+    frame[:] = (150, 60, 30)
+    frame[index == 1] = (150, 60, 35)
+
+    assert boxed(index, frame)
+
+
+def test_a_row_with_no_flank_takes_the_nearest_rows_background() -> None:
+    index = square()
+    index[15, 12:20] = index[15, 30:38] = 2
+
+    frame = eight_bit(index, {2: 146})
+    frame[15][index[15] == 1] = 146
+
+    assert boxed(index, frame)
+
+
+@pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
+def test_a_target_on_the_left_edge_is_judged_on_its_flanks(
+    value: int, seen: bool
+) -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 2:12] = 1
+
+    assert boxed(index, eight_bit(index, {1: value})) is seen
 
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:

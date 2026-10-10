@@ -8,7 +8,9 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Each of its pixels is compared, in CIELAB, with the median of the background beside it on its row, and its largest differences, pooled over the fovea's Ricco area (Tuten et al. 2018), must average the just-noticeable ΔE*ab of 2.3 (Mahy, Van Eycken & Oosterlinck 1994). The rule reads the 8-bit frame as written, so it holds for EO and LWIR alike; an exr or a 16-bit LWIR png keeps every box.
+A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. In CIELAB, its largest differences from the median background beside it on each row, pooled over the fovea's Ricco area (Tuten et al. 2018), must average a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994). The rule reads the 8-bit frame, EO or LWIR: an LWIR png is judged on the grey its jpg would show, and an exr keeps every box.
+
+![How a target's visibility is decided, and how the rule was checked against a render without the target](visibility.png)
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 

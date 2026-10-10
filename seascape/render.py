@@ -51,14 +51,17 @@ def _temperatures_k(exr: Path) -> np.ndarray:
     return lwir.brightness_temperature(_pixels(exr)[..., 0])
 
 
-def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> None:
-    """Rewrite a float LWIR render as `fmt` beside it, and delete the exr."""
+def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> np.ndarray:
+    """Rewrite a float LWIR render as `fmt` beside it, and delete the exr. Returns the
+    grey a jpg shows, whichever was written."""
     t_k = _temperatures_k(exr)[::-1]  # cv2 writes the top row first
     out = exr.with_suffix(f".{fmt}")
-    image = agc.counts(t_k) if fmt == "png" else tone(t_k)
+    grey = tone(t_k)
+    image = agc.counts(t_k) if fmt == "png" else grey
     if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
         raise OSError(f"cannot write {out}")
     exr.unlink()
+    return grey
 
 
 def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
@@ -188,11 +191,15 @@ def render(
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
                     bpy.ops.render.render(write_still=True)
-                    if thermal:
+                    file_name = f"{name}.{outputs.format}"
+                    # An LWIR png is judged on the grey its jpg shows.
+                    shown = (
                         _write_thermal(
                             into / f"{name}.exr", outputs.format, tones[mount.name]
                         )
-                    file_name = f"{name}.{outputs.format}"
+                        if thermal
+                        else _frame(into / file_name)
+                    )
                     written.append(into / file_name)
                     advance()
                     camera = scene.calibrate(built, mount, file_name)
@@ -202,7 +209,7 @@ def render(
                         camera,
                         time_s,
                         np.rint(index).astype(int),
-                        _frame(into / file_name),
+                        shown,
                         targets,
                         radius_m,
                     )

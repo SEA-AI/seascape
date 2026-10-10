@@ -1,0 +1,25 @@
+#:schema ../schema/scenario.json
+
+extends = "../scenarios/open-sea.toml"
+
+[rigs.bow.cameras.eo]
+width_px = 960
+height_px = 540
+
+[sky]
+visibility_km = 2.5
+
+[outputs]
+bands = ["eo"]
+
+[[objects]]
+asset = "patrol_vessel"
+range_m = 1500.0
+bearing_deg = -6.0
+heading_deg = 250.0
+
+[[objects]]
+asset = "patrol_vessel"
+range_m = 2500.0
+bearing_deg = 6.0
+heading_deg = 250.0
