@@ -218,6 +218,12 @@ class Sea(Model):
         default=0.0,
         description="Where the wind blows from, clockwise from the ownship's bow.",
     )
+    fetch_km: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Open water upwind, which sets how far the wind's sea has grown. "
+        "Unset, fully developed.",
+    )
     swell: Swell | None = Field(default=None, description="On top of the wind's sea.")
     # Opt-in: surfactants come from the water.
     slick_cover: float = Field(
@@ -236,6 +242,10 @@ class Sea(Model):
         lt=1.0,
         description="Coefficient of terrestrial refraction; 0 is none.",
     )
+
+    @property
+    def fetch_m(self) -> float | None:
+        return None if self.fetch_km is None else self.fetch_km * 1e3
 
 
 # Judgement: 42 km, inside the open ocean's measured spread. OPAC's
@@ -694,7 +704,7 @@ class Scenario(Model):
                     "period: make outputs.duration_s at least that"
                 )
         snap = self.outputs.period_s
-        error = waves.snap_error(self.sea.wind_speed_mps, snap)
+        error = waves.snap_error(self.sea.wind_speed_mps, self.sea.fetch_m, snap)
         if self.sea.swell is not None:
             period_s = self.sea.swell.period_s
             error = max(error, abs(snap(period_s) - period_s) / snap(period_s))
