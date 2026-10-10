@@ -2,9 +2,9 @@
 
 Sources
 -------
-Spectrum: Pierson & Moskowitz, "A proposed spectral form for fully developed wind seas
-based on the similarity theory of S. A. Kitaigorodskii", Journal of Geophysical Research
-69(24) 5181, 1964 (doi:10.1029/JZ069i024p05181).
+Spectrum: Elfouhaily, Chapron, Katsaros & Vandemark, "A unified directional spectrum
+for long and short wind-driven waves", Journal of Geophysical Research 102(C7) 15781,
+1997 (doi:10.1029/97JC00467), omnidirectional, equations 30-44.
 
 Spreading: Mitsuyasu et al., "Observations of the directional spectrum of ocean waves
 using a cloverleaf buoy", Journal of Physical Oceanography 5(4) 750, 1975
@@ -92,8 +92,9 @@ GRAVITY_MS2 = 9.81
 # Waves, end to end. Each step is a published relation or follows from one:
 #
 #   wind            U10 ln(z / z0) / ln(10 / z0)        DNV-RP-C205 2010
-#   spectrum        alpha g^2 w^-5 exp(-5/4 (wp/w)^4)  Pierson-Moskowitz 1964
-#   peak            wp = 0.877 g / U(19.5 m)            Pierson-Moskowitz 1964
+#   spectrum        k^-3 (B_long + B_short)             Elfouhaily et al. 1997
+#   peak            kp = g Omega^2 / U10^2              deep-water dispersion
+#   wave age        Omega 0.84, more at a short fetch   Elfouhaily et al. 1997, eq. 37
 #   direction       cos^2s(theta / 2)                   Mitsuyasu 1975, Goda 2000
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
 #   total slope     sqrt(0.003 + 0.00512 U(12.5 m))     Cox & Munk 1954, eq. 13
@@ -107,8 +108,12 @@ GRAVITY_MS2 = 9.81
 #   slick slope     sqrt(0.008 + 0.00156 U(12.5 m))     Cox & Munk 1954
 #   windrows        4.8 s x U apart, 3-10x as long      Leibovich 1983, Thorpe 2004
 #   windrow cutoff  none below 3 m/s                    Leibovich 1983
-PM_ALPHA = 8.1e-3
-PM_PEAK = 0.877
+# Elfouhaily et al. 1997: the fully developed inverse wave age, its fetch scale X0, the
+# capillary-gravity peak k_m and phase speed c_m there.
+FULLY_DEVELOPED_INVERSE_AGE = 0.84
+FETCH_X0 = 2.2e4
+CAPILLARY_PEAK_RAD_M = 370.0
+CAPILLARY_SPEED_MPS = 0.23
 SPREAD_S_MAX = 10.0
 # Goda 2000: swell with a long decay distance.
 SWELL_S_MAX = 75.0
@@ -125,8 +130,7 @@ WINDROW_MIN_WIND_MPS = 3.0
 WINDROW_ASPECT = 5.0
 SLICK_DRIFT = 0.03
 
-# Where each paper measured its wind: Pierson & Moskowitz 1964, Cox & Munk 1954.
-PM_WIND_HEIGHT_M = 19.5
+# Where Cox & Munk measured their wind.
 COX_MUNK_WIND_HEIGHT_M = 12.5
 
 # DNV-RP-C205 2.3.2.4: 0.011-0.014 over open sea; the von Karman constant.
@@ -143,8 +147,8 @@ WIND_HEADINGS = 3
 # A judgement: enough headings that a swell's crests do not read as one line.
 SWELL_HEADINGS = 4
 
-# A judgement, as a fraction of the peak frequency: PM puts exp(-5/4 x^-4) of the
-# height variance below x.
+# A judgement, as a fraction of the peak frequency: the spectrum's
+# exp(-5/4 (w_p / w)^4) leaves little height variance below it.
 LOWEST_OF_PEAK = 0.7
 
 # Minimum phase speed, 2 pi sqrt(gamma / rho g) at gamma = 0.074 N/m, rho = 1000
@@ -232,8 +236,57 @@ def von_karman_field(
     return field / field.std()
 
 
-def peak_omega_rad_s(wind_speed_mps: float) -> float:
-    return PM_PEAK * GRAVITY_MS2 / wind_at_m(wind_speed_mps, PM_WIND_HEIGHT_M)
+def friction_velocity_mps(wind_speed_mps: float) -> float:
+    """u* of the log profile under `wind_speed_mps` at 10 m."""
+    return VON_KARMAN * wind_speed_mps / math.log(10.0 / _roughness_m(wind_speed_mps))
+
+
+def inverse_wave_age(wind_speed_mps: float, fetch_m: float | None) -> float:
+    """U10 / c at the spectrum's peak; a short fetch raises it."""
+    if fetch_m is None:
+        return FULLY_DEVELOPED_INVERSE_AGE
+    x = GRAVITY_MS2 * fetch_m / wind_speed_mps**2
+    # Eq. 37.
+    return FULLY_DEVELOPED_INVERSE_AGE * math.tanh((x / FETCH_X0) ** 0.4) ** -0.75
+
+
+def peak_omega_rad_s(wind_speed_mps: float, fetch_m: float | None) -> float:
+    return GRAVITY_MS2 * inverse_wave_age(wind_speed_mps, fetch_m) / wind_speed_mps
+
+
+def curvature_spectrum(
+    k_rad_m: np.ndarray, wind_speed_mps: float, fetch_m: float | None
+) -> np.ndarray:
+    """B(k) = k^3 S(k), the omnidirectional curvature spectrum, eq. 30."""
+    age = inverse_wave_age(wind_speed_mps, fetch_m)
+    k_p = GRAVITY_MS2 * age**2 / wind_speed_mps**2
+    k_m, c_m = CAPILLARY_PEAK_RAD_M, CAPILLARY_SPEED_MPS
+    c = np.sqrt(GRAVITY_MS2 / k_rad_m * (1 + (k_rad_m / k_m) ** 2))
+    # Eq. 3.
+    gamma = 1.7 if age < 1.0 else 1.7 + 6 * math.log10(age)
+    sigma = 0.08 * (1 + 4 * age**-3)
+    root = np.sqrt(k_rad_m / k_p)
+    # Eq. 2 and 3: Pierson-Moskowitz's shape, JONSWAP's peak enhancement.
+    peaked = np.exp(-1.25 * (k_p / k_rad_m) ** 2) * gamma ** np.exp(
+        -((root - 1) ** 2) / (2 * sigma**2)
+    )
+    # Eq. 31, 32 and 34, with c_p = U10 / Omega.
+    long = (
+        0.5
+        * 0.006
+        * age**0.55
+        * (wind_speed_mps / age)
+        / c
+        * peaked
+        * np.exp(-age / math.sqrt(10) * (root - 1))
+    )
+    friction_mps = friction_velocity_mps(wind_speed_mps)
+    gain = 1 if friction_mps <= c_m else 3
+    # Eq. 44, negative below u* = c_m / e, where the paper's fit runs out.
+    alpha_m = max(0.01 * (1 + gain * math.log(friction_mps / c_m)), 0.0)
+    # Eq. 40 and 41.
+    short = 0.5 * alpha_m * c_m / c * peaked * np.exp(-0.25 * (k_rad_m / k_m - 1) ** 2)
+    return long + short
 
 
 def cox_munk_slope(wind_speed_mps: float) -> float:
@@ -250,22 +303,24 @@ def cox_munk_slick_slope(wind_speed_mps: float) -> float:
     return min(math.sqrt(slick), cox_munk_slope(wind_speed_mps))
 
 
-def _bins(wind_speed_mps: float) -> tuple[np.ndarray, np.ndarray]:
+def _bins(
+    wind_speed_mps: float, fetch_m: float | None
+) -> tuple[np.ndarray, np.ndarray]:
     """Frequencies log-spaced from the longest wave to the shortest, and the height
     variance each carries."""
     if wind_speed_mps <= 0.0:
         return np.empty(0), np.empty(0)
-    peak = peak_omega_rad_s(wind_speed_mps)
+    peak = peak_omega_rad_s(wind_speed_mps, fetch_m)
     low = LOWEST_OF_PEAK * peak
     high = math.sqrt(2 * math.pi * GRAVITY_MS2 / CAPILLARY_WAVELENGTH_M)
     if low >= high:
         return np.empty(0), np.empty(0)
     edges = np.geomspace(low, high, FREQUENCIES + 1)
     omega = np.sqrt(edges[:-1] * edges[1:])
-    density = (
-        PM_ALPHA * GRAVITY_MS2**2 * omega**-5 * np.exp(-1.25 * (peak / omega) ** 4)
-    )
-    return omega, density * np.diff(edges)
+    k = omega**2 / GRAVITY_MS2
+    # S(k) dk with dk = 2 omega / g d omega: deep water, as the drawn waves run.
+    density = curvature_spectrum(k, wind_speed_mps, fetch_m) * k**-3 * 2 * omega
+    return omega, density / GRAVITY_MS2 * np.diff(edges)
 
 
 def _snapped(omega: np.ndarray, snap: Callable[[float], float]) -> np.ndarray:
@@ -284,17 +339,19 @@ def _off_mean_rad(s: np.ndarray, u: np.ndarray) -> np.ndarray:
 def wind_sea(
     wind_speed_mps: float,
     wind_from_deg: float,
+    fetch_m: float | None,
     snap: Callable[[float], float],
     rng: np.random.Generator,
 ) -> tuple[Wave, ...]:
-    omega, variance = _bins(wind_speed_mps)
+    """`fetch_m` of open water upwind; None is a fully developed sea."""
+    omega, variance = _bins(wind_speed_mps, fetch_m)
     if not len(omega):
         return ()
     # Stratified, so a frequency's headings fall in separate shares of the spread.
     share = np.tile(np.arange(WIND_HEADINGS), len(omega))
     omega = np.repeat(omega, WIND_HEADINGS)
     variance = np.repeat(variance / WIND_HEADINGS, WIND_HEADINGS)
-    ratio = omega / peak_omega_rad_s(wind_speed_mps)
+    ratio = omega / peak_omega_rad_s(wind_speed_mps, fetch_m)
     s = SPREAD_S_MAX * np.where(ratio < 1.0, ratio**5, ratio**-2.5)
     # Wind is named for where it blows from; waves run the other way.
     toward = math.radians(wind_from_deg + 180.0) + _off_mean_rad(
@@ -378,9 +435,11 @@ def breaking_threshold_g(wind: tuple[Wave, ...], fraction: float) -> float:
     return sigma * NormalDist().inv_cdf(1.0 - fraction)
 
 
-def snap_error(wind_speed_mps: float, snap: Callable[[float], float]) -> float:
+def snap_error(
+    wind_speed_mps: float, fetch_m: float | None, snap: Callable[[float], float]
+) -> float:
     """Relative frequency error a loop's snapping costs, weighted by height variance."""
-    omega, variance = _bins(wind_speed_mps)
+    omega, variance = _bins(wind_speed_mps, fetch_m)
     if not len(omega):
         return 0.0
     error = np.abs(_snapped(omega, snap) - omega) / omega
@@ -535,7 +594,12 @@ def unresolved_slope_variance(
     footprint_m: float,
     total_slope: Callable[[float], float] = cox_munk_slope,
 ) -> float:
-    """Cox & Munk's is the wind sea's variance; a swell adds its own undrawn part."""
+    """Cox & Munk's is the wind sea's variance; a swell adds its own undrawn part.
+
+    ponytail: a sea short of fetch keeps Cox & Munk's total, measured on an open
+    ocean, and leaves its missing long waves' slope to the lobe; scale the total by
+    the spectrum's own if a young sea's roughness must hold.
+    """
     wind_left = total_slope(wind_speed_mps) ** 2 - slope_variance(
         filtered(wind, footprint_m)
     )
