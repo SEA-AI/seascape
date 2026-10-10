@@ -201,6 +201,19 @@ def test_no_cloud_is_the_clear_sky() -> None:
     )
 
 
+@pytest.mark.parametrize("theta_deg", [0.0, 30.0, 60.0])
+def test_the_facets_show_the_view_the_mean_surface_s_area(theta_deg: float) -> None:
+    """Facets steep enough to face away are past 5 sigma here, so the seen areas sum
+    to the mean surface's foreshortened by the view."""
+    normal = lwir._facets(0.15)
+    theta = math.radians(theta_deg)
+    view = np.array([math.sin(theta), 0.0, math.cos(theta)])
+
+    area = lwir._seen_area(normal @ view, normal)
+
+    assert area.mean() == pytest.approx(math.cos(theta), rel=1e-4)
+
+
 def test_the_facets_carry_their_slope_sigma() -> None:
     """Per axis, as `emissivity_curve` and `reflected_sky` read it."""
     normal = lwir._facets(0.1)
@@ -249,7 +262,7 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
     normal = lwir._facets(sigma)
     view = np.array([math.cos(mirror), 0.0, math.sin(mirror)])
     cos_i = normal @ view
-    area = np.clip(cos_i, 0.0, None)
+    area = lwir._seen_area(cos_i, normal)
     flat_theta, flat = lwir.emissivity_curve(t_sea_k=t_sea_k)
     own = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), flat_theta, flat)
     up = np.arcsin(np.clip(2 * cos_i * normal[:, 2] - view[2], -1.0, 1.0))
