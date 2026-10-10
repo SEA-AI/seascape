@@ -1211,11 +1211,12 @@ class TestDrifting:
 
 
 def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
-    """The frame after the last, which a loop plays as frame 0, keyed for real."""
+    """Keyed at the span, every channel is back at its frame-0 value."""
     outputs = TestDrifting.SCENARIO.outputs
     times_s, span_s = outputs.times_s, outputs.span_s
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(Outputs, "times_s", property(lambda _: [*times_s, span_s]))
+        # span_s counts times_s; hold it at the real clip's.
         patch.setattr(Outputs, "span_s", property(lambda _: span_s))
         scene.build(TestDrifting.SCENARIO)
 
