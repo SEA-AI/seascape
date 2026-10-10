@@ -10,7 +10,7 @@ from seascape import lwir, waves
 
 def field(wind_speed_mps: float, wind_from_deg: float = 0.0) -> tuple[waves.Wave, ...]:
     return waves.wind_sea(
-        wind_speed_mps, wind_from_deg, lambda p: p, np.random.default_rng(0)
+        wind_speed_mps, wind_from_deg, None, lambda p: p, np.random.default_rng(0)
     )
 
 
@@ -26,9 +26,10 @@ def test_published_values_have_not_drifted() -> None:
     # Surveying's rule of thumb for the horizon, 3.86 sqrt(h_m) km at k = 0.13.
     rule_m = 3.86e3 * math.sqrt(51.8)
     assert waves.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
-    # Pierson-Moskowitz: a fully developed sea at 7 m/s at 19.5 m peaks near 41 m.
-    peak = waves.peak_omega_rad_s(u10_for(7.0, waves.PM_WIND_HEIGHT_M))
-    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(40.8, abs=0.2)
+    # Elfouhaily et al. 1997: a fully developed sea at 7 m/s peaks at
+    # 2 pi U^2 / (g 0.84^2), 44.5 m.
+    peak = waves.peak_omega_rad_s(7.0, None)
+    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(44.5, abs=0.2)
 
 
 def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
@@ -139,11 +140,50 @@ def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
 
 
 @pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 12.0, 20.0])
-def test_the_field_carries_the_spectrum_s_wave_height(wind_speed_mps) -> None:
-    # Pierson-Moskowitz: Hs = 0.209 U(19.5 m)^2 / g, nearly all of it in the waves.
+def test_a_fully_developed_sea_is_as_high_as_pierson_moskowitz_s(
+    wind_speed_mps,
+) -> None:
+    # Pierson & Moskowitz 1964: Hs = 0.209 U(19.5 m)^2 / g. JONSWAP's peak enhancement
+    # in Elfouhaily et al. 1997 adds some.
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
-    wind = waves.wind_at_m(wind_speed_mps, waves.PM_WIND_HEIGHT_M)
-    assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.01)
+    wind = waves.wind_at_m(wind_speed_mps, 19.5)
+    assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.12)
+
+
+@pytest.mark.parametrize(
+    ("wind_speed_mps", "fetch_km"),
+    [(5.0, 3.0), (5.0, 10.0), (10.0, 3.0), (10.0, 10.0), (10.0, 30.0), (15.0, 30.0)],
+)
+def test_a_sea_short_of_fetch_is_as_high_as_jonswap_measured(
+    wind_speed_mps: float, fetch_km: float
+) -> None:
+    """JONSWAP's fetch law holds only while the sea still grows."""
+    # Hasselmann et al. 1973: energy 1.6e-7 (g F / U^2) U^4 / g^2, so
+    # Hs = 1.6e-3 sqrt(g F / U^2) U^2 / g.
+    young = waves.wind_sea(
+        wind_speed_mps, 0.0, fetch_km * 1e3, lambda p: p, np.random.default_rng(0)
+    )
+    hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in young))
+    g = waves.GRAVITY_MS2
+    x = g * fetch_km * 1e3 / wind_speed_mps**2
+    assert hs == pytest.approx(1.6e-3 * math.sqrt(x) * wind_speed_mps**2 / g, rel=0.1)
+
+
+@pytest.mark.parametrize("wind_speed_mps", [5.0, 7.0, 10.0, 15.0])
+def test_the_spectrum_s_slope_is_cox_and_munk_s(wind_speed_mps: float) -> None:
+    """Elfouhaily et al. fitted their short waves to Cox & Munk's clean sea."""
+    k = np.geomspace(1e-4, 2e4, 200_000)
+    mss = np.trapezoid(waves.curvature_spectrum(k, wind_speed_mps, None) / k, k)
+    assert mss == pytest.approx(waves.cox_munk_slope(wind_speed_mps) ** 2, rel=0.08)
+
+
+@pytest.mark.parametrize("wind_speed_mps", [1.0, 2.0])
+def test_a_light_wind_still_raises_a_sea(wind_speed_mps: float) -> None:
+    """Below u* = c_m / e, eq. 44's alpha_m turns negative."""
+    built = field(wind_speed_mps)
+
+    assert built
+    assert all(w.amplitude_m > 0.0 for w in built)
 
 
 def test_each_frequency_runs_both_sides_of_the_wind() -> None:
@@ -184,6 +224,7 @@ def test_a_snapped_field_repeats_after_the_loop() -> None:
     snapped = waves.wind_sea(
         7.0,
         0.0,
+        None,
         lambda p: span_s / max(1, round(span_s / p)),
         np.random.default_rng(0),
     )
@@ -195,10 +236,10 @@ def test_a_snapped_field_repeats_after_the_loop() -> None:
 
 def test_a_longer_loop_snaps_the_frequencies_less() -> None:
     def loop(span_s: float) -> float:
-        return waves.snap_error(7.0, lambda p: span_s / max(1, round(span_s / p)))
+        return waves.snap_error(7.0, None, lambda p: span_s / max(1, round(span_s / p)))
 
     assert loop(90.0) < loop(40.0) < loop(10.0)
-    assert waves.snap_error(7.0, lambda p: p) == pytest.approx(0.0, abs=1e-12)
+    assert waves.snap_error(7.0, None, lambda p: p) == pytest.approx(0.0, abs=1e-12)
 
 
 def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
@@ -351,16 +392,23 @@ def test_an_isotropic_gaussian_surface_has_e_det_h_of_m4_over_2_sqrt_3() -> None
 
 
 @pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 15.0])
-def test_glitter_follows_pierson_moskowitz_s_tail_to_the_capillary_cutoff(
+def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
     wind_speed_mps,
 ) -> None:
-    # alpha g^2 w^-5 is alpha / 2 k^-3 per k: m4 = alpha k^2 / 4, mean w^2 = 2/3 g k.
-    k = 2 * math.pi / waves.CAPILLARY_WAVELENGTH_M
+    # m4 = int k^4 S dk = int B k dk; the twinkle is its mean omega^2 = g k.
+    cutoff = 2 * math.pi / waves.CAPILLARY_WAVELENGTH_M
+    k = np.geomspace(
+        waves.peak_omega_rad_s(wind_speed_mps, None) ** 2 / waves.GRAVITY_MS2,
+        cutoff,
+        100_000,
+    )
+    weight = waves.curvature_spectrum(k, wind_speed_mps, None) * k
+    m4 = np.trapezoid(weight, k)
+    omega_sq = np.trapezoid(weight * waves.GRAVITY_MS2 * k, k) / m4
     sea = field(wind_speed_mps)
-    m4 = waves.PM_ALPHA * k**2 / 4
-    assert waves.specular_cell_m2(sea) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.05)
+    assert waves.specular_cell_m2(sea) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.1)
     assert waves.twinkle_hz(sea) == pytest.approx(
-        math.sqrt(2 / 3 * waves.GRAVITY_MS2 * k) / (2 * math.pi), rel=0.05
+        math.sqrt(omega_sq) / (2 * math.pi), rel=0.1
     )
 
 

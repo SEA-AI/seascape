@@ -55,6 +55,7 @@ def wind_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
     return waves.wind_sea(
         sea.wind_speed_mps,
         sea.wind_from_deg,
+        sea.fetch_m,
         scenario.outputs.period_s,
         substream(scenario.seed, "sea/surface"),
     )
