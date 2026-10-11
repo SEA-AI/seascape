@@ -285,6 +285,20 @@ def test_the_drawn_slope_variance_is_the_filtered_field_s(
         )
 
 
+@pytest.mark.parametrize("footprint_m", [0.02, 0.05, 0.5])
+def test_a_wave_no_pixel_resolves_is_gone_at_every_coarser_one(
+    footprint_m: float,
+) -> None:
+    sea = field(14.0)
+    kept = waves.resolvable(sea, footprint_m)
+    culled = [w for w in sea if w not in kept]
+    assert culled, "nothing culled: the assertion below would pass on nothing"
+    wavelengths = np.array([2 * math.pi / w.k_rad_m for w in culled])
+    for coarser in np.geomspace(footprint_m, 1e4, 50):
+        assert (waves.visibility(wavelengths, coarser) == 0.0).all()
+    assert all(math.pi / w.k_rad_m > footprint_m for w in kept)
+
+
 def test_calm_air_builds_no_waves() -> None:
     assert field(0.0) == ()
     assert waves.unresolved_slope_variance(0.0, (), (), 1.0) == pytest.approx(

@@ -69,6 +69,7 @@ from seascape.waves import (
     gust_slope_variance,
     gusty_whitecap_fraction,
     horizon_m,
+    resolvable,
     sea_z_m,
     slick_survivors,
     specular_cell_m2,
@@ -1736,10 +1737,14 @@ def material(
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
     wakes: tuple[Wake, ...],
     light: Light,
+    finest_footprint_m: float = 0.0,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
     `rngs` draw its gusts, its slicks and its wakes' foam. With a sky the sea is ir and
-    reflects it; without, eo, glittering towards the light's sun if it has one."""
+    reflects it; without, eo, glittering towards the light's sun if it has one.
+
+    No node draws a wave a pixel of `finest_footprint_m` cannot resolve; the tables
+    and statistics still describe the whole sea."""
     gust_rng, slick_rng, foam_rng = rngs
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
@@ -1767,7 +1772,12 @@ def material(
         calm = _math(tree, "SUBTRACT", 1.0, slick)
     # Each sea on its own, or a swell's height would decide which wind waves count.
     tall = tallest(wind, PARALLAX_HEIGHT_SHARE) + tallest(swell, PARALLAX_HEIGHT_SHARE)
-    normal, acceleration = _waves(tree, wind, swell, tall, time_s, pixel, calm, damped)
+    drawn = (
+        resolvable(wind, finest_footprint_m),
+        resolvable(swell, finest_footprint_m),
+    )
+    tall = tuple(w for w in tall if w in drawn[0] or w in drawn[1])
+    normal, acceleration = _waves(tree, *drawn, tall, time_s, pixel, calm, damped)
     if wake is not None and wake.tilt is not None:
         normal = _vector(
             tree,

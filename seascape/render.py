@@ -168,7 +168,8 @@ def render(
             if not mounts:
                 continue
             thermal = band == "ir" and outputs.format != "exr"
-            built = scene.build(scenario, band)
+            # Every frame here is one of the scenario's cameras, at its resolution.
+            built = scene.build(scenario, band, cull=True)
             # After a build: the first one picks the device.
             truth.info = truth.info or _info(scenario)
             index_output = _index_output(passes)

@@ -284,6 +284,27 @@ def test_the_heaviest_sea_fits_cycles_svm_stack() -> None:
 
 
 @pytest.mark.render
+def test_a_render_culls_only_waves_no_pixel_of_it_draws(tmp_path: Path) -> None:
+    """High enough that the culled waves are many."""
+    scenario = variant(
+        rig={"height_m": 100.0},
+        cameras={"eo": {"width_px": 256, "height_px": 192}},
+        sky={"visibility_km": None},
+        outputs={"format": "exr", "bands": ["eo"], "samples": {"eo": 4}},
+    )
+    (culled,) = (p for p in render.render(scenario, tmp_path) if p.suffix == ".exr")
+
+    scene.build(scenario, "eo")
+    sc = bpy.context.scene
+    sc.render.filepath = str(tmp_path / "whole")
+    bpy.ops.render.render(write_still=True)
+
+    whole = render._pixels(tmp_path / "whole.exr")[..., :3]
+    drawn = render._pixels(culled)[..., :3]
+    assert np.abs(drawn - whole).mean() / whole.mean() < 1e-4
+
+
+@pytest.mark.render
 def test_each_box_holds_its_hull_centre_through_the_calibration(
     tmp_path: Path,
 ) -> None:

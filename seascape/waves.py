@@ -584,6 +584,13 @@ def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     )
 
 
+def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
+    """The waves a pixel no finer than `footprint_m` can draw: the rest are gone by
+    Nyquist."""
+    gone = FADE_FOOTPRINTS[0]
+    return tuple(w for w in field if 2 * math.pi / w.k_rad_m / gone > footprint_m)
+
+
 def drawn_slope_variance(field: tuple[Wave, ...], footprint_m: float) -> float:
     """`slope_variance(filtered(field, footprint_m))`, without building the waves."""
     if not field:
