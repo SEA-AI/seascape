@@ -199,9 +199,10 @@ def test_one_scene_whose_hulls_meet_is_an_error(run: Run, tmp_path: Path) -> Non
 
 @pytest.mark.render
 def test_variants_give_up_when_every_seed_has_hulls_meeting(
-    run: Run, tmp_path: Path
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A skipped seed leaves the folder an earlier run wrote under its name."""
+    monkeypatch.setattr(cli, "TRIES_PER_VARIANT", 1)
     earlier = tmp_path / str(load(BASELINE).seed)
     earlier.mkdir()
     (earlier / "kept.txt").write_text("from an earlier run")
@@ -212,6 +213,6 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
     )  # fmt: skip
 
     assert result.exit_code == 1
-    assert "0 of 2 variants in 20 seeds" in result.stderr
+    assert "0 of 2 variants in 2 seeds" in result.stderr
     assert [p for p in tmp_path.iterdir() if p.is_dir()] == [earlier]
     assert (earlier / "kept.txt").exists()

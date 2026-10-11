@@ -1537,7 +1537,7 @@ def test_a_built_buoy_measures_its_manifest_height() -> None:
 
 
 def test_a_target_inside_the_ownship_is_refused() -> None:
-    aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "bulk_carrier"})
+    aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "cargo_ship"})
 
     with pytest.raises(scene.OverlapError, match="ownship"):
         scene.build(aboard, "eo")
