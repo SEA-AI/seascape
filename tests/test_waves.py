@@ -273,6 +273,32 @@ def test_a_wave_fades_out_before_it_aliases() -> None:
     assert np.all(np.diff(shown) >= 0)
 
 
+@pytest.mark.parametrize("wind_speed_mps", [0.0, 14.0])
+def test_the_drawn_slope_variance_is_the_filtered_field_s(
+    wind_speed_mps: float,
+) -> None:
+    swell = waves.swell(2.0, 10.0, 0.0, lambda p: p, np.random.default_rng(0))
+    sea = field(wind_speed_mps) + swell
+    for footprint_m in np.geomspace(1e-3, 1e4, 50):
+        assert waves.drawn_slope_variance(sea, footprint_m) == pytest.approx(
+            waves.slope_variance(waves.filtered(sea, footprint_m)), rel=1e-12
+        )
+
+
+@pytest.mark.parametrize("footprint_m", [0.02, 0.05, 0.5])
+def test_a_wave_no_pixel_resolves_is_gone_at_every_coarser_one(
+    footprint_m: float,
+) -> None:
+    sea = field(14.0)
+    kept = waves.resolvable(sea, footprint_m)
+    culled = [w for w in sea if w not in kept]
+    assert culled, "nothing culled: the assertion below would pass on nothing"
+    wavelengths = np.array([2 * math.pi / w.k_rad_m for w in culled])
+    for coarser in np.geomspace(footprint_m, 1e4, 50):
+        assert (waves.visibility(wavelengths, coarser) == 0.0).all()
+    assert all(math.pi / w.k_rad_m > footprint_m for w in kept)
+
+
 def test_calm_air_builds_no_waves() -> None:
     assert field(0.0) == ()
     assert waves.unresolved_slope_variance(0.0, (), (), 1.0) == pytest.approx(

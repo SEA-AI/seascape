@@ -127,6 +127,35 @@ def counts() -> tuple[int, ...]:
     )
 
 
+def drawn(
+    scenario: Scenario, kept: tuple[waves.Wave, ...] | None = None
+) -> list[tuple[waves.Wave, bpy.types.NodeInputs, int]]:
+    """Each wave of the built sea's normal, the inputs of the node drawing it, and its
+    lane there, of the scenario's field or the `kept` part of it. Every other lane must
+    be empty."""
+    nodes = bpy.data.node_groups["sea_waves"].nodes
+    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    if kept is not None:
+        wind = tuple(w for w in wind if w in kept)
+        swell = tuple(w for w in swell if w in kept)
+    triples = sea._triples(wind) + sea._triples(swell)
+    found = []
+    for i, triple in enumerate(triples):
+        inputs = nodes[f"waves_{i}"].inputs
+        for lane, wave in enumerate(triple):
+            if wave is None:
+                assert inputs["Slope X"].default_value[lane] == 0.0
+                assert inputs["Slope Y"].default_value[lane] == 0.0
+                assert inputs["Lift"].default_value[lane] == 0.0
+                assert (
+                    inputs["Gone Sq"].default_value[lane]
+                    > inputs["Whole Sq"].default_value[lane]
+                )
+            else:
+                found.append((wave, inputs, lane))
+    return found
+
+
 class TestGeometry:
     """Everything the band does not change: where things are and where cameras look."""
 
@@ -217,35 +246,34 @@ class TestGeometry:
             assert max(axes[2]) > 0.0, "and the rest of it is above water"
 
     def test_each_wave_fades_as_the_core_s_visibility(self) -> None:
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        for i, wave in enumerate(scene.wave_field(SCENARIO)):
-            inputs = nodes[f"wave_{i}"].inputs
+        for wave, inputs, lane in drawn(SCENARIO):
             gone, whole = waves.fade_footprints_m(2 * math.pi / wave.k_rad_m)
             assert (
-                inputs["Gone Sq"].default_value,
-                inputs["Whole Sq"].default_value,
+                inputs["Gone Sq"].default_value[lane],
+                inputs["Whole Sq"].default_value[lane],
             ) == pytest.approx((gone**2, whole**2), rel=1e-6)
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
-        nodes = bpy.data.materials["sea"].node_tree.nodes
         field = scene.wave_field(SCENARIO)
         assert len(field) == waves.FREQUENCIES * waves.WIND_HEADINGS
-        for i, wave in enumerate(field):
+        carried = drawn(SCENARIO)
+        assert [wave for wave, _, _ in carried] == list(field)
+        for wave, inputs, lane in carried:
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
-            inputs = nodes[f"wave_{i}"].inputs
-            carried = (
-                tuple(inputs["Wavenumber"].default_value),
-                inputs["Phase"].default_value,
-                tuple(inputs["Slope"].default_value),
-            )
-            assert carried == (
-                pytest.approx((k_east, k_north, -wave.omega_rad_s), rel=1e-6),
-                pytest.approx(wave.phase_rad, rel=1e-6),
-                pytest.approx(
-                    (wave.amplitude_m * k_east, wave.amplitude_m * k_north, 0.0),
-                    rel=1e-6,
-                    abs=1e-9,
+            assert tuple(
+                inputs[name].default_value[lane]
+                for name in ("Kx", "Ky", "W", "Phase", "Slope X", "Slope Y")
+            ) == pytest.approx(
+                (
+                    k_east,
+                    k_north,
+                    -wave.omega_rad_s,
+                    wave.phase_rad,
+                    wave.amplitude_m * k_east,
+                    wave.amplitude_m * k_north,
                 ),
+                rel=1e-6,
+                abs=1e-9,
             )
 
     def test_the_sea_reaches_past_its_own_horizon(self) -> None:
@@ -996,11 +1024,12 @@ class TestSlicks:
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
         wind = scene.wind_waves(self.SLICKS)
         left = set(waves.slick_survivors(self.SLICKS.sea.wind_speed_mps, wind))
-        nodes = bpy.data.materials["sea"].node_tree.nodes
         calmed = {
-            i for i in range(len(wind)) if nodes[f"wave_{i}"].inputs["Calm"].is_linked
+            wave
+            for wave, inputs, lane in drawn(self.SLICKS)
+            if inputs["Calm"].is_linked and inputs["Damped"].default_value[lane]
         }
-        assert calmed == {i for i, w in enumerate(wind) if w not in left}
+        assert calmed == set(wind) - left
 
     def test_under_a_slick_the_pixel_leaves_what_the_slick_does(self) -> None:
         table = baked("sea_unresolved_slick_variance")
@@ -1043,6 +1072,44 @@ class TestSeaEvolves:
         swell = variant(BASELINE, sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
         wind = scene.wave_field(SCENARIO)
         assert scene.wave_field(swell)[: len(wind)] == wind
+
+    def test_the_sea_draws_a_swell_in_triples_of_its_own(self) -> None:
+        swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
+        scene.build(swell, "eo")
+        assert [wave for wave, _, _ in drawn(swell)] == list(scene.wave_field(swell))
+
+    def test_the_finest_pixel_is_the_camera_s_height_times_its_angle(self) -> None:
+        scenario = load(OPEN_SEA)
+        built = scene.build(scenario, "eo")
+        (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
+        pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+        assert scene._finest_footprint_m(
+            scenario, "eo", built.cameras
+        ) == pytest.approx(mount.rig.height_m * pixel_rad, rel=1e-6)
+
+    def test_the_finest_pixel_is_taken_at_the_lowest_heave(self) -> None:
+        heave = {"amplitude_m": 2.0, "period_s": 4.0}
+        scenario = variant(ownship={"heave": heave}, outputs={"duration_s": 4.0})
+        built = scene.build(scenario, "eo")
+        (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
+        pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+        lowest = mount.rig.height_m - heave["amplitude_m"]
+        assert scene._finest_footprint_m(
+            scenario, "eo", built.cameras
+        ) == pytest.approx(lowest * pixel_rad, rel=1e-3)
+
+    def test_only_a_culled_build_leaves_out_what_its_cameras_cannot_resolve(
+        self,
+    ) -> None:
+        """Probes and a hand-moved camera need every wave in a default build."""
+        scenario = variant(rig={"height_m": 100.0})
+        field = scene.wave_field(scenario)
+        scene.build(scenario, "eo")
+        assert [w for w, _, _ in drawn(scenario)] == list(field)
+        built = scene.build(scenario, "eo", cull=True)
+        finest = scene._finest_footprint_m(scenario, "eo", built.cameras)
+        kept = [w for w, _, _ in drawn(scenario, waves.resolvable(field, finest))]
+        assert kept == list(waves.resolvable(field, finest)) != list(field)
 
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(load(OPEN_SEA), "eo")

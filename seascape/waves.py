@@ -584,6 +584,22 @@ def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     )
 
 
+def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
+    """The waves a pixel no finer than `footprint_m` can draw: the rest are gone by
+    Nyquist."""
+    gone = FADE_FOOTPRINTS[0]
+    return tuple(w for w in field if 2 * math.pi / w.k_rad_m / gone > footprint_m)
+
+
+def drawn_slope_variance(field: tuple[Wave, ...], footprint_m: float) -> float:
+    """`slope_variance(filtered(field, footprint_m))`, without building the waves."""
+    if not field:
+        return 0.0
+    k = np.array([w.k_rad_m for w in field])
+    ak = np.array([w.amplitude_m for w in field]) * k
+    return float(np.sum((ak * visibility(2 * math.pi / k, footprint_m)) ** 2) / 2)
+
+
 def slick_survivors(wind_speed_mps: float, wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
     """The longest waves that fit in Cox & Munk's slick variance: what a slick leaves
     of `wind`, damping the shortest first."""
@@ -611,10 +627,10 @@ def unresolved_slope_variance(
     A sea short of fetch keeps Cox & Munk's open-ocean total, so the lobe takes the
     slope of its missing long waves.
     """
-    wind_left = total_slope(wind_speed_mps) ** 2 - slope_variance(
-        filtered(wind, footprint_m)
+    wind_left = total_slope(wind_speed_mps) ** 2 - drawn_slope_variance(
+        wind, footprint_m
     )
-    swell_left = slope_variance(swell) - slope_variance(filtered(swell, footprint_m))
+    swell_left = slope_variance(swell) - drawn_slope_variance(swell, footprint_m)
     return max(wind_left, 0.0) + swell_left
 
 
@@ -622,7 +638,7 @@ def unresolved_acceleration_variance(
     wind: tuple[Wave, ...], footprint_m: float
 ) -> float:
     """Over g^2."""
-    return slope_variance(wind) - slope_variance(filtered(wind, footprint_m))
+    return slope_variance(wind) - drawn_slope_variance(wind, footprint_m)
 
 
 def whitecap_cover(

@@ -1071,8 +1071,9 @@ def _enable_gpu() -> bool:
     return False
 
 
-def _output(outputs: Outputs, band: Band) -> None:
-    """Render and display settings, in the .blend, so F12 renders what `render` does."""
+def _output(outputs: Outputs, band: Band, largest_px: int) -> None:
+    """Render and display settings, in the .blend, so F12 renders what `render` does.
+    `largest_px` is the longest side of any of the band's cameras."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
@@ -1082,6 +1083,9 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.cycles.samples = getattr(outputs.samples, band)
     # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
+    # Cycles merges tiles through a file on disk; a frame in one tile renders the same
+    # pixels sooner. RNA clamps a side past its maximum, which then tiles.
+    sc.cycles.tile_size = largest_px
     # The factory AgX is a film curve; a camera clips, and LWIR radiance is no picture.
     view = sc.view_settings
     view.view_transform, view.look = "Standard", "None"
@@ -1231,12 +1235,45 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     return waves.horizon_m(eye_m, k) + waves.horizon_m(max(tops_m), k)
 
 
-def build(scenario: Scenario, band: Band = "eo") -> Built:
-    """Replace the current Blender session's contents with `scenario` in one band."""
+def _finest_footprint_m(
+    scenario: Scenario, band: Band, cameras: dict[str, bpy.types.Object]
+) -> float:
+    """The finest pixel any of the band's cameras lays on the sea in any frame: its
+    height over the sea below it, which the curved sea comes no nearer than, times the
+    angle of a pixel."""
+    sc = bpy.context.scene
+    radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    finest = math.inf
+    for frame in range(len(scenario.outputs.times_s)):
+        sc.frame_set(frame)
+        # matrix_world is stale until the depsgraph runs.
+        bpy.context.view_layer.update()
+        for mount in scenario.mounts:
+            if mount.camera.band != band:
+                continue
+            camera = cameras[mount.name]
+            east, north, up = camera.matrix_world.translation
+            height_m = up - waves.sea_z_m(east, north, radius_m)
+            pixel_rad = camera.data.angle_x / mount.camera.width_px
+            finest = min(finest, height_m * pixel_rad)
+    sc.frame_set(0)
+    return finest
+
+
+def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
+    """Replace the current Blender session's contents with `scenario` in one band.
+
+    `cull` draws only the waves the scenario's own cameras resolve, at their own
+    resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
     if not any(mount.camera.band == band for mount in scenario.mounts):
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    _output(scenario.outputs, band)
+    sides = [
+        max(m.camera.width_px, m.camera.height_px)
+        for m in scenario.mounts
+        if m.camera.band == band
+    ]
+    _output(scenario.outputs, band, max(sides))
     bpy.context.scene.world = _sky(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
@@ -1274,6 +1311,7 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
         rngs,
         tuple(trails),
         _light(scenario.sky, band),
+        _finest_footprint_m(scenario, band, rigs.cameras) if cull else 0.0,
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.

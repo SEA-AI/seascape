@@ -189,6 +189,13 @@ class TestEachBand:
         assert sc.camera.name == f"bow_{band}"
 
 
+@pytest.mark.parametrize("width_px", [640, 3840])
+def test_a_frame_renders_in_one_tile(width_px: int) -> None:
+    """Past one tile, Cycles caches each to disk and reads the frame back."""
+    scene.build(variant(cameras={"eo": {"width_px": width_px}}), "eo")
+    assert bpy.context.scene.cycles.tile_size >= width_px
+
+
 def test_a_relative_output_reaches_blender_absolute(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -242,6 +249,59 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     index = np.rint(render._pixels(tmp_path / "probe.index.exr")[..., 0])
     assert (index[:, :columns] == 1).all()
     assert (index[:, columns:] == 0).all()
+
+
+@pytest.mark.render
+def test_the_heaviest_sea_fits_cycles_svm_stack() -> None:
+    """A shader past the SVM stack renders black, with one line in the log."""
+    scenario = variant(
+        UNDERWAY,
+        sea={"swell": {"height_m": 2.0, "period_s": 10.0}, "slick_cover": 0.2},
+        sky={"visibility_km": None},
+        outputs={"format": "exr"},
+    )
+    built = scene.build(scenario, "eo")
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    sc = bpy.context.scene
+    sc.camera = built.cameras[mount.name]
+    sc.cycles.samples = 1
+    width, height = 32, 24
+    sc.render.resolution_x, sc.render.resolution_y = width, height
+    sc.render.filepath = str(Path(bpy.app.tempdir) / "svm_stack")
+    bpy.ops.render.render(write_still=True)
+    frame = render._pixels(Path(sc.render.filepath + ".exr"))[::-1, :, :3].max(axis=2)
+
+    calibration = scene.calibrate(built, mount, "")
+    scale = (calibration.width_px - 1) / (width - 1)
+    u, v = np.meshgrid(np.arange(width) * scale, np.arange(height) * scale)
+    rays = np.linalg.inv(calibration.K) @ np.stack([u, v, np.ones_like(u)]).reshape(
+        3, -1
+    )
+    down = (np.array(calibration.extrinsics["world"])[:3, :3] @ rays)[2]
+    sea = frame.ravel()[down / np.linalg.norm(rays, axis=0) < -0.05]
+    assert sea.size, "no row below the horizon: the assertion would pass on nothing"
+    assert np.median(sea) > 0.01 * np.median(frame)
+
+
+@pytest.mark.render
+def test_a_render_culls_only_waves_no_pixel_of_it_draws(tmp_path: Path) -> None:
+    """High enough that the culled waves are many."""
+    scenario = variant(
+        rig={"height_m": 100.0},
+        cameras={"eo": {"width_px": 256, "height_px": 192}},
+        sky={"visibility_km": None},
+        outputs={"format": "exr", "bands": ["eo"], "samples": {"eo": 4}},
+    )
+    (culled,) = (p for p in render.render(scenario, tmp_path) if p.suffix == ".exr")
+
+    scene.build(scenario, "eo")
+    sc = bpy.context.scene
+    sc.render.filepath = str(tmp_path / "whole")
+    bpy.ops.render.render(write_still=True)
+
+    whole = render._pixels(tmp_path / "whole.exr")[..., :3]
+    drawn = render._pixels(culled)[..., :3]
+    assert np.abs(drawn - whole).mean() / whole.mean() < 1e-4
 
 
 @pytest.mark.render
