@@ -46,7 +46,7 @@ from_deg = { uniform = [0.0, 360.0] }
 
 [[objects]]
 asset = { choice = [
-    "container_ship",
+    "multipurpose_freighter",
     "cargo_ship",
     "bulk_carrier",
     "patrol_vessel",

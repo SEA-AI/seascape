@@ -24,7 +24,7 @@ height_px = 512
 sun_bearing_deg = 135.0
 
 [[objects]]
-preset = "container_ship"
+preset = "multipurpose_freighter"
 range_m = 2000.0
 # Inside both frames.
 bearing_deg = 8.0
