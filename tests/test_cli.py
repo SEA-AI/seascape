@@ -201,20 +201,7 @@ def test_one_scene_whose_hulls_meet_is_an_error(run: Run, tmp_path: Path) -> Non
 def test_variants_give_up_when_every_seed_has_hulls_meeting(
     run: Run, tmp_path: Path
 ) -> None:
-    result = run(
-        "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
-        *THREE,
-    )  # fmt: skip
-
-    assert result.exit_code == 1
-    assert "0 of 2 variants in 20 seeds" in result.stderr
-    assert not [p for p in tmp_path.iterdir() if p.is_dir()]
-
-
-@pytest.mark.render
-def test_a_skipped_seed_leaves_a_folder_from_an_earlier_run(
-    run: Run, tmp_path: Path
-) -> None:
+    """A skipped seed leaves the folder an earlier run wrote under its name."""
     earlier = tmp_path / str(load(BASELINE).seed)
     earlier.mkdir()
     (earlier / "kept.txt").write_text("from an earlier run")
@@ -224,5 +211,7 @@ def test_a_skipped_seed_leaves_a_folder_from_an_earlier_run(
         *THREE,
     )  # fmt: skip
 
-    assert "0 of 2 variants" in result.stderr
+    assert result.exit_code == 1
+    assert "0 of 2 variants in 20 seeds" in result.stderr
+    assert [p for p in tmp_path.iterdir() if p.is_dir()] == [earlier]
     assert (earlier / "kept.txt").exists()

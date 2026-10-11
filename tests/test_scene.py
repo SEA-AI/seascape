@@ -165,8 +165,8 @@ def drawn(
     return found
 
 
-class TestGeometry:
-    """Everything the band does not change: where things are and where cameras look."""
+class TestEoBand:
+    """Where things are, where cameras look, and what the EO band draws."""
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -326,6 +326,130 @@ class TestGeometry:
 
         assert waterline, "the bulge has to hide the hull"
         assert not mast, "and leave what stands above it"
+
+    def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        assert nodes["sea_specular"].inputs["Roughness"].is_linked
+        table = baked("sea_unresolved_variance")
+        low, high = sea.FOOTPRINT_RANGE_M
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        footprints = low * (high / low) ** texel
+        wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
+        speed = SCENARIO.sea.wind_speed_mps
+        for i in (0, len(table) // 2, len(table) - 1):
+            expected = waves.unresolved_slope_variance(
+                speed, wind, swell, footprints[i]
+            )
+            assert table[i] == pytest.approx(expected, rel=1e-5)
+
+    def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
+        roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
+        assert {"gust", "sea_gust_variance", "sea_unresolved_variance"} <= upstream(
+            roughness.inputs["Roughness"]
+        )
+        speed = SCENARIO.sea.wind_speed_mps
+        tree = bpy.data.materials["sea"].node_tree
+        per_gust = tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value
+        assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
+        tile = baked("sea_gust")
+        seeded = waves.von_karman_field(
+            substream(SCENARIO.seed, "sea/gust"),
+            sea.GUST_CELLS,
+            sea.GUST_SPACING_M,
+            waves.GUST_LENGTH_M,
+        )
+        assert tile == pytest.approx(seeded, abs=1e-5)
+
+    def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
+        carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
+        per_m = 1 / sea.GUST_TILE_M
+        downwind = math.radians(SCENARIO.sea.wind_from_deg + 180.0)
+        speed = SCENARIO.sea.wind_speed_mps
+        # The noise read at x - U t is the noise at x carried U t downwind.
+        assert tuple(carry.inputs["Vector"].default_value) == pytest.approx(
+            (
+                -speed * per_m * math.sin(downwind),
+                -speed * per_m * math.cos(downwind),
+                0,
+            ),
+            abs=1e-9,
+        )
+
+    def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
+        wind = scene.wind_waves(SCENARIO)
+        speed = SCENARIO.sea.wind_speed_mps
+        tree = bpy.data.materials["sea"].node_tree
+        assert "gust" in upstream(tree.nodes["whitecap_excess"].inputs["Value_001"])
+        table = baked("sea_breaking")
+        gust_max = (
+            math.sqrt(2)
+            * np.abs(baked("sea_gust")).max()
+            * waves.turbulence_intensity(speed)
+        )
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        gusts = gust_max * (2 * texel - 1)
+        # The threshold at each texel's gust.
+        expected = [
+            waves.breaking_threshold_g(wind, waves.gusty_whitecap_fraction(speed, g))
+            for g in gusts
+        ]
+        assert table == pytest.approx(expected, rel=1e-5)
+        assert np.all(np.diff(table) < 0)
+
+    def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
+        wind = scene.wind_waves(SCENARIO)
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        scale = nodes["glitter_cells"].inputs["Scale"].default_value
+        assert scale == pytest.approx(1 / math.sqrt(waves.specular_cell_m2(wind)))
+        twinkle = nodes["glitter_draw"].inputs[0].links[0].from_node
+        assert twinkle.inputs[1].default_value == pytest.approx(waves.twinkle_hz(wind))
+
+    def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
+
+    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
+        nodes = bpy.data.node_groups["haze"].nodes
+        beta = nodes["haze_beta"]
+        assert beta.inputs[0].links[0].from_socket.name == "Ray Length"
+        assert beta.inputs[1].default_value == pytest.approx(
+            SCENARIO.sky.extinction_per_m
+        )
+        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
+        airlight = nodes["haze_sky"]
+        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
+            assert getattr(airlight, name) == getattr(sky, name)
+
+    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
+        """Incoming points back at the camera; unflipped, the haze would take the sky
+        behind it."""
+        nodes = bpy.data.node_groups["haze"].nodes
+        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
+        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
+        assert ahead.inputs["Scale"].default_value == -1.0
+        assert horizon.inputs[0].links[0].from_node == ahead
+        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
+        (into_sky,) = horizon.outputs["Vector"].links
+        assert into_sky.to_node.name == "haze_sky"
+        assert into_sky.is_valid
+
+    def test_every_surface_mixes_towards_the_airlight(self) -> None:
+        mix = bpy.data.node_groups["haze"].nodes["haze_mix"]
+        assert mix.inputs[1].links[0].from_node.bl_idname == "NodeGroupInput"
+        assert mix.inputs[2].links[0].from_node.name == "haze_airlight"
+        for material in bpy.data.materials:
+            output = material.node_tree.get_output_node("CYCLES")
+            (surface,) = output.inputs["Surface"].links
+            assert surface.from_node.name == "haze", material.name
+
+    def test_no_surface_is_sampled_as_a_light(self) -> None:
+        for material in bpy.data.materials:
+            assert material.cycles.emission_sampling == "NONE", material.name
+
+    def test_a_hazed_material_is_not_hazed_again(self) -> None:
+        material = bpy.data.materials["sea"]
+        scene.haze(material)
+        assert under_the_haze(material).bl_idname != "ShaderNodeGroup"
 
     def test_building_twice_leaves_the_same_scene(self) -> None:
         """Node trees leak when a build appends to what is already there."""
@@ -571,137 +695,6 @@ def test_a_band_the_rig_cannot_see_is_an_error() -> None:
     )
     with pytest.raises(ValueError, match="no rig has an ir camera"):
         scene.build(eo_only, "ir")
-
-
-class TestEoBand:
-    @pytest.fixture(scope="class", autouse=True)
-    @classmethod
-    def built(cls) -> None:
-        scene.build(SCENARIO, "eo")
-
-    def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        assert nodes["sea_specular"].inputs["Roughness"].is_linked
-        table = baked("sea_unresolved_variance")
-        low, high = sea.FOOTPRINT_RANGE_M
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        footprints = low * (high / low) ** texel
-        wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
-        speed = SCENARIO.sea.wind_speed_mps
-        for i in (0, len(table) // 2, len(table) - 1):
-            expected = waves.unresolved_slope_variance(
-                speed, wind, swell, footprints[i]
-            )
-            assert table[i] == pytest.approx(expected, rel=1e-5)
-
-    def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
-        roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
-        assert {"gust", "sea_gust_variance", "sea_unresolved_variance"} <= upstream(
-            roughness.inputs["Roughness"]
-        )
-        speed = SCENARIO.sea.wind_speed_mps
-        tree = bpy.data.materials["sea"].node_tree
-        per_gust = tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value
-        assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
-        tile = baked("sea_gust")
-        seeded = waves.von_karman_field(
-            substream(SCENARIO.seed, "sea/gust"),
-            sea.GUST_CELLS,
-            sea.GUST_SPACING_M,
-            waves.GUST_LENGTH_M,
-        )
-        assert tile == pytest.approx(seeded, abs=1e-5)
-
-    def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
-        carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
-        per_m = 1 / sea.GUST_TILE_M
-        downwind = math.radians(SCENARIO.sea.wind_from_deg + 180.0)
-        speed = SCENARIO.sea.wind_speed_mps
-        # The noise read at x - U t is the noise at x carried U t downwind.
-        assert tuple(carry.inputs["Vector"].default_value) == pytest.approx(
-            (
-                -speed * per_m * math.sin(downwind),
-                -speed * per_m * math.cos(downwind),
-                0,
-            ),
-            abs=1e-9,
-        )
-
-    def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
-        wind = scene.wind_waves(SCENARIO)
-        speed = SCENARIO.sea.wind_speed_mps
-        tree = bpy.data.materials["sea"].node_tree
-        assert "gust" in upstream(tree.nodes["whitecap_excess"].inputs["Value_001"])
-        table = baked("sea_breaking")
-        gust_max = (
-            math.sqrt(2)
-            * np.abs(baked("sea_gust")).max()
-            * waves.turbulence_intensity(speed)
-        )
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        gusts = gust_max * (2 * texel - 1)
-        # The threshold at each texel's gust.
-        expected = [
-            waves.breaking_threshold_g(wind, waves.gusty_whitecap_fraction(speed, g))
-            for g in gusts
-        ]
-        assert table == pytest.approx(expected, rel=1e-5)
-        assert np.all(np.diff(table) < 0)
-
-    def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
-        wind = scene.wind_waves(SCENARIO)
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        scale = nodes["glitter_cells"].inputs["Scale"].default_value
-        assert scale == pytest.approx(1 / math.sqrt(waves.specular_cell_m2(wind)))
-        twinkle = nodes["glitter_draw"].inputs[0].links[0].from_node
-        assert twinkle.inputs[1].default_value == pytest.approx(waves.twinkle_hz(wind))
-
-    def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
-        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
-
-    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
-        nodes = bpy.data.node_groups["haze"].nodes
-        beta = nodes["haze_beta"]
-        assert beta.inputs[0].links[0].from_socket.name == "Ray Length"
-        assert beta.inputs[1].default_value == pytest.approx(
-            SCENARIO.sky.extinction_per_m
-        )
-        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        airlight = nodes["haze_sky"]
-        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
-            assert getattr(airlight, name) == getattr(sky, name)
-
-    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
-        """Incoming points back at the camera; unflipped, the haze would take the sky
-        behind it."""
-        nodes = bpy.data.node_groups["haze"].nodes
-        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
-        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
-        assert ahead.inputs["Scale"].default_value == -1.0
-        assert horizon.inputs[0].links[0].from_node == ahead
-        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
-        (into_sky,) = horizon.outputs["Vector"].links
-        assert into_sky.to_node.name == "haze_sky"
-        assert into_sky.is_valid
-
-    def test_every_surface_mixes_towards_the_airlight(self) -> None:
-        mix = bpy.data.node_groups["haze"].nodes["haze_mix"]
-        assert mix.inputs[1].links[0].from_node.bl_idname == "NodeGroupInput"
-        assert mix.inputs[2].links[0].from_node.name == "haze_airlight"
-        for material in bpy.data.materials:
-            output = material.node_tree.get_output_node("CYCLES")
-            (surface,) = output.inputs["Surface"].links
-            assert surface.from_node.name == "haze", material.name
-
-    def test_no_surface_is_sampled_as_a_light(self) -> None:
-        for material in bpy.data.materials:
-            assert material.cycles.emission_sampling == "NONE", material.name
-
-    def test_a_hazed_material_is_not_hazed_again(self) -> None:
-        material = bpy.data.materials["sea"]
-        scene.haze(material)
-        assert under_the_haze(material).bl_idname != "ShaderNodeGroup"
 
 
 def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
