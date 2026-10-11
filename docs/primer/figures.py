@@ -70,11 +70,11 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
     ),
     "horizon": (
         # Clear air and a mast-top camera, so the sea hides most of the far hull.
-        # Tilted down to bring the horizon to mid-frame.
+        # Tilted down a touch, so the ships stand over a strip of sea.
         [
             TELE,
             f"rigs.bow.height_m = {EYE_M}",
-            "rigs.bow.pitch_deg = -0.15",
+            "rigs.bow.pitch_deg = -0.08",
             "sky.visibility_km = 1000.0",
         ],
         [
