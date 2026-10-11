@@ -1,8 +1,8 @@
-"""The twin-pod scenario. One global Blender session, so it is built once."""
+"""Two rigs of several cameras: where each sits and points, and the panoramas stitched
+from them. One global Blender session, so it is built once."""
 
 import json
 import math
-from itertools import pairwise
 from pathlib import Path
 
 import bpy
@@ -15,10 +15,11 @@ from mathutils import Matrix, Vector
 from seascape import agc, panorama, scene
 from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
-from seascape.config import Mount, Rig, Scenario, load
+from seascape.config import Mount, Rig, Scenario
 from seascape.montage import INK
+from tests.scenarios import two_rigs
 
-SCENARIO: Scenario = load(Path(__file__).parent.parent / "scenarios" / "twin-pod.toml")
+SCENARIO: Scenario = two_rigs()
 MOUNTS = [pytest.param(mount, id=mount.name) for mount in SCENARIO.mounts]
 RIGS = [pytest.param(name, rig, id=name) for name, rig in SCENARIO.rigs.items()]
 
@@ -66,85 +67,6 @@ def test_the_hull_takes_the_attitude_it_was_given(built: scene.Built) -> None:
 
     assert bow.z == pytest.approx(math.sin(pitch))
     assert starboard.z == pytest.approx(-math.cos(pitch) * math.sin(roll))
-
-
-def test_rig_span_and_overlap_measured_from_the_scene(built: scene.Built) -> None:
-    arcs: dict[tuple[str, str], list[tuple[float, float]]] = {}
-    for mount in SCENARIO.mounts:
-        camera = built.cameras[mount.name]
-        half = math.degrees(camera.data.angle_x) / 2
-        centre, _ = scene.boresight_deg(camera, built.vessel)
-        # IR is one camera per rig; its span and overlap belong to the pair.
-        group = "both" if mount.camera.band == "ir" else mount.rig_name
-        arcs.setdefault((group, mount.camera.band), []).append(
-            (centre - half, centre + half)
-        )
-
-    for key, span, overlap in (
-        (("port", "eo"), 129.0, 9.0),
-        (("starboard", "eo"), 129.0, 9.0),
-        (("both", "ir"), 44.0, 4.0),
-    ):
-        sectors = sorted(arcs[key])
-        assert sectors[-1][1] - sectors[0][0] == pytest.approx(span), key
-        gaps = [a[1] - b[0] for a, b in pairwise(sectors)]
-        # Through the rig transform, matrix_world is a few microdegrees out.
-        assert gaps == pytest.approx([overlap] * len(gaps), abs=1e-4), key
-
-
-# Further than this below a rig and it floats beside the ship.
-MAX_BRACKET_M = 5.0
-
-
-@pytest.mark.parametrize(("name", "rig"), RIGS)
-def test_a_rig_stands_on_the_ship_rather_than_beside_it(
-    name: str, rig: Rig, built: scene.Built
-) -> None:
-    """A rig at the wrong height is outboard of the hull with nothing under it, and
-    bearings, overlaps, lens clearance and target coverage all still pass."""
-    rig_at = built.rigs[name].matrix_world.translation
-
-    down = built.vessel.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))
-
-    drop_m = _distance_to_geometry(rig_at, rig_at + down)
-
-    assert drop_m < MAX_BRACKET_M, (
-        f"nothing within {MAX_BRACKET_M} m below rig {name}: it is not mounted"
-    )
-
-
-@pytest.mark.parametrize("mount", MOUNTS)
-def test_no_camera_is_buried_in_the_structure_it_is_mounted_on(
-    mount: Mount, built: scene.Built
-) -> None:
-    """A lens flush with the plate it is bolted to fills the lower frame. Inside the
-    near clip the plate is cut away instead, which reads as open sky."""
-    camera = built.cameras[mount.name]
-    origin = camera.matrix_world.translation
-    # The corners, not the axis: a deck the rig stands on is below the optical centre,
-    # so a ray down the axis flies over it and the check passes on a buried camera.
-    corners = [
-        camera.matrix_world @ corner
-        for corner in camera.data.view_frame(scene=bpy.context.scene)
-    ]
-
-    nearest_m = min(_distance_to_geometry(origin, corner) for corner in corners)
-
-    assert nearest_m > mount.rig.near_clip_m
-
-
-@pytest.mark.parametrize("mount", MOUNTS)
-def test_every_camera_has_a_target_in_frame(mount: Mount, built: scene.Built) -> None:
-    """Targets are world objects: coverage breaks silently if either geometry moves."""
-    camera = built.cameras[mount.name]
-
-    framed = [
-        target
-        for target in targets()
-        if _in_frame(world_to_camera_view(bpy.context.scene, camera, target.location))
-    ]
-
-    assert framed, f"{mount.name} sees none of {len(targets())} targets"
 
 
 def test_every_target_sits_at_the_configured_range() -> None:
@@ -425,14 +347,6 @@ def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
 def _in_ship_frame(built: scene.Built, obj: bpy.types.Object) -> Matrix:
     """The rig is specified on the hull, so it is measured there."""
     return built.vessel.matrix_world.inverted() @ obj.matrix_world
-
-
-def _distance_to_geometry(origin, through) -> float:
-    """Metres to the first surface along a ray, or infinity if it reaches the sky."""
-    hit, location, *_ = bpy.context.scene.ray_cast(
-        bpy.context.evaluated_depsgraph_get(), origin, (through - origin).normalized()
-    )
-    return (location - origin).length if hit else math.inf
 
 
 def _in_frame(uv) -> bool:

@@ -19,6 +19,7 @@ from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import (
     Band,
+    Camera,
     Mount,
     Object,
     Outputs,
@@ -31,13 +32,19 @@ from tests.scenarios import (
     BASELINE,
     DRIFTING,
     OPEN_SEA,
-    preset_camera,
     preset_target,
     target,
     variant,
 )
 
 SCENARIO = load(BASELINE)
+# A lens of the test's own: no shipped preset is pinned.
+LENS: dict[str, Any] = {
+    "band": "eo",
+    "hfov_deg": 49.0,
+    "width_px": 3840,
+    "height_px": 2160,
+}
 
 
 def camera_of(mount: Mount) -> bpy.types.Object:
@@ -56,9 +63,8 @@ def _in_frame(camera: CameraCalibration, direction: Vector | np.ndarray) -> bool
     )
 
 
-@pytest.mark.parametrize("name", ["baseline.toml", "twin-pod.toml"])
-def test_the_sun_is_out_of_every_frame(name: str) -> None:
-    scenario = load(BASELINE.parent / name)
+def test_the_sun_is_out_of_every_frame() -> None:
+    scenario = load(BASELINE)
     ownship = scenario.ownship.model_copy(update={"asset": None})
     bare = scenario.model_copy(
         update={"objects": [], "targets": None, "ownship": ownship}
@@ -595,7 +601,7 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
     pitch_deg, yaw_deg = -5.0, 40.0
     scenario = variant(
         rig={"pitch_deg": pitch_deg},
-        cameras={"eo": preset_camera("eo_4k_49deg", yaw_deg=yaw_deg)},
+        cameras={"eo": Camera(**LENS, yaw_deg=yaw_deg)},
     )
     expected = math.degrees(
         math.asin(math.sin(math.radians(pitch_deg)) * math.sin(blend.yaw(yaw_deg)))
@@ -614,7 +620,7 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
 def test_a_pitched_lens_points_exactly_where_it_was_asked_to() -> None:
     """Rx inside the camera's yaw: neither angle disturbs the other, nor the horizon."""
     pitch_deg = -10.0
-    lens = preset_camera("eo_4k_49deg", yaw_deg=40.0, pitch_deg=pitch_deg)
+    lens = Camera(**LENS, yaw_deg=40.0, pitch_deg=pitch_deg)
     scenario = variant(rig={"yaw_deg": -60.0}, cameras={"eo": lens})
 
     scene.build(scenario, "eo")
@@ -635,8 +641,8 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() 
     scenario = variant(
         rig={"pitch_deg": -5.0, "yaw_deg": -60.0},
         cameras={
-            "eo": preset_camera("eo_4k_49deg"),
-            "eo_off": preset_camera("eo_4k_49deg", yaw_deg=40.0, pitch_deg=-10.0),
+            "eo": Camera(**LENS),
+            "eo_off": Camera(**LENS, yaw_deg=40.0, pitch_deg=-10.0),
         },
     )
     scene.build(scenario, "eo")
@@ -690,9 +696,7 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
 
 def test_a_band_the_rig_cannot_see_is_an_error() -> None:
     """Otherwise `next()` raises StopIteration, naming nothing."""
-    eo_only = Scenario(
-        rigs={"bow": Rig(height_m=12.0, cameras={"eo": preset_camera("eo_4k_49deg")})}
-    )
+    eo_only = Scenario(rigs={"bow": Rig(height_m=12.0, cameras={"eo": Camera(**LENS)})})
     with pytest.raises(ValueError, match="no rig has an ir camera"):
         scene.build(eo_only, "ir")
 
@@ -1537,7 +1541,7 @@ def test_a_built_buoy_measures_its_manifest_height() -> None:
 
 
 def test_a_target_inside_the_ownship_is_refused() -> None:
-    aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "bulk_carrier"})
+    aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "cargo_ship"})
 
     with pytest.raises(scene.OverlapError, match="ownship"):
         scene.build(aboard, "eo")

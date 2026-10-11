@@ -12,7 +12,7 @@ import pytest
 from seascape import agc, labels, lwir, render, scene
 from seascape.calibration import Calibration
 from seascape.config import Band, ImageFormat, load
-from tests.scenarios import OPEN_SEA, TWIN_POD, UNDERWAY, target, variant
+from tests.scenarios import OPEN_SEA, UNDERWAY, target, variant
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -240,7 +240,10 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     for obj in (plane, camera):
         sc.collection.objects.link(obj)
     sc.camera = camera
-    scene._compositor(None)  # as a build leaves it
+    # As a build leaves it. Factory settings put the compositor on the GPU, which a
+    # machine without one aborts on.
+    sc.render.compositor_device = "CPU"
+    scene._compositor(None)
     render._index_output(tmp_path).file_name = "probe."
     sc.render.filepath = str(tmp_path / "frame")
 
@@ -310,7 +313,13 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
 ) -> None:
     """Boxes are sampled at pixel centres, so a hull reaches half a pixel past one."""
     # Boxes come from the index pass, which takes the pixel centre at any sample count.
-    scenario = variant(TWIN_POD, outputs={"bands": ["ir"], "samples": {"ir": 1}})
+    # A rolled ship and a pitched rig, so no axis of the calibration is identity.
+    scenario = variant(
+        ownship={"roll_deg": 2.0, "pitch_deg": 0.5},
+        rig={"pitch_deg": -3.0},
+        objects=[target("yacht", 300.0, -9.0), target("yacht", 600.0, 7.0)],
+        outputs={"bands": ["ir"], "samples": {"ir": 1}},
+    )
 
     render.render(scenario, tmp_path)
 

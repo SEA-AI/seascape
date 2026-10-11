@@ -4,26 +4,19 @@ Tests say what they change; how a scenario spells it lives here. Loader and CLI 
 write TOML, since the spelling is what they test.
 """
 
-import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
-from seascape.config import CFG_DIR, Camera, Object, Scenario, load
+from seascape.config import Camera, Object, Scenario, load
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
 OPEN_SEA = SCENARIOS / "open-sea.toml"
 DRIFTING = SCENARIOS / "drifting.toml"
 UNDERWAY = SCENARIOS / "underway.toml"
-TWIN_POD = SCENARIOS / "twin-pod.toml"
-
-
-def preset_camera(preset: str, **fields: Any) -> Camera:
-    with (CFG_DIR / "cameras" / f"{preset}.toml").open("rb") as handle:
-        return Camera.model_validate(tomllib.load(handle) | fields)
 
 
 def target(
@@ -78,3 +71,40 @@ def variant(
     if objects is not None:
         table["objects"] = _plain(objects)
     return load(base, [table])
+
+
+def two_rigs(**sections: Any) -> Scenario:
+    """Two rigs of several cameras on a hull-less ownship, rolled and pitched, with
+    yachts ahead. Optics are the test's own, so no shipped preset is pinned."""
+    eo = {"band": "eo", "hfov_deg": 49.0, "width_px": 3840, "height_px": 2160}
+    ir = {"band": "ir", "hfov_deg": 24.0, "width_px": 640, "height_px": 480}
+    down = {"pitch_deg": -10.0}
+    return variant(
+        ownship={"roll_deg": 2.0, "pitch_deg": 0.5},
+        rigs={
+            "bow": {
+                "offset_x_m": 1.5,
+                "offset_y_m": 6.0,
+                "cameras": {
+                    "eo": eo | down,
+                    "eo_p": eo | down | {"yaw_deg": -40.0},
+                    "eo_s": eo | down | {"yaw_deg": 40.0},
+                    "ir": ir,
+                },
+            },
+            "stern": {
+                "height_m": 8.0,
+                "yaw_deg": 180.0,
+                "offset_x_m": -3.0,
+                "offset_y_m": -20.0,
+                "cameras": {"eo": eo | down, "ir": ir},
+            },
+        },
+        targets={
+            "asset": ["yacht"],
+            "range_m": 400.0,
+            "count": 4,
+            "bearing_deg": [-60, 60],
+        },
+        **sections,
+    )

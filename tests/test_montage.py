@@ -7,12 +7,12 @@ from PIL import Image
 
 from seascape import montage
 from seascape.config import Scenario
-from tests.scenarios import TWIN_POD, variant
+from tests.scenarios import two_rigs
 
 
 @pytest.fixture
-def twin_pod() -> Scenario:
-    return variant(TWIN_POD, outputs={"format": "png"})
+def rigs() -> Scenario:
+    return two_rigs(outputs={"format": "png"})
 
 
 def frames(scenario: Scenario, into: Path, size: tuple[int, int] = (64, 36)) -> Path:
@@ -23,44 +23,44 @@ def frames(scenario: Scenario, into: Path, size: tuple[int, int] = (64, 36)) -> 
     return into
 
 
-def test_a_montage_carries_every_camera(twin_pod, tmp_path) -> None:
-    into = frames(twin_pod, tmp_path)
+def test_a_montage_carries_every_camera(rigs, tmp_path) -> None:
+    into = frames(rigs, tmp_path)
 
-    out = montage.compose(twin_pod, into)
+    out = montage.compose(rigs, into)
 
     assert out == into / "montage.png"
     assert Image.open(out).size[0] > 0
 
 
-def test_a_band_gets_its_own_row(twin_pod, tmp_path) -> None:
-    into = frames(twin_pod, tmp_path)
+def test_a_band_gets_its_own_row(rigs, tmp_path) -> None:
+    into = frames(rigs, tmp_path)
 
-    height = Image.open(montage.compose(twin_pod, into)).height
+    height = Image.open(montage.compose(rigs, into)).height
 
-    rows = len({mount.camera.band for mount in twin_pod.mounts})
+    rows = len({mount.camera.band for mount in rigs.mounts})
     assert height == rows * (montage.TILE_H + montage.CAPTION_H) + montage.GUTTER
 
 
-def test_the_caption_sits_under_the_frame_and_never_on_it(twin_pod, tmp_path) -> None:
-    into = frames(twin_pod, tmp_path)
+def test_the_caption_sits_under_the_frame_and_never_on_it(rigs, tmp_path) -> None:
+    into = frames(rigs, tmp_path)
     flat = (90, 110, 130)
 
-    sheet = Image.open(montage.compose(twin_pod, into))
+    sheet = Image.open(montage.compose(rigs, into))
 
     assert sheet.getpixel((0, montage.TILE_H // 2)) == flat  # frame, untouched
     assert sheet.getpixel((0, montage.TILE_H + 2)) == montage.MATTE  # caption band
 
 
-def test_a_missing_frame_names_itself(twin_pod, tmp_path) -> None:
+def test_a_missing_frame_names_itself(rigs, tmp_path) -> None:
     """Silently dropping it gives a montage that looks complete and is not."""
-    into = frames(twin_pod, tmp_path)
+    into = frames(rigs, tmp_path)
     absent = next(into.glob("*.png"))
     absent.unlink()
 
     with pytest.raises(FileNotFoundError, match=absent.stem):
-        montage.compose(twin_pod, into)
+        montage.compose(rigs, into)
 
 
-def test_an_unrendered_scenario_is_an_error(twin_pod, tmp_path) -> None:
+def test_an_unrendered_scenario_is_an_error(rigs, tmp_path) -> None:
     with pytest.raises(FileNotFoundError):
-        montage.compose(twin_pod, tmp_path)
+        montage.compose(rigs, tmp_path)

@@ -80,7 +80,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **The sun is the world's custom properties.** `sun_elevation`, `sun_rotation` and `aerosol_density` on `scene.world` drive the Sky Texture and the haze; one set on the node is overwritten. Set one from Python and call `world.update_tag()`, or every render after the first keeps the old sun in the haze and the sea's glint. With `sky.hdri` the world has none: the photo's turn is baked at build, and nothing set on the world moves it.
 - **A surface with an Emission node is a light Cycles samples.** `emission_sampling` defaults to `AUTO`, so the haze's airlight makes every triangle of the sea a light, and each light sample runs the sea's whole shader. The frame converges to the same picture, only slower. `scene.haze` turns it off.
 - **Persistent data keeps the first render's light sampling.** `build` turns it on, and a change between renders to `world.cycles.sampling_method` or `material.cycles.emission_sampling` is ignored; one to `scene.cycles.samples` applies. Set light sampling before the first render, or turn persistent data off.
-- **Blender's GPU compositor keeps memory from every render**, about 65 MB a 1080p frame even through a tree that only passes the render on. A clip dies with SIGKILL and nothing in the log. `build` puts the compositor on the CPU.
+- **Blender's GPU compositor keeps memory from every render**, about 65 MB a 1080p frame even through a tree that only passes the render on. A clip dies with SIGKILL and nothing in the log. `build` puts the compositor on the CPU; `read_factory_settings` puts it back, and on a machine without a GPU the render aborts.
 - **The compositor is the camera, and the build picks it by format.** An 8-bit EO build puts glare, blur and auto-exposure there; an exr build passes the radiance through. Switch the file format after `build` and an exr holds the look, a png the raw frame.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
@@ -126,12 +126,12 @@ These mirror CI; all must pass.
 uvx ruff check .
 uvx ruff format --check .
 uvx ty check
-uv run pytest -m "not render"
+uv run pytest
 ```
 
 ruff and ty go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates the ruff lines.
 
-Without `-m "not render"`, `uv run pytest` adds the render checks; they need a GPU to finish in reasonable time, which is also why CI leaves them out. Run it once before the PR when a change can move a pixel, the shader chain above all; not after every edit, and never for a prose-only change. While iterating, run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
+The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 ## Working here
 
