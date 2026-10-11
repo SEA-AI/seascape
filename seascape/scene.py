@@ -1144,8 +1144,8 @@ def _camera(
     )
     glare = nodes.new("CompositorNodeGlare")
     glare.inputs["Type"].default_value = "Kernel"
-    # Medium, the default, convolves at half the resolution.
-    glare.inputs["Quality"].default_value = "High"
+    # Half the resolution: Harvey's glow is smooth, so only the sun's rim shows it.
+    glare.inputs["Quality"].default_value = "Medium"
     # A lens scatters all the light, not only what clips.
     glare.inputs["Threshold"].default_value = 0.0
     # Glare adds its glow to the image; normalized, the glow is this share of the sum.
