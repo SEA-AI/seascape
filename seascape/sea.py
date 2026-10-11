@@ -552,10 +552,8 @@ def _height_group(
         calm = not damped.isdisjoint(triple)
         node = group.nodes.new("ShaderNodeGroup")
         node.node_tree = _wave_group(calm)
-        for name in ("Position", "Along", "Across Sq", "Stretch"):
-            group.links.new(given[name], node.inputs[name])
-        if calm:
-            group.links.new(given["Calm"], node.inputs["Calm"])
+        group.links.new(given["Position"], node.inputs["Position"])
+        _feed(group, given, node, calm)
         if heights is not None:
             group.links.new(heights, node.inputs["Sum Z"])
         _set_triple(node.inputs, triple, damped)
@@ -630,30 +628,77 @@ def _parallax(
     return position
 
 
-def _run_variance(
-    tree: bpy.types.NodeTree,
-    triples: list[Triple],
-    footprint: Callable[[bpy.types.NodeInputs], None],
-    calm: bpy.types.NodeSocket | None,
-    damped: frozenset[Wave],
-) -> float | bpy.types.NodeSocket:
-    """The slope variance the pixel draws along the view, which is parallax's run."""
+def _feed(
+    group: bpy.types.NodeTree,
+    given: bpy.types.NodeOutputs,
+    node: bpy.types.Node,
+    calmed: bool,
+) -> None:
+    """The footprint and, where `calmed`, the calm of a group around a triple."""
+    for name, _ in _FOOTPRINT:
+        group.links.new(given[name], node.inputs[name])
+    if calmed:
+        group.links.new(given["Calm"], node.inputs["Calm"])
+
+
+def _run_group(triples: list[Triple], damped: frozenset[Wave]) -> bpy.types.NodeTree:
+    """The slope variance the pixel draws along the view, which is parallax's run. A
+    group, as each node in a tree slows every edit to it."""
+    group, given, out = _group(
+        "sea_run", (*_FOOTPRINT, ("Calm", "Float")), (("Variance", "Float"),)
+    )
     variance = None
     for triple in triples:
-        calmed = calm is not None and not damped.isdisjoint(triple)
-        node = tree.nodes.new("ShaderNodeGroup")
+        calmed = not damped.isdisjoint(triple)
+        node = group.nodes.new("ShaderNodeGroup")
         node.node_tree = _run_variance_group(calmed)
-        footprint(node.inputs)
-        if calmed:
-            tree.links.new(calm, node.inputs["Calm"])
+        _feed(group, given, node, calmed)
         _set_triple(node.inputs, triple, damped)
         if variance is not None:
-            tree.links.new(variance, node.inputs["Variance"])
+            group.links.new(variance, node.inputs["Variance"])
         variance = node.outputs["Variance"]
-    if variance is None:
-        return 0.0
-    # A wave's variance over a cycle is half its squared amplitude.
-    return _vector(tree, "DOT_PRODUCT", variance, (0.5, 0.5, 0.5))
+    if variance is not None:
+        # A wave's variance over a cycle is half its squared amplitude.
+        group.links.new(
+            _vector(group, "DOT_PRODUCT", variance, (0.5, 0.5, 0.5)), out["Variance"]
+        )
+    return group
+
+
+def _normal_group(
+    triples: list[Triple], wind_triples: int, damped: frozenset[Wave]
+) -> bpy.types.NodeTree:
+    """The slope the pixel draws at `Position`, and the downward acceleration in g of
+    the first `wind_triples`. A group, as each node in a tree slows every edit to it."""
+    group, given, out = _group(
+        "sea_waves",
+        (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
+        (("Gradient", "Vector"), ("Acceleration", "Float")),
+    )
+    sums = None
+    for i, triple in enumerate(triples):
+        calmed = not damped.isdisjoint(triple)
+        node = group.nodes.new("ShaderNodeGroup")
+        node.node_tree = _wave_group(calmed)
+        node.name = f"waves_{i}"
+        group.links.new(given["Position"], node.inputs["Position"])
+        _feed(group, given, node, calmed)
+        if sums is not None:
+            for name, _ in _SUMS:
+                group.links.new(sums[name], node.inputs[name])
+        _set_triple(node.inputs, triple, damped)
+        node.inputs["Lift"].default_value = _lanes(
+            triple, lambda w: w.amplitude_m * w.k_rad_m
+        )
+        sums = node.outputs
+        if i == wind_triples - 1:
+            group.links.new(_total(group, sums["Sum Z"]), out["Acceleration"])
+    if sums is not None:
+        gradient = group.nodes.new("ShaderNodeCombineXYZ")
+        group.links.new(_total(group, sums["Sum X"]), gradient.inputs["X"])
+        group.links.new(_total(group, sums["Sum Y"]), gradient.inputs["Y"])
+        group.links.new(gradient.outputs["Vector"], out["Gradient"])
+    return group
 
 
 def _waves(
@@ -665,7 +710,7 @@ def _waves(
     pixel: _Pixel,
     calm: bpy.types.NodeSocket | None = None,
     damped: frozenset[Wave] = frozenset(),
-) -> tuple[bpy.types.NodeSocket, float | bpy.types.NodeSocket]:
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """The normal of what the pixel resolves, read at the `tall` waves' height, and the
     wind waves' downward acceleration in g; `calm` scales the `damped` waves."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
@@ -674,57 +719,32 @@ def _waves(
     along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
     stretch = _math(tree, "SUBTRACT", along_sq, across_sq)
 
-    def footprint(inputs: bpy.types.NodeInputs) -> None:
-        link(pixel.along_dir, inputs["Along"])
-        link(across_sq, inputs["Across Sq"])
-        link(stretch, inputs["Stretch"])
+    def instance(group: bpy.types.NodeTree) -> bpy.types.Node:
+        node = tree.nodes.new("ShaderNodeGroup")
+        node.node_tree = group
+        link(pixel.along_dir, node.inputs["Along"])
+        link(across_sq, node.inputs["Across Sq"])
+        link(stretch, node.inputs["Stretch"])
+        if calm is not None:
+            link(calm, node.inputs["Calm"])
+        return node
 
     heights = _height_group(tall, damped)
 
     def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        node = tree.nodes.new("ShaderNodeGroup")
-        node.node_tree = heights
+        node = instance(heights)
         link(position, node.inputs["Position"])
-        footprint(node.inputs)
-        if calm is not None:
-            link(calm, node.inputs["Calm"])
         return node.outputs["Height"]
 
     # Each sea in triples of its own, so the wind's acceleration ends with its last.
     triples = _triples(wind) + _triples(swell)
-    position = _parallax(
-        tree, time_s, height_at, _run_variance(tree, triples, footprint, calm, damped)
-    )
-    sums: bpy.types.NodeOutputs | None = None
-    acceleration: float | bpy.types.NodeSocket = 0.0
-    last_wind = len(_triples(wind)) - 1
-    for i, triple in enumerate(triples):
-        calmed = calm is not None and not damped.isdisjoint(triple)
-        node = tree.nodes.new("ShaderNodeGroup")
-        node.node_tree = _wave_group(calmed)
-        node.name = f"waves_{i}"
-        inputs = node.inputs
-        link(position, inputs["Position"])
-        footprint(inputs)
-        if calmed:
-            link(calm, inputs["Calm"])
-        if sums is not None:
-            for name in ("Sum X", "Sum Y", "Sum Z"):
-                link(sums[name], inputs[name])
-        _set_triple(inputs, triple, damped)
-        inputs["Lift"].default_value = _lanes(
-            triple, lambda w: w.amplitude_m * w.k_rad_m
-        )
-        sums = node.outputs
-        if i == last_wind:
-            acceleration = _total(tree, sums["Sum Z"])
-    tilted = geometry.outputs["Normal"]
-    if sums is not None:
-        gradient = tree.nodes.new("ShaderNodeCombineXYZ")
-        link(_total(tree, sums["Sum X"]), gradient.inputs["X"])
-        link(_total(tree, sums["Sum Y"]), gradient.inputs["Y"])
-        tilted = _vector(tree, "ADD", tilted, gradient.outputs["Vector"])
-    return _vector(tree, "NORMALIZE", tilted, name="wave_normal"), acceleration
+    run = instance(_run_group(triples, damped)).outputs["Variance"]
+    drawn = instance(_normal_group(triples, len(_triples(wind)), damped))
+    link(_parallax(tree, time_s, height_at, run), drawn.inputs["Position"])
+    tilted = _vector(tree, "ADD", geometry.outputs["Normal"], drawn.outputs["Gradient"])
+    return _vector(tree, "NORMALIZE", tilted, name="wave_normal"), drawn.outputs[
+        "Acceleration"
+    ]
 
 
 def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types.Image:
@@ -760,7 +780,7 @@ def _at_footprint(
 def _whitecaps(
     tree: bpy.types.NodeTree,
     wind: tuple[Wave, ...],
-    acceleration: float | bpy.types.NodeSocket,
+    acceleration: bpy.types.NodeSocket,
     footprint_m: bpy.types.NodeSocket,
     threshold_g: float | bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:

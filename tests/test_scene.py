@@ -133,7 +133,7 @@ def drawn(
     """Each wave of the built sea's normal, the inputs of the node drawing it, and its
     lane there, of the scenario's field or the `kept` part of it. Every other lane must
     be empty."""
-    nodes = bpy.data.materials["sea"].node_tree.nodes
+    nodes = bpy.data.node_groups["sea_waves"].nodes
     wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
     if kept is not None:
         wind = tuple(w for w in wind if w in kept)
