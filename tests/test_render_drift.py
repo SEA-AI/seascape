@@ -1,7 +1,4 @@
-"""Properties of a rendered frame that a refactor must not shift.
-
-Skipped unless `--render` is given.
-"""
+"""Properties of a rendered frame that a refactor must not shift."""
 
 import math
 from collections import defaultdict

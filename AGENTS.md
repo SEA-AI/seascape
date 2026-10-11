@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**Waves are shading normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging. Each pixel draws the waves longer than its footprint and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. The accepted cost is that a normal cannot occlude, so a wave can never hide a target. Run `pytest --render` before touching the sea shader.
+**Waves are shading normals, not the Ocean modifier.** Displaced geometry goes sub-pixel before the horizon, and sub-pixel geometry aliases instead of averaging. Each pixel draws the waves longer than its footprint and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. The sea does carry geometry, for the earth's curve -- kilometres across, never sub-pixel. The accepted cost is that a normal cannot occlude, so a wave can never hide a target. Run the render checks before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -126,12 +126,12 @@ These mirror CI; all must pass.
 uvx ruff check .
 uvx ruff format --check .
 uvx ty check
-uv run pytest
+uv run pytest -m "not render"
 ```
 
 ruff and ty go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates the ruff lines.
 
-The render-drift check runs only with `--render` and needs a GPU to finish in reasonable time, which is also why CI never runs it. Run it once before the PR when a change can move a pixel, the shader chain above all; not after every edit, and never for a prose-only change. While iterating, run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
+Without `-m "not render"`, `uv run pytest` adds the render checks; they need a GPU to finish in reasonable time, which is also why CI leaves them out. Run it once before the PR when a change can move a pixel, the shader chain above all; not after every edit, and never for a prose-only change. While iterating, run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 ## Working here
 

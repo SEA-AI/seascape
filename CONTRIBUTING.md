@@ -16,13 +16,13 @@ That runs `ruff check --fix` and `ruff format` on what you staged. The rest of C
 uvx ruff check .
 uvx ruff format --check .
 uvx ty check
-uv run pytest
+uv run pytest -m "not render"
 ```
 
 The render checks are the only thing that catches a sea or sky shader rendering wrong. They need a GPU, CI never runs them, and they belong before any change to that chain:
 
 | command | runs |
 |---|---|
-| `uv run pytest` | the suite, without the render checks, as CI does |
-| `uv run pytest --render` | the suite and the render checks |
-| `uv run pytest --render -m render` | the render checks alone |
+| `uv run pytest` | the suite and the render checks |
+| `uv run pytest -m "not render"` | the suite, without the render checks, as CI does |
+| `uv run pytest -m render` | the render checks alone |
