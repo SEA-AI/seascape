@@ -297,6 +297,15 @@ class TestGeometry:
         assert counts() == before
 
 
+def test_a_fetch_grows_the_scenario_s_sea_no_further() -> None:
+    young, full = variant(sea={"fetch_km": 10.0}), variant()
+
+    longest_young = min(w.omega_rad_s for w in scene.wind_waves(young))
+    longest_full = min(w.omega_rad_s for w in scene.wind_waves(full))
+
+    assert longest_young > longest_full
+
+
 @pytest.mark.parametrize("band", ["eo", "ir"])
 def test_a_saved_build_reopens_with_its_lookup_tables(
     band: Band, tmp_path: Path
