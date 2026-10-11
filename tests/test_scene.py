@@ -229,7 +229,7 @@ class TestGeometry:
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         field = scene.wave_field(SCENARIO)
-        assert len(field) == waves.COMPONENTS
+        assert len(field) == waves.FREQUENCIES * waves.WIND_HEADINGS
         for i, wave in enumerate(field):
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
             inputs = nodes[f"wave_{i}"].inputs
@@ -295,6 +295,15 @@ class TestGeometry:
         before = counts()
         scene.build(SCENARIO, "eo")
         assert counts() == before
+
+
+def test_a_fetch_grows_the_scenario_s_sea_no_further() -> None:
+    young, full = variant(sea={"fetch_km": 10.0}), variant()
+
+    longest_young = min(w.omega_rad_s for w in scene.wind_waves(young))
+    longest_full = min(w.omega_rad_s for w in scene.wind_waves(full))
+
+    assert longest_young > longest_full
 
 
 @pytest.mark.parametrize("band", ["eo", "ir"])
@@ -533,13 +542,9 @@ class TestEoBand:
     def built(cls) -> None:
         scene.build(SCENARIO, "eo")
 
-    def test_the_sea_refracts_at_seawater_ior(self) -> None:
-        bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
-        assert bsdf.inputs["IOR"].default_value == pytest.approx(sea.SEAWATER_IOR)
-
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
-        assert nodes["Principled BSDF"].inputs["Roughness"].is_linked
+        assert nodes["sea_specular"].inputs["Roughness"].is_linked
         table = baked("sea_unresolved_variance")
         low, high = sea.FOOTPRINT_RANGE_M
         texel = (np.arange(len(table)) + 0.5) / len(table)
@@ -553,13 +558,13 @@ class TestEoBand:
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
     def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
-        roughness = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
+        roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
         assert {"gust", "sea_gust_variance", "sea_unresolved_variance"} <= upstream(
             roughness.inputs["Roughness"]
         )
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
-        per_gust = tree.nodes["sea_gust_variance"].inputs[1].default_value
+        per_gust = tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value
         assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
         tile = baked("sea_gust")
         seeded = waves.von_karman_field(
@@ -1013,7 +1018,7 @@ class TestSlicks:
                 waves.cox_munk_slick_slope,
             )
             assert table[i] == pytest.approx(expected, rel=1e-5, abs=1e-9)
-        roughness = _sea_node("Principled BSDF").inputs["Roughness"]
+        roughness = _sea_node("sea_specular").inputs["Roughness"]
         assert {"slick", "sea_unresolved_slick_variance"} <= upstream(roughness)
 
 

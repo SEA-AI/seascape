@@ -3,9 +3,13 @@
 Sources
 -------
 Microfacet lobe: Walter, Marschner, Li & Torrance, "Microfacet models for refraction
-through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for GGX; Burley,
-"Physically-based shading at Disney", SIGGRAPH 2012 course notes, for the alpha =
-roughness^2 convention Cycles follows.
+through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for Beckmann's
+distribution and its Smith shadowing; Burley, "Physically-based shading at Disney",
+SIGGRAPH 2012 course notes, for the alpha = roughness^2 convention Cycles follows.
+
+Parallax: Kaneko et al., "Detailed shape representation with parallax mapping", ICAT
+2001 205-208; its offset capped as in Welsh, "Parallax mapping with offset limiting: a
+per-pixel approximation of uneven surfaces", Infiscape 2004.
 
 Whitecaps: Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11)
 1816, 1984 (doi:10.1364/AO.23.001816), for the Monahan coverage it multiplies.
@@ -27,8 +31,16 @@ import bpy
 import numpy as np
 
 from seascape import lwir
-from seascape.blend import CURVE_SAMPLES, animate, curve_image, drive, lookup, place
-from seascape.config import Band, Outputs, Scenario, Sea
+from seascape.blend import (
+    CURVE_SAMPLES,
+    SUN,
+    animate,
+    curve_image,
+    drive,
+    lookup,
+    place,
+)
+from seascape.config import Outputs, Scenario, Sea
 from seascape.wakes import (
     BUBBLE_EFOLD_S,
     BUBBLE_GAIN,
@@ -60,6 +72,7 @@ from seascape.waves import (
     sea_z_m,
     slick_survivors,
     specular_cell_m2,
+    tallest,
     turbulence_intensity,
     twinkle_hz,
     unresolved_acceleration_variance,
@@ -76,13 +89,29 @@ WHITECAP_REFLECTANCE = 0.22
 SEAWATER_IOR = 1.341
 
 # Morel & Maritorena 2001 R(0-) at 0.2 mg/m^3 chlorophyll, CIE 1931 under D65 to
-# linear sRGB, times t / n^2 (Lee et al. 2002): Principled dims its diffuse by the
-# specular toward the viewer only.
+# linear sRGB, times t / n^2 (Lee et al. 2002): the shader dims it by 1 - F toward the
+# viewer only.
 WATER_BODY_COLOR = (0.0, 0.0065, 0.018)
 
 # The Sky Texture's default sun_size, a diameter. A facet tilted by d turns the
 # reflection by 2 d, so the sun spans half its radius in slope.
 SUN_SLOPE_RADIUS = math.radians(0.545) / 4
+
+# A judgement: the span of d^2 / v over which the glitter's tilt fades out, d the tilt
+# off the drawn normal of the facet that mirrors the sun, v the unresolved variance. The
+# slope density there is exp(-d^2 / v) of its peak.
+GLINT_REACH = (9.0, 16.0)
+
+# A judgement: fixed-point steps to where the view ray meets the drawn height.
+PARALLAX_STEPS = 2
+# A judgement: the share of facets on which each fixed-point step contracts. A step
+# contracts where the slope along the run times the run is under 1 (Banach); with
+# slopes Gaussian per axis (Cox & Munk 1954), capping the run at 1 / z the rms slope
+# along it covers facets within z sigma, two-sided.
+PARALLAX_CONVERGED = 0.996
+# A judgement: parallax reads the fewest waves carrying this share of their own sea's
+# height variance.
+PARALLAX_HEIGHT_SHARE = 0.999
 
 # Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
 CDF_SIGMAS = 6.0
@@ -95,6 +124,15 @@ SLOPE_ROWS = 16
 
 # Elevation (rad, ascending) and the IR sky's radiance there.
 type SkyCurve = tuple[np.ndarray, np.ndarray]
+
+
+class Light(NamedTuple):
+    """The ir sky round the horizon, or the unit vector an eo sea glints towards. A sky
+    makes the sea ir."""
+
+    sky: SkyCurve | None = None
+    sun: tuple[float, float, float] | None = None
+
 
 # Cells per side: enough for the tangent point to land on a face, not an accuracy
 # knob. A cell's sagitta, width^2 / 8R, is far under a pixel at the horizon.
@@ -269,10 +307,9 @@ def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
 
 
 def _wave_group() -> bpy.types.NodeTree:
-    """One wave, as far as the pixel resolves it along the wave's own direction:
-    footprint^2 = across^2 + (along^2 - across^2) cos^2. It adds its slope to `Gradient`
-    and its downward acceleration, in g, to `Acceleration`. One group shared by every
-    wave: each node in a tree slows every edit to it."""
+    """One wave, as far as `_fade` says the pixel resolves it. It adds its slope to
+    `Gradient` and `Lift` cos(phase) to `Acceleration`, in g when `Lift` is a k. One
+    group shared by every wave: each node in a tree slows every edit to it."""
     group = bpy.data.node_groups.new("wave", "ShaderNodeTree")
     inputs = (
         ("Position", "Vector"),
@@ -310,24 +347,10 @@ def _wave_group() -> bpy.types.NodeTree:
         _vector(group, "DOT_PRODUCT", given["Position"], given["Wavenumber"]),
         given["Phase"],
     )
-    heading = _vector(group, "DOT_PRODUCT", given["Along"], given["Toward"])
-    footprint_sq = _math(
-        group,
-        "MULTIPLY_ADD",
-        _math(group, "MULTIPLY", heading, heading),
-        given["Stretch"],
-        given["Across Sq"],
-    )
+    seen = _math(group, "MULTIPLY", _fade(group, given), given["Calm"])
 
     def shown(trig: str) -> bpy.types.NodeSocket:
-        # From Min above From Max: a wider footprint fades the wave out.
-        fade = group.nodes.new("ShaderNodeMapRange")
-        fade.interpolation_type = "SMOOTHSTEP"
-        link(given["Gone Sq"], fade.inputs["From Min"])
-        link(given["Whole Sq"], fade.inputs["From Max"])
-        link(footprint_sq, fade.inputs["Value"])
-        link(_math(group, trig, phase), fade.inputs["To Max"])
-        return _math(group, "MULTIPLY", fade.outputs["Result"], given["Calm"])
+        return _math(group, "MULTIPLY", _math(group, trig, phase), seen)
 
     # -d height / dx of a cos(phase) is a k_x sin(phase).
     link(
@@ -345,30 +368,268 @@ def _wave_group() -> bpy.types.NodeTree:
     return group
 
 
+def _run_variance_group() -> bpy.types.NodeTree:
+    """One wave's slope variance along `Along`, faded and calmed as `_wave_group`
+    draws it, added to `Variance`: (Slope . Along)^2 / 2 over a cycle."""
+    group = bpy.data.node_groups.new("wave_run", "ShaderNodeTree")
+    sockets = {
+        name: group.interface.new_socket(
+            name, in_out="INPUT", socket_type=f"NodeSocket{kind}"
+        )
+        for name, kind in (
+            ("Along", "Vector"),
+            ("Across Sq", "Float"),
+            ("Stretch", "Float"),
+            ("Calm", "Float"),
+            ("Toward", "Vector"),
+            ("Gone Sq", "Float"),
+            ("Whole Sq", "Float"),
+            ("Slope", "Vector"),
+            ("Variance", "Float"),
+        )
+    }
+    sockets["Calm"].default_value = 1.0
+    group.interface.new_socket(
+        "Variance", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    given = group.nodes.new("NodeGroupInput").outputs
+    along = _math(
+        group,
+        "MULTIPLY",
+        _vector(group, "DOT_PRODUCT", given["Slope"], given["Along"]),
+        _math(group, "MULTIPLY", _fade(group, given), given["Calm"]),
+    )
+    group.links.new(
+        _math(
+            group,
+            "MULTIPLY_ADD",
+            _math(group, "MULTIPLY", along, along),
+            0.5,
+            given["Variance"],
+        ),
+        group.nodes.new("NodeGroupOutput").inputs["Variance"],
+    )
+    return group
+
+
+def _fade(
+    group: bpy.types.NodeTree, given: bpy.types.NodeOutputs
+) -> bpy.types.NodeSocket:
+    """How much of a wave the pixel draws: 1 to 0 as its footprint along the wave,
+    footprint^2 = across^2 + (along^2 - across^2) cos^2, widens from `Whole Sq` to
+    `Gone Sq`."""
+    heading = _vector(group, "DOT_PRODUCT", given["Along"], given["Toward"])
+    fade = group.nodes.new("ShaderNodeMapRange")
+    fade.interpolation_type = "SMOOTHSTEP"
+    # From Min above From Max: a wider footprint fades the wave out.
+    group.links.new(given["Gone Sq"], fade.inputs["From Min"])
+    group.links.new(given["Whole Sq"], fade.inputs["From Max"])
+    group.links.new(
+        _math(
+            group,
+            "MULTIPLY_ADD",
+            _math(group, "MULTIPLY", heading, heading),
+            given["Stretch"],
+            given["Across Sq"],
+        ),
+        fade.inputs["Value"],
+    )
+    return fade.outputs["Result"]
+
+
+def _set_fade(inputs: bpy.types.NodeInputs, wave: Wave) -> None:
+    """The inputs of `_fade` that fade `wave` by footprint."""
+    gone, whole = fade_footprints_m(2 * math.pi / wave.k_rad_m)
+    inputs["Toward"].default_value = (
+        math.sin(wave.toward_rad),
+        math.cos(wave.toward_rad),
+        0.0,
+    )
+    inputs["Gone Sq"].default_value = float(gone) ** 2
+    inputs["Whole Sq"].default_value = float(whole) ** 2
+
+
+def _set_wave(inputs: bpy.types.NodeInputs, wave: Wave) -> None:
+    """The inputs of `_wave_group` that place `wave` and fade it by footprint."""
+    inputs["Wavenumber"].default_value = (
+        wave.k_east_rad_m,
+        wave.k_north_rad_m,
+        -wave.omega_rad_s,
+    )
+    inputs["Phase"].default_value = wave.phase_rad
+    _set_fade(inputs, wave)
+
+
+def _height_group(
+    field: tuple[Wave, ...], damped: frozenset[Wave], wave: bpy.types.NodeTree
+) -> bpy.types.NodeTree:
+    """The drawn height of `field` at `Position`, (east, north, time), faded and calmed
+    as the normal is. One group, so each fixed-point step adds one node to the sea's
+    tree."""
+    group = bpy.data.node_groups.new("sea_height", "ShaderNodeTree")
+    sockets = {
+        name: group.interface.new_socket(
+            name, in_out="INPUT", socket_type=f"NodeSocket{kind}"
+        )
+        for name, kind in (
+            ("Position", "Vector"),
+            ("Along", "Vector"),
+            ("Across Sq", "Float"),
+            ("Stretch", "Float"),
+            ("Calm", "Float"),
+        )
+    }
+    sockets["Calm"].default_value = 1.0
+    group.interface.new_socket("Height", in_out="OUTPUT", socket_type="NodeSocketFloat")
+    given = group.nodes.new("NodeGroupInput").outputs
+    height = None
+    for each in field:
+        node = group.nodes.new("ShaderNodeGroup")
+        node.node_tree = wave
+        for name in ("Position", "Along", "Across Sq", "Stretch"):
+            group.links.new(given[name], node.inputs[name])
+        if each in damped:
+            group.links.new(given["Calm"], node.inputs["Calm"])
+        if height is not None:
+            group.links.new(height, node.inputs["Acceleration"])
+        _set_wave(node.inputs, each)
+        node.inputs["Lift"].default_value = each.amplitude_m
+        height = node.outputs["Acceleration"]
+    out = group.nodes.new("NodeGroupOutput").inputs["Height"]
+    if height is not None:
+        group.links.new(height, out)
+    return group
+
+
+def _parallax(
+    tree: bpy.types.NodeTree,
+    time_s: bpy.types.NodeSocket,
+    height_at: Callable[[bpy.types.NodeSocket], bpy.types.NodeSocket],
+    run_variance: float | bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """Where the view ray meets the drawn height, (east, north, time), iterated from the
+    flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
+    face tilted from the camera then takes the little of the frame it shows. Glitter,
+    gusts and foam still read the flat sea.
+    """
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    flat = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geometry.outputs["Position"], flat.inputs["Vector"])
+    toward = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geometry.outputs["Incoming"], toward.inputs["Vector"])
+    run = _math(
+        tree,
+        "SQRT",
+        _math(
+            tree,
+            "MULTIPLY_ADD",
+            toward.outputs["X"],
+            toward.outputs["X"],
+            _math(tree, "MULTIPLY", toward.outputs["Y"], toward.outputs["Y"]),
+        ),
+    )
+    slope = _math(tree, "SQRT", run_variance)
+    reach = _math(
+        tree,
+        "DIVIDE",
+        1 / NormalDist().inv_cdf((1 + PARALLAX_CONVERGED) / 2),
+        _math(tree, "MAXIMUM", _math(tree, "MULTIPLY", slope, run), 1e-9),
+    )
+    scale = _math(
+        tree,
+        "MINIMUM",
+        _math(tree, "DIVIDE", 1.0, toward.outputs["Z"]),
+        reach,
+        name="parallax_scale",
+    )
+    run_east = _math(tree, "MULTIPLY", toward.outputs["X"], scale)
+    run_north = _math(tree, "MULTIPLY", toward.outputs["Y"], scale)
+
+    def at(
+        east: bpy.types.NodeSocket, north: bpy.types.NodeSocket
+    ) -> bpy.types.NodeSocket:
+        # Height is left out, so the sea curving under the field cannot slide it.
+        xyt = tree.nodes.new("ShaderNodeCombineXYZ")
+        tree.links.new(east, xyt.inputs["X"])
+        tree.links.new(north, xyt.inputs["Y"])
+        tree.links.new(time_s, xyt.inputs["Z"])
+        return xyt.outputs["Vector"]
+
+    position = at(flat.outputs["X"], flat.outputs["Y"])
+    for _ in range(PARALLAX_STEPS):
+        height = height_at(position)
+        position = at(
+            _math(tree, "MULTIPLY_ADD", run_east, height, flat.outputs["X"]),
+            _math(tree, "MULTIPLY_ADD", run_north, height, flat.outputs["Y"]),
+        )
+    return position
+
+
+def _run_variance(
+    tree: bpy.types.NodeTree,
+    field: tuple[Wave, ...],
+    footprint: Callable[[bpy.types.NodeInputs], None],
+    calm: bpy.types.NodeSocket | None,
+    damped: frozenset[Wave],
+) -> float | bpy.types.NodeSocket:
+    """The slope variance the pixel draws along the view, which is parallax's run."""
+    variance: float | bpy.types.NodeSocket = 0.0
+    group = _run_variance_group()
+    for wave in field:
+        node = tree.nodes.new("ShaderNodeGroup")
+        node.node_tree = group
+        footprint(node.inputs)
+        if calm is not None and wave in damped:
+            tree.links.new(calm, node.inputs["Calm"])
+        _set_fade(node.inputs, wave)
+        node.inputs["Slope"].default_value = (
+            wave.amplitude_m * wave.k_east_rad_m,
+            wave.amplitude_m * wave.k_north_rad_m,
+            0.0,
+        )
+        if isinstance(variance, bpy.types.NodeSocket):
+            tree.links.new(variance, node.inputs["Variance"])
+        variance = node.outputs["Variance"]
+    return variance
+
+
 def _waves(
     tree: bpy.types.NodeTree,
     field: tuple[Wave, ...],
+    tall: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
     calm: bpy.types.NodeSocket | None = None,
     damped: frozenset[Wave] = frozenset(),
 ) -> tuple[bpy.types.NodeSocket, list[bpy.types.Node]]:
-    """The normal of what the pixel resolves, and each wave's node; `calm` scales the
-    `damped` ones."""
+    """The normal of what the pixel resolves, read at the `tall` waves' height, and each
+    wave's node; `calm` scales the `damped` ones."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    position = tree.nodes.new("ShaderNodeSeparateXYZ")
-    # Height is left out, so the sea curving under the field cannot slide it.
-    xyt = tree.nodes.new("ShaderNodeCombineXYZ")
     link = tree.links.new
-    link(geometry.outputs["Position"], position.inputs["Vector"])
-    link(position.outputs["X"], xyt.inputs["X"])
-    link(position.outputs["Y"], xyt.inputs["Y"])
-    link(time_s, xyt.inputs["Z"])
     across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
     along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
     stretch = _math(tree, "SUBTRACT", along_sq, across_sq)
 
+    def footprint(inputs: bpy.types.NodeInputs) -> None:
+        link(pixel.along_dir, inputs["Along"])
+        link(across_sq, inputs["Across Sq"])
+        link(stretch, inputs["Stretch"])
+
     group = _wave_group()
+    heights = _height_group(tall, damped, group)
+
+    def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        node = tree.nodes.new("ShaderNodeGroup")
+        node.node_tree = heights
+        link(position, node.inputs["Position"])
+        footprint(node.inputs)
+        if calm is not None:
+            link(calm, node.inputs["Calm"])
+        return node.outputs["Height"]
+
+    position = _parallax(
+        tree, time_s, height_at, _run_variance(tree, field, footprint, calm, damped)
+    )
     gradient = None
     drawn = []
     for i, wave in enumerate(field):
@@ -376,28 +637,13 @@ def _waves(
         node.node_tree = group
         node.name = f"wave_{i}"
         inputs = node.inputs
-        link(xyt.outputs["Vector"], inputs["Position"])
-        link(pixel.along_dir, inputs["Along"])
-        link(across_sq, inputs["Across Sq"])
-        link(stretch, inputs["Stretch"])
+        link(position, inputs["Position"])
+        footprint(inputs)
         if gradient is not None:
             link(gradient, inputs["Gradient"])
         if calm is not None and wave in damped:
             link(calm, inputs["Calm"])
-        gone, whole = fade_footprints_m(2 * math.pi / wave.k_rad_m)
-        inputs["Wavenumber"].default_value = (
-            wave.k_east_rad_m,
-            wave.k_north_rad_m,
-            -wave.omega_rad_s,
-        )
-        inputs["Phase"].default_value = wave.phase_rad
-        inputs["Toward"].default_value = (
-            math.sin(wave.toward_rad),
-            math.cos(wave.toward_rad),
-            0.0,
-        )
-        inputs["Gone Sq"].default_value = float(gone) ** 2
-        inputs["Whole Sq"].default_value = float(whole) ** 2
+        _set_wave(inputs, wave)
         inputs["Slope"].default_value = (
             wave.amplitude_m * wave.k_east_rad_m,
             wave.amplitude_m * wave.k_north_rad_m,
@@ -493,12 +739,72 @@ def _whitecaps(
     return cover
 
 
+def _glinting(
+    tree: bpy.types.NodeTree,
+    normal: bpy.types.NodeSocket,
+    sun: tuple[float, float, float],
+    variance: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """1 where an unresolved facet can mirror a sun above the horizon, fading to 0 by
+    `GLINT_REACH`.
+
+    A tilt per cell counts the sun's glints but turns the sky behind each cell into a
+    random patch of itself; where nothing can glint, the lobe takes the whole slope.
+    """
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    toward = tree.nodes.new("ShaderNodeCombineXYZ")
+    toward.name = "glint_sun"
+    world = bpy.context.scene.world
+    for axis, value, expression in zip(
+        "XYZ", sun, ("cos(e) * sin(b)", "cos(e) * cos(b)", "sin(e)"), strict=True
+    ):
+        toward.inputs[axis].default_value = value
+        if SUN[0] in world:
+            drive(
+                toward.inputs[axis],
+                "default_value",
+                expression,
+                world,
+                e=f'["{SUN[0]}"]',
+                b=f'["{SUN[1]}"]',
+            )
+    rising = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(toward.outputs["Vector"], rising.inputs["Vector"])
+    risen = _math(tree, "GREATER_THAN", rising.outputs["Z"], 0.0, name="glint_risen")
+    # Incoming points at the camera: the mirroring facet faces the half-way vector.
+    mirror = _vector(
+        tree,
+        "NORMALIZE",
+        _vector(tree, "ADD", geometry.outputs["Incoming"], toward.outputs["Vector"]),
+    )
+    # 2 (1 - cos d) = d^2 - d^4 / 12.
+    off_sq = _math(
+        tree,
+        "MULTIPLY",
+        _math(tree, "SUBTRACT", 1.0, _vector(tree, "DOT_PRODUCT", normal, mirror)),
+        2.0,
+    )
+    fade = tree.nodes.new("ShaderNodeMapRange")
+    fade.name = "glint_reach"
+    fade.interpolation_type = "SMOOTHSTEP"
+    tree.links.new(
+        _math(tree, "DIVIDE", off_sq, _math(tree, "MAXIMUM", variance, 1e-12)),
+        fade.inputs["Value"],
+    )
+    fade.inputs["From Min"].default_value, fade.inputs["From Max"].default_value = (
+        GLINT_REACH
+    )
+    fade.inputs["To Min"].default_value, fade.inputs["To Max"].default_value = 1.0, 0.0
+    return _math(tree, "MULTIPLY", fade.outputs["Result"], risen)
+
+
 def _glitter(
     tree: bpy.types.NodeTree,
     wind: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
     unresolved: bpy.types.NodeSocket,
+    glinting: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
     slope variance the tilts carry out of the lobe.
@@ -532,9 +838,9 @@ def _glitter(
     )
     carried = _math(
         tree,
-        "MAXIMUM",
-        _math(tree, "SUBTRACT", unresolved, lobe),
-        0.0,
+        "MULTIPLY",
+        _math(tree, "MAXIMUM", _math(tree, "SUBTRACT", unresolved, lobe), 0.0),
+        glinting,
         name="glitter_variance",
     )
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
@@ -584,8 +890,8 @@ def _lobe(
     along: bpy.types.NodeSocket,
     across: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """GGX roughness and aspect, alpha across / alpha along, for the unresolved slope
-    variance at the two footprints. Per axis alpha = sqrt(2) sigma_axis =
+    """Beckmann roughness and aspect, alpha across / alpha along, for the unresolved
+    slope variance at the two footprints. Per axis alpha = sqrt(2) sigma_axis =
     sqrt(variance); Blender's roughness is their geometric mean's square root."""
     along = _math(tree, "MAXIMUM", along, 1e-12)
     across = _math(tree, "MAXIMUM", across, 1e-12)
@@ -669,40 +975,58 @@ def _thermal(
 
 def _daylight(
     tree: bpy.types.NodeTree,
-    sea: Sea,
     normal: bpy.types.NodeSocket,
     tangent: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
     whitecaps: bpy.types.NodeSocket,
     wake: "_Wakes | None" = None,
 ) -> bpy.types.NodeSocket:
-    """Water refracting at seawater's IOR, white where its crests break and where a
-    hull leaves foam."""
+    """Water reflecting at seawater's IOR over its body's colour, white where its crests
+    break and where a hull leaves foam.
+
+    Beckmann, as Cox & Munk's slopes are near Gaussian; Principled offers only GGX. A
+    conductor's Fresnel at zero extinction is the dielectric's.
+    """
     roughness, aspect = _lobe(tree, *unresolved)
-    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
-    principled.inputs["Base Color"].default_value = (*WATER_BODY_COLOR, 1.0)
-    if wake is not None:
-        body = tree.nodes.new("ShaderNodeVectorMath")
-        body.operation = "SCALE"
-        body.inputs["Vector"].default_value = WATER_BODY_COLOR
-        tree.links.new(_math(tree, "ADD", wake.bubbles, 1.0), body.inputs["Scale"])
-        tree.links.new(body.outputs["Vector"], principled.inputs["Base Color"])
-    principled.inputs["IOR"].default_value = SEAWATER_IOR
     link = tree.links.new
-    link(normal, principled.inputs["Normal"])
-    link(tangent, principled.inputs["Tangent"])
-    link(roughness, principled.inputs["Roughness"])
-    # Principled's alpha_y / alpha_x = 1 - 0.9 a, so a = (1 - aspect) / 0.9.
+    mirror = tree.nodes.new("ShaderNodeBsdfMetallic")
+    mirror.name = "sea_specular"
+    mirror.distribution = "BECKMANN"
+    mirror.fresnel_type = "PHYSICAL_CONDUCTOR"
+    mirror.inputs["IOR"].default_value = (SEAWATER_IOR,) * 3
+    mirror.inputs["Extinction"].default_value = (0.0, 0.0, 0.0)
+    link(normal, mirror.inputs["Normal"])
+    link(tangent, mirror.inputs["Tangent"])
+    link(roughness, mirror.inputs["Roughness"])
+    # Cycles' alpha_y / alpha_x = 1 - 0.9 a (kernel/svm/closure.h), so
+    # a = (1 - aspect) / 0.9.
     link(
         _math(tree, "MULTIPLY", _math(tree, "SUBTRACT", 1.0, aspect), 1 / 0.9),
-        principled.inputs["Anisotropic"],
+        mirror.inputs["Anisotropy"],
     )
+    fresnel = tree.nodes.new("ShaderNodeFresnel")
+    fresnel.inputs["IOR"].default_value = SEAWATER_IOR
+    link(normal, fresnel.inputs["Normal"])
+    through = _math(tree, "SUBTRACT", 1.0, fresnel.outputs["Fac"])
+    if wake is not None:
+        through = _math(
+            tree, "MULTIPLY", through, _math(tree, "ADD", wake.bubbles, 1.0)
+        )
+    body = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    link(normal, body.inputs["Normal"])
+    link(
+        _vector(tree, "SCALE", WATER_BODY_COLOR, through, name="sea_body_color"),
+        body.inputs["Color"],
+    )
+    water = tree.nodes.new("ShaderNodeAddShader")
+    link(mirror.outputs["BSDF"], water.inputs[0])
+    link(body.outputs["BSDF"], water.inputs[1])
     foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
     foam.inputs["Color"].default_value = (*(WHITECAP_REFLECTANCE,) * 3, 1.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(whitecaps, mix.inputs["Factor"])
     # Mix Shader names both shader inputs "Shader", so they can only be indexed.
-    link(principled.outputs["BSDF"], mix.inputs[1])
+    link(water.outputs["Shader"], mix.inputs[1])
     link(foam.outputs["BSDF"], mix.inputs[2])
     if wake is None:
         return mix.outputs["Shader"]
@@ -1345,14 +1669,14 @@ def material(
     sea: Sea,
     wind: tuple[Wave, ...],
     swell: tuple[Wave, ...],
-    band: Band,
     outputs: Outputs,
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
-    wakes: tuple[Wake, ...] = (),
-    sky: SkyCurve | None = None,
+    wakes: tuple[Wake, ...],
+    light: Light,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
-    `rngs` draw its gusts, its slicks and its wakes' foam. An ir sea reflects `sky`."""
+    `rngs` draw its gusts, its slicks and its wakes' foam. With a sky the sea is ir and
+    reflects it; without, eo, glittering towards the light's sun if it has one."""
     gust_rng, slick_rng, foam_rng = rngs
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
@@ -1379,7 +1703,9 @@ def material(
     calm = None
     if slick is not None and damped:
         calm = _math(tree, "SUBTRACT", 1.0, slick)
-    normal, drawn = _waves(tree, field, time_s, pixel, calm, damped)
+    # Each sea on its own, or a swell's height would decide which wind waves count.
+    tall = tallest(wind, PARALLAX_HEIGHT_SHARE) + tallest(swell, PARALLAX_HEIGHT_SHARE)
+    normal, drawn = _waves(tree, field, tall, time_s, pixel, calm, damped)
     if wake is not None and wake.tilt is not None:
         normal = _vector(
             tree,
@@ -1392,36 +1718,33 @@ def material(
     def unresolved_at(footprint_m: float) -> float:
         return unresolved_slope_variance(speed, wind, swell, footprint_m)
 
-    if band == "eo":
-        if wind:
-            # The IR sky has no sun to glint, and its emissivity takes the whole slope.
-            tilt, carried = _glitter(tree, wind, time_s, pixel, unresolved[1])
+    if light.sky is None:
+        carried: float | bpy.types.NodeSocket = 0.0
+        if wind and light.sun is not None:
+            # Along the view, the wider spread, reaches the most facets. A judgement.
+            glinting = _glinting(tree, normal, light.sun, unresolved[0])
+            tilt, carried = _glitter(tree, wind, time_s, pixel, unresolved[1], glinting)
             normal = _vector(
                 tree,
                 "NORMALIZE",
                 _vector(tree, "ADD", normal, tilt),
                 name="glitter_normal",
             )
-            along = _math(
-                tree,
-                "MAXIMUM",
-                _math(tree, "SUBTRACT", unresolved[0], carried),
-                0.0,
-            )
-            # Principled stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
-            across = _math(
-                tree,
-                "MAXIMUM",
-                _math(tree, "SUBTRACT", unresolved[1], carried),
-                _math(tree, "MULTIPLY", along, 0.01),
-            )
-            unresolved = (along, across)
+        along = _math(
+            tree, "MAXIMUM", _math(tree, "SUBTRACT", unresolved[0], carried), 0.0
+        )
+        # Cycles stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
+        across = _math(
+            tree,
+            "MAXIMUM",
+            _math(tree, "SUBTRACT", unresolved[1], carried),
+            _math(tree, "MULTIPLY", along, 0.01),
+        )
+        unresolved = (along, across)
         threshold = _breaking(tree, sea, wind, gust, gust_max)
         # Along the view, the widest footprint, leaves the most unresolved. A judgement.
         whitecaps = _whitecaps(tree, wind, drawn[: len(wind)], pixel.along_m, threshold)
-        surface = _daylight(
-            tree, sea, normal, pixel.along_dir, unresolved, whitecaps, wake
-        )
+        surface = _daylight(tree, normal, pixel.along_dir, unresolved, whitecaps, wake)
     else:
         # The coarsest footprint leaves the most, Cox & Munk's and all the swell's,
         # and the strongest gust adds the most.
@@ -1429,8 +1752,7 @@ def material(
             unresolved_at(FOOTPRINT_RANGE_M[1])
             + gust_max * gust_slope_variance(sea.wind_speed_mps)
         )
-        assert sky is not None
-        surface = _thermal(tree, sea, normal, unresolved, slope_max, sky)
+        surface = _thermal(tree, sea, normal, unresolved, slope_max, light.sky)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])
     return material

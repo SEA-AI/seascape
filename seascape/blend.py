@@ -7,6 +7,10 @@ import numpy as np
 # A judgement.
 CURVE_SAMPLES = 256
 
+# On the world itself: a depsgraph links a driver to an ID's property, not to a node's
+# (https://projects.blender.org/blender/blender/issues/142601).
+SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
+
 
 def yaw(bearing_deg: float) -> float:
     """Bearing to Blender yaw, in radians: the one negation, as +Z turns to port."""
