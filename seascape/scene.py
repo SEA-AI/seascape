@@ -1071,8 +1071,9 @@ def _enable_gpu() -> bool:
     return False
 
 
-def _output(outputs: Outputs, band: Band) -> None:
-    """Render and display settings, in the .blend, so F12 renders what `render` does."""
+def _output(outputs: Outputs, band: Band, largest_px: int) -> None:
+    """Render and display settings, in the .blend, so F12 renders what `render` does.
+    `largest_px` is the longest side of any of the band's cameras."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
@@ -1082,6 +1083,9 @@ def _output(outputs: Outputs, band: Band) -> None:
     sc.cycles.samples = getattr(outputs.samples, band)
     # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
+    # Cycles merges tiles through a file on disk; a frame in one tile renders the same
+    # pixels sooner. RNA clamps a side past its maximum, which then tiles.
+    sc.cycles.tile_size = largest_px
     # The factory AgX is a film curve; a camera clips, and LWIR radiance is no picture.
     view = sc.view_settings
     view.view_transform, view.look = "Standard", "None"
@@ -1236,7 +1240,12 @@ def build(scenario: Scenario, band: Band = "eo") -> Built:
     if not any(mount.camera.band == band for mount in scenario.mounts):
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    _output(scenario.outputs, band)
+    sides = [
+        max(m.camera.width_px, m.camera.height_px)
+        for m in scenario.mounts
+        if m.camera.band == band
+    ]
+    _output(scenario.outputs, band, max(sides))
     bpy.context.scene.world = _sky(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
