@@ -514,16 +514,11 @@ def _rigs(scenario: Scenario, far_m: float) -> _RigObjects:
     return _RigObjects(root, rigs, cameras)
 
 
-def boresight_deg(
-    camera: bpy.types.Object, frame: bpy.types.Object | None = None
-) -> tuple[float, float]:
-    """Bearing and elevation a built camera points at, in degrees, in the world or in
-    `frame`'s axes. `matrix_world` is stale until the depsgraph runs, so build first.
+def boresight_deg(camera: bpy.types.Object) -> tuple[float, float]:
+    """Bearing and elevation a built camera points at, in degrees, in the world.
+    `matrix_world` is stale until the depsgraph runs, so build first.
     """
-    rotation = camera.matrix_world.to_3x3()
-    if frame is not None:
-        rotation = frame.matrix_world.to_3x3().inverted() @ rotation
-    forward = rotation @ Vector((0.0, 0.0, -1.0))
+    forward = camera.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))
     forward.normalize()
     return (
         math.degrees(math.atan2(forward.x, forward.y)),
