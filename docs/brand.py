@@ -13,8 +13,8 @@ FONT = "Barlow Semi Condensed"
 
 
 @functools.cache
-def font(size: int) -> ImageFont.FreeTypeFont:
+def font(size: int, weight: str = "Regular") -> ImageFont.FreeTypeFont:
     try:
-        return ImageFont.truetype("BarlowSemiCondensed-Regular.ttf", size)
+        return ImageFont.truetype(f"BarlowSemiCondensed-{weight}.ttf", size)
     except OSError as e:
         raise OSError(f"{FONT} is not installed; it is on Google Fonts") from e
