@@ -229,7 +229,7 @@ class TestGeometry:
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         field = scene.wave_field(SCENARIO)
-        assert len(field) == waves.COMPONENTS
+        assert len(field) == waves.FREQUENCIES * waves.WIND_HEADINGS
         for i, wave in enumerate(field):
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
             inputs = nodes[f"wave_{i}"].inputs
@@ -559,7 +559,7 @@ class TestEoBand:
         )
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
-        per_gust = tree.nodes["sea_gust_variance"].inputs[1].default_value
+        per_gust = tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value
         assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
         tile = baked("sea_gust")
         seeded = waves.von_karman_field(

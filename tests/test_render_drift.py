@@ -197,9 +197,10 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
 
 @pytest.mark.render
 def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
-    """Top down from high enough that the footprint sits among the waves' fades."""
+    """Top down from high enough that the footprint sits among the waves' fades, under
+    a sun overhead, so every facet can glint."""
     height_m, span_m, px = 1500.0, 600.0, 32
-    scene.build(SCENARIO, "eo")
+    scene.build(_clear(variant(sky={"sun_elevation_deg": 90.0})), "eo")
     tree = bpy.data.materials["sea"].node_tree
     emission = tree.nodes.new("ShaderNodeEmission")
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
@@ -231,7 +232,7 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
         waves.unresolved_slope_variance(speed, wind, swell, f) for f in footprints
     ]
     lobes = [
-        lobe(v, v, f, f, wind, sc.cycles.samples)
+        lobe(v, v, f, f, wind, sc.cycles.samples, glints=True)
         for v, f in zip(variance, footprints, strict=True)
     ]
     # Top down, both footprints agree.
@@ -248,11 +249,13 @@ def lobe(
     across_m: float,
     wind: tuple[waves.Wave, ...],
     samples: int,
+    glints: bool,
 ) -> tuple[float, float]:
-    """The unresolved variance left to the lobe once the glitter takes its share."""
+    """The unresolved variance left to the lobe once the glitter takes its share, where
+    the sun can glint; all of it where it cannot."""
     cells = along_m * across_m / waves.specular_cell_m2(wind)
     widen = max(cells / samples - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
-    carried = max(across - widen, 0.0)
+    carried = max(across - widen, 0.0) if glints else 0.0
     left = max(along - carried, 0.0)
     return max(left, 1e-12), max(across - carried, left / 100, 1e-12)
 
@@ -260,9 +263,12 @@ def lobe(
 @pytest.mark.render
 def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     """Principled's Anisotropic, read back at a grazing view, against the footprints
-    the pixel covers: 10 m up, looking 3 deg down, the sea from ~100 m to ~1 km."""
-    scene.build(SCENARIO, "eo")
+    the pixel covers: 10 m up, looking 3 deg down, the sea from ~100 m to ~1 km. The
+    sun has set and the gusts are stilled: the lobe holds the footprints' variance
+    alone."""
+    scene.build(_clear(variant(sky={"sun_elevation_deg": -5.0})), "eo")
     tree = bpy.data.materials["sea"].node_tree
+    tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value = 0.0
     anisotropic = (
         tree.nodes["Principled BSDF"].inputs["Anisotropic"].links[0].from_socket
     )
@@ -291,7 +297,7 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     pixel_rad = lens.angle_x / px[0]
     wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
     speed = SCENARIO.sea.wind_speed_mps
-    checked = 0
+    checked = []
     for row in range(px[1]):
         for col in range(px[0]):
             u, v = (col + 0.5) / px[0], (row + 0.5) / px[1]
@@ -311,12 +317,55 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
                 across,
                 wind,
                 sc.cycles.samples,
+                glints=False,
             )
             expected = (1 - math.sqrt(v_across / v_along)) / 0.9
             assert rendered[row, col] == pytest.approx(expected, abs=0.02), (row, col)
-            checked += 1
-    assert checked > 100
-    assert rendered.max() > 0.2, "a grazing view is anisotropic"
+            checked.append(expected)
+    assert len(checked) > 100
+    # Well clear of the tolerance, so a flat lobe cannot pass.
+    assert max(checked) > 0.05, "a grazing view is anisotropic"
+
+
+def _glitter_off_changes(sun_elevation_deg: float, sun_bearing_deg: float) -> float:
+    """How much of a frame the glitter's tilt moves, built with the sun ahead and then
+    given the sun through the world, as a scene's sun is set after its build."""
+    ahead = {"sun_elevation_deg": 12.0, "sun_bearing_deg": 0.0}
+    scene.build(_clear(variant(sky=ahead)), "eo")
+    sc = bpy.context.scene
+    sc.world["sun_elevation"] = math.radians(sun_elevation_deg)
+    sc.world["sun_rotation"] = math.radians(sun_bearing_deg)
+    sc.world.update_tag()
+    lens = bpy.data.cameras.new("probe")
+    lens.clip_end, lens.angle_x = 1e5, math.radians(20.0)
+    camera = bpy.data.objects.new("probe", lens)
+    sc.collection.objects.link(camera)
+    sc.camera = camera
+    camera.location = (0.0, 0.0, 15.0)
+    camera.rotation_euler = (math.radians(78.0), 0.0, 0.0)
+    glittering = shoot((96, 64), "glitter_on")
+    tree = bpy.data.materials["sea"].node_tree
+    for link in list(tree.nodes["glitter_tilt"].outputs["Vector"].links):
+        link.to_socket.default_value = (0.0, 0.0, 0.0)
+        tree.links.remove(link)
+    plain = shoot((96, 64), "glitter_off")
+    return float(np.abs(glittering - plain).mean() / plain.mean())
+
+
+@pytest.mark.parametrize(
+    ("sun_elevation_deg", "sun_bearing_deg", "glints"),
+    [
+        pytest.param(12.0, 0.0, True, id="ahead"),
+        pytest.param(12.0, 180.0, False, id="behind"),
+        pytest.param(-5.0, 0.0, False, id="set"),
+    ],
+)
+def test_the_glitter_tilts_only_facets_that_can_mirror_the_sun(
+    sun_elevation_deg: float, sun_bearing_deg: float, glints: bool
+) -> None:
+    changed = _glitter_off_changes(sun_elevation_deg, sun_bearing_deg)
+
+    assert (changed > 0.01) == glints, changed
 
 
 @pytest.mark.render
