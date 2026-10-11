@@ -778,27 +778,27 @@ def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
     assert abs(row - 31.5) <= 2 and abs(col - 31.5) <= 2
 
 
-def test_the_committed_suns_are_what_the_photos_hold() -> None:
-    for name, photo in skies.library().items():
-        image = bpy.data.images.load(str(download(name, photo.url, photo.sha256)))
-        w, h = image.size
-        pixels = np.empty(w * h * 4, np.float32)
-        image.pixels.foreach_get(pixels)
-        bpy.data.images.remove(image)
-        sun = skies.sun(pixels.reshape(h, w, 4)[::-1, :, :3])
-        assert sun.bearing_deg == pytest.approx(photo.sun_bearing_deg, abs=0.06), name
-        if photo.sun_elevation_deg is None:
-            assert sun.elevation_deg is None, name
-        else:
-            assert sun.elevation_deg == pytest.approx(
-                photo.sun_elevation_deg, abs=0.06
-            ), name
+@pytest.mark.parametrize("name", skies.library())
+def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
+    photo = skies.library()[name]
+    image = bpy.data.images.load(str(download(name, photo.url, photo.sha256)))
+    w, h = image.size
+    pixels = np.empty(w * h * 4, np.float32)
+    image.pixels.foreach_get(pixels)
+    bpy.data.images.remove(image)
+    sun = skies.sun(pixels.reshape(h, w, 4)[::-1, :, :3])
+    assert sun.bearing_deg == pytest.approx(photo.sun_bearing_deg, abs=0.06)
+    if photo.sun_elevation_deg is None:
+        assert sun.elevation_deg is None
+    else:
+        assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
 
 
-def test_the_committed_meshes_are_what_the_files_hold() -> None:
-    for name, mesh in manifest().items():
-        bpy.ops.wm.read_factory_settings(use_empty=True)
-        assert scene.measure(fetch(name)) == (mesh.triangles, mesh.texture_px), name
+@pytest.mark.parametrize("name", manifest())
+def test_the_committed_mesh_is_what_the_file_holds(name: str) -> None:
+    mesh = manifest()[name]
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    assert scene.measure(fetch(name)) == (mesh.triangles, mesh.texture_px)
 
 
 @pytest.mark.parametrize(
