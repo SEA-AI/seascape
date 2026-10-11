@@ -38,7 +38,7 @@ Repository = "https://github.com/SEA-AI/seascape"
 Issues = "https://github.com/SEA-AI/seascape/issues"
 
 [dependency-groups]
-dev = ["pytest>=9.0"]
+dev = ["pytest>=9.0", "pytest-xdist>=3.8"]
 blender = ["bpy>=5.2"]
 
 [tool.uv]
@@ -46,5 +46,7 @@ default-groups = ["dev", "blender"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Renders share one GPU: past four workers the suite runs no faster.
+addopts = "-n 4 --dist worksteal"
 pythonpath = ["."]
 markers = ["render: renders a frame in Cycles; -m \"not render\" leaves it out"]

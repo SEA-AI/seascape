@@ -26,3 +26,4 @@ The render checks are the only thing that catches a sea or sky shader rendering 
 | `uv run pytest` | the suite and the render checks |
 | `uv run pytest -m "not render"` | the suite, without the render checks, as CI does |
 | `uv run pytest -m render` | the render checks alone |
+| `uv run pytest -n 0` | in one process, for `--pdb` or a print |
