@@ -543,7 +543,7 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
     hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
     scene.build(hazy, "ir")
     sc = bpy.context.scene
-    sc.cycles.samples = 64
+    sc.cycles.samples = 32
     # Kept, the second render would sample as the first did.
     sc.render.use_persistent_data = False
     means = []
@@ -713,12 +713,12 @@ def _set_after(setting: str, built: bool) -> np.ndarray:
     outputs: dict[str, object] = {"format": "exr"}
     sky: dict[str, object] = {}
     if built and setting == "samples":
-        outputs["samples"] = {"eo": 64}
+        outputs["samples"] = {"eo": 32}
     elif built:
         sky["sun_elevation_deg"] = 12.0
     scenario = variant(
         rig={"pitch_deg": -3.0},
-        cameras={"eo": {"width_px": 320, "height_px": 180}},
+        cameras={"eo": {"width_px": 160, "height_px": 90}},
         objects=[preset_target("multipurpose_freighter", 3e3)],
         outputs=outputs,
         sky=sky,
@@ -726,14 +726,14 @@ def _set_after(setting: str, built: bool) -> np.ndarray:
     scene.build(scenario, "eo")
     sc = bpy.context.scene
     if not built:
-        shoot((320, 180), f"before_{setting}")
+        shoot((160, 90), f"before_{setting}")
         if setting == "samples":
-            sc.cycles.samples = 64
+            sc.cycles.samples = 32
         else:
             sc.world["sun_elevation"] = math.radians(12.0)
             # As the UI does; a Python assignment to an ID property tags nothing.
             sc.world.update_tag()
-    return shoot((320, 180), f"after_{setting}_{built}")
+    return shoot((160, 90), f"after_{setting}_{built}")
 
 
 @pytest.mark.parametrize("setting", ["samples", "sun"])
