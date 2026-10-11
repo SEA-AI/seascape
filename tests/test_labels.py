@@ -13,14 +13,6 @@ RADIUS_M = waves.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
 
 
-def grey(luminance: np.ndarray) -> np.ndarray:
-    return np.repeat(luminance[..., None], 3, axis=2)
-
-
-def shown(index: np.ndarray) -> np.ndarray:
-    return grey(np.where(index > 0, 1.0, 0.5))
-
-
 def camera(
     width: int = 64,
     height: int = 48,
@@ -70,7 +62,7 @@ def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     index[10:13, 20:25] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     (found,) = truth.annotations
     assert found.bbox == (20, 10, 5, 3)
@@ -83,7 +75,7 @@ def test_a_box_on_the_frame_edge_is_truncated() -> None:
     index[40:, 60:] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     assert truth.annotations[0].truncated
 
@@ -93,9 +85,7 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(
-        camera(), 0.0, index, shown(index), [target(1), target(2, "buoy", 6)], RADIUS_M
-    )
+    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2, "buoy", 6)], RADIUS_M)
 
     assert [a.name for a in truth.annotations] == ["t1"]
     assert [c.name for c in truth.categories] == ["ship"]
@@ -106,7 +96,7 @@ def test_targets_of_one_category_share_it() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1), target(2)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2)], RADIUS_M)
 
     assert {a.category_id for a in truth.annotations} == {1}
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
@@ -117,9 +107,7 @@ def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(
-        camera(), 0.0, index, shown(index), [target(1, "buoy", 6), target(2)], RADIUS_M
-    )
+    truth.add(camera(), 0.0, index, FLAT, [target(1, "buoy", 6), target(2)], RADIUS_M)
 
     assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
     assert [a.category_id for a in truth.annotations] == [6, 1]
@@ -140,7 +128,7 @@ def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     (annotation,) = truth.annotations
     assert (annotation.heading_deg, annotation.dims_m) == (90.0, (20.0, 5.0, 4.0))
@@ -159,9 +147,7 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(
-        camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, shown(index), [target(1)], RADIUS_M
-    )
+    truth.add(camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     found = truth.annotations[0]
     assert (found.range_m, found.waterline_range_m, found.bearing_deg) == (
@@ -171,123 +157,232 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
     )
 
 
-def square() -> np.ndarray:
+def square(left: int = 20) -> np.ndarray:
     index = np.zeros((48, 64), dtype=int)
-    index[10:20, 20:30] = 1
+    index[10:20, left : left + 10] = 1
     return index
 
 
-@pytest.mark.parametrize(
-    ("target_l", "expected"), [(0.4, 0.0), (0.3, 0.25), (1.0, 1.5)]
-)
-def test_a_uniform_targets_contrast_is_webers_unsigned(
-    target_l: float, expected: float
-) -> None:
-    index = square()
-
-    found = labels.contrast(index, np.where(index == 1, target_l, 0.4), 1)
-
-    assert found == pytest.approx(expected)
-
-
-def test_a_dark_and_a_bright_half_do_not_cancel() -> None:
-    lum = np.full((48, 64), 0.4)
-    lum[10:15, 20:30], lum[15:20, 20:30] = 0.2, 0.6
-
-    assert labels.contrast(square(), lum, 1) == pytest.approx(0.5)
-
-
-def test_contrasts_background_is_no_other_target() -> None:
-    index = square()
-    index[10:20, 30:40] = 2
-    lum = np.where(index == 1, 0.8, np.where(index == 2, 9.0, 0.4))
-
-    assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
-
-
-def test_contrasts_background_skips_the_pixels_the_filter_blurs_into() -> None:
-    index = square()
-    width = 2 * labels.RING_GAP_PX + 1
-    blurred = cv2.dilate(index.astype(np.uint8), np.ones((width, width), np.uint8))
-
-    lum = np.where(blurred == 1, 0.8, 0.4)
-
-    assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
-
-
-def test_contrasts_background_skips_another_targets_blur() -> None:
-    index = square()
-    index[10:20, 34:44] = 2
-    width = 2 * labels.RING_GAP_PX + 1
-    blurred = cv2.dilate(
-        (index == 2).astype(np.uint8), np.ones((width, width), np.uint8)
-    )
-    lum = np.where(index == 1, 0.8, np.where(blurred == 1, 9.0, 0.4))
-
-    assert labels.contrast(index, lum, 1) == pytest.approx(1.0)
-
-
-@pytest.mark.parametrize(("target_l", "expected"), [(0.0, 0.0), (0.1, math.inf)])
-def test_against_a_black_background_only_a_black_target_is_invisible(
-    target_l: float, expected: float
-) -> None:
-    index = square()
-
-    assert labels.contrast(index, np.where(index == 1, target_l, 0.0), 1) == expected
-
-
-def test_a_target_with_no_background_around_it_has_no_contrast() -> None:
-    assert labels.contrast(np.ones((48, 64), dtype=int), np.ones((48, 64)), 1) is None
-
-
-def test_an_8bit_frame_is_decoded_from_srgb_to_luminance() -> None:
-    """sRGB 188 is linear 0.5."""
-    frame = np.array([[[255] * 3, [188] * 3]], np.uint8)
-
-    assert labels.luminance(frame)[0] == pytest.approx([1.0, 0.5], abs=0.003)
-
-
-@pytest.mark.parametrize(("target_l", "boxed"), [(0.381, False), (0.421, True)])
-def test_an_eo_target_too_faint_to_see_gets_no_box(
-    target_l: float, boxed: bool
-) -> None:
-    index = square()
+def boxed(index: np.ndarray, frame: np.ndarray) -> bool:
     truth = labels.Labels()
-
-    truth.add(
-        camera(),
-        0.0,
-        index,
-        grey(np.where(index == 1, target_l, 0.4)),
-        [target(1)],
-        RADIUS_M,
-    )
-
-    assert bool(truth.annotations) is boxed
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
+    return bool(truth.annotations)
 
 
-def test_an_ir_target_is_never_dropped_for_its_contrast() -> None:
+def eight_bit(index: np.ndarray, values: dict[int, int]) -> np.ndarray:
+    frame = np.full(index.shape, 120, np.uint8)
+    for pass_index, value in values.items():
+        frame[index == pass_index] = value
+    return frame
+
+
+# Against grey 120, OpenCV puts grey 125 at ΔE*ab 1.98 and 127 at 2.95.
+@pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
+@pytest.mark.parametrize("grey", [True, False])
+@pytest.mark.parametrize("left", [20, 2])
+def test_a_target_is_seen_at_the_jnd(
+    value: int, seen: bool, grey: bool, left: int
+) -> None:
+    """Another object covers half its right flank; at column 2 it has no left flank."""
+    index = square(left)
+    index[10:20, left + 10 : left + 10 + labels.FLANK_PX] = 2
+    frame = eight_bit(index, {1: value, 2: 120})
+    if not grey:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+
+    assert boxed(index, frame) is seen
+
+
+# Against grey 120, OpenCV puts grey 141 at ΔE*ab 8.38 and 146 at 10.29.
+@pytest.mark.parametrize(("value", "seen"), [(141, False), (146, True)])
+def test_one_pixel_needs_the_contrast_of_four(value: int, seen: bool) -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[20, 30] = 1
+
+    assert boxed(index, eight_bit(index, {1: value})) is seen
+
+
+@pytest.mark.parametrize("size", [4, 8, 16, 32])
+@pytest.mark.parametrize(("offset", "seen"), [(0, False), (12, True)])
+def test_a_target_is_seen_only_above_the_texture_around_it(
+    size: int, offset: int, seen: bool
+) -> None:
+    """Grey noise of standard deviation 3; the target is a patch of it, brightened by
+    `offset`."""
+    rng = np.random.default_rng(size)
+    noise = np.rint(rng.normal(120.0, 3.0, (48, 96)))
+    index = np.zeros((48, 96), dtype=int)
+    index[8 : 8 + size, 32 : 32 + size] = 1
+    frame = np.clip(noise + offset * (index == 1), 0, 255).astype(np.uint8)
+
+    assert boxed(index, frame) is seen
+
+
+def test_a_wide_targets_flanks_reach_half_its_width() -> None:
+    """Texture further out than FLANK_GAP_PX + FLANK_PX still counts beside a 30 px
+    hull."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 17:47] = 1
+    frame = eight_bit(index, {1: 127})
+    frame[10:20, :5] = frame[10:20, 60:] = 140
+
+    assert labels.flank_px(31) == 16  # half an odd span, rounded up
+    assert not boxed(index, frame)
+
+
+def test_a_one_pixel_targets_texture_pads_as_its_contrast_does() -> None:
+    """Target and texture are each scaled by 1/RICCO_PX."""
+    index = np.zeros((48, 64), dtype=int)
+    index[20, 30] = 1
+    frame = eight_bit(index, {1: 162})
+    frame[20, 31:39] = 130
+
+    assert boxed(index, frame)
+
+
+def test_the_strongest_are_a_rounded_share_and_at_least_one() -> None:
+    """4 of 10 target pixels is 6.8 of 17 flank pixels, and 0.4 of 1."""
+    assert sorted(labels.strongest(np.arange(17.0), 10)) == list(range(10, 17))
+    assert list(labels.strongest(np.arange(1.0), 10)) == [0]
+
+
+def test_no_pixel_within_the_gap_is_a_flank() -> None:
+    """A hull with a mast: the mast's rows reach past the gap beside the mast, but not
+    into the gap above the hull."""
+    index = np.zeros((48, 64), dtype=int)
+    index[15:20, 20:40] = 1
+    index[8:15, 28:32] = 1
+    gap = 2 * labels.FLANK_GAP_PX + 1
+    near = cv2.dilate((index == 1).astype(np.uint8), np.ones((gap, gap), np.uint8))
+
+    beside = labels.flanks(index, 1)
+
+    assert not (beside & (near == 1)).any()
+    assert beside[17, 20 - labels.FLANK_GAP_PX - 1]
+    assert beside[17, 39 + labels.FLANK_GAP_PX + 1]
+    assert beside[9, 28 - labels.FLANK_GAP_PX - 1]
+
+
+def test_a_target_near_the_left_edge_keeps_the_flank_it_has() -> None:
+    """Its left flank would reach past column 0: it is cut there, not lost or
+    wrapped round to the right edge."""
+    index = square(left=10)
+
+    beside = labels.flanks(index, 1)
+
+    left = 10 - labels.FLANK_GAP_PX
+    assert beside[15, :left].all()
+    assert not beside[15, left:10].any()
+    assert not beside[:, 40:].any()
+
+
+def test_the_background_varies_at_the_targets_order_statistic() -> None:
+    """A 10 x 10 target beside 160 flank pixels sets the background's statistic at its
+    6 largest, which takes in 3 weak outliers with the 3 strong ones; its 4 largest
+    would take one."""
     index = square()
-    ir = camera().model_copy(update={"band": "ir"})
-    truth = labels.Labels()
+    frame = eight_bit(index, {1: 154})
+    frame[10:13, 10] = 160
+    frame[13:16, 36] = 130
 
-    truth.add(ir, 0.0, index, np.full((48, 64), 280.0), [target(1)], RADIUS_M)
+    assert boxed(index, frame)
 
-    assert truth.annotations
+
+@pytest.mark.parametrize(("swapped", "seen"), [(False, False), (True, True)])
+def test_each_row_is_judged_against_its_own_background(
+    swapped: bool, seen: bool
+) -> None:
+    """Across the horizon a target the colour of its row's sky or sea is unseen, though
+    it differs from its surroundings as a whole."""
+    index = square()
+    sky, sea = (60, 200) if swapped else (200, 60)
+    frame = np.full(index.shape, 200, np.uint8)
+    frame[15:] = 60
+    frame[10:15][index[10:15] == 1] = sky
+    frame[15:20][index[15:20] == 1] = sea
+
+    assert boxed(index, frame) is seen
+
+
+def test_a_glint_in_the_flank_does_not_move_the_background() -> None:
+    index = square()
+    frame = eight_bit(index, {})
+    frame[12, 36] = 255
+    lab = labels.cielab(frame)
+    mask = index == 1
+
+    behind = labels.background(lab, mask, labels.flanks(index, 1))
+
+    assert behind is not None
+    assert behind[mask] == pytest.approx(np.broadcast_to(lab[0, 0], (mask.sum(), 3)))
+
+
+def test_another_object_in_the_flank_is_not_background() -> None:
+    """Counted, the neighbour would be clutter as strong as the target."""
+    index = square()
+    index[10:20, 30:38] = 2
+
+    assert boxed(index, eight_bit(index, {1: 128, 2: 128}))
+
+
+def test_a_target_as_bright_as_its_background_is_seen_by_its_colour() -> None:
+    index = square()
+    frame = cv2.cvtColor(eight_bit(index, {}), cv2.COLOR_GRAY2RGB)
+    frame[index == 1] = (182, 91, 120)  # BT.709 luminance within 0.01 % of grey 120
+
+    assert boxed(index, frame)
 
 
 def test_a_target_with_no_background_to_measure_keeps_its_box() -> None:
-    truth = labels.Labels()
+    index = np.ones((48, 64), dtype=int)
 
-    truth.add(camera(), 0.0, np.ones((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M)
-
-    assert truth.annotations
+    assert boxed(index, eight_bit(index, {}))
 
 
-def test_8bit_primaries_weigh_as_bt709() -> None:
-    primaries = np.eye(3, dtype=np.uint8)[None] * 255
+@pytest.mark.parametrize(
+    "frame", [np.ones((48, 64, 3), np.float32), np.ones((48, 64), np.uint16)]
+)
+def test_a_frame_deeper_than_8_bits_keeps_every_box(frame: np.ndarray) -> None:
+    assert boxed(square(), frame)
 
-    assert labels.luminance(primaries)[0] == pytest.approx(labels.BT709)
+
+def test_a_target_exactly_at_the_threshold_is_seen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = square()
+    frame = eight_bit(index, {1: 127})
+    lab = labels.cielab(frame)
+    mask = index == 1
+    behind = labels.background(lab, mask, labels.flanks(index, 1))
+    assert behind is not None
+    at = labels.ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1), 100)
+    monkeypatch.setattr(labels, "JND_DELTA_E", at)
+
+    assert boxed(index, frame)
+
+
+def test_a_frame_is_read_as_rgb() -> None:
+    """As BGR the difference would be ΔE*ab 0.69, under the JND; as RGB it is 2.63."""
+    index = square()
+    frame = np.empty((*index.shape, 3), np.uint8)
+    frame[:] = (150, 60, 30)
+    frame[index == 1] = (150, 60, 35)
+
+    assert boxed(index, frame)
+
+
+@pytest.mark.parametrize(("value", "seen"), [(60, False), (200, True)])
+def test_a_row_with_no_flank_takes_the_nearest_rows_background(
+    value: int, seen: bool
+) -> None:
+    """Sky over sea, the target the colour of each row but its flankless sea row."""
+    index = square()
+    index[17, :20] = index[17, 30:] = 2
+    frame = np.full(index.shape, 200, np.uint8)
+    frame[15:] = 60
+    frame[17][index[17] == 1] = value
+
+    assert boxed(index, frame) is seen
 
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
@@ -337,7 +432,7 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {"seed": seed}, "version": "x"})
-        truth.add(camera(), 0.0, index, shown(index), [target(1, *category)], RADIUS_M)
+        truth.add(camera(), 0.0, index, FLAT, [target(1, *category)], RADIUS_M)
         folders.append(tmp_path / str(seed))
         folders[-1].mkdir()
         truth.write(folders[-1])
@@ -365,7 +460,7 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {}})
-        truth.add(camera(), 0.0, index, shown(index), [target(1, name, 1)], RADIUS_M)
+        truth.add(camera(), 0.0, index, FLAT, [target(1, name, 1)], RADIUS_M)
         folders.append(tmp_path / name)
         folders[-1].mkdir()
         truth.write(folders[-1])

@@ -609,7 +609,7 @@
           ]
         },
         "format": {
-          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance.",
+          "description": "jpg to look at, png lossless or LWIR in kelvin, exr the radiance. Only an 8-bit frame is judged for visibility: an exr or LWIR png boxes every target in view.",
           "default": "jpg",
           "anyOf": [
             {

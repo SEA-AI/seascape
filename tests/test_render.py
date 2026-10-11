@@ -389,3 +389,23 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     assert [Path(name).suffix for name in named] == [".jpg", ".jpg"]
     assert all((tmp_path / name).exists() for name in named)
     assert [c.image for c in Calibration.read(tmp_path).cameras] == named
+
+
+@pytest.mark.render
+@pytest.mark.parametrize(("fmt", "boxes"), [("jpg", 1), ("png", 2)])
+def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
+    tmp_path: Path, fmt: str, boxes: int
+) -> None:
+    """A 16-bit png keeps every box, as an exr does."""
+    scenario = variant(
+        cameras={"ir": {"width_px": 160, "height_px": 128}},
+        # The far hull reads as warm as the sea behind it.
+        objects=[target("yacht", 300.0), target("yacht", 1000.0, 4.0, t_k=274.0)],
+        sky={"solar_gain_k": 0.0},
+        outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": fmt},
+    )
+
+    render.render(scenario, tmp_path)
+
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    assert len(truth.annotations) == boxes
