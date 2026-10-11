@@ -240,7 +240,10 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     for obj in (plane, camera):
         sc.collection.objects.link(obj)
     sc.camera = camera
-    scene._compositor(None)  # as a build leaves it
+    # As a build leaves it. Factory settings put the compositor on the GPU, which a
+    # machine without one aborts on.
+    sc.render.compositor_device = "CPU"
+    scene._compositor(None)
     render._index_output(tmp_path).file_name = "probe."
     sc.render.filepath = str(tmp_path / "frame")
 
