@@ -32,7 +32,7 @@ EYE_M = 30.0
 # In front of the horizon seen from EYE_M up, on it, and hull-down behind it.
 HORIZON_KM = round(waves.horizon_m(EYE_M, load(PRIMER).sea.refraction_k) / 1000)
 HULL_DOWN_KM = (12, HORIZON_KM, 35)
-TELE = "rigs.bow.cameras.eo = { hfov_deg = 0.75, width_px = 640, height_px = 360 }"
+TELE = "rigs.bow.cameras.eo = { hfov_deg = 1.15, width_px = 640, height_px = 360 }"
 
 FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
     "samples": (
@@ -74,7 +74,7 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         [
             TELE,
             f"rigs.bow.height_m = {EYE_M}",
-            "rigs.bow.pitch_deg = -0.08",
+            "rigs.bow.pitch_deg = -0.04",
             "sky.visibility_km = 1000.0",
         ],
         [
