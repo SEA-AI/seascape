@@ -17,39 +17,9 @@ from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
 from seascape.config import Mount, Rig, Scenario
 from seascape.montage import INK
-from tests.scenarios import variant
+from tests.scenarios import two_rigs
 
-# Nothing here renders, so a camera's resolution costs nothing.
-EO = {"preset": "eo_4k_49deg", "pitch_deg": -10.0}
-IR = {"preset": "ir_vga_24deg"}
-SCENARIO: Scenario = variant(
-    ownship={"roll_deg": 2.0, "pitch_deg": 0.5},
-    rigs={
-        "bow": {
-            "offset_x_m": 1.5,
-            "offset_y_m": 6.0,
-            "cameras": {
-                "eo": EO,
-                "eo_p": EO | {"yaw_deg": -40.0},
-                "eo_s": EO | {"yaw_deg": 40.0},
-                "ir": IR,
-            },
-        },
-        "stern": {
-            "height_m": 8.0,
-            "yaw_deg": 180.0,
-            "offset_x_m": -3.0,
-            "offset_y_m": -20.0,
-            "cameras": {"eo": EO, "ir": IR},
-        },
-    },
-    targets={
-        "asset": ["yacht"],
-        "range_m": 400.0,
-        "count": 4,
-        "bearing_deg": [-60, 60],
-    },
-)
+SCENARIO: Scenario = two_rigs()
 MOUNTS = [pytest.param(mount, id=mount.name) for mount in SCENARIO.mounts]
 RIGS = [pytest.param(name, rig, id=name) for name, rig in SCENARIO.rigs.items()]
 
