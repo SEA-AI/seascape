@@ -25,7 +25,8 @@ HORIZON_POINTS = 17
 
 # Judgement: about 1 arcmin a pixel. Ricco's area is 2.4 arcmin across with optics
 # corrected and the image stabilised on the retina (Tuten et al. 2018), π·1.2² ≈ 4.5
-# pixels, taken as 4.
+# pixels, taken as 4; the 2.95 arcmin of natural viewing, about 7 pixels, would pool
+# zeros into a target smaller than that.
 RICCO_PX = 4
 # The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
 JND_DELTA_E = 2.3
@@ -116,7 +117,6 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        # Only an 8-bit delivered frame is judged; exr and 16-bit png keep every box.
         judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
@@ -215,7 +215,7 @@ def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
     """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
     frame: an order-statistic test after Rohling's OS-CFAR (1983), the target's
     largest differences from the background against the background's own at the same
-    order, by a JND."""
+    share, by a JND."""
     lab = cielab(frame)
     mask = index == pass_index
     beside = flanks(index, pass_index)
@@ -224,8 +224,8 @@ def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
         return True
     n = int(mask.sum())
     target = ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1), n)
-    texture = ricco(np.linalg.norm(lab[beside] - behind[beside], axis=1), n)
-    return target >= JND_DELTA_E + texture
+    clutter = ricco(np.linalg.norm(lab[beside] - behind[beside], axis=1), n)
+    return target >= JND_DELTA_E + clutter
 
 
 def cielab(frame: np.ndarray) -> np.ndarray:
@@ -250,8 +250,8 @@ def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
     for y in np.flatnonzero(mask.any(axis=1)):
         xs = np.flatnonzero(mask[y])
         reach = FLANK_GAP_PX + flank_px(xs[-1] - xs[0] + 1)
-        beside[y, max(xs[0] - reach, 0) : max(xs[0] - FLANK_GAP_PX, 0)] = True
-        beside[y, xs[-1] + 1 + FLANK_GAP_PX : xs[-1] + 1 + reach] = True
+        beside[y, max(xs[0] - reach, 0) : xs[0]] = True
+        beside[y, xs[-1] + 1 : xs[-1] + 1 + reach] = True
     gap = np.ones((2 * FLANK_GAP_PX + 1,) * 2, np.uint8)
     near = cv2.dilate(mask.astype(np.uint8), gap).astype(bool)
     return beside & (index == 0) & ~near
@@ -276,8 +276,8 @@ def background(
 
 
 def strongest(delta_e: np.ndarray, target_px: int) -> np.ndarray:
-    """Indices of the largest of `delta_e`, as many as RICCO_PX are of `target_px`
-    pixels, and at least one: a target's RICCO_PX, the same share of its flanks."""
+    """Indices of the largest of `delta_e`, the share RICCO_PX is of `target_px`, at
+    least one."""
     count = max(1, round(min(RICCO_PX, target_px) / target_px * len(delta_e)))
     return np.argpartition(delta_e, len(delta_e) - count)[-count:]
 

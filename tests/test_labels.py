@@ -183,8 +183,7 @@ def eight_bit(index: np.ndarray, values: dict[int, int]) -> np.ndarray:
 def test_a_target_is_seen_at_the_jnd(
     value: int, seen: bool, grey: bool, left: int
 ) -> None:
-    """Its right flank covered by another object; at column 2 the frame's edge cuts its
-    left flank short."""
+    """Another object covers half its right flank; at column 2 it has no left flank."""
     index = square(left)
     index[10:20, left + 10 : left + 10 + labels.FLANK_PX] = 2
     frame = eight_bit(index, {1: value, 2: 120})
@@ -227,6 +226,7 @@ def test_a_wide_targets_flanks_reach_half_its_width() -> None:
     frame = eight_bit(index, {1: 127})
     frame[10:20, :5] = frame[10:20, 60:] = 140
 
+    assert labels.flank_px(31) == 16  # half an odd span, rounded up
     assert not boxed(index, frame)
 
 
@@ -238,6 +238,12 @@ def test_a_one_pixel_targets_texture_pads_as_its_contrast_does() -> None:
     frame[20, 31:39] = 130
 
     assert boxed(index, frame)
+
+
+def test_the_strongest_are_a_rounded_share_and_at_least_one() -> None:
+    """4 of 10 target pixels is 6.8 of 17 flank pixels, and 0.4 of 1."""
+    assert sorted(labels.strongest(np.arange(17.0), 10)) == list(range(10, 17))
+    assert list(labels.strongest(np.arange(1.0), 10)) == [0]
 
 
 def test_no_pixel_within_the_gap_is_a_flank() -> None:
@@ -257,10 +263,17 @@ def test_no_pixel_within_the_gap_is_a_flank() -> None:
     assert beside[9, 28 - labels.FLANK_GAP_PX - 1]
 
 
-def test_a_target_on_the_left_edge_has_no_flank_from_the_right_edge() -> None:
-    index = square(left=2)
+def test_a_target_near_the_left_edge_keeps_the_flank_it_has() -> None:
+    """Its left flank would reach past column 0: it is cut there, not lost or
+    wrapped round to the right edge."""
+    index = square(left=10)
 
-    assert not labels.flanks(index, 1)[:, 32:].any()
+    beside = labels.flanks(index, 1)
+
+    left = 10 - labels.FLANK_GAP_PX
+    assert beside[15, :left].all()
+    assert not beside[15, left:10].any()
+    assert not beside[:, 40:].any()
 
 
 def test_the_background_varies_at_the_targets_order_statistic() -> None:
@@ -305,7 +318,7 @@ def test_a_glint_in_the_flank_does_not_move_the_background() -> None:
 
 
 def test_another_object_in_the_flank_is_not_background() -> None:
-    """Counted, the neighbour would halve the target's ΔE*ab to under the JND."""
+    """Counted, the neighbour would be clutter as strong as the target."""
     index = square()
     index[10:20, 30:38] = 2
 
@@ -364,7 +377,7 @@ def test_a_row_with_no_flank_takes_the_nearest_rows_background(
 ) -> None:
     """Sky over sea, the target the colour of each row but its flankless sea row."""
     index = square()
-    index[17, 12:20] = index[17, 30:38] = 2
+    index[17, :20] = index[17, 30:] = 2
     frame = np.full(index.shape, 200, np.uint8)
     frame[15:] = 60
     frame[17][index[17] == 1] = value

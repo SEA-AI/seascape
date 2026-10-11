@@ -8,7 +8,7 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Each of its pixels is compared in CIELAB with the median of the background beside it on its row, past the few pixels its own glow reaches; its largest differences, pooled over the fovea's Ricco area (Tuten et al. 2018), must reach the background's own at the same order statistic plus a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994). That is an order-statistic test after Rohling's OS-CFAR (1983), so the texture of the sea or sky earns no box. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
+A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Each of its pixels is compared in CIELAB with the median of the background beside it on its row, past the few pixels its own glow reaches; its largest differences, pooled over the fovea's Ricco area (Tuten et al. 2018), must reach the background's own at the same share plus a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994). That is an order-statistic test after Rohling's OS-CFAR (1983), so the texture of the sea or sky earns no box. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 
