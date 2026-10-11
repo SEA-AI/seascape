@@ -12,9 +12,9 @@ from typing import NamedTuple
 import bpy
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageColor, ImageDraw, ImageText
 
-from docs.brand import FOCUS_RED, NIGHT_BLUE, SKY_GREY, font
+from docs.brand import FOCUS_RED, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
 from seascape import labels, render, scene
 from seascape.config import load
 
@@ -25,23 +25,19 @@ THUMB_PX = (220, 132)
 LINE_PX = 640
 WIDTH_PX = PAD_PX + THUMB_PX[0] + 2 * PAD_PX + LINE_PX + PAD_PX + 110 + PAD_PX
 ZOOM_PX = 660
-TEAL = np.array([6, 64, 76], float)  # docs.brand.OCEAN_TEAL
-DARK = np.array([11, 23, 49], float)  # docs.brand.NIGHT_BLUE
+DARK = np.array(ImageColor.getrgb(NIGHT_BLUE), float)
 HEADLINE = (
-    "Does the ship stand out from the sea beside it more than that sea varies on its "
-    "own?"
+    "Does the ship stand out from the sea or sky beside it more than that background "
+    "varies on its own?"
 )
 METHOD = (
-    "If not, it gets no box. Method: an order-statistic CFAR test (Rohling 1983), on "
-    "colour difference as people perceive it (CIELAB) with a just-noticeable margin."
+    "If not, it gets no box. Method: an order-statistic test after Rohling's OS-CFAR "
+    "(1983), on ΔE*ab, the colour difference people perceive (CIELAB), with a "
+    f"just-noticeable margin of {JND}."
 )
 REAL_SEA = (
-    "Real sea behind it: the same ship-vs-sea measure, taken against the scene "
-    "rendered without the ship, not against the median of the sea beside it."
-)
-LEGEND = (
-    "ΔE*ab: colour difference as people perceive it (CIELAB). "
-    f"{JND}: the smallest difference people notice."
+    "Ship, against the real sea: the same measure, taken against the scene rendered "
+    "without the ship."
 )
 
 
@@ -52,7 +48,7 @@ class Example(NamedTuple):
     behind: np.ndarray  # labels.background
     delta_e: np.ndarray  # each pixel's ΔE*ab from its row's background
     ship: float  # labels.ricco of the ship's pixels
-    sea: float  # labels.clutter of the flanks'
+    sea: float  # labels.ricco of the flanks'
     seen: bool  # labels.visible
     truth: float  # labels.ricco of the ship against the render without it
     range_m: float
@@ -97,7 +93,8 @@ def window(mask: np.ndarray) -> tuple[slice, slice]:
     ys, xs = np.nonzero(mask)
     span = np.ptp(xs) + 1
     aspect = THUMB_PX[0] / THUMB_PX[1]
-    w = max(span + 2 * labels.flank_px(span) + 8, (np.ptp(ys) + 1 + 16) * aspect)
+    reach = labels.FLANK_GAP_PX + labels.flank_px(span)
+    w = max(span + 2 * reach + 8, (np.ptp(ys) + 1 + 16) * aspect)
     h = w / aspect
     cx, cy = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2
     x0, y0 = max(round(cx - w / 2), 0), max(round(cy - h / 2), 0)
@@ -114,14 +111,14 @@ def example(
     if behind is None:
         raise ValueError(f"target {p} has no background to show")
     delta_e = np.linalg.norm(lab - np.nan_to_num(behind), axis=2)
-    ship = labels.ricco(delta_e[mask])
-    sea = labels.clutter(delta_e[beside], int(mask.sum()))
+    n = int(mask.sum())
+    ship, sea = labels.ricco(delta_e[mask], n), labels.ricco(delta_e[beside], n)
     seen = labels.visible(index, frame, p)
     # The figure's arithmetic and the rule must not drift apart.
     if seen != (ship >= JND + sea):
         raise ValueError("labels.visible disagrees with its parts")
     truth = labels.ricco(
-        np.linalg.norm(lab[mask] - labels.cielab(without)[mask], axis=1)
+        np.linalg.norm(lab[mask] - labels.cielab(without)[mask], axis=1), n
     )
     crop = window(mask)
     return Example(
@@ -161,17 +158,6 @@ def outline(img: Image.Image, mask: np.ndarray) -> None:
     )
 
 
-def wrap(draw: ImageDraw.ImageDraw, text: str, size: int, width: int) -> str:
-    lines = [""]
-    for word in text.split():
-        line = f"{lines[-1]} {word}".strip()
-        if lines[-1] and draw.textlength(line, font=font(size)) > width:
-            lines.append(word)
-        else:
-            lines[-1] = line
-    return "\n".join(lines)
-
-
 def paragraph(
     draw: ImageDraw.ImageDraw,
     at: tuple[int, int],
@@ -180,10 +166,11 @@ def paragraph(
     size: int = 15,
     fill: str = NIGHT_BLUE,
 ) -> int:
-    """Wrapped text at `at`; the y below it."""
-    wrapped = wrap(draw, text, size, width)
-    draw.multiline_text(at, wrapped, fill=fill, font=font(size), spacing=3)
-    return int(draw.multiline_textbbox(at, wrapped, font=font(size), spacing=3)[3])
+    """`text` wrapped to `width` at `at`; the y below it."""
+    wrapped = ImageText.Text(text, font(size), spacing=3)
+    wrapped.wrap(width)
+    draw.text(at, wrapped, fill=fill)
+    return int(wrapped.get_bbox(at)[3])
 
 
 def heat(
@@ -205,13 +192,14 @@ def ringed(img: Image.Image, shape: tuple[int, ...], points: np.ndarray) -> Imag
     return img
 
 
-def largest(
-    delta_e: np.ndarray, where: np.ndarray, count: int
+def strongest(
+    delta_e: np.ndarray, where: np.ndarray, target_px: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """The `count` largest values in `where`, largest first, and their (row, column)."""
+    """labels.strongest of `where`'s values, largest first, and their (row, column)."""
     ys, xs = np.nonzero(where)
-    order = np.argsort(delta_e[ys, xs])[::-1][:count]
-    return delta_e[ys[order], xs[order]], np.stack([ys[order], xs[order]], axis=1)
+    picked = labels.strongest(delta_e[ys, xs], target_px)
+    picked = picked[np.argsort(delta_e[ys[picked], xs[picked]])[::-1]]
+    return delta_e[ys[picked], xs[picked]], np.stack([ys[picked], xs[picked]], axis=1)
 
 
 def summed(values: np.ndarray) -> str:
@@ -223,15 +211,9 @@ def worked(sheet: Image.Image, draw: ImageDraw.ImageDraw, y: int, e: Example) ->
     """How `e`'s numbers are made, one step per row; the y below them."""
     n, f = int(e.mask.sum()), int(e.beside.sum())
     k = min(labels.RICCO_PX, n)
-    m = max(1, round(k / n * f))
-    ship_top, ship_at = largest(e.delta_e, e.mask, labels.RICCO_PX)
-    sea_top, sea_at = largest(e.delta_e, e.beside, m)
-    s, b = (
-        float(ship_top.sum() / labels.RICCO_PX),
-        float(sea_top.mean() * k / labels.RICCO_PX),
-    )
-    if not (np.isclose(s, e.ship) and np.isclose(b, e.sea)):
-        raise ValueError("the worked example disagrees with labels.ricco or clutter")
+    ship_top, ship_at = strongest(e.delta_e, e.mask, n)
+    sea_top, sea_at = strongest(e.delta_e, e.beside, n)
+    m = len(sea_top)
     ys, xs = np.nonzero(e.mask | e.beside)
     zoom = np.s_[
         max(ys.min() - 4, 0) : ys.max() + 5, max(xs.min() - 2, 0) : xs.max() + 3
@@ -242,13 +224,17 @@ def worked(sheet: Image.Image, draw: ImageDraw.ImageDraw, y: int, e: Example) ->
     sea_at = sea_at - [zoom[0].start, zoom[1].start]
     size = (ZOOM_PX, round(ZOOM_PX * crop.shape[0] / crop.shape[1]))
 
-    rows = np.flatnonzero(beside.any(axis=1) & mask.any(axis=1))
-    row = int(rows[len(rows) * 2 // 3])
-    on_row = np.zeros_like(beside)
-    on_row[row] = beside[row]
-    marked = crop.astype(float)
-    marked[on_row] = TEAL
-    one = tile(marked.round().astype(np.uint8), size)
+    row = int(np.argmax(beside.sum(axis=1) * mask.any(axis=1)))
+    marked = crop.copy()
+    marked[row, beside[row]] = ImageColor.getrgb(OCEAN_TEAL)
+    # The skipped glow, left white: between each flank and the ship on that row.
+    flank, hull = np.flatnonzero(beside[row]), np.flatnonzero(mask[row])
+    left, right = flank[flank < hull[0]], flank[flank > hull[-1]]
+    if len(left):
+        marked[row, left[-1] + 1 : hull[0]] = 255
+    if len(right):
+        marked[row, hull[-1] + 1 : right[0]] = 255
+    one = tile(marked, size)
     sy = size[1] / crop.shape[0]
     ImageDraw.Draw(one).rectangle(
         [0, row * sy - 2, size[0] - 1, (row + 1) * sy + 1], outline=FOCUS_RED, width=1
@@ -257,9 +243,9 @@ def worked(sheet: Image.Image, draw: ImageDraw.ImageDraw, y: int, e: Example) ->
     swatch = tuple(int(c) for c in np.clip(np.rint(255 * median), 0, 255))
     top = float(ship_top[0])
     count = (
-        f"{m} = round({labels.RICCO_PX} \N{MULTIPLICATION SIGN} {f} sea pixels / "
-        f"{n} ship pixels): the same share of the sea as {labels.RICCO_PX} pixels "
-        "are of the ship."
+        f"{m} = round({labels.RICCO_PX} \N{MULTIPLICATION SIGN} {f} background "
+        f"pixels / {n} ship pixels): the same share of the background as "
+        f"{labels.RICCO_PX} pixels are of the ship."
     )
     if k < labels.RICCO_PX:
         count += f" Scaled by {k}/{labels.RICCO_PX}, as the ship has {n} pixels."
@@ -267,22 +253,24 @@ def worked(sheet: Image.Image, draw: ImageDraw.ImageDraw, y: int, e: Example) ->
         (
             "1  Background colour, row by row",
             one,
-            f"The middle colour (median) of the {int(on_row.sum())} sea pixels beside "
-            "the ship on the marked row (teal), shown in the swatch. Every row gets "
-            "its own.",
+            f"The middle colour (median) of the {int(beside[row].sum())} pixels of "
+            "sea or sky beside the ship on the marked row, skipping the "
+            f"{labels.FLANK_GAP_PX} pixels next to the ship (its glow, left white); "
+            "shown in the swatch. Every row gets its own.",
             None,
         ),
         (
             "2  Ship: how far each pixel is from its row's background",
             ringed(tile(heat(crop, mask, delta_e, top), size), crop.shape, ship_at),
             f"Its {labels.RICCO_PX} strongest pixels, ringed: "
-            f"({summed(ship_top)}) / {labels.RICCO_PX} = {s:.2f}",
+            f"({summed(ship_top)}) / {labels.RICCO_PX} = {e.ship:.2f}",
             "ΔE*ab per pixel; lighter is more different, one scale for 2 and 3.",
         ),
         (
-            "3  Sea: how far the sea is from its own background",
+            "3  Background: how far it is from its own median",
             ringed(tile(heat(crop, beside, delta_e, top), size), crop.shape, sea_at),
-            f"Its {m} strongest pixels, ringed: ({summed(sea_top)}) / {m} = {b:.2f}",
+            f"Its {m} strongest pixels, ringed: ({summed(sea_top)}) / {m} = "
+            f"{e.sea:.2f}",
             count,
         ),
     ]
@@ -302,8 +290,9 @@ def worked(sheet: Image.Image, draw: ImageDraw.ImageDraw, y: int, e: Example) ->
     sign, word = ("≥", "box") if e.seen else ("<", "no box")
     draw.text(
         (PAD_PX, y - 4),
-        f"Needed to be seen = {b:.2f} + {JND} (the smallest colour difference people "
-        f"notice) = {need(e):.2f}.   {s:.2f} {sign} {need(e):.2f}, so: {word}.",
+        f"Needed to be seen = {e.sea:.2f} + {JND} (the smallest colour difference "
+        f"people notice) = {need(e):.2f}.   {e.ship:.2f} {sign} {need(e):.2f}, so: "
+        f"{word}.",
         fill=NIGHT_BLUE,
         font=font(18, "Medium"),
     )
@@ -341,9 +330,11 @@ def number_lines(
         draw.line([x0, axis, x0 + LINE_PX, axis], fill=SKY_GREY, width=1)
         draw.text((x0, axis + 8), "0", fill=SKY_GREY, font=font(13), anchor="mt")
         draw.line([x(e.sea), axis - 8, x(e.sea), axis + 8], fill=SKY_GREY, width=3)
+        text = f"background varies on its own  {e.sea:.2f}"
+        half = draw.textlength(text, font=font(14)) / 2
         draw.text(
-            (x(e.sea), axis + 12),
-            f"sea varies on its own  {e.sea:.2f}",
+            (max(x(e.sea), x0 + 16 + half), axis + 12),
+            text,
             fill=SKY_GREY,
             font=font(14),
             anchor="mt",
@@ -406,8 +397,7 @@ def main(out: Path) -> None:
     haze_km = load(SCENARIO).sky.visibility_km or 0.0
     y = number_lines(sheet, draw, y + 34, examples, haze_km)
     draw.text((PAD_PX, y), REAL_SEA, fill=SKY_GREY, font=font(14))
-    draw.text((PAD_PX, y + 20), LEGEND, fill=SKY_GREY, font=font(14))
-    sheet = sheet.crop((0, 0, WIDTH_PX, y + 40 + PAD_PX))
+    sheet = sheet.crop((0, 0, WIDTH_PX, y + 20 + PAD_PX))
     sheet.quantize(160, dither=Image.Dither.NONE).save(out, optimize=True)
 
 

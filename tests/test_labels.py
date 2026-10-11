@@ -163,10 +163,9 @@ def square(left: int = 20) -> np.ndarray:
     return index
 
 
-def boxed(index: np.ndarray, frame: np.ndarray, band: str = "eo") -> bool:
+def boxed(index: np.ndarray, frame: np.ndarray) -> bool:
     truth = labels.Labels()
-    cam = camera().model_copy(update={"band": band})
-    truth.add(cam, 0.0, index, frame, [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, frame, [target(1)], RADIUS_M)
     return bool(truth.annotations)
 
 
@@ -179,19 +178,20 @@ def eight_bit(index: np.ndarray, values: dict[int, int]) -> np.ndarray:
 
 # Against grey 120, OpenCV puts grey 125 at ΔE*ab 1.98 and 127 at 2.95.
 @pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
-@pytest.mark.parametrize("band", ["eo", "ir"])
+@pytest.mark.parametrize("grey", [True, False])
 @pytest.mark.parametrize("left", [20, 2])
 def test_a_target_is_seen_at_the_jnd(
-    value: int, seen: bool, band: str, left: int
+    value: int, seen: bool, grey: bool, left: int
 ) -> None:
     """Its right flank covered by another object; at column 2 the frame's edge cuts its
     left flank short."""
     index = square(left)
     index[10:20, left + 10 : left + 10 + labels.FLANK_PX] = 2
-    grey = eight_bit(index, {1: value, 2: 120})
-    frame = grey if band == "ir" else cv2.cvtColor(grey, cv2.COLOR_GRAY2RGB)
+    frame = eight_bit(index, {1: value, 2: 120})
+    if not grey:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
 
-    assert boxed(index, frame, band) is seen
+    assert boxed(index, frame) is seen
 
 
 # Against grey 120, OpenCV puts grey 141 at ΔE*ab 8.38 and 146 at 10.29.
@@ -220,21 +220,57 @@ def test_a_target_is_seen_only_above_the_texture_around_it(
 
 
 def test_a_wide_targets_flanks_reach_half_its_width() -> None:
-    """Texture further out than FLANK_PX still counts beside a 30 px hull."""
+    """Texture further out than FLANK_GAP_PX + FLANK_PX still counts beside a 30 px
+    hull."""
     index = np.zeros((48, 64), dtype=int)
     index[10:20, 17:47] = 1
     frame = eight_bit(index, {1: 127})
-    frame[10:20, 2:9] = frame[10:20, 55:62] = 140
+    frame[10:20, :5] = frame[10:20, 60:] = 140
 
     assert not boxed(index, frame)
 
 
 def test_a_one_pixel_targets_texture_pads_as_its_contrast_does() -> None:
-    """Both are a quarter of one pixel's ΔE*ab."""
+    """Target and texture are each scaled by 1/RICCO_PX."""
     index = np.zeros((48, 64), dtype=int)
     index[20, 30] = 1
     frame = eight_bit(index, {1: 162})
     frame[20, 31:39] = 130
+
+    assert boxed(index, frame)
+
+
+def test_no_pixel_within_the_gap_is_a_flank() -> None:
+    """A hull with a mast: the mast's rows reach past the gap beside the mast, but not
+    into the gap above the hull."""
+    index = np.zeros((48, 64), dtype=int)
+    index[15:20, 20:40] = 1
+    index[8:15, 28:32] = 1
+    gap = 2 * labels.FLANK_GAP_PX + 1
+    near = cv2.dilate((index == 1).astype(np.uint8), np.ones((gap, gap), np.uint8))
+
+    beside = labels.flanks(index, 1)
+
+    assert not (beside & (near == 1)).any()
+    assert beside[17, 20 - labels.FLANK_GAP_PX - 1]
+    assert beside[17, 39 + labels.FLANK_GAP_PX + 1]
+    assert beside[9, 28 - labels.FLANK_GAP_PX - 1]
+
+
+def test_a_target_on_the_left_edge_has_no_flank_from_the_right_edge() -> None:
+    index = square(left=2)
+
+    assert not labels.flanks(index, 1)[:, 32:].any()
+
+
+def test_the_background_varies_at_the_targets_order_statistic() -> None:
+    """A 10 x 10 target beside 160 flank pixels sets the background's statistic at its
+    6 largest, which takes in 3 weak outliers with the 3 strong ones; its 4 largest
+    would take one."""
+    index = square()
+    frame = eight_bit(index, {1: 154})
+    frame[10:13, 10] = 160
+    frame[13:16, 36] = 130
 
     assert boxed(index, frame)
 
@@ -244,7 +280,7 @@ def test_each_row_is_judged_against_its_own_background(
     swapped: bool, seen: bool
 ) -> None:
     """Across the horizon a target the colour of its row's sky or sea is unseen, though
-    it differs from the mean around it."""
+    it differs from its surroundings as a whole."""
     index = square()
     sky, sea = (60, 200) if swapped else (200, 60)
     frame = np.full(index.shape, 200, np.uint8)
@@ -258,7 +294,7 @@ def test_each_row_is_judged_against_its_own_background(
 def test_a_glint_in_the_flank_does_not_move_the_background() -> None:
     index = square()
     frame = eight_bit(index, {})
-    frame[12, 31] = 255
+    frame[12, 36] = 255
     lab = labels.cielab(frame)
     mask = index == 1
 
@@ -290,10 +326,26 @@ def test_a_target_with_no_background_to_measure_keeps_its_box() -> None:
     assert boxed(index, eight_bit(index, {}))
 
 
-def test_a_float_frame_keeps_every_box() -> None:
-    index = square()
+@pytest.mark.parametrize(
+    "frame", [np.ones((48, 64, 3), np.float32), np.ones((48, 64), np.uint16)]
+)
+def test_a_frame_deeper_than_8_bits_keeps_every_box(frame: np.ndarray) -> None:
+    assert boxed(square(), frame)
 
-    assert boxed(index, np.ones((*index.shape, 3), np.float32))
+
+def test_a_target_exactly_at_the_threshold_is_seen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = square()
+    frame = eight_bit(index, {1: 127})
+    lab = labels.cielab(frame)
+    mask = index == 1
+    behind = labels.background(lab, mask, labels.flanks(index, 1))
+    assert behind is not None
+    at = labels.ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1), 100)
+    monkeypatch.setattr(labels, "JND_DELTA_E", at)
+
+    assert boxed(index, frame)
 
 
 def test_a_frame_is_read_as_rgb() -> None:

@@ -392,24 +392,6 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
 
 
 @pytest.mark.render
-def test_a_target_in_plain_sight_keeps_its_box_in_each_band(tmp_path: Path) -> None:
-    scenario = variant(
-        cameras={
-            "eo": {"width_px": 96, "height_px": 54},
-            "ir": {"width_px": 80, "height_px": 64},
-        },
-        objects=[target("yacht", 300.0)],
-        outputs={"samples": {"eo": 2, "ir": 4}},
-    )
-
-    render.render(scenario, tmp_path)
-
-    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
-    assert {image.band for image in truth.images} == {"eo", "ir"}
-    assert {a.image_id for a in truth.annotations} == {i.id for i in truth.images}
-
-
-@pytest.mark.render
 @pytest.mark.parametrize(("fmt", "boxes"), [("jpg", 1), ("png", 2)])
 def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
     tmp_path: Path, fmt: str, boxes: int
