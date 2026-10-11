@@ -189,6 +189,13 @@ class TestEachBand:
         assert sc.camera.name == f"bow_{band}"
 
 
+@pytest.mark.parametrize("width_px", [640, 3840])
+def test_a_frame_renders_in_one_tile(width_px: int) -> None:
+    """Past one tile, Cycles caches each to disk and reads the frame back."""
+    scene.build(variant(cameras={"eo": {"width_px": width_px}}), "eo")
+    assert bpy.context.scene.cycles.tile_size >= width_px
+
+
 def test_a_relative_output_reaches_blender_absolute(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
