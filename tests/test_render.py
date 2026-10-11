@@ -245,6 +245,38 @@ def test_the_object_index_pass_samples_the_pixel_centre(
 
 
 @pytest.mark.render
+def test_the_heaviest_sea_fits_cycles_svm_stack() -> None:
+    """A shader past the SVM stack renders black, with one line in the log."""
+    scenario = variant(
+        UNDERWAY,
+        sea={"swell": {"height_m": 2.0, "period_s": 10.0}, "slick_cover": 0.2},
+        sky={"visibility_km": None},
+        outputs={"format": "exr"},
+    )
+    built = scene.build(scenario, "eo")
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    sc = bpy.context.scene
+    sc.camera = built.cameras[mount.name]
+    sc.cycles.samples = 1
+    width, height = 32, 24
+    sc.render.resolution_x, sc.render.resolution_y = width, height
+    sc.render.filepath = str(Path(bpy.app.tempdir) / "svm_stack")
+    bpy.ops.render.render(write_still=True)
+    frame = render._pixels(Path(sc.render.filepath + ".exr"))[::-1, :, :3].max(axis=2)
+
+    calibration = scene.calibrate(built, mount, "")
+    scale = (calibration.width_px - 1) / (width - 1)
+    u, v = np.meshgrid(np.arange(width) * scale, np.arange(height) * scale)
+    rays = np.linalg.inv(calibration.K) @ np.stack([u, v, np.ones_like(u)]).reshape(
+        3, -1
+    )
+    down = (np.array(calibration.extrinsics["world"])[:3, :3] @ rays)[2]
+    sea = frame.ravel()[down / np.linalg.norm(rays, axis=0) < -0.05]
+    assert sea.size, "no row below the horizon: the assertion would pass on nothing"
+    assert np.median(sea) > 0.01 * np.median(frame)
+
+
+@pytest.mark.render
 def test_each_box_holds_its_hull_centre_through_the_calibration(
     tmp_path: Path,
 ) -> None:
