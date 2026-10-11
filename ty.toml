@@ -16,7 +16,6 @@ include = [
     "seascape/cli.py",
     "seascape/video.py",
     "docs/skies.py",
-    "docs/visibility.py",
     "tests/test_cli.py",
     "tests/test_scene.py",
     "tests/test_twin_pod.py",
