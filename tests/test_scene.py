@@ -128,14 +128,17 @@ def counts() -> tuple[int, ...]:
 
 
 def drawn(
-    scenario: Scenario,
+    scenario: Scenario, kept: tuple[waves.Wave, ...] | None = None
 ) -> list[tuple[waves.Wave, bpy.types.NodeInputs, int]]:
     """Each wave of the built sea's normal, the inputs of the node drawing it, and its
-    lane there. Every other lane must be empty."""
+    lane there, of the scenario's field or the `kept` part of it. Every other lane must
+    be empty."""
     nodes = bpy.data.materials["sea"].node_tree.nodes
-    triples = sea._triples(scene.wind_waves(scenario)) + sea._triples(
-        scene.swell_waves(scenario)
-    )
+    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    if kept is not None:
+        wind = tuple(w for w in wind if w in kept)
+        swell = tuple(w for w in swell if w in kept)
+    triples = sea._triples(wind) + sea._triples(swell)
     found = []
     for i, triple in enumerate(triples):
         inputs = nodes[f"waves_{i}"].inputs
@@ -1074,6 +1077,39 @@ class TestSeaEvolves:
         swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
         scene.build(swell, "eo")
         assert [wave for wave, _, _ in drawn(swell)] == list(scene.wave_field(swell))
+
+    def test_the_finest_pixel_is_the_camera_s_height_times_its_angle(self) -> None:
+        scenario = load(OPEN_SEA)
+        built = scene.build(scenario, "eo")
+        (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
+        pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+        assert scene._finest_footprint_m(
+            scenario, "eo", built.cameras
+        ) == pytest.approx(mount.rig.height_m * pixel_rad, rel=1e-6)
+
+    def test_the_finest_pixel_is_taken_at_the_lowest_heave(self) -> None:
+        heave = {"amplitude_m": 2.0, "period_s": 4.0}
+        scenario = variant(ownship={"heave": heave}, outputs={"duration_s": 4.0})
+        built = scene.build(scenario, "eo")
+        (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
+        pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
+        lowest = mount.rig.height_m - heave["amplitude_m"]
+        assert scene._finest_footprint_m(
+            scenario, "eo", built.cameras
+        ) == pytest.approx(lowest * pixel_rad, rel=1e-3)
+
+    def test_only_a_culled_build_leaves_out_what_its_cameras_cannot_resolve(
+        self,
+    ) -> None:
+        """Probes and a hand-moved camera need every wave in a default build."""
+        scenario = variant(rig={"height_m": 100.0})
+        field = scene.wave_field(scenario)
+        scene.build(scenario, "eo")
+        assert [w for w, _, _ in drawn(scenario)] == list(field)
+        built = scene.build(scenario, "eo", cull=True)
+        finest = scene._finest_footprint_m(scenario, "eo", built.cameras)
+        kept = [w for w, _, _ in drawn(scenario, waves.resolvable(field, finest))]
+        assert kept == list(waves.resolvable(field, finest)) != list(field)
 
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(load(OPEN_SEA), "eo")
