@@ -638,7 +638,8 @@ class TestCamera:
     def test_the_glare_scatters_its_share_in_harvey_s_form(self) -> None:
         """A sun of about a pixel on black sky: the light beyond a few pixels of it is
         the glare's share of the kernel's weight there."""
-        width, height, beyond_px = 384, 216, 6
+        # Half-resolution glare blurs the first few pixels round the sun.
+        width, height, beyond_px = 384, 216, 12
         frame = self.through_the_camera(
             0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
         )
