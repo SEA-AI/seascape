@@ -23,13 +23,12 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# Judgement: about 1 arcmin a pixel, so Ricco's area, 2.4 arcmin across (Tuten et al.
-# 2018), covers π·1.2² ≈ 4 pixels.
+# Judgement: about 1 arcmin a pixel. Ricco's area is 2.4 arcmin across with corrected
+# optics (Tuten et al. 2018), π·1.2² ≈ 4.5 pixels, taken as 4.
 RICCO_PX = 4
 # The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
 JND_DELTA_E = 2.3
-# Judgement: enough of a row for its median to outvote a wave, near enough to be the
-# target's own background.
+# Judgement: the narrowest flank, enough of a row for its median to outvote a wave.
 FLANK_PX = 8
 
 
@@ -100,7 +99,7 @@ class Labels(Model):
         radius_m: float,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the picture a viewer sees, or an exr's radiance, both top row first."""
+        the image as written, both top row first."""
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -114,7 +113,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        # An exr's radiance has no display to judge by.
+        # Only an 8-bit delivered frame is judged; exr and 16-bit png keep every box.
         judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
@@ -124,7 +123,8 @@ class Labels(Model):
             if not len(xs):
                 continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-            window = np.s_[y0 : y1 + 1, max(x0 - FLANK_PX, 0) : x1 + 1 + FLANK_PX]
+            reach = flank_px(x1 - x0 + 1)
+            window = np.s_[y0 : y1 + 1, max(x0 - reach, 0) : x1 + 1 + reach]
             if judged and not visible(index[window], frame[window], target.pass_index):
                 continue
             east, north = np.subtract(target.centre_m, at)
@@ -210,13 +210,17 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
     """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
-    frame."""
+    frame: an order-statistic CFAR test (Rohling 1983), its largest differences from
+    the background against the flanks' own at the same order, by a JND."""
     lab = cielab(frame)
-    behind = background(index, lab, pass_index)
+    mask = index == pass_index
+    beside = flanks(index, pass_index)
+    behind = background(lab, mask, beside)
     if behind is None:
         return True
-    mask = index == pass_index
-    return ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1)) >= JND_DELTA_E
+    target = ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1))
+    texture = np.linalg.norm(lab[beside] - behind[beside], axis=1)
+    return target >= JND_DELTA_E + clutter(texture, int(mask.sum()))
 
 
 def cielab(frame: np.ndarray) -> np.ndarray:
@@ -227,25 +231,30 @@ def cielab(frame: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
 
 
+def flank_px(span_px: int) -> int:
+    """Each flank's width beside a row `span_px` wide: half the span, so flank and
+    target pixels number about the same, and never under FLANK_PX."""
+    return max(FLANK_PX, -(-span_px // 2))
+
+
 def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
-    """Up to FLANK_PX pixels left and right of the target on each of its rows that no
-    object, the ownship included, covers."""
+    """The pixels beside the target on each of its rows that no object, the ownship
+    included, covers."""
     mask = index == pass_index
     beside = np.zeros_like(mask)
     for y in np.flatnonzero(mask.any(axis=1)):
         xs = np.flatnonzero(mask[y])
-        beside[y, max(xs[0] - FLANK_PX, 0) : xs[0]] = True
-        beside[y, xs[-1] + 1 : xs[-1] + 1 + FLANK_PX] = True
+        reach = flank_px(xs[-1] - xs[0] + 1)
+        beside[y, max(xs[0] - reach, 0) : xs[0]] = True
+        beside[y, xs[-1] + 1 : xs[-1] + 1 + reach] = True
     return beside & (index == 0)
 
 
 def background(
-    index: np.ndarray, lab: np.ndarray, pass_index: int
+    lab: np.ndarray, mask: np.ndarray, beside: np.ndarray
 ) -> np.ndarray | None:
-    """At each of the target's pixels, the median Lab of its row's flanks, or of the
-    nearest row's that has any; NaN elsewhere. None if no row has a flank."""
-    mask = index == pass_index
-    beside = flanks(index, pass_index)
+    """Along each of the target's rows, the median Lab of its flanks, or of the nearest
+    row's that has any; NaN elsewhere. None if no row has a flank."""
     rows = np.flatnonzero(mask.any(axis=1))
     medians = {y: np.median(lab[y, beside[y]], axis=0) for y in rows if beside[y].any()}
     if not medians:
@@ -253,7 +262,7 @@ def background(
     measured = np.array(list(medians))
     behind = np.full(lab.shape, np.nan, np.float32)
     for y in rows:
-        behind[y, mask[y]] = medians[measured[np.abs(measured - y).argmin()]]
+        behind[y] = medians[measured[np.abs(measured - y).argmin()]]
     return behind
 
 
@@ -261,6 +270,14 @@ def ricco(delta_e: np.ndarray) -> float:
     """The mean of the RICCO_PX largest; a target under RICCO_PX pixels pads with
     zeros."""
     return float(np.sort(delta_e)[-RICCO_PX:].sum() / RICCO_PX)
+
+
+def clutter(texture: np.ndarray, target_px: int) -> float:
+    """`ricco` of the background against itself: the mean of its largest in the share
+    RICCO_PX takes of the target's pixels, padded alike."""
+    k = min(RICCO_PX, target_px)
+    largest = max(1, round(k / target_px * len(texture)))
+    return float(np.sort(texture)[-largest:].mean() * k / RICCO_PX)
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:

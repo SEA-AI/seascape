@@ -350,21 +350,20 @@ def test_a_target_in_plain_sight_keeps_its_box_in_each_band(tmp_path: Path) -> N
 
 
 @pytest.mark.render
-def test_an_lwir_png_and_jpg_box_the_same_targets(tmp_path: Path) -> None:
-    found = {}
-    for fmt in ("jpg", "png"):
-        scenario = variant(
-            cameras={"ir": {"width_px": 160, "height_px": 128}},
-            # The far hull reads as warm as the sea behind it.
-            objects=[target("yacht", 300.0), target("yacht", 1000.0, 4.0, t_k=274.0)],
-            sky={"solar_gain_k": 0.0},
-            outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": fmt},
-        )
-        render.render(scenario, tmp_path / fmt)
-        truth = labels.Labels.model_validate_json(
-            (tmp_path / fmt / labels.FILENAME).read_text()
-        )
-        found[fmt] = truth.annotations
+@pytest.mark.parametrize(("fmt", "boxes"), [("jpg", 1), ("png", 2)])
+def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
+    tmp_path: Path, fmt: str, boxes: int
+) -> None:
+    """A 16-bit png keeps every box, as an exr does."""
+    scenario = variant(
+        cameras={"ir": {"width_px": 160, "height_px": 128}},
+        # The far hull reads as warm as the sea behind it.
+        objects=[target("yacht", 300.0), target("yacht", 1000.0, 4.0, t_k=274.0)],
+        sky={"solar_gain_k": 0.0},
+        outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": fmt},
+    )
 
-    assert len(found["jpg"]) == 1
-    assert found["png"] == found["jpg"]
+    render.render(scenario, tmp_path)
+
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    assert len(truth.annotations) == boxes

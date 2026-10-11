@@ -13,14 +13,6 @@ RADIUS_M = waves.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
 
 
-def grey(luminance: np.ndarray) -> np.ndarray:
-    return np.repeat(luminance[..., None], 3, axis=2)
-
-
-def shown(index: np.ndarray) -> np.ndarray:
-    return grey(np.where(index > 0, 1.0, 0.5))
-
-
 def camera(
     width: int = 64,
     height: int = 48,
@@ -70,7 +62,7 @@ def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     index[10:13, 20:25] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     (found,) = truth.annotations
     assert found.bbox == (20, 10, 5, 3)
@@ -83,7 +75,7 @@ def test_a_box_on_the_frame_edge_is_truncated() -> None:
     index[40:, 60:] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     assert truth.annotations[0].truncated
 
@@ -93,9 +85,7 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(
-        camera(), 0.0, index, shown(index), [target(1), target(2, "buoy", 6)], RADIUS_M
-    )
+    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2, "buoy", 6)], RADIUS_M)
 
     assert [a.name for a in truth.annotations] == ["t1"]
     assert [c.name for c in truth.categories] == ["ship"]
@@ -106,7 +96,7 @@ def test_targets_of_one_category_share_it() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1), target(2)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2)], RADIUS_M)
 
     assert {a.category_id for a in truth.annotations} == {1}
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
@@ -117,9 +107,7 @@ def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
     index[10, 10], index[20, 20] = 1, 2
     truth = labels.Labels()
 
-    truth.add(
-        camera(), 0.0, index, shown(index), [target(1, "buoy", 6), target(2)], RADIUS_M
-    )
+    truth.add(camera(), 0.0, index, FLAT, [target(1, "buoy", 6), target(2)], RADIUS_M)
 
     assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
     assert [a.category_id for a in truth.annotations] == [6, 1]
@@ -140,7 +128,7 @@ def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, shown(index), [target(1)], RADIUS_M)
+    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     (annotation,) = truth.annotations
     assert (annotation.heading_deg, annotation.dims_m) == (90.0, (20.0, 5.0, 4.0))
@@ -159,9 +147,7 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
     index[10, 10] = 1
     truth = labels.Labels()
 
-    truth.add(
-        camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, shown(index), [target(1)], RADIUS_M
-    )
+    truth.add(camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, FLAT, [target(1)], RADIUS_M)
 
     found = truth.annotations[0]
     assert (found.range_m, found.waterline_range_m, found.bearing_deg) == (
@@ -171,23 +157,21 @@ def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() ->
     )
 
 
-def square() -> np.ndarray:
+def square(left: int = 20) -> np.ndarray:
     index = np.zeros((48, 64), dtype=int)
-    index[10:20, 20:30] = 1
+    index[10:20, left : left + 10] = 1
     return index
 
 
-def boxed(
-    index: np.ndarray, frame: np.ndarray, band: str = "eo", pass_index: int = 1
-) -> bool:
+def boxed(index: np.ndarray, frame: np.ndarray, band: str = "eo") -> bool:
     truth = labels.Labels()
     cam = camera().model_copy(update={"band": band})
-    truth.add(cam, 0.0, index, frame, [target(pass_index)], RADIUS_M)
+    truth.add(cam, 0.0, index, frame, [target(1)], RADIUS_M)
     return bool(truth.annotations)
 
 
-def eight_bit(index: np.ndarray, values: dict[int, int], rest: int = 120) -> np.ndarray:
-    frame = np.full(index.shape, rest, np.uint8)
+def eight_bit(index: np.ndarray, values: dict[int, int]) -> np.ndarray:
+    frame = np.full(index.shape, 120, np.uint8)
     for pass_index, value in values.items():
         frame[index == pass_index] = value
     return frame
@@ -196,9 +180,15 @@ def eight_bit(index: np.ndarray, values: dict[int, int], rest: int = 120) -> np.
 # Against grey 120, OpenCV puts grey 125 at ΔE*ab 1.98 and 127 at 2.95.
 @pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
 @pytest.mark.parametrize("band", ["eo", "ir"])
-def test_a_target_is_seen_at_the_jnd(value: int, seen: bool, band: str) -> None:
-    index = square()
-    grey = eight_bit(index, {1: value})
+@pytest.mark.parametrize("left", [20, 2])
+def test_a_target_is_seen_at_the_jnd(
+    value: int, seen: bool, band: str, left: int
+) -> None:
+    """Its right flank covered by another object; at column 2 the frame's edge cuts its
+    left flank short."""
+    index = square(left)
+    index[10:20, left + 10 : left + 10 + labels.FLANK_PX] = 2
+    grey = eight_bit(index, {1: value, 2: 120})
     frame = grey if band == "ir" else cv2.cvtColor(grey, cv2.COLOR_GRAY2RGB)
 
     assert boxed(index, frame, band) is seen
@@ -211,6 +201,42 @@ def test_one_pixel_needs_the_contrast_of_four(value: int, seen: bool) -> None:
     index[20, 30] = 1
 
     assert boxed(index, eight_bit(index, {1: value})) is seen
+
+
+@pytest.mark.parametrize("size", [4, 8, 16, 32])
+@pytest.mark.parametrize(("offset", "seen"), [(0, False), (12, True)])
+def test_a_target_is_seen_only_above_the_texture_around_it(
+    size: int, offset: int, seen: bool
+) -> None:
+    """Grey noise of standard deviation 3; the target is a patch of it, brightened by
+    `offset`."""
+    rng = np.random.default_rng(size)
+    noise = np.rint(rng.normal(120.0, 3.0, (48, 96)))
+    index = np.zeros((48, 96), dtype=int)
+    index[8 : 8 + size, 32 : 32 + size] = 1
+    frame = np.clip(noise + offset * (index == 1), 0, 255).astype(np.uint8)
+
+    assert boxed(index, frame) is seen
+
+
+def test_a_wide_targets_flanks_reach_half_its_width() -> None:
+    """Texture further out than FLANK_PX still counts beside a 30 px hull."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10:20, 17:47] = 1
+    frame = eight_bit(index, {1: 127})
+    frame[10:20, 2:9] = frame[10:20, 55:62] = 140
+
+    assert not boxed(index, frame)
+
+
+def test_a_one_pixel_targets_texture_pads_as_its_contrast_does() -> None:
+    """Both are a quarter of one pixel's ΔE*ab."""
+    index = np.zeros((48, 64), dtype=int)
+    index[20, 30] = 1
+    frame = eight_bit(index, {1: 162})
+    frame[20, 31:39] = 130
+
+    assert boxed(index, frame)
 
 
 @pytest.mark.parametrize(("swapped", "seen"), [(False, False), (True, True)])
@@ -227,6 +253,19 @@ def test_each_row_is_judged_against_its_own_background(
     frame[15:20][index[15:20] == 1] = sea
 
     assert boxed(index, frame) is seen
+
+
+def test_a_glint_in_the_flank_does_not_move_the_background() -> None:
+    index = square()
+    frame = eight_bit(index, {})
+    frame[12, 31] = 255
+    lab = labels.cielab(frame)
+    mask = index == 1
+
+    behind = labels.background(lab, mask, labels.flanks(index, 1))
+
+    assert behind is not None
+    assert behind[mask] == pytest.approx(np.broadcast_to(lab[0, 0], (mask.sum(), 3)))
 
 
 def test_another_object_in_the_flank_is_not_background() -> None:
@@ -281,17 +320,6 @@ def test_a_row_with_no_flank_takes_the_nearest_rows_background(
     assert boxed(index, frame) is seen
 
 
-@pytest.mark.parametrize(("value", "seen"), [(125, False), (127, True)])
-def test_a_target_on_the_left_edge_is_judged_on_its_flanks(
-    value: int, seen: bool
-) -> None:
-    index = np.zeros((48, 64), dtype=int)
-    index[10:20, 2:12] = 1
-    index[10:20, 12:20] = 2
-
-    assert boxed(index, eight_bit(index, {1: value})) is seen
-
-
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
     """The horizon another way: the circle where rays from C touch the paraboloid,
     (x - cx)^2 + (y - cy)^2 = 2R cz + cx^2 + cy^2, projected. COCO pixels, by u."""
@@ -339,7 +367,7 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {"seed": seed}, "version": "x"})
-        truth.add(camera(), 0.0, index, shown(index), [target(1, *category)], RADIUS_M)
+        truth.add(camera(), 0.0, index, FLAT, [target(1, *category)], RADIUS_M)
         folders.append(tmp_path / str(seed))
         folders[-1].mkdir()
         truth.write(folders[-1])
@@ -367,7 +395,7 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
         index = np.zeros((48, 64), dtype=int)
         index[10, 10] = 1
         truth = labels.Labels(info={"scenario": {}})
-        truth.add(camera(), 0.0, index, shown(index), [target(1, name, 1)], RADIUS_M)
+        truth.add(camera(), 0.0, index, FLAT, [target(1, name, 1)], RADIUS_M)
         folders.append(tmp_path / name)
         folders[-1].mkdir()
         truth.write(folders[-1])

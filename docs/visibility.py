@@ -7,28 +7,58 @@ uv run python -m docs.visibility docs/visibility.png
 import sys
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 import bpy
-import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
+from docs.brand import FOCUS_RED, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
 from seascape import labels, render, scene
 from seascape.config import load
 
 SCENARIO = Path(__file__).with_name("visibility.toml")
-TILE_PX = (260, 200)
-PAD_PX, GAP_PX = 18, 20
-# The JND sits mid-scale.
-DELTA_E_MAX = 2 * labels.JND_DELTA_E
-MASK, FLANK, TOP, UNLIT = (213, 122, 46), (46, 134, 193), (36, 199, 150), (34, 34, 38)
-type Tile = tuple[Image.Image, str, tuple[str, str] | None]
+TILE_PX = (264, 158)
+PAD_PX = 20
+# Column widths: row label, frame, flanks, bars, verdict.
+COLUMNS_PX = (118, TILE_PX[0], TILE_PX[0], 290, 200)
+JND = labels.JND_DELTA_E
+STEPS = [
+    ("1  What the camera delivers", "the ship outlined"),
+    (
+        "2  The sea beside it",
+        f"{labels.FLANK_PX}+ px left and right on every row; their median is the "
+        "background",
+    ),
+    (
+        "3  How different, how noisy",
+        f"colour difference (ΔE*ab), strongest {labels.RICCO_PX} pixels",
+    ),
+    ("4  Verdict", ""),
+]
+HEADLINE = (
+    "Does the ship stand out from the sea beside it more than that sea varies on its "
+    "own?"
+)
+LEGEND = (
+    "ΔE*ab: colour difference as people perceive it (CIELAB). "
+    f"{JND}: the smallest difference people notice."
+)
 
 
-def shots(
-    out: Path,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[int, float]]:
+class Example(NamedTuple):
+    crop: np.ndarray  # the frame around the ship
+    without: np.ndarray  # the same, rendered without it
+    mask: np.ndarray
+    beside: np.ndarray
+    ship: float  # labels.ricco of the ship's ΔE*ab
+    sea: float  # labels.clutter of the flanks'
+    seen: bool
+    truth: float  # labels.ricco of the ship's ΔE*ab against the render without it
+    range_m: float
+
+
+def shots(out: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[int, float]]:
     """As `seascape render` renders it: the EO frame, the same with every target
     hidden, the object-index pass, all top row first, and each target's range by pass
     index.
@@ -63,164 +93,209 @@ def shots(
 
 
 def window(mask: np.ndarray) -> tuple[slice, slice]:
-    """Around the target and its flanks, in the tiles' aspect."""
+    """Around the ship and its flanks, in the tiles' aspect."""
     ys, xs = np.nonzero(mask)
+    span = np.ptp(xs) + 1
     aspect = TILE_PX[0] / TILE_PX[1]
-    w = max(np.ptp(xs) + 1 + 4 * labels.FLANK_PX, (np.ptp(ys) + 1 + 16) * aspect)
+    w = max(span + 2 * labels.flank_px(span) + 8, (np.ptp(ys) + 1 + 16) * aspect)
     h = w / aspect
     cx, cy = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2
     x0, y0 = max(round(cx - w / 2), 0), max(round(cy - h / 2), 0)
     return slice(y0, y0 + round(h)), slice(x0, x0 + round(w))
 
 
-def tile(rgb: np.ndarray) -> Image.Image:
-    return Image.fromarray(rgb).resize(TILE_PX, Image.Resampling.NEAREST)
-
-
-def tinted(
-    rgb: np.ndarray, where: np.ndarray, colour: tuple[int, int, int]
-) -> Image.Image:
-    out = rgb.copy()
-    out[where] = colour
-    return tile(out)
-
-
-def heat(delta_e: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    scaled = np.clip(np.nan_to_num(delta_e) / DELTA_E_MAX, 0, 1)
-    rgb = cv2.applyColorMap((255 * scaled).astype(np.uint8), cv2.COLORMAP_INFERNO)[
-        ..., ::-1
-    ]
-    rgb[~mask] = UNLIT
-    return rgb
-
-
-def verdict(score: float, seen: bool) -> tuple[str, str]:
-    return (
-        (f"{score:.2f} ΔE: box", OCEAN_TEAL)
-        if seen
-        else (f"{score:.2f} ΔE: no box", FOCUS_RED)
-    )
-
-
-def steps(
-    frame: np.ndarray, index: np.ndarray, without: np.ndarray, p: int, caption: str
-) -> list[Tile]:
-    """One target's tile in each step."""
+def example(
+    frame: np.ndarray, without: np.ndarray, index: np.ndarray, p: int, range_m: float
+) -> Example:
+    lab = labels.cielab(frame)
     mask = index == p
-    lab, lab_without = labels.cielab(frame), labels.cielab(without)
-    behind = labels.background(index, lab, p)
+    beside = labels.flanks(index, p)
+    behind = labels.background(lab, mask, beside)
     if behind is None:
         raise ValueError(f"target {p} has no background to show")
-    delta_e = np.where(mask, np.linalg.norm(lab - behind, axis=2), np.nan)
-    true_delta_e = np.where(mask, np.linalg.norm(lab - lab_without, axis=2), np.nan)
-    score, true_score = labels.ricco(delta_e[mask]), labels.ricco(true_delta_e[mask])
+    ship = labels.ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1))
+    texture = np.linalg.norm(lab[beside] - behind[beside], axis=1)
+    sea = labels.clutter(texture, int(mask.sum()))
     seen = labels.visible(index, frame, p)
-    if seen != (score >= labels.JND_DELTA_E):
-        raise ValueError("labels.visible and labels.ricco disagree")
-    filled = np.where(mask[..., None], np.nan_to_num(behind), lab)
-    rgb = cv2.cvtColor(filled.astype(np.float32), cv2.COLOR_Lab2RGB)
-    background = (255 * np.clip(rgb, 0, 1)).round().astype(np.uint8)
-    ys, xs = np.nonzero(mask)
-    largest = np.argsort(delta_e[mask])[-labels.RICCO_PX :]
-    marked = heat(delta_e, mask)
-    marked[ys[largest], xs[largest]] = TOP
-    crop = window(mask)
-
-    def at(image: np.ndarray) -> np.ndarray:
-        return image[crop]
-
-    return [
-        (tile(at(frame)), caption, None),
-        (tinted(at(frame), at(mask), MASK), caption, None),
-        (tinted(at(frame), at(labels.flanks(index, p)), FLANK), caption, None),
-        (tile(at(background)), caption, None),
-        (tile(at(heat(delta_e, mask))), caption, None),
-        (tile(at(marked)), caption, verdict(score, seen)),
-        (tile(at(without)), caption, None),
-        (
-            tile(at(heat(true_delta_e, mask))),
-            caption,
-            verdict(true_score, true_score >= labels.JND_DELTA_E),
-        ),
-    ]
-
-
-def card(title: str, tiles: list[Tile], note: str | None = None) -> Image.Image:
-    w = 3 * PAD_PX + 2 * TILE_PX[0]
-    h = 2 * PAD_PX + 34 + TILE_PX[1] + 56
-    img = Image.new("RGB", (w, h), FOG_WHITE)
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle(
-        [0, 0, w - 1, h - 1], radius=10, fill="white", outline=SKY_GREY
+    # The figure's arithmetic and the rule must not drift apart.
+    if seen != (ship >= labels.JND_DELTA_E + sea):
+        raise ValueError("labels.visible disagrees with its parts")
+    truth = labels.ricco(
+        np.linalg.norm(lab[mask] - labels.cielab(without)[mask], axis=1)
     )
-    draw.text((PAD_PX, PAD_PX), title, fill=NIGHT_BLUE, font=font(20, "Bold"))
-    y = PAD_PX + 34
-    for i, (picture, caption, said) in enumerate(tiles):
-        x = PAD_PX + i * (TILE_PX[0] + PAD_PX)
-        img.paste(picture, (x, y))
-        centre = x + TILE_PX[0] / 2
-        draw.text(
-            (centre, y + TILE_PX[1] + 8),
-            caption,
-            fill=NIGHT_BLUE,
-            font=font(16),
-            anchor="mt",
-        )
-        if said is not None:
-            text, colour = said
-            draw.text(
-                (centre, y + TILE_PX[1] + 32),
-                text,
-                fill=colour,
-                font=font(18, "Bold"),
-                anchor="mt",
-            )
-    if note:
-        draw.text(
-            (w / 2, y + TILE_PX[1] + 34),
-            note,
-            fill=SKY_GREY,
-            font=font(15),
-            anchor="mt",
-        )
+    crop = window(mask)
+    return Example(
+        frame[crop],
+        without[crop],
+        mask[crop],
+        beside[crop],
+        ship,
+        sea,
+        seen,
+        truth,
+        range_m,
+    )
+
+
+def tile(rgb: np.ndarray, size: tuple[int, int] = TILE_PX) -> Image.Image:
+    return Image.fromarray(rgb).resize(size, Image.Resampling.NEAREST)
+
+
+def outlined(e: Example) -> Image.Image:
+    img = tile(e.crop)
+    ys, xs = np.nonzero(e.mask)
+    sx, sy = TILE_PX[0] / e.mask.shape[1], TILE_PX[1] / e.mask.shape[0]
+    box = [(xs.min() - 2) * sx, (ys.min() - 2) * sy, (xs.max() + 3) * sx]
+    ImageDraw.Draw(img).rectangle(
+        [*box, (ys.max() + 3) * sy], outline=NIGHT_BLUE, width=2
+    )
     return img
 
 
-TITLES = [
-    "1. The 8-bit image, as delivered",
-    "2. The target's pixels, from the object-index pass",
-    f"3. Each row: up to {labels.FLANK_PX} px left and right of it",
-    "4. Their median is the background, row by row",
-    "5. ΔE*ab per pixel against it (brighter is more)",
-    f"6. Do the {labels.RICCO_PX} largest average ≥ {labels.JND_DELTA_E} ΔE?",
-    "7. Check: the same scene, rendered without the targets",
-    "8. ΔE against the true background, pooled alike",
-]
+def flanked(e: Example) -> Image.Image:
+    teal = np.array(Image.new("RGB", (1, 1), OCEAN_TEAL))[0, 0]
+    shaded = e.crop.astype(float)
+    shaded[e.beside] = 0.6 * shaded[e.beside] + 0.4 * teal
+    return tile(shaded.round().astype(np.uint8))
+
+
+def wrap(draw: ImageDraw.ImageDraw, text: str, size: int, width: int) -> str:
+    lines = [""]
+    for word in text.split():
+        line = f"{lines[-1]} {word}".strip()
+        if lines[-1] and draw.textlength(line, font=font(size)) > width:
+            lines.append(word)
+        else:
+            lines[-1] = line
+    return "\n".join(lines)
+
+
+def bars(e: Example) -> Image.Image:
+    """Both differences on one axis from zero, and the red rule a ship must pass."""
+    w, h = COLUMNS_PX[3], TILE_PX[1]
+    img = Image.new("RGB", (w, h), "white")
+    draw = ImageDraw.Draw(img)
+    zero, need = 104, e.sea + JND
+    top = 1.1 * max(e.ship, need)
+
+    def x(value: float) -> float:
+        return zero + (w - zero - 4) * value / top
+
+    for i, (name, value, colour) in enumerate(
+        (("ship vs sea", e.ship, NIGHT_BLUE), ("sea vs itself", e.sea, SKY_GREY))
+    ):
+        y = 24 + 50 * i
+        draw.text((0, y), name, fill=NIGHT_BLUE, font=font(15))
+        draw.text((0, y + 18), f"{value:.2f}", fill=SKY_GREY, font=font(14))
+        draw.rectangle([zero, y + 4, max(x(value), zero + 1), y + 30], fill=colour)
+    draw.line([zero, 14, zero, 124], fill=NIGHT_BLUE, width=1)
+    draw.text((zero, 128), "0", fill=SKY_GREY, font=font(13), anchor="mt")
+    rule = x(need)
+    draw.line([rule, 0, rule, 124], fill=FOCUS_RED, width=2)
+    label = f"needed to be seen  {need:.2f}"
+    if rule + 4 + draw.textlength(label, font=font(14)) > w:
+        draw.text((rule - 4, 0), label, fill=FOCUS_RED, font=font(14), anchor="rt")
+    else:
+        draw.text((rule + 4, 0), label, fill=FOCUS_RED, font=font(14), anchor="lt")
+    return img
+
+
+def verdict(e: Example) -> Image.Image:
+    w = COLUMNS_PX[4]
+    img = Image.new("RGB", (w, TILE_PX[1]), "white")
+    draw = ImageDraw.Draw(img)
+    draw.text(
+        (0, 10),
+        "box" if e.seen else "no box",
+        fill=NIGHT_BLUE if e.seen else FOCUS_RED,
+        font=font(34, "Medium"),
+    )
+    words = (
+        f"stands out by more than the sea's own variation + {JND}"
+        if e.seen
+        else "does not"
+    )
+    text = wrap(draw, words, 16, w)
+    draw.multiline_text((0, 60), text, fill=NIGHT_BLUE, font=font(16), spacing=3)
+    bottom = draw.multiline_textbbox((0, 60), text, font=font(16), spacing=3)[3]
+    sign = "≥" if e.seen else "<"
+    draw.text(
+        (0, bottom + 10),
+        f"{e.ship:.2f} {sign} {e.sea:.2f} + {JND}",
+        fill=SKY_GREY,
+        font=font(14),
+    )
+    return img
 
 
 def main(out: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         frame, without, index, ranges = shots(Path(tmp))
-    columns = [
-        steps(frame, index, without, p, f"{r / 1000:.1f} km away")
-        for p, r in sorted(ranges.items())
-    ]
-    clear = cv2.dilate((index > 0).astype(np.uint8), np.ones((41, 41), np.uint8)) == 0
-    shift = np.linalg.norm(labels.cielab(frame) - labels.cielab(without), axis=2)
-    note = (
-        f"Away from the targets the frames differ by ΔE {np.median(shift[clear]):.2f}."
-    )
-    cards = [
-        card(title, [column[i] for column in columns], note if i == 6 else None)
-        for i, title in enumerate(TITLES)
-    ]
-    w, h = cards[0].size
-    sheet = Image.new("RGB", (2 * w + 3 * GAP_PX, 4 * h + 5 * GAP_PX), FOG_WHITE)
-    for i, c in enumerate(cards):
-        sheet.paste(
-            c, (GAP_PX + (i % 2) * (w + GAP_PX), GAP_PX + (i // 2) * (h + GAP_PX))
+    examples = [example(frame, without, index, p, r) for p, r in sorted(ranges.items())]
+    haze_km = load(SCENARIO).sky.visibility_km
+    xs = np.cumsum([PAD_PX, *(c + PAD_PX for c in COLUMNS_PX)])
+    width = int(xs[-1])
+    sheet = Image.new("RGB", (width, 2000), "white")
+    draw = ImageDraw.Draw(sheet)
+    y = PAD_PX
+    draw.text((PAD_PX, y), HEADLINE, fill=NIGHT_BLUE, font=font(24, "Medium"))
+    y += 32
+    draw.text((PAD_PX, y), "If not, it gets no box.", fill=SKY_GREY, font=font(17))
+    y += 40
+    for x, (title, caption), column in zip(
+        xs[1:-1], STEPS, COLUMNS_PX[1:], strict=True
+    ):
+        draw.text((x, y), title, fill=NIGHT_BLUE, font=font(18, "Medium"))
+        draw.multiline_text(
+            (x, y + 24), wrap(draw, caption, 14, column), fill=SKY_GREY, font=font(14)
         )
-    sheet.quantize(128, dither=Image.Dither.NONE).save(out, optimize=True)
+    y += 66
+    for e in examples:
+        draw.text(
+            (PAD_PX, y + 4),
+            "Visible" if e.seen else "Lost in haze",
+            fill=NIGHT_BLUE,
+            font=font(18, "Medium"),
+        )
+        draw.multiline_text(
+            (PAD_PX, y + 30),
+            f"{e.range_m / 1000:.1f} km away,\n{haze_km:g} km visibility",
+            fill=SKY_GREY,
+            font=font(14),
+        )
+        panels = (outlined(e), flanked(e), bars(e), verdict(e))
+        for x, panel in zip(xs[1:-1], panels, strict=True):
+            sheet.paste(panel, (int(x), y))
+        y += TILE_PX[1] + PAD_PX
+    y += 4
+    draw.text(
+        (PAD_PX, y),
+        "Check: the same scene rendered without the ship",
+        fill=NIGHT_BLUE,
+        font=font(18, "Medium"),
+    )
+    y += 30
+    small = (TILE_PX[0] // 2, TILE_PX[1] // 2)
+    x = PAD_PX
+    for e in examples:
+        sheet.paste(tile(e.without, small), (x, y))
+        same = (e.truth >= JND + e.sea) == e.seen
+        text = f"true difference {e.truth:.2f} · " + (
+            "same verdict" if same else "a different verdict"
+        )
+        draw.text(
+            (x + small[0] + 12, y + small[1] // 2),
+            text,
+            fill=NIGHT_BLUE,
+            font=font(16),
+            anchor="lm",
+        )
+        x += small[0] + 12 + int(draw.textlength(text, font=font(16))) + 3 * PAD_PX
+    y += small[1] + PAD_PX
+    draw.text((PAD_PX, y), LEGEND, fill=SKY_GREY, font=font(14))
+    y += 18 + PAD_PX
+    sheet = sheet.crop((0, 0, width, y))
+    sheet.quantize(256, dither=Image.Dither.NONE).save(out, optimize=True)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Its CIELAB difference from the median background beside it on each row, averaged over its largest pixels within the fovea's Ricco area (Tuten et al. 2018), must reach a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994). The rule reads the 8-bit frame, EO or LWIR: an LWIR png is judged on the AGC's grey before compression, as a jpg is, and an exr keeps every box.
+A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. On each of its rows, its CIELAB difference from the median background beside it, over its largest pixels within the fovea's Ricco area (Tuten et al. 2018), must exceed the background's own at the same order statistic by a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994): an order-statistic CFAR test (Rohling 1983), so the texture of the sea or sky earns no box. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
 
 ![How a target's visibility is decided, checked against the scene rendered without it](visibility.png)
 
