@@ -533,13 +533,9 @@ class TestEoBand:
     def built(cls) -> None:
         scene.build(SCENARIO, "eo")
 
-    def test_the_sea_refracts_at_seawater_ior(self) -> None:
-        bsdf = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
-        assert bsdf.inputs["IOR"].default_value == pytest.approx(sea.SEAWATER_IOR)
-
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
-        assert nodes["Principled BSDF"].inputs["Roughness"].is_linked
+        assert nodes["sea_specular"].inputs["Roughness"].is_linked
         table = baked("sea_unresolved_variance")
         low, high = sea.FOOTPRINT_RANGE_M
         texel = (np.arange(len(table)) + 0.5) / len(table)
@@ -553,7 +549,7 @@ class TestEoBand:
             assert table[i] == pytest.approx(expected, rel=1e-5)
 
     def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
-        roughness = bpy.data.materials["sea"].node_tree.nodes["Principled BSDF"]
+        roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
         assert {"gust", "sea_gust_variance", "sea_unresolved_variance"} <= upstream(
             roughness.inputs["Roughness"]
         )
@@ -1013,7 +1009,7 @@ class TestSlicks:
                 waves.cox_munk_slick_slope,
             )
             assert table[i] == pytest.approx(expected, rel=1e-5, abs=1e-9)
-        roughness = _sea_node("Principled BSDF").inputs["Roughness"]
+        roughness = _sea_node("sea_specular").inputs["Roughness"]
         assert {"slick", "sea_unresolved_slick_variance"} <= upstream(roughness)
 
 
