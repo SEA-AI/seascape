@@ -47,7 +47,7 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         [(f"wind {u} m/s", [f"sea.wind_speed_mps = {u}.0"]) for u in (2, 7, 14)],
     ),
     "eo-ir": (
-        [*SKIES["cumulus"], f"objects = [{SHIP % 2000.0}]"],
+        [*SKIES["cumulus"], f"objects = [{SHIP % 1200.0}]"],
         [
             (name, [f'outputs.bands = ["{band}"]'])
             for name, band in (("EO", "eo"), ("LWIR", "ir"))
@@ -65,7 +65,7 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
         ],
     ),
     "haze": (
-        [f"objects = [{SHIP % 2000.0}]"],
+        [f"objects = [{SHIP % 1200.0}]"],
         [(f"visibility {v} km", [f"sky.visibility_km = {v}.0"]) for v in (42, 10, 3)],
     ),
     "horizon": (

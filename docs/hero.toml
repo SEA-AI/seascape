@@ -10,8 +10,8 @@ sun_bearing_deg = 150.0
 
 [[objects]]
 preset = "multipurpose_freighter"
-range_m = 2000.0
-bearing_deg = 8.0
+range_m = 1200.0
+bearing_deg = 5.0
 heading_deg = 250.0
 
 [[objects]]
