@@ -13,7 +13,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
 from seascape import agc, panorama, scene
-from seascape.assets import manifest
+from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
 from seascape.config import Mount, Rig, Scenario, load
 from seascape.montage import INK
@@ -210,7 +210,9 @@ def test_a_waterline_rings_its_hull_within_its_length(built: scene.Built) -> Non
             centre = np.array(anchor.matrix_world.translation.xy)
             reach = np.linalg.norm(scene.waterline_m(anchor) - centre, axis=1)
 
-            assert 0.0 < reach.max() <= manifest()[asset].length_m / 2, anchor.name
+            hull = manifest()[asset]
+            assert isinstance(hull, Hull), asset
+            assert 0.0 < reach.max() <= hull.length_m / 2, anchor.name
 
 
 def test_a_calibration_with_fields_it_does_not_know_still_reads(

@@ -1,6 +1,8 @@
 """The command line."""
 
 import os
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -51,6 +53,21 @@ def test_a_scenario_mistake_is_an_error_on_stderr_and_exit_1(run: Run) -> None:
     assert failed.stderr.startswith("Error: ")
     assert "Traceback" not in failed.stderr
     assert not failed.stdout
+
+
+def test_schema_and_a_scenario_mistake_never_load_blender() -> None:
+    # A fresh interpreter: this one has bpy loaded already.
+    code = f"""
+import sys
+from click.testing import CliRunner
+from seascape import cli
+run = CliRunner().invoke
+mistake = ["build", {str(BASELINE)!r}, "--set", "rigs.bow.height_m = -1"]
+assert run(cli.main, ["schema"]).exit_code == 0
+assert run(cli.main, mistake).exit_code == 1
+assert "bpy" not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 @pytest.mark.parametrize(

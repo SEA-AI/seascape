@@ -1,32 +1,11 @@
 [environment]
+# bpy, bpy_extras and mathutils are compiled and ship no stubs. typings/ makes only
+# them Any, so every rule still checks the code around them.
+extra-paths = ["typings"]
 python-version = "3.13"
 
 [src]
 include = ["seascape", "tests", "docs"]
-
-# bpy and mathutils are compiled modules that ship no stubs, so every attribute on them
-# is unresolved. Scoped to the files that touch Blender so the rule still applies
-# everywhere else.
-[[overrides]]
-include = [
-    "seascape/blend.py",
-    "seascape/render.py",
-    "seascape/scene.py",
-    "seascape/sea.py",
-    "seascape/cli.py",
-    "seascape/video.py",
-    "docs/skies.py",
-    "docs/visibility.py",
-    "tests/test_cli.py",
-    "tests/test_scene.py",
-    "tests/test_twin_pod.py",
-    "tests/test_render.py",
-    "tests/test_render_drift.py",
-]
-
-[overrides.rules]
-unresolved-attribute = "ignore"
-unresolved-import = "ignore"
 
 # matplotlib draws the docs' charts and is run with `uv run --with`, not installed.
 [[overrides]]
