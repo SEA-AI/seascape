@@ -64,10 +64,18 @@ def test_fetch_downloads_once(one: Path) -> None:
     assert assets.fetch("ship") == first
 
 
-def test_fetch_rejects_a_corrupt_cache(one: Path) -> None:
-    assets.fetch("ship").write_bytes(b"tampered")
+def test_fetch_replaces_a_cache_that_misses_the_digest(one: Path) -> None:
+    assets.fetch("ship").write_bytes(b"an older mesh")
+    assert assets.fetch("ship").read_bytes() == BODY
+
+
+def test_fetch_keeps_a_stale_cache_when_the_download_fails(one: Path) -> None:
+    cached = assets.fetch("ship")
+    cached.write_bytes(b"an older mesh")
+    one.write_bytes(b"a different mesh")
     with pytest.raises(ValueError, match="manifest says"):
         assets.fetch("ship")
+    assert cached.read_bytes() == b"an older mesh"
 
 
 def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:

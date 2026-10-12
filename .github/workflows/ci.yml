@@ -30,7 +30,7 @@ jobs:
 
       - run: uv sync --locked
 
-      # fetch verifies every asset's sha256, so a stale cache fails rather than passes.
+      # fetch downloads again any cached asset that misses its sha256.
       - uses: actions/cache@v6
         with:
           path: ~/.cache/seascape
