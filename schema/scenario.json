@@ -1460,6 +1460,7 @@
           "default": 7.0,
           "anyOf": [
             {
+              "maximum": 21.0,
               "minimum": 0.0,
               "type": "number"
             },
