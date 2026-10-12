@@ -106,6 +106,36 @@ def _electrons(
     )
 
 
+def _read(
+    tree: bpy.types.NodeTree,
+    x: Socket,
+    index: int,
+    seeded: Socket,
+    frame: Socket,
+    *noise: Socket,
+) -> Socket:
+    """One colour's read of a mean `x`, in units of white, averaged over its sites
+    in an output pixel. Poissonian-Gaussian (Foi et al. 2008): shot noise of variance
+    shot * x, then the well fills, then dark noise of variance dark; an average of n
+    sites divides both by n."""
+    shot, well, dark, levels = noise
+    sites = _value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
+    # Two normals per colour and frame: W at 8f + 2i and 8f + 2i + 0.5.
+    w = sea._math(tree, "MULTIPLY_ADD", frame, 8.0, 2.0 * index)
+    shot_noise, dark_noise = _gaussian(tree, seeded, w)
+    shot = sea._math(tree, "DIVIDE", shot, sites)
+    dark = sea._math(tree, "SQRT", sea._math(tree, "DIVIDE", dark, sites))
+    collected = _electrons(tree, x, shot, well, shot_noise)
+    noisy = sea._math(tree, "MULTIPLY_ADD", dark, dark_noise, collected)
+    counts = sea._math(tree, "ROUND", sea._math(tree, "MULTIPLY", noisy, levels))
+    return sea._math(
+        tree,
+        "MINIMUM",
+        sea._math(tree, "MAXIMUM", sea._math(tree, "DIVIDE", counts, levels), 0.0),
+        1.0,
+    )
+
+
 def _gaussian(
     tree: bpy.types.NodeTree, pixel: Socket, w: Socket
 ) -> tuple[Socket, Socket]:
@@ -158,45 +188,25 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
         tree, "ADD", pixel, _combine(tree, 0.0, 0.0, _value(tree, "sensor.seed"))
     )
     frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
-    shot_noise, dark_noise = _gaussian(
-        tree, seeded, sea._math(tree, "MULTIPLY", frame, 2.0)
-    )
-    # Poissonian-Gaussian (Foi et al. 2008), in units of white: shot noise of
-    # variance shot * x, then the well fills, then dark noise of variance dark. A
-    # pixel reads one channel, so the channels share its draws.
     shot, well = _value(tree, "sensor.shot"), _value(tree, "sensor.well", 1.0)
-    collected = [
-        _electrons(tree, channel, shot, well, shot_noise)
-        for channel in _channels(tree, image)
-    ]
-    mosaic = sea._math(
+    dark, levels = _value(tree, "sensor.dark"), _value(tree, "sensor.levels", 4095.0)
+    raw = _combine(
         tree,
-        "ADD",
-        sea._math(tree, "MULTIPLY", collected[0], red),
-        sea._math(
-            tree,
-            "ADD",
-            sea._math(tree, "MULTIPLY", collected[1], green),
-            sea._math(tree, "MULTIPLY", collected[2], blue),
+        *(
+            _read(tree, x, index, seeded, frame, shot, well, dark, levels)
+            for index, x in enumerate(_channels(tree, image))
         ),
     )
-    dark = sea._math(tree, "SQRT", _value(tree, "sensor.dark"))
-    noisy = sea._math(tree, "MULTIPLY_ADD", dark, dark_noise, mosaic)
-    levels = _value(tree, "sensor.levels", 4095.0)
-    counts = sea._math(tree, "ROUND", sea._math(tree, "MULTIPLY", noisy, levels))
-    raw = sea._math(
-        tree,
-        "MINIMUM",
-        sea._math(tree, "MAXIMUM", sea._math(tree, "DIVIDE", counts, levels), 0.0),
-        1.0,
-    )
-    # Normalized convolution (Knutsson & Westin 1993): the samples' bilinear over the
-    # site masks', so a border site averages only the neighbours it has.
+    # A sensor at the output's pitch reads one colour a pixel: its sites, then a
+    # bilinear demosaic, normalized (Knutsson & Westin 1993) so a border site
+    # averages only the neighbours it has. A finer one, demosaiced and scaled down
+    # by the ISP, reads each colour averaged over its sites.
     masks = _rgb(tree, red, green, blue)
-    sites = sea._vector(tree, "SCALE", masks, raw)
+    sites = sea._vector(tree, "MULTIPLY", masks, raw)
     demosaiced = sea._vector(
         tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks)
     )
+    demosaiced = _switch(tree, "sensor.mosaic", raw, demosaiced)
     gains = _combine(
         tree,
         _value(tree, "sensor.wb_r", 1.0),
@@ -257,3 +267,10 @@ def respond(tree: bpy.types.NodeTree, camera: Camera, name: str, seed: int) -> N
     for channel, gain in zip("rgb", gains, strict=True):
         _set(tree, f"sensor.wb_{channel}", gain / min(gains))
     _set(tree, "sensor.sharpen", camera.processing.sharpen)
+    # Sites of the sensor across an output pixel. ponytail: below 2 the sensor
+    # mosaics at the output's pitch; a scale between would need the mosaic resampled.
+    k = (sensor.width_px or camera.width_px) / camera.width_px
+    _toggle(tree, "sensor.mosaic", k < 2)
+    # RGGB: a quarter of a pixel's sites read red, half green, a quarter blue.
+    for channel, share in zip("rgb", (0.25, 0.5, 0.25), strict=True):
+        _set(tree, f"sensor.sites_{channel}", 1.0 if k < 2 else share * k * k)

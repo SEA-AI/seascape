@@ -739,6 +739,27 @@ class TestSensor:
         assert not np.array_equal(red[:, 0], red[:, 1])
         assert not np.array_equal(red[-1], red[-2])
 
+    def test_a_sensor_twice_as_fine_reads_each_colour_over_its_sites(self) -> None:
+        """Scaled down 2x, a pixel averages one red, two green and one blue site:
+        green's noise falls by sqrt(2), and no demosaic spreads it to neighbours."""
+        full_well_e, dark_e = 400.0, 4.0
+        width, _ = self.SIZE
+        frame = self.through(
+            (1.0, 1.0, 1.0),
+            sensor={
+                "full_well_e": full_well_e,
+                "dark_noise_e": dark_e,
+                "width_px": 2 * width,
+            },
+        )
+        x = scene.MID_GREY
+        site = math.sqrt(x / full_well_e + (dark_e / full_well_e) ** 2)
+        red, green = frame[..., 0], frame[..., 1]
+        assert red.std() == pytest.approx(site, rel=0.1)
+        assert green.std() == pytest.approx(site / math.sqrt(2), rel=0.1)
+        across = np.corrcoef(green[:, :-1].ravel(), green[:, 1:].ravel())[0, 1]
+        assert abs(across) < 0.1
+
     def test_a_flat_colour_survives_the_mosaic(self) -> None:
         colour = (0.8, 0.4, 0.2)
         frame = self.through(colour, sensor={"full_well_e": 1e12})

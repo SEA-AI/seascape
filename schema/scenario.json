@@ -1498,6 +1498,29 @@
             }
           ]
         },
+        "width_px": {
+          "title": "Width Px",
+          "description": "Its columns, if more than the image's: the ISP demosaics them and scales the frame down.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "hdr_ratio": {
           "title": "Hdr Ratio",
           "description": "1 takes one exposure, which clips; above it, a second one this many times shorter, merged and tone-mapped.",
