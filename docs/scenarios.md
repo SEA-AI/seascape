@@ -54,17 +54,17 @@ An EO camera can carry a sensor, a lens and an ISP. Without them it is ideal: no
 
 ```toml
 [rigs.bow.cameras.eo]
-preset = "basler_daa3840_ar0821"   # Basler dart, onsemi AR0821: full well, dark noise, 12-bit ADC
-hfov_deg = 45.0                    # the preset is the sensor; the lens is yours
+preset = "basler_daa3840_ar0821"   # the sensor; the lens is yours
+hfov_deg = 45.0
 width_px = 1920
 height_px = 1080
-sensor.gain_db = 12.0              # more noise
-sensor.hdr_ratio = 16.0            # a second exposure, merged and tone-mapped
-lens.vignetting = true             # cos^4 falloff
-processing.white_balance_k = 800   # the auto white balance guesses 800 K too blue
+sensor.gain_db = 12.0
+sensor.hdr_ratio = 16.0
+lens.vignetting = true
+processing.white_balance_k = 800   # guesses bluer light than D65: the frame comes out warmer
 ```
 
-The sensor is a Bayer mosaic with shot and dark noise, an ADC, a bilinear demosaic, white balance and sharpening. A rig's cameras draw one set of these settings, and each camera its own noise. `labels.json` records each image's `sensor`, `lens` and `processing`; `scenarios/dataset.toml` draws them per scene.
+Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens` and `processing`.
 
 ## Randomization
 
