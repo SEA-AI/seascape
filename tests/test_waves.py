@@ -475,10 +475,11 @@ def test_wind_waves_run_within_a_right_angle_of_downwind() -> None:
 
 @pytest.mark.parametrize("wind_speed_mps", [5.0, 10.0])
 def test_the_drawn_slope_is_upwind_heavy(wind_speed_mps: float) -> None:
-    ratios = []
-    for seed in range(8):
-        up, cross = waves.drawn_slope_variances(field(wind_speed_mps, seed=seed), 0, 0)
-        ratios.append(up / cross)
+    ratios = [
+        np.divide(*waves.drawn_slope_variances(field(wind_speed_mps, seed=seed), 0, 0))
+        for seed in range(8)
+    ]
+
     assert 1.2 < np.mean(ratios) < 2.0
 
 
@@ -489,26 +490,33 @@ def test_drawn_and_unresolved_hold_cox_and_munk_s_slope_on_each_axis(
     built = field(7.0)
     drawn = waves.drawn_slope_variances(built, footprint_m, 0.0)
     left = waves.unresolved_slope_variances(7.0, 0.0, built, (), footprint_m)
-    for d, u, total in zip(drawn, left, waves.cox_munk_variances(7.0), strict=True):
-        assert d + u == pytest.approx(total)
+
+    assert np.add(drawn, left) == pytest.approx(waves.cox_munk_variances(7.0))
 
 
-@pytest.mark.parametrize("wind_speed_mps", [0.0, 3.0, 7.0, 15.0])
-def test_the_axes_split_cox_and_munk_s_total(wind_speed_mps: float) -> None:
+@pytest.mark.parametrize(
+    ("wind_speed_mps", "upwind_heavier"),
+    # Cox & Munk's fits cross at 2.4 m/s.
+    [(0.0, False), (2.0, False), (3.0, True), (7.0, True), (15.0, True)],
+)
+def test_the_axes_split_cox_and_munk_s_total(
+    wind_speed_mps: float, upwind_heavier: bool
+) -> None:
     up, cross = waves.cox_munk_variances(wind_speed_mps)
+
     assert up + cross == pytest.approx(waves.cox_munk_slope(wind_speed_mps) ** 2)
-    assert up <= cross if wind_speed_mps < 3.0 else up > cross
+    assert (up > cross) == upwind_heavier
 
 
-def test_the_axes_left_unresolved_sum_to_the_total() -> None:
+@pytest.mark.parametrize("footprint_m", [0.01, 1.0, 100.0])
+def test_the_axes_left_unresolved_sum_to_the_total(footprint_m: float) -> None:
     built, swell = field(7.0), (waves.Wave(0.5, 0.6, 1.0, 0.0),)
-    for footprint_m in (0.01, 1.0, 100.0):
-        up, cross = waves.unresolved_slope_variances(
-            7.0, 0.0, built, swell, footprint_m
-        )
-        assert up + cross == pytest.approx(
-            waves.unresolved_slope_variance(7.0, built, swell, footprint_m), rel=1e-9
-        )
+
+    up, cross = waves.unresolved_slope_variances(7.0, 0.0, built, swell, footprint_m)
+
+    assert up + cross == pytest.approx(
+        waves.unresolved_slope_variance(7.0, built, swell, footprint_m), rel=1e-9
+    )
 
 
 @pytest.mark.parametrize("wind_speed_mps", [1.0, 2.0, 3.0, 7.0, 15.0])
@@ -516,10 +524,11 @@ def test_no_axis_draws_more_slope_than_cox_and_munk_measured(
     wind_speed_mps: float,
 ) -> None:
     drawn = waves.drawn_slope_variances(field(wind_speed_mps), 0.0, 0.0)
-    for d, measured in zip(
-        drawn, waves.cox_munk_variances(wind_speed_mps), strict=True
-    ):
-        assert d <= measured * (1 + 1e-9)
+
+    assert np.all(
+        np.asarray(drawn)
+        <= np.asarray(waves.cox_munk_variances(wind_speed_mps)) * (1 + 1e-9)
+    )
 
 
 def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None:
