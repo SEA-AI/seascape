@@ -2206,11 +2206,8 @@ def material(
         resolvable(swell, finest_footprint_m),
     )
     # Each sea on its own, or a swell's height would decide which wind waves count.
-    tall = tuple(
-        w
-        for w in tallest(wind, PARALLAX_HEIGHT_SHARE)
-        + tallest(swell, PARALLAX_HEIGHT_SHARE)
-        if w in drawn[0] or w in drawn[1]
+    tall = tallest(drawn[0], PARALLAX_HEIGHT_SHARE) + tallest(
+        drawn[1], PARALLAX_HEIGHT_SHARE
     )
     position = _waves(tree, *drawn, tall, time_s, pixel)
     gust_max, gust, slick = 0.0, None, None
