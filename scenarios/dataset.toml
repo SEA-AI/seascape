@@ -29,6 +29,9 @@ asset = { choice = [
     "small_container_ship",
     "cargo_ship",
     "bulk_carrier",
+    "ultramax_bulk_carrier",
+    "panamax_container_ship",
+    "crude_tanker",
     "patrol_vessel",
     "yacht",
 ] }

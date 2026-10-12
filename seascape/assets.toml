@@ -166,6 +166,67 @@ texture_px = [
 licence = "CC-BY-4.0"
 attribution = "Multi-purpose Vessel II by gogiart, https://sketchfab.com/3d-models/e212591a799d4b568cf4df9279444adb"
 
+[ultramax_bulk_carrier]
+kind = "hull"
+category = "bulk carrier"
+category_id = 3
+description = "Ultramax bulk carrier with four deck cranes and a red deck, bridge aft, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e042fe0eb5fc894eb87b3e7793680f43ce55bc6e/cymona_eagle/cymona_eagle.glb"
+sha256 = "9965c51d3b9fa99703b03afd9395f14a7288360d4c3350084ce9acf2f8e9d794"
+# The Cymona Eagle, IMO 9985801: 199.95 m overall (Shipfix), 13.3 m draught (Baird
+# Maritime, "Vessel review: Cymona Eagle & Cymona Falcon"). This length makes the mesh
+# 32.5 m across, against her registered 32.26 m.
+length_m = 199.95
+draught_m = 13.3
+bow_deg = 90.0
+triangles = 21417
+texture_px = [1024, 512, 512]
+licence = "CC-BY-4.0"
+attribution = "Alassia M/V Cymona Eagle (2024) by FHA_studios, https://sketchfab.com/3d-models/ed358cd364ea4b5380d00b6957d12718"
+
+[panamax_container_ship]
+kind = "hull"
+category = "container ship"
+category_id = 1
+description = "Container ship with 40 ft containers up to five tiers on deck, bridge aft of midships, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e042fe0eb5fc894eb87b3e7793680f43ce55bc6e/container_ship/container_ship.glb"
+sha256 = "398c71f4545cfd0421b0505e27128160e8c266c0b255988b11b1e9a74dfc6e38"
+# Scaled by its 40 ft containers: ISO 668 makes one 12.192 m long, 2.438 m wide and
+# 2.591 m high, and the mesh's are 4.65, 0.915 and 0.97 units, 2.62, 2.66 and 2.67 m a
+# unit. Their mean gives 241.8 m overall. No published draught: 9.7 m, where the
+# mesh's bottom paint ends.
+length_m = 241.8
+draught_m = 9.7
+bow_deg = 90.0
+triangles = 188676
+texture_px = [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]
+licence = "CC-BY-4.0"
+attribution = "Container Ship by RM02, https://sketchfab.com/3d-models/aaa41cca946b4a08bc08cf692b7757be"
+
+[crude_tanker]
+kind = "hull"
+category = "tanker"
+category_id = 12
+description = "Large crude tanker with deck piping, catwalk and hose cranes, bridge aft, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/e042fe0eb5fc894eb87b3e7793680f43ce55bc6e/tanker/tanker.glb"
+sha256 = "cbc6ad1ea548f7c52bff82c38efcf9f599ad32476030daef0c5fee99363609bb"
+# Its deck guard rails stand 1.00 unit high, the 1 m the Load Lines Convention 1966,
+# Annex I Reg. 25, asks of them: the mesh is in metres, 303.3 m overall. No published
+# draught: 13.8 m, where the mesh's bottom paint ends.
+length_m = 303.3
+draught_m = 13.8
+bow_deg = 180.0
+triangles = 1008321
+texture_px = [
+    2048, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
+    1024, 1024, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
+    512, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256,
+]
+licence = "CC-BY-4.0"
+attribution = "Tanker by gogiart, https://sketchfab.com/3d-models/31bb4e748801479ea5eab0b297d68622"
+
 [lateral_mark]
 kind = "buoy"
 category = "lateral mark"
