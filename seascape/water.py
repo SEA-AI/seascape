@@ -1,12 +1,11 @@
 """The colour of the water's body from its chlorophyll. Imports no Blender.
 
 Reflectance: Morel & Maritorena, "Bio-optical properties of oceanic waters: a
-reappraisal", JGR 106(C4) 7163, 2001 (doi:10.1029/2000JC000319), for Case 1 waters,
-where phytoplankton and what comes with it set the colour.
+reappraisal", JGR 106(C4) 7163, 2001 (doi:10.1029/2000JC000319), for Case 1 waters.
 
 Colour: Wyman, Sloan & Shirley, "Simple analytic approximations to the CIE XYZ color
 matching functions", JCGT 2(2) 1, 2013, under a Planckian light at D65's temperature
-carried to D65's white by the Bradford transform: no tabulated illuminant.
+adapted to D65's white by the Bradford transform.
 """
 
 import functools
@@ -21,7 +20,6 @@ type FloatArray = npt.NDArray[np.float64]
 
 _TABLE_CSV = Path(__file__).parent / "data" / "morel_maritorena_2001.csv"
 
-# Every 10 nm across the visible the table covers.
 WAVELENGTH_NM = np.arange(400.0, 701.0, 10.0)
 
 # CODATA 2018: the second radiation constant, in nm K.
@@ -40,8 +38,8 @@ BRADFORD = np.array(
     ]
 )
 
-# Morel & Maritorena 2001: R = f bb / a, eq. 7, with f at 0.33; the first guess of a
-# is u1 Kd, u1 = 0.75; eq. 8' refines it, mu_d at 0.90, and R holds within three loops.
+# Morel & Maritorena 2001: R = f bb / a (eq. 7); a starts at u1 Kd and eq. 8' refines
+# it, R stable within three loops.
 F = 0.33
 U1 = 0.75
 MU_D = 0.90
@@ -62,17 +60,16 @@ def reflectance(chl_mg_m3: float, wavelength_nm: FloatArray) -> FloatArray:
     """R(0-), the irradiance reflectance just under the surface, of Case 1 water."""
     table_nm, kw, e, chi = _table()
     kd = np.interp(wavelength_nm, table_nm, kw + chi * chl_mg_m3**e)  # eq. 3
-    # Morel 1974: pure seawater's scattering, half of it backward.
+    # Morel 1974: pure seawater's scattering.
     bw = 0.00288 * (wavelength_nm / 500.0) ** -4.32
-    # Eqs. 12-14: particles scatter as 0.416 Chl^0.766 at 550 nm, backward by a share
-    # that turns spectrally neutral at 2 mg/m^3.
+    # Eqs. 12-14: particle backscatter turns spectrally neutral at 2 mg/m^3.
     v = 0.5 * (np.log10(chl_mg_m3) - 0.3) if chl_mg_m3 < 2.0 else 0.0
     bbp = (
         (0.002 + 0.01 * (0.5 - 0.25 * np.log10(chl_mg_m3)) * (wavelength_nm / 550) ** v)
         * 0.416
         * chl_mg_m3**0.766
     )
-    bb = 0.5 * bw + bbp  # eq. 11
+    bb = 0.5 * bw + bbp  # eq. 11: half of water's scattering is backward
     a = U1 * kd
     for _ in range(LOOPS):
         r = F * bb / a

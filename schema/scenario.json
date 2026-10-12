@@ -1555,6 +1555,7 @@
           "default": 0.2,
           "anyOf": [
             {
+              "maximum": 30.0,
               "minimum": 0.02,
               "type": "number"
             },
