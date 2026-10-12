@@ -1066,7 +1066,12 @@ class TestSlicks:
 
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
         wind = scene.wind_waves(self.SLICKS)
-        left = set(waves.slick_survivors(self.SLICKS.sea.wind_speed_mps, wind))
+        sea_ = self.SLICKS.sea
+        left = set(
+            waves.slick_survivors(
+                sea_.wind_speed_mps, wind, math.radians(sea_.wind_from_deg)
+            )
+        )
         calmed = {
             wave
             for wave, inputs, lane in drawn(self.SLICKS)
@@ -1077,7 +1082,7 @@ class TestSlicks:
     def test_under_a_slick_the_pixel_leaves_what_the_slick_does(self) -> None:
         speed = self.SLICKS.sea.wind_speed_mps
         axis_rad = math.radians(self.SLICKS.sea.wind_from_deg)
-        left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS))
+        left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS), axis_rad)
         for i, axis in enumerate(("upwind", "crosswind")):
             table = baked(f"sea_unresolved_slick_variance_{axis}")
             low, high = sea.FOOTPRINT_RANGE_M
