@@ -78,7 +78,6 @@ from seascape.waves import (
     turbulence_intensity,
     twinkle_hz,
     unresolved_acceleration_variance,
-    unresolved_slope_variance,
     unresolved_slope_variances,
     von_karman_field,
     whitecap_fraction,
@@ -1858,9 +1857,6 @@ def material(
         )
     unresolved = _unresolved(tree, sea, wind, swell, survivors, pixel, gust, smooth)
 
-    def unresolved_at(footprint_m: float) -> float:
-        return unresolved_slope_variance(speed, wind, swell, footprint_m)
-
     if light.sky is None:
         wide, narrow, tangent = _widest(tree, pixel, unresolved)
         carried: float | bpy.types.NodeSocket = 0.0
@@ -1890,11 +1886,14 @@ def material(
         whitecaps = _whitecaps(tree, wind, acceleration, pixel.along_m, threshold)
         surface = _daylight(tree, normal, tangent, unresolved, whitecaps, wake)
     else:
-        # The coarsest footprint leaves the most, Cox & Munk's and all the swell's,
-        # and the strongest gust adds the most.
+        # The coarsest footprint leaves the most, Cox & Munk's and all the swell's;
+        # along the view a pixel takes twice the wider axis's, and the strongest gust
+        # adds the most.
+        axes = unresolved_slope_variances(
+            speed, math.radians(sea.wind_from_deg), wind, swell, FOOTPRINT_RANGE_M[1]
+        )
         slope_max = math.sqrt(
-            unresolved_at(FOOTPRINT_RANGE_M[1])
-            + gust_max * gust_slope_variance(sea.wind_speed_mps)
+            2 * max(axes) + gust_max * gust_slope_variance(sea.wind_speed_mps)
         )
         surface = _thermal(tree, sea, normal, unresolved, slope_max, light.sky)
     output = tree.nodes.new("ShaderNodeOutputMaterial")

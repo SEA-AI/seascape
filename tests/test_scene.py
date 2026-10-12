@@ -864,17 +864,17 @@ class TestIrBand:
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
-        theta. Rows run up the unresolved RMS slope, to all of Cox & Munk's in the
-        strongest gust."""
+        theta. Rows run up the unresolved RMS slope, to twice Cox & Munk's wider axis,
+        as a pixel takes it along the view, in the strongest gust."""
         table = baked("sea_emissivity")
         rows, width = table.shape
         mu = (np.arange(width) + 0.5) / width
         speed = SCENARIO.sea.wind_speed_mps
         tile = baked("sea_gust")
         gust_max = math.sqrt(2) * np.abs(tile).max() * waves.turbulence_intensity(speed)
-        strongest = waves.cox_munk_slope(
-            speed
-        ) ** 2 + gust_max * waves.gust_slope_variance(speed)
+        strongest = 2 * max(
+            waves.cox_munk_variances(speed)
+        ) + gust_max * waves.gust_slope_variance(speed)
         # Per axis: lwir draws each facet's two slopes with this sigma.
         sigma_max = math.sqrt(strongest / 2)
         for row in (0, rows // 2, rows - 1):
