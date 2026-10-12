@@ -188,6 +188,7 @@ def render(
                     name = f"{mount.name}/{frame:04d}" if sequence else mount.name
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
+                    scene.respond(mount)
                     bpy.ops.render.render(write_still=True)
                     if thermal:
                         _write_thermal(

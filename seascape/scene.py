@@ -11,7 +11,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import lwir, sea, skies, wakes, waves
+from seascape import lwir, sea, sensor, skies, wakes, waves
 from seascape.assets import Asset, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
@@ -1066,9 +1066,12 @@ def _enable_gpu() -> bool:
     return False
 
 
-def _output(outputs: Outputs, band: Band, largest_px: int) -> None:
+def _output(
+    outputs: Outputs, band: Band, largest_px: int, sensor: bool = False
+) -> None:
     """Render and display settings, in the .blend, so F12 renders what `render` does.
-    `largest_px` is the longest side of any of the band's cameras."""
+    `largest_px` is the longest side of any of the band's cameras, and `sensor` whether
+    any has one."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
@@ -1087,7 +1090,7 @@ def _output(outputs: Outputs, band: Band, largest_px: int) -> None:
     view.exposure, view.gamma = 0.0, 1.0
     # 8-bit radiance is not radiance; `render` maps 8-bit ir from the exr.
     file_format, depth = FORMATS[outputs.format if band == "eo" else "exr"]
-    _compositor(outputs.exposure_compensation_ev if depth == "8" else None)
+    _compositor(outputs.exposure_compensation_ev if depth == "8" else None, sensor)
     sc.render.image_settings.file_format = file_format
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
@@ -1099,23 +1102,27 @@ def _output(outputs: Outputs, band: Band, largest_px: int) -> None:
     sc.cycles.use_animated_seed = True
 
 
-def _compositor(compensation_ev: float | None) -> None:
-    """The render as a camera takes it, `compensation_ev` over auto-exposure; as
-    rendered for None."""
+def _compositor(compensation_ev: float | None, sensor: bool = False) -> None:
+    """The render as a camera takes it, `compensation_ev` over auto-exposure, through
+    a sensor if `sensor`; as rendered for None."""
     tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
     tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     bpy.context.scene.compositing_node_group = tree
     image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
     if compensation_ev is not None:
-        image = _camera(tree, image, compensation_ev)
+        image = _camera(tree, image, compensation_ev, sensor)
     tree.links.new(image, tree.nodes.new("NodeGroupOutput").inputs["Image"])
 
 
 def _camera(
-    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket, compensation_ev: float
+    tree: bpy.types.NodeTree,
+    image: bpy.types.NodeSocket,
+    compensation_ev: float,
+    with_sensor: bool = False,
 ) -> bpy.types.NodeSocket:
-    """A lens's glare and blur, then auto-exposure. The Standard view clips at white,
-    as a sensor does.
+    """A lens's falloff, glare and blur, then auto-exposure, and with `with_sensor`
+    the sensor and ISP. Without one the Standard view clips at white, as a sensor
+    does. `respond` sets the camera.
 
     ponytail: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
@@ -1130,6 +1137,16 @@ def _camera(
     # Uniform spans -1 to 1 along the longer side, so the kernel is a fixed share of
     # the frame at any resolution. Fog Glow and Bloom change shape with it.
     radius = sea._vector(tree, "LENGTH", coords.outputs["Uniform"])
+    # Natural vignetting: irradiance falls as cos^4 of the field angle, 1 / (1 +
+    # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
+    tangent = sea._math(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
+    falloff = sea._math(
+        tree,
+        "POWER",
+        sea._math(tree, "MULTIPLY_ADD", tangent, tangent, 1.0),
+        -2.0,
+    )
+    image = sea._vector(tree, "SCALE", image, falloff)
     shoulder = sea._math(tree, "DIVIDE", radius, GLARE_SHOULDER)
     harvey = sea._math(
         tree,
@@ -1172,11 +1189,46 @@ def _camera(
     gain = sea._math(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
     )
-    exposed = nodes.new("ShaderNodeVectorMath")
-    exposed.operation = "SCALE"
-    links.new(image, exposed.inputs["Vector"])
-    links.new(gain, exposed.inputs["Scale"])
-    return exposed.outputs["Vector"]
+    gain = sea._math(
+        tree, "MULTIPLY", gain, sensor._value(tree, "processing.gain", 1.0)
+    )
+    exposed = sea._vector(tree, "SCALE", image, gain)
+    if not with_sensor:
+        return exposed
+    # A camera without a full well shares the tree, and takes the ideal frame.
+    read = sensor.chain(tree, exposed, coords.outputs["Pixel"])
+    return sea._vector(
+        tree,
+        "MULTIPLY_ADD",
+        sea._vector(tree, "SUBTRACT", read, exposed),
+        _broadcast(tree, sensor._value(tree, "sensor.on")),
+        exposed,
+    )
+
+
+def _broadcast(
+    tree: bpy.types.NodeTree, value: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    node = tree.nodes.new("ShaderNodeCombineXYZ")
+    for socket in node.inputs:
+        tree.links.new(value, socket)
+    return node.outputs["Vector"]
+
+
+def respond(mount: Mount) -> None:
+    """Set the compositor's camera to `mount`'s; a tree without one ignores it."""
+    tree = bpy.context.scene.compositing_node_group
+    if tree is None or "lens.vignette" not in tree.nodes:
+        return
+    camera = mount.camera
+    longer_of_width = max(camera.width_px, camera.height_px) / camera.width_px
+    tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
+    sensor._set(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
+    sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
+    if "sensor.on" not in tree.nodes:
+        return
+    sensor._set(tree, "sensor.on", float(camera.sensor.full_well_e is not None))
+    sensor.respond(tree, camera, mount.name)
 
 
 class OverlapError(ValueError):
@@ -1268,7 +1320,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for m in scenario.mounts
         if m.camera.band == band
     ]
-    _output(scenario.outputs, band, max(sides))
+    graded = any(
+        m.camera.sensor.full_well_e is not None
+        for m in scenario.mounts
+        if m.camera.band == band
+    )
+    _output(scenario.outputs, band, max(sides), graded)
     bpy.context.scene.world = _sky(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
@@ -1325,6 +1382,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         first.camera.width_px,
         first.camera.height_px,
     )
+    respond(first)
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
