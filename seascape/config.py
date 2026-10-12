@@ -64,7 +64,14 @@ class LogUniform(Model):
 
     log_uniform: tuple[
         Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
-    ] = Field(description="The bounds.")
+    ] = Field(description="The bounds, lower first.")
+
+    @model_validator(mode="after")
+    def _lower_first(self) -> "LogUniform":
+        lower, upper = self.log_uniform
+        if lower > upper:
+            raise ValueError(f"log_uniform bounds {self.log_uniform} are reversed")
+        return self
 
     def draw(self, rng: np.random.Generator) -> float:
         # exp(log(x)) can land an ulp below x.

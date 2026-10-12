@@ -690,9 +690,18 @@ def test_a_log_uniform_draw_is_even_in_the_logarithm_of_its_bounds() -> None:
     assert statistics.median(drawn) == pytest.approx(math.sqrt(0.03 * 10.0), rel=0.05)
 
 
-def test_a_log_uniform_draw_refuses_a_bound_at_zero() -> None:
-    with pytest.raises(ValidationError, match="greater than 0"):
-        LogUniform(log_uniform=(0.0, 10.0))
+@pytest.mark.parametrize(
+    ("bounds", "match"),
+    [
+        pytest.param((0.0, 10.0), "greater than 0", id="zero"),
+        pytest.param((10.0, 0.03), "reversed", id="reversed"),
+    ],
+)
+def test_a_log_uniform_draw_refuses_bounds_it_cannot_draw_between(
+    bounds: tuple[float, float], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        LogUniform(log_uniform=bounds)
 
 
 SHIP = 'objects = [{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }]'

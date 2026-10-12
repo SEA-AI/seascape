@@ -2446,7 +2446,7 @@
       "description": "A float drawn evenly in its logarithm between two bounds: as often between 0.1\nand 1 as between 1 and 10.",
       "properties": {
         "log_uniform": {
-          "description": "The bounds.",
+          "description": "The bounds, lower first.",
           "maxItems": 2,
           "minItems": 2,
           "prefixItems": [
