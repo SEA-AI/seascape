@@ -600,7 +600,7 @@ def _parallax(
     """Where the view ray meets the drawn height, (east, north, time), iterated from the
     flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
     face tilted from the camera then takes the little of the frame it shows. Glitter,
-    gusts, slicks and wake foam still read the flat sea.
+    gusts and slicks still read the flat sea.
     """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     flat = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -1822,11 +1822,11 @@ def _line_path(
     )
 
 
-def _path(tree: bpy.types.NodeTree, wake: Wake, time_s: bpy.types.NodeSocket) -> _Path:
+def _path(tree: bpy.types.NodeTree, wake: Wake, where: bpy.types.NodeSocket) -> _Path:
     position = tree.nodes.new("ShaderNodeSeparateXYZ")
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    tree.links.new(geometry.outputs["Position"], position.inputs["Vector"])
-    east, north = position.outputs["X"], position.outputs["Y"]
+    position.name = "wake_position"
+    tree.links.new(where, position.inputs["Vector"])
+    east, north, time_s = (position.outputs[c] for c in ("X", "Y", "Z"))
     if wake.orbit_m is not None:
         return _orbit_path(tree, wake, time_s, east, north)
     return _line_path(tree, wake, time_s, east, north)
@@ -1849,13 +1849,13 @@ def _gaussian(
 def _wakes(
     tree: bpy.types.NodeTree,
     wakes: tuple[Wake, ...],
-    time_s: bpy.types.NodeSocket,
+    where: bpy.types.NodeSocket,
     footprint_m: bpy.types.NodeSocket,
     noise: bpy.types.Image,
     sea_slope_variance: float,
 ) -> _Wakes:
     """Every hull's turbulent band, stern foam and Kelvin arms: the strongest band and
-    foam, and the arms summed.
+    foam, and the arms summed, read at `where`, (east, north, time).
 
     ponytail: the arms are Kelvin's straight-path pattern laid along the path, which a
     tight turn bends; sum the arms from past poses if a turn reads wrong.
@@ -1867,7 +1867,7 @@ def _wakes(
     bubbles: bpy.types.NodeSocket | float = 0.0
     tilt = None
     for wake in wakes:
-        path = _path(tree, wake, time_s)
+        path = _path(tree, wake, where)
         behind = _math(tree, "GREATER_THAN", path.along, 0.0)
         # Ahead of the hull nothing has aged: unclamped, the exponentials overflow
         # there, and the power below takes a negative base.
@@ -2228,11 +2228,6 @@ def material(
             von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M),
         )
     )
-    wake = None
-    if wakes:
-        sea_variance = cox_munk_slope(speed) ** 2
-        wake = _wakes(tree, wakes, time_s, pixel.along_m, foam(), sea_variance)
-    smooth = _smoothed(tree, slick, wake)
     survivors = (
         wind
         if slick is None
@@ -2250,6 +2245,11 @@ def material(
     )
     tall = tuple(w for w in tall if w in drawn[0] or w in drawn[1])
     normal, position = _waves(tree, *drawn, tall, time_s, pixel, calm, damped)
+    wake = None
+    if wakes:
+        sea_variance = cox_munk_slope(speed) ** 2
+        wake = _wakes(tree, wakes, position, pixel.along_m, foam(), sea_variance)
+    smooth = _smoothed(tree, slick, wake)
     if wake is not None and wake.tilt is not None:
         normal = _vector(
             tree,
