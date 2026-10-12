@@ -11,8 +11,8 @@ def test_the_default_water_is_the_colour_the_sea_had_before_chlorophyll() -> Non
 
     color = water.body_color(chl_mg_m3, SEAWATER_IOR)
 
-    # The constant the shader carried, from the same model at 0.2 mg/m^3.
-    assert color == pytest.approx((0.0, 0.0065, 0.018), abs=1e-4)
+    # The constant the shader carried, from the same model under tabulated D65.
+    assert color == pytest.approx((0.0, 0.0065, 0.018), abs=1.5e-4)
 
 
 def test_chlorophyll_turns_the_water_from_blue_to_green() -> None:

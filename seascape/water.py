@@ -5,7 +5,8 @@ reappraisal", JGR 106(C4) 7163, 2001 (doi:10.1029/2000JC000319), for Case 1 wate
 where phytoplankton and what comes with it set the colour.
 
 Colour: Wyman, Sloan & Shirley, "Simple analytic approximations to the CIE XYZ color
-matching functions", JCGT 2(2) 1, 2013, under CIE D65 (CIE 15:2004).
+matching functions", JCGT 2(2) 1, 2013, under a Planckian light at D65's temperature
+carried to D65's white by the Bradford transform: no tabulated illuminant.
 """
 
 import functools
@@ -14,20 +15,28 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
-from seascape.colour import XYZ_TO_SRGB
+from seascape.colour import D65_K, XYZ_TO_SRGB
 
 type FloatArray = npt.NDArray[np.float64]
 
 _TABLE_CSV = Path(__file__).parent / "data" / "morel_maritorena_2001.csv"
 
-# CIE 15:2004 Table T.1: D65's relative spectral power, every 10 nm from 400 to 700.
+# Every 10 nm across the visible the table covers.
 WAVELENGTH_NM = np.arange(400.0, 701.0, 10.0)
-D65 = np.array(
+
+# CODATA 2018: the second radiation constant, in nm K.
+C2_NM_K = 1.438776877e7
+
+# IEC 61966-2-1: the sRGB white, D65, in CIE 1931 xy.
+D65_XY = (0.3127, 0.3290)
+
+# Lam 1985, the Bradford transform: XYZ to the sharpened cone space in which a von
+# Kries scaling carries one white to another.
+BRADFORD = np.array(
     [
-        *(82.7549, 91.4860, 93.4318, 86.6823, 104.865, 117.008, 117.812, 114.861),
-        *(115.923, 108.811, 109.354, 107.802, 104.790, 107.689, 104.405, 104.046),
-        *(100.000, 96.3342, 95.7880, 88.6856, 90.0062, 89.5991, 87.6987, 83.2886),
-        *(83.6992, 80.0268, 80.2146, 82.2778, 78.2842, 69.7213, 71.6091),
+        [0.8951, 0.2664, -0.1614],
+        [-0.7502, 1.7135, 0.0367],
+        [0.0389, -0.0685, 1.0296],
     ]
 )
 
@@ -90,12 +99,19 @@ def _matching(wavelength_nm: FloatArray) -> FloatArray:
 
 
 def body_color(chl_mg_m3: float, ior: float) -> tuple[float, float, float]:
-    """The body's diffuse colour in linear sRGB: R(0-) under D65, times t / n^2 out
-    through a surface of index `ior` (Lee, Carder & Arnone 2002), t from Fresnel at
-    normal incidence. Clipped at 0, where the colour is outside sRGB."""
+    """The body's diffuse colour in linear sRGB: R(0-) under daylight, times t / n^2
+    out through a surface of index `ior` (Lee, Carder & Arnone 2002), t from Fresnel
+    at normal incidence. Clipped at 0, where the colour is outside sRGB."""
     matching = _matching(WAVELENGTH_NM)
-    xyz = (matching * D65 * reflectance(chl_mg_m3, WAVELENGTH_NM)).sum(axis=1)
-    xyz /= (matching[1] * D65).sum()
+    # Planck's law, relative: the light D65's correlated temperature names.
+    light = WAVELENGTH_NM**-5 / np.expm1(C2_NM_K / (WAVELENGTH_NM * D65_K))
+    white = matching @ light / (matching[1] @ light)
+    xyz = matching @ (light * reflectance(chl_mg_m3, WAVELENGTH_NM))
+    xyz /= matching[1] @ light
+    x, y = D65_XY
+    d65 = np.array([x / y, 1.0, (1 - x - y) / y])
+    scale = np.diag((BRADFORD @ d65) / (BRADFORD @ white))
+    xyz = np.linalg.solve(BRADFORD, scale @ BRADFORD @ xyz)
     t = 1 - ((ior - 1) / (ior + 1)) ** 2
     r, g, b = np.maximum(XYZ_TO_SRGB @ xyz * t / ior**2, 0.0)
     return float(r), float(g), float(b)
