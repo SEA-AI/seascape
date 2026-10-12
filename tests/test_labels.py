@@ -224,9 +224,8 @@ def test_a_target_is_seen_only_above_the_texture_around_it(
 def test_glitter_hides_only_what_it_outshines(
     size: int, value: int, seen: bool
 ) -> None:
-    """White one-pixel glints on one pixel in fifty, round a dark hull or a faint
-    speck: each glint counts a quarter of its difference, so the hull outshines them
-    and the speck, seen on calm water, does not."""
+    """White one-pixel glints round a dark hull or a faint speck: the hull outshines
+    them, the speck, seen on calm water, does not."""
     rng = np.random.default_rng(size)
     index = np.zeros((64, 128), dtype=int)
     index[20 : 20 + size, 52 : 52 + size] = 1
@@ -375,7 +374,8 @@ def test_a_target_exactly_at_the_threshold_is_seen(
     mask = index == 1
     behind = labels.background(lab, mask, labels.flanks(index, 1))
     assert behind is not None
-    at = labels.ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1), 100)
+    delta_e = np.linalg.norm(lab - behind, axis=2)
+    at = labels.ricco(labels.pooled(delta_e, mask)[mask], 100)
     monkeypatch.setattr(labels, "JND_DELTA_E", at)
 
     assert boxed(index, frame)

@@ -252,7 +252,8 @@ def pooled(delta_e: np.ndarray, where: np.ndarray) -> np.ndarray:
     mean = cv2.blur(
         np.where(where, delta_e, 0.0), kernel, borderType=cv2.BORDER_CONSTANT
     )
-    # The blur's window ends at its pixel; the windows that cover it start there.
+    # An even blur window ends at its pixel, so the windows covering a pixel end at it
+    # and one past; dilating from (0, 0) takes their best.
     return cv2.dilate(mean, np.ones(kernel, np.uint8), anchor=(0, 0))
 
 

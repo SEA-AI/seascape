@@ -175,7 +175,6 @@ def runs(
     parts: Sequence[tuple[str, str]],
     face: ImageFont.FreeTypeFont,
 ) -> None:
-    """`parts` left to right from `x`, each text in its colour."""
     for text, colour in parts:
         draw.text((x, y), text, fill=colour, font=face, anchor="lm")
         x += draw.textlength(text, font=face)
@@ -246,7 +245,6 @@ def examples(
             draw.text((x, y + THUMB_PX[1] + 2), caption, fill=SKY_GREY, font=font(13))
         end = race(draw, line_x, middle, race_w, m, top)
         y += THUMB_PX[1] + 2 * PAD_PX + 8
-    # Each key word in the colour it has in the figure.
     notes = [
         [("ship", NIGHT_BLUE), (": vs the sea beside it.", SKY_GREY)],
         [("true", OCEAN_TEAL), (": vs the image without the ship.", SKY_GREY)],
@@ -257,7 +255,6 @@ def examples(
     width = max(runs_px(draw, note, small) for note in notes) + 2 * inset
     box = [WIDTH_PX - PAD_PX - width, row_y, WIDTH_PX - PAD_PX, 0]
     box[3] = box[1] + len(notes) * line_px + 2 * inset
-    # Beside the last race: an example whose labels reach this far needs a new place.
     if box[0] < end + PAD_PX:
         raise ValueError("the notes no longer fit beside the last example's race")
     draw.rectangle(box, outline=FOG_WHITE, width=1)

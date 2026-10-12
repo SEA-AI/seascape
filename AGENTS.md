@@ -142,5 +142,5 @@ The suite includes the render checks, marked `render`. Cycles takes a GPU where 
 - **Nothing that can go stale, nothing from outside the code.** No numbers derived from values elsewhere, no lists or values copied from another file, no names of tests, no PRs, reviews, conversations or history, no hardware, specs or consumers the repo does not model. If a claim matters, a test asserts it; the comment does not point there. When in doubt, delete the line.
 - **Avoid the machine cadence.** `X, not just Y` for emphasis, lists of exactly three, uniformly long sentences, hedges like "it's worth noting". Prefer the specific: a number, a file name or a flag beats an adjective.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
-- **Make PRs scannable.** A table, a before/after, or a rendered frame beats a paragraph.
+- **Make PRs scannable.** A table, a before/after, or a rendered frame beats a paragraph. Attach frames with `gh pr create` or `gh pr edit --attach ./frame.png`: a body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.
