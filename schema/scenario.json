@@ -963,7 +963,7 @@
     },
     "Processing": {
       "additionalProperties": false,
-      "description": "What the camera's ISP does after the ADC.",
+      "description": "The camera's ISP. White balance and sharpening need a sensor.",
       "properties": {
         "exposure_ev": {
           "title": "Exposure Ev",
@@ -988,12 +988,12 @@
         },
         "white_balance_k": {
           "title": "White Balance K",
-          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses warmer light, so the frame comes out bluer.",
+          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses bluer light, so the frame comes out warmer.",
           "default": 0.0,
           "anyOf": [
             {
               "maximum": 18000.0,
-              "minimum": -4800.0,
+              "minimum": -4000.0,
               "type": "number"
             },
             {
@@ -1412,11 +1412,11 @@
     },
     "Sensor": {
       "additionalProperties": false,
-      "description": "What a pixel does with the light that reaches it, in EMVA 1288's terms. Without\na full well the camera is ideal: no mosaic, no noise, no ADC.",
+      "description": "What a pixel does with the light that reaches it, in EMVA 1288's terms. Without\na full well the camera is ideal.",
       "properties": {
         "full_well_e": {
           "title": "Full Well E",
-          "description": "Saturation capacity, in electrons.",
+          "description": "Saturation capacity.",
           "default": null,
           "anyOf": [
             {
@@ -1439,7 +1439,7 @@
         },
         "dark_noise_e": {
           "title": "Dark Noise E",
-          "description": "Temporal dark noise, in electrons.",
+          "description": "Temporal dark noise.",
           "default": 0.0,
           "anyOf": [
             {
@@ -1459,11 +1459,10 @@
         },
         "gain_db": {
           "title": "Gain Db",
-          "description": "Analogue gain: fewer electrons fill the ADC, so more noise.",
+          "description": "Analogue gain: fewer electrons fill the ADC.",
           "default": 0.0,
           "anyOf": [
             {
-              "maximum": 48.0,
               "minimum": 0.0,
               "type": "number"
             },
@@ -1480,7 +1479,7 @@
         },
         "adc_bits": {
           "title": "Adc Bits",
-          "description": "ADC resolution.",
+          "description": "Bits per read.",
           "default": 12,
           "anyOf": [
             {

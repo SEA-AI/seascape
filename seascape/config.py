@@ -20,7 +20,6 @@ resolved after both forms of reuse and before validation.
 """
 
 import math
-import re
 import tomllib
 import warnings
 from collections.abc import Iterable, Mapping
@@ -113,21 +112,16 @@ type Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
 
 class Sensor(Model):
     """What a pixel does with the light that reaches it, in EMVA 1288's terms. Without
-    a full well the camera is ideal: no mosaic, no noise, no ADC."""
+    a full well the camera is ideal."""
 
     full_well_e: float | None = Field(
-        default=None, gt=0.0, description="Saturation capacity, in electrons."
+        default=None, gt=0.0, description="Saturation capacity."
     )
-    dark_noise_e: float = Field(
-        default=0.0, ge=0.0, description="Temporal dark noise, in electrons."
-    )
+    dark_noise_e: float = Field(default=0.0, ge=0.0, description="Temporal dark noise.")
     gain_db: float = Field(
-        default=0.0,
-        ge=0.0,
-        le=48.0,
-        description="Analogue gain: fewer electrons fill the ADC, so more noise.",
+        default=0.0, ge=0.0, description="Analogue gain: fewer electrons fill the ADC."
     )
-    adc_bits: int = Field(default=12, ge=8, le=16, description="ADC resolution.")
+    adc_bits: int = Field(default=12, ge=8, le=16, description="Bits per read.")
     hdr_ratio: float = Field(
         default=1.0,
         ge=1.0,
@@ -156,9 +150,9 @@ class Lens(Model):
 
 
 class Processing(Model):
-    """What the camera's ISP does after the ADC."""
+    """The camera's ISP. White balance and sharpening need a sensor."""
 
-    # The compositor computes in float32, normal from 2^-126 to 2^127 (IEEE 754).
+    # 2^±126 stays a normal float32 (IEEE 754), as the compositor computes.
     exposure_ev: float = Field(
         default=0.0,
         ge=-126.0,
@@ -166,14 +160,15 @@ class Processing(Model):
         description="Stops over auto-exposure, on top of "
         "outputs.exposure_compensation_ev.",
     )
-    # Kim et al.'s cubic (US 7,024,034) spans 1667-25000 K.
+    # 6504 K plus this stays inside Kim et al.'s cubic, 1667-25000 K (US 7,024,034),
+    # and above 2500 K, under which the locus's sRGB blue nears 0 and its gain blows up.
     white_balance_k: float = Field(
         default=0.0,
-        ge=-4800.0,
+        ge=-4000.0,
         le=18000.0,
         description="How far the camera's guess of the light misses D65's 6504 K, "
-        "along the Planckian locus. Positive guesses warmer light, so the frame "
-        "comes out bluer.",
+        "along the Planckian locus. Positive guesses bluer light, so the frame "
+        "comes out warmer.",
     )
     sharpen: float = Field(
         default=0.0, ge=0.0, le=4.0, description="Unsharp mask amount."
@@ -212,6 +207,9 @@ class Camera(Model):
             != (Sensor(), Lens(), Processing())
         ):
             raise ValueError("an ir camera takes no sensor, lens or processing")
+        isp = self.processing.model_copy(update={"exposure_ev": 0.0})
+        if self.sensor.full_well_e is None and isp != Processing():
+            raise ValueError("white balance and sharpening need a sensor.full_well_e")
         return self
 
 
@@ -905,11 +903,23 @@ def _read(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
     return _expand(data, None, path.parent, chain)
 
 
-# A rig's cameras share one sensor, lens and ISP setting: their substream skips the
-# camera's name, and any pick of it.
-_PER_RIG = re.compile(
-    r"^(draw/rigs/[^/]+/cameras)/[^/]+(?:/choice)*(/(?:sensor|lens|processing)(?:/|$))"
-)
+_SHARED = {"sensor", "lens", "processing"}
+
+
+def _per_rig(path: str) -> str:
+    """A rig's cameras share one sensor, lens and ISP setting: their draws skip the
+    camera's name and every pick above it, under a name `Name` refuses a camera."""
+    parts = path.split("/")
+    for i, part in enumerate(parts):
+        head = [p for p in parts[:i] if p != "choice"]
+        if (
+            part in _SHARED
+            and head[:2] == ["draw", "rigs"]
+            and head[3:4] == ["cameras"]
+            and len(head) == 5
+        ):
+            return "/".join([*head[:3], "cameras:shared", *parts[i:]])
+    return path
 
 
 def _draw(node: Any, seed: int, path: str) -> Any:
@@ -920,7 +930,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
     if not isinstance(node, dict):
         return node
     if (kind := _kind(node)) is not None:
-        rng = substream(seed, _PER_RIG.sub(r"\1\2", path))
+        rng = substream(seed, _per_rig(path))
         value = _DRAWS[kind].model_validate(node).draw(rng)
         # A chosen draw on the pick's own substream would replay the pick's state.
         return _draw(value, seed, f"{path}/{kind}" if _is_draw(value) else path)

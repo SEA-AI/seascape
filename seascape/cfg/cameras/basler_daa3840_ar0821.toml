@@ -1,5 +1,5 @@
 # Basler dart daA3840-30mc, onsemi AR0821 colour sensor: the sensor only. The block
-# that mounts it supplies the lens, hfov_deg.
+# that mounts it supplies hfov_deg.
 # https://docs.baslerweb.com/daa3840-30mc
 band = "eo"
 width_px = 3840
@@ -14,6 +14,5 @@ full_well_e = 12600.0
 dark_noise_e = 4.0
 # AR0821 datasheet: linear mode, 12-bit.
 adc_bits = 12
-# Basler's dart features list no HDR for this model; the sensor's eHDR is there to
-# enable, at Basler HDR Beyond's default ratio of 16.
+# Basler's dart features list no HDR for this model.
 hdr_ratio = 1.0

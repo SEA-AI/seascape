@@ -850,8 +850,6 @@ GRADE = (
 
 
 def _rigged(seed: int) -> Scenario:
-    """Two rigs of three eo cameras, every camera drawing its own grade, one of them
-    inside a pick."""
     eo = 'preset = "eo_4k_49deg"'
     rig = (
         f"{{ height_m = 10.0, cameras = {{ a = {{ {eo}, {GRADE} }}, "
@@ -886,3 +884,44 @@ def test_a_preset_keeps_its_sensor_under_a_block_that_draws_the_rest() -> None:
     sensor = load(BASELINE, [line]).rigs["bow"].cameras["eo"].sensor
     assert (sensor.full_well_e, sensor.dark_noise_e) == (12600.0, 4.0)
     assert 0.0 <= sensor.gain_db <= 12.0
+
+
+def test_a_rigs_cameras_share_a_draw_through_nested_picks() -> None:
+    eo = f'preset = "eo_4k_49deg", {GRADE}'
+    cameras = f"{{ a = {{ {eo} }}, b = {{ {eo}, yaw_deg = 40.0 }} }}"
+    lines = [
+        f"rigs.bow.cameras = {{ choice = [{{ choice = [{cameras}] }}] }}",
+        "rigs.bow = { choice = [{ choice = [{ height_m = 10.0, "
+        f"cameras = {cameras} }}] }}] }}",
+    ]
+    for line in lines:
+        for seed in range(4):
+            rig = load(BASELINE, [f"seed = {seed}", line]).rigs["bow"]
+            assert len({c.sensor.full_well_e for c in rig.cameras.values()}) == 1
+
+
+def test_a_shared_draw_is_apart_from_a_camera_named_like_it() -> None:
+    """A camera may be called `sensor`; its pick must not replay a shared one."""
+    eo = 'preset = "eo_4k_49deg"'
+    pick = f"{{ choice = [{{ {eo} }}, {{ {eo}, yaw_deg = 1.0 }}] }}"
+    sensors = "{ choice = [{ full_well_e = 1e4 }, { full_well_e = 2e4 }] }"
+    together = {
+        (rig.cameras["sensor"].yaw_deg, rig.cameras["a"].sensor.full_well_e)
+        for seed in range(40)
+        for rig in [
+            load(
+                BASELINE,
+                [
+                    f"seed = {seed}",
+                    f"rigs.bow.cameras = {{ sensor = {pick}, "
+                    f'a = {{ preset = "eo_4k_49deg", sensor = {sensors} }} }}',
+                ],
+            ).rigs["bow"]
+        ]
+    }
+    assert len(together) > 2
+
+
+def test_white_balance_and_sharpening_need_a_sensor() -> None:
+    with pytest.raises(ValidationError, match="need a sensor"):
+        load(BASELINE, ["rigs.bow.cameras.eo.processing.sharpen = 1.0"])
