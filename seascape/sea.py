@@ -2225,7 +2225,11 @@ def material(
             von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M),
         )
     )
-    survivors = wind if slick is None else slick_survivors(speed, wind)
+    survivors = (
+        wind
+        if slick is None
+        else slick_survivors(speed, wind, math.radians(sea.wind_from_deg))
+    )
     damped = frozenset(wind) - frozenset(survivors)
     calm = None
     if slick is not None and damped:
