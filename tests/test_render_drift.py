@@ -384,7 +384,6 @@ def test_the_glitter_tilts_only_facets_that_can_mirror_the_sun(
     assert (changed > 0.01) == glints, changed
 
 
-# The reflectance probe: a narrow lens low over the sea.
 PROBE_HEIGHT_M, PROBE_FOV_DEG, PROBE_PX = 15.0, 4.0, (64, 16)
 
 
