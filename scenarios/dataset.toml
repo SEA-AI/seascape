@@ -7,14 +7,63 @@ extends = "randomized.toml"
 height_m = { uniform = [5.0, 60.0] }
 yaw_deg = 0.0
 
-# Both bands through one lens, so both frame the same hulls.
+# Both bands through one lens, so both frame the same hulls. EO through the Basler
+# dart profile's sensor, at 1080p rather than its 4K, its settings drawn about it.
 [[rigs.bow.cameras.choice]]
-eo = { band = "eo", hfov_deg = 42.0, width_px = 1920, height_px = 1080 }
 ir = { band = "ir", hfov_deg = 42.0, width_px = 640, height_px = 512 }
 
+[rigs.bow.cameras.choice.eo]
+preset = "basler_daa3840_ar0821"
+hfov_deg = 42.0
+width_px = 1920
+height_px = 1080
+
+[rigs.bow.cameras.choice.eo.sensor]
+# Basler's EMVA Data Overview No. 18 spans these: IMX540's 9.7 ke- / 2 e- to IMX174's
+# 31.8 ke- / 7 e-, the profile's 12.6 ke- / 4 e- inside.
+full_well_e = { uniform = [7000.0, 32000.0] }
+dark_noise_e = { uniform = [2.0, 7.0] }
+# Judgement: daylight; the dart's gain goes to 15.56 (docs.baslerweb.com/gain-(dart-e)).
+gain_db = { uniform = [0.0, 12.0] }
+# One exposure, or Basler HDR Beyond's default ratio.
+hdr_ratio = { choice = [1.0, 16.0] }
+
+[rigs.bow.cameras.choice.eo.lens]
+vignetting = { choice = [true, false] }
+
+# Judgements: an auto white balance's miss, an ISP's sharpening, a metering's bias.
+[rigs.bow.cameras.choice.eo.processing]
+white_balance_k = { uniform = [-1500.0, 1500.0] }
+sharpen = { uniform = [0.0, 1.0] }
+exposure_ev = { uniform = [-1.0, 1.0] }
+
 [[rigs.bow.cameras.choice]]
-eo = { band = "eo", hfov_deg = 49.0, width_px = 1920, height_px = 1080 }
 ir = { band = "ir", hfov_deg = 49.0, width_px = 640, height_px = 512 }
+
+[rigs.bow.cameras.choice.eo]
+preset = "basler_daa3840_ar0821"
+hfov_deg = 49.0
+width_px = 1920
+height_px = 1080
+
+[rigs.bow.cameras.choice.eo.sensor]
+# Basler's EMVA Data Overview No. 18 spans these: IMX540's 9.7 ke- / 2 e- to IMX174's
+# 31.8 ke- / 7 e-, the profile's 12.6 ke- / 4 e- inside.
+full_well_e = { uniform = [7000.0, 32000.0] }
+dark_noise_e = { uniform = [2.0, 7.0] }
+# Judgement: daylight; the dart's gain goes to 15.56 (docs.baslerweb.com/gain-(dart-e)).
+gain_db = { uniform = [0.0, 12.0] }
+# One exposure, or Basler HDR Beyond's default ratio.
+hdr_ratio = { choice = [1.0, 16.0] }
+
+[rigs.bow.cameras.choice.eo.lens]
+vignetting = { choice = [true, false] }
+
+# Judgements: an auto white balance's miss, an ISP's sharpening, a metering's bias.
+[rigs.bow.cameras.choice.eo.processing]
+white_balance_k = { uniform = [-1500.0, 1500.0] }
+sharpen = { uniform = [0.0, 1.0] }
+exposure_ev = { uniform = [-1.0, 1.0] }
 
 # In the inherited options' order: Blender's sky, then a photographed one. The sun
 # anywhere, glare included.
