@@ -61,7 +61,7 @@ height_px = 1080
 sensor.gain_db = 12.0
 sensor.hdr_ratio = 16.0
 lens.vignetting = true
-processing.white_balance_k = 800   # guesses bluer light than D65: the frame comes out warmer
+processing.white_balance_k = 800
 ```
 
 Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens` and `processing`.
