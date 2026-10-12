@@ -104,7 +104,7 @@ GRAVITY_MS2 = 9.81
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
 #   total slope     sqrt(0.003 + 0.00512 U(12.5 m))     Cox & Munk 1954, eq. 13
 #   per axis        up 3.16e-3 U, across 3e-3+1.92e-3 U Cox & Munk 1954
-#   held            scaled to it where it overshoots    spectrum fitted 3-21 m/s
+#   held            scaled to it where it overshoots    Cox & Munk 1954
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       tall crests' a k cos(phase) > thresh Snyder & Kennedy 1983
@@ -134,8 +134,8 @@ SWELL_S_MAX = 75.0
 WHITECAP_AREA_EFOLD_S = 3.85
 # Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
 WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
-# A judgement: foam ages a pixel reads, out to two area e-folds (14% left), closer
-# together than a crest takes to pass, and closest where the foam tears fastest.
+# A judgement: foam ages a pixel reads, out to two area e-folds, closer together than
+# a crest takes to pass.
 FOAM_AGES = 8
 FOAM_SPAN_EFOLDS = 2.0
 # A judgement: a crest breaks over this share of its acceleration's sigma, which
@@ -430,10 +430,9 @@ def wind_sea(
 ) -> tuple[Wave, ...]:
     """Elfouhaily's spectrum and spread, held to Cox & Munk's slope on each axis.
 
-    Below about 4 m/s, outside the 3-21 m/s the spectrum was fitted over, it carries
-    more slope than Cox & Munk measured down to 1 m/s; the whole sea is scaled to their
-    variance on the axis it overshoots most, as Elfouhaily tied their short waves to
-    it."""
+    Where it carries more slope than Cox & Munk measured, as below the 3-21 m/s it was
+    fitted over, the whole sea is scaled to their variance on the axis it overshoots
+    most, as Elfouhaily tied their short waves to it."""
     omega, variance = _bins(wind_speed_mps, fetch_m)
     if not len(omega):
         return ()
@@ -518,7 +517,6 @@ def downward_acceleration_g(
 
 
 def breakers(wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
-    """The waves whose crests whitecap: those that carry the sea's height."""
     return tallest(wind, BREAKING_HEIGHT_SHARE) if wind else ()
 
 
@@ -550,7 +548,8 @@ def foam_area(
 @cache
 def _lattice(count: int) -> np.ndarray:
     """(x, y, t) in [0, 1)^3 by Roberts' additive recurrence on the root of
-    x^4 = x + 1: evenly spread, without a generator."""
+    x^4 = x + 1 (Roberts 2018, "The unreasonable effectiveness of quasirandom
+    sequences"): evenly spread, without a generator."""
     root = 1.0
     for _ in range(64):
         root = (1 + root) ** (1 / 4)
@@ -602,8 +601,7 @@ def _cover_curve(wind: tuple[Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
     past = _history(breakers(wind))
     edge = foam_edge_g(wind)
     # A point whose crest stays CDF_SIGMAS edges short of a threshold covers under 1e-9
-    # of itself there: each level reads only the points near enough. Whitecaps cover a
-    # few percent of the sea; the levels start where 40% of it could break.
+    # of itself there: each level reads only the points near enough.
     peak = past.max(axis=0)
     levels = np.linspace(np.quantile(peak, 0.6), peak.max(), THRESHOLD_LEVELS)
     covers = np.array(
