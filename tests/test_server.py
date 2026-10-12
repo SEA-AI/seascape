@@ -10,6 +10,8 @@ import pytest
 from mcp import Client
 
 from seascape import server
+from seascape.config import load_variants
+from seascape.server import SCENARIOS
 
 
 def _call(tool: str, **arguments: Any) -> Any:
@@ -55,3 +57,18 @@ def test_a_job_older_than_a_day_is_deleted(
         os.utime(path, (a_day_ago, a_day_ago))
     server._prune()
     assert [path.name for path in tmp_path.iterdir()] == ["new"]
+
+
+def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
+    scenes = load_variants(SCENARIOS / "open-sea.toml", count=2)
+    first = scenes[0].seed
+    # `render` skipped first + 1, whose hulls met.
+    for seed in (first, first + 2):
+        (tmp_path / str(seed)).mkdir()
+    (tmp_path / "labels.json").touch()
+    job = server.Job(tmp_path, scenes)
+    assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
+    assert [s.seed for s in server._written(job, SCENARIOS / "open-sea.toml", [])] == [
+        first,
+        first + 2,
+    ]
