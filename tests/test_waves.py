@@ -8,9 +8,11 @@ import pytest
 from seascape import lwir, waves
 
 
-def field(wind_speed_mps: float, wind_from_deg: float = 0.0) -> tuple[waves.Wave, ...]:
+def field(
+    wind_speed_mps: float, wind_from_deg: float = 0.0, seed: int = 0
+) -> tuple[waves.Wave, ...]:
     return waves.wind_sea(
-        wind_speed_mps, wind_from_deg, None, lambda p: p, np.random.default_rng(0)
+        wind_speed_mps, wind_from_deg, None, lambda p: p, np.random.default_rng(seed)
     )
 
 
@@ -440,10 +442,13 @@ def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
         cutoff,
         100_000,
     )
-    weight = waves.curvature_spectrum(k, wind_speed_mps, None) * k
+    sea = field(wind_speed_mps)
+    # A light wind's sea is held to Cox & Munk's slope, every wave alike.
+    _, variance = waves._bins(wind_speed_mps, None)
+    held = sum(w.amplitude_m**2 / 2 for w in sea) / variance.sum()
+    weight = held * waves.curvature_spectrum(k, wind_speed_mps, None) * k
     m4 = np.trapezoid(weight, k)
     omega_sq = np.trapezoid(weight * waves.GRAVITY_MS2 * k, k) / m4
-    sea = field(wind_speed_mps)
     assert waves.specular_cell_m2(sea) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.1)
     assert waves.twinkle_hz(sea) == pytest.approx(
         math.sqrt(omega_sq) / (2 * math.pi), rel=0.1
@@ -453,3 +458,72 @@ def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
 def test_calm_water_does_not_glitter() -> None:
     assert waves.specular_cell_m2(()) == math.inf
     assert waves.twinkle_hz(()) == 0.0
+
+
+def test_the_spread_narrows_to_the_peak_and_widens_above_it() -> None:
+    peak = waves.peak_omega_rad_s(7.0, None)
+    delta = waves.spreading_delta(np.array([peak, 4 * peak]), 7.0, None)
+    assert delta[0] == pytest.approx(1.0, abs=1e-3)
+    assert delta[1] < 0.5
+
+
+def test_wind_waves_run_within_a_right_angle_of_downwind() -> None:
+    built = field(7.0)
+    off = [math.remainder(w.toward_rad - math.pi, 2 * math.pi) for w in built]
+    assert max(abs(o) for o in off) <= math.pi / 2
+
+
+@pytest.mark.parametrize("wind_speed_mps", [5.0, 10.0])
+def test_the_drawn_slope_is_upwind_heavy(wind_speed_mps: float) -> None:
+    ratios = []
+    for seed in range(8):
+        up, cross = waves.drawn_slope_variances(field(wind_speed_mps, seed=seed), 0, 0)
+        ratios.append(up / cross)
+    assert 1.2 < np.mean(ratios) < 2.0
+
+
+@pytest.mark.parametrize("footprint_m", [0.05, 1.0])
+def test_drawn_and_unresolved_hold_cox_and_munk_s_slope_on_each_axis(
+    footprint_m: float,
+) -> None:
+    built = field(7.0)
+    drawn = waves.drawn_slope_variances(built, footprint_m, 0.0)
+    left = waves.unresolved_slope_variances(7.0, 0.0, built, (), footprint_m)
+    for d, u, total in zip(drawn, left, waves.cox_munk_variances(7.0), strict=True):
+        assert d + u == pytest.approx(total)
+
+
+@pytest.mark.parametrize("wind_speed_mps", [0.0, 3.0, 7.0, 15.0])
+def test_the_axes_split_cox_and_munk_s_total(wind_speed_mps: float) -> None:
+    up, cross = waves.cox_munk_variances(wind_speed_mps)
+    assert up + cross == pytest.approx(waves.cox_munk_slope(wind_speed_mps) ** 2)
+    assert up <= cross if wind_speed_mps < 3.0 else up > cross
+
+
+def test_the_axes_left_unresolved_sum_to_the_total() -> None:
+    built, swell = field(7.0), (waves.Wave(0.5, 0.6, 1.0, 0.0),)
+    for footprint_m in (0.01, 1.0, 100.0):
+        up, cross = waves.unresolved_slope_variances(
+            7.0, 0.0, built, swell, footprint_m
+        )
+        assert up + cross == pytest.approx(
+            waves.unresolved_slope_variance(7.0, built, swell, footprint_m), rel=1e-9
+        )
+
+
+@pytest.mark.parametrize("wind_speed_mps", [1.0, 2.0, 3.0, 7.0, 15.0])
+def test_no_axis_draws_more_slope_than_cox_and_munk_measured(
+    wind_speed_mps: float,
+) -> None:
+    drawn = waves.drawn_slope_variances(field(wind_speed_mps), 0.0, 0.0)
+    for d, measured in zip(
+        drawn, waves.cox_munk_variances(wind_speed_mps), strict=True
+    ):
+        assert d <= measured * (1 + 1e-9)
+
+
+def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None:
+    """Elfouhaily's height variance is the bins'; the hold only trims a light wind."""
+    _, variance = waves._bins(7.0, None)
+    built = field(7.0)
+    assert sum(w.amplitude_m**2 / 2 for w in built) == pytest.approx(variance.sum())

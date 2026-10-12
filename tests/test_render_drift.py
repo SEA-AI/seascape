@@ -205,6 +205,13 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
         tree.nodes["sea_roughness"].outputs["Value"], emission.inputs["Color"]
     )
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    # Straight down, an orthographic ray has no horizontal to turn against the wind:
+    # held at 45 degrees, where the wind's axes mix evenly.
+    facing = tree.nodes["sea_wind_facing"]
+    for socket in facing.inputs:
+        for link in socket.links:
+            tree.links.remove(link)
+        socket.default_value = math.sqrt(0.5)
     pixel_rad = eo_pixel_rad(SCENARIO)
     lens = overhead(span_m, pixel_rad, px)
     lens.clip_end = 2 * height_m  # the default far plane stops short of the sea
@@ -222,21 +229,34 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
     east, north = np.meshgrid(centres, centres[::-1])
     distance = np.sqrt(east**2 + north**2 + height_m**2)
-    wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
-    speed = SCENARIO.sea.wind_speed_mps
+    wind = scene.wind_waves(SCENARIO)
     footprints = distance.ravel() * pixel_rad
-    variance = [
-        waves.unresolved_slope_variance(speed, wind, swell, f) for f in footprints
-    ]
     lobes = [
-        lobe(v, v, f, f, wind, sc.cycles.samples, glints=True)
-        for v, f in zip(variance, footprints, strict=True)
+        lobe(
+            *unresolved(SCENARIO, f, f, 0.5), f, f, wind, sc.cycles.samples, glints=True
+        )
+        for f in footprints
     ]
     # Top down, both footprints agree.
     expected = np.array([min((a * c) ** 0.125, 1.0) for a, c in lobes]).reshape(
         distance.shape
     )
     assert np.abs(rendered - expected).max() < 5e-3
+
+
+def unresolved(
+    scenario: Scenario, along_m: float, across_m: float, cos2: float
+) -> tuple[float, float]:
+    """The pixel's unresolved variance along and across a view at cos^2 `cos2` to the
+    wind, each twice its axis's."""
+    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    speed, axis = scenario.sea.wind_speed_mps, math.radians(scenario.sea.wind_from_deg)
+    up_a, cross_a = waves.unresolved_slope_variances(speed, axis, wind, swell, along_m)
+    up_c, cross_c = waves.unresolved_slope_variances(speed, axis, wind, swell, across_m)
+    return (
+        2 * (up_a * cos2 + cross_a * (1 - cos2)),
+        2 * (up_c * (1 - cos2) + cross_c * cos2),
+    )
 
 
 def lobe(
@@ -248,13 +268,15 @@ def lobe(
     samples: int,
     glints: bool,
 ) -> tuple[float, float]:
-    """The unresolved variance left to the lobe once the glitter takes its share, where
-    the sun can glint; all of it where it cannot."""
+    """The unresolved variance left to the lobe, wider axis first, once the glitter
+    takes its share of the narrower, where the sun can glint; all of it where it
+    cannot."""
+    wide, narrow = max(along, across), min(along, across)
     cells = along_m * across_m / waves.specular_cell_m2(wind)
     widen = max(cells / samples - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
-    carried = max(across - widen, 0.0) if glints else 0.0
-    left = max(along - carried, 0.0)
-    return max(left, 1e-12), max(across - carried, left / 100, 1e-12)
+    carried = max(narrow - widen, 0.0) if glints else 0.0
+    left = max(wide - carried, 0.0)
+    return max(left, 1e-12), max(narrow - carried, left / 100, 1e-12)
 
 
 @pytest.mark.render
@@ -290,8 +312,7 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     top_right, bottom_right, bottom_left, top_left = (np.array(c) for c in corners)
     origin = np.array(camera.matrix_world.translation)
     pixel_rad = lens.angle_x / px[0]
-    wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
-    speed = SCENARIO.sea.wind_speed_mps
+    wind = scene.wind_waves(SCENARIO)
     checked = []
     for row in range(px[1]):
         for col in range(px[0]):
@@ -305,9 +326,9 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
             distance = origin[2] / -ray[2]
             across = distance * pixel_rad
             along = across / -ray[2]
+            cos2 = ray[1] ** 2 / (ray[0] ** 2 + ray[1] ** 2)
             v_along, v_across = lobe(
-                waves.unresolved_slope_variance(speed, wind, swell, along),
-                waves.unresolved_slope_variance(speed, wind, swell, across),
+                *unresolved(SCENARIO, along, across, cos2),
                 along,
                 across,
                 wind,
@@ -363,31 +384,63 @@ def test_the_glitter_tilts_only_facets_that_can_mirror_the_sun(
     assert (changed > 0.01) == glints, changed
 
 
-def _gaussian_sea_reflectance(wind_speed_mps: float, depression_deg: float) -> float:
+# The reflectance probe: a narrow lens low over the sea.
+PROBE_HEIGHT_M, PROBE_FOV_DEG, PROBE_PX = 15.0, 4.0, (64, 16)
+
+
+def _gaussian_sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     """What a sea of Cox & Munk's Gaussian slopes reflects of a uniform sky: each
     facet mirrors F of it, weighted by the area it shows the view, less the share of
     its mirror ray that Smith's Beckmann shadowing (Walter et al. 2007) sends into
-    another wave."""
-    sigma = waves.cox_munk_slope(wind_speed_mps) / math.sqrt(2)
-    facet = lwir._facets(sigma).T
+    another wave.
+
+    Only the slope the probe's centre pixel leaves unresolved shadows, along the
+    ray's azimuth: the drawn waves are normals, which occlude nothing.
+    """
+    speed = scenario.sea.wind_speed_mps
+    wind_axis = math.radians(scenario.sea.wind_from_deg)
     d = math.radians(depression_deg)
+    # The probe looks north; x east, y north.
+    up, cross = waves.cox_munk_variances(speed)
+    c2 = math.cos(wind_axis) ** 2
+    sides = (up * (1 - c2) + cross * c2, up * c2 + cross * (1 - c2))
+    unit = lwir._facets(1.0)
+    tilt = -unit[:, :2] / unit[:, 2:] * np.sqrt(sides)
+    facet = np.column_stack([-tilt, np.ones(len(tilt))])
+    facet = (facet / np.linalg.norm(facet, axis=1, keepdims=True)).T
     view = np.array([0.0, -math.cos(d), math.sin(d)])
     facing = view @ facet
     area = np.maximum(facing, 0.0) / facet[2]
-    mirror_up = (2 * facing * facet - view[:, None])[2]
-    a = np.tan(np.arcsin(np.clip(mirror_up, 1e-6, 1.0))) / (math.sqrt(2) * sigma)
+    mirror = 2 * facing * facet - view[:, None]
+    across_m = PROBE_HEIGHT_M / math.sin(d) * math.radians(PROBE_FOV_DEG) / PROBE_PX[0]
+    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    left = [
+        waves.unresolved_slope_variances(speed, wind_axis, wind, swell, f)
+        for f in (across_m, across_m / math.sin(d))
+    ]
+    # East takes the across footprint, north the along one.
+    east, north = (
+        up * w + cross * (1 - w)
+        for (up, cross), w in zip(left, (1 - c2, c2), strict=True)
+    )
+    run = np.maximum(np.hypot(mirror[0], mirror[1]), 1e-12)
+    sigma = np.sqrt(east * mirror[0] ** 2 + north * mirror[1] ** 2) / run
+    a = np.tan(np.arcsin(np.clip(mirror[2], 1e-6, 1.0))) / (math.sqrt(2) * sigma)
     lam = (np.exp(-a * a) / (a * math.sqrt(math.pi)) - np.vectorize(math.erfc)(a)) / 2
-    lit = np.where(mirror_up > 0.0, 1 / (1 + lam), 0.0)
+    lit = np.where(mirror[2] > 0.0, 1 / (1 + lam), 0.0)
     mirrored = 1 - lwir.fresnel_emissivity(
         np.arccos(np.clip(facing, 0, 1)), sea.SEAWATER_IOR, 0.0
     )
     return float(np.sum(area * mirrored * lit) / np.sum(area))
 
 
-def _uniform_sky_reflectance(depression_deg: float) -> float:
-    """The sea's reflection alone of a white sky. A steep frame sees a few metres of sea
-    tilted by the long wave under it; frames a long wave apart average to the sea's."""
-    scene.build(SCENARIO, "eo")
+def _uniform_sky_reflectance(
+    scenario: Scenario, depressions_deg: tuple[float, ...]
+) -> list[float]:
+    """The sea's reflection alone of a white sky, one build looking down at each
+    depression. A steep frame sees a few metres of sea tilted by the long wave under
+    it; frames a long wave apart average to the sea's."""
+    scene.build(scenario, "eo")
     world = bpy.context.scene.world.node_tree
     background = world.nodes["Background"]
     for link in list(background.inputs["Color"].links):
@@ -396,30 +449,35 @@ def _uniform_sky_reflectance(depression_deg: float) -> float:
     nodes = bpy.data.materials["sea"].node_tree.nodes
     nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
     lens = bpy.data.cameras.new("probe")
-    lens.clip_end, lens.angle_x = 1e5, math.radians(4.0)
+    lens.clip_end, lens.angle_x = 1e5, math.radians(PROBE_FOV_DEG)
     camera = bpy.data.objects.new("probe", lens)
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
     sc.camera = camera
-    camera.rotation_euler = (math.radians(90.0 - depression_deg), 0.0, 0.0)
-    frames = []
-    for i in range(32):
-        camera.location = (97.0 * i, 59.0 * i, 15.0)
-        frames.append(shoot((64, 16), f"reflectance_{i}").mean())
-    return float(np.mean(frames))
+    seen = []
+    for depression_deg in depressions_deg:
+        camera.rotation_euler = (math.radians(90.0 - depression_deg), 0.0, 0.0)
+        frames = []
+        for i in range(32):
+            camera.location = (97.0 * i, 59.0 * i, PROBE_HEIGHT_M)
+            frames.append(shoot(PROBE_PX, f"reflectance_{i}").mean())
+        seen.append(float(np.mean(frames)))
+    return seen
 
 
-@pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
+@pytest.mark.parametrize("wind_from_deg", [0.0, 90.0])
 def test_the_sea_reflects_a_uniform_sky_as_gaussian_slopes_do(
-    depression_deg: float,
+    wind_from_deg: float,
 ) -> None:
-    """The lobe's distribution sets how much sky the sea returns near the horizon."""
-    expected = _gaussian_sea_reflectance(SCENARIO.sea.wind_speed_mps, depression_deg)
+    """The lobe's distribution sets how much sky the sea returns near the horizon,
+    looking upwind and across the wind."""
+    scenario = _clear(variant(sea={"wind_from_deg": wind_from_deg}))
+    depressions_deg = (3.0, 10.0, 40.0)
+    expected = [_gaussian_sea_reflectance(scenario, d) for d in depressions_deg]
 
-    rendered = _uniform_sky_reflectance(depression_deg)
+    rendered = _uniform_sky_reflectance(scenario, depressions_deg)
 
-    # A judgement: the reference shadows the drawn waves too, which the render draws as
-    # normals that shadow nothing.
+    # A judgement.
     assert rendered == pytest.approx(expected, rel=0.06)
 
 

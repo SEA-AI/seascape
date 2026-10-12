@@ -62,8 +62,9 @@ from seascape.waves import (
     WINDROW_SPACING_S,
     Wave,
     breaking_threshold_g,
-    cox_munk_slick_slope,
+    cox_munk_slick_variances,
     cox_munk_slope,
+    cox_munk_variances,
     earth_radius_m,
     fade_footprints_m,
     gust_slope_variance,
@@ -78,6 +79,7 @@ from seascape.waves import (
     twinkle_hz,
     unresolved_acceleration_variance,
     unresolved_slope_variance,
+    unresolved_slope_variances,
     von_karman_field,
     whitecap_fraction,
 )
@@ -1713,39 +1715,89 @@ def _unresolved(
     smooth: bpy.types.NodeSocket | None,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """The slope variance each pixel does not draw, along and across its view: the
-    gusty sea's, and a slick's where `smooth` is 1."""
+    gusty sea's, and a slick's where `smooth` is 1. Each is twice its axis's, the total
+    an isotropic sea of that slope would hold.
+
+    Cox & Munk's axes are the wind's. ponytail: the view's take their variances by cos^2
+    of the angle between and leave out the covariance, so a lobe 45 degrees off the
+    wind stays aligned with the view. Rotate the tangent if a glitter shows it.
+    """
     speed = sea.wind_speed_mps
-
-    def unresolved_at(footprint_m: float) -> float:
-        return unresolved_slope_variance(speed, wind, swell, footprint_m)
-
-    table = _footprint_table("sea_unresolved_variance", unresolved_at)
-    footprints = (pixel.along_m, pixel.across_m)
-    unresolved = tuple(
-        _at_footprint(tree, table, f, "sea_unresolved_variance") for f in footprints
+    # From or toward, the axis is the same.
+    wind_axis = math.radians(sea.wind_from_deg)
+    facing = _vector(
+        tree,
+        "DOT_PRODUCT",
+        pixel.along_dir,
+        (math.sin(wind_axis), math.cos(wind_axis), 0),
     )
+    cos2 = _math(tree, "MULTIPLY", facing, facing, name="sea_wind_facing")
+    footprints = (pixel.along_m, pixel.across_m)
+
+    def tabled(
+        name: str,
+        field: tuple[Wave, ...],
+        fit: Callable[[float], tuple[float, float]],
+    ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+        axes = tuple(
+            _footprint_table(
+                f"{name}_{axis}",
+                lambda f, i=i: unresolved_slope_variances(
+                    speed, wind_axis, field, swell, f, fit
+                )[i],
+            )
+            for i, axis in enumerate(("upwind", "crosswind"))
+        )
+        out = []
+        for f, on_up in zip(
+            footprints, (cos2, _math(tree, "SUBTRACT", 1.0, cos2)), strict=True
+        ):
+            up, cross = (
+                _at_footprint(tree, t, f, f"{name}_{axis}")
+                for t, axis in zip(axes, ("upwind", "crosswind"), strict=True)
+            )
+            mixed = _math(
+                tree, "MULTIPLY_ADD", _math(tree, "SUBTRACT", up, cross), on_up, cross
+            )
+            out.append(_math(tree, "MULTIPLY", mixed, 2.0))
+        return out[0], out[1]
+
+    unresolved = tabled("sea_unresolved_variance", wind, cox_munk_variances)
     if gust is not None:
         unresolved = _gusty(tree, sea, gust, unresolved)
     if smooth is None:
         return unresolved
-
-    def slick_at(footprint_m: float) -> float:
-        return unresolved_slope_variance(
-            speed, survivors, swell, footprint_m, cox_munk_slick_slope
-        )
-
-    name = "sea_unresolved_slick_variance"
-    slick_table = _footprint_table(name, slick_at)
+    slick = tabled("sea_unresolved_slick_variance", survivors, cox_munk_slick_variances)
     # The slick's own variance in place of the gusty sea's.
-    return tuple(
-        _math(
-            tree,
-            "MULTIPLY_ADD",
-            smooth,
-            _math(tree, "SUBTRACT", _at_footprint(tree, slick_table, f, name), v),
-            v,
-        )
-        for v, f in zip(unresolved, footprints, strict=True)
+    along, across = (
+        _math(tree, "MULTIPLY_ADD", smooth, _math(tree, "SUBTRACT", s, v), v)
+        for s, v in zip(slick, unresolved, strict=True)
+    )
+    return along, across
+
+
+def _widest(
+    tree: bpy.types.NodeTree,
+    pixel: _Pixel,
+    unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """The wider and narrower of the unresolved variances, and the horizontal along
+    the wider: Cycles' Metallic BSDF stretches a lobe along its tangent only. Grazing,
+    the footprints make it the view's; a steep view down a crosswind-heavy sea turns
+    it."""
+    across_dir = _vector(tree, "CROSS_PRODUCT", pixel.along_dir, (0.0, 0.0, 1.0))
+    tangent = tree.nodes.new("ShaderNodeMix")
+    tangent.data_type = "VECTOR"
+    tree.links.new(
+        _math(tree, "GREATER_THAN", unresolved[1], unresolved[0]),
+        tangent.inputs["Factor"],
+    )
+    tree.links.new(pixel.along_dir, tangent.inputs["A"])
+    tree.links.new(across_dir, tangent.inputs["B"])
+    return (
+        _math(tree, "MAXIMUM", *unresolved, name="sea_unresolved_wide"),
+        _math(tree, "MINIMUM", *unresolved, name="sea_unresolved_narrow"),
+        tangent.outputs["Result"],
     )
 
 
@@ -1811,32 +1863,33 @@ def material(
         return unresolved_slope_variance(speed, wind, swell, footprint_m)
 
     if light.sky is None:
+        wide, narrow, tangent = _widest(tree, pixel, unresolved)
         carried: float | bpy.types.NodeSocket = 0.0
         if wind and light.sun is not None:
-            # Along the view, the wider spread, reaches the most facets. A judgement.
-            glinting = _glinting(tree, normal, light.sun, unresolved[0])
-            tilt, carried = _glitter(tree, wind, time_s, pixel, unresolved[1], glinting)
+            # The wider spread reaches the most facets. A judgement.
+            glinting = _glinting(tree, normal, light.sun, wide)
+            tilt, carried = _glitter(tree, wind, time_s, pixel, narrow, glinting)
             normal = _vector(
                 tree,
                 "NORMALIZE",
                 _vector(tree, "ADD", normal, tilt),
                 name="glitter_normal",
             )
-        along = _math(
-            tree, "MAXIMUM", _math(tree, "SUBTRACT", unresolved[0], carried), 0.0
-        )
+        wide = _math(tree, "MAXIMUM", _math(tree, "SUBTRACT", wide, carried), 0.0)
         # Cycles stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
-        across = _math(
-            tree,
-            "MAXIMUM",
-            _math(tree, "SUBTRACT", unresolved[1], carried),
-            _math(tree, "MULTIPLY", along, 0.01),
+        unresolved = (
+            wide,
+            _math(
+                tree,
+                "MAXIMUM",
+                _math(tree, "SUBTRACT", narrow, carried),
+                _math(tree, "MULTIPLY", wide, 0.01),
+            ),
         )
-        unresolved = (along, across)
         threshold = _breaking(tree, sea, wind, gust, gust_max)
         # Along the view, the widest footprint, leaves the most unresolved. A judgement.
         whitecaps = _whitecaps(tree, wind, acceleration, pixel.along_m, threshold)
-        surface = _daylight(tree, normal, pixel.along_dir, unresolved, whitecaps, wake)
+        surface = _daylight(tree, normal, tangent, unresolved, whitecaps, wake)
     else:
         # The coarsest footprint leaves the most, Cox & Munk's and all the swell's,
         # and the strongest gust adds the most.
