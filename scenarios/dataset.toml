@@ -19,7 +19,7 @@ ir = { band = "ir", hfov_deg = 49.0, width_px = 640, height_px = 512 }
 # In the inherited options' order: Blender's sky, then a photographed one. The sun
 # anywhere, glare included.
 [sky]
-weights = [1, 4]
+weights = [1, 9]
 sun_bearing_deg = { uniform = [0.0, 360.0] }
 
 [[objects]]
