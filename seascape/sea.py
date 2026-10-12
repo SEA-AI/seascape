@@ -600,7 +600,7 @@ def _parallax(
     """Where the view ray meets the drawn height, (east, north, time), iterated from the
     flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
     face tilted from the camera then takes the little of the frame it shows. Glitter,
-    gusts, slicks and wake foam still read the flat sea.
+    gusts and slicks still read the flat sea.
     """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     flat = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -1820,7 +1820,6 @@ def _line_path(
 
 
 def _path(tree: bpy.types.NodeTree, wake: Wake, where: bpy.types.NodeSocket) -> _Path:
-    """`wake`'s path read at `where`, (east, north, time)."""
     position = tree.nodes.new("ShaderNodeSeparateXYZ")
     position.name = "wake_position"
     tree.links.new(where, position.inputs["Vector"])
@@ -2241,7 +2240,6 @@ def material(
     normal, position = _waves(tree, *drawn, tall, time_s, pixel, calm, damped)
     wake = None
     if wakes:
-        # On the sea the view ray meets, as the whitecaps' foam, so it rides the crests.
         sea_variance = cox_munk_slope(speed) ** 2
         wake = _wakes(tree, wakes, position, pixel.along_m, foam(), sea_variance)
     smooth = _smoothed(tree, slick, wake)
