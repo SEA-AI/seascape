@@ -156,8 +156,8 @@ GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
 # weighted so.
 LACE_OCTAVE = 6.0
 LACE_FINE_WEIGHT = 0.8
-# A judgement, from photographs of decaying whitecaps: the cells foam tears into, and
-# how far Blender's Noise bends their edges, in cells.
+# A judgement: the cells foam tears into, and how far Blender's Noise bends their
+# edges, in cells.
 FOAM_CELL_M = 0.3
 FOAM_WARP = 0.6
 # A judgement: a line's soft edge, in cells, and how sharply a segment of it goes.
@@ -789,7 +789,7 @@ def _instance(
 def _history_group(calm: bool) -> bpy.types.NodeTree:
     """Three waves' downward acceleration at each foam age, added to `Sum i` per lane:
     cos(phase) times `Cos i` plus sin(phase) times `Sin i`, the waves faded and calmed
-    as `_wave_group` draws them. Generic, so one group serves every triple."""
+    as `_wave_group` draws them."""
     name = "waves_history_calm" if calm else "waves_history"
     if name in bpy.data.node_groups:
         return bpy.data.node_groups[name]
@@ -939,13 +939,7 @@ def _whitecaps(
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """How much of the pixel foam covers, how bright, as a share of fresh foam's, and
     the share of the sea under foam of any age, laced or not, where its bubbles are.
-
-    At each foam age, `history` the breaking crests' downward acceleration then, the
-    chance they broke past the local wind's threshold, Gaussian over the crest's frayed
-    edge and what the pixel leaves out, thinned to Monahan's area, exp(-age / tau_a),
-    fills where the first Gaussian of `lace` tops that share, torn by `_torn` into the
-    network its fade leaves. The youngest foam shows.
-    """
+    `history` holds the breaking crests' downward acceleration at each foam age."""
     threshold_g = _breaking(tree, sea, wind, gust, gust_max)
     breaking = breakers(wind)
     table = _footprint_table(
@@ -963,7 +957,7 @@ def _whitecaps(
     fade_s = foam_fade_efold_s(wind, float(mean_g[0]), FRESH_FOAM_REFLECTANCE)
     shares, widths = _network_widths()
     # The fine lace as a uniform level in [g/2, 1 - g/2], g the popping ramp's width,
-    # so all kept is solid and none kept is empty. The same at every age.
+    # so all kept is solid and none kept is empty.
     sigmas = CDF_SIGMAS * (2 * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES - 1)
     cdf = curve_image("normal_cdf", np.vectorize(NormalDist().cdf)(sigmas))
     x = _math(tree, "MULTIPLY_ADD", lace[1], 1 / (2 * CDF_SIGMAS), 0.5)
@@ -1008,7 +1002,6 @@ def _whitecaps(
         area, foam, under = (node.outputs[n] for n in ("Area", "Foam", "Under"))
     assert isinstance(area, bpy.types.NodeSocket)
     assert isinstance(foam, bpy.types.NodeSocket)
-    # Named after their meaning, as the outputs of the oldest age's group.
     area, foam, under = (
         _math(tree, "MAXIMUM", socket, 0.0, name=name)
         for socket, name in (
@@ -1303,7 +1296,6 @@ def _daylight(
     water = tree.nodes.new("ShaderNodeAddShader")
     link(mirror.outputs["BSDF"], water.inputs[0])
     link(body.outputs["BSDF"], water.inputs[1])
-    # Foam lies on the waves: lit and shaded by them as the body is.
     foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
     link(normal, foam.inputs["Normal"])
     foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
@@ -1327,21 +1319,15 @@ def _daylight(
 @cache
 def _network_widths() -> tuple[np.ndarray, np.ndarray]:
     """(share, width): the line width, in cells, along the foam network's edges that
-    covers each share of the sea. Measured in Blender, as the data file says."""
+    covers each share of the sea."""
     raw = np.loadtxt(_NETWORK_CSV, delimiter=",", comments="#")
     return raw[:, 0], raw[:, 1]
 
 
 def _foam_age_group() -> bpy.types.NodeTree:
-    """One foam age: where its crest broke past `Threshold`, Gaussian over `Sigma`,
-    thinned by `Thin`, fills where the Gaussian `Lace` tops that share, edges half the
-    tile's sigma wide as `_patchy`'s; torn into lines along the network's edges,
-    `Network` the distance to one, covering `Share` of the sea, `Wide` cells wide or
-    the pixel's `Footprint`, whichever is wider; past that, whole segments go where
-    `Level`, the fine lace as a uniform level, tops their share, so old foam stays
-    white in clumps rather than greying (Yingst, Alford & Parberry 2011). The youngest
-    age is the widest, so each takes the maximum with what older ages left in `Area`,
-    `Foam` and `Under`."""
+    """One foam age, folded into the older ages' `Area`, `Foam` and `Under` by
+    maximum. Old foam tears into whole network segments rather than greying (Yingst,
+    Alford & Parberry 2011)."""
     name = "whitecap_age"
     if name in bpy.data.node_groups:
         return bpy.data.node_groups[name]
@@ -1397,7 +1383,6 @@ def _foam_age_group() -> bpy.types.NodeTree:
 
     shares, widths = _network_widths()
     top = float(widths[-1])
-    # The share each width covers, as a lookup over [0, top].
     grid = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES * top
     cover = curve_image("foam_network_cover", np.interp(grid, widths, shares))
     width = _math(
@@ -1451,17 +1436,14 @@ def _foam_lace(
     outputs: Outputs,
     tile: bpy.types.Image,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """The foam tile laid on the sea, drifting with its surface as a slick does, over a
-    finer layer of itself, two independent unit Gaussians rescaled to one; the fine
-    layer again, a quarter tile off, independent of both; and the distance in cells to
-    the nearest edge of the network foam tears into, carried alike. Read at `where`,
-    (east, north, time), the sea the view ray meets."""
+    """(lace, fine lace, distance in cells to the foam network's nearest edge),
+    drifting with the surface, read at `where`, (east, north, time). The lace is two
+    independent unit Gaussians rescaled to one."""
     east, north = _downwind(sea)
     drift = SLICK_DRIFT * sea.wind_speed_mps
     layers = []
     for scale, start in ((1.0, 0.0), (LACE_OCTAVE, 0.5), (LACE_OCTAVE, 0.25)):
         per_m = scale / FOAM_TILE_M
-        # As a wake's foam, streaked: here along the wind that drives it.
         along = per_m / FOAM_STREAK
         layers.append(
             _drifting(

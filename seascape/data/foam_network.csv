@@ -1,7 +1,7 @@
 # Blender's 2D Voronoi distance to edge, in cells, as the sea's whitecap foam reads it:
 # scale 1, its lookup offset by a 2D Noise at scale 1 and detail 3 whose colour is
 # centred and scaled to 0.6 cells. Over 4.2 million points of a 380-cell square, denoising off.
-# A measurement of Blender 5.2; a render test measures it again.
+# A measurement of Blender 5.2.
 # share: of the sea within `width` of an edge.
 # share, width
 0.000000,0.000000

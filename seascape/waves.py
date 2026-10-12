@@ -134,8 +134,8 @@ SWELL_S_MAX = 75.0
 WHITECAP_AREA_EFOLD_S = 3.85
 # Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
 WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
-# A judgement: foam ages a pixel reads, out to two area e-folds (14% left), closer
-# together than a crest takes to pass, and closest where the foam tears fastest.
+# A judgement: foam ages a pixel reads, out to two area e-folds, closer together than
+# a crest takes to pass.
 FOAM_AGES = 8
 FOAM_SPAN_EFOLDS = 2.0
 # A judgement: a crest breaks over this share of its acceleration's sigma, which
@@ -517,7 +517,6 @@ def downward_acceleration_g(
 
 
 def breakers(wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
-    """The waves whose crests whitecap: those that carry the sea's height."""
     return tallest(wind, BREAKING_HEIGHT_SHARE) if wind else ()
 
 
@@ -549,7 +548,8 @@ def foam_area(
 @cache
 def _lattice(count: int) -> np.ndarray:
     """(x, y, t) in [0, 1)^3 by Roberts' additive recurrence on the root of
-    x^4 = x + 1: evenly spread, without a generator."""
+    x^4 = x + 1 (Roberts 2018, "The unreasonable effectiveness of quasirandom
+    sequences"): evenly spread, without a generator."""
     root = 1.0
     for _ in range(64):
         root = (1 + root) ** (1 / 4)
@@ -601,8 +601,7 @@ def _cover_curve(wind: tuple[Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
     past = _history(breakers(wind))
     edge = foam_edge_g(wind)
     # A point whose crest stays CDF_SIGMAS edges short of a threshold covers under 1e-9
-    # of itself there: each level reads only the points near enough. Whitecaps cover a
-    # few percent of the sea; the levels start where 40% of it could break.
+    # of itself there: each level reads only the points near enough.
     peak = past.max(axis=0)
     levels = np.linspace(np.quantile(peak, 0.6), peak.max(), THRESHOLD_LEVELS)
     covers = np.array(
