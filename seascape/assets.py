@@ -186,13 +186,14 @@ def cache_path(name: str, url: str) -> Path:
 
 
 def download(name: str, url: str, sha256: str) -> Path:
-    """The cached file for `name`, downloaded once. Verified on every call."""
+    """The cached file for `name`, downloaded again whenever it misses `sha256`."""
     return _get(cache_path(name, url), url, sha256)
 
 
 def _get(path: Path, url: str, sha256: str) -> Path:
-    if path.exists():
-        _verify(path, sha256)
+    # A cached file that misses the digest is stale or corrupt: fetch it again, and
+    # keep it until a verified copy replaces it.
+    if path.exists() and digest(path) == sha256:
         return path
 
     path.parent.mkdir(parents=True, exist_ok=True)
