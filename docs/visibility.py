@@ -6,14 +6,15 @@ uv run python -m docs.visibility docs/visibility.png
 
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
 import bpy
 import cv2
 import numpy as np
-from PIL import Image, ImageColor, ImageDraw
+from PIL import Image, ImageColor, ImageDraw, ImageFont
 
-from docs.brand import FOCUS_RED, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
+from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
 from seascape import labels, render, scene
 from seascape.config import load
 
@@ -113,7 +114,9 @@ def heat(
 
 
 def thumbnail(m: dict, image: str) -> Image.Image:
-    """`image` ("frame" or "without") around the ship, the ship boxed."""
+    """`image` ("frame" or "without") around the ship. The frame carries the verdict,
+    the box solid if labels.json keeps it and dashed if not; the image without the
+    ship only marks where it was."""
     ys, xs = np.nonzero(m["mask"])
     w = max(2.5 * np.ptp(xs), 60.0)
     h = w * THUMB_PX[1] / THUMB_PX[0]
@@ -123,44 +126,96 @@ def thumbnail(m: dict, image: str) -> Image.Image:
     s = img.width / crop.shape[1]
     box = [(xs.min() - x0 - 2) * s, (ys.min() - y0 - 2) * s]
     box += [(xs.max() - x0 + 3) * s, (ys.max() - y0 + 3) * s]
-    ImageDraw.Draw(img).rectangle(box, outline=NIGHT_BLUE, width=2)
+    draw = ImageDraw.Draw(img)
+    if image == "without":
+        draw.rectangle(box, outline="white", width=2)
+    elif m["seen"]:
+        draw.rectangle(box, outline=NIGHT_BLUE, width=2)
+    else:
+        dashed(draw, box)
     return img
 
 
-def number_line(draw: ImageDraw.ImageDraw, x0: int, axis: int, w: int, m: dict) -> None:
-    """Ship contrast, true contrast and clutter on one axis from 0; the threshold in
-    red. The ship's measures sit above the axis, the sea's below."""
-    top = 1.3 * max(m["ship"], m["real"], m["sea"] + JND)
+def dashed(draw: ImageDraw.ImageDraw, box: list[float], dash: int = 6) -> None:
+    left, top, right, bottom = box
+    edges = ((left, top, right, top), (right, top, right, bottom))
+    edges += ((left, bottom, right, bottom), (left, top, left, bottom))
+    for x0, y0, x1, y1 in edges:
+        length = max(abs(x1 - x0), abs(y1 - y0))
+        for start in range(0, round(length), 2 * dash):
+            a, b = start / length, min(start + dash, length) / length
+            start_at = (x0 + a * (x1 - x0), y0 + a * (y1 - y0))
+            end_at = (x0 + b * (x1 - x0), y0 + b * (y1 - y0))
+            draw.line([start_at, end_at], fill=FOCUS_RED, width=2)
+
+
+def tick(draw: ImageDraw.ImageDraw, x: float, y0: float, y1: float) -> None:
+    """The true contrast: white on the ship's stripe, outlined."""
+    draw.line([x, y0, x, y1], fill=OCEAN_TEAL, width=5)
+    draw.line([x, y0 + 2, x, y1 - 2], fill="white", width=1)
+
+
+def reach(m: dict) -> float:
+    """The longest of `m`'s bars."""
+    return max(m["ship"], m["real"], m["sea"] + JND)
+
+
+def runs_px(
+    draw: ImageDraw.ImageDraw,
+    parts: Sequence[tuple[str, str]],
+    face: ImageFont.FreeTypeFont,
+) -> float:
+    return sum(draw.textlength(text, font=face) for text, _ in parts)
+
+
+def runs(
+    draw: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    parts: Sequence[tuple[str, str]],
+    face: ImageFont.FreeTypeFont,
+) -> None:
+    """`parts` left to right from `x`, each text in its colour."""
+    for text, colour in parts:
+        draw.text((x, y), text, fill=colour, font=face, anchor="lm")
+        x += draw.textlength(text, font=face)
+
+
+def race(
+    draw: ImageDraw.ImageDraw, x0: int, middle: int, w: int, m: dict, top: float
+) -> float:
+    """The sea's stripe, its clutter and the JND stacked to the threshold, over the
+    ship's, the true contrast ticked on it, on an axis from 0 to `top`; each value
+    just past its stripe's end. Where the labels end."""
+    small, half = font(14), 2
+    # Each number in its stripe's colour, so the label is the legend.
+    sea_runs = [
+        (f"{m['sea']:.2f}", SKY_GREY),
+        (f" + {JND}*", FOCUS_RED),
+        (f" = {m['sea'] + JND:.2f}", NIGHT_BLUE),
+    ]
+    ship_runs = [(f"{m['ship']:.2f}", NIGHT_BLUE), ("  ·  ", SKY_GREY)]
+    ship_runs += [(f"true {m['real']:.2f}", OCEAN_TEAL)]
+    widths = [runs_px(draw, r, small) for r in (sea_runs, ship_runs)]
+    # The longest stripe still leaves its label room.
+    span = w - 40 - max(widths)
 
     def x(value: float) -> float:
-        return x0 + w * value / top
+        return x0 + 40 + (span - 12) * value / top
 
-    small = font(14)
-    draw.line([x0, axis, x0 + w, axis], fill=SKY_GREY)
-    draw.text((x0, axis + 8), "0", fill=SKY_GREY, font=small, anchor="mt")
-    draw.line([x(m["sea"]), axis, x(m["sea"]), axis + 10], fill=SKY_GREY, width=3)
-    text = f"clutter  {m['sea']:.2f}"
-    at = max(x(m["sea"]), x0 + 16 + draw.textlength(text, font=small) / 2)
-    draw.text((at, axis + 16), text, fill=SKY_GREY, font=small, anchor="mt")
-    rule = x(m["sea"] + JND)
-    draw.line([rule, axis, rule, axis + 10], fill=FOCUS_RED, width=3)
-    text = f"threshold  {m['sea'] + JND:.2f}"
-    draw.text((rule, axis + 34), text, fill=FOCUS_RED, font=small, anchor="mt")
-    dots = [(m["ship"], False, "ship contrast"), (m["real"], True, "true contrast")]
-    # Each label on the dot's outer side, so the two never stack.
-    for (value, hollow, label), anchor in zip(sorted(dots), ("rb", "lb"), strict=True):
-        cx = x(value)
-        fill = "white" if hollow else NIGHT_BLUE
-        draw.ellipse(
-            [cx - 7, axis - 7, cx + 7, axis + 7], fill=fill, outline=NIGHT_BLUE, width=2
-        )
-        at = (cx + (8 if anchor == "lb" else -8), axis - 12)
-        text = f"{label}  {value:.2f}"
-        draw.text(at, text, fill=NIGHT_BLUE, font=small, anchor=anchor)
-    word, colour = ("box", NIGHT_BLUE) if m["seen"] else ("no box", FOCUS_RED)
-    draw.text(
-        (x0 + w + 24, axis), word, fill=colour, font=font(28, "Medium"), anchor="lm"
+    sea_y, ship_y = middle - 14, middle + 14
+    for label, row in (("sea", sea_y), ("ship", ship_y)):
+        draw.text((x0, row), label, fill=SKY_GREY, font=small, anchor="lm")
+    draw.rectangle([x(0), sea_y - half, x(m["sea"]), sea_y + half], fill=SKY_GREY)
+    draw.rectangle(
+        [x(m["sea"]), sea_y - half, x(m["sea"] + JND), sea_y + half], fill=FOCUS_RED
     )
+    draw.rectangle([x(0), ship_y - half, x(m["ship"]), ship_y + half], fill=NIGHT_BLUE)
+    tick(draw, x(m["real"]), ship_y - 8, ship_y + 8)
+    sea_end, ship_end = x(m["sea"] + JND), max(x(m["ship"]), x(m["real"]))
+    runs(draw, sea_end + 10, sea_y, sea_runs, small)
+    runs(draw, ship_end + 10, ship_y, ship_runs, small)
+    return max(sea_end + widths[0], ship_end + widths[1]) + 10
 
 
 def examples(
@@ -170,12 +225,16 @@ def examples(
     rows: tuple[tuple[str, dict, float], ...],
     km: float,
 ) -> int:
-    """One line per example: label, both thumbnails, the number line, the verdict;
-    then the legend. The y below them."""
+    """One line per example: label, both thumbnails with the verdict, the race; the
+    notes boxed beside the last race. The y below them."""
+    # One axis for every example, so their bars compare.
+    top = 1.05 * max(reach(m) for _, m, _ in rows)
     thumbs_x = PAD_PX + 136
     line_x = thumbs_x + 2 * THUMB_PX[0] + 8 + 2 * PAD_PX
+    race_w = WIDTH_PX - line_x - PAD_PX
+    small = font(14)
     for name, m, r in rows:
-        middle = y + THUMB_PX[1] // 2
+        row_y, middle = y, y + THUMB_PX[1] // 2
         draw.text((PAD_PX, middle - 20), name, fill=NIGHT_BLUE, font=font(16, "Medium"))
         where = f"{r / 1000:.1f} km,\n{km:g} km visibility"
         draw.multiline_text((PAD_PX, middle), where, fill=SKY_GREY, font=font(13))
@@ -185,24 +244,26 @@ def examples(
             x = thumbs_x + i * (THUMB_PX[0] + 8)
             sheet.paste(thumbnail(m, image), (x, y))
             draw.text((x, y + THUMB_PX[1] + 2), caption, fill=SKY_GREY, font=font(13))
-        number_line(draw, line_x, middle, WIDTH_PX - line_x - 130, m)
+        end = race(draw, line_x, middle, race_w, m, top)
         y += THUMB_PX[1] + 2 * PAD_PX + 8
-    small = font(14)
-    for hollow, text, x in (
-        (False, "ship contrast: against the sea beside it", PAD_PX),
-        (True, "true contrast: against the image without the ship", 300),
-    ):
-        fill = "white" if hollow else NIGHT_BLUE
-        draw.ellipse([x, y + 4, x + 10, y + 14], fill=fill, outline=NIGHT_BLUE, width=2)
-        draw.text((x + 16, y), text, fill=NIGHT_BLUE, font=small)
-    draw.text(
-        (PAD_PX, y + 24),
-        "Values in ΔE*ab, colour difference as people see it. Threshold: clutter + "
-        f"{JND}, the smallest difference people notice.",
-        fill=SKY_GREY,
-        font=small,
-    )
-    return y + 44
+    # Each key word in the colour it has in the figure.
+    notes = [
+        [("ship", NIGHT_BLUE), (": vs the sea beside it.", SKY_GREY)],
+        [("true", OCEAN_TEAL), (": vs the image without the ship.", SKY_GREY)],
+        [(f"*{JND}", FOCUS_RED), (": just noticeable (Mahy et al. 1994).", SKY_GREY)],
+        [("Dashed box", FOCUS_RED), (": no label.", SKY_GREY)],
+    ]
+    line_px, inset = 18, 10
+    width = max(runs_px(draw, note, small) for note in notes) + 2 * inset
+    box = [WIDTH_PX - PAD_PX - width, row_y, WIDTH_PX - PAD_PX, 0]
+    box[3] = box[1] + len(notes) * line_px + 2 * inset
+    # Beside the last race: an example whose labels reach this far needs a new place.
+    if box[0] < end + PAD_PX:
+        raise ValueError("the notes no longer fit beside the last example's race")
+    draw.rectangle(box, outline=FOG_WHITE, width=1)
+    for k, note in enumerate(notes):
+        runs(draw, box[0] + inset, box[1] + inset + (k + 0.5) * line_px, note, small)
+    return max(y - PAD_PX, box[3])
 
 
 def main(out: Path) -> None:
@@ -269,7 +330,12 @@ def main(out: Path) -> None:
         font=font(24, "Medium"),
     )
     draw.text(
-        (PAD_PX, PAD_PX + 34), "If not, it gets no box.", fill=SKY_GREY, font=font(16)
+        (PAD_PX, PAD_PX + 34),
+        f"If not, it gets no box. Differences in ΔE*ab (CIELAB), each pooled over the "
+        f"{labels.POOL_PX}\N{MULTIPLICATION SIGN}{labels.POOL_PX} px a viewer's eye "
+        "sums, as in Ricco's law.",
+        fill=SKY_GREY,
+        font=font(16),
     )
     y, text_x = PAD_PX + 74, 2 * PAD_PX + IMAGE_PX
     for i, (img, title, body) in enumerate(steps):
