@@ -99,10 +99,18 @@ _MATH = {
 
 
 def _evaluated(socket: bpy.types.NodeSocket) -> float:
-    """A chain of Value and Math nodes, evaluated as Blender does."""
+    """A chain of Value and Math nodes, and the vectors they pass through, evaluated
+    as Blender does."""
     node = socket.node
     if node.bl_idname == "ShaderNodeValue":
         return socket.default_value
+    if node.bl_idname == "ShaderNodeSeparateXYZ":
+        packed = node.inputs["Vector"].links[0].from_socket
+        assert packed.node.bl_idname == "ShaderNodeCombineXYZ"
+        component = packed.node.inputs[socket.name]
+        if component.is_linked:
+            return _evaluated(component.links[0].from_socket)
+        return component.default_value
     inputs = (
         _evaluated(i.links[0].from_socket) if i.is_linked else i.default_value
         for i in node.inputs
@@ -386,11 +394,34 @@ class TestEoBand:
             abs=1e-9,
         )
 
+    def test_whitecap_foam_reads_the_sea_the_waves_are_drawn_on(self) -> None:
+        """Where it breaks, its lace and the network it tears into all read the
+        parallaxed sea, so none slides off the crests."""
+        tree = bpy.data.materials["sea"].node_tree
+        crests = next(
+            n
+            for n in tree.nodes
+            if n.bl_idname == "ShaderNodeGroup"
+            and n.node_tree.name.startswith("sea_crest_history")
+        )
+        for socket in (
+            crests.inputs["Position"],
+            tree.nodes["foam_network"].inputs["Vector"],
+            tree.nodes["whitecap_lace_axes"].inputs["X"],
+        ):
+            assert "sea_parallax" in upstream(socket), socket.node.name
+
     def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
         wind = scene.wind_waves(SCENARIO)
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
-        assert "gust" in upstream(tree.nodes["whitecap_excess"].inputs["Value_001"])
+        ages = [
+            n
+            for n in tree.nodes
+            if n.bl_idname == "ShaderNodeGroup" and n.node_tree.name == "whitecap_age"
+        ]
+        assert len(ages) == len(waves.foam_ages_s())
+        assert all("gust" in upstream(n.inputs["Threshold"]) for n in ages)
         table = baked("sea_breaking")
         gust_max = (
             math.sqrt(2)
@@ -400,10 +431,9 @@ class TestEoBand:
         texel = (np.arange(len(table)) + 0.5) / len(table)
         gusts = gust_max * (2 * texel - 1)
         # The threshold at each texel's gust.
-        expected = [
-            waves.breaking_threshold_g(wind, waves.gusty_whitecap_fraction(speed, g))
-            for g in gusts
-        ]
+        expected = waves.whitecap_thresholds_g(
+            wind, [waves.gusty_whitecap_fraction(speed, g) for g in gusts]
+        )
         assert table == pytest.approx(expected, rel=1e-5)
         assert np.all(np.diff(table) < 0)
 

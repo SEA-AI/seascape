@@ -23,8 +23,12 @@ coverage (Tse, McGill & Kelly, SPIE Ocean Optics X 1302, 505, 1990; Tessendorf, 
 2023). Per
 pixel: Dupuy & Bruneton, "Real-time animation and rendering of ocean whitecaps",
 SIGGRAPH Asia 2012 Technical Briefs 15 (doi:10.1145/2407746.2407761), whose Jacobian
-criterion is this acceleration to first order in the choppiness; the drawn waves set the
-mean, the rest a Gaussian spread.
+criterion is this acceleration to first order in the choppiness. Only the waves that
+carry the sea's height break; their foam lasts: Monahan, "Oceanic whitecaps", Journal
+of Physical Oceanography 1(2) 139, 1971, for its area's 3.85 s e-fold in seawater;
+Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11) 1816, 1984
+(doi:10.1364/AO.23.001816), for the 0.22 its reflectance averages over its life, from
+fresh foam's (Whitlock et al., in `wakes`).
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
@@ -82,10 +86,9 @@ waves keep up with a gust.
 """
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
-from statistics import NormalDist
 
 import numpy as np
 
@@ -104,7 +107,9 @@ GRAVITY_MS2 = 9.81
 #   held            scaled to it where it overshoots    spectrum fitted 3-21 m/s
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
-#   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
+#   whitecaps       tall crests' a k cos(phase) > thresh Snyder & Kennedy 1983
+#   foam            youngest break, area exp(-age/3.85 s) Monahan 1971
+#   foam fade       e-fold where the life's mean is 0.22 Koepke 1984
 #   glitter         one specular point per 1 / E|det H| Longuet-Higgins 1960
 #   gust            u / U, sigma 1 / ln(10 / z0)        DNV-RP-C205
 #   gust field      (k0^2 + k^2)^(-4/3), L of Kaimal's  von Karman 1948, IEC 61400-1
@@ -125,6 +130,27 @@ SPREAD_AP = 4.0
 SPREAD_AM = 0.13
 # Goda 2000: swell with a long decay distance.
 SWELL_S_MAX = 75.0
+# Monahan 1971: a seawater whitecap's area e-folds in 3.85 s.
+WHITECAP_AREA_EFOLD_S = 3.85
+# Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
+WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
+# A judgement: foam ages a pixel reads, out to two area e-folds (14% left), closer
+# together than a crest takes to pass, and closest where the foam tears fastest.
+FOAM_AGES = 8
+FOAM_SPAN_EFOLDS = 2.0
+# A judgement: a crest breaks over this share of its acceleration's sigma, which
+# frays the foam's edge.
+WHITECAP_EDGE = 0.35
+# A judgement: the waves that carry the sea's height are the ones that break.
+BREAKING_HEIGHT_SHARE = 0.999
+# Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
+CDF_SIGMAS = 6.0
+# A judgement: points, and the sea's extent in longest waves and periods, the
+# threshold is calibrated over.
+FOAM_SAMPLES = 32768
+SAMPLE_SPAN = 64.0
+THRESHOLD_LEVELS = 48
+FADE_LEVELS = 32
 # Monahan & O'Muircheartaigh 1980, robust biweight fit, U at 10 m.
 WHITECAP_COEFFICIENT = 3.84e-6
 WHITECAP_EXPONENT = 3.41
@@ -491,15 +517,150 @@ def downward_acceleration_g(
     return np.tensordot(ak, np.cos(phase), axes=1)
 
 
-def breaking_threshold_g(wind: tuple[Wave, ...], fraction: float) -> float:
-    """The downward acceleration a Gaussian sea of these waves exceeds over `fraction`
-    of its area, where it whitecaps."""
-    if not wind or fraction <= 0.0:
-        return math.inf
-    if fraction >= 1.0:
-        return -math.inf
-    sigma = math.sqrt(slope_variance(wind))
-    return sigma * NormalDist().inv_cdf(1.0 - fraction)
+def breakers(wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
+    """The waves whose crests whitecap: those that carry the sea's height."""
+    return tallest(wind, BREAKING_HEIGHT_SHARE) if wind else ()
+
+
+def foam_ages_s() -> np.ndarray:
+    """How long ago, in seconds, a pixel looks for a breaking crest: spaced as the
+    square of their index, so young foam, changing fastest, is read most often."""
+    steps = np.linspace(0.0, 1.0, FOAM_AGES)
+    return FOAM_SPAN_EFOLDS * WHITECAP_AREA_EFOLD_S * steps**2
+
+
+def foam_area(
+    wind: tuple[Wave, ...],
+    east_m: np.ndarray,
+    north_m: np.ndarray,
+    t_s: float | np.ndarray,
+    threshold_g: float,
+) -> np.ndarray:
+    """The share of the sea foam covers about each point: the largest fill of its
+    ages, as `_foam_fills`."""
+    past = np.stack(
+        [
+            downward_acceleration_g(breakers(wind), east_m, north_m, t_s - a)
+            for a in foam_ages_s()
+        ]
+    )
+    return np.max(_foam_fills(past, threshold_g, foam_edge_g(wind)), axis=0)
+
+
+@cache
+def _lattice(count: int) -> np.ndarray:
+    """(x, y, t) in [0, 1)^3 by Roberts' additive recurrence on the root of
+    x^4 = x + 1: evenly spread, without a generator."""
+    root = 1.0
+    for _ in range(64):
+        root = (1 + root) ** (1 / 4)
+    step = root ** -np.arange(1, 4)
+    return np.mod(0.5 + np.outer(np.arange(1, count + 1), step), 1.0)
+
+
+@cache
+def _history(breaking: tuple[Wave, ...]) -> np.ndarray:
+    """`breaking`'s downward acceleration at each foam age, over a stretch of sea and
+    time `SAMPLE_SPAN` of its longest waves and periods across: (ages, points)."""
+    longest_m = max(2 * math.pi / w.k_rad_m for w in breaking)
+    slowest_s = max(2 * math.pi / w.omega_rad_s for w in breaking)
+    x, y, t = (SAMPLE_SPAN * _lattice(FOAM_SAMPLES)).T
+    east, north, t_s = x * longest_m, y * longest_m, t * slowest_s
+    return np.stack(
+        [downward_acceleration_g(breaking, east, north, t_s - a) for a in foam_ages_s()]
+    )
+
+
+def _normal_cdf(z: np.ndarray) -> np.ndarray:
+    """The standard normal CDF, within 1.5e-7: erf by Abramowitz & Stegun, Handbook of
+    Mathematical Functions, 7.1.26."""
+    x = np.abs(z) / math.sqrt(2)
+    t = 1 / (1 + 0.3275911 * x)
+    poly = t * (
+        0.254829592
+        + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))
+    )
+    erf = 1 - poly * np.exp(-x * x)
+    return 0.5 * (1 + np.sign(z) * erf)
+
+
+def foam_edge_g(wind: tuple[Wave, ...]) -> float:
+    """The spread in g over which a crest goes from whole to broken foam."""
+    return WHITECAP_EDGE * math.sqrt(slope_variance(breakers(wind)))
+
+
+def _foam_fills(past: np.ndarray, threshold_g: float, edge_g: float) -> np.ndarray:
+    """Per age and point, the share foam of that age covers: the chance the crest broke
+    there, Gaussian over `edge_g`, thinned to Monahan's area."""
+    broke = _normal_cdf((past - threshold_g) / max(edge_g, 1e-9))
+    return broke * np.exp(-foam_ages_s() / WHITECAP_AREA_EFOLD_S)[:, None]
+
+
+@cache
+def _cover_curve(wind: tuple[Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
+    """Thresholds, rising, and the share of the sea foam covers past each."""
+    past = _history(breakers(wind))
+    edge = foam_edge_g(wind)
+    # A point whose crest stays CDF_SIGMAS edges short of a threshold covers under 1e-9
+    # of itself there: each level reads only the points near enough. Whitecaps cover a
+    # few percent of the sea; the levels start where 40% of it could break.
+    peak = past.max(axis=0)
+    levels = np.linspace(np.quantile(peak, 0.6), peak.max(), THRESHOLD_LEVELS)
+    covers = np.array(
+        [
+            np.sum(np.max(_foam_fills(past[:, near], c, edge), axis=0)) / past.shape[1]
+            for c in levels
+            for near in [peak > c - CDF_SIGMAS * edge]
+        ]
+    )
+    return levels, covers
+
+
+def whitecap_thresholds_g(
+    wind: tuple[Wave, ...], fractions: Sequence[float] | np.ndarray
+) -> np.ndarray:
+    """The downward accelerations past which `wind`'s breaking crests whitecap so that
+    their foam, of every age, covers each of `fractions` of the sea. A pixel shows the
+    youngest foam its lace reaches, so the cover is the largest fill."""
+    fractions = np.asarray(fractions, dtype=float)
+    out = np.where(fractions >= 1.0, -math.inf, math.inf)
+    if not breakers(wind):
+        return out
+    levels, covers = _cover_curve(wind)
+    # The cover falls as the threshold rises; interp wants it rising.
+    inside = (fractions > 0.0) & (fractions < 1.0)
+    out[inside] = np.interp(fractions[inside], covers[::-1], levels[::-1])
+    return out
+
+
+def foam_fade_efold_s(
+    wind: tuple[Wave, ...], threshold_g: float, fresh_reflectance: float
+) -> float:
+    """The e-fold of foam's reflectance, fresh at `fresh_reflectance`, for which this
+    sea's whitecaps average Koepke's effective reflectance over the area they cover.
+
+    Where the lace reaches level v of a point, it shows the youngest age whose fill
+    tops v; the area is the largest fill."""
+    past = _history(breakers(wind))
+    edge = foam_edge_g(wind)
+    # Only points that foam at all weigh in either mean.
+    fills = _foam_fills(
+        past[:, past.max(axis=0) > threshold_g - CDF_SIGMAS * edge], threshold_g, edge
+    )
+    ages = foam_ages_s()
+    # Over levels v: the youngest age filled past v, oldest first so younger overwrite.
+    levels = np.linspace(0.0, 1.0, FADE_LEVELS + 1)[1:] - 0.5 / FADE_LEVELS
+    youngest = np.full((len(levels), fills.shape[1]), math.inf)
+    for age, fill in reversed(list(zip(ages, fills, strict=True))):
+        youngest = np.where(fill[None, :] > levels[:, None], age, youngest)
+    area = np.max(fills, axis=0).sum()
+    target = WHITECAP_EFFECTIVE_REFLECTANCE / fresh_reflectance
+    lo, hi = 1e-3, 1e3
+    for _ in range(40):
+        mid = math.sqrt(lo * hi)
+        mean = np.exp(-youngest / mid).mean(axis=0).sum() / area
+        lo, hi = (lo, mid) if mean > target else (mid, hi)
+    return math.sqrt(lo * hi)
 
 
 def snap_error(
@@ -737,23 +898,6 @@ def unresolved_acceleration_variance(
 ) -> float:
     """Over g^2."""
     return slope_variance(wind) - drawn_slope_variance(wind, footprint_m)
-
-
-def whitecap_cover(
-    wind: tuple[Wave, ...],
-    east_m: np.ndarray,
-    north_m: np.ndarray,
-    t_s: float,
-    footprint_m: float,
-    fraction: float,
-) -> np.ndarray:
-    """How much of a pixel of `footprint_m` whitecaps, for a sea that does over
-    `fraction`: its drawn waves' downward acceleration against the threshold, the rest
-    Gaussian."""
-    drawn = downward_acceleration_g(filtered(wind, footprint_m), east_m, north_m, t_s)
-    sigma = max(math.sqrt(unresolved_acceleration_variance(wind, footprint_m)), 1e-6)
-    z = (drawn - breaking_threshold_g(wind, fraction)) / sigma
-    return np.vectorize(NormalDist().cdf)(z)
 
 
 def earth_radius_m(refraction_k: float) -> float:

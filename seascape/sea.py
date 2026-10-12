@@ -24,6 +24,8 @@ Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 
 import math
 from collections.abc import Callable
+from functools import cache
+from pathlib import Path
 from statistics import NormalDist
 from typing import NamedTuple
 
@@ -53,20 +55,25 @@ from seascape.wakes import (
     Wake,
 )
 from seascape.waves import (
+    CDF_SIGMAS,
     FADE_FOOTPRINTS,
     GRAVITY_MS2,
     GUST_LENGTH_M,
     SLICK_DRIFT,
+    WHITECAP_AREA_EFOLD_S,
     WINDROW_ASPECT,
     WINDROW_MIN_WIND_MPS,
     WINDROW_SPACING_S,
     Wave,
-    breaking_threshold_g,
+    breakers,
     cox_munk_slick_variances,
     cox_munk_slope,
     cox_munk_variances,
     earth_radius_m,
     fade_footprints_m,
+    foam_ages_s,
+    foam_edge_g,
+    foam_fade_efold_s,
     gust_slope_variance,
     gusty_whitecap_fraction,
     horizon_m,
@@ -82,11 +89,8 @@ from seascape.waves import (
     unresolved_slope_variances,
     von_karman_field,
     whitecap_fraction,
+    whitecap_thresholds_g,
 )
-
-# Koepke 1984: a whitecap's effective reflectance in the visible, averaged over its
-# fresh and decaying foam.
-WHITECAP_REFLECTANCE = 0.22
 
 # Quan & Fry 1995 at 550 nm, salinity 35, 15 C.
 SEAWATER_IOR = 1.341
@@ -116,8 +120,6 @@ PARALLAX_CONVERGED = 0.996
 # height variance.
 PARALLAX_HEIGHT_SHARE = 0.999
 
-# Past 6 sigma the normal CDF is within 1e-9 of 0 or 1.
-CDF_SIGMAS = 6.0
 
 # A judgement: the footprints a sea pixel spans.
 FOOTPRINT_RANGE_M = (1e-3, 1e4)
@@ -150,6 +152,19 @@ SEA_MARGIN = 1.5
 GUST_CELLS = 512
 GUST_SPACING_M = 4.0
 GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
+# A judgement: whitecap foam's finer texture, the tile again this much finer and
+# weighted so.
+LACE_OCTAVE = 6.0
+LACE_FINE_WEIGHT = 0.8
+# A judgement, from photographs of decaying whitecaps: the cells foam tears into, and
+# how far Blender's Noise bends their edges, in cells.
+FOAM_CELL_M = 0.3
+FOAM_WARP = 0.6
+# A judgement: a line's soft edge, in cells, and how sharply a segment of it goes.
+FOAM_LINE_SOFT = 0.02
+FOAM_POP_GAIN = 20.0
+_NETWORK_CSV = Path(__file__).parent / "data" / "foam_network.csv"
+
 # A judgement: foam patches a metre or two across, streaked 4:1 along the wake.
 FOAM_CELLS = 512
 FOAM_SPACING_M = 0.25
@@ -544,13 +559,24 @@ def _height_group(
     """The drawn height of `tall` at `Position`, (east, north, time), faded and calmed
     as the normal is. One group, so each fixed-point step adds one node to the sea's
     tree."""
+    return _lift_group("sea_height", tall, damped, lambda w: w.amplitude_m)
+
+
+def _lift_group(
+    name: str,
+    field: tuple[Wave, ...],
+    damped: frozenset[Wave],
+    lift: Callable[[Wave], float],
+) -> bpy.types.NodeTree:
+    """The sum of `lift` cos(phase) over `field` at `Position`, as `Height`: a height
+    when `lift` is a, a downward acceleration in g when it is a k."""
     group, given, out = _group(
-        "sea_height",
+        name,
         (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
         (("Height", "Float"),),
     )
     heights = None
-    for triple in _triples(tall):
+    for triple in _triples(field):
         calm = not damped.isdisjoint(triple)
         node = group.nodes.new("ShaderNodeGroup")
         node.node_tree = _wave_group(calm)
@@ -559,7 +585,7 @@ def _height_group(
         if heights is not None:
             group.links.new(heights, node.inputs["Sum Z"])
         _set_triple(node.inputs, triple, damped)
-        node.inputs["Lift"].default_value = _lanes(triple, lambda w: w.amplitude_m)
+        node.inputs["Lift"].default_value = _lanes(triple, lift)
         heights = node.outputs["Sum Z"]
     if heights is not None:
         group.links.new(_total(group, heights), out["Height"])
@@ -575,7 +601,7 @@ def _parallax(
     """Where the view ray meets the drawn height, (east, north, time), iterated from the
     flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
     face tilted from the camera then takes the little of the frame it shows. Glitter,
-    gusts and foam still read the flat sea.
+    gusts, slicks and wake foam still read the flat sea.
     """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     flat = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -627,6 +653,7 @@ def _parallax(
             _math(tree, "MULTIPLY_ADD", run_east, height, flat.outputs["X"]),
             _math(tree, "MULTIPLY_ADD", run_north, height, flat.outputs["Y"]),
         )
+    position.node.name = "sea_parallax"
     return position
 
 
@@ -713,23 +740,13 @@ def _waves(
     calm: bpy.types.NodeSocket | None = None,
     damped: frozenset[Wave] = frozenset(),
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """The normal of what the pixel resolves, read at the `tall` waves' height, and the
-    wind waves' downward acceleration in g; `calm` scales the `damped` waves."""
+    """The normal of what the pixel resolves, and where it reads the waves, (east,
+    north, time), at the `tall` waves' height; `calm` scales the `damped` waves."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     link = tree.links.new
-    across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
-    along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
-    stretch = _math(tree, "SUBTRACT", along_sq, across_sq)
 
     def instance(group: bpy.types.NodeTree) -> bpy.types.Node:
-        node = tree.nodes.new("ShaderNodeGroup")
-        node.node_tree = group
-        link(pixel.along_dir, node.inputs["Along"])
-        link(across_sq, node.inputs["Across Sq"])
-        link(stretch, node.inputs["Stretch"])
-        if calm is not None:
-            link(calm, node.inputs["Calm"])
-        return node
+        return _instance(tree, group, pixel, calm)
 
     heights = _height_group(tall, damped)
 
@@ -742,11 +759,142 @@ def _waves(
     triples = _triples(wind) + _triples(swell)
     run = instance(_run_group(triples, damped)).outputs["Variance"]
     drawn = instance(_normal_group(triples, len(_triples(wind)), damped))
-    link(_parallax(tree, time_s, height_at, run), drawn.inputs["Position"])
+    position = _parallax(tree, time_s, height_at, run)
+    link(position, drawn.inputs["Position"])
     tilted = _vector(tree, "ADD", geometry.outputs["Normal"], drawn.outputs["Gradient"])
-    return _vector(tree, "NORMALIZE", tilted, name="wave_normal"), drawn.outputs[
-        "Acceleration"
-    ]
+    return _vector(tree, "NORMALIZE", tilted, name="wave_normal"), position
+
+
+def _instance(
+    tree: bpy.types.NodeTree,
+    group: bpy.types.NodeTree,
+    pixel: _Pixel,
+    calm: bpy.types.NodeSocket | None,
+) -> bpy.types.Node:
+    """`group` fed the pixel's footprint. Cycles merges the identical nodes each call
+    adds."""
+    link = tree.links.new
+    across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
+    along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
+    node = tree.nodes.new("ShaderNodeGroup")
+    node.node_tree = group
+    link(pixel.along_dir, node.inputs["Along"])
+    link(across_sq, node.inputs["Across Sq"])
+    link(_math(tree, "SUBTRACT", along_sq, across_sq), node.inputs["Stretch"])
+    if calm is not None:
+        link(calm, node.inputs["Calm"])
+    return node
+
+
+def _history_group(calm: bool) -> bpy.types.NodeTree:
+    """Three waves' downward acceleration at each foam age, added to `Sum i` per lane:
+    cos(phase) times `Cos i` plus sin(phase) times `Sin i`, the waves faded and calmed
+    as `_wave_group` draws them. Generic, so one group serves every triple."""
+    name = "waves_history_calm" if calm else "waves_history"
+    if name in bpy.data.node_groups:
+        return bpy.data.node_groups[name]
+    ages = range(len(foam_ages_s()))
+    group, given, out = _group(
+        name,
+        (
+            ("Position", "Vector"),
+            *_FOOTPRINT,
+            ("Calm", "Float"),
+            ("Kx", "Vector"),
+            ("Ky", "Vector"),
+            ("W", "Vector"),
+            ("Phase", "Vector"),
+            *_FADE,
+            *(
+                (f"{part} {i}", "Vector")
+                for i in ages
+                for part in ("Cos", "Sin", "Sum")
+            ),
+        ),
+        tuple((f"Sum {i}", "Vector") for i in ages),
+    )
+    position = group.nodes.new("ShaderNodeSeparateXYZ")
+    group.links.new(given["Position"], position.inputs["Vector"])
+    east, north, time_s = (_spread(group, position.outputs[a]) for a in "XYZ")
+    phase = _vector(
+        group,
+        "MULTIPLY_ADD",
+        given["Kx"],
+        east,
+        _vector(
+            group,
+            "MULTIPLY_ADD",
+            given["Ky"],
+            north,
+            _vector(group, "MULTIPLY_ADD", given["W"], time_s, given["Phase"]),
+        ),
+    )
+    seen, _ = _fade(group, given, calm)
+    cos, sin = (
+        _vector(group, "MULTIPLY", _vector(group, trig, phase), seen)
+        for trig in ("COSINE", "SINE")
+    )
+    for i in ages:
+        turned = _vector(
+            group, "MULTIPLY_ADD", sin, given[f"Sin {i}"], given[f"Sum {i}"]
+        )
+        group.links.new(
+            _vector(group, "MULTIPLY_ADD", cos, given[f"Cos {i}"], turned),
+            out[f"Sum {i}"],
+        )
+    return group
+
+
+def _crest_history(
+    tree: bpy.types.NodeTree,
+    wind: tuple[Wave, ...],
+    position: bpy.types.NodeSocket,
+    pixel: _Pixel,
+    calm: bpy.types.NodeSocket | None,
+    damped: frozenset[Wave],
+) -> list[bpy.types.NodeSocket]:
+    """The breaking crests' downward acceleration in g at `position` at each foam age,
+    youngest first. An age shifts each wave's phase by omega age:
+    a k cos(phase + omega age) = a k cos(omega age) cos(phase)
+    - a k sin(omega age) sin(phase), so the cosines are taken once."""
+    ages = foam_ages_s()
+    group, given, out = _group(
+        "sea_crest_history",
+        (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
+        tuple((f"Age {i}", "Float") for i in range(len(ages))),
+    )
+    previous = None
+    for triple in _triples(breakers(wind)):
+        calmed = not damped.isdisjoint(triple)
+        node = group.nodes.new("ShaderNodeGroup")
+        node.node_tree = _history_group(calmed)
+        group.links.new(given["Position"], node.inputs["Position"])
+        _feed(group, given, node, calmed)
+        _set_triple(node.inputs, triple, damped)
+        for i, age in enumerate(ages):
+            node.inputs[f"Cos {i}"].default_value = _lanes(
+                triple,
+                lambda w, a=age: (
+                    w.amplitude_m * w.k_rad_m * math.cos(w.omega_rad_s * a)
+                ),
+            )
+            node.inputs[f"Sin {i}"].default_value = _lanes(
+                triple,
+                lambda w, a=age: (
+                    -w.amplitude_m * w.k_rad_m * math.sin(w.omega_rad_s * a)
+                ),
+            )
+            if previous is not None:
+                group.links.new(previous.outputs[f"Sum {i}"], node.inputs[f"Sum {i}"])
+        previous = node
+    if previous is not None:
+        for i in range(len(ages)):
+            group.links.new(
+                _total(group, previous.outputs[f"Sum {i}"]), out[f"Age {i}"]
+            )
+    node = _instance(tree, group, pixel, calm)
+    tree.links.new(position, node.inputs["Position"])
+    return [node.outputs[f"Age {i}"] for i in range(len(ages))]
 
 
 def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types.Image:
@@ -781,48 +929,95 @@ def _at_footprint(
 
 def _whitecaps(
     tree: bpy.types.NodeTree,
+    sea: Sea,
     wind: tuple[Wave, ...],
-    acceleration: bpy.types.NodeSocket,
+    history: list[bpy.types.NodeSocket],
     footprint_m: bpy.types.NodeSocket,
-    threshold_g: float | bpy.types.NodeSocket,
-) -> bpy.types.NodeSocket:
-    """How much of the pixel whitecaps, as `waves.whitecap_cover`, past
-    `threshold_g`, from the drawn `wind` waves' downward `acceleration`."""
+    gust: bpy.types.NodeSocket | None,
+    gust_max: float,
+    lace: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket],
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """How much of the pixel foam covers, how bright, as a share of fresh foam's, and
+    the share of the sea under foam of any age, laced or not, where its bubbles are.
+
+    At each foam age, `history` the breaking crests' downward acceleration then, the
+    chance they broke past the local wind's threshold, Gaussian over the crest's frayed
+    edge and what the pixel leaves out, thinned to Monahan's area, exp(-age / tau_a),
+    fills where the first Gaussian of `lace` tops that share, torn by `_torn` into the
+    network its fade leaves. The youngest foam shows.
+    """
+    threshold_g = _breaking(tree, sea, wind, gust, gust_max)
+    breaking = breakers(wind)
     table = _footprint_table(
         "sea_unresolved_acceleration",
-        lambda f: unresolved_acceleration_variance(wind, f),
+        lambda f: unresolved_acceleration_variance(breaking, f),
     )
+    unresolved = _at_footprint(tree, table, footprint_m, "sea_unresolved_acceleration")
     sigma = _math(
         tree,
         "MAXIMUM",
-        _math(
-            tree,
-            "SQRT",
-            _at_footprint(tree, table, footprint_m, "sea_unresolved_acceleration"),
-        ),
+        _math(tree, "SQRT", _math(tree, "ADD", unresolved, foam_edge_g(wind) ** 2)),
         1e-6,
     )
-    excess = _math(
-        tree,
-        "SUBTRACT",
-        acceleration,
-        threshold_g,
-        name="whitecap_excess",
-    )
-    # Clamped, so an infinite threshold reads the table's end.
-    x = _math(
-        tree,
-        "MULTIPLY_ADD",
-        _math(tree, "DIVIDE", excess, sigma),
-        1 / (2 * CDF_SIGMAS),
-        0.5,
-    )
-    x.node.use_clamp = True
+    mean_g = whitecap_thresholds_g(wind, [whitecap_fraction(sea.wind_speed_mps)])
+    fade_s = foam_fade_efold_s(wind, float(mean_g[0]), FRESH_FOAM_REFLECTANCE)
+    shares, widths = _network_widths()
+    # The fine lace as a uniform level in [g/2, 1 - g/2], g the popping ramp's width,
+    # so all kept is solid and none kept is empty. The same at every age.
     sigmas = CDF_SIGMAS * (2 * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES - 1)
     cdf = curve_image("normal_cdf", np.vectorize(NormalDist().cdf)(sigmas))
-    cover = lookup(tree, cdf, x)
-    cover.node.name = "whitecaps"
-    return cover
+    x = _math(tree, "MULTIPLY_ADD", lace[1], 1 / (2 * CDF_SIGMAS), 0.5)
+    x.node.use_clamp = True
+    level = _math(
+        tree,
+        "MULTIPLY_ADD",
+        lookup(tree, cdf, x),
+        1 - 1 / FOAM_POP_GAIN,
+        0.5 / FOAM_POP_GAIN,
+    )
+    area: bpy.types.NodeSocket | float = 0.0
+    foam: bpy.types.NodeSocket | float = 0.0
+    under: bpy.types.NodeSocket | float = 0.0
+    for age, acceleration in zip(foam_ages_s(), history, strict=True):
+        node = tree.nodes.new("ShaderNodeGroup")
+        node.node_tree = _foam_age_group()
+        share = math.exp(-age / fade_s)
+        constants = {
+            "Thin": math.exp(-age / WHITECAP_AREA_EFOLD_S),
+            "Share": share,
+            "Wide": float(np.interp(share, shares, widths)),
+        }
+        for name, value in constants.items():
+            node.inputs[name].default_value = value
+        for name, socket in (
+            ("Acceleration", acceleration),
+            ("Threshold", threshold_g),
+            ("Sigma", sigma),
+            ("Footprint", footprint_m),
+            ("Lace", lace[0]),
+            ("Level", level),
+            ("Network", lace[2]),
+            ("Area", area),
+            ("Foam", foam),
+            ("Under", under),
+        ):
+            if isinstance(socket, bpy.types.NodeSocket):
+                tree.links.new(socket, node.inputs[name])
+            else:
+                node.inputs[name].default_value = socket
+        area, foam, under = (node.outputs[n] for n in ("Area", "Foam", "Under"))
+    assert isinstance(area, bpy.types.NodeSocket)
+    assert isinstance(foam, bpy.types.NodeSocket)
+    # Named after their meaning, as the outputs of the oldest age's group.
+    area, foam, under = (
+        _math(tree, "MAXIMUM", socket, 0.0, name=name)
+        for socket, name in (
+            (area, "whitecaps"),
+            (foam, "whitecap_foam"),
+            (under, "whitecap_bubbles"),
+        )
+    )
+    return area, foam, under
 
 
 def _glinting(
@@ -1064,7 +1259,7 @@ def _daylight(
     normal: bpy.types.NodeSocket,
     tangent: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
-    whitecaps: bpy.types.NodeSocket,
+    whitecaps: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket],
     wake: "_Wakes | None" = None,
 ) -> bpy.types.NodeSocket:
     """Water reflecting at seawater's IOR over its body's colour, white where its crests
@@ -1094,10 +1289,11 @@ def _daylight(
     fresnel.inputs["IOR"].default_value = SEAWATER_IOR
     link(normal, fresnel.inputs["Normal"])
     through = _math(tree, "SUBTRACT", 1.0, fresnel.outputs["Fac"])
+    # A whitecap's bubbles brighten the water under all its foam, as a wake's do.
+    bubbles = _math(tree, "MULTIPLY", whitecaps[2], BUBBLE_GAIN)
     if wake is not None:
-        through = _math(
-            tree, "MULTIPLY", through, _math(tree, "ADD", wake.bubbles, 1.0)
-        )
+        bubbles = _math(tree, "MAXIMUM", bubbles, wake.bubbles)
+    through = _math(tree, "MULTIPLY", through, _math(tree, "ADD", bubbles, 1.0))
     body = tree.nodes.new("ShaderNodeBsdfDiffuse")
     link(normal, body.inputs["Normal"])
     link(
@@ -1107,16 +1303,19 @@ def _daylight(
     water = tree.nodes.new("ShaderNodeAddShader")
     link(mirror.outputs["BSDF"], water.inputs[0])
     link(body.outputs["BSDF"], water.inputs[1])
+    # Foam lies on the waves: lit and shaded by them as the body is.
     foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    foam.inputs["Color"].default_value = (*(WHITECAP_REFLECTANCE,) * 3, 1.0)
+    link(normal, foam.inputs["Normal"])
+    foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
-    link(whitecaps, mix.inputs["Factor"])
+    link(whitecaps[1], mix.inputs["Factor"])
     # Mix Shader names both shader inputs "Shader", so they can only be indexed.
     link(water.outputs["Shader"], mix.inputs[1])
     link(foam.outputs["BSDF"], mix.inputs[2])
     if wake is None:
         return mix.outputs["Shader"]
     fresh = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    link(normal, fresh.inputs["Normal"])
     fresh.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
     churned = tree.nodes.new("ShaderNodeMixShader")
     link(wake.foam, churned.inputs["Factor"])
@@ -1125,9 +1324,213 @@ def _daylight(
     return churned.outputs["Shader"]
 
 
+@cache
+def _network_widths() -> tuple[np.ndarray, np.ndarray]:
+    """(share, width): the line width, in cells, along the foam network's edges that
+    covers each share of the sea. Measured in Blender, as the data file says."""
+    raw = np.loadtxt(_NETWORK_CSV, delimiter=",", comments="#")
+    return raw[:, 0], raw[:, 1]
+
+
+def _foam_age_group() -> bpy.types.NodeTree:
+    """One foam age: where its crest broke past `Threshold`, Gaussian over `Sigma`,
+    thinned by `Thin`, fills where the Gaussian `Lace` tops that share, edges half the
+    tile's sigma wide as `_patchy`'s; torn into lines along the network's edges,
+    `Network` the distance to one, covering `Share` of the sea, `Wide` cells wide or
+    the pixel's `Footprint`, whichever is wider; past that, whole segments go where
+    `Level`, the fine lace as a uniform level, tops their share, so old foam stays
+    white in clumps rather than greying (Yingst, Alford & Parberry 2011). The youngest
+    age is the widest, so each takes the maximum with what older ages left in `Area`,
+    `Foam` and `Under`."""
+    name = "whitecap_age"
+    if name in bpy.data.node_groups:
+        return bpy.data.node_groups[name]
+    group, given, out = _group(
+        name,
+        tuple(
+            (n, "Float")
+            for n in (
+                "Acceleration",
+                "Threshold",
+                "Sigma",
+                "Thin",
+                "Share",
+                "Wide",
+                "Footprint",
+                "Lace",
+                "Level",
+                "Network",
+                "Area",
+                "Foam",
+                "Under",
+            )
+        ),
+        (("Area", "Float"), ("Foam", "Float"), ("Under", "Float")),
+    )
+    sigmas = CDF_SIGMAS * (2 * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES - 1)
+    cdf = curve_image("normal_cdf", np.vectorize(NormalDist().cdf)(sigmas))
+    levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
+
+    def uniform(z: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        # Clamped, so an infinite threshold reads the table's end.
+        x = _math(group, "MULTIPLY_ADD", z, 1 / (2 * CDF_SIGMAS), 0.5)
+        x.node.use_clamp = True
+        return lookup(group, cdf, x)
+
+    excess = _math(group, "SUBTRACT", given["Acceleration"], given["Threshold"])
+    fill = _math(
+        group,
+        "MULTIPLY",
+        uniform(_math(group, "DIVIDE", excess, given["Sigma"])),
+        given["Thin"],
+    )
+    laced = _math(
+        group,
+        "MULTIPLY_ADD",
+        _math(group, "SUBTRACT", given["Lace"], lookup(group, ppf, fill)),
+        2.0,
+        0.5,
+    )
+    laced.node.use_clamp = True
+    laced = _math(group, "MULTIPLY", laced, _math(group, "GREATER_THAN", fill, 1e-3))
+
+    shares, widths = _network_widths()
+    top = float(widths[-1])
+    # The share each width covers, as a lookup over [0, top].
+    grid = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES * top
+    cover = curve_image("foam_network_cover", np.interp(grid, widths, shares))
+    width = _math(
+        group,
+        "MINIMUM",
+        _math(
+            group,
+            "MAXIMUM",
+            _math(group, "DIVIDE", given["Footprint"], FOAM_CELL_M),
+            given["Wide"],
+        ),
+        top,
+    )
+    line = _math(
+        group,
+        "MULTIPLY_ADD",
+        _math(group, "SUBTRACT", width, given["Network"]),
+        1 / FOAM_LINE_SOFT,
+        0.5,
+    )
+    line.node.use_clamp = True
+    covered = lookup(group, cover, _math(group, "DIVIDE", width, top))
+    kept = _math(
+        group,
+        "MINIMUM",
+        _math(group, "DIVIDE", given["Share"], _math(group, "MAXIMUM", covered, 1e-4)),
+        1.0,
+    )
+    stays = _math(
+        group,
+        "MULTIPLY_ADD",
+        _math(group, "SUBTRACT", kept, given["Level"]),
+        FOAM_POP_GAIN,
+        0.5,
+    )
+    stays.node.use_clamp = True
+    torn = _math(group, "MULTIPLY", laced, _math(group, "MULTIPLY", line, stays))
+    for socket, value in (
+        ("Area", laced),
+        ("Foam", torn),
+        ("Under", fill),
+    ):
+        group.links.new(_math(group, "MAXIMUM", given[socket], value), out[socket])
+    return group
+
+
+def _foam_lace(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    where: bpy.types.NodeSocket,
+    outputs: Outputs,
+    tile: bpy.types.Image,
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """The foam tile laid on the sea, drifting with its surface as a slick does, over a
+    finer layer of itself, two independent unit Gaussians rescaled to one; the fine
+    layer again, a quarter tile off, independent of both; and the distance in cells to
+    the nearest edge of the network foam tears into, carried alike. Read at `where`,
+    (east, north, time), the sea the view ray meets."""
+    east, north = _downwind(sea)
+    drift = SLICK_DRIFT * sea.wind_speed_mps
+    layers = []
+    for scale, start in ((1.0, 0.0), (LACE_OCTAVE, 0.5), (LACE_OCTAVE, 0.25)):
+        per_m = scale / FOAM_TILE_M
+        # As a wake's foam, streaked: here along the wind that drives it.
+        along = per_m / FOAM_STREAK
+        layers.append(
+            _drifting(
+                tree,
+                where,
+                outputs,
+                tile,
+                ((along * east, along * north), (per_m * north, -per_m * east)),
+                (drift * east, drift * north),
+                start,
+                "whitecap_lace",
+            )
+        )
+    weight = LACE_FINE_WEIGHT
+    summed = _math(tree, "MULTIPLY_ADD", layers[1], weight, layers[0])
+    # Carried with the surface, the network read where it started.
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(where, split.inputs["Vector"])
+    start_at = tree.nodes.new("ShaderNodeCombineXYZ")
+    for axis, v in (("X", drift * east), ("Y", drift * north)):
+        tree.links.new(
+            _math(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis]),
+            start_at.inputs[axis],
+        )
+    # Blender's Noise colour is three noises in [0, 1]: centred, `FOAM_WARP` cells.
+    bend = tree.nodes.new("ShaderNodeTexNoise")
+    bend.noise_dimensions = "2D"
+    bend.inputs["Scale"].default_value = 1 / FOAM_CELL_M
+    bend.inputs["Detail"].default_value = 3.0
+    tree.links.new(start_at.outputs["Vector"], bend.inputs["Vector"])
+    reach = FOAM_WARP * FOAM_CELL_M
+    bent = _vector(
+        tree,
+        "ADD",
+        start_at.outputs["Vector"],
+        _vector(
+            tree, "MULTIPLY_ADD", bend.outputs["Color"], (2 * reach,) * 3, (-reach,) * 3
+        ),
+    )
+    network = tree.nodes.new("ShaderNodeTexVoronoi")
+    network.name = "foam_network"
+    network.voronoi_dimensions = "2D"
+    network.feature = "DISTANCE_TO_EDGE"
+    network.inputs["Scale"].default_value = 1 / FOAM_CELL_M
+    tree.links.new(bent, network.inputs["Vector"])
+    return (
+        _math(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2)),
+        layers[2],
+        network.outputs["Distance"],
+    )
+
+
+def _flat_sea(
+    tree: bpy.types.NodeTree, time_s: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """(east, north, time) of the flat sea under the pixel."""
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geometry.outputs["Position"], split.inputs["Vector"])
+    where = tree.nodes.new("ShaderNodeCombineXYZ")
+    tree.links.new(split.outputs["X"], where.inputs["X"])
+    tree.links.new(split.outputs["Y"], where.inputs["Y"])
+    tree.links.new(time_s, where.inputs["Z"])
+    return where.outputs["Vector"]
+
+
 def _drifting(
     tree: bpy.types.NodeTree,
-    time_s: bpy.types.NodeSocket,
+    where: bpy.types.NodeSocket,
     outputs: Outputs,
     tile: bpy.types.Image,
     axes: tuple[tuple[float, float], tuple[float, float]],
@@ -1137,17 +1540,22 @@ def _drifting(
 ) -> bpy.types.NodeSocket:
     """`tile` laid on the sea along `axes`, each an (east, north) tile axis in tiles
     per metre, offset `start` tiles, frozen and carried at `velocity_mps`, (east,
-    north).
+    north); read at `where`, (east, north, time).
 
     A loop crossfades two layers, each carried for one span and back while its weight
     is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
     their squared weights so the variance holds.
     """
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(where, split.inputs["Vector"])
+    time_s = split.outputs["Z"]
+    flat = tree.nodes.new("ShaderNodeCombineXYZ")
+    tree.links.new(split.outputs["X"], flat.inputs["X"])
+    tree.links.new(split.outputs["Y"], flat.inputs["Y"])
     here = tree.nodes.new("ShaderNodeCombineXYZ")
     here.name = f"{name}_axes"
     for axis, out in zip(axes, ("X", "Y"), strict=True):
-        along = _vector(tree, "DOT_PRODUCT", geometry.outputs["Position"])
+        along = _vector(tree, "DOT_PRODUCT", flat.outputs["Vector"])
         along.node.inputs["Vector_001"].default_value = (*axis, 0.0)
         tree.links.new(along, here.inputs[out])
     # The tile read at x - v t is the tile at x carried v t.
@@ -1219,7 +1627,7 @@ def _gust(
     speed = sea.wind_speed_mps
     unit = _drifting(
         tree,
-        time_s,
+        _flat_sea(tree, time_s),
         outputs,
         tile,
         ((per_m, 0.0), (0.0, per_m)),
@@ -1254,7 +1662,7 @@ def _slick(
     along = across / WINDROW_ASPECT
     unit = _drifting(
         tree,
-        time_s,
+        _flat_sea(tree, time_s),
         outputs,
         curve_image("sea_slick", tile),
         ((north * across, -east * across), (east * along, north * along)),
@@ -1310,12 +1718,12 @@ def _breaking(
     """
     speed = sea.wind_speed_mps
     if gust is None:
-        return breaking_threshold_g(wind, whitecap_fraction(speed))
+        return float(whitecap_thresholds_g(wind, [whitecap_fraction(speed)])[0])
     texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    thresholds = [
-        breaking_threshold_g(wind, gusty_whitecap_fraction(speed, g))
-        for g in gust_max * (2 * texel - 1)
-    ]
+    thresholds = whitecap_thresholds_g(
+        wind,
+        [gusty_whitecap_fraction(speed, g) for g in gust_max * (2 * texel - 1)],
+    )
     # Finite, so the linear lookup never mixes an infinity into NaN.
     big = float(np.finfo(np.float32).max)
     table = curve_image(
@@ -1459,7 +1867,7 @@ def _wakes(
     wakes: tuple[Wake, ...],
     time_s: bpy.types.NodeSocket,
     footprint_m: bpy.types.NodeSocket,
-    foam_rng: np.random.Generator,
+    noise: bpy.types.Image,
     sea_slope_variance: float,
 ) -> _Wakes:
     """Every hull's turbulent band, stern foam and Kelvin arms: the strongest band and
@@ -1468,8 +1876,6 @@ def _wakes(
     ponytail: the arms are Kelvin's straight-path pattern laid along the path, which a
     tight turn bends; sum the arms from past poses if a turn reads wrong.
     """
-    tile = von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M)
-    noise = curve_image("sea_foam", tile)
     levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
     band: bpy.types.NodeSocket | float = 0.0
@@ -1832,10 +2238,17 @@ def material(
         gust = _gust(tree, sea, time_s, outputs, curve_image("sea_gust", tile))
         if sea.slick_cover > 0.0:
             slick = _slick(tree, sea, time_s, outputs, slick_rng)
+    # Made where foam shows: an image nothing reads is not saved.
+    foam = cache(
+        lambda: curve_image(
+            "sea_foam",
+            von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M),
+        )
+    )
     wake = None
     if wakes:
         sea_variance = cox_munk_slope(speed) ** 2
-        wake = _wakes(tree, wakes, time_s, pixel.along_m, foam_rng, sea_variance)
+        wake = _wakes(tree, wakes, time_s, pixel.along_m, foam(), sea_variance)
     smooth = _smoothed(tree, slick, wake)
     survivors = wind if slick is None else slick_survivors(speed, wind)
     damped = frozenset(wind) - frozenset(survivors)
@@ -1849,7 +2262,7 @@ def material(
         resolvable(swell, finest_footprint_m),
     )
     tall = tuple(w for w in tall if w in drawn[0] or w in drawn[1])
-    normal, acceleration = _waves(tree, *drawn, tall, time_s, pixel, calm, damped)
+    normal, position = _waves(tree, *drawn, tall, time_s, pixel, calm, damped)
     if wake is not None and wake.tilt is not None:
         normal = _vector(
             tree,
@@ -1886,9 +2299,17 @@ def material(
                 _math(tree, "MULTIPLY", wide, 0.01),
             ),
         )
-        threshold = _breaking(tree, sea, wind, gust, gust_max)
         # Along the view, the widest footprint, leaves the most unresolved. A judgement.
-        whitecaps = _whitecaps(tree, wind, acceleration, pixel.along_m, threshold)
+        whitecaps = _whitecaps(
+            tree,
+            sea,
+            wind,
+            _crest_history(tree, wind, position, pixel, calm, damped),
+            pixel.along_m,
+            gust,
+            gust_max,
+            _foam_lace(tree, sea, position, outputs, foam()),
+        )
         surface = _daylight(tree, normal, tangent, unresolved, whitecaps, wake)
     else:
         # The coarsest footprint leaves the most, Cox & Munk's and all the swell's,

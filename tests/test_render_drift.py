@@ -446,8 +446,13 @@ def _uniform_sky_reflectance(
     for link in list(background.inputs["Color"].links):
         world.links.remove(link)
     background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    nodes = bpy.data.materials["sea"].node_tree.nodes
-    nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
+    tree = bpy.data.materials["sea"].node_tree
+    tree.nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
+    # The sea's reflection alone: no whitecap foam.
+    for link in list(tree.nodes["whitecap_foam"].outputs["Value"].links):
+        mixed = link.to_socket
+        tree.links.remove(link)
+        mixed.default_value = 0.0
     lens = bpy.data.cameras.new("probe")
     lens.clip_end, lens.angle_x = 1e5, math.radians(PROBE_FOV_DEG)
     camera = bpy.data.objects.new("probe", lens)
@@ -482,6 +487,38 @@ def test_the_sea_reflects_a_uniform_sky_as_gaussian_slopes_do(
 
 
 @pytest.mark.render
+def test_the_foam_network_table_is_blender_s() -> None:
+    """Whitecap foam tears to line widths read off a table of Blender's own Voronoi,
+    warped as the sea warps it; the sea's network, rendered from above, has its
+    distribution."""
+    scene.build(SCENARIO, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    emission = tree.nodes.new("ShaderNodeEmission")
+    output = tree.nodes["Material Output"]
+    tree.links.new(
+        tree.nodes["foam_network"].outputs["Distance"], emission.inputs["Strength"]
+    )
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    px = 512
+    # A pixel well under a cell, over thousands of cells.
+    lens = overhead(px * sea.FOAM_CELL_M / 4, eo_pixel_rad(SCENARIO), px)
+    camera = bpy.data.objects.new("probe", lens)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
+    camera.location = (0.0, 0.0, 10.0)
+    camera.rotation_euler = (0.0, 0.0, 0.0)
+    sc.camera = camera
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    sc.view_settings.view_transform = "Standard"
+    distance = shoot((px, px), "network_probe").ravel()
+    shares, widths = sea._network_widths()
+    levels = np.linspace(0.1, 0.9, 9)
+    measured = np.quantile(distance, levels)
+    assert measured == pytest.approx(np.interp(levels, shares, widths), abs=0.01)
+
+
+@pytest.mark.render
 def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     # Nothing but sea in view: a lit hull would count as foam.
     windy = SCENARIO.model_copy(
@@ -491,7 +528,7 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     tree = bpy.data.materials["sea"].node_tree
     emission = tree.nodes.new("ShaderNodeEmission")
     output = tree.nodes["Material Output"]
-    tree.links.new(tree.nodes["whitecaps"].outputs["Color"], emission.inputs["Color"])
+    tree.links.new(tree.nodes["whitecaps"].outputs["Value"], emission.inputs["Color"])
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
     px = 400
     lens = overhead(1500.0, eo_pixel_rad(windy), px)
