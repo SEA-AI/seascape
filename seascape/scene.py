@@ -1189,14 +1189,14 @@ def _camera(
     gain = sea._math(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
     )
-    gain = sea._math(
-        tree, "MULTIPLY", gain, sensor._value(tree, "processing.gain", 1.0)
-    )
+    processing = sensor._value(tree, "processing.gain", 1.0)
+    gain = sea._math(tree, "MULTIPLY", gain, processing)
     exposed = sea._vector(tree, "SCALE", image, gain)
     if not with_sensor:
         return exposed
     # A camera without a full well shares the tree, and takes the ideal frame.
-    read = sensor.chain(tree, exposed, coords.outputs["Pixel"])
+    grey = sea._math(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
+    read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
     return sensor._switch(tree, "sensor.on", exposed, read)
 
 
