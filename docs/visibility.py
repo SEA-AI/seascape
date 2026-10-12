@@ -236,16 +236,29 @@ def main(out: Path) -> None:
     sums = [
         " + ".join(f"{d:.2f}" for d in values[:5]) for values in (ship_top, sea_top)
     ]
+    patch = f"{labels.POOL_PX}\N{MULTIPLICATION SIGN}{labels.POOL_PX} px"
+
+    def pooled(values: np.ndarray, sum_text: str, total: float, single: str) -> str:
+        """One patch whose pixels all carry its value reads as that patch."""
+        if len(np.unique(np.round(values, 2))) == 1:
+            return f"{single} (ringed): {total:.2f}"
+        more = " + …" if len(values) > 5 else ""
+        return (
+            f"{len(values)} strongest, each averaged over {patch} (ringed):\n"
+            f"({sum_text}{more}) / {len(values)} = {total:.2f}"
+        )
+
     steps = [
         (panel(marked), "1  Background, row by row",
          "median of the marked pixels; white: the ship's glow, skipped"),
         (panel(heat(rgb, mask, delta_e, hot), ship_at - corner),
          "2  Ship contrast: ship vs background",
-         f"{K} strongest (ringed): ({sums[0]}) / {K} = {v['ship']:.2f}"),
+         pooled(ship_top, sums[0], v["ship"],
+                f"Strongest {patch} patch, averaged as the eye does")),
         (panel(heat(rgb, beside, delta_e, hot), sea_at - corner),
          "3  Clutter: background vs itself",
-         f"{len(sea_top)} strongest (ringed): ({sums[1]}"
-         f"{' + …' if len(sea_top) > 5 else ''}) / {len(sea_top)} = {v['sea']:.2f}"),
+         pooled(sea_top, sums[1], v["sea"],
+                f"Strongest {patch} patch at the ship's share")),
     ]  # fmt: skip
     sheet = Image.new("RGB", (WIDTH_PX, 2000), "white")
     draw = ImageDraw.Draw(sheet)
