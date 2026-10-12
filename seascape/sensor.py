@@ -143,9 +143,9 @@ def _merge(
 ) -> Socket:
     """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
     its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
-    a long read within three standard deviations of a saturated one's, here at most
-    the dark noise, left out. The ADC's rounding, (1 / levels)^2 / 12, keeps a
-    noiseless read finite."""
+    a long read within three times a saturated read's spread of white, here at most
+    the dark noise, counts as saturated and is left out. The ADC's rounding,
+    (1 / levels)^2 / 12, keeps a noiseless read finite."""
     rounding = sea._math(
         tree, "DIVIDE", 1.0 / 12, sea._math(tree, "MULTIPLY", levels, levels)
     )
@@ -251,7 +251,6 @@ def chain(
     frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
     shot, well = _value(tree, "sensor.shot"), _value(tree, "sensor.well", 1.0)
     dark, levels = _value(tree, "sensor.dark"), _value(tree, "sensor.levels", 4095.0)
-    # HDR: a second exposure `ratio` times shorter.
     ratio = _value(tree, "sensor.ratio", 1.0)
     longs, merged = [], []
     for index, x in enumerate(_channels(tree, image)):
@@ -319,7 +318,7 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     levels.inputs["Channel"].default_value = "Luminance"
     tree.links.new(sea._math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
     log_average = sea._math(tree, "EXPONENT", levels.outputs["Mean"])
-    # The key a / (1 + a) = grey; a grey of white has none.
+    # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     grey = sea._math(tree, "MINIMUM", grey, 0.99)
     key = sea._math(tree, "DIVIDE", grey, sea._math(tree, "SUBTRACT", 1.0, grey))
     scaled = sea._math(
