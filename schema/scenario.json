@@ -1500,7 +1500,7 @@
         },
         "width_px": {
           "title": "Width Px",
-          "description": "Its columns, if more than the image's: the ISP demosaics them and scales the frame down.",
+          "description": "Its columns, if more than the image's. At twice or more, the ISP demosaics and scales down, so each pixel averages its sites; below, the sensor reads at the image's pitch.",
           "default": null,
           "anyOf": [
             {

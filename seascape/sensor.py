@@ -7,9 +7,10 @@ nodes that `respond` sets before its render.
 import math
 
 import bpy
+import numpy as np
 
 from seascape import colour, sea
-from seascape.config import Camera, substream
+from seascape.config import Camera
 
 type Socket = bpy.types.NodeSocket
 
@@ -248,9 +249,10 @@ def _clip(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     )
 
 
-def respond(tree: bpy.types.NodeTree, camera: Camera, name: str, seed: int) -> None:
-    """Set the chain for `camera`, its noise on the scenario `seed`'s substream for
-    `name`."""
+def respond(
+    tree: bpy.types.NodeTree, camera: Camera, noise: np.random.Generator
+) -> None:
+    """Set the chain for `camera`, its noise seeded from `noise`."""
     sensor = camera.sensor
     full_well_e = sensor.full_well_e or math.inf
     gain = 10 ** (sensor.gain_db / 20)
@@ -261,7 +263,7 @@ def respond(tree: bpy.types.NodeTree, camera: Camera, name: str, seed: int) -> N
     _set(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
     _set(tree, "sensor.levels", 2**sensor.adc_bits - 1)
     # Float32 holds integers exactly to 2^24.
-    _set(tree, "sensor.seed", float(substream(seed, f"sensor/{name}").integers(2**24)))
+    _set(tree, "sensor.seed", float(noise.integers(2**24)))
     gains = colour.white_balance_gains(camera.processing.white_balance_k)
     # dcraw's: the smallest gain is 1, so what clipped white stays white.
     for channel, gain in zip("rgb", gains, strict=True):
@@ -271,6 +273,5 @@ def respond(tree: bpy.types.NodeTree, camera: Camera, name: str, seed: int) -> N
     # mosaics at the output's pitch; a scale between would need the mosaic resampled.
     k = (sensor.width_px or camera.width_px) / camera.width_px
     _toggle(tree, "sensor.mosaic", k < 2)
-    # RGGB: a quarter of a pixel's sites read red, half green, a quarter blue.
     for channel, share in zip("rgb", (0.25, 0.5, 0.25), strict=True):
         _set(tree, f"sensor.sites_{channel}", 1.0 if k < 2 else share * k * k)

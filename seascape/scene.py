@@ -1200,8 +1200,9 @@ def _camera(
     return sensor._switch(tree, "sensor.on", exposed, read)
 
 
-def respond(mount: Mount, seed: int) -> None:
-    """Set the compositor's camera to `mount`'s; a tree without one ignores it."""
+def respond(mount: Mount, noise: np.random.Generator) -> None:
+    """Set the compositor's camera to `mount`'s, its sensor noise seeded from `noise`;
+    a tree without one ignores it."""
     tree = bpy.context.scene.compositing_node_group
     if tree is None or "lens.vignette" not in tree.nodes:
         return
@@ -1213,7 +1214,7 @@ def respond(mount: Mount, seed: int) -> None:
     if "sensor.on" not in tree.nodes:
         return
     sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
-    sensor.respond(tree, camera, mount.name, seed)
+    sensor.respond(tree, camera, noise)
 
 
 class OverlapError(ValueError):
@@ -1367,7 +1368,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         first.camera.width_px,
         first.camera.height_px,
     )
-    respond(first, scenario.seed)
+    respond(first, substream(scenario.seed, f"sensor/{first.name}"))
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.

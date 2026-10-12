@@ -11,7 +11,7 @@ from mathutils import Vector
 
 from seascape import colour, lwir, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
-from seascape.config import Band, Camera, Mount, Scenario, Sky, load
+from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render
@@ -698,7 +698,8 @@ class TestSensor:
             }
         )
         rig = SCENARIO.rigs["bow"]
-        scene.respond(Mount("bow", rig, name.removeprefix("bow_"), settings), seed)
+        mount = Mount("bow", rig, name.removeprefix("bow_"), settings)
+        scene.respond(mount, substream(seed, f"sensor/{name}"))
         sc.render.image_settings.file_format = "OPEN_EXR"
         sc.render.resolution_x, sc.render.resolution_y = self.SIZE
         sc.render.filepath = str(Path(bpy.app.tempdir) / "sensor")
@@ -785,7 +786,8 @@ class TestSensor:
         )
 
     def test_no_exposure_turns_a_frame_into_nans(self) -> None:
-        """2^126 of gain overflows float32; a sensor saturates before it."""
+        """At the largest gain the ideal frame stays a number, and a sensor reads
+        white."""
         brightest = {"exposure_ev": 126.0}
         ideal = self.through((1.0, 1.0, 1.0), processing=brightest)
         read = self.through(

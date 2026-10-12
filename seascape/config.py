@@ -125,8 +125,9 @@ class Sensor(Model):
     width_px: int | None = Field(
         default=None,
         gt=0,
-        description="Its columns, if more than the image's: the ISP demosaics them "
-        "and scales the frame down.",
+        description="Its columns, if more than the image's. At twice or more, the "
+        "ISP demosaics and scales down, so each pixel averages its sites; below, the "
+        "sensor reads at the image's pitch.",
     )
     hdr_ratio: float = Field(
         default=1.0,

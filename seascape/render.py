@@ -22,7 +22,7 @@ import numpy as np
 from seascape import agc, labels, lwir, scene, waves
 from seascape.assets import manifest
 from seascape.calibration import Calibration, CameraCalibration
-from seascape.config import ImageFormat, Scenario
+from seascape.config import ImageFormat, Scenario, substream
 
 
 def _pixels(path: Path) -> np.ndarray:
@@ -188,7 +188,9 @@ def render(
                     name = f"{mount.name}/{frame:04d}" if sequence else mount.name
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
-                    scene.respond(mount, scenario.seed)
+                    scene.respond(
+                        mount, substream(scenario.seed, f"sensor/{mount.name}")
+                    )
                     bpy.ops.render.render(write_still=True)
                     if thermal:
                         _write_thermal(
