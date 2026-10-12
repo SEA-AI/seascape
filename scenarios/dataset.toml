@@ -42,7 +42,7 @@ heading_deg = { choice = [0.0, 180.0] }
 bearing_deg = { uniform = [-24.5, 24.5] }
 # Nearer, a tall mast looks down past a long hull's near end and cuts its box.
 range_m = { uniform = [500.0, 2500.0] }
-# Judgement: up to a merchant ship's service speed, 15 kn.
+# Judgement: up to a merchant ship's service speed, 16 kn.
 speed_mps = { uniform = [0.0, 8.0] }
 # Judgement: the drawn atmospheres' span of surface air, which a shaded hull sits near.
 t_k = { uniform = [257.0, 300.0] }
