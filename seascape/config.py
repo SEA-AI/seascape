@@ -20,6 +20,7 @@ resolved after both forms of reuse and before validation.
 """
 
 import math
+import re
 import tomllib
 import warnings
 from collections.abc import Iterable, Mapping
@@ -110,6 +111,75 @@ _DRAWS: dict[str, type[Uniform | Integer | Choice]] = {
 type Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
 
 
+class Sensor(Model):
+    """What a pixel does with the light that reaches it, in EMVA 1288's terms. Without
+    a full well the camera is ideal: no mosaic, no noise, no ADC."""
+
+    full_well_e: float | None = Field(
+        default=None, gt=0.0, description="Saturation capacity, in electrons."
+    )
+    dark_noise_e: float = Field(
+        default=0.0, ge=0.0, description="Temporal dark noise, in electrons."
+    )
+    gain_db: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=48.0,
+        description="Analogue gain: fewer electrons fill the ADC, so more noise.",
+    )
+    adc_bits: int = Field(default=12, ge=8, le=16, description="ADC resolution.")
+    hdr_ratio: float = Field(
+        default=1.0,
+        ge=1.0,
+        description="1 takes one exposure, which clips; above it, a second one this "
+        "many times shorter, merged and tone-mapped.",
+    )
+
+    @model_validator(mode="after")
+    def _a_pixel_needs_a_full_well(self) -> "Sensor":
+        changed = [
+            name
+            for name, field in Sensor.model_fields.items()
+            if getattr(self, name) != field.default
+        ]
+        if self.full_well_e is None and changed:
+            raise ValueError("a sensor's noise, gain or HDR needs its full_well_e")
+        return self
+
+
+class Lens(Model):
+    """What the optics do beyond the pinhole."""
+
+    vignetting: bool = Field(
+        default=False, description="Natural falloff, cos^4 of the field angle."
+    )
+
+
+class Processing(Model):
+    """What the camera's ISP does after the ADC."""
+
+    # The compositor computes in float32, normal from 2^-126 to 2^127 (IEEE 754).
+    exposure_ev: float = Field(
+        default=0.0,
+        ge=-126.0,
+        le=126.0,
+        description="Stops over auto-exposure, on top of "
+        "outputs.exposure_compensation_ev.",
+    )
+    # Kim et al.'s cubic (US 7,024,034) spans 1667-25000 K.
+    white_balance_k: float = Field(
+        default=0.0,
+        ge=-4800.0,
+        le=18000.0,
+        description="How far the camera's guess of the light misses D65's 6504 K, "
+        "along the Planckian locus. Positive guesses warmer light, so the frame "
+        "comes out bluer.",
+    )
+    sharpen: float = Field(
+        default=0.0, ge=0.0, le=4.0, description="Unsharp mask amount."
+    )
+
+
 class Camera(Model):
     """One camera on a rig."""
 
@@ -130,6 +200,19 @@ class Camera(Model):
     )
     width_px: int = Field(gt=0, description="Image width.")
     height_px: int = Field(gt=0, description="Image height.")
+    sensor: Sensor = Field(default_factory=Sensor)
+    lens: Lens = Field(default_factory=Lens)
+    processing: Processing = Field(default_factory=Processing)
+
+    @model_validator(mode="after")
+    def _an_lwir_camera_is_radiometric(self) -> "Camera":
+        """Its frame is kelvin, so nothing between the scene and the file."""
+        if self.band == "ir" and (
+            (self.sensor, self.lens, self.processing)
+            != (Sensor(), Lens(), Processing())
+        ):
+            raise ValueError("an ir camera takes no sensor, lens or processing")
+        return self
 
 
 class Rig(Model):
@@ -822,6 +905,13 @@ def _read(path: Path, chain: tuple[Path, ...] = ()) -> dict[str, Any]:
     return _expand(data, None, path.parent, chain)
 
 
+# A rig's cameras share one sensor, lens and ISP setting: their substream skips the
+# camera's name, and any pick of it.
+_PER_RIG = re.compile(
+    r"^(draw/rigs/[^/]+/cameras)/[^/]+(?:/choice)*(/(?:sensor|lens|processing)(?:/|$))"
+)
+
+
 def _draw(node: Any, seed: int, path: str) -> Any:
     """Replace every draw in the tree by a value from a substream named for where it
     sits, `draw/sky/visibility_km`."""
@@ -830,7 +920,8 @@ def _draw(node: Any, seed: int, path: str) -> Any:
     if not isinstance(node, dict):
         return node
     if (kind := _kind(node)) is not None:
-        value = _DRAWS[kind].model_validate(node).draw(substream(seed, path))
+        rng = substream(seed, _PER_RIG.sub(r"\1\2", path))
+        value = _DRAWS[kind].model_validate(node).draw(rng)
         # A chosen draw on the pick's own substream would replay the pick's state.
         return _draw(value, seed, f"{path}/{kind}" if _is_draw(value) else path)
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}

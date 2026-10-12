@@ -15,6 +15,7 @@ import numpy as np
 from pydantic import Field
 
 from seascape.calibration import CameraCalibration
+from seascape.config import Camera, Lens, Processing, Sensor
 from seascape.model import Model
 
 FILENAME = "labels.json"
@@ -60,6 +61,10 @@ class Image(Model):
     hfov_deg: float
     time_s: float
     horizon_px: list[tuple[float, float]]
+    # The camera as drawn, None for one that takes none (LWIR).
+    sensor: Sensor | None = None
+    lens: Lens | None = None
+    processing: Processing | None = None
 
 
 class Category(Model):
@@ -101,9 +106,12 @@ class Labels(Model):
         frame: np.ndarray,
         targets: Sequence[Target],
         radius_m: float,
+        settings: Camera | None = None,
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, both top row first."""
+        the image as written, both top row first. `settings` is the scenario's camera,
+        whose sensor, lens and processing an EO image carries."""
+        grade = settings is not None and settings.band == "eo"
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -114,6 +122,9 @@ class Labels(Model):
             hfov_deg=math.degrees(2 * math.atan(camera.width_px / 2 / camera.K[0][0])),
             time_s=time_s,
             horizon_px=horizon_px(camera, radius_m),
+            sensor=settings.sensor if grade else None,
+            lens=settings.lens if grade else None,
+            processing=settings.processing if grade else None,
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]

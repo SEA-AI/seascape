@@ -1,0 +1,19 @@
+# Basler dart daA3840-30mc, onsemi AR0821 colour sensor: the sensor only. The block
+# that mounts it supplies the lens, hfov_deg.
+# https://docs.baslerweb.com/daa3840-30mc
+band = "eo"
+width_px = 3840
+height_px = 2160
+
+[sensor]
+# EMVA 1288: shot noise caps the SNR at sqrt(full well), and the AR0821 datasheet
+# (Rev. 7) gives SNRmax 41 dB, so 10^(41/10).
+full_well_e = 12600.0
+# Neither onsemi nor Basler publishes it. A proxy: Basler's IMX676, the nearest pixel
+# (2.0 um to the AR0821's 2.1 um), EMVA Data Overview No. 18.
+dark_noise_e = 4.0
+# AR0821 datasheet: linear mode, 12-bit.
+adc_bits = 12
+# Basler's dart features list no HDR for this model; the sensor's eHDR is there to
+# enable, at Basler HDR Beyond's default ratio of 16.
+hdr_ratio = 1.0
