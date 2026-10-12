@@ -9,11 +9,11 @@ yaw_deg = 0.0
 
 # Both bands through one lens, so both frame the same hulls.
 [[rigs.bow.cameras.choice]]
-eo = { band = "eo", hfov_deg = 42.0, width_px = 1920, height_px = 1080 }
+eo = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 42.0, width_px = 1920, height_px = 1080 }
 ir = { band = "ir", hfov_deg = 42.0, width_px = 640, height_px = 512 }
 
 [[rigs.bow.cameras.choice]]
-eo = { band = "eo", hfov_deg = 49.0, width_px = 1920, height_px = 1080 }
+eo = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 49.0, width_px = 1920, height_px = 1080 }
 ir = { band = "ir", hfov_deg = 49.0, width_px = 640, height_px = 512 }
 
 # In the inherited options' order: Blender's sky, then a photographed one. The sun

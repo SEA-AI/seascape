@@ -48,6 +48,24 @@ A table that names a preset replaces whatever it lands on, so `--set 'rigs.bow =
 
 Scenarios carry a `#:schema` line, so editors with a TOML language server give you key completion, inline validation and hover docs. `seascape schema > schema/scenario.json` regenerates it from the models.
 
+### The camera itself
+
+An EO camera can carry a sensor, a lens and an ISP. Without them it is ideal: no noise, no mosaic, a hard clip at white.
+
+```toml
+[rigs.bow.cameras.eo]
+preset = "basler_daa3840_ar0821"   # the sensor; the lens is yours
+hfov_deg = 45.0
+width_px = 1920
+height_px = 1080
+sensor.gain_db = 12.0
+sensor.hdr_ratio = 16.0
+lens.vignetting = true
+processing.white_balance_k = 800
+```
+
+Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens` and `processing`.
+
 ## Randomization
 
 Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included. `weights` beside a choice makes it uneven: `{ choice = ["a", "b"], weights = [1, 4] }` draws `b` four times as often. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
