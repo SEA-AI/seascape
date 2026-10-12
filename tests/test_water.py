@@ -6,12 +6,12 @@ from seascape.config import Sea
 from seascape.sea import SEAWATER_IOR
 
 
-def test_the_default_water_is_the_colour_the_sea_had_before_chlorophyll() -> None:
+def test_the_default_water_matches_the_model_under_tabulated_d65() -> None:
     chl_mg_m3 = Sea().chlorophyll_mg_m3
 
     color = water.body_color(chl_mg_m3, SEAWATER_IOR)
 
-    # The constant the shader carried, from the same model under tabulated D65.
+    # Morel & Maritorena 2001 at 0.2 mg/m^3, under CIE 15's tabulated D65.
     assert color == pytest.approx((0.0, 0.0065, 0.018), abs=1.5e-4)
 
 

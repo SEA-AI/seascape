@@ -1285,7 +1285,7 @@ def _daylight(
     through = _math(tree, "MULTIPLY", through, _math(tree, "ADD", bubbles, 1.0))
     body = tree.nodes.new("ShaderNodeBsdfDiffuse")
     link(normal, body.inputs["Normal"])
-    # Dimmed by 1 - F toward the viewer only.
+    # Dimmed by Fresnel's 1 - F toward the viewer only.
     color = body_color(sea.chlorophyll_mg_m3, SEAWATER_IOR)
     link(
         _vector(tree, "SCALE", color, through, name="sea_body_color"),
