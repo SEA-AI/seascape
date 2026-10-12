@@ -104,7 +104,7 @@ GRAVITY_MS2 = 9.81
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
 #   total slope     sqrt(0.003 + 0.00512 U(12.5 m))     Cox & Munk 1954, eq. 13
 #   per axis        up 3.16e-3 U, across 3e-3+1.92e-3 U Cox & Munk 1954
-#   held            scaled to it where it overshoots    spectrum fitted 3-21 m/s
+#   held            scaled to it where it overshoots    Cox & Munk 1954
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       tall crests' a k cos(phase) > thresh Snyder & Kennedy 1983
@@ -430,10 +430,9 @@ def wind_sea(
 ) -> tuple[Wave, ...]:
     """Elfouhaily's spectrum and spread, held to Cox & Munk's slope on each axis.
 
-    Below about 4 m/s, outside the 3-21 m/s the spectrum was fitted over, it carries
-    more slope than Cox & Munk measured down to 1 m/s; the whole sea is scaled to their
-    variance on the axis it overshoots most, as Elfouhaily tied their short waves to
-    it."""
+    Where it carries more slope than Cox & Munk measured, as below the 3-21 m/s it was
+    fitted over, the whole sea is scaled to their variance on the axis it overshoots
+    most, as Elfouhaily tied their short waves to it."""
     omega, variance = _bins(wind_speed_mps, fetch_m)
     if not len(omega):
         return ()

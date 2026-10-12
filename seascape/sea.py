@@ -2174,7 +2174,6 @@ def _unresolved(
     if smooth is None:
         return unresolved
     slick = tabled("sea_unresolved_slick_variance", survivors, cox_munk_slick_variances)
-    # The slick's own variance in place of the gusty sea's.
     along, across = (
         _math(tree, "MULTIPLY_ADD", smooth, _math(tree, "SUBTRACT", s, v), v)
         for s, v in zip(slick, unresolved, strict=True)
