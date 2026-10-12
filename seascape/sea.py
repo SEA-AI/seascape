@@ -1437,7 +1437,10 @@ def _foam_lace(
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """(lace, fine lace, distance in cells to the foam network's nearest edge),
     drifting with the surface, read at `where`, (east, north, time). The lace is two
-    independent unit Gaussians rescaled to one."""
+    independent unit Gaussians rescaled to one.
+
+    ponytail: the network drifts on, unlooped, so a looped clip's seam moves it by the
+    drift over the span; crossfade two networks if the pop shows."""
     east, north = _downwind(sea)
     drift = SLICK_DRIFT * sea.wind_speed_mps
     layers = []

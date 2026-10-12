@@ -607,7 +607,7 @@ def _cover_curve(wind: tuple[Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
     # A point whose crest stays CDF_SIGMAS edges short of a threshold covers under 1e-9
     # of itself there: each level reads only the points near enough.
     peak = past.max(axis=0)
-    levels = np.linspace(np.quantile(peak, 0.6), peak.max(), THRESHOLD_LEVELS)
+    levels = np.linspace(peak.min(), peak.max(), THRESHOLD_LEVELS)
     covers = np.array(
         [
             np.sum(np.max(_foam_fills(past[:, near], c, edge), axis=0)) / past.shape[1]

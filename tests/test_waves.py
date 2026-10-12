@@ -377,6 +377,15 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.1)
 
 
+def test_a_storm_gust_s_cover_has_its_own_threshold() -> None:
+    """A gust over a 21 m/s sea asks for far more than Monahan's mean cover."""
+    wind = field(21.0)
+
+    high, higher = waves.whitecap_thresholds_g(wind, [0.3, 0.5])
+
+    assert higher < high
+
+
 def test_whitecaps_read_the_wind_at_10_m() -> None:
     # Monahan & O'Muircheartaigh 1980: 3.84e-6 U10^3.41, 0.99% at 10 m/s.
     assert waves.whitecap_fraction(10.0) == pytest.approx(0.0099, abs=1e-4)

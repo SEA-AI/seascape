@@ -298,9 +298,11 @@ class Sea(Model):
         le=311.0,
         description="Sea surface temperature. IR only. Unset, the atmosphere's own.",
     )
+    # Elfouhaily et al. 1997 fitted their spectrum up to 21 m/s.
     wind_speed_mps: float = Field(
         default=7.0,
         ge=0.0,
+        le=21.0,
         description="Measured 10 m above the sea. Sets the wind sea.",
     )
     wind_from_deg: float = Field(
