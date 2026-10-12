@@ -6,11 +6,12 @@ Spectrum: Elfouhaily, Chapron, Katsaros & Vandemark, "A unified directional spec
 for long and short wind-driven waves", Journal of Geophysical Research 102(C7) 15781,
 1997 (doi:10.1029/97JC00467), omnidirectional, equations 30-44.
 
-Spreading: Mitsuyasu et al., "Observations of the directional spectrum of ocean waves
-using a cloverleaf buoy", Journal of Physical Oceanography 5(4) 750, 1975
-(doi:10.1175/1520-0485(1975)005<0750:OOTDSO>2.0.CO;2), in the form and with the s_max
-values given by Goda, "Random Seas and Design of Maritime Structures", 2nd ed.,
-World Scientific 2000, section 2.3.
+Spreading: the wind sea's from Elfouhaily et al. 1997, equations 49, 57 and 59, fitted
+to Cox & Munk's upwind-crosswind asymmetry; a swell's Mitsuyasu et al., "Observations of
+the directional spectrum of ocean waves using a cloverleaf buoy", Journal of Physical
+Oceanography 5(4) 750, 1975 (doi:10.1175/1520-0485(1975)005<0750:OOTDSO>2.0.CO;2), in
+the form and with the s_max values given by Goda, "Random Seas and Design of Maritime
+Structures", 2nd ed., World Scientific 2000, section 2.3.
 
 Whitecaps: Monahan & O'Muircheartaigh, "Optimal power-law description of oceanic
 whitecap coverage dependence on wind speed", Journal of Physical Oceanography 10(12)
@@ -27,7 +28,8 @@ mean, the rest a Gaussian spread.
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
-clean-sea fit, equation 13, and the slick-surface fit beside it, over the oil they laid.
+clean-sea fit, equation 13, and the slick-surface fit beside it, over the oil they laid;
+their upwind and crosswind fits split each between the axes.
 
 Slicks: Leibovich, "The form and dynamics of Langmuir circulations", Annu. Rev. Fluid
 Mech. 15 391, 1983 (doi:10.1146/annurev.fl.15.010183.002135): films gather in windrows
@@ -95,9 +97,11 @@ GRAVITY_MS2 = 9.81
 #   spectrum        k^-3 (B_long + B_short)             Elfouhaily et al. 1997
 #   peak            kp = g Omega^2 / U10^2              deep-water dispersion
 #   wave age        Omega 0.84, more at a short fetch   Elfouhaily et al. 1997, eq. 37
-#   direction       cos^2s(theta / 2)                   Mitsuyasu 1975, Goda 2000
+#   direction       1 + Delta(k) cos 2 theta, downwind  Elfouhaily et al. 1997
 #   wavenumber      k = w^2 / g                         deep-water dispersion, Lamb
 #   total slope     sqrt(0.003 + 0.00512 U(12.5 m))     Cox & Munk 1954, eq. 13
+#   per axis        up 3.16e-3 U, across 3e-3+1.92e-3 U Cox & Munk 1954
+#   held            scaled to it where it overshoots    Cox & Munk 1954
 #   drawn variance  sum of v^2 a^2 k^2 / 2              v = visibility
 #   unresolved      total^2 - drawn, + undrawn swell    Bruneton 2010, per pixel
 #   whitecaps       P(sum v a k cos(phase) > threshold) Snyder & Kennedy 1983
@@ -115,7 +119,10 @@ FETCH_X0 = 2.2e4
 YOUNGEST_INVERSE_AGE = 5.0
 CAPILLARY_PEAK_RAD_M = 370.0
 CAPILLARY_SPEED_MPS = 0.23
-SPREAD_S_MAX = 10.0
+# Elfouhaily et al. 1997, eq. 59; a_m is per u* / c_m.
+SPREAD_A0 = math.log(2) / 4
+SPREAD_AP = 4.0
+SPREAD_AM = 0.13
 # Goda 2000: swell with a long decay distance.
 SWELL_S_MAX = 75.0
 # Monahan & O'Muircheartaigh 1980, robust biweight fit, U at 10 m.
@@ -125,6 +132,9 @@ SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 SLICK_VARIANCE_INTERCEPT = 0.008
 SLICK_VARIANCE_PER_MPS = 0.00156
+# Cox & Munk 1954, per axis: (intercept, per m/s) upwind, then crosswind.
+AXES_CLEAN = ((0.0, 0.00316), (0.003, 0.00192))
+AXES_SLICK = ((0.005, 0.00078), (0.003, 0.00084))
 WINDROW_SPACING_S = 4.8
 WINDROW_MIN_WIND_MPS = 3.0
 # A judgement inside Thorpe's three to ten.
@@ -307,6 +317,55 @@ def cox_munk_slick_slope(wind_speed_mps: float) -> float:
     return min(math.sqrt(slick), cox_munk_slope(wind_speed_mps))
 
 
+def _axis_shares(
+    wind_speed_mps: float, axes: tuple[tuple[float, float], ...]
+) -> tuple[float, float]:
+    wind = wind_at_m(wind_speed_mps, COX_MUNK_WIND_HEIGHT_M)
+    up, cross = (a + b * wind for a, b in axes)
+    return up / (up + cross), cross / (up + cross)
+
+
+def cox_munk_variances(wind_speed_mps: float) -> tuple[float, float]:
+    """Upwind and crosswind slope variance: the total fit, split as the axes' fits."""
+    total = cox_munk_slope(wind_speed_mps) ** 2
+    up, cross = _axis_shares(wind_speed_mps, AXES_CLEAN)
+    # Below the axes' fits' crossing the upwind fit runs to 0: a near-calm sea, with no
+    # wind to orient it, is isotropic.
+    if up < cross:
+        up = cross = 0.5
+    return total * up, total * cross
+
+
+def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
+    total = cox_munk_slick_slope(wind_speed_mps) ** 2
+    up, cross = _axis_shares(wind_speed_mps, AXES_SLICK)
+    return total * up, total * cross
+
+
+def spreading_delta(
+    omega_rad_s: np.ndarray, wind_speed_mps: float, fetch_m: float | None
+) -> np.ndarray:
+    """Elfouhaily's Delta(k), eq. 57: the cos 2 theta share of the spread, 1 at the
+    peak and least between it and the capillaries."""
+    k = omega_rad_s**2 / GRAVITY_MS2
+    c_m = CAPILLARY_SPEED_MPS
+    c = np.sqrt(GRAVITY_MS2 / k * (1 + (k / CAPILLARY_PEAK_RAD_M) ** 2))
+    c_p = wind_speed_mps / inverse_wave_age(wind_speed_mps, fetch_m)
+    a_m = SPREAD_AM * friction_velocity_mps(wind_speed_mps) / c_m
+    return np.tanh(SPREAD_A0 + SPREAD_AP * (c / c_p) ** 2.5 + a_m * (c_m / c) ** 2.5)
+
+
+def _downwind_rad(delta: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Angles off downwind, 1 + Delta cos 2 theta by inverse CDF, one per Delta.
+
+    Elfouhaily's form is centrosymmetric, a frozen surface's: folded into the downwind
+    half, the waves run with the wind and the slopes keep its statistics."""
+    theta = np.linspace(-math.pi / 2, math.pi / 2, 361)
+    cdf = theta + math.pi / 2 + delta[:, None] / 2 * np.sin(2 * theta)[None, :]
+    cdf /= cdf[:, -1:]
+    return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
+
+
 def _bins(
     wind_speed_mps: float, fetch_m: float | None
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -347,6 +406,11 @@ def wind_sea(
     snap: Callable[[float], float],
     rng: np.random.Generator,
 ) -> tuple[Wave, ...]:
+    """Elfouhaily's spectrum and spread, held to Cox & Munk's slope on each axis.
+
+    Where it carries more slope than Cox & Munk measured, as below the 3-21 m/s it was
+    fitted over, the whole sea is scaled to their variance on the axis it overshoots
+    most, as Elfouhaily tied their short waves to it."""
     omega, variance = _bins(wind_speed_mps, fetch_m)
     if not len(omega):
         return ()
@@ -354,14 +418,13 @@ def wind_sea(
     share = np.tile(np.arange(WIND_HEADINGS), len(omega))
     omega = np.repeat(omega, WIND_HEADINGS)
     variance = np.repeat(variance / WIND_HEADINGS, WIND_HEADINGS)
-    ratio = omega / peak_omega_rad_s(wind_speed_mps, fetch_m)
-    s = SPREAD_S_MAX * np.where(ratio < 1.0, ratio**5, ratio**-2.5)
+    delta = spreading_delta(omega, wind_speed_mps, fetch_m)
     # Wind is named for where it blows from; waves run the other way.
-    toward = math.radians(wind_from_deg + 180.0) + _off_mean_rad(
-        s, (share + rng.uniform(size=len(omega))) / WIND_HEADINGS
+    toward = math.radians(wind_from_deg + 180.0) + _downwind_rad(
+        delta, (share + rng.uniform(size=len(omega))) / WIND_HEADINGS
     )
     phase = rng.uniform(0.0, 2 * math.pi, len(omega))
-    return tuple(
+    field = tuple(
         Wave(math.sqrt(2 * v), w, t, p)
         for v, w, t, p in zip(
             variance.tolist(),
@@ -371,6 +434,10 @@ def wind_sea(
             strict=True,
         )
     )
+    drawn = drawn_slope_variances(field, 0.0, math.radians(wind_from_deg))
+    measured = cox_munk_variances(wind_speed_mps)
+    held = min(1.0, *(m / d for m, d in zip(measured, drawn, strict=True) if d > 0))
+    return tuple(replace(w, amplitude_m=w.amplitude_m * math.sqrt(held)) for w in field)
 
 
 def swell(
@@ -600,16 +667,32 @@ def drawn_slope_variance(field: tuple[Wave, ...], footprint_m: float) -> float:
     return float(np.sum((ak * visibility(2 * math.pi / k, footprint_m)) ** 2) / 2)
 
 
-def slick_survivors(wind_speed_mps: float, wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
-    """The longest waves that fit in Cox & Munk's slick variance: what a slick leaves
-    of `wind`, damping the shortest first."""
-    budget = cox_munk_slick_slope(wind_speed_mps) ** 2
+def drawn_slope_variances(
+    field: tuple[Wave, ...], footprint_m: float, downwind_rad: float
+) -> tuple[float, float]:
+    """`drawn_slope_variance` along and across `downwind_rad`."""
+    if not field:
+        return 0.0, 0.0
+    k = np.array([w.k_rad_m for w in field])
+    ak = np.array([w.amplitude_m for w in field]) * k
+    along = np.cos(np.array([w.toward_rad for w in field]) - downwind_rad) ** 2
+    shown = (ak * visibility(2 * math.pi / k, footprint_m)) ** 2 / 2
+    return float(np.sum(shown * along)), float(np.sum(shown * (1 - along)))
+
+
+def slick_survivors(
+    wind_speed_mps: float, wind: tuple[Wave, ...], axis_rad: float
+) -> tuple[Wave, ...]:
+    """The longest waves that fit in Cox & Munk's slick variance on both axes, the
+    wind's along `axis_rad`: what a slick leaves of `wind`, damping the shortest
+    first."""
+    budget = np.array(cox_munk_slick_variances(wind_speed_mps))
     left: list[Wave] = []
     # A wavelength goes at every heading at once.
     for k in sorted({w.k_rad_m for w in wind}):
         same = tuple(w for w in wind if w.k_rad_m == k)
-        budget -= slope_variance(same)
-        if budget < 0.0:
+        budget -= drawn_slope_variances(same, 0.0, axis_rad)
+        if np.any(budget < 0.0):
             break
         left.extend(same)
     return tuple(left)
@@ -632,6 +715,27 @@ def unresolved_slope_variance(
     )
     swell_left = slope_variance(swell) - drawn_slope_variance(swell, footprint_m)
     return max(wind_left, 0.0) + swell_left
+
+
+def unresolved_slope_variances(
+    wind_speed_mps: float,
+    downwind_rad: float,
+    wind: tuple[Wave, ...],
+    swell: tuple[Wave, ...],
+    footprint_m: float,
+    fit: Callable[[float], tuple[float, float]] = cox_munk_variances,
+) -> tuple[float, float]:
+    """`unresolved_slope_variance` upwind and crosswind, each against its own fit."""
+    drawn = drawn_slope_variances(wind, footprint_m, downwind_rad)
+    swell_all = drawn_slope_variances(swell, 0.0, downwind_rad)
+    swell_drawn = drawn_slope_variances(swell, footprint_m, downwind_rad)
+    up, cross = (
+        max(total - d, 0.0) + a - s
+        for total, d, a, s in zip(
+            fit(wind_speed_mps), drawn, swell_all, swell_drawn, strict=True
+        )
+    )
+    return up, cross
 
 
 def unresolved_acceleration_variance(

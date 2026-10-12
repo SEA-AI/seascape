@@ -336,23 +336,28 @@ class TestEoBand:
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         assert nodes["sea_specular"].inputs["Roughness"].is_linked
-        table = baked("sea_unresolved_variance")
-        low, high = sea.FOOTPRINT_RANGE_M
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        footprints = low * (high / low) ** texel
         wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
         speed = SCENARIO.sea.wind_speed_mps
-        for i in (0, len(table) // 2, len(table) - 1):
-            expected = waves.unresolved_slope_variance(
-                speed, wind, swell, footprints[i]
-            )
-            assert table[i] == pytest.approx(expected, rel=1e-5)
+        axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
+        for i, axis in enumerate(("upwind", "crosswind")):
+            table = baked(f"sea_unresolved_variance_{axis}")
+            low, high = sea.FOOTPRINT_RANGE_M
+            texel = (np.arange(len(table)) + 0.5) / len(table)
+            footprints = low * (high / low) ** texel
+            for t in (0, len(table) // 2, len(table) - 1):
+                expected = waves.unresolved_slope_variances(
+                    speed, axis_rad, wind, swell, footprints[t]
+                )[i]
+                assert table[t] == pytest.approx(expected, rel=1e-5), axis
 
     def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
         roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
-        assert {"gust", "sea_gust_variance", "sea_unresolved_variance"} <= upstream(
-            roughness.inputs["Roughness"]
-        )
+        assert {
+            "gust",
+            "sea_gust_variance",
+            "sea_unresolved_variance_upwind",
+            "sea_unresolved_variance_crosswind",
+        } <= upstream(roughness.inputs["Roughness"])
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
         per_gust = tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value
@@ -804,9 +809,11 @@ class TestIrBand:
                 if n.bl_idname == "ShaderNodeTexImage" and n.image.name == name
             )
             lookup = table.inputs["Vector"].links[0].from_node
-            assert {"sea_unresolved_variance", "sea_gust_variance"} <= upstream(
-                lookup.inputs["Y"]
-            ), name
+            assert {
+                "sea_unresolved_variance_upwind",
+                "sea_unresolved_variance_crosswind",
+                "sea_gust_variance",
+            } <= upstream(lookup.inputs["Y"]), name
 
     def test_the_baked_reflection_matches_the_sky_it_reflects(self) -> None:
         table = baked("sea_reflection")
@@ -857,17 +864,17 @@ class TestIrBand:
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
-        theta. Rows run up the unresolved RMS slope, to all of Cox & Munk's in the
-        strongest gust."""
+        theta. Rows run up the unresolved RMS slope, to twice Cox & Munk's wider axis,
+        as a pixel takes it along the view, in the strongest gust."""
         table = baked("sea_emissivity")
         rows, width = table.shape
         mu = (np.arange(width) + 0.5) / width
         speed = SCENARIO.sea.wind_speed_mps
         tile = baked("sea_gust")
         gust_max = math.sqrt(2) * np.abs(tile).max() * waves.turbulence_intensity(speed)
-        strongest = waves.cox_munk_slope(
-            speed
-        ) ** 2 + gust_max * waves.gust_slope_variance(speed)
+        strongest = 2 * max(
+            waves.cox_munk_variances(speed)
+        ) + gust_max * waves.gust_slope_variance(speed)
         # Per axis: lwir draws each facet's two slopes with this sigma.
         sigma_max = math.sqrt(strongest / 2)
         for row in (0, rows // 2, rows - 1):
@@ -1029,7 +1036,12 @@ class TestSlicks:
 
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
         wind = scene.wind_waves(self.SLICKS)
-        left = set(waves.slick_survivors(self.SLICKS.sea.wind_speed_mps, wind))
+        sea_ = self.SLICKS.sea
+        left = set(
+            waves.slick_survivors(
+                sea_.wind_speed_mps, wind, math.radians(sea_.wind_from_deg)
+            )
+        )
         calmed = {
             wave
             for wave, inputs, lane in drawn(self.SLICKS)
@@ -1038,23 +1050,26 @@ class TestSlicks:
         assert calmed == set(wind) - left
 
     def test_under_a_slick_the_pixel_leaves_what_the_slick_does(self) -> None:
-        table = baked("sea_unresolved_slick_variance")
-        low, high = sea.FOOTPRINT_RANGE_M
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        footprints = low * (high / low) ** texel
         speed = self.SLICKS.sea.wind_speed_mps
-        left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS))
-        for i in (0, len(table) // 2, len(table) - 1):
-            expected = waves.unresolved_slope_variance(
-                speed,
-                left,
-                scene.swell_waves(self.SLICKS),
-                footprints[i],
-                waves.cox_munk_slick_slope,
-            )
-            assert table[i] == pytest.approx(expected, rel=1e-5, abs=1e-9)
+        axis_rad = math.radians(self.SLICKS.sea.wind_from_deg)
+        left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS), axis_rad)
+        for i, axis in enumerate(("upwind", "crosswind")):
+            table = baked(f"sea_unresolved_slick_variance_{axis}")
+            low, high = sea.FOOTPRINT_RANGE_M
+            texel = (np.arange(len(table)) + 0.5) / len(table)
+            footprints = low * (high / low) ** texel
+            for t in (0, len(table) // 2, len(table) - 1):
+                expected = waves.unresolved_slope_variances(
+                    speed,
+                    axis_rad,
+                    left,
+                    scene.swell_waves(self.SLICKS),
+                    footprints[t],
+                    waves.cox_munk_slick_variances,
+                )[i]
+                assert table[t] == pytest.approx(expected, rel=1e-5, abs=1e-9), axis
         roughness = _sea_node("sea_specular").inputs["Roughness"]
-        assert {"slick", "sea_unresolved_slick_variance"} <= upstream(roughness)
+        assert {"slick", "sea_unresolved_slick_variance_upwind"} <= upstream(roughness)
 
 
 def each_frame() -> Iterator[int]:
