@@ -139,6 +139,54 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "sensor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Sensor"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "lens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Lens"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "processing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Processing"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -277,6 +325,33 @@
         "jpg"
       ],
       "type": "string"
+    },
+    "Lens": {
+      "additionalProperties": false,
+      "description": "What the optics do beyond the pinhole.",
+      "properties": {
+        "vignetting": {
+          "title": "Vignetting",
+          "description": "Natural falloff, cos^4 of the field angle.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Lens",
+      "type": "object"
     },
     "Name": {
       "pattern": "^[A-Za-z0-9_-]+$",
@@ -886,6 +961,77 @@
       "title": "Ownship",
       "type": "object"
     },
+    "Processing": {
+      "additionalProperties": false,
+      "description": "The camera's ISP. White balance and sharpening need a sensor.",
+      "properties": {
+        "exposure_ev": {
+          "title": "Exposure Ev",
+          "description": "Stops over auto-exposure, on top of outputs.exposure_compensation_ev.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 126.0,
+              "minimum": -126.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "white_balance_k": {
+          "title": "White Balance K",
+          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses bluer light, so the frame comes out warmer.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 18000.0,
+              "minimum": -4000.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "sharpen": {
+          "title": "Sharpen",
+          "description": "Unsharp mask amount.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Processing",
+      "type": "object"
+    },
     "Rig": {
       "additionalProperties": false,
       "description": "One installed product: the frame its cameras sit in, at one mount point.\n\nRigs a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
@@ -1262,6 +1408,118 @@
         }
       },
       "title": "Sea",
+      "type": "object"
+    },
+    "Sensor": {
+      "additionalProperties": false,
+      "description": "What a pixel does with the light that reaches it, in EMVA 1288's terms. Without\na full well the camera is ideal.",
+      "properties": {
+        "full_well_e": {
+          "title": "Full Well E",
+          "description": "Saturation capacity.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "dark_noise_e": {
+          "title": "Dark Noise E",
+          "description": "Temporal dark noise.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "gain_db": {
+          "title": "Gain Db",
+          "description": "Analogue gain: fewer electrons fill the ADC.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "adc_bits": {
+          "title": "Adc Bits",
+          "description": "Bits per read.",
+          "default": 12,
+          "anyOf": [
+            {
+              "maximum": 16,
+              "minimum": 8,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "hdr_ratio": {
+          "title": "Hdr Ratio",
+          "description": "1 takes one exposure, which clips; above it, a second one this many times shorter, merged and tone-mapped.",
+          "default": 1.0,
+          "anyOf": [
+            {
+              "minimum": 1.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Sensor",
       "type": "object"
     },
     "Sky": {

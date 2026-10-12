@@ -8,6 +8,7 @@ import pytest
 
 from seascape import labels, waves
 from seascape.calibration import CameraCalibration
+from seascape.config import Camera, Lens, Sensor
 
 RADIUS_M = waves.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
@@ -467,3 +468,33 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="category 1 is ship"):
         labels.merge(tmp_path, folders)
+
+
+@pytest.mark.parametrize("graded", [True, False])
+def test_an_8_bit_eo_image_carries_its_cameras_sensor_lens_and_processing(
+    graded: bool,
+) -> None:
+    """An exr is the radiance as rendered: the chain never touched it."""
+    settings = Camera(
+        band="eo",
+        hfov_deg=49.0,
+        width_px=64,
+        height_px=48,
+        sensor=Sensor(full_well_e=10500.0, dark_noise_e=3.0),
+        lens=Lens(vignetting=True),
+    )
+    truth = labels.Labels()
+    frame = FLAT.astype(np.uint8) if graded else FLAT
+    truth.add(camera(), 0.0, np.zeros((48, 64), int), frame, [], RADIUS_M, settings)
+    (image,) = truth.images
+    expected = (settings.sensor, settings.lens, settings.processing)
+    assert (image.sensor, image.lens, image.processing) == (
+        expected if graded else (None, None, None)
+    )
+
+
+def test_an_image_without_its_camera_carries_no_settings() -> None:
+    truth = labels.Labels()
+    truth.add(camera(), 0.0, np.zeros((48, 64), int), FLAT, [], RADIUS_M)
+    (image,) = truth.images
+    assert (image.sensor, image.lens, image.processing) == (None, None, None)

@@ -206,6 +206,7 @@ def render(
                         _frame(into / file_name),
                         targets,
                         radius_m,
+                        mount.camera,
                     )
                 # Every frame, so a render that dies keeps what it wrote.
                 _write_truth(into, cameras, truth)
