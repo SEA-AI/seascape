@@ -109,7 +109,7 @@ SUN_SLOPE_RADIUS = math.radians(0.545) / 4
 GLINT_REACH = (9.0, 16.0)
 
 # A judgement: fixed-point steps to where the view ray meets the drawn height.
-PARALLAX_STEPS = 2
+PARALLAX_STEPS = 3
 # A judgement: the share of facets on which each fixed-point step contracts. A step
 # contracts where the slope along the run times the run is under 1 (Banach); with
 # slopes Gaussian per axis (Cox & Munk 1954), capping the run at 1 / z the rms slope
