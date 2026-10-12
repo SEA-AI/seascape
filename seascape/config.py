@@ -64,10 +64,13 @@ class LogUniform(Model):
 
     log_uniform: tuple[
         Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
-    ] = Field(description="The bounds, both above 0.")
+    ] = Field(description="The bounds.")
 
     def draw(self, rng: np.random.Generator) -> float:
-        return float(np.exp(rng.uniform(*np.log(self.log_uniform))))
+        # exp(log(x)) can land an ulp below x.
+        return float(
+            np.clip(np.exp(rng.uniform(*np.log(self.log_uniform))), *self.log_uniform)
+        )
 
 
 class Integer(Model):

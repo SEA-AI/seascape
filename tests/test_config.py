@@ -687,7 +687,6 @@ def test_a_log_uniform_draw_is_even_in_the_logarithm_of_its_bounds() -> None:
     drawn = [draw.draw(rng) for _ in range(10_000)]
 
     assert 0.03 <= min(drawn) <= max(drawn) <= 10.0
-    # An even draw would sit near 5.
     assert statistics.median(drawn) == pytest.approx(math.sqrt(0.03 * 10.0), rel=0.05)
 
 
