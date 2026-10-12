@@ -15,8 +15,8 @@ Rules:
 3. Tables merge, everything else replaces. A list, or a table naming a preset, is
    replaced whole.
 
-Any field can instead be a draw, `{ uniform = [lo, hi] }` or `{ choice = [...] }`,
-resolved after both forms of reuse and before validation.
+Any field can instead be a draw, `{ uniform = [lo, hi] }`, `{ log_uniform = [lo, hi] }`
+or `{ choice = [...] }`, resolved after both forms of reuse and before validation.
 """
 
 import math
@@ -56,6 +56,28 @@ class Uniform(Model):
 
     def draw(self, rng: np.random.Generator) -> float:
         return float(rng.uniform(*self.uniform))
+
+
+class LogUniform(Model):
+    """A float drawn evenly in its logarithm between two bounds: as often between 0.1
+    and 1 as between 1 and 10."""
+
+    log_uniform: tuple[
+        Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
+    ] = Field(description="The bounds, lower first.")
+
+    @model_validator(mode="after")
+    def _lower_first(self) -> "LogUniform":
+        lower, upper = self.log_uniform
+        if lower > upper:
+            raise ValueError(f"log_uniform bounds {self.log_uniform} are reversed")
+        return self
+
+    def draw(self, rng: np.random.Generator) -> float:
+        # exp(log(x)) can land an ulp below x.
+        return float(
+            np.clip(np.exp(rng.uniform(*np.log(self.log_uniform))), *self.log_uniform)
+        )
 
 
 class Integer(Model):
@@ -99,8 +121,9 @@ class Choice(Model):
         return self.choice[rng.choice(len(self.choice), p=p)]
 
 
-_DRAWS: dict[str, type[Uniform | Integer | Choice]] = {
+_DRAWS: dict[str, type[Uniform | LogUniform | Integer | Choice]] = {
     "uniform": Uniform,
+    "log_uniform": LogUniform,
     "integer": Integer,
     "choice": Choice,
 }

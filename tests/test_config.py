@@ -3,6 +3,7 @@
 import json
 import math
 import runpy
+import statistics
 import tomllib
 import warnings
 from pathlib import Path
@@ -20,6 +21,7 @@ from seascape.config import (
     Choice,
     Integer,
     Lens,
+    LogUniform,
     Object,
     Orbit,
     Outputs,
@@ -677,6 +679,29 @@ def test_an_integer_draw_reaches_both_bounds_and_only_whole_numbers() -> None:
     drawn = {Integer(integer=(1, 3)).draw(substream(seed, "n")) for seed in range(200)}
     assert drawn == {1, 2, 3}
     assert all(type(n) is int for n in drawn)
+
+
+def test_a_log_uniform_draw_is_even_in_the_logarithm_of_its_bounds() -> None:
+    draw, rng = LogUniform(log_uniform=(0.03, 10.0)), substream(0, "chl")
+
+    drawn = [draw.draw(rng) for _ in range(10_000)]
+
+    assert 0.03 <= min(drawn) <= max(drawn) <= 10.0
+    assert statistics.median(drawn) == pytest.approx(math.sqrt(0.03 * 10.0), rel=0.05)
+
+
+@pytest.mark.parametrize(
+    ("bounds", "match"),
+    [
+        pytest.param((0.0, 10.0), "greater than 0", id="zero"),
+        pytest.param((10.0, 0.03), "reversed", id="reversed"),
+    ],
+)
+def test_a_log_uniform_draw_refuses_bounds_it_cannot_draw_between(
+    bounds: tuple[float, float], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        LogUniform(log_uniform=bounds)
 
 
 SHIP = 'objects = [{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }]'

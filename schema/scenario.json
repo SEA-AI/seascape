@@ -35,6 +35,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -52,6 +55,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -75,6 +81,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -93,6 +102,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -114,6 +126,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -133,6 +148,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -147,6 +165,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -165,6 +186,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -179,6 +203,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -214,6 +241,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -233,6 +263,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -250,6 +283,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -284,6 +320,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -301,6 +340,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -340,6 +382,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -394,6 +439,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -411,6 +459,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -431,6 +482,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -448,6 +502,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -473,6 +530,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -491,6 +551,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -514,6 +577,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -533,6 +599,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -556,6 +625,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -574,6 +646,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -608,6 +683,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -626,6 +704,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -666,6 +747,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -680,6 +764,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -698,6 +785,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -721,6 +811,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -739,6 +832,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -761,6 +857,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -778,6 +877,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -832,6 +934,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -851,6 +956,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -874,6 +982,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -893,6 +1004,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -916,6 +1030,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -937,6 +1054,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -956,6 +1076,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -987,6 +1110,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1008,6 +1134,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1027,6 +1156,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1059,6 +1191,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1078,6 +1213,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1095,6 +1233,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1118,6 +1259,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1135,6 +1279,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1156,6 +1303,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1174,6 +1324,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1199,6 +1352,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1233,6 +1389,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1251,6 +1410,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1282,6 +1444,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1303,6 +1468,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1320,6 +1488,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1345,6 +1516,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1364,6 +1538,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1387,6 +1564,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1408,6 +1588,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1427,6 +1610,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1460,6 +1646,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1478,6 +1667,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1500,6 +1692,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1519,6 +1714,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1544,6 +1742,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1562,6 +1763,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1596,6 +1800,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1613,6 +1820,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1633,6 +1843,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1658,6 +1871,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1674,6 +1890,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1697,6 +1916,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1716,6 +1938,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1774,6 +1999,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1801,6 +2029,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1820,6 +2051,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1837,6 +2071,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1871,6 +2108,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1888,6 +2128,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1971,6 +2214,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1990,6 +2236,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2007,6 +2256,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2035,6 +2287,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2069,6 +2324,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2087,6 +2345,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2110,6 +2371,9 @@
               "$ref": "#/$defs/Uniform"
             },
             {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2129,6 +2393,9 @@
             },
             {
               "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2172,6 +2439,34 @@
         "uniform"
       ],
       "title": "Uniform",
+      "type": "object"
+    },
+    "LogUniform": {
+      "additionalProperties": false,
+      "description": "A float drawn evenly in its logarithm between two bounds: as often between 0.1\nand 1 as between 1 and 10.",
+      "properties": {
+        "log_uniform": {
+          "description": "The bounds, lower first.",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            }
+          ],
+          "title": "Log Uniform",
+          "type": "array"
+        }
+      },
+      "required": [
+        "log_uniform"
+      ],
+      "title": "LogUniform",
       "type": "object"
     },
     "Integer": {
@@ -2263,6 +2558,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2277,6 +2575,9 @@
         },
         {
           "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
         },
         {
           "$ref": "#/$defs/Integer"
@@ -2300,6 +2601,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2316,6 +2620,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2330,6 +2637,9 @@
         },
         {
           "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
         },
         {
           "$ref": "#/$defs/Integer"
@@ -2353,6 +2663,9 @@
           "$ref": "#/$defs/Uniform"
         },
         {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2367,6 +2680,9 @@
         },
         {
           "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
         },
         {
           "$ref": "#/$defs/Integer"
