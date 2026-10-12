@@ -925,3 +925,11 @@ def test_a_shared_draw_is_apart_from_a_camera_named_like_it() -> None:
 def test_white_balance_and_sharpening_need_a_sensor() -> None:
     with pytest.raises(ValidationError, match="need a sensor"):
         load(BASELINE, ["rigs.bow.cameras.eo.processing.sharpen = 1.0"])
+
+
+def test_a_sensor_is_no_narrower_than_its_image() -> None:
+    with pytest.raises(ValidationError, match="narrower"):
+        load(
+            BASELINE,
+            ["rigs.bow.cameras.eo.sensor = { full_well_e = 1e4, width_px = 1000 }"],
+        )

@@ -14,3 +14,4 @@ full_well_e = 12600.0
 dark_noise_e = 4.0
 # AR0821 datasheet: linear mode, 12-bit.
 adc_bits = 12
+width_px = 3840

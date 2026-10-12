@@ -122,6 +122,13 @@ class Sensor(Model):
         default=0.0, ge=0.0, description="Analogue gain: fewer electrons fill the ADC."
     )
     adc_bits: int = Field(default=12, ge=8, le=16, description="Bits per read.")
+    width_px: int | None = Field(
+        default=None,
+        gt=0,
+        description="Its columns, if more than the image's. At twice or more, the "
+        "ISP demosaics and scales down, so each pixel averages its sites; below, the "
+        "sensor reads at the image's pitch.",
+    )
     hdr_ratio: float = Field(
         default=1.0,
         ge=1.0,
@@ -207,6 +214,8 @@ class Camera(Model):
         ):
             raise ValueError("an ir camera takes no sensor, lens or processing")
         isp = self.processing.model_copy(update={"exposure_ev": 0.0})
+        if self.sensor.width_px is not None and self.sensor.width_px < self.width_px:
+            raise ValueError("sensor.width_px is narrower than the image")
         if self.sensor.full_well_e is None and isp != Processing():
             raise ValueError("white balance and sharpening need a sensor.full_well_e")
         return self
