@@ -333,22 +333,57 @@ def test_a_swell_carries_its_height_from_where_it_comes() -> None:
     assert np.mean([w.k_east_rad_m for w in swell]) < 0.0
 
 
-def test_whitecaps_cover_what_monahan_measured() -> None:
-    wind = field(15.0)
-    fraction = waves.whitecap_fraction(15.0)
-    threshold = waves.breaking_threshold_g(wind, fraction)
-    east, north = np.meshgrid(np.linspace(0, 3000, 600), np.linspace(0, 3000, 600))
-    covered = np.mean(waves.downward_acceleration_g(wind, east, north, 0.0) > threshold)
-    assert covered == pytest.approx(fraction, rel=0.15)
+@pytest.mark.parametrize("wind_speed_mps", [8.0, 15.0])
+def test_whitecap_foam_covers_what_monahan_measured(wind_speed_mps: float) -> None:
+    """Off the points the threshold was calibrated on."""
+    wind = field(wind_speed_mps)
+    fraction = waves.whitecap_fraction(wind_speed_mps)
+    threshold = waves.whitecap_thresholds_g(wind, [fraction])[0]
+    rng = np.random.default_rng(1)
+    east, north = rng.uniform(0, 3000, (2, 40_000))
+    t_s = rng.uniform(0, 600, 40_000)
+    covered = waves.foam_area(wind, east, north, t_s, threshold)
+    assert float(np.mean(covered)) == pytest.approx(fraction, rel=0.1)
 
 
-@pytest.mark.parametrize("footprint_m", [1e-3, 5.0, 100.0])
-def test_a_pixel_whitecaps_over_monahan_s_cover_at_any_footprint(footprint_m) -> None:
-    wind = field(15.0)
-    fraction = waves.whitecap_fraction(15.0)
-    east, north = np.meshgrid(np.linspace(0, 3000, 600), np.linspace(0, 3000, 600))
-    cover = waves.whitecap_cover(wind, east, north, 0.0, footprint_m, fraction)
-    assert float(np.mean(cover)) == pytest.approx(fraction, rel=0.15)
+@pytest.mark.parametrize("wind_speed_mps", [8.0, 15.0])
+def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
+    """A pixel shows the youngest foam its lace level reaches; fresh foam fades over
+    the e-fold, so the foam's mean is Koepke's."""
+    wind = field(wind_speed_mps)
+    threshold = waves.whitecap_thresholds_g(
+        wind, [waves.whitecap_fraction(wind_speed_mps)]
+    )[0]
+    fresh = 0.55
+    fade_s = waves.foam_fade_efold_s(wind, threshold, fresh)
+    rng = np.random.default_rng(2)
+    east, north = rng.uniform(0, 3000, (2, 40_000))
+    t_s = rng.uniform(0, 600, 40_000)
+    ages = waves.foam_ages_s()
+    past = np.stack(
+        [
+            waves.downward_acceleration_g(waves.breakers(wind), east, north, t_s - a)
+            for a in ages
+        ]
+    )
+    edge = waves.foam_edge_g(wind)
+    broke = np.vectorize(NormalDist().cdf)((past - threshold) / edge)
+    shown = broke * np.exp(-ages / waves.WHITECAP_AREA_EFOLD_S)[:, None] > rng.uniform(
+        size=40_000
+    )
+    foam = shown.any(axis=0)
+    youngest = ages[np.argmax(shown, axis=0)][foam]
+    mean = fresh * float(np.mean(np.exp(-youngest / fade_s)))
+    assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.1)
+
+
+def test_a_storm_gust_s_cover_has_its_own_threshold() -> None:
+    """A gust over a 21 m/s sea asks for far more than Monahan's mean cover."""
+    wind = field(21.0)
+
+    high, higher = waves.whitecap_thresholds_g(wind, [0.3, 0.5])
+
+    assert higher < high
 
 
 def test_whitecaps_read_the_wind_at_10_m() -> None:
@@ -358,9 +393,15 @@ def test_whitecaps_read_the_wind_at_10_m() -> None:
 
 def test_calm_air_breaks_nothing() -> None:
     assert waves.whitecap_fraction(0.0) == 0.0
-    assert waves.breaking_threshold_g((), 0.0) == math.inf
+    assert waves.whitecap_thresholds_g((), [0.0])[0] == math.inf
     # A breath of wind builds no waves but has a whitecap fraction.
-    assert waves.breaking_threshold_g((), waves.whitecap_fraction(0.5)) == math.inf
+    assert (
+        waves.whitecap_thresholds_g((), [waves.whitecap_fraction(0.5)])[0] == math.inf
+    )
+    assert waves.foam_fade_efold_s((), math.inf, 0.55) == waves.WHITECAP_AREA_EFOLD_S
+    assert waves.foam_fade_efold_s(field(7.0), math.inf, 0.55) == (
+        waves.WHITECAP_AREA_EFOLD_S
+    )
 
 
 @pytest.mark.parametrize(
