@@ -26,7 +26,6 @@ sun_bearing_deg = { uniform = [0.0, 360.0] }
 count = { integer = [1, 5] }
 asset = { choice = [
     "multipurpose_freighter",
-    "small_container_ship",
     "cargo_ship",
     "bulk_carrier",
     "ultramax_bulk_carrier",
@@ -34,6 +33,8 @@ asset = { choice = [
     "crude_tanker",
     "patrol_vessel",
     "yacht",
+    "lobster_yacht",
+    "zodiac",
 ] }
 heading_from = "line_of_sight"
 heading_deg = { choice = [0.0, 180.0] }

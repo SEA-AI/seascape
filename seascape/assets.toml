@@ -1,39 +1,54 @@
-# poly.pizza blocks scripted clients, and Icosa serves this one only as a multi-file
-# glTF; the archive keeps Poly's GLB.
 [yacht]
 kind = "hull"
 category = "motor yacht"
 category_id = 5
-description = "Low-poly motor yacht in flat colours."
-url = "https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/c/fp/1620916947019758/9znU2c-dTSR/d-wfIKdABHE/Yacht.glb"
-sha256 = "641bce20710ceb963f6ddd295a883b4d09019c5344876fd861f83abe27ed7d36"
-# A flybridge motor yacht: the Princess F65 is 20.30 m overall, princess.co.uk.
-length_m = 20.0
-# The mesh has no underwater body: its flat bottom is the authored waterline.
-draught_m = 0.3
-bow_deg = 90.0
-triangles = 1206
-texture_px = []
-licence = "CC-BY-3.0"
-attribution = "Yacht by Alex “SAFFY” Safayan, https://poly.pizza/m/9znU2c-dTSR"
-
-[small_container_ship]
-kind = "hull"
-category = "container ship"
-category_id = 1
-description = "Small container ship, textured hull and containers, superstructure aft."
-url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-126/6362d3e9b11e4396aaafa854c3aa6f06.glb"
-sha256 = "ff9c2b913f106f2b1e6b8964e6dfe9fa69bf80d4f50f12def6cf1f4a5ac93f46"
-# Under 1,000 teu: under 145 m overall, 22 m breadth and 8.6 m draught. MAN Energy
-# Solutions, "Propulsion trends in container vessels", Table 1. This length makes the
-# mesh 22 m across.
-length_m = 134.0
-draught_m = 8.6
-bow_deg = 270.0
-triangles = 48018
-texture_px = [1024, 1024, 1024, 1024]
+description = "Tri-deck motor yacht, white superstructure, teak decks, textured."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-118/0dd451f295d049cea20c17d3ffa87ee3.glb"
+sha256 = "bf3275fd21e28643907b934eed9d3ac38cb615cbbb99b7e715492b703c65154d"
+# A Benetti Oasis 40M: 40.8 m overall (Boat International), 2.14 m draught (Fraser
+# Yachts, "Benetti Oasis 40M BO126"). This length makes the mesh 8.3 m across, against
+# the Oasis's 8.5 m.
+length_m = 40.8
+draught_m = 2.14
+bow_deg = 180.0
+triangles = 8534
+texture_px = [1024, 1024, 1024]
 licence = "CC-BY-4.0"
-attribution = "Small Cargo Ship by 588276, https://sketchfab.com/3d-models/6362d3e9b11e4396aaafa854c3aa6f06"
+attribution = "Yacht by Sergei, https://sketchfab.com/3d-models/0dd451f295d049cea20c17d3ffa87ee3"
+
+[lobster_yacht]
+kind = "hull"
+category = "motor yacht"
+category_id = 5
+description = "Lobster-style motor yacht with a dark hull and hardtop, twin sterndrives."
+url = "https://huggingface.co/datasets/allenai/objaverse/resolve/21e4e142159e2153706c23a3a02e55cec5591cea/glbs/000-153/0bdd7a0de7254426890bb5745bb7da6d.glb"
+sha256 = "703e43fb3d4ecac6c9372ed0a95cc1489147e8f04060c09495a1ce1e0f3d9f7c"
+# A Gagliotta Lobster 35: 3.28 m beam, 0.67 m draught (De Valk, "Gagliotta Lobster
+# 35"). Its beam makes this mesh 10.64 m overall, the 35 ft its title names.
+length_m = 10.64
+draught_m = 0.67
+bow_deg = 0.0
+triangles = 1544428
+texture_px = []
+licence = "CC-BY-4.0"
+attribution = "motoryacht 35 by angelo raffaele catalano, https://sketchfab.com/3d-models/0bdd7a0de7254426890bb5745bb7da6d"
+
+[zodiac]
+kind = "hull"
+category = "rigid inflatable boat"
+category_id = 13
+description = "Grey rigid inflatable boat with a centre console, radar arch and twin outboards."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/6c44d5ca5cad4936aba0267a0aea973fda135425/zodiac/zodiac.glb"
+sha256 = "ce021d3cc3abf33e2ec0366779ebe08b11dcdd0e7b23b5230dd25b06f61e368e"
+# A Ribcraft 6.8: 6.88 m overall, 2.69 m beam, 0.46 m draught (boats.com, "2026
+# Ribcraft 6.8"). This length makes the mesh 2.48 m across.
+length_m = 6.88
+draught_m = 0.46
+bow_deg = 0.0
+triangles = 356136
+texture_px = []
+licence = "CC-BY-4.0"
+attribution = "Zodiac by DenisGLabrecque, https://sketchfab.com/3d-models/c95fc3bf29e947bfb9f12a8d68066ccc"
 
 [cargo_ship]
 kind = "hull"

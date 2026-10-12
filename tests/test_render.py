@@ -409,7 +409,7 @@ def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
     scenario = variant(
         cameras={"ir": {"width_px": 160, "height_px": 128}},
         # The far hull reads as warm as the sea behind it.
-        objects=[target("yacht", 300.0), target("yacht", 1000.0, 4.0, t_k=274.0)],
+        objects=[target("yacht", 300.0), target("yacht", 2000.0, 4.0, t_k=274.0)],
         sky={"solar_gain_k": 0.0},
         outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": fmt},
     )

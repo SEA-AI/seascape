@@ -30,7 +30,7 @@ amplitude_m = 0.2
 period_s = 8.0
 
 [targets]
-asset = ["cargo_ship", "small_container_ship", "bulk_carrier"]
+asset = ["cargo_ship", "panamax_container_ship", "bulk_carrier"]
 range_m = 12964.0
 # Enough that every camera sees one.
 count = 8
@@ -43,7 +43,7 @@ bearing_deg = -10.0
 heading_deg = 80.0  # beam-on, so it presents its length
 
 [[objects]]
-asset = "small_container_ship"
+asset = "panamax_container_ship"
 range_m = 7408.0
 bearing_deg = 10.0
 heading_deg = 280.0

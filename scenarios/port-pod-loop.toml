@@ -18,7 +18,7 @@ bearing_deg = -10.0
 heading_deg = 80.0
 
 [[objects]]
-asset = "small_container_ship"
+asset = "panamax_container_ship"
 range_m = 7408.0
 bearing_deg = -50.0
 heading_deg = 300.0
