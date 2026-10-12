@@ -54,6 +54,7 @@ from seascape.wakes import (
     SEEN_SLOPE_VARIANCE,
     Wake,
 )
+from seascape.water import body_color
 from seascape.waves import (
     CDF_SIGMAS,
     FADE_FOOTPRINTS,
@@ -93,11 +94,6 @@ from seascape.waves import (
 
 # Quan & Fry 1995 at 550 nm, salinity 35, 15 C.
 SEAWATER_IOR = 1.341
-
-# Morel & Maritorena 2001 R(0-) at 0.2 mg/m^3 chlorophyll, CIE 1931 under D65 to
-# linear sRGB, times t / n^2 (Lee et al. 2002): the shader dims it by 1 - F toward the
-# viewer only.
-WATER_BODY_COLOR = (0.0, 0.0065, 0.018)
 
 # The Sky Texture's default sun_size, a diameter. A facet tilted by d turns the
 # reflection by 2 d, so the sun spans half its radius in slope.
@@ -1248,6 +1244,7 @@ def _thermal(
 
 def _daylight(
     tree: bpy.types.NodeTree,
+    sea: Sea,
     normal: bpy.types.NodeSocket,
     tangent: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
@@ -1288,8 +1285,10 @@ def _daylight(
     through = _math(tree, "MULTIPLY", through, _math(tree, "ADD", bubbles, 1.0))
     body = tree.nodes.new("ShaderNodeBsdfDiffuse")
     link(normal, body.inputs["Normal"])
+    # Dimmed by Fresnel's 1 - F toward the viewer only.
+    color = body_color(sea.chlorophyll_mg_m3, SEAWATER_IOR)
     link(
-        _vector(tree, "SCALE", WATER_BODY_COLOR, through, name="sea_body_color"),
+        _vector(tree, "SCALE", color, through, name="sea_body_color"),
         body.inputs["Color"],
     )
     water = tree.nodes.new("ShaderNodeAddShader")
@@ -2294,7 +2293,7 @@ def material(
             gust_max,
             _foam_lace(tree, sea, position, outputs, foam()),
         )
-        surface = _daylight(tree, normal, tangent, unresolved, whitecaps, wake)
+        surface = _daylight(tree, sea, normal, tangent, unresolved, whitecaps, wake)
     else:
         # The coarsest footprint leaves the most, Cox & Munk's and all the swell's;
         # along the view a pixel takes twice the wider axis's, and the strongest gust

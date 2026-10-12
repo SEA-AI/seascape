@@ -316,6 +316,14 @@ class Sea(Model):
         "smaller and shorter its waves. Unset, the open ocean, with no limit.",
     )
     swell: Swell | None = Field(default=None, description="On top of the wind's sea.")
+    # Morel & Maritorena 2001: eq. 14 holds from 0.02 mg/m^3, their data reach 30.
+    chlorophyll_mg_m3: float = Field(
+        default=0.2,
+        ge=0.02,
+        le=30.0,
+        description="Chlorophyll in the water. Sets its colour, from clear blue to a "
+        "green bloom.",
+    )
     # Opt-in: surfactants come from the water.
     slick_cover: float = Field(
         default=0.0,

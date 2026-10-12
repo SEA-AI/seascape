@@ -1373,6 +1373,27 @@
             }
           ]
         },
+        "chlorophyll_mg_m3": {
+          "title": "Chlorophyll Mg M3",
+          "description": "Chlorophyll in the water. Sets its colour, from clear blue to a green bloom.",
+          "default": 0.2,
+          "anyOf": [
+            {
+              "maximum": 30.0,
+              "minimum": 0.02,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "slick_cover": {
           "title": "Slick Cover",
           "description": "Fraction of the sea under slicks, gathered in windrows. None in calm air, where slick and clean water are one.",
