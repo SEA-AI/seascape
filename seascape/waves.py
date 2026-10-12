@@ -329,6 +329,10 @@ def cox_munk_variances(wind_speed_mps: float) -> tuple[float, float]:
     """Upwind and crosswind slope variance: the total fit, split as the axes' fits."""
     total = cox_munk_slope(wind_speed_mps) ** 2
     up, cross = _axis_shares(wind_speed_mps, AXES_CLEAN)
+    # Below the axes' fits' crossing the upwind fit runs to 0: a near-calm sea, with no
+    # wind to orient it, is isotropic.
+    if up < cross:
+        up = cross = 0.5
     return total * up, total * cross
 
 
@@ -676,16 +680,19 @@ def drawn_slope_variances(
     return float(np.sum(shown * along)), float(np.sum(shown * (1 - along)))
 
 
-def slick_survivors(wind_speed_mps: float, wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
-    """The longest waves that fit in Cox & Munk's slick variance: what a slick leaves
-    of `wind`, damping the shortest first."""
-    budget = cox_munk_slick_slope(wind_speed_mps) ** 2
+def slick_survivors(
+    wind_speed_mps: float, wind: tuple[Wave, ...], axis_rad: float
+) -> tuple[Wave, ...]:
+    """The longest waves that fit in Cox & Munk's slick variance on both axes, the
+    wind's along `axis_rad`: what a slick leaves of `wind`, damping the shortest
+    first."""
+    budget = np.array(cox_munk_slick_variances(wind_speed_mps))
     left: list[Wave] = []
     # A wavelength goes at every heading at once.
     for k in sorted({w.k_rad_m for w in wind}):
         same = tuple(w for w in wind if w.k_rad_m == k)
-        budget -= slope_variance(same)
-        if budget < 0.0:
+        budget -= drawn_slope_variances(same, 0.0, axis_rad)
+        if np.any(budget < 0.0):
             break
         left.extend(same)
     return tuple(left)

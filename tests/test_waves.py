@@ -90,18 +90,24 @@ def test_a_slick_smooths_the_sea_as_cox_and_munk_measured() -> None:
     assert waves.cox_munk_slick_slope(0.5) == waves.cox_munk_slope(0.5)
 
 
-def test_a_slick_damps_the_shortest_waves_first() -> None:
-    built = field(7.0)
-    left = waves.slick_survivors(7.0, built)
+@pytest.mark.parametrize("wind_speed_mps", [7.0, 15.0])
+def test_a_slick_damps_the_shortest_waves_first(wind_speed_mps: float) -> None:
+    built = field(wind_speed_mps)
+    budget = np.array(waves.cox_munk_slick_variances(wind_speed_mps))
+
+    left = waves.slick_survivors(wind_speed_mps, built, 0.0)
+
     gone = set(built) - set(left)
-    assert gone
-    assert max(w.k_rad_m for w in left) < min(w.k_rad_m for w in gone)
-    budget = waves.cox_munk_slick_slope(7.0) ** 2
     k = min(w.k_rad_m for w in gone)
     next_frequency = tuple(w for w in gone if w.k_rad_m == k)
+    assert max(w.k_rad_m for w in left) < k
     assert len(next_frequency) == waves.WIND_HEADINGS
-    assert waves.slope_variance(left) <= budget
-    assert waves.slope_variance((*left, *next_frequency)) > budget
+    # Each axis within Cox & Munk's slick fit, and one more wavelength breaks one.
+    assert np.all(np.array(waves.drawn_slope_variances(left, 0.0, 0.0)) <= budget)
+    assert np.any(
+        np.array(waves.drawn_slope_variances((*left, *next_frequency), 0.0, 0.0))
+        > budget
+    )
 
 
 @pytest.mark.parametrize("cover", [0.1, 0.3, 0.7])
