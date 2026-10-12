@@ -133,7 +133,7 @@ def _refuse_oversized(scenes: list[Scenario]) -> None:
     for scene in scenes:
         if scene.outputs.duration_s > MAX_DURATION_S:
             raise ToolError(f"a clip lasts at most {MAX_DURATION_S} s")
-        for mount in scene.rig.mounts:
+        for mount in scene.mounts:
             camera = mount.camera
             if camera.width_px * camera.height_px > MAX_PIXELS:
                 raise ToolError(

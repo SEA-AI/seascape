@@ -52,10 +52,7 @@ def test_an_unknown_scenario_is_refused() -> None:
     [
         (["outputs.duration_s = 61.0"], 1, "a clip lasts"),
         (
-            [
-                'rig.pods = [{ name = "bow", yaw_deg = 0.0, cameras = [{ kind = "eo", '
-                "hfov_deg = 45.0, width_px = 7680, height_px = 4320 }] }]"
-            ],
+            ["rigs.bow.cameras.eo = { width_px = 7680, height_px = 4320 }"],
             1,
             "pixels",
         ),
@@ -114,7 +111,7 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     for seed in (first, first + 2):
         (tmp_path / str(seed)).mkdir()
     (tmp_path / "labels.json").touch()
-    job = server.Job(tmp_path, scenes)
+    job = server.Job(tmp_path, "open-sea", scenes)
     assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
     assert [s.seed for s in server._written(job, SCENARIOS / "open-sea.toml", [])] == [
         first,
