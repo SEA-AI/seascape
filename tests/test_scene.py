@@ -1550,7 +1550,8 @@ def test_a_target_inside_the_ownship_is_refused() -> None:
 def test_the_ownship_is_indexed_after_every_target() -> None:
     built = scene.build(
         variant(
-            objects=[target("yacht", 900.0)], ownship={"asset": "small_container_ship"}
+            objects=[target("yacht", 900.0)],
+            ownship={"asset": "panamax_container_ship"},
         ),
         "eo",
     )

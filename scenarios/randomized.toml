@@ -54,6 +54,8 @@ asset = { choice = [
     "crude_tanker",
     "patrol_vessel",
     "yacht",
+    "lobster_yacht",
+    "zodiac",
     "lateral_mark",
     "pillar_buoy",
 ] }
