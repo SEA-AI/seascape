@@ -676,10 +676,12 @@ class TestSensor:
         name: str = "bow_eo",
         seed: int = 0,
         frame: int = 0,
+        sun: float = 0.0,
         **camera: dict[str, float | bool],
     ) -> np.ndarray:
-        """The frame, RGB top row first, of a sky of `colour` through a camera the
-        size of the probe's with `camera`'s settings."""
+        """The frame, RGB top row first, of a sky of `colour`, with `sun` added in a
+        disc overhead if given, through a camera the size of the probe's with
+        `camera`'s settings."""
         sc = bpy.context.scene
         sc.frame_set(frame)
         background = sc.world.node_tree.nodes["Background"]
@@ -687,6 +689,21 @@ class TestSensor:
             sc.world.node_tree.links.remove(link)
         background.inputs["Color"].default_value = (*colour, 1.0)
         background.inputs["Strength"].default_value = 1.0
+        if sun:
+            tree = sc.world.node_tree
+            generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
+            direction = tree.nodes.new("ShaderNodeSeparateXYZ")
+            tree.links.new(generated, direction.inputs[0])
+            overhead = sea._math(
+                tree,
+                "GREATER_THAN",
+                direction.outputs["Z"],
+                math.cos(math.radians(1.8)),
+            )
+            tree.links.new(
+                sea._math(tree, "MULTIPLY_ADD", overhead, sun, colour[0]),
+                background.inputs["Color"],
+            )
         width, height = self.SIZE
         settings = Camera.model_validate(
             {
@@ -795,6 +812,39 @@ class TestSensor:
         )
         assert not np.isnan(ideal).any()
         assert read == pytest.approx(1.0)
+
+    def test_hdr_keeps_what_one_exposure_clips(self) -> None:
+        clean = {"full_well_e": 1e12}
+        once = self.through((1.0, 1.0, 1.0), sun=9.0, sensor=clean)[..., 1]
+        twice = self.through(
+            (1.0, 1.0, 1.0), sun=9.0, sensor={**clean, "hdr_ratio": 16.0}
+        )[..., 1]
+        height, width = once.shape
+        y, x = np.indices(once.shape)
+        r = np.hypot(x - (width - 1) / 2, y - (height - 1) / 2)
+        disc, sky = r < 3, r > 20
+        assert np.median(once[disc]) == 1.0
+        assert np.median(twice[sky]) == pytest.approx(scene.MID_GREY, rel=0.1)
+        # Reinhard's L / (1 + L) undone: the disc is its sky plus nine skies.
+        linear = twice / (1 - twice)
+        assert np.median(linear[disc]) / np.median(linear[sky]) == pytest.approx(
+            10.0, rel=0.15
+        )
+
+    def test_hdr_keeps_a_bright_colour_s_hue(self) -> None:
+        frame = self.through(
+            (8.0, 4.0, 2.0),
+            sensor={"full_well_e": 1e12, "hdr_ratio": 16.0},
+        )
+        inner = frame[2:-2, 2:-2].reshape(-1, 3).mean(axis=0)
+        assert inner / inner[1] == pytest.approx((2.0, 1.0, 0.5), rel=0.02)
+
+    def test_hdr_follows_the_exposure(self) -> None:
+        hdr = {"full_well_e": 1e12, "hdr_ratio": 16.0}
+        frame = self.through(
+            (1.0, 1.0, 1.0), sensor=hdr, processing={"exposure_ev": 1.0}
+        )
+        assert np.median(frame) == pytest.approx(2 * scene.MID_GREY, rel=0.1)
 
     def test_noise_is_drawn_apart_per_camera_scenario_and_frame(self) -> None:
         noisy = {"full_well_e": 400.0, "dark_noise_e": 4.0}

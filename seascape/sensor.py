@@ -110,22 +110,17 @@ def _electrons(
 def _read(
     tree: bpy.types.NodeTree,
     x: Socket,
-    index: int,
+    w: Socket,
     seeded: Socket,
-    frame: Socket,
-    *noise: Socket,
+    shot: Socket,
+    well: Socket,
+    dark: Socket,
+    levels: Socket,
 ) -> Socket:
-    """One colour's read of a mean `x`, in units of white, averaged over its sites
-    in an output pixel. Poissonian-Gaussian (Foi et al. 2008): shot noise of variance
-    shot * x, then the well fills, then dark noise of variance dark; an average of n
-    sites divides both by n."""
-    shot, well, dark, levels = noise
-    sites = _value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
-    # Two normals per colour and frame: W at 8f + 2i and 8f + 2i + 0.5.
-    w = sea._math(tree, "MULTIPLY_ADD", frame, 8.0, 2.0 * index)
+    """One colour's read of a mean `x`, in units of white. Poissonian-Gaussian (Foi
+    et al. 2008): shot noise of variance shot * x, then the well fills, then dark
+    noise of standard deviation `dark`."""
     shot_noise, dark_noise = _gaussian(tree, seeded, w)
-    shot = sea._math(tree, "DIVIDE", shot, sites)
-    dark = sea._math(tree, "SQRT", sea._math(tree, "DIVIDE", dark, sites))
     collected = _electrons(tree, x, shot, well, shot_noise)
     noisy = sea._math(tree, "MULTIPLY_ADD", dark, dark_noise, collected)
     counts = sea._math(tree, "ROUND", sea._math(tree, "MULTIPLY", noisy, levels))
@@ -134,6 +129,68 @@ def _read(
         "MINIMUM",
         sea._math(tree, "MAXIMUM", sea._math(tree, "DIVIDE", counts, levels), 0.0),
         1.0,
+    )
+
+
+def _merge(
+    tree: bpy.types.NodeTree,
+    long: Socket,
+    short: Socket,
+    ratio: Socket,
+    shot: Socket,
+    dark_variance: Socket,
+    levels: Socket,
+) -> Socket:
+    """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
+    its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
+    a long read within three times a saturated read's spread of white, here at most
+    the dark noise, counts as saturated and is left out. The ADC's rounding,
+    (1 / levels)^2 / 12, keeps a noiseless read finite."""
+    rounding = sea._math(
+        tree, "DIVIDE", 1.0 / 12, sea._math(tree, "MULTIPLY", levels, levels)
+    )
+    floor = sea._math(tree, "ADD", dark_variance, rounding)
+    unsaturated = sea._math(
+        tree,
+        "LESS_THAN",
+        long,
+        sea._math(
+            tree, "MULTIPLY_ADD", sea._math(tree, "SQRT", dark_variance), -3.0, 1.0
+        ),
+    )
+    long_weight = sea._math(
+        tree,
+        "DIVIDE",
+        unsaturated,
+        sea._math(tree, "MULTIPLY_ADD", long, shot, floor),
+    )
+    short_weight = sea._math(
+        tree,
+        "DIVIDE",
+        1.0,
+        sea._math(
+            tree,
+            "MULTIPLY",
+            sea._math(tree, "MULTIPLY_ADD", short, shot, floor),
+            sea._math(tree, "MULTIPLY", ratio, ratio),
+        ),
+    )
+    return sea._math(
+        tree,
+        "DIVIDE",
+        sea._math(
+            tree,
+            "MULTIPLY_ADD",
+            long_weight,
+            long,
+            sea._math(
+                tree,
+                "MULTIPLY",
+                short_weight,
+                sea._math(tree, "MULTIPLY", short, ratio),
+            ),
+        ),
+        sea._math(tree, "ADD", long_weight, short_weight),
     )
 
 
@@ -169,9 +226,12 @@ def _gaussian(
     )
 
 
-def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
+def chain(
+    tree: bpy.types.NodeTree, image: Socket, pixel: Socket, grey: Socket
+) -> Socket:
     """`image` as the sensor reads it out, in units of its white; `pixel` is the
-    image's integer pixel coordinates."""
+    image's integer pixel coordinates, and `grey` where auto-exposure put the
+    log-average, which HDR's tone map keeps."""
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
     # RGGB from the bottom-left pixel; no phase changes a statistic.
@@ -191,13 +251,26 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
     frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
     shot, well = _value(tree, "sensor.shot"), _value(tree, "sensor.well", 1.0)
     dark, levels = _value(tree, "sensor.dark"), _value(tree, "sensor.levels", 4095.0)
-    raw = _combine(
-        tree,
-        *(
-            _read(tree, x, index, seeded, frame, shot, well, dark, levels)
-            for index, x in enumerate(_channels(tree, image))
-        ),
-    )
+    ratio = _value(tree, "sensor.ratio", 1.0)
+    longs, merged = [], []
+    for index, x in enumerate(_channels(tree, image)):
+        # An average of n sites divides the variances by n.
+        sites = _value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
+        shot_c = sea._math(tree, "DIVIDE", shot, sites)
+        dark_c = sea._math(tree, "DIVIDE", dark, sites)
+        noise = (seeded, shot_c, well, sea._math(tree, "SQRT", dark_c), levels)
+        # Two normals per colour, exposure and frame: W at 8f + 2i + e and + 0.5.
+        w = sea._math(tree, "MULTIPLY_ADD", frame, 8.0, 2.0 * index)
+        long = _read(tree, x, w, *noise)
+        short = _read(
+            tree,
+            sea._math(tree, "DIVIDE", x, ratio),
+            sea._math(tree, "ADD", w, 1.0),
+            *noise,
+        )
+        longs.append(long)
+        merged.append(_merge(tree, long, short, ratio, shot_c, dark_c, levels))
+    raw = _switch(tree, "sensor.hdr", _combine(tree, *longs), _combine(tree, *merged))
     # A sensor at the output's pitch reads one colour a pixel: its sites, then a
     # bilinear demosaic, normalized (Knutsson & Westin 1993) so a border site
     # averages only the neighbours it has. A finer one, demosaiced and scaled down
@@ -214,7 +287,10 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
         _value(tree, "sensor.wb_g", 1.0),
         _value(tree, "sensor.wb_b", 1.0),
     )
-    balanced = _clip(tree, sea._vector(tree, "MULTIPLY", demosaiced, gains))
+    balanced = sea._vector(tree, "MULTIPLY", demosaiced, gains)
+    balanced = _switch(
+        tree, "sensor.tone", _clip(tree, balanced), _reinhard(tree, balanced, grey)
+    )
     # Unsharp mask over a pixel's Gaussian.
     blur = tree.nodes.new("CompositorNodeBlur")
     blur.inputs["Type"].default_value = "Gaussian"
@@ -228,6 +304,28 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
         sea._vector(tree, "SCALE", detail, _value(tree, "sensor.sharpen")),
     )
     return _clip(tree, sharpened)
+
+
+def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
+    """Reinhard et al. 2002's global operator on luminance, L / (1 + L), with the
+    log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
+    a bright colour."""
+    # IEC 61966-2-1: the luminance of linear sRGB.
+    luminance = sea._vector(tree, "DOT_PRODUCT", image, (0.2126, 0.7152, 0.0722))
+    # Blender's log of 0 is 0, which would count black as a luminance of 1.
+    lit = sea._math(tree, "MAXIMUM", luminance, 1e-6)
+    levels = tree.nodes.new("CompositorNodeLevels")
+    levels.inputs["Channel"].default_value = "Luminance"
+    tree.links.new(sea._math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
+    log_average = sea._math(tree, "EXPONENT", levels.outputs["Mean"])
+    # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
+    grey = sea._math(tree, "MINIMUM", grey, 0.99)
+    key = sea._math(tree, "DIVIDE", grey, sea._math(tree, "SUBTRACT", 1.0, grey))
+    scaled = sea._math(
+        tree, "MULTIPLY", lit, sea._math(tree, "DIVIDE", key, log_average)
+    )
+    mapped = sea._math(tree, "DIVIDE", scaled, sea._math(tree, "ADD", scaled, 1.0))
+    return sea._vector(tree, "SCALE", image, sea._math(tree, "DIVIDE", mapped, lit))
 
 
 def _combine(tree: bpy.types.NodeTree, *xyz: Socket | float) -> Socket:
@@ -262,6 +360,9 @@ def respond(
     _set(tree, "sensor.well", gain)
     _set(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
     _set(tree, "sensor.levels", 2**sensor.adc_bits - 1)
+    _set(tree, "sensor.ratio", sensor.hdr_ratio)
+    for switch in ("sensor.hdr", "sensor.tone"):
+        _toggle(tree, switch, sensor.hdr_ratio > 1.0)
     # Float32 holds integers exactly to 2^24.
     _set(tree, "sensor.seed", float(noise.integers(2**24)))
     gains = colour.white_balance_gains(camera.processing.white_balance_k)
