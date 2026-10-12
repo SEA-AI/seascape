@@ -383,6 +383,10 @@ def test_calm_air_breaks_nothing() -> None:
     assert (
         waves.whitecap_thresholds_g((), [waves.whitecap_fraction(0.5)])[0] == math.inf
     )
+    assert waves.foam_fade_efold_s((), math.inf, 0.55) == waves.WHITECAP_AREA_EFOLD_S
+    assert waves.foam_fade_efold_s(field(7.0), math.inf, 0.55) == (
+        waves.WHITECAP_AREA_EFOLD_S
+    )
 
 
 @pytest.mark.parametrize(

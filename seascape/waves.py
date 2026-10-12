@@ -640,13 +640,19 @@ def foam_fade_efold_s(
     sea's whitecaps average Koepke's effective reflectance over the area they cover.
 
     Where the lace reaches level v of a point, it shows the youngest age whose fill
-    tops v; the area is the largest fill."""
-    past = _history(breakers(wind))
+    tops v; the area is the largest fill. With no foam the e-fold reads nothing, so
+    it is Monahan's area e-fold."""
+    breaking = breakers(wind)
+    if not breaking:
+        return WHITECAP_AREA_EFOLD_S
+    past = _history(breaking)
     edge = foam_edge_g(wind)
     # Only points that foam at all weigh in either mean.
     fills = _foam_fills(
         past[:, past.max(axis=0) > threshold_g - CDF_SIGMAS * edge], threshold_g, edge
     )
+    if not fills.shape[1]:
+        return WHITECAP_AREA_EFOLD_S
     ages = foam_ages_s()
     # Over levels v: the youngest age filled past v, oldest first so younger overwrite.
     levels = np.linspace(0.0, 1.0, FADE_LEVELS + 1)[1:] - 0.5 / FADE_LEVELS
