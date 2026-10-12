@@ -483,18 +483,18 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
     return group
 
 
-def _run_variance_group(calm: bool) -> bpy.types.NodeTree:
-    """Three waves' slope variance along `Along`, faded and calmed as `_wave_group`
-    draws them, added to `Variance` per lane, twice over: (Slope . Along)^2."""
-    name = "waves_run_calm" if calm else "waves_run"
+def _run_variance_group() -> bpy.types.NodeTree:
+    """Three waves' slope variance along `Along`, faded as `_wave_group` draws them,
+    added to `Variance` per lane, twice over: (Slope . Along)^2."""
+    name = "waves_run"
     if name in bpy.data.node_groups:
         return bpy.data.node_groups[name]
     group, given, out = _group(
         name,
-        (*_FOOTPRINT, ("Calm", "Float"), ("Variance", "Vector"), *_FADE, *_SLOPE),
+        (*_FOOTPRINT, ("Variance", "Vector"), *_FADE, *_SLOPE),
         (("Variance", "Vector"),),
     )
-    seen, (along_x, along_y) = _fade(group, given, calm)
+    seen, (along_x, along_y) = _fade(group, given, calm=False)
     run = _vector(
         group,
         "MULTIPLY",
@@ -548,39 +548,24 @@ def _set_triple(
             inputs[name].default_value = value
 
 
-def _height_group(
-    tall: tuple[Wave, ...], damped: frozenset[Wave]
-) -> bpy.types.NodeTree:
-    """The drawn height of `tall` at `Position`, (east, north, time), faded and calmed
-    as the normal is. One group, so each fixed-point step adds one node to the sea's
-    tree."""
-    return _lift_group("sea_height", tall, damped, lambda w: w.amplitude_m)
-
-
-def _lift_group(
-    name: str,
-    field: tuple[Wave, ...],
-    damped: frozenset[Wave],
-    lift: Callable[[Wave], float],
-) -> bpy.types.NodeTree:
-    """The sum of `lift` cos(phase) over `field` at `Position`, as `Height`: a height
-    when `lift` is a, a downward acceleration in g when it is a k."""
+def _height_group(tall: tuple[Wave, ...]) -> bpy.types.NodeTree:
+    """The drawn height of `tall` at `Position`, (east, north, time), faded as the
+    normal is. One group, so each fixed-point step adds one node to the sea's tree."""
     group, given, out = _group(
-        name,
-        (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
+        "sea_height",
+        (("Position", "Vector"), *_FOOTPRINT),
         (("Height", "Float"),),
     )
     heights = None
-    for triple in _triples(field):
-        calm = not damped.isdisjoint(triple)
+    for triple in _triples(tall):
         node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _wave_group(calm)
+        node.node_tree = _wave_group(calm=False)
         group.links.new(given["Position"], node.inputs["Position"])
-        _feed(group, given, node, calm)
+        _feed(group, given, node, calmed=False)
         if heights is not None:
             group.links.new(heights, node.inputs["Sum Z"])
-        _set_triple(node.inputs, triple, damped)
-        node.inputs["Lift"].default_value = _lanes(triple, lift)
+        _set_triple(node.inputs, triple, frozenset())
+        node.inputs["Lift"].default_value = _lanes(triple, lambda w: w.amplitude_m)
         heights = node.outputs["Sum Z"]
     if heights is not None:
         group.links.new(_total(group, heights), out["Height"])
@@ -595,8 +580,7 @@ def _parallax(
 ) -> bpy.types.NodeSocket:
     """Where the view ray meets the drawn height, (east, north, time), iterated from the
     flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
-    face tilted from the camera then takes the little of the frame it shows. Glitter,
-    gusts and slicks still read the flat sea.
+    face tilted from the camera then takes the little of the frame it shows.
     """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     flat = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -665,19 +649,16 @@ def _feed(
         group.links.new(given["Calm"], node.inputs["Calm"])
 
 
-def _run_group(triples: list[Triple], damped: frozenset[Wave]) -> bpy.types.NodeTree:
+def _run_group(triples: list[Triple]) -> bpy.types.NodeTree:
     """The slope variance the pixel draws along the view, which is parallax's run. A
     group, as each node in a tree slows every edit to it."""
-    group, given, out = _group(
-        "sea_run", (*_FOOTPRINT, ("Calm", "Float")), (("Variance", "Float"),)
-    )
+    group, given, out = _group("sea_run", _FOOTPRINT, (("Variance", "Float"),))
     variance = None
     for triple in triples:
-        calmed = not damped.isdisjoint(triple)
         node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _run_variance_group(calmed)
-        _feed(group, given, node, calmed)
-        _set_triple(node.inputs, triple, damped)
+        node.node_tree = _run_variance_group()
+        _feed(group, given, node, calmed=False)
+        _set_triple(node.inputs, triple, frozenset())
         if variance is not None:
             group.links.new(variance, node.inputs["Variance"])
         variance = node.outputs["Variance"]
@@ -732,32 +713,47 @@ def _waves(
     tall: tuple[Wave, ...],
     time_s: bpy.types.NodeSocket,
     pixel: _Pixel,
-    calm: bpy.types.NodeSocket | None = None,
-    damped: frozenset[Wave] = frozenset(),
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """The normal of what the pixel resolves, and where it reads the waves, (east,
-    north, time), at the `tall` waves' height; `calm` scales the `damped` waves."""
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    link = tree.links.new
+) -> bpy.types.NodeSocket:
+    """Where the pixel reads the waves, (east, north, time), at the `tall` waves'
+    height.
 
-    def instance(group: bpy.types.NodeTree) -> bpy.types.Node:
-        return _instance(tree, group, pixel, calm)
-
-    heights = _height_group(tall, damped)
+    ponytail: slicks are read at this position, so finding it ignores them. Under a
+    slick, a damped wave keeps its height and the run its variance, which caps the
+    reach short. If parallax reads wrong under slicks, calm both with a slick read at
+    the flat sea.
+    """
+    heights = _height_group(tall)
 
     def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        node = instance(heights)
-        link(position, node.inputs["Position"])
+        node = _instance(tree, heights, pixel, None)
+        tree.links.new(position, node.inputs["Position"])
         return node.outputs["Height"]
 
+    triples = _triples(wind) + _triples(swell)
+    run = _instance(tree, _run_group(triples), pixel, None)
+    return _parallax(tree, time_s, height_at, run.outputs["Variance"])
+
+
+def _normal(
+    tree: bpy.types.NodeTree,
+    wind: tuple[Wave, ...],
+    swell: tuple[Wave, ...],
+    position: bpy.types.NodeSocket,
+    pixel: _Pixel,
+    calm: bpy.types.NodeSocket | None = None,
+    damped: frozenset[Wave] = frozenset(),
+) -> bpy.types.NodeSocket:
+    """The normal of what the pixel resolves at `position`; `calm` scales the `damped`
+    waves."""
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
     # Each sea in triples of its own, so the wind's acceleration ends with its last.
     triples = _triples(wind) + _triples(swell)
-    run = instance(_run_group(triples, damped)).outputs["Variance"]
-    drawn = instance(_normal_group(triples, len(_triples(wind)), damped))
-    position = _parallax(tree, time_s, height_at, run)
-    link(position, drawn.inputs["Position"])
+    drawn = _instance(
+        tree, _normal_group(triples, len(_triples(wind)), damped), pixel, calm
+    )
+    tree.links.new(position, drawn.inputs["Position"])
     tilted = _vector(tree, "ADD", geometry.outputs["Normal"], drawn.outputs["Gradient"])
-    return _vector(tree, "NORMALIZE", tilted, name="wave_normal"), position
+    return _vector(tree, "NORMALIZE", tilted, name="wave_normal")
 
 
 def _instance(
@@ -1070,13 +1066,13 @@ def _glinting(
 def _glitter(
     tree: bpy.types.NodeTree,
     wind: tuple[Wave, ...],
-    time_s: bpy.types.NodeSocket,
+    where: bpy.types.NodeSocket,
     pixel: _Pixel,
     unresolved: bpy.types.NodeSocket,
     glinting: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
-    slope variance the tilts carry out of the lobe.
+    """A Gaussian tilt per cell of one specular point at `where`, (east, north, time),
+    re-drawn as it twinkles, and the slope variance the tilts carry out of the lobe.
 
     A pixel's s samples of its n cells count glints as n cells do if each cell's lobe
     catches the sun n / s times as often: variance r^2 (n / s - 1) about a sun of slope
@@ -1112,8 +1108,13 @@ def _glitter(
         glinting,
         name="glitter_variance",
     )
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    scaled = _vector(tree, "SCALE", geometry.outputs["Position"], name="glitter_cells")
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    link(where, split.inputs["Vector"])
+    time_s = split.outputs["Z"]
+    flat = tree.nodes.new("ShaderNodeCombineXYZ")
+    link(split.outputs["X"], flat.inputs["X"])
+    link(split.outputs["Y"], flat.inputs["Y"])
+    scaled = _vector(tree, "SCALE", flat.outputs["Vector"], name="glitter_cells")
     scaled.node.inputs["Scale"].default_value = 1 / math.sqrt(cell_m2)
     cell = _vector(tree, "FLOOR", scaled)
     # Each cell twinkles at its own phase, or the whole sea would flip at once.
@@ -1497,20 +1498,6 @@ def _foam_lace(
     )
 
 
-def _flat_sea(
-    tree: bpy.types.NodeTree, time_s: bpy.types.NodeSocket
-) -> bpy.types.NodeSocket:
-    """(east, north, time) of the flat sea under the pixel."""
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    split = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(geometry.outputs["Position"], split.inputs["Vector"])
-    where = tree.nodes.new("ShaderNodeCombineXYZ")
-    tree.links.new(split.outputs["X"], where.inputs["X"])
-    tree.links.new(split.outputs["Y"], where.inputs["Y"])
-    tree.links.new(time_s, where.inputs["Z"])
-    return where.outputs["Vector"]
-
-
 def _drifting(
     tree: bpy.types.NodeTree,
     where: bpy.types.NodeSocket,
@@ -1600,17 +1587,18 @@ def _downwind(sea: Sea) -> tuple[float, float]:
 def _gust(
     tree: bpy.types.NodeTree,
     sea: Sea,
-    time_s: bpy.types.NodeSocket,
+    where: bpy.types.NodeSocket,
     outputs: Outputs,
     tile: bpy.types.Image,
 ) -> bpy.types.NodeSocket:
-    """The wind over its mean, less one, carried downwind at the mean wind."""
+    """The wind over its mean, less one, carried downwind at the mean wind; read at
+    `where`, (east, north, time)."""
     per_m = 1 / GUST_TILE_M
     east, north = _downwind(sea)
     speed = sea.wind_speed_mps
     unit = _drifting(
         tree,
-        _flat_sea(tree, time_s),
+        where,
         outputs,
         tile,
         ((per_m, 0.0), (0.0, per_m)),
@@ -1624,12 +1612,13 @@ def _gust(
 def _slick(
     tree: bpy.types.NodeTree,
     sea: Sea,
-    time_s: bpy.types.NodeSocket,
+    where: bpy.types.NodeSocket,
     outputs: Outputs,
     rng: np.random.Generator,
 ) -> bpy.types.NodeSocket:
     """1 under a slick: the top `slick_cover` of a tile at the windrow spacing,
-    stretched along the wind and drifting with it.
+    stretched along the wind and drifting with it; read at `where`, (east, north,
+    time).
 
     ponytail: the integral scale stands for the windrow spacing, a judgement, and
     there are rows at every wind, where below the cutoff real slicks lie in patches.
@@ -1645,7 +1634,7 @@ def _slick(
     along = across / WINDROW_ASPECT
     unit = _drifting(
         tree,
-        _flat_sea(tree, time_s),
+        where,
         outputs,
         curve_image("sea_slick", tile),
         ((north * across, -east * across), (east * along, north * along)),
@@ -2212,14 +2201,23 @@ def material(
     pixel = _pixel(tree)
     time_s = _sea_time(tree, outputs)
     speed = sea.wind_speed_mps
+    drawn = (
+        resolvable(wind, finest_footprint_m),
+        resolvable(swell, finest_footprint_m),
+    )
+    # Each sea on its own, or a swell's height would decide which wind waves count.
+    tall = tallest(drawn[0], PARALLAX_HEIGHT_SHARE) + tallest(
+        drawn[1], PARALLAX_HEIGHT_SHARE
+    )
+    position = _waves(tree, *drawn, tall, time_s, pixel)
     gust_max, gust, slick = 0.0, None, None
     if speed > 0.0:
         tile = von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
         # A crossfade reaches sqrt(2) of the tile's peak at most.
         gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
-        gust = _gust(tree, sea, time_s, outputs, curve_image("sea_gust", tile))
+        gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
         if sea.slick_cover > 0.0:
-            slick = _slick(tree, sea, time_s, outputs, slick_rng)
+            slick = _slick(tree, sea, position, outputs, slick_rng)
     # Made where foam shows: an image nothing reads is not saved.
     foam = cache(
         lambda: curve_image(
@@ -2236,14 +2234,7 @@ def material(
     calm = None
     if slick is not None and damped:
         calm = _math(tree, "SUBTRACT", 1.0, slick)
-    # Each sea on its own, or a swell's height would decide which wind waves count.
-    tall = tallest(wind, PARALLAX_HEIGHT_SHARE) + tallest(swell, PARALLAX_HEIGHT_SHARE)
-    drawn = (
-        resolvable(wind, finest_footprint_m),
-        resolvable(swell, finest_footprint_m),
-    )
-    tall = tuple(w for w in tall if w in drawn[0] or w in drawn[1])
-    normal, position = _waves(tree, *drawn, tall, time_s, pixel, calm, damped)
+    normal = _normal(tree, *drawn, position, pixel, calm, damped)
     wake = None
     if wakes:
         sea_variance = cox_munk_slope(speed) ** 2
@@ -2264,7 +2255,7 @@ def material(
         if wind and light.sun is not None:
             # The wider spread reaches the most facets. A judgement.
             glinting = _glinting(tree, normal, light.sun, wide)
-            tilt, carried = _glitter(tree, wind, time_s, pixel, narrow, glinting)
+            tilt, carried = _glitter(tree, wind, position, pixel, narrow, glinting)
             normal = _vector(
                 tree,
                 "NORMALIZE",

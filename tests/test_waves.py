@@ -343,7 +343,9 @@ def test_whitecap_foam_covers_what_monahan_measured(wind_speed_mps: float) -> No
     east, north = rng.uniform(0, 3000, (2, 40_000))
     t_s = rng.uniform(0, 600, 40_000)
     covered = waves.foam_area(wind, east, north, t_s, threshold)
-    assert float(np.mean(covered)) == pytest.approx(fraction, rel=0.1)
+    # Three standard errors of a binomial mean: sampling alone rarely leaves them.
+    error = math.sqrt(fraction * (1 - fraction) / covered.size)
+    assert float(np.mean(covered)) == pytest.approx(fraction, abs=3 * error)
 
 
 @pytest.mark.parametrize("wind_speed_mps", [8.0, 15.0])

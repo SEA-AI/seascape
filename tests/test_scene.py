@@ -411,6 +411,14 @@ class TestEoBand:
         ):
             assert "sea_parallax" in upstream(socket), socket.node.name
 
+    def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        for socket in (
+            nodes["glitter_cells"].inputs["Vector"],
+            nodes["gust_axes"].inputs["X"],
+        ):
+            assert "sea_parallax" in upstream(socket), socket.node.name
+
     def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
         wind = scene.wind_waves(SCENARIO)
         speed = SCENARIO.sea.wind_speed_mps
@@ -1063,6 +1071,9 @@ class TestSlicks:
         carry = np.array(_sea_node("slick_carry").inputs["Vector"].default_value[:2])
         drift_mps = waves.SLICK_DRIFT * self.SLICKS.sea.wind_speed_mps
         assert carry == pytest.approx([0.0, -drift_mps * np.linalg.norm(along)])
+
+    def test_a_slick_reads_the_sea_the_waves_are_drawn_on(self) -> None:
+        assert "sea_parallax" in upstream(_sea_node("slick_axes").inputs["X"])
 
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
         wind = scene.wind_waves(self.SLICKS)
