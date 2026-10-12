@@ -25,6 +25,20 @@ def _set(tree: bpy.types.NodeTree, name: str, value: float) -> None:
     tree.nodes[name].outputs["Value"].default_value = value
 
 
+def _switch(tree: bpy.types.NodeTree, name: str, off: Socket, on: Socket) -> Socket:
+    """`on` or `off` for the whole frame, as `_toggle` sets it: a pick, where a blend
+    by 0 would turn an inf in the unpicked image into a nan."""
+    node = tree.nodes.new("CompositorNodeSwitch")
+    node.name = name
+    tree.links.new(off, node.inputs["Off"])
+    tree.links.new(on, node.inputs["On"])
+    return node.outputs["Image"]
+
+
+def _toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
+    tree.nodes[name].inputs["Switch"].default_value = on
+
+
 def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
     node = tree.nodes.new("CompositorNodeTranslate")
     node.inputs["X"].default_value, node.inputs["Y"].default_value = x, y
@@ -81,8 +95,22 @@ def _bilinear(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     )
 
 
-def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Socket) -> Socket:
-    """A standard normal per pixel and `w`: Box & Muller 1958 from two uniforms."""
+def _electrons(
+    tree: bpy.types.NodeTree, x: Socket, shot: Socket, well: Socket, noise: Socket
+) -> Socket:
+    """What a well collects of a mean `x`, with shot noise, up to `well`."""
+    lit = sea._math(tree, "MINIMUM", sea._math(tree, "MAXIMUM", x, 0.0), well)
+    spread = sea._math(tree, "SQRT", sea._math(tree, "MULTIPLY", lit, shot))
+    return sea._math(
+        tree, "MINIMUM", sea._math(tree, "MULTIPLY_ADD", spread, noise, x), well
+    )
+
+
+def _gaussian(
+    tree: bpy.types.NodeTree, pixel: Socket, w: Socket
+) -> tuple[Socket, Socket]:
+    """Two independent standard normals per pixel and `w`: Box & Muller 1958 from
+    two uniforms."""
     uniforms = []
     for offset in (0.0, 0.5):
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
@@ -104,7 +132,10 @@ def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Socket) -> Socket:
         ),
     )
     angle = sea._math(tree, "MULTIPLY", uniforms[1], 2 * math.pi)
-    return sea._math(tree, "MULTIPLY", radius, sea._math(tree, "COSINE", angle))
+    return (
+        sea._math(tree, "MULTIPLY", radius, sea._math(tree, "COSINE", angle)),
+        sea._math(tree, "MULTIPLY", radius, sea._math(tree, "SINE", angle)),
+    )
 
 
 def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
@@ -123,39 +154,34 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
         sea._math(tree, "SUBTRACT", 1.0, odd_y),
     )
     green = sea._math(tree, "SUBTRACT", 1.0, sea._math(tree, "ADD", red, blue))
-    r, g, b = _channels(tree, image)
-    mosaic = sea._math(
-        tree,
-        "ADD",
-        sea._math(tree, "MULTIPLY", r, red),
-        sea._math(
-            tree,
-            "ADD",
-            sea._math(tree, "MULTIPLY", g, green),
-            sea._math(tree, "MULTIPLY", b, blue),
-        ),
-    )
-    # Poissonian-Gaussian (Foi et al. 2008): variance shot * x + dark, x in units of
-    # white.
-    lit = sea._math(tree, "MINIMUM", sea._math(tree, "MAXIMUM", mosaic, 0.0), 1.0)
-    variance = sea._math(
-        tree,
-        "MULTIPLY_ADD",
-        lit,
-        _value(tree, "sensor.shot"),
-        _value(tree, "sensor.dark"),
-    )
     seeded = sea._vector(
         tree, "ADD", pixel, _combine(tree, 0.0, 0.0, _value(tree, "sensor.seed"))
     )
     frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
-    noisy = sea._math(
-        tree,
-        "MULTIPLY_ADD",
-        sea._math(tree, "SQRT", variance),
-        _gaussian(tree, seeded, sea._math(tree, "MULTIPLY", frame, 2.0)),
-        mosaic,
+    shot_noise, dark_noise = _gaussian(
+        tree, seeded, sea._math(tree, "MULTIPLY", frame, 2.0)
     )
+    # Poissonian-Gaussian (Foi et al. 2008), in units of white: shot noise of
+    # variance shot * x, then the well fills, then dark noise of variance dark. A
+    # pixel reads one channel, so the channels share its draws.
+    shot, well = _value(tree, "sensor.shot"), _value(tree, "sensor.well", 1.0)
+    collected = [
+        _electrons(tree, channel, shot, well, shot_noise)
+        for channel in _channels(tree, image)
+    ]
+    mosaic = sea._math(
+        tree,
+        "ADD",
+        sea._math(tree, "MULTIPLY", collected[0], red),
+        sea._math(
+            tree,
+            "ADD",
+            sea._math(tree, "MULTIPLY", collected[1], green),
+            sea._math(tree, "MULTIPLY", collected[2], blue),
+        ),
+    )
+    dark = sea._math(tree, "SQRT", _value(tree, "sensor.dark"))
+    noisy = sea._math(tree, "MULTIPLY_ADD", dark, dark_noise, mosaic)
     levels = _value(tree, "sensor.levels", 4095.0)
     counts = sea._math(tree, "ROUND", sea._math(tree, "MULTIPLY", noisy, levels))
     raw = sea._math(
@@ -220,6 +246,8 @@ def respond(tree: bpy.types.NodeTree, camera: Camera, name: str, seed: int) -> N
     gain = 10 ** (sensor.gain_db / 20)
     # At gain g, full_well_e / g electrons fill the ADC.
     _set(tree, "sensor.shot", gain / full_well_e)
+    # The well holds full_well_e: the ADC's white times the gain.
+    _set(tree, "sensor.well", gain)
     _set(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
     _set(tree, "sensor.levels", 2**sensor.adc_bits - 1)
     # Float32 holds integers exactly to 2^24.

@@ -763,6 +763,16 @@ class TestSensor:
             falloff[0, 0] / falloff.max(), rel=0.02
         )
 
+    def test_no_exposure_turns_a_frame_into_nans(self) -> None:
+        """2^126 of gain overflows float32; a sensor saturates before it."""
+        brightest = {"exposure_ev": 126.0}
+        ideal = self.through((1.0, 1.0, 1.0), processing=brightest)
+        read = self.through(
+            (1.0, 1.0, 1.0), sensor={"full_well_e": 1e4}, processing=brightest
+        )
+        assert not np.isnan(ideal).any()
+        assert read == pytest.approx(1.0)
+
     def test_noise_is_drawn_apart_per_camera_scenario_and_frame(self) -> None:
         noisy = {"full_well_e": 400.0, "dark_noise_e": 4.0}
         grey = (1.0, 1.0, 1.0)

@@ -1197,22 +1197,7 @@ def _camera(
         return exposed
     # A camera without a full well shares the tree, and takes the ideal frame.
     read = sensor.chain(tree, exposed, coords.outputs["Pixel"])
-    return sea._vector(
-        tree,
-        "MULTIPLY_ADD",
-        sea._vector(tree, "SUBTRACT", read, exposed),
-        _broadcast(tree, sensor._value(tree, "sensor.on")),
-        exposed,
-    )
-
-
-def _broadcast(
-    tree: bpy.types.NodeTree, value: bpy.types.NodeSocket
-) -> bpy.types.NodeSocket:
-    node = tree.nodes.new("ShaderNodeCombineXYZ")
-    for socket in node.inputs:
-        tree.links.new(value, socket)
-    return node.outputs["Vector"]
+    return sensor._switch(tree, "sensor.on", exposed, read)
 
 
 def respond(mount: Mount, seed: int) -> None:
@@ -1227,7 +1212,7 @@ def respond(mount: Mount, seed: int) -> None:
     sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
     if "sensor.on" not in tree.nodes:
         return
-    sensor._set(tree, "sensor.on", float(camera.sensor.full_well_e is not None))
+    sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
     sensor.respond(tree, camera, mount.name, seed)
 
 
