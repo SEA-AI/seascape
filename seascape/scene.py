@@ -1067,11 +1067,11 @@ def _enable_gpu() -> bool:
 
 
 def _output(
-    outputs: Outputs, band: Band, largest_px: int, sensor: bool = False
+    outputs: Outputs, band: Band, largest_px: int, graded: bool = False
 ) -> None:
     """Render and display settings, in the .blend, so F12 renders what `render` does.
-    `largest_px` is the longest side of any of the band's cameras, and `sensor` whether
-    any has one."""
+    `largest_px` is the longest side of any of the band's cameras, and `graded` whether
+    any has a sensor."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
@@ -1090,7 +1090,7 @@ def _output(
     view.exposure, view.gamma = 0.0, 1.0
     # 8-bit radiance is not radiance; `render` maps 8-bit ir from the exr.
     file_format, depth = FORMATS[outputs.format if band == "eo" else "exr"]
-    _compositor(outputs.exposure_compensation_ev if depth == "8" else None, sensor)
+    _compositor(outputs.exposure_compensation_ev if depth == "8" else None, graded)
     sc.render.image_settings.file_format = file_format
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
@@ -1102,15 +1102,15 @@ def _output(
     sc.cycles.use_animated_seed = True
 
 
-def _compositor(compensation_ev: float | None, sensor: bool = False) -> None:
+def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
     """The render as a camera takes it, `compensation_ev` over auto-exposure, through
-    a sensor if `sensor`; as rendered for None."""
+    a sensor if `graded`; as rendered for None."""
     tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
     tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     bpy.context.scene.compositing_node_group = tree
     image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
     if compensation_ev is not None:
-        image = _camera(tree, image, compensation_ev, sensor)
+        image = _camera(tree, image, compensation_ev, graded)
     tree.links.new(image, tree.nodes.new("NodeGroupOutput").inputs["Image"])
 
 
@@ -1215,7 +1215,7 @@ def _broadcast(
     return node.outputs["Vector"]
 
 
-def respond(mount: Mount) -> None:
+def respond(mount: Mount, seed: int) -> None:
     """Set the compositor's camera to `mount`'s; a tree without one ignores it."""
     tree = bpy.context.scene.compositing_node_group
     if tree is None or "lens.vignette" not in tree.nodes:
@@ -1228,7 +1228,7 @@ def respond(mount: Mount) -> None:
     if "sensor.on" not in tree.nodes:
         return
     sensor._set(tree, "sensor.on", float(camera.sensor.full_well_e is not None))
-    sensor.respond(tree, camera, mount.name)
+    sensor.respond(tree, camera, mount.name, seed)
 
 
 class OverlapError(ValueError):
@@ -1382,7 +1382,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         first.camera.width_px,
         first.camera.height_px,
     )
-    respond(first)
+    respond(first, scenario.seed)
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.

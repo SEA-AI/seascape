@@ -1,8 +1,10 @@
 """Colour temperature and white balance. No Blender."""
 
+import numpy as np
 import pytest
 
 from seascape import colour
+from seascape.config import Processing
 
 
 def test_the_locus_passes_through_illuminant_a() -> None:
@@ -24,3 +26,12 @@ def test_a_warmer_guess_boosts_blue_and_a_bluer_one_red() -> None:
 def test_the_locus_refuses_what_its_cubic_does_not_cover() -> None:
     with pytest.raises(ValueError, match="1667-25000"):
         colour.planck_xy(1000.0)
+
+
+def test_every_allowed_balance_has_finite_positive_gains() -> None:
+    bounds = {
+        type(m).__name__: m for m in Processing.model_fields["white_balance_k"].metadata
+    }
+    for error_k in np.linspace(bounds["Ge"].ge, bounds["Le"].le, 221):
+        gains = colour.white_balance_gains(float(error_k))
+        assert all(0.0 < g < 10.0 for g in gains), error_k

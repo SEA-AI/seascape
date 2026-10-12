@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import lwir, scene, sea, skies, waves
+from seascape import colour, lwir, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
 from seascape.config import Band, Camera, Mount, Scenario, Sky, load
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
@@ -671,11 +671,17 @@ class TestSensor:
         sc.cycles.samples = 4
 
     def through(
-        self, colour: tuple[float, float, float], name: str = "bow_eo", **camera
+        self,
+        colour: tuple[float, float, float],
+        name: str = "bow_eo",
+        seed: int = 0,
+        frame: int = 0,
+        **camera: dict[str, float | bool],
     ) -> np.ndarray:
         """The frame, RGB top row first, of a sky of `colour` through a camera the
         size of the probe's with `camera`'s settings."""
         sc = bpy.context.scene
+        sc.frame_set(frame)
         background = sc.world.node_tree.nodes["Background"]
         for link in list(background.inputs["Color"].links):
             sc.world.node_tree.links.remove(link)
@@ -692,7 +698,7 @@ class TestSensor:
             }
         )
         rig = SCENARIO.rigs["bow"]
-        scene.respond(Mount("bow", rig, name.removeprefix("bow_"), settings))
+        scene.respond(Mount("bow", rig, name.removeprefix("bow_"), settings), seed)
         sc.render.image_settings.file_format = "OPEN_EXR"
         sc.render.resolution_x, sc.render.resolution_y = self.SIZE
         sc.render.filepath = str(Path(bpy.app.tempdir) / "sensor")
@@ -711,8 +717,6 @@ class TestSensor:
         assert np.array_equal(frame[..., 0], frame[..., 2])
 
     def test_the_noise_is_shot_and_dark_noise_at_its_level(self) -> None:
-        """At the sites that read red, the red channel is the pixel's own sample:
-        variance x g / full well + (g dark / full well)^2 (Foi et al. 2008)."""
         full_well_e, dark_e, gain_db = 400.0, 4.0, 6.0
         frame = self.through(
             (1.0, 1.0, 1.0),
@@ -732,6 +736,8 @@ class TestSensor:
         sigmas = [red[i::2, j::2].std() for i in (0, 1) for j in (0, 1)]
         assert max(sigmas) == pytest.approx(expected, rel=0.1)
         assert red.mean() == pytest.approx(x, rel=0.02)
+        assert not np.array_equal(red[:, 0], red[:, 1])
+        assert not np.array_equal(red[-1], red[-2])
 
     def test_a_flat_colour_survives_the_mosaic(self) -> None:
         colour = (0.8, 0.4, 0.2)
@@ -757,13 +763,36 @@ class TestSensor:
             falloff[0, 0] / falloff.max(), rel=0.02
         )
 
-    def test_two_cameras_of_a_rig_take_different_noise(self) -> None:
-        noisy = {"sensor": {"full_well_e": 400.0, "dark_noise_e": 4.0}}
-        a = self.through((1.0, 1.0, 1.0), "bow_a", **noisy)[..., 1]
-        again = self.through((1.0, 1.0, 1.0), "bow_a", **noisy)[..., 1]
-        b = self.through((1.0, 1.0, 1.0), "bow_b", **noisy)[..., 1]
-        assert np.array_equal(a, again)
-        assert abs(np.corrcoef(a.ravel(), b.ravel())[0, 1]) < 0.1
+    def test_noise_is_drawn_apart_per_camera_scenario_and_frame(self) -> None:
+        noisy = {"full_well_e": 400.0, "dark_noise_e": 4.0}
+        grey = (1.0, 1.0, 1.0)
+        first = self.through(grey, "bow_a", sensor=noisy)[..., 1]
+        assert np.array_equal(first, self.through(grey, "bow_a", sensor=noisy)[..., 1])
+        for other in (
+            self.through(grey, "bow_b", sensor=noisy),
+            self.through(grey, "bow_a", seed=1, sensor=noisy),
+            self.through(grey, "bow_a", frame=1, sensor=noisy),
+        ):
+            assert abs(np.corrcoef(first.ravel(), other[..., 1].ravel())[0, 1]) < 0.1
+
+    def test_white_balance_tints_by_its_gains(self) -> None:
+        clean = {"full_well_e": 1e12}
+        frame = self.through(
+            (1.0, 1.0, 1.0), sensor=clean, processing={"white_balance_k": -1500.0}
+        )
+        r, g, b = frame[2:-2, 2:-2].reshape(-1, 3).mean(axis=0)
+        gain_r, gain_g, gain_b = colour.white_balance_gains(-1500.0)
+        assert (r / g, b / g) == pytest.approx(
+            (gain_r / gain_g, gain_b / gain_g), rel=0.01
+        )
+
+    def test_what_clipped_white_stays_white_under_any_balance(self) -> None:
+        frame = self.through(
+            (1.0, 1.0, 1.0),
+            sensor={"full_well_e": 1e12},
+            processing={"white_balance_k": 3000.0, "exposure_ev": 4.0},
+        )
+        assert frame[2:-2, 2:-2] == pytest.approx(1.0)
 
 
 def test_a_hull_s_foam_trails_behind_it() -> None:

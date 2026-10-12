@@ -1,17 +1,15 @@
-"""A colour sensor and its ISP, as compositor nodes, in Brooks et al. 2019's order:
-mosaic, noise, ADC, demosaic, white balance, sharpening.
+"""A colour sensor and its ISP, as compositor nodes.
 
 One tree serves every camera of a band, so each camera's settings are named value
 nodes that `respond` sets before its render.
 """
 
 import math
-import zlib
 
 import bpy
 
 from seascape import colour, sea
-from seascape.config import Camera
+from seascape.config import Camera, substream
 
 type Socket = bpy.types.NodeSocket
 
@@ -35,7 +33,11 @@ def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
     node.inputs["Extension X"].default_value = "Extend"
     node.inputs["Extension Y"].default_value = "Extend"
     tree.links.new(image, node.inputs["Image"])
-    return node.outputs["Image"]
+    # An operation takes its first input's domain: the image's own, not the shifted
+    # one, whose first row or column would otherwise copy its neighbour.
+    return sea._vector(
+        tree, "ADD", sea._vector(tree, "SCALE", image, 0.0), node.outputs["Image"]
+    )
 
 
 def _rgb(tree: bpy.types.NodeTree, r: Socket, g: Socket, b: Socket) -> Socket:
@@ -110,7 +112,7 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
     image's integer pixel coordinates."""
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
-    # RGGB. The datasheet's "RGB Bayer" names no phase, and none changes a statistic.
+    # RGGB from the bottom-left pixel; no phase changes a statistic.
     odd_x = sea._math(tree, "FLOORED_MODULO", xy.outputs["X"], 2.0)
     odd_y = sea._math(tree, "FLOORED_MODULO", xy.outputs["Y"], 2.0)
     blue = sea._math(tree, "MULTIPLY", odd_x, odd_y)
@@ -134,7 +136,7 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
         ),
     )
     # Poissonian-Gaussian (Foi et al. 2008): variance shot * x + dark, x in units of
-    # white, both set by `respond`.
+    # white.
     lit = sea._math(tree, "MINIMUM", sea._math(tree, "MAXIMUM", mosaic, 0.0), 1.0)
     variance = sea._math(
         tree,
@@ -162,16 +164,18 @@ def chain(tree: bpy.types.NodeTree, image: Socket, pixel: Socket) -> Socket:
         sea._math(tree, "MAXIMUM", sea._math(tree, "DIVIDE", counts, levels), 0.0),
         1.0,
     )
-    # Bilinear demosaic, normalized (Knutsson & Westin 1993): the samples spread over
-    # their neighbours, over the sites spread alike, so a border site averages only
-    # the neighbours it has. Inside the frame the sites' spread is 1.
+    # Normalized convolution (Knutsson & Westin 1993): the samples' bilinear over the
+    # site masks', so a border site averages only the neighbours it has.
     masks = _rgb(tree, red, green, blue)
     sites = sea._vector(tree, "SCALE", masks, raw)
     demosaiced = sea._vector(
         tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks)
     )
     gains = _combine(
-        tree, _value(tree, "sensor.wb_r", 1.0), 1.0, _value(tree, "sensor.wb_b", 1.0)
+        tree,
+        _value(tree, "sensor.wb_r", 1.0),
+        _value(tree, "sensor.wb_g", 1.0),
+        _value(tree, "sensor.wb_b", 1.0),
     )
     balanced = _clip(tree, sea._vector(tree, "MULTIPLY", demosaiced, gains))
     # Unsharp mask over a pixel's Gaussian.
@@ -208,19 +212,20 @@ def _clip(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     )
 
 
-def respond(tree: bpy.types.NodeTree, camera: Camera, name: str) -> None:
-    """Set the chain for `camera`; `name` seeds its noise apart from its rig's other
-    cameras."""
+def respond(tree: bpy.types.NodeTree, camera: Camera, name: str, seed: int) -> None:
+    """Set the chain for `camera`, its noise on the scenario `seed`'s substream for
+    `name`."""
     sensor = camera.sensor
     full_well_e = sensor.full_well_e or math.inf
     gain = 10 ** (sensor.gain_db / 20)
-    # Fewer electrons fill the ADC by the gain: a white of full_well_e / gain.
+    # At gain g, full_well_e / g electrons fill the ADC.
     _set(tree, "sensor.shot", gain / full_well_e)
     _set(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
     _set(tree, "sensor.levels", 2**sensor.adc_bits - 1)
     # Float32 holds integers exactly to 2^24.
-    _set(tree, "sensor.seed", zlib.crc32(name.encode()) % 2**24)
-    r, _, b = colour.white_balance_gains(camera.processing.white_balance_k)
-    _set(tree, "sensor.wb_r", r)
-    _set(tree, "sensor.wb_b", b)
+    _set(tree, "sensor.seed", float(substream(seed, f"sensor/{name}").integers(2**24)))
+    gains = colour.white_balance_gains(camera.processing.white_balance_k)
+    # dcraw's: the smallest gain is 1, so what clipped white stays white.
+    for channel, gain in zip("rgb", gains, strict=True):
+        _set(tree, f"sensor.wb_{channel}", gain / min(gains))
     _set(tree, "sensor.sharpen", camera.processing.sharpen)
