@@ -129,7 +129,7 @@ def thumbnail(m: dict, image: str) -> Image.Image:
 
 def number_line(draw: ImageDraw.ImageDraw, x0: int, axis: int, w: int, m: dict) -> None:
     """Ship contrast, true contrast and clutter on one axis from 0; the threshold in
-    red."""
+    red. The ship's measures sit above the axis, the sea's below."""
     top = 1.3 * max(m["ship"], m["real"], m["sea"] + JND)
 
     def x(value: float) -> float:
@@ -138,12 +138,12 @@ def number_line(draw: ImageDraw.ImageDraw, x0: int, axis: int, w: int, m: dict) 
     small = font(14)
     draw.line([x0, axis, x0 + w, axis], fill=SKY_GREY)
     draw.text((x0, axis + 8), "0", fill=SKY_GREY, font=small, anchor="mt")
-    draw.line([x(m["sea"]), axis - 8, x(m["sea"]), axis + 8], fill=SKY_GREY, width=3)
+    draw.line([x(m["sea"]), axis, x(m["sea"]), axis + 10], fill=SKY_GREY, width=3)
     text = f"clutter  {m['sea']:.2f}"
     at = max(x(m["sea"]), x0 + 16 + draw.textlength(text, font=small) / 2)
     draw.text((at, axis + 16), text, fill=SKY_GREY, font=small, anchor="mt")
     rule = x(m["sea"] + JND)
-    draw.line([rule, axis - 14, rule, axis + 14], fill=FOCUS_RED, width=3)
+    draw.line([rule, axis, rule, axis + 10], fill=FOCUS_RED, width=3)
     text = f"threshold  {m['sea'] + JND:.2f}"
     draw.text((rule, axis + 34), text, fill=FOCUS_RED, font=small, anchor="mt")
     dots = [(m["ship"], False, "ship contrast"), (m["real"], True, "true contrast")]
