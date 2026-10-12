@@ -2230,7 +2230,11 @@ def material(
         sea_variance = cox_munk_slope(speed) ** 2
         wake = _wakes(tree, wakes, time_s, pixel.along_m, foam(), sea_variance)
     smooth = _smoothed(tree, slick, wake)
-    survivors = wind if slick is None else slick_survivors(speed, wind)
+    survivors = (
+        wind
+        if slick is None
+        else slick_survivors(speed, wind, math.radians(sea.wind_from_deg))
+    )
     damped = frozenset(wind) - frozenset(survivors)
     calm = None
     if slick is not None and damped:
