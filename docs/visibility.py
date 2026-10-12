@@ -61,13 +61,19 @@ def measure(frame: np.ndarray, without: np.ndarray, index: np.ndarray, p: int) -
     behind = labels.background(lab, mask, beside)
     if behind is None:
         raise ValueError(f"target {p} has no background to show")
-    delta_e = np.linalg.norm(lab - np.nan_to_num(behind), axis=2)
+    raw = np.linalg.norm(lab - np.nan_to_num(behind), axis=2)
+    delta_e = np.where(
+        mask,
+        labels.pooled(raw, mask),
+        np.where(beside, labels.pooled(raw, beside), raw),
+    )
     n = int(mask.sum())
     ship, sea = labels.ricco(delta_e[mask], n), labels.ricco(delta_e[beside], n)
     seen = labels.visible(index, frame, p)
     if seen != (ship >= JND + sea):
         raise ValueError("labels.visible disagrees with its parts")
-    real = np.linalg.norm(lab[mask] - labels.cielab(without)[mask], axis=1)
+    difference = np.linalg.norm(lab - labels.cielab(without), axis=2)
+    real = labels.pooled(difference, mask)[mask]
     return {"frame": frame, "mask": mask, "beside": beside, "behind": behind,
             "delta_e": delta_e, "n": n, "ship": ship, "sea": sea, "seen": seen,
             "real": labels.ricco(real, n), "without": without}  # fmt: skip

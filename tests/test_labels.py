@@ -219,6 +219,25 @@ def test_a_target_is_seen_only_above_the_texture_around_it(
     assert boxed(index, frame) is seen
 
 
+# Against grey 120, OpenCV puts grey 60 at ΔE*ab 25.0, 128 at 3.3 and 255 at 49.8.
+@pytest.mark.parametrize(("size", "value", "seen"), [(24, 60, True), (2, 128, False)])
+def test_glitter_hides_only_what_it_outshines(
+    size: int, value: int, seen: bool
+) -> None:
+    """White one-pixel glints on one pixel in fifty, round a dark hull or a faint
+    speck: each glint counts a quarter of its difference, so the hull outshines them
+    and the speck, seen on calm water, does not."""
+    rng = np.random.default_rng(size)
+    index = np.zeros((64, 128), dtype=int)
+    index[20 : 20 + size, 52 : 52 + size] = 1
+    frame = np.full(index.shape, 120, np.uint8)
+    glints = (rng.random(index.shape) < 0.02) & (index == 0)
+    frame[glints] = 255
+    frame[index == 1] = value
+
+    assert boxed(index, frame) is seen
+
+
 def test_a_wide_targets_flanks_reach_half_its_width() -> None:
     """Texture further out than FLANK_GAP_PX + FLANK_PX still counts beside a 30 px
     hull."""
