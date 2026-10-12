@@ -29,6 +29,8 @@ HORIZON_POINTS = 17
 # pixels, taken as 4; the 2.95 arcmin of natural viewing, about 7 pixels, would pool
 # zeros into a target smaller than that.
 RICCO_PX = 4
+# A square window of RICCO_PX.
+POOL_PX = round(math.sqrt(RICCO_PX))
 # The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
 JND_DELTA_E = 2.3
 # Judgement: the narrowest flank, enough of a row for its median to outvote a wave.
@@ -225,19 +227,34 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
     """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
-    frame: an order-statistic test after Rohling's OS-CFAR (1983), the target's
-    largest differences from the background against the background's own at the same
-    share, by a JND."""
+    frame: the target's largest differences from the background, pooled, against the
+    background's own at the same share, by a JND."""
     lab = cielab(frame)
     mask = index == pass_index
     beside = flanks(index, pass_index)
     behind = background(lab, mask, beside)
     if behind is None:
         return True
+    delta_e = np.linalg.norm(lab - behind, axis=2)
     n = int(mask.sum())
-    target = ricco(np.linalg.norm(lab[mask] - behind[mask], axis=1), n)
-    clutter = ricco(np.linalg.norm(lab[beside] - behind[beside], axis=1), n)
+    target = ricco(pooled(delta_e, mask)[mask], n)
+    clutter = ricco(pooled(delta_e, beside)[beside], n)
     return target >= JND_DELTA_E + clutter
+
+
+def pooled(delta_e: np.ndarray, where: np.ndarray) -> np.ndarray:
+    """`where`'s differences as the eye pools them over Ricco's area, within which
+    only the total counts (Tuten et al. 2018): at each pixel, the best of the RICCO_PX
+    windows that cover it, the rest of a window counted as no difference. A
+    one-pixel glint counts a share of its difference; a patch that fills a window,
+    all of it."""
+    kernel = (POOL_PX, POOL_PX)
+    mean = cv2.blur(
+        np.where(where, delta_e, 0.0), kernel, borderType=cv2.BORDER_CONSTANT
+    )
+    # An even blur window ends at its pixel, so the windows covering a pixel end at it
+    # and one past; dilating from (0, 0) takes their best.
+    return cv2.dilate(mean, np.ones(kernel, np.uint8), anchor=(0, 0))
 
 
 def cielab(frame: np.ndarray) -> np.ndarray:
@@ -295,9 +312,8 @@ def strongest(delta_e: np.ndarray, target_px: int) -> np.ndarray:
 
 
 def ricco(delta_e: np.ndarray, target_px: int) -> float:
-    """The mean of `strongest`, zero-padded to RICCO_PX under RICCO_PX target pixels."""
-    k = min(RICCO_PX, target_px)
-    return float(delta_e[strongest(delta_e, target_px)].mean() * k / RICCO_PX)
+    """The mean of `strongest`."""
+    return float(delta_e[strongest(delta_e, target_px)].mean())
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:
