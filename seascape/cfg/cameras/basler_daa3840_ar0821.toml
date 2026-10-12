@@ -14,5 +14,3 @@ full_well_e = 12600.0
 dark_noise_e = 4.0
 # AR0821 datasheet: linear mode, 12-bit.
 adc_bits = 12
-# Basler's dart features list no HDR for this model.
-hdr_ratio = 1.0

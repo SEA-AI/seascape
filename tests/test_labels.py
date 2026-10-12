@@ -470,7 +470,11 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
         labels.merge(tmp_path, folders)
 
 
-def test_an_image_carries_its_cameras_sensor_lens_and_processing() -> None:
+@pytest.mark.parametrize("graded", [True, False])
+def test_an_8_bit_eo_image_carries_its_cameras_sensor_lens_and_processing(
+    graded: bool,
+) -> None:
+    """An exr is the radiance as rendered: the chain never touched it."""
     settings = Camera(
         band="eo",
         hfov_deg=49.0,
@@ -480,12 +484,12 @@ def test_an_image_carries_its_cameras_sensor_lens_and_processing() -> None:
         lens=Lens(vignetting=True),
     )
     truth = labels.Labels()
-    truth.add(camera(), 0.0, np.zeros((48, 64), int), FLAT, [], RADIUS_M, settings)
+    frame = FLAT.astype(np.uint8) if graded else FLAT
+    truth.add(camera(), 0.0, np.zeros((48, 64), int), frame, [], RADIUS_M, settings)
     (image,) = truth.images
+    expected = (settings.sensor, settings.lens, settings.processing)
     assert (image.sensor, image.lens, image.processing) == (
-        settings.sensor,
-        settings.lens,
-        settings.processing,
+        expected if graded else (None, None, None)
     )
 
 

@@ -137,7 +137,7 @@ class Sensor(Model):
             if getattr(self, name) != field.default
         ]
         if self.full_well_e is None and changed:
-            raise ValueError("a sensor's noise, gain or HDR needs its full_well_e")
+            raise ValueError("a sensor's settings need its full_well_e")
         return self
 
 
@@ -160,8 +160,8 @@ class Processing(Model):
         description="Stops over auto-exposure, on top of "
         "outputs.exposure_compensation_ev.",
     )
-    # 6504 K plus this stays inside Kim et al.'s cubic, 1667-25000 K (US 7,024,034),
-    # and above 2500 K, under which the locus's sRGB blue nears 0 and its gain blows up.
+    # D65 plus this stays inside Kim et al.'s cubic, 1667-25000 K (US 7,024,034), and,
+    # a judgement, above 2500 K, where the locus's sRGB blue nears 0.
     white_balance_k: float = Field(
         default=0.0,
         ge=-4000.0,
@@ -201,7 +201,6 @@ class Camera(Model):
 
     @model_validator(mode="after")
     def _an_lwir_camera_is_radiometric(self) -> "Camera":
-        """Its frame is kelvin, so nothing between the scene and the file."""
         if self.band == "ir" and (
             (self.sensor, self.lens, self.processing)
             != (Sensor(), Lens(), Processing())

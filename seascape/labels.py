@@ -111,7 +111,9 @@ class Labels(Model):
         """One frame: `index` is its object-index pass, (height, width), and `frame`
         the image as written, both top row first. `settings` is the scenario's camera,
         whose sensor, lens and processing an EO image carries."""
-        grade = settings is not None and settings.band == "eo"
+        judged = frame.dtype == np.uint8
+        # Only an 8-bit EO frame went through the camera's chain.
+        grade = settings is not None and settings.band == "eo" and judged
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -128,7 +130,6 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        judged = frame.dtype == np.uint8
         rows, columns = np.nonzero(index)
         seen = index[rows, columns]
         for target in targets:
