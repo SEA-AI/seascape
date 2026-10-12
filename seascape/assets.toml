@@ -38,14 +38,14 @@ kind = "hull"
 category = "rigid inflatable boat"
 category_id = 13
 description = "Grey rigid inflatable boat with a centre console, radar arch and twin outboards."
-url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/6c44d5ca5cad4936aba0267a0aea973fda135425/zodiac/zodiac.glb"
-sha256 = "ce021d3cc3abf33e2ec0366779ebe08b11dcdd0e7b23b5230dd25b06f61e368e"
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/f6bbc5249bc1295f16b6228c3761bc44257b14f2/zodiac/zodiac.glb"
+sha256 = "ced85011fd9b1dbfa35a942b5d64973528e9536ec17eacda9ab26ea065fe649a"
 # A Ribcraft 6.8: 6.88 m overall, 2.69 m beam, 0.46 m draught (boats.com, "2026
 # Ribcraft 6.8"). This length makes the mesh 2.48 m across.
 length_m = 6.88
 draught_m = 0.46
 bow_deg = 0.0
-triangles = 356136
+triangles = 351528
 texture_px = []
 licence = "CC-BY-4.0"
 attribution = "Zodiac by DenisGLabrecque, https://sketchfab.com/3d-models/c95fc3bf29e947bfb9f12a8d68066ccc"
