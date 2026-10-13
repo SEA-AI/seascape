@@ -468,6 +468,9 @@
             },
             {
               "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/OpticalDepth"
             }
           ]
         },
@@ -2528,6 +2531,34 @@
         "choice"
       ],
       "title": "Choice",
+      "type": "object"
+    },
+    "OpticalDepth": {
+      "additionalProperties": false,
+      "description": "An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,\nwith `sky.visibility_km` taken as Koschmieder's 2%.",
+      "properties": {
+        "optical_depth": {
+          "description": "The bounds, lower first, drawn evenly.",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            }
+          ],
+          "title": "Optical Depth",
+          "type": "array"
+        }
+      },
+      "required": [
+        "optical_depth"
+      ],
+      "title": "OpticalDepth",
       "type": "object"
     }
   },
