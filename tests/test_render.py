@@ -1,18 +1,21 @@
 """Render settings, the thermal image, and the object-index pass."""
 
+import math
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import get_args
+from typing import Any, get_args
 
 import bpy
 import cv2
 import numpy as np
 import pytest
 
-from seascape import agc, labels, lwir, render, scene
+from seascape import agc, labels, lwir, render, scene, sea
 from seascape.calibration import Calibration
-from seascape.config import Band, ImageFormat, load
-from tests.scenarios import OPEN_SEA, UNDERWAY, target, variant
+from seascape.config import Band, ImageFormat, Scenario, load, substream
+from seascape.wakes import Wake
+from tests.scenarios import OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -254,36 +257,138 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     assert (index[:, columns:] == 0).all()
 
 
-@pytest.mark.render
-def test_the_heaviest_sea_fits_cycles_svm_stack() -> None:
-    """A shader past the SVM stack renders black, with one line in the log."""
-    scenario = variant(
-        UNDERWAY,
-        sea={"swell": {"height_m": 2.0, "period_s": 10.0}, "slick_cover": 0.2},
-        sky={"visibility_km": None},
-        outputs={"format": "exr"},
+def _svm_errors(
+    capfd: pytest.CaptureFixture[str],
+    scenario: Scenario,
+    trails: tuple[Wake, ...],
+    band: Band,
+    pad: int = 0,
+) -> list[str]:
+    """The SVM lines in Cycles' log after rendering `sea.water` alone.
+
+    `pad` wraps the surface in that many Mix Shaders, each holding a factor on the SVM
+    stack.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene._output(scenario.outputs, band, 16)
+    sc = bpy.context.scene
+    sc.world = scene._sky(scenario.sky, band)
+    seed = scenario.seed
+    # Unculled: culling drops waves, which would shrink the shader under test.
+    material = sea.material(
+        scenario.sea,
+        scene.wind_waves(scenario),
+        scene.swell_waves(scenario),
+        scenario.outputs,
+        (
+            substream(seed, "sea/gust"),
+            substream(seed, "sea/slick"),
+            substream(seed, "sea/foam"),
+        ),
+        trails,
+        scene._light(scenario.sky, band),
     )
+    sea.water(scenario.sea, 300.0, material)
+    tree = material.node_tree
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    surface = output.inputs["Surface"].links[0].from_socket
+    x = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(
+        tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"], x.inputs[0]
+    )
+    for i in range(pad):
+        # Not a constant, or Cycles folds the Mix away.
+        factor = tree.nodes.new("ShaderNodeMath")
+        factor.operation = "MULTIPLY"
+        tree.links.new(x.outputs["X"], factor.inputs[0])
+        factor.inputs[1].default_value = 1e-12 * (i + 1)
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        tree.links.new(factor.outputs[0], mix.inputs[0])
+        tree.links.new(surface, mix.inputs[1])
+        tree.links.new(
+            tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"], mix.inputs[2]
+        )
+        surface = mix.outputs[0]
+    tree.links.new(surface, output.inputs["Surface"])
+    camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
+    sc.collection.objects.link(camera)
+    camera.location = (0.0, -50.0, 10.0)
+    camera.rotation_euler = (math.radians(85.0), 0.0, 0.0)
+    sc.camera = camera
+    sc.cycles.samples = 1
+    sc.render.resolution_x = sc.render.resolution_y = 16
+    return _render_svm_errors(capfd)
+
+
+def _render_svm_errors(capfd: pytest.CaptureFixture[str]) -> list[str]:
+    capfd.readouterr()
+    bpy.ops.render.render()
+    log = capfd.readouterr()
+    return [line for line in (log.out + log.err).splitlines() if "SVM" in line]
+
+
+def _heaviest_drawn_sea(**sections: Any) -> Scenario:
+    """The `randomized.toml` draw that builds the largest sea shader."""
+    with (SCENARIOS / "randomized.toml").open("rb") as file:
+        drawn = tomllib.load(file)["sea"]
+    return variant(
+        OPEN_SEA,
+        sea={
+            "wind_speed_mps": drawn["wind_speed_mps"]["uniform"][0],
+            "fetch_km": drawn["fetch_km"]["log_uniform"][0],
+            "swell": {
+                "height_m": drawn["swell"]["height_m"]["uniform"][1],
+                "period_s": drawn["swell"]["period_s"]["uniform"][0],
+            },
+            "slick_cover": drawn["slick_cover"]["uniform"][1],
+        },
+        sky={"visibility_km": None},
+        **sections,
+    )
+
+
+def _wakes(hulls: int) -> tuple[Wake, ...]:
+    return tuple(
+        Wake(speed_mps=3.0, length_m=60.0, beam_m=10.0, start_m=(0.0, 2000.0))
+        for _ in range(hulls)
+    )
+
+
+@pytest.mark.render
+@pytest.mark.parametrize("band", ["eo", "ir"])
+@pytest.mark.parametrize("hulls", [0, 1])
+def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
+    capfd: pytest.CaptureFixture[str], band: Band, hulls: int
+) -> None:
+    """Cycles renders a shader past its SVM stack black and logs an error."""
+    errors = _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(hulls), band)
+    assert errors == []
+
+
+@pytest.mark.render
+@pytest.mark.parametrize(
+    "hull",
+    [{"speed_mps": 3.0}, {"orbit": {"period_s": 80.0, "count": 2}}],
+    ids=["line", "orbit"],
+)
+def test_the_wakes_a_build_lays_fit_cycles_svm_stack(
+    capfd: pytest.CaptureFixture[str], hull: dict[str, Any]
+) -> None:
+    """The wake a built hull leaves, not one handed to the material."""
+    scenario = _heaviest_drawn_sea(objects=[target("coaster", 500.0, **hull)])
     built = scene.build(scenario, "eo")
     mount = next(m for m in scenario.mounts if m.camera.band == "eo")
     sc = bpy.context.scene
     sc.camera = built.cameras[mount.name]
     sc.cycles.samples = 1
-    width, height = 32, 24
-    sc.render.resolution_x, sc.render.resolution_y = width, height
-    sc.render.filepath = str(Path(bpy.app.tempdir) / "svm_stack")
-    bpy.ops.render.render(write_still=True)
-    frame = render._pixels(Path(sc.render.filepath + ".exr"))[::-1, :, :3].max(axis=2)
+    sc.render.resolution_x = sc.render.resolution_y = 16
+    assert _render_svm_errors(capfd) == []
 
-    calibration = scene.calibrate(built, mount, "")
-    scale = (calibration.width_px - 1) / (width - 1)
-    u, v = np.meshgrid(np.arange(width) * scale, np.arange(height) * scale)
-    rays = np.linalg.inv(calibration.K) @ np.stack([u, v, np.ones_like(u)]).reshape(
-        3, -1
-    )
-    down = (np.array(calibration.extrinsics["world"])[:3, :3] @ rays)[2]
-    sea = frame.ravel()[down / np.linalg.norm(rays, axis=0) < -0.05]
-    assert sea.size, "no row below the horizon: the assertion would pass on nothing"
-    assert np.median(sea) > 0.01 * np.median(frame)
+
+@pytest.mark.render
+def test_the_svm_check_sees_an_overflow(capfd: pytest.CaptureFixture[str]) -> None:
+    """A reworded Cycles log line would pass the test above on any shader."""
+    assert _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(0), "eo", pad=64)
 
 
 @pytest.mark.render
