@@ -264,12 +264,10 @@ def _svm_errors(
     band: Band,
     pad: int = 0,
 ) -> list[str]:
-    """The SVM errors in Cycles' log: an overflow renders the sea black. Renders
-    `sea.water` alone, under one camera, at 1 sample.
+    """The SVM lines in Cycles' log after rendering `sea.water` alone.
 
-    `pad` wraps the surface in that many Mix Shaders, each keeping its factor on the
-    stack while the surface evaluates. The largest `pad` that renders without an error
-    is the shader's headroom.
+    `pad` wraps the surface in that many Mix Shaders, each holding a factor on the SVM
+    stack.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene._output(scenario.outputs, band, 16)
@@ -326,8 +324,7 @@ def _svm_errors(
 
 
 def _heaviest_drawn_sea() -> Scenario:
-    """The calmest wind with the shortest fetch, the biggest swell and the most slick
-    that `randomized.toml` draws."""
+    """The `randomized.toml` draw that builds the largest sea shader."""
     with (SCENARIOS / "randomized.toml").open("rb") as file:
         drawn = tomllib.load(file)["sea"]
     return variant(
@@ -365,7 +362,7 @@ def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
 
 @pytest.mark.render
 def test_the_svm_check_sees_an_overflow(capfd: pytest.CaptureFixture[str]) -> None:
-    """Without it, a reworded log line would pass the test above on any shader."""
+    """A reworded Cycles log line would pass the test above on any shader."""
     assert _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(0), "eo", pad=64)
 
 

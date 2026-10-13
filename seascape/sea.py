@@ -1301,9 +1301,9 @@ def _daylight(
     mix = tree.nodes.new("ShaderNodeMixShader")
     cover = whitecaps[1]
     if wake is not None:
-        # Wake and whitecap foam are the same Diffuse, so one Mix at 1 - (1 - a)(1 - b)
-        # equals mixing it in twice. A second Diffuse and Mix overflow Cycles' SVM
-        # stack. Mix clamps each factor to 1; the product does not.
+        # Wake and whitecap foam are one Diffuse, mixed at 1 - (1 - a)(1 - b): a second
+        # Diffuse and Mix overflow Cycles' SVM stack. Mix clamps its factor to 1, the
+        # product does not, so `cover` is clamped here.
         unfoamed = _math(
             tree,
             "MULTIPLY",
