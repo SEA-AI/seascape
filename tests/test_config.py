@@ -735,6 +735,49 @@ def test_a_count_of_zero_makes_none() -> None:
     assert [o.asset for o in load(BASELINE, [drawn]).objects] == ["zodiac"]
 
 
+def optical_depth_ship(bounds: str) -> str:
+    return (
+        'objects = [{ asset = "yacht", bearing_deg = 0.0, '
+        f"range_m = {{ optical_depth = {bounds} }} }}]"
+    )
+
+
+def test_a_range_by_optical_depth_follows_a_drawn_visibility() -> None:
+    """Koschmieder: a ray keeps 2% of its contrast over `visibility_km`."""
+    drawn = "sky.visibility_km = { uniform = [4.0, 42.0] }"
+    for seed in range(3):
+        scenario = load(
+            BASELINE, [f"seed = {seed}", drawn, optical_depth_ship("[1.0, 1.0]")]
+        )
+        assert scenario.objects[0].range_m * scenario.sky.extinction_per_m == (
+            pytest.approx(1.0)
+        )
+
+
+def test_a_range_by_optical_depth_ignores_an_earlier_entrys_count() -> None:
+    def range_with(count: int) -> float:
+        fixed = f"range_m = 5000.0, bearing_deg = 0.0, count = {count}"
+        depth = "range_m = { optical_depth = [1.0, 3.0] }, bearing_deg = 0.0"
+        ships = f'{{ asset = "yacht", {fixed} }}, {{ asset = "yacht", {depth} }}'
+        objects = f"objects = [{ships}]"
+        return load(BASELINE, ["seed = 1", objects]).objects[-1].range_m
+
+    assert range_with(1) == range_with(2)
+
+
+def test_a_range_by_optical_depth_needs_haze() -> None:
+    with pytest.raises(ValueError, match=r"needs sky\.visibility_km"):
+        load(
+            BASELINE,
+            [{"sky": {"visibility_km": None}}, optical_depth_ship("[1.0, 2.0]")],
+        )
+
+
+def test_a_reversed_optical_depth_is_refused() -> None:
+    with pytest.raises(ValueError, match="reversed"):
+        load(BASELINE, [optical_depth_ship("[2.0, 1.0]")])
+
+
 def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
     """Labels carry this dump, and readers rebuild the scene from it."""
     drawn = (

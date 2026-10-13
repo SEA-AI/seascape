@@ -121,6 +121,22 @@ class Choice(Model):
         return self.choice[rng.choice(len(self.choice), p=p)]
 
 
+class OpticalDepth(Model):
+    """An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,
+    with `sky.visibility_km` taken as Koschmieder's 2%."""
+
+    optical_depth: tuple[
+        Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
+    ] = Field(description="The bounds, lower first, drawn evenly.")
+
+    @model_validator(mode="after")
+    def _lower_first(self) -> "OpticalDepth":
+        lower, upper = self.optical_depth
+        if lower > upper:
+            raise ValueError(f"optical_depth bounds {self.optical_depth} are reversed")
+        return self
+
+
 _DRAWS: dict[str, type[Uniform | LogUniform | Integer | Choice]] = {
     "uniform": Uniform,
     "log_uniform": LogUniform,
@@ -997,8 +1013,21 @@ def _copies(objects: list[Any], seed: int) -> list[Any]:
         # A pick's count would come after the copies were made.
         if _is_draw(spec) and any(c.get("count", 1) != 1 for c in copies):
             raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
-        out += [c | {"count": 1} for c in copies]
+        out += [
+            c | {"count": 1} | _optical_depth(c, seed, f"{path}/{k}/range_m")
+            for k, c in enumerate(copies)
+        ]
     return out
+
+
+def _optical_depth(copy: dict[str, Any], seed: int, path: str) -> dict[str, Any]:
+    """The copy's depth, drawn here so a change to an earlier entry's count leaves it
+    be; `_range_by_optical_depth` turns it into metres."""
+    depth = copy.get("range_m")
+    if not (isinstance(depth, dict) and "optical_depth" in depth):
+        return {}
+    bounds = OpticalDepth.model_validate(depth).optical_depth
+    return {"range_m": {"drawn_optical_depth": substream(seed, path).uniform(*bounds)}}
 
 
 def load(
@@ -1020,7 +1049,21 @@ def load(
         raise ValueError("seed cannot be drawn: it seeds the draws")
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed)
-    return Scenario.model_validate(_draw(data, seed, "draw"))
+    drawn = _draw(data, seed, "draw")
+    _range_by_optical_depth(drawn)
+    return Scenario.model_validate(drawn)
+
+
+def _range_by_optical_depth(data: dict[str, Any]) -> None:
+    """Replace each drawn optical depth with metres, once the visibility is drawn."""
+    for i, spec in enumerate(data.get("objects") or []):
+        depth = spec.get("range_m") if isinstance(spec, dict) else None
+        if not (isinstance(depth, dict) and "drawn_optical_depth" in depth):
+            continue
+        extinction_per_m = Sky.model_validate(data.get("sky") or {}).extinction_per_m
+        if not extinction_per_m:
+            raise ValueError(f"objects[{i}]: optical_depth needs sky.visibility_km")
+        spec["range_m"] = depth["drawn_optical_depth"] / extinction_per_m
 
 
 def json_schema() -> dict[str, Any]:
@@ -1039,4 +1082,8 @@ def json_schema() -> dict[str, Any]:
             model["properties"][name] = {**outer, "anyOf": [*values, *draws]}
     for model in _DRAWS.values():
         schema["$defs"][model.__name__] = model.model_json_schema()
+    schema["$defs"]["OpticalDepth"] = OpticalDepth.model_json_schema()
+    schema["$defs"]["Object"]["properties"]["range_m"]["anyOf"].append(
+        {"$ref": "#/$defs/OpticalDepth"}
+    )
     return schema
