@@ -560,7 +560,7 @@ class Object(Model):
     t_k: float = Field(default=293.0, ge=250.0, le=400.0, description=_T_HULL)
     count: int = Field(
         default=1,
-        ge=1,
+        ge=0,
         description="How many, each drawn anew. `load` makes the copies, so a "
         "loaded scenario holds only 1.",
     )
@@ -987,9 +987,9 @@ def _copies(objects: list[Any], seed: int) -> list[Any]:
             continue
         path = f"draw/objects/{i}"
         count = _draw(spec.get("count", 1), seed, f"{path}/count")
-        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             raise ValueError(
-                f"objects[{i}]: count must be a whole number from 1, not {count}"
+                f"objects[{i}]: count must be a whole number from 0, not {count}"
             )
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
