@@ -1299,20 +1299,22 @@ def _daylight(
     link(normal, foam.inputs["Normal"])
     foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
-    link(whitecaps[1], mix.inputs["Factor"])
+    cover = whitecaps[1]
+    if wake is not None:
+        # Both foams are one closure, so mixing it in twice is mixing it in at
+        # 1 - (1 - a)(1 - b). A second closure and Mix overflow Cycles' SVM stack.
+        unfoamed = _math(
+            tree,
+            "MULTIPLY",
+            _math(tree, "SUBTRACT", 1.0, cover),
+            _math(tree, "SUBTRACT", 1.0, wake.foam),
+        )
+        cover = _math(tree, "SUBTRACT", 1.0, unfoamed)
+    link(cover, mix.inputs["Factor"])
     # Mix Shader names both shader inputs "Shader", so they can only be indexed.
     link(water.outputs["Shader"], mix.inputs[1])
     link(foam.outputs["BSDF"], mix.inputs[2])
-    if wake is None:
-        return mix.outputs["Shader"]
-    fresh = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    link(normal, fresh.inputs["Normal"])
-    fresh.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
-    churned = tree.nodes.new("ShaderNodeMixShader")
-    link(wake.foam, churned.inputs["Factor"])
-    link(mix.outputs["Shader"], churned.inputs[1])
-    link(fresh.outputs["BSDF"], churned.inputs[2])
-    return churned.outputs["Shader"]
+    return mix.outputs["Shader"]
 
 
 @cache
