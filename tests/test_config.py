@@ -726,6 +726,15 @@ def test_a_drawn_count_takes_the_value_it_drew() -> None:
     assert counts == {1, 2, 3}
 
 
+def test_a_count_of_zero_makes_none() -> None:
+    drawn = (
+        'objects = [{ asset = "yacht", count = 0, range_m = 900.0, bearing_deg = 0.0 },'
+        ' { asset = "zodiac", range_m = 900.0, bearing_deg = 0.0 }]'
+    )
+
+    assert [o.asset for o in load(BASELINE, [drawn]).objects] == ["zodiac"]
+
+
 def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
     """Labels carry this dump, and readers rebuild the scene from it."""
     drawn = (
@@ -740,7 +749,7 @@ def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
 
 @pytest.mark.parametrize(
     ("count", "match"),
-    [("2.5", "whole number"), ("0", "whole number"), ("true", "whole number")],
+    [("2.5", "whole number"), ("-1", "whole number"), ("true", "whole number")],
 )
 def test_a_count_that_is_not_a_whole_number_is_refused(count, match) -> None:
     spec = f"{{ asset = 'yacht', range_m = 900.0, bearing_deg = 0.0, count = {count} }}"
