@@ -44,6 +44,7 @@ BASELINE = SCENARIOS / "baseline.toml"
 HERO = SCENARIOS.parent / "docs" / "hero.toml"
 RANDOMIZED = SCENARIOS / "randomized.toml"
 DATASET = SCENARIOS / "dataset.toml"
+AUTONOMICS = SCENARIOS / "autonomics-dataset.toml"
 SCHEMA = Path(__file__).parents[1] / "schema" / "scenario.json"
 
 
@@ -441,7 +442,7 @@ def test_a_draw_is_validated_as_the_field_it_lands_in() -> None:
         load(BASELINE, ["sky.sun_elevation_deg = { uniform = [100.0, 120.0] }"])
 
 
-@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED, DATASET])
+@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED, DATASET, AUTONOMICS])
 def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     """The `#:schema` line is a comment, so nothing else would ever notice it rot."""
     line = path.read_text().splitlines()[0]
@@ -458,7 +459,7 @@ def test_every_readme_hero_sky_loads_without_a_warning(overrides: list[str]) -> 
         load(HERO, overrides)
 
 
-@pytest.mark.parametrize("path", [RANDOMIZED, DATASET])
+@pytest.mark.parametrize("path", [RANDOMIZED, DATASET, AUTONOMICS])
 def test_a_randomized_example_loads(path: Path) -> None:
     load(path)
 
@@ -1026,3 +1027,24 @@ def test_a_sensor_is_no_narrower_than_its_image() -> None:
             BASELINE,
             ["rigs.bow.cameras.eo.sensor = { full_well_e = 1e4, width_px = 1000 }"],
         )
+
+
+def test_the_autonomics_dataset_sees_each_scene_through_two_lenses() -> None:
+    """Only the field of view differs: the camera settings are the rig's, drawn once."""
+    for seed in range(3):
+        scenario = load(AUTONOMICS, [f"seed = {seed}"])
+        eo42, eo45 = (scenario.rigs["bow"].cameras[name] for name in ("eo42", "eo45"))
+
+        assert (eo42.hfov_deg, eo45.hfov_deg) == (42.0, 45.0)
+        assert (eo42.sensor, eo42.lens, eo42.processing) == (
+            eo45.sensor,
+            eo45.lens,
+            eo45.processing,
+        )
+        assert -10.0 <= scenario.rigs["bow"].pitch_deg <= -5.0
+        of_interest = [
+            o for o in scenario.objects if o.asset in {"short_sea_freighter", "coaster"}
+        ]
+        assert of_interest
+        for spec in of_interest:
+            assert 1.0 <= spec.range_m * scenario.sky.extinction_per_m <= 1.5
