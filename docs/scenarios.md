@@ -68,7 +68,7 @@ Each camera draws its own noise. `labels.json` records each image's `sensor`, `l
 
 ## Randomization
 
-Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included. `weights` beside a choice makes it uneven: `{ choice = ["a", "b"], weights = [1, 4] }` draws `b` four times as often. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
+Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ triangular = [lo, mode, hi] }` for a float that clusters near `mode`, which may be a bound, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included. `weights` beside a choice makes it uneven: `{ choice = ["a", "b"], weights = [1, 4] }` draws `b` four times as often. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
 
 ```toml
 [rigs.bow]
