@@ -1,6 +1,7 @@
 """Properties of a rendered frame that a refactor must not shift."""
 
 import math
+import shutil
 from collections import defaultdict
 from pathlib import Path
 
@@ -1122,6 +1123,20 @@ def test_the_committed_mesh_is_what_the_file_holds(name: str) -> None:
     mesh = manifest()[name]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     assert scene.measure(fetch(name)) == (mesh.triangles, mesh.texture_px)
+
+
+def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) -> None:
+    glbs = [n for n in manifest() if fetch(n).suffix == ".glb"]
+    source = fetch(min(glbs, key=lambda n: manifest()[n].triangles))
+    path = tmp_path / source.name
+    shutil.copy(source, path)
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    first = scene.measure(path)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    monkeypatch.setattr(scene, "_parse", lambda _: pytest.fail("parsed again"))
+
+    assert scene.measure(path) == first
 
 
 @pytest.mark.parametrize(
