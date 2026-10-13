@@ -1,5 +1,6 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
+import contextlib
 import math
 import uuid
 from collections.abc import Iterable, Sequence
@@ -659,8 +660,11 @@ def _load(path: Path) -> set[bpy.types.Object]:
         try:
             with bpy.data.libraries.load(str(imported)) as (found, into):
                 into.objects = found.objects
+            if None in into.objects:  # Blender leaves None for what it cannot read
+                raise RuntimeError(f"{imported} loaded partly")
         except (OSError, RuntimeError):
-            imported.unlink(missing_ok=True)
+            with contextlib.suppress(OSError):
+                imported.unlink(missing_ok=True)
         else:
             for obj in into.objects:
                 bpy.context.scene.collection.objects.link(obj)
