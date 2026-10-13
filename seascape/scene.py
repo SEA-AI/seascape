@@ -1,6 +1,7 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
+import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import chain, combinations
@@ -647,14 +648,51 @@ def _meshes(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
 
 
 def _load(path: Path) -> set[bpy.types.Object]:
-    """Import a mesh file; returns what it added."""
+    """Import a mesh file; returns what it added. Caches the parse as a .blend beside
+    the file and appends from it on later calls."""
+    stat = path.stat()
+    version = ".".join(map(str, bpy.app.version))
+    imported = path.with_name(
+        f"{path.name}.{stat.st_size}-{stat.st_mtime_ns}.{version}.blend"
+    )
+    if imported.exists():
+        try:
+            with bpy.data.libraries.load(str(imported)) as (found, into):
+                into.objects = found.objects
+        except (OSError, RuntimeError):
+            imported.unlink(missing_ok=True)
+        else:
+            for obj in into.objects:
+                bpy.context.scene.collection.objects.link(obj)
+            # The fit reads matrix_world, which an append leaves stale.
+            bpy.context.view_layer.update()
+            return set(into.objects)
+    objects = _parse(path)
+    # A killed write must not leave a truncated file under the cache name.
+    part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
+    try:
+        bpy.data.libraries.write(
+            str(part), objects, path_remap="ABSOLUTE", compress=False
+        )
+        part.replace(imported)
+    except (OSError, RuntimeError):  # a read-only or full cache is only slower
+        part.unlink(missing_ok=True)
+    return objects
+
+
+def _parse(path: Path) -> set[bpy.types.Object]:
     before = set(bpy.data.objects)
     gltf = bpy.ops.import_scene.gltf
     importer = {".fbx": bpy.ops.import_scene.fbx, ".glb": gltf, ".gltf": gltf}
     importer[path.suffix](filepath=str(path))
     imported = set(bpy.data.objects) - before
     # A Poly glTF brings its viewer's camera and lights, which would light the scene.
-    for obj in [o for o in imported if o.type in {"CAMERA", "LIGHT"}]:
+    # glTF nodes outside the file's scene land in an excluded collection: matrix_world
+    # never updates there, and copies would render.
+    shown = bpy.context.view_layer.objects
+    for obj in [
+        o for o in imported if o.type in {"CAMERA", "LIGHT"} or o.name not in shown
+    ]:
         imported.remove(obj)
         bpy.data.objects.remove(obj)
     return imported
