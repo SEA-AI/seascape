@@ -94,10 +94,25 @@ class Annotation(Model):
     truncated: bool  # the box touches the frame's edge
 
 
+class Dropped(Model):
+    """A target in the scene that has no annotation, and why."""
+
+    image_id: int
+    name: str
+    range_m: float
+    bearing_deg: float  # true, clockwise from north
+    reason: str  # "no_pixels" or "contrast"
+    # For "contrast": the target's pooled difference from its background, and the
+    # background's own, in ΔE*ab; a target needs JND_DELTA_E more than the clutter.
+    delta_e: float | None = None
+    clutter_delta_e: float | None = None
+
+
 class Labels(Model):
     info: dict[str, Any] = Field(default_factory=dict)
     images: list[Image] = Field(default_factory=list)
     annotations: list[Annotation] = Field(default_factory=list)
+    dropped: list[Dropped] = Field(default_factory=list)
     categories: list[Category] = Field(default_factory=list)
 
     def add(
@@ -137,14 +152,31 @@ class Labels(Model):
         for target in targets:
             mine = seen == target.pass_index
             ys, xs = rows[mine], columns[mine]
+            east, north = np.subtract(target.centre_m, at)
+            where = {
+                "image_id": image.id,
+                "name": target.name,
+                "range_m": math.hypot(east, north),
+                "bearing_deg": math.degrees(math.atan2(east, north)),
+            }
             if not len(xs):
+                self.dropped.append(Dropped(**where, reason="no_pixels"))
                 continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
             reach = FLANK_GAP_PX + flank_px(x1 - x0 + 1)
             window = np.s_[y0 : y1 + 1, max(x0 - reach, 0) : x1 + 1 + reach]
-            if judged and not visible(index[window], frame[window], target.pass_index):
-                continue
-            east, north = np.subtract(target.centre_m, at)
+            if judged:
+                seen_by = contrast(index[window], frame[window], target.pass_index)
+                if seen_by is not None and seen_by[0] < JND_DELTA_E + seen_by[1]:
+                    self.dropped.append(
+                        Dropped(
+                            **where,
+                            reason="contrast",
+                            delta_e=seen_by[0],
+                            clutter_delta_e=seen_by[1],
+                        )
+                    )
+                    continue
             self.annotations.append(
                 Annotation(
                     id=len(self.annotations) + 1,
@@ -153,11 +185,11 @@ class Labels(Model):
                     bbox=(x0, y0, x1 - x0 + 1, y1 - y0 + 1),
                     area=len(xs),
                     name=target.name,
-                    range_m=math.hypot(east, north),
+                    range_m=where["range_m"],
                     waterline_range_m=float(
                         np.linalg.norm(target.waterline_m - at, axis=1).min()
                     ),
-                    bearing_deg=math.degrees(math.atan2(east, north)),
+                    bearing_deg=where["bearing_deg"],
                     heading_deg=target.heading_deg,
                     dims_m=target.dims_m,
                     truncated=x0 == 0
@@ -214,6 +246,10 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
                     }
                 )
             )
+        for gone in part.dropped:
+            merged.dropped.append(
+                gone.model_copy(update={"image_id": ids[gone.image_id]})
+            )
         for category in part.categories:
             known = next((c for c in merged.categories if c.id == category.id), None)
             if known is None:
@@ -229,17 +265,26 @@ def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
     """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
     frame: the target's largest differences from the background, pooled, against the
     background's own at the same share, by a JND."""
+    seen_by = contrast(index, frame, pass_index)
+    return seen_by is None or seen_by[0] >= JND_DELTA_E + seen_by[1]
+
+
+def contrast(
+    index: np.ndarray, frame: np.ndarray, pass_index: int
+) -> tuple[float, float] | None:
+    """The target's pooled difference from its background and the background's own,
+    in ΔE*ab; None if no row of the target has a flank to compare with."""
     lab = cielab(frame)
     mask = index == pass_index
     beside = flanks(index, pass_index)
     behind = background(lab, mask, beside)
     if behind is None:
-        return True
+        return None
     delta_e = np.linalg.norm(lab - behind, axis=2)
     n = int(mask.sum())
     target = ricco(pooled(delta_e, mask)[mask], n)
     clutter = ricco(pooled(delta_e, beside)[beside], n)
-    return target >= JND_DELTA_E + clutter
+    return target, clutter
 
 
 def pooled(delta_e: np.ndarray, where: np.ndarray) -> np.ndarray:
