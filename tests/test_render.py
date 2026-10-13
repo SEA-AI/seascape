@@ -1,6 +1,7 @@
 """Render settings, the thermal image, and the object-index pass."""
 
 import math
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import get_args
@@ -14,7 +15,7 @@ from seascape import agc, labels, lwir, render, scene, sea
 from seascape.calibration import Calibration
 from seascape.config import Band, ImageFormat, Scenario, load, substream
 from seascape.wakes import Wake
-from tests.scenarios import OPEN_SEA, UNDERWAY, target, variant
+from tests.scenarios import OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -263,19 +264,19 @@ def _svm_errors(
     band: Band,
     pad: int = 0,
 ) -> list[str]:
-    """The log's SVM errors: Cycles logs an overflow and renders the sea black. Only
-    the sea's material is built, on a plane under one camera, at 1 sample.
+    """The SVM errors in Cycles' log: an overflow renders the sea black. Renders
+    `sea.water` alone, under one camera, at 1 sample.
 
-    `pad` nests that many Mix Shaders round the surface, each holding its own factor
-    across everything inside: the shader's headroom is the largest `pad` that still
-    fits, found by raising it.
+    `pad` wraps the surface in that many Mix Shaders, each keeping its factor on the
+    stack while the surface evaluates. The largest `pad` that renders without an error
+    is the shader's headroom.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene._output(scenario.outputs, band, 16)
     sc = bpy.context.scene
     sc.world = scene._sky(scenario.sky, band)
     seed = scenario.seed
-    # No camera cull: it only leaves waves out.
+    # Unculled: culling drops waves, which would shrink the shader under test.
     material = sea.material(
         scenario.sea,
         scene.wind_waves(scenario),
@@ -324,32 +325,48 @@ def _svm_errors(
     return [line for line in (log.out + log.err).splitlines() if "SVM" in line]
 
 
+def _heaviest_drawn_sea() -> Scenario:
+    """The calmest wind with the shortest fetch, the biggest swell and the most slick
+    that `randomized.toml` draws."""
+    with (SCENARIOS / "randomized.toml").open("rb") as file:
+        drawn = tomllib.load(file)["sea"]
+    return variant(
+        OPEN_SEA,
+        sea={
+            "wind_speed_mps": drawn["wind_speed_mps"]["uniform"][0],
+            "fetch_km": drawn["fetch_km"]["log_uniform"][0],
+            "swell": {
+                "height_m": drawn["swell"]["height_m"]["uniform"][1],
+                "period_s": drawn["swell"]["period_s"]["uniform"][0],
+            },
+            "slick_cover": drawn["slick_cover"]["uniform"][1],
+        },
+        sky={"visibility_km": None},
+    )
+
+
+def _wakes(hulls: int) -> tuple[Wake, ...]:
+    return tuple(
+        Wake(speed_mps=3.0, length_m=60.0, beam_m=10.0, start_m=(0.0, 2000.0))
+        for _ in range(hulls)
+    )
+
+
 @pytest.mark.render
 @pytest.mark.parametrize("band", ["eo", "ir"])
 @pytest.mark.parametrize("hulls", [0, 1])
 def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
     capfd: pytest.CaptureFixture[str], band: Band, hulls: int
 ) -> None:
-    """A shader past the SVM stack renders black, with one line in the log.
+    """Cycles renders a shader past its SVM stack black and logs an error."""
+    errors = _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(hulls), band)
+    assert errors == []
 
-    The corner of the dataset's draw: the calmest wind with the shortest fetch, the
-    biggest swell and the most slick, with and without a hull's wake.
-    """
-    scenario = variant(
-        OPEN_SEA,
-        sea={
-            "wind_speed_mps": 1.0,
-            "fetch_km": 2.0,
-            "swell": {"height_m": 2.5, "period_s": 6.0},
-            "slick_cover": 0.17,
-        },
-        sky={"visibility_km": None},
-    )
-    trails = tuple(
-        Wake(speed_mps=3.0, length_m=60.0, beam_m=10.0, start_m=(0.0, 2000.0))
-        for _ in range(hulls)
-    )
-    assert _svm_errors(capfd, scenario, trails, band) == []
+
+@pytest.mark.render
+def test_the_svm_check_sees_an_overflow(capfd: pytest.CaptureFixture[str]) -> None:
+    """Without it, a reworded log line would pass the test above on any shader."""
+    assert _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(0), "eo", pad=64)
 
 
 @pytest.mark.render
