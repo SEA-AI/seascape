@@ -517,3 +517,43 @@ def test_an_image_without_its_camera_carries_no_settings() -> None:
     truth.add(camera(), 0.0, np.zeros((48, 64), int), FLAT, [], RADIUS_M)
     (image,) = truth.images
     assert (image.sensor, image.lens, image.processing) == (None, None, None)
+
+
+def test_a_target_out_of_frame_is_dropped_with_where_it_was() -> None:
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, np.zeros((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M)
+
+    (gone,) = truth.dropped
+    assert (gone.image_id, gone.name, gone.reason) == (1, "t1", "no_pixels")
+    assert gone.range_m == pytest.approx(1000.0)
+    assert gone.bearing_deg == pytest.approx(0.0)
+
+
+def test_a_target_below_the_jnd_is_dropped_with_its_contrast() -> None:
+    index = square()
+    truth = labels.Labels()
+
+    truth.add(camera(), 0.0, index, eight_bit(index, {1: 125}), [target(1)], RADIUS_M)
+
+    assert not truth.annotations
+    (gone,) = truth.dropped
+    assert gone.reason == "contrast"
+    assert gone.delta_e is not None and gone.clutter_delta_e is not None
+    assert gone.delta_e < labels.JND_DELTA_E + gone.clutter_delta_e
+
+
+def test_a_merge_renumbers_the_dropped_images(tmp_path) -> None:
+    folders = []
+    for seed in (7, 8):
+        truth = labels.Labels(info={"scenario": {"seed": seed}})
+        truth.add(
+            camera(), 0.0, np.zeros((48, 64), dtype=int), FLAT, [target(1)], RADIUS_M
+        )
+        folders.append(tmp_path / str(seed))
+        folders[-1].mkdir()
+        truth.write(folders[-1])
+
+    merged = labels.merge(tmp_path, folders)
+
+    assert [d.image_id for d in merged.dropped] == [1, 2]

@@ -10,6 +10,8 @@ fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 
 A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Each of its pixels is compared in CIELAB with the median of the background beside it on its row, past the few pixels its own glow reaches; each difference is pooled over the fovea's Ricco area (Tuten et al. 2018), so a one-pixel glint counts a share of its own and a hull all of its. The target's largest pooled differences must reach the background's own at the same share plus a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994), so the texture of the sea or sky earns no box, and a glitter path hides only what it outshines. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
 
+Every target left without a box is listed under `dropped`, with its image, range and bearing and the reason: `no_pixels` (out of frame, or hidden) or `contrast` (the target's pooled ΔE*ab fell short of the background's own plus a JND; both are listed).
+
 ![How a target's visibility is decided, checked against the scene rendered without it](visibility.png)
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
