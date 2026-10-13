@@ -33,6 +33,7 @@ from seascape.config import (
     Sensor,
     Sky,
     Targets,
+    Triangular,
     json_schema,
     load,
     substream,
@@ -733,6 +734,21 @@ def test_a_count_of_zero_makes_none() -> None:
     )
 
     assert [o.asset for o in load(BASELINE, [drawn]).objects] == ["zodiac"]
+
+
+def test_a_triangular_draw_leans_to_its_mode_and_stays_in_bounds() -> None:
+    rng = substream(0, "test")
+    drawn = [Triangular(triangular=(10.0, 40.0, 40.0)).draw(rng) for _ in range(300)]
+
+    assert min(drawn) >= 10.0 and max(drawn) <= 40.0
+    # P(v < 25) = ((25 - 10) / 30) ** 2
+    assert 0.15 < sum(v < 25.0 for v in drawn) / len(drawn) < 0.35
+
+
+@pytest.mark.parametrize("bounds", ["[1.0, 2.5, 2.0]", "[2.0, 2.0, 2.0]"])
+def test_a_triangular_draw_refuses_a_mode_outside_or_equal_bounds(bounds: str) -> None:
+    with pytest.raises(ValidationError, match="triangular"):
+        load(BASELINE, [f"sky.visibility_km = {{ triangular = {bounds} }}"])
 
 
 def optical_depth_ship(bounds: str) -> str:

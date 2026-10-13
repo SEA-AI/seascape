@@ -38,6 +38,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -58,6 +61,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -84,6 +90,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -105,6 +114,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -129,6 +141,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -151,6 +166,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -168,6 +186,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -189,6 +210,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -206,6 +230,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -244,6 +271,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -266,6 +296,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -286,6 +319,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -323,6 +359,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -343,6 +382,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -385,6 +427,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -442,6 +487,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -462,6 +510,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -488,6 +539,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -508,6 +562,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -536,6 +593,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -557,6 +617,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -583,6 +646,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -605,6 +671,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -631,6 +700,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -652,6 +724,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -689,6 +764,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -710,6 +788,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -753,6 +834,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -770,6 +854,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -791,6 +878,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -817,6 +907,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -838,6 +931,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -863,6 +959,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -883,6 +982,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -940,6 +1042,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -962,6 +1067,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -988,6 +1096,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1010,6 +1121,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1036,6 +1150,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1060,6 +1177,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1082,6 +1202,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1116,6 +1239,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1140,6 +1266,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1162,6 +1291,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1197,6 +1329,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1219,6 +1354,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1239,6 +1377,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1265,6 +1406,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1285,6 +1429,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1309,6 +1456,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1330,6 +1480,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1358,6 +1511,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1395,6 +1551,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1416,6 +1575,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1450,6 +1612,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1474,6 +1639,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1494,6 +1662,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1522,6 +1693,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1544,6 +1718,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1570,6 +1747,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1594,6 +1774,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1616,6 +1799,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1652,6 +1838,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1673,6 +1862,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1698,6 +1890,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1720,6 +1915,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1748,6 +1946,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1769,6 +1970,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1806,6 +2010,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1826,6 +2033,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1849,6 +2059,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1877,6 +2090,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1896,6 +2112,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -1922,6 +2141,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -1944,6 +2166,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2005,6 +2230,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2035,6 +2263,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2057,6 +2288,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2077,6 +2311,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2114,6 +2351,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2134,6 +2374,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2220,6 +2463,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2242,6 +2488,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2262,6 +2511,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2293,6 +2545,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2330,6 +2585,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2351,6 +2609,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2377,6 +2638,9 @@
               "$ref": "#/$defs/LogUniform"
             },
             {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
               "$ref": "#/$defs/Integer"
             },
             {
@@ -2399,6 +2663,9 @@
             },
             {
               "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
             },
             {
               "$ref": "#/$defs/Integer"
@@ -2470,6 +2737,35 @@
         "log_uniform"
       ],
       "title": "LogUniform",
+      "type": "object"
+    },
+    "Triangular": {
+      "additionalProperties": false,
+      "description": "A float drawn from a triangular density peaking at the mode, a bound or not.",
+      "properties": {
+        "triangular": {
+          "description": "The lower bound, the mode and the upper bound.",
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Triangular",
+          "type": "array"
+        }
+      },
+      "required": [
+        "triangular"
+      ],
+      "title": "Triangular",
       "type": "object"
     },
     "Integer": {
@@ -2592,6 +2888,9 @@
           "$ref": "#/$defs/LogUniform"
         },
         {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2609,6 +2908,9 @@
         },
         {
           "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
         },
         {
           "$ref": "#/$defs/Integer"
@@ -2635,6 +2937,9 @@
           "$ref": "#/$defs/LogUniform"
         },
         {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2654,6 +2959,9 @@
           "$ref": "#/$defs/LogUniform"
         },
         {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2671,6 +2979,9 @@
         },
         {
           "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
         },
         {
           "$ref": "#/$defs/Integer"
@@ -2697,6 +3008,9 @@
           "$ref": "#/$defs/LogUniform"
         },
         {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
           "$ref": "#/$defs/Integer"
         },
         {
@@ -2714,6 +3028,9 @@
         },
         {
           "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
         },
         {
           "$ref": "#/$defs/Integer"

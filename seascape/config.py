@@ -15,8 +15,9 @@ Rules:
 3. Tables merge, everything else replaces. A list, or a table naming a preset, is
    replaced whole.
 
-Any field can instead be a draw, `{ uniform = [lo, hi] }`, `{ log_uniform = [lo, hi] }`
-or `{ choice = [...] }`, resolved after both forms of reuse and before validation.
+Any field can instead be a draw, `{ uniform = [lo, hi] }`, `{ log_uniform = [lo, hi] }`,
+`{ triangular = [lo, mode, hi] }` or `{ choice = [...] }`, resolved after both forms of
+reuse and before validation.
 """
 
 import math
@@ -80,6 +81,26 @@ class LogUniform(Model):
         )
 
 
+class Triangular(Model):
+    """A float drawn from a triangular density peaking at the mode, a bound or not."""
+
+    triangular: tuple[float, float, float] = Field(
+        description="The lower bound, the mode and the upper bound."
+    )
+
+    @model_validator(mode="after")
+    def _in_order(self) -> "Triangular":
+        low, mode, high = self.triangular
+        if low == high:
+            raise ValueError(f"triangular {self.triangular} has equal bounds")
+        if not low <= mode <= high:
+            raise ValueError(f"triangular {self.triangular} is not low <= mode <= high")
+        return self
+
+    def draw(self, rng: np.random.Generator) -> float:
+        return float(rng.triangular(*self.triangular))
+
+
 class Integer(Model):
     """A whole number drawn evenly between two bounds."""
 
@@ -137,9 +158,10 @@ class OpticalDepth(Model):
         return self
 
 
-_DRAWS: dict[str, type[Uniform | LogUniform | Integer | Choice]] = {
+_DRAWS: dict[str, type[Uniform | LogUniform | Triangular | Integer | Choice]] = {
     "uniform": Uniform,
     "log_uniform": LogUniform,
+    "triangular": Triangular,
     "integer": Integer,
     "choice": Choice,
 }
