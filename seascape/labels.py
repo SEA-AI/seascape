@@ -8,7 +8,7 @@ integers, half a pixel off.
 import math
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import cv2
 import numpy as np
@@ -95,15 +95,12 @@ class Annotation(Model):
 
 
 class Dropped(Model):
-    """A target in the scene that has no annotation, and why."""
-
     image_id: int
     name: str
     range_m: float
     bearing_deg: float  # true, clockwise from north
-    reason: str  # "no_pixels" or "contrast"
-    # For "contrast": the target's pooled difference from its background, and the
-    # background's own, in ΔE*ab; a target needs JND_DELTA_E more than the clutter.
+    reason: Literal["no_pixels", "contrast"]
+    # ΔE*ab, for "contrast" only: the target's pooled difference, the background's.
     delta_e: float | None = None
     clutter_delta_e: float | None = None
 
