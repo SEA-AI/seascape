@@ -4,7 +4,7 @@ import math
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import get_args
+from typing import Any, get_args
 
 import bpy
 import cv2
@@ -317,13 +317,17 @@ def _svm_errors(
     sc.camera = camera
     sc.cycles.samples = 1
     sc.render.resolution_x = sc.render.resolution_y = 16
+    return _render_svm_errors(capfd)
+
+
+def _render_svm_errors(capfd: pytest.CaptureFixture[str]) -> list[str]:
     capfd.readouterr()
     bpy.ops.render.render()
     log = capfd.readouterr()
     return [line for line in (log.out + log.err).splitlines() if "SVM" in line]
 
 
-def _heaviest_drawn_sea() -> Scenario:
+def _heaviest_drawn_sea(**sections: Any) -> Scenario:
     """The `randomized.toml` draw that builds the largest sea shader."""
     with (SCENARIOS / "randomized.toml").open("rb") as file:
         drawn = tomllib.load(file)["sea"]
@@ -339,6 +343,7 @@ def _heaviest_drawn_sea() -> Scenario:
             "slick_cover": drawn["slick_cover"]["uniform"][1],
         },
         sky={"visibility_km": None},
+        **sections,
     )
 
 
@@ -358,6 +363,26 @@ def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
     """Cycles renders a shader past its SVM stack black and logs an error."""
     errors = _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(hulls), band)
     assert errors == []
+
+
+@pytest.mark.render
+@pytest.mark.parametrize(
+    "hull",
+    [{"speed_mps": 3.0}, {"orbit": {"period_s": 80.0, "count": 2}}],
+    ids=["line", "orbit"],
+)
+def test_the_wakes_a_build_lays_fit_cycles_svm_stack(
+    capfd: pytest.CaptureFixture[str], hull: dict[str, Any]
+) -> None:
+    """The wake a built hull leaves, not one handed to the material."""
+    scenario = _heaviest_drawn_sea(objects=[target("coaster", 500.0, **hull)])
+    built = scene.build(scenario, "eo")
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    sc = bpy.context.scene
+    sc.camera = built.cameras[mount.name]
+    sc.cycles.samples = 1
+    sc.render.resolution_x = sc.render.resolution_y = 16
+    assert _render_svm_errors(capfd) == []
 
 
 @pytest.mark.render
