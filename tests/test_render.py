@@ -508,12 +508,14 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
 @pytest.mark.render
 @pytest.mark.parametrize(("fmt", "boxes"), [("jpg", 1), ("png", 2)])
 def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
-    tmp_path: Path, fmt: str, boxes: int
+    tmp_path: Path, fmt: str, boxes: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A 16-bit png keeps every box, as an exr does."""
+    # Between the two hulls' excess: the test is which format is judged, not the cut.
+    monkeypatch.setattr(labels, "MIN_EXCESS_DE", 10.0)
     scenario = variant(
         cameras={"ir": {"width_px": 160, "height_px": 128}},
-        # The far hull reads as warm as the sea behind it.
+        # The far hull reads nearly as warm as the sea behind it.
         objects=[target("yacht", 300.0), target("yacht", 2000.0, 4.0, t_k=274.0)],
         sky={"solar_gain_k": 0.0},
         outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": fmt},

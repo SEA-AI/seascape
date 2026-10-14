@@ -21,6 +21,6 @@ heading_deg = 250.0
 
 [[objects]]
 asset = "patrol_vessel"
-range_m = 3500.0
+range_m = 4500.0
 bearing_deg = 6.0
 heading_deg = 250.0

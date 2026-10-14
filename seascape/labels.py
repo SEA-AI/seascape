@@ -6,7 +6,7 @@ integers, half a pixel off.
 """
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -24,15 +24,8 @@ FILENAME = "labels.json"
 # with the square of its length: 16 segments leave 1/256 of it.
 HORIZON_POINTS = 17
 
-# Judgement: about 1 arcmin a pixel. Ricco's area is 2.4 arcmin across with optics
-# corrected and the image stabilised on the retina (Tuten et al. 2018), π·1.2² ≈ 4.5
-# pixels, taken as 4; the 2.95 arcmin of natural viewing, about 7 pixels, would pool
-# zeros into a target smaller than that.
-RICCO_PX = 4
-# A square window of RICCO_PX.
-POOL_PX = round(math.sqrt(RICCO_PX))
-# The just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994).
-JND_DELTA_E = 2.3
+# Judgement: the excess below which a viewer stops seeing a target.
+MIN_EXCESS_DE = 1.0
 # Judgement: the narrowest flank, enough of a row for its median to outvote a wave.
 FLANK_PX = 8
 # Judgement: a target's own glare, blur and jpg ringing reach about this far.
@@ -99,10 +92,11 @@ class Dropped(Model):
     name: str
     range_m: float
     bearing_deg: float  # true, clockwise from north
-    reason: Literal["no_pixels", "contrast"]
-    # ΔE*ab, for "contrast" only: the target's pooled difference, the background's.
-    delta_e: float | None = None
-    clutter_delta_e: float | None = None
+    reason: Literal["no_pixels", "low_contrast"]
+    # For "low_contrast" only; bbox and area as an annotation's.
+    excess_de: float | None = None
+    bbox: tuple[int, int, int, int] | None = None
+    area: int | None = None
 
 
 class Labels(Model):
@@ -121,13 +115,17 @@ class Labels(Model):
         targets: Sequence[Target],
         radius_m: float,
         settings: Camera | None = None,
+        *,
+        faint: Mapping[str, float],
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
         the image as written, both top row first. `settings` is the scenario's camera,
-        whose sensor, lens and processing an EO image carries."""
-        judged = frame.dtype == np.uint8
+        whose sensor, lens and processing an EO image carries. A target in `faint`,
+        by name, is dropped with its excess ΔE*ab."""
         # Only an 8-bit EO frame went through the camera's chain.
-        grade = settings is not None and settings.band == "eo" and judged
+        grade = (
+            settings is not None and settings.band == "eo" and frame.dtype == np.uint8
+        )
         image = Image(
             id=len(self.images) + 1,
             file_name=camera.image,
@@ -150,7 +148,7 @@ class Labels(Model):
             mine = seen == target.pass_index
             ys, xs = rows[mine], columns[mine]
             east, north = np.subtract(target.centre_m, at)
-            where = {
+            where: dict[str, Any] = {
                 "image_id": image.id,
                 "name": target.name,
                 "range_m": math.hypot(east, north),
@@ -160,26 +158,24 @@ class Labels(Model):
                 self.dropped.append(Dropped(**where, reason="no_pixels"))
                 continue
             x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-            reach = FLANK_GAP_PX + flank_px(x1 - x0 + 1)
-            window = np.s_[y0 : y1 + 1, max(x0 - reach, 0) : x1 + 1 + reach]
-            if judged:
-                seen_by = contrast(index[window], frame[window], target.pass_index)
-                if seen_by is not None and seen_by[0] < JND_DELTA_E + seen_by[1]:
-                    self.dropped.append(
-                        Dropped(
-                            **where,
-                            reason="contrast",
-                            delta_e=seen_by[0],
-                            clutter_delta_e=seen_by[1],
-                        )
+            bbox = (x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+            if target.name in faint:
+                self.dropped.append(
+                    Dropped(
+                        **where,
+                        reason="low_contrast",
+                        excess_de=faint[target.name],
+                        bbox=bbox,
+                        area=len(xs),
                     )
-                    continue
+                )
+                continue
             self.annotations.append(
                 Annotation(
                     id=len(self.annotations) + 1,
                     image_id=image.id,
                     category_id=self._category(target),
-                    bbox=(x0, y0, x1 - x0 + 1, y1 - y0 + 1),
+                    bbox=bbox,
                     area=len(xs),
                     name=target.name,
                     range_m=where["range_m"],
@@ -258,19 +254,32 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
-def visible(index: np.ndarray, frame: np.ndarray, pass_index: int) -> bool:
-    """Whether a viewer tells the target from its background, in an 8-bit RGB or grey
-    frame: the target's largest differences from the background, pooled, against the
-    background's own at the same share, by a JND."""
-    seen_by = contrast(index, frame, pass_index)
-    return seen_by is None or seen_by[0] >= JND_DELTA_E + seen_by[1]
+def faint(
+    index: np.ndarray, frame: np.ndarray, targets: Sequence[Target]
+) -> dict[str, float]:
+    """The excess ΔE*ab of each target in an 8-bit frame that falls short of
+    MIN_EXCESS_DE. A deeper frame never went through a camera, so nothing is faint."""
+    if frame.dtype != np.uint8:
+        return {}
+    low = {}
+    for target in targets:
+        ys, xs = np.nonzero(index == target.pass_index)
+        if not len(xs):
+            continue
+        reach = FLANK_GAP_PX + flank_px(xs.max() - xs.min() + 1)
+        window = np.s_[
+            ys.min() : ys.max() + 1, max(xs.min() - reach, 0) : xs.max() + 1 + reach
+        ]
+        excess = excess_de(index[window], frame[window], target.pass_index)
+        if excess is not None and excess < MIN_EXCESS_DE:
+            low[target.name] = excess
+    return low
 
 
-def contrast(
-    index: np.ndarray, frame: np.ndarray, pass_index: int
-) -> tuple[float, float] | None:
-    """The target's pooled difference from its background and the background's own,
-    in ΔE*ab; None if no row of the target has a flank to compare with."""
+def excess_de(index: np.ndarray, frame: np.ndarray, pass_index: int) -> float | None:
+    """The target's mean ΔE*ab from its background, less its flanks' mean from the
+    same background; None if no row of the target has a flank. A local target-to-
+    clutter contrast (Schmieder & Weathersby 1983)."""
     lab = cielab(frame)
     mask = index == pass_index
     beside = flanks(index, pass_index)
@@ -278,33 +287,20 @@ def contrast(
     if behind is None:
         return None
     delta_e = np.linalg.norm(lab - behind, axis=2)
-    n = int(mask.sum())
-    target = ricco(pooled(delta_e, mask)[mask], n)
-    clutter = ricco(pooled(delta_e, beside)[beside], n)
-    return target, clutter
-
-
-def pooled(delta_e: np.ndarray, where: np.ndarray) -> np.ndarray:
-    """`where`'s differences as the eye pools them over Ricco's area, within which
-    only the total counts (Tuten et al. 2018): at each pixel, the best of the RICCO_PX
-    windows that cover it, the rest of a window counted as no difference. A
-    one-pixel glint counts a share of its difference; a patch that fills a window,
-    all of it."""
-    kernel = (POOL_PX, POOL_PX)
-    mean = cv2.blur(
-        np.where(where, delta_e, 0.0), kernel, borderType=cv2.BORDER_CONSTANT
-    )
-    # An even blur window ends at its pixel, so the windows covering a pixel end at it
-    # and one past; dilating from (0, 0) takes their best.
-    return cv2.dilate(mean, np.ones(kernel, np.uint8), anchor=(0, 0))
+    return float(delta_e[mask].mean() - delta_e[beside].mean())
 
 
 def cielab(frame: np.ndarray) -> np.ndarray:
     """An 8-bit RGB or grey frame in CIE 1976 L*a*b* (ISO/CIE 11664-4)."""
-    if frame.ndim == 2:
+    grey = frame.ndim == 2
+    if grey:
         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
     # Float, as 8-bit Lab is rescaled to 0 to 255.
-    return cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
+    lab = cv2.cvtColor(frame.astype(np.float32) / 255, cv2.COLOR_RGB2Lab)
+    if grey:
+        # OpenCV's D65 leaves grey a chroma of about 0.01 that bends with L*.
+        lab[..., 1:] = 0
+    return lab
 
 
 def flank_px(span_px: int) -> int:
@@ -331,31 +327,37 @@ def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
 def background(
     lab: np.ndarray, mask: np.ndarray, beside: np.ndarray
 ) -> np.ndarray | None:
-    """At the target's and its flanks' pixels, the median Lab of their row's flanks, or
-    of the nearest row's that has any; NaN elsewhere. None if no row has a flank."""
+    """At the pixels of `mask` and its flanks, each row's `_line`, or the nearest
+    row's that has a flank; NaN elsewhere. None if no row has a flank."""
     rows = np.flatnonzero(mask.any(axis=1))
-    medians = {y: np.median(lab[y, beside[y]], axis=0) for y in rows if beside[y].any()}
-    if not medians:
+    lines = {y: _line(lab[y], mask[y], beside[y]) for y in rows if beside[y].any()}
+    if not lines:
         return None
-    measured = np.array(list(medians))
+    measured = np.array(list(lines))
     behind = np.full(lab.shape, np.nan, np.float32)
     for y in rows:
-        behind[y, mask[y] | beside[y]] = medians[
-            measured[np.abs(measured - y).argmin()]
-        ]
+        points = lines[measured[np.abs(measured - y).argmin()]]
+        where = np.flatnonzero(mask[y] | beside[y])
+        if len(points) == 1:
+            behind[y, where] = points[0][1]
+            continue
+        (xl, left), (xr, right) = points
+        t = (where - xl) / (xr - xl)
+        if y not in lines:
+            # A borrowed line holds level past its flanks rather than run off them.
+            t = t.clip(0, 1)
+        behind[y, where] = left + np.outer(t, right - left)
     return behind
 
 
-def strongest(delta_e: np.ndarray, target_px: int) -> np.ndarray:
-    """Indices of the largest of `delta_e`, the share RICCO_PX is of `target_px`, at
-    least one."""
-    count = max(1, round(min(RICCO_PX, target_px) / target_px * len(delta_e)))
-    return np.argpartition(delta_e, len(delta_e) - count)[-count:]
-
-
-def ricco(delta_e: np.ndarray, target_px: int) -> float:
-    """The mean of `strongest`."""
-    return float(delta_e[strongest(delta_e, target_px)].mean())
+def _line(
+    lab: np.ndarray, mask: np.ndarray, beside: np.ndarray
+) -> list[tuple[float, np.ndarray]]:
+    """Each flank of a row as (mean column, median L*a*b*)."""
+    x0 = np.flatnonzero(mask)[0]
+    xs = np.flatnonzero(beside)
+    sides = [xs[xs < x0], xs[xs > x0]]
+    return [(s.mean(), np.median(lab[s], axis=0)) for s in sides if len(s)]
 
 
 def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, float]]:
