@@ -25,3 +25,9 @@ repos:
         language: system
         types_or: [python, pyi, jupyter, markdown]
         require_serial: true
+      - id: tombi-format
+        name: tombi format
+        entry: uvx tombi format
+        language: system
+        types: [toml]
+        require_serial: true
