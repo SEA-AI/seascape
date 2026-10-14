@@ -37,11 +37,13 @@ A job past the limits at the top of [`seascape/server.py`](../seascape/server.py
 On a machine with an NVIDIA GPU, Docker and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/):
 
 ```bash
-git clone https://github.com/SEA-AI/seascape.git
-cd seascape
-docker compose up -d --build
+mkdir seascape && cd seascape
+curl -fsSLO https://raw.githubusercontent.com/SEA-AI/seascape/main/compose.yaml
+docker compose up -d
 docker compose logs   # names the GPU backend
 ```
+
+To update, `docker compose pull && docker compose up -d`. From a checkout, `docker compose up -d --build` builds it instead.
 
 Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 
@@ -55,7 +57,5 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 echo "SEASCAPE_MAX_DURATION_S=120" >> .env
 docker compose up -d
 ```
-
-To update, `git pull` and run `docker compose up -d --build` again.
 
 Without Docker, `uv run seascape serve --host 0.0.0.0` serves from a checkout.
