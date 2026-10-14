@@ -179,6 +179,7 @@ def render(
                 sc.frame_set(frame)
                 # Both read matrix_world, which moves with the frame.
                 targets = _targets(built)
+                shot = []
                 for mount in mounts:
                     sc.camera = built.cameras[mount.name]
                     sc.render.resolution_x, sc.render.resolution_y = (
@@ -202,14 +203,27 @@ def render(
                     camera = scene.calibrate(built, mount, file_name)
                     cameras.append(camera)
                     index = _pixels(passes / f"{mount.name}.index.exr")[::-1, :, 0]
+                    shot.append(
+                        (
+                            mount,
+                            camera,
+                            np.rint(index).astype(int),
+                            _frame(into / file_name),
+                        )
+                    )
+                faints = [labels.faint(i, f, targets) for _, _, i, f in shot]
+                for (mount, camera, index, image), low in zip(
+                    shot, faints, strict=True
+                ):
                     truth.add(
                         camera,
                         time_s,
-                        np.rint(index).astype(int),
-                        _frame(into / file_name),
+                        index,
+                        image,
                         targets,
                         radius_m,
                         mount.camera,
+                        faint=low,
                     )
                 # Every frame, so a render that dies keeps what it wrote.
                 _write_truth(into, cameras, truth)

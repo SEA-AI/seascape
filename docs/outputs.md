@@ -8,11 +8,11 @@ import fiftyone as fo
 fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 ```
 
-A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. Each of its pixels is compared in CIELAB with the median of the background beside it on its row, past the few pixels its own glow reaches; each difference is pooled over the fovea's Ricco area (Tuten et al. 2018), so a one-pixel glint counts a share of its own and a hull all of its. The target's largest pooled differences must reach the background's own at the same share plus a just-noticeable ΔE*ab (Mahy, Van Eycken & Oosterlinck 1994), so the texture of the sea or sky earns no box, and a glitter path hides only what it outshines. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
+A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. On each of its rows the background is the line through the medians of the background either side, past the few pixels its own glare reaches. The target's mean ΔE*ab from that line, less the flanks' mean ΔE*ab from it, is its excess, a local target-to-clutter contrast (Schmieder & Weathersby 1983). Under `labels.MIN_EXCESS_DE` the target is dropped. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
 
-Every target left without a box is listed under `dropped`, with its image, range and bearing and the reason: `no_pixels` (out of frame, or hidden) or `contrast` (the target's pooled ΔE*ab fell short of the background's own plus a JND; both are listed).
+Every target left without a box is listed under `dropped`, with its image, range, bearing and reason: `no_pixels` (out of frame or hidden), or `low_contrast`, with its excess, box and area.
 
-![How a target's visibility is decided, checked against the scene rendered without it](visibility.png)
+![A ship too faint to box](visibility.png)
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
 
