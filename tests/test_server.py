@@ -1,6 +1,7 @@
 """The render server's checks, before a job starts. No Blender."""
 
 import asyncio
+import json
 import os
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Any
 
 import pytest
 from mcp import Client
+from PIL import Image
 
 from seascape import server
 from seascape.config import load_variants
@@ -113,3 +115,36 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
         first,
         first + 2,
     ]
+
+
+def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.setattr(server, "_jobs", {})
+
+    async def render(*args: str) -> None:  # Blender's frames, without Blender
+        (job,) = server._jobs.values()
+        for scene in job.scenes:
+            folder = job.folder / str(scene.seed)  # as `render --variants` names it
+            folder.mkdir(parents=True, exist_ok=True)
+            for mount in scene.mounts:
+                frame = folder / f"{mount.name}.{scene.outputs.format}"
+                Image.new("RGB", (64, 48)).save(frame)
+
+    monkeypatch.setattr(server, "_seascape", render)
+
+    async def call() -> Any:
+        async with Client(server.server) as client:
+            started = await client.call_tool("render", {"variants": 2})
+            job = started.structured_content["job"]
+            return await client.call_tool("render_result", {"job": job})
+
+    result = asyncio.run(call())
+    report = json.loads(result.content[0].text)
+    assert report["status"] == "done", report
+    assert report["files"][0].endswith(".zip")
+    assert sum(url.endswith("/preview.jpg") for url in report["files"]) == 2
+    assert [(c.type, c.mime_type) for c in result.content[1:]] == [
+        ("image", "image/jpeg")
+    ] * 2
