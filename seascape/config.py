@@ -756,8 +756,8 @@ class Outputs(Model):
     )
     keep_if_any_sees: bool = Field(
         default=False,
-        description="Boxes a target in every camera of a band at an instant when any "
-        "of them sees it.",
+        description="Boxes a target in every camera of a band that has it in frame, "
+        "at an instant when any of them sees it.",
     )
 
     @property
