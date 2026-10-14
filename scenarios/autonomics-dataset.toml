@@ -45,6 +45,8 @@ range_m = { optical_depth = [1.0, 1.5] }
 bearing_deg = { uniform = [-17.0, 17.0] }
 heading_from = "line_of_sight"
 # Weight 4 bow on (0) and stern on (180), 1 elsewhere.
+# Same odds, any heading rather than 20 degree steps, but a seed draws a new scene:
+# heading_deg = { choice = [0.0, 180.0, { uniform = [0.0, 360.0] }], weights = [4, 4, 26] }
 heading_deg = { choice = [
     0.0,
     20.0,
