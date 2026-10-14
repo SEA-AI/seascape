@@ -125,11 +125,12 @@ These mirror CI; all must pass.
 ```bash
 uvx ruff check .
 uvx ruff format --check .
+uvx tombi format --check
 uvx ty check
 uv run pytest
 ```
 
-ruff and ty go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates the ruff lines.
+ruff, tombi and ty go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates the ruff and tombi lines.
 
 The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 

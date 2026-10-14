@@ -102,10 +102,45 @@ draught_m = 4.2
 bow_deg = 0.0
 triangles = 362189
 texture_px = [
-    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
-    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
-    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
-    1024, 1024, 1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
 ]
 licence = "CC-BY-4.0"
 attribution = "littoral mission vessel by fxmdeveloper, https://sketchfab.com/3d-models/644999231c034c959c6091b00ed6c50f"
@@ -125,11 +160,60 @@ draught_m = 3.55
 bow_deg = 180.0
 triangles = 821196
 texture_px = [
-    2048, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
-    1024, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 256, 256, 256, 256,
+    2048,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    256,
+    256,
+    256,
+    256,
 ]
 licence = "CC-BY-4.0"
 attribution = "Coaster 01 by gogiart, https://sketchfab.com/3d-models/e7cd3749189445fa8a0b928e5fb95814"
@@ -149,10 +233,54 @@ draught_m = 5.48
 bow_deg = 180.0
 triangles = 322533
 texture_px = [
-    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
-    1024, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 256, 256, 256, 256, 256, 256,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    256,
+    256,
+    256,
+    256,
+    256,
+    256,
 ]
 licence = "CC-BY-4.0"
 attribution = "Multi-purpose Vessel V by gogiart, https://sketchfab.com/3d-models/2f685e27d6a14e3fb65a12b9316b399f"
@@ -173,9 +301,42 @@ draught_m = 7.48
 bow_deg = 180.0
 triangles = 336146
 texture_px = [
-    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 256, 256, 256, 256,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    256,
+    256,
+    256,
+    256,
     256,
 ]
 licence = "CC-BY-4.0"
@@ -233,11 +394,65 @@ draught_m = 13.8
 bow_deg = 180.0
 triangles = 1008321
 texture_px = [
-    2048, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
-    1024, 1024, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512, 512,
-    512, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256,
+    2048,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    1024,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    512,
+    256,
+    256,
+    256,
+    256,
+    256,
+    256,
+    256,
+    256,
+    256,
+    256,
 ]
 licence = "CC-BY-4.0"
 attribution = "Tanker by gogiart, https://sketchfab.com/3d-models/31bb4e748801479ea5eab0b297d68622"
@@ -258,15 +473,19 @@ triangles = 13014
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"
 attribution = "Lateral Sea Marker by Kuutti Siitonen, https://polyhaven.com/a/lateral_sea_marker"
+
 [lateral_mark.files."lateral_sea_marker.bin"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/lateral_sea_marker/lateral_sea_marker.bin"
 sha256 = "1e02ea4a18efac1221f73e0a2ad3a9999541eff967e62a5d6f572e0de1ebd488"
+
 [lateral_mark.files."textures/lateral_sea_marker_arm_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lateral_sea_marker/lateral_sea_marker_arm_2k.jpg"
 sha256 = "70e3fa8d95df212c2045af586891c3e975422aea95ccb285e402be6317e0453b"
+
 [lateral_mark.files."textures/lateral_sea_marker_diff_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lateral_sea_marker/lateral_sea_marker_diff_2k.jpg"
 sha256 = "1d3b6c78825af9d794a814804c0b21a6c4a0c992901820a8f9bc1b317b11db67"
+
 [lateral_mark.files."textures/lateral_sea_marker_nor_gl_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lateral_sea_marker/lateral_sea_marker_nor_gl_2k.jpg"
 sha256 = "904f59238995c859c6977ebcf34fab34cf724bcf376002c2a1c935683f7c70ff"
@@ -287,18 +506,23 @@ triangles = 12240
 texture_px = [2048, 2048, 2048, 2048]
 licence = "CC0-1.0"
 attribution = "Ocean Buoy by Mateusz Sadek, https://polyhaven.com/a/ocean_buoy"
+
 [ocean_buoy.files."ocean_buoy.bin"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/ocean_buoy/ocean_buoy.bin"
 sha256 = "b3c1f9c8170b9c538f8540f324e4b3707b842d37705dda2dfc95d0548b521e80"
+
 [ocean_buoy.files."textures/ocean_buoy_arm_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_arm_2k.jpg"
 sha256 = "1d3a7da4792384cfaa84430b5f26b1902a34d87803f01c5e852c613c5b1f93c8"
+
 [ocean_buoy.files."textures/ocean_buoy_diff_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_diff_2k.jpg"
 sha256 = "bcbf400042943b38527d327adab17502fb5e672b5c86e684382193ee1daf730d"
+
 [ocean_buoy.files."textures/ocean_buoy_emission_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_emission_2k.jpg"
 sha256 = "9f1ae302f83eaa12f183f10b6883ab83c331fd55133d06dcef246573a645ceee"
+
 [ocean_buoy.files."textures/ocean_buoy_nor_gl_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/ocean_buoy/ocean_buoy_nor_gl_2k.jpg"
 sha256 = "bb302687cb174769a5c995842340cbd9569953b2d5afb643f94361ffd1d558f0"
@@ -351,15 +575,19 @@ triangles = 101802
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"
 attribution = "Dead Tree Trunk by Rob Tuytel, https://polyhaven.com/a/dead_tree_trunk"
+
 [log.files."dead_tree_trunk.bin"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dead_tree_trunk/dead_tree_trunk.bin"
 sha256 = "c1ac6b3195246e8647a28eee2fbfdd4712a045c7cf2dcb4f5abcc2d40a446ca6"
+
 [log.files."textures/dead_tree_trunk_arm_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/dead_tree_trunk/dead_tree_trunk_arm_2k.jpg"
 sha256 = "f244cfbfab760d877980065593710f74947bb70eac9d47d9a189537d23ba1f6b"
+
 [log.files."textures/dead_tree_trunk_diff_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/dead_tree_trunk/dead_tree_trunk_diff_2k.jpg"
 sha256 = "57b3f04a2b9b1017abfefbbca1b5d4f5421960fefd964a0b9dd4036be4d58d0c"
+
 [log.files."textures/dead_tree_trunk_nor_gl_2k.jpg"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/dead_tree_trunk/dead_tree_trunk_nor_gl_2k.jpg"
 sha256 = "9447959386aa3ee0e3552bd095c3dbbcb13c58cc6a87cb4b51cc4517b695040c"
