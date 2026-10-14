@@ -212,6 +212,9 @@ def render(
                         )
                     )
                 faints = [labels.faint(i, f, targets) for _, _, i, f in shot]
+                if outputs.keep_if_any_sees:
+                    presents = [labels.present(i, targets) for _, _, i, _ in shot]
+                    faints = labels.agreed(faints, presents)
                 for (mount, camera, index, image), low in zip(
                     shot, faints, strict=True
                 ):

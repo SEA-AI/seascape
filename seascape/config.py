@@ -754,6 +754,11 @@ class Outputs(Model):
         description="Repeats seamlessly: each period rounds to a whole fraction of "
         "duration_s.",
     )
+    keep_if_any_sees: bool = Field(
+        default=False,
+        description="Boxes a target in every camera of a band at an instant when any "
+        "of them sees it.",
+    )
 
     @property
     def times_s(self) -> list[float]:

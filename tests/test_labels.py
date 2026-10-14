@@ -580,6 +580,21 @@ def test_a_faint_target_out_of_frame_is_dropped_for_having_no_pixels() -> None:
     assert gone.reason == "no_pixels"
 
 
+@pytest.mark.parametrize(
+    ("elsewhere", "expected"),
+    [({"t1"}, [{}, {}]), (set(), [{"t1": 0.3}, {}])],
+    ids=["seen by the other camera", "out of the other camera's frame"],
+)
+def test_a_target_faint_in_one_camera_is_kept_when_another_sees_it(
+    elsewhere: set[str], expected: list[dict[str, float]]
+) -> None:
+    faints = [{"t1": 0.3}, {}]
+
+    found = labels.agreed(faints, [{"t1"}, elsewhere])
+
+    assert found == expected
+
+
 def test_a_merge_renumbers_the_dropped_images(tmp_path) -> None:
     folders = []
     for seed in (7, 8):

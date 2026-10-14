@@ -993,6 +993,31 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "keep_if_any_sees": {
+          "title": "Keep If Any Sees",
+          "description": "Boxes a target in every camera of a band at an instant when any of them sees it.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Outputs",
