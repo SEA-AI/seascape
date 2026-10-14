@@ -10,6 +10,8 @@ fo.Dataset.from_dir("out/", fo.types.COCODetectionDataset, data_path=".")
 
 A target a viewer cannot tell from its surroundings gets no box, as an occluded one gets none. On each of its rows the background is the line through the medians of the background either side, past the few pixels its own glare reaches. The target's mean ΔE*ab from that line, less the flanks' mean ΔE*ab from it, is its excess, a local target-to-clutter contrast (Schmieder & Weathersby 1983). Under `labels.MIN_EXCESS_DE` the target is dropped. Only an 8-bit frame as written is judged, EO or LWIR: an exr or a 16-bit LWIR png keeps every box.
 
+With `outputs.keep_if_any_sees`, a target that any camera of a band sees at an instant is boxed in every camera of that band that has it in frame.
+
 Every target left without a box is listed under `dropped`, with its image, range, bearing and reason: `no_pixels` (out of frame or hidden), or `low_contrast`, with its excess, box and area.
 
 ![A ship too faint to box](visibility.png)

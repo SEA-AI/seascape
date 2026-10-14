@@ -254,6 +254,20 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
+def present(index: np.ndarray, targets: Sequence[Target]) -> set[str]:
+    return {t.name for t in targets if (index == t.pass_index).any()}
+
+
+def agreed(
+    faints: Sequence[Mapping[str, float]], presents: Sequence[set[str]]
+) -> list[dict[str, float]]:
+    """Each camera's faint targets, less those any camera of the same instant sees."""
+    seen = set().union(
+        *(names - low.keys() for low, names in zip(faints, presents, strict=True))
+    )
+    return [{n: e for n, e in low.items() if n not in seen} for low in faints]
+
+
 def faint(
     index: np.ndarray, frame: np.ndarray, targets: Sequence[Target]
 ) -> dict[str, float]:
