@@ -1029,22 +1029,22 @@ def test_a_sensor_is_no_narrower_than_its_image() -> None:
         )
 
 
-def test_the_autonomics_dataset_sees_each_scene_through_two_lenses() -> None:
+@pytest.mark.parametrize("seed", range(3))
+def test_the_autonomics_dataset_sees_each_scene_through_two_lenses(seed: int) -> None:
     """Only the field of view differs: the camera settings are the rig's, drawn once."""
-    for seed in range(3):
-        scenario = load(AUTONOMICS, [f"seed = {seed}"])
-        eo42, eo45 = (scenario.rigs["bow"].cameras[name] for name in ("eo42", "eo45"))
+    scenario = load(AUTONOMICS, [f"seed = {seed}"])
+    eo42, eo45 = (scenario.rigs["bow"].cameras[name] for name in ("eo42", "eo45"))
+    of_interest = [
+        o for o in scenario.objects if o.asset in {"short_sea_freighter", "coaster"}
+    ]
+    depths = [o.range_m * scenario.sky.extinction_per_m for o in of_interest]
 
-        assert (eo42.hfov_deg, eo45.hfov_deg) == (42.0, 45.0)
-        assert (eo42.sensor, eo42.lens, eo42.processing) == (
-            eo45.sensor,
-            eo45.lens,
-            eo45.processing,
-        )
-        assert -10.0 <= scenario.rigs["bow"].pitch_deg <= -5.0
-        of_interest = [
-            o for o in scenario.objects if o.asset in {"short_sea_freighter", "coaster"}
-        ]
-        assert of_interest
-        for spec in of_interest:
-            assert 1.0 <= spec.range_m * scenario.sky.extinction_per_m <= 1.5
+    assert (eo42.hfov_deg, eo45.hfov_deg) == (42.0, 45.0)
+    assert (eo42.sensor, eo42.lens, eo42.processing) == (
+        eo45.sensor,
+        eo45.lens,
+        eo45.processing,
+    )
+    assert -10.0 <= scenario.rigs["bow"].pitch_deg <= -5.0
+    assert depths
+    assert all(1.0 <= depth <= 1.5 for depth in depths)
