@@ -85,7 +85,7 @@ An object's `range_m` can instead be `{ optical_depth = [lo, hi] }`, drawn evenl
 
 A table set over a choice of tables goes into every option, so `--set sky.visibility_km=10` keeps the sky drawn and fixes only its visibility. [`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
 
-An object's `count` makes that many (0 makes none), each drawn anew, and `heading_from = "line_of_sight"` turns its `heading_deg` from the line from the ownship to it, so 0 points away and 180 towards. [`scenarios/dataset.toml`](../scenarios/dataset.toml) draws its hulls that way. [`scenarios/autonomics-dataset.toml`](../scenarios/autonomics-dataset.toml) renders each scene through a 42 and a 45 degree lens.
+An object's `count` makes that many (0 makes none), each drawn anew, and `heading_from = "line_of_sight"` turns its `heading_deg` from the line from the ownship to it, so 0 points away and 180 towards. [`scenarios/dataset.toml`](../scenarios/dataset.toml) draws its hulls that way.
 
 `seed` decides every draw, and `--variants` renders consecutive seeds, each into a folder named for its seed when there are several. A seed whose hulls meet is skipped for the next:
 
