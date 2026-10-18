@@ -76,8 +76,8 @@ class Job:
     folder: Path
     scenario: str
     scenes: list[Scenario]
-    created: float = field(default_factory=time.time)
-    started: float | None = None
+    created_s: float = field(default_factory=time.time)
+    started_s: float | None = None
     state: str = "queued"
     error: str | None = None
     task: asyncio.Task[None] | None = None
@@ -198,6 +198,9 @@ async def render(
                 "/" in n or n.endswith(".toml") for n in _includes(tomllib.loads(line))
             ):
                 raise ToolError(f"{line!r}: an override names presets, never files")
+        first = await asyncio.to_thread(load, path, lines)
+        # A scene the full check would refuse, before loading the other variants.
+        _refuse_oversized([first])
         scenes = await asyncio.to_thread(load_variants, path, lines, variants)
     # pydantic and tomllib raise ValueError, a bad preset TypeError or OSError.
     except (ValueError, TypeError, OSError) as error:
@@ -232,7 +235,7 @@ async def _run(job: Job, path: Path, overrides: list[str], variants: int) -> Non
     sets = [arg for line in overrides for arg in ("--set", line)]
     try:
         async with _gpu:
-            job.state, job.started = "running", time.time()
+            job.state, job.started_s = "running", time.time()
             await _seascape(
                 "render", str(path), "-o", str(job.folder), "--variants",
                 str(variants), *sets,
@@ -299,8 +302,8 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
     else:
         done, total = found.images, found.total
         report["images"] = f"{done} of {total}"
-        if done and found.started is not None:
-            pace_s = (time.time() - found.started) / done
+        if done and found.started_s is not None:
+            pace_s = (time.time() - found.started_s) / done
             report["remaining_s"] = round(pace_s * (total - done))
     return [json.dumps(report, indent=1), *previews]
 
@@ -317,7 +320,7 @@ def jobs(ctx: Context) -> dict[str, Any]:
                 "scenario": job.scenario,
                 "status": job.state,
                 "images": job.total,
-                "age_s": round(time.time() - job.created),
+                "age_s": round(time.time() - job.created_s),
                 # The archive is written when the job finishes.
                 **(
                     {
