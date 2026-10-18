@@ -47,5 +47,6 @@ jobs:
           tags: |
             ghcr.io/sea-ai/seascape:latest
             ghcr.io/sea-ai/seascape:${{ env.SHA }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # In the registry: the Actions cache is shared with CI's and holds 10 GB.
+          cache-from: type=registry,ref=ghcr.io/sea-ai/seascape:buildcache
+          cache-to: type=registry,ref=ghcr.io/sea-ai/seascape:buildcache,mode=max
