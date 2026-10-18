@@ -47,6 +47,47 @@ def test_an_unknown_scenario_is_refused() -> None:
     assert not server._jobs
 
 
+@pytest.mark.parametrize(
+    ("overrides", "variants", "refusal"),
+    [
+        (["outputs.duration_s = 61.0"], 1, "a clip lasts"),
+        (
+            ["rigs.bow.cameras.eo = { width_px = 7680, height_px = 4320 }"],
+            1,
+            "pixels",
+        ),
+        (["outputs.duration_s = 60.0", "outputs.fps = 100"], 2, "images"),
+    ],
+)
+def test_an_oversized_job_is_refused(
+    overrides: list[str], variants: int, refusal: str
+) -> None:
+    result = _call("render", overrides=overrides, variants=variants)
+    assert result.is_error
+    assert refusal in result.content[0].text
+    assert not server._jobs
+
+
+def test_a_full_disk_refuses_a_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.setattr(server, "MIN_FREE_GB", 2.0**50)
+    result = _call("render")
+    assert result.is_error
+    assert "GB free" in result.content[0].text
+    assert not server._jobs
+
+
+def test_jobs_reports_the_free_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    listed = _call("jobs").structured_content
+    assert listed["jobs"] == []
+    assert listed["free_gb"] > 0
+
+
 def test_a_job_older_than_a_day_is_deleted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -70,7 +111,7 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     for seed in (first, first + 2):
         (tmp_path / str(seed)).mkdir()
     (tmp_path / "labels.json").touch()
-    job = server.Job(tmp_path, scenes)
+    job = server.Job(tmp_path, "open-sea", scenes)
     assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
     assert [s.seed for s in server._written(job, SCENARIOS / "open-sea.toml", [])] == [
         first,
@@ -124,3 +165,38 @@ def test_a_hung_gpu_probe_still_serves(
     server.serve("127.0.0.1", 0)
     assert served
     assert "no answer" in capsys.readouterr().out
+
+
+def test_jobs_lists_a_finished_job_whose_archive_is_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    job = server.Job(tmp_path / "gone", "open-sea", scenes, state="done")
+    monkeypatch.setattr(server, "_jobs", {"gone": job})
+    (listed,) = _call("jobs").structured_content["jobs"]
+    assert listed["status"] == "done"
+    assert "archive" not in listed
+
+
+@pytest.mark.parametrize(("value", "expected"), [("", 7.0), ("2.5", 2.5)])
+def test_a_limit_reads_the_environment(
+    value: str, expected: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SEASCAPE_PROBE", value)
+    assert server._limit("PROBE", 7.0) == expected
+
+
+@pytest.mark.parametrize("value", ["4k", "nan", "inf", "0", "-1"])
+def test_a_limit_that_is_not_a_positive_number_names_its_variable(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SEASCAPE_PROBE", value)
+    with pytest.raises(ValueError, match="SEASCAPE_PROBE"):
+        server._limit("PROBE", 7.0)
+
+
+def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
+    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    job = server.Job(tmp_path, "open-sea", scenes, state="finishing")
+    assert not job.waiting
