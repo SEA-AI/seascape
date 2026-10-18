@@ -199,25 +199,49 @@ def test_a_frame_renders_in_one_tile(width_px: int) -> None:
     assert bpy.context.scene.cycles.tile_size >= width_px
 
 
-def test_a_relative_output_reaches_blender_absolute(
+def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handed: list[str] = []
 
-    def capture(**_: object) -> None:
+    def writes_nothing(**_: object) -> set[str]:
         handed.append(bpy.context.scene.render.filepath)
-        raise RuntimeError("captured")
+        return {"FINISHED"}
 
     # bpy.ops.render is rebuilt on every access, so patch the attribute that holds it.
-    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=capture))
+    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=writes_nothing))
     monkeypatch.chdir(tmp_path)
     scenario = variant(outputs={"bands": ["eo"]})
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
 
-    with pytest.raises(RuntimeError, match="captured"):
+    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
         render.render(scenario, Path("out"))
 
     assert Path(handed[0]).is_absolute()
     assert Path(handed[0]).parent == tmp_path / "out"
+
+
+@pytest.mark.parametrize(
+    ("returns", "writes"),
+    [({"FINISHED"}, None), ({"FINISHED"}, b""), ({"CANCELLED"}, b"partial")],
+)
+def test_an_unwritten_frame_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returns: set[str],
+    writes: bytes | None,
+) -> None:
+    path = tmp_path / "bow.png"
+
+    def blender(**_: object) -> set[str]:
+        if writes is not None:
+            path.write_bytes(writes)
+        return returns
+
+    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=blender))
+
+    with pytest.raises(RuntimeError, match="frame 0 was not written"):
+        render._render_still(path, "frame 0")
 
 
 @pytest.mark.render
@@ -486,11 +510,11 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     )
     real, calls = bpy.ops.render.render, []
 
-    def dies_on_the_third(**kwargs: object) -> None:
+    def dies_on_the_third(**kwargs: object) -> set[str]:
         calls.append(None)
         if len(calls) == 3:
             raise RuntimeError("killed")
-        real(**kwargs)
+        return real(**kwargs)
 
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=dies_on_the_third))
     with pytest.raises(RuntimeError, match="killed"):
