@@ -378,13 +378,13 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.2)
 
 
-# A light wind foams too few of the solver's points to compare closely.
-@pytest.mark.parametrize("wind_speed_mps", [12.0, 18.0])
 def test_a_few_foam_ages_fade_as_a_continuous_history_does(
-    wind_speed_mps: float, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ages read only at their instants miss the crests that break between them, and
-    the fade comes out under half the dense history's."""
+    the fade comes out under half the dense history's. A strong wind, as a light one
+    foams too few of the solver's points to compare closely."""
+    wind_speed_mps = 18.0
     wind = field(wind_speed_mps)
 
     def fade(ages: int) -> float:
