@@ -41,13 +41,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `latest` is main's tip only: a manual run from a branch, or a CI run that
+      # finished after a newer commit's, publishes just its SHA.
+      - id: tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tags="ghcr.io/sea-ai/seascape:$SHA"
+          if [ "$(gh api "repos/$GH_REPO/commits/main" --jq .sha)" = "$SHA" ]; then
+            tags="$tags,ghcr.io/sea-ai/seascape:latest"
+          fi
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v7
         with:
           context: ${{ github.server_url }}/${{ github.repository }}.git#${{ env.SHA }}
           push: true
-          tags: |
-            ghcr.io/sea-ai/seascape:latest
-            ghcr.io/sea-ai/seascape:${{ env.SHA }}
+          tags: ${{ steps.tags.outputs.tags }}
           # In the registry: the Actions cache is shared with CI's and holds 10 GB.
           cache-from: type=registry,ref=ghcr.io/sea-ai/seascape:buildcache
           cache-to: type=registry,ref=ghcr.io/sea-ai/seascape:buildcache,mode=max
