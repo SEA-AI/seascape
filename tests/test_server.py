@@ -194,3 +194,9 @@ def test_a_limit_that_is_not_a_positive_number_names_its_variable(
     monkeypatch.setenv("SEASCAPE_PROBE", value)
     with pytest.raises(ValueError, match="SEASCAPE_PROBE"):
         server._limit("PROBE", 7.0)
+
+
+def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
+    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    job = server.Job(tmp_path, "open-sea", scenes, state="finishing")
+    assert not job.waiting

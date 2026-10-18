@@ -250,6 +250,8 @@ async def _run(job: Job, path: Path, overrides: list[str], variants: int) -> Non
             for scene, folder in zip(job.scenes, job.folders, strict=True):
                 if len(scene.outputs.times_s) > 1:
                     await _seascape("video", str(folder))
+        # Off the GPU: the next job starts while this one zips.
+        job.state = "finishing"
         await asyncio.to_thread(_finish, job)
         job.state = "done"
     except Exception as error:  # whatever it was, the client polling is told

@@ -50,7 +50,7 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 | variable | sets |
 |---|---|
 | `SEASCAPE_RENDERS` | the renders' folder, `renders/` beside `compose.yaml` unless set |
-| `SEASCAPE_PORT` | the port |
+| `SEASCAPE_PORT` | the port, in place of 8765 in the URLs above |
 | `SEASCAPE_MAX_DURATION_S`, `SEASCAPE_MAX_PIXELS`, `SEASCAPE_MAX_IMAGES`, `SEASCAPE_MIN_FREE_GB` | a job's limits, per camera for pixels |
 
 ```bash
