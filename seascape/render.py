@@ -130,7 +130,7 @@ def _commit() -> str | None:
 
 def _info(scenario: Scenario) -> dict[str, Any]:
     """COCO's info block, and what it takes to reproduce the render."""
-    devices = bpy.context.preferences.addons["cycles"].preferences.devices
+    preferences = bpy.context.preferences.addons["cycles"].preferences
     gpu = bpy.context.scene.cycles.device == "GPU"
     return {
         "version": version("seascape"),
@@ -138,7 +138,9 @@ def _info(scenario: Scenario) -> dict[str, Any]:
         "commit": _commit(),
         "blender": bpy.app.version_string,
         "blender_build": bpy.app.build_hash.decode(),
-        "devices": [d.name for d in devices if d.use] if gpu else ["CPU"],
+        # One card is listed under CUDA and OPTIX alike, by the same name.
+        "backend": preferences.compute_device_type if gpu else "CPU",
+        "devices": [d.name for d in preferences.devices if d.use] if gpu else ["CPU"],
         "scenario": scenario.model_dump(mode="json"),
     }
 

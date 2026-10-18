@@ -525,3 +525,13 @@ def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
 
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
     assert len(truth.annotations) == boxes
+
+
+def test_an_install_without_git_names_the_image_s_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(render, "__file__", str(tmp_path / "seascape" / "render.py"))
+    monkeypatch.setenv("SEASCAPE_COMMIT", "abc123")
+    assert render._commit() == "abc123"
+    monkeypatch.setenv("SEASCAPE_COMMIT", "")
+    assert render._commit() is None
