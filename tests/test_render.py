@@ -199,38 +199,26 @@ def test_a_frame_renders_in_one_tile(width_px: int) -> None:
     assert bpy.context.scene.cycles.tile_size >= width_px
 
 
-def test_a_relative_output_reaches_blender_absolute(
+def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handed: list[str] = []
 
-    def capture(**_: object) -> None:
+    def writes_nothing(**_: object) -> set[str]:
         handed.append(bpy.context.scene.render.filepath)
-        raise RuntimeError("captured")
+        return {"FINISHED"}
 
     # bpy.ops.render is rebuilt on every access, so patch the attribute that holds it.
-    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=capture))
+    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=writes_nothing))
     monkeypatch.chdir(tmp_path)
     scenario = variant(outputs={"bands": ["eo"]})
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
 
-    with pytest.raises(RuntimeError, match="captured"):
+    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
         render.render(scenario, Path("out"))
 
     assert Path(handed[0]).is_absolute()
     assert Path(handed[0]).parent == tmp_path / "out"
-
-
-def test_a_frame_blender_did_not_write_raises(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    scenario = variant(outputs={"bands": ["eo"]})
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
-    monkeypatch.setattr(
-        bpy.ops, "render", SimpleNamespace(render=lambda **_: {"FINISHED"})
-    )
-
-    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
-        render.render(scenario, tmp_path)
 
 
 @pytest.mark.parametrize(
