@@ -550,7 +550,7 @@ def _set_triple(
 
 def _height_group(tall: tuple[Wave, ...]) -> bpy.types.NodeTree:
     """The drawn height of `tall` at `Position`, (east, north, time), faded as the
-    normal is. One group, so each fixed-point step adds one node to the sea's tree."""
+    normal is. One group, so each parallax step adds one node to the sea's tree."""
     group, given, out = _group(
         "sea_height",
         (("Position", "Vector"), *_FOOTPRINT),

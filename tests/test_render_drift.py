@@ -1236,6 +1236,6 @@ def test_parallax_lands_on_the_drawn_height() -> None:
     sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01
     misses = shoot((480, 270), "parallax_probe")
-    # Three fixed-point steps miss by 0.3 m at the 99th percentile here, and draw
-    # stripes down the face behind a crest.
+    # Fixed-point steps alone fail this, and draw stripes down the face behind a crest.
+    # The top quarter holds the sky, whose light is no miss.
     assert np.percentile(misses[misses.shape[0] // 4 :], 99) < 0.05
