@@ -1,0 +1,14 @@
+services:
+  seascape:
+    build: .
+    ports: ["8765:8765"]
+    environment: [SEASCAPE_ALLOWED_HOSTS]
+    volumes: ["cache:/root/.cache/seascape"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+volumes:
+  cache:

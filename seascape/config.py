@@ -1093,6 +1093,16 @@ def _range_by_optical_depth(data: dict[str, Any]) -> None:
         spec["range_m"] = depth["drawn_optical_depth"] / extinction_per_m
 
 
+def load_variants(
+    path: str | Path, overrides: Iterable[str] = (), count: int = 1
+) -> list[Scenario]:
+    """`count` scenarios from consecutive seeds, the file's own first."""
+    overrides = list(overrides)
+    first = load(path, overrides)
+    seeds = range(first.seed + 1, first.seed + count)
+    return [first, *(load(path, [*overrides, f"seed = {seed}"]) for seed in seeds)]
+
+
 def json_schema() -> dict[str, Any]:
     """The scenario's JSON schema, in which any field can be a draw."""
     schema = Scenario.model_json_schema()
