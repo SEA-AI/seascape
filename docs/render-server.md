@@ -45,7 +45,7 @@ docker compose up -d
 docker compose logs   # names the GPU backend
 ```
 
-To update, `docker compose pull && docker compose up -d`. From a checkout, `docker compose up -d --build` builds it instead.
+To update, `docker compose pull && docker compose up -d`. From a checkout, `SEASCAPE_COMMIT=$(git rev-parse HEAD) docker compose up -d --build` builds it instead, and its labels name that commit.
 
 Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 

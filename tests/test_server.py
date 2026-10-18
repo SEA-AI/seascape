@@ -209,6 +209,8 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
 ) -> None:
     monkeypatch.setattr(server, "RENDERS", tmp_path)
     monkeypatch.setattr(server, "_jobs", {})
+    # A lock binds to the first event loop that waits on it.
+    monkeypatch.setattr(server, "_gpu", asyncio.Lock())
 
     async def render(*args: str) -> None:  # Blender's frames, without Blender
         (job,) = server._jobs.values()
