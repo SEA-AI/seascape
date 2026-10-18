@@ -528,17 +528,24 @@ def foam_ages_s() -> np.ndarray:
 def breaking_omega_rad_s(breaking: tuple[Wave, ...]) -> float:
     """The mean frequency of the breakers' downward acceleration: m1 / m0 of its
     spectrum, each wave weighing (a k)^2."""
+    if not breaking:
+        return 0.0
     power = np.array([(w.amplitude_m * w.k_rad_m) ** 2 for w in breaking])
     omega = np.array([w.omega_rad_s for w in breaking])
     return float(np.dot(power, omega) / power.sum())
 
 
-def foam_reach_rad(breaking: tuple[Wave, ...]) -> np.ndarray:
-    """Per foam age, the crests' phase across half its window: the window runs midway
-    to the ages either side, from age 0."""
+def foam_windows_s() -> tuple[np.ndarray, np.ndarray]:
+    """Per foam age, the middle and half-width in seconds of the stretch of the past it
+    reads: midway to the ages either side, from age 0 to the oldest."""
     ages = foam_ages_s()
     edges = np.concatenate([[ages[0]], (ages[1:] + ages[:-1]) / 2, [ages[-1]]])
-    return breaking_omega_rad_s(breaking) * (edges[1:] - edges[:-1]) / 2
+    return (edges[1:] + edges[:-1]) / 2, (edges[1:] - edges[:-1]) / 2
+
+
+def foam_reach_rad(breaking: tuple[Wave, ...]) -> np.ndarray:
+    """Per foam age, the crests' phase across half its window."""
+    return breaking_omega_rad_s(breaking) * foam_windows_s()[1]
 
 
 def crest_peaks_g(
@@ -548,18 +555,24 @@ def crest_peaks_g(
     t_s: float | np.ndarray,
 ) -> np.ndarray:
     """(ages, points): the largest downward acceleration in g over each foam age's
-    window. With A = sum a k cos(phase) and Q = sum a k sin(phase), the crests run as
-    E cos(phi), E = |A + iQ|, phi = arg(A + iQ), turning at their mean frequency; the
-    peak within reach r of phi = 0 is E cos(max(|phi| - r, 0))."""
+    window, read at its middle. With A = sum a k cos(phase) and Q = sum a k sin(phase),
+    the crests run as E cos(phi), E = |A + iQ|, phi = arg(A + iQ), turning at their
+    mean frequency; the peak within reach r of phi = 0 is E cos(max(|phi| - r, 0))."""
+    if not breaking:
+        points = np.broadcast(np.asarray(east_m), np.asarray(north_m), t_s).shape
+        return np.zeros((FOAM_AGES, *points))
     ak = np.array([w.amplitude_m * w.k_rad_m for w in breaking])
-    peaks = []
-    for age, reach in zip(foam_ages_s(), foam_reach_rad(breaking), strict=True):
-        phase = _phase(breaking, np.asarray(east_m), np.asarray(north_m), t_s - age)
-        a = np.tensordot(ak, np.cos(phase), axes=1)
-        q = np.tensordot(ak, np.sin(phase), axes=1)
-        turn = np.maximum(np.abs(np.arctan2(q, a)) - reach, 0.0)
-        peaks.append(np.hypot(a, q) * np.cos(turn))
-    return np.stack(peaks)
+    omega = np.array([w.omega_rad_s for w in breaking])
+    phase = _phase(breaking, np.asarray(east_m), np.asarray(north_m), t_s)
+    cos, sin = np.cos(phase), np.sin(phase)
+    # A window's middle turns each phase by omega times it, as the shader's history
+    # does.
+    middles = foam_windows_s()[0][:, None]
+    c, s = ak * np.cos(omega * middles), ak * np.sin(omega * middles)
+    a = c @ cos - s @ sin
+    q = c @ sin + s @ cos
+    turn = np.maximum(np.abs(np.arctan2(q, a)) - foam_reach_rad(breaking)[:, None], 0.0)
+    return np.hypot(a, q) * np.cos(turn)
 
 
 def foam_area(
@@ -706,7 +719,10 @@ def snap_error(
 
 
 def _phase(
-    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
+    field: tuple[Wave, ...],
+    east_m: np.ndarray,
+    north_m: np.ndarray,
+    t_s: float | np.ndarray,
 ) -> np.ndarray:
     return np.array(
         [

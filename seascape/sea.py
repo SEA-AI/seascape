@@ -76,6 +76,7 @@ from seascape.waves import (
     foam_edge_g,
     foam_fade_efold_s,
     foam_reach_rad,
+    foam_windows_s,
     gust_slope_variance,
     gusty_whitecap_fraction,
     horizon_m,
@@ -902,9 +903,9 @@ def _crest_history(
     damped: frozenset[Wave],
 ) -> list[bpy.types.NodeSocket]:
     """The breaking crests' peak downward acceleration in g at `position` over each
-    foam age's window, youngest first. An age shifts each wave's phase by omega age:
-    a k cos(phase + omega age) = a k cos(omega age) cos(phase)
-    - a k sin(omega age) sin(phase), so the cosines are taken once."""
+    foam age's window, youngest first. A window's middle m shifts each wave's phase by
+    omega m: a k cos(phase + omega m) = a k cos(omega m) cos(phase)
+    - a k sin(omega m) sin(phase), so the cosines are taken once."""
     ages = foam_ages_s()
     group, given, out = _group(
         "sea_crest_history",
@@ -919,16 +920,16 @@ def _crest_history(
         group.links.new(given["Position"], node.inputs["Position"])
         _feed(group, given, node, calmed)
         _set_triple(node.inputs, triple, damped)
-        for i, age in enumerate(ages):
+        for i, middle in enumerate(foam_windows_s()[0]):
             node.inputs[f"Cos {i}"].default_value = _lanes(
                 triple,
-                lambda w, a=age: (
+                lambda w, a=middle: (
                     w.amplitude_m * w.k_rad_m * math.cos(w.omega_rad_s * a)
                 ),
             )
             node.inputs[f"Sin {i}"].default_value = _lanes(
                 triple,
-                lambda w, a=age: (
+                lambda w, a=middle: (
                     -w.amplitude_m * w.k_rad_m * math.sin(w.omega_rad_s * a)
                 ),
             )

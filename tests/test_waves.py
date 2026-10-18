@@ -358,20 +358,24 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     )[0]
     fresh = 0.55
     fade_s = waves.foam_fade_efold_s(wind, threshold, fresh)
+    # At 8 m/s foam covers 0.5% of the sea: enough points that a thousand foam.
+    points = 200_000
     rng = np.random.default_rng(2)
-    east, north = rng.uniform(0, 3000, (2, 40_000))
-    t_s = rng.uniform(0, 600, 40_000)
+    east, north = rng.uniform(0, 3000, (2, points))
+    t_s = rng.uniform(0, 600, points)
     ages = waves.foam_ages_s()
     past = waves.crest_peaks_g(waves.breakers(wind), east, north, t_s)
     edge = waves.foam_edge_g(wind)
     broke = np.vectorize(NormalDist().cdf)((past - threshold) / edge)
     shown = broke * np.exp(-ages / waves.WHITECAP_AREA_EFOLD_S)[:, None] > rng.uniform(
-        size=40_000
+        size=points
     )
     foam = shown.any(axis=0)
     youngest = ages[np.argmax(shown, axis=0)][foam]
     mean = fresh * float(np.mean(np.exp(-youngest / fade_s)))
-    assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.1)
+    # The fade is solved over `FOAM_SAMPLES` points, of which a light wind foams only
+    # a few hundred; Koepke's own 0.22 is good to about half.
+    assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.2)
 
 
 @pytest.mark.parametrize("wind_speed_mps", [8.0, 15.0])
@@ -418,6 +422,8 @@ def test_calm_air_breaks_nothing() -> None:
         waves.whitecap_thresholds_g((), [waves.whitecap_fraction(0.5)])[0] == math.inf
     )
     assert waves.foam_fade_efold_s((), math.inf, 0.55) == waves.WHITECAP_AREA_EFOLD_S
+    points = np.zeros(3)
+    assert np.array_equal(waves.foam_area((), points, points, 0.0, math.inf), points)
     assert waves.foam_fade_efold_s(field(7.0), math.inf, 0.55) == (
         waves.WHITECAP_AREA_EFOLD_S
     )
