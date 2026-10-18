@@ -11,11 +11,11 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape import agc, labels, lwir, render, scene, sea
+from seascape import agc, labels, lwir, render, scene, sea, server
 from seascape.calibration import Calibration
 from seascape.config import Band, ImageFormat, Scenario, load, substream
 from seascape.wakes import Wake
-from tests.scenarios import OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
+from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -535,3 +535,22 @@ def test_an_install_without_git_names_the_image_s_commit(
     assert render._commit() == "abc123"
     monkeypatch.setenv("SEASCAPE_COMMIT", "")
     assert render._commit() is None
+
+
+@pytest.mark.render
+@pytest.mark.parametrize("fmt", get_args(ImageFormat.__value__))
+def test_no_image_outgrows_what_the_server_reserves_for_it(
+    tmp_path: Path, fmt: ImageFormat
+) -> None:
+    """At 1 sample, the noisiest, which a jpg compresses worst."""
+    scenario = load(
+        BASELINE, [f'outputs.format = "{fmt}"', "outputs.samples = { eo = 1, ir = 1 }"]
+    )
+
+    render.render(scenario, tmp_path)
+
+    for mount in scenario.mounts:
+        camera = mount.camera
+        reserved = camera.width_px * camera.height_px
+        reserved *= server.BYTES_PER_PX[camera.band, fmt]
+        assert (tmp_path / f"{mount.name}.{fmt}").stat().st_size <= reserved

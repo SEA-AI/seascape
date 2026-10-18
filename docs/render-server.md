@@ -25,9 +25,9 @@ Claude Desktop, through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 
 Then ask for what you want: *"render the baseline at sunset with a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
-A job's files are served at `http://<host>:8765/renders/<job>/`, with everything in `<job>.zip`. `jobs` lists the jobs still kept, with their download links, and the disk left.
+A job's files are served at `http://<host>:8765/renders/<job>/`, with everything in `<job>.zip`. `jobs` lists the jobs still kept, with their download links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
 
-A job past the limits in [`seascape/server.py`](../seascape/server.py) is refused.
+A job past the limits in [`seascape/server.py`](../seascape/server.py) is refused, as is one whose images and archive, at their largest, would leave less than `SEASCAPE_MIN_FREE_GB` beside the jobs queued.
 
 > [!WARNING]
 > No authentication: anyone who can reach the port can queue renders and download what they write. Keep it on a trusted network.
@@ -54,6 +54,8 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 | `SEASCAPE_RENDERS` | the renders' folder, `renders/` beside `compose.yaml` unless set |
 | `SEASCAPE_PORT` | the port, in place of 8765 in the URLs above |
 | `SEASCAPE_MAX_DURATION_S`, `SEASCAPE_MAX_PIXELS`, `SEASCAPE_MAX_IMAGES`, `SEASCAPE_MIN_FREE_GB` | a job's limits, per camera for pixels |
+| `SEASCAPE_MAX_RUN_S` | how long a job runs before it fails |
+| `SEASCAPE_MAX_QUEUED` | how many jobs wait or run at once |
 
 ```bash
 echo "SEASCAPE_MAX_DURATION_S=120" >> .env
