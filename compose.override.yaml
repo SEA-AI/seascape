@@ -1,4 +1,7 @@
 # A checkout builds the image; compose.yaml alone pulls it.
 services:
   seascape:
-    build: .
+    build:
+      context: .
+      # The labels' commit: an image carries no .git.
+      args: [SEASCAPE_COMMIT]
