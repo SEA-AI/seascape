@@ -104,9 +104,9 @@ SUN_SLOPE_RADIUS = math.radians(0.545) / 4
 # slope density there is exp(-d^2 / v) of its peak.
 GLINT_REACH = (9.0, 16.0)
 
-# A judgement: fixed-point steps to where the view ray meets the drawn height.
+# A judgement: steps to where the view ray meets the drawn height.
 PARALLAX_STEPS = 3
-# A judgement: the share of facets on which each fixed-point step contracts. A step
+# A judgement: the share of facets on which a fixed-point step contracts. A step
 # contracts where the slope along the run times the run is under 1 (Banach); with
 # slopes Gaussian per axis (Cox & Munk 1954), capping the run at 1 / z the rms slope
 # along it covers facets within z sigma, two-sided.
@@ -550,7 +550,7 @@ def _set_triple(
 
 def _height_group(tall: tuple[Wave, ...]) -> bpy.types.NodeTree:
     """The drawn height of `tall` at `Position`, (east, north, time), faded as the
-    normal is. One group, so each fixed-point step adds one node to the sea's tree."""
+    normal is. One group, so each parallax step adds one node to the sea's tree."""
     group, given, out = _group(
         "sea_height",
         (("Position", "Vector"), *_FOOTPRINT),
@@ -577,10 +577,11 @@ def _parallax(
     time_s: bpy.types.NodeSocket,
     height_at: Callable[[bpy.types.NodeSocket], bpy.types.NodeSocket],
     run_variance: float | bpy.types.NodeSocket,
+    height_max_m: float,
 ) -> bpy.types.NodeSocket:
-    """Where the view ray meets the drawn height, (east, north, time), iterated from the
-    flat sea towards its fixed point: x <- x0 + h(x) cot(elevation) along the ray. A
-    face tilted from the camera then takes the little of the frame it shows.
+    """Where the view ray meets the drawn height, (east, north, time), solved from the
+    flat sea for x = x0 + h(x) cot(elevation) along the ray. A face tilted from the
+    camera then takes the little of the frame it shows. `height_max_m` bounds h.
     """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     flat = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -625,13 +626,53 @@ def _parallax(
         tree.links.new(time_s, xyt.inputs["Z"])
         return xyt.outputs["Vector"]
 
+    # Along the ray at height t, the miss is f(t) = t - h(x0 + t run). The first step is
+    # the fixed point's, t <- h; the rest are secant steps on f, which converge where
+    # the fixed point crawls, on faces turned nearly along the ray.
     position = at(flat.outputs["X"], flat.outputs["Y"])
+    t: bpy.types.NodeSocket | float = 0.0
+    before: tuple[bpy.types.NodeSocket | float, bpy.types.NodeSocket] | None = None
     for _ in range(PARALLAX_STEPS):
         height = height_at(position)
+        miss = _math(tree, "SUBTRACT", t, height)
+        if before is None:
+            step: bpy.types.NodeSocket = height
+        else:
+            # 1 / f', the fixed point's 1 where f' is not positive: there the ray
+            # meets the drawn height more than once and the secant can leap past.
+            per = _math(
+                tree,
+                "DIVIDE",
+                _math(tree, "SUBTRACT", t, before[0]),
+                _math(tree, "SUBTRACT", miss, before[1]),
+            )
+            ahead = _math(tree, "GREATER_THAN", per, 0.0)
+            per = _math(
+                tree,
+                "MULTIPLY_ADD",
+                _math(tree, "SUBTRACT", per, 1.0),
+                ahead,
+                1.0,
+            )
+            # The drawn height never passes its waves' summed amplitude.
+            step = _math(
+                tree,
+                "MAXIMUM",
+                _math(
+                    tree,
+                    "MINIMUM",
+                    _math(tree, "SUBTRACT", t, _math(tree, "MULTIPLY", miss, per)),
+                    height_max_m,
+                ),
+                -height_max_m,
+            )
+        before, t = (t, miss), step
         position = at(
-            _math(tree, "MULTIPLY_ADD", run_east, height, flat.outputs["X"]),
-            _math(tree, "MULTIPLY_ADD", run_north, height, flat.outputs["Y"]),
+            _math(tree, "MULTIPLY_ADD", run_east, t, flat.outputs["X"]),
+            _math(tree, "MULTIPLY_ADD", run_north, t, flat.outputs["Y"]),
         )
+    if isinstance(t, bpy.types.NodeSocket):
+        t.node.name = "sea_parallax_height"
     position.node.name = "sea_parallax"
     return position
 
@@ -731,7 +772,8 @@ def _waves(
 
     triples = _triples(wind) + _triples(swell)
     run = _instance(tree, _run_group(triples), pixel, None)
-    return _parallax(tree, time_s, height_at, run.outputs["Variance"])
+    height_max_m = sum(w.amplitude_m for w in tall)
+    return _parallax(tree, time_s, height_at, run.outputs["Variance"], height_max_m)
 
 
 def _normal(
