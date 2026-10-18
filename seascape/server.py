@@ -140,7 +140,8 @@ async def render(
             ):
                 raise ToolError(f"{line!r}: an override names presets, never files")
         scenes = await asyncio.to_thread(load_variants, path, lines, variants)
-    except ValueError as error:  # pydantic and tomllib both raise it
+    # pydantic and tomllib raise ValueError, a bad preset TypeError or OSError.
+    except (ValueError, TypeError, OSError) as error:
         raise ToolError(str(error)) from error
     RENDERS.mkdir(parents=True, exist_ok=True)
     _prune()
@@ -190,7 +191,7 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
 
 
 def _finish(job: Job) -> None:
-    """A preview of each still, and an archive of everything."""
+    """A preview of each of the first `PREVIEWS` stills, and an archive of all."""
     for scene, folder in zip(job.scenes[:PREVIEWS], job.folders, strict=False):
         if len(scene.outputs.times_s) == 1 and scene.outputs.format != "exr":
             with Picture.open(montage.compose(scene, folder)) as picture:
@@ -203,7 +204,8 @@ def _finish(job: Job) -> None:
 @server.tool(structured_output=False)
 async def render_result(job: str, ctx: Context) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, or its
-    error, or every file as a URL with a preview of each still."""
+    error, or every file as a URL with a preview of each of the first `PREVIEWS`
+    stills."""
     found = _jobs.get(job)
     if found is None or found.task is None:
         raise ToolError(

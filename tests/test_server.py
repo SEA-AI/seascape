@@ -1,4 +1,4 @@
-"""The render server's checks, before a job starts. No Blender."""
+"""The render server, without Blender."""
 
 import asyncio
 import os
@@ -26,6 +26,8 @@ def _call(tool: str, **arguments: Any) -> Any:
     "line",
     [
         'objects = [{ preset = "/etc/hosts.toml" }]',
+        'objects = [{ preset = "no_such_preset" }]',
+        "objects = [{ preset = 5 }]",
         'extends = "baseline.toml"',
         "sky.sun_elevation_deg = 100.0",
         "sky.sun_elevation_deg =",
