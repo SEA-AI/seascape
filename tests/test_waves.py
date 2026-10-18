@@ -374,6 +374,28 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.1)
 
 
+@pytest.mark.parametrize("wind_speed_mps", [8.0, 15.0])
+def test_a_few_foam_ages_fade_as_a_continuous_history_does(
+    wind_speed_mps: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ages read only at their instants miss the crests that break between them, and
+    the fade comes out under half the dense history's."""
+    wind = field(wind_speed_mps)
+
+    def fade(ages: int) -> float:
+        monkeypatch.setattr(waves, "FOAM_AGES", ages)
+        waves._history.cache_clear()
+        waves._cover_curve.cache_clear()
+        fraction = waves.whitecap_fraction(wind_speed_mps)
+        threshold = waves.whitecap_thresholds_g(wind, [fraction])[0]
+        return waves.foam_fade_efold_s(wind, threshold, 0.55)
+
+    few, dense = fade(waves.FOAM_AGES), fade(32)
+    waves._history.cache_clear()
+    waves._cover_curve.cache_clear()
+    assert few == pytest.approx(dense, rel=0.15)
+
+
 def test_a_storm_gust_s_cover_has_its_own_threshold() -> None:
     """A gust over a 21 m/s sea asks for far more than Monahan's mean cover."""
     wind = field(21.0)
