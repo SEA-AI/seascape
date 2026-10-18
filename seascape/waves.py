@@ -558,12 +558,13 @@ def crest_peaks_g(
     window, read at its middle. With A = sum a k cos(phase) and Q = sum a k sin(phase),
     the crests run as E cos(phi), E = |A + iQ|, phi = arg(A + iQ), turning at their
     mean frequency; the peak within reach r of phi = 0 is E cos(max(|phi| - r, 0))."""
+    east, north, t = np.broadcast_arrays(east_m, north_m, t_s)
     if not breaking:
-        points = np.broadcast(np.asarray(east_m), np.asarray(north_m), t_s).shape
-        return np.zeros((FOAM_AGES, *points))
+        return np.zeros((FOAM_AGES, *east.shape))
     ak = np.array([w.amplitude_m * w.k_rad_m for w in breaking])
     omega = np.array([w.omega_rad_s for w in breaking])
-    phase = _phase(breaking, np.asarray(east_m), np.asarray(north_m), t_s)
+    # Points flattened, so the sums over waves are matrix products.
+    phase = _phase(breaking, east.ravel(), north.ravel(), t.ravel())
     cos, sin = np.cos(phase), np.sin(phase)
     # A window's middle turns each phase by omega times it, as the shader's history
     # does.
@@ -572,7 +573,7 @@ def crest_peaks_g(
     a = c @ cos - s @ sin
     q = c @ sin + s @ cos
     turn = np.maximum(np.abs(np.arctan2(q, a)) - foam_reach_rad(breaking)[:, None], 0.0)
-    return np.hypot(a, q) * np.cos(turn)
+    return (np.hypot(a, q) * np.cos(turn)).reshape(FOAM_AGES, *east.shape)
 
 
 def foam_area(

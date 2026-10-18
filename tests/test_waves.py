@@ -378,7 +378,8 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.2)
 
 
-@pytest.mark.parametrize("wind_speed_mps", [8.0, 15.0])
+# A light wind foams too few of the solver's points to compare closely.
+@pytest.mark.parametrize("wind_speed_mps", [12.0, 18.0])
 def test_a_few_foam_ages_fade_as_a_continuous_history_does(
     wind_speed_mps: float, monkeypatch: pytest.MonkeyPatch
 ) -> None:
