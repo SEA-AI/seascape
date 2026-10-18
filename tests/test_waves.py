@@ -358,7 +358,7 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     )[0]
     fresh = 0.55
     fade_s = waves.foam_fade_efold_s(wind, threshold, fresh)
-    # At 8 m/s foam covers 0.5% of the sea: enough points that a thousand foam.
+    # A light wind foams under 1% of the sea: enough points that a thousand foam.
     points = 200_000
     rng = np.random.default_rng(2)
     east, north = rng.uniform(0, 3000, (2, points))
@@ -366,7 +366,7 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     ages = waves.foam_ages_s()
     past = waves.crest_peaks_g(waves.breakers(wind), east, north, t_s)
     edge = waves.foam_edge_g(wind)
-    broke = np.vectorize(NormalDist().cdf)((past - threshold) / edge)
+    broke = waves._normal_cdf((past - threshold) / edge)
     shown = broke * np.exp(-ages / waves.WHITECAP_AREA_EFOLD_S)[:, None] > rng.uniform(
         size=points
     )
@@ -395,9 +395,12 @@ def test_a_few_foam_ages_fade_as_a_continuous_history_does(
         threshold = waves.whitecap_thresholds_g(wind, [fraction])[0]
         return waves.foam_fade_efold_s(wind, threshold, 0.55)
 
-    few, dense = fade(waves.FOAM_AGES), fade(32)
-    waves._history.cache_clear()
-    waves._cover_curve.cache_clear()
+    try:
+        few, dense = fade(waves.FOAM_AGES), fade(32)
+    finally:
+        # The caches key on the waves alone, not on FOAM_AGES.
+        waves._history.cache_clear()
+        waves._cover_curve.cache_clear()
     assert few == pytest.approx(dense, rel=0.15)
 
 

@@ -875,7 +875,7 @@ def _history_group(calm: bool) -> bpy.types.NodeTree:
         _vector(group, "MULTIPLY", _vector(group, trig, phase), seen)
         for trig in ("COSINE", "SINE")
     )
-    # a k sin(phase + omega age) = sin(phase) `Cos i` - cos(phase) `Sin i`.
+    # a k sin(phase + omega m) = sin(phase) `Cos i` - cos(phase) `Sin i`.
     for i in ages:
         for part, first, second, join in (
             ("Sum", cos, sin, "ADD"),
