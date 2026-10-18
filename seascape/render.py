@@ -147,20 +147,23 @@ def _info(scenario: Scenario) -> dict[str, Any]:
 
 def _render_still(path: Path, what: str) -> None:
     """Render the active camera to `path`, which `render.filepath` names."""
-    # A frame left by an earlier run would pass for this one, and is kept on failure.
-    before = path.stat() if path.is_file() else None
-    result = bpy.ops.render.render(write_still=True)
-    # A GPU that dies partway can leave the frame unwritten, silently.
-    after = path.stat() if path.is_file() else None
-    if (
-        "FINISHED" not in result
-        or after is None
-        or after.st_size == 0
-        or (before is not None and after.st_mtime_ns == before.st_mtime_ns)
-    ):
-        raise RuntimeError(
-            f"{what} was not written to {path} (Blender returned {sorted(result)})"
-        )
+    # A frame left by an earlier run would pass for this one: set it aside, and put it
+    # back if this one fails.
+    earlier = path.with_name(f"{path.name}.earlier")
+    if path.is_file():
+        path.replace(earlier)
+    try:
+        result = bpy.ops.render.render(write_still=True)
+        # A GPU that dies partway can leave the frame unwritten, silently.
+        if "FINISHED" not in result or not path.is_file() or not path.stat().st_size:
+            raise RuntimeError(
+                f"{what} was not written to {path} (Blender returned {sorted(result)})"
+            )
+    except BaseException:
+        if earlier.is_file():
+            earlier.replace(path)
+        raise
+    earlier.unlink(missing_ok=True)
 
 
 def _nothing() -> None:
