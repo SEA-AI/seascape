@@ -134,8 +134,9 @@ SWELL_S_MAX = 75.0
 WHITECAP_AREA_EFOLD_S = 3.85
 # Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
 WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
-# A judgement: foam ages a pixel reads, out to two area e-folds, closer together than
-# a crest takes to pass.
+# A judgement: foam ages a pixel reads, out to two area e-folds. Each stands for the
+# window around it, read off the crests' envelope, so a crest breaking between two
+# ages still leaves foam.
 FOAM_AGES = 8
 FOAM_SPAN_EFOLDS = 2.0
 # A judgement: a crest breaks over this share of its acceleration's sigma, which
@@ -511,15 +512,6 @@ def gusty_whitecap_fraction(wind_speed_mps: float, gust: float) -> float:
     return min(cover * whitecap_fraction(wind_speed_mps) / mean, 1.0)
 
 
-def downward_acceleration_g(
-    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
-) -> np.ndarray:
-    """-d^2 height / dt^2 over g: a k cos(phase) per wave, as omega^2 = g k."""
-    ak = np.array([w.amplitude_m * w.k_rad_m for w in field])
-    phase = _phase(field, np.asarray(east_m), np.asarray(north_m), t_s)
-    return np.tensordot(ak, np.cos(phase), axes=1)
-
-
 def breakers(wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
     return tallest(wind, BREAKING_HEIGHT_SHARE) if wind else ()
 
@@ -531,6 +523,43 @@ def foam_ages_s() -> np.ndarray:
     return FOAM_SPAN_EFOLDS * WHITECAP_AREA_EFOLD_S * steps**2
 
 
+def breaking_omega_rad_s(breaking: tuple[Wave, ...]) -> float:
+    """The mean frequency of the breakers' downward acceleration: m1 / m0 of its
+    spectrum, each wave weighing (a k)^2."""
+    power = np.array([(w.amplitude_m * w.k_rad_m) ** 2 for w in breaking])
+    omega = np.array([w.omega_rad_s for w in breaking])
+    return float(np.dot(power, omega) / power.sum())
+
+
+def foam_reach_rad(breaking: tuple[Wave, ...]) -> np.ndarray:
+    """Per foam age, the crests' phase across half its window: the window runs midway
+    to the ages either side, from age 0."""
+    ages = foam_ages_s()
+    edges = np.concatenate([[ages[0]], (ages[1:] + ages[:-1]) / 2, [ages[-1]]])
+    return breaking_omega_rad_s(breaking) * (edges[1:] - edges[:-1]) / 2
+
+
+def crest_peaks_g(
+    breaking: tuple[Wave, ...],
+    east_m: np.ndarray,
+    north_m: np.ndarray,
+    t_s: float | np.ndarray,
+) -> np.ndarray:
+    """(ages, points): the largest downward acceleration in g over each foam age's
+    window. With A = sum a k cos(phase) and Q = sum a k sin(phase), the crests run as
+    E cos(phi), E = |A + iQ|, phi = arg(A + iQ), turning at their mean frequency; the
+    peak within reach r of phi = 0 is E cos(max(|phi| - r, 0))."""
+    ak = np.array([w.amplitude_m * w.k_rad_m for w in breaking])
+    peaks = []
+    for age, reach in zip(foam_ages_s(), foam_reach_rad(breaking), strict=True):
+        phase = _phase(breaking, np.asarray(east_m), np.asarray(north_m), t_s - age)
+        a = np.tensordot(ak, np.cos(phase), axes=1)
+        q = np.tensordot(ak, np.sin(phase), axes=1)
+        turn = np.maximum(np.abs(np.arctan2(q, a)) - reach, 0.0)
+        peaks.append(np.hypot(a, q) * np.cos(turn))
+    return np.stack(peaks)
+
+
 def foam_area(
     wind: tuple[Wave, ...],
     east_m: np.ndarray,
@@ -540,12 +569,7 @@ def foam_area(
 ) -> np.ndarray:
     """The share of the sea foam covers about each point: the largest fill of its
     ages, as `_foam_fills`."""
-    past = np.stack(
-        [
-            downward_acceleration_g(breakers(wind), east_m, north_m, t_s - a)
-            for a in foam_ages_s()
-        ]
-    )
+    past = crest_peaks_g(breakers(wind), east_m, north_m, t_s)
     return np.max(_foam_fills(past, threshold_g, foam_edge_g(wind)), axis=0)
 
 
@@ -563,15 +587,12 @@ def _lattice(count: int) -> np.ndarray:
 
 @cache
 def _history(breaking: tuple[Wave, ...]) -> np.ndarray:
-    """`breaking`'s downward acceleration at each foam age, over a stretch of sea and
-    time `SAMPLE_SPAN` of its longest waves and periods across: (ages, points)."""
+    """`breaking`'s `crest_peaks_g` over a stretch of sea and time `SAMPLE_SPAN` of its
+    longest waves and periods across: (ages, points)."""
     longest_m = max(2 * math.pi / w.k_rad_m for w in breaking)
     slowest_s = max(2 * math.pi / w.omega_rad_s for w in breaking)
     x, y, t = (SAMPLE_SPAN * _lattice(FOAM_SAMPLES)).T
-    east, north, t_s = x * longest_m, y * longest_m, t * slowest_s
-    return np.stack(
-        [downward_acceleration_g(breaking, east, north, t_s - a) for a in foam_ages_s()]
-    )
+    return crest_peaks_g(breaking, x * longest_m, y * longest_m, t * slowest_s)
 
 
 def _normal_cdf(z: np.ndarray) -> np.ndarray:

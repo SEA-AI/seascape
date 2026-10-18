@@ -362,12 +362,7 @@ def test_whitecaps_average_koepke_s_reflectance(wind_speed_mps: float) -> None:
     east, north = rng.uniform(0, 3000, (2, 40_000))
     t_s = rng.uniform(0, 600, 40_000)
     ages = waves.foam_ages_s()
-    past = np.stack(
-        [
-            waves.downward_acceleration_g(waves.breakers(wind), east, north, t_s - a)
-            for a in ages
-        ]
-    )
+    past = waves.crest_peaks_g(waves.breakers(wind), east, north, t_s)
     edge = waves.foam_edge_g(wind)
     broke = np.vectorize(NormalDist().cdf)((past - threshold) / edge)
     shown = broke * np.exp(-ages / waves.WHITECAP_AREA_EFOLD_S)[:, None] > rng.uniform(
