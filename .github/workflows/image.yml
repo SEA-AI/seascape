@@ -60,7 +60,7 @@ jobs:
         with:
           context: ${{ github.server_url }}/${{ github.repository }}.git#${{ env.SHA }}
           push: true
-          build-args: SEASCAPE_COMMIT=${{ github.sha }}
+          build-args: SEASCAPE_COMMIT=${{ env.SHA }}
           tags: ${{ steps.tags.outputs.tags }}
           # In the registry: the Actions cache is shared with CI's and holds 10 GB.
           cache-from: type=registry,ref=ghcr.io/sea-ai/seascape:buildcache
