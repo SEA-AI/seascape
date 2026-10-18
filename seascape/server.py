@@ -39,6 +39,10 @@ WAIT_S = 45.0
 # PREVIEWS at this side, about 1.6k tokens each, fit a 25k-token tool result.
 PREVIEW_PX = 1568
 PREVIEWS = 8
+# A judgement: longer than a driver takes to answer, short of a hung one.
+PROBE_S = 60.0
+# The hosts MCP answers when SEASCAPE_ALLOWED_HOSTS is unset: this machine only.
+LOCAL_HOSTS = ("localhost:*", "127.0.0.1:*", "[::1]:*")
 
 server = MCPServer(
     "seascape",
@@ -243,32 +247,39 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
 def serve(host: str, port: int) -> None:
     """Serve `app` on `port`."""
     # In a process of its own, so the server never holds Blender.
-    probe = subprocess.run(
-        [sys.executable, "-c", "from seascape import scene; print(scene.enable_gpu())"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    words = probe.stdout.split()
-    backend = words[-1] if words else "None"
-    print(
-        f"Cycles renders on {'the CPU' if backend == 'None' else backend}", flush=True
-    )
+    try:
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from seascape import scene; print(scene.enable_gpu())",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=PROBE_S,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"The GPU probe gave no answer in {PROBE_S:g} s", flush=True)
+    else:
+        words = probe.stdout.split()
+        backend = words[-1] if words else "None"
+        print(
+            f"Cycles renders on {'the CPU' if backend == 'None' else backend}",
+            flush=True,
+        )
     uvicorn.run(app(host), host=host, port=port)
 
 
 def app(host: str) -> Starlette:
     """MCP at /mcp and the jobs' files at /renders/."""
-    # A web page can point a browser on the network at this port by DNS rebinding;
-    # with hosts listed, MCP refuses any other Host or Origin.
-    hosts = [h for h in os.environ.get("SEASCAPE_ALLOWED_HOSTS", "").split(",") if h]
-    security = (
-        TransportSecuritySettings(
-            allowed_hosts=hosts,
-            allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
-        )
-        if hosts
-        else None
+    # A web page can point a browser on the network at this port by DNS rebinding,
+    # so MCP refuses any Host or Origin not listed.
+    listed = os.environ.get("SEASCAPE_ALLOWED_HOSTS", "").split(",")
+    hosts = [h for h in listed if h] or list(LOCAL_HOSTS)
+    security = TransportSecuritySettings(
+        allowed_hosts=hosts,
+        allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
     )
     RENDERS.mkdir(parents=True, exist_ok=True)
     served = server.streamable_http_app(host=host, transport_security=security)

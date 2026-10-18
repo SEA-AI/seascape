@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -80,9 +81,10 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("allowed", "host", "refused"),
     [
-        ("", "evil.example", False),
-        ("hector:*", "hector:8765", False),
-        ("hector:*", "evil.example", True),
+        ("", "localhost:8765", False),
+        ("", "gpu-box:8765", True),
+        ("gpu-box:*", "gpu-box:8765", False),
+        ("gpu-box:*", "evil.example", True),
     ],
 )
 def test_listed_hosts_are_the_only_ones_mcp_answers(
@@ -106,3 +108,19 @@ def test_listed_hosts_are_the_only_ones_mcp_answers(
                 return response.status_code
 
     assert (asyncio.run(post()) == 421) is refused
+
+
+def test_a_hung_gpu_probe_still_serves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+
+    def hang(*args: Any, **kwargs: Any) -> None:
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    served: list[Any] = []
+    monkeypatch.setattr(server.subprocess, "run", hang)
+    monkeypatch.setattr(server.uvicorn, "run", lambda app, **_: served.append(app))
+    server.serve("127.0.0.1", 0)
+    assert served
+    assert "no answer" in capsys.readouterr().out
