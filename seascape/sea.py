@@ -75,6 +75,8 @@ from seascape.waves import (
     foam_ages_s,
     foam_edge_g,
     foam_fade_efold_s,
+    foam_reach_rad,
+    foam_windows_s,
     gust_slope_variance,
     gusty_whitecap_fraction,
     horizon_m,
@@ -820,9 +822,10 @@ def _instance(
 
 
 def _history_group(calm: bool) -> bpy.types.NodeTree:
-    """Three waves' downward acceleration at each foam age, added to `Sum i` per lane:
-    cos(phase) times `Cos i` plus sin(phase) times `Sin i`, the waves faded and calmed
-    as `_wave_group` draws them."""
+    """Three waves' downward acceleration at each foam age, added to `Sum i`: cos(phase)
+    times `Cos i` plus sin(phase) times `Sin i` over the lanes, and its quadrature to
+    `Quad i`, the waves faded and calmed as `_wave_group` draws them. The sums are
+    scalars, as every chained group holds each one on Cycles' SVM stack."""
     name = "waves_history_calm" if calm else "waves_history"
     if name in bpy.data.node_groups:
         return bpy.data.node_groups[name]
@@ -839,12 +842,17 @@ def _history_group(calm: bool) -> bpy.types.NodeTree:
             ("Phase", "Vector"),
             *_FADE,
             *(
-                (f"{part} {i}", "Vector")
+                (f"{part} {i}", kind)
                 for i in ages
-                for part in ("Cos", "Sin", "Sum")
+                for part, kind in (
+                    ("Cos", "Vector"),
+                    ("Sin", "Vector"),
+                    ("Sum", "Float"),
+                    ("Quad", "Float"),
+                )
             ),
         ),
-        tuple((f"Sum {i}", "Vector") for i in ages),
+        tuple((f"{part} {i}", "Float") for i in ages for part in ("Sum", "Quad")),
     )
     position = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(given["Position"], position.inputs["Vector"])
@@ -867,14 +875,22 @@ def _history_group(calm: bool) -> bpy.types.NodeTree:
         _vector(group, "MULTIPLY", _vector(group, trig, phase), seen)
         for trig in ("COSINE", "SINE")
     )
+    # a k sin(phase + omega m) = sin(phase) `Cos i` - cos(phase) `Sin i`.
     for i in ages:
-        turned = _vector(
-            group, "MULTIPLY_ADD", sin, given[f"Sin {i}"], given[f"Sum {i}"]
-        )
-        group.links.new(
-            _vector(group, "MULTIPLY_ADD", cos, given[f"Cos {i}"], turned),
-            out[f"Sum {i}"],
-        )
+        for part, first, second, join in (
+            ("Sum", cos, sin, "ADD"),
+            ("Quad", sin, cos, "SUBTRACT"),
+        ):
+            lanes = _vector(
+                group,
+                join,
+                _vector(group, "MULTIPLY", first, given[f"Cos {i}"]),
+                _vector(group, "MULTIPLY", second, given[f"Sin {i}"]),
+            )
+            group.links.new(
+                _math(group, "ADD", _total(group, lanes), given[f"{part} {i}"]),
+                out[f"{part} {i}"],
+            )
     return group
 
 
@@ -886,10 +902,10 @@ def _crest_history(
     calm: bpy.types.NodeSocket | None,
     damped: frozenset[Wave],
 ) -> list[bpy.types.NodeSocket]:
-    """The breaking crests' downward acceleration in g at `position` at each foam age,
-    youngest first. An age shifts each wave's phase by omega age:
-    a k cos(phase + omega age) = a k cos(omega age) cos(phase)
-    - a k sin(omega age) sin(phase), so the cosines are taken once."""
+    """The breaking crests' peak downward acceleration in g at `position` over each
+    foam age's window, youngest first. A window's middle m shifts each wave's phase by
+    omega m: a k cos(phase + omega m) = a k cos(omega m) cos(phase)
+    - a k sin(omega m) sin(phase), so the cosines are taken once."""
     ages = foam_ages_s()
     group, given, out = _group(
         "sea_crest_history",
@@ -904,26 +920,49 @@ def _crest_history(
         group.links.new(given["Position"], node.inputs["Position"])
         _feed(group, given, node, calmed)
         _set_triple(node.inputs, triple, damped)
-        for i, age in enumerate(ages):
+        for i, middle in enumerate(foam_windows_s()[0]):
             node.inputs[f"Cos {i}"].default_value = _lanes(
                 triple,
-                lambda w, a=age: (
+                lambda w, a=middle: (
                     w.amplitude_m * w.k_rad_m * math.cos(w.omega_rad_s * a)
                 ),
             )
             node.inputs[f"Sin {i}"].default_value = _lanes(
                 triple,
-                lambda w, a=age: (
+                lambda w, a=middle: (
                     -w.amplitude_m * w.k_rad_m * math.sin(w.omega_rad_s * a)
                 ),
             )
             if previous is not None:
-                group.links.new(previous.outputs[f"Sum {i}"], node.inputs[f"Sum {i}"])
+                for part in ("Sum", "Quad"):
+                    group.links.new(
+                        previous.outputs[f"{part} {i}"], node.inputs[f"{part} {i}"]
+                    )
         previous = node
     if previous is not None:
-        for i in range(len(ages)):
+        reaches = foam_reach_rad(breakers(wind))
+        for i, reach in enumerate(reaches):
+            a, q = (previous.outputs[f"{part} {i}"] for part in ("Sum", "Quad"))
+            # The peak within the age's window, as `crest_peaks_g`.
+            envelope = _math(
+                group,
+                "SQRT",
+                _math(group, "MULTIPLY_ADD", a, a, _math(group, "MULTIPLY", q, q)),
+            )
+            turn = _math(
+                group,
+                "MAXIMUM",
+                _math(
+                    group,
+                    "SUBTRACT",
+                    _math(group, "ABSOLUTE", _math(group, "ARCTAN2", q, a)),
+                    float(reach),
+                ),
+                0.0,
+            )
             group.links.new(
-                _total(group, previous.outputs[f"Sum {i}"]), out[f"Age {i}"]
+                _math(group, "MULTIPLY", envelope, _math(group, "COSINE", turn)),
+                out[f"Age {i}"],
             )
     node = _instance(tree, group, pixel, calm)
     tree.links.new(position, node.inputs["Position"])
@@ -972,7 +1011,8 @@ def _whitecaps(
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """How much of the pixel foam covers, how bright, as a share of fresh foam's, and
     the share of the sea under foam of any age, laced or not, where its bubbles are.
-    `history` holds the breaking crests' downward acceleration at each foam age."""
+    `history` holds the breaking crests' peak downward acceleration over each foam
+    age's window."""
     threshold_g = _breaking(tree, sea, wind, gust, gust_max)
     breaking = breakers(wind)
     table = _footprint_table(
