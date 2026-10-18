@@ -1195,3 +1195,47 @@ def test_blender_s_aerosol_darkens_its_horizon() -> None:
     what is in front of it."""
     clear, hazy = _horizon(1.0), _horizon(6.0)
     assert hazy.sum() < 0.8 * clear.sum()
+
+
+def test_parallax_lands_on_the_drawn_height() -> None:
+    """Where the view ray meets the sea, the height it solved for is the height drawn
+    there, on the steep faces a low eye sees behind a crest as on the rest."""
+    scenario = _clear(
+        variant(sea={"wind_speed_mps": 13.0}, rig={"height_m": 6.0, "pitch_deg": -12.0})
+    )
+    built = scene.build(scenario, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    # Every step's height reads the same footprint; only its position differs.
+    step = next(
+        n
+        for n in tree.nodes
+        if n.bl_idname == "ShaderNodeGroup" and n.node_tree.name == "sea_height"
+    )
+    drawn = tree.nodes.new("ShaderNodeGroup")
+    drawn.node_tree = step.node_tree
+    for socket in step.inputs:
+        for link in socket.links:
+            tree.links.new(link.from_socket, drawn.inputs[socket.name])
+    tree.links.new(
+        tree.nodes["sea_parallax"].outputs["Vector"], drawn.inputs["Position"]
+    )
+    miss = tree.nodes.new("ShaderNodeMath")
+    miss.operation = "SUBTRACT"
+    tree.links.new(drawn.outputs["Height"], miss.inputs[0])
+    tree.links.new(tree.nodes["sea_parallax_height"].outputs["Value"], miss.inputs[1])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    # Emission takes no negative light.
+    size = tree.nodes.new("ShaderNodeMath")
+    size.operation = "ABSOLUTE"
+    tree.links.new(miss.outputs["Value"], size.inputs[0])
+    tree.links.new(size.outputs["Value"], emission.inputs["Color"])
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    sc = bpy.context.scene
+    sc.camera = _camera(built, scenario, "eo")
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    misses = shoot((480, 270), "parallax_probe")
+    # Three fixed-point steps miss by 0.3 m at the 99th percentile here, and draw
+    # stripes down the face behind a crest.
+    assert np.percentile(misses[misses.shape[0] // 4 :], 99) < 0.05
