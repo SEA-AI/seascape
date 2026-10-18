@@ -4,6 +4,7 @@ import json
 import math
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -60,7 +61,10 @@ def shot(
     )
     # The mesh alone, through one camera: TOML cannot set the ring or the ownship's
     # hull to none, and the scenario's rigs merge with any it is given.
-    alone = built.model_dump(mode="json") | {"targets": None, "rigs": {"bow": rig}}
+    alone: dict[str, Any] = built.model_dump(mode="json") | {
+        "targets": None,
+        "rigs": {"bow": rig},
+    }
     alone["ownship"] |= {"asset": None}
     built = Scenario.model_validate(alone)
     frame = Image.open(render.render(built, into)[0]).convert("RGB")
