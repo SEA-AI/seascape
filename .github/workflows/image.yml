@@ -9,7 +9,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # One queue for manual and automatic runs: none slips between another's tip
+  # check and its push.
+  group: ${{ github.workflow }}
   # Every commit keeps its :<sha> tag: none running is cancelled, none pending dropped.
   cancel-in-progress: false
   queue: max
