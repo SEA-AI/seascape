@@ -187,9 +187,10 @@ def test_a_limit_reads_the_environment(
     assert server._limit("PROBE", 7.0) == expected
 
 
-def test_a_limit_that_is_not_a_number_names_its_variable(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("value", ["4k", "nan", "inf", "0", "-1"])
+def test_a_limit_that_is_not_a_positive_number_names_its_variable(
+    value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("SEASCAPE_PROBE", "4k")
+    monkeypatch.setenv("SEASCAPE_PROBE", value)
     with pytest.raises(ValueError, match="SEASCAPE_PROBE"):
         server._limit("PROBE", 7.0)

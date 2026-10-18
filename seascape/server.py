@@ -6,6 +6,7 @@ it. Its files are served under /renders/ and deleted after `KEEP_S`.
 
 import asyncio
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -50,9 +51,13 @@ def _limit(name: str, default: float) -> float:
     if not (value := os.environ.get(f"SEASCAPE_{name}")):
         return default
     try:
-        return float(value)
+        limit = float(value)
     except ValueError:
-        raise ValueError(f"SEASCAPE_{name}={value!r} is not a number") from None
+        limit = math.nan
+    # nan would pass every comparison and turn the limit off.
+    if not (math.isfinite(limit) and limit > 0):
+        raise ValueError(f"SEASCAPE_{name}={value!r} is not a positive number")
+    return limit
 
 
 # What one job may ask of a shared machine.
@@ -208,7 +213,7 @@ async def render(
     _refuse_oversized(scenes)
     RENDERS.mkdir(parents=True, exist_ok=True)
     _prune()
-    if (free_gb := shutil.disk_usage(RENDERS).free / 2**30) < MIN_FREE_GB:
+    if (free_gb := shutil.disk_usage(RENDERS).free / 1e9) < MIN_FREE_GB:
         raise ToolError(f"{free_gb:.0f} GB free; a job needs {MIN_FREE_GB:.0f}")
     ahead = sum(job.waiting for job in _jobs.values())
     name = uuid.uuid4().hex
@@ -313,7 +318,7 @@ def jobs(ctx: Context) -> dict[str, Any]:
     """Every job the server remembers, newest first, and the disk left for more."""
     url = _url(ctx)
     return {
-        "free_gb": round(shutil.disk_usage(RENDERS).free / 2**30, 1),
+        "free_gb": round(shutil.disk_usage(RENDERS).free / 1e9, 1),
         "jobs": [
             {
                 "job": name,
