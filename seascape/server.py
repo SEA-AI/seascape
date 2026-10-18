@@ -46,8 +46,13 @@ LOCAL_HOSTS = ("localhost:*", "127.0.0.1:*", "[::1]:*")
 
 
 def _limit(name: str, default: float) -> float:
-    """`SEASCAPE_<name>` from the environment, else `default`."""
-    return float(os.environ.get(f"SEASCAPE_{name}", default))
+    # Compose passes a variable set empty in .env as "".
+    if not (value := os.environ.get(f"SEASCAPE_{name}")):
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"SEASCAPE_{name}={value!r} is not a number") from None
 
 
 # What one job may ask of a shared machine.
@@ -313,15 +318,13 @@ def jobs(ctx: Context) -> dict[str, Any]:
                 "status": job.state,
                 "images": job.total,
                 "age_s": round(time.time() - job.created),
-                # A running job deletes files as it goes, so only a finished one.
+                # The archive is written when the job finishes.
                 **(
                     {
-                        "archive_mb": round(
-                            Path(f"{job.folder}.zip").stat().st_size / 2**20
-                        ),
+                        "archive_mb": round(archive.stat().st_size / 2**20),
                         "archive": f"{url}/{name}.zip",
                     }
-                    if job.state == "done"
+                    if (archive := Path(f"{job.folder}.zip")).exists()
                     else {}
                 ),
             }

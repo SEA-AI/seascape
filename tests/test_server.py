@@ -165,3 +165,31 @@ def test_a_hung_gpu_probe_still_serves(
     server.serve("127.0.0.1", 0)
     assert served
     assert "no answer" in capsys.readouterr().out
+
+
+def test_jobs_lists_a_finished_job_whose_archive_is_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    job = server.Job(tmp_path / "gone", "open-sea", scenes, state="done")
+    monkeypatch.setattr(server, "_jobs", {"gone": job})
+    (listed,) = _call("jobs").structured_content["jobs"]
+    assert listed["status"] == "done"
+    assert "archive" not in listed
+
+
+@pytest.mark.parametrize(("value", "expected"), [("", 7.0), ("2.5", 2.5)])
+def test_a_limit_reads_the_environment(
+    value: str, expected: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SEASCAPE_PROBE", value)
+    assert server._limit("PROBE", 7.0) == expected
+
+
+def test_a_limit_that_is_not_a_number_names_its_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SEASCAPE_PROBE", "4k")
+    with pytest.raises(ValueError, match="SEASCAPE_PROBE"):
+        server._limit("PROBE", 7.0)

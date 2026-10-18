@@ -25,9 +25,9 @@ Claude Desktop, through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 
 Then ask for what you want: *"render the baseline at sunset with a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
-A job's files are served at `http://<host>:8765/renders/<job>/`, with everything in `<job>.zip`. `jobs` lists the jobs since the server started, and the disk left.
+A job's files are served at `http://<host>:8765/renders/<job>/`, with everything in `<job>.zip`. `jobs` lists the jobs still kept, and the disk left.
 
-A job past the limits at the top of [`seascape/server.py`](../seascape/server.py) is refused.
+A job past the limits in [`seascape/server.py`](../seascape/server.py) is refused.
 
 > [!WARNING]
 > No authentication: anyone who can reach the port can queue renders and download what they write. Keep it on a trusted network.
