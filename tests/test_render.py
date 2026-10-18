@@ -220,6 +220,19 @@ def test_a_relative_output_reaches_blender_absolute(
     assert Path(handed[0]).parent == tmp_path / "out"
 
 
+def test_a_frame_blender_did_not_write_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = variant(outputs={"bands": ["eo"]})
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    monkeypatch.setattr(
+        bpy.ops, "render", SimpleNamespace(render=lambda **_: {"FINISHED"})
+    )
+
+    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
+        render.render(scenario, tmp_path)
+
+
 @pytest.mark.parametrize(
     ("returns", "writes", "aside"),
     [
@@ -230,18 +243,15 @@ def test_a_relative_output_reaches_blender_absolute(
         ({"FINISHED"}, None, True),
     ],
 )
-def test_a_frame_blender_did_not_write_raises_and_keeps_the_earlier(
+def test_an_unwritten_frame_keeps_the_earlier(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     returns: set[str],
     writes: bytes | None,
     aside: bool,
 ) -> None:
-    scenario = variant(outputs={"bands": ["eo"]})
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
-    path = tmp_path / f"{mount.name}.{scenario.outputs.format}"
-    earlier = cv2.imencode(path.suffix, np.zeros((2, 2, 3), np.uint8))[1].tobytes()
-    (path.with_name(f"{path.name}.earlier") if aside else path).write_bytes(earlier)
+    path = tmp_path / "bow.png"
+    (path.with_name(f"{path.name}.earlier") if aside else path).write_bytes(b"earlier")
 
     def blender(**_: object) -> set[str]:
         if writes is not None:
@@ -250,9 +260,9 @@ def test_a_frame_blender_did_not_write_raises_and_keeps_the_earlier(
 
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=blender))
 
-    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
-        render.render(scenario, tmp_path)
-    assert path.read_bytes() == earlier
+    with pytest.raises(RuntimeError, match="frame 0 was not written"):
+        render._render_still(path, "frame 0")
+    assert path.read_bytes() == b"earlier"
 
 
 @pytest.mark.render
