@@ -234,6 +234,7 @@ def test_a_frame_blender_did_not_write_raises(
 
     with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
         render.render(scenario, tmp_path)
+    assert stale.exists()
 
 
 @pytest.mark.render
