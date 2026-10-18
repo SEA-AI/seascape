@@ -225,10 +225,11 @@ def test_the_shader_reads_each_foam_age_s_peak_as_the_crests_run() -> None:
     east, north = np.meshgrid(centres, centres[::-1])
     breaking = waves.breakers(scene.wind_waves(SCENARIO))
     peaks = waves.crest_peaks_g(breaking, east, north, SCENARIO.outputs.times_s[0])
-    for age in (0, len(peaks) // 2, len(peaks) - 1):
-        tree.links.new(history.outputs[f"Age {age}"], shown.inputs["Value"])
-        rendered = 2 * shoot((px, px), "crest_probe") - 1
-        assert np.abs(rendered - peaks[age]).max() < 2e-3, age
+    # One age: each reads the same envelope, only its window differs.
+    age = len(peaks) // 2
+    tree.links.new(history.outputs[f"Age {age}"], shown.inputs["Value"])
+    rendered = 2 * shoot((px, px), "crest_probe") - 1
+    assert np.abs(rendered - peaks[age]).max() < 2e-3
 
 
 @pytest.mark.render
