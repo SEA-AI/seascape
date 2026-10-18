@@ -43,6 +43,9 @@ RENDERS = assets.CACHE / "renders"
 KEEP_S = 24 * 3600
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
+# How often a waiting `render_result` reports progress, which keeps a client's idle
+# timeout from ending it.
+PROGRESS_S = 5.0
 # PREVIEWS at this side, about 1.6k tokens each, fit a 25k-token tool result.
 PREVIEW_PX = 1568
 PREVIEWS = 8
@@ -71,6 +74,8 @@ MAX_DURATION_S = _limit("MAX_DURATION_S", 60.0)
 MAX_PIXELS = int(_limit("MAX_PIXELS", 3840 * 2160))
 MAX_IMAGES = int(_limit("MAX_IMAGES", 10_000))
 MIN_FREE_GB = _limit("MIN_FREE_GB", 10.0)
+MAX_RUN_S = _limit("MAX_RUN_S", 12 * 3600.0)
+MAX_QUEUED = int(_limit("MAX_QUEUED", 20))
 
 # The most a pixel takes on disk, by band and format; a render test pins each. An exr
 # and an EO png hold at most Blender's RGBA, 4 channels of float32 or 8 bits, and an
@@ -245,17 +250,19 @@ async def render(
     _refuse_oversized(scenes)
     RENDERS.mkdir(parents=True, exist_ok=True)
     _prune()
+    if (ahead := sum(j.waiting for j in _jobs.values())) >= MAX_QUEUED:
+        raise ToolError(f"{ahead} jobs queued; the server takes at most {MAX_QUEUED}")
     name = uuid.uuid4().hex
     job = Job(RENDERS / name, scenario, scenes)
-    # A running job's images count twice, as written and as still to come.
-    waiting = [j for j in _jobs.values() if j.waiting]
-    free_gb = (shutil.disk_usage(RENDERS).free - sum(j.bytes for j in waiting)) / 1e9
+    # A running job's images count twice, as written and as still to come; a
+    # finishing one still writes its zip.
+    writing = [j for j in _jobs.values() if j.waiting or j.state == "finishing"]
+    free_gb = (shutil.disk_usage(RENDERS).free - sum(j.bytes for j in writing)) / 1e9
     if (needs_gb := job.bytes / 1e9 + MIN_FREE_GB) > free_gb:
         raise ToolError(
             f"{free_gb:.0f} GB free after the jobs queued; this job needs "
             f"{needs_gb:.0f}, {MIN_FREE_GB:.0f} of it kept free"
         )
-    ahead = len(waiting)
     _jobs[name] = job
     job.task = asyncio.create_task(_run(job, path, lines, variants))
     return {"job": name, "images": job.total, "jobs_ahead": ahead}
@@ -286,19 +293,23 @@ async def _run(job: Job, path: Path, overrides: list[str], variants: int) -> Non
     try:
         async with _gpu:
             job.state, job.started_s = "running", time.time()
-            await _seascape(
-                "render", str(path), "-o", str(job.folder), "--variants",
-                str(variants), *sets,
-            )  # fmt: skip
-            if variants > 1:
-                job.scenes = await asyncio.to_thread(_written, job, path, overrides)
-            for scene, folder in zip(job.scenes, job.folders, strict=True):
-                if len(scene.outputs.times_s) > 1:
-                    await _seascape("video", str(folder))
+            # Past it, the process awaited is killed as on `cancel`.
+            async with asyncio.timeout(MAX_RUN_S):
+                await _seascape(
+                    "render", str(path), "-o", str(job.folder), "--variants",
+                    str(variants), *sets,
+                )  # fmt: skip
+                if variants > 1:
+                    job.scenes = await asyncio.to_thread(_written, job, path, overrides)
+                for scene, folder in zip(job.scenes, job.folders, strict=True):
+                    if len(scene.outputs.times_s) > 1:
+                        await _seascape("video", str(folder))
         # Off the GPU: the next job starts while this one zips.
         job.state = "finishing"
         await asyncio.to_thread(_finish, job)
         job.state = "done"
+    except TimeoutError:
+        job.state, job.error = "failed", f"ran past {MAX_RUN_S:g} s"
     except Exception as error:  # whatever it was, the client polling is told
         job.state, job.error = "failed", f"{type(error).__name__}: {error}"
 
@@ -329,7 +340,10 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
         raise ToolError(
             f"no job {job!r}: a job is forgotten when it expires or the server restarts"
         )
-    await asyncio.wait({found.task}, timeout=WAIT_S)
+    deadline = time.monotonic() + WAIT_S
+    while not found.task.done() and (left := deadline - time.monotonic()) > 0:
+        await asyncio.wait({found.task}, timeout=min(PROGRESS_S, left))
+        await ctx.report_progress(found.images, found.total)
     report: dict[str, Any] = {"status": found.state}
     previews: list[Image] = []
     if found.state == "failed":

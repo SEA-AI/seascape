@@ -321,3 +321,66 @@ def test_a_job_is_refused_when_its_images_would_fill_the_disk(
     result = _call("render", overrides=[f'outputs.format = "{fmt}"'])
     assert result.is_error is refused
     assert len(server._jobs) == 1 + (not refused)
+
+
+def test_a_job_past_its_deadline_fails_and_frees_the_gpu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sleeper(tmp_path, monkeypatch)
+    monkeypatch.setattr(server, "MAX_RUN_S", 0.5)
+
+    async def call() -> None:
+        async with Client(server.server) as client:
+            started = await client.call_tool("render", {})
+            name = started.structured_content["job"]
+            pid = await _started(name)
+            task = server._jobs[name].task
+            assert task is not None
+            await task
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+
+    asyncio.run(call())
+    (job,) = server._jobs.values()
+    assert (job.state, job.error) == ("failed", "ran past 0.5 s")
+    assert not server._gpu.locked()
+
+
+def test_a_full_queue_refuses_a_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.setattr(server, "MAX_QUEUED", 1)
+    queued = server.Job(tmp_path / "queued", "baseline", load_variants(BASELINE))
+    monkeypatch.setattr(server, "_jobs", {"queued": queued})
+    result = _call("render")
+    assert result.is_error
+    assert "at most 1" in result.content[0].text
+    assert len(server._jobs) == 1
+
+
+def test_a_waiting_result_reports_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sleeper(tmp_path, monkeypatch)
+    monkeypatch.setattr(server, "WAIT_S", 0.3)
+    monkeypatch.setattr(server, "PROGRESS_S", 0.1)
+    reported: list[tuple[float, float | None]] = []
+
+    async def progress(
+        progress: float, total: float | None, message: str | None
+    ) -> None:
+        reported.append((progress, total))
+
+    async def call() -> None:
+        async with Client(server.server) as client:
+            started = await client.call_tool("render", {})
+            name = started.structured_content["job"]
+            await client.call_tool(
+                "render_result", {"job": name}, progress_callback=progress
+            )
+            await client.call_tool("cancel", {"job": name})
+
+    asyncio.run(call())
+    assert len(reported) >= 2
+    assert set(reported) == {(0, 2)}

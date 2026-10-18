@@ -54,6 +54,8 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 | `SEASCAPE_RENDERS` | the renders' folder, `renders/` beside `compose.yaml` unless set |
 | `SEASCAPE_PORT` | the port, in place of 8765 in the URLs above |
 | `SEASCAPE_MAX_DURATION_S`, `SEASCAPE_MAX_PIXELS`, `SEASCAPE_MAX_IMAGES`, `SEASCAPE_MIN_FREE_GB` | a job's limits, per camera for pixels |
+| `SEASCAPE_MAX_RUN_S` | how long a job runs before it fails |
+| `SEASCAPE_MAX_QUEUED` | how many jobs wait or run at once |
 
 ```bash
 echo "SEASCAPE_MAX_DURATION_S=120" >> .env
