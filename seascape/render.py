@@ -167,11 +167,6 @@ def render(
     after each image."""
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
-    # An earlier run's frames would pass for this one's.
-    if (into / labels.FILENAME).exists():
-        raise FileExistsError(
-            f"{into} holds an earlier render: remove it or pick another"
-        )
     into.mkdir(parents=True, exist_ok=True)
     outputs = scenario.outputs
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)

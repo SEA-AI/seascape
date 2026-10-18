@@ -201,11 +201,7 @@ def test_one_scene_whose_hulls_meet_is_an_error(run: Run, tmp_path: Path) -> Non
 def test_variants_give_up_when_every_seed_has_hulls_meeting(
     run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A skipped seed leaves the folder an earlier run wrote under its name."""
     monkeypatch.setattr(cli, "TRIES_PER_VARIANT", 1)
-    earlier = tmp_path / str(load(BASELINE).seed)
-    earlier.mkdir()
-    (earlier / "kept.txt").write_text("from an earlier run")
 
     result = run(
         "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
@@ -214,5 +210,16 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
 
     assert result.exit_code == 1
     assert "0 of 2 variants in 2 seeds" in result.stderr
-    assert [p for p in tmp_path.iterdir() if p.is_dir()] == [earlier]
-    assert (earlier / "kept.txt").exists()
+    assert not [p for p in tmp_path.iterdir() if p.is_dir()]
+
+
+def test_a_folder_holding_an_earlier_run_is_refused_and_kept(
+    run: Run, tmp_path: Path
+) -> None:
+    (tmp_path / "kept.png").write_bytes(b"from an earlier run")
+
+    result = run("render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path)
+
+    assert result.exit_code == 1
+    assert "is not empty" in result.stderr
+    assert [p.name for p in tmp_path.iterdir()] == ["kept.png"]

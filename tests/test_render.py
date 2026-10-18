@@ -244,13 +244,6 @@ def test_an_unwritten_frame_raises(
         render._render_still(path, "frame 0")
 
 
-def test_a_folder_holding_an_earlier_render_is_refused(tmp_path: Path) -> None:
-    (tmp_path / labels.FILENAME).write_text("{}")
-
-    with pytest.raises(FileExistsError, match="earlier render"):
-        render.render(variant(), tmp_path)
-
-
 @pytest.mark.render
 @pytest.mark.parametrize(("edge_m", "columns"), [(3.45, 3), (3.55, 4)])
 def test_the_object_index_pass_samples_the_pixel_centre(
