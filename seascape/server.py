@@ -15,7 +15,6 @@ import time
 import tomllib
 import uuid
 from collections.abc import Iterator
-from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
@@ -30,7 +29,14 @@ from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
 from seascape import assets, montage, skies
-from seascape.config import Scenario, json_schema, load, load_variants
+from seascape.config import (
+    Band,
+    ImageFormat,
+    Scenario,
+    json_schema,
+    load,
+    load_variants,
+)
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 RENDERS = assets.CACHE / "renders"
@@ -66,6 +72,19 @@ MAX_PIXELS = int(_limit("MAX_PIXELS", 3840 * 2160))
 MAX_IMAGES = int(_limit("MAX_IMAGES", 10_000))
 MIN_FREE_GB = _limit("MIN_FREE_GB", 10.0)
 
+# The most a pixel takes on disk, by band and format; a render test pins each. An exr
+# and an EO png hold at most Blender's RGBA, 4 channels of float32 or 8 bits, and an
+# LWIR png 16-bit grey. A jpg's bound leaves room for scenes noisier than the shipped
+# ones.
+BYTES_PER_PX: dict[tuple[Band, ImageFormat], float] = {
+    ("eo", "exr"): 16.0,
+    ("ir", "exr"): 16.0,
+    ("eo", "png"): 4.0,
+    ("ir", "png"): 2.0,
+    ("eo", "jpg"): 1.0,
+    ("ir", "jpg"): 0.5,
+}
+
 server = MCPServer(
     "seascape",
     instructions="Synthetic maritime camera frames with exact ground truth. Read "
@@ -86,6 +105,19 @@ class Job:
     state: str = "queued"
     error: str | None = None
     task: asyncio.Task[None] | None = None
+
+    @property
+    def bytes(self) -> float:
+        """At most what the job writes: its images, and the archive of them."""
+        return 2 * sum(
+            len(scene.outputs.times_s)
+            * mount.camera.width_px
+            * mount.camera.height_px
+            * BYTES_PER_PX[mount.camera.band, scene.outputs.format]
+            for scene in self.scenes
+            for mount in scene.mounts
+            if mount.camera.band in scene.outputs.bands
+        )
 
     @property
     def folders(self) -> list[Path]:
@@ -213,11 +245,18 @@ async def render(
     _refuse_oversized(scenes)
     RENDERS.mkdir(parents=True, exist_ok=True)
     _prune()
-    if (free_gb := shutil.disk_usage(RENDERS).free / 1e9) < MIN_FREE_GB:
-        raise ToolError(f"{free_gb:.0f} GB free; a job needs {MIN_FREE_GB:.0f}")
-    ahead = sum(job.waiting for job in _jobs.values())
     name = uuid.uuid4().hex
-    job = _jobs[name] = Job(RENDERS / name, scenario, scenes)
+    job = Job(RENDERS / name, scenario, scenes)
+    # A running job's images count twice, as written and as still to come.
+    waiting = [j for j in _jobs.values() if j.waiting]
+    free_gb = (shutil.disk_usage(RENDERS).free - sum(j.bytes for j in waiting)) / 1e9
+    if (needs_gb := job.bytes / 1e9 + MIN_FREE_GB) > free_gb:
+        raise ToolError(
+            f"{free_gb:.0f} GB free after the jobs queued; this job needs "
+            f"{needs_gb:.0f}, {MIN_FREE_GB:.0f} of it kept free"
+        )
+    ahead = len(waiting)
+    _jobs[name] = job
     job.task = asyncio.create_task(_run(job, path, lines, variants))
     return {"job": name, "images": job.total, "jobs_ahead": ahead}
 
@@ -231,7 +270,13 @@ async def _seascape(*args: str) -> None:
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await process.communicate()
+    try:
+        _, stderr = await process.communicate()
+    except asyncio.CancelledError:
+        # asyncio leaves the process running, and Blender on the GPU.
+        process.kill()
+        await process.wait()
+        raise
     if process.returncode:
         raise RuntimeError(stderr.decode(errors="replace").strip()[-2000:])
 
@@ -284,8 +329,7 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
         raise ToolError(
             f"no job {job!r}: a job is forgotten when it expires or the server restarts"
         )
-    with suppress(TimeoutError):
-        await asyncio.wait_for(asyncio.shield(found.task), WAIT_S)
+    await asyncio.wait({found.task}, timeout=WAIT_S)
     report: dict[str, Any] = {"status": found.state}
     previews: list[Image] = []
     if found.state == "failed":
@@ -306,13 +350,29 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
     elif found.state == "queued":
         jobs = list(_jobs.values())
         report["jobs_ahead"] = sum(j.waiting for j in jobs[: jobs.index(found)])
-    else:
+    elif found.state == "running":
         done, total = found.images, found.total
         report["images"] = f"{done} of {total}"
         if done and found.started_s is not None:
             pace_s = (time.time() - found.started_s) / done
             report["remaining_s"] = round(pace_s * (total - done))
     return [json.dumps(report, indent=1), *previews]
+
+
+@server.tool()
+async def cancel(job: str) -> dict[str, Any]:
+    """Stop a queued or running job from `render`, and delete what it wrote."""
+    found = _jobs.get(job)
+    if found is None or found.task is None:
+        raise ToolError(f"no job {job!r}")
+    if not found.waiting:
+        raise ToolError(f"job {job!r} is {found.state}")
+    found.task.cancel()
+    found.state = "cancelled"
+    # Once the task ends, the process is gone and the GPU free.
+    await asyncio.wait({found.task})
+    await asyncio.to_thread(shutil.rmtree, found.folder, ignore_errors=True)
+    return {"job": job, "status": found.state}
 
 
 @server.tool()

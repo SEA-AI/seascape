@@ -3,19 +3,25 @@
 import asyncio
 import json
 import os
+import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx2
 import pytest
 from mcp import Client
+from mcp.types import TextContent
 from PIL import Image
 
 from seascape import server
 from seascape.config import load_variants
 from seascape.server import SCENARIOS
+
+BASELINE = SCENARIOS / "baseline.toml"
 
 
 def _call(tool: str, **arguments: Any) -> Any:
@@ -237,3 +243,81 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
     ] * 2
+
+
+def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`seascape render` as a process that writes into its job's folder and waits."""
+    script = tmp_path / "sleeper"
+    # $6 is the folder after `-m seascape.cli render <scenario> -o`.
+    script.write_text('#!/bin/sh\nmkdir -p "$6"\necho $$ > "$6/pid"\nexec sleep 60\n')
+    script.chmod(0o755)
+    monkeypatch.setattr(sys, "executable", str(script))
+    monkeypatch.setattr(server, "RENDERS", tmp_path / "renders")
+    monkeypatch.setattr(server, "_jobs", {})
+    # Bound to the loop that first waits on it, so one per test's loop.
+    monkeypatch.setattr(server, "_gpu", asyncio.Lock())
+
+
+async def _started(name: str) -> int:
+    pid = server._jobs[name].folder / "pid"
+    while not pid.exists() or not pid.read_text():
+        await asyncio.sleep(0.01)
+    return int(pid.read_text())
+
+
+def test_cancel_stops_a_job_and_hands_the_gpu_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _sleeper(tmp_path, monkeypatch)
+
+    async def call() -> None:
+        async with Client(server.server) as client:
+            first, queued, last = [
+                (await client.call_tool("render", {})).structured_content["job"]
+                for _ in range(3)
+            ]
+            pid = await _started(first)
+
+            cancelled = await client.call_tool("cancel", {"job": queued})
+            assert cancelled.structured_content["status"] == "cancelled"
+            assert server._jobs[first].state == "running"
+
+            await client.call_tool("cancel", {"job": first})
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+            assert not server._jobs[first].folder.exists()
+            reported = await client.call_tool("render_result", {"job": first})
+            assert isinstance(report := reported.content[0], TextContent)
+            assert json.loads(report.text) == {"status": "cancelled"}
+
+            await _started(last)
+            assert server._jobs[last].state == "running"
+            await client.call_tool("cancel", {"job": last})
+            again = await client.call_tool("cancel", {"job": last})
+            assert again.is_error
+            assert isinstance(refusal := again.content[0], TextContent)
+            assert "cancelled" in refusal.text
+
+    asyncio.run(call())
+    assert not server._gpu.locked()
+
+
+@pytest.mark.parametrize(("fmt", "refused"), [("jpg", False), ("exr", True)])
+def test_a_job_is_refused_when_its_images_would_fill_the_disk(
+    fmt: str, refused: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With room for one jpg job, beside one already queued, and no margin."""
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.setattr(server, "MIN_FREE_GB", 0.0)
+    queued = server.Job(tmp_path / "queued", "baseline", load_variants(BASELINE))
+    monkeypatch.setattr(server, "_jobs", {"queued": queued})
+    room = SimpleNamespace(free=2 * queued.bytes)
+    monkeypatch.setattr(shutil, "disk_usage", lambda _: room)
+
+    async def run(*_: object) -> None:
+        pass
+
+    monkeypatch.setattr(server, "_run", run)
+    result = _call("render", overrides=[f'outputs.format = "{fmt}"'])
+    assert result.is_error is refused
+    assert len(server._jobs) == 1 + (not refused)
