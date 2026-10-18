@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import httpx2
 import pytest
 from mcp import Client
 
@@ -74,3 +75,34 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
         first,
         first + 2,
     ]
+
+
+@pytest.mark.parametrize(
+    ("allowed", "host", "refused"),
+    [
+        ("", "evil.example", False),
+        ("hector:*", "hector:8765", False),
+        ("hector:*", "evil.example", True),
+    ],
+)
+def test_listed_hosts_are_the_only_ones_mcp_answers(
+    allowed: str,
+    host: str,
+    refused: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.setenv("SEASCAPE_ALLOWED_HOSTS", allowed)
+    served = server.app("0.0.0.0")
+
+    async def post() -> int:
+        async with served.router.lifespan_context(served):
+            transport = httpx2.ASGITransport(app=served)
+            async with httpx2.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                response = await client.post("/mcp", json={}, headers={"host": host})
+                return response.status_code
+
+    assert (asyncio.run(post()) == 421) is refused

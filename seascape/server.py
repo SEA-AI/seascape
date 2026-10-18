@@ -6,6 +6,7 @@ it. Its files are served under /renders/ and deleted after `KEEP_S`.
 
 import asyncio
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -21,8 +22,10 @@ from typing import Annotated, Any
 import uvicorn
 from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 from PIL import Image as Picture
 from pydantic import Field
+from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
 from seascape import assets, montage, skies
@@ -238,7 +241,7 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
 
 
 def serve(host: str, port: int) -> None:
-    """Serve MCP at /mcp and the jobs' files at /renders/."""
+    """Serve `app` on `port`."""
     # In a process of its own, so the server never holds Blender.
     probe = subprocess.run(
         [sys.executable, "-c", "from seascape import scene; print(scene.enable_gpu())"],
@@ -251,7 +254,23 @@ def serve(host: str, port: int) -> None:
     print(
         f"Cycles renders on {'the CPU' if backend == 'None' else backend}", flush=True
     )
+    uvicorn.run(app(host), host=host, port=port)
+
+
+def app(host: str) -> Starlette:
+    """MCP at /mcp and the jobs' files at /renders/."""
+    # A web page can point a browser on the network at this port by DNS rebinding;
+    # with hosts listed, MCP refuses any other Host or Origin.
+    hosts = [h for h in os.environ.get("SEASCAPE_ALLOWED_HOSTS", "").split(",") if h]
+    security = (
+        TransportSecuritySettings(
+            allowed_hosts=hosts,
+            allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
+        )
+        if hosts
+        else None
+    )
     RENDERS.mkdir(parents=True, exist_ok=True)
-    app = server.streamable_http_app(host=host)
-    app.mount("/renders", StaticFiles(directory=RENDERS))
-    uvicorn.run(app, host=host, port=port)
+    served = server.streamable_http_app(host=host, transport_security=security)
+    served.mount("/renders", StaticFiles(directory=RENDERS))
+    return served

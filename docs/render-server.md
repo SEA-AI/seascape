@@ -30,6 +30,8 @@ A job's files are served at `http://<host>:8765/renders/<job>/`, with everything
 > [!WARNING]
 > No authentication: anyone who can reach the port can queue renders and download what they write. Keep it on a trusted network.
 
+Set `SEASCAPE_ALLOWED_HOSTS` to the names clients use, such as `<host>:*,<ip>:*`, and MCP answers only those, which stops a web page reaching it through a browser on the network. Unset, it answers any.
+
 ## Run it
 
 On a machine with an NVIDIA GPU, Docker and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/):
