@@ -220,21 +220,39 @@ def test_a_relative_output_reaches_blender_absolute(
     assert Path(handed[0]).parent == tmp_path / "out"
 
 
-def test_a_frame_blender_did_not_write_raises(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("returns", "writes", "aside"),
+    [
+        ({"FINISHED"}, None, False),
+        ({"FINISHED"}, b"", False),
+        ({"CANCELLED"}, b"partial", False),
+        # A killed run left the earlier frame aside.
+        ({"FINISHED"}, None, True),
+    ],
+)
+def test_a_frame_blender_did_not_write_raises_and_keeps_the_earlier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returns: set[str],
+    writes: bytes | None,
+    aside: bool,
 ) -> None:
-    """Even with a frame from an earlier run in its place."""
     scenario = variant(outputs={"bands": ["eo"]})
     mount = next(m for m in scenario.mounts if m.camera.band == "eo")
-    stale = tmp_path / f"{mount.name}.{scenario.outputs.format}"
-    cv2.imwrite(str(stale), np.zeros((2, 2, 3), np.uint8))
-    monkeypatch.setattr(
-        bpy.ops, "render", SimpleNamespace(render=lambda **_: {"FINISHED"})
-    )
+    path = tmp_path / f"{mount.name}.{scenario.outputs.format}"
+    earlier = cv2.imencode(path.suffix, np.zeros((2, 2, 3), np.uint8))[1].tobytes()
+    (path.with_name(f"{path.name}.earlier") if aside else path).write_bytes(earlier)
+
+    def blender(**_: object) -> set[str]:
+        if writes is not None:
+            path.write_bytes(writes)
+        return returns
+
+    monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=blender))
 
     with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
         render.render(scenario, tmp_path)
-    assert stale.exists()
+    assert path.read_bytes() == earlier
 
 
 @pytest.mark.render

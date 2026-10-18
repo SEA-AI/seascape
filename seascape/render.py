@@ -148,7 +148,7 @@ def _info(scenario: Scenario) -> dict[str, Any]:
 def _render_still(path: Path, what: str) -> None:
     """Render the active camera to `path`, which `render.filepath` names."""
     # A frame left by an earlier run would pass for this one: set it aside, and put it
-    # back if this one fails.
+    # back if this one fails. One a killed run left aside is the earlier frame.
     earlier = path.with_name(f"{path.name}.earlier")
     if path.is_file():
         path.replace(earlier)
@@ -258,6 +258,4 @@ def render(
         raise ValueError(
             f"no rig has a camera in any of {outputs.bands}: nothing to render"
         )
-    if len(written) != scenario.images:
-        raise RuntimeError(f"{len(written)} of {scenario.images} images written")
     return written + _write_truth(into, cameras, truth)
