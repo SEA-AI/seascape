@@ -125,6 +125,9 @@ def render(
     whose hulls meet is skipped for the next, and the labels merge into one file."""
     built = load(scenario, list(overrides))
     into = output or scenario.with_suffix("")
+    # An earlier run's frames would pass for this one's.
+    if into.is_dir() and any(into.iterdir()):
+        raise click.ClickException(f"{into} is not empty: remove it or pick another")
     from seascape import render as renderer
     from seascape.scene import OverlapError
 
@@ -150,12 +153,10 @@ def render(
                 folder = into / str(seed)
                 variant = load(scenario, [*overrides, f"seed = {seed}"])
                 seed += 1
-                ours = not folder.exists()
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
-                    if ours:  # the build refuses before anything is written
-                        folder.rmdir()
+                    folder.rmdir()  # the build refuses before anything is written
                     click.echo(f"\nseed {variant.seed} skipped: {error}", err=True)
                     continue
                 folders.append(folder)
