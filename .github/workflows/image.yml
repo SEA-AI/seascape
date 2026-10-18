@@ -10,8 +10,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Every commit keeps its :<sha> tag.
+  # Every commit keeps its :<sha> tag: none running is cancelled, none pending dropped.
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read

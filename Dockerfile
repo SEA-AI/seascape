@@ -14,7 +14,7 @@ WORKDIR /seascape
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
 COPY . .
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
 
 EXPOSE 8765
 CMD ["uv", "run", "--no-sync", "seascape", "serve", "--host", "0.0.0.0"]
