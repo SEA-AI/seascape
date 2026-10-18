@@ -198,6 +198,11 @@ def _prune() -> None:
                 shutil.rmtree(path)
             else:
                 path.unlink()
+    # A cancelled job leaves no folder to age; a queued one has none yet.
+    for name, job in list(_jobs.items()):
+        done = job.task is not None and job.task.done()
+        if done and job.created_s < cutoff and not job.folder.exists():
+            del _jobs[name]
 
 
 @server.tool()

@@ -384,3 +384,23 @@ def test_a_waiting_result_reports_progress(
     asyncio.run(call())
     assert len(reported) >= 2
     assert set(reported) == {(0, 2)}
+
+
+def test_an_old_cancelled_job_is_forgotten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    scenes = load_variants(SCENARIOS / "open-sea.toml")
+
+    async def forget() -> list[str]:
+        done = asyncio.create_task(asyncio.sleep(0))
+        await done
+        old = server.Job(tmp_path / "old", "open-sea", scenes, state="cancelled")
+        new = server.Job(tmp_path / "new", "open-sea", scenes, state="cancelled")
+        old.created_s -= server.KEEP_S + 1
+        old.task = new.task = done
+        monkeypatch.setattr(server, "_jobs", {"old": old, "new": new})
+        server._prune()
+        return list(server._jobs)
+
+    assert asyncio.run(forget()) == ["new"]
