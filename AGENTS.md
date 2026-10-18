@@ -134,6 +134,8 @@ ruff, tombi and ty go through `uvx` deliberately: never add them to a dependency
 
 The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
+A scene build is what makes a test slow. Test a helper on its own with `bpy.ops` patched, and put a check that needs a build into a test that already builds one rather than adding a build per case.
+
 ## Working here
 
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`).
