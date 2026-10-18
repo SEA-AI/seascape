@@ -134,7 +134,7 @@ ruff, tombi and ty go through `uvx` deliberately: never add them to a dependency
 
 The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
-A test pays only for what it checks. Test the smallest unit that holds the logic, and share an expensive setup rather than paying it per case. Here that setup is usually a scene build: patch `bpy.ops` to test a helper alone, or add the check to a test that already builds one.
+A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 
 ## Working here
 
