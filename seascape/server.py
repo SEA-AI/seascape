@@ -246,7 +246,8 @@ def serve(host: str, port: int) -> None:
         text=True,
         check=True,
     )
-    backend = probe.stdout.split()[-1]
+    words = probe.stdout.split()
+    backend = words[-1] if words else "None"
     print(
         f"Cycles renders on {'the CPU' if backend == 'None' else backend}", flush=True
     )

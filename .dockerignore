@@ -2,3 +2,5 @@
 .venv
 .*_cache
 **/__pycache__
+.claude
+*.blend
