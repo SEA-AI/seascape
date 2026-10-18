@@ -28,7 +28,9 @@ carry the sea's height break; their foam lasts: Monahan, "Oceanic whitecaps", Jo
 of Physical Oceanography 1(2) 139, 1971, for its area's 3.85 s e-fold in seawater;
 Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11) 1816, 1984
 (doi:10.1364/AO.23.001816), for the 0.22 its reflectance averages over its life, from
-fresh foam's (Whitlock et al., in `wakes`).
+fresh foam's (Whitlock et al., in `wakes`). Between the ages a pixel reads, a crest's
+peak comes off its envelope: Rice, "Mathematical analysis of random noise", Bell System
+Technical Journal 23(3) 282, 1944, for a narrow-band process's envelope and phase.
 
 Slope variance: Cox & Munk, "Measurement of the roughness of the sea surface from
 photographs of the sun's glitter", JOSA 44(11) 838, 1954 (doi:10.1364/JOSA.44.000838),
