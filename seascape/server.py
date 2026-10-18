@@ -33,7 +33,7 @@ RENDERS = assets.CACHE / "renders"
 KEEP_S = 24 * 3600
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
-# The longest side a model reads without downscaling.
+# PREVIEWS at this side, about 1.6k tokens each, fit a 25k-token tool result.
 PREVIEW_PX = 1568
 PREVIEWS = 8
 
