@@ -147,23 +147,12 @@ def _info(scenario: Scenario) -> dict[str, Any]:
 
 def _render_still(path: Path, what: str) -> None:
     """Render the active camera to `path`, which `render.filepath` names."""
-    # A frame left by an earlier run would pass for this one: set it aside, and put it
-    # back if this one fails. One a killed run left aside is the earlier frame.
-    earlier = path.with_name(f"{path.name}.earlier")
-    if path.is_file():
-        path.replace(earlier)
-    try:
-        result = bpy.ops.render.render(write_still=True)
-        # A GPU that dies partway can leave the frame unwritten, silently.
-        if "FINISHED" not in result or not path.is_file() or not path.stat().st_size:
-            raise RuntimeError(
-                f"{what} was not written to {path} (Blender returned {sorted(result)})"
-            )
-    except BaseException:
-        if earlier.is_file():
-            earlier.replace(path)
-        raise
-    earlier.unlink(missing_ok=True)
+    result = bpy.ops.render.render(write_still=True)
+    # A GPU that dies partway can leave the frame unwritten, silently.
+    if "FINISHED" not in result or not path.is_file() or not path.stat().st_size:
+        raise RuntimeError(
+            f"{what} was not written to {path} (Blender returned {sorted(result)})"
+        )
 
 
 def _nothing() -> None:
@@ -178,6 +167,11 @@ def render(
     after each image."""
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
+    # An earlier run's frames would pass for this one's.
+    if (into / labels.FILENAME).exists():
+        raise FileExistsError(
+            f"{into} holds an earlier render: remove it or pick another"
+        )
     into.mkdir(parents=True, exist_ok=True)
     outputs = scenario.outputs
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)

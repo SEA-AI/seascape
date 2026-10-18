@@ -222,24 +222,16 @@ def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
 
 
 @pytest.mark.parametrize(
-    ("returns", "writes", "aside"),
-    [
-        ({"FINISHED"}, None, False),
-        ({"FINISHED"}, b"", False),
-        ({"CANCELLED"}, b"partial", False),
-        # A killed run left the earlier frame aside.
-        ({"FINISHED"}, None, True),
-    ],
+    ("returns", "writes"),
+    [({"FINISHED"}, None), ({"FINISHED"}, b""), ({"CANCELLED"}, b"partial")],
 )
-def test_an_unwritten_frame_keeps_the_earlier(
+def test_an_unwritten_frame_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     returns: set[str],
     writes: bytes | None,
-    aside: bool,
 ) -> None:
     path = tmp_path / "bow.png"
-    (path.with_name(f"{path.name}.earlier") if aside else path).write_bytes(b"earlier")
 
     def blender(**_: object) -> set[str]:
         if writes is not None:
@@ -250,7 +242,13 @@ def test_an_unwritten_frame_keeps_the_earlier(
 
     with pytest.raises(RuntimeError, match="frame 0 was not written"):
         render._render_still(path, "frame 0")
-    assert path.read_bytes() == b"earlier"
+
+
+def test_a_folder_holding_an_earlier_render_is_refused(tmp_path: Path) -> None:
+    (tmp_path / labels.FILENAME).write_text("{}")
+
+    with pytest.raises(FileExistsError, match="earlier render"):
+        render.render(variant(), tmp_path)
 
 
 @pytest.mark.render
