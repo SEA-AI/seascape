@@ -145,6 +145,18 @@ def _info(scenario: Scenario) -> dict[str, Any]:
     }
 
 
+def _render_still(path: Path, what: str) -> None:
+    """Render the active camera to `path`, which `render.filepath` names."""
+    # A frame left by an earlier run would pass for this one.
+    path.unlink(missing_ok=True)
+    result = bpy.ops.render.render(write_still=True)
+    # A GPU that dies partway can leave the frame unwritten, silently.
+    if "FINISHED" not in result or not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError(
+            f"{what} was not written to {path} (Blender returned {sorted(result)})"
+        )
+
+
 def _nothing() -> None:
     pass
 
@@ -196,11 +208,10 @@ def render(
                     scene.respond(
                         mount, substream(scenario.seed, f"sensor/{mount.name}")
                     )
-                    bpy.ops.render.render(write_still=True)
+                    rendered = into / f"{name}.{'exr' if thermal else outputs.format}"
+                    _render_still(rendered, f"frame {frame} of camera {mount.name}")
                     if thermal:
-                        _write_thermal(
-                            into / f"{name}.exr", outputs.format, tones[mount.name]
-                        )
+                        _write_thermal(rendered, outputs.format, tones[mount.name])
                     file_name = f"{name}.{outputs.format}"
                     written.append(into / file_name)
                     advance()
@@ -238,4 +249,6 @@ def render(
         raise ValueError(
             f"no rig has a camera in any of {outputs.bands}: nothing to render"
         )
+    if len(written) != scenario.images:
+        raise RuntimeError(f"{len(written)} of {scenario.images} images written")
     return written + _write_truth(into, cameras, truth)

@@ -220,6 +220,22 @@ def test_a_relative_output_reaches_blender_absolute(
     assert Path(handed[0]).parent == tmp_path / "out"
 
 
+def test_a_frame_blender_did_not_write_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even with a frame from an earlier run in its place."""
+    scenario = variant(outputs={"bands": ["eo"]})
+    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    stale = tmp_path / f"{mount.name}.{scenario.outputs.format}"
+    cv2.imwrite(str(stale), np.zeros((2, 2, 3), np.uint8))
+    monkeypatch.setattr(
+        bpy.ops, "render", SimpleNamespace(render=lambda **_: {"FINISHED"})
+    )
+
+    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
+        render.render(scenario, tmp_path)
+
+
 @pytest.mark.render
 @pytest.mark.parametrize(("edge_m", "columns"), [(3.45, 3), (3.55, 4)])
 def test_the_object_index_pass_samples_the_pixel_centre(
@@ -486,11 +502,11 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
     )
     real, calls = bpy.ops.render.render, []
 
-    def dies_on_the_third(**kwargs: object) -> None:
+    def dies_on_the_third(**kwargs: object) -> set[str]:
         calls.append(None)
         if len(calls) == 3:
             raise RuntimeError("killed")
-        real(**kwargs)
+        return real(**kwargs)
 
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=dies_on_the_third))
     with pytest.raises(RuntimeError, match="killed"):
