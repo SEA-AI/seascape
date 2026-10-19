@@ -102,8 +102,9 @@ def build(
     path = output or scenario.with_suffix(f".{band}.blend")
     with _blender_log(path.with_suffix(".log")):
         scene.build(built, band)
-        sea.remember_foam()
-        bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()))
+        sea.keep_foam(path.resolve())
+        # The foam's frames are already relative to the .blend's folder.
+        bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()), relative_remap=False)
     mounts = built.mounts
     bands = ", ".join(sorted({mount.camera.band for mount in mounts}))
     heights = ", ".join(f"{rig.height_m} m" for rig in built.rigs.values())
