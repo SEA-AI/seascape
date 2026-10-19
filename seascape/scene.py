@@ -1355,10 +1355,11 @@ def _rays(
     scenario: Scenario, mounts: list[Mount], cameras: dict[str, bpy.types.Object]
 ) -> list[tuple[Vector, Vector, float]]:
     """(origin, unit direction, the camera's pixel in rad) of rays across each camera's
-    frame, in every frame."""
+    frame, in every frame, on the foam memory's drifting grid."""
     sc = bpy.context.scene
+    drift = sea.foam_drift(scenario.sea, scenario.outputs)
     rays = []
-    for frame in range(len(scenario.outputs.times_s)):
+    for frame, t_s in enumerate(scenario.outputs.times_s):
         sc.frame_set(frame)
         # matrix_world is stale until the depsgraph runs.
         bpy.context.view_layer.update()
@@ -1372,7 +1373,10 @@ def _rays(
                     toward = (corners[2].lerp(corners[1], a)).lerp(
                         corners[3].lerp(corners[0], a), b
                     )
-                    origin = camera.matrix_world.translation.copy()
+                    # Water at x is on the grid at x - v t.
+                    origin = camera.matrix_world.translation - Vector(
+                        (drift[0] * t_s, drift[1] * t_s, 0.0)
+                    )
                     rays.append((origin, (turn @ toward).normalized(), pixel_rad))
     sc.frame_set(0)
     return rays

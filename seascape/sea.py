@@ -1013,13 +1013,10 @@ def _foam_frames(
 ) -> list[tuple[FoamGrid, bpy.types.Image]]:
     """Each grid's foam memory over the clip, an image sequence of (cover, breaking),
     simulated before the first render: breaking at each cell's gust's Monahan cover
-    (`gusty_whitecap_fraction`). A loop's foam holds still, as drift would jump at its
-    seam."""
+    (`gusty_whitecap_fraction`)."""
     speed = sea.wind_speed_mps
     east, north = _downwind(sea)
-    drift = (
-        (0.0, 0.0) if outputs.loop else foam_drift_mps(speed, math.atan2(east, north))
-    )
+    drift = foam_drift(sea, outputs)
     times = outputs.times_s
     intensity = turbulence_intensity(speed)
     reach = math.sqrt(2) * float(np.abs(gust_tile).max()) * intensity
@@ -1117,12 +1114,7 @@ def _remembered(
     quantile covering the remembered share."""
     split = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(position, split.inputs["Vector"])
-    east, north = _downwind(sea)
-    drift = (
-        (0.0, 0.0)
-        if outputs.loop
-        else foam_drift_mps(sea.wind_speed_mps, math.atan2(east, north))
-    )
+    drift = foam_drift(sea, outputs)
     # The memory's grid drifts: water at x is at grid x - v t.
     on_grid = [
         _math(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis])
@@ -1673,6 +1665,15 @@ def _drifting(
         _math(tree, "MULTIPLY_ADD", w0, n0, _math(tree, "MULTIPLY", w1, n1)),
         norm,
     )
+
+
+def foam_drift(sea: Sea, outputs: Outputs) -> tuple[float, float]:
+    """(east, north) m/s the foam memory's grid drifts at; a loop's holds still, as
+    drift would jump at its seam."""
+    if outputs.loop:
+        return 0.0, 0.0
+    east, north = _downwind(sea)
+    return foam_drift_mps(sea.wind_speed_mps, math.atan2(east, north))
 
 
 def _downwind(sea: Sea) -> tuple[float, float]:
