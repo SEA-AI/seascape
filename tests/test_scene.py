@@ -5,6 +5,7 @@ Blender is one global session, so each class rebuilds in its own band on entry.
 
 import math
 from collections.abc import Iterator
+from itertools import pairwise
 from pathlib import Path
 from statistics import NormalDist
 from typing import Any
@@ -395,18 +396,13 @@ class TestEoBand:
         )
 
     def test_whitecap_foam_reads_the_sea_the_waves_are_drawn_on(self) -> None:
-        """Where it breaks, its lace and the network it tears into all read the
-        parallaxed sea, so none slides off the crests."""
+        """Its memory and its lace both read the parallaxed sea, so neither slides off
+        the crests."""
         tree = bpy.data.materials["sea"].node_tree
-        crests = next(
-            n
-            for n in tree.nodes
-            if n.bl_idname == "ShaderNodeGroup"
-            and n.node_tree.name.startswith("sea_crest_history")
-        )
+        memory = [n for n in tree.nodes if n.name.startswith("sea_foam_")]
+        assert memory
         for socket in (
-            crests.inputs["Position"],
-            tree.nodes["foam_network"].inputs["Vector"],
+            *(n.inputs["Vector"] for n in memory),
             tree.nodes["whitecap_lace_axes"].inputs["X"],
         ):
             assert "sea_parallax" in upstream(socket), socket.node.name
@@ -419,31 +415,17 @@ class TestEoBand:
         ):
             assert "sea_parallax" in upstream(socket), socket.node.name
 
-    def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
-        wind = scene.wind_waves(SCENARIO)
-        speed = SCENARIO.sea.wind_speed_mps
+    def test_the_finest_foam_grid_draws_field_sized_whitecaps(self) -> None:
+        """Its cells resolve the metre waves whose crests break as wide as field
+        whitecaps; a coarser grid takes over where a pixel spans a quarter of a cell."""
         tree = bpy.data.materials["sea"].node_tree
-        ages = [
-            n
+        cells = sorted(
+            float(n.name.removeprefix("sea_foam_").removesuffix("m"))
             for n in tree.nodes
-            if n.bl_idname == "ShaderNodeGroup" and n.node_tree.name == "whitecap_age"
-        ]
-        assert len(ages) == len(waves.foam_ages_s())
-        assert all("gust" in upstream(n.inputs["Threshold"]) for n in ages)
-        table = baked("sea_breaking")
-        gust_max = (
-            math.sqrt(2)
-            * np.abs(baked("sea_gust")).max()
-            * waves.turbulence_intensity(speed)
+            if n.name.startswith("sea_foam_")
         )
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        gusts = gust_max * (2 * texel - 1)
-        # The threshold at each texel's gust.
-        expected = waves.whitecap_thresholds_g(
-            wind, [waves.gusty_whitecap_fraction(speed, g) for g in gusts]
-        )
-        assert table == pytest.approx(expected, rel=1e-5)
-        assert np.all(np.diff(table) < 0)
+        assert cells[0] == scene.FOAM_NEAR_CELL_M
+        assert all(b == a * scene.FOAM_LEVEL_RATIO for a, b in pairwise(cells))
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)

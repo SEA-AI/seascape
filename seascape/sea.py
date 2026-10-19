@@ -22,8 +22,11 @@ from water color: a multiband quasi-analytical algorithm for optically deep wate
 Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 """
 
+import hashlib
 import math
-from collections.abc import Callable
+import shutil
+import uuid
+from collections.abc import Callable, Iterator
 from functools import cache
 from pathlib import Path
 from statistics import NormalDist
@@ -32,7 +35,7 @@ from typing import NamedTuple
 import bpy
 import numpy as np
 
-from seascape import lwir
+from seascape import assets, lwir
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
@@ -56,27 +59,25 @@ from seascape.wakes import (
 )
 from seascape.water import body_color
 from seascape.waves import (
-    CDF_SIGMAS,
     FADE_FOOTPRINTS,
     GRAVITY_MS2,
     GUST_LENGTH_M,
     SLICK_DRIFT,
-    WHITECAP_AREA_EFOLD_S,
+    THIN_FOAM_SHARE,
+    WHITECAP_EFFECTIVE_REFLECTANCE,
     WINDROW_ASPECT,
     WINDROW_MIN_WIND_MPS,
     WINDROW_SPACING_S,
+    FoamGrid,
     Wave,
-    breakers,
     cox_munk_slick_variances,
     cox_munk_slope,
     cox_munk_variances,
     earth_radius_m,
     fade_footprints_m,
-    foam_ages_s,
-    foam_edge_g,
-    foam_fade_efold_s,
-    foam_reach_rad,
-    foam_windows_s,
+    foam_drift_mps,
+    foam_memory,
+    foam_memory_thresholds_g,
     gust_slope_variance,
     gusty_whitecap_fraction,
     horizon_m,
@@ -87,11 +88,9 @@ from seascape.waves import (
     tallest,
     turbulence_intensity,
     twinkle_hz,
-    unresolved_acceleration_variance,
     unresolved_slope_variances,
     von_karman_field,
     whitecap_fraction,
-    whitecap_thresholds_g,
 )
 
 # Quan & Fry 1995 at 550 nm, salinity 35, 15 C.
@@ -128,6 +127,17 @@ SLOPE_ROWS = 16
 type SkyCurve = tuple[np.ndarray, np.ndarray]
 
 
+class Seen(NamedTuple):
+    """What the cameras see of the sea: their finest footprint, and the grids their
+    whitecaps are remembered on."""
+
+    finest_footprint_m: float = 0.0
+    foam_grids: tuple[FoamGrid, ...] = ()
+
+
+UNSEEN = Seen()
+
+
 class Light(NamedTuple):
     """The ir sky round the horizon, or the unit vector an eo sea glints towards. A sky
     makes the sea ir."""
@@ -153,14 +163,14 @@ GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
 # weighted so.
 LACE_OCTAVE = 6.0
 LACE_FINE_WEIGHT = 0.8
-# A judgement: the cells foam tears into, and how far Blender's Noise bends their
-# edges, in cells.
-FOAM_CELL_M = 0.3
-FOAM_WARP = 0.6
-# A judgement: a line's soft edge, in cells, and how sharply a segment of it goes.
-FOAM_LINE_SOFT = 0.02
-FOAM_POP_GAIN = 20.0
-_NETWORK_CSV = Path(__file__).parent / "data" / "foam_network.csv"
+# Gusts a foam memory's threshold is set at, across their range, the rest interpolated.
+FOAM_GUST_LEVELS = 5
+# Numerics: the offsets within a texel, per axis, a lookup's spread is averaged over.
+FOAM_LOOKUP_SHARES = 8
+# Numerics: a finer foam grid fades in over this many of its cells from its edge.
+FOAM_SEAM_CELLS = 8
+# Where a foam memory's frames are kept: Blender reads a sequence from disk.
+FOAM_CACHE = assets.CACHE / "foam"
 
 # A judgement: foam patches a metre or two across, streaked 4:1 along the wake.
 FOAM_CELLS = 512
@@ -821,154 +831,6 @@ def _instance(
     return node
 
 
-def _history_group(calm: bool) -> bpy.types.NodeTree:
-    """Three waves' downward acceleration at each foam age, added to `Sum i`: cos(phase)
-    times `Cos i` plus sin(phase) times `Sin i` over the lanes, and its quadrature to
-    `Quad i`, the waves faded and calmed as `_wave_group` draws them. The sums are
-    scalars, as every chained group holds each one on Cycles' SVM stack."""
-    name = "waves_history_calm" if calm else "waves_history"
-    if name in bpy.data.node_groups:
-        return bpy.data.node_groups[name]
-    ages = range(len(foam_ages_s()))
-    group, given, out = _group(
-        name,
-        (
-            ("Position", "Vector"),
-            *_FOOTPRINT,
-            ("Calm", "Float"),
-            ("Kx", "Vector"),
-            ("Ky", "Vector"),
-            ("W", "Vector"),
-            ("Phase", "Vector"),
-            *_FADE,
-            *(
-                (f"{part} {i}", kind)
-                for i in ages
-                for part, kind in (
-                    ("Cos", "Vector"),
-                    ("Sin", "Vector"),
-                    ("Sum", "Float"),
-                    ("Quad", "Float"),
-                )
-            ),
-        ),
-        tuple((f"{part} {i}", "Float") for i in ages for part in ("Sum", "Quad")),
-    )
-    position = group.nodes.new("ShaderNodeSeparateXYZ")
-    group.links.new(given["Position"], position.inputs["Vector"])
-    east, north, time_s = (_spread(group, position.outputs[a]) for a in "XYZ")
-    phase = _vector(
-        group,
-        "MULTIPLY_ADD",
-        given["Kx"],
-        east,
-        _vector(
-            group,
-            "MULTIPLY_ADD",
-            given["Ky"],
-            north,
-            _vector(group, "MULTIPLY_ADD", given["W"], time_s, given["Phase"]),
-        ),
-    )
-    seen, _ = _fade(group, given, calm)
-    cos, sin = (
-        _vector(group, "MULTIPLY", _vector(group, trig, phase), seen)
-        for trig in ("COSINE", "SINE")
-    )
-    # a k sin(phase + omega m) = sin(phase) `Cos i` - cos(phase) `Sin i`.
-    for i in ages:
-        for part, first, second, join in (
-            ("Sum", cos, sin, "ADD"),
-            ("Quad", sin, cos, "SUBTRACT"),
-        ):
-            lanes = _vector(
-                group,
-                join,
-                _vector(group, "MULTIPLY", first, given[f"Cos {i}"]),
-                _vector(group, "MULTIPLY", second, given[f"Sin {i}"]),
-            )
-            group.links.new(
-                _math(group, "ADD", _total(group, lanes), given[f"{part} {i}"]),
-                out[f"{part} {i}"],
-            )
-    return group
-
-
-def _crest_history(
-    tree: bpy.types.NodeTree,
-    wind: tuple[Wave, ...],
-    position: bpy.types.NodeSocket,
-    pixel: _Pixel,
-    calm: bpy.types.NodeSocket | None,
-    damped: frozenset[Wave],
-) -> list[bpy.types.NodeSocket]:
-    """The breaking crests' peak downward acceleration in g at `position` over each
-    foam age's window, youngest first. A window's middle m shifts each wave's phase by
-    omega m: a k cos(phase + omega m) = a k cos(omega m) cos(phase)
-    - a k sin(omega m) sin(phase), so the cosines are taken once."""
-    ages = foam_ages_s()
-    group, given, out = _group(
-        "sea_crest_history",
-        (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
-        tuple((f"Age {i}", "Float") for i in range(len(ages))),
-    )
-    previous = None
-    for triple in _triples(breakers(wind)):
-        calmed = not damped.isdisjoint(triple)
-        node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _history_group(calmed)
-        group.links.new(given["Position"], node.inputs["Position"])
-        _feed(group, given, node, calmed)
-        _set_triple(node.inputs, triple, damped)
-        for i, middle in enumerate(foam_windows_s()[0]):
-            node.inputs[f"Cos {i}"].default_value = _lanes(
-                triple,
-                lambda w, a=middle: (
-                    w.amplitude_m * w.k_rad_m * math.cos(w.omega_rad_s * a)
-                ),
-            )
-            node.inputs[f"Sin {i}"].default_value = _lanes(
-                triple,
-                lambda w, a=middle: (
-                    -w.amplitude_m * w.k_rad_m * math.sin(w.omega_rad_s * a)
-                ),
-            )
-            if previous is not None:
-                for part in ("Sum", "Quad"):
-                    group.links.new(
-                        previous.outputs[f"{part} {i}"], node.inputs[f"{part} {i}"]
-                    )
-        previous = node
-    if previous is not None:
-        reaches = foam_reach_rad(breakers(wind))
-        for i, reach in enumerate(reaches):
-            a, q = (previous.outputs[f"{part} {i}"] for part in ("Sum", "Quad"))
-            # The peak within the age's window, as `crest_peaks_g`.
-            envelope = _math(
-                group,
-                "SQRT",
-                _math(group, "MULTIPLY_ADD", a, a, _math(group, "MULTIPLY", q, q)),
-            )
-            turn = _math(
-                group,
-                "MAXIMUM",
-                _math(
-                    group,
-                    "SUBTRACT",
-                    _math(group, "ABSOLUTE", _math(group, "ARCTAN2", q, a)),
-                    float(reach),
-                ),
-                0.0,
-            )
-            group.links.new(
-                _math(group, "MULTIPLY", envelope, _math(group, "COSINE", turn)),
-                out[f"Age {i}"],
-            )
-    node = _instance(tree, group, pixel, calm)
-    tree.links.new(position, node.inputs["Position"])
-    return [node.outputs[f"Age {i}"] for i in range(len(ages))]
-
-
 def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types.Image:
     """`value_at` baked against log footprint: one lookup, not a sum over the waves per
     sample."""
@@ -999,89 +861,378 @@ def _at_footprint(
     return value
 
 
-def _whitecaps(
-    tree: bpy.types.NodeTree,
+def _clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+    out = _math(tree, "MAXIMUM", x, 0.0)
+    out.node.use_clamp = True
+    return out
+
+
+def _texels(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """(rows, columns): `tile` (rows bottom first, as `curve_image` lays it) at each
+    column's u and each row's v, in tiles, as Cycles' linear lookup with repeat reads
+    it. Separable: two tile rows blended per row, then two columns per column."""
+    height, width = tile.shape
+    x, y = u * width - 0.5, v * height - 0.5
+    i, j = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = x - i, (y - j)[:, None]
+    rows = (1 - fy) * tile[j % height] + fy * tile[(j + 1) % height]
+    return rows[:, i % width] * (1 - fx) + rows[:, (i + 1) % width] * fx
+
+
+def _looked_up_sigma(tile: np.ndarray) -> float:
+    """`tile`'s spread as Cycles' linear lookup reads it, between texels as on them:
+    interpolation averages neighbours, so it is under the texels' own."""
+    height, width = tile.shape
+    shares = (np.arange(FOAM_LOOKUP_SHARES) + 0.5) / FOAM_LOOKUP_SHARES
+    variance = np.mean(
+        [
+            np.var(
+                _texels(
+                    tile,
+                    (np.arange(width) + 0.5 + a) / width,
+                    (np.arange(height) + 0.5 + b) / height,
+                )
+            )
+            for a in shares
+            for b in shares
+        ]
+    )
+    return float(np.sqrt(variance))
+
+
+def _gust_values(
+    tile: np.ndarray,
+    outputs: Outputs,
+    velocity_mps: tuple[float, float],
+    east_m: np.ndarray,
+    north_m: np.ndarray,
+    t_s: float,
+) -> np.ndarray:
+    """`_gust`'s unit tile at each column's east and each row's north, at `t_s`: its
+    `_drifting`, the tile laid square, `GUST_TILE_M` a side, and carried at
+    `velocity_mps`."""
+    per_m = 1 / GUST_TILE_M
+
+    def layer(carried_s: float, shift: float) -> np.ndarray:
+        return _texels(
+            tile,
+            per_m * (east_m - velocity_mps[0] * carried_s) + shift,
+            per_m * (north_m - velocity_mps[1] * carried_s) + shift,
+        )
+
+    if not outputs.loop:
+        return layer(t_s, 0.0)
+    span_s = outputs.span_s
+    weighted = []
+    for lag in (0.0, 0.5):
+        cycle = (t_s / span_s + lag) % 1.0
+        weighted.append((1 - abs(2 * cycle - 1), layer(cycle * span_s, lag)))
+    (w0, n0), (w1, n1) = weighted
+    return (w0 * n0 + w1 * n1) / math.hypot(w0, w1)
+
+
+def _memory_thresholds(
+    wind: tuple[Wave, ...],
+    drift: tuple[float, float],
+    cell_m: float,
+    step_s: float,
+    fractions: tuple[float, ...],
+) -> np.ndarray:
+    """`foam_memory_thresholds_g`, kept on disk: every scene over one sea shares it."""
+    key = hashlib.sha256(repr((wind, drift, cell_m, step_s, fractions)).encode())
+    path = FOAM_CACHE / "thresholds" / f"{key.hexdigest()[:16]}.npy"
+    if path.exists():
+        return np.load(path)
+    thresholds = foam_memory_thresholds_g(wind, drift, cell_m, step_s, fractions)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Written aside and moved, so a reader never sees half a file.
+    aside = path.with_name(f"{uuid.uuid4().hex}.npy")
+    np.save(aside, thresholds)
+    aside.replace(path)
+    return thresholds
+
+
+def _write_frames(
+    folder: Path,
+    grid: FoamGrid,
+    frames: Iterator[tuple[np.ndarray, np.ndarray]],
+) -> None:
+    """Each frame's (cover, breaking) as an EXR in `folder`, all written aside and
+    moved in at once, so a build alongside never reads part of a sequence."""
+    aside = folder.with_name(f"{folder.name}.{uuid.uuid4().hex}")
+    aside.mkdir(parents=True)
+    image = bpy.data.images.new(
+        "sea_foam_frame", grid.columns, grid.rows, float_buffer=True
+    )
+    image.colorspace_settings.name = "Non-Color"
+    pixels = np.zeros((grid.rows, grid.columns, 4), np.float32)
+    pixels[..., 3] = 1.0
+    for i, (cover, breaking) in enumerate(frames):
+        pixels[..., 0], pixels[..., 1] = cover, breaking
+        image.pixels.foreach_set(pixels.ravel())
+        image.filepath_raw = str(aside / f"foam_{i + 1:04d}.exr")
+        image.file_format = "OPEN_EXR"
+        image.save()
+    bpy.data.images.remove(image)
+    try:
+        aside.rename(folder)
+    except OSError:
+        # Another build wrote the same sequence first.
+        shutil.rmtree(aside)
+
+
+class _Gusts(NamedTuple):
+    """The gust tile as `_gust` carries it, and the Monahan cover at gusts across its
+    range."""
+
+    tile: np.ndarray
+    velocity_mps: tuple[float, float]
+    intensity: float
+    levels: np.ndarray
+    fractions: tuple[float, ...]
+
+
+# The foam memories the last build asked for and has not simulated: a build that never
+# renders, as most tests, never pays for them.
+_PENDING: list[Callable[[], None]] = []
+
+
+def remember_foam(*_: object) -> None:
+    """Simulate every foam memory the last build left pending, and point their image
+    sequences at the frames: on `render_pre`, and before a `.blend` is saved."""
+    while _PENDING:
+        _PENDING.pop()()
+    for image in bpy.data.images:
+        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
+            image.reload()
+
+
+def _foam_frames(
     sea: Sea,
     wind: tuple[Wave, ...],
-    history: list[bpy.types.NodeSocket],
+    outputs: Outputs,
+    grids: tuple[FoamGrid, ...],
+    gust_tile: np.ndarray,
+) -> list[tuple[FoamGrid, bpy.types.Image]]:
+    """Each grid's foam memory over the clip, an image sequence of (cover, breaking),
+    simulated before the first render: breaking at each cell's gust's Monahan cover
+    (`gusty_whitecap_fraction`). A loop's foam holds still, as drift would jump at its
+    seam."""
+    speed = sea.wind_speed_mps
+    east, north = _downwind(sea)
+    drift = (
+        (0.0, 0.0) if outputs.loop else foam_drift_mps(speed, math.atan2(east, north))
+    )
+    times = outputs.times_s
+    intensity = turbulence_intensity(speed)
+    reach = math.sqrt(2) * float(np.abs(gust_tile).max()) * intensity
+    gusts = np.linspace(-reach, reach, FOAM_GUST_LEVELS)
+    fractions = tuple(gusty_whitecap_fraction(speed, float(g)) for g in gusts)
+    gusting = _Gusts(
+        gust_tile, (speed * east, speed * north), intensity, gusts, fractions
+    )
+    _PENDING.clear()
+    if remember_foam not in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.append(remember_foam)
+    out = []
+    for grid in grids:
+        key = hashlib.sha256(
+            repr((wind, drift, grid, times, outputs.loop, fractions)).encode()
+            + gust_tile.tobytes()
+        ).hexdigest()[:16]
+        folder = FOAM_CACHE / key
+        if not all(
+            (folder / f"foam_{i + 1:04d}.exr").exists() for i in range(len(times))
+        ):
+            _PENDING.append(
+                lambda grid=grid, folder=folder: _simulate(
+                    wind, outputs, grid, folder, drift, gusting
+                )
+            )
+        sequence = bpy.data.images.new(
+            f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
+        )
+        sequence.source = "SEQUENCE"
+        sequence.filepath = str(folder / "foam_0001.exr")
+        sequence.colorspace_settings.name = "Non-Color"
+        out.append((grid, sequence))
+    return out
+
+
+def _simulate(
+    wind: tuple[Wave, ...],
+    outputs: Outputs,
+    grid: FoamGrid,
+    folder: Path,
+    drift: tuple[float, float],
+    gusts: _Gusts,
+) -> None:
+    """One grid's foam memory over the clip, written to `folder`."""
+    step = 1 / outputs.fps
+    fractions, levels = gusts.fractions, gusts.levels
+    thresholds = _memory_thresholds(wind, drift, grid.cell_m, step, fractions)
+    x = grid.west_m + (np.arange(grid.columns) + 0.5) * grid.cell_m
+    y = grid.south_m + (np.arange(grid.rows) + 0.5) * grid.cell_m
+    # Over the gusts' range the threshold falls near straight: the line through its
+    # levels; a lull below any foam's onset breaks nothing.
+    finite = np.isfinite(thresholds)
+    if finite.sum() >= 2:
+        slope, offset = np.polyfit(levels[finite], thresholds[finite], 1)
+        calmest = float(levels[finite].min())
+    else:
+        slope, offset, calmest = 0.0, math.inf, math.inf
+
+    def threshold_at(t_s: float) -> np.ndarray:
+        gust = _gust_values(
+            gusts.tile,
+            outputs,
+            gusts.velocity_mps,
+            x + drift[0] * t_s,
+            y + drift[1] * t_s,
+            t_s,
+        ).astype(np.float32) * np.float32(gusts.intensity)
+        threshold = gust * np.float32(slope) + np.float32(offset)
+        return np.where(gust < calmest, np.float32(np.inf), threshold)
+
+    times = outputs.times_s
+    _write_frames(
+        folder,
+        grid,
+        foam_memory(wind, drift, grid, times[0], step, len(times), threshold_at),
+    )
+
+
+def _remembered(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    outputs: Outputs,
+    position: bpy.types.NodeSocket,
     footprint_m: bpy.types.NodeSocket,
-    gust: bpy.types.NodeSocket | None,
-    gust_max: float,
-    lace: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket],
+    lace: bpy.types.NodeSocket,
+    memory: list[tuple[FoamGrid, bpy.types.Image]],
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """How much of the pixel foam covers, how bright, as a share of fresh foam's, and
-    the share of the sea under foam of any age, laced or not, where its bubbles are.
-    `history` holds the breaking crests' peak downward acceleration over each foam
-    age's window."""
-    threshold_g = _breaking(tree, sea, wind, gust, gust_max)
-    breaking = breakers(wind)
-    table = _footprint_table(
-        "sea_unresolved_acceleration",
-        lambda f: unresolved_acceleration_variance(breaking, f),
+    """How much of the pixel foam covers; that, as a share of fresh foam's brightness;
+    and the share of the sea under foam, where its bubbles are: read off the finest
+    foam memory that holds `position`, (east, north, time), the lace above its
+    quantile covering the remembered share."""
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(position, split.inputs["Vector"])
+    east, north = _downwind(sea)
+    drift = (
+        (0.0, 0.0)
+        if outputs.loop
+        else foam_drift_mps(sea.wind_speed_mps, math.atan2(east, north))
     )
-    unresolved = _at_footprint(tree, table, footprint_m, "sea_unresolved_acceleration")
-    sigma = _math(
-        tree,
-        "MAXIMUM",
-        _math(tree, "SQRT", _math(tree, "ADD", unresolved, foam_edge_g(wind) ** 2)),
-        1e-6,
-    )
-    mean_g = whitecap_thresholds_g(wind, [whitecap_fraction(sea.wind_speed_mps)])
-    fade_s = foam_fade_efold_s(wind, float(mean_g[0]), FRESH_FOAM_REFLECTANCE)
-    shares, widths = _network_widths()
-    # The fine lace as a uniform level in [g/2, 1 - g/2], g the popping ramp's width,
-    # so all kept is solid and none kept is empty.
-    sigmas = CDF_SIGMAS * (2 * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES - 1)
-    cdf = curve_image("normal_cdf", np.vectorize(NormalDist().cdf)(sigmas))
-    x = _math(tree, "MULTIPLY_ADD", lace[1], 1 / (2 * CDF_SIGMAS), 0.5)
-    x.node.use_clamp = True
-    level = _math(
+    # The memory's grid drifts: water at x is at grid x - v t.
+    on_grid = [
+        _math(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis])
+        for axis, v in zip("XY", drift, strict=True)
+    ]
+    # Past the coarsest grid the foam is finer than a pixel: Monahan's cover, as bright
+    # on average as Koepke measured.
+    cover: bpy.types.NodeSocket | float = whitecap_fraction(sea.wind_speed_mps)
+    breaking: bpy.types.NodeSocket | float = (
+        WHITECAP_EFFECTIVE_REFLECTANCE / FRESH_FOAM_REFLECTANCE - THIN_FOAM_SHARE
+    ) / (1 - THIN_FOAM_SHARE)
+    # Coarsest first, so each finer grid overwrites where it holds.
+    for grid, sequence in sorted(memory, key=lambda m: -m[0].cell_m):
+        u = _math(
+            tree,
+            "MULTIPLY_ADD",
+            on_grid[0],
+            1 / (grid.columns * grid.cell_m),
+            -grid.west_m / (grid.columns * grid.cell_m),
+        )
+        w = _math(
+            tree,
+            "MULTIPLY_ADD",
+            on_grid[1],
+            1 / (grid.rows * grid.cell_m),
+            -grid.south_m / (grid.rows * grid.cell_m),
+        )
+        at = tree.nodes.new("ShaderNodeCombineXYZ")
+        tree.links.new(u, at.inputs["X"])
+        tree.links.new(w, at.inputs["Y"])
+        texture = tree.nodes.new("ShaderNodeTexImage")
+        texture.name = f"sea_foam_{grid.cell_m:g}m"
+        texture.image = sequence
+        texture.extension = "CLIP"
+        # Linear lookup lays the cells' squares into the lace's edge.
+        texture.interpolation = "Cubic"
+        texture.image_user.frame_duration = len(outputs.times_s)
+        texture.image_user.frame_start = 0
+        texture.image_user.use_auto_refresh = True
+        tree.links.new(at.outputs["Vector"], texture.inputs["Vector"])
+        channels = tree.nodes.new("ShaderNodeSeparateColor")
+        tree.links.new(texture.outputs["Color"], channels.inputs["Color"])
+        # Taken where the pixel spans under a cell, fading out by two, and faded in from
+        # its edge, so neither a finer grid's reach nor its border leaves a seam.
+        fine_enough = _clamped(
+            tree, _math(tree, "MULTIPLY_ADD", footprint_m, -1 / grid.cell_m, 2.0)
+        )
+        inside = _math(
+            tree,
+            "MULTIPLY",
+            *(
+                _clamped(
+                    tree,
+                    _math(
+                        tree,
+                        "MULTIPLY",
+                        _math(tree, "MINIMUM", x, _math(tree, "SUBTRACT", 1.0, x)),
+                        cells / FOAM_SEAM_CELLS,
+                    ),
+                )
+                for x, cells in ((u, grid.columns), (w, grid.rows))
+            ),
+        )
+        inside = _math(tree, "MULTIPLY", inside, fine_enough)
+        cover = _math(
+            tree,
+            "MULTIPLY_ADD",
+            inside,
+            _math(tree, "SUBTRACT", channels.outputs["Red"], cover),
+            cover,
+        )
+        breaking = _math(
+            tree,
+            "MULTIPLY_ADD",
+            inside,
+            _math(tree, "SUBTRACT", channels.outputs["Green"], breaking),
+            breaking,
+        )
+    assert isinstance(cover, bpy.types.NodeSocket)
+    levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
+    # Above its 1 - cover quantile, the lace covers `cover` of the pixel.
+    laced = _math(
         tree,
         "MULTIPLY_ADD",
-        lookup(tree, cdf, x),
-        1 - 1 / FOAM_POP_GAIN,
-        0.5 / FOAM_POP_GAIN,
+        _math(tree, "SUBTRACT", lace, lookup(tree, ppf, cover)),
+        2.0,
+        0.5,
     )
-    area: bpy.types.NodeSocket | float = 0.0
-    foam: bpy.types.NodeSocket | float = 0.0
-    under: bpy.types.NodeSocket | float = 0.0
-    for age, acceleration in zip(foam_ages_s(), history, strict=True):
-        node = tree.nodes.new("ShaderNodeGroup")
-        node.node_tree = _foam_age_group()
-        share = math.exp(-age / fade_s)
-        constants = {
-            "Thin": math.exp(-age / WHITECAP_AREA_EFOLD_S),
-            "Share": share,
-            "Wide": float(np.interp(share, shares, widths)),
-        }
-        for name, value in constants.items():
-            node.inputs[name].default_value = value
-        for name, socket in (
-            ("Acceleration", acceleration),
-            ("Threshold", threshold_g),
-            ("Sigma", sigma),
-            ("Footprint", footprint_m),
-            ("Lace", lace[0]),
-            ("Level", level),
-            ("Network", lace[2]),
-            ("Area", area),
-            ("Foam", foam),
-            ("Under", under),
-        ):
-            if isinstance(socket, bpy.types.NodeSocket):
-                tree.links.new(socket, node.inputs[name])
-            else:
-                node.inputs[name].default_value = socket
-        area, foam, under = (node.outputs[n] for n in ("Area", "Foam", "Under"))
-    assert isinstance(area, bpy.types.NodeSocket)
-    assert isinstance(foam, bpy.types.NodeSocket)
+    laced.node.use_clamp = True
+    laced = _math(
+        tree,
+        "MULTIPLY",
+        laced,
+        _math(tree, "GREATER_THAN", cover, 1e-3),
+        name="whitecaps",
+    )
+    bright = _math(tree, "MULTIPLY_ADD", breaking, 1 - THIN_FOAM_SHARE, THIN_FOAM_SHARE)
+    foam = _math(tree, "MULTIPLY", laced, bright, name="whitecap_foam")
+    under = _math(tree, "MAXIMUM", cover, 0.0, name="whitecap_bubbles")
+    return laced, foam, under
+
+
+def _bare(
+    tree: bpy.types.NodeTree,
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """No whitecaps: a calm sea, or one no camera sees."""
     area, foam, under = (
-        _math(tree, "MAXIMUM", socket, 0.0, name=name)
-        for socket, name in (
-            (area, "whitecaps"),
-            (foam, "whitecap_foam"),
-            (under, "whitecap_bubbles"),
-        )
+        _math(tree, "MAXIMUM", 0.0, 0.0, name=name)
+        for name in ("whitecaps", "whitecap_foam", "whitecap_bubbles")
     )
     return area, foam, under
 
@@ -1400,136 +1551,23 @@ def _daylight(
     return mix.outputs["Shader"]
 
 
-@cache
-def _network_widths() -> tuple[np.ndarray, np.ndarray]:
-    """(share, width): the line width, in cells, along the foam network's edges that
-    covers each share of the sea."""
-    raw = np.loadtxt(_NETWORK_CSV, delimiter=",", comments="#")
-    return raw[:, 0], raw[:, 1]
-
-
-def _foam_age_group() -> bpy.types.NodeTree:
-    """One foam age, folded into the older ages' `Area`, `Foam` and `Under` by
-    maximum. Old foam tears into whole network segments rather than greying (Yingst,
-    Alford & Parberry 2011)."""
-    name = "whitecap_age"
-    if name in bpy.data.node_groups:
-        return bpy.data.node_groups[name]
-    group, given, out = _group(
-        name,
-        tuple(
-            (n, "Float")
-            for n in (
-                "Acceleration",
-                "Threshold",
-                "Sigma",
-                "Thin",
-                "Share",
-                "Wide",
-                "Footprint",
-                "Lace",
-                "Level",
-                "Network",
-                "Area",
-                "Foam",
-                "Under",
-            )
-        ),
-        (("Area", "Float"), ("Foam", "Float"), ("Under", "Float")),
-    )
-    sigmas = CDF_SIGMAS * (2 * (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES - 1)
-    cdf = curve_image("normal_cdf", np.vectorize(NormalDist().cdf)(sigmas))
-    levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
-
-    def uniform(z: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        # Clamped, so an infinite threshold reads the table's end.
-        x = _math(group, "MULTIPLY_ADD", z, 1 / (2 * CDF_SIGMAS), 0.5)
-        x.node.use_clamp = True
-        return lookup(group, cdf, x)
-
-    excess = _math(group, "SUBTRACT", given["Acceleration"], given["Threshold"])
-    fill = _math(
-        group,
-        "MULTIPLY",
-        uniform(_math(group, "DIVIDE", excess, given["Sigma"])),
-        given["Thin"],
-    )
-    laced = _math(
-        group,
-        "MULTIPLY_ADD",
-        _math(group, "SUBTRACT", given["Lace"], lookup(group, ppf, fill)),
-        2.0,
-        0.5,
-    )
-    laced.node.use_clamp = True
-    laced = _math(group, "MULTIPLY", laced, _math(group, "GREATER_THAN", fill, 1e-3))
-
-    shares, widths = _network_widths()
-    top = float(widths[-1])
-    grid = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES * top
-    cover = curve_image("foam_network_cover", np.interp(grid, widths, shares))
-    width = _math(
-        group,
-        "MINIMUM",
-        _math(
-            group,
-            "MAXIMUM",
-            _math(group, "DIVIDE", given["Footprint"], FOAM_CELL_M),
-            given["Wide"],
-        ),
-        top,
-    )
-    line = _math(
-        group,
-        "MULTIPLY_ADD",
-        _math(group, "SUBTRACT", width, given["Network"]),
-        1 / FOAM_LINE_SOFT,
-        0.5,
-    )
-    line.node.use_clamp = True
-    covered = lookup(group, cover, _math(group, "DIVIDE", width, top))
-    kept = _math(
-        group,
-        "MINIMUM",
-        _math(group, "DIVIDE", given["Share"], _math(group, "MAXIMUM", covered, 1e-4)),
-        1.0,
-    )
-    stays = _math(
-        group,
-        "MULTIPLY_ADD",
-        _math(group, "SUBTRACT", kept, given["Level"]),
-        FOAM_POP_GAIN,
-        0.5,
-    )
-    stays.node.use_clamp = True
-    torn = _math(group, "MULTIPLY", laced, _math(group, "MULTIPLY", line, stays))
-    for socket, value in (
-        ("Area", laced),
-        ("Foam", torn),
-        ("Under", fill),
-    ):
-        group.links.new(_math(group, "MAXIMUM", given[socket], value), out[socket])
-    return group
-
-
 def _foam_lace(
     tree: bpy.types.NodeTree,
     sea: Sea,
     where: bpy.types.NodeSocket,
     outputs: Outputs,
     tile: bpy.types.Image,
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """(lace, fine lace, distance in cells to the foam network's nearest edge),
-    drifting with the surface, read at `where`, (east, north, time). The lace is two
-    independent unit Gaussians rescaled to one.
-
-    ponytail: the network drifts on, unlooped, so a looped clip's seam moves it by the
-    drift over the span; crossfade two networks if the pop shows."""
+) -> bpy.types.NodeSocket:
+    """Whitecap foam's lace, a unit Gaussian drifting with the surface, read at `where`,
+    (east, north, time): two independent reads of `tile`, rescaled to one."""
+    width, height = tile.size
+    texels = np.empty(width * height * 4, np.float32)
+    tile.pixels.foreach_get(texels)
+    sigma = _looked_up_sigma(texels.reshape(height, width, 4)[..., 0])
     east, north = _downwind(sea)
     drift = SLICK_DRIFT * sea.wind_speed_mps
     layers = []
-    for scale, start in ((1.0, 0.0), (LACE_OCTAVE, 0.5), (LACE_OCTAVE, 0.25)):
+    for scale, start in ((1.0, 0.0), (LACE_OCTAVE, 0.5)):
         per_m = scale / FOAM_TILE_M
         along = per_m / FOAM_STREAK
         layers.append(
@@ -1546,41 +1584,7 @@ def _foam_lace(
         )
     weight = LACE_FINE_WEIGHT
     summed = _math(tree, "MULTIPLY_ADD", layers[1], weight, layers[0])
-    # Carried with the surface, the network read where it started.
-    split = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(where, split.inputs["Vector"])
-    start_at = tree.nodes.new("ShaderNodeCombineXYZ")
-    for axis, v in (("X", drift * east), ("Y", drift * north)):
-        tree.links.new(
-            _math(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis]),
-            start_at.inputs[axis],
-        )
-    # Blender's Noise colour is three noises in [0, 1]: centred, `FOAM_WARP` cells.
-    bend = tree.nodes.new("ShaderNodeTexNoise")
-    bend.noise_dimensions = "2D"
-    bend.inputs["Scale"].default_value = 1 / FOAM_CELL_M
-    bend.inputs["Detail"].default_value = 3.0
-    tree.links.new(start_at.outputs["Vector"], bend.inputs["Vector"])
-    reach = FOAM_WARP * FOAM_CELL_M
-    bent = _vector(
-        tree,
-        "ADD",
-        start_at.outputs["Vector"],
-        _vector(
-            tree, "MULTIPLY_ADD", bend.outputs["Color"], (2 * reach,) * 3, (-reach,) * 3
-        ),
-    )
-    network = tree.nodes.new("ShaderNodeTexVoronoi")
-    network.name = "foam_network"
-    network.voronoi_dimensions = "2D"
-    network.feature = "DISTANCE_TO_EDGE"
-    network.inputs["Scale"].default_value = 1 / FOAM_CELL_M
-    tree.links.new(bent, network.inputs["Vector"])
-    return (
-        _math(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2)),
-        layers[2],
-        network.outputs["Distance"],
-    )
+    return _math(tree, "MULTIPLY", summed, 1 / (sigma * math.sqrt(1 + weight**2)))
 
 
 def _drifting(
@@ -1759,37 +1763,6 @@ def _gusty(
         _math(tree, "MAXIMUM", _math(tree, "ADD", variance, offset), 0.0)
         for variance in unresolved
     )
-
-
-def _breaking(
-    tree: bpy.types.NodeTree,
-    sea: Sea,
-    wind: tuple[Wave, ...],
-    gust: bpy.types.NodeSocket | None,
-    gust_max: float,
-) -> float | bpy.types.NodeSocket:
-    """The breaking threshold of Monahan's whitecap cover at the local wind.
-
-    ponytail: the cover answers the gust at once; follow it with a lag if the patches
-    track it too tightly.
-    """
-    speed = sea.wind_speed_mps
-    if gust is None:
-        return float(whitecap_thresholds_g(wind, [whitecap_fraction(speed)])[0])
-    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    thresholds = whitecap_thresholds_g(
-        wind,
-        [gusty_whitecap_fraction(speed, g) for g in gust_max * (2 * texel - 1)],
-    )
-    # Finite, so the linear lookup never mixes an infinity into NaN.
-    big = float(np.finfo(np.float32).max)
-    table = curve_image(
-        "sea_breaking", np.nan_to_num(thresholds, posinf=big, neginf=-big)
-    )
-    at = _math(tree, "MULTIPLY_ADD", gust, 0.5 / gust_max, 0.5)
-    threshold = lookup(tree, table, at)
-    threshold.node.name = "sea_breaking"
-    return threshold
 
 
 class _Wakes(NamedTuple):
@@ -2271,14 +2244,15 @@ def material(
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
     wakes: tuple[Wake, ...],
     light: Light,
-    finest_footprint_m: float = 0.0,
+    seen: Seen = UNSEEN,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
     `rngs` draw its gusts, its slicks and its wakes' foam. With a sky the sea is ir and
-    reflects it; without, eo, glittering towards the light's sun if it has one.
+    reflects it; without, eo, glittering towards the light's sun if it has one, its
+    whitecaps remembered on the grids its cameras see.
 
-    No node draws a wave a pixel of `finest_footprint_m` cannot resolve; the tables
-    and statistics still describe the whole sea."""
+    No node draws a wave a pixel of the cameras' finest footprint cannot resolve; the
+    tables and statistics still describe the whole sea."""
     gust_rng, slick_rng, foam_rng = rngs
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
@@ -2287,15 +2261,15 @@ def material(
     time_s = _sea_time(tree, outputs)
     speed = sea.wind_speed_mps
     drawn = (
-        resolvable(wind, finest_footprint_m),
-        resolvable(swell, finest_footprint_m),
+        resolvable(wind, seen.finest_footprint_m),
+        resolvable(swell, seen.finest_footprint_m),
     )
     # Each sea on its own, or a swell's height would decide which wind waves count.
     tall = tallest(drawn[0], PARALLAX_HEIGHT_SHARE) + tallest(
         drawn[1], PARALLAX_HEIGHT_SHARE
     )
     position = _waves(tree, *drawn, tall, time_s, pixel)
-    gust_max, gust, slick = 0.0, None, None
+    gust_max, gust, slick, tile = 0.0, None, None, None
     if speed > 0.0:
         tile = von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
         # A crossfade reaches sqrt(2) of the tile's peak at most.
@@ -2358,16 +2332,18 @@ def material(
                 _math(tree, "MULTIPLY", wide, 0.01),
             ),
         )
-        # Along the view, the widest footprint, leaves the most unresolved. A judgement.
-        whitecaps = _whitecaps(
-            tree,
-            sea,
-            wind,
-            _crest_history(tree, wind, position, pixel, calm, damped),
-            pixel.along_m,
-            gust,
-            gust_max,
-            _foam_lace(tree, sea, position, outputs, foam()),
+        whitecaps = (
+            _remembered(
+                tree,
+                sea,
+                outputs,
+                position,
+                pixel.across_m,
+                _foam_lace(tree, sea, position, outputs, foam()),
+                _foam_frames(sea, wind, outputs, seen.foam_grids, tile),
+            )
+            if wind and seen.foam_grids and tile is not None
+            else _bare(tree)
         )
         surface = _daylight(tree, sea, normal, tangent, unresolved, whitecaps, wake)
     else:

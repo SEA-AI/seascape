@@ -50,6 +50,19 @@ HAZE_NEAR_M = 0.1
 
 # Judgement.
 THERMAL_SKY_PX = 2048
+# A foam memory's finest cells resolve waves a metre long, whose crests break in
+# whitecaps as wide and as brief as field video measures (Korinenko & Malinovsky 2023;
+# Korinenko et al. 2022).
+FOAM_NEAR_CELL_M = 0.25
+# Korinenko & Malinovsky 2023 filmed breakers 3.7-18.7 m long: a grid resolving no wave
+# that short would lay whitecaps larger than any they measured, so the sea past it
+# takes Monahan's mean.
+FOAM_LONGEST_BREAKER_M = 18.7
+# Numerics: each coarser grid's cells, starting where a pixel spans a quarter of one;
+# rays per side of a frame its view is sampled at; a grid's widest side, in cells.
+FOAM_LEVEL_RATIO = 4
+FOAM_RAYS = 9
+FOAM_MAX_CELLS = 1024
 
 
 def wind_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
@@ -1338,6 +1351,91 @@ def _finest_footprint_m(
     return finest
 
 
+def _rays(
+    scenario: Scenario, mounts: list[Mount], cameras: dict[str, bpy.types.Object]
+) -> list[tuple[Vector, Vector, float]]:
+    """(origin, unit direction, the camera's pixel in rad) of rays across each camera's
+    frame, in every frame."""
+    sc = bpy.context.scene
+    rays = []
+    for frame in range(len(scenario.outputs.times_s)):
+        sc.frame_set(frame)
+        # matrix_world is stale until the depsgraph runs.
+        bpy.context.view_layer.update()
+        for mount in mounts:
+            camera = cameras[mount.name]
+            pixel_rad = camera.data.angle_x / mount.camera.width_px
+            turn = camera.matrix_world.to_3x3()
+            corners = camera.data.view_frame(scene=sc)
+            for a in np.linspace(0.0, 1.0, FOAM_RAYS):
+                for b in np.linspace(0.0, 1.0, FOAM_RAYS):
+                    toward = (corners[2].lerp(corners[1], a)).lerp(
+                        corners[3].lerp(corners[0], a), b
+                    )
+                    origin = camera.matrix_world.translation.copy()
+                    rays.append((origin, (turn @ toward).normalized(), pixel_rad))
+    sc.frame_set(0)
+    return rays
+
+
+def _box(
+    rays: list[tuple[Vector, Vector, float]], cell_m: float, shrink: float
+) -> tuple[float, float, float, float]:
+    """(west, south, width, height) on the lattice of `cell_m` round where the rays meet
+    the sea, or pass over it, out to where their camera's pixel spans two cells, times
+    `shrink`, past which no pixel reads the grid; and past its fading edge."""
+    xs, ys = [], []
+    for origin, ray, pixel_rad in rays:
+        flat = Vector((ray.x, ray.y))
+        run = 2 * shrink * cell_m / pixel_rad
+        if ray.z < 0.0:
+            run = min(run, origin.z / -ray.z * flat.length)
+        flat.normalize()
+        xs += [origin.x, origin.x + flat.x * run]
+        ys += [origin.y, origin.y + flat.y * run]
+    margin = (sea.FOAM_SEAM_CELLS + 1) * cell_m
+    west = math.floor((min(xs) - margin) / cell_m) * cell_m
+    south = math.floor((min(ys) - margin) / cell_m) * cell_m
+    return west, south, max(xs) + margin - west, max(ys) + margin - south
+
+
+def _foam_grids(
+    scenario: Scenario,
+    band: Band,
+    cameras: dict[str, bpy.types.Object],
+    wind: tuple[waves.Wave, ...],
+) -> tuple[waves.FoamGrid, ...]:
+    """Grids over every stretch of sea the band's cameras see in any frame, each on a
+    lattice of its own cells, so a cell remembers the same foam whatever else is in
+    view. The finest has `FOAM_NEAR_CELL_M` cells, out to where a camera's pixel spans
+    one; each next is `FOAM_LEVEL_RATIO` coarser, out to the horizon or to cells too
+    coarse for any breaker. A grid too wide to hold reaches less far."""
+    if not wind:
+        return ()
+    mounts = [m for m in scenario.mounts if m.camera.band == band]
+    rays = _rays(scenario, mounts, cameras)
+    horizon = waves.horizon_m(
+        max(origin.z for origin, _, _ in rays), scenario.sea.refraction_k
+    )
+    longest_m = max(2 * math.pi / w.k_rad_m for w in wind)
+    finest_rad = min(pixel_rad for _, _, pixel_rad in rays)
+    grids = []
+    cell_m = FOAM_NEAR_CELL_M
+    while True:
+        shrink = 1.0
+        west, south, width, height = _box(rays, cell_m, shrink)
+        while max(width, height) > FOAM_MAX_CELLS * cell_m:
+            shrink *= FOAM_MAX_CELLS * cell_m / max(width, height)
+            west, south, width, height = _box(rays, cell_m, shrink)
+        columns, rows = math.ceil(width / cell_m), math.ceil(height / cell_m)
+        grids.append(waves.FoamGrid(west, south, cell_m, columns, rows))
+        reach_m = shrink * cell_m / finest_rad
+        cell_m *= FOAM_LEVEL_RATIO
+        shortest_m = waves.FOAM_CELLS_PER_WAVE * cell_m
+        if reach_m >= horizon or shortest_m > min(longest_m, FOAM_LONGEST_BREAKER_M):
+            return tuple(grids)
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with `scenario` in one band.
 
@@ -1394,7 +1492,10 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         rngs,
         tuple(trails),
         _light(scenario.sky, band),
-        _finest_footprint_m(scenario, band, rigs.cameras) if cull else 0.0,
+        sea.Seen(
+            _finest_footprint_m(scenario, band, rigs.cameras) if cull else 0.0,
+            _foam_grids(scenario, band, rigs.cameras, wind) if band == "eo" else (),
+        ),
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.
