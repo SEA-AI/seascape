@@ -232,6 +232,14 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     assert expected.max() > 0.0
     np.testing.assert_allclose(rendered, expected, atol=2e-3)
 
+    # A cleared cache leaves Monahan's mean.
+    for image in bpy.data.images:
+        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
+            image.filepath = str(Path(bpy.app.tempdir) / "cleared" / "foam_0001.exr")
+    rendered = shoot((px, px), "cleared_probe")
+    mean = waves.whitecap_fraction(SCENARIO.sea.wind_speed_mps)
+    np.testing.assert_allclose(rendered, mean, atol=2e-3)
+
 
 @pytest.mark.render
 def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
