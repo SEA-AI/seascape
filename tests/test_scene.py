@@ -194,6 +194,23 @@ class TestEoBand:
             bearing, _ = scene.boresight_deg(camera_of(mount))
             assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-6)
 
+    def test_the_foam_grid_takes_each_frame_s_view_where_the_water_drifted_from(
+        self, built: scene.Built
+    ) -> None:
+        """Water seen at x at time t is on the drifting grid at x - v t."""
+        mounts = [m for m in SCENARIO.mounts if m.camera.band == "eo"]
+        clip = variant(BASELINE, outputs={"duration_s": 1.0})
+        calm = variant(BASELINE, outputs={"duration_s": 1.0}, sea={"wind_speed_mps": 0})
+        drift = sea.foam_drift(clip.sea, clip.outputs)
+        assert sea.foam_drift(calm.sea, calm.outputs) == (0.0, 0.0) != drift
+        moved = scene._rays(clip, mounts, built.cameras)
+        held = scene._rays(calm, mounts, built.cameras)
+        per_frame = len(moved) // len(clip.outputs.times_s)
+        for i, ((at, _, _), (still, _, _)) in enumerate(zip(moved, held, strict=True)):
+            t_s = clip.outputs.times_s[i // per_frame]
+            expected = still - Vector((drift[0] * t_s, drift[1] * t_s, 0.0))
+            assert (at - expected).length < 1e-9
+
     def test_cameras_carry_their_field_of_view_horizontally(self) -> None:
         """AUTO fits the angle to the longer image side, flipping a portrait sensor."""
         for mount in SCENARIO.mounts:
