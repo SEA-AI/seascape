@@ -1601,3 +1601,14 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
     hull = [p for p in built.vessel.children_recursive if p.type == "MESH"]
     assert hull, "the ownship has no mesh: nothing below ran"
     assert {p.pass_index for p in hull} == {anchor.pass_index + 1}
+
+
+def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
+    down = Vector((0.0, 1.0, -0.2)).normalized()
+    rays = [(Vector((0.0, y, 20.0)), down, 1e-3) for y in (-150.0, 150.0)]
+    assert scene._foam_box(rays, scene.FOAM_NEAR_CELL_M) is None
+    cell_m = scene.FOAM_NEAR_CELL_M * scene.FOAM_LEVEL_RATIO
+    fit = scene._foam_box(rays, cell_m)
+    assert fit is not None
+    _, _, width, height, _ = fit
+    assert max(width, height) <= scene.FOAM_MAX_CELLS * cell_m

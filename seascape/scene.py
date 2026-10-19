@@ -1399,6 +1399,24 @@ def _box(
     return west, south, max(xs) + margin - west, max(ys) + margin - south
 
 
+def _foam_box(
+    rays: list[tuple[Vector, Vector, float]], cell_m: float
+) -> tuple[float, float, float, float, float] | None:
+    """`_box` at the largest shrink up to 1 that holds `FOAM_MAX_CELLS` a side, and the
+    shrink; None if the cameras stand too far apart for even their origins to fit."""
+    most_m = FOAM_MAX_CELLS * cell_m
+    least_m = max(_box(rays, cell_m, 0.0)[2:])
+    if least_m >= most_m:
+        return None
+    shrink = 1.0
+    box = _box(rays, cell_m, shrink)
+    while max(box[2:]) > most_m:
+        # The box grows from its origins' spread by at most the reach shrunk.
+        shrink *= (most_m - least_m) / (max(box[2:]) - least_m)
+        box = _box(rays, cell_m, shrink)
+    return (*box, shrink)
+
+
 def _foam_grids(
     scenario: Scenario,
     band: Band,
@@ -1422,14 +1440,13 @@ def _foam_grids(
     grids = []
     cell_m = FOAM_NEAR_CELL_M
     while True:
-        shrink = 1.0
-        west, south, width, height = _box(rays, cell_m, shrink)
-        while max(width, height) > FOAM_MAX_CELLS * cell_m:
-            shrink *= FOAM_MAX_CELLS * cell_m / max(width, height)
-            west, south, width, height = _box(rays, cell_m, shrink)
-        columns, rows = math.ceil(width / cell_m), math.ceil(height / cell_m)
-        grids.append(waves.FoamGrid(west, south, cell_m, columns, rows))
-        reach_m = shrink * cell_m / finest_rad
+        fit = _foam_box(rays, cell_m)
+        reach_m = 0.0
+        if fit is not None:
+            west, south, width, height, shrink = fit
+            columns, rows = math.ceil(width / cell_m), math.ceil(height / cell_m)
+            grids.append(waves.FoamGrid(west, south, cell_m, columns, rows))
+            reach_m = shrink * cell_m / finest_rad
         cell_m *= FOAM_LEVEL_RATIO
         shortest_m = waves.FOAM_CELLS_PER_WAVE * cell_m
         if reach_m >= horizon or shortest_m > min(longest_m, FOAM_LONGEST_BREAKER_M):
