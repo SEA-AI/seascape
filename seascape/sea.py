@@ -168,7 +168,7 @@ FOAM_LOOKUP_SHARES = 8
 # Numerics: a finer foam grid fades in over this many of its cells from its edge.
 FOAM_SEAM_CELLS = 8
 # Numerics: past this share of a grid near breaking, its gusts are read row by row;
-# both reads cost the same there on a 1024-cell grid.
+# both reads cost the same there on the widest grid.
 FOAM_DENSE_SHARE = 0.2
 
 # A judgement: foam patches a metre or two across, streaked 4:1 along the wake.
@@ -933,7 +933,8 @@ def _gust_values(
             per_m * (north_m - velocity_mps[1] * carried_s) + shift,
         )
 
-    if not outputs.loop:
+    # A tile that holds still loops as it is, as `_drifting` reads it.
+    if not outputs.loop or velocity_mps == (0.0, 0.0):
         return layer(t_s, 0.0)
     span_s = outputs.span_s
     weighted = []
@@ -1011,7 +1012,8 @@ def keep_foam(blend: Path) -> None:
     if not frames.is_dir():
         return
     beside = blend.with_suffix(".foam")
-    shutil.rmtree(beside, ignore_errors=True)
+    if beside.exists():
+        shutil.rmtree(beside)
     shutil.move(frames, beside)
     for image in bpy.data.images:
         if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
@@ -1042,7 +1044,7 @@ def _foam_frames(
     _PENDING.clear()
     if remember_foam not in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.append(remember_foam)
-    # The last build's frames: one process builds again and again for the server.
+    # The last build's frames, which a process that builds again no longer reads.
     shutil.rmtree(_frames_folder(), ignore_errors=True)
     out = []
     for grid in grids:
@@ -1088,8 +1090,6 @@ def _simulate(
     def threshold_at(t_s: float, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
         east, north = x + drift[0] * t_s, y + drift[1] * t_s
         args = (gusts.tile, outputs, gusts.velocity_mps)
-        # Where most cells are near breaking, reading the whole grid row by row is
-        # cheaper than reading each near cell on its own.
         if len(rows) > FOAM_DENSE_SHARE * grid.rows * grid.columns:
             gust = _gust_values(*args, east, north, t_s, _texels)[rows, columns]
         else:

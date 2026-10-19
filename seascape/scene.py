@@ -1415,7 +1415,8 @@ def _foam_box(
     shrink = 1.0
     box = _box(rays, cell_m, shrink)
     while max(box[2:]) > most_m:
-        # The box grows from its origins' spread by at most the reach shrunk.
+        # The excess over the origins' spread shrinks at most in proportion, so this
+        # may repeat.
         shrink *= (most_m - least_m) / (max(box[2:]) - least_m)
         box = _box(rays, cell_m, shrink)
     return (*box, shrink)
