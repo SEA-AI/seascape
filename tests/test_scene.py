@@ -150,17 +150,31 @@ def counts() -> tuple[int, ...]:
     )
 
 
+def shaded(
+    scenario: Scenario, kept: tuple[waves.Wave, ...] | None = None
+) -> list[waves.Wave]:
+    """The scenario's field, or the `kept` part of it, less the waves drawn as
+    geometry: what the normal draws."""
+    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    if kept is not None:
+        wind = tuple(w for w in wind if w in kept)
+        swell = tuple(w for w in swell if w in kept)
+    _, (wind, swell) = sea._geometry((wind, swell))
+    return [*wind, *swell]
+
+
 def drawn(
     scenario: Scenario, kept: tuple[waves.Wave, ...] | None = None
 ) -> list[tuple[waves.Wave, bpy.types.NodeInputs, int]]:
     """Each wave of the built sea's normal, the inputs of the node drawing it, and its
-    lane there, of the scenario's field or the `kept` part of it. Every other lane must
-    be empty."""
+    lane there, of the scenario's field or the `kept` part of it, less the waves drawn
+    as geometry. Every other lane must be empty."""
     nodes = bpy.data.node_groups["sea_waves"].nodes
     wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
     if kept is not None:
         wind = tuple(w for w in wind if w in kept)
         swell = tuple(w for w in swell if w in kept)
+    _, (wind, swell) = sea._geometry((wind, swell))
     triples = sea._triples(wind) + sea._triples(swell)
     found = []
     for i, triple in enumerate(triples):
@@ -309,7 +323,11 @@ class TestEoBand:
         field = scene.wave_field(SCENARIO)
         assert len(field) == waves.FREQUENCIES * waves.WIND_HEADINGS
         carried = drawn(SCENARIO)
-        assert [wave for wave, _, _ in carried] == list(field)
+        tall, _ = sea._geometry(
+            (scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO))
+        )
+        assert tall
+        assert [wave for wave, _, _ in carried] == [w for w in field if w not in tall]
         for wave, inputs, lane in carried:
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
             assert tuple(
@@ -424,8 +442,8 @@ class TestEoBand:
         )
 
     def test_whitecap_foam_reads_the_sea_the_waves_are_drawn_on(self) -> None:
-        """Its memory and its lace both read the parallaxed sea, so neither slides off
-        the crests."""
+        """Its memory and its lace both read the water's rest position, so neither
+        slides off the crests."""
         tree = bpy.data.materials["sea"].node_tree
         memory = [n for n in tree.nodes if n.name.startswith("sea_foam_")]
         assert memory
@@ -433,7 +451,7 @@ class TestEoBand:
             *(n.inputs["Vector"] for n in memory),
             tree.nodes["whitecap_lace_axes"].inputs["X"],
         ):
-            assert "sea_parallax" in upstream(socket), socket.node.name
+            assert "sea_rest" in upstream(socket), socket.node.name
 
     def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -441,7 +459,7 @@ class TestEoBand:
             nodes["glitter_cells"].inputs["Vector"],
             nodes["gust_axes"].inputs["X"],
         ):
-            assert "sea_parallax" in upstream(socket), socket.node.name
+            assert "sea_rest" in upstream(socket), socket.node.name
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
@@ -1073,7 +1091,7 @@ class TestSlicks:
         assert carry == pytest.approx([0.0, -drift_mps * np.linalg.norm(along)])
 
     def test_a_slick_reads_the_sea_the_waves_are_drawn_on(self) -> None:
-        assert "sea_parallax" in upstream(_sea_node("windrows_axes").inputs["X"])
+        assert "sea_rest" in upstream(_sea_node("windrows_axes").inputs["X"])
 
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
         wind = scene.wind_waves(self.SLICKS)
@@ -1138,7 +1156,7 @@ class TestSeaEvolves:
     def test_the_sea_draws_a_swell_in_triples_of_its_own(self) -> None:
         swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
         scene.build(swell, "eo")
-        assert [wave for wave, _, _ in drawn(swell)] == list(scene.wave_field(swell))
+        assert [wave for wave, _, _ in drawn(swell)] == shaded(swell)
 
     def test_the_finest_pixel_is_the_camera_s_height_times_its_angle(self) -> None:
         scenario = load(OPEN_SEA)
@@ -1167,11 +1185,12 @@ class TestSeaEvolves:
         scenario = variant(rig={"height_m": 100.0})
         field = scene.wave_field(scenario)
         scene.build(scenario, "eo")
-        assert [w for w, _, _ in drawn(scenario)] == list(field)
+        assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
         finest = scene._finest_footprint_m(scenario, "eo", built.cameras)
-        kept = [w for w, _, _ in drawn(scenario, waves.resolvable(field, finest))]
-        assert kept == list(waves.resolvable(field, finest)) != list(field)
+        resolved = waves.resolvable(field, finest)
+        kept = [w for w, _, _ in drawn(scenario, resolved)]
+        assert kept == shaded(scenario, resolved) != shaded(scenario)
 
     def test_a_still_leaves_the_sea_unkeyed(self) -> None:
         scene.build(load(OPEN_SEA), "eo")
@@ -1381,7 +1400,7 @@ class TestWakes:
         assert "sea_foam" in bpy.data.images
         assert "wake_normal" in tree.nodes
         # Read off the flat sea, the foam slides off the crests.
-        assert "sea_parallax" in upstream(tree.nodes["wake_position"].inputs["Vector"])
+        assert "sea_rest" in upstream(tree.nodes["wake_position"].inputs["Vector"])
 
     def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
         tree = self._built(
