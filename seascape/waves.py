@@ -815,21 +815,34 @@ def foam_memory(
     start_s: float,
     step_s: float,
     frames: int,
-    threshold_g: float | Callable[[float], np.ndarray],
+    threshold_g: float | Callable[[float, np.ndarray, np.ndarray], np.ndarray],
+    floor_g: float | None = None,
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
     """Per frame at start_s + i step_s, (rows, columns) each: the share of each cell
     foam covers, and the share breaking now, on `grid` drifting at `drift_mps`. Foam
-    is laid where a crest breaks, the chance it passed `threshold_g` (or the cells'
-    thresholds at t), Gaussian over the edge, and keeps Monahan's area e-fold since; the
-    memory starts early enough to have forgotten its start."""
+    is laid where a crest breaks, the chance it passed `threshold_g` (or the threshold
+    at t of the cells at those rows and columns, never under `floor_g`), Gaussian over
+    the edge, and keeps Monahan's area e-fold since; the memory starts early enough to
+    have forgotten its start. Only cells a crest brings near breaking are reckoned."""
     crests = _Crests(wind, grid, drift_mps)
     edge = max(foam_edge_g(wind), 1e-9)
+    if not callable(threshold_g):
+        floor_g = threshold_g
+    if floor_g is None:
+        raise ValueError("a threshold that varies needs a floor")
     times = _memory_times(start_s, step_s, frames)
     cover = np.zeros((grid.rows, grid.columns), np.float32)
     last = times[0]
     for t_s in times:
-        threshold = threshold_g(t_s) if callable(threshold_g) else threshold_g
-        breaking = _laid((crests.at(t_s) - threshold) / edge)
+        acceleration = crests.at(t_s)
+        rows, columns = np.nonzero(acceleration > floor_g - CDF_SIGMAS * edge)
+        threshold = (
+            threshold_g(t_s, rows, columns) if callable(threshold_g) else threshold_g
+        )
+        breaking = np.zeros_like(cover)
+        breaking[rows, columns] = _normal_cdf(
+            (acceleration[rows, columns] - threshold) / edge
+        )
         cover = np.maximum(
             cover * math.exp(-(t_s - last) / WHITECAP_AREA_EFOLD_S), breaking
         )
