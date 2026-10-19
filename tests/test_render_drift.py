@@ -195,17 +195,17 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
 
 @pytest.mark.render
 def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
-    """Straight down, where parallax moves nothing, at the clip's start, before any
-    drift: each pixel over a cell of the finest grid reads that cell's cover."""
+    """Straight down, where parallax moves nothing, at the clip's first and last
+    frames: each pixel over a cell of the finest grid reads that cell of that frame,
+    the water having drifted since."""
+    clip = _clear(variant(OPEN_SEA, outputs={"duration_s": 1.0, "fps": 4}))
     stale = sea._frames_folder() / "0.25m" / "foam_0001.exr"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.touch()
-    built = scene.build(SCENARIO, "eo")
+    built = scene.build(clip, "eo")
     # A build clears the last one's frames.
     assert not stale.exists()
-    grid = scene._foam_grids(SCENARIO, "eo", built.cameras, scene.wind_waves(SCENARIO))[
-        0
-    ]
+    grid = scene._foam_grids(clip, "eo", built.cameras, scene.wind_waves(clip))[0]
     tree = bpy.data.materials["sea"].node_tree
     texture = tree.nodes[f"sea_foam_{grid.cell_m:g}m"]
     texture.interpolation = "Closest"
@@ -218,24 +218,31 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     px = 32
     row, column = grid.rows // 2, grid.columns // 2
     camera = bpy.data.objects.new(
-        "probe", overhead(px * grid.cell_m, eo_pixel_rad(SCENARIO), px)
+        "probe", overhead(px * grid.cell_m, eo_pixel_rad(clip), px)
     )
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
-    camera.location = (
-        grid.west_m + (column + px / 2) * grid.cell_m,
-        grid.south_m + (row + px / 2) * grid.cell_m,
-        10.0,
-    )
     sc.camera = camera
     sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01  # the pixel centre, a cell's centre
     sc.view_settings.view_transform = "Standard"
-    rendered = shoot((px, px), "memory_probe")
-    stored = render._pixels(Path(bpy.path.abspath(texture.image.filepath)))[..., 0]
-    expected = stored[row : row + px, column : column + px][::-1]
-    assert expected.max() > 0.0
-    np.testing.assert_allclose(rendered, expected, atol=2e-3)
+    drift = sea.surface_drift(clip.sea, clip.outputs)
+    assert drift != (0.0, 0.0)
+    first = Path(bpy.path.abspath(texture.image.filepath))
+    for frame in (0, len(clip.outputs.times_s) - 1):
+        sc.frame_set(frame)
+        t_s = clip.outputs.times_s[frame]
+        # The cell's water has drifted v t downwind.
+        camera.location = (
+            grid.west_m + (column + px / 2) * grid.cell_m + drift[0] * t_s,
+            grid.south_m + (row + px / 2) * grid.cell_m + drift[1] * t_s,
+            10.0,
+        )
+        rendered = shoot((px, px), f"memory_probe_{frame}")
+        stored = render._pixels(first.with_name(f"foam_{frame + 1:04d}.exr"))[..., 0]
+        expected = stored[row : row + px, column : column + px][::-1]
+        assert expected.max() > 0.0
+        np.testing.assert_allclose(rendered, expected, atol=2e-3)
 
 
 @pytest.mark.render

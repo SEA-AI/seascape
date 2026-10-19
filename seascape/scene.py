@@ -58,8 +58,9 @@ FOAM_NEAR_CELL_M = 0.25
 # that short would lay whitecaps larger than any they measured, so the sea past it
 # takes Monahan's mean.
 FOAM_LONGEST_BREAKER_M = 18.7
-# Numerics: each coarser grid's cells, starting where a pixel spans a quarter of one;
-# rays per side of a frame its view is sampled at; a grid's widest side, in cells.
+# Numerics: how much wider each next grid's cells are, taking over where a pixel spans
+# a quarter of one; rays per side of a frame its view is sampled at; a grid's widest
+# side, in cells.
 FOAM_LEVEL_RATIO = 4
 FOAM_RAYS = 9
 FOAM_MAX_CELLS = 1024
@@ -1367,7 +1368,13 @@ def _rays(
             camera = cameras[mount.name]
             pixel_rad = camera.data.angle_x / mount.camera.width_px
             turn = camera.matrix_world.to_3x3()
-            corners = camera.data.view_frame(scene=sc)
+            # Not `view_frame`: it takes the scene's aspect, which the build sets last.
+            across = math.tan(camera.data.angle_x / 2)
+            up = across * mount.camera.height_px / mount.camera.width_px
+            corners = [
+                Vector((x * across, y * up, -1.0))
+                for x, y in ((1, 1), (1, -1), (-1, -1), (-1, 1))
+            ]
             for a in np.linspace(0.0, 1.0, FOAM_RAYS):
                 for b in np.linspace(0.0, 1.0, FOAM_RAYS):
                     toward = (corners[2].lerp(corners[1], a)).lerp(
@@ -1386,8 +1393,8 @@ def _box(
     rays: list[tuple[Vector, Vector, float]], cell_m: float, shrink: float
 ) -> tuple[float, float, float, float]:
     """(west, south, width, height) on the lattice of `cell_m` round where the rays meet
-    the sea, or pass over it, out to where their camera's pixel spans two cells, times
-    `shrink`, past which no pixel reads the grid; and past its fading edge."""
+    the sea, or pass over it, out to where their camera's pixel spans `2 * shrink`
+    cells, plus the grid's fading edge."""
     xs, ys = [], []
     for origin, ray, pixel_rad in rays:
         flat = Vector((ray.x, ray.y))
