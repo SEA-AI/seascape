@@ -88,7 +88,7 @@ waves keep up with a gust.
 """
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
 
@@ -134,6 +134,9 @@ SPREAD_AM = 0.13
 SWELL_S_MAX = 75.0
 # Monahan 1971: a seawater whitecap's area e-folds in 3.85 s.
 WHITECAP_AREA_EFOLD_S = 3.85
+# Dierssen 2019: stage-A foam reflects 0.50 in the visible, thin foam 0.18. Foam dims
+# to the thin share once its crest stops breaking.
+THIN_FOAM_SHARE = 0.18 / 0.50
 # Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
 WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
 # A judgement: foam ages a pixel reads, out to two area e-folds. Each stands for the
@@ -154,6 +157,23 @@ FOAM_SAMPLES = 32768
 SAMPLE_SPAN = 64.0
 THRESHOLD_LEVELS = 48
 FADE_LEVELS = 32
+# A grid resolves a wave four of its cells long: shorter ones alias.
+FOAM_CELLS_PER_WAVE = 4
+# A foam memory starts this many area e-folds early, so its start has faded to 1 %.
+FOAM_WARM_EFOLDS = math.log(100)
+# Numerics: before its last seconds a memory steps coarser, which misses brief crests
+# of foam since faded; its first frame then covers within 3 % of a fine start's.
+FOAM_FINE_WARM_S = 6.0
+FOAM_COARSE_STEP_S = 0.25
+# The steps each point remembers when a memory's threshold is set.
+FOAM_REFERENCE_STEPS = 120
+# Steps closing in on a threshold: halvings first, then interpolation, until its cover
+# is within 2 %, inside the 10 % stretches of sea spread about their mean.
+FOAM_REFERENCE_BISECTIONS = 12
+FOAM_REFERENCE_HALVINGS = 4
+FOAM_REFERENCE_TOLERANCE = 0.02
+# A judgement: the points a memory's threshold is set over, `SAMPLE_SPAN` across.
+FOAM_REFERENCE_SAMPLES = 8192
 # Monahan & O'Muircheartaigh 1980, robust biweight fit, U at 10 m.
 WHITECAP_COEFFICIENT = 3.84e-6
 WHITECAP_EXPONENT = 3.41
@@ -624,6 +644,14 @@ def _normal_cdf(z: np.ndarray) -> np.ndarray:
     return 0.5 * (1 + np.sign(z) * erf)
 
 
+def _laid(z: np.ndarray) -> np.ndarray:
+    """The normal CDF where it is not 0, which is where crests come near breaking."""
+    out = np.zeros(z.shape, np.float32)
+    near = z > -CDF_SIGMAS
+    out[near] = _normal_cdf(z[near])
+    return out
+
+
 def foam_edge_g(wind: tuple[Wave, ...]) -> float:
     """The spread in g over which a crest goes from whole to broken foam."""
     return WHITECAP_EDGE * math.sqrt(slope_variance(breakers(wind)))
@@ -706,6 +734,186 @@ def foam_fade_efold_s(
         mean = np.exp(-youngest / mid).mean(axis=0).sum() / area
         lo, hi = (lo, mid) if mean > target else (mid, hi)
     return math.sqrt(lo * hi)
+
+
+@dataclass(frozen=True)
+class FoamGrid:
+    """Square cells over the sea, south-west corner first; rows run north."""
+
+    west_m: float
+    south_m: float
+    cell_m: float
+    columns: int
+    rows: int
+
+
+def _resolved(wind: tuple[Wave, ...], cell_m: float) -> tuple[Wave, ...]:
+    return tuple(
+        w for w in wind if 2 * math.pi / w.k_rad_m >= FOAM_CELLS_PER_WAVE * cell_m
+    )
+
+
+def _drifting_rad_s(
+    field: tuple[Wave, ...], drift_mps: tuple[float, float]
+) -> np.ndarray:
+    """Each wave's phase rate seen from water drifting at `drift_mps`."""
+    return np.array(
+        [
+            w.k_east_rad_m * drift_mps[0]
+            + w.k_north_rad_m * drift_mps[1]
+            - w.omega_rad_s
+            for w in field
+        ]
+    )
+
+
+class _Crests:
+    """`wind`'s downward acceleration, in g, on a grid that drifts with the surface:
+    the water at grid point x is at x + v t. Only the waves the grid resolves."""
+
+    def __init__(
+        self, wind: tuple[Wave, ...], grid: FoamGrid, drift_mps: tuple[float, float]
+    ) -> None:
+        use = _resolved(wind, grid.cell_m)
+        x = grid.west_m + (np.arange(grid.columns) + 0.5) * grid.cell_m
+        y = grid.south_m + (np.arange(grid.rows) + 0.5) * grid.cell_m
+        kx = np.array([w.k_east_rad_m for w in use])
+        ky = np.array([w.k_north_rad_m for w in use])
+        self.east = np.exp(1j * np.outer(x, kx)).astype(np.complex64)
+        self.north = np.exp(1j * np.outer(y, ky)).astype(np.complex64)
+        self.ak = np.array([w.amplitude_m * w.k_rad_m for w in use])
+        self.phase = np.array([w.phase_rad for w in use])
+        self.turn = _drifting_rad_s(use, drift_mps)
+
+    def at(self, t_s: float) -> np.ndarray:
+        # Separable in east and north: one matrix product, (rows, columns).
+        c = (self.ak * np.exp(1j * (self.phase + self.turn * t_s))).astype(np.complex64)
+        return ((self.north * c) @ self.east.T).real
+
+
+def foam_drift_mps(wind_speed_mps: float, downwind_rad: float) -> tuple[float, float]:
+    """(east, north): the surface's drift, which carries foam, as it carries slicks."""
+    v = SLICK_DRIFT * wind_speed_mps
+    return v * math.sin(downwind_rad), v * math.cos(downwind_rad)
+
+
+def _memory_times(start_s: float, step_s: float, frames: int) -> list[float]:
+    """When a memory steps: coarse until its last fine seconds, then every `step_s`,
+    its frames from `start_s`."""
+    fine = math.ceil(FOAM_FINE_WARM_S / step_s)
+    early = start_s - FOAM_WARM_EFOLDS * WHITECAP_AREA_EFOLD_S
+    return [
+        *np.arange(early, start_s - fine * step_s, FOAM_COARSE_STEP_S),
+        *(start_s + i * step_s for i in range(-fine, frames)),
+    ]
+
+
+def foam_memory(
+    wind: tuple[Wave, ...],
+    drift_mps: tuple[float, float],
+    grid: FoamGrid,
+    start_s: float,
+    step_s: float,
+    frames: int,
+    threshold_g: float | Callable[[float], np.ndarray],
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Per frame at start_s + i step_s, (rows, columns) each: the share of each cell
+    foam covers, and the share breaking now, on `grid` drifting at `drift_mps`. Foam
+    is laid where a crest breaks, the chance it passed `threshold_g` (or the cells'
+    thresholds at t), Gaussian over the edge, and keeps Monahan's area e-fold since; the
+    memory starts early enough to have forgotten its start."""
+    crests = _Crests(wind, grid, drift_mps)
+    edge = max(foam_edge_g(wind), 1e-9)
+    times = _memory_times(start_s, step_s, frames)
+    cover = np.zeros((grid.rows, grid.columns), np.float32)
+    last = times[0]
+    for t_s in times:
+        threshold = threshold_g(t_s) if callable(threshold_g) else threshold_g
+        breaking = _laid((crests.at(t_s) - threshold) / edge)
+        cover = np.maximum(
+            cover * math.exp(-(t_s - last) / WHITECAP_AREA_EFOLD_S), breaking
+        )
+        last = t_s
+        if t_s >= start_s - step_s / 2:
+            yield cover, breaking
+
+
+@cache
+def foam_memory_thresholds_g(
+    wind: tuple[Wave, ...],
+    drift_mps: tuple[float, float],
+    cell_m: float,
+    step_s: float,
+    fractions: tuple[float, ...],
+) -> np.ndarray:
+    """The breaking thresholds at which a foam memory at `cell_m` covers each of
+    `fractions` of the sea: over points spread `SAMPLE_SPAN` longest waves across, each
+    drifting at `drift_mps` and remembering its own foam over `FOAM_REFERENCE_STEPS`
+    from a start of its own."""
+    use = _resolved(wind, cell_m)
+    if not use:
+        return np.full(len(fractions), math.inf)
+    longest_m = max(2 * math.pi / w.k_rad_m for w in use)
+    slowest_s = max(2 * math.pi / w.omega_rad_s for w in use)
+    x, y, t = (SAMPLE_SPAN * _lattice(FOAM_REFERENCE_SAMPLES)).T
+    phase = _phase(use, x * longest_m, y * longest_m, t * slowest_s)
+    amplitude = np.array([w.amplitude_m * w.k_rad_m for w in use])
+    state = (amplitude[:, None] * np.exp(1j * phase)).astype(np.complex64)
+    rate = _drifting_rad_s(use, drift_mps)[:, None]
+    times = np.array(_memory_times(0.0, step_s, FOAM_REFERENCE_STEPS))
+    steps = len(times)
+    accelerations = np.empty((steps, FOAM_REFERENCE_SAMPLES), np.float32)
+    for i, gap in enumerate(np.diff(times, prepend=times[0])):
+        state *= np.exp(1j * rate * gap).astype(np.complex64)
+        accelerations[i] = state.real.sum(axis=0)
+    edge = max(foam_edge_g(wind), 1e-9)
+    decays = np.exp(-np.diff(times, prepend=times[0]) / WHITECAP_AREA_EFOLD_S)
+
+    def covers(thresholds: np.ndarray) -> np.ndarray:
+        """Each threshold's mean remembered cover, one pass for them all."""
+        remembered = np.zeros((len(thresholds), FOAM_REFERENCE_SAMPLES), np.float32)
+        total = np.zeros(len(thresholds))
+        for i, a in enumerate(accelerations):
+            laid = _laid((a[None, :] - thresholds[:, None].astype(np.float32)) / edge)
+            remembered = np.maximum(remembered * decays[i], laid)
+            if i >= steps - FOAM_REFERENCE_STEPS:
+                total += remembered.mean(axis=1)
+        return total / FOAM_REFERENCE_STEPS
+
+    wanted = np.array(fractions, dtype=float)
+    inside = (wanted > 0.0) & (wanted < 1.0)
+    target = np.log(wanted[inside])
+    lo = np.full(inside.sum(), float(accelerations.min()))
+    hi = np.full(inside.sum(), float(accelerations.max()))
+    # Halved until the cover at both ends is known, then closed in on by the line
+    # through log cover at its ends, which falls near straight with the threshold.
+    low_cover = high_cover = None
+    for halving in range(FOAM_REFERENCE_BISECTIONS):
+        if halving < FOAM_REFERENCE_HALVINGS or low_cover is None or high_cover is None:
+            mid = (lo + hi) / 2
+        else:
+            ends = (
+                np.log(np.maximum(low_cover, 1e-12)),
+                np.log(np.maximum(high_cover, 1e-12)),
+            )
+            share = np.clip(
+                (ends[0] - target) / np.maximum(ends[0] - ends[1], 1e-9), 0.1, 0.9
+            )
+            mid = lo + share * (hi - lo)
+        cover = covers(mid)
+        over = cover > wanted[inside]
+        lo, hi = np.where(over, mid, lo), np.where(over, hi, mid)
+        if halving + 1 >= FOAM_REFERENCE_HALVINGS:
+            low_cover = cover if low_cover is None else np.where(over, cover, low_cover)
+            high_cover = (
+                cover if high_cover is None else np.where(over, high_cover, cover)
+            )
+            if np.all(np.abs(np.log(cover) - target) < FOAM_REFERENCE_TOLERANCE):
+                lo = hi = mid
+                break
+    out = np.where(wanted <= 0.0, math.inf, -math.inf)
+    out[inside] = (lo + hi) / 2
+    return out
 
 
 def snap_error(
