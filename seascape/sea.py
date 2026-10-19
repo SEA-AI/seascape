@@ -35,7 +35,7 @@ from typing import NamedTuple
 import bpy
 import numpy as np
 
-from seascape import assets, lwir
+from seascape import assets, lwir, waves
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
@@ -989,6 +989,9 @@ class _Gusts(NamedTuple):
     fractions: tuple[float, ...]
 
 
+# The code a cached foam memory came from: a change to it simulates afresh.
+_MEMORY_CODE = Path(__file__).read_bytes() + Path(waves.__file__).read_bytes()
+
 # The foam memories the last build asked for and has not simulated: a build that never
 # renders, as most tests, never pays for them.
 _PENDING: list[Callable[[], None]] = []
@@ -1033,6 +1036,7 @@ def _foam_frames(
         key = hashlib.sha256(
             repr((wind, drift, grid, times, outputs.loop, fractions)).encode()
             + gust_tile.tobytes()
+            + _MEMORY_CODE
         ).hexdigest()[:16]
         folder = FOAM_CACHE / key
         if not all(
