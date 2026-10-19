@@ -244,6 +244,41 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
         assert expected.max() > 0.0
         np.testing.assert_allclose(rendered, expected, atol=2e-3)
 
+    # The memory breaks under the gust the shader draws: the last frame's, halved and
+    # lifted into what an emission shows.
+    shown = tree.nodes.new("ShaderNodeMath")
+    shown.operation = "MULTIPLY_ADD"
+    tree.links.new(tree.nodes["gust"].outputs["Value"], shown.inputs[0])
+    shown.inputs[1].default_value = shown.inputs[2].default_value = 0.5
+    tree.links.new(shown.outputs["Value"], emission.inputs["Color"])
+    rendered = shoot((px, px), "gust_probe")
+    gust = _simulated_gust(clip, camera.location, px * grid.cell_m, px, t_s)
+    np.testing.assert_allclose(rendered, 0.5 + 0.5 * gust, atol=2e-3)
+
+
+def _simulated_gust(
+    clip: Scenario, centre: Vector, span_m: float, px: int, t_s: float
+) -> np.ndarray:
+    """The gust the foam memory breaks under, at an overhead probe's pixel centres,
+    top row first."""
+    tile = bpy.data.images["sea_gust"]
+    texels = np.empty(len(tile.pixels), np.float32)
+    tile.pixels.foreach_get(texels)
+    width, height = tile.size
+    centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
+    east, north = np.meshgrid(centre.x + centres, centre.y + centres[::-1])
+    speed = clip.sea.wind_speed_mps
+    downwind = sea._downwind(clip.sea)
+    unit = sea._gust_values(
+        texels.reshape(height, width, 4)[..., 0],
+        clip.outputs,
+        (speed * downwind[0], speed * downwind[1]),
+        east,
+        north,
+        t_s,
+    )
+    return unit * waves.turbulence_intensity(speed)
+
 
 @pytest.mark.render
 def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:

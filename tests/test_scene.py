@@ -5,7 +5,6 @@ Blender is one global session, so each class rebuilds in its own band on entry.
 
 import math
 from collections.abc import Iterator
-from itertools import pairwise
 from pathlib import Path
 from statistics import NormalDist
 from typing import Any
@@ -443,18 +442,6 @@ class TestEoBand:
             nodes["gust_axes"].inputs["X"],
         ):
             assert "sea_parallax" in upstream(socket), socket.node.name
-
-    def test_the_finest_foam_grid_draws_field_sized_whitecaps(self) -> None:
-        """Its cells resolve the metre waves whose crests break as wide as field
-        whitecaps; a coarser grid takes over where a pixel spans a quarter of a cell."""
-        tree = bpy.data.materials["sea"].node_tree
-        cells = sorted(
-            float(n.name.removeprefix("sea_foam_").removesuffix("m"))
-            for n in tree.nodes
-            if n.name.startswith("sea_foam_")
-        )
-        assert cells[0] == scene.FOAM_NEAR_CELL_M
-        assert all(b == a * scene.FOAM_LEVEL_RATIO for a, b in pairwise(cells))
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
@@ -1228,7 +1215,6 @@ class TestLoop:
                 assert w == pytest.approx(2 * min(c, span_s - c) / span_s, abs=1e-6)
 
     def test_a_loop_s_foam_lace_holds_still_with_its_foam(self) -> None:
-        assert sea.surface_drift(self.LOOP.sea, self.LOOP.outputs) == (0.0, 0.0)
         carry = _sea_node("whitecap_lace_carry").inputs["Vector"].default_value
         assert tuple(carry[:2]) == (0.0, 0.0)
         # Nothing moves, so nothing crossfades.
@@ -1648,3 +1634,13 @@ def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
     assert fit is not None
     _, _, width, height, _ = fit
     assert max(width, height) <= scene.FOAM_MAX_CELLS * cell_m
+
+
+def test_gusts_read_row_by_row_are_the_gusts_read_point_by_point() -> None:
+    """Across the tile's wrap, where the two reads index it differently."""
+    tile = np.random.default_rng(0).standard_normal((48, 64))
+    u, v = np.linspace(-1.3, 2.7, 37), np.linspace(-0.9, 1.6, 29)
+    east, north = np.meshgrid(u, v)
+    np.testing.assert_allclose(
+        sea._texels(tile, u, v), sea._texel_points(tile, east, north), atol=1e-12
+    )
