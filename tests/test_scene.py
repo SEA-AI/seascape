@@ -211,6 +211,18 @@ class TestEoBand:
             expected = still - Vector((drift[0] * t_s, drift[1] * t_s, 0.0))
             assert (at - expected).length < 1e-9
 
+    def test_the_foam_grid_takes_each_camera_s_view_at_its_own_aspect(
+        self, built: scene.Built
+    ) -> None:
+        tall = variant(BASELINE, cameras={"eo": {"width_px": 512, "height_px": 640}})
+        mount = next(m for m in tall.mounts if m.camera.band == "eo")
+        back = built.cameras[mount.name].matrix_world.to_3x3().inverted()
+        rays = scene._rays(tall, [mount], built.cameras)
+        seen = [back @ ray for _, ray, _ in rays]
+        x = max(abs(v.x / v.z) for v in seen)
+        y = max(abs(v.y / v.z) for v in seen)
+        assert y / x == pytest.approx(640 / 512)
+
     def test_cameras_carry_their_field_of_view_horizontally(self) -> None:
         """AUTO fits the angle to the longer image side, flipping a portrait sensor."""
         for mount in SCENARIO.mounts:

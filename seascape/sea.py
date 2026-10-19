@@ -984,7 +984,7 @@ class _Gusts(NamedTuple):
 
 
 # The foam memories the last build asked for and has not simulated: a build that never
-# renders, as most tests, never pays for them.
+# renders never pays for them.
 _PENDING: list[Callable[[], None]] = []
 
 
@@ -1008,12 +1008,13 @@ def keep_foam(blend: Path) -> None:
     """Simulate the foam memory and move its frames beside `blend`, where a `.blend`
     about to be saved there finds them, as Blender keeps a simulation's bake."""
     remember_foam()
-    frames = _frames_folder()
-    if not frames.is_dir():
-        return
+    # A rebuild without foam leaves no frames of the last one beside it.
     beside = blend.with_suffix(".foam")
     if beside.exists():
         shutil.rmtree(beside)
+    frames = _frames_folder()
+    if not frames.is_dir():
+        return
     shutil.move(frames, beside)
     for image in bpy.data.images:
         if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
@@ -1721,9 +1722,9 @@ def _slick(
 
     ponytail: the integral scale stands for the windrow spacing, a judgement, and
     there are rows at every wind, where below the cutoff real slicks lie in patches.
-    Give the slicks their own spectrum if the rows read wrong. Whitecaps lose the
-    damped waves but keep the clean sea's unresolved acceleration; mix in the
-    survivors' if slicks break too often.
+    Give the slicks their own spectrum if the rows read wrong. Whitecaps break as on
+    the clean sea; simulate the foam memory on the survivors under a slick if slicks
+    foam too often.
     """
     east, north = _downwind(sea)
     spacing_m = WINDROW_SPACING_S * max(sea.wind_speed_mps, WINDROW_MIN_WIND_MPS)
