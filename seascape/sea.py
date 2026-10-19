@@ -22,13 +22,8 @@ from water color: a multiband quasi-analytical algorithm for optically deep wate
 Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 """
 
-import contextlib
-import hashlib
 import math
-import os
 import shutil
-import time
-import uuid
 from collections.abc import Callable, Iterator
 from functools import cache
 from pathlib import Path
@@ -38,7 +33,7 @@ from typing import NamedTuple
 import bpy
 import numpy as np
 
-from seascape import assets, lwir, waves
+from seascape import lwir
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
@@ -175,10 +170,6 @@ FOAM_SEAM_CELLS = 8
 # Numerics: past this share of a grid near breaking, its gusts are read row by row;
 # both reads cost the same there on a 1024-cell grid.
 FOAM_DENSE_SHARE = 0.2
-# Where a foam memory's frames are kept: Blender reads a sequence from disk.
-FOAM_CACHE = assets.CACHE / "foam"
-# A memory unused this long is deleted, as Gradle's build cache does by default.
-FOAM_KEEP_S = 7 * 24 * 3600.0
 
 # A judgement: foam patches a metre or two across, streaked 4:1 along the wake.
 FOAM_CELLS = 512
@@ -958,28 +949,26 @@ def _write_frames(
     grid: FoamGrid,
     frames: Iterator[tuple[np.ndarray, np.ndarray]],
 ) -> None:
-    """Each frame's (cover, breaking) as an EXR in `folder`, all written aside and
-    moved in at once, so a build alongside never reads part of a sequence."""
-    aside = folder.with_name(f"{folder.name}.{uuid.uuid4().hex}")
-    aside.mkdir(parents=True)
+    """Each frame's (cover, breaking) as an EXR in `folder`."""
+    folder.mkdir(parents=True)
     image = bpy.data.images.new(
         "sea_foam_frame", grid.columns, grid.rows, float_buffer=True
     )
     image.colorspace_settings.name = "Non-Color"
+    # `Image.save` writes 32-bit floats uncompressed; a scene's output settings write
+    # half floats, which keep cover to a part in 2048, zipped.
+    frames_scene = bpy.data.scenes.new("sea_foam_frames")
+    settings = frames_scene.render.image_settings
+    settings.file_format, settings.color_mode = "OPEN_EXR", "RGB"
+    settings.color_depth, settings.exr_codec = "16", "ZIP"
     pixels = np.zeros((grid.rows, grid.columns, 4), np.float32)
     pixels[..., 3] = 1.0
     for i, (cover, breaking) in enumerate(frames):
         pixels[..., 0], pixels[..., 1] = cover, breaking
         image.pixels.foreach_set(pixels.ravel())
-        image.filepath_raw = str(aside / f"foam_{i + 1:04d}.exr")
-        image.file_format = "OPEN_EXR"
-        image.save()
+        image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
+    bpy.data.scenes.remove(frames_scene)
     bpy.data.images.remove(image)
-    try:
-        aside.rename(folder)
-    except OSError:
-        # Another build wrote the same sequence first.
-        shutil.rmtree(aside)
 
 
 class _Gusts(NamedTuple):
@@ -993,22 +982,41 @@ class _Gusts(NamedTuple):
     fractions: tuple[float, ...]
 
 
-# The code a cached foam memory came from: a change to it simulates afresh.
-_MEMORY_CODE = Path(__file__).read_bytes() + Path(waves.__file__).read_bytes()
-
 # The foam memories the last build asked for and has not simulated: a build that never
 # renders, as most tests, never pays for them.
 _PENDING: list[Callable[[], None]] = []
 
 
+def _frames_folder() -> Path:
+    """Where a build writes its foam memory: Blender's session temporary folder, which
+    it deletes on exit."""
+    return Path(bpy.app.tempdir) / "sea_foam"
+
+
 def remember_foam(*_: object) -> None:
     """Simulate every foam memory the last build left pending, and point their image
-    sequences at the frames: on `render_pre`, and before a `.blend` is saved."""
+    sequences at the frames: on `render_pre`, and by `keep_foam`."""
     while _PENDING:
         _PENDING.pop()()
     for image in bpy.data.images:
         if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
             image.reload()
+
+
+def keep_foam(blend: Path) -> None:
+    """Simulate the foam memory and move its frames beside `blend`, where a `.blend`
+    about to be saved there finds them, as Blender keeps a simulation's bake."""
+    remember_foam()
+    frames = _frames_folder()
+    if not frames.is_dir():
+        return
+    beside = blend.with_suffix(".foam")
+    shutil.rmtree(beside, ignore_errors=True)
+    shutil.move(frames, beside)
+    for image in bpy.data.images:
+        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
+            moved = beside / Path(image.filepath).relative_to(frames)
+            image.filepath = bpy.path.relpath(str(moved), start=str(blend.parent))
 
 
 def _foam_frames(
@@ -1024,7 +1032,6 @@ def _foam_frames(
     speed = sea.wind_speed_mps
     east, north = _downwind(sea)
     drift = surface_drift(sea, outputs)
-    times = outputs.times_s
     intensity = turbulence_intensity(speed)
     reach = math.sqrt(2) * float(np.abs(gust_tile).max()) * intensity
     gusts = np.linspace(-reach, reach, FOAM_GUST_LEVELS)
@@ -1035,26 +1042,16 @@ def _foam_frames(
     _PENDING.clear()
     if remember_foam not in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.append(remember_foam)
-    _prune_foam_cache(FOAM_CACHE, time.time())
+    # The last build's frames: one process builds again and again for the server.
+    shutil.rmtree(_frames_folder(), ignore_errors=True)
     out = []
     for grid in grids:
-        key = hashlib.sha256(
-            repr((wind, drift, grid, times, outputs.loop, fractions)).encode()
-            + gust_tile.tobytes()
-            + _MEMORY_CODE
-        ).hexdigest()[:16]
-        folder = FOAM_CACHE / key
-        # Used before it is checked, so a build pruning alongside keeps it.
-        with contextlib.suppress(FileNotFoundError):
-            os.utime(folder)
-        if not all(
-            (folder / f"foam_{i + 1:04d}.exr").exists() for i in range(len(times))
-        ):
-            _PENDING.append(
-                lambda grid=grid, folder=folder: _simulate(
-                    wind, outputs, grid, folder, drift, gusting
-                )
+        folder = _frames_folder() / f"{grid.cell_m:g}m"
+        _PENDING.append(
+            lambda grid=grid, folder=folder: _simulate(
+                wind, outputs, grid, folder, drift, gusting
             )
+        )
         sequence = bpy.data.images.new(
             f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
         )
@@ -1063,17 +1060,6 @@ def _foam_frames(
         sequence.colorspace_settings.name = "Non-Color"
         out.append((grid, sequence))
     return out
-
-
-def _prune_foam_cache(cache: Path, now_s: float) -> None:
-    """Delete the foam memories in `cache` unused for `FOAM_KEEP_S`."""
-    if not cache.is_dir():
-        return
-    for folder in cache.iterdir():
-        # Another build may prune the same folder first.
-        with contextlib.suppress(FileNotFoundError):
-            if folder.stat().st_mtime < now_s - FOAM_KEEP_S:
-                shutil.rmtree(folder, ignore_errors=True)
 
 
 def _simulate(
@@ -1202,14 +1188,6 @@ def _remembered(
             ),
         )
         inside = _math(tree, "MULTIPLY", inside, fine_enough)
-        # Blender draws a missing image magenta; the frames' blue is 0, so a cleared
-        # cache leaves the cover outside every grid.
-        inside = _math(
-            tree,
-            "MULTIPLY",
-            inside,
-            _math(tree, "SUBTRACT", 1.0, channels.outputs["Blue"]),
-        )
         cover = _math(
             tree,
             "MULTIPLY_ADD",
