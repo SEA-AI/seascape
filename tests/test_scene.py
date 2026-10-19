@@ -201,8 +201,8 @@ class TestEoBand:
         mounts = [m for m in SCENARIO.mounts if m.camera.band == "eo"]
         clip = variant(BASELINE, outputs={"duration_s": 1.0})
         calm = variant(BASELINE, outputs={"duration_s": 1.0}, sea={"wind_speed_mps": 0})
-        drift = sea.foam_drift(clip.sea, clip.outputs)
-        assert sea.foam_drift(calm.sea, calm.outputs) == (0.0, 0.0) != drift
+        drift = sea.surface_drift(clip.sea, clip.outputs)
+        assert sea.surface_drift(calm.sea, calm.outputs) == (0.0, 0.0) != drift
         moved = scene._rays(clip, mounts, built.cameras)
         held = scene._rays(calm, mounts, built.cameras)
         per_frame = len(moved) // len(clip.outputs.times_s)
@@ -1214,6 +1214,13 @@ class TestLoop:
             for w, c in zip(weight, carried_s, strict=True):
                 # A layer is carried back to the start where its weight reaches 0.
                 assert w == pytest.approx(2 * min(c, span_s - c) / span_s, abs=1e-6)
+
+    def test_a_loop_s_foam_lace_holds_still_with_its_foam(self) -> None:
+        assert sea.surface_drift(self.LOOP.sea, self.LOOP.outputs) == (0.0, 0.0)
+        carry = _sea_node("whitecap_lace_carry").inputs["Vector"].default_value
+        assert tuple(carry[:2]) == (0.0, 0.0)
+        # Nothing moves, so nothing crossfades.
+        assert "whitecap_lace_weight_0" not in bpy.data.materials["sea"].node_tree.nodes
 
 
 class TestOrbitingYachts:
