@@ -867,6 +867,19 @@ def _clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Nod
     return out
 
 
+def _texel_points(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """`tile` (rows bottom first, as `curve_image` lays it) at each (u, v), in tiles,
+    as Cycles' linear lookup with repeat reads it."""
+    height, width = tile.shape
+    x, y = u * width - 0.5, v * height - 0.5
+    i, j = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = x - i, y - j
+    i0, i1, j0, j1 = i % width, (i + 1) % width, j % height, (j + 1) % height
+    return (1 - fy) * ((1 - fx) * tile[j0, i0] + fx * tile[j0, i1]) + fy * (
+        (1 - fx) * tile[j1, i0] + fx * tile[j1, i1]
+    )
+
+
 def _texels(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     """(rows, columns): `tile` (rows bottom first, as `curve_image` lays it) at each
     column's u and each row's v, in tiles, as Cycles' linear lookup with repeat reads
@@ -908,13 +921,12 @@ def _gust_values(
     north_m: np.ndarray,
     t_s: float,
 ) -> np.ndarray:
-    """`_gust`'s unit tile at each column's east and each row's north, at `t_s`: its
-    `_drifting`, the tile laid square, `GUST_TILE_M` a side, and carried at
-    `velocity_mps`."""
+    """`_gust`'s unit tile at each (east, north), at `t_s`: its `_drifting`, the tile
+    laid square, `GUST_TILE_M` a side, and carried at `velocity_mps`."""
     per_m = 1 / GUST_TILE_M
 
     def layer(carried_s: float, shift: float) -> np.ndarray:
-        return _texels(
+        return _texel_points(
             tile,
             per_m * (east_m - velocity_mps[0] * carried_s) + shift,
             per_m * (north_m - velocity_mps[1] * carried_s) + shift,
@@ -929,27 +941,6 @@ def _gust_values(
         weighted.append((1 - abs(2 * cycle - 1), layer(cycle * span_s, lag)))
     (w0, n0), (w1, n1) = weighted
     return (w0 * n0 + w1 * n1) / math.hypot(w0, w1)
-
-
-def _memory_thresholds(
-    wind: tuple[Wave, ...],
-    drift: tuple[float, float],
-    cell_m: float,
-    step_s: float,
-    fractions: tuple[float, ...],
-) -> np.ndarray:
-    """`foam_memory_thresholds_g`, kept on disk: every scene over one sea shares it."""
-    key = hashlib.sha256(repr((wind, drift, cell_m, step_s, fractions)).encode())
-    path = FOAM_CACHE / "thresholds" / f"{key.hexdigest()[:16]}.npy"
-    if path.exists():
-        return np.load(path)
-    thresholds = foam_memory_thresholds_g(wind, drift, cell_m, step_s, fractions)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Written aside and moved, so a reader never sees half a file.
-    aside = path.with_name(f"{uuid.uuid4().hex}.npy")
-    np.save(aside, thresholds)
-    aside.replace(path)
-    return thresholds
 
 
 def _write_frames(
@@ -1070,7 +1061,7 @@ def _simulate(
     """One grid's foam memory over the clip, written to `folder`."""
     step = 1 / outputs.fps
     fractions, levels = gusts.fractions, gusts.levels
-    thresholds = _memory_thresholds(wind, drift, grid.cell_m, step, fractions)
+    thresholds = foam_memory_thresholds_g(wind, drift, grid.cell_m, step, fractions)
     x = grid.west_m + (np.arange(grid.columns) + 0.5) * grid.cell_m
     y = grid.south_m + (np.arange(grid.rows) + 0.5) * grid.cell_m
     # Over the gusts' range the threshold falls near straight: the line through its
@@ -1082,23 +1073,28 @@ def _simulate(
     else:
         slope, offset, calmest = 0.0, math.inf, math.inf
 
-    def threshold_at(t_s: float) -> np.ndarray:
-        gust = _gust_values(
-            gusts.tile,
-            outputs,
-            gusts.velocity_mps,
-            x + drift[0] * t_s,
-            y + drift[1] * t_s,
-            t_s,
-        ).astype(np.float32) * np.float32(gusts.intensity)
-        threshold = gust * np.float32(slope) + np.float32(offset)
-        return np.where(gust < calmest, np.float32(np.inf), threshold)
+    def threshold_at(t_s: float, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
+        gust = (
+            _gust_values(
+                gusts.tile,
+                outputs,
+                gusts.velocity_mps,
+                x[columns] + drift[0] * t_s,
+                y[rows] + drift[1] * t_s,
+                t_s,
+            )
+            * gusts.intensity
+        )
+        return np.where(gust < calmest, np.inf, gust * slope + offset)
 
+    # The least threshold any gust asks for: where no crest comes near it, nothing
+    # breaks.
+    floor = offset + min(slope * levels[0], slope * levels[-1])
     times = outputs.times_s
     _write_frames(
         folder,
         grid,
-        foam_memory(wind, drift, grid, times[0], step, len(times), threshold_at),
+        foam_memory(wind, drift, grid, times[0], step, len(times), threshold_at, floor),
     )
 
 
