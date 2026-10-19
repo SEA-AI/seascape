@@ -22,9 +22,12 @@ from water color: a multiband quasi-analytical algorithm for optically deep wate
 Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 """
 
+import contextlib
 import hashlib
 import math
+import os
 import shutil
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from functools import cache
@@ -174,6 +177,8 @@ FOAM_SEAM_CELLS = 8
 FOAM_DENSE_SHARE = 0.2
 # Where a foam memory's frames are kept: Blender reads a sequence from disk.
 FOAM_CACHE = assets.CACHE / "foam"
+# A memory unused this long is deleted, as Gradle's build cache does by default.
+FOAM_KEEP_S = 7 * 24 * 3600.0
 
 # A judgement: foam patches a metre or two across, streaked 4:1 along the wake.
 FOAM_CELLS = 512
@@ -1030,6 +1035,7 @@ def _foam_frames(
     _PENDING.clear()
     if remember_foam not in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.append(remember_foam)
+    _prune_foam_cache(FOAM_CACHE, time.time())
     out = []
     for grid in grids:
         key = hashlib.sha256(
@@ -1038,6 +1044,9 @@ def _foam_frames(
             + _MEMORY_CODE
         ).hexdigest()[:16]
         folder = FOAM_CACHE / key
+        # Used before it is checked, so a build pruning alongside keeps it.
+        with contextlib.suppress(FileNotFoundError):
+            os.utime(folder)
         if not all(
             (folder / f"foam_{i + 1:04d}.exr").exists() for i in range(len(times))
         ):
@@ -1054,6 +1063,17 @@ def _foam_frames(
         sequence.colorspace_settings.name = "Non-Color"
         out.append((grid, sequence))
     return out
+
+
+def _prune_foam_cache(cache: Path, now_s: float) -> None:
+    """Delete the foam memories in `cache` unused for `FOAM_KEEP_S`."""
+    if not cache.is_dir():
+        return
+    for folder in cache.iterdir():
+        # Another build may prune the same folder first.
+        with contextlib.suppress(FileNotFoundError):
+            if folder.stat().st_mtime < now_s - FOAM_KEEP_S:
+                shutil.rmtree(folder, ignore_errors=True)
 
 
 def _simulate(

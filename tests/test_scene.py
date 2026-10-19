@@ -4,6 +4,7 @@ Blender is one global session, so each class rebuilds in its own band on entry.
 """
 
 import math
+import os
 from collections.abc import Iterator
 from itertools import pairwise
 from pathlib import Path
@@ -1636,3 +1637,14 @@ def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
     assert fit is not None
     _, _, width, height, _ = fit
     assert max(width, height) <= scene.FOAM_MAX_CELLS * cell_m
+
+
+def test_a_foam_memory_unused_past_its_keep_is_pruned(tmp_path: Path) -> None:
+    now_s = 1e9
+    for name, age_s in (("used", 0.0), ("stale", sea.FOAM_KEEP_S + 1.0)):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "foam_0001.exr").touch()
+        os.utime(folder, (now_s - age_s, now_s - age_s))
+    sea._prune_foam_cache(tmp_path, now_s)
+    assert [p.name for p in tmp_path.iterdir()] == ["used"]
