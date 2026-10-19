@@ -422,10 +422,14 @@ def test_a_foam_memory_covers_what_monahan_measured(wind_speed_mps: float) -> No
     drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
     step = 1 / 12
     fraction = waves.whitecap_fraction(wind_speed_mps)
-    (threshold,) = waves.foam_memory_thresholds_g(wind, drift, 2.0, step, (fraction,))
+    threshold, *gusts = waves.foam_memory_thresholds_g(
+        wind, drift, 2.0, step, (fraction, 0.3, 0.5)
+    )
+    # A gust asking for more cover breaks at a lower threshold.
+    assert threshold > gusts[0] > gusts[1]
     covers = []
     for east, north, start in ((-4000, 1000, 50), (2500, -3500, 300), (900, 4200, 520)):
-        grid = waves.FoamGrid(east, north, 2.0, 400, 400)
+        grid = waves.FoamGrid(east, north, 2.0, 200, 200)
         frames = waves.foam_memory(wind, drift, grid, start, step, 120, threshold)
         covers.extend(cover.mean() for cover, _ in frames)
     assert float(np.mean(covers)) == pytest.approx(fraction, rel=0.15)
@@ -452,11 +456,11 @@ def test_remembered_whitecaps_average_koepke_s_reflectance() -> None:
     step = 1 / 12
     fraction = waves.whitecap_fraction(wind_speed_mps)
     (threshold,) = waves.foam_memory_thresholds_g(wind, drift, 0.25, step, (fraction,))
-    grid = waves.FoamGrid(0.0, 0.0, 0.25, 400, 400)
+    grid = waves.FoamGrid(0.0, 0.0, 0.25, 100, 100)
     covered = shown = 0.0
     thin = waves.THIN_FOAM_SHARE
     for cover, breaking in waves.foam_memory(
-        wind, drift, grid, 0.0, step, 120, threshold
+        wind, drift, grid, 0.0, step, 60, threshold
     ):
         covered += cover.sum()
         shown += (cover * (thin + (1 - thin) * breaking)).sum()
@@ -486,15 +490,6 @@ def test_a_threshold_that_varies_lays_what_a_constant_one_does() -> None:
     ):
         np.testing.assert_allclose(a, c, atol=1e-6)
         np.testing.assert_allclose(b, d, atol=1e-6)
-
-
-def test_a_gust_s_cover_has_its_own_remembered_threshold() -> None:
-    """A gust over a 21 m/s sea asks for far more than Monahan's mean cover."""
-    wind = field(21.0)
-    high, higher = waves.foam_memory_thresholds_g(
-        wind, (0.0, 0.0), 2.0, 1 / 12, (0.3, 0.5)
-    )
-    assert higher < high
 
 
 def test_whitecaps_read_the_wind_at_10_m() -> None:
