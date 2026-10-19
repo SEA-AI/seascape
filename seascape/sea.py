@@ -1187,6 +1187,14 @@ def _remembered(
             ),
         )
         inside = _math(tree, "MULTIPLY", inside, fine_enough)
+        # Blender draws a missing image magenta; the frames' blue is 0, so a cleared
+        # cache leaves the cover outside every grid.
+        inside = _math(
+            tree,
+            "MULTIPLY",
+            inside,
+            _math(tree, "SUBTRACT", 1.0, channels.outputs["Blue"]),
+        )
         cover = _math(
             tree,
             "MULTIPLY_ADD",
