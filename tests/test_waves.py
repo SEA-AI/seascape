@@ -417,7 +417,7 @@ def test_a_storm_gust_s_cover_has_its_own_threshold() -> None:
 @pytest.mark.parametrize("wind_speed_mps", [8.0, 18.0])
 def test_a_foam_memory_covers_what_monahan_measured(wind_speed_mps: float) -> None:
     """Off the points its threshold was set on: three stretches of sea 800 m and 10 s
-    across, which spread about 10 % about their mean."""
+    across."""
     wind = field(wind_speed_mps, 300.0)
     drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
     step = 1 / 12
@@ -454,14 +454,38 @@ def test_remembered_whitecaps_average_koepke_s_reflectance() -> None:
     (threshold,) = waves.foam_memory_thresholds_g(wind, drift, 0.25, step, (fraction,))
     grid = waves.FoamGrid(0.0, 0.0, 0.25, 400, 400)
     covered = shown = 0.0
+    thin = waves.THIN_FOAM_SHARE
     for cover, breaking in waves.foam_memory(
         wind, drift, grid, 0.0, step, 120, threshold
     ):
         covered += cover.sum()
-        thin = waves.THIN_FOAM_SHARE
         shown += (cover * (thin + (1 - thin) * breaking)).sum()
     mean = FRESH_FOAM_REFLECTANCE * shown / covered
     assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.5)
+    # Thin foam alone is inside Koepke's half; breaking foam must brighten it.
+    assert mean > FRESH_FOAM_REFLECTANCE * thin
+
+
+def test_a_foam_memory_covers_none_of_the_sea_or_all_of_it() -> None:
+    thresholds = waves.foam_memory_thresholds_g(
+        field(13.0), (0.0, 0.0), 2.0, 1 / 12, (0.0, 1.0)
+    )
+    assert list(thresholds) == [math.inf, -math.inf]
+
+
+def test_a_threshold_that_varies_lays_what_a_constant_one_does() -> None:
+    grid = waves.FoamGrid(0.0, 0.0, 0.5, 16, 16)
+
+    def varies(_: float, rows: np.ndarray, __: np.ndarray) -> np.ndarray:
+        return np.full(len(rows), 0.3)
+
+    for (a, b), (c, d) in zip(
+        waves.foam_memory(field(13.0), (0.39, 0.0), grid, 0.0, 1 / 12, 24, 0.3),
+        waves.foam_memory(field(13.0), (0.39, 0.0), grid, 0.0, 1 / 12, 24, varies, 0.3),
+        strict=True,
+    ):
+        np.testing.assert_allclose(a, c, atol=1e-6)
+        np.testing.assert_allclose(b, d, atol=1e-6)
 
 
 def test_a_gust_s_cover_has_its_own_remembered_threshold() -> None:

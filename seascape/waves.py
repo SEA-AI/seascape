@@ -135,8 +135,8 @@ SPREAD_AM = 0.13
 SWELL_S_MAX = 75.0
 # Monahan 1971: a seawater whitecap's area e-folds in 3.85 s.
 WHITECAP_AREA_EFOLD_S = 3.85
-# Dierssen 2019: stage-A foam reflects 0.50 in the visible, thin foam 0.18. Foam dims
-# to the thin share once its crest stops breaking.
+# Dierssen 2019: thin foam reflects 0.18 of stage-A foam's 0.50 in the visible.
+# A judgement: foam dims to that share once its crest stops breaking.
 THIN_FOAM_SHARE = 0.18 / 0.50
 # Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
 WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
@@ -161,18 +161,18 @@ FADE_LEVELS = 32
 # The least cover the sea draws, and how far under the threshold a crest lays it.
 FOAM_VISIBLE_COVER = 1e-3
 FOAM_VISIBLE_Z = NormalDist().inv_cdf(FOAM_VISIBLE_COVER)
-# A grid resolves a wave four of its cells long: shorter ones alias.
+# A judgement: a grid draws a wave four of its cells long; under two it aliases.
 FOAM_CELLS_PER_WAVE = 4
 # A foam memory starts this many area e-folds early, so its start has faded to 1 %.
 FOAM_WARM_EFOLDS = math.log(100)
 # Numerics: before its last seconds a memory steps coarser, which misses brief crests
-# of foam since faded; its first frame then covers within 3 % of a fine start's.
+# whose foam has since faded.
 FOAM_FINE_WARM_S = 6.0
 FOAM_COARSE_STEP_S = 0.25
 # The steps each point remembers when a memory's threshold is set.
 FOAM_REFERENCE_STEPS = 120
-# Steps closing in on a threshold: halvings first, then interpolation, until its cover
-# is within 2 %, inside the 10 % stretches of sea spread about their mean.
+# Steps closing in on a threshold: halvings first, then interpolation on log cover,
+# until its cover is within 2 %.
 FOAM_REFERENCE_BISECTIONS = 12
 FOAM_REFERENCE_HALVINGS = 4
 FOAM_REFERENCE_TOLERANCE = 0.02
@@ -649,8 +649,7 @@ def _normal_cdf(z: np.ndarray) -> np.ndarray:
 
 
 def _laid(z: np.ndarray) -> np.ndarray:
-    """The normal CDF where it lays foam the sea draws, which is where crests come
-    near breaking."""
+    """The normal CDF of `z`, zero where it lays less than `FOAM_VISIBLE_COVER`."""
     out = np.zeros(z.shape, np.float32)
     near = z > FOAM_VISIBLE_Z
     out[near] = _normal_cdf(z[near])
@@ -753,6 +752,9 @@ class FoamGrid:
 
 
 def _resolved(wind: tuple[Wave, ...], cell_m: float) -> tuple[Wave, ...]:
+    """The waves a grid of `cell_m` draws: breakers are shorter than the sea's peak
+    (Gemmrich et al. 2008), so every one long enough. The edge a crest breaks over is
+    the sea's, `foam_edge_g`, the same on every grid."""
     return tuple(
         w for w in wind if 2 * math.pi / w.k_rad_m >= FOAM_CELLS_PER_WAVE * cell_m
     )
@@ -773,13 +775,12 @@ def _drifting_rad_s(
 
 
 class _Crests:
-    """`wind`'s downward acceleration, in g, on a grid that drifts with the surface:
-    the water at grid point x is at x + v t. Only the waves the grid resolves."""
+    """The downward acceleration of `use`, in g, on a grid that drifts with the
+    surface: the water at grid point x is at x + v t."""
 
     def __init__(
-        self, wind: tuple[Wave, ...], grid: FoamGrid, drift_mps: tuple[float, float]
+        self, use: tuple[Wave, ...], grid: FoamGrid, drift_mps: tuple[float, float]
     ) -> None:
-        use = _resolved(wind, grid.cell_m)
         x = grid.west_m + (np.arange(grid.columns) + 0.5) * grid.cell_m
         y = grid.south_m + (np.arange(grid.rows) + 0.5) * grid.cell_m
         kx = np.array([w.k_east_rad_m for w in use])
@@ -823,26 +824,28 @@ def foam_memory(
     threshold_g: float | Callable[[float, np.ndarray, np.ndarray], np.ndarray],
     floor_g: float | None = None,
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-    """Per frame at start_s + i step_s, (rows, columns) each: the share of each cell
-    foam covers, and the share breaking now, on `grid` drifting at `drift_mps`. Foam
-    is laid where a crest breaks, the chance it passed `threshold_g` (or the threshold
-    at t of the cells at those rows and columns, never under `floor_g`), Gaussian over
-    the edge, and keeps Monahan's area e-fold since; the memory starts early enough to
-    have forgotten its start. Only cells a crest brings near breaking are reckoned."""
-    crests = _Crests(wind, grid, drift_mps)
+    """Per frame at start_s + i step_s, (rows, columns): the share of each cell foam
+    covers and the share breaking now, on `grid` drifting at `drift_mps`. A crest the
+    grid draws lays foam by the normal CDF of its acceleration over `threshold_g`, in
+    units of the edge, and the foam fades at Monahan's area e-fold. A callable
+    `threshold_g(t_s, rows, columns)` needs `floor_g`, under which no cell is reckoned.
+    """
+    use = _resolved(wind, grid.cell_m)
+    crests = _Crests(use, grid, drift_mps)
     edge = max(foam_edge_g(wind), 1e-9)
-    if not callable(threshold_g):
-        floor_g = threshold_g
-    if floor_g is None:
+    floor = floor_g if callable(threshold_g) else threshold_g
+    if floor is None:
         raise ValueError("a threshold that varies needs a floor")
     times = _memory_times(start_s, step_s, frames)
     cover = np.zeros((grid.rows, grid.columns), np.float32)
     last = times[0]
     for t_s in times:
         acceleration = crests.at(t_s)
-        rows, columns = np.nonzero(acceleration > floor_g + FOAM_VISIBLE_Z * edge)
+        rows, columns = np.nonzero(acceleration > floor + FOAM_VISIBLE_Z * edge)
         threshold = (
-            threshold_g(t_s, rows, columns) if callable(threshold_g) else threshold_g
+            np.maximum(np.asarray(threshold_g(t_s, rows, columns)), floor)
+            if callable(threshold_g)
+            else threshold_g
         )
         breaking = np.zeros_like(cover)
         breaking[rows, columns] = _normal_cdf(
@@ -903,34 +906,33 @@ def foam_memory_thresholds_g(
     target = np.log(wanted[inside])
     lo = np.full(inside.sum(), float(accelerations.min()))
     hi = np.full(inside.sum(), float(accelerations.max()))
-    # Halved until the cover at both ends is known, then closed in on by the line
-    # through log cover at its ends, which falls near straight with the threshold.
-    low_cover = high_cover = None
+    # Halved first; then, where the cover at both ends is known, closed in on by the
+    # line through log cover at its ends, which falls near straight with the threshold.
+    low_cover = np.full(len(target), np.nan)
+    high_cover = np.full(len(target), np.nan)
     for halving in range(FOAM_REFERENCE_BISECTIONS):
-        if halving < FOAM_REFERENCE_HALVINGS or low_cover is None or high_cover is None:
-            mid = (lo + hi) / 2
-        else:
-            ends = (
-                np.log(np.maximum(low_cover, 1e-12)),
-                np.log(np.maximum(high_cover, 1e-12)),
-            )
+        mid = (lo + hi) / 2
+        if halving >= FOAM_REFERENCE_HALVINGS:
+            ends = np.log(low_cover), np.log(high_cover)
             share = np.clip(
                 (ends[0] - target) / np.maximum(ends[0] - ends[1], 1e-9), 0.1, 0.9
             )
-            mid = lo + share * (hi - lo)
+            known = np.isfinite(share)
+            mid = np.where(known, lo + np.where(known, share, 0.0) * (hi - lo), mid)
         cover = covers(mid)
         over = cover > wanted[inside]
         lo, hi = np.where(over, mid, lo), np.where(over, hi, mid)
-        if halving + 1 >= FOAM_REFERENCE_HALVINGS:
-            low_cover = cover if low_cover is None else np.where(over, cover, low_cover)
-            high_cover = (
-                cover if high_cover is None else np.where(over, high_cover, cover)
-            )
-            if np.all(np.abs(np.log(cover) - target) < FOAM_REFERENCE_TOLERANCE):
-                lo = hi = mid
-                break
+        low_cover = np.where(over, cover, low_cover)
+        high_cover = np.where(over, high_cover, cover)
+        if halving + 1 >= FOAM_REFERENCE_HALVINGS and np.all(
+            np.abs(np.log(cover) - target) < FOAM_REFERENCE_TOLERANCE
+        ):
+            lo = hi = mid
+            break
     out = np.where(wanted <= 0.0, math.inf, -math.inf)
     out[inside] = (lo + hi) / 2
+    # A cached array is shared by every caller.
+    out.flags.writeable = False
     return out
 
 
