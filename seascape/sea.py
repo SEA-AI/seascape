@@ -170,6 +170,9 @@ FOAM_GUST_LEVELS = 5
 FOAM_LOOKUP_SHARES = 8
 # Numerics: a finer foam grid fades in over this many of its cells from its edge.
 FOAM_SEAM_CELLS = 8
+# Numerics: past this share of a grid near breaking, its gusts are read row by row;
+# both reads cost the same there on a 1024-cell grid.
+FOAM_DENSE_SHARE = 0.2
 # Where a foam memory's frames are kept: Blender reads a sequence from disk.
 FOAM_CACHE = assets.CACHE / "foam"
 
@@ -921,13 +924,15 @@ def _gust_values(
     east_m: np.ndarray,
     north_m: np.ndarray,
     t_s: float,
+    read: Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray] = _texel_points,
 ) -> np.ndarray:
-    """`_gust`'s unit tile at each (east, north), at `t_s`: its `_drifting`, the tile
-    laid square, `GUST_TILE_M` a side, and carried at `velocity_mps`."""
+    """`_gust`'s unit tile at `t_s`, at each (east, north), or with `_texels` at each
+    north row's east columns: its `_drifting`, the tile laid square, `GUST_TILE_M` a
+    side, and carried at `velocity_mps`."""
     per_m = 1 / GUST_TILE_M
 
     def layer(carried_s: float, shift: float) -> np.ndarray:
-        return _texel_points(
+        return read(
             tile,
             per_m * (east_m - velocity_mps[0] * carried_s) + shift,
             per_m * (north_m - velocity_mps[1] * carried_s) + shift,
@@ -1075,17 +1080,15 @@ def _simulate(
         slope, offset, calmest = 0.0, math.inf, math.inf
 
     def threshold_at(t_s: float, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
-        gust = (
-            _gust_values(
-                gusts.tile,
-                outputs,
-                gusts.velocity_mps,
-                x[columns] + drift[0] * t_s,
-                y[rows] + drift[1] * t_s,
-                t_s,
-            )
-            * gusts.intensity
-        )
+        east, north = x + drift[0] * t_s, y + drift[1] * t_s
+        args = (gusts.tile, outputs, gusts.velocity_mps)
+        # Where most cells are near breaking, reading the whole grid row by row is
+        # cheaper than reading each near cell on its own.
+        if len(rows) > FOAM_DENSE_SHARE * grid.rows * grid.columns:
+            gust = _gust_values(*args, east, north, t_s, _texels)[rows, columns]
+        else:
+            gust = _gust_values(*args, east[columns], north[rows], t_s)
+        gust = gust * gusts.intensity
         return np.where(gust < calmest, np.inf, gust * slope + offset)
 
     # The least threshold any gust asks for: where no crest comes near it, nothing
