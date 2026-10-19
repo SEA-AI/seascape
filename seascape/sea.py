@@ -60,6 +60,7 @@ from seascape.wakes import (
 from seascape.water import body_color
 from seascape.waves import (
     FADE_FOOTPRINTS,
+    FOAM_VISIBLE_COVER,
     GRAVITY_MS2,
     GUST_LENGTH_M,
     SLICK_DRIFT,
@@ -1213,7 +1214,7 @@ def _remembered(
         tree,
         "MULTIPLY",
         laced,
-        _math(tree, "GREATER_THAN", cover, 1e-3),
+        _math(tree, "GREATER_THAN", cover, FOAM_VISIBLE_COVER),
         name="whitecaps",
     )
     bright = _math(tree, "MULTIPLY_ADD", breaking, 1 - THIN_FOAM_SHARE, THIN_FOAM_SHARE)
