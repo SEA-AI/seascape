@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 import uuid
@@ -274,21 +275,25 @@ async def render(
 
 
 async def _seascape(*args: str) -> None:
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "seascape.cli",
-        *args,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        _, stderr = await process.communicate()
-    except asyncio.CancelledError:
-        # asyncio leaves the process running, and Blender on the GPU.
-        process.kill()
-        await process.wait()
-        raise
+    # A killed Blender leaves its temporary files, the foam memory's frames among them;
+    # here they go with the job.
+    with tempfile.TemporaryDirectory(prefix="seascape-job-") as tmp:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "seascape.cli",
+            *args,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "TMPDIR": tmp},
+        )
+        try:
+            _, stderr = await process.communicate()
+        except asyncio.CancelledError:
+            # asyncio leaves the process running, and Blender on the GPU.
+            process.kill()
+            await process.wait()
+            raise
     if process.returncode:
         raise RuntimeError(stderr.decode(errors="replace").strip()[-2000:])
 

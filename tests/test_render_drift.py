@@ -197,7 +197,12 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
 def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     """Straight down, where parallax moves nothing, at the clip's start, before any
     drift: each pixel over a cell of the finest grid reads that cell's cover."""
+    stale = sea._frames_folder() / "0.25m" / "foam_0001.exr"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.touch()
     built = scene.build(SCENARIO, "eo")
+    # A build clears the last one's frames.
+    assert not stale.exists()
     grid = scene._foam_grids(SCENARIO, "eo", built.cameras, scene.wind_waves(SCENARIO))[
         0
     ]
