@@ -91,6 +91,7 @@ import math
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
+from statistics import NormalDist
 
 import numpy as np
 
@@ -157,6 +158,9 @@ FOAM_SAMPLES = 32768
 SAMPLE_SPAN = 64.0
 THRESHOLD_LEVELS = 48
 FADE_LEVELS = 32
+# The least cover the sea draws, and how far under the threshold a crest lays it.
+FOAM_VISIBLE_COVER = 1e-3
+FOAM_VISIBLE_Z = NormalDist().inv_cdf(FOAM_VISIBLE_COVER)
 # A grid resolves a wave four of its cells long: shorter ones alias.
 FOAM_CELLS_PER_WAVE = 4
 # A foam memory starts this many area e-folds early, so its start has faded to 1 %.
@@ -645,9 +649,10 @@ def _normal_cdf(z: np.ndarray) -> np.ndarray:
 
 
 def _laid(z: np.ndarray) -> np.ndarray:
-    """The normal CDF where it is not 0, which is where crests come near breaking."""
+    """The normal CDF where it lays foam the sea draws, which is where crests come
+    near breaking."""
     out = np.zeros(z.shape, np.float32)
-    near = z > -CDF_SIGMAS
+    near = z > FOAM_VISIBLE_Z
     out[near] = _normal_cdf(z[near])
     return out
 
@@ -835,7 +840,7 @@ def foam_memory(
     last = times[0]
     for t_s in times:
         acceleration = crests.at(t_s)
-        rows, columns = np.nonzero(acceleration > floor_g - CDF_SIGMAS * edge)
+        rows, columns = np.nonzero(acceleration > floor_g + FOAM_VISIBLE_Z * edge)
         threshold = (
             threshold_g(t_s, rows, columns) if callable(threshold_g) else threshold_g
         )
