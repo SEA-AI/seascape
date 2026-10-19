@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import colour, lwir, scene, sea, skies, waves
+from seascape import colour, lwir, render, scene, sea, skies, waves
 from seascape.assets import Buoy, download, fetch, manifest
 from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
@@ -194,42 +194,43 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
 
 
 @pytest.mark.render
-def test_the_shader_reads_each_foam_age_s_peak_as_the_crests_run() -> None:
-    """The envelope's peak over each age's window, as `crest_peaks_g` takes it."""
-    span_m, px = 8.0, 32
-    scene.build(SCENARIO, "eo")
+def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
+    """Straight down, where parallax moves nothing, at the clip's start, before any
+    drift: each pixel over a cell of the finest grid reads that cell's cover."""
+    built = scene.build(SCENARIO, "eo")
+    grid = scene._foam_grids(SCENARIO, "eo", built.cameras, scene.wind_waves(SCENARIO))[
+        0
+    ]
     tree = bpy.data.materials["sea"].node_tree
-    history = next(
-        n
-        for n in tree.nodes
-        if n.bl_idname == "ShaderNodeGroup" and n.node_tree.name == "sea_crest_history"
-    )
-    shown = tree.nodes.new("ShaderNodeMath")
-    shown.operation = "MULTIPLY_ADD"  # (g + 1) / 2, so the emission stays positive
-    shown.inputs["Value_001"].default_value = 0.5
-    shown.inputs["Value_002"].default_value = 0.5
+    texture = tree.nodes[f"sea_foam_{grid.cell_m:g}m"]
+    texture.interpolation = "Closest"
     emission = tree.nodes.new("ShaderNodeEmission")
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
-    tree.links.new(shown.outputs["Value"], emission.inputs["Color"])
+    tree.links.new(
+        tree.nodes["whitecap_bubbles"].outputs["Value"], emission.inputs["Color"]
+    )
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    # A pixel fine enough to draw every wave, as the numpy field does.
-    camera = bpy.data.objects.new("probe", overhead(span_m, 1e-5, px))
+    px = 32
+    row, column = grid.rows // 2, grid.columns // 2
+    camera = bpy.data.objects.new(
+        "probe", overhead(px * grid.cell_m, eo_pixel_rad(SCENARIO), px)
+    )
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, 10.0)
+    camera.location = (
+        grid.west_m + (column + px / 2) * grid.cell_m,
+        grid.south_m + (row + px / 2) * grid.cell_m,
+        10.0,
+    )
     sc.camera = camera
     sc.cycles.samples = 1
-    sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
+    sc.cycles.filter_width = 0.01  # the pixel centre, a cell's centre
     sc.view_settings.view_transform = "Standard"
-    centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
-    east, north = np.meshgrid(centres, centres[::-1])
-    breaking = waves.breakers(scene.wind_waves(SCENARIO))
-    peaks = waves.crest_peaks_g(breaking, east, north, SCENARIO.outputs.times_s[0])
-    # One age: each reads the same envelope, only its window differs.
-    age = len(peaks) // 2
-    tree.links.new(history.outputs[f"Age {age}"], shown.inputs["Value"])
-    rendered = 2 * shoot((px, px), "crest_probe") - 1
-    assert np.abs(rendered - peaks[age]).max() < 2e-3
+    rendered = shoot((px, px), "memory_probe")
+    stored = render._pixels(Path(bpy.path.abspath(texture.image.filepath)))[..., 0]
+    expected = stored[row : row + px, column : column + px][::-1]
+    assert expected.max() > 0.0
+    np.testing.assert_allclose(rendered, expected, atol=2e-3)
 
 
 @pytest.mark.render
@@ -523,38 +524,6 @@ def test_the_sea_reflects_a_uniform_sky_as_gaussian_slopes_do(
 
     # A judgement.
     assert rendered == pytest.approx(expected, rel=0.06)
-
-
-@pytest.mark.render
-def test_the_foam_network_table_is_blender_s() -> None:
-    """Whitecap foam tears to line widths read off a table of Blender's own Voronoi,
-    warped as the sea warps it; the sea's network, rendered from above, has its
-    distribution."""
-    scene.build(SCENARIO, "eo")
-    tree = bpy.data.materials["sea"].node_tree
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = tree.nodes["Material Output"]
-    tree.links.new(
-        tree.nodes["foam_network"].outputs["Distance"], emission.inputs["Strength"]
-    )
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    px = 512
-    # A pixel well under a cell, over thousands of cells.
-    lens = overhead(px * sea.FOAM_CELL_M / 4, eo_pixel_rad(SCENARIO), px)
-    camera = bpy.data.objects.new("probe", lens)
-    sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_euler = (0.0, 0.0, 0.0)
-    sc.camera = camera
-    sc.cycles.samples = 1
-    sc.cycles.filter_width = 0.01
-    sc.view_settings.view_transform = "Standard"
-    distance = shoot((px, px), "network_probe").ravel()
-    shares, widths = sea._network_widths()
-    levels = np.linspace(0.1, 0.9, 9)
-    measured = np.quantile(distance, levels)
-    assert measured == pytest.approx(np.interp(levels, shares, widths), abs=0.01)
 
 
 @pytest.mark.render
