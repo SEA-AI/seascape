@@ -1357,7 +1357,7 @@ def _rays(
     """(origin, unit direction, the camera's pixel in rad) of rays across each camera's
     frame, in every frame, on the foam memory's drifting grid."""
     sc = bpy.context.scene
-    drift = sea.foam_drift(scenario.sea, scenario.outputs)
+    drift = sea.surface_drift(scenario.sea, scenario.outputs)
     rays = []
     for frame, t_s in enumerate(scenario.outputs.times_s):
         sc.frame_set(frame)

@@ -63,7 +63,6 @@ from seascape.waves import (
     FOAM_VISIBLE_COVER,
     GRAVITY_MS2,
     GUST_LENGTH_M,
-    SLICK_DRIFT,
     THIN_FOAM_SHARE,
     WHITECAP_EFFECTIVE_REFLECTANCE,
     WINDROW_ASPECT,
@@ -1019,7 +1018,7 @@ def _foam_frames(
     (`gusty_whitecap_fraction`)."""
     speed = sea.wind_speed_mps
     east, north = _downwind(sea)
-    drift = foam_drift(sea, outputs)
+    drift = surface_drift(sea, outputs)
     times = outputs.times_s
     intensity = turbulence_intensity(speed)
     reach = math.sqrt(2) * float(np.abs(gust_tile).max()) * intensity
@@ -1118,7 +1117,7 @@ def _remembered(
     quantile covering the remembered share."""
     split = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(position, split.inputs["Vector"])
-    drift = foam_drift(sea, outputs)
+    drift = surface_drift(sea, outputs)
     # The memory's grid drifts: water at x is at grid x - v t.
     on_grid = [
         _math(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis])
@@ -1569,7 +1568,6 @@ def _foam_lace(
     tile.pixels.foreach_get(texels)
     sigma = _looked_up_sigma(texels.reshape(height, width, 4)[..., 0])
     east, north = _downwind(sea)
-    drift = SLICK_DRIFT * sea.wind_speed_mps
     layers = []
     for scale, start in ((1.0, 0.0), (LACE_OCTAVE, 0.5)):
         per_m = scale / FOAM_TILE_M
@@ -1581,7 +1579,7 @@ def _foam_lace(
                 outputs,
                 tile,
                 ((along * east, along * north), (per_m * north, -per_m * east)),
-                (drift * east, drift * north),
+                surface_drift(sea, outputs),
                 start,
                 "whitecap_lace",
             )
@@ -1637,7 +1635,8 @@ def _drifting(
         )
         return texture.outputs["Color"]
 
-    if not outputs.loop:
+    # A tile that holds still loops as it is.
+    if not outputs.loop or velocity_mps == (0.0, 0.0):
         return layer(time_s, start)
     span_s = outputs.span_s
     weighted = []
@@ -1671,9 +1670,9 @@ def _drifting(
     )
 
 
-def foam_drift(sea: Sea, outputs: Outputs) -> tuple[float, float]:
-    """(east, north) m/s the foam memory's grid drifts at; a loop's holds still, as
-    drift would jump at its seam."""
+def surface_drift(sea: Sea, outputs: Outputs) -> tuple[float, float]:
+    """(east, north) m/s the surface drifts at, carrying foam and windrows alike; a
+    loop's holds still, as the foam memory's drift would jump at its seam."""
     if outputs.loop:
         return 0.0, 0.0
     east, north = _downwind(sea)
@@ -1729,8 +1728,7 @@ def _slick(
     survivors' if slicks break too often.
     """
     east, north = _downwind(sea)
-    speed = sea.wind_speed_mps
-    spacing_m = WINDROW_SPACING_S * max(speed, WINDROW_MIN_WIND_MPS)
+    spacing_m = WINDROW_SPACING_S * max(sea.wind_speed_mps, WINDROW_MIN_WIND_MPS)
     tile = von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m)
     across = 1 / GUST_TILE_M
     along = across / WINDROW_ASPECT
@@ -1740,7 +1738,7 @@ def _slick(
         outputs,
         curve_image("sea_slick", tile),
         ((north * across, -east * across), (east * along, north * along)),
-        (SLICK_DRIFT * speed * east, SLICK_DRIFT * speed * north),
+        surface_drift(sea, outputs),
         0.0,
         "slick",
     )
