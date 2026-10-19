@@ -25,7 +25,7 @@ Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 import math
 import shutil
 from collections.abc import Callable, Iterator
-from functools import cache
+from functools import cache, partial
 from pathlib import Path
 from statistics import NormalDist
 from typing import NamedTuple
@@ -994,14 +994,28 @@ def _frames_folder() -> Path:
     return Path(bpy.app.tempdir) / "sea_foam"
 
 
+def forget_foam() -> None:
+    """Drop the last build's foam memory, pending or written: every build starts here,
+    with foam or without."""
+    _PENDING.clear()
+    shutil.rmtree(_frames_folder(), ignore_errors=True)
+
+
+def _foam_sequences() -> list[bpy.types.Image]:
+    return [
+        image
+        for image in bpy.data.images
+        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE"
+    ]
+
+
 def remember_foam(*_: object) -> None:
     """Simulate every foam memory the last build left pending, and point their image
     sequences at the frames: on `render_pre`, and by `keep_foam`."""
     while _PENDING:
         _PENDING.pop()()
-    for image in bpy.data.images:
-        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
-            image.reload()
+    for image in _foam_sequences():
+        image.reload()
 
 
 def keep_foam(blend: Path) -> None:
@@ -1016,10 +1030,9 @@ def keep_foam(blend: Path) -> None:
     if not frames.is_dir():
         return
     shutil.move(frames, beside)
-    for image in bpy.data.images:
-        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE":
-            moved = beside / Path(image.filepath).relative_to(frames)
-            image.filepath = bpy.path.relpath(str(moved), start=str(blend.parent))
+    for image in _foam_sequences():
+        moved = beside / Path(image.filepath).relative_to(frames)
+        image.filepath = bpy.path.relpath(str(moved), start=str(blend.parent))
 
 
 def _foam_frames(
@@ -1042,19 +1055,12 @@ def _foam_frames(
     gusting = _Gusts(
         gust_tile, (speed * east, speed * north), intensity, gusts, fractions
     )
-    _PENDING.clear()
     if remember_foam not in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.append(remember_foam)
-    # The last build's frames, which a process that builds again no longer reads.
-    shutil.rmtree(_frames_folder(), ignore_errors=True)
     out = []
     for grid in grids:
         folder = _frames_folder() / f"{grid.cell_m:g}m"
-        _PENDING.append(
-            lambda grid=grid, folder=folder: _simulate(
-                wind, outputs, grid, folder, drift, gusting
-            )
-        )
+        _PENDING.append(partial(_simulate, wind, outputs, grid, folder, drift, gusting))
         sequence = bpy.data.images.new(
             f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
         )

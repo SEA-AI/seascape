@@ -1473,6 +1473,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     if not any(mount.camera.band == band for mount in scenario.mounts):
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    sea.forget_foam()
     sides = [
         max(m.camera.width_px, m.camera.height_px)
         for m in scenario.mounts
