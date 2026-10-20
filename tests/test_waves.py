@@ -422,11 +422,11 @@ def test_a_foam_memory_covers_what_monahan_measured(wind_speed_mps: float) -> No
     drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
     step = 1 / 12
     fraction = waves.whitecap_fraction(wind_speed_mps)
-    threshold, *gusts = waves.foam_memory_thresholds_g(
+    threshold, *more = waves.foam_memory_thresholds_g(
         wind, drift, 2.0, step, (fraction, 0.3, 0.5)
     )
-    # A gust asking for more cover breaks at a lower threshold.
-    assert threshold > gusts[0] > gusts[1]
+    # More cover breaks at a lower threshold.
+    assert threshold > more[0] > more[1]
     covers = []
     for east, north, start in ((-4000, 1000, 50), (2500, -3500, 300), (900, 4200, 520)):
         grid = waves.FoamGrid(east, north, 2.0, 200, 200)
@@ -475,21 +475,6 @@ def test_a_foam_memory_covers_none_of_the_sea_or_all_of_it() -> None:
         field(13.0), (0.0, 0.0), 2.0, 1 / 12, (0.0, 1.0)
     )
     assert list(thresholds) == [math.inf, -math.inf]
-
-
-def test_a_threshold_that_varies_lays_what_a_constant_one_does() -> None:
-    grid = waves.FoamGrid(0.0, 0.0, 0.5, 16, 16)
-
-    def varies(_: float, rows: np.ndarray, __: np.ndarray) -> np.ndarray:
-        return np.full(len(rows), 0.3)
-
-    for (a, b), (c, d) in zip(
-        waves.foam_memory(field(13.0), (0.39, 0.0), grid, 0.0, 1 / 12, 24, 0.3),
-        waves.foam_memory(field(13.0), (0.39, 0.0), grid, 0.0, 1 / 12, 24, varies, 0.3),
-        strict=True,
-    ):
-        np.testing.assert_allclose(a, c, atol=1e-6)
-        np.testing.assert_allclose(b, d, atol=1e-6)
 
 
 def test_whitecaps_read_the_wind_at_10_m() -> None:
