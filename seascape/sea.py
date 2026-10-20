@@ -77,7 +77,6 @@ from seascape.waves import (
     foam_memory,
     foam_memory_thresholds_g,
     gust_slope_variance,
-    gusty_whitecap_fraction,
     horizon_m,
     resolvable,
     sea_z_m,
@@ -161,15 +160,10 @@ GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
 # weighted so.
 LACE_OCTAVE = 6.0
 LACE_FINE_WEIGHT = 0.8
-# Gusts a foam memory's threshold is set at, across their range, the rest interpolated.
-FOAM_GUST_LEVELS = 5
 # Numerics: the offsets within a texel, per axis, a lookup's spread is averaged over.
 FOAM_LOOKUP_SHARES = 8
 # Numerics: a finer foam grid fades in over this many of its cells from its edge.
 FOAM_SEAM_CELLS = 8
-# Numerics: past this share of a grid near breaking, its gusts are read row by row;
-# both reads cost the same there on the widest grid.
-FOAM_DENSE_SHARE = 0.2
 
 # A judgement: foam patches a metre or two across, streaked 4:1 along the wake.
 FOAM_CELLS = 512
@@ -866,19 +860,6 @@ def _clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Nod
     return out
 
 
-def _texel_points(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
-    """`tile` (rows bottom first, as `curve_image` lays it) at each (u, v), in tiles,
-    as Cycles' linear lookup with repeat reads it."""
-    height, width = tile.shape
-    x, y = u * width - 0.5, v * height - 0.5
-    i, j = np.floor(x).astype(int), np.floor(y).astype(int)
-    fx, fy = x - i, y - j
-    i0, i1, j0, j1 = i % width, (i + 1) % width, j % height, (j + 1) % height
-    return (1 - fy) * ((1 - fx) * tile[j0, i0] + fx * tile[j0, i1]) + fy * (
-        (1 - fx) * tile[j1, i0] + fx * tile[j1, i1]
-    )
-
-
 def _texels(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     """(rows, columns): `tile` (rows bottom first, as `curve_image` lays it) at each
     column's u and each row's v, in tiles, as Cycles' linear lookup with repeat reads
@@ -912,39 +893,6 @@ def _looked_up_sigma(tile: np.ndarray) -> float:
     return float(np.sqrt(variance))
 
 
-def _gust_values(
-    tile: np.ndarray,
-    outputs: Outputs,
-    velocity_mps: tuple[float, float],
-    east_m: np.ndarray,
-    north_m: np.ndarray,
-    t_s: float,
-    read: Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray] = _texel_points,
-) -> np.ndarray:
-    """`_gust`'s unit tile at `t_s`, at each (east, north), or with `_texels` at each
-    north row's east columns: its `_drifting`, the tile laid square, `GUST_TILE_M` a
-    side, and carried at `velocity_mps`."""
-    per_m = 1 / GUST_TILE_M
-
-    def layer(carried_s: float, shift: float) -> np.ndarray:
-        return read(
-            tile,
-            per_m * (east_m - velocity_mps[0] * carried_s) + shift,
-            per_m * (north_m - velocity_mps[1] * carried_s) + shift,
-        )
-
-    # A tile that holds still loops as it is, as `_drifting` reads it.
-    if not outputs.loop or velocity_mps == (0.0, 0.0):
-        return layer(t_s, 0.0)
-    span_s = outputs.span_s
-    weighted = []
-    for lag in (0.0, 0.5):
-        cycle = (t_s / span_s + lag) % 1.0
-        weighted.append((1 - abs(2 * cycle - 1), layer(cycle * span_s, lag)))
-    (w0, n0), (w1, n1) = weighted
-    return (w0 * n0 + w1 * n1) / math.hypot(w0, w1)
-
-
 def _write_frames(
     folder: Path,
     grid: FoamGrid,
@@ -970,17 +918,6 @@ def _write_frames(
         image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
     bpy.data.scenes.remove(frames_scene)
     bpy.data.images.remove(image)
-
-
-class _Gusts(NamedTuple):
-    """The gust tile as `_gust` carries it, and the Monahan cover at gusts across its
-    range."""
-
-    tile: np.ndarray
-    velocity_mps: tuple[float, float]
-    intensity: float
-    levels: np.ndarray
-    fractions: tuple[float, ...]
 
 
 # The foam memories the last build asked for and has not simulated: a build that never
@@ -1040,27 +977,22 @@ def _foam_frames(
     wind: tuple[Wave, ...],
     outputs: Outputs,
     grids: tuple[FoamGrid, ...],
-    gust_tile: np.ndarray,
 ) -> list[tuple[FoamGrid, bpy.types.Image]]:
     """Each grid's foam memory over the clip, an image sequence of (cover, breaking),
-    simulated before the first render: breaking at each cell's gust's Monahan cover
-    (`gusty_whitecap_fraction`)."""
-    speed = sea.wind_speed_mps
-    east, north = _downwind(sea)
+    simulated before the first render, breaking at Monahan's cover for the mean wind.
+
+    No gust moves the threshold: whitecaps break off the drawn waves, which grow too
+    slowly to follow a gust (Plant 1982), as `_gusty` holds them at the mean wind."""
     drift = surface_drift(sea, outputs)
-    intensity = turbulence_intensity(speed)
-    reach = math.sqrt(2) * float(np.abs(gust_tile).max()) * intensity
-    gusts = np.linspace(-reach, reach, FOAM_GUST_LEVELS)
-    fractions = tuple(gusty_whitecap_fraction(speed, float(g)) for g in gusts)
-    gusting = _Gusts(
-        gust_tile, (speed * east, speed * north), intensity, gusts, fractions
-    )
+    fraction = whitecap_fraction(sea.wind_speed_mps)
     if remember_foam not in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.append(remember_foam)
     out = []
     for grid in grids:
         folder = _frames_folder() / f"{grid.cell_m:g}m"
-        _PENDING.append(partial(_simulate, wind, outputs, grid, folder, drift, gusting))
+        _PENDING.append(
+            partial(_simulate, wind, outputs, grid, folder, drift, fraction)
+        )
         sequence = bpy.data.images.new(
             f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
         )
@@ -1077,41 +1009,16 @@ def _simulate(
     grid: FoamGrid,
     folder: Path,
     drift: tuple[float, float],
-    gusts: _Gusts,
+    fraction: float,
 ) -> None:
     """One grid's foam memory over the clip, written to `folder`."""
     step = 1 / outputs.fps
-    fractions, levels = gusts.fractions, gusts.levels
-    thresholds = foam_memory_thresholds_g(wind, drift, grid.cell_m, step, fractions)
-    x = grid.west_m + (np.arange(grid.columns) + 0.5) * grid.cell_m
-    y = grid.south_m + (np.arange(grid.rows) + 0.5) * grid.cell_m
-    # Over the gusts' range the threshold falls near straight: the line through its
-    # levels; a lull below any foam's onset breaks nothing.
-    finite = np.isfinite(thresholds)
-    if finite.sum() >= 2:
-        slope, offset = np.polyfit(levels[finite], thresholds[finite], 1)
-        calmest = float(levels[finite].min())
-    else:
-        slope, offset, calmest = 0.0, math.inf, math.inf
-
-    def threshold_at(t_s: float, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
-        east, north = x + drift[0] * t_s, y + drift[1] * t_s
-        args = (gusts.tile, outputs, gusts.velocity_mps)
-        if len(rows) > FOAM_DENSE_SHARE * grid.rows * grid.columns:
-            gust = _gust_values(*args, east, north, t_s, _texels)[rows, columns]
-        else:
-            gust = _gust_values(*args, east[columns], north[rows], t_s)
-        gust = gust * gusts.intensity
-        return np.where(gust < calmest, np.inf, gust * slope + offset)
-
-    # The least threshold any gust asks for: where no crest comes near it, nothing
-    # breaks.
-    floor = offset + min(slope * levels[0], slope * levels[-1])
+    (threshold,) = foam_memory_thresholds_g(wind, drift, grid.cell_m, step, (fraction,))
     times = outputs.times_s
     _write_frames(
         folder,
         grid,
-        foam_memory(wind, drift, grid, times[0], step, len(times), threshold_at, floor),
+        foam_memory(wind, drift, grid, times[0], step, len(times), float(threshold)),
     )
 
 
@@ -2356,9 +2263,9 @@ def material(
                 position,
                 pixel.across_m,
                 _foam_lace(tree, sea, position, outputs, foam()),
-                _foam_frames(sea, wind, outputs, seen.foam_grids, tile),
+                _foam_frames(sea, wind, outputs, seen.foam_grids),
             )
-            if wind and seen.foam_grids and tile is not None
+            if wind and seen.foam_grids
             else _bare(tree)
         )
         surface = _daylight(tree, sea, normal, tangent, unresolved, whitecaps, wake)
