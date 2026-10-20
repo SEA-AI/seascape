@@ -758,8 +758,9 @@ class FoamGrid:
 
 def _resolved(wind: tuple[Wave, ...], cell_m: float) -> tuple[Wave, ...]:
     """The waves a grid of `cell_m` draws: breakers are shorter than the sea's peak
-    (Gemmrich et al. 2008), so every one long enough. The edge a crest breaks over is
-    the sea's, `foam_edge_g`, the same on every grid."""
+    (Gemmrich et al. 2008), so every one long enough. A judgement: the edge a crest
+    breaks over, `foam_edge_g`, is the same on every grid; no source gives its spread.
+    """
     return tuple(
         w for w in wind if 2 * math.pi / w.k_rad_m >= FOAM_CELLS_PER_WAVE * cell_m
     )
