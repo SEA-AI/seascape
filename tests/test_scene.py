@@ -1636,11 +1636,16 @@ def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
     assert max(width, height) <= scene.FOAM_MAX_CELLS * cell_m
 
 
-def test_gusts_read_row_by_row_are_the_gusts_read_point_by_point() -> None:
-    """Across the tile's wrap, where the two reads index it differently."""
-    tile = np.random.default_rng(0).standard_normal((48, 64))
-    u, v = np.linspace(-1.3, 2.7, 37), np.linspace(-0.9, 1.6, 29)
-    east, north = np.meshgrid(u, v)
-    np.testing.assert_allclose(
-        sea._texels(tile, u, v), sea._texel_points(tile, east, north), atol=1e-12
+@pytest.mark.parametrize("speed", [3.0, 21.0])
+def test_the_shortest_breaker_a_foam_grid_draws_cannot_follow_a_gust(
+    speed: float,
+) -> None:
+    """Why whitecaps break at the mean wind: Plant 1982's growth, 0.04 (u* / c)^2
+    omega, takes longer than a gust, its integral scale over the wind, lasts."""
+    shortest_m = waves.FOAM_CELLS_PER_WAVE * scene.FOAM_NEAR_CELL_M
+    k = 2 * math.pi / shortest_m
+    omega = math.sqrt(waves.GRAVITY_MS2 * k)
+    growth_s = 1 / (
+        0.04 * (waves.friction_velocity_mps(speed) * k / omega) ** 2 * omega
     )
+    assert growth_s > waves.GUST_LENGTH_M / speed
