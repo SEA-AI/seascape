@@ -827,19 +827,13 @@ def foam_memory(
     start_s: float,
     step_s: float,
     frames: int,
-    threshold_g: float | Callable[[float, np.ndarray, np.ndarray], np.ndarray],
-    floor_g: float | None = None,
+    threshold_g: float,
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
     """Per frame at start_s + i step_s, (rows, columns): the share of each cell foam
     covers and the share breaking now, on `grid` drifting at `drift_mps`. A crest the
     grid draws lays foam by the normal CDF of its acceleration over `threshold_g`, in
-    units of the edge, and the foam fades at Monahan's area e-fold. A callable
-    `threshold_g(t_s, rows, columns)` needs `floor_g`, under which no cell is reckoned.
+    units of the edge, and the foam fades at Monahan's area e-fold.
     """
-    if callable(threshold_g) == (floor_g is None):
-        raise ValueError("a threshold that varies needs a floor, and only it")
-    floor = floor_g if callable(threshold_g) else threshold_g
-    assert floor is not None
     use = _resolved(wind, grid.cell_m)
     crests = _Crests(use, grid, drift_mps)
     edge = _memory_edge_g(wind)
@@ -848,15 +842,10 @@ def foam_memory(
     last = times[0]
     for t_s in times:
         acceleration = crests.at(t_s)
-        rows, columns = np.nonzero(acceleration > floor + FOAM_VISIBLE_Z * edge)
-        threshold = (
-            np.maximum(np.asarray(threshold_g(t_s, rows, columns)), floor)
-            if callable(threshold_g)
-            else threshold_g
-        )
+        rows, columns = np.nonzero(acceleration > threshold_g + FOAM_VISIBLE_Z * edge)
         breaking = np.zeros_like(cover)
         breaking[rows, columns] = _normal_cdf(
-            (acceleration[rows, columns] - threshold) / edge
+            (acceleration[rows, columns] - threshold_g) / edge
         )
         cover = np.maximum(
             cover * math.exp(-(t_s - last) / WHITECAP_AREA_EFOLD_S), breaking
