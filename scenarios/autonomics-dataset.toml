@@ -29,6 +29,8 @@ bands = ["eo"]
 [sky]
 weights = [1, 9]
 sun_bearing_deg = { uniform = [0.0, 360.0] }
+# Judgement: clear enough to put the hulls of interest, held at their optical depth,
+# 3.5 to 10 NM off, most near 7. Lower visibility only brings them nearer.
 visibility_km = { triangular = [25.0, 48.0, 48.0] }
 
 [sea]
