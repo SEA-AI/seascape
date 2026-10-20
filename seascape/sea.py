@@ -57,7 +57,10 @@ from seascape.wakes import (
 )
 from seascape.water import body_color
 from seascape.waves import (
+    BEAUFORT_7_MPS,
+    BEAUFORT_8_MPS,
     FADE_FOOTPRINTS,
+    FINE_WINDROW_SPACING_M,
     FOAM_VISIBLE_COVER,
     GRAVITY_MS2,
     GUST_LENGTH_M,
@@ -76,6 +79,7 @@ from seascape.waves import (
     foam_drift_mps,
     foam_memory,
     foam_memory_thresholds_g,
+    gaussian_ranks,
     gust_slope_variance,
     horizon_m,
     resolvable,
@@ -160,6 +164,9 @@ GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
 # weighted so.
 LACE_OCTAVE = 6.0
 LACE_FINE_WEIGHT = 0.8
+# A judgement: the finer rows' tile, a few texels to a band 3-5 m wide (Zedel & Farmer
+# 1991).
+FINE_ROWS_TEXEL_M = 0.5
 # Numerics: the offsets within a texel, per axis, a lookup's spread is averaged over.
 FOAM_LOOKUP_SHARES = 8
 # Numerics: a finer foam grid fades in over this many of its cells from its edge.
@@ -1030,11 +1037,12 @@ def _remembered(
     footprint_m: bpy.types.NodeSocket,
     lace: bpy.types.NodeSocket,
     memory: list[tuple[FoamGrid, bpy.types.Image]],
+    pulls: tuple[bpy.types.NodeSocket, ...],
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """How much of the pixel foam covers; that, as a share of fresh foam's brightness;
     and the share of the sea under foam, where its bubbles are: read off the finest
-    foam memory that holds `position`, (east, north, time), the lace above its
-    quantile covering the remembered share."""
+    foam memory that holds `position`, (east, north, time), aged foam `gathered` by the
+    windrows, the lace above its quantile covering that share."""
     split = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(position, split.inputs["Vector"])
     drift = surface_drift(sea, outputs)
@@ -1117,6 +1125,44 @@ def _remembered(
             breaking,
         )
     assert isinstance(cover, bpy.types.NodeSocket)
+    if pulls:
+        # Each pull s g is clipped to [-a, a]: g is Gaussian, so 1 + clamp(s g) averages
+        # 1 and Monahan's cover holds; (1 + a)^2 under 1 / cover keeps it under full.
+        # The floor keeps INVERSE_SQRT, which reads 0 at 0, off an empty cell.
+        headroom = _math(
+            tree,
+            "MINIMUM",
+            _math(
+                tree,
+                "SUBTRACT",
+                _math(tree, "INVERSE_SQRT", _math(tree, "MAXIMUM", cover, 1e-6)),
+                1.0,
+            ),
+            1.0,
+        )
+        floor = _math(tree, "MULTIPLY", headroom, -1.0)
+        densities = [
+            _math(
+                tree,
+                "ADD",
+                _math(tree, "MINIMUM", _math(tree, "MAXIMUM", pull, floor), headroom),
+                1.0,
+            )
+            for pull in pulls
+        ]
+        gathered = densities[0]
+        for density in densities[1:]:
+            gathered = _math(tree, "MULTIPLY", gathered, density)
+        gathered.node.name = "whitecap_gathered"
+        # Foam still breaking has not been gathered yet.
+        kept = _math(
+            tree,
+            "MULTIPLY_ADD",
+            breaking,
+            _math(tree, "SUBTRACT", 1.0, gathered),
+            gathered,
+        )
+        cover = _math(tree, "MULTIPLY", cover, kept)
     levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
     # Above its 1 - cover quantile, the lace covers `cover` of the pixel.
@@ -1622,41 +1668,122 @@ def _gust(
     return _math(tree, "MULTIPLY", unit, turbulence_intensity(speed), name="gust")
 
 
-def _slick(
+class _RowRead(NamedTuple):
+    """A row field's unit Gaussian convergence, made when first read, as an image
+    nothing reads is not saved; and the rows' spacing."""
+
+    read: Callable[[], bpy.types.NodeSocket]
+    spacing_m: float
+
+
+class _Rows(NamedTuple):
+    windrows: _RowRead
+    fine: _RowRead
+
+
+def _langmuir_rows(
     tree: bpy.types.NodeTree,
     sea: Sea,
     where: bpy.types.NodeSocket,
     outputs: Outputs,
     rng: np.random.Generator,
-) -> bpy.types.NodeSocket:
-    """1 under a slick: the top `slick_cover` of a tile at the windrow spacing,
-    stretched along the wind and drifting with it; read at `where`, (east, north,
-    time).
+) -> _Rows:
+    """Langmuir circulation's convergence, which gathers slicks and aged foam alike:
+    the windrows and the finer rows between them, each exactly Gaussian, so a
+    symmetric clip keeps its mean and a quantile its share. `rng` draws the windrows
+    first, as every reader reads them first.
 
     ponytail: the integral scale stands for the windrow spacing, a judgement, and
     there are rows at every wind, where below the cutoff real slicks lie in patches.
-    Give the slicks their own spectrum if the rows read wrong. Whitecaps break as on
-    the clean sea; simulate the foam memory on the survivors under a slick if slicks
-    foam too often.
+    Give the slicks their own spectrum if the rows read wrong.
     """
-    east, north = _downwind(sea)
     spacing_m = WINDROW_SPACING_S * max(sea.wind_speed_mps, WINDROW_MIN_WIND_MPS)
-    tile = von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m)
-    across = 1 / GUST_TILE_M
+    fine_tile_m = GUST_CELLS * FINE_ROWS_TEXEL_M
+
+    def windrows() -> bpy.types.NodeSocket:
+        tile = gaussian_ranks(
+            von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m)
+        )
+        return _rows(tree, sea, where, outputs, tile, GUST_TILE_M, "windrows")
+
+    def fine() -> bpy.types.NodeSocket:
+        tile = gaussian_ranks(
+            von_karman_field(rng, GUST_CELLS, FINE_ROWS_TEXEL_M, FINE_WINDROW_SPACING_M)
+        )
+        return _rows(tree, sea, where, outputs, tile, fine_tile_m, "fine_rows")
+
+    return _Rows(
+        _RowRead(cache(windrows), spacing_m),
+        _RowRead(cache(fine), FINE_WINDROW_SPACING_M),
+    )
+
+
+def _rows(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    where: bpy.types.NodeSocket,
+    outputs: Outputs,
+    tile: np.ndarray,
+    tile_m: float,
+    name: str,
+) -> bpy.types.NodeSocket:
+    """`tile`, `tile_m` a side, stretched along the wind and drifting with the surface;
+    read at `where`, (east, north, time)."""
+    east, north = _downwind(sea)
+    across = 1 / tile_m
     along = across / WINDROW_ASPECT
-    unit = _drifting(
+    return _drifting(
         tree,
         where,
         outputs,
-        curve_image("sea_slick", tile),
+        curve_image(f"sea_{name}", tile),
         ((north * across, -east * across), (east * along, north * along)),
         surface_drift(sea, outputs),
         0.0,
-        "slick",
+        name,
     )
+
+
+def _slick(
+    tree: bpy.types.NodeTree, sea: Sea, rows: _Rows
+) -> bpy.types.NodeSocket | None:
+    """1 under a slick: where the windrows' convergence is in its top `slick_cover`;
+    None with no slicks.
+
+    ponytail: whitecaps break as on the clean sea; simulate the foam memory on the
+    survivors under a slick if slicks foam too often.
+    """
+    if sea.slick_cover <= 0.0:
+        return None
     # The tile is Gaussian, so its top `slick_cover` lies above this.
     threshold = NormalDist().inv_cdf(1.0 - sea.slick_cover)
-    return _math(tree, "GREATER_THAN", unit, threshold, name="slick")
+    return _math(tree, "GREATER_THAN", rows.windrows.read(), threshold, name="slick")
+
+
+def _gathered(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    footprint_m: bpy.types.NodeSocket,
+    rows: _Rows,
+) -> tuple[bpy.types.NodeSocket, ...]:
+    """How hard each of `rows` pulls aged foam into its convergence g: s g, s rising
+    from Beaufort 7's streaks to 8's; none below force 7."""
+    # A judgement: streaks from none at force 7 to full strength, s = 1, at force 8.
+    share = (sea.wind_speed_mps - BEAUFORT_7_MPS) / (BEAUFORT_8_MPS - BEAUFORT_7_MPS)
+    share = min(max(share, 0.0), 1.0)
+    if share == 0.0:
+        return ()
+    pulls = []
+    for read, spacing_m in rows:
+        # A pixel wider than half the rows' spacing cannot draw them: they fade, gone
+        # at a whole spacing.
+        fade = _clamped(
+            tree, _math(tree, "MULTIPLY_ADD", footprint_m, -2 / spacing_m, 2.0)
+        )
+        pulls.append(
+            _math(tree, "MULTIPLY", read(), _math(tree, "MULTIPLY", fade, share))
+        )
+    return tuple(pulls)
 
 
 def _gusty(
@@ -2170,7 +2297,7 @@ def material(
     seen: Seen = UNSEEN,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
-    `rngs` draw its gusts, its slicks and its wakes' foam. With a sky the sea is ir and
+    `rngs` draw its gusts, its windrows and its foam. With a sky the sea is ir and
     reflects it; without, eo, glittering towards the light's sun if it has one, its
     whitecaps remembered on the grids its cameras see.
 
@@ -2192,14 +2319,14 @@ def material(
         drawn[1], PARALLAX_HEIGHT_SHARE
     )
     position = _waves(tree, *drawn, tall, time_s, pixel)
+    rows = _langmuir_rows(tree, sea, position, outputs, slick_rng)
     gust_max, gust, slick, tile = 0.0, None, None, None
     if speed > 0.0:
         tile = von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
         # A crossfade reaches sqrt(2) of the tile's peak at most.
         gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
         gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
-        if sea.slick_cover > 0.0:
-            slick = _slick(tree, sea, position, outputs, slick_rng)
+        slick = _slick(tree, sea, rows)
     # Made where foam shows: an image nothing reads is not saved.
     foam = cache(
         lambda: curve_image(
@@ -2264,6 +2391,7 @@ def material(
                 pixel.across_m,
                 _foam_lace(tree, sea, position, outputs, foam()),
                 _foam_frames(sea, wind, outputs, seen.foam_grids),
+                _gathered(tree, sea, pixel.along_m, rows),
             )
             if wind and seen.foam_grids
             else _bare(tree)

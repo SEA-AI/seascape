@@ -583,3 +583,10 @@ def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None
     _, variance = waves._bins(7.0, None)
     built = field(7.0)
     assert sum(w.amplitude_m**2 / 2 for w in built) == pytest.approx(variance.sum())
+
+
+def test_a_tile_ranked_onto_a_gaussian_keeps_its_pattern_and_loses_its_skew() -> None:
+    tile = np.random.default_rng(0).gamma(2.0, size=(64, 64))
+    ranked = waves.gaussian_ranks(tile)
+    assert np.array_equal(np.argsort(ranked, axis=None), np.argsort(tile, axis=None))
+    assert np.clip(ranked, -1.0, 1.0).mean() == pytest.approx(0.0, abs=1e-12)

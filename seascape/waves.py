@@ -180,6 +180,14 @@ SLICK_VARIANCE_PER_MPS = 0.00156
 AXES_CLEAN = ((0.0, 0.00316), (0.003, 0.00192))
 AXES_SLICK = ((0.005, 0.00078), (0.003, 0.00084))
 WINDROW_SPACING_S = 4.8
+# Assaf, Gerard & Gordon 1971: finer rows nest between windrows, about an eighth of
+# their spacing; Zedel & Farmer 1991: bubble bands about 10 m apart over 10 m/s, which
+# Farmer & Li 1995 find barely widen with the wind.
+FINE_WINDROW_SPACING_M = 10.0
+# WMO Beaufort scale at 10 m: force 7, "foam begins to be blown in streaks along the
+# direction of the wind", from 13.9 m/s; force 8, "well-marked streaks", from 17.2 m/s.
+BEAUFORT_7_MPS = 13.9
+BEAUFORT_8_MPS = 17.2
 WINDROW_MIN_WIND_MPS = 3.0
 # A judgement inside Thorpe's three to ten.
 WINDROW_ASPECT = 5.0
@@ -275,6 +283,14 @@ def gust_slope_variance(wind_speed_mps: float) -> float:
     step = 1e-4
     up, down = (cox_munk_slope(wind_speed_mps * (1 + s)) ** 2 for s in (step, -step))
     return (up - down) / (2 * step)
+
+
+def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
+    """`tile` with its values replaced, rank for rank, by a unit Gaussian's quantiles:
+    the same pattern, exactly symmetric about 0."""
+    ranks = np.argsort(np.argsort(tile, axis=None)).reshape(tile.shape)
+    levels = (ranks + 0.5) / tile.size
+    return np.vectorize(NormalDist().inv_cdf)(levels).astype(tile.dtype)
 
 
 def von_karman_field(
