@@ -404,3 +404,61 @@ def test_an_old_cancelled_job_is_forgotten(
         return list(server._jobs)
 
     assert asyncio.run(forget()) == ["new"]
+
+
+@pytest.mark.parametrize(("secret", "path", "found"), [
+    (None, "/mcp", True),
+    ("s3cret", "/mcp", False),
+    ("s3cret", "/mcp/wrong", False),
+    ("s3cret", "/mcp/s3cret", True),
+])  # fmt: skip
+def test_a_secret_is_the_only_path_to_mcp(
+    secret: str | None,
+    path: str,
+    found: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    if secret:
+        monkeypatch.setenv("SEASCAPE_MCP_SECRET", secret)
+    else:
+        monkeypatch.delenv("SEASCAPE_MCP_SECRET", raising=False)
+    served = server.app("0.0.0.0")
+
+    async def post() -> int:
+        async with served.router.lifespan_context(served):
+            transport = httpx2.ASGITransport(app=served)
+            async with httpx2.AsyncClient(
+                transport=transport, base_url="http://localhost:8765"
+            ) as client:
+                response = await client.post(path, json={})
+                return response.status_code
+
+    assert (asyncio.run(post()) != 404) is found
+
+
+def test_the_ngrok_url_s_host_is_allowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "RENDERS", tmp_path)
+    monkeypatch.delenv("SEASCAPE_ALLOWED_HOSTS", raising=False)
+    monkeypatch.setenv("NGROK_URL", "https://seascape.ngrok.app")
+    served = server.app("0.0.0.0")
+
+    async def post(*hosts: str) -> list[int]:
+        async with served.router.lifespan_context(served):
+            transport = httpx2.ASGITransport(app=served)
+            async with httpx2.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                return [
+                    (
+                        await client.post("/mcp", json={}, headers={"host": h})
+                    ).status_code
+                    for h in hosts
+                ]
+
+    tunnel, other = asyncio.run(post("seascape.ngrok.app", "evil.example"))
+    assert tunnel != 421
+    assert other == 421
