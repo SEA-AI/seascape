@@ -97,12 +97,14 @@ def build(
     # Deferred: `schema` and a failed validation should not wait for bpy to load.
     import bpy
 
-    from seascape import scene
+    from seascape import scene, sea
 
     path = output or scenario.with_suffix(f".{band}.blend")
     with _blender_log(path.with_suffix(".log")):
         scene.build(built, band)
-        bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()))
+        sea.keep_foam(path.resolve())
+        # The foam's frames are already relative to the .blend's folder.
+        bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()), relative_remap=False)
     mounts = built.mounts
     bands = ", ".join(sorted({mount.camera.band for mount in mounts}))
     heights = ", ".join(f"{rig.height_m} m" for rig in built.rigs.values())
