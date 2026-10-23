@@ -113,10 +113,16 @@ def test_sea_texture_fades_with_range(frame) -> None:
 
 
 def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
-    """The near sea of an ir frame, optionally with the wave relief flattened."""
+    """The near sea of an ir frame, optionally with the wave relief flattened: the
+    shaded waves and the displaced ones, whose tilt the Geometry node's normal holds."""
     built = scene.build(scenario, "ir")
     if not waves:
         tree = bpy.data.materials["sea"].node_tree
+        output = next(
+            n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial"
+        )
+        for link in output.inputs["Displacement"].links:
+            tree.links.remove(link)
         flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
         tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
     sc = bpy.context.scene
