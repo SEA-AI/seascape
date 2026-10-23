@@ -7,9 +7,8 @@ through rough surfaces", EGSR 2007 (doi:10.2312/EGWR/EGSR07/195-206) for Beckman
 distribution and its Smith shadowing; Burley, "Physically-based shading at Disney",
 SIGGRAPH 2012 course notes, for the alpha = roughness^2 convention Cycles follows.
 
-Parallax: Kaneko et al., "Detailed shape representation with parallax mapping", ICAT
-2001 205-208; its offset capped as in Welsh, "Parallax mapping with offset limiting: a
-per-pixel approximation of uneven surfaces", Infiscape 2004.
+Displacement: Gerstner waves (Gerstner 1802) as in Tessendorf, "Simulating ocean
+water", SIGGRAPH 2001 course notes, eq. 29, with lambda = 1.
 
 Whitecaps: Koepke, "Effective reflectance of oceanic whitecaps", Applied Optics 23(11)
 1816, 1984 (doi:10.1364/AO.23.001816), for the Monahan coverage it multiplies.
@@ -106,16 +105,17 @@ SUN_SLOPE_RADIUS = math.radians(0.545) / 4
 # slope density there is exp(-d^2 / v) of its peak.
 GLINT_REACH = (9.0, 16.0)
 
-# A judgement: steps to where the view ray meets the drawn height.
-PARALLAX_STEPS = 3
-# A judgement: the share of facets on which a fixed-point step contracts. A step
-# contracts where the slope along the run times the run is under 1 (Banach); with
-# slopes Gaussian per axis (Cox & Munk 1954), capping the run at 1 / z the rms slope
-# along it covers facets within z sigma, two-sided.
-PARALLAX_CONVERGED = 0.996
-# A judgement: parallax reads the fewest waves carrying this share of their own sea's
-# height variance.
-PARALLAX_HEIGHT_SHARE = 0.999
+# A judgement: the waves carrying this share of their own sea's height variance are
+# drawn as geometry, the rest as shading.
+DISPLACED_HEIGHT_SHARE = 0.999
+# Measured: the shortest wave drawn as geometry; 1 m overflows Cycles' SVM stack, which
+# surface and displacement share, at 7 m/s in eo, 2 m fits.
+DISPLACED_MIN_M = 4.0
+# A judgement: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
+DICING_PX = 2.0
+# A judgement: off-screen sea, behind and beside the camera, diced this much coarser;
+# Blender's default of 4 dices it to 10 GB at a 6 m eye.
+OFFSCREEN_DICING = 128.0
 
 
 # A judgement: the footprints a sea pixel spans.
@@ -301,14 +301,17 @@ class _Pixel(NamedTuple):
     along_dir: bpy.types.NodeSocket  # unit, horizontal
 
 
-def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
+def _pixel(
+    tree: bpy.types.NodeTree, incoming: bpy.types.NodeSocket | None = None
+) -> _Pixel:
     """The footprint of a pixel of the scene's perspective camera at the render's
-    resolution, Resolution % included."""
+    resolution, Resolution % included. `incoming` stands in for the Geometry node's,
+    which a displacement shader lacks."""
     camera = tree.nodes.new("ShaderNodeCameraData")
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    facing = _vector(
-        tree, "DOT_PRODUCT", geometry.outputs["Incoming"], geometry.outputs["Normal"]
-    )
+    if incoming is None:
+        incoming = geometry.outputs["Incoming"]
+    facing = _vector(tree, "DOT_PRODUCT", incoming, geometry.outputs["Normal"])
     across = _math(tree, "MULTIPLY", camera.outputs["View Distance"], 0.0)
     # ponytail: the build's cameras fit their angle to the width; a camera added in
     # Blender with another sensor fit gets the wrong pixel. Read `sensor_fit` when
@@ -326,7 +329,7 @@ def _pixel(tree: bpy.types.NodeTree) -> _Pixel:
     cosine = _math(tree, "MAXIMUM", _math(tree, "ABSOLUTE", facing), 1e-3)
     tilt = _vector(tree, "SCALE", geometry.outputs["Normal"])
     tree.links.new(facing, tilt.node.inputs["Scale"])
-    level = _vector(tree, "SUBTRACT", geometry.outputs["Incoming"], tilt)
+    level = _vector(tree, "SUBTRACT", incoming, tilt)
     along = _vector(tree, "NORMALIZE", level)
     return _Pixel(across, _math(tree, "DIVIDE", across, cosine), along)
 
@@ -495,36 +498,6 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
     return group
 
 
-def _run_variance_group() -> bpy.types.NodeTree:
-    """Three waves' slope variance along `Along`, faded as `_wave_group` draws them,
-    added to `Variance` per lane, twice over: (Slope . Along)^2."""
-    name = "waves_run"
-    if name in bpy.data.node_groups:
-        return bpy.data.node_groups[name]
-    group, given, out = _group(
-        name,
-        (*_FOOTPRINT, ("Variance", "Vector"), *_FADE, *_SLOPE),
-        (("Variance", "Vector"),),
-    )
-    seen, (along_x, along_y) = _fade(group, given, calm=False)
-    run = _vector(
-        group,
-        "MULTIPLY",
-        _vector(
-            group,
-            "MULTIPLY_ADD",
-            given["Slope Y"],
-            along_y,
-            _vector(group, "MULTIPLY", given["Slope X"], along_x),
-        ),
-        seen,
-    )
-    group.links.new(
-        _vector(group, "MULTIPLY_ADD", run, run, given["Variance"]), out["Variance"]
-    )
-    return group
-
-
 def _lanes(triple: Triple, value: Callable[[Wave], float], pad: float = 0.0) -> tuple:
     return tuple(pad if wave is None else value(wave) for wave in triple)
 
@@ -560,135 +533,6 @@ def _set_triple(
             inputs[name].default_value = value
 
 
-def _height_group(tall: tuple[Wave, ...]) -> bpy.types.NodeTree:
-    """The drawn height of `tall` at `Position`, (east, north, time), faded as the
-    normal is. One group, so each parallax step adds one node to the sea's tree."""
-    group, given, out = _group(
-        "sea_height",
-        (("Position", "Vector"), *_FOOTPRINT),
-        (("Height", "Float"),),
-    )
-    heights = None
-    for triple in _triples(tall):
-        node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _wave_group(calm=False)
-        group.links.new(given["Position"], node.inputs["Position"])
-        _feed(group, given, node, calmed=False)
-        if heights is not None:
-            group.links.new(heights, node.inputs["Sum Z"])
-        _set_triple(node.inputs, triple, frozenset())
-        node.inputs["Lift"].default_value = _lanes(triple, lambda w: w.amplitude_m)
-        heights = node.outputs["Sum Z"]
-    if heights is not None:
-        group.links.new(_total(group, heights), out["Height"])
-    return group
-
-
-def _parallax(
-    tree: bpy.types.NodeTree,
-    time_s: bpy.types.NodeSocket,
-    height_at: Callable[[bpy.types.NodeSocket], bpy.types.NodeSocket],
-    run_variance: float | bpy.types.NodeSocket,
-    height_max_m: float,
-) -> bpy.types.NodeSocket:
-    """Where the view ray meets the drawn height, (east, north, time), solved from the
-    flat sea for x = x0 + h(x) cot(elevation) along the ray. A face tilted from the
-    camera then takes the little of the frame it shows. `height_max_m` bounds h.
-    """
-    geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    flat = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(geometry.outputs["Position"], flat.inputs["Vector"])
-    toward = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(geometry.outputs["Incoming"], toward.inputs["Vector"])
-    run = _math(
-        tree,
-        "SQRT",
-        _math(
-            tree,
-            "MULTIPLY_ADD",
-            toward.outputs["X"],
-            toward.outputs["X"],
-            _math(tree, "MULTIPLY", toward.outputs["Y"], toward.outputs["Y"]),
-        ),
-    )
-    slope = _math(tree, "SQRT", run_variance)
-    reach = _math(
-        tree,
-        "DIVIDE",
-        1 / NormalDist().inv_cdf((1 + PARALLAX_CONVERGED) / 2),
-        _math(tree, "MAXIMUM", _math(tree, "MULTIPLY", slope, run), 1e-9),
-    )
-    scale = _math(
-        tree,
-        "MINIMUM",
-        _math(tree, "DIVIDE", 1.0, toward.outputs["Z"]),
-        reach,
-        name="parallax_scale",
-    )
-    run_east = _math(tree, "MULTIPLY", toward.outputs["X"], scale)
-    run_north = _math(tree, "MULTIPLY", toward.outputs["Y"], scale)
-
-    def at(
-        east: bpy.types.NodeSocket, north: bpy.types.NodeSocket
-    ) -> bpy.types.NodeSocket:
-        # Height is left out, so the sea curving under the field cannot slide it.
-        xyt = tree.nodes.new("ShaderNodeCombineXYZ")
-        tree.links.new(east, xyt.inputs["X"])
-        tree.links.new(north, xyt.inputs["Y"])
-        tree.links.new(time_s, xyt.inputs["Z"])
-        return xyt.outputs["Vector"]
-
-    # Along the ray at height t, the miss is f(t) = t - h(x0 + t run). The first step is
-    # the fixed point's, t <- h; the rest are secant steps on f, which converge where
-    # the fixed point crawls, on faces turned nearly along the ray.
-    position = at(flat.outputs["X"], flat.outputs["Y"])
-    t: bpy.types.NodeSocket | float = 0.0
-    before: tuple[bpy.types.NodeSocket | float, bpy.types.NodeSocket] | None = None
-    for _ in range(PARALLAX_STEPS):
-        height = height_at(position)
-        miss = _math(tree, "SUBTRACT", t, height)
-        if before is None:
-            step: bpy.types.NodeSocket = height
-        else:
-            # 1 / f', the fixed point's 1 where f' is not positive: there the ray
-            # meets the drawn height more than once and the secant can leap past.
-            per = _math(
-                tree,
-                "DIVIDE",
-                _math(tree, "SUBTRACT", t, before[0]),
-                _math(tree, "SUBTRACT", miss, before[1]),
-            )
-            ahead = _math(tree, "GREATER_THAN", per, 0.0)
-            per = _math(
-                tree,
-                "MULTIPLY_ADD",
-                _math(tree, "SUBTRACT", per, 1.0),
-                ahead,
-                1.0,
-            )
-            # The drawn height never passes its waves' summed amplitude.
-            step = _math(
-                tree,
-                "MAXIMUM",
-                _math(
-                    tree,
-                    "MINIMUM",
-                    _math(tree, "SUBTRACT", t, _math(tree, "MULTIPLY", miss, per)),
-                    height_max_m,
-                ),
-                -height_max_m,
-            )
-        before, t = (t, miss), step
-        position = at(
-            _math(tree, "MULTIPLY_ADD", run_east, t, flat.outputs["X"]),
-            _math(tree, "MULTIPLY_ADD", run_north, t, flat.outputs["Y"]),
-        )
-    if isinstance(t, bpy.types.NodeSocket):
-        t.node.name = "sea_parallax_height"
-    position.node.name = "sea_parallax"
-    return position
-
-
 def _feed(
     group: bpy.types.NodeTree,
     given: bpy.types.NodeOutputs,
@@ -700,27 +544,6 @@ def _feed(
         group.links.new(given[name], node.inputs[name])
     if calmed:
         group.links.new(given["Calm"], node.inputs["Calm"])
-
-
-def _run_group(triples: list[Triple]) -> bpy.types.NodeTree:
-    """The slope variance the pixel draws along the view, which is parallax's run. A
-    group, as each node in a tree slows every edit to it."""
-    group, given, out = _group("sea_run", _FOOTPRINT, (("Variance", "Float"),))
-    variance = None
-    for triple in triples:
-        node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _run_variance_group()
-        _feed(group, given, node, calmed=False)
-        _set_triple(node.inputs, triple, frozenset())
-        if variance is not None:
-            group.links.new(variance, node.inputs["Variance"])
-        variance = node.outputs["Variance"]
-    if variance is not None:
-        # A wave's variance over a cycle is half its squared amplitude.
-        group.links.new(
-            _vector(group, "DOT_PRODUCT", variance, (0.5, 0.5, 0.5)), out["Variance"]
-        )
-    return group
 
 
 def _normal_group(
@@ -759,33 +582,102 @@ def _normal_group(
     return group
 
 
-def _waves(
-    tree: bpy.types.NodeTree,
-    wind: tuple[Wave, ...],
-    swell: tuple[Wave, ...],
-    tall: tuple[Wave, ...],
-    time_s: bpy.types.NodeSocket,
-    pixel: _Pixel,
+def _displacement(
+    tree: bpy.types.NodeTree, tall: tuple[Wave, ...], position: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """Where the pixel reads the waves, (east, north, time), at the `tall` waves'
-    height.
-
-    ponytail: slicks are read at this position, so finding it ignores them. Under a
-    slick, a damped wave keeps its height and the run its variance, which caps the
-    reach short. If parallax reads wrong under slicks, calm both with a slick read at
-    the flat sea.
-    """
-    heights = _height_group(tall)
-
-    def height_at(position: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        node = _instance(tree, heights, pixel, None)
+    """The offset of `tall`'s Gerstner surface from the flat sea at `position`, each
+    wave faded by the footprint of the micropolygon there: up a cos(phase), and
+    -k_hat a sin(phase) along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with
+    lambda = 1). Adaptive subdivision dices at about a pixel, so the micropolygon's
+    footprint is the pixel's."""
+    camera = tree.nodes.new("ShaderNodeCameraData")
+    # From the camera, in world space: the Geometry node's Incoming is unset here.
+    toward = tree.nodes.new("ShaderNodeVectorTransform")
+    toward.vector_type, toward.convert_from, toward.convert_to = (
+        "VECTOR",
+        "CAMERA",
+        "WORLD",
+    )
+    tree.links.new(camera.outputs["View Vector"], toward.inputs["Vector"])
+    pixel = _pixel(tree, toward.outputs["Vector"])
+    sums = None
+    for triple in _triples(tall):
+        node = _instance(tree, _wave_group(calm=False), pixel, None)
         tree.links.new(position, node.inputs["Position"])
-        return node.outputs["Height"]
+        if sums is not None:
+            for name, _ in _SUMS:
+                tree.links.new(sums[name], node.inputs[name])
+        _set_triple(node.inputs, triple, frozenset())
+        node.inputs["Slope X"].default_value = _lanes(
+            triple, lambda w: w.amplitude_m * w.k_east_rad_m / w.k_rad_m
+        )
+        node.inputs["Slope Y"].default_value = _lanes(
+            triple, lambda w: w.amplitude_m * w.k_north_rad_m / w.k_rad_m
+        )
+        node.inputs["Lift"].default_value = _lanes(triple, lambda w: w.amplitude_m)
+        sums = node.outputs
+    offset = tree.nodes.new("ShaderNodeCombineXYZ")
+    if sums is not None:
+        for axis, name, sign in (("X", "Sum X", -1.0), ("Y", "Sum Y", -1.0)):
+            tree.links.new(
+                _math(tree, "MULTIPLY", _total(tree, sums[name]), sign),
+                offset.inputs[axis],
+            )
+        tree.links.new(_total(tree, sums["Sum Z"]), offset.inputs["Z"])
+    return offset.outputs["Vector"]
 
-    triples = _triples(wind) + _triples(swell)
-    run = _instance(tree, _run_group(triples), pixel, None)
-    height_max_m = sum(w.amplitude_m for w in tall)
-    return _parallax(tree, time_s, height_at, run.outputs["Variance"], height_max_m)
+
+def _geometry(
+    drawn: tuple[tuple[Wave, ...], tuple[Wave, ...]],
+) -> tuple[tuple[Wave, ...], tuple[tuple[Wave, ...], tuple[Wave, ...]]]:
+    """(the waves drawn as geometry, each sea's waves drawn as shading): the tallest
+    of each sea on its own, or a swell's height would decide which wind waves count,
+    down to `DISPLACED_MIN_M`."""
+    tall = tuple(
+        w
+        for field in drawn
+        for w in tallest(field, DISPLACED_HEIGHT_SHARE)
+        if 2 * math.pi / w.k_rad_m >= DISPLACED_MIN_M
+    )
+    shaded = (
+        tuple(w for w in drawn[0] if w not in tall),
+        tuple(w for w in drawn[1] if w not in tall),
+    )
+    return tall, shaded
+
+
+def _displace(
+    material: bpy.types.Material,
+    output: bpy.types.Node,
+    offset_m: bpy.types.NodeSocket,
+) -> None:
+    """Move `material`'s surface by `offset_m`, in the object's frame."""
+    tree = material.node_tree
+    offset = tree.nodes.new("ShaderNodeVectorDisplacement")
+    offset.space = "OBJECT"
+    # Both default to a fraction: Midlevel 0.5 on some nodes, Scale 0.01 on all.
+    offset.inputs["Midlevel"].default_value = 0.0
+    offset.inputs["Scale"].default_value = 1.0
+    tree.links.new(offset_m, offset.inputs["Vector"])
+    tree.links.new(offset.outputs["Displacement"], output.inputs["Displacement"])
+    material.displacement_method = "DISPLACEMENT"
+
+
+def _flat(
+    tree: bpy.types.NodeTree, time_s: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """(east, north, time) of the flat sea a point was displaced from: the UV map
+    `water` writes, which displacement leaves where it was."""
+    uv = tree.nodes.new("ShaderNodeUVMap")
+    uv.uv_map = "UVMap"
+    flat = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(uv.outputs["UV"], flat.inputs["Vector"])
+    xyt = tree.nodes.new("ShaderNodeCombineXYZ")
+    xyt.name = "sea_rest"
+    tree.links.new(flat.outputs["X"], xyt.inputs["X"])
+    tree.links.new(flat.outputs["Y"], xyt.inputs["Y"])
+    tree.links.new(time_s, xyt.inputs["Z"])
+    return xyt.outputs["Vector"]
 
 
 def _normal(
@@ -2314,11 +2206,8 @@ def material(
         resolvable(wind, seen.finest_footprint_m),
         resolvable(swell, seen.finest_footprint_m),
     )
-    # Each sea on its own, or a swell's height would decide which wind waves count.
-    tall = tallest(drawn[0], PARALLAX_HEIGHT_SHARE) + tallest(
-        drawn[1], PARALLAX_HEIGHT_SHARE
-    )
-    position = _waves(tree, *drawn, tall, time_s, pixel)
+    tall, shaded = _geometry(drawn)
+    position = _flat(tree, time_s)
     rows = _langmuir_rows(tree, sea, position, outputs, slick_rng)
     gust_max, gust, slick, tile = 0.0, None, None, None
     if speed > 0.0:
@@ -2340,10 +2229,8 @@ def material(
         else slick_survivors(speed, wind, math.radians(sea.wind_from_deg))
     )
     damped = frozenset(wind) - frozenset(survivors)
-    calm = None
-    if slick is not None and damped:
-        calm = _math(tree, "SUBTRACT", 1.0, slick)
-    normal = _normal(tree, *drawn, position, pixel, calm, damped)
+    calm = _math(tree, "SUBTRACT", 1.0, slick) if slick is not None and damped else None
+    normal = _normal(tree, *shaded, position, pixel, calm, damped)
     wake = None
     if wakes:
         sea_variance = cox_munk_slope(speed) ** 2
@@ -2410,6 +2297,7 @@ def material(
         surface = _thermal(tree, sea, normal, unresolved, slope_max, light.sky)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])
+    _displace(material, output, _displacement(tree, tall, position))
     return material
 
 
@@ -2424,6 +2312,17 @@ def water(sea: Sea, reach_m: float, material: bpy.types.Material) -> bpy.types.O
     radius_m = earth_radius_m(sea.refraction_k)
     for vertex in water.data.vertices:
         vertex.co.z = sea_z_m(vertex.co.x, vertex.co.y, radius_m)
+    # The flat sea's east and north, which the waves are a function of.
+    uv = water.data.uv_layers["UVMap"].data
+    for loop in water.data.loops:
+        co = water.data.vertices[loop.vertex_index].co
+        uv[loop.index].uv = (co.x, co.y)
+    dice = water.modifiers.new("dice", "SUBSURF")
+    dice.subdivision_type = "SIMPLE"
+    dice.levels = dice.render_levels = 0
+    dice.use_adaptive_subdivision = True
+    dice.adaptive_pixel_size = DICING_PX
+    bpy.context.scene.cycles.offscreen_dicing_scale = OFFSCREEN_DICING
     # Flat faces would show their edges in the specular.
     for face in water.data.polygons:
         face.use_smooth = True
