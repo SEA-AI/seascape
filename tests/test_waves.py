@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from seascape import lwir, waves
+from seascape.wakes import FRESH_FOAM_REFLECTANCE
 
 
 def field(
@@ -411,6 +412,69 @@ def test_a_storm_gust_s_cover_has_its_own_threshold() -> None:
     high, higher = waves.whitecap_thresholds_g(wind, [0.3, 0.5])
 
     assert higher < high
+
+
+@pytest.mark.parametrize("wind_speed_mps", [8.0, 18.0])
+def test_a_foam_memory_covers_what_monahan_measured(wind_speed_mps: float) -> None:
+    """Off the points its threshold was set on: three stretches of sea 800 m and 10 s
+    across."""
+    wind = field(wind_speed_mps, 300.0)
+    drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
+    step = 1 / 12
+    fraction = waves.whitecap_fraction(wind_speed_mps)
+    threshold, *more = waves.foam_memory_thresholds_g(
+        wind, drift, 2.0, step, (fraction, 0.3, 0.5)
+    )
+    # More cover breaks at a lower threshold.
+    assert threshold > more[0] > more[1]
+    covers = []
+    for east, north, start in ((-4000, 1000, 50), (2500, -3500, 300), (900, 4200, 520)):
+        grid = waves.FoamGrid(east, north, 2.0, 200, 200)
+        frames = waves.foam_memory(wind, drift, grid, start, step, 120, threshold)
+        covers.extend(cover.mean() for cover, _ in frames)
+    assert float(np.mean(covers)) == pytest.approx(fraction, rel=0.15)
+
+
+def test_remembered_foam_fades_at_monahan_s_e_fold() -> None:
+    step = 1 / 12
+    grid = waves.FoamGrid(0.0, 0.0, 0.5, 64, 64)
+    frames = waves.foam_memory(field(13.0), (0.39, 0.0), grid, 0.0, step, 60, 0.3)
+    cover, breaking = (np.array(a) for a in zip(*frames, strict=True))
+    fading = (breaking[1:] < 1e-6) & (cover[:-1] > 0.1)
+    assert fading.any()
+    decay = math.exp(-step / waves.WHITECAP_AREA_EFOLD_S)
+    np.testing.assert_allclose(cover[1:][fading], cover[:-1][fading] * decay, rtol=1e-5)
+
+
+def test_remembered_whitecaps_average_koepke_s_reflectance() -> None:
+    """Fresh foam's reflectance while its crest breaks, thin foam's share of it after;
+    averaged over the foam, on the finest grid a camera reads, Koepke's 0.22, which he
+    gives to half."""
+    wind_speed_mps = 13.0
+    wind = field(wind_speed_mps, 300.0)
+    drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
+    step = 1 / 12
+    fraction = waves.whitecap_fraction(wind_speed_mps)
+    (threshold,) = waves.foam_memory_thresholds_g(wind, drift, 0.25, step, (fraction,))
+    grid = waves.FoamGrid(0.0, 0.0, 0.25, 100, 100)
+    covered = shown = 0.0
+    thin = waves.THIN_FOAM_SHARE
+    for cover, breaking in waves.foam_memory(
+        wind, drift, grid, 0.0, step, 60, threshold
+    ):
+        covered += cover.sum()
+        shown += (cover * (thin + (1 - thin) * breaking)).sum()
+    mean = FRESH_FOAM_REFLECTANCE * shown / covered
+    assert mean == pytest.approx(waves.WHITECAP_EFFECTIVE_REFLECTANCE, rel=0.5)
+    # Thin foam alone is inside Koepke's half; breaking foam must brighten it.
+    assert mean > FRESH_FOAM_REFLECTANCE * thin
+
+
+def test_a_foam_memory_covers_none_of_the_sea_or_all_of_it() -> None:
+    thresholds = waves.foam_memory_thresholds_g(
+        field(13.0), (0.0, 0.0), 2.0, 1 / 12, (0.0, 1.0)
+    )
+    assert list(thresholds) == [math.inf, -math.inf]
 
 
 def test_whitecaps_read_the_wind_at_10_m() -> None:
