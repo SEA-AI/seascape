@@ -139,6 +139,12 @@ WHITECAP_AREA_EFOLD_S = 3.85
 # Dierssen 2019: thin foam reflects 0.18 of stage-A foam's 0.50 in the visible.
 # A judgement: foam dims to that share once its crest stops breaking.
 THIN_FOAM_SHARE = 0.18 / 0.50
+# A judgement: how much the ragged openings weigh against the cell walls.
+FOAM_OPENING_WEIGHT = 0.8
+# A judgement: how far, in cells, a cell wall wanders off straight.
+FOAM_WALL_WARP = 0.25
+# A judgement: the bends' scale, in cells.
+FOAM_WALL_BEND = 0.3
 # Koepke 1984: a whitecap's effective reflectance in the visible, over its life.
 WHITECAP_EFFECTIVE_REFLECTANCE = 0.22
 # A judgement: a crest breaks over this share of its acceleration's sigma, which
@@ -305,6 +311,58 @@ def von_karman_field(
     field = np.fft.ifft2(white * (k0_rad_m**2 + k_sq) ** (-2 / 3)).real
     field -= field.mean()
     return field / field.std()
+
+
+def _smooth_field(
+    rng: np.random.Generator, cells: int, sigma_texels: float
+) -> np.ndarray:
+    """A periodic tile, (cells, cells), of white noise blurred by a Gaussian
+    `sigma_texels` wide, zero mean and unit variance."""
+    k = 2 * np.pi * np.fft.fftfreq(cells)
+    blur = np.exp(-(k[:, None] ** 2 + k[None, :] ** 2) * sigma_texels**2 / 2)
+    field = np.fft.ifft2(np.fft.fft2(rng.standard_normal((cells, cells))) * blur).real
+    field -= field.mean()
+    return field / field.std()
+
+
+def _cell_walls(rng: np.random.Generator, cells: int, period: int) -> np.ndarray:
+    """A periodic tile, (cells, cells), of each texel's distance, in cells, from the
+    wall between its two nearest of `period`^2 random points: 0 on a wall."""
+    points = rng.uniform(0.0, 1.0, (period, period, 2))
+    at = (np.arange(cells) + 0.5) * period / cells
+    x, y = np.meshgrid(at, at, indexing="xy")
+    # Warped, so the walls bend as a film's do instead of running straight.
+    x = x + FOAM_WALL_WARP * _smooth_field(rng, cells, FOAM_WALL_BEND * cells / period)
+    y = y + FOAM_WALL_WARP * _smooth_field(rng, cells, FOAM_WALL_BEND * cells / period)
+    i, j = np.floor(x).astype(int), np.floor(y).astype(int)
+    distances = []
+    for di in (-1, 0, 1):
+        for dj in (-1, 0, 1):
+            ci, cj = (i + di) % period, (j + dj) % period
+            dx = i + di + points[cj, ci, 0] - x
+            dy = j + dj + points[cj, ci, 1] - y
+            distances.append(np.hypot(dx, dy))
+    nearest, second = np.sort(np.stack(distances), axis=0)[:2]
+    return second - nearest
+
+
+def foam_lattice_field(
+    rng: np.random.Generator,
+    cells: int,
+    tile_m: float,
+    cell_sizes_m: tuple[float, ...],
+    opening_length_m: float,
+) -> np.ndarray:
+    """A periodic tile of aged foam's lattice, ranked onto a unit Gaussian: highest on
+    the walls between bubbles, one Voronoi field per entry of `cell_sizes_m`, lowest in
+    ragged openings of von Karman's spectrum at `opening_length_m`. A rising threshold
+    thins the walls and widens the openings, and what is left stays a network."""
+    walls = np.minimum.reduce(
+        [_cell_walls(rng, cells, round(tile_m / size_m)) for size_m in cell_sizes_m]
+    )
+    openings = von_karman_field(rng, cells, tile_m / cells, opening_length_m)
+    near = -(walls - walls.mean()) / walls.std()
+    return gaussian_ranks(near + FOAM_OPENING_WEIGHT * openings)
 
 
 def friction_velocity_mps(wind_speed_mps: float) -> float:
