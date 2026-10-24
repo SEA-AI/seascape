@@ -169,8 +169,7 @@ LACE_FINE_WEIGHT = 0.8
 FRESH_EDGE = 6.0
 # A judgement: foam's albedo swings this share of fresh foam's per sigma of density.
 FOAM_ALBEDO_SWING = 0.2
-# A judgement: foam's lumps, bumped from its density.
-FOAM_BUMP_STRENGTH = 1.0
+# A judgement: foam's lumps, bumped from its density by this distance.
 FOAM_BUMP_M = 0.5
 AGED_EDGE = 2.0
 # A judgement: how much the lattice frays a whitecap's outline.
@@ -1246,15 +1245,33 @@ def _latticed(
         tree, "MULTIPLY_ADD", fade, _math(tree, "SUBTRACT", bright, held), held
     )
     # The density's symmetric clip keeps the mean albedo fresh foam's.
-    swing = _math(tree, "MINIMUM", _math(tree, "MAXIMUM", texture.shade, -2.0), 2.0)
+    here, east, north = (
+        _math(tree, "MINIMUM", _math(tree, "MAXIMUM", density, -2.0), 2.0)
+        for density in texture.shade
+    )
+    per_sigma = FRESH_FOAM_REFLECTANCE * FOAM_ALBEDO_SWING
     _math(
         tree,
         "MULTIPLY_ADD",
-        swing,
-        FRESH_FOAM_REFLECTANCE * FOAM_ALBEDO_SWING,
+        here,
+        per_sigma,
         FRESH_FOAM_REFLECTANCE,
         name="whitecap_albedo",
     )
+    # The bump's d grad h, by forward differences one step apart.
+    slope = tree.nodes.new("ShaderNodeCombineXYZ")
+    slope.name = "whitecap_slope"
+    for stepped, axis in ((east, "X"), (north, "Y")):
+        rise = _math(tree, "SUBTRACT", stepped, here)
+        tree.links.new(
+            _math(
+                tree,
+                "DIVIDE",
+                _math(tree, "MULTIPLY", rise, per_sigma * FOAM_BUMP_M),
+                texture.step_m,
+            ),
+            slope.inputs[axis],
+        )
     return _math(tree, "MULTIPLY", laced, held, name="whitecap_foam")
 
 
@@ -1565,14 +1582,13 @@ def _daylight(
     foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
     if "whitecap_albedo" in tree.nodes:
         link(tree.nodes["whitecap_albedo"].outputs[0], foam.inputs["Color"])
-        # Foam is lumpy: its own normal, bumped by its density over the water's.
-        bump = tree.nodes.new("ShaderNodeBump")
-        bump.name = "whitecap_bump"
-        bump.inputs["Strength"].default_value = FOAM_BUMP_STRENGTH
-        bump.inputs["Distance"].default_value = FOAM_BUMP_M
-        link(tree.nodes["whitecap_albedo"].outputs[0], bump.inputs["Height"])
-        link(normal, bump.inputs["Normal"])
-        link(bump.outputs["Normal"], foam.inputs["Normal"])
+        # Foam is lumpy: its own normal, bumped by its density over the water's, as
+        # Bump does it, N - d grad h. A Bump node would evaluate everything upstream
+        # of its height twice more, the parallax search included.
+        lumpy = _vector(
+            tree, "SUBTRACT", normal, tree.nodes["whitecap_slope"].outputs[0]
+        )
+        link(_vector(tree, "NORMALIZE", lumpy), foam.inputs["Normal"])
     mix = tree.nodes.new("ShaderNodeMixShader")
     cover = whitecaps[1]
     if wake is not None:
@@ -1599,7 +1615,9 @@ class _FoamTexture(NamedTuple):
 
     lace: bpy.types.NodeSocket
     lattice: bpy.types.NodeSocket
-    shade: bpy.types.NodeSocket
+    # The density here, a step east, a step north; and the step.
+    shade: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]
+    step_m: bpy.types.NodeSocket
 
 
 def _foam_texture(
@@ -1609,9 +1627,11 @@ def _foam_texture(
     outputs: Outputs,
     tile: bpy.types.Image,
     rng: np.random.Generator,
+    footprint_m: bpy.types.NodeSocket,
 ) -> _FoamTexture:
     """Whitecap foam's texture read at `where`, (east, north, time): the lace off
-    `tile`, frayed by a lattice drawn from `rng`, and that lattice twice more."""
+    `tile`, frayed by a lattice drawn from `rng`, and that lattice twice more, its
+    density also a pixel `footprint_m` east and north, as Bump steps."""
     lattice = curve_image(
         "sea_foam_lattice",
         foam_lattice_field(
@@ -1623,12 +1643,26 @@ def _foam_texture(
         ),
     )
     # A quarter tile apart, each read is independent of the others.
-    ragged, holes, shade = (
+    ragged, holes = (
         _foam_lattice(tree, sea, where, outputs, lattice, start)
-        for start in (0.25, 0.0, 0.5)
+        for start in (0.25, 0.0)
     )
+    # No finer than the lattice's finest texel, where its gradient is constant.
+    step_m = _math(
+        tree, "MAXIMUM", footprint_m, LATTICE_TILE_M / LATTICE_CELLS / LATTICE_OCTAVE
+    )
+    shade = []
+    for axis in ("X", "Y"):
+        shift = tree.nodes.new("ShaderNodeCombineXYZ")
+        tree.links.new(step_m, shift.inputs[axis])
+        stepped = _vector(tree, "ADD", where, shift.outputs["Vector"])
+        shade.append(_foam_lattice(tree, sea, stepped, outputs, lattice, 0.5))
+    here = _foam_lattice(tree, sea, where, outputs, lattice, 0.5)
     return _FoamTexture(
-        _foam_lace(tree, sea, where, outputs, tile, ragged), holes, shade
+        _foam_lace(tree, sea, where, outputs, tile, ragged),
+        holes,
+        (here, shade[0], shade[1]),
+        step_m,
     )
 
 
@@ -2558,6 +2592,7 @@ def material(
                     foam(),
                     # Its own stream, so the lace's draws stay as they were.
                     foam_rng.spawn(1)[0],
+                    pixel.across_m,
                 ),
                 _foam_frames(sea, wind, outputs, seen.foam_grids),
                 _gathered(tree, sea, pixel.along_m, rows),
