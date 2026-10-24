@@ -1208,7 +1208,14 @@ def _remembered(
         _math(tree, "GREATER_THAN", cover, FOAM_VISIBLE_COVER),
         name="whitecaps",
     )
-    bright = _math(tree, "MULTIPLY_ADD", breaking, 1 - THIN_FOAM_SHARE, THIN_FOAM_SHARE)
+    bright = _math(
+        tree,
+        "MULTIPLY_ADD",
+        breaking,
+        1 - THIN_FOAM_SHARE,
+        THIN_FOAM_SHARE,
+        name="whitecap_bright",
+    )
     foam = _latticed(
         tree, laced, bright, textures, lookup(tree, ppf, bright), footprint_m
     )
