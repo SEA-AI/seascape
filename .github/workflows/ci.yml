@@ -40,4 +40,4 @@ jobs:
       - run: uvx ruff format --check .
       - run: uvx tombi format --check
       - run: uvx ty check
-      - run: uv run pytest --durations=60
+      - run: uv run pytest --durations=0
