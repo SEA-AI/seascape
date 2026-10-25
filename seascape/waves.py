@@ -944,11 +944,13 @@ def foam_memory_thresholds_g(
                     total += remembered.mean(axis=1)
             return total / FOAM_REFERENCE_STEPS
 
+        # At the low end every point lays all but `FOAM_VISIBLE_COVER` of its foam; at
+        # the high end none lays any. Every fraction between is bracketed.
         out[inside] = _closed_in(
             covers,
             wanted[inside],
-            float(accelerations.min()),
-            float(accelerations.max()),
+            float(accelerations.min()) + FOAM_VISIBLE_Z * edge,
+            float(accelerations.max()) - FOAM_VISIBLE_Z * edge,
         )
     # A cached array is shared by every caller.
     out.flags.writeable = False
