@@ -674,6 +674,48 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     assert covered == pytest.approx(waves.whitecap_fraction(15.0), rel=0.2)
 
 
+@pytest.mark.render
+def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
+    """Straight down, a pixel half a wall across and one three walls across: the
+    first draws the lattice, the second its mean, aged foam's grey, at fresh foam's
+    albedo."""
+    windy = SCENARIO.model_copy(
+        update={"sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0})}
+    )
+    scene.build(windy, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    emission = tree.nodes.new("ShaderNodeEmission")
+    output = tree.nodes["Material Output"]
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    sc = bpy.context.scene
+    sc.cycles.samples = 1
+    sc.cycles.filter_width = 0.01
+    sc.view_settings.view_transform = "Standard"
+    height_m, span_m, px = 10.0, 40.0, 64
+
+    def read(footprint_m: float, name: str) -> np.ndarray:
+        lens = overhead(span_m, footprint_m / height_m, px)
+        camera = bpy.data.objects.new("probe", lens)
+        sc.collection.objects.link(camera)
+        camera.location = (0.0, 0.0, height_m)
+        sc.camera = camera
+        tree.links.new(tree.nodes[name].outputs["Value"], emission.inputs["Color"])
+        return shoot((px, px), f"{name}_{footprint_m:g}")
+
+    def grey(footprint_m: float) -> np.ndarray:
+        return read(footprint_m, "whitecaps") * read(footprint_m, "whitecap_bright")
+
+    wide_m = 3 * sea.LATTICE_WALL_M
+    foamed = read(wide_m, "whitecaps") > 0.0
+    assert foamed.mean() > 0.01, "no foam in view would pass vacuously"
+    np.testing.assert_allclose(read(wide_m, "whitecap_foam"), grey(wide_m), atol=1e-3)
+    np.testing.assert_allclose(
+        read(wide_m, "whitecap_albedo"), sea.FRESH_FOAM_REFLECTANCE, atol=1e-3
+    )
+    narrow_m = sea.LATTICE_WALL_M / 2
+    assert np.abs(read(narrow_m, "whitecap_foam") - grey(narrow_m)).max() > 0.1
+
+
 def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     """The hull's heating takes the sun from that vector and the sky draws it from the
     bearing; a sign between them mirrors the disc and its glitter east to west."""

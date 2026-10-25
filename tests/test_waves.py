@@ -698,3 +698,21 @@ def test_a_tile_ranked_onto_a_gaussian_keeps_its_pattern_and_loses_its_skew() ->
     ranked = waves.gaussian_ranks(tile)
     assert np.array_equal(np.argsort(ranked, axis=None), np.argsort(tile, axis=None))
     assert np.clip(ranked, -1.0, 1.0).mean() == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.parametrize("share", [0.1, 0.36, 0.7])
+def test_a_foam_lattice_above_its_quantile_covers_that_share(share: float) -> None:
+    """The shader keeps `share` of aged foam's area by thresholding the lattice at its
+    1 - share quantile; ranked onto a Gaussian, that is exact."""
+    tile = waves.foam_lattice_field(np.random.default_rng(0), 128, 4.0, (0.5,), 0.6)
+    threshold = NormalDist().inv_cdf(1 - share)
+    assert (tile > threshold).mean() == pytest.approx(share, abs=1 / tile.size)
+
+
+def test_thinning_foam_keeps_to_its_cell_walls() -> None:
+    """The texels left at the lowest share lie nearer a wall than the tile's average:
+    aged foam stays a network as it thins."""
+    tile = waves.foam_lattice_field(np.random.default_rng(0), 128, 4.0, (0.5,), 0.6)
+    walls = waves._cell_walls(np.random.default_rng(0), 128, 8)
+    kept = tile > np.quantile(tile, 0.85)
+    assert walls[kept].mean() < 0.5 * walls.mean()

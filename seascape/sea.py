@@ -76,6 +76,7 @@ from seascape.waves import (
     earth_radius_m,
     fade_footprints_m,
     foam_drift_mps,
+    foam_lattice_field,
     foam_memory,
     foam_memory_thresholds_g,
     gaussian_ranks,
@@ -164,6 +165,16 @@ GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
 # weighted so.
 LACE_OCTAVE = 6.0
 LACE_FINE_WEIGHT = 0.8
+# A judgement: a whitecap outline's ramp, per sigma of its lace, fresh and aged.
+FRESH_EDGE = 6.0
+# A judgement: foam's albedo swings this share of fresh foam's per sigma of density.
+FOAM_ALBEDO_SWING = 0.2
+# A judgement: foam's lumps, bumped from its density.
+FOAM_BUMP_STRENGTH = 1.0
+FOAM_BUMP_M = 0.5
+AGED_EDGE = 2.0
+# A judgement: how much the lattice frays a whitecap's outline.
+LACE_RAGGED_WEIGHT = 0.4
 # A judgement: the finer rows' tile, a few texels to a band 3-5 m wide (Zedel & Farmer
 # 1991).
 FINE_ROWS_TEXEL_M = 0.5
@@ -178,6 +189,21 @@ FOAM_SPACING_M = 0.25
 FOAM_LENGTH_M = 1.0
 FOAM_TILE_M = FOAM_CELLS * FOAM_SPACING_M
 FOAM_STREAK = 4.0
+# A judgement: aged foam's lattice, the walls of cells 1.3 m and 40 cm across among
+# openings of 2 m, over a 16 m tile.
+LATTICE_CELLS = 512
+LATTICE_TILE_M = 16.0
+LATTICE_CELL_SIZES_M = (16 / 12, 16 / 40)
+LATTICE_OPENING_M = 2.0
+# A judgement: the width of a cell wall, in metres.
+LATTICE_WALL_M = 0.15
+# A judgement: a lattice edge's ramp, per sigma of the field.
+LATTICE_SHARPNESS = 4.0
+# A judgement: a second, finer octave of the lattice, weighted so.
+LATTICE_OCTAVE = 4.0
+LATTICE_FINE_WEIGHT = 0.8
+# A judgement: how long a streak of aged foam is for its width at force 8.
+LATTICE_STREAK = 4.0
 
 
 def sea_reach_m(scenario: Scenario) -> float:
@@ -927,7 +953,7 @@ def _remembered(
     outputs: Outputs,
     position: bpy.types.NodeSocket,
     footprint_m: bpy.types.NodeSocket,
-    lace: bpy.types.NodeSocket,
+    textures: "_FoamTexture",
     memory: list[tuple[FoamGrid, bpy.types.Image]],
     pulls: tuple[bpy.types.NodeSocket, ...],
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
@@ -935,6 +961,7 @@ def _remembered(
     and the share of the sea under foam, where its bubbles are: read off the finest
     foam memory that holds `position`, (east, north, time), aged foam `gathered` by the
     windrows, the lace above its quantile covering that share."""
+    lace = textures.lace
     split = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(position, split.inputs["Vector"])
     drift = surface_drift(sea, outputs)
@@ -1062,7 +1089,8 @@ def _remembered(
         tree,
         "MULTIPLY_ADD",
         _math(tree, "SUBTRACT", lace, lookup(tree, ppf, cover)),
-        2.0,
+        # Foam still breaking is dense to its edge; aged foam thins out to it.
+        _math(tree, "MULTIPLY_ADD", breaking, FRESH_EDGE - AGED_EDGE, AGED_EDGE),
         0.5,
     )
     laced.node.use_clamp = True
@@ -1073,10 +1101,63 @@ def _remembered(
         _math(tree, "GREATER_THAN", cover, FOAM_VISIBLE_COVER),
         name="whitecaps",
     )
-    bright = _math(tree, "MULTIPLY_ADD", breaking, 1 - THIN_FOAM_SHARE, THIN_FOAM_SHARE)
-    foam = _math(tree, "MULTIPLY", laced, bright, name="whitecap_foam")
+    bright = _math(
+        tree,
+        "MULTIPLY_ADD",
+        breaking,
+        1 - THIN_FOAM_SHARE,
+        THIN_FOAM_SHARE,
+        name="whitecap_bright",
+    )
+    foam = _latticed(tree, laced, bright, textures, lookup(tree, ppf, bright))
     under = _math(tree, "MAXIMUM", cover, 0.0, name="whitecap_bubbles")
     return laced, foam, under
+
+
+def _latticed(
+    tree: bpy.types.NodeTree,
+    laced: bpy.types.NodeSocket,
+    bright: bpy.types.NodeSocket,
+    texture: "_FoamTexture",
+    threshold: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """Foam over the `laced` area at `bright` of fresh foam's brightness, drawn as
+    fresh foam's white over `bright` of that area, the lattice above `threshold`, its
+    quantile, not a grey film: the same mean. Its albedo, varying with the texture's
+    density about fresh foam's, is the node `whitecap_albedo`."""
+    held = _math(
+        tree,
+        "MULTIPLY_ADD",
+        _math(tree, "SUBTRACT", texture.lattice, threshold),
+        LATTICE_SHARPNESS,
+        0.5,
+    )
+    held.node.use_clamp = True
+    # A pixel longer than the lattice's walls draws their mean: from one wall's width,
+    # gone at two. Its longer side, as a mipmap without anisotropic filtering takes.
+    fade = _clamped(
+        tree, _math(tree, "MULTIPLY_ADD", texture.pixel_m, 1 / LATTICE_WALL_M, -1.0)
+    )
+    held = _math(
+        tree, "MULTIPLY_ADD", fade, _math(tree, "SUBTRACT", bright, held), held
+    )
+    # The density's symmetric clip keeps the mean albedo fresh foam's; it fades with
+    # the walls, and with it the bump it lifts.
+    swing = _math(
+        tree,
+        "MULTIPLY",
+        _math(tree, "MINIMUM", _math(tree, "MAXIMUM", texture.shade, -2.0), 2.0),
+        _math(tree, "SUBTRACT", 1.0, fade),
+    )
+    _math(
+        tree,
+        "MULTIPLY_ADD",
+        swing,
+        FRESH_FOAM_REFLECTANCE * FOAM_ALBEDO_SWING,
+        FRESH_FOAM_REFLECTANCE,
+        name="whitecap_albedo",
+    )
+    return _math(tree, "MULTIPLY", laced, held, name="whitecap_foam")
 
 
 def _bare(
@@ -1384,6 +1465,16 @@ def _daylight(
     foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
     link(normal, foam.inputs["Normal"])
     foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
+    if "whitecap_albedo" in tree.nodes:
+        link(tree.nodes["whitecap_albedo"].outputs[0], foam.inputs["Color"])
+        # Foam is lumpy: its own normal, bumped by its density over the water's.
+        bump = tree.nodes.new("ShaderNodeBump")
+        bump.name = "whitecap_bump"
+        bump.inputs["Strength"].default_value = FOAM_BUMP_STRENGTH
+        bump.inputs["Distance"].default_value = FOAM_BUMP_M
+        link(tree.nodes["whitecap_albedo"].outputs[0], bump.inputs["Height"])
+        link(normal, bump.inputs["Normal"])
+        link(bump.outputs["Normal"], foam.inputs["Normal"])
     mix = tree.nodes.new("ShaderNodeMixShader")
     cover = whitecaps[1]
     if wake is not None:
@@ -1404,24 +1495,102 @@ def _daylight(
     return mix.outputs["Shader"]
 
 
+class _FoamTexture(NamedTuple):
+    """Unit Gaussians drifting with the surface: whitecaps' outline, aged foam's
+    lattice, and its density; and the pixel's longer side, which fades the lattice."""
+
+    lace: bpy.types.NodeSocket
+    lattice: bpy.types.NodeSocket
+    shade: bpy.types.NodeSocket
+    pixel_m: bpy.types.NodeSocket
+
+
+def _foam_texture(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    where: bpy.types.NodeSocket,
+    outputs: Outputs,
+    tile: bpy.types.Image,
+    rng: np.random.Generator,
+    pixel_m: bpy.types.NodeSocket,
+) -> _FoamTexture:
+    """Whitecap foam's texture read at `where`, (east, north, time): the lace off
+    `tile`, frayed by a lattice drawn from `rng`, and that lattice twice more, for a
+    pixel `pixel_m` long."""
+    lattice = curve_image(
+        "sea_foam_lattice",
+        foam_lattice_field(
+            rng,
+            LATTICE_CELLS,
+            LATTICE_TILE_M,
+            LATTICE_CELL_SIZES_M,
+            LATTICE_OPENING_M,
+        ),
+    )
+    # A quarter tile apart, each read is independent of the others.
+    ragged, holes, shade = (
+        _foam_lattice(tree, sea, where, outputs, lattice, start)
+        for start in (0.25, 0.0, 0.5)
+    )
+    return _FoamTexture(
+        _foam_lace(tree, sea, where, outputs, tile, ragged), holes, shade, pixel_m
+    )
+
+
 def _foam_lace(
     tree: bpy.types.NodeTree,
     sea: Sea,
     where: bpy.types.NodeSocket,
     outputs: Outputs,
     tile: bpy.types.Image,
+    ragged: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     """Whitecap foam's lace, a unit Gaussian drifting with the surface, read at `where`,
-    (east, north, time): two independent reads of `tile`, rescaled to one."""
+    (east, north, time): a read of `tile` and the `ragged` lattice, rescaled to one."""
+    width, height = tile.size
+    texels = np.empty(width * height * 4, np.float32)
+    tile.pixels.foreach_get(texels)
+    sigma = _looked_up_sigma(texels.reshape(height, width, 4)[..., 0])
+    east, north = _downwind(sea)
+    per_m = 1 / FOAM_TILE_M
+    along = per_m / FOAM_STREAK
+    coarse = _drifting(
+        tree,
+        where,
+        outputs,
+        tile,
+        ((along * east, along * north), (per_m * north, -per_m * east)),
+        surface_drift(sea, outputs),
+        0.0,
+        "whitecap_lace",
+    )
+    coarse = _math(tree, "MULTIPLY", coarse, 1 / sigma)
+    weight = LACE_RAGGED_WEIGHT
+    summed = _math(tree, "MULTIPLY_ADD", ragged, weight, coarse)
+    return _math(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2))
+
+
+def _foam_lattice(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    where: bpy.types.NodeSocket,
+    outputs: Outputs,
+    tile: bpy.types.Image,
+    start: float = 0.0,
+) -> bpy.types.NodeSocket:
+    """Aged foam's lattice, a unit Gaussian drifting with the surface, read at
+    `where`, (east, north, time), offset `start` tiles."""
     width, height = tile.size
     texels = np.empty(width * height * 4, np.float32)
     tile.pixels.foreach_get(texels)
     sigma = _looked_up_sigma(texels.reshape(height, width, 4)[..., 0])
     east, north = _downwind(sea)
     layers = []
-    for scale, start in ((1.0, 0.0), (LACE_OCTAVE, 0.5)):
-        per_m = scale / FOAM_TILE_M
-        along = per_m / FOAM_STREAK
+    # From force 7 the lattice is blown into streaks along the wind.
+    stretch = 1 + (LATTICE_STREAK - 1) * _streaking(sea)
+    for scale, shift in ((1.0, start), (LATTICE_OCTAVE, start + 0.5)):
+        per_m = scale / LATTICE_TILE_M
+        along = per_m / stretch
         layers.append(
             _drifting(
                 tree,
@@ -1430,11 +1599,11 @@ def _foam_lace(
                 tile,
                 ((along * east, along * north), (per_m * north, -per_m * east)),
                 surface_drift(sea, outputs),
-                start,
-                "whitecap_lace",
+                shift,
+                "whitecap_lattice",
             )
         )
-    weight = LACE_FINE_WEIGHT
+    weight = LATTICE_FINE_WEIGHT
     summed = _math(tree, "MULTIPLY_ADD", layers[1], weight, layers[0])
     return _math(tree, "MULTIPLY", summed, 1 / (sigma * math.sqrt(1 + weight**2)))
 
@@ -1652,6 +1821,13 @@ def _slick(
     return _math(tree, "GREATER_THAN", rows.windrows.read(), threshold, name="slick")
 
 
+def _streaking(sea: Sea) -> float:
+    """How far foam is blown into streaks: 0 below Beaufort 7, 1 from force 8."""
+    # A judgement: streaks from none at force 7 to full strength at force 8.
+    share = (sea.wind_speed_mps - BEAUFORT_7_MPS) / (BEAUFORT_8_MPS - BEAUFORT_7_MPS)
+    return min(max(share, 0.0), 1.0)
+
+
 def _gathered(
     tree: bpy.types.NodeTree,
     sea: Sea,
@@ -1660,9 +1836,7 @@ def _gathered(
 ) -> tuple[bpy.types.NodeSocket, ...]:
     """How hard each of `rows` pulls aged foam into its convergence g: s g, s rising
     from Beaufort 7's streaks to 8's; none below force 7."""
-    # A judgement: streaks from none at force 7 to full strength, s = 1, at force 8.
-    share = (sea.wind_speed_mps - BEAUFORT_7_MPS) / (BEAUFORT_8_MPS - BEAUFORT_7_MPS)
-    share = min(max(share, 0.0), 1.0)
+    share = _streaking(sea)
     if share == 0.0:
         return ()
     pulls = []
@@ -2276,7 +2450,16 @@ def material(
                 outputs,
                 position,
                 pixel.across_m,
-                _foam_lace(tree, sea, position, outputs, foam()),
+                _foam_texture(
+                    tree,
+                    sea,
+                    position,
+                    outputs,
+                    foam(),
+                    # Its own stream, so the lace's draws stay as they were.
+                    foam_rng.spawn(1)[0],
+                    pixel.along_m,
+                ),
                 _foam_frames(sea, wind, outputs, seen.foam_grids),
                 _gathered(tree, sea, pixel.along_m, rows),
             )
