@@ -83,12 +83,14 @@ def texture(rows: np.ndarray) -> float:
     return float(np.median(np.abs(rows - np.median(rows, axis=1, keepdims=True))))
 
 
-@pytest.fixture(scope="module")
-def frame() -> np.ndarray:
-    return radiance("ir", (640, 512))
+def test_the_ir_sky_falls_to_ambient_and_the_far_sea_settles() -> None:
+    """One frame serves both checks: a module fixture renders once per test worker."""
+    frame = radiance("ir", (640, 512))
+    _sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame)
+    _sea_texture_fades_with_range(frame)
 
 
-def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> None:
+def _sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame: np.ndarray) -> None:
     horizon = frame.shape[0] // 2
     ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
     just_above = float(np.median(frame[horizon - 6 : horizon - 1]))
@@ -103,7 +105,7 @@ def test_the_sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame) -> Non
     assert float(np.median(frame[:5])) == pytest.approx(expected, rel=0.02)
 
 
-def test_sea_texture_fades_with_range(frame) -> None:
+def _sea_texture_fades_with_range(frame: np.ndarray) -> None:
     """Displaced geometry inverts this: sub-pixel geometry aliases, not averages.
 
     Not strict monotonicity across all four bands: that holds for a high eye but not
@@ -195,6 +197,9 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     # memory.
     dice_m = 0.25
     bpy.data.objects["sea"].modifiers["dice"].adaptive_pixel_size = dice_m * px / span_m
+    # Dicing the kilometres of sea off-screen is most of the render. This much coarser
+    # than the build leaves every pixel as it was.
+    sc.cycles.offscreen_dicing_scale = 4 * sea.OFFSCREEN_DICING
 
     def read(socket: bpy.types.NodeSocket, unit: float) -> np.ndarray:
         """`socket`, east, north and up, in units of `unit`, which keep it in -1..1."""
