@@ -193,6 +193,35 @@ class TestEoBand:
             bearing, _ = scene.boresight_deg(camera_of(mount))
             assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-6)
 
+    def test_the_foam_grid_takes_each_frame_s_view_where_the_water_drifted_from(
+        self, built: scene.Built
+    ) -> None:
+        """Water seen at x at time t is on the drifting grid at x - v t."""
+        mounts = [m for m in SCENARIO.mounts if m.camera.band == "eo"]
+        clip = variant(BASELINE, outputs={"duration_s": 1.0})
+        calm = variant(BASELINE, outputs={"duration_s": 1.0}, sea={"wind_speed_mps": 0})
+        drift = sea.surface_drift(clip.sea, clip.outputs)
+        assert sea.surface_drift(calm.sea, calm.outputs) == (0.0, 0.0) != drift
+        moved = scene._rays(clip, mounts, built.cameras)
+        held = scene._rays(calm, mounts, built.cameras)
+        per_frame = len(moved) // len(clip.outputs.times_s)
+        for i, ((at, _, _), (still, _, _)) in enumerate(zip(moved, held, strict=True)):
+            t_s = clip.outputs.times_s[i // per_frame]
+            expected = still - Vector((drift[0] * t_s, drift[1] * t_s, 0.0))
+            assert (at - expected).length < 1e-9
+
+    def test_the_foam_grid_takes_each_camera_s_view_at_its_own_aspect(
+        self, built: scene.Built
+    ) -> None:
+        tall = variant(BASELINE, cameras={"eo": {"width_px": 512, "height_px": 640}})
+        mount = next(m for m in tall.mounts if m.camera.band == "eo")
+        back = built.cameras[mount.name].matrix_world.to_3x3().inverted()
+        rays = scene._rays(tall, [mount], built.cameras)
+        seen = [back @ ray for _, ray, _ in rays]
+        x = max(abs(v.x / v.z) for v in seen)
+        y = max(abs(v.y / v.z) for v in seen)
+        assert y / x == pytest.approx(640 / 512)
+
     def test_cameras_carry_their_field_of_view_horizontally(self) -> None:
         """AUTO fits the angle to the longer image side, flipping a portrait sensor."""
         for mount in SCENARIO.mounts:
@@ -395,18 +424,13 @@ class TestEoBand:
         )
 
     def test_whitecap_foam_reads_the_sea_the_waves_are_drawn_on(self) -> None:
-        """Where it breaks, its lace and the network it tears into all read the
-        parallaxed sea, so none slides off the crests."""
+        """Its memory and its lace both read the parallaxed sea, so neither slides off
+        the crests."""
         tree = bpy.data.materials["sea"].node_tree
-        crests = next(
-            n
-            for n in tree.nodes
-            if n.bl_idname == "ShaderNodeGroup"
-            and n.node_tree.name.startswith("sea_crest_history")
-        )
+        memory = [n for n in tree.nodes if n.name.startswith("sea_foam_")]
+        assert memory
         for socket in (
-            crests.inputs["Position"],
-            tree.nodes["foam_network"].inputs["Vector"],
+            *(n.inputs["Vector"] for n in memory),
             tree.nodes["whitecap_lace_axes"].inputs["X"],
         ):
             assert "sea_parallax" in upstream(socket), socket.node.name
@@ -418,32 +442,6 @@ class TestEoBand:
             nodes["gust_axes"].inputs["X"],
         ):
             assert "sea_parallax" in upstream(socket), socket.node.name
-
-    def test_the_sea_whitecaps_past_the_core_s_threshold(self) -> None:
-        wind = scene.wind_waves(SCENARIO)
-        speed = SCENARIO.sea.wind_speed_mps
-        tree = bpy.data.materials["sea"].node_tree
-        ages = [
-            n
-            for n in tree.nodes
-            if n.bl_idname == "ShaderNodeGroup" and n.node_tree.name == "whitecap_age"
-        ]
-        assert len(ages) == len(waves.foam_ages_s())
-        assert all("gust" in upstream(n.inputs["Threshold"]) for n in ages)
-        table = baked("sea_breaking")
-        gust_max = (
-            math.sqrt(2)
-            * np.abs(baked("sea_gust")).max()
-            * waves.turbulence_intensity(speed)
-        )
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        gusts = gust_max * (2 * texel - 1)
-        # The threshold at each texel's gust.
-        expected = waves.whitecap_thresholds_g(
-            wind, [waves.gusty_whitecap_fraction(speed, g) for g in gusts]
-        )
-        assert table == pytest.approx(expected, rel=1e-5)
-        assert np.all(np.diff(table) < 0)
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
@@ -1216,6 +1214,12 @@ class TestLoop:
                 # A layer is carried back to the start where its weight reaches 0.
                 assert w == pytest.approx(2 * min(c, span_s - c) / span_s, abs=1e-6)
 
+    def test_a_loop_s_foam_lace_holds_still_with_its_foam(self) -> None:
+        carry = _sea_node("whitecap_lace_carry").inputs["Vector"].default_value
+        assert tuple(carry[:2]) == (0.0, 0.0)
+        # Nothing moves, so nothing crossfades.
+        assert "whitecap_lace_weight_0" not in bpy.data.materials["sea"].node_tree.nodes
+
 
 class TestOrbitingYachts:
     @pytest.fixture(scope="class", autouse=True)
@@ -1619,3 +1623,29 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
     hull = [p for p in built.vessel.children_recursive if p.type == "MESH"]
     assert hull, "the ownship has no mesh: nothing below ran"
     assert {p.pass_index for p in hull} == {anchor.pass_index + 1}
+
+
+def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
+    down = Vector((0.0, 1.0, -0.2)).normalized()
+    rays = [(Vector((0.0, y, 20.0)), down, 1e-3) for y in (-150.0, 150.0)]
+    assert scene._foam_box(rays, scene.FOAM_NEAR_CELL_M) is None
+    cell_m = scene.FOAM_NEAR_CELL_M * scene.FOAM_LEVEL_RATIO
+    fit = scene._foam_box(rays, cell_m)
+    assert fit is not None
+    _, _, width, height, _ = fit
+    assert max(width, height) <= scene.FOAM_MAX_CELLS * cell_m
+
+
+@pytest.mark.parametrize("speed", [3.0, 21.0])
+def test_the_shortest_breaker_a_foam_grid_draws_cannot_follow_a_gust(
+    speed: float,
+) -> None:
+    """Why whitecaps break at the mean wind: Plant 1982's growth, 0.04 (u* / c)^2
+    omega, takes longer than a gust, its integral scale over the wind, lasts."""
+    shortest_m = waves.FOAM_CELLS_PER_WAVE * scene.FOAM_NEAR_CELL_M
+    k = 2 * math.pi / shortest_m
+    omega = math.sqrt(waves.GRAVITY_MS2 * k)
+    growth_s = 1 / (
+        0.04 * (waves.friction_velocity_mps(speed) * k / omega) ** 2 * omega
+    )
+    assert growth_s > waves.GUST_LENGTH_M / speed

@@ -136,6 +136,16 @@ def test_build_prints_only_what_it_wrote(run: Run, tmp_path: Path) -> None:
     assert blend.exists()
     assert built.stdout.splitlines() == [f"{blend}: eo, 2 cameras (eo, ir) at 12.0 m"]
 
+    # The foam's frames sit beside the .blend, which reopened finds them.
+    bpy.ops.wm.open_mainfile(filepath=str(blend))
+    sequences = [i for i in bpy.data.images if i.source == "SEQUENCE"]
+    assert sequences
+    for image in sequences:
+        assert image.filepath.startswith("//")
+        frame = Path(bpy.path.abspath(image.filepath))
+        assert frame.exists()
+        assert frame.is_relative_to(blend.with_suffix(".foam"))
+
 
 def test_blenders_own_output_goes_to_the_log(
     tmp_path: Path, capfd: pytest.CaptureFixture

@@ -404,3 +404,30 @@ def test_an_old_cancelled_job_is_forgotten(
         return list(server._jobs)
 
     assert asyncio.run(forget()) == ["new"]
+
+
+def test_a_killed_job_leaves_no_temporary_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cancelled job's Blender is killed, which skips its own clean-up."""
+    seen = {}
+
+    class Killed:
+        async def communicate(self) -> None:
+            raise asyncio.CancelledError
+
+        def kill(self) -> None:
+            pass
+
+        async def wait(self) -> int:
+            return -9
+
+    async def spawn(*_: str, env: dict[str, str], **__: Any) -> Killed:
+        seen["tmp"] = Path(env["TMPDIR"])
+        (seen["tmp"] / "blender_frames").mkdir()
+        return Killed()
+
+    monkeypatch.setattr(server.asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(server._seascape("render"))
+    assert not seen["tmp"].exists()

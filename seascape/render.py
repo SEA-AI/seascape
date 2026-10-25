@@ -20,7 +20,7 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, lwir, scene, waves
+from seascape import agc, labels, lwir, scene, sea, waves
 from seascape.assets import manifest
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import ImageFormat, Scenario, substream
@@ -184,6 +184,8 @@ def render(
             thermal = band == "ir" and outputs.format != "exr"
             # Every frame here is one of the scenario's cameras, at its resolution.
             built = scene.build(scenario, band, cull=True)
+            # Here, not in render_pre, where Blender prints an error and renders on.
+            sea.remember_foam()
             # After a build: the first one picks the device.
             truth.info = truth.info or _info(scenario)
             index_output = _index_output(passes)
