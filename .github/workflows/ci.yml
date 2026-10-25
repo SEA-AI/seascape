@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  checks:
-    name: Checks
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +29,29 @@ jobs:
           enable-cache: true
 
       - run: uv sync --locked
+      - run: uvx ruff check .
+      - run: uvx ruff format --check .
+      - run: uvx tombi format --check
+      - run: uvx ty check
+
+  tests:
+    name: Tests (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Every shard reports its failures, not only the first to fail.
+      fail-fast: false
+      matrix:
+        shard: [1/4, 2/4, 3/4, 4/4]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
 
       # fetch downloads again any cached asset that misses its sha256.
       - uses: actions/cache@v6
@@ -36,8 +59,14 @@ jobs:
           path: ~/.cache/seascape
           key: assets-${{ hashFiles('seascape/assets.toml') }}
 
-      - run: uvx ruff check .
-      - run: uvx ruff format --check .
-      - run: uvx tombi format --check
-      - run: uvx ty check
-      - run: uv run pytest --durations=0
+      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20
+
+  # The one check a pull request requires, whatever the jobs above are called.
+  checks:
+    name: Checks
+    if: always()
+    needs: [lint, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

@@ -588,9 +588,15 @@ def test_an_install_without_git_names_the_image_s_commit(
 def test_no_image_outgrows_what_the_server_reserves_for_it(
     tmp_path: Path, fmt: ImageFormat
 ) -> None:
-    """At 1 sample, the noisiest, which a jpg compresses worst."""
-    scenario = load(
-        BASELINE, [f'outputs.format = "{fmt}"', "outputs.samples = { eo = 1, ir = 1 }"]
+    """At 1 sample, the noisiest, which a jpg compresses worst. Smaller than the
+    baseline's frames: a pixel holds more of the scene and compresses no better."""
+    scenario = variant(
+        BASELINE,
+        cameras={
+            "eo": {"width_px": 960, "height_px": 540},
+            "ir": {"width_px": 320, "height_px": 256},
+        },
+        outputs={"format": fmt, "samples": {"eo": 1, "ir": 1}},
     )
 
     render.render(scenario, tmp_path)
