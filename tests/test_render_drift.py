@@ -193,10 +193,11 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     sc.camera = camera
     sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
-    # Cycles dices a cell of the sea whole, and at 2 of these pixels runs out of
-    # memory.
-    dice_m = 0.25
-    bpy.data.objects["sea"].modifiers["dice"].adaptive_pixel_size = dice_m * px / span_m
+    # The build's finest edge; a pixel this fine would dice to it anyway.
+    water = bpy.data.objects["sea"]
+    dice_m = water.dimensions.x / sea.SEA_CELLS / 2**sc.cycles.max_subdivisions
+    assert dice_m <= sea.DICED_EDGE_M
+    water.modifiers["dice"].adaptive_pixel_size = dice_m * px / span_m
     # Dicing the kilometres of sea off-screen is most of the render. This much coarser
     # than the build leaves every pixel as it was.
     sc.cycles.offscreen_dicing_scale = 4 * sea.OFFSCREEN_DICING
