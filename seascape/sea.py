@@ -114,6 +114,10 @@ DISPLACED_HEIGHT_SHARE = 0.999
 DISPLACED_MIN_M = 4.0
 # A judgement: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
 DICING_PX = 2.0
+# A judgement: the longest edge it dices to near the camera, an eighth of the shortest
+# displaced wave, where a straight edge strays from a cosine by at most 1 - cos(pi / 8),
+# 8 % of its amplitude.
+DICED_EDGE_M = DISPLACED_MIN_M / 8
 # A judgement: off-screen sea, behind and beside the camera, diced this much coarser;
 # Blender's default of 4 dices it to 10 GB at a 6 m eye.
 OFFSCREEN_DICING = 128.0
@@ -2505,6 +2509,11 @@ def water(sea: Sea, reach_m: float, material: bpy.types.Material) -> bpy.types.O
     dice.levels = dice.render_levels = 0
     dice.use_adaptive_subdivision = True
     dice.adaptive_pixel_size = DICING_PX
+    # Near the camera a pixel is millimetres, and dicing to it is most of the render.
+    # Cycles caps the dicing in halvings of a cell.
+    bpy.context.scene.cycles.max_subdivisions = math.ceil(
+        math.log2(2 * reach_m / SEA_CELLS / DICED_EDGE_M)
+    )
     bpy.context.scene.cycles.offscreen_dicing_scale = OFFSCREEN_DICING
     # Flat faces would show their edges in the specular.
     for face in water.data.polygons:
