@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 import uvicorn
 from mcp.server.mcpserver import Context, Image, MCPServer
@@ -169,8 +170,10 @@ def _includes(node: Any) -> Iterator[str]:
 
 
 def _url(ctx: Context) -> str:
-    """Where this client reaches the jobs' files."""
-    return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
+    """Where this client reaches the jobs' files, through any HTTPS proxy in front."""
+    headers = ctx.headers or {}
+    scheme = headers.get("x-forwarded-proto", "http")
+    return f"{scheme}://{headers.get('host', 'localhost')}/renders"
 
 
 def _refuse_oversized(scenes: list[Scenario]) -> None:
@@ -422,6 +425,32 @@ def jobs(ctx: Context) -> dict[str, Any]:
     }
 
 
+def app(host: str) -> Starlette:
+    """MCP at /mcp, or at /mcp/<SEASCAPE_MCP_SECRET> when that is set, and the jobs'
+    files at /renders/."""
+    # A claude.ai connector may send no header, so on a public URL the path is the
+    # credential. The job folders under /renders are random UUIDs.
+    secret = os.environ.get("SEASCAPE_MCP_SECRET")
+    path = f"/mcp/{secret}" if secret else "/mcp"
+    # A web page can point a browser on the network at this port by DNS rebinding,
+    # so MCP refuses any Host or Origin not listed.
+    listed = os.environ.get("SEASCAPE_ALLOWED_HOSTS", "").split(",")
+    hosts = [h for h in listed if h] or list(LOCAL_HOSTS)
+    # ngrok forwards its public Host unchanged.
+    if tunnel := urlsplit(os.environ.get("NGROK_URL", "")).hostname:
+        hosts.append(tunnel)
+    security = TransportSecuritySettings(
+        allowed_hosts=hosts,
+        allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
+    )
+    RENDERS.mkdir(parents=True, exist_ok=True)
+    served = server.streamable_http_app(
+        host=host, streamable_http_path=path, transport_security=security
+    )
+    served.mount("/renders", StaticFiles(directory=RENDERS))
+    return served
+
+
 def serve(host: str, port: int) -> None:
     """Serve `app` on `port`."""
     # In a process of its own, so the server never holds Blender.
@@ -447,19 +476,3 @@ def serve(host: str, port: int) -> None:
             flush=True,
         )
     uvicorn.run(app(host), host=host, port=port)
-
-
-def app(host: str) -> Starlette:
-    """MCP at /mcp and the jobs' files at /renders/."""
-    # A web page can point a browser on the network at this port by DNS rebinding,
-    # so MCP refuses any Host or Origin not listed.
-    listed = os.environ.get("SEASCAPE_ALLOWED_HOSTS", "").split(",")
-    hosts = [h for h in listed if h] or list(LOCAL_HOSTS)
-    security = TransportSecuritySettings(
-        allowed_hosts=hosts,
-        allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
-    )
-    RENDERS.mkdir(parents=True, exist_ok=True)
-    served = server.streamable_http_app(host=host, transport_security=security)
-    served.mount("/renders", StaticFiles(directory=RENDERS))
-    return served
