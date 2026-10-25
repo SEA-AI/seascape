@@ -672,7 +672,8 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
 @pytest.mark.render
 def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     """Straight down, a pixel half a wall across and one three walls across: the
-    first draws the lattice, the second its mean, aged foam's grey."""
+    first draws the lattice, the second its mean, aged foam's grey, at fresh foam's
+    albedo."""
     windy = SCENARIO.model_copy(
         update={"sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0})}
     )
@@ -703,6 +704,9 @@ def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     foamed = read(wide_m, "whitecaps") > 0.0
     assert foamed.mean() > 0.01, "no foam in view would pass vacuously"
     np.testing.assert_allclose(read(wide_m, "whitecap_foam"), grey(wide_m), atol=1e-3)
+    np.testing.assert_allclose(
+        read(wide_m, "whitecap_albedo"), sea.FRESH_FOAM_REFLECTANCE, atol=1e-3
+    )
     narrow_m = sea.LATTICE_WALL_M / 2
     assert np.abs(read(narrow_m, "whitecap_foam") - grey(narrow_m)).max() > 0.1
 
