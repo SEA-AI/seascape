@@ -322,22 +322,27 @@ def test_a_swell_carries_its_height_from_where_it_comes() -> None:
     assert np.mean([w.k_east_rad_m for w in swell]) < 0.0
 
 
-@pytest.mark.parametrize("wind_speed_mps", [8.0, 18.0])
-def test_a_foam_memory_covers_what_monahan_measured(wind_speed_mps: float) -> None:
-    """Off the points its threshold was set on: three stretches of sea 800 m and 10 s
-    across."""
+# A light wind on a coarse grid resolves few waves, none of them far past the edge.
+@pytest.mark.parametrize(
+    ("wind_speed_mps", "cell_m"), [(8.0, 2.0), (18.0, 2.0), (4.0, 4.0)]
+)
+def test_a_foam_memory_covers_what_monahan_measured(
+    wind_speed_mps: float, cell_m: float
+) -> None:
+    """Off the points its threshold was set on: three stretches of sea 200 cells and
+    10 s across."""
     wind = field(wind_speed_mps, 300.0)
     drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
     step = 1 / 12
     fraction = waves.whitecap_fraction(wind_speed_mps)
     threshold, *more = waves.foam_memory_thresholds_g(
-        wind, drift, 2.0, step, (fraction, 0.3, 0.5)
+        wind, drift, cell_m, step, (fraction, 0.3, 0.5)
     )
     # More cover breaks at a lower threshold.
     assert threshold > more[0] > more[1]
     covers = []
     for east, north, start in ((-4000, 1000, 50), (2500, -3500, 300), (900, 4200, 520)):
-        grid = waves.FoamGrid(east, north, 2.0, 200, 200)
+        grid = waves.FoamGrid(east, north, cell_m, 200, 200)
         frames = waves.foam_memory(wind, drift, grid, start, step, 120, threshold)
         covers.extend(cover.mean() for cover, _ in frames)
     assert float(np.mean(covers)) == pytest.approx(fraction, rel=0.15)
