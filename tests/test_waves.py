@@ -315,6 +315,93 @@ def test_the_slope_is_the_height_s_gradient() -> None:
     assert d_north == pytest.approx((ahead - behind) / (2 * step), rel=1e-4)
 
 
+def _tall(wind_speed_mps: float) -> tuple[waves.Wave, ...]:
+    """A wind sea's waves 4 m and longer, which never fold."""
+    return tuple(w for w in field(wind_speed_mps) if 2 * math.pi / w.k_rad_m >= 4.0)
+
+
+def test_the_water_over_a_point_moved_there_from_its_rest() -> None:
+    tall = _tall(14.0)
+    east, north = np.meshgrid(np.linspace(-20, 20, 9), np.linspace(-20, 20, 9))
+    rest_east, rest_north = waves.gerstner_rest_m(tall, east, north, 2.1)
+    moved_east, moved_north, _ = waves.gerstner_offset_m(
+        tall, rest_east, rest_north, 2.1
+    )
+    np.testing.assert_allclose(rest_east + moved_east, east, atol=1e-9)
+    np.testing.assert_allclose(rest_north + moved_north, north, atol=1e-9)
+
+
+def test_a_gerstner_normal_is_square_to_its_surface() -> None:
+    tall = _tall(14.0)
+    east, north, step = np.array([3.0, -11.0]), np.array([7.0, 2.0]), 1e-5
+
+    def surface(e: np.ndarray, n: np.ndarray) -> np.ndarray:
+        moved = waves.gerstner_offset_m(tall, e, n, 0.7)
+        return np.array([e + moved[0], n + moved[1], moved[2]])
+
+    normal = np.array(waves.gerstner_normal(tall, east, north, 0.7))
+    along_east = surface(east + step, north) - surface(east - step, north)
+    along_north = surface(east, north + step) - surface(east, north - step)
+    for tangent in (along_east, along_north):
+        unit = tangent / np.linalg.norm(tangent, axis=0)
+        np.testing.assert_allclose((normal * unit).sum(axis=0), 0.0, atol=1e-8)
+    assert (normal[2] > 0).all()
+
+
+def test_a_low_gerstner_wave_tilts_as_the_linear_one() -> None:
+    low = (waves.Wave(1e-4, 1.2, math.radians(30.0), 0.4),)
+    east, north = np.array([5.0]), np.array([-2.0])
+    d_east, d_north = waves.slope(low, east, north, 0.3)
+    normal = waves.gerstner_normal(low, east, north, 0.3)
+    linear = np.array([-d_east, -d_north, np.ones(1)])
+    linear /= np.linalg.norm(linear, axis=0)
+    np.testing.assert_allclose(np.array(normal), linear, atol=1e-8)
+
+
+@pytest.mark.parametrize("elevation_deg", [-3.0, -40.0, 4.0])
+def test_a_ray_meets_the_water_where_it_first_dips_under(elevation_deg: float) -> None:
+    """Down at a grazing and a steep angle from 6 m, and up from just over the water,
+    past crests."""
+    tall = _tall(14.0)
+    rays = 100
+    rng = np.random.default_rng(3)
+    east, north = rng.uniform(-500, 500, (2, rays))
+    if elevation_deg < 0:
+        up = np.full(rays, 6.0)
+    else:
+        under = waves.gerstner_rest_m(tall, east, north, 1.7)
+        up = waves.gerstner_offset_m(tall, *under, 1.7)[2] + 0.05
+    origin = np.vstack([east, north, up])
+    bearing = rng.uniform(0, 2 * math.pi, rays)
+    e = math.radians(elevation_deg)
+    toward = np.array(
+        [
+            math.cos(e) * np.sin(bearing),
+            math.cos(e) * np.cos(bearing),
+            np.full(rays, math.sin(e)),
+        ]
+    )
+    *rest, met = waves.gerstner_hit(tall, origin, toward, 1.7, 0.1)
+    # Every ray down meets the water; some up clear the crests.
+    assert met.all() if elevation_deg < 0 else 0 < met.mean() < 1
+    point = np.array([*rest, np.zeros(rays)]) + np.array(
+        waves.gerstner_offset_m(tall, *rest, 1.7)
+    )
+    along = np.sum((point - origin) * toward, axis=0)
+    # On the ray, to the micrometre the search halves to.
+    off = point - origin - along * toward
+    assert np.abs(off[:, met]).max() < 1e-5
+    # And nothing on the ray before it is under the water.
+    for share in np.linspace(0.0, 0.999, 50):
+        at = origin + share * np.where(met, along, 0.0) * toward
+        water = np.array(
+            waves.gerstner_offset_m(
+                tall, *waves.gerstner_rest_m(tall, at[0], at[1], 1.7), 1.7
+            )
+        )[2]
+        assert (at[2] >= water - 1e-6).all()
+
+
 def test_a_swell_carries_its_height_from_where_it_comes() -> None:
     swell = waves.swell(2.0, 12.0, 90.0, lambda p: p, np.random.default_rng(0))
     assert 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in swell)) == pytest.approx(2.0)
@@ -426,6 +513,27 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
         (math.atan(rise_along), math.atan(rise_starboard)), abs=1e-5
     )
     assert abs({"pitch": pitch, "roll": roll}[expected]) > 1e-4
+
+
+@pytest.mark.parametrize("length_m", [0.0, 20.0, 90.0])
+def test_a_hull_floats_at_the_mean_of_the_water_under_it(length_m: float) -> None:
+    """Over a low wave, as linear: a cos(phase) sinc(k L / 2) along it."""
+    wave = waves.Wave(
+        1e-3, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi / 60.0), math.radians(30.0), 0.7
+    )
+    east, north, t_s = 12.0, -7.0, 2.5
+    heave = waves.heave_m((wave,), east, north, math.radians(30.0), length_m, 0.0, t_s)
+    phase = wave.k_east_rad_m * east + wave.k_north_rad_m * north
+    phase -= wave.omega_rad_s * t_s - wave.phase_rad
+    mean = np.sinc(wave.k_rad_m * length_m / 2 / math.pi)
+    assert heave == pytest.approx(wave.amplitude_m * math.cos(phase) * mean, rel=1e-3)
+
+
+def test_a_point_floats_on_the_gerstner_surface() -> None:
+    tall = _tall(14.0)
+    rest = waves.gerstner_rest_m(tall, np.array(30.0), np.array(-40.0), 3.0)
+    water = waves.gerstner_offset_m(tall, *rest, 3.0)[2]
+    assert waves.heave_m(tall, 30.0, -40.0, 1.0, 0.0, 0.0, 3.0) == pytest.approx(water)
 
 
 def test_calm_water_holds_a_hull_level() -> None:
