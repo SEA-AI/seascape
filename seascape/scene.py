@@ -826,8 +826,10 @@ def _ownship(
     rigs: bpy.types.Object,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
+    tall: tuple[waves.Wave, ...],
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rigs: their offsets are in this frame."""
+    """At the origin, bow to +Y, carrying the rigs: their offsets are in this frame.
+    It heaves on the `tall` waves, which are geometry, and its script."""
     if ownship.asset is None:
         anchor = bpy.data.objects.new("ownship", None)
         bpy.context.collection.objects.link(anchor)
@@ -854,10 +856,20 @@ def _ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
+    scripted = sine(anchor.location.z, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
-        value_at = sine(
+        scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
+    if heave is not None or tall:
+        # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
+        length_m, beam_m = _waterplane(anchor) if ownship.asset else (0.0, 0.0)
+
+        def value_at(t_s: float) -> float:
+            return scripted(t_s) + waves.heave_m(
+                tall, 0.0, 0.0, 0.0, length_m, beam_m, t_s
+            )
+
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
 
@@ -1051,38 +1063,48 @@ def _wake(
     ]
 
 
+def _waterplane(anchor: bpy.types.Object) -> tuple[float, float]:
+    """A hull's length and beam, in its own frame, bow to +Y."""
+    # The parts' matrix_world is stale until the depsgraph runs.
+    bpy.context.view_layer.update()
+    local = anchor.matrix_world.inverted()
+    corners = [local @ corner for corner in _corners(_meshes([anchor]))]
+    xs, ys = [c.x for c in corners], [c.y for c in corners]
+    return max(ys) - min(ys), max(xs) - min(xs)
+
+
 def _ride(
     anchors: Sequence[bpy.types.Object],
     field: tuple[waves.Wave, ...],
+    tall: tuple[waves.Wave, ...],
     outputs: Outputs,
 ) -> None:
-    """Key each hull's pitch and roll to the sea under its keyed pose.
-
-    No heave: waves are shading, so a heaving hull would break its waterline.
-    """
+    """Key each hull's pitch and roll to the sea under its keyed pose, and its heave
+    to the `tall` waves, which are geometry: the rest are shading, which a heaving
+    hull would break its waterline on."""
     sc = bpy.context.scene
-    # The parts' matrix_world is stale until the depsgraph runs.
-    bpy.context.view_layer.update()
     hulls = []
     for anchor in anchors:
         (attitude,) = anchor.children
-        local = anchor.matrix_world.inverted()
-        corners = [local @ corner for corner in _corners(_meshes([anchor]))]
-        xs, ys = [c.x for c in corners], [c.y for c in corners]
-        hulls.append((anchor, attitude, max(ys) - min(ys), max(xs) - min(xs)))
+        hulls.append((anchor, attitude, *_waterplane(anchor)))
     keyed = len(outputs.times_s) > 1
     for frame, t_s in enumerate(outputs.times_s):
         sc.frame_set(frame)
         for anchor, attitude, length_m, beam_m in hulls:
             east, north, _ = anchor.matrix_world.translation
+            heading = heading_rad(anchor)
             pitch, roll = waves.attitude(
-                field, east, north, heading_rad(anchor), length_m, beam_m, t_s
+                field, east, north, heading, length_m, beam_m, t_s
             )
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
+            attitude.location.z = waves.heave_m(
+                tall, east, north, heading, length_m, beam_m, t_s
+            )
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
                 attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
+                attitude.keyframe_insert("location", index=2, frame=frame)
 
 
 JPEG_QUALITY = 95
@@ -1331,10 +1353,12 @@ def _finest_footprint_m(
     scenario: Scenario, band: Band, cameras: dict[str, bpy.types.Object]
 ) -> float:
     """The finest pixel any of the band's cameras lays on the sea in any frame: its
-    height over the sea below it, which the curved sea comes no nearer than, times the
-    angle of a pixel."""
+    height over the sea below it, which the curved sea's crests come no nearer than,
+    times the angle of a pixel."""
     sc = bpy.context.scene
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    tall, _ = sea.displaced((wind_waves(scenario), swell_waves(scenario)))
+    crest_m = sum(w.amplitude_m for w in tall)
     finest = math.inf
     for frame in range(len(scenario.outputs.times_s)):
         sc.frame_set(frame)
@@ -1345,7 +1369,7 @@ def _finest_footprint_m(
                 continue
             camera = cameras[mount.name]
             east, north, up = camera.matrix_world.translation
-            height_m = up - waves.sea_z_m(east, north, radius_m)
+            height_m = max(up - waves.sea_z_m(east, north, radius_m) - crest_m, 0.0)
             pixel_rad = camera.data.angle_x / mount.camera.width_px
             finest = min(finest, height_m * pixel_rad)
     sc.frame_set(0)
@@ -1497,7 +1521,10 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     )
     rigs = _rigs(scenario, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
-    vessel = _ownship(scenario.ownship, band, scenario.sky, rigs.root, hulls, outputs)
+    tall, _ = sea.displaced((wind, swell))
+    vessel = _ownship(
+        scenario.ownship, band, scenario.sky, rigs.root, hulls, outputs, tall
+    )
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
     targets: dict[str, list[bpy.types.Object]] = {}
     trails: list[wakes.Wake] = []
@@ -1551,7 +1578,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
-    _ride(list(chain(*targets.values())), wind + swell, outputs)
+    _ride(list(chain(*targets.values())), wind + swell, tall, outputs)
     solid = list(chain(*targets.values()))
     if scenario.ownship.asset is not None:
         solid.append(vessel)

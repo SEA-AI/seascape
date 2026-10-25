@@ -32,6 +32,11 @@ SAMPLES = 48
 
 def shoot(size: tuple[int, int], name: str) -> np.ndarray:
     """Render the current scene and return its radiance, top row first."""
+    return shoot_rgb(size, name)[:, :, 0]
+
+
+def shoot_rgb(size: tuple[int, int], name: str) -> np.ndarray:
+    """Render the current scene and return its RGB radiance, top row first."""
     sc = bpy.context.scene
     sc.render.image_settings.file_format = "OPEN_EXR"
     sc.render.resolution_x, sc.render.resolution_y = size
@@ -41,7 +46,7 @@ def shoot(size: tuple[int, int], name: str) -> np.ndarray:
     image = bpy.data.images.load(sc.render.filepath + ".exr")
     pixels = np.empty(len(image.pixels), dtype=np.float32)
     image.pixels.foreach_get(pixels)
-    return pixels.reshape(size[1], size[0], 4)[::-1, :, 0]
+    return pixels.reshape(size[1], size[0], 4)[::-1, :, :3]
 
 
 def eo_pixel_rad(scenario: Scenario) -> float:
@@ -160,43 +165,69 @@ LOOP = _clear(variant(outputs={"duration_s": 30.0, "fps": 1, "loop": True}))
 def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     scenario: Scenario, frame: int
 ) -> None:
-    span_m, px = 8.0, 64
+    span_m, px = 0.25, 64
     scene.build(scenario, "eo")
     bpy.context.scene.frame_set(frame)
     tree = bpy.data.materials["sea"].node_tree
-    component = tree.nodes.new("ShaderNodeSeparateXYZ")
-    shown = tree.nodes.new("ShaderNodeMath")
-    shown.operation = "MULTIPLY_ADD"  # (n + 1) / 2, so the emission stays positive
-    shown.inputs["Value_001"].default_value = 0.5
-    shown.inputs["Value_002"].default_value = 0.5
+    shown = tree.nodes.new("ShaderNodeVectorMath")
+    shown.operation = "MULTIPLY_ADD"  # (v + 1) / 2, so the emission stays positive
+    shown.inputs[2].default_value = (0.5, 0.5, 0.5)
     emission = tree.nodes.new("ShaderNodeEmission")
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
     link = tree.links.new
-    link(tree.nodes["wave_normal"].outputs["Vector"], component.inputs["Vector"])
-    link(shown.outputs["Value"], emission.inputs["Color"])
+    link(shown.outputs["Vector"], emission.inputs["Color"])
     link(emission.outputs["Emission"], output.inputs["Surface"])
 
-    # A pixel fine enough to draw every wave, as the numpy field does.
-    lens = overhead(span_m, 1e-5, px)
+    # A pixel fine enough to draw every wave whole, as the numpy field does, and far
+    # enough that every ray runs straight down to within a ripple's phase. Not
+    # orthographic: Cycles dices what that camera sees as off-screen.
+    height_m = 5000.0
+    lens = bpy.data.cameras.new("probe")
+    lens.angle_x, lens.clip_end = span_m / height_m, 2 * height_m
     camera = bpy.data.objects.new("probe", lens)
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_euler = (0.0, 0.0, 0.0)
+    camera.location = (0.0, 0.0, height_m)
     sc.camera = camera
     sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
-    sc.view_settings.view_transform = "Standard"
+    # Cycles dices a cell of the sea whole, and at 2 of these pixels runs out of
+    # memory.
+    dice_m = 0.25
+    bpy.data.objects["sea"].modifiers["dice"].adaptive_pixel_size = dice_m * px / span_m
+
+    def read(socket: bpy.types.NodeSocket, unit: float) -> np.ndarray:
+        """`socket`, east, north and up, in units of `unit`, which keep it in -1..1."""
+        shown.inputs[1].default_value = (0.5 / unit,) * 3
+        link(socket, shown.inputs[0])
+        return np.moveaxis(2 * unit * shoot_rgb((px, px), "slope_probe") - unit, 2, 0)
+
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    facet = read(geometry.outputs["Normal"], 1.0)
+    rest = read(tree.nodes["sea_rest"].outputs["Vector"], 8.0)[:2]
+    normal = read(tree.nodes["wave_normal"].outputs["Vector"], 1.0)
+
+    # The rest of the waves tilt the facet where its water was at rest.
+    tall, shaded = sea.displaced(
+        (scene.wind_waves(scenario), scene.swell_waves(scenario))
+    )
+    t_s = scenario.outputs.times_s[frame]
+    slope = waves.slope(shaded[0] + shaded[1], *rest, t_s)
+    tilted = facet - np.array([slope[0], slope[1], np.zeros_like(slope[0])])
+    tilted /= np.linalg.norm(tilted, axis=0)
+    assert np.abs(normal - tilted).max() < 2e-3
+
+    # The facets lie on the tall waves' Gerstner surface, to what linear interpolation
+    # over a facet misses (h^2 / 8 of the second derivative) and, for the normal, what
+    # the difference across neighbouring facets adds (h^2 / 6 of the third).
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
     east, north = np.meshgrid(centres, centres[::-1])
-    t_s = scenario.outputs.times_s[frame]
-    slope = waves.slope(scene.wave_field(scenario), east, north, t_s)
-
-    for axis in (0, 1):
-        link(component.outputs["XY"[axis]], shown.inputs["Value"])
-        rendered = 2 * shoot((px, px), "slope_probe") - 1
-        expected = -slope[axis] / np.sqrt(1 + slope[0] ** 2 + slope[1] ** 2)
-        assert np.abs(rendered - expected).max() < 2e-3, "XY"[axis]
+    at_rest = np.array(waves.gerstner_rest_m(tall, east, north, t_s))
+    curved = sum(w.amplitude_m * w.k_rad_m**2 for w in tall)
+    assert np.abs(rest - at_rest).max() < dice_m**2 / 8 * curved
+    bent = sum(w.amplitude_m * w.k_rad_m**3 for w in tall)
+    surface = np.array(waves.gerstner_normal(tall, *at_rest, t_s))
+    assert np.abs(facet - surface).max() < dice_m**2 * (1 / 8 + 1 / 6) * bent
 
 
 @pytest.mark.render
@@ -340,6 +371,30 @@ def lobe(
     return max(left, 1e-12), max(narrow - carried, left / 100, 1e-12)
 
 
+def _met(
+    tree: bpy.types.NodeTree, emission: bpy.types.Node, px: tuple[int, int]
+) -> np.ndarray:
+    """Where each pixel's ray met the waves, rendered through `emission`: its depth in
+    km, and the cosine it met them at."""
+    camera = tree.nodes.new("ShaderNodeCameraData")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    facing = tree.nodes.new("ShaderNodeVectorMath")
+    facing.operation = "DOT_PRODUCT"
+    tree.links.new(geometry.outputs["Incoming"], facing.inputs[0])
+    tree.links.new(geometry.outputs["Normal"], facing.inputs[1])
+    km = tree.nodes.new("ShaderNodeMath")
+    km.operation = "DIVIDE"
+    km.inputs[1].default_value = 1000.0
+    tree.links.new(camera.outputs["View Distance"], km.inputs[0])
+    hit = tree.nodes.new("ShaderNodeCombineXYZ")
+    tree.links.new(km.outputs["Value"], hit.inputs["X"])
+    tree.links.new(facing.outputs["Value"], hit.inputs["Y"])
+    tree.links.new(hit.outputs["Vector"], emission.inputs["Color"])
+    for link in list(emission.inputs["Strength"].links):
+        tree.links.remove(link)
+    return shoot_rgb(px, "hit_probe")[:, :, :2]
+
+
 @pytest.mark.render
 def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     """The specular's Anisotropy, read back at a grazing view, against the footprints
@@ -367,6 +422,7 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     sc.view_settings.view_transform = "Standard"
     px = (32, 24)
     rendered = shoot(px, "anisotropy_probe")
+    met = _met(tree, emission, px)
 
     bpy.context.view_layer.update()
     corners = [camera.matrix_world @ c for c in lens.view_frame(scene=sc)]
@@ -384,9 +440,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
             ray /= np.linalg.norm(ray)
             if ray[2] > -0.02:  # the horizon's rows and the sky
                 continue
-            distance = origin[2] / -ray[2]
-            across = distance * pixel_rad
-            along = across / -ray[2]
+            across = 1000.0 * met[row, col, 0] * pixel_rad
+            along = across / max(abs(met[row, col, 1]), 1e-3)
             cos2 = ray[1] ** 2 / (ray[0] ** 2 + ray[1] ** 2)
             v_along, v_across = lobe(
                 *unresolved(SCENARIO, along, across, cos2),
@@ -448,14 +503,24 @@ def test_the_glitter_tilts_only_facets_that_can_mirror_the_sun(
 PROBE_HEIGHT_M, PROBE_FOV_DEG, PROBE_PX = 15.0, 4.0, (64, 16)
 
 
-def _gaussian_sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
-    """What a sea of Cox & Munk's Gaussian slopes reflects of a uniform sky: each
-    facet mirrors F of it, weighted by the area it shows the view, less the share of
-    its mirror ray that Smith's Beckmann shadowing (Walter et al. 2007) sends into
-    another wave.
+def _mirrored(cosine: np.ndarray) -> np.ndarray:
+    """Seawater's Fresnel reflectance at incidence `cosine`."""
+    theta = np.arccos(np.clip(cosine, 0.0, 1.0))
+    return 1 - lwir.fresnel_emissivity(theta, sea.SEAWATER_IOR, 0.0)
 
-    Only the slope the probe's centre pixel leaves unresolved shadows, along the
-    ray's azimuth: the drawn waves are normals, which occlude nothing.
+
+def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
+    """What the sea reflects of a uniform sky: rays traced to the tall waves' Gerstner
+    surface, and around each hit's normal facets of the rest of Cox & Munk's Gaussian
+    slopes. Each facet mirrors F of the sky, weighted by the area it shows the view,
+    less the share of its mirror ray that Smith's Beckmann shadowing (Walter et al.
+    2007) sends into another wave. A hit whose own mirror ray meets another tall wave
+    sees that wave's F of the sky instead.
+
+    Crests hide the faces turned away, whose grazing F is the highest, more than
+    Smith's uncorrelated masking does. Only the slope the probe's centre pixel leaves
+    unresolved shadows, along the ray's azimuth: the drawn waves are normals, which
+    occlude nothing.
     """
     speed = scenario.sea.wind_speed_mps
     wind_axis = math.radians(scenario.sea.wind_from_deg)
@@ -463,17 +528,51 @@ def _gaussian_sea_reflectance(scenario: Scenario, depression_deg: float) -> floa
     # The probe looks north; x east, y north.
     up, cross = waves.cox_munk_variances(speed)
     c2 = math.cos(wind_axis) ** 2
-    sides = (up * (1 - c2) + cross * c2, up * c2 + cross * (1 - c2))
-    unit = lwir._facets(1.0)
-    tilt = -unit[:, :2] / unit[:, 2:] * np.sqrt(sides)
-    facet = np.column_stack([-tilt, np.ones(len(tilt))])
-    facet = (facet / np.linalg.norm(facet, axis=1, keepdims=True)).T
-    view = np.array([0.0, -math.cos(d), math.sin(d)])
-    facing = view @ facet
-    area = np.maximum(facing, 0.0) / facet[2]
-    mirror = 2 * facing * facet - view[:, None]
-    across_m = PROBE_HEIGHT_M / math.sin(d) * math.radians(PROBE_FOV_DEG) / PROBE_PX[0]
+    sides = np.array((up * (1 - c2) + cross * c2, up * c2 + cross * (1 - c2)))
     wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    tall, _ = sea.displaced((wind, swell))
+    geometry = np.array(
+        [
+            sum(w.amplitude_m**2 * getattr(w, k) ** 2 / 2 for w in tall)
+            for k in ("k_east_rad_m", "k_north_rad_m")
+        ]
+    )
+
+    rays = 2000
+    rng = np.random.default_rng(0)
+    origin = np.vstack(
+        [rng.uniform(-5000.0, 5000.0, (2, rays)), np.full(rays, PROBE_HEIGHT_M)]
+    )
+    view = np.array([0.0, -math.cos(d), math.sin(d)])  # toward the camera
+    ahead = np.repeat(-view[:, None], rays, axis=1)
+    rest = waves.gerstner_hit(tall, origin, ahead, 0.0, 0.25)[:2]
+    moved = np.array(waves.gerstner_offset_m(tall, *rest, 0.0))
+    normal = np.array(waves.gerstner_normal(tall, *rest, 0.0))
+    toward = view @ normal
+    bounced = 2 * toward * normal - view[:, None]
+    hit = np.array([*rest, np.zeros(rays)]) + moved + 1e-3 * normal
+    *beyond, blocked = waves.gerstner_hit(tall, hit, bounced, 0.0, 0.25)
+    met = np.abs(
+        np.sum(bounced * np.array(waves.gerstner_normal(tall, *beyond, 0.0)), 0)
+    )
+    sky = np.where(
+        blocked,
+        1
+        - lwir.fresnel_emissivity(np.arccos(np.clip(met, 0, 1)), sea.SEAWATER_IOR, 0.0),
+        1.0,
+    )
+
+    unit = lwir._facets(1.0)
+    tilt = -unit[:, :2] / unit[:, 2:] * np.sqrt(np.maximum(sides - geometry, 0.0))
+    # Slopes add: the hit's, then each facet's about it.
+    slope = (-normal[:2] / normal[2])[:, :, None] + tilt.T[:, None, :]
+    facet = np.stack([-slope[0], -slope[1], np.ones_like(slope[0])])
+    facet /= np.linalg.norm(facet, axis=0)
+    facing = np.einsum("i,inm->nm", view, facet)
+    # A hit is a pixel's share of the view; its facets split it by the area each shows.
+    area = np.maximum(facing, 0.0) / facet[2] * (normal[2] / toward)[:, None]
+    mirror = 2 * facing * facet - view[:, None, None]
+    across_m = PROBE_HEIGHT_M / math.sin(d) * math.radians(PROBE_FOV_DEG) / PROBE_PX[0]
     left = [
         waves.unresolved_slope_variances(speed, wind_axis, wind, swell, f)
         for f in (across_m, across_m / math.sin(d))
@@ -488,10 +587,7 @@ def _gaussian_sea_reflectance(scenario: Scenario, depression_deg: float) -> floa
     a = np.tan(np.arcsin(np.clip(mirror[2], 1e-6, 1.0))) / (math.sqrt(2) * sigma)
     lam = (np.exp(-a * a) / (a * math.sqrt(math.pi)) - np.vectorize(math.erfc)(a)) / 2
     lit = np.where(mirror[2] > 0.0, 1 / (1 + lam), 0.0)
-    mirrored = 1 - lwir.fresnel_emissivity(
-        np.arccos(np.clip(facing, 0, 1)), sea.SEAWATER_IOR, 0.0
-    )
-    return float(np.sum(area * mirrored * lit) / np.sum(area))
+    return float(np.sum(area * _mirrored(facing) * lit * sky[:, None]) / np.sum(area))
 
 
 def _uniform_sky_reflectance(
@@ -531,14 +627,14 @@ def _uniform_sky_reflectance(
 
 
 @pytest.mark.parametrize("wind_from_deg", [0.0, 90.0])
-def test_the_sea_reflects_a_uniform_sky_as_gaussian_slopes_do(
+def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
     wind_from_deg: float,
 ) -> None:
     """The lobe's distribution sets how much sky the sea returns near the horizon,
     looking upwind and across the wind."""
     scenario = _clear(variant(sea={"wind_from_deg": wind_from_deg}))
     depressions_deg = (3.0, 10.0, 40.0)
-    expected = [_gaussian_sea_reflectance(scenario, d) for d in depressions_deg]
+    expected = [_sea_reflectance(scenario, d) for d in depressions_deg]
 
     rendered = _uniform_sky_reflectance(scenario, depressions_deg)
 

@@ -627,7 +627,7 @@ def _displacement(
     return offset.outputs["Vector"]
 
 
-def _geometry(
+def displaced(
     drawn: tuple[tuple[Wave, ...], tuple[Wave, ...]],
 ) -> tuple[tuple[Wave, ...], tuple[tuple[Wave, ...], tuple[Wave, ...]]]:
     """(the waves drawn as geometry, each sea's waves drawn as shading): the tallest
@@ -2206,7 +2206,7 @@ def material(
         resolvable(wind, seen.finest_footprint_m),
         resolvable(swell, seen.finest_footprint_m),
     )
-    tall, shaded = _geometry(drawn)
+    tall, shaded = displaced(drawn)
     position = _flat(tree, time_s)
     rows = _langmuir_rows(tree, sea, position, outputs, slick_rng)
     gust_max, gust, slick, tile = 0.0, None, None, None
