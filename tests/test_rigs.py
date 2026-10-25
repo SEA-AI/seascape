@@ -12,7 +12,7 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
-from seascape import agc, panorama, scene
+from seascape import agc, panorama, scene, sea, waves
 from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
 from seascape.config import Mount, Rig, Scenario
@@ -51,9 +51,13 @@ def test_a_rigs_cameras_all_sit_at_its_mount_point(
 
 
 def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
+    """On the water there, which the tall waves raise."""
     anchor = built.vessel
+    tall, _ = sea.displaced((scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)))
+    t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
+    ridden = waves.heave_m(tall, 0.0, 0.0, 0.0, 0.0, 0.0, t_s)
 
-    assert tuple(anchor.location) == pytest.approx((0.0, 0.0, 0.0))
+    assert tuple(anchor.location) == pytest.approx((0.0, 0.0, ridden))
 
 
 def test_the_hull_takes_the_attitude_it_was_given(built: scene.Built) -> None:
