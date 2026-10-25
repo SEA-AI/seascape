@@ -1039,18 +1039,20 @@ class TestSlicks:
         threshold = _sea_node("slick").inputs[1].default_value
         assert threshold == pytest.approx(NormalDist().inv_cdf(0.7))
         spacing_m = waves.WINDROW_SPACING_S * self.SLICKS.sea.wind_speed_mps
-        seeded = waves.von_karman_field(
-            substream(self.SLICKS.seed, "sea/slick"),
-            sea.GUST_CELLS,
-            sea.GUST_SPACING_M,
-            spacing_m,
+        seeded = waves.gaussian_ranks(
+            waves.von_karman_field(
+                substream(self.SLICKS.seed, "sea/slick"),
+                sea.GUST_CELLS,
+                sea.GUST_SPACING_M,
+                spacing_m,
+            )
         )
-        assert baked("sea_slick") == pytest.approx(seeded, abs=1e-5)
+        assert baked("sea_windrows") == pytest.approx(seeded, abs=1e-5)
 
     def test_windrows_run_along_the_wind_at_faller_and_woodcock_s_spacing(
         self,
     ) -> None:
-        axes = _sea_node("slick_axes")
+        axes = _sea_node("windrows_axes")
         across, along = (
             np.array(axes.inputs[i].links[0].from_node.inputs[1].default_value[:2])
             for i in ("X", "Y")
@@ -1066,12 +1068,12 @@ class TestSlicks:
         assert np.linalg.norm(along) == pytest.approx(
             np.linalg.norm(across) / waves.WINDROW_ASPECT
         )
-        carry = np.array(_sea_node("slick_carry").inputs["Vector"].default_value[:2])
+        carry = np.array(_sea_node("windrows_carry").inputs["Vector"].default_value[:2])
         drift_mps = waves.SLICK_DRIFT * self.SLICKS.sea.wind_speed_mps
         assert carry == pytest.approx([0.0, -drift_mps * np.linalg.norm(along)])
 
     def test_a_slick_reads_the_sea_the_waves_are_drawn_on(self) -> None:
-        assert "sea_parallax" in upstream(_sea_node("slick_axes").inputs["X"])
+        assert "sea_parallax" in upstream(_sea_node("windrows_axes").inputs["X"])
 
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
         wind = scene.wind_waves(self.SLICKS)
@@ -1179,7 +1181,9 @@ class TestSeaEvolves:
 
 
 class TestLoop:
-    LOOP = variant(outputs={"duration_s": 30.0, "fps": 1, "loop": True})
+    LOOP = variant(
+        outputs={"duration_s": 30.0, "fps": 1, "loop": True}, sea={"slick_cover": 0.1}
+    )
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -1214,11 +1218,13 @@ class TestLoop:
                 # A layer is carried back to the start where its weight reaches 0.
                 assert w == pytest.approx(2 * min(c, span_s - c) / span_s, abs=1e-6)
 
-    def test_a_loop_s_foam_lace_holds_still_with_its_foam(self) -> None:
-        carry = _sea_node("whitecap_lace_carry").inputs["Vector"].default_value
-        assert tuple(carry[:2]) == (0.0, 0.0)
-        # Nothing moves, so nothing crossfades.
-        assert "whitecap_lace_weight_0" not in bpy.data.materials["sea"].node_tree.nodes
+    def test_a_loop_s_windrows_and_lace_hold_still_with_its_foam(self) -> None:
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        for name in ("windrows", "whitecap_lace"):
+            carry = _sea_node(f"{name}_carry").inputs["Vector"].default_value
+            assert tuple(carry[:2]) == (0.0, 0.0)
+            # Nothing moves, so nothing crossfades.
+            assert f"{name}_weight_0" not in nodes
 
 
 class TestOrbitingYachts:

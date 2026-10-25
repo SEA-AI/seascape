@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape import agc, labels, lwir, render, scene, sea, server
+from seascape import agc, labels, lwir, render, scene, sea, server, waves
 from seascape.calibration import Calibration
 from seascape.config import Band, ImageFormat, Scenario, load, substream
 from seascape.wakes import Wake
@@ -287,6 +287,7 @@ def _svm_errors(
     trails: tuple[Wake, ...],
     band: Band,
     pad: int = 0,
+    seen: sea.Seen = sea.UNSEEN,
 ) -> list[str]:
     """The SVM lines in Cycles' log after rendering `sea.water` alone.
 
@@ -311,6 +312,7 @@ def _svm_errors(
         ),
         trails,
         scene._light(scenario.sky, band),
+        seen,
     )
     sea.water(scenario.sea, 300.0, material)
     tree = material.node_tree
@@ -351,14 +353,16 @@ def _render_svm_errors(capfd: pytest.CaptureFixture[str]) -> list[str]:
     return [line for line in (log.out + log.err).splitlines() if "SVM" in line]
 
 
-def _heaviest_drawn_sea(**sections: Any) -> Scenario:
-    """The `randomized.toml` draw that builds the largest sea shader."""
+def _heaviest_drawn_sea(*, strongest: bool = False, **sections: Any) -> Scenario:
+    """The `randomized.toml` draw that builds the largest sea shader: at its lightest
+    wind, which draws the most waves, or its strongest, whose foam gathers in rows."""
     with (SCENARIOS / "randomized.toml").open("rb") as file:
         drawn = tomllib.load(file)["sea"]
+    lightest, strongest_mps = drawn["wind_speed_mps"]["uniform"]
     return variant(
         OPEN_SEA,
         sea={
-            "wind_speed_mps": drawn["wind_speed_mps"]["uniform"][0],
+            "wind_speed_mps": strongest_mps if strongest else lightest,
             "fetch_km": drawn["fetch_km"]["log_uniform"][0],
             "swell": {
                 "height_m": drawn["swell"]["height_m"]["uniform"][1],
@@ -387,6 +391,24 @@ def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
     """Cycles renders a shader past its SVM stack black and logs an error."""
     errors = _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(hulls), band)
     assert errors == []
+
+
+@pytest.mark.render
+def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
+    capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Remembered on every grid level a camera can need, gathered into windrows. The
+    stack is the shader's, whatever its frames hold, so none are simulated."""
+    monkeypatch.setattr(sea, "_simulate", lambda *_: None)
+    grids = tuple(
+        waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
+    )
+    seen = sea.Seen(foam_grids=grids)
+    drawn = _heaviest_drawn_sea(strongest=True)
+    errors = _svm_errors(capfd, drawn, _wakes(1), "eo", seen=seen)
+    assert errors == []
+    nodes = bpy.data.materials["sea"].node_tree.nodes
+    assert {"whitecap_gathered", "sea_foam_0.25m", "sea_foam_4m"} <= set(nodes.keys())
 
 
 @pytest.mark.render
