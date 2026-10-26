@@ -377,5 +377,56 @@ def sheet(scenario: Path, out: Path, band: Band) -> None:
     click.echo(out)
 
 
+@main.command()
+@click.argument("asset", shell_complete=_names)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="A directory. Default: zones/ASSET.",
+)
+@click.option(
+    "--islands",
+    is_flag=True,
+    help="Sheets per island, not per material slot: to split a slot of two zones.",
+)
+@click.option(
+    "--material",
+    help="Mark only this material's islands, the rest grey. Implies --islands.",
+)
+@click.option(
+    "--zones",
+    "contact",
+    is_flag=True,
+    help="One sheet coloured by the zones in assets.toml, for approval.",
+)
+def zones(
+    asset: str,
+    output: Path | None,
+    islands: bool,
+    material: str | None,
+    contact: bool,
+) -> None:
+    """Render the sheets for giving an asset's parts their thermal zones."""
+    if asset not in assets.manifest():
+        raise click.BadParameter(f"no mesh {asset!r}; see `seascape assets list`")
+    if contact and (islands or material):
+        raise click.UsageError("--zones takes neither --islands nor --material")
+    from seascape import zones as sheets
+
+    into = output or Path("zones") / asset
+    # An earlier run's sheets would pass for this one's.
+    if not contact and into.is_dir() and any(into.iterdir()):
+        raise click.ClickException(f"{into} is not empty: remove it or pick another")
+    with _blender_log(into / "blender.log"):
+        if contact:
+            written = [sheets.contact(asset, into / "zones.png")]
+        else:
+            kind = "islands" if islands or material else None
+            written = sheets.sheets(asset, into, kind, material)
+    for path in written:
+        click.echo(path)
+
+
 if __name__ == "__main__":
     main()

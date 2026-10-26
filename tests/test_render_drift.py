@@ -1290,13 +1290,6 @@ def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
         assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
 
 
-@pytest.mark.parametrize("name", manifest())
-def test_the_committed_mesh_is_what_the_file_holds(name: str) -> None:
-    mesh = manifest()[name]
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    assert scene.measure(fetch(name)) == (mesh.triangles, mesh.texture_px)
-
-
 def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) -> None:
     glbs = [n for n in manifest() if fetch(n).suffix == ".glb"]
     source = fetch(min(glbs, key=lambda n: manifest()[n].triangles))

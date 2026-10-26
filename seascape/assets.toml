@@ -16,6 +16,53 @@ texture_px = [1024, 1024, 1024]
 licence = "CC-BY-4.0"
 attribution = "Yacht by Sergei, https://sketchfab.com/3d-models/0dd451f295d049cea20c17d3ffa87ee3"
 
+[yacht.zones]
+island_count = 1082
+island_digest = "a6c3a5bae7ac1fbe"
+
+[yacht.zones.materials]
+"01_-_Default" = "paint_superstructure"
+
+[yacht.zones.islands]
+"0" = "paint_hull"
+"1" = "paint_hull"
+"4" = "paint_hull"
+"5" = "deck"
+"6" = "deck"
+"7" = "deck"
+"8" = "paint_hull"
+"9" = "paint_hull"
+"10" = "paint_hull"
+"11" = "paint_hull"
+"12" = "deck"
+"17" = "paint_hull"
+"21" = "deck"
+"45" = "glass"
+"57" = "deck"
+"58" = "glass"
+"69" = "deck"
+"70" = "glass"
+"71" = "glass"
+"75" = "glass"
+"76" = "glass"
+"90" = "glass"
+"101" = "deck"
+"102" = "deck"
+"116" = "deck"
+"161" = "glass"
+"171" = "paint_hull"
+"198" = "glass"
+"217" = "deck"
+"238" = "glass"
+"250" = "glass"
+"256" = "glass"
+"260" = "glass"
+"271" = "glass"
+"281" = "deck"
+"318" = "glass"
+"365" = "glass"
+"367" = "glass"
+
 [lobster_yacht]
 kind = "hull"
 category = "motor yacht"
@@ -33,6 +80,32 @@ texture_px = []
 licence = "CC-BY-4.0"
 attribution = "motoryacht 35 by angelo raffaele catalano, https://sketchfab.com/3d-models/0bdd7a0de7254426890bb5745bb7da6d"
 
+[lobster_yacht.zones]
+[lobster_yacht.zones.materials]
+"blinn1" = "wood_composite"
+"blinn10" = "glass"
+"blinn11" = "paint_superstructure"
+"blinn12" = "glass"
+"blinn13" = "glass"
+"blinn2" = "bare_metal"
+"blinn5" = "paint_hull"
+"blinn6" = "glass"
+"blinn7" = "glass"
+"blinn8" = "bare_metal"
+"blinn9" = "glass"
+"chiglia1" = "paint_hull"
+"coperta1" = "deck"
+"fiancate" = "paint_hull"
+"lambert1" = "paint_superstructure"
+"lambert2" = "deck"
+"lambert3" = "paint_hull"
+"lambert4" = "glass"
+"lambert5" = "glass"
+"lambert6" = "glass"
+"nero1" = "bare_metal"
+"phongE2" = "fabric"
+"phongE4" = "bare_metal"
+
 [zodiac]
 kind = "hull"
 category = "rigid inflatable boat"
@@ -49,6 +122,25 @@ triangles = 351528
 texture_px = []
 licence = "CC-BY-4.0"
 attribution = "Zodiac by DenisGLabrecque, https://sketchfab.com/3d-models/c95fc3bf29e947bfb9f12a8d68066ccc"
+
+[zodiac.zones]
+island_count = 106
+island_digest = "e4a915c8068478f8"
+
+[zodiac.zones.materials]
+"Carbon_Fiber" = "wood_composite"
+"Cloth" = "fabric"
+"DarkNylonRope" = "fabric"
+"Glass" = "glass"
+"Light" = "glass"
+"LightRubber" = "rubber"
+"Rubber" = "rubber"
+"ShinyMetal" = "bare_metal"
+"Shiny_Black_Metal" = "bare_metal"
+
+[zodiac.zones.islands]
+"44" = "engine_cowl"
+"100" = "engine_cowl"
 
 [cargo_ship]
 kind = "hull"
@@ -68,6 +160,42 @@ texture_px = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"
 attribution = "Cargo ship by hungry_drifter, https://sketchfab.com/3d-models/b7c97df584824ca682d26daabf401f87"
 
+[cargo_ship.zones]
+island_count = 5860
+island_digest = "e0053fd2726cbfba"
+
+[cargo_ship.zones.materials]
+"1001" = "paint_superstructure"
+"1002" = "paint_hull"
+"1003" = "paint_superstructure"
+
+[cargo_ship.zones.islands]
+"528" = "deck"
+"537" = "deck"
+"538" = "deck"
+"539" = "deck"
+"576" = "funnel"
+"577" = "funnel"
+"578" = "funnel"
+"579" = "funnel"
+"587" = "exhaust"
+"589" = "exhaust"
+"5116" = "deck"
+"5171" = "deck"
+"5175" = "deck"
+"5176" = "deck"
+"5216" = "deck"
+"5252" = "deck"
+"5288" = "deck"
+"5324" = "deck"
+"5360" = "deck"
+"5396" = "deck"
+"5799" = "deck"
+"5800" = "deck"
+"5801" = "deck"
+"5802" = "deck"
+"5823" = "deck"
+
 [bulk_carrier]
 kind = "hull"
 category = "bulk carrier"
@@ -85,6 +213,45 @@ triangles = 1627998
 texture_px = [1024]
 licence = "CC-BY-4.0"
 attribution = "Bulk Carrier by medialog, https://sketchfab.com/3d-models/93c076900f004102b78dfac989efae1d"
+
+[bulk_carrier.zones]
+island_count = 42975
+island_digest = "dee302f9dc7a3a67"
+
+[bulk_carrier.zones.materials]
+"Scene_-_Root" = "paint_superstructure"
+
+[bulk_carrier.zones.islands]
+"15561" = "deck"
+"15586" = "deck"
+"15701" = "funnel"
+"16119" = "deck"
+"16511" = "deck"
+"16903" = "deck"
+"17295" = "deck"
+"17687" = "deck"
+"18079" = "deck"
+"18471" = "deck"
+"18863" = "deck"
+"19253" = "deck"
+"19254" = "deck"
+"19278" = "deck"
+"21468" = "deck"
+"21760" = "deck"
+"22052" = "deck"
+"22296" = "deck"
+"22588" = "deck"
+"22832" = "deck"
+"23858" = "deck"
+"23948" = "deck"
+"24734" = "deck"
+"31696" = "paint_hull"
+"31697" = "deck"
+"31699" = "paint_hull"
+"31700" = "paint_hull"
+"31701" = "deck"
+"31703" = "paint_hull"
+"34590" = "deck"
 
 [patrol_vessel]
 kind = "hull"
@@ -144,6 +311,37 @@ texture_px = [
 ]
 licence = "CC-BY-4.0"
 attribution = "littoral mission vessel by fxmdeveloper, https://sketchfab.com/3d-models/644999231c034c959c6091b00ed6c50f"
+
+[patrol_vessel.zones]
+island_count = 13116
+island_digest = "492acf8964a335f3"
+
+[patrol_vessel.zones.materials]
+"A_Material" = "paint_superstructure"
+"B_Material" = "paint_superstructure"
+"Back_Door" = "paint_hull"
+"Body" = "paint_hull"
+"C_Material" = "paint_superstructure"
+"D_Material" = "paint_superstructure"
+"E_Material" = "paint_superstructure"
+"F_Material" = "paint_superstructure"
+"G_Material" = "paint_superstructure"
+"H_Material" = "paint_superstructure"
+"Wheel" = "bare_metal"
+"Word_Material" = "paint_hull"
+"material" = "paint_superstructure"
+
+[patrol_vessel.zones.islands]
+"7616" = "deck"
+"7617" = "paint_superstructure"
+"7618" = "paint_superstructure"
+"7619" = "deck"
+"7627" = "glass"
+"7628" = "glass"
+"7629" = "paint_superstructure"
+"7630" = "glass"
+"7631" = "glass"
+"7632" = "paint_superstructure"
 
 [coaster]
 kind = "hull"
@@ -218,6 +416,68 @@ texture_px = [
 licence = "CC-BY-4.0"
 attribution = "Coaster 01 by gogiart, https://sketchfab.com/3d-models/e7cd3749189445fa8a0b928e5fb95814"
 
+[coaster.zones]
+[coaster.zones.materials]
+"acmat_0.016" = "paint_superstructure"
+"acmat_1.016" = "bare_metal"
+"acmat_10.016" = "paint_superstructure"
+"acmat_11.016" = "glass"
+"acmat_12.016" = "bare_metal"
+"acmat_13.016" = "paint_superstructure"
+"acmat_14.016" = "funnel"
+"acmat_15.016" = "paint_superstructure"
+"acmat_16.016" = "glass"
+"acmat_17.016" = "paint_superstructure"
+"acmat_18.016" = "bare_metal"
+"acmat_19.016" = "glass"
+"acmat_2.016" = "bare_metal"
+"acmat_20.016" = "paint_superstructure"
+"acmat_21.016" = "paint_superstructure"
+"acmat_22.016" = "paint_superstructure"
+"acmat_23.016" = "paint_superstructure"
+"acmat_24.016" = "paint_superstructure"
+"acmat_25.016" = "paint_superstructure"
+"acmat_26.016" = "paint_superstructure"
+"acmat_27.016" = "paint_superstructure"
+"acmat_28.016" = "paint_superstructure"
+"acmat_29.016" = "paint_superstructure"
+"acmat_3.016" = "bare_metal"
+"acmat_30.016" = "paint_superstructure"
+"acmat_31.016" = "paint_superstructure"
+"acmat_32.016" = "bare_metal"
+"acmat_33.016" = "paint_superstructure"
+"acmat_34.016" = "bare_metal"
+"acmat_35.014" = "paint_superstructure"
+"acmat_36.014" = "paint_superstructure"
+"acmat_37.014" = "paint_superstructure"
+"acmat_38.014" = "bare_metal"
+"acmat_39.014" = "bare_metal"
+"acmat_4.016" = "paint_superstructure"
+"acmat_40.014" = "bare_metal"
+"acmat_41.014" = "bare_metal"
+"acmat_42.014" = "paint_superstructure"
+"acmat_43.012" = "paint_superstructure"
+"acmat_44.012" = "paint_superstructure"
+"acmat_45.012" = "paint_superstructure"
+"acmat_46.012" = "bare_metal"
+"acmat_47.012" = "wood_composite"
+"acmat_48.010" = "wood_composite"
+"acmat_49.010" = "paint_superstructure"
+"acmat_5.016" = "paint_superstructure"
+"acmat_50.008" = "bare_metal"
+"acmat_51.008" = "paint_hull"
+"acmat_52.006" = "paint_superstructure"
+"acmat_53.005" = "paint_superstructure"
+"acmat_54.005" = "bare_metal"
+"acmat_55.005" = "bare_metal"
+"acmat_56.005" = "paint_hull"
+"acmat_57.005" = "paint_hull"
+"acmat_58.005" = "deck"
+"acmat_6.016" = "glass"
+"acmat_7.016" = "paint_hull"
+"acmat_8.016" = "paint_superstructure"
+"acmat_9.016" = "paint_hull"
+
 [short_sea_freighter]
 kind = "hull"
 category = "general cargo ship"
@@ -285,6 +545,83 @@ texture_px = [
 licence = "CC-BY-4.0"
 attribution = "Multi-purpose Vessel V by gogiart, https://sketchfab.com/3d-models/2f685e27d6a14e3fb65a12b9316b399f"
 
+[short_sea_freighter.zones]
+island_count = 3320
+island_digest = "600d5814fa9f2998"
+
+[short_sea_freighter.zones.materials]
+"acmat_0" = "wood_composite"
+"acmat_1" = "paint_superstructure"
+"acmat_10" = "deck"
+"acmat_11" = "paint_superstructure"
+"acmat_12" = "paint_superstructure"
+"acmat_13" = "paint_superstructure"
+"acmat_14" = "paint_superstructure"
+"acmat_15" = "paint_superstructure"
+"acmat_16" = "paint_superstructure"
+"acmat_17" = "paint_superstructure"
+"acmat_18" = "paint_superstructure"
+"acmat_19" = "paint_superstructure"
+"acmat_2" = "paint_superstructure"
+"acmat_20" = "paint_superstructure"
+"acmat_21" = "paint_superstructure"
+"acmat_22" = "bare_metal"
+"acmat_23" = "bare_metal"
+"acmat_24" = "bare_metal"
+"acmat_25" = "paint_superstructure"
+"acmat_26" = "paint_superstructure"
+"acmat_27" = "paint_superstructure"
+"acmat_28" = "paint_superstructure"
+"acmat_29" = "paint_superstructure"
+"acmat_3" = "bare_metal"
+"acmat_30" = "paint_superstructure"
+"acmat_31" = "paint_superstructure"
+"acmat_32" = "glass"
+"acmat_33" = "paint_superstructure"
+"acmat_34" = "paint_superstructure"
+"acmat_35" = "paint_superstructure"
+"acmat_36" = "glass"
+"acmat_37" = "paint_superstructure"
+"acmat_38" = "bare_metal"
+"acmat_39" = "bare_metal"
+"acmat_4" = "bare_metal"
+"acmat_40" = "bare_metal"
+"acmat_41" = "bare_metal"
+"acmat_42" = "wood_composite"
+"acmat_43" = "paint_superstructure"
+"acmat_44" = "paint_superstructure"
+"acmat_45" = "paint_superstructure"
+"acmat_46" = "paint_hull"
+"acmat_47" = "paint_superstructure"
+"acmat_48" = "paint_hull"
+"acmat_49" = "paint_superstructure"
+"acmat_5" = "bare_metal"
+"acmat_50" = "funnel"
+"acmat_51" = "exhaust"
+"acmat_6" = "paint_hull"
+"acmat_7" = "glass"
+"acmat_8" = "paint_superstructure"
+"acmat_9" = "paint_hull"
+
+[short_sea_freighter.zones.islands]
+"3138" = "funnel"
+"3141" = "paint_superstructure"
+"3142" = "paint_superstructure"
+"3144" = "paint_superstructure"
+"3145" = "paint_superstructure"
+"3160" = "paint_superstructure"
+"3161" = "paint_superstructure"
+"3162" = "paint_superstructure"
+"3163" = "paint_superstructure"
+"3166" = "paint_superstructure"
+"3167" = "paint_superstructure"
+"3168" = "paint_superstructure"
+"3175" = "paint_superstructure"
+"3176" = "paint_superstructure"
+"3177" = "paint_superstructure"
+"3199" = "paint_superstructure"
+"3212" = "deck"
+
 [multipurpose_freighter]
 kind = "hull"
 category = "general cargo ship"
@@ -342,6 +679,52 @@ texture_px = [
 licence = "CC-BY-4.0"
 attribution = "Multi-purpose Vessel II by gogiart, https://sketchfab.com/3d-models/e212591a799d4b568cf4df9279444adb"
 
+[multipurpose_freighter.zones]
+[multipurpose_freighter.zones.materials]
+"acmat_0.012" = "paint_superstructure"
+"acmat_1.012" = "wood_composite"
+"acmat_10.012" = "paint_superstructure"
+"acmat_11.012" = "paint_superstructure"
+"acmat_12.012" = "paint_superstructure"
+"acmat_13.012" = "paint_superstructure"
+"acmat_14.012" = "glass"
+"acmat_15.012" = "paint_superstructure"
+"acmat_16.012" = "paint_superstructure"
+"acmat_17.012" = "paint_superstructure"
+"acmat_18.012" = "paint_superstructure"
+"acmat_19.012" = "paint_hull"
+"acmat_2.012" = "bare_metal"
+"acmat_20.012" = "glass"
+"acmat_21.012" = "bare_metal"
+"acmat_22.012" = "paint_hull"
+"acmat_23.012" = "bare_metal"
+"acmat_24.012" = "paint_superstructure"
+"acmat_25.012" = "bare_metal"
+"acmat_26.012" = "exhaust"
+"acmat_27.012" = "bare_metal"
+"acmat_28.012" = "bare_metal"
+"acmat_29.012" = "bare_metal"
+"acmat_3.012" = "bare_metal"
+"acmat_30.012" = "bare_metal"
+"acmat_31.012" = "bare_metal"
+"acmat_32.012" = "bare_metal"
+"acmat_33.012" = "bare_metal"
+"acmat_34.012" = "bare_metal"
+"acmat_35.010" = "wood_composite"
+"acmat_36.010" = "wood_composite"
+"acmat_37.010" = "bare_metal"
+"acmat_38.010" = "paint_superstructure"
+"acmat_39.010" = "paint_superstructure"
+"acmat_4.012" = "bare_metal"
+"acmat_40.010" = "bare_metal"
+"acmat_41.010" = "paint_superstructure"
+"acmat_42.010" = "bare_metal"
+"acmat_5.012" = "paint_superstructure"
+"acmat_6.012" = "paint_superstructure"
+"acmat_7.012" = "paint_superstructure"
+"acmat_8.012" = "paint_superstructure"
+"acmat_9.012" = "paint_superstructure"
+
 [ultramax_bulk_carrier]
 kind = "hull"
 category = "bulk carrier"
@@ -359,6 +742,45 @@ triangles = 21417
 texture_px = [1024, 512, 512]
 licence = "CC-BY-4.0"
 attribution = "Alassia M/V Cymona Eagle (2024) by FHA_studios, https://sketchfab.com/3d-models/ed358cd364ea4b5380d00b6957d12718"
+
+[ultramax_bulk_carrier.zones]
+[ultramax_bulk_carrier.zones.materials]
+"Black112" = "glass"
+"Material" = "funnel"
+"Material.001" = "paint_superstructure"
+"Material.002" = "paint_hull"
+"Material.003" = "paint_hull"
+"Material.004" = "deck"
+"Material.005" = "paint_superstructure"
+"Material.006" = "paint_superstructure"
+"Material.007" = "paint_superstructure"
+"Material.008" = "paint_superstructure"
+"Material.009" = "paint_superstructure"
+"Material.010" = "bare_metal"
+"Material.011" = "exhaust"
+"Material.012" = "paint_superstructure"
+"Material.013" = "paint_superstructure"
+"Material.016" = "paint_superstructure"
+"Material.017" = "paint_superstructure"
+"Material.019" = "paint_superstructure"
+"Material.022" = "paint_superstructure"
+"Material.023" = "paint_superstructure"
+"Material.027" = "glass"
+"Material.031" = "paint_superstructure"
+"Material.033" = "glass"
+"Material.037" = "paint_superstructure"
+"Material.039" = "glass"
+"Material.043" = "paint_superstructure"
+"Material.044" = "deck"
+"Material.045" = "paint_superstructure"
+"Material.048" = "paint_superstructure"
+"Material.049" = "wood_composite"
+"Material.050" = "paint_superstructure"
+"Material.070" = "paint_superstructure"
+"Material.071" = "paint_superstructure"
+"Material.072" = "paint_superstructure"
+"Material.073" = "paint_superstructure"
+"kaidevalk-removebg-preview" = "bare_metal"
 
 [panamax_container_ship]
 kind = "hull"
@@ -378,6 +800,21 @@ triangles = 188676
 texture_px = [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]
 licence = "CC-BY-4.0"
 attribution = "Container Ship by RM02, https://sketchfab.com/3d-models/aaa41cca946b4a08bc08cf692b7757be"
+
+[panamax_container_ship.zones]
+island_count = 37773
+island_digest = "b202c28820cc0399"
+
+[panamax_container_ship.zones.materials]
+"Bridge" = "paint_superstructure"
+"Containers" = "paint_superstructure"
+"Hull" = "paint_hull"
+
+[panamax_container_ship.zones.islands]
+"9609" = "deck"
+"20216" = "deck"
+"20222" = "deck"
+"20307" = "deck"
 
 [crude_tanker]
 kind = "hull"
@@ -457,6 +894,80 @@ texture_px = [
 licence = "CC-BY-4.0"
 attribution = "Tanker by gogiart, https://sketchfab.com/3d-models/31bb4e748801479ea5eab0b297d68622"
 
+[crude_tanker.zones]
+[crude_tanker.zones.materials]
+"acmat_0.036" = "paint_superstructure"
+"acmat_1.036" = "paint_superstructure"
+"acmat_10.036" = "paint_superstructure"
+"acmat_11.036" = "glass"
+"acmat_12.034" = "paint_superstructure"
+"acmat_13.034" = "deck"
+"acmat_14.034" = "paint_superstructure"
+"acmat_15.034" = "paint_superstructure"
+"acmat_16.034" = "bare_metal"
+"acmat_17.031" = "bare_metal"
+"acmat_18.030" = "paint_superstructure"
+"acmat_19.030" = "glass"
+"acmat_2.036" = "bare_metal"
+"acmat_20.030" = "glass"
+"acmat_21.030" = "paint_superstructure"
+"acmat_22.030" = "paint_superstructure"
+"acmat_23.030" = "paint_superstructure"
+"acmat_24.030" = "paint_superstructure"
+"acmat_25.028" = "paint_superstructure"
+"acmat_26.025" = "bare_metal"
+"acmat_27.025" = "paint_superstructure"
+"acmat_28.024" = "glass"
+"acmat_29.022" = "paint_superstructure"
+"acmat_3.036" = "glass"
+"acmat_30.022" = "glass"
+"acmat_31.022" = "paint_superstructure"
+"acmat_32.020" = "bare_metal"
+"acmat_33.018" = "paint_superstructure"
+"acmat_34.016" = "paint_superstructure"
+"acmat_35.016" = "bare_metal"
+"acmat_36.016" = "bare_metal"
+"acmat_37.016" = "paint_superstructure"
+"acmat_38.016" = "bare_metal"
+"acmat_39.016" = "paint_superstructure"
+"acmat_4.036" = "funnel"
+"acmat_40.014" = "paint_superstructure"
+"acmat_41.014" = "paint_superstructure"
+"acmat_42.012" = "bare_metal"
+"acmat_43.012" = "paint_superstructure"
+"acmat_44.012" = "paint_superstructure"
+"acmat_45.010" = "paint_superstructure"
+"acmat_46.010" = "bare_metal"
+"acmat_47.010" = "bare_metal"
+"acmat_48.010" = "paint_superstructure"
+"acmat_49.007" = "paint_superstructure"
+"acmat_5.036" = "paint_superstructure"
+"acmat_50.006" = "bare_metal"
+"acmat_51.006" = "bare_metal"
+"acmat_52.006" = "paint_superstructure"
+"acmat_53.006" = "paint_superstructure"
+"acmat_54.004" = "paint_superstructure"
+"acmat_55.002" = "wood_composite"
+"acmat_56.002" = "paint_superstructure"
+"acmat_57.002" = "paint_superstructure"
+"acmat_58.002" = "paint_hull"
+"acmat_59.002" = "paint_hull"
+"acmat_6.036" = "paint_superstructure"
+"acmat_60.002" = "paint_superstructure"
+"acmat_61.002" = "bare_metal"
+"acmat_62.002" = "bare_metal"
+"acmat_63" = "deck"
+"acmat_64" = "paint_hull"
+"acmat_65" = "deck"
+"acmat_66" = "paint_hull"
+"acmat_67" = "paint_hull"
+"acmat_68" = "paint_superstructure"
+"acmat_69" = "paint_superstructure"
+"acmat_7.036" = "deck"
+"acmat_70" = "bare_metal"
+"acmat_8.036" = "paint_superstructure"
+"acmat_9.036" = "paint_superstructure"
+
 [lateral_mark]
 kind = "buoy"
 category = "lateral mark"
@@ -473,6 +984,10 @@ triangles = 13014
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"
 attribution = "Lateral Sea Marker by Kuutti Siitonen, https://polyhaven.com/a/lateral_sea_marker"
+
+[lateral_mark.zones]
+[lateral_mark.zones.materials]
+"lateral_sea_marker" = "paint_hull"
 
 [lateral_mark.files."lateral_sea_marker.bin"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/lateral_sea_marker/lateral_sea_marker.bin"
@@ -506,6 +1021,10 @@ triangles = 12240
 texture_px = [2048, 2048, 2048, 2048]
 licence = "CC0-1.0"
 attribution = "Ocean Buoy by Mateusz Sadek, https://polyhaven.com/a/ocean_buoy"
+
+[ocean_buoy.zones]
+[ocean_buoy.zones.materials]
+"buoy" = "paint_hull"
 
 [ocean_buoy.files."ocean_buoy.bin"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/ocean_buoy/ocean_buoy.bin"
@@ -543,6 +1062,10 @@ texture_px = [1024, 1024]
 licence = "CC-BY-4.0"
 attribution = "Buoy by honix, https://sketchfab.com/3d-models/cdd198814e874379b6cd2c0cc06bc22d"
 
+[pillar_buoy.zones]
+[pillar_buoy.zones.materials]
+"Boue_Baked" = "paint_hull"
+
 [mooring_buoy]
 kind = "buoy"
 category = "mooring buoy"
@@ -560,6 +1083,10 @@ texture_px = []
 licence = "CC-BY-4.0"
 attribution = "Buoy by ean47, https://sketchfab.com/3d-models/da1a9915bd0446299998a896311e4d64"
 
+[mooring_buoy.zones]
+[mooring_buoy.zones.materials]
+"Material.001" = "paint_hull"
+
 [log]
 kind = "debris"
 category = "log"
@@ -575,6 +1102,10 @@ triangles = 101802
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"
 attribution = "Dead Tree Trunk by Rob Tuytel, https://polyhaven.com/a/dead_tree_trunk"
+
+[log.zones]
+[log.zones.materials]
+"dead_tree_trunk" = "wood_composite"
 
 [log.files."dead_tree_trunk.bin"]
 url = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dead_tree_trunk/dead_tree_trunk.bin"
@@ -609,6 +1140,12 @@ texture_px = [1024, 1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"
 attribution = "Euro-pallet by wittybacon, https://sketchfab.com/3d-models/4f38d1e992e94966b6ceb2754cc16a22"
 
+[pallet.zones]
+[pallet.zones.materials]
+"Material.002" = "wood_composite"
+"Material.003" = "wood_composite"
+"Material.004" = "bare_metal"
+
 [container]
 kind = "debris"
 category = "container"
@@ -624,6 +1161,11 @@ triangles = 190810
 texture_px = [1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"
 attribution = "20ft Red by aidancallaghan, https://sketchfab.com/3d-models/f555ce5532d84cac8ad963dec5833934"
+
+[container.zones]
+[container.zones.materials]
+"UDIM_1001" = "paint_hull"
+"UDIM_1002" = "bare_metal"
 
 [sea_mine]
 kind = "debris"
@@ -642,3 +1184,7 @@ triangles = 23850
 texture_px = [1024, 1024, 1024]
 licence = "CC-BY-4.0"
 attribution = "Sea Mine Black by AbsoluteMadLadd, https://sketchfab.com/3d-models/7f503538a0de4bfa93737ccfab193d36"
+
+[sea_mine.zones]
+[sea_mine.zones.materials]
+"lambert1" = "paint_hull"
