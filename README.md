@@ -26,7 +26,7 @@ Real footage can't put a vessel at exactly 7 NM, hold the visibility constant, o
 - **Sequences.** Targets under way, ownship roll, pitch and heave, seamless loops, mp4.
 
 > [!NOTE]
-> LWIR is good enough to look at and to regression-test against, but not a radiometric reference: path extinction is not modelled, the atmospheric profile is fixed, and waves neither occlude nor shadow each other. A detection-range or contrast figure taken off a render needs review before anyone acts on it.
+> LWIR is good enough to look at and to regression-test against, but not a radiometric reference: shadowing between unresolved wave facets is not modelled. A detection-range or contrast figure taken off a render needs review before anyone acts on it.
 
 ## Install
 
