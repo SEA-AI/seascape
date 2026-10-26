@@ -53,6 +53,10 @@ jobs:
 
       - run: uv sync --locked
 
+      # Workbench, which `seascape zones` renders with, needs OpenGL; the runner has no
+      # GPU, and Mesa's llvmpipe draws it in software.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1-mesa-dri
+
       # fetch downloads again any cached asset that misses its sha256.
       - uses: actions/cache@v6
         with:
