@@ -149,9 +149,10 @@ category_id = 14
 description = "Masthead sloop under main and genoa, white topsides over a navy bottom."
 url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/c0840a9d14e2a4e50bb4aab9201c747d7d0caed8/irwin_38/irwin_38.glb"
 sha256 = "b4c2dc81e6fe6ccb34dc7797cf391fa0394c623eb04225e92ef7545513ec9312"
-# An Irwin 38-1: 37.75 ft (11.51 m) overall, 3.75 ft (1.14 m) draught with the
-# centreboard up (Keel Index, "Irwin 38-1"). This length makes the mesh 3.42 m across,
-# against her 3.20 m.
+# Judgement: the model names no variant, and its long keel matches the keel-centreboard
+# Irwin 38-1, 37.75 ft (11.51 m) overall, 3.75 ft (1.14 m) draught with the board up
+# (Keel Index, "Irwin 38-1"). This length makes the mesh 3.42 m across, against her
+# 3.20 m.
 length_m = 11.51
 draught_m = 1.14
 bow_deg = 180.0
@@ -167,9 +168,9 @@ category_id = 14
 description = "Modern cruising sloop with a white hull, fin keel and spade rudder, sails furled."
 url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/c0840a9d14e2a4e50bb4aab9201c747d7d0caed8/sailboat/sailboat.glb"
 sha256 = "692cad3d846c4c5107bcffa4906483e2dc1bd8eeea9881538d65c4b984714bfa"
-# No class named. A Beneteau Oceanis 40.1: 12.87 m overall, 4.18 m beam, 2.17 m
-# draught (MDL Marinas, "Beneteau Oceanis 40.1"). This length makes the mesh 4.18 m
-# across.
+# The model names no class; sized as a Beneteau Oceanis 40.1: 12.87 m overall, 4.18 m
+# beam, 2.17 m draught (MDL Marinas, "Beneteau Oceanis 40.1"). This length makes the
+# mesh 4.18 m across.
 length_m = 12.87
 draught_m = 2.17
 bow_deg = 0.0
@@ -1101,9 +1102,9 @@ category_id = 15
 description = "Double-ended road ferry, yellow superstructure over an open car deck, textured."
 url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/c0840a9d14e2a4e50bb4aab9201c747d7d0caed8/meriluoto/meriluoto.glb"
 sha256 = "de0ad473106ac3631ccc1fb00d3bf8979d6def08bd9d6ca98ff21025741e5eb3"
-# The mesh is in metres: 53.5 m overall and 12.3 m across, the length and breadth the
-# model's author gives for L/A Meriluoto. Its 4.2 m draught, from the same page, puts
-# the car deck 1.1 m above the water.
+# The mesh is in metres: 53.5 m overall and 12.3 m across, the length and breadth
+# Snowsoup's Sketchfab page gives for L/A Meriluoto, with a 4.2 m draught that page
+# does not source.
 length_m = 53.5
 draught_m = 4.2
 bow_deg = 90.0

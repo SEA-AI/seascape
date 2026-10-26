@@ -293,9 +293,13 @@ class TestEoBand:
         for spec in SCENARIO.objects:
             anchor = bpy.data.objects[spec.asset]
             (attitude,) = anchor.children
-            corners = scene._corners(
-                anchor.children_recursive, attitude.matrix_world.inverted()
-            )
+            into_hull = attitude.matrix_world.inverted()
+            corners = [
+                into_hull @ part.matrix_world @ Vector(corner)
+                for part in anchor.children_recursive
+                if part.type == "MESH"
+                for corner in part.bound_box
+            ]
             axes = list(zip(*corners, strict=True))
             asset = manifest()[spec.asset]
             if isinstance(asset, Hull):
@@ -565,18 +569,21 @@ def test_an_image_inside_a_node_group_is_counted() -> None:
 
 
 def test_a_turned_part_is_measured_by_its_vertices() -> None:
-    """A diagonal rod turned onto x has no width; its own box turned with it has."""
+    """A diagonal rod turned onto x has no y extent; its `bound_box`, turned with it,
+    does."""
     mesh = bpy.data.meshes.new("rod")
     mesh.from_pydata([(-1, -1, 0), (1, 1, 0), (1, 1, 0.01)], [], [(0, 1, 2)])
     rod = bpy.data.objects.new("rod", mesh)
     bpy.context.scene.collection.objects.link(rod)
     rod.rotation_euler.z = math.radians(-45.0)
     bpy.context.view_layer.update()
-
-    ys = [c.y for c in scene._corners([rod])]
+    try:
+        ys = [c.y for c in scene._corners([rod])]
+    finally:
+        bpy.data.objects.remove(rod)
+        bpy.data.meshes.remove(mesh)
 
     assert max(ys) - min(ys) == pytest.approx(0.0, abs=1e-6)
-    bpy.data.objects.remove(rod)
 
 
 @pytest.mark.parametrize(

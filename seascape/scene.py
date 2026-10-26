@@ -842,12 +842,11 @@ def _rows(m: Matrix) -> Matrix4:
 def _corners(
     objects: Iterable[bpy.types.Object], into: Matrix | None = None
 ) -> list[Vector]:
-    """The eight corners of the box around the vertices of the meshes in `objects`,
-    in the frame `into` maps world space to; world space by default.
+    """Corners of the axis-aligned box around the vertices of the meshes in
+    `objects`, in the frame `into` maps world space to (default: world).
 
     Vertices, not `bound_box`: a part turned off its parent's axes carries its own box
-    turned with it, and that box's world extent can be twice the part's. An empty's
-    `bound_box` is a point at its origin, and an import is mostly empties.
+    turned with it, which can be far wider than the part.
     """
     depsgraph = bpy.context.evaluated_depsgraph_get()
     points = []
@@ -860,12 +859,14 @@ def _corners(
         co = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
         mesh.vertices.foreach_get("co", co)
         evaluated.to_mesh_clear()
+        if not co.size:
+            continue
         to = np.array((into or Matrix()) @ obj.matrix_world)
-        points.append(co.reshape(-1, 3) @ to[:3, :3].T + to[:3, 3])
+        moved = co.reshape(-1, 3) @ to[:3, :3].T + to[:3, 3]
+        points += [moved.min(axis=0), moved.max(axis=0)]
     if not points:
         return []
-    every = np.concatenate(points)
-    low, high = every.min(axis=0), every.max(axis=0)
+    low, high = np.min(points, axis=0), np.max(points, axis=0)
     return [
         Vector((x, y, z))
         for x in (low[0], high[0])
