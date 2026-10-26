@@ -242,6 +242,14 @@ def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
     return curve_image("sea_emissivity", np.array(rows))
 
 
+def _foam_emissivity_image() -> bpy.types.Image:
+    """`lwir.foam_emissivity_excess` against cos(theta) at texel centres."""
+    mu = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    return curve_image(
+        "sea_foam_emissivity", lwir.foam_emissivity_excess(np.arccos(mu))
+    )
+
+
 def _view_rows() -> np.ndarray:
     """|cos| of the view off the wave normal up a tile's rows, at texel centres: even
     in its square root, so the rows crowd toward grazing, where the reflection turns
@@ -1448,10 +1456,12 @@ def _thermal(
     slope_max: float,
     sky: SkyCurve,
     sun_up: bool,
+    foam: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     """eps(theta) of the sea emitted, the remaining 1 - eps reflected from the sky.
     It emits at its skin's temperature; the tables keep the bulk's optical constants,
-    which a skin a few kelvin off barely moves.
+    which a skin a few kelvin off barely moves. `foam`, the share of the pixel under
+    foam, raises eps by that share of foam's excess.
 
     Complements, so the two very nearly cancel and the sea holds close to ambient at
     every angle. The reflection is a lookup in the wave normal's mirror direction, not
@@ -1489,11 +1499,14 @@ def _thermal(
     sky_seen.node.name = "sea_reflection"
     mean = _math(tree, "MULTIPLY", _math(tree, "ADD", *unresolved), 0.5)
     fraction = _math(tree, "DIVIDE", _math(tree, "SQRT", mean), slope_max)
-    emissivity = lookup(
+    bare = lookup(tree, _emissivity_image(sea.t_sea_k, slope_max), incidence, fraction)
+    excess = lookup(tree, _foam_emissivity_image(), incidence)
+    emissivity = _math(
         tree,
-        _emissivity_image(sea.t_sea_k, slope_max),
-        incidence,
-        fraction,
+        "MINIMUM",
+        _math(tree, "MULTIPLY_ADD", foam, excess, bare),
+        1.0,
+        name="sea_emissivity",
     )
     skin_radiance = lwir.band_radiance(sea.t_skin_k(sun_up))
     emitted = _math(tree, "SUBTRACT", skin_radiance, sky_seen, name="sea_skin")
@@ -2459,9 +2472,9 @@ def material(
     seen: Seen = UNSEEN,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
-    `rngs` draw its gusts, its windrows and its foam. With a sky the sea is ir and
-    reflects it; without, eo, glittering towards the light's sun if it has one, its
-    whitecaps remembered on the grids its cameras see.
+    `rngs` draw its gusts, its windrows and its foam, whose whitecaps are remembered on
+    the grids its cameras see. With a sky the sea is ir and reflects it; without, eo,
+    glittering towards the light's sun if it has one.
 
     No node draws a wave a pixel of the cameras' finest footprint cannot resolve; the
     tables and statistics still describe the whole sea."""
@@ -2514,6 +2527,29 @@ def material(
             name="wake_normal",
         )
     unresolved = _unresolved(tree, sea, wind, swell, survivors, pixel, gust, smooth)
+    whitecaps = (
+        _remembered(
+            tree,
+            sea,
+            outputs,
+            position,
+            pixel.across_m,
+            _foam_texture(
+                tree,
+                sea,
+                position,
+                outputs,
+                foam(),
+                # Its own stream, so the lace's draws stay as they were.
+                foam_rng.spawn(1)[0],
+                pixel.along_m,
+            ),
+            _foam_frames(sea, wind, outputs, seen.foam_grids),
+            _gathered(tree, sea, pixel.along_m, rows),
+        )
+        if wind and seen.foam_grids
+        else _bare(tree)
+    )
 
     if light.sky is None:
         wide, narrow, tangent = _widest(tree, pixel, unresolved)
@@ -2539,29 +2575,6 @@ def material(
                 _math(tree, "MULTIPLY", wide, 0.01),
             ),
         )
-        whitecaps = (
-            _remembered(
-                tree,
-                sea,
-                outputs,
-                position,
-                pixel.across_m,
-                _foam_texture(
-                    tree,
-                    sea,
-                    position,
-                    outputs,
-                    foam(),
-                    # Its own stream, so the lace's draws stay as they were.
-                    foam_rng.spawn(1)[0],
-                    pixel.along_m,
-                ),
-                _foam_frames(sea, wind, outputs, seen.foam_grids),
-                _gathered(tree, sea, pixel.along_m, rows),
-            )
-            if wind and seen.foam_grids
-            else _bare(tree)
-        )
         surface = _daylight(tree, sea, normal, tangent, unresolved, whitecaps, wake)
     else:
         # The coarsest footprint leaves the most, Cox & Munk's and all the swell's;
@@ -2574,7 +2587,16 @@ def material(
             2 * max(axes) + gust_max * gust_slope_variance(sea.wind_speed_mps)
         )
         surface = _thermal(
-            tree, sea, normal, unresolved, slope_max, light.sky, light.sun_up
+            tree,
+            sea,
+            normal,
+            unresolved,
+            slope_max,
+            light.sky,
+            light.sun_up,
+            whitecaps[0]
+            if wake is None
+            else _math(tree, "MAXIMUM", whitecaps[0], wake.foam),
         )
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])
