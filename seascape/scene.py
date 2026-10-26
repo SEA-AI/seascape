@@ -630,6 +630,21 @@ def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
     bpy.context.view_layer.update()
+    # A skinned mesh takes its pose from an armature modifier, which the join keeps
+    # pointing at an armature removed below: bake the pose in first.
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    posed = {
+        obj: bpy.data.meshes.new_from_object(
+            obj.evaluated_get(depsgraph),
+            preserve_all_data_layers=True,
+            depsgraph=depsgraph,
+        )
+        for obj in meshes
+        if obj.modifiers
+    }
+    for obj, mesh in posed.items():
+        obj.modifiers.clear()
+        obj.data = mesh
     with bpy.context.temp_override(
         active_object=meshes[0], selected_editable_objects=meshes
     ):

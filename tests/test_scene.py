@@ -586,6 +586,40 @@ def test_a_turned_part_is_measured_by_its_vertices() -> None:
     assert max(ys) - min(ys) == pytest.approx(0.0, abs=1e-6)
 
 
+def test_a_skinned_part_joins_in_its_pose() -> None:
+    """The join keeps the armature modifier and removes the armature it points at."""
+    rig = bpy.data.objects.new("rig", bpy.data.armatures.new("rig"))
+    bpy.context.scene.collection.objects.link(rig)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    rig.data.edit_bones.new("bone").tail = (0.0, 0.0, 1.0)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    rig.pose.bones["bone"].location = (0.0, 5.0, 0.0)  # bone y is world -z
+    mesh = bpy.data.meshes.new("skinned")
+    mesh.from_pydata([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [], [(0, 1, 2)])
+    part = bpy.data.objects.new("skinned", mesh)
+    bpy.context.scene.collection.objects.link(part)
+    part.parent = rig
+    part.vertex_groups.new(name="bone").add([0, 1, 2], 1.0, "REPLACE")
+    part.modifiers.new("pose", "ARMATURE").object = rig
+    bpy.context.view_layer.update()
+    expected = [
+        part.matrix_world @ v.co
+        for v in part.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        .to_mesh()
+        .vertices
+    ]
+
+    hull = scene._joined([rig])
+    try:
+        got = [v.co.copy() for v in hull.data.vertices]
+    finally:
+        bpy.data.objects.remove(hull)
+
+    assert [tuple(v) for v in got] == pytest.approx([tuple(v) for v in expected])
+    assert expected[0].z == pytest.approx(5.0), "the pose moves the part"
+
+
 @pytest.mark.parametrize(
     ("bow_deg", "bow_corner"),
     [(0.0, (0, 5, 0)), (90.0, (5, 0, 0)), (180.0, (0, -5, 0)), (270.0, (-5, 0, 0))],
