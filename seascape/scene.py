@@ -347,19 +347,30 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     return curve_image("cloudy_sky_radiance", radiance)
 
 
-def _sky_round(sky: Sky) -> sea.SkyCurve:
-    """The IR world's radiance against elevation, averaged round the horizon: its clear
-    sky's table, or the rows of its clouds' image, which the world baked first."""
+def _clouds(sky: Sky) -> sea.Clouds | None:
+    """The IR world's clouds by bearing, read off the image the world baked first."""
     if sky.hdri is None:
-        elevation = np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
-        return elevation, lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+        return None
     image = bpy.data.images["cloudy_sky_radiance"]
     w, h = image.size
     pixels = np.empty(w * h * 4, np.float32)
     image.pixels.foreach_get(pixels)
     # Bottom row first, as `_cloudy_sky_image` lays it out.
     elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
-    return elevation, pixels.reshape(h, w, 4)[..., 0].mean(axis=1)
+    # As `_turned` turns the photo.
+    turn = sky.sun_bearing_deg - skies.library()[sky.hdri].sun_bearing_deg
+    radiance = pixels.reshape(h, w, 4)[..., 0].astype(np.float64)
+    return sea.Clouds(elevation, radiance, math.radians(turn))
+
+
+def _sky_round(sky: Sky) -> sea.SkyCurve:
+    """The IR world's radiance against elevation, averaged round the horizon: its clear
+    sky's table, or its clouds' rows."""
+    clouds = _clouds(sky)
+    if clouds is None:
+        elevation = np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
+        return elevation, lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+    return clouds.elevation, clouds.radiance.mean(axis=1)
 
 
 def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
@@ -412,7 +423,7 @@ def _sun_vector(sky: Sky) -> tuple[float, float, float]:
 
 def _light(sky: Sky, band: Band) -> sea.Light:
     if band == "ir":
-        return sea.Light(sky=_sky_round(sky), sun_up=sky.sun_up)
+        return sea.Light(sky=_sky_round(sky), sun_up=sky.sun_up, clouds=_clouds(sky))
     if sky.sun_elevation_deg is None:
         return sea.Light()
     return sea.Light(sun=_sun_vector(sky))

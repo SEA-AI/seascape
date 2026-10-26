@@ -5,6 +5,7 @@ Blender is one global session, so each class rebuilds in its own band on entry.
 
 import math
 from collections.abc import Iterator
+from functools import partial
 from pathlib import Path
 from statistics import NormalDist
 from typing import Any
@@ -1683,15 +1684,55 @@ class TestPhotographedThermalSky:
     def test_the_sea_reflects_the_clouds(self) -> None:
         """A sea under overcast reflecting a clear sky would read cold."""
         table = baked("sea_reflection")
-        mirror = np.arcsin((np.arange(table.shape[1]) + 0.5) / table.shape[1])
+        mirror = np.arcsin(sea._mirror_columns())
         sky = variant(sky={"hdri": "overcast_soil"}).sky
         # Off the horizon, where a clear sky runs cold.
         high = mirror[mirror > math.radians(30.0)]
         clear = lwir.sky_radiance(high, sky.t_air_k, sky.atmosphere)
         assert np.all(table[0][mirror > math.radians(30.0)] > clear)
 
+    def test_a_sky_alike_at_every_bearing_reflects_as_its_average(self) -> None:
+        assert baked("sea_clouds") == pytest.approx(1.0, rel=1e-6)
+
     def test_the_photo_is_not_kept(self) -> None:
         assert "white.hdr" not in bpy.data.images
+
+
+def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
+    """The baked share at a texel centre is `lwir.reflected_sky` of the bearing's sky
+    over the round sky's."""
+    elevation = np.radians(np.arange(-89.0, 90.0, 2.0))
+    clear = lwir.sky_radiance(elevation)
+    half = sea.CLOUD_BEARINGS // 2
+    radiance = np.tile(clear[:, None], (1, sea.CLOUD_BEARINGS))
+    radiance[:, :half] = lwir.cloudy_sky_radiance(elevation, 1.0, 500.0)[:, None]
+    slope_max = 0.3
+    image = sea._cloud_image(
+        lwir.T_SEA_K, sea.Clouds(elevation, radiance, 0.0), slope_max
+    )
+    width, height = image.size
+    pixels = np.empty(width * height * 4, np.float32)
+    image.pixels.foreach_get(pixels)
+    table = pixels.reshape(height, width, 4)[..., 0]
+    # The roughest tile, its last view row, a mirror row above the horizon.
+    tile, view, k = (
+        sea.CLOUD_SLOPES - 1,
+        sea.CLOUD_VIEWS - 1,
+        3 * sea.CLOUD_MIRRORS // 4,
+    )
+    row = table[(tile * sea.CLOUD_VIEWS + view) * sea.CLOUD_MIRRORS + k]
+    root = (k + 0.5) / sea.CLOUD_MIRRORS * 2.0 - 1.0
+    reflect = partial(
+        lwir.reflected_sky,
+        math.asin(root**2),
+        elevation,
+        slope_sigma=sea._row_sigmas(slope_max, sea.CLOUD_SLOPES)[tile],
+        view_rad=math.asin(sea._view_rows(sea.CLOUD_VIEWS)[view]),
+    )
+    expected = reflect(radiance) / reflect(radiance.mean(axis=1))
+    assert row == pytest.approx(expected, rel=1e-5)
+    assert np.all(row[:half] > 1.0), "under the cloud"
+    assert np.all(row[half:] < 1.0), "under the clear sky"
 
 
 def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:

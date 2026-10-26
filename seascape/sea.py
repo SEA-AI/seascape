@@ -132,6 +132,14 @@ SLOPE_ROWS = 16
 # sea's brightness temperature stays within 0.25 K, grazing views included.
 VIEW_ROWS = 32
 MIRROR_SAMPLES = 256
+# A judgement: the bearing resolution of a cloud's reflection.
+CLOUD_BEARINGS = 64
+# Measured against `lwir.reflected_sky` evaluated exactly under the photo
+# kloofendal_48d_partly_cloudy: interpolated in these, the clouds' share moves the
+# sea under 0.3 K.
+CLOUD_SLOPES = 16
+CLOUD_VIEWS = 8
+CLOUD_MIRRORS = 64
 
 # Elevation (rad, ascending) and the IR sky's radiance there.
 type SkyCurve = tuple[np.ndarray, np.ndarray]
@@ -148,13 +156,24 @@ class Seen(NamedTuple):
 UNSEEN = Seen()
 
 
+class Clouds(NamedTuple):
+    """The ir sky by bearing: radiance at the ascending `elevation` (rad), in columns
+    laid out as the world's photo, which the world turns by `turn_rad`."""
+
+    elevation: np.ndarray
+    radiance: np.ndarray
+    turn_rad: float
+
+
 class Light(NamedTuple):
     """The ir sky round the horizon, or the unit vector an eo sea glints towards. A sky
-    makes the sea ir, its cool skin thinner with the sun up."""
+    makes the sea ir, its cool skin thinner with the sun up; with `clouds`, the sea
+    reflects that sky at each bearing."""
 
     sky: SkyCurve | None = None
     sun: tuple[float, float, float] | None = None
     sun_up: bool = True
+    clouds: Clouds | None = None
 
 
 # Cells per side: enough for the tangent point to land on a face, not an accuracy
@@ -221,10 +240,10 @@ def sea_reach_m(scenario: Scenario) -> float:
     return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k)
 
 
-def _row_sigmas(slope_max: float) -> np.ndarray:
+def _row_sigmas(slope_max: float, rows: int = SLOPE_ROWS) -> np.ndarray:
     """Per-axis unresolved RMS slope up a table's rows, to the total `slope_max`, at
     texel centres."""
-    return (np.arange(SLOPE_ROWS) + 0.5) / SLOPE_ROWS * slope_max / math.sqrt(2)
+    return (np.arange(rows) + 0.5) / rows * slope_max / math.sqrt(2)
 
 
 def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
@@ -250,11 +269,11 @@ def _foam_emissivity_image() -> bpy.types.Image:
     )
 
 
-def _view_rows() -> np.ndarray:
+def _view_rows(rows: int = VIEW_ROWS) -> np.ndarray:
     """|cos| of the view off the wave normal up a tile's rows, at texel centres: even
     in its square root, so the rows crowd toward grazing, where the reflection turns
     fastest."""
-    return ((np.arange(VIEW_ROWS) + 0.5) / VIEW_ROWS) ** 2
+    return ((np.arange(rows) + 0.5) / rows) ** 2
 
 
 def _mirror_columns() -> np.ndarray:
@@ -295,53 +314,85 @@ def _reflection_table(
     )
 
 
+def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.Image:
+    """The sky reflected at each bearing over the reflection of the sky averaged round
+    the horizon, which the shader multiplies into the reflection. Columns span the
+    photo's bearings. Rows run up sin(mirror elevation), -1 to 1, evenly in its signed
+    square root; tiles of view off the wave normal, as `_view_rows`, nest in tiles of
+    unresolved slope."""
+    root = (np.arange(CLOUD_MIRRORS) + 0.5) / CLOUD_MIRRORS * 2.0 - 1.0
+    mirror = np.arcsin(np.sign(root) * root**2)
+    edges = np.linspace(0, clouds.radiance.shape[1], CLOUD_BEARINGS + 1).astype(int)
+    widths = np.diff(edges)
+    bearings = np.add.reduceat(clouds.radiance, edges[:-1], axis=1) / widths
+    round_ = clouds.radiance.mean(axis=1)
+    rows = []
+    for sigma in _row_sigmas(slope_max, CLOUD_SLOPES):
+        for view in np.arcsin(_view_rows(CLOUD_VIEWS)):
+            seen, mean = (
+                lwir.reflected_sky(
+                    mirror,
+                    clouds.elevation,
+                    sky,
+                    t_sea_k=t_sea_k,
+                    slope_sigma=sigma,
+                    view_rad=view,
+                )
+                for sky in (bearings, round_)
+            )
+            rows.append(seen / mean[:, None])
+    return curve_image("sea_clouds", np.concatenate(rows))
+
+
 def _tiled(
     tree: bpy.types.NodeTree,
     image: bpy.types.Image,
     x: bpy.types.NodeSocket,
     row: bpy.types.NodeSocket,
-    tile: bpy.types.NodeSocket,
+    rows: int,
+    tiles: tuple[tuple[bpy.types.NodeSocket, int], ...],
+    extension: str = "EXTEND",
 ) -> bpy.types.NodeSocket:
-    """`_reflection_image` at (x, row, tile), each in [0, 1], row the square root of
-    `_view_rows`' |cos|. The image interpolates within a tile and two lookups mix
-    across tiles, so no tile bleeds into the next."""
+    """A tiled table at (x, row), both in [0, 1], `rows` rows per tile. Each
+    (coordinate, count) in `tiles` picks a tile along one axis, coordinate in [0, 1];
+    the last axis varies fastest. The image interpolates
+    within a tile and lookups mix across tiles, so no tile bleeds into the next."""
     # Held to texel centres, as EXTEND holds the image's own edges.
     texel = _math(
         tree,
         "MINIMUM",
-        _math(tree, "MAXIMUM", _math(tree, "MULTIPLY", row, VIEW_ROWS), 0.5),
-        VIEW_ROWS - 0.5,
+        _math(tree, "MAXIMUM", _math(tree, "MULTIPLY", row, rows), 0.5),
+        rows - 0.5,
     )
-    at = _math(
-        tree,
-        "MINIMUM",
-        _math(
+    height = rows * math.prod(count for _, count in tiles)
+    axes = []
+    for coord, count in tiles:
+        at = _math(
             tree,
-            "MAXIMUM",
-            _math(tree, "MULTIPLY_ADD", tile, SLOPE_ROWS, -0.5),
-            0.0,
-        ),
-        SLOPE_ROWS - 1.0,
-    )
-    lower = _math(tree, "FLOOR", at)
-    upper = _math(tree, "MINIMUM", _math(tree, "ADD", lower, 1.0), SLOPE_ROWS - 1.0)
-    height = SLOPE_ROWS * VIEW_ROWS
-    lo, hi = (
-        lookup(
-            tree,
-            image,
-            x,
+            "MINIMUM",
             _math(
-                tree,
-                "DIVIDE",
-                _math(tree, "MULTIPLY_ADD", t, VIEW_ROWS, texel),
-                height,
+                tree, "MAXIMUM", _math(tree, "MULTIPLY_ADD", coord, count, -0.5), 0.0
             ),
+            count - 1.0,
         )
-        for t in (lower, upper)
-    )
-    weight = _math(tree, "SUBTRACT", at, lower)
-    return _math(tree, "MULTIPLY_ADD", weight, _math(tree, "SUBTRACT", hi, lo), lo)
+        lower = _math(tree, "FLOOR", at)
+        upper = _math(tree, "MINIMUM", _math(tree, "ADD", lower, 1.0), count - 1.0)
+        axes.append((count, lower, upper, _math(tree, "SUBTRACT", at, lower)))
+
+    def mixed(axis: int, tile: bpy.types.NodeSocket | float) -> bpy.types.NodeSocket:
+        if axis == len(axes):
+            y = _math(tree, "MULTIPLY_ADD", tile, rows, texel)
+            seen = lookup(tree, image, x, _math(tree, "DIVIDE", y, height))
+            seen.node.extension = extension
+            return seen
+        count, lower, upper, weight = axes[axis]
+        lo, hi = (
+            mixed(axis + 1, _math(tree, "MULTIPLY_ADD", tile, count, t))
+            for t in (lower, upper)
+        )
+        return _math(tree, "MULTIPLY_ADD", weight, _math(tree, "SUBTRACT", hi, lo), lo)
+
+    return mixed(0, 0.0)
 
 
 def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocket:
@@ -1454,7 +1505,7 @@ def _thermal(
     normal: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
     slope_max: float,
-    sky: SkyCurve,
+    light: Light,
     skin: bpy.types.NodeSocket | float,
     foam: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
@@ -1473,14 +1524,20 @@ def _thermal(
     The unresolved facets lean about the wave normal, so the reflection is tabulated
     against the view off the wave normal as well as the mirror off the horizon.
 
-    ponytail: reflects the sky averaged round the horizon, no hulls or clouds at their
-    bearing; trace a sharp mirror if those must show.
+    Clouds reflect at the mirror's bearing, blurred in elevation only: a facet tilted
+    across the view by d turns the mirror's bearing by about 2 d sin(depression), which
+    vanishes at the grazing views the sea is seen at.
+
+    ponytail: no hulls in the reflection; trace a sharp mirror if they must show.
     """
+    sky = light.sky
+    assert sky is not None
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     # Incoming points at the camera; REFLECT takes the ray.
     ray = _vector(tree, "SCALE", geometry.outputs["Incoming"], -1.0)
+    reflected = _vector(tree, "REFLECT", ray, normal)
     mirror = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(_vector(tree, "REFLECT", ray, normal), mirror.inputs["Vector"])
+    tree.links.new(reflected, mirror.inputs["Vector"])
     along = _math(
         tree,
         "DIVIDE",
@@ -1494,8 +1551,13 @@ def _thermal(
         _reflection_image(sea.t_sea_k, sky, slope_max),
         _math(tree, "MULTIPLY_ADD", mirror.outputs["Z"], 0.5, 0.5),
         _math(tree, "SQRT", incidence),
-        along,
+        VIEW_ROWS,
+        ((along, SLOPE_ROWS),),
     )
+    if light.clouds is not None:
+        tiles = ((along, CLOUD_SLOPES), (_math(tree, "SQRT", incidence), CLOUD_VIEWS))
+        ratio = _cloud_ratio(tree, sea, light.clouds, slope_max, reflected, tiles)
+        sky_seen = _math(tree, "MULTIPLY", sky_seen, ratio)
     sky_seen.node.name = "sea_reflection"
     mean = _math(tree, "MULTIPLY", _math(tree, "ADD", *unresolved), 0.5)
     fraction = _math(tree, "DIVIDE", _math(tree, "SQRT", mean), slope_max)
@@ -1516,6 +1578,51 @@ def _thermal(
     emission.inputs["Strength"].default_value = 1.0
     tree.links.new(radiance, emission.inputs["Color"])
     return emission.outputs["Emission"]
+
+
+def _cloud_ratio(
+    tree: bpy.types.NodeTree,
+    sea: Sea,
+    clouds: Clouds,
+    slope_max: float,
+    reflected: bpy.types.NodeSocket,
+    tiles: tuple[tuple[bpy.types.NodeSocket, int], ...],
+) -> bpy.types.NodeSocket:
+    """`_cloud_image` at the bearing and elevation of `reflected`, its bearing turned
+    as the world turns its photo, in `tiles`."""
+    turn = tree.nodes.new("ShaderNodeMapping")
+    turn.inputs["Rotation"].default_value = (0.0, 0.0, clouds.turn_rad)
+    tree.links.new(reflected, turn.inputs["Vector"])
+    split = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(turn.outputs["Vector"], split.inputs["Vector"])
+    # Blender's equirectangular u: 0.5 - atan2(y, x) / 2 pi.
+    bearing = _math(
+        tree,
+        "MULTIPLY_ADD",
+        _math(tree, "ARCTAN2", split.outputs["Y"], split.outputs["X"]),
+        -1 / (2 * math.pi),
+        0.5,
+        name="sea_cloud_bearing",
+    )
+    z = split.outputs["Z"]
+    root = _math(
+        tree,
+        "MULTIPLY",
+        _math(tree, "SIGN", z),
+        _math(tree, "SQRT", _math(tree, "ABSOLUTE", z)),
+    )
+    elevation = _math(tree, "MULTIPLY_ADD", root, 0.5, 0.5)
+    ratio = _tiled(
+        tree,
+        _cloud_image(sea.t_sea_k, clouds, slope_max),
+        bearing,
+        elevation,
+        CLOUD_MIRRORS,
+        tiles,
+        extension="REPEAT",
+    )
+    ratio.node.name = "sea_cloud_ratio"
+    return ratio
 
 
 def _skin_radiance(
@@ -2609,7 +2716,7 @@ def material(
             normal,
             unresolved,
             slope_max,
-            light.sky,
+            light,
             _skin_radiance(tree, sea, light.sun_up, wake),
             whitecaps[0]
             if wake is None

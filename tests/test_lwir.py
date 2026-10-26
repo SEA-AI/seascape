@@ -53,6 +53,21 @@ def test_foam_s_excess_is_held_past_the_angles_measured() -> None:
     assert beyond == pytest.approx(held)
 
 
+def test_several_skies_reflect_as_each_alone() -> None:
+    elevation = np.radians(np.linspace(-90.0, 90.0, 361))
+    sky = lwir.sky_radiance(elevation)
+    skies = np.stack([sky, 1.3 * sky, np.full_like(sky, 20.0)], axis=-1)
+    mirror = np.radians([-2.0, 1.0, 10.0])
+    each = [
+        lwir.reflected_sky(mirror, elevation, s, slope_sigma=0.1, view_rad=0.05)
+        for s in skies.T
+    ]
+    together = lwir.reflected_sky(
+        mirror, elevation, skies, slope_sigma=0.1, view_rad=0.05
+    )
+    assert together == pytest.approx(np.stack(each, axis=-1), rel=1e-12)
+
+
 def test_table_reproduces_downing_williams_at_their_own_temperature() -> None:
     """Downing & Williams measured at 300 K, so the table must return what they
     printed."""
