@@ -90,7 +90,7 @@ The ship is warm. The clouds are warm too: a thick cloud glows at the temperatur
 
 <p align="center"><img src="lwir.jpg" alt="LWIR with the sea 5 K below, equal to and 5 K above the air"></p>
 
-The thin top layer of the sea, the part a thermal camera sees, is a few tenths of a kelvin cooler than the water below. On a calm sunny day it can instead be a few kelvin warmer. A ship's wake stirs either one back into the water beneath it. Foam emits more and reflects less, so it reads closer to the water's own temperature. A real thermal camera also blurs the image slightly and adds noise, and a scenario can set both.
+The thin top layer of the sea, the part a thermal camera sees, is a few tenths of a kelvin cooler than the water below. A scenario can add the warm layer that makes it a few kelvin warmer on a calm sunny day. A ship's wake stirs either one back into the water beneath it. Foam emits more and reflects less, so it reads closer to the sea's own temperature and shows less of the cold sky. A real thermal camera also blurs the image slightly and adds noise, and a scenario can set both.
 
 Blender only knows red, green and blue, so all of this is NumPy: emissivity from measured optical constants of water, the sky from a standard atmospheric model. Blender just gets lookup tables.
 
