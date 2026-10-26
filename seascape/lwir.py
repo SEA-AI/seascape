@@ -248,31 +248,56 @@ def reflected_sky(
     *,
     t_sea_k: float = T_SEA_K,
     slope_sigma: float = 0.0,
+    view_rad: npt.ArrayLike | None = None,
 ) -> FloatArray:
     """The sky a rough sea reflects, against the elevation of the viewer's mirror
-    direction off the mean surface; `sky` is radiance at the ascending `sky_elev_rad`.
+    direction; `sky` is radiance at the ascending `sky_elev_rad`.
 
     Masuda 1988's facet average, applied to the reflected sky: each facet reflects
     the sky in its own mirror direction, weighted by the area it presents to the
     viewer and by its own reflectance. The facets seen at grazing lean toward the
     viewer, so they reflect sky above the mirror direction. Weighted so, eps B +
-    (1 - eps) times this is the facets' own sum, eps from `emissivity_curve`. A
-    reflection below the horizon reads the sky's lowest elevation, as the world does.
+    (1 - eps) times this is the facets' own sum, eps from `emissivity_curve` at the
+    view's incidence. A reflection below the horizon reads the sky's lowest elevation,
+    as the world does.
+
+    The facets lean about a wave the pixel draws: `view_rad` is the view's elevation
+    off that wave's plane, `mirror_rad` its mirror's off the horizon. They differ by
+    the wave's tilt along the view, which turns every facet's reflection with it. Unset,
+    the wave is level and the two are one.
     """
     mirror = np.asarray(mirror_rad, dtype=np.float64)
     elev = np.asarray(sky_elev_rad, dtype=np.float64)
     radiance = np.asarray(sky, dtype=np.float64)
     if slope_sigma <= 0.0:
         return np.interp(mirror, elev, radiance)
+    local = mirror if view_rad is None else np.asarray(view_rad, dtype=np.float64)
     normal = _facets(slope_sigma)
-    view = np.stack([np.cos(mirror), np.zeros_like(mirror), np.sin(mirror)], axis=-1)
+    # Facet weights depend on the view alone, so a scalar view against many mirrors
+    # weighs its facets once.
+    view = np.stack([np.cos(local), np.zeros_like(local), np.sin(local)], axis=-1)
     cos_i = view @ normal.T  # (angle, facet)
-    up = 2 * cos_i * normal[:, 2] - view[..., 2:]
     theta, flat = emissivity_curve(t_sea_k=t_sea_k)
     reflectance = 1.0 - np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, flat)
     weight = _seen_area(cos_i, normal) * reflectance
-    seen = np.interp(np.arcsin(np.clip(up, -1.0, 1.0)), elev, radiance)
+    # Each facet's reflection in the wave's frame, turned up by the wave's tilt.
+    tilt = (mirror - local)[..., None]
+    up_wave = 2 * cos_i * normal[:, 2] - view[..., 2:]
+    out_wave = 2 * cos_i * normal[:, 0] - view[..., :1]
+    up = up_wave * np.cos(tilt) - out_wave * np.sin(tilt)
+    # Linear in sin(elevation) on a grid fine enough to match linear in elevation;
+    # indexing a uniform grid skips np.interp's search and the arcsine.
+    grid = np.interp(np.arcsin(_SIN_GRID), elev, radiance)
+    at = (np.clip(up, -1.0, 1.0) + 1.0) * ((_SIN_GRID.size - 1) / 2)
+    below = np.minimum(at.astype(np.intp), _SIN_GRID.size - 2)
+    frac = at - below
+    seen = grid[below] * (1.0 - frac) + grid[below + 1] * frac
     return (seen * weight).sum(axis=-1) / weight.sum(axis=-1)
+
+
+# A judgement: fine enough that interpolating in sine rather than angle moves no
+# reflected sky measurably.
+_SIN_GRID = np.linspace(-1.0, 1.0, 8193)
 
 
 _BAND_LAM = np.linspace(*BAND_M, 512)
