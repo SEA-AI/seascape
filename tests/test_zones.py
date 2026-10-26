@@ -91,7 +91,8 @@ def test_a_view_names_only_parts_and_shows_them_all() -> None:
     name = min(manifest(), key=lambda n: manifest()[n].triangles)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = zones.parts(name)
-    high = 1_073_000_000
+    # Top digits 255, the largest a channel holds.
+    high = 16_777_000
     views = zones._views(found, [m + high for m in found.face_material])
     seen = set().union(*(np.unique(v.part).tolist() for v in views))
     assert seen == {-1, *range(high, high + len(found.materials))}

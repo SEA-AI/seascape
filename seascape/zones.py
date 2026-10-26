@@ -50,8 +50,9 @@ TILE = (400, 300)
 COLUMNS = 4
 CAPTION_H = 22
 TITLE_H = 48
-# Workbench draws in half floats, exact to 2048: base-1024 digits stay exact.
-DIGIT = 1024
+# Workbench draws in half floats. A software rasteriser's rounding read 1023 back as
+# 1022; base-256 digits sit where a half float steps by 1/8, clear of it.
+DIGIT = 256
 # The pixels of the full view a part needs for a mark on an overview, and an island
 # for a sheet of its own.
 MIN_MARK_PX = 1500
