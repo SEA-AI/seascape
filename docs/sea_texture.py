@@ -47,6 +47,8 @@ def reference(name: str) -> Path:
             ],
             capture_output=True,
             check=True,
+            # A stalled download must not hang the run.
+            timeout=60,
         ).stdout
         path.write_bytes(raw)
     return path
@@ -78,6 +80,8 @@ def last_sky_row(frame: np.ndarray) -> int:
 
 def measure(frame: np.ndarray, horizon: int | None = None) -> dict[str, float]:
     horizon = last_sky_row(frame) if horizon is None else horizon
+    if not STEP_ROWS - 1 <= horizon < frame.shape[0] - BOX_PX // 2 - 3:
+        raise ValueError(f"a horizon at row {horizon} leaves no sky or no sea thirds")
     sky = frame[horizon + 1 - STEP_ROWS : horizon + 1]
     sea = frame[horizon + 1 : horizon + 1 + STEP_ROWS]
     texture = frame - cv2.blur(frame, (BOX_PX, BOX_PX))
@@ -95,6 +99,8 @@ def main() -> None:
     parser.add_argument("images", nargs="*", type=Path)
     parser.add_argument("--references", action="store_true")
     args = parser.parse_args()
+    if not args.images and not args.references:
+        parser.error("give an image or --references")
     horizons: dict[Path, int | None] = dict.fromkeys(args.images)
     if args.references:
         horizons |= {reference(name): row for name, row in REFERENCES.items()}
