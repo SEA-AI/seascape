@@ -391,7 +391,8 @@ def sheet(scenario: Path, out: Path, band: Band) -> None:
     help="Sheets per island, not per material slot: to split a slot of two zones.",
 )
 @click.option(
-    "--material", help="With --islands, only this material's islands are marked."
+    "--material",
+    help="Mark only this material's islands, the rest grey. Implies --islands.",
 )
 @click.option(
     "--zones",
@@ -409,6 +410,8 @@ def zones(
     """Render the sheets for giving an asset's parts their thermal zones."""
     if asset not in assets.manifest():
         raise click.BadParameter(f"no mesh {asset!r}; see `seascape assets list`")
+    if contact and (islands or material):
+        raise click.UsageError("--zones takes neither --islands nor --material")
     from seascape import zones as sheets
 
     into = output or Path("zones") / asset

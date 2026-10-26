@@ -1,10 +1,9 @@
 """Sheets for giving an asset's parts their thermal zones, and for checking them.
 
-A part is a material slot, or an island: the faces of one material in one object that
-share a vertex. Workbench renders every view three times: each face's part as a flat
-float (no anti-aliasing, so a pixel names one part), studio-lit grey for shape, and the
-asset's own textures. The sheets are composed from those, so a view renders once
-whatever the number of parts.
+Workbench renders each view three ways: every face's part as a flat float (no
+anti-aliasing, so a pixel names one part), studio-lit grey for shape, and the asset's
+own textures. Every sheet is cut from those three, so the render count does not grow
+with the number of parts.
 """
 
 import colorsys
@@ -13,35 +12,45 @@ import math
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, get_args
+from typing import Any, Literal, NamedTuple, get_args
 
 import bpy
+import click
 import cv2
 import numpy as np
 from mathutils import Vector
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import render, scene
+from seascape import faces, render, scene
 from seascape.assets import Zones, manifest
+from seascape.faces import Parts, face_zones
+from seascape.montage import INK, MATTE
 from seascape.thermal import ZoneName
 
-# Name, bearing of the camera from the asset's centre (bow at 0), elevation.
-VIEWS: tuple[tuple[str, float, float], ...] = (
-    ("bow", 0.0, 15.0),
-    ("port bow", 300.0, 20.0),
-    ("port beam", 270.0, 10.0),
-    ("port quarter", 225.0, 20.0),
-    ("stern", 180.0, 15.0),
-    ("starboard quarter", 135.0, 20.0),
-    ("starboard beam", 90.0, 10.0),
-    ("top", 270.0, 80.0),
+
+class Aim(NamedTuple):
+    name: str
+    # Bearing from the asset's centre, bow 0, starboard 90.
+    bearing_deg: float
+    elevation_deg: float
+
+
+VIEWS: tuple[Aim, ...] = (
+    Aim("bow", 0.0, 15.0),
+    Aim("port bow", 300.0, 20.0),
+    Aim("port beam", 270.0, 10.0),
+    Aim("port quarter", 225.0, 20.0),
+    Aim("stern", 180.0, 15.0),
+    Aim("starboard quarter", 135.0, 20.0),
+    Aim("starboard beam", 90.0, 10.0),
+    Aim("top", 270.0, 80.0),
 )
 VIEW_PX = (1600, 1200)
 TILE = (400, 300)
 COLUMNS = 4
 CAPTION_H = 22
 TITLE_H = 48
-# Half floats hold every integer to 2048.
+# Workbench draws in half floats, exact to 2048: base-1024 digits stay exact.
 DIGIT = 1024
 # The pixels of the full view a part needs for a mark on an overview, and an island
 # for a sheet of its own.
@@ -52,11 +61,9 @@ SMALL_TILE_PX = 2000
 MIN_ATLAS_PX = 150
 ATLAS_PX = 1024
 
-MATTE = (24, 24, 24)
-INK = (232, 232, 232)
 REST = (170, 170, 170)
 HIGHLIGHT = (255, 110, 0)
-ZONE_COLOURS: dict[str, tuple[int, int, int]] = {
+ZONE_COLOURS: dict[ZoneName, tuple[int, int, int]] = {
     "paint_hull": (200, 40, 40),
     "paint_superstructure": (240, 240, 240),
     "deck": (60, 160, 60),
@@ -71,149 +78,6 @@ ZONE_COLOURS: dict[str, tuple[int, int, int]] = {
 }
 
 Kind = Literal["slots", "islands"]
-
-
-@dataclass(frozen=True)
-class Island:
-    id: int
-    object: str
-    material: str
-    first_face: int
-    faces: int
-
-
-@dataclass
-class Parts:
-    """An imported asset's faces, each with its material and island."""
-
-    objects: list[bpy.types.Object]  # by name
-    materials: list[str]  # by name
-    face_material: list[np.ndarray]  # per object, an index into `materials`
-    face_island: list[np.ndarray]  # per object, an index into `islands`
-    islands: list[Island]
-
-
-def _ints(collection: Any, attribute: str, n: int) -> np.ndarray:
-    out = np.empty(n, dtype=np.int64)
-    collection.foreach_get(attribute, out)
-    return out
-
-
-def _floats(collection: Any, attribute: str, n: int) -> np.ndarray:
-    out = np.empty(n, dtype=np.float64)
-    collection.foreach_get(attribute, out)
-    return out
-
-
-def _components(n: int, a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Each node's connected component, as the smallest-numbered node reached in it."""
-    label = np.arange(n)
-    while True:
-        least = np.minimum(label[a], label[b])
-        new = label.copy()
-        np.minimum.at(new, a, least)
-        np.minimum.at(new, b, least)
-        new = new[new]
-        if np.array_equal(new, label):
-            return label
-        label = new
-
-
-def _face_components(
-    mesh: bpy.types.Mesh, material: np.ndarray, textured: np.ndarray
-) -> np.ndarray:
-    """Per face, a label shared by the faces of its material that touch it: at a
-    vertex, and where the material is `textured`, at a UV too, so that an atlas splits
-    where its texture does.
-
-    By position, not vertex index: glTF splits a vertex at every UV and normal seam, so
-    Blender's own linked and loose parts stop at each one.
-    """
-    n_faces, n_loops = len(mesh.polygons), len(mesh.loops)
-    co = _floats(mesh.vertices, "co", 3 * len(mesh.vertices)).reshape(-1, 3)
-    low, high = co.min(axis=0), co.max(axis=0)
-    span = max(float(np.linalg.norm(high - low)), 1e-12)
-    start = _ints(mesh.polygons, "loop_start", n_faces)
-    total = _ints(mesh.polygons, "loop_total", n_faces)
-    face = np.repeat(np.arange(n_faces), total)
-    # A millionth of the part's size, or of the texture: coincident to any modeller.
-    key = np.zeros((n_loops, 6), dtype=np.int64)
-    key[:, :3] = np.round((co - low) / span * 1e6)[
-        _ints(mesh.loops, "vertex_index", n_loops)
-    ]
-    if mesh.uv_layers:
-        uv = _floats(mesh.uv_layers.active.data, "uv", 2 * n_loops).reshape(-1, 2)
-        key[:, 3:5] = np.round(uv * 1e6) * textured[material[face], None]
-    # A vertex per material, so slots that meet stay apart.
-    key[:, 5] = material[face]
-    node = np.unique(key, axis=0, return_inverse=True)[1].ravel()
-    following = np.arange(n_loops) + 1
-    following[start + total - 1] = start
-    label = _components(int(node.max()) + 1, node, node[following])
-    return label[node[start]]
-
-
-def parts(name: str) -> Parts:
-    """Import `name`, fitted as a build fits it, into the current file."""
-    roots = scene._import(name, "eo")
-    bpy.context.view_layer.update()
-    objects = sorted(scene._meshes(roots), key=lambda o: o.name)
-    for obj in objects:
-        # A shared mesh would give two objects' faces one colour.
-        if obj.data.users > 1:
-            obj.data = obj.data.copy()
-    slot_names = [
-        [slot.material.name if slot.material else "" for slot in obj.material_slots]
-        or [""]
-        for obj in objects
-    ]
-    materials = sorted({n for names in slot_names for n in names})
-    textured = np.array([_texture(n) is not None for n in materials])
-    face_material, face_island, islands = [], [], []
-    for obj, names in zip(objects, slot_names, strict=True):
-        mesh = obj.data
-        index = _ints(mesh.polygons, "material_index", len(mesh.polygons))
-        lookup = np.array([materials.index(n) for n in names])
-        material = lookup[np.minimum(index, len(names) - 1)]
-        label = _face_components(mesh, material, textured)
-        _, first, inverse = np.unique(label, return_index=True, return_inverse=True)
-        order = np.argsort(first)
-        rank = np.empty_like(order)
-        rank[order] = np.arange(len(order))
-        face_island.append(len(islands) + rank[inverse])
-        counts = np.bincount(inverse, minlength=len(first))
-        islands += [
-            Island(
-                len(islands) + r,
-                obj.name,
-                materials[material[first[k]]],
-                int(first[k]),
-                int(counts[k]),
-            )
-            for r, k in enumerate(order)
-        ]
-        face_material.append(material)
-    return Parts(objects, materials, face_material, face_island, islands)
-
-
-def face_zones(found: Parts, zones: Zones) -> list[np.ndarray]:
-    """Per object, each face's index into the zone vocabulary."""
-    vocabulary = list(get_args(ZoneName.__value__))
-    by_material = np.array(
-        [vocabulary.index(zones.materials[m]) for m in found.materials]
-    )
-    by_island = np.array(
-        [
-            vocabulary.index(zones.islands[i.id])
-            if i.id in zones.islands
-            else by_material[found.materials.index(i.material)]
-            for i in found.islands
-        ]
-    )
-    return [by_island[island] for island in found.face_island]
-
-
-# The views.
 
 
 def _setup() -> None:
@@ -232,27 +96,26 @@ def _setup() -> None:
     shading.single_color = (0.8, 0.8, 0.8)
 
 
-def _textures(found: Parts) -> None:
+def _textures() -> None:
     """Workbench's texture mode draws a material's active image node, or its viewport
     colour: point both at the base colour."""
     for material in bpy.data.materials:
-        bsdf = _bsdf(material)
+        bsdf = faces.bsdf(material)
         if bsdf is None:
             continue
-        source = _source(bsdf.inputs["Base Color"])
+        source = faces.source(bsdf.inputs["Base Color"])
         if source is not None:
             material.node_tree.nodes.active = source[2]
         else:
             material.diffuse_color = (*bsdf.inputs["Base Color"].default_value[:3], 1)
-    del found
 
 
 def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
-    """Each face's value as a flat colour Workbench can draw: base `DIGIT` digits in
-    red, green and blue, each exact in the half float Workbench draws in."""
+    """Each face's value as a corner colour: its base-`DIGIT` digits in red, green and
+    blue, each exact in Workbench's half floats."""
     for obj, value in zip(found.objects, per_face, strict=True):
         mesh = obj.data
-        total = _ints(mesh.polygons, "loop_total", len(mesh.polygons))
+        total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))
         colours = np.zeros((len(mesh.loops), 4), dtype=np.float32)
         loop = np.repeat(value, total)
         for channel in range(3):
@@ -316,7 +179,7 @@ class View:
 
 def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     _setup()
-    _textures(found)
+    _textures()
     _paint(found, per_face)
     data = bpy.data.cameras.new("zones")
     data.type = "ORTHO"
@@ -325,8 +188,8 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     bpy.context.scene.camera = camera
     views = []
     with tempfile.TemporaryDirectory() as tmp:
-        for name, bearing_deg, elevation_deg in VIEWS:
-            _aim(found, bearing_deg, elevation_deg)
+        for aim in VIEWS:
+            _aim(found, aim.bearing_deg, aim.elevation_deg)
             ids, grey, tex = (
                 Path(tmp) / f"{k}{s}"
                 for k, s in (("id", ".exr"), ("grey", ".png"), ("tex", ".png"))
@@ -340,7 +203,7 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
             part = np.where(rgba[..., 3] > 0.5, value, -1)
             views.append(
                 View(
-                    name,
+                    aim.name,
                     part.astype(np.int64),
                     np.asarray(Image.open(grey).convert("L"), np.float32) / 255,
                     np.asarray(_on_backdrop(Image.open(tex))),
@@ -349,7 +212,12 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     return views
 
 
-# The sheets.
+def parts(name: str) -> Parts:
+    """Import `name` as an EO build fits it into the current file, with islands
+    numbered by object name, then first face."""
+    roots = scene._import(name, "eo")
+    bpy.context.view_layer.update()
+    return faces.found(scene._meshes(roots))
 
 
 def _on_backdrop(image: Image.Image) -> Image.Image:
@@ -534,49 +402,21 @@ def _stack(*images: Image.Image) -> Image.Image:
     return sheet
 
 
-# What the shader reads, per part.
-
-
-def _bsdf(material: bpy.types.Material) -> Any:
-    if material is None or material.node_tree is None:
-        return None
-    return next(
-        (n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None
-    )
-
-
-def _source(socket: Any) -> tuple[bpy.types.Image, int | None, Any] | None:
-    """The image feeding `socket` through any chain of nodes, its channel (None for
-    colour), and its node."""
-    if not socket.is_linked:
-        return None
-    link = socket.links[0]
-    node, out = link.from_node, link.from_socket.name
-    if node.type == "TEX_IMAGE":
-        return (node.image, 3 if out == "Alpha" else None, node) if node.image else None
-    channel = {"Red": 0, "Green": 1, "Blue": 2}.get(out)
-    for socket_in in node.inputs:
-        found = _source(socket_in)
-        if found is not None:
-            image, inner, tex = found
-            return image, channel if channel is not None else inner, tex
-    return None
-
-
-def _texture(name: str) -> bpy.types.Image | None:
-    """The image a material's base colour reads, if any."""
-    bsdf = _bsdf(bpy.data.materials.get(name)) if name else None
-    source = _source(bsdf.inputs["Base Color"]) if bsdf is not None else None
-    return source[0] if source is not None else None
+# By image name, for one `sheets` run: Base Color, Alpha and Metallic share atlases.
+_texel_cache: dict[str, np.ndarray] = {}
 
 
 def _texels(image: bpy.types.Image) -> np.ndarray:
-    """An image's RGBA, top row first, no side over `ATLAS_PX`."""
+    """An image's RGBA, top row first, no side over `ATLAS_PX`, read once a run."""
+    if (cached := _texel_cache.get(image.name)) is not None:
+        return cached
     width, height = image.size
     buffer = np.empty(width * height * 4, dtype=np.float32)
     image.pixels.foreach_get(buffer)
     step = max(1, math.ceil(max(width, height) / ATLAS_PX))
-    return buffer.reshape(height, width, 4)[::-step, ::step]
+    texels = buffer.reshape(height, width, 4)[::-step, ::step]
+    _texel_cache[image.name] = texels
+    return texels
 
 
 def _uv_triangles(obj: bpy.types.Object) -> tuple[np.ndarray, np.ndarray]:
@@ -584,11 +424,13 @@ def _uv_triangles(obj: bpy.types.Object) -> tuple[np.ndarray, np.ndarray]:
     mesh = obj.data
     mesh.calc_loop_triangles()
     n = len(mesh.loop_triangles)
-    loops = _ints(mesh.loop_triangles, "loops", 3 * n).reshape(-1, 3)
-    face = _ints(mesh.loop_triangles, "polygon_index", n)
+    loops = faces.ints(mesh.loop_triangles, "loops", 3 * n).reshape(-1, 3)
+    face = faces.ints(mesh.loop_triangles, "polygon_index", n)
     if not mesh.uv_layers:
         return np.zeros((0, 3, 2)), np.zeros(0, dtype=np.int64)
-    uv = _floats(mesh.uv_layers.active.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
+    uv = faces.floats(mesh.uv_layers.active.data, "uv", 2 * len(mesh.loops)).reshape(
+        -1, 2
+    )
     return uv[loops], face
 
 
@@ -601,13 +443,17 @@ def _raster(
     for value, uv in triangles:
         if len(uv) == 0:
             continue
-        points = np.stack([uv[..., 0] * w, (1 - uv[..., 1]) * h], axis=-1)
+        # A tiled material's UVs run past 1: each triangle moves to the tile its
+        # centre is in.
+        tile = uv - np.floor(uv.mean(axis=-2, keepdims=True))
+        points = np.stack([tile[..., 0] * w, (1 - tile[..., 1]) * h], axis=-1)
         v = value + 1
         corners = np.rint(points).astype(np.int32)
         polygons = [corners[k] for k in range(len(corners))]
         colour = (float(v & 255), float((v >> 8) & 255), float((v >> 16) & 255))
         cv2.fillPoly(code, polygons, colour)
-        # fillPoly leaves the edges two triangles share, and a sliver no texel centre.
+        # fillPoly can leave unfilled the edge two triangles share, and a sliver that
+        # covers no texel centre.
         cv2.polylines(code, polygons, isClosed=True, color=colour)
     c = code.astype(np.int64)
     return c[..., 0] + (c[..., 1] << 8) + (c[..., 2] << 16) - 1
@@ -640,12 +486,12 @@ def _input(
 ) -> dict[str, Any]:
     """A BSDF input as the shader reads it: its value, or the texels the material's
     faces cover."""
-    bsdf = _bsdf(material)
+    bsdf = faces.bsdf(material)
     if bsdf is None:
         if socket == "Base Color" and material is not None:
             return {"colour": _hex(_srgb(np.array(material.diffuse_color[:3])))}
         return {}
-    source = _source(bsdf.inputs[socket])
+    source = faces.source(bsdf.inputs[socket])
     if source is None:
         value = bsdf.inputs[socket].default_value
         if socket == "Base Color":
@@ -674,12 +520,12 @@ def _heights(found: Parts, per_face: list[np.ndarray], n: int) -> np.ndarray:
     high = np.full(n, -np.inf)
     for obj, value in zip(found.objects, per_face, strict=True):
         mesh = obj.data
-        co = _floats(mesh.vertices, "co", 3 * len(mesh.vertices)).reshape(-1, 3)
+        co = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices)).reshape(-1, 3)
         m = np.array(obj.matrix_world)
         z = co @ m[2, :3] + m[2, 3]
-        total = _ints(mesh.polygons, "loop_total", len(mesh.polygons))
+        total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))
         loop_value = np.repeat(value, total)
-        loop_z = z[_ints(mesh.loops, "vertex_index", len(mesh.loops))]
+        loop_z = z[faces.ints(mesh.loops, "vertex_index", len(mesh.loops))]
         np.minimum.at(low, loop_value, loop_z)
         np.maximum.at(high, loop_value, loop_z)
     return np.stack([low, high], axis=1)
@@ -688,7 +534,7 @@ def _heights(found: Parts, per_face: list[np.ndarray], n: int) -> np.ndarray:
 def _triangle_counts(found: Parts, per_face: list[np.ndarray], n: int) -> np.ndarray:
     counts = np.zeros(n, dtype=np.int64)
     for obj, value in zip(found.objects, per_face, strict=True):
-        total = _ints(obj.data.polygons, "loop_total", len(obj.data.polygons))
+        total = faces.ints(obj.data.polygons, "loop_total", len(obj.data.polygons))
         np.add.at(counts, value, total - 2)
     return counts
 
@@ -727,30 +573,34 @@ def _slot_records(found: Parts) -> list[dict[str, Any]]:
 def _island_records(
     found: Parts,
 ) -> tuple[list[dict[str, Any]], dict[str, Image.Image]]:
-    """Each island, with its mean texel colour, and each base colour atlas with every
-    island drawn on it."""
+    """Each island's record, its colour the mean texel at its triangles' centres, and
+    each base colour atlas with every island drawn on it."""
     n = len(found.islands)
     heights = _heights(found, found.face_island, n)
     triangles = _triangle_counts(found, found.face_island, n)
-    colour = ["" for _ in range(n)]
+    flat = {
+        name: _input(bpy.data.materials.get(name) if name else None, "Base Color", [])
+        for name in found.materials
+        if faces.texture(name) is None
+    }
+    colour = [flat.get(i.material, {}).get("colour", "") for i in found.islands]
     atlases: dict[str, Image.Image] = {}
     uvs = [_uv_triangles(obj) for obj in found.objects]
+    all_uv = np.concatenate([u for u, _ in uvs])
+    all_island = np.concatenate(
+        [found.face_island[i][face] for i, (_, face) in enumerate(uvs)]
+    )
+    island_material = np.array([i.material for i in found.islands])
     for name in found.materials:
-        bsdf = _bsdf(bpy.data.materials.get(name)) if name else None
-        source = _source(bsdf.inputs["Base Color"]) if bsdf is not None else None
-        if source is None or source[0].name in atlases:
+        source = faces.texture(name)
+        if source is None or source.name in atlases:
             continue
-        texels = _texels(source[0])
-        rgb = texels[..., :3]
-        if source[0].colorspace_settings.name not in {"sRGB", "sRGB EOTF"}:
+        rgb = _texels(source)[..., :3]
+        if source.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}:
             rgb = _srgb(rgb)
         # Each island's triangles, in island order: a later one paints over.
-        uv = np.concatenate([u for u, _ in uvs])
-        island = np.concatenate(
-            [found.face_island[i][face] for i, (_, face) in enumerate(uvs)]
-        )
-        mine = np.array([i.material == name for i in found.islands])[island]
-        uv, island = uv[mine], island[mine]
+        mine = (island_material == name)[all_island]
+        uv, island = all_uv[mine], all_island[mine]
         order = np.argsort(island, kind="stable")
         uv, island = uv[order], island[order]
         ids, starts = np.unique(island, return_index=True)
@@ -758,8 +608,8 @@ def _island_records(
             rgb.shape[:2],
             list(zip(ids.tolist(), np.split(uv, starts[1:]), strict=True)),
         )
-        # At each triangle's centre: islands share texels, so a raster's later
-        # island would take an earlier one's.
+        # Sampled at triangle centres, not from the raster: where islands share
+        # texels, the raster gives them all to the last.
         h, w = rgb.shape[:2]
         centre = uv.mean(axis=1) % 1.0
         x = np.minimum((centre[:, 0] * w).astype(np.int64), w - 1)
@@ -772,7 +622,7 @@ def _island_records(
         for j in ids:
             colour[j] = _hex(sums[j] / counts[j])
         texels = np.bincount(cover.ravel() + 1, minlength=n + 1)[1:]
-        atlases[source[0].name] = _atlas(rgb, cover, texels)
+        atlases[source.name] = _atlas(rgb, cover, texels)
     records = [
         {
             "island": i.id,
@@ -811,9 +661,6 @@ def _atlas(rgb: np.ndarray, cover: np.ndarray, texels: np.ndarray) -> Image.Imag
     return atlas
 
 
-# The command.
-
-
 def sheets(
     name: str, into: Path, kind: Kind | None = None, material: str | None = None
 ) -> list[Path]:
@@ -822,10 +669,16 @@ def sheets(
     Slots by default, islands for an asset of one material. Islands of `material`
     alone, if given, with the rest grey.
     """
+    if kind == "slots" and material is not None:
+        raise ValueError("a material picks islands, not slots")
     asset = manifest()[name]
+    _texel_cache.clear()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name)
-    kind = kind or ("slots" if len(found.materials) > 1 else "islands")
+    if material is not None and material not in found.materials:
+        raise click.ClickException(f"{name} has no material {material!r}")
+    if kind is None:
+        kind = "slots" if material is None and len(found.materials) > 1 else "islands"
     into.mkdir(parents=True, exist_ok=True)
     head = f"{name}: {asset.category}, {asset.size}, waterline at 0 m"
     if kind == "slots":
@@ -836,9 +689,9 @@ def sheets(
         atlases: dict[str, Image.Image] = {}
     else:
         n = len(found.islands)
-        own = np.array([material in {None, i.material} for i in found.islands] + [0])
-        if material is not None and not own.any():
-            raise ValueError(f"{name} has no material {material!r}")
+        own = np.array(
+            [material in {None, i.material} for i in found.islands] + [False]
+        )
         # Another material's islands are one grey part, unmarked.
         per_face = [np.where(own[i], i, n) for i in found.face_island]
         labels = [str(i.id) if own[i.id] else "" for i in found.islands] + [""]
@@ -866,10 +719,35 @@ def sheets(
     for texture, atlas in atlases.items():
         atlas.save(path := into / f"atlas-{_safe(texture)}.png")
         written.append(path)
+    written += _part_sheets(views, records, labels, names, kind, into)
+    body = {
+        "asset": name,
+        "description": asset.description,
+        "draught_m": asset.draught_m,
+        f"{kind[:-1]}_count": len(records),
+        **({"island_digest": found.island_digest} if kind == "islands" else {}),
+        kind: [r for k, r in enumerate(records) if labels[k]],
+    }
+    (path := into / f"{kind}.json").write_text(json.dumps(body, indent=1) + "\n")
+    written.append(path)
+    _texel_cache.clear()
+    return written
+
+
+def _part_sheets(
+    views: list[View],
+    records: list[dict[str, Any]],
+    labels: list[str],
+    names: list[str],
+    kind: Kind,
+    into: Path,
+) -> list[Path]:
+    """A sheet for each marked part large enough to see, noted in its record."""
     best = np.zeros(len(labels), dtype=np.int64)
     for view in views:
         counts = np.bincount(view.part[view.part >= 0], minlength=len(labels))
         best = np.maximum(best, counts)
+    written = []
     for k, record in enumerate(records):
         record["visible_px"] = int(best[k])
         record["sheet"] = None
@@ -881,15 +759,6 @@ def sheets(
             sheet.save(path := into / f"{kind[:-1]}-{labels[k]}.png")
             record["sheet"] = path.name
             written.append(path)
-    body = {
-        "asset": name,
-        "description": asset.description,
-        "draught_m": asset.draught_m,
-        f"{kind[:-1]}_count": len(records),
-        kind: [r for k, r in enumerate(records) if labels[k]],
-    }
-    (path := into / f"{kind}.json").write_text(json.dumps(body, indent=1) + "\n")
-    written.append(path)
     return written
 
 
@@ -910,7 +779,7 @@ def contact(name: str, out: Path) -> Path:
     """The views coloured by the zones `assets.toml` gives `name`, for approval."""
     asset = manifest()[name]
     if asset.zones is None:
-        raise ValueError(f"{name} has no zones in assets.toml")
+        raise click.ClickException(f"{name} has no zones in assets.toml")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name)
     check(name, found, asset.zones)
@@ -922,7 +791,10 @@ def contact(name: str, out: Path) -> Path:
     present = np.flatnonzero(triangles)
     shares = [f"{100 * triangles[z] / triangles.sum():.0f}%" for z in present]
     head = f"{name}: thermal zones, {asset.category}, {asset.size}"
-    sheet = overview(views, colours, vocabulary, [head, "share of triangles below"])
+    numbering = f"{len(found.islands)} islands, digest {found.island_digest}"
+    sheet = overview(
+        views, colours, vocabulary, [head, f"share of triangles below; {numbering}"]
+    )
     sheet = _stack(
         sheet, legend(colours[present], shares, [vocabulary[z] for z in present])
     )
@@ -932,13 +804,17 @@ def contact(name: str, out: Path) -> Path:
 
 
 def check(name: str, found: Parts, zones: Zones) -> None:
-    """Refuse zones that name a material the import lacks, or count other islands."""
+    """Refuse zones that name a material the import lacks, leave one of its materials
+    out, or number its islands differently."""
     if missing := sorted(set(zones.materials) - set(found.materials)):
-        raise ValueError(f"{name}: no material {missing} in the import")
+        raise click.ClickException(f"{name}: no material {missing} in the import")
     if unzoned := sorted(set(found.materials) - set(zones.materials)):
-        raise ValueError(f"{name}: no zone for {unzoned}")
-    if zones.island_count is not None and zones.island_count != len(found.islands):
-        raise ValueError(
-            f"{name}: {len(found.islands)} islands, assets.toml counts "
-            f"{zones.island_count}: the import's faces moved"
+        raise click.ClickException(f"{name}: no zone for {unzoned}")
+    if zones.island_count is None:
+        return
+    got = (len(found.islands), found.island_digest)
+    if got != (zones.island_count, zones.island_digest):
+        raise click.ClickException(
+            f"{name}: {got[0]} islands, digest {got[1]}; assets.toml has "
+            f"{zones.island_count}, {zones.island_digest}: the import's faces moved"
         )

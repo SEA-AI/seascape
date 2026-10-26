@@ -18,6 +18,7 @@ attribution = "Yacht by Sergei, https://sketchfab.com/3d-models/0dd451f295d049ce
 
 [yacht.zones]
 island_count = 1082
+island_digest = "a6c3a5bae7ac1fbe"
 
 [yacht.zones.materials]
 "01_-_Default" = "paint_superstructure"
@@ -124,6 +125,7 @@ attribution = "Zodiac by DenisGLabrecque, https://sketchfab.com/3d-models/c95fc3
 
 [zodiac.zones]
 island_count = 106
+island_digest = "e4a915c8068478f8"
 
 [zodiac.zones.materials]
 "Carbon_Fiber" = "wood_composite"
@@ -160,6 +162,7 @@ attribution = "Cargo ship by hungry_drifter, https://sketchfab.com/3d-models/b7c
 
 [cargo_ship.zones]
 island_count = 5860
+island_digest = "e0053fd2726cbfba"
 
 [cargo_ship.zones.materials]
 "1001" = "paint_superstructure"
@@ -213,6 +216,7 @@ attribution = "Bulk Carrier by medialog, https://sketchfab.com/3d-models/93c0769
 
 [bulk_carrier.zones]
 island_count = 42975
+island_digest = "dee302f9dc7a3a67"
 
 [bulk_carrier.zones.materials]
 "Scene_-_Root" = "paint_superstructure"
@@ -310,6 +314,7 @@ attribution = "littoral mission vessel by fxmdeveloper, https://sketchfab.com/3d
 
 [patrol_vessel.zones]
 island_count = 13116
+island_digest = "492acf8964a335f3"
 
 [patrol_vessel.zones.materials]
 "A_Material" = "paint_superstructure"
@@ -542,6 +547,7 @@ attribution = "Multi-purpose Vessel V by gogiart, https://sketchfab.com/3d-model
 
 [short_sea_freighter.zones]
 island_count = 3320
+island_digest = "600d5814fa9f2998"
 
 [short_sea_freighter.zones.materials]
 "acmat_0" = "wood_composite"
@@ -797,6 +803,7 @@ attribution = "Container Ship by RM02, https://sketchfab.com/3d-models/aaa41cca9
 
 [panamax_container_ship.zones]
 island_count = 37773
+island_digest = "b202c28820cc0399"
 
 [panamax_container_ship.zones.materials]
 "Bridge" = "paint_superstructure"

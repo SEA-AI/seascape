@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 import shutil
 import tomllib
 import urllib.request
@@ -24,6 +25,7 @@ MANIFEST = Path(__file__).parent / "assets.toml"
 
 
 SHA256 = r"^[0-9a-f]{64}$"
+ISLAND_ID = r"^(0|[1-9][0-9]*)$"
 
 
 class File(Model):
@@ -38,21 +40,37 @@ class File(Model):
 class Zones(Model):
     """Each material's zone, and the islands that differ from their material's.
 
-    An island is the faces of one material in one object that share a vertex, numbered
-    by object name and then first face, as `zones.parts` imports them.
+    An island is the faces of one material in one object that touch at a vertex, and at
+    a UV where the material is textured, numbered by object name, then first face, as
+    `zones.parts` imports them.
     """
 
     model_config = ConfigDict(frozen=True)
 
     materials: dict[str, ZoneName] = Field(min_length=1)
-    # The import's island count: an importer that reorders faces renumbers them.
+    # The import's island count and `Parts.island_digest`: an importer that adds,
+    # drops or reorders faces renumbers the islands, and fails the check.
     island_count: int | None = Field(default=None, ge=1)
+    island_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
     islands: dict[int, ZoneName] = Field(default_factory=dict)
+
+    @field_validator("islands", mode="before")
+    @classmethod
+    def _canonical(cls, islands: object) -> object:
+        # "00" and "+1" would coerce to ids that read as another key.
+        if isinstance(islands, dict) and any(
+            not isinstance(k, str) or not re.fullmatch(ISLAND_ID, k) for k in islands
+        ):
+            raise ValueError(f"island ids are written {ISLAND_ID}")
+        return islands
 
     @model_validator(mode="after")
     def _counted(self) -> "Zones":
-        if self.islands and self.island_count is None:
-            raise ValueError("islands need island_count")
+        fingerprint = (self.island_count, self.island_digest)
+        if self.islands and None in fingerprint:
+            raise ValueError("islands need island_count and island_digest")
+        if not self.islands and fingerprint != (None, None):
+            raise ValueError("island_count and island_digest need islands")
         if self.island_count is not None and any(
             not 0 <= i < self.island_count for i in self.islands
         ):
