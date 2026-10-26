@@ -1218,10 +1218,8 @@ class TestIrSkin:
 
 def test_the_sea_s_cool_skin_is_thicker_at_night() -> None:
     night = variant(sky={"sun_elevation_deg": -10.0})
-    scene.build(night, "ir")
-    assert _sea_node("sea_skin").inputs[0].default_value == pytest.approx(
-        lwir.band_radiance(night.sea.t_skin_k(sun_up=False)), rel=1e-5
-    )
+    assert not scene._light(night.sky, "ir").sun_up
+    assert night.sea.t_skin_k(sun_up=False) < night.sea.t_skin_k(sun_up=True)
 
 
 def each_frame() -> Iterator[int]:

@@ -19,6 +19,8 @@ import math
 
 import numpy as np
 
+from seascape.waves import GRAVITY_MS2
+
 # Fairall et al. 1996, abstract: the mean cool skin at local noon and at night. It
 # depends on the net heat flux and the wind (their Figure 2), which a scenario does not
 # carry, so the means hold at every wind, and the noon one all day.
@@ -33,7 +35,7 @@ CLEAR_DAY_HOURS = 7.0
 _CLEAR_DAY_WIND_MPS = (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0)
 _CLEAR_DAY_COOLING_W_M2 = (100.0, 110.0, 125.0, 165.0, 190.0, 230.0, 260.0)
 
-# Fairall et al. 1996: "estimated the mean u*a as 0.0013 u^2", a drag coefficient.
+# Fairall et al. 1996's estimate of the mean u*a^2 as 0.0013 u^2, a drag coefficient.
 DRAG_COEFFICIENT = 0.0013
 # Fairall et al. 1996, equation 21, after Price, Weller & Pinkel 1986.
 CRITICAL_RICHARDSON = 0.65
@@ -46,9 +48,10 @@ WATER_DENSITY_KG_M3 = 1022.0
 WATER_HEAT_J_KG_K = 4000.0
 # COARE 3.6 accumulates no less stress than this, so a calm warm layer stays finite.
 MIN_STRESS_N_M2 = 0.002
-# Standard gravity (CGPM 1901), and the ICAO standard atmosphere's sea-level pressure
-# with dry air's gas constant, for the air's density.
-GRAVITY_M_S2 = 9.80665
+# COARE 3.6's `max_pwp`: the deepest it lets a warm layer grow.
+MAX_DEPTH_M = 19.0
+# The ICAO standard atmosphere's sea-level pressure with dry air's gas constant, for
+# the air's density.
 SEA_LEVEL_PA = 101325.0
 DRY_AIR_J_KG_K = 287.05
 
@@ -87,7 +90,7 @@ def warm_layer(
     The air's density is taken at the sea's temperature: 10 K off is 3.5 % of the
     stress.
     """
-    alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_M_S2
+    alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_MS2
     heat = WATER_DENSITY_KG_M3 * WATER_HEAT_J_KG_K
     # The same stress either side of the interface.
     stress_water = stress_m2_s2 * air_density_kg_m3(t_sea_k) / WATER_DENSITY_KG_M3
@@ -114,7 +117,7 @@ def warm_layer(
         else:
             low = mid
     # The deep end, where the trapped sun is sure to outweigh the cooling.
-    depth_m = high
+    depth_m = min(high, MAX_DEPTH_M)
     net = solar_trapped(depth_m) * solar_w_m2 - cooling_w_m2
     # Equation 25.
     rise = (

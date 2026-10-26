@@ -585,6 +585,11 @@ class Sky(Model):
             return 0.0
         return math.log(1 / 0.02) / (self.visibility_km * 1000)
 
+    @property
+    def sun_up(self) -> bool:
+        """A photo's sun with no disc is behind cloud, not set."""
+        return self.sun_elevation_deg is None or self.sun_elevation_deg > 0.0
+
 
 def _in_the_manifest(name: str) -> str:
     known = assets.manifest()
@@ -890,8 +895,7 @@ class Scenario(Model):
     @model_validator(mode="after")
     def _a_warm_layer_needs_the_sun(self) -> "Scenario":
         """Fairall et al. 1996: it forms once the trapped sun outweighs the cooling."""
-        sun = self.sky.sun_elevation_deg
-        if self.sea.warm_layer is not None and (sun is None or sun <= 0.0):
+        if self.sea.warm_layer is not None and not self.sky.sun_up:
             raise ValueError("sea.warm_layer needs the sun above the horizon")
         return self
 

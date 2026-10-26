@@ -412,9 +412,7 @@ def _sun_vector(sky: Sky) -> tuple[float, float, float]:
 
 def _light(sky: Sky, band: Band) -> sea.Light:
     if band == "ir":
-        # A photo's sun with no disc is behind cloud, not set.
-        elevation = sky.sun_elevation_deg
-        return sea.Light(sky=_sky_round(sky), sun_up=elevation is None or elevation > 0)
+        return sea.Light(sky=_sky_round(sky), sun_up=sky.sun_up)
     if sky.sun_elevation_deg is None:
         return sea.Light()
     return sea.Light(sun=_sun_vector(sky))
