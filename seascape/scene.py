@@ -1551,7 +1551,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         _light(scenario.sky, band),
         sea.Seen(
             _finest_footprint_m(scenario, band, rigs.cameras) if cull else 0.0,
-            _foam_grids(scenario, band, rigs.cameras, wind) if band == "eo" else (),
+            _foam_grids(scenario, band, rigs.cameras, wind),
         ),
     )
     sea.water(scenario.sea, reach_m, material)

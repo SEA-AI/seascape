@@ -221,6 +221,26 @@ def emissivity_curve(
     return theta, (eps * area).sum(axis=1) / area.sum(axis=1)
 
 
+# Niclòs et al. 2007, JGR 112 C12020, eq. 13 and Table 1, CE 312 channel 1, 8-14 um:
+# a sea under foam over a foam-free one, a (sec theta - 1)^2 + b (sec theta - 1) + c.
+FOAM_EXCESS = (0.026, -0.006, -0.0015)
+# Niclòs et al. 2007 measured up to 65 deg.
+FOAM_MEASURED_RAD = math.radians(65.0)
+
+
+def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
+    """Emissivity a sea under foam has over a foam-free one, against viewing zenith;
+    a sea partly under foam adds its cover's share (Niclòs et al. 2007, eq. 16).
+
+    Held past the angles measured, where the fit runs away (0.56 at 80 deg).
+    ponytail: low by grazing, where foam stays near black and bare water does not.
+    """
+    theta = np.minimum(np.asarray(theta_rad, dtype=np.float64), FOAM_MEASURED_RAD)
+    x = 1.0 / np.cos(theta) - 1.0
+    a, b, c = FOAM_EXCESS
+    return (a * x + b) * x + c
+
+
 def _facets(slope_sigma: float) -> FloatArray:
     """Unit normals of facets whose slopes are Gaussian, `slope_sigma` per axis.
 

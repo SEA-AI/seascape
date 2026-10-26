@@ -964,6 +964,17 @@ class TestIrBand:
                 lwir.band_radiance(spec.t_k), rel=1e-5
             )
 
+    def test_foam_raises_the_emissivity_by_its_cover(self) -> None:
+        """The shader reads the excess by cos(theta) at texel centres, scaled by the
+        whitecaps' cover."""
+        table = baked("sea_foam_emissivity")
+        mu = (np.arange(len(table)) + 0.5) / len(table)
+        excess = lwir.foam_emissivity_excess(np.arccos(mu))
+        assert table == pytest.approx(excess, abs=1e-6)
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        feeding = upstream(nodes["sea_emissivity"].inputs[0])
+        assert any(name.startswith("sea_foam_") for name in feeding), "the grids' foam"
+
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
         theta. Rows run up the unresolved RMS slope, to twice Cox & Munk's wider axis,

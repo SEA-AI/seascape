@@ -41,6 +41,18 @@ def test_grazing_emissivity_collapses(curve) -> None:
     assert eps_at(curve, 89.0) < 0.6
 
 
+def test_foam_raises_emissivity_as_niclos_measured_at_65_deg() -> None:
+    """Niclòs et al. 2007: 0.039 +/- 0.007 at 65 deg, 8-14 um, foam taken Lambertian."""
+    excess = lwir.foam_emissivity_excess(math.radians(65.0))
+    assert excess == pytest.approx(0.039, abs=0.007)
+
+
+def test_foam_s_excess_is_held_past_the_angles_measured() -> None:
+    held = lwir.foam_emissivity_excess(lwir.FOAM_MEASURED_RAD)
+    beyond = lwir.foam_emissivity_excess(np.radians([70.0, 80.0, 90.0]))
+    assert beyond == pytest.approx(held)
+
+
 def test_table_reproduces_downing_williams_at_their_own_temperature() -> None:
     """Downing & Williams measured at 300 K, so the table must return what they
     printed."""
