@@ -241,6 +241,28 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "microbolometer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Microbolometer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -441,6 +463,98 @@
         }
       },
       "title": "Lens",
+      "type": "object"
+    },
+    "Microbolometer": {
+      "additionalProperties": false,
+      "description": "An uncooled LWIR camera's focal plane and lens aperture. Unset, it is ideal.",
+      "properties": {
+        "netd_k": {
+          "title": "Netd K",
+          "description": "Temporal noise: one standard deviation.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "pitch_um": {
+          "title": "Pitch Um",
+          "description": "Pixel pitch.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "f_number": {
+          "title": "F Number",
+          "description": "The lens's f-number, for its diffraction.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Microbolometer",
       "type": "object"
     },
     "Name": {

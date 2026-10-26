@@ -64,7 +64,15 @@ lens.vignetting = true
 processing.white_balance_k = 800
 ```
 
-Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens` and `processing`.
+An LWIR camera can carry a lens and a microbolometer: `lens.vignetting` for natural falloff, and `microbolometer` for the lens's diffraction, the pixel's aperture and NETD noise. The pixel aperture is Cycles' pixel filter, so an exr carries it; the rest acts on a png or jpg.
+
+```toml
+[rigs.bow.cameras.ir]
+preset = "boson_640_32deg"   # pitch, f-number and NETD
+lens.vignetting = true
+```
+
+Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens`, `processing` and `microbolometer`.
 
 ## Randomization
 

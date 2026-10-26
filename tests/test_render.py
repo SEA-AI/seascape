@@ -13,7 +13,15 @@ import pytest
 
 from seascape import agc, labels, lwir, render, scene, sea, server, waves
 from seascape.calibration import Calibration
-from seascape.config import Band, ImageFormat, Scenario, load, substream
+from seascape.config import (
+    Band,
+    Camera,
+    ImageFormat,
+    Microbolometer,
+    Scenario,
+    load,
+    substream,
+)
 from seascape.wakes import Wake
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
 
@@ -40,6 +48,12 @@ def exr_of(
     return path
 
 
+IDEAL = (
+    Camera(band="ir", hfov_deg=24.0, width_px=4, height_px=4),
+    substream(0, "microbolometer"),
+)
+
+
 class TestThermalImage:
     """An inverted, flipped or sRGB-encoded frame is still a plausible-looking picture,
     so only the numbers catch it.
@@ -47,21 +61,21 @@ class TestThermalImage:
 
     def test_a_png_is_centikelvin_with_the_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        render._write_thermal(exr, "png", agc.Agc())
+        render._write_thermal(exr, "png", agc.Agc(), *IDEAL)
         t_k = agc.kelvin(exr.with_suffix(".png"))
         assert t_k is not None
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
 
     def test_a_jpg_is_grey_through_the_agc(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (270.0, 285.0, 300.0)])
-        render._write_thermal(exr, "jpg", agc.Agc())
+        render._write_thermal(exr, "jpg", agc.Agc(), *IDEAL)
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
-        render._write_thermal(exr, "png", agc.Agc())
+        render._write_thermal(exr, "png", agc.Agc(), *IDEAL)
         assert not exr.exists()
 
     def test_a_failure_keeps_the_float_render_and_leaks_nothing(
@@ -70,11 +84,27 @@ class TestThermalImage:
         """A failed conversion must not throw the render away."""
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0)])
         before = len(bpy.data.images)
-        monkeypatch.setattr(render.lwir, "brightness_temperature", _raise)
+        monkeypatch.setattr(lwir, "brightness_temperature", _raise)
         with pytest.raises(RuntimeError):
-            render._write_thermal(exr, "png", agc.Agc())
+            render._write_thermal(exr, "png", agc.Agc(), *IDEAL)
         assert exr.exists()
         assert len(bpy.data.images) == before
+
+
+@pytest.mark.parametrize(
+    ("bolometer", "kind"),
+    [({}, "BLACKMAN_HARRIS"), ({"pitch_um": 12.0, "f_number": 1.0}, "BOX")],
+)
+def test_a_microbolometer_integrates_over_its_pixel(
+    bolometer: dict[str, float], kind: str
+) -> None:
+    scenario = load(OPEN_SEA)
+    mount = next(m for m in scenario.mounts if m.camera.band == "ir")
+    camera = mount.camera.model_copy(
+        update={"microbolometer": Microbolometer(**bolometer)}
+    )
+    scene.respond(mount._replace(camera=camera), substream(0, "sensor"))
+    assert bpy.context.scene.cycles.pixel_filter_type == kind
 
 
 class TestFrame:

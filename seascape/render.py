@@ -20,10 +20,10 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, lwir, scene, sea, waves
+from seascape import agc, labels, microbolometer, scene, sea, waves
 from seascape.assets import manifest
 from seascape.calibration import Calibration, CameraCalibration
-from seascape.config import ImageFormat, Scenario, substream
+from seascape.config import Camera, ImageFormat, Scenario, substream
 
 
 def _pixels(path: Path) -> np.ndarray:
@@ -48,13 +48,18 @@ def _frame(path: Path) -> np.ndarray:
     return image if image.ndim == 2 else image[..., 2::-1]  # cv2 reads BGR(A)
 
 
-def _temperatures_k(exr: Path) -> np.ndarray:
-    return lwir.brightness_temperature(_pixels(exr)[..., 0])
-
-
-def _write_thermal(exr: Path, fmt: ImageFormat, tone: agc.Agc) -> None:
-    """Rewrite a float LWIR render as `fmt` beside it, and delete the exr."""
-    t_k = _temperatures_k(exr)[::-1]  # cv2 writes the top row first
+def _write_thermal(
+    exr: Path,
+    fmt: ImageFormat,
+    tone: agc.Agc,
+    camera: Camera,
+    noise: np.random.Generator,
+) -> None:
+    """Rewrite a float LWIR render as `fmt` beside it, as `camera` reads it, and delete
+    the exr."""
+    # cv2 writes the top row first
+    radiance = _pixels(exr)[::-1, :, 0].astype(np.float64)
+    t_k = microbolometer.seen(radiance, camera, noise)
     out = exr.with_suffix(f".{fmt}")
     image = agc.counts(t_k) if fmt == "png" else tone(t_k)
     if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
@@ -191,6 +196,10 @@ def render(
             index_output = _index_output(passes)
             sc = bpy.context.scene
             tones = {m.name: agc.Agc(1 / outputs.fps) for m in mounts}
+            noises = {
+                m.name: substream(scenario.seed, f"microbolometer/{m.name}")
+                for m in mounts
+            }
             for frame, time_s in enumerate(outputs.times_s):
                 sc.frame_set(frame)
                 # Both read matrix_world, which moves with the frame.
@@ -211,7 +220,13 @@ def render(
                     rendered = into / f"{name}.{'exr' if thermal else outputs.format}"
                     _render_still(rendered, f"frame {frame} of camera {mount.name}")
                     if thermal:
-                        _write_thermal(rendered, outputs.format, tones[mount.name])
+                        _write_thermal(
+                            rendered,
+                            outputs.format,
+                            tones[mount.name],
+                            mount.camera,
+                            noises[mount.name],
+                        )
                     file_name = f"{name}.{outputs.format}"
                     written.append(into / file_name)
                     advance()

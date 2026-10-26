@@ -217,6 +217,24 @@ class Lens(Model):
     )
 
 
+class Microbolometer(Model):
+    """An uncooled LWIR camera's focal plane and lens aperture. Unset, it is ideal."""
+
+    netd_k: float = Field(
+        default=0.0, ge=0.0, description="Temporal noise: one standard deviation."
+    )
+    pitch_um: float | None = Field(default=None, gt=0.0, description="Pixel pitch.")
+    f_number: float | None = Field(
+        default=None, gt=0.0, description="The lens's f-number, for its diffraction."
+    )
+
+    @model_validator(mode="after")
+    def _f_number_and_pitch_go_together(self) -> "Microbolometer":
+        if (self.f_number is None) != (self.pitch_um is None):
+            raise ValueError("f_number and pitch_um go together")
+        return self
+
+
 class Processing(Model):
     """The camera's ISP. White balance and sharpening need a sensor."""
 
@@ -266,14 +284,16 @@ class Camera(Model):
     sensor: Sensor = Field(default_factory=Sensor)
     lens: Lens = Field(default_factory=Lens)
     processing: Processing = Field(default_factory=Processing)
+    microbolometer: Microbolometer = Field(default_factory=Microbolometer)
 
     @model_validator(mode="after")
-    def _an_lwir_camera_is_radiometric(self) -> "Camera":
+    def _each_band_takes_its_own_camera(self) -> "Camera":
         if self.band == "ir" and (
-            (self.sensor, self.lens, self.processing)
-            != (Sensor(), Lens(), Processing())
+            (self.sensor, self.processing) != (Sensor(), Processing())
         ):
-            raise ValueError("an ir camera takes no sensor, lens or processing")
+            raise ValueError("an ir camera takes no sensor or processing")
+        if self.band == "eo" and self.microbolometer != Microbolometer():
+            raise ValueError("an eo camera takes no microbolometer")
         isp = self.processing.model_copy(update={"exposure_ev": 0.0})
         if self.sensor.width_px is not None and self.sensor.width_px < self.width_px:
             raise ValueError("sensor.width_px is narrower than the image")
