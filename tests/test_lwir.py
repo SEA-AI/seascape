@@ -273,3 +273,60 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
     assert lwir.brightness_temperature(shaded) == pytest.approx(
         lwir.brightness_temperature(exact), abs=0.006
     )
+
+
+def _tilted_facet_sum(depression: float, tilt: float, sigma: float) -> float:
+    """Each facet of a wave tilted by `tilt` toward the eye, seen `depression` below
+    the horizon, emitting and reflecting the sky in its own direction."""
+    t_sea_k = lwir.T_SEA_K
+    elev = np.radians(np.linspace(-90.0, 90.0, 721))
+    sky = lwir.sky_radiance(elev)
+    c, s = math.cos(tilt), math.sin(tilt)
+    # The eye is at +x; tilting toward it turns the normal from +z toward +x.
+    turn = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+    wave = turn @ np.array([0.0, 0.0, 1.0])
+    normal = lwir._facets(sigma) @ turn.T
+    view = np.array([math.cos(depression), 0.0, math.sin(depression)])
+    cos_i = normal @ view
+    area = np.clip(cos_i, 0.0, None) / (normal @ wave)
+    theta, flat = lwir.emissivity_curve(t_sea_k=t_sea_k)
+    own = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, flat)
+    up = np.arcsin(np.clip(2 * cos_i * normal[:, 2] - view[2], -1.0, 1.0))
+    hot = lwir.band_radiance(t_sea_k)
+    each = own * hot + (1 - own) * np.interp(up, elev, sky)
+    return float((area * each).sum() / area.sum())
+
+
+def _shaded(depression: float, tilt: float, sigma: float) -> float:
+    """eps B + (1 - eps) S of facet means, as the shader takes them."""
+    elev = np.radians(np.linspace(0.0, 90.0, 361))
+    view = depression + tilt  # off the wave's plane
+    mirror = depression + 2 * tilt  # off the horizon
+    reflected = lwir.reflected_sky(
+        mirror, elev, lwir.sky_radiance(elev), slope_sigma=sigma, view_rad=view
+    )
+    theta, eps = lwir.emissivity_curve(slope_sigma=sigma)
+    mean_eps = np.interp(math.pi / 2 - view, theta, eps)
+    return float(
+        mean_eps * lwir.band_radiance(lwir.T_SEA_K) + (1 - mean_eps) * reflected
+    )
+
+
+@pytest.mark.parametrize(("depression_deg", "tilt_deg"), [(9, -8), (6, -4), (3, 4)])
+def test_a_tilted_wave_turns_every_facet_s_reflection_with_it(
+    depression_deg: float, tilt_deg: float
+) -> None:
+    depression, tilt, sigma = math.radians(depression_deg), math.radians(tilt_deg), 0.1
+    assert lwir.brightness_temperature(
+        _shaded(depression, tilt, sigma)
+    ) == pytest.approx(
+        lwir.brightness_temperature(_tilted_facet_sum(depression, tilt, sigma)),
+        abs=0.01,
+    )
+
+
+def test_a_wave_tilted_away_mirrors_the_warm_sky_near_the_horizon() -> None:
+    depression, sigma = math.radians(9.0), 0.1
+    assert _shaded(depression, math.radians(-8.0), sigma) > _shaded(
+        depression, 0.0, sigma
+    )

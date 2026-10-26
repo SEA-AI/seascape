@@ -871,25 +871,73 @@ class TestIrBand:
 
     def test_the_baked_reflection_matches_the_sky_it_reflects(self) -> None:
         table = baked("sea_reflection")
-        rows, width = table.shape
-        mirror = np.arcsin((np.arange(width) + 0.5) / width)
+        assert table.shape == (sea.SLOPE_ROWS * sea.VIEW_ROWS, sea.MIRROR_SAMPLES)
+        mirror = np.arcsin(sea._mirror_columns())
+        view = np.arcsin(sea._view_rows())
         sky = scene._sky_round(SCENARIO.sky)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
         sigmas = sea._row_sigmas(slope_max)
-        top = baked("sea_emissivity")
-        assert table.shape == top.shape
-        grazing = mirror < math.radians(5.0)
+        roughest = table[(sea.SLOPE_ROWS - 1) * sea.VIEW_ROWS]  # its grazing view
+        grazing = (mirror >= 0) & (mirror < math.radians(5.0))
         flat = lwir.reflected_sky(mirror[grazing], *sky)
-        assert np.all(table[-1][grazing] < flat), "facets seen grazing lean to the eye"
-        for row in (0, rows - 1):
-            scale = table[row] / lwir.reflected_sky(
-                mirror,
-                *sky,
-                t_sea_k=SCENARIO.sea.t_sea_k,
-                slope_sigma=sigmas[row],
+        assert np.all(roughest[grazing] < flat), "facets seen grazing lean to the eye"
+        for tile in (0, sea.SLOPE_ROWS - 1):
+            for row in (0, sea.VIEW_ROWS - 1):
+                scale = table[tile * sea.VIEW_ROWS + row] / lwir.reflected_sky(
+                    mirror,
+                    *sky,
+                    t_sea_k=SCENARIO.sea.t_sea_k,
+                    slope_sigma=sigmas[tile],
+                    view_rad=view[row],
+                )
+                assert scale == pytest.approx(1.0, rel=1e-5)
+
+    def test_the_reflection_between_texels_is_the_sky_it_reflects(self) -> None:
+        """Bilinear within a tile, as the image interpolates."""
+        table = baked("sea_reflection")
+        sky = scene._sky_round(SCENARIO.sky)
+        tree = bpy.data.materials["sea"].node_tree
+        slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
+        sigmas = sea._row_sigmas(slope_max)
+        rows, cols = sea.VIEW_ROWS, sea.MIRROR_SAMPLES
+        rng = np.random.default_rng(0)
+        hot = lwir.band_radiance(SCENARIO.sea.t_sea_k)
+        for tile in (0, sea.SLOPE_ROWS // 2, sea.SLOPE_ROWS - 1):
+            mu = rng.uniform(0.02, 0.98, 40) ** 2  # grazing views too
+            sin_mirror = rng.uniform(-0.3, 0.98, 40)  # below the horizon too
+            y = np.clip(np.sqrt(mu) * rows - 0.5, 0, rows - 1)
+            x = np.clip((sin_mirror + 1) / 2 * cols - 0.5, 0, cols - 1)
+            y0, x0 = (
+                np.minimum(y.astype(int), rows - 2),
+                np.minimum(x.astype(int), cols - 2),
             )
-            assert scale == pytest.approx(1.0, rel=1e-5)
+            wy, wx = y - y0, x - x0
+            t = table[tile * rows : (tile + 1) * rows]
+            between = (1 - wy) * ((1 - wx) * t[y0, x0] + wx * t[y0, x0 + 1]) + wy * (
+                (1 - wx) * t[y0 + 1, x0] + wx * t[y0 + 1, x0 + 1]
+            )
+            exact = np.array(
+                [
+                    lwir.reflected_sky(
+                        math.asin(s),
+                        *sky,
+                        t_sea_k=SCENARIO.sea.t_sea_k,
+                        slope_sigma=sigmas[tile],
+                        view_rad=math.asin(m),
+                    )
+                    for m, s in zip(mu, sin_mirror, strict=True)
+                ]
+            )
+            theta, eps = lwir.emissivity_curve(
+                t_sea_k=SCENARIO.sea.t_sea_k, slope_sigma=sigmas[tile]
+            )
+            e = np.interp(np.arccos(mu), theta, eps)
+            seen, truth = (
+                lwir.brightness_temperature(e * hot + (1 - e) * s)
+                for s in (between, exact)
+            )
+            assert seen == pytest.approx(truth, abs=0.25), tile
 
     def test_emissivity_is_averaged_over_the_unresolved_slopes(self) -> None:
         """Flat Fresnel collapses toward grazing, which is where distant targets sit."""

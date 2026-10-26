@@ -24,7 +24,7 @@ Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 import math
 import shutil
 from collections.abc import Callable, Iterator
-from functools import cache, partial
+from functools import cache, lru_cache, partial
 from pathlib import Path
 from statistics import NormalDist
 from typing import NamedTuple
@@ -128,6 +128,10 @@ FOOTPRINT_RANGE_M = (1e-3, 1e4)
 
 # A judgement: emissivity and the reflected sky move slowly with slope.
 SLOPE_ROWS = 16
+# Measured against `lwir.reflected_sky` evaluated exactly: bilinear in these, the
+# sea's brightness temperature stays within 0.25 K, grazing views included.
+VIEW_ROWS = 32
+MIRROR_SAMPLES = 256
 
 # Elevation (rad, ascending) and the IR sky's radiance there.
 type SkyCurve = tuple[np.ndarray, np.ndarray]
@@ -237,17 +241,98 @@ def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
     return curve_image("sea_emissivity", np.array(rows))
 
 
+def _view_rows() -> np.ndarray:
+    """|cos| of the view off the wave normal up a tile's rows, at texel centres: even
+    in its square root, so the rows crowd toward grazing, where the reflection turns
+    fastest."""
+    return ((np.arange(VIEW_ROWS) + 0.5) / VIEW_ROWS) ** 2
+
+
+def _mirror_columns() -> np.ndarray:
+    """sin(mirror elevation) along a row, at texel centres: down to -1, as a wave
+    tilted away steeply mirrors the sea."""
+    return (np.arange(MIRROR_SAMPLES) + 0.5) / MIRROR_SAMPLES * 2.0 - 1.0
+
+
 def _reflection_image(
     t_sea_k: float, sky: SkyCurve, slope_max: float
 ) -> bpy.types.Image:
-    """`lwir.reflected_sky` baked against sin(mirror elevation) along a row and the
-    unresolved RMS slope up the rows, both at texel centres."""
-    mirror = np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
-    rows = [
-        lwir.reflected_sky(mirror, *sky, t_sea_k=t_sea_k, slope_sigma=sigma)
-        for sigma in _row_sigmas(slope_max)
-    ]
-    return curve_image("sea_reflection", np.array(rows))
+    """`lwir.reflected_sky` baked against sin(mirror elevation) along a row
+    (`_mirror_columns`), the view off the wave normal up a tile's rows
+    (`_view_rows`), and the unresolved RMS slope from tile to tile, all at texel
+    centres."""
+    elevation, radiance = (np.ascontiguousarray(a, np.float64).tobytes() for a in sky)
+    return curve_image(
+        "sea_reflection", _reflection_table(t_sea_k, elevation, radiance, slope_max)
+    )
+
+
+# The bake is most of an IR build, and builds in one process often share a sea.
+# Arrays do not hash, so the sky comes as float64 bytes.
+@lru_cache(maxsize=8)
+def _reflection_table(
+    t_sea_k: float, elevation: bytes, radiance: bytes, slope_max: float
+) -> np.ndarray:
+    mirror = np.arcsin(_mirror_columns())
+    sky = np.frombuffer(elevation), np.frombuffer(radiance)
+    return np.array(
+        [
+            lwir.reflected_sky(
+                mirror, *sky, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=view
+            )
+            for sigma in _row_sigmas(slope_max)
+            for view in np.arcsin(_view_rows())
+        ]
+    )
+
+
+def _tiled(
+    tree: bpy.types.NodeTree,
+    image: bpy.types.Image,
+    x: bpy.types.NodeSocket,
+    row: bpy.types.NodeSocket,
+    tile: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`_reflection_image` at (x, row, tile), each in [0, 1], row the square root of
+    `_view_rows`' |cos|. The image interpolates within a tile and two lookups mix
+    across tiles, so no tile bleeds into the next."""
+    # Held to texel centres, as EXTEND holds the image's own edges.
+    texel = _math(
+        tree,
+        "MINIMUM",
+        _math(tree, "MAXIMUM", _math(tree, "MULTIPLY", row, VIEW_ROWS), 0.5),
+        VIEW_ROWS - 0.5,
+    )
+    at = _math(
+        tree,
+        "MINIMUM",
+        _math(
+            tree,
+            "MAXIMUM",
+            _math(tree, "MULTIPLY_ADD", tile, SLOPE_ROWS, -0.5),
+            0.0,
+        ),
+        SLOPE_ROWS - 1.0,
+    )
+    lower = _math(tree, "FLOOR", at)
+    upper = _math(tree, "MINIMUM", _math(tree, "ADD", lower, 1.0), SLOPE_ROWS - 1.0)
+    height = SLOPE_ROWS * VIEW_ROWS
+    lo, hi = (
+        lookup(
+            tree,
+            image,
+            x,
+            _math(
+                tree,
+                "DIVIDE",
+                _math(tree, "MULTIPLY_ADD", t, VIEW_ROWS, texel),
+                height,
+            ),
+        )
+        for t in (lower, upper)
+    )
+    weight = _math(tree, "SUBTRACT", at, lower)
+    return _math(tree, "MULTIPLY_ADD", weight, _math(tree, "SUBTRACT", hi, lo), lo)
 
 
 def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocket:
@@ -1371,11 +1456,11 @@ def _thermal(
     sideways, which lowers it only at second order. Derivation: a tilt d across the
     view scales the mirror's sin(elevation) by (1 - d^2) / (1 + d^2).
 
+    The unresolved facets lean about the wave normal, so the reflection is tabulated
+    against the view off the wave normal as well as the mirror off the horizon.
+
     ponytail: reflects the sky averaged round the horizon, no hulls or clouds at their
     bearing; trace a sharp mirror if those must show.
-
-    ponytail: facet lean taken at the mirror elevation, not the view's off the wave
-    normal, so the steep near sea reads warm; tabulate against both if it shows.
     """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     # Incoming points at the camera; REFLECT takes the ray.
@@ -1389,10 +1474,12 @@ def _thermal(
         slope_max,
         name="sea_slope_along",
     )
-    sky_seen = lookup(
+    incidence = _incidence(tree, normal)
+    sky_seen = _tiled(
         tree,
         _reflection_image(sea.t_sea_k, sky, slope_max),
-        mirror.outputs["Z"],
+        _math(tree, "MULTIPLY_ADD", mirror.outputs["Z"], 0.5, 0.5),
+        _math(tree, "SQRT", incidence),
         along,
     )
     sky_seen.node.name = "sea_reflection"
@@ -1401,7 +1488,7 @@ def _thermal(
     emissivity = lookup(
         tree,
         _emissivity_image(sea.t_sea_k, slope_max),
-        _incidence(tree, normal),
+        incidence,
         fraction,
     )
     emitted = _math(tree, "SUBTRACT", lwir.band_radiance(sea.t_sea_k), sky_seen)
