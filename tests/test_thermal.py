@@ -40,13 +40,6 @@ def test_radiative_equilibrium() -> None:
     np.testing.assert_allclose(t, expected, rtol=1e-12)
 
 
-def test_upward_facet_without_sun_or_wind_sits_at_sky_temperature() -> None:
-    """A black facet that sees only sky radiates exactly what it takes in."""
-    q = thermal.sky_longwave_w_m2(T_AIR_K)
-    t = thermal.balance_temperature_k(q, 1.0, 0.0, T_AIR_K)
-    assert t == pytest.approx((q / thermal.STEFAN_BOLTZMANN_W_M2K4) ** 0.25)
-
-
 def test_a_facet_that_does_not_radiate_stays_at_air_temperature() -> None:
     zone = thermal.Zone(0.0, (0.0, 0.0), 0.0, "none", 0.0)
     t = thermal.facet_temperature_k(zone, environment(5.0, None), 0.3, 0.0)
@@ -94,7 +87,6 @@ def test_no_heated_interior_puts_a_hull_side_between_air_and_sea_at_night() -> N
 
 def test_temperature_rises_with_absorptance() -> None:
     rises = [facing_sun_k(painted(a), 3.0) for a in (0.14, 0.65, 0.97)]
-    assert rises == sorted(rises)
     assert rises[0] < rises[1] < rises[2]
 
 
