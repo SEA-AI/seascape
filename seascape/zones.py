@@ -602,6 +602,8 @@ def _island_records(
         # Each island's triangles, in island order: a later one paints over.
         mine = (island_material == name)[all_island]
         uv, island = all_uv[mine], all_island[mine]
+        if not len(island):  # a slot no face uses
+            continue
         order = np.argsort(island, kind="stable")
         uv, island = uv[order], island[order]
         ids, starts = np.unique(island, return_index=True)

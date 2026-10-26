@@ -34,7 +34,7 @@ NUMBERED = {"island_count": 3, "island_digest": DIGEST}
         {"materials": {"hull": "paint"}},
         {"materials": {"hull": "mixed"}},
         {"materials": {"hull": "deck"}, "islands": {"0": "glass"}},
-        {"materials": {"hull": "deck"}, "island_count": 2, "islands": {"2": "glass"}},
+        {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"3": "glass"}},
         {"materials": {"hull": "deck"}, "island_count": 2, "islands": {"0": "glass"}},
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"00": "glass"}},
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"+1": "glass"}},
