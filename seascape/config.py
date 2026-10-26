@@ -630,6 +630,10 @@ _T_HULL = (
     "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, "
     "each zone settles at its own heat balance. IR only."
 )
+_ENGINE_OFF = (
+    "Minutes since its engines stopped; 0 is running. The engine room and exhaust "
+    "cool toward the air. IR only, with zones."
+)
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -673,6 +677,7 @@ class Object(Model):
     drift: Drift | None = Field(default=None, description=_DRIFT)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     count: int = Field(
         default=1,
         ge=0,
@@ -762,6 +767,7 @@ class Targets(Model):
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
 
     def _spread(self, span: tuple[float, float], i: int) -> float:
         low, high = span

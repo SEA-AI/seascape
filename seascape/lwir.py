@@ -352,8 +352,9 @@ def band_radiance(t_k: float) -> float:
     return float(np.trapezoid(planck(_BAND_LAM, t_k), _BAND_LAM))
 
 
-# np.interp clamps past the ends: a hull hotter than the grid reads as its top.
-_TB_GRID = np.linspace(200.0, 400.0, 1024)
+# np.interp clamps past the ends: a hull hotter than the grid reads as its top. The top
+# clears a running uptake, `thermal.Environment.t_exhaust_k`.
+_TB_GRID = np.linspace(200.0, 650.0, 2304)
 # Through band_radiance, so the two stay inverses.
 _TB_RADIANCE = np.array([band_radiance(t) for t in _TB_GRID])
 

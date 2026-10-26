@@ -38,7 +38,7 @@ resistance and thermal transmittance, Annex A.
 """
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 import numpy as np
@@ -97,6 +97,13 @@ _PANE_M = 0.006
 _U_BARE_PLATE_W_M2K = 1.0 / _R_SI_M2K_W
 _U_INSULATED_W_M2K = 1.0 / (_R_SI_M2K_W + _INSULATION_M / _GLASS_WOOL_W_MK)
 _U_PANE_W_M2K = 1.0 / (_R_SI_M2K_W + _PANE_M / _GLASS_W_MK)
+
+# Incropera & DeWitt Table A.1, plain carbon steel at 300 K: rho 7854 kg m^-3, c_p 434
+# J kg^-1 K^-1.
+_STEEL_HEAT_CAPACITY_J_M3K = 7854.0 * 434.0
+# Judgement: an uptake's or a funnel's wall. Biot h d / k stays below 0.01 for steel,
+# so the wall cools as one temperature.
+_MACHINERY_WALL_M = 0.01
 
 # Paint over steel. Oil paints, 100 C: 0.92-0.96; black paint 0.97, white paint 0.93
 # (Neutrium compilation). Colour hardly moves it: what absorbs the sun is pigment, what
@@ -211,9 +218,10 @@ class Environment:
     # Thompson et al. 1998: ventilation should hold compartments below 50 C; the
     # ceiling, so a hard-run engine room.
     t_engine_room_k: float = 323.15
-    # Thompson et al. 1998: unsuppressed uptake metal runs 300-400 C. ponytail: a
-    # gas turbine's; a wet exhaust, as on most small craft, runs near the sea.
-    t_exhaust_k: float = 573.15
+    # A four-stroke diesel's gas behind the turbocharger, ~230 C from half to full
+    # load (CIMAC Congress 2012, paper 7-1-016). Uptake metal, uninsulated, sits near
+    # its gas. ponytail: a wet exhaust, as on most small craft, runs near the sea.
+    t_exhaust_k: float = 503.15
     _interiors: dict[Interior, float] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -229,6 +237,32 @@ class Environment:
 
     def interior_k(self, interior: Interior) -> float:
         return self._interiors[interior]
+
+    def stopped(self, off_s: float) -> "Environment":
+        """The engine room and exhaust `off_s` after the engines stop, each cooling
+        toward the air as a steel wall: lumped capacitance (Incropera & DeWitt 5.2),
+        tau = rho c_p d / h, h the wind's convection and the wall's radiation.
+
+        ponytail: radiation linearised at the air, so a hot uptake's first minutes cool
+        a little slowly; and the engine's own mass keeps a closed engine room warm
+        longer than its walls.
+        """
+        if off_s < 0.0:
+            raise ValueError(f"off_s {off_s} is before the engines stopped")
+        eps = ZONES["exhaust"].emissivity
+        radiation = 4.0 * eps * STEFAN_BOLTZMANN_W_M2K4 * self.t_air_k**3
+        h = float(wind_convection_w_m2k(self.wind_m_s)) + radiation
+        tau_s = _STEEL_HEAT_CAPACITY_J_M3K * _MACHINERY_WALL_M / h
+        left = math.exp(-off_s / tau_s)
+
+        def cooled(running_k: float) -> float:
+            return self.t_air_k + (running_k - self.t_air_k) * left
+
+        return replace(
+            self,
+            t_engine_room_k=cooled(self.t_engine_room_k),
+            t_exhaust_k=cooled(self.t_exhaust_k),
+        )
 
 
 def air_mass(elevation_rad: npt.ArrayLike) -> FloatArray:

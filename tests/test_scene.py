@@ -787,7 +787,7 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = SCENARIO.objects[0].asset
-    anchor = scene._vessel(asset, 300.0, SCENARIO.sky, scene._heat(SCENARIO), {})
+    anchor = scene._vessel(asset, 300.0, 0.0, SCENARIO.sky, scene._heat(SCENARIO), {})
     hull = next(p for p in anchor.children_recursive if p.type == "MESH")
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
@@ -795,6 +795,23 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     assert emission.inputs["Strength"].default_value == pytest.approx(
         lwir.band_radiance(300.0), rel=1e-5
     )
+
+
+def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    heat, hulls = scene._heat(SCENARIO), {}
+    asset = SCENARIO.objects[0].asset
+    skins = []
+    for minutes in (0.0, 30.0):
+        anchor = scene._vessel(asset, None, minutes, SCENARIO.sky, heat, hulls)
+        assert anchor["engine_off_min"] == minutes
+        hull = next(p for p in anchor.children_recursive if p.type == "MESH")
+        skins.append({s.material.name for s in hull.material_slots})
+    running, stopped = skins
+    machinery = {n for n in running if n.startswith("thermal_exhaust")}
+    assert machinery
+    assert not machinery & stopped
+    assert "thermal_paint_hull" in running & stopped
 
 
 class TestIrBand:

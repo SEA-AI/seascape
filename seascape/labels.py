@@ -44,6 +44,7 @@ class Target(NamedTuple):
     waterline_m: np.ndarray  # (N, 2) world east, north along the hull's waterline
     heading_deg: float  # true, clockwise from north
     dims_m: tuple[float, float, float]  # length, beam, height above the waterline
+    engine_off_min: float = 0.0  # 0 is running
 
 
 class Image(Model):
@@ -86,6 +87,7 @@ class Annotation(Model):
     # length, beam, height above the waterline, as built
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
+    engine_off_min: float = 0.0  # 0 is running
 
 
 class Dropped(Model):
@@ -194,6 +196,7 @@ class Labels(Model):
                     bearing_deg=where["bearing_deg"],
                     heading_deg=target.heading_deg,
                     dims_m=target.dims_m,
+                    engine_off_min=target.engine_off_min,
                     truncated=x0 == 0
                     or y0 == 0
                     or x1 == image.width - 1
