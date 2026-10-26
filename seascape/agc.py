@@ -64,9 +64,9 @@ def _transfer(frames: list[Layers], setting: Setting) -> np.ndarray:
     weights = np.ones(c.size)
     details = [high for _, high in frames if high is not None]
     if details:
-        # Judgement: FLIR weights detail pixels up (§6.8.1) without saying by how much;
-        # here by their detail against the frames' mean, so frames of even texture
-        # equalise as plateau does.
+        # Judgement: the Boson+ datasheet weights detail pixels up (§6.8.1) without
+        # saying by how much; here by their detail against the frames' mean, so
+        # frames of even texture equalise as plateau does.
         detail = np.concatenate([np.abs(high).ravel() for high in details])
         if (mean := detail.mean()) > 0:
             weights += detail / mean

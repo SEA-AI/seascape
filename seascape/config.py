@@ -307,8 +307,8 @@ class InformationBased(Equalization):
     smoothing: float = Field(
         default=1250.0,
         gt=0.0,
-        description="The temperature step, in centikelvin, past which an edge stays "
-        "background rather than detail.",
+        description="The edge-preserving filter's range sigma, in centikelvin: a "
+        "step well past it stays background rather than detail.",
     )
     # §6.8.7.
     dde: float = Field(

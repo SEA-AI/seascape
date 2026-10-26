@@ -614,7 +614,7 @@
         },
         "smoothing": {
           "title": "Smoothing",
-          "description": "The temperature step, in centikelvin, past which an edge stays background rather than detail.",
+          "description": "The edge-preserving filter's range sigma, in centikelvin: a step well past it stays background rather than detail.",
           "default": 1250.0,
           "anyOf": [
             {
