@@ -19,7 +19,6 @@ from seascape.calibration import CameraCalibration
 from seascape.config import (
     Agc,
     Camera,
-    InformationBased,
     Lens,
     Microbolometer,
     Processing,
@@ -430,7 +429,7 @@ def agcs(folder: Path) -> dict[str, Agc]:
     """Each camera's AGC, by name, from the scenario the labels in `folder` record,
     the default for a camera they do not, or for every camera in a folder without
     labels. A merged set records one scenario per seed; their cameras are the same."""
-    found: dict[str, Agc] = defaultdict(InformationBased)
+    found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():
         return found

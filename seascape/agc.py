@@ -8,7 +8,6 @@ import cv2
 import numpy as np
 
 from seascape.config import Agc as Setting
-from seascape.config import Equalization, InformationBased, Linear
 
 # The unit radiometric thermal cameras write, so real and rendered frames read alike.
 CENTIKELVIN = 100
@@ -49,7 +48,7 @@ def grey(t_k: np.ndarray, curve: np.ndarray, setting: Setting) -> np.ndarray:
 def _layers(t_k: np.ndarray, setting: Setting) -> Layers:
     """A frame in counts, split into background and detail where the AGC splits it."""
     c = counts(t_k)
-    if not isinstance(setting, InformationBased):
+    if not setting.information_based:
         return c, None
     # A step past `smoothing` stays in the background.
     c = c.astype(np.float32)
@@ -59,8 +58,6 @@ def _layers(t_k: np.ndarray, setting: Setting) -> Layers:
 
 def _transfer(frames: list[Layers], setting: Setting) -> np.ndarray:
     c = np.concatenate([np.rint(low).ravel() for low, _ in frames]).astype(np.int64)
-    if isinstance(setting, Linear):
-        return _line(int(c.min()), int(c.max()))
     weights = np.ones(c.size)
     details = [high for _, high in frames if high is not None]
     if details:
@@ -73,14 +70,7 @@ def _transfer(frames: list[Layers], setting: Setting) -> np.ndarray:
     return _plateau(c, weights, setting)
 
 
-def _line(low: int, high: int) -> np.ndarray:
-    # One temperature throughout has no contrast to stretch; mid-grey, not NaN.
-    if high == low:
-        return np.full(COUNTS, 127.5)
-    return np.clip(255 * (np.arange(COUNTS) - low) / (high - low), 0.0, 255.0)
-
-
-def _plateau(c: np.ndarray, weights: np.ndarray, setting: Equalization) -> np.ndarray:
+def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray:
     """Each count's slope is the blend of its clipped histogram share and the linear
     ramp, scaled up until the curve fills 0-255 but never steeper than the max gain.
     A curve that cannot fill the range, as a bland frame's cannot, is centred on it."""
@@ -112,7 +102,7 @@ def _grey(frame: Layers, curve: np.ndarray, setting: Setting) -> np.ndarray:
     low, high = frame
     at = np.clip(np.rint(low), 0, COUNTS - 1).astype(np.int64)
     value = curve[at]
-    if high is not None and isinstance(setting, InformationBased):
+    if high is not None:
         value = np.clip(value + setting.dde * np.gradient(curve)[at] * high, 0, 255)
     return np.rint(value).astype(np.uint8)
 

@@ -1,25 +1,195 @@
 {
   "$defs": {
     "Agc": {
-      "discriminator": {
-        "mapping": {
-          "information_based": "#/$defs/InformationBased",
-          "linear": "#/$defs/Linear",
-          "plateau": "#/$defs/Plateau"
+      "additionalProperties": false,
+      "description": "FLIR's AGC: one equalisation, with or without its information-based mode, and\na share of linear ramp. Defaults are a Boson+'s factory settings, Product\nDatasheet 102-2013-45 Rev 100 \u00a76.8; `preset = \"linear\"` is FLIR's Linear AGC.",
+      "properties": {
+        "information_based": {
+          "title": "Information Based",
+          "description": "Weight detail up in the histogram and add it back on top, so a hull's edges take greys a smooth sea or sky would; off, plain plateau equalisation.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
-        "propertyName": "kind"
-      },
-      "oneOf": [
-        {
-          "$ref": "#/$defs/Linear"
+        "plateau": {
+          "title": "Plateau",
+          "description": "The most pixels one histogram bin counts, as a fraction of the frame.",
+          "default": 0.07,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
-        {
-          "$ref": "#/$defs/Plateau"
+        "linear_fraction": {
+          "title": "Linear Fraction",
+          "description": "The share of the grey range spread evenly over the frame's temperatures; the rest follows its histogram. 1 is a linear stretch.",
+          "default": 0.2,
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         },
-        {
-          "$ref": "#/$defs/InformationBased"
+        "max_gain": {
+          "title": "Max Gain",
+          "description": "The steepest the transfer curve may be, in grey levels per centikelvin, so noise on a bland frame stays grain.",
+          "default": 1.38,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "tau_s": {
+          "title": "Tau S",
+          "description": "How fast the curve follows the frame.",
+          "default": 0.10255215634370057,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "smoothing": {
+          "title": "Smoothing",
+          "description": "Information-based only: the edge-preserving filter's range sigma, in centikelvin; a step well past it stays background rather than detail.",
+          "default": 1250.0,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "dde": {
+          "title": "Dde",
+          "description": "Information-based only: gain on the detail, below 1 smoothing, above 1 sharpening.",
+          "default": 0.95,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
-      ]
+      },
+      "title": "Agc",
+      "type": "object"
     },
     "Atmosphere": {
       "enum": [
@@ -476,198 +646,6 @@
       ],
       "type": "string"
     },
-    "InformationBased": {
-      "additionalProperties": false,
-      "description": "FLIR's Information-Based Equalization, a Boson+'s factory AGC (\u00a76.8.1): the\nframe splits into detail and background, the background's histogram is equalised\nwith detail weighted up, so a hull's edges take greys a flat sea would, and the\ndetail is added back on top.",
-      "properties": {
-        "plateau": {
-          "title": "Plateau",
-          "description": "The most pixels one histogram bin counts, as a fraction of the frame.",
-          "default": 0.07,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "maximum": 1.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "linear_fraction": {
-          "title": "Linear Fraction",
-          "description": "The share of the grey range spread evenly over the frame's temperatures; the rest follows its histogram.",
-          "default": 0.2,
-          "anyOf": [
-            {
-              "maximum": 1.0,
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "max_gain": {
-          "title": "Max Gain",
-          "description": "The steepest the transfer curve may be, in grey levels per centikelvin, so noise on a bland frame stays grain.",
-          "default": 1.38,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "tau_s": {
-          "title": "Tau S",
-          "description": "How fast the curve follows the frame.",
-          "default": 0.10255215634370057,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "kind": {
-          "title": "Kind",
-          "description": "This AGC.",
-          "default": "information_based",
-          "anyOf": [
-            {
-              "const": "information_based",
-              "type": "string"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "smoothing": {
-          "title": "Smoothing",
-          "description": "The edge-preserving filter's range sigma, in centikelvin: a step well past it stays background rather than detail.",
-          "default": 1250.0,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "dde": {
-          "title": "Dde",
-          "description": "Gain on the detail: below 1 smooths, above 1 sharpens.",
-          "default": 0.95,
-          "anyOf": [
-            {
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "title": "InformationBased",
-      "type": "object"
-    },
     "Lens": {
       "additionalProperties": false,
       "description": "What the optics do beyond the pinhole.",
@@ -699,66 +677,6 @@
         }
       },
       "title": "Lens",
-      "type": "object"
-    },
-    "Linear": {
-      "additionalProperties": false,
-      "description": "FLIR's Linear AGC: black at the frame's coldest pixel, white at its hottest,\nevery kelvin the same number of greys, so a hot exhaust leaves the rest of the\nframe a few.",
-      "properties": {
-        "kind": {
-          "title": "Kind",
-          "description": "This AGC.",
-          "default": "linear",
-          "anyOf": [
-            {
-              "const": "linear",
-              "type": "string"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "tau_s": {
-          "title": "Tau S",
-          "description": "How fast the span follows the frame.",
-          "default": 1.0,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "title": "Linear",
       "type": "object"
     },
     "Microbolometer": {
@@ -1729,146 +1647,6 @@
         }
       },
       "title": "Ownship",
-      "type": "object"
-    },
-    "Plateau": {
-      "additionalProperties": false,
-      "description": "FLIR's Plateau Equalization: grey levels go to the temperatures many pixels\nshare, and a hot exhaust takes few.",
-      "properties": {
-        "plateau": {
-          "title": "Plateau",
-          "description": "The most pixels one histogram bin counts, as a fraction of the frame.",
-          "default": 0.07,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "maximum": 1.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "linear_fraction": {
-          "title": "Linear Fraction",
-          "description": "The share of the grey range spread evenly over the frame's temperatures; the rest follows its histogram.",
-          "default": 0.2,
-          "anyOf": [
-            {
-              "maximum": 1.0,
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "max_gain": {
-          "title": "Max Gain",
-          "description": "The steepest the transfer curve may be, in grey levels per centikelvin, so noise on a bland frame stays grain.",
-          "default": 1.38,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "tau_s": {
-          "title": "Tau S",
-          "description": "How fast the curve follows the frame.",
-          "default": 0.10255215634370057,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "kind": {
-          "title": "Kind",
-          "description": "This AGC.",
-          "default": "plateau",
-          "anyOf": [
-            {
-              "const": "plateau",
-              "type": "string"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "title": "Plateau",
       "type": "object"
     },
     "Processing": {

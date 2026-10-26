@@ -1,17 +1,18 @@
 """The thermal camera's two outputs: 16-bit counts, and 8-bit grey after AGC."""
 
 import math
+import tomllib
 
 import cv2
 import numpy as np
 import pytest
 
 from seascape import agc
-from seascape.config import Camera, InformationBased, Linear, Plateau
+from seascape.config import CFG_DIR, Agc, Camera
 
-LINE = Linear()
-PLATEAU = Plateau()
-BOSON = InformationBased()
+LINE = Agc.model_validate(tomllib.loads((CFG_DIR / "agc" / "linear.toml").read_text()))
+PLATEAU = Agc(information_based=False)
+BOSON = Agc()
 EVERY = [LINE, PLATEAU, BOSON]
 
 
@@ -46,12 +47,10 @@ def test_a_hot_exhaust_leaves_the_scene_its_contrast() -> None:
     rng = np.random.default_rng(0)
     scene = rng.uniform(283.0, 293.0, (99, 100))
     t_k = np.vstack([scene, np.full((1, 100), 503.15)])
-    spread = {
-        setting.kind: int(np.ptp(agc.Agc(setting)(t_k)[:-1])) for setting in EVERY
-    }
-    assert spread["linear"] < 15
-    assert spread["plateau"] > 180
-    assert spread["information_based"] > 180
+    line, plateau, boson = (int(np.ptp(agc.Agc(s)(t_k)[:-1])) for s in EVERY)
+    assert line < 15
+    assert plateau > 180
+    assert boson > 180
 
 
 def textured() -> np.ndarray:
@@ -74,8 +73,7 @@ def test_detail_takes_greys_from_a_smooth_background() -> None:
 def test_dde_gains_the_detail() -> None:
     t_k = textured()
     spread = [
-        np.ptp(agc.Agc(InformationBased(dde=dde))(t_k)[124:132, 124:132])
-        for dde in (0.5, 1.0, 2.0)
+        np.ptp(agc.Agc(Agc(dde=dde))(t_k)[124:132, 124:132]) for dde in (0.5, 1.0, 2.0)
     ]
     assert spread == sorted(spread)
     assert spread[0] < spread[-1]
@@ -128,7 +126,11 @@ def test_the_curve_follows_a_step_change_over_the_time_constant(setting) -> None
 def test_an_eo_camera_takes_no_agc() -> None:
     with pytest.raises(ValueError, match="agc"):
         Camera(
-            band="eo", hfov_deg=45.0, width_px=64, height_px=48, agc={"kind": "linear"}
+            band="eo",
+            hfov_deg=45.0,
+            width_px=64,
+            height_px=48,
+            agc={"information_based": False},
         )
 
 

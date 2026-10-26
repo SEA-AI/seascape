@@ -16,10 +16,10 @@ from mathutils import Vector
 from seascape import agc, labels, lwir, render, scene, sea, server, thermal, waves
 from seascape.calibration import Calibration
 from seascape.config import (
+    Agc,
     Band,
     Camera,
     ImageFormat,
-    Linear,
     Microbolometer,
     Scenario,
     load,
@@ -27,6 +27,8 @@ from seascape.config import (
 )
 from seascape.wakes import Wake
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
+
+LINEAR = Agc(information_based=False, linear_fraction=1.0)
 
 
 def _raise(*_: object) -> np.ndarray:
@@ -64,21 +66,21 @@ class TestThermalImage:
 
     def test_a_png_is_centikelvin_with_the_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        render._write_thermal(exr, "png", agc.Agc(Linear()), *IDEAL)
+        render._write_thermal(exr, "png", agc.Agc(LINEAR), *IDEAL)
         t_k = agc.kelvin(exr.with_suffix(".png"))
         assert t_k is not None
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
 
     def test_a_jpg_is_grey_through_the_agc(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (270.0, 285.0, 300.0)])
-        render._write_thermal(exr, "jpg", agc.Agc(Linear()), *IDEAL)
+        render._write_thermal(exr, "jpg", agc.Agc(LINEAR), *IDEAL)
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
-        render._write_thermal(exr, "png", agc.Agc(Linear()), *IDEAL)
+        render._write_thermal(exr, "png", agc.Agc(LINEAR), *IDEAL)
         assert not exr.exists()
 
     def test_a_failure_keeps_the_float_render_and_leaks_nothing(
@@ -89,7 +91,7 @@ class TestThermalImage:
         before = len(bpy.data.images)
         monkeypatch.setattr(lwir, "brightness_temperature", _raise)
         with pytest.raises(RuntimeError):
-            render._write_thermal(exr, "png", agc.Agc(Linear()), *IDEAL)
+            render._write_thermal(exr, "png", agc.Agc(LINEAR), *IDEAL)
         assert exr.exists()
         assert len(bpy.data.images) == before
 
