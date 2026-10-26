@@ -1298,8 +1298,16 @@ def _camera(
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:
-    """Set the compositor's camera to `mount`'s, its sensor noise seeded from `noise`;
-    a tree without one ignores it."""
+    """Set Cycles' pixel filter and the compositor's camera to `mount`'s, its sensor
+    noise seeded from `noise`; a build without a compositor takes only the filter."""
+    # A microbolometer integrates over its pixel: Cycles' box filter, a pixel wide.
+    cycles = bpy.context.scene.cycles
+    props = cycles.bl_rna.properties
+    if mount.camera.microbolometer.pitch_um is not None:
+        cycles.pixel_filter_type, cycles.filter_width = "BOX", 1.0
+    else:
+        cycles.pixel_filter_type = props["pixel_filter_type"].default
+        cycles.filter_width = props["filter_width"].default
     tree = bpy.context.scene.compositing_node_group
     if tree is None or "lens.vignette" not in tree.nodes:
         return

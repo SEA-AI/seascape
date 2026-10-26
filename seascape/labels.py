@@ -15,7 +15,7 @@ import numpy as np
 from pydantic import Field
 
 from seascape.calibration import CameraCalibration
-from seascape.config import Camera, Lens, Processing, Sensor
+from seascape.config import Camera, Lens, Microbolometer, Processing, Sensor
 from seascape.model import Model
 
 FILENAME = "labels.json"
@@ -56,10 +56,11 @@ class Image(Model):
     hfov_deg: float
     time_s: float
     horizon_px: list[tuple[float, float]]
-    # The camera as drawn, None for one that takes none (LWIR).
+    # The camera as drawn, None where the image did not go through it.
     sensor: Sensor | None = None
     lens: Lens | None = None
     processing: Processing | None = None
+    microbolometer: Microbolometer | None = None
 
 
 class Category(Model):
@@ -120,11 +121,18 @@ class Labels(Model):
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
         the image as written, both top row first. `settings` is the scenario's camera,
-        whose sensor, lens and processing an EO image carries. A target in `faint`,
-        by name, is dropped with its excess ΔE*ab."""
-        # Only an 8-bit EO frame went through the camera's chain.
+        whose sensor, lens and processing an EO image carries, and lens and
+        microbolometer an LWIR one. A target in `faint`, by name, is dropped with its
+        excess ΔE*ab."""
+        # Only an 8-bit EO frame went through the camera's chain, and only an integer
+        # LWIR one (png, jpg) through the microbolometer.
         grade = (
             settings is not None and settings.band == "eo" and frame.dtype == np.uint8
+        )
+        thermal = (
+            settings is not None
+            and settings.band == "ir"
+            and np.issubdtype(frame.dtype, np.integer)
         )
         image = Image(
             id=len(self.images) + 1,
@@ -137,8 +145,9 @@ class Labels(Model):
             time_s=time_s,
             horizon_px=horizon_px(camera, radius_m),
             sensor=settings.sensor if grade else None,
-            lens=settings.lens if grade else None,
+            lens=settings.lens if grade or thermal else None,
             processing=settings.processing if grade else None,
+            microbolometer=settings.microbolometer if thermal else None,
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]

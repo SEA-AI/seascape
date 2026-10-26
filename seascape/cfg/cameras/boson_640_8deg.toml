@@ -1,0 +1,4 @@
+# Teledyne FLIR Boson 640 with its 55 mm, 8 deg lens, inheriting the 32 deg lens's
+# f-number. https://www.oem.flir.com/products/boson/
+extends = "boson_640_32deg.toml"
+hfov_deg = 8.0
