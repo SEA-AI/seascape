@@ -19,6 +19,7 @@ from seascape.config import (
     Band,
     Camera,
     ImageFormat,
+    Linear,
     Microbolometer,
     Scenario,
     load,
@@ -63,21 +64,21 @@ class TestThermalImage:
 
     def test_a_png_is_centikelvin_with_the_top_row_first(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (272.0, 295.0)])
-        render._write_thermal(exr, "png", agc.Agc(), *IDEAL)
+        render._write_thermal(exr, "png", agc.Agc(Linear()), *IDEAL)
         t_k = agc.kelvin(exr.with_suffix(".png"))
         assert t_k is not None
         assert t_k[:, 0] == pytest.approx([295.0, 272.0], abs=0.01)
 
     def test_a_jpg_is_grey_through_the_agc(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(t) for t in (270.0, 285.0, 300.0)])
-        render._write_thermal(exr, "jpg", agc.Agc(), *IDEAL)
+        render._write_thermal(exr, "jpg", agc.Agc(Linear()), *IDEAL)
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
-        render._write_thermal(exr, "png", agc.Agc(), *IDEAL)
+        render._write_thermal(exr, "png", agc.Agc(Linear()), *IDEAL)
         assert not exr.exists()
 
     def test_a_failure_keeps_the_float_render_and_leaks_nothing(
@@ -88,7 +89,7 @@ class TestThermalImage:
         before = len(bpy.data.images)
         monkeypatch.setattr(lwir, "brightness_temperature", _raise)
         with pytest.raises(RuntimeError):
-            render._write_thermal(exr, "png", agc.Agc(), *IDEAL)
+            render._write_thermal(exr, "png", agc.Agc(Linear()), *IDEAL)
         assert exr.exists()
         assert len(bpy.data.images) == before
 

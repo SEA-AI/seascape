@@ -1,10 +1,18 @@
 """The thermal camera's two outputs: 16-bit counts, and 8-bit grey after AGC."""
 
+import math
+
 import cv2
 import numpy as np
 import pytest
 
 from seascape import agc
+from seascape.config import Camera, InformationBased, Linear, Plateau
+
+LINE = Linear()
+PLATEAU = Plateau()
+BOSON = InformationBased()
+EVERY = [LINE, PLATEAU, BOSON]
 
 
 def column(*t_k: float) -> np.ndarray:
@@ -12,44 +20,116 @@ def column(*t_k: float) -> np.ndarray:
 
 
 def test_a_frame_is_stretched_to_the_full_range() -> None:
-    assert agc.Agc()(column(272.0, 295.0)).ravel().tolist() == [0, 255]
+    assert agc.Agc(LINE)(column(272.0, 295.0)).ravel().tolist() == [0, 255]
 
 
 def test_the_middle_temperature_is_mid_grey() -> None:
     """Catches a gamma encode, which puts 0.5 at 0.74."""
-    assert agc.Agc()(column(270.0, 285.0, 300.0))[1, 0] == 128
+    assert agc.Agc(LINE)(column(270.0, 285.0, 300.0))[1, 0] == 128
 
 
 def test_a_target_is_not_flattened_to_white() -> None:
     """A percentile stretch would trim the few rows a distant hull occupies."""
-    grey = agc.Agc()(column(*[285.0] * 40, 300.0)).ravel()
-    assert (grey[0], grey[-1]) == (0, 255)
+    for setting in EVERY:
+        grey = agc.Agc(setting)(column(*[285.0] * 40, 300.0)).ravel().astype(int)
+        assert (grey[0], grey[-1]) == pytest.approx((0, 255), abs=1)
 
 
-def test_a_frame_of_one_temperature_is_mid_grey() -> None:
-    assert agc.Agc()(column(290.0, 290.0)).ravel().tolist() == [128, 128]
+@pytest.mark.parametrize("setting", EVERY)
+def test_a_frame_of_one_temperature_is_mid_grey(setting) -> None:
+    assert agc.Agc(setting)(column(290.0, 290.0)).ravel().tolist() == [128, 128]
 
 
-def test_without_a_step_each_frame_takes_its_own_span() -> None:
-    tone = agc.Agc()
+def test_a_hot_exhaust_leaves_the_scene_its_contrast() -> None:
+    """A sea and hull 10 K apart, and a hundredth of the frame at 230 C: linear gives
+    the scene a few greys, equalisation most of them."""
+    rng = np.random.default_rng(0)
+    scene = rng.uniform(283.0, 293.0, (99, 100))
+    t_k = np.vstack([scene, np.full((1, 100), 503.15)])
+    spread = {
+        setting.kind: int(np.ptp(agc.Agc(setting)(t_k)[:-1])) for setting in EVERY
+    }
+    assert spread["linear"] < 15
+    assert spread["plateau"] > 180
+    assert spread["information_based"] > 180
+
+
+def textured() -> np.ndarray:
+    """A smooth 285-290 K sea and, in it, a 1 K checkerboard at 288.5 K."""
+    t_k = np.linspace(285.0, 290.0, 256)[:, None] * np.ones((1, 256))
+    t_k[120:136, 120:136] = 288.5 + np.indices((16, 16)).sum(axis=0) % 2 - 0.5
+    return t_k
+
+
+def test_detail_takes_greys_from_a_smooth_background() -> None:
+    """A textured target among the sea's own temperatures: information-based gives
+    it more greys than plateau does, and the smooth sea fewer."""
+    t_k = textured()
+    target, sea = np.s_[124:132, 124:132], np.s_[:100]
+    plateau, boson = agc.Agc(PLATEAU)(t_k), agc.Agc(BOSON)(t_k)
+    assert np.ptp(boson[target]) > np.ptp(plateau[target])
+    assert np.ptp(boson[sea]) < np.ptp(plateau[sea])
+
+
+def test_dde_gains_the_detail() -> None:
+    t_k = textured()
+    spread = [
+        np.ptp(agc.Agc(InformationBased(dde=dde))(t_k)[124:132, 124:132])
+        for dde in (0.5, 1.0, 2.0)
+    ]
+    assert spread == sorted(spread)
+    assert spread[0] < spread[-1]
+
+
+@pytest.mark.parametrize("setting", [PLATEAU, BOSON])
+def test_noise_on_a_uniform_frame_gains_at_most_the_cap(setting) -> None:
+    """A linear stretch would spread 50 mK of noise across all 256 greys."""
+    t_k = np.random.default_rng(0).normal(290.0, 0.05, (64, 64))
+    grey = agc.Agc(setting)(t_k)
+    assert abs(grey.mean() - 128) < 5
+    assert grey.std() < 1.05 * setting.max_gain * t_k.std() * agc.CENTIKELVIN
+
+
+def test_the_slope_never_exceeds_the_cap() -> None:
+    """A 1 K ramp is 101 counts: the cap leaves it short of the full range."""
+    t_k = np.linspace(290.0, 291.0, 101)[:, None]
+    grey = agc.Agc(PLATEAU)(t_k).astype(int)
+    assert np.diff(grey, axis=0).max() <= 2
+    assert np.ptp(grey) <= PLATEAU.max_gain * 101
+
+
+@pytest.mark.parametrize("setting", EVERY)
+def test_without_a_step_each_frame_takes_its_own_curve(setting) -> None:
+    tone = agc.Agc(setting)
     tone(column(280.0, 290.0))
-    assert tone(column(290.0, 300.0)).ravel().tolist() == [0, 255]
+    grey = tone(column(290.0, 300.0)).ravel().astype(int)
+    assert grey.tolist() == pytest.approx([0, 255], abs=1)
 
 
-def test_the_span_follows_a_step_change_over_the_time_constant() -> None:
+@pytest.mark.parametrize("setting", EVERY)
+def test_the_curve_follows_a_step_change_over_the_time_constant(setting) -> None:
     """A hot target entering must not flash the background: after one time constant
-    the span has moved 1 - 1/e of the way, and after many it has arrived."""
-    step_s = 0.1
-    tone = agc.Agc(step_s)
-    tone(column(280.0, 290.0))
-    frames = round(agc.TAU_S / step_s)
-    for _ in range(frames - 1):
-        tone(column(280.0, 300.0))
-    # The top of the span sits at 290 + 10 (1 - 1/e) K, so 290 K is 10 / 16.3 grey.
-    assert tone(column(280.0, 290.0, 300.0))[1, 0] == 156
-    for _ in range(20 * frames):
-        tone(column(280.0, 300.0))
-    assert tone(column(280.0, 290.0, 300.0)).ravel().tolist() == [0, 128, 255]
+    the curve has moved 1 - 1/e of the way, and after many it has arrived."""
+    before, after = column(280.0, 290.0), column(280.0, 287.0, 300.0)
+    tone = agc.Agc(setting, setting.tau_s / 10)
+    tone(before)
+    for _ in range(9):
+        tone(after)
+    moved = 1 - math.exp(-1)
+    curve = (1 - moved) * agc.transfer([before], setting) + moved * agc.transfer(
+        [after], setting
+    )
+    assert tone(after).tolist() == agc.grey(after, curve, setting).tolist()
+    for _ in range(200):
+        tone(after)
+    assert tone(after).tolist() == agc.Agc(setting)(after).tolist()
+
+
+def test_an_eo_camera_takes_no_agc() -> None:
+    with pytest.raises(ValueError, match="agc"):
+        Camera(
+            band="eo", hfov_deg=45.0, width_px=64, height_px=48, agc={"kind": "linear"}
+        )
 
 
 def test_counts_survive_a_png(tmp_path) -> None:

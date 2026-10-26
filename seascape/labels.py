@@ -6,6 +6,7 @@ integers, half a pixel off.
 """
 
 import math
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
@@ -15,7 +16,16 @@ import numpy as np
 from pydantic import Field
 
 from seascape.calibration import CameraCalibration
-from seascape.config import Camera, Lens, Microbolometer, Processing, Sensor
+from seascape.config import (
+    Agc,
+    Camera,
+    InformationBased,
+    Lens,
+    Microbolometer,
+    Processing,
+    Scenario,
+    Sensor,
+)
 from seascape.model import Model
 
 FILENAME = "labels.json"
@@ -414,3 +424,21 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
     v = np.where(b0 + roots[0] * b1 < 0, roots[0], roots[1]) + 0.5
     keep = (v >= 0) & (v <= camera.height_px)
     return [(float(x), float(y)) for x, y in zip(u[keep], v[keep], strict=True)]
+
+
+def agcs(folder: Path) -> dict[str, Agc]:
+    """Each camera's AGC, by name, from the scenario the labels in `folder` record,
+    the default for a camera they do not, or for every camera in a folder without
+    labels. A merged set records one scenario per seed; their cameras are the same."""
+    found: dict[str, Agc] = defaultdict(InformationBased)
+    path = folder / FILENAME
+    if not path.exists():
+        return found
+    info = Labels.model_validate_json(path.read_text()).info
+    recorded = info.get("scenario") or next(
+        iter(info.get("scenarios", {}).values()), None
+    )
+    if recorded is not None:
+        scenario = Scenario.model_validate(recorded)
+        found.update((mount.name, mount.camera.agc) for mount in scenario.mounts)
+    return found

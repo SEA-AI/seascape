@@ -196,7 +196,7 @@ def render(
             truth.info = truth.info or _info(scenario)
             index_output = _index_output(passes)
             sc = bpy.context.scene
-            tones = {m.name: agc.Agc(1 / outputs.fps) for m in mounts}
+            tones = {m.name: agc.Agc(m.camera.agc, 1 / outputs.fps) for m in mounts}
             noises = {
                 m.name: substream(scenario.seed, f"microbolometer/{m.name}")
                 for m in mounts

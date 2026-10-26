@@ -235,6 +235,92 @@ class Microbolometer(Model):
         return self
 
 
+class Linear(Model):
+    """FLIR's Linear AGC: black at the frame's coldest pixel, white at its hottest,
+    every kelvin one grey, so a hot exhaust leaves the rest of the frame a few
+    levels."""
+
+    kind: Literal["linear"] = Field(default="linear", description="This AGC.")
+    # A display choice, not physics: slow enough not to flash when a hot target enters,
+    # fast enough to follow it.
+    tau_s: float = Field(
+        default=1.0, gt=0.0, description="How fast the span follows the frame."
+    )
+
+
+class Equalization(Model):
+    """What FLIR's two equalisations share. Defaults are a Boson+'s factory settings,
+    Product Datasheet 102-2013-45 Rev 100 §6.8."""
+
+    # §6.8.2. Judgement: a bin is one count, as the datasheet gives no bin width.
+    plateau: float = Field(
+        default=0.07,
+        gt=0.0,
+        le=1.0,
+        description="The most pixels one histogram bin counts, as a fraction of the "
+        "frame.",
+    )
+    # §6.8.5, Linear Percent.
+    linear_fraction: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="The share of the grey range spread evenly over the frame's "
+        "temperatures; the rest follows its histogram.",
+    )
+    # §6.8.4; FLIR Camera Adjustments 102-2013-100-01 §2.2 gives the unit: 200 counts
+    # need a gain of about 1.25 to fill 255. Judgement: a count is a centikelvin, the
+    # unit `agc.counts` writes; a Boson's counts per kelvin are not published.
+    max_gain: float = Field(
+        default=1.38,
+        gt=0.0,
+        description="The steepest the transfer curve may be, in grey levels per "
+        "centikelvin, so noise on a bland frame stays grain.",
+    )
+    # §6.8.10 keeps 85 % of the curve each frame, and §5.1 runs at 60 Hz.
+    tau_s: float = Field(
+        default=-1 / 60 / math.log(0.85),
+        gt=0.0,
+        description="How fast the curve follows the frame.",
+    )
+
+
+class Plateau(Equalization):
+    """FLIR's Plateau Equalization: grey levels go to the temperatures many pixels
+    share, and a hot exhaust takes few."""
+
+    kind: Literal["plateau"] = Field(default="plateau", description="This AGC.")
+
+
+class InformationBased(Equalization):
+    """FLIR's Information-Based Equalization, a Boson+'s factory AGC (§6.8.1): the
+    frame splits into detail and background, the background's histogram is equalised
+    with detail weighted up, so a hull's edges take greys a flat sea would, and the
+    detail is added back on top."""
+
+    kind: Literal["information_based"] = Field(
+        default="information_based", description="This AGC."
+    )
+    # §6.8.8, Smoothing Factor; a higher value puts more in the detail. Judgement:
+    # Camera Adjustments' parameter table names it SigmaR, read here as an
+    # edge-preserving filter's range sigma, in counts.
+    smoothing: float = Field(
+        default=1250.0,
+        gt=0.0,
+        description="The temperature step, in centikelvin, past which an edge stays "
+        "background rather than detail.",
+    )
+    # §6.8.7.
+    dde: float = Field(
+        default=0.95,
+        ge=0.0,
+        description="Gain on the detail: below 1 smooths, above 1 sharpens.",
+    )
+
+
+type Agc = Annotated[Linear | Plateau | InformationBased, Field(discriminator="kind")]
+
+
 class Processing(Model):
     """The camera's ISP. White balance and sharpening need a sensor."""
 
@@ -285,6 +371,11 @@ class Camera(Model):
     lens: Lens = Field(default_factory=Lens)
     processing: Processing = Field(default_factory=Processing)
     microbolometer: Microbolometer = Field(default_factory=Microbolometer)
+    agc: Agc = Field(
+        default_factory=InformationBased,
+        description="How an ir jpg, and the montage, panorama and video of an ir "
+        "png, turn temperature into grey.",
+    )
 
     @model_validator(mode="after")
     def _each_band_takes_its_own_camera(self) -> "Camera":
@@ -292,8 +383,11 @@ class Camera(Model):
             (self.sensor, self.processing) != (Sensor(), Processing())
         ):
             raise ValueError("an ir camera takes no sensor or processing")
-        if self.band == "eo" and self.microbolometer != Microbolometer():
-            raise ValueError("an eo camera takes no microbolometer")
+        if self.band == "eo" and (self.microbolometer, self.agc) != (
+            Microbolometer(),
+            InformationBased(),
+        ):
+            raise ValueError("an eo camera takes no microbolometer or agc")
         isp = self.processing.model_copy(update={"exposure_ev": 0.0})
         if self.sensor.width_px is not None and self.sensor.width_px < self.width_px:
             raise ValueError("sensor.width_px is narrower than the image")

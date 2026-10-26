@@ -16,6 +16,8 @@ import numpy as np
 
 from seascape import agc
 from seascape.calibration import Calibration, CameraCalibration
+from seascape.config import Agc
+from seascape.labels import agcs
 from seascape.montage import INK, MATTE
 
 # CLI name to cv2.PyRotationWarper type.
@@ -117,6 +119,21 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
     return np.vstack([image, strip])
 
 
+def _curve(
+    folder: Path, cameras: list[CameraCalibration], temps: list[np.ndarray | None]
+) -> tuple[np.ndarray, Agc] | None:
+    """One transfer curve for every thermal frame, so a temperature is one grey on both
+    sides of a seam."""
+    known = [t_k for t_k in temps if t_k is not None]
+    if not known:
+        return None
+    every = agcs(folder)
+    setting, *others = [every[camera.name] for camera in cameras]
+    if any(other != setting for other in others):
+        raise ValueError("a panorama's cameras need one agc, to share one curve")
+    return agc.transfer(known, setting), setting
+
+
 def stitch(
     folder: Path,
     cameras: list[CameraCalibration],
@@ -157,17 +174,14 @@ def stitch(
     warper = cv2.PyRotationWarper(kind, scale)
 
     temps = [agc.kelvin(folder / camera.image) for camera in cameras]
-    # One span for all, so a temperature is one grey on both sides of a seam.
-    known = [t_k for t_k in temps if t_k is not None]
-    low_k = min((float(t_k.min()) for t_k in known), default=0.0)
-    high_k = max((float(t_k.max()) for t_k in known), default=0.0)
+    shared = _curve(folder, cameras, temps)
     warped = []
     for camera, (k_full, r), t_k in zip(cameras, poses, temps, strict=True):
         path = folder / camera.image
         image = (
             cv2.imread(str(path), cv2.IMREAD_COLOR)
-            if t_k is None
-            else cv2.cvtColor(agc.grey(t_k, low_k, high_k), cv2.COLOR_GRAY2BGR)
+            if t_k is None or shared is None
+            else cv2.cvtColor(agc.grey(t_k, *shared), cv2.COLOR_GRAY2BGR)
         )
         if image is None:
             raise ValueError(
