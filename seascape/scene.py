@@ -503,13 +503,12 @@ class _Heat(NamedTuple):
 def _heat(scenario: Scenario) -> _Heat:
     sky = scenario.sky
     elevation = sky.sun_elevation_deg
-    sun_up = elevation is None or elevation > 0
     clouds = 0.0
     if sky.hdri is not None:
         clouds = bpy.data.images["cloudy_sky_radiance"]["cloud_fraction"]
     env = thermal.Environment(
         t_air_k=sky.t_air_k,
-        t_sea_k=scenario.sea.t_skin_k(sun_up),
+        t_sea_k=scenario.sea.t_skin_k(sky.sun_up),
         # ponytail: the true wind; a hull underway convects in its own way through the
         # air, and every hull shares one skin per zone.
         wind_m_s=scenario.sea.wind_speed_mps,
@@ -634,7 +633,7 @@ def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
     return hull
 
 
-def _zone_slots(meshes: list[bpy.types.Object], zones: Zones | None) -> None:
+def _zone_slots(name: str, meshes: list[bpy.types.Object], zones: Zones | None) -> None:
     """Give each face its zone as a material slot, one placeholder per zone, which the
     join merges. Unlabelled, every face is `paint_hull`.
 
@@ -643,11 +642,9 @@ def _zone_slots(meshes: list[bpy.types.Object], zones: Zones | None) -> None:
     """
     vocabulary = list(get_args(thermal.ZoneName.__value__))
     found = faces.found(meshes)
-    if zones is not None and zones.island_digest is not None:
-        fingerprint = (len(found.islands), found.island_digest)
-        if fingerprint != (zones.island_count, zones.island_digest):
-            # A name another object in the file already took renumbers the islands.
-            raise ValueError(f"{fingerprint} does not match the asset's zone islands")
+    if zones is not None:
+        # A name another object in the file already took renumbers the islands.
+        faces.check(name, found, zones)
     per_face = (
         faces.face_zones(found, zones)
         if zones is not None
@@ -937,7 +934,7 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
     if band == "ir":
-        _zone_slots(_meshes(parts), manifest()[name].zones)
+        _zone_slots(name, _meshes(parts), manifest()[name].zones)
         parts = [_joined(parts)]
         # Frees the import's object name, so the next asset's objects keep theirs,
         # which number its islands.
