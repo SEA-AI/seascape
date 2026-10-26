@@ -11,6 +11,14 @@ from seascape import zones
 from seascape.assets import Zone, Zones, manifest
 
 
+def test_every_asset_has_zones_from_the_vocabulary() -> None:
+    vocabulary = set(get_args(Zone.__value__))
+    for name, asset in manifest().items():
+        assert asset.zones is not None, name
+        given = {*asset.zones.materials.values(), *asset.zones.islands.values()}
+        assert given <= vocabulary, name
+
+
 def test_every_zone_has_a_contact_sheet_colour() -> None:
     assert set(zones.ZONE_COLOURS) == set(get_args(Zone.__value__))
 
