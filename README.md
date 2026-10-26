@@ -21,12 +21,12 @@ Real footage can't put a vessel at exactly 7 NM, hold the visibility constant, o
 ## Highlights
 
 - **Ground truth by construction.** Camera extrinsics and intrinsics are known rather than estimated. Every frame comes with each target's box, range and bearing, and the horizon. In an 8-bit frame, a target too faint to tell from its surroundings gets no box ([outputs](docs/outputs.md)).
-- **LWIR as well as EO.** Measured seawater optical constants, emissivity averaged over the wave slopes, and a band-integrated sky.
+- **LWIR as well as EO.** Measured seawater optical constants, a skin and foam that radiate differently from the bulk, a band-integrated sky whose clouds reflect in the sea, and a microbolometer model ([primer](docs/primer/README.md)).
 - **Multi-sensor rigs.** Several cameras, each with its own resolution, optics and band, in one scene.
 - **Sequences.** Targets under way, ownship roll, pitch and heave, seamless loops, mp4.
 
 > [!NOTE]
-> LWIR is good enough to look at and to regression-test against, but not a radiometric reference: shadowing between unresolved wave facets is not modelled. A detection-range or contrast figure taken off a render needs review before anyone acts on it.
+> LWIR is good enough to look at and to regression-test against, but not a radiometric reference: shadowing between unresolved wave facets is not modelled, and the sea mirrors no hulls. A detection-range or contrast figure taken off a render needs review before anyone acts on it.
 
 ## Install
 
