@@ -694,7 +694,7 @@ def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
 def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     """Under a uniform sky, each plate reads eps B(T) + (1 - eps) B(sky), T as
     `thermal` gives it for that normal and that sunlight; below the waterline, the
-    water's. One plate lies in the shadow of a small square out of frame."""
+    water's. One plate lies in the shadow of its own copy, out of frame."""
     sky_k = 270.0
     sc = _radiance_scene(sky_k, 96, 64)
 
@@ -716,9 +716,12 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
         "wetted": ((0.0, 8.0, -1.0), (0.0, 0.0, 1.0)),
     }
     corners = [c for centre, n in plates.values() for c in _plate(centre, n, 4.0)]
-    shade = tuple(np.array(plates["shadowed"][0]) + 30.0 * np.array(sun))
-    # Each face's ray leaves its centre, so a small square shades a whole plate.
-    corners += _plate(shade, sun, 1.0)
+    # The plate 30 m up the sun's ray, a tenth larger so every vertex's ray meets it.
+    centre = np.array(plates["shadowed"][0])
+    corners += [
+        tuple(centre + 1.1 * (np.array(c) - centre) + 30.0 * np.array(sun))
+        for c in _plate(*plates["shadowed"], 4.0)
+    ]
     mesh = bpy.data.meshes.new("hull")
     mesh.from_pydata(corners, [], [tuple(range(4 * i, 4 * i + 4)) for i in range(5)])
     hull = bpy.data.objects.new("hull", mesh)

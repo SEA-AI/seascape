@@ -865,7 +865,7 @@ class TestIrBand:
         assert baked("thermal_paint_hull") == pytest.approx(expected, rel=1e-5)
 
     def test_a_hull_knows_its_sunlit_faces(self) -> None:
-        """Each face is sunlit where a ray from it toward the sun leaves the hull."""
+        """Each vertex is sunlit where a ray from it toward the sun leaves the hull."""
         hull = next(
             p
             for p in bpy.data.objects[SCENARIO.objects[0].asset].children_recursive
@@ -874,16 +874,16 @@ class TestIrBand:
         evaluated = hull.evaluated_get(bpy.context.evaluated_depsgraph_get())
         mesh = evaluated.data
         sunlit = mesh.attributes["sunlit"]
-        assert sunlit.domain == "FACE"
+        assert sunlit.domain == "POINT"
         values = np.empty(len(sunlit.data))
         sunlit.data.foreach_get("value", values)
         sun = scene._heat(SCENARIO).sun
         assert sun is not None
         toward = (hull.matrix_world.inverted().to_3x3() @ Vector(sun)).normalized()
-        picked = np.linspace(0, len(mesh.polygons) - 1, 300).astype(int)
+        picked = np.linspace(0, len(mesh.vertices) - 1, 300).astype(int)
         cast = [
             not evaluated.ray_cast(
-                mesh.polygons[i].center + toward * scene.SHADOW_OFFSET_M, toward
+                mesh.vertices[i].co + toward * scene.SHADOW_OFFSET_M, toward
             )[0]
             for i in picked
         ]

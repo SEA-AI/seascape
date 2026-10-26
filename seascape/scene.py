@@ -45,9 +45,10 @@ from seascape.config import (
 # fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher
 # than a mirror.
 SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
-# The longest edge a hull's face keeps in IR, so a shadow, stored per face, falls no
-# coarser. Judgement: four and a half pixels of a 640 px, 32 deg camera at 500 m.
-# ponytail: the ownship is diced the same, and its own cameras see the steps.
+# The longest edge a hull's face keeps in IR, so a shadow's edge, stored per vertex and
+# blended across each face, blurs no wider. Judgement: four and a half pixels of a
+# 640 px, 32 deg camera at 500 m.
+# ponytail: the ownship is diced the same, and its own cameras see the blur.
 SHADOW_CELL_M = 2.0
 # A ray from a face toward the sun starts this far off it, clear of the face itself.
 # Judgement: under any hull's plating gaps, over float error at a ship's size.
@@ -621,7 +622,8 @@ def _reflecting(
 
 
 def _shadowed(hull: bpy.types.Object, sun: tuple[float, float, float]) -> None:
-    """Store `sunlit` per face: 1 where a ray toward the sun leaves the hull, else 0.
+    """Store `sunlit` per vertex: 1 where a ray toward the sun leaves the hull, else 0.
+    Each face blends its vertices', so a shadow's edge runs straight, not stepped.
 
     The sun is a direction in the world, turned into the hull's frame each frame, so a
     hull that turns or pitches keeps its shadows true."""
@@ -668,7 +670,7 @@ def _shadowed(hull: bpy.types.Object, sun: tuple[float, float, float]) -> None:
 
         store = nodes.new("GeometryNodeStoreNamedAttribute")
         store.data_type = "FLOAT"
-        store.domain = "FACE"
+        store.domain = "POINT"
         store.inputs["Name"].default_value = "sunlit"
         link(given.outputs["Geometry"], store.inputs["Geometry"])
         link(clear.outputs["Boolean"], store.inputs["Value"])
