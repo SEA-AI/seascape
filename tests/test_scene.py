@@ -1227,6 +1227,22 @@ class TestIrSkin:
         assert "sea_skin" in upstream(_sea_node("sea_radiance").inputs[1])
 
 
+def test_a_wake_mixes_the_skin_down_to_the_bulk() -> None:
+    """Its turbulence takes the warm layer down: in the wake the sea emits its bulk."""
+    under_way = variant(
+        sea={"wind_speed_mps": 4.0, "warm_layer": {}},
+        objects=[preset_target("multipurpose_freighter", 500.0, speed_mps=6.0)],
+    )
+    scene.build(under_way, "ir")
+    mix = _sea_node("sea_skin_radiance")
+    skin = lwir.band_radiance(under_way.sea.t_skin_k(sun_up=True))
+    bulk = lwir.band_radiance(under_way.sea.t_sea_k)
+    assert mix.inputs[2].default_value == pytest.approx(skin, rel=1e-5)
+    assert mix.inputs[1].default_value == pytest.approx(bulk - skin, rel=1e-4)
+    assert "wake_position" in upstream(mix.inputs[0])
+    assert "sea_skin_radiance" in upstream(_sea_node("sea_skin").inputs[0])
+
+
 def test_the_sea_s_cool_skin_is_thicker_at_night() -> None:
     night = variant(sky={"sun_elevation_deg": -10.0})
     assert not scene._light(night.sky, "ir").sun_up

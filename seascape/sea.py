@@ -1455,11 +1455,11 @@ def _thermal(
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
     slope_max: float,
     sky: SkyCurve,
-    sun_up: bool,
+    skin: bpy.types.NodeSocket | float,
     foam: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     """eps(theta) of the sea emitted, the remaining 1 - eps reflected from the sky.
-    It emits at its skin's temperature; the tables keep the bulk's optical constants,
+    It emits `skin`, a band radiance; the tables keep the bulk's optical constants,
     which a skin a few kelvin off barely moves. `foam`, the share of the pixel under
     foam, raises eps by that share of foam's excess.
 
@@ -1508,8 +1508,7 @@ def _thermal(
         1.0,
         name="sea_emissivity",
     )
-    skin_radiance = lwir.band_radiance(sea.t_skin_k(sun_up))
-    emitted = _math(tree, "SUBTRACT", skin_radiance, sky_seen, name="sea_skin")
+    emitted = _math(tree, "SUBTRACT", skin, sky_seen, name="sea_skin")
     radiance = _math(
         tree, "MULTIPLY_ADD", emissivity, emitted, sky_seen, name="sea_radiance"
     )
@@ -1517,6 +1516,24 @@ def _thermal(
     emission.inputs["Strength"].default_value = 1.0
     tree.links.new(radiance, emission.inputs["Color"])
     return emission.outputs["Emission"]
+
+
+def _skin_radiance(
+    tree: bpy.types.NodeTree, sea: Sea, sun_up: bool, wake: "_Wakes | None"
+) -> bpy.types.NodeSocket | float:
+    """The band radiance the sea emits: its skin's, or its bulk's where a wake's
+    turbulence mixes the skin away. A wake reads warm under a cool skin and cold where
+    a warm layer lifts the skin above the bulk (Nylund et al. 2021, Ocean Sci. 17 1285).
+
+    ponytail: the wake mixes down to the bulk only; colder water it raises from below
+    the bulk is not modelled."""
+    skin = lwir.band_radiance(sea.t_skin_k(sun_up))
+    if wake is None:
+        return skin
+    bulk = lwir.band_radiance(sea.t_sea_k)
+    return _math(
+        tree, "MULTIPLY_ADD", wake.band, bulk - skin, skin, name="sea_skin_radiance"
+    )
 
 
 def _daylight(
@@ -2593,7 +2610,7 @@ def material(
             unresolved,
             slope_max,
             light.sky,
-            light.sun_up,
+            _skin_radiance(tree, sea, light.sun_up, wake),
             whitecaps[0]
             if wake is None
             else _math(tree, "MAXIMUM", whitecaps[0], wake.foam),
