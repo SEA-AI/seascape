@@ -124,14 +124,17 @@ def test_air_mass_is_one_overhead_and_finite_at_the_horizon() -> None:
     assert float(thermal.air_mass(0.0)) == pytest.approx(38.09, rel=0.01)
 
 
-def test_table_is_lit_over_shadowed_and_matches_the_facets() -> None:
+def test_table_matches_the_facets() -> None:
     zone = thermal.ZONES["paint_superstructure"]
     env = environment(5.0, SUN_ELEVATION_RAD)
-    elevation, azimuth, table = thermal.temperature_table_k(zone, env, 9, 7)
-    assert table.shape == (2, 9, 7)
-    assert np.all(table[1] >= table[0])
-    probe = thermal.facet_temperature_k(zone, env, elevation[4], azimuth[2])
-    assert table[1, 4, 2] == pytest.approx(float(probe))
+    sun_cos, up, table = thermal.temperature_table_k(zone, env, 9, 7)
+    assert table.shape == (7, 9)
+    assert np.all(np.diff(table, axis=1) > 0)
+    # A facet facing the sun's bearing, tipped up by elevation e: n . s = cos(e - sun).
+    elev = math.asin(up[4])
+    probe = thermal.facet_temperature_k(zone, env, elev, 0.0)
+    expected = np.interp(math.cos(elev - SUN_ELEVATION_RAD), sun_cos, table[4])
+    assert float(probe) == pytest.approx(expected, abs=0.05)
 
 
 def test_zone_refuses_an_absorptance_outside_its_range() -> None:

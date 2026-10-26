@@ -329,19 +329,31 @@ def facet_temperature_k(
     """
     elev = np.asarray(normal_elev_rad, dtype=np.float64)
     azimuth = np.asarray(sun_azimuth_rad, dtype=np.float64)
-    lit = np.asarray(sunlit, dtype=bool)
-    t_interior = env.interior_k(zone.interior)
-    shape = np.broadcast_shapes(elev.shape, azimuth.shape, lit.shape)
-    if math.isinf(zone.u_w_m2k):
-        return np.full(shape, t_interior)
-
-    sky_view = 0.5 * (1.0 + np.sin(elev))
-    beam = direct_beam_w_m2(env.sun_elevation_rad)
     sun_elev = env.sun_elevation_rad or 0.0
     cos_incidence = np.cos(elev) * math.cos(sun_elev) * np.cos(azimuth) + np.sin(
         elev
     ) * math.sin(sun_elev)
-    solar = beam * (np.maximum(cos_incidence, 0.0) * lit + _DIFFUSE_FRACTION * sky_view)
+    lit = np.asarray(sunlit, dtype=bool)
+    return lit_temperature_k(
+        zone, env, np.maximum(cos_incidence, 0.0) * lit, np.sin(elev)
+    )
+
+
+def lit_temperature_k(
+    zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
+) -> FloatArray:
+    """`facet_temperature_k` by the two numbers it depends on: `sun_cos`, max(0, n . s)
+    where sunlit and 0 in shadow, and `normal_up`, the normal's vertical component."""
+    sun_cos = np.asarray(sun_cos, dtype=np.float64)
+    up = np.asarray(normal_up, dtype=np.float64)
+    t_interior = env.interior_k(zone.interior)
+    shape = np.broadcast_shapes(sun_cos.shape, up.shape)
+    if math.isinf(zone.u_w_m2k):
+        return np.full(shape, t_interior)
+
+    sky_view = 0.5 * (1.0 + up)
+    beam = direct_beam_w_m2(env.sun_elevation_rad)
+    solar = beam * (sun_cos + _DIFFUSE_FRACTION * sky_view)
 
     sky = sky_longwave_w_m2(env.t_air_k, env.cloud_fraction)
     sea = (
@@ -360,21 +372,14 @@ def facet_temperature_k(
 
 
 def temperature_table_k(
-    zone: Zone, env: Environment, n_elev: int = 33, n_azimuth: int = 33
+    zone: Zone, env: Environment, n_sun: int = 33, n_up: int = 33
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """`facet_temperature_k` over normal elevation x azimuth from the sun x lit.
+    """`lit_temperature_k` over its two inputs, for a shader to look up.
 
-    Returns (elevation, azimuth, table), the table shaped (2, n_elev, n_azimuth) with
-    shadowed first. Elevation spans -pi/2 to pi/2 and azimuth 0 to pi: the balance
-    is mirror-symmetric about the sun's bearing, so a lookup folds |azimuth| in.
+    Returns (sun_cos, normal_up, table): sun_cos spans 0 to 1, normal_up -1 to 1, and
+    the table is shaped (n_up, n_sun). The temperature is smooth in both, so a linear
+    lookup needs no fine grid.
     """
-    elevation = np.linspace(-0.5 * math.pi, 0.5 * math.pi, n_elev)
-    azimuth = np.linspace(0.0, math.pi, n_azimuth)
-    table = facet_temperature_k(
-        zone,
-        env,
-        elevation[None, :, None],
-        azimuth[None, None, :],
-        np.array([False, True])[:, None, None],
-    )
-    return elevation, azimuth, table
+    sun_cos = np.linspace(0.0, 1.0, n_sun)
+    up = np.linspace(-1.0, 1.0, n_up)
+    return sun_cos, up, lit_temperature_k(zone, env, sun_cos[None, :], up[:, None])
