@@ -100,3 +100,9 @@ def test_a_view_names_only_parts_and_shows_them_all() -> None:
     views = zones._views(found, [m + high for m in found.face_material])
     seen = set().union(*(np.unique(v.part).tolist() for v in views))
     assert seen == {-1, *range(high, high + len(found.materials))}
+
+
+def test_a_skinned_part_is_measured_in_its_pose(skinned: bpy.types.Object) -> None:
+    heights = zones._heights(faces.found([skinned]), [np.array([0])], 1)
+
+    assert heights[0] == pytest.approx([5.0, 5.0])

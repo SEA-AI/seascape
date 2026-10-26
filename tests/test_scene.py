@@ -568,6 +568,44 @@ def test_an_image_inside_a_node_group_is_counted() -> None:
     assert scene._images(outer) == {image}
 
 
+def test_a_turned_part_is_measured_by_its_vertices() -> None:
+    """A diagonal rod turned onto x has no y extent; its `bound_box`, turned with it,
+    does."""
+    mesh = bpy.data.meshes.new("rod")
+    mesh.from_pydata([(-1, -1, 0), (1, 1, 0), (1, 1, 0.01)], [], [(0, 1, 2)])
+    rod = bpy.data.objects.new("rod", mesh)
+    bpy.context.scene.collection.objects.link(rod)
+    rod.rotation_euler.z = math.radians(-45.0)
+    bpy.context.view_layer.update()
+    try:
+        ys = [c.y for c in scene._corners([rod])]
+    finally:
+        bpy.data.objects.remove(rod)
+        bpy.data.meshes.remove(mesh)
+
+    assert max(ys) - min(ys) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_a_skinned_part_joins_in_its_pose(skinned: bpy.types.Object) -> None:
+    """The joined hull holds the part's posed vertices, not its rest pose."""
+    part = skinned
+    expected = [
+        part.matrix_world @ v.co
+        for v in part.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        .to_mesh()
+        .vertices
+    ]
+
+    hull = scene._joined([part.parent])
+    try:
+        got = [v.co.copy() for v in hull.data.vertices]
+    finally:
+        bpy.data.objects.remove(hull)
+
+    assert np.array(got) == pytest.approx(np.array(expected))
+    assert expected[0].z == pytest.approx(5.0), "the pose moves the part"
+
+
 @pytest.mark.parametrize(
     ("bow_deg", "bow_corner"),
     [(0.0, (0, 5, 0)), (90.0, (5, 0, 0)), (180.0, (0, -5, 0)), (270.0, (-5, 0, 0))],
@@ -1514,8 +1552,9 @@ class TestDrifting:
         scenario = self.SCENARIO
         (anchor,) = built.targets[scenario.objects[0].asset]
         (attitude,) = anchor.children
-        local = attitude.matrix_world.inverted()
-        corners = [local @ c for c in scene._corners(scene._meshes([anchor]))]
+        corners = scene._corners(
+            scene._meshes([anchor]), attitude.matrix_world.inverted()
+        )
         length = max(c.y for c in corners) - min(c.y for c in corners)
         beam = max(c.x for c in corners) - min(c.x for c in corners)
         sc = bpy.context.scene

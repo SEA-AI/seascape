@@ -630,6 +630,24 @@ def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
     bpy.context.view_layer.update()
+    # A skinned mesh takes its pose from an armature modifier, which the join keeps
+    # pointing at an armature removed below: bake the pose in first.
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    posed = {
+        obj: bpy.data.meshes.new_from_object(
+            obj.evaluated_get(depsgraph),
+            preserve_all_data_layers=True,
+            depsgraph=depsgraph,
+        )
+        for obj in meshes
+        if obj.modifiers
+    }
+    for obj, mesh in posed.items():
+        rest = obj.data
+        obj.modifiers.clear()
+        obj.data = mesh
+        if not rest.users:
+            bpy.data.meshes.remove(rest)
     with bpy.context.temp_override(
         active_object=meshes[0], selected_editable_objects=meshes
     ):
@@ -839,17 +857,39 @@ def _rows(m: Matrix) -> Matrix4:
     return x, y, z, w
 
 
-def _corners(objects: Iterable[bpy.types.Object]) -> list[Vector]:
-    """World-space bounding corners of the meshes in `objects`.
+def _corners(
+    objects: Iterable[bpy.types.Object], into: Matrix | None = None
+) -> list[Vector]:
+    """Corners of the axis-aligned box around the vertices of the meshes in
+    `objects`, in the frame `into` maps world space to (default: world).
 
-    An empty's `bound_box` is a point at its origin, and an import is mostly empties,
-    so including them silently inflates the extent.
+    Vertices, not `bound_box`: a part turned off its parent's axes carries its own box
+    turned with it, which can be far wider than the part.
     """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    points = []
+    for obj in objects:
+        if obj.type != "MESH":
+            continue
+        # Evaluated, so an armature's pose and the modifiers move the vertices.
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        co = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", co)
+        evaluated.to_mesh_clear()
+        if not co.size:
+            continue
+        to = np.array((into or Matrix()) @ obj.matrix_world)
+        moved = co.reshape(-1, 3) @ to[:3, :3].T + to[:3, 3]
+        points += [moved.min(axis=0), moved.max(axis=0)]
+    if not points:
+        return []
+    low, high = np.min(points, axis=0), np.max(points, axis=0)
     return [
-        o.matrix_world @ Vector(corner)
-        for o in objects
-        if o.type == "MESH"
-        for corner in o.bound_box
+        Vector((x, y, z))
+        for x in (low[0], high[0])
+        for y in (low[1], high[1])
+        for z in (low[2], high[2])
     ]
 
 
@@ -927,8 +967,18 @@ def _parse(path: Path) -> set[bpy.types.Object]:
     # glTF nodes outside the file's scene land in an excluded collection: matrix_world
     # never updates there, and copies would render.
     shown = bpy.context.view_layer.objects
+    # A skinned glTF's bones are drawn with a sphere the importer adds to the scene,
+    # where it renders and enters the fit.
+    shapes = {
+        bone.custom_shape
+        for o in imported
+        if o.type == "ARMATURE"
+        for bone in o.pose.bones
+    }
     for obj in [
-        o for o in imported if o.type in {"CAMERA", "LIGHT"} or o.name not in shown
+        o
+        for o in imported
+        if o.type in {"CAMERA", "LIGHT"} or o.name not in shown or o in shapes
     ]:
         imported.remove(obj)
         bpy.data.objects.remove(obj)
@@ -1311,8 +1361,7 @@ def _waterplane(anchor: bpy.types.Object) -> tuple[float, float]:
     """A hull's length and beam, in its own frame, bow to +Y."""
     # The parts' matrix_world is stale until the depsgraph runs.
     bpy.context.view_layer.update()
-    local = anchor.matrix_world.inverted()
-    corners = [local @ corner for corner in _corners(_meshes([anchor]))]
+    corners = _corners(_meshes([anchor]), anchor.matrix_world.inverted())
     xs, ys = [c.x for c in corners], [c.y for c in corners]
     return max(ys) - min(ys), max(xs) - min(xs)
 
