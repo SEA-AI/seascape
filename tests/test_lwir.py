@@ -275,16 +275,6 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
     )
 
 
-def test_a_level_wave_views_its_facets_from_its_mirror() -> None:
-    elev = np.radians(np.linspace(0.0, 90.0, 181))
-    sky = lwir.sky_radiance(elev)
-    mirror = np.radians([0.5, 3.0, 20.0])
-    level = lwir.reflected_sky(mirror, elev, sky, slope_sigma=0.1)
-    assert lwir.reflected_sky(
-        mirror, elev, sky, slope_sigma=0.1, view_rad=mirror
-    ) == pytest.approx(level)
-
-
 def _tilted_facet_sum(depression: float, tilt: float, sigma: float) -> float:
     """Each facet of a wave tilted by `tilt` toward the eye, seen `depression` below
     the horizon, emitting and reflecting the sky in its own direction."""

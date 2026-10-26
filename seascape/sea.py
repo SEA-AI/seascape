@@ -24,7 +24,7 @@ Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 import math
 import shutil
 from collections.abc import Callable, Iterator
-from functools import cache, partial
+from functools import cache, lru_cache, partial
 from pathlib import Path
 from statistics import NormalDist
 from typing import NamedTuple
@@ -258,17 +258,32 @@ def _reflection_image(
     t_sea_k: float, sky: SkyCurve, slope_max: float
 ) -> bpy.types.Image:
     """`lwir.reflected_sky` baked against sin(mirror elevation) along a row
-    (`_mirror_columns`), the
-    view off the wave normal up a tile's rows (`_view_rows`), and the unresolved RMS
-    slope from tile to tile, all at texel centres."""
+    (`_mirror_columns`), the view off the wave normal up a tile's rows
+    (`_view_rows`), and the unresolved RMS slope from tile to tile, all at texel
+    centres."""
+    elevation, radiance = (np.ascontiguousarray(a, np.float64).tobytes() for a in sky)
+    return curve_image(
+        "sea_reflection", _reflection_table(t_sea_k, elevation, radiance, slope_max)
+    )
+
+
+# The bake is most of an IR build, and builds in one process often share a sea.
+# Arrays do not hash, so the sky comes as float64 bytes.
+@lru_cache(maxsize=8)
+def _reflection_table(
+    t_sea_k: float, elevation: bytes, radiance: bytes, slope_max: float
+) -> np.ndarray:
     mirror = np.arcsin(_mirror_columns())
-    view = np.arcsin(_view_rows())
-    rows = [
-        lwir.reflected_sky(mirror, *sky, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=v)
-        for sigma in _row_sigmas(slope_max)
-        for v in view
-    ]
-    return curve_image("sea_reflection", np.array(rows))
+    sky = np.frombuffer(elevation), np.frombuffer(radiance)
+    return np.array(
+        [
+            lwir.reflected_sky(
+                mirror, *sky, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=view
+            )
+            for sigma in _row_sigmas(slope_max)
+            for view in np.arcsin(_view_rows())
+        ]
+    )
 
 
 def _tiled(
