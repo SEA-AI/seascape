@@ -1,7 +1,5 @@
 """The thermal camera's two outputs: 16-bit counts, and 8-bit grey after AGC."""
 
-import math
-
 import cv2
 import numpy as np
 import pytest
@@ -70,47 +68,3 @@ def test_an_8_bit_image_has_no_temperatures(tmp_path) -> None:
 def test_a_temperature_past_16_bits_raises() -> None:
     with pytest.raises(ValueError, match="overflows"):
         agc.counts(column(700.0))
-
-
-def test_an_infinite_plateau_equalises_the_histogram() -> None:
-    """Cumulative counts 1, 3, 4 stretched from the first to the last: 0, 2/3, 1."""
-    tone = agc.PlateauAgc(math.inf)
-    assert tone(column(280.0, 290.0, 290.0, 300.0)).ravel().tolist() == [
-        0,
-        170,
-        170,
-        255,
-    ]
-
-
-def test_a_plateau_of_one_projects_the_histogram() -> None:
-    """Every occupied bin one step, however many pixels it holds."""
-    tone = agc.PlateauAgc(1)
-    grey = tone(column(280.0, *[290.0] * 50, 300.0)).ravel()
-    assert (grey[0], grey[1], grey[-1]) == (0, 128, 255)
-
-
-def test_a_plateau_of_one_ignores_the_spacing_of_temperatures() -> None:
-    """Unlike a linear stretch, which would put 281 K near black."""
-    assert agc.PlateauAgc(1)(column(280.0, 281.0, 300.0))[1, 0] == 128
-
-
-def test_a_plateau_frame_of_one_temperature_is_mid_grey() -> None:
-    assert agc.PlateauAgc(10)(column(290.0, 290.0)).ravel().tolist() == [128, 128]
-
-
-def test_a_plateau_must_be_positive() -> None:
-    with pytest.raises(ValueError, match="positive"):
-        agc.PlateauAgc(0)
-
-
-def test_the_plateau_transfer_converges_after_a_step_change() -> None:
-    step_s = 0.1
-    tone = agc.PlateauAgc(1, step_s)
-    tone(column(280.0, 300.0))
-    hot = column(280.0, 285.0, 290.0, 300.0)
-    # 285 K was black in the first frame, so it starts below its new grey.
-    assert tone(hot)[1, 0] < 85
-    for _ in range(20 * round(agc.TAU_S / step_s)):
-        tone(hot)
-    assert tone(hot).ravel().tolist() == [0, 85, 170, 255]

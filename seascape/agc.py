@@ -60,36 +60,3 @@ class Agc:
             high = keep * self._span[1] + (1 - keep) * high
         self._span = low, high
         return grey(t_k, low, high)
-
-
-class PlateauAgc:
-    """8-bit grey by plateau equalisation (Vickers 1996, Opt. Eng. 35(7) 1921,
-    doi:10.1117/1.601006): the frame's histogram, each bin clipped at `plateau`
-    pixels, its cumulative sum the grey. An infinite plateau is histogram
-    equalisation; a plateau of 1 gives every occupied bin the same step.
-
-    A bin is one count of `counts`, so `plateau` is pixels per centikelvin. The
-    transfer function is damped over time as `Agc` damps its span.
-    """
-
-    def __init__(self, plateau: float, step_s: float = math.inf) -> None:
-        if not plateau > 0:
-            raise ValueError(f"plateau must be positive, not {plateau}")
-        self._plateau = plateau
-        self._keep = math.exp(-step_s / TAU_S)
-        self._transfer: np.ndarray | None = None
-
-    def __call__(self, t_k: np.ndarray) -> np.ndarray:
-        frame = counts(t_k)
-        histogram = np.bincount(frame.ravel(), minlength=np.iinfo(np.uint16).max + 1)
-        cumulative = np.cumsum(np.minimum(histogram, self._plateau))
-        # The coldest bin is black and the hottest white, as `grey` stretches.
-        first, total = cumulative[frame.min()], cumulative[-1]
-        if total - first < 1e-6:
-            transfer = np.full(cumulative.shape, 0.5)
-        else:
-            transfer = np.clip((cumulative - first) / (total - first), 0.0, 1.0)
-        if self._transfer is not None:
-            transfer = self._keep * self._transfer + (1 - self._keep) * transfer
-        self._transfer = transfer
-        return np.rint(255 * transfer[frame]).astype(np.uint8)
