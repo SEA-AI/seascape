@@ -1196,6 +1196,32 @@ class TestSlicks:
         assert {"slick", "sea_unresolved_slick_variance_upwind"} <= upstream(roughness)
 
 
+class TestIrSkin:
+    """A warm layer, where the sea's emission is read."""
+
+    SKIN = variant(sea={"wind_speed_mps": 4.0, "warm_layer": {}})
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls) -> None:
+        scene.build(cls.SKIN, "ir")
+
+    def test_the_sea_emits_at_its_skin_not_its_bulk(self) -> None:
+        sea_ = self.SKIN.sea
+        t_skin_k = sea_.t_skin_k(sun_up=True)
+        assert t_skin_k > sea_.t_sea_k, "the warm layer outweighs the cool skin"
+        assert _sea_node("sea_skin").inputs[0].default_value == pytest.approx(
+            lwir.band_radiance(t_skin_k), rel=1e-5
+        )
+        assert "sea_skin" in upstream(_sea_node("sea_radiance").inputs[1])
+
+
+def test_the_sea_s_cool_skin_is_thicker_at_night() -> None:
+    night = variant(sky={"sun_elevation_deg": -10.0})
+    assert not scene._light(night.sky, "ir").sun_up
+    assert night.sea.t_skin_k(sun_up=False) < night.sea.t_skin_k(sun_up=True)
+
+
 def each_frame() -> Iterator[int]:
     sc = bpy.context.scene
     for frame in range(sc.frame_start, sc.frame_end + 1):

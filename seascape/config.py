@@ -35,7 +35,7 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets, lwir, skies, waves
+from seascape import assets, lwir, skies, skin, waves
 from seascape.model import Model
 
 CFG_DIR = Path(__file__).parent / "cfg"
@@ -348,6 +348,41 @@ class Swell(Model):
     )
 
 
+class WarmLayer(Model):
+    """The sun's heat trapped near the surface on a calm day, Fairall et al.'s warm
+    layer. Each value is a mean since it formed; unset, their clear COARE day's."""
+
+    hours: float = Field(
+        default=skin.CLEAR_DAY_HOURS,
+        gt=0.0,
+        le=24.0,
+        description="How long the sun has heated it, from just after sunrise.",
+    )
+    solar_w_m2: float = Field(
+        default=skin.CLEAR_DAY_SOLAR_W_M2,
+        ge=0.0,
+        description="Net solar at the surface.",
+    )
+    cooling_w_m2: float | None = Field(
+        default=None,
+        description="Net cooling at the surface, longwave, sensible and latent. Unset, "
+        "a clear COARE day's at the sea's wind.",
+    )
+
+    def rise_k(self, wind_speed_mps: float, t_sea_k: float) -> float:
+        cooling = self.cooling_w_m2
+        if cooling is None:
+            cooling = skin.clear_day_cooling_w_m2(wind_speed_mps)
+        rise, _ = skin.warm_layer(
+            self.solar_w_m2,
+            cooling,
+            skin.stress_m2_s2(wind_speed_mps, t_sea_k),
+            self.hours,
+            t_sea_k,
+        )
+        return rise
+
+
 class Sea(Model):
     """The temperature bound is the span of the shipped optical-constant table. `lwir`
     clamps to it; here it is an error.
@@ -357,7 +392,13 @@ class Sea(Model):
         default=lwir.T_SEA_K,
         ge=271.0,
         le=311.0,
-        description="Sea surface temperature. IR only. Unset, the atmosphere's own.",
+        description="Bulk sea temperature, under the skin the camera sees. IR only. "
+        "Unset, the atmosphere's own.",
+    )
+    warm_layer: WarmLayer | None = Field(
+        default=None,
+        description="A day's sun trapped near the surface, warming the skin. IR only. "
+        "Opt-in: the sun's elevation does not say how long it has shone.",
     )
     # Elfouhaily et al. 1997 fitted their spectrum up to 21 m/s.
     wind_speed_mps: float = Field(
@@ -406,6 +447,13 @@ class Sea(Model):
     @property
     def fetch_m(self) -> float | None:
         return None if self.fetch_km is None else self.fetch_km * 1e3
+
+    def t_skin_k(self, sun_up: bool) -> float:
+        """What the camera sees: the bulk under a cool skin, warmed by its warm layer
+        if it has one."""
+        warm = self.warm_layer
+        rise = 0.0 if warm is None else warm.rise_k(self.wind_speed_mps, self.t_sea_k)
+        return skin.skin_k(self.t_sea_k, rise, sun_up)
 
 
 # Judgement: 42 km, inside the open ocean's measured spread. OPAC's
@@ -536,6 +584,11 @@ class Sky(Model):
         if self.visibility_km is None:
             return 0.0
         return math.log(1 / 0.02) / (self.visibility_km * 1000)
+
+    @property
+    def sun_up(self) -> bool:
+        """A photo's sun with no disc is behind cloud, not set."""
+        return self.sun_elevation_deg is None or self.sun_elevation_deg > 0.0
 
 
 def _in_the_manifest(name: str) -> str:
@@ -838,6 +891,13 @@ class Scenario(Model):
         if "t_sea_k" not in sea and atmosphere in lwir.SURFACE_SEA_K:
             data = {**data, "sea": {**sea, "t_sea_k": lwir.SURFACE_SEA_K[atmosphere]}}
         return data
+
+    @model_validator(mode="after")
+    def _a_warm_layer_needs_the_sun(self) -> "Scenario":
+        """Fairall et al. 1996: it forms once the trapped sun outweighs the cooling."""
+        if self.sea.warm_layer is not None and not self.sky.sun_up:
+            raise ValueError("sea.warm_layer needs the sun above the horizon")
+        return self
 
     @model_validator(mode="after")
     def _a_loop_can_close(self) -> "Scenario":

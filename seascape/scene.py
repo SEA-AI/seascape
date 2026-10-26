@@ -412,7 +412,7 @@ def _sun_vector(sky: Sky) -> tuple[float, float, float]:
 
 def _light(sky: Sky, band: Band) -> sea.Light:
     if band == "ir":
-        return sea.Light(sky=_sky_round(sky))
+        return sea.Light(sky=_sky_round(sky), sun_up=sky.sun_up)
     if sky.sun_elevation_deg is None:
         return sea.Light()
     return sea.Light(sun=_sun_vector(sky))
