@@ -843,12 +843,12 @@ class TestIrBand:
                 for n in tree.nodes
                 if n.bl_idname == "ShaderNodeMixShader"
                 and not n.inputs["Factor"].is_linked
-                and "Emission" in upstream(n.inputs[2])
+                and "Emission" in upstream(n.inputs["Shader_001"])
                 and n.inputs["Factor"].default_value != thermal.SEA_EMISSIVITY
             )
             zone = thermal.ZONES[name]
             assert skin.inputs["Factor"].default_value == pytest.approx(zone.emissivity)
-            scatter = skin.inputs[1].links[0].from_node.bl_idname
+            scatter = skin.inputs["Shader"].links[0].from_node.bl_idname
             # Blender 4 merged Glossy into Anisotropic and kept Anisotropic's bl_idname.
             assert scatter == (
                 "ShaderNodeBsdfAnisotropic"

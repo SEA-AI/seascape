@@ -361,7 +361,9 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     # As a horizontal surface sees the sky: each row by its projected solid angle.
     up = elevation > 0
     weight = np.sin(elevation[up]) * np.cos(elevation[up])
-    image["cloud_fraction"] = float(weight @ cloud[up].mean(axis=1) / weight.sum())
+    fraction = weight @ cloud[up].mean(axis=1) / weight.sum()
+    # A weighted mean of values in [0, 1] can round past 1.
+    image["cloud_fraction"] = float(np.clip(fraction, 0.0, 1.0))
     return image
 
 
@@ -558,8 +560,8 @@ def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
     else:
         facing = tree.nodes.new("ShaderNodeVectorMath")
         facing.operation = "DOT_PRODUCT"
-        facing.inputs[1].default_value = heat.sun
-        link(geometry.outputs["Normal"], facing.inputs[0])
+        facing.inputs["Vector_001"].default_value = heat.sun
+        link(geometry.outputs["Normal"], facing.inputs["Vector"])
         sunlit = tree.nodes.new("ShaderNodeAttribute")
         sunlit.attribute_name = "sunlit"
         lit = sea._math(
@@ -589,9 +591,8 @@ def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
     under = sea._math(tree, "LESS_THAN", height.outputs["Z"], 0.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(under, mix.inputs["Factor"])
-    # Mix Shader names both shader inputs "Shader", so they can only be indexed.
-    link(skin, mix.inputs[1])
-    link(wetted, mix.inputs[2])
+    link(skin, mix.inputs["Shader"])
+    link(wetted, mix.inputs["Shader_001"])
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     link(mix.outputs["Shader"], output.inputs["Surface"])
     return material
@@ -614,8 +615,8 @@ def _reflecting(
     scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     mix.inputs["Factor"].default_value = emissivity
-    tree.links.new(scatter.outputs["BSDF"], mix.inputs[1])
-    tree.links.new(emission, mix.inputs[2])
+    tree.links.new(scatter.outputs["BSDF"], mix.inputs["Shader"])
+    tree.links.new(emission, mix.inputs["Shader_001"])
     return mix.outputs["Shader"]
 
 
@@ -646,14 +647,15 @@ def _shadowed(hull: bpy.types.Object, sun: tuple[float, float, float]) -> None:
         link(inverse.outputs["Matrix"], toward.inputs["Transform"])
         unit = nodes.new("ShaderNodeVectorMath")
         unit.operation = "NORMALIZE"
-        link(toward.outputs["Direction"], unit.inputs[0])
+        link(toward.outputs["Direction"], unit.inputs["Vector"])
 
         # Off along the ray, not the normal: some assets wind faces inward.
         off = nodes.new("ShaderNodeVectorMath")
         off.operation = "MULTIPLY_ADD"
-        link(unit.outputs["Vector"], off.inputs[0])
-        off.inputs[1].default_value = (SHADOW_OFFSET_M,) * 3
-        link(nodes.new("GeometryNodeInputPosition").outputs["Position"], off.inputs[2])
+        link(unit.outputs["Vector"], off.inputs["Vector"])
+        off.inputs["Vector_001"].default_value = (SHADOW_OFFSET_M,) * 3
+        position = nodes.new("GeometryNodeInputPosition").outputs["Position"]
+        link(position, off.inputs["Vector_002"])
         ray = nodes.new("GeometryNodeRaycast")
         link(given.outputs["Geometry"], ray.inputs["Target Geometry"])
         link(off.outputs["Vector"], ray.inputs["Source Position"])
@@ -662,7 +664,7 @@ def _shadowed(hull: bpy.types.Object, sun: tuple[float, float, float]) -> None:
         ray.inputs["Ray Length"].default_value = 1e4
         clear = nodes.new("FunctionNodeBooleanMath")
         clear.operation = "NOT"
-        link(ray.outputs["Is Hit"], clear.inputs[0])
+        link(ray.outputs["Is Hit"], clear.inputs["Boolean"])
 
         store = nodes.new("GeometryNodeStoreNamedAttribute")
         store.data_type = "FLOAT"
