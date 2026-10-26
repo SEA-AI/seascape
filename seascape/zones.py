@@ -527,6 +527,8 @@ def _heights(found: Parts, per_face: list[np.ndarray], n: int) -> np.ndarray:
         posed = evaluated.to_mesh()
         co = faces.floats(posed.vertices, "co", 3 * len(posed.vertices)).reshape(-1, 3)
         evaluated.to_mesh_clear()
+        if len(co) != len(mesh.vertices):
+            raise ValueError(f"{obj.name}: a modifier changes its vertices")
         m = np.array(obj.matrix_world)
         z = co @ m[2, :3] + m[2, 3]
         total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))

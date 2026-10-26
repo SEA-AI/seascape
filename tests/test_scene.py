@@ -602,7 +602,7 @@ def test_a_skinned_part_joins_in_its_pose(skinned: bpy.types.Object) -> None:
     finally:
         bpy.data.objects.remove(hull)
 
-    assert [tuple(v) for v in got] == pytest.approx([tuple(v) for v in expected])
+    assert np.array(got) == pytest.approx(np.array(expected))
     assert expected[0].z == pytest.approx(5.0), "the pose moves the part"
 
 
