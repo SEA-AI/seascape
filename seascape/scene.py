@@ -536,8 +536,10 @@ def _zone_skin(
     zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"
     if paint_absorptance is not None and zone_name in thermal.PAINTED:
-        zone = replace(zone, absorptance=paint_absorptance)
-        name += f"_a{paint_absorptance:.2f}"
+        # Hulls a hundredth apart share a skin, built at the absorptance it is named.
+        absorptance = round(paint_absorptance, 2)
+        zone = replace(zone, absorptance=absorptance)
+        name += f"_a{absorptance:.2f}"
     if zone.interior in ("engine_room", "exhaust"):
         # Hulls whose engines stopped at different times differ here.
         name += f"_{heat.env.interior_k(zone.interior):.1f}K"
