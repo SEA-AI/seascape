@@ -12,7 +12,7 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Annotated, ClassVar, Literal
 
-from pydantic import ConfigDict, Field, TypeAdapter, field_validator
+from pydantic import ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from seascape.model import Model
 
@@ -32,6 +32,48 @@ class File(Model):
 
     url: str
     sha256: str = Field(pattern=SHA256)
+
+
+# What a part of an asset is made of, for its LWIR emission. The waterline is not one:
+# it comes from `draught_m`.
+type Zone = Literal[
+    "paint_hull",
+    "paint_superstructure",
+    "deck",
+    "glass",
+    "bare_metal",
+    "rubber",
+    "fabric",
+    "funnel",
+    "exhaust",
+    "engine_cowl",
+    "wood_composite",
+]
+
+
+class Zones(Model):
+    """Each material's zone, and the islands that differ from their material's.
+
+    An island is the faces of one material in one object that share a vertex, numbered
+    by object name and then first face, as `zones.parts` imports them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    materials: dict[str, Zone] = Field(min_length=1)
+    # The import's island count: an importer that reorders faces renumbers them.
+    island_count: int | None = Field(default=None, ge=1)
+    islands: dict[int, Zone] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _counted(self) -> "Zones":
+        if self.islands and self.island_count is None:
+            raise ValueError("islands need island_count")
+        if self.island_count is not None and any(
+            not 0 <= i < self.island_count for i in self.islands
+        ):
+            raise ValueError(f"an island id is outside 0-{self.island_count - 1}")
+        return self
 
 
 class _Mesh(Model):
@@ -55,6 +97,7 @@ class _Mesh(Model):
     texture_px: tuple[int, ...]
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
+    zones: Zones | None = None
 
     @abstractmethod
     def scale(self, size: tuple[float, float, float]) -> float:
