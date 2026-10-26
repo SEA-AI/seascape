@@ -45,14 +45,6 @@ from seascape.config import (
 # fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher
 # than a mirror.
 SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
-# The longest edge a hull's face keeps in IR, so a shadow's edge, stored per vertex and
-# blended across each face, blurs no wider. Judgement: four and a half pixels of a
-# 640 px, 32 deg camera at 500 m.
-# ponytail: the ownship is diced the same, and its own cameras see the blur.
-SHADOW_CELL_M = 2.0
-# A ray from a face toward the sun starts this far off it, clear of the face itself.
-# Judgement: under any hull's plating gaps, over float error at a ship's size.
-SHADOW_OFFSET_M = 0.01
 
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
@@ -530,8 +522,12 @@ def _heat(scenario: Scenario) -> _Heat:
 
 def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
     """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
-    hull: each face looks up its temperature by max(0, n . s) times `sunlit`, and the
-    normal's z. Below the waterline, the bulk water's."""
+    hull: each face looks up its temperature by max(0, n . s) and the normal's z.
+    Below the waterline, the bulk water's.
+
+    No face shades another: a shadow on a hull is narrower than a pixel at the ranges
+    a camera finds it, and the balance is steady, so a shadow would be as sharp and
+    as deep as one that had sat for hours."""
     name = f"thermal_{zone_name}"
     if (found := bpy.data.materials.get(name)) is not None:
         return found
@@ -563,14 +559,7 @@ def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
         facing.operation = "DOT_PRODUCT"
         facing.inputs["Vector_001"].default_value = heat.sun
         link(geometry.outputs["Normal"], facing.inputs["Vector"])
-        sunlit = tree.nodes.new("ShaderNodeAttribute")
-        sunlit.attribute_name = "sunlit"
-        lit = sea._math(
-            tree,
-            "MULTIPLY",
-            sea._math(tree, "MAXIMUM", facing.outputs["Value"], 0.0),
-            sunlit.outputs["Fac"],
-        )
+        lit = sea._math(tree, "MAXIMUM", facing.outputs["Value"], 0.0)
         at = sea._math(
             tree,
             "MULTIPLY_ADD",
@@ -621,67 +610,9 @@ def _reflecting(
     return mix.outputs["Shader"]
 
 
-def _shadowed(hull: bpy.types.Object, sun: tuple[float, float, float]) -> None:
-    """Store `sunlit` per vertex: 1 where a ray toward the sun leaves the hull, else 0.
-    Each face blends its vertices', so a shadow's edge runs straight, not stepped.
-
-    The sun is a direction in the world, turned into the hull's frame each frame, so a
-    hull that turns or pitches keeps its shadows true."""
-    group = bpy.data.node_groups.get("sunlit")
-    if group is None:
-        group = bpy.data.node_groups.new("sunlit", "GeometryNodeTree")
-        for in_out in ("INPUT", "OUTPUT"):
-            group.interface.new_socket(
-                "Geometry", in_out=in_out, socket_type="NodeSocketGeometry"
-            )
-        nodes, link = group.nodes, group.links.new
-        given = nodes.new("NodeGroupInput")
-        info = nodes.new("GeometryNodeObjectInfo")
-        info.transform_space = "ORIGINAL"
-        link(
-            nodes.new("GeometryNodeSelfObject").outputs["Self Object"],
-            info.inputs["Object"],
-        )
-        inverse = nodes.new("FunctionNodeInvertMatrix")
-        link(info.outputs["Transform"], inverse.inputs["Matrix"])
-        toward = nodes.new("FunctionNodeTransformDirection")
-        toward.inputs["Direction"].default_value = sun
-        link(inverse.outputs["Matrix"], toward.inputs["Transform"])
-        unit = nodes.new("ShaderNodeVectorMath")
-        unit.operation = "NORMALIZE"
-        link(toward.outputs["Direction"], unit.inputs["Vector"])
-
-        # Off along the ray, not the normal: some assets wind faces inward.
-        off = nodes.new("ShaderNodeVectorMath")
-        off.operation = "MULTIPLY_ADD"
-        link(unit.outputs["Vector"], off.inputs["Vector"])
-        off.inputs["Vector_001"].default_value = (SHADOW_OFFSET_M,) * 3
-        position = nodes.new("GeometryNodeInputPosition").outputs["Position"]
-        link(position, off.inputs["Vector_002"])
-        ray = nodes.new("GeometryNodeRaycast")
-        link(given.outputs["Geometry"], ray.inputs["Target Geometry"])
-        link(off.outputs["Vector"], ray.inputs["Source Position"])
-        link(unit.outputs["Vector"], ray.inputs["Ray Direction"])
-        # Judgement: longer than any hull.
-        ray.inputs["Ray Length"].default_value = 1e4
-        clear = nodes.new("FunctionNodeBooleanMath")
-        clear.operation = "NOT"
-        link(ray.outputs["Is Hit"], clear.inputs["Boolean"])
-
-        store = nodes.new("GeometryNodeStoreNamedAttribute")
-        store.data_type = "FLOAT"
-        store.domain = "POINT"
-        store.inputs["Name"].default_value = "sunlit"
-        link(given.outputs["Geometry"], store.inputs["Geometry"])
-        link(clear.outputs["Boolean"], store.inputs["Value"])
-        link(store.outputs["Geometry"], nodes.new("NodeGroupOutput").inputs["Geometry"])
-    hull.modifiers.new("sunlit", "NODES").node_group = group
-
-
 def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
     """Every mesh under `parts` as one object, its vertices in metres at the fitted
-    pose: one shadow ray then finds any of the hull's structure, and the hull's own
-    frame puts the waterline at z = 0."""
+    pose, so the hull's own frame puts the waterline at z = 0."""
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
@@ -701,40 +632,6 @@ def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
     for obj in others:
         bpy.data.objects.remove(obj)
     return hull
-
-
-def _diced(hull: bpy.types.Object) -> None:
-    """Split every edge longer than `SHADOW_CELL_M`, flat, so the shape stays."""
-    mesh = hull.data
-    # Edit mode acts on the view layer's active object.
-    bpy.context.view_layer.objects.active = hull
-    with bpy.context.temp_override(selected_editable_objects=[hull]):
-        # Subdivide splits only an n-gon's edges, which would keep it one face.
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="DESELECT")
-        bpy.ops.mesh.select_face_by_sides(number=4, type="GREATER")
-        bpy.ops.mesh.quads_convert_to_tris(ngon_method="BEAUTY")
-        bpy.ops.object.mode_set(mode="OBJECT")
-        while True:
-            # Blender's own dtypes, which foreach_get copies without converting.
-            co = np.empty(3 * len(mesh.vertices), np.float32)
-            mesh.vertices.foreach_get("co", co)
-            ends = np.empty(2 * len(mesh.edges), np.int32)
-            mesh.edges.foreach_get("vertices", ends)
-            co, ends = co.reshape(-1, 3), ends.reshape(-1, 2)
-            long = np.linalg.norm(co[ends[:, 0]] - co[ends[:, 1]], axis=1)
-            long = long > SHADOW_CELL_M
-            if not long.any():
-                return
-            # Selection is these attributes; one missing selects nothing.
-            for name in (".select_vert", ".select_poly"):
-                if (stale := mesh.attributes.get(name)) is not None:
-                    mesh.attributes.remove(stale)
-            mesh.edges.foreach_set("select", long)
-            bpy.context.tool_settings.mesh_select_mode = (False, True, False)
-            bpy.ops.object.mode_set(mode="EDIT")
-            bpy.ops.mesh.subdivide(number_cuts=1)
-            bpy.ops.object.mode_set(mode="OBJECT")
 
 
 def _zone_slots(meshes: list[bpy.types.Object], zones: Zones | None) -> None:
@@ -1045,7 +942,6 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
         # Frees the import's object name, so the next asset's objects keep theirs,
         # which number its islands.
         parts[0].name = parts[0].data.name = f"{name}_hull"
-        _diced(parts[0])
         _unslotted(parts[0])
     parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
     parts[0]["length_m"] = max(c.y for c in fitted) - min(c.y for c in fitted)
@@ -1108,12 +1004,6 @@ def _vessel(
         parts = hulls[name] = _import(name, "eo" if heat is None else "ir")
 
     if heat is not None:
-        # Only a zoned skin reads `sunlit`; the modifier costs a copy its instancing.
-        shading = parts[0].modifiers.get("sunlit")
-        if heat.sun is not None and t_k is None and shading is None:
-            _shadowed(parts[0], heat.sun)
-        elif shading is not None and t_k is not None:
-            parts[0].modifiers.remove(shading)
         uniform = None if t_k is None else _thermal_skin(f"{name}_ir", t_k, sky)
         for mesh in _meshes(parts):
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):

@@ -789,7 +789,6 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     asset = SCENARIO.objects[0].asset
     anchor = scene._vessel(asset, 300.0, SCENARIO.sky, scene._heat(SCENARIO), {})
     hull = next(p for p in anchor.children_recursive if p.type == "MESH")
-    assert "sunlit" not in hull.modifiers, "a uniform skin reads no shadows"
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
     emission = next(iter(skins)).node_tree.nodes["Emission"]
@@ -863,32 +862,6 @@ class TestIrBand:
         _, _, table = thermal.temperature_table_k(thermal.ZONES["paint_hull"], env)
         expected = np.vectorize(lwir.band_radiance)(table)
         assert baked("thermal_paint_hull") == pytest.approx(expected, rel=1e-5)
-
-    def test_a_hull_knows_its_sunlit_faces(self) -> None:
-        """Each vertex is sunlit where a ray from it toward the sun leaves the hull."""
-        hull = next(
-            p
-            for p in bpy.data.objects[SCENARIO.objects[0].asset].children_recursive
-            if p.type == "MESH"
-        )
-        evaluated = hull.evaluated_get(bpy.context.evaluated_depsgraph_get())
-        mesh = evaluated.data
-        sunlit = mesh.attributes["sunlit"]
-        assert sunlit.domain == "POINT"
-        values = np.empty(len(sunlit.data))
-        sunlit.data.foreach_get("value", values)
-        sun = scene._heat(SCENARIO).sun
-        assert sun is not None
-        toward = (hull.matrix_world.inverted().to_3x3() @ Vector(sun)).normalized()
-        picked = np.linspace(0, len(mesh.vertices) - 1, 300).astype(int)
-        cast = [
-            not evaluated.ray_cast(
-                mesh.vertices[i].co + toward * scene.SHADOW_OFFSET_M, toward
-            )[0]
-            for i in picked
-        ]
-        assert values[picked] == pytest.approx(np.array(cast, float))
-        assert 0.0 < values.mean() < 1.0, "part of the deck lies in shadow"
 
     def test_the_sea_reflects_what_it_does_not_emit(self) -> None:
         """Emission alone goes dark toward grazing, where emissivity falls to zero."""

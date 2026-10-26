@@ -323,8 +323,11 @@ def facet_temperature_k(
     sky and sea, split by view factors (1 +- sin elev) / 2. Lost: eps sigma T^4,
     convection to the air and conduction to the interior.
 
-    ponytail: no sun off the sea, no light from the vessel's own structure, and cloud
-    dims no beam; pass no sun for overcast.
+    Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
+    much weaker on average.
+
+    ponytail: no sun off the sea, no light from the vessel's own structure, and the
+    diffuse share stays clear-sky's under cloud, where it rises.
     """
     elev = np.asarray(normal_elev_rad, dtype=np.float64)
     azimuth = np.asarray(sun_azimuth_rad, dtype=np.float64)
@@ -352,7 +355,7 @@ def lit_temperature_k(
 
     sky_view = 0.5 * (1.0 + up)
     beam = direct_beam_w_m2(env.sun_elevation_rad)
-    solar = beam * (sun_cos + _DIFFUSE_FRACTION * sky_view)
+    solar = beam * ((1.0 - env.cloud_fraction) * sun_cos + _DIFFUSE_FRACTION * sky_view)
 
     sky = sky_longwave_w_m2(env.t_air_k, env.cloud_fraction)
     sea = (

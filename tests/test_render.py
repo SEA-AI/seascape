@@ -694,7 +694,7 @@ def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
 def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     """Under a uniform sky, each plate reads eps B(T) + (1 - eps) B(sky), T as
     `thermal` gives it for that normal and that sunlight; below the waterline, the
-    water's. One plate lies in the shadow of its own copy, out of frame."""
+    water's."""
     sky_k = 270.0
     sc = _radiance_scene(sky_k, 96, 64)
 
@@ -711,23 +711,16 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     tilted = (0.5 * sun[0], 0.5 * sun[1], 1.0)
     plates = {
         "lit": ((-6.0, 0.0, 2.0), (0.0, 0.0, 1.0)),
-        "shadowed": ((0.0, 0.0, 2.0), (0.0, 0.0, 1.0)),
         "tilted": ((6.0, 0.0, 2.0), tilted),
         "wetted": ((0.0, 8.0, -1.0), (0.0, 0.0, 1.0)),
     }
     corners = [c for centre, n in plates.values() for c in _plate(centre, n, 4.0)]
-    # The plate 30 m up the sun's ray, a tenth larger so every vertex's ray meets it.
-    centre = np.array(plates["shadowed"][0])
-    corners += [
-        tuple(centre + 1.1 * (np.array(c) - centre) + 30.0 * np.array(sun))
-        for c in _plate(*plates["shadowed"], 4.0)
-    ]
     mesh = bpy.data.meshes.new("hull")
-    mesh.from_pydata(corners, [], [tuple(range(4 * i, 4 * i + 4)) for i in range(5)])
+    quads = [tuple(range(4 * i, 4 * i + 4)) for i in range(len(plates))]
+    mesh.from_pydata(corners, [], quads)
     hull = bpy.data.objects.new("hull", mesh)
     sc.collection.objects.link(hull)
     hull.data.materials.append(scene._zone_skin("paint_hull", heat))
-    scene._shadowed(hull, sun)
 
     camera = bpy.data.objects.new("camera", bpy.data.cameras.new("camera"))
     camera.data.angle = math.radians(40.0)
@@ -751,7 +744,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
             emissivity, expected = thermal.SEA_EMISSIVITY, heat.t_water_k
         else:
             emissivity = zone.emissivity
-            lit = 0.0 if name == "shadowed" else max(0.0, float(n @ s))
+            lit = max(0.0, float(n @ s))
             expected = float(thermal.lit_temperature_k(zone, env, lit, n[2]))
         emitted = (seen - (1.0 - emissivity) * lwir.band_radiance(sky_k)) / emissivity
         assert float(lwir.brightness_temperature(emitted)) == pytest.approx(

@@ -104,6 +104,17 @@ def test_shadow_and_a_turned_back_take_only_diffuse_sun() -> None:
     assert float(shadowed) == pytest.approx(float(turned))
 
 
+def test_overcast_takes_the_beam_and_leaves_the_diffuse() -> None:
+    zone = thermal.ZONES["paint_hull"]
+    env = environment(5.0, SUN_ELEVATION_RAD)
+    overcast = dataclasses.replace(env, cloud_fraction=1.0)
+    facing = thermal.facet_temperature_k(zone, overcast, 0.0, 0.0)
+    turned = thermal.facet_temperature_k(zone, overcast, 0.0, math.pi)
+    assert float(facing) == pytest.approx(float(turned))
+    clear = thermal.facet_temperature_k(zone, env, 0.0, 0.0)
+    assert float(facing) < float(clear)
+
+
 def test_exhaust_metal_holds_its_uptake_temperature() -> None:
     env = environment(10.0, SUN_ELEVATION_RAD)
     t = thermal.facet_temperature_k(thermal.ZONES["exhaust"], env, 0.0, 0.0)

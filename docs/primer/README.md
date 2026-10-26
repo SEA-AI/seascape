@@ -90,7 +90,7 @@ The ship is warm. The clouds are warm too: a thick cloud glows at the temperatur
 
 <p align="center"><img src="lwir.jpg" alt="LWIR with the sea 5 K below, equal to and 5 K above the air"></p>
 
-A ship isn't one temperature either. Each part settles where the sunlight it absorbs balances what it trades with the sky, the sea, the wind and whatever sits behind it. A sunlit deck runs warm and a face in shadow sits near the air. Bare metal emits little and mirrors the cold sky.
+A ship isn't one temperature either. Each part settles where the sunlight it absorbs balances what it trades with the sky, the sea, the wind and whatever sits behind it. A deck in the sun runs warm and a face turned away sits near the air. Bare metal emits little and mirrors the cold sky.
 
 The thin top layer of the sea, the part a thermal camera sees, is a few tenths of a kelvin cooler than the water below. A scenario can add the warm layer that makes it a few kelvin warmer on a calm sunny day. A ship's wake stirs either one back into the water beneath it. Foam emits more and reflects less, so it reads closer to the sea's own temperature and shows less of the cold sky. A real thermal camera also blurs the image slightly and adds noise, and a scenario can set both.
 
