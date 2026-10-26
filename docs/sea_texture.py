@@ -12,7 +12,6 @@ thermal frames from the private SEA-AI/.github, fetched once into the asset cach
 """
 
 import argparse
-import json
 import math
 import subprocess
 from collections.abc import Sequence
@@ -21,6 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from seascape import labels
 from seascape.assets import CACHE
 
 REFERENCES = (
@@ -164,10 +164,14 @@ def gradient_variance(magnitude: np.ndarray) -> float:
     return float(kept.var()) if kept.size else 0.0
 
 
-def target_metrics(image: np.ndarray, box: Box) -> dict[str, float]:
+def target_metrics(
+    image: np.ndarray, box: Box, magnitude: np.ndarray | None = None
+) -> dict[str, float]:
     """An 8-bit frame's statistics inside a COCO box. An entropy is nan on a crop
     under `MIN_CROP_PX`. Gradients are taken over the frame, so the box's edge sees
-    its true neighbours."""
+    its true neighbours; `magnitude` is the frame's `sobel_magnitude`, if taken."""
+    if magnitude is None:
+        magnitude = sobel_magnitude(image)
     x, y, w, h = box
     rows = slice(max(0, math.floor(y)), math.ceil(y + h))
     cols = slice(max(0, math.floor(x)), math.ceil(x + w))
@@ -177,21 +181,21 @@ def target_metrics(image: np.ndarray, box: Box) -> dict[str, float]:
         "px": crop.size,
         "hist H": histogram_entropy(crop) if big else math.nan,
         "GLCM H": glcm_entropy(crop) if big else math.nan,
-        "grad var": gradient_variance(sobel_magnitude(image)[rows, cols]),
+        "grad var": gradient_variance(magnitude[rows, cols]),
     }
 
 
 def render_targets(run: Path) -> list[tuple[str, Path, list[Box]]]:
     """A render folder's LWIR frames, each with its labelled boxes."""
-    labels = json.loads((run / "labels.json").read_text())
+    found = labels.Labels.model_validate_json((run / labels.FILENAME).read_text())
     return [
         (
-            str(run / image["file_name"]),
-            run / image["file_name"],
-            [a["bbox"] for a in labels["annotations"] if a["image_id"] == image["id"]],
+            str(run / image.file_name),
+            run / image.file_name,
+            [a.bbox for a in found.annotations if a.image_id == image.id],
         )
-        for image in labels["images"]
-        if image["band"] == "ir"
+        for image in found.images
+        if image.band == "ir"
     ]
 
 
@@ -213,8 +217,9 @@ def print_targets(frames: Sequence[tuple[str, Path, Sequence[Box]]]) -> None:
     print(f"{'target':<{width}}{'box':>20}" + "".join(f"{c:>10}" for c in columns))
     for label, path, boxes in frames:
         image = grey8(normalised(path))
+        magnitude = sobel_magnitude(image)
         for box in boxes:
-            row = target_metrics(image, box)
+            row = target_metrics(image, box, magnitude)
             cells = [f"{row['px']:>10d}"] + [
                 f"{'-':>10}" if math.isnan(row[c]) else f"{row[c]:>10.2f}"
                 for c in columns[1:]
