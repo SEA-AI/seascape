@@ -875,7 +875,7 @@ class TestIrBand:
         assert table.shape == (sea.SLOPE_ROWS * sea.VIEW_ROWS, sea.MIRROR_SAMPLES)
         mirror = np.arcsin(sea._mirror_columns())
         view = np.arcsin(sea._view_rows())
-        sky = scene._sky_round(SCENARIO.sky)
+        sky = scene._sky_round(SCENARIO.sky, None)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
         sigmas = sea._row_sigmas(slope_max)
@@ -897,7 +897,7 @@ class TestIrBand:
     def test_the_reflection_between_texels_is_the_sky_it_reflects(self) -> None:
         """Bilinear within a tile, as the image interpolates."""
         table = baked("sea_reflection")
-        sky = scene._sky_round(SCENARIO.sky)
+        sky = scene._sky_round(SCENARIO.sky, None)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
         sigmas = sea._row_sigmas(slope_max)

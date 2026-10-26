@@ -136,6 +136,13 @@ def _photo_image(name: str) -> bpy.types.Image:
     )
 
 
+def _photo_turn_rad(name: str, sun_bearing_deg: float) -> float:
+    """How far to turn the photographed sky `name` to put its sun at
+    `sun_bearing_deg`. Turning a lookup by d carries the image's sun clockwise by d: no
+    negation."""
+    return math.radians(sun_bearing_deg - skies.library()[name].sun_bearing_deg)
+
+
 def _turned(
     tree: bpy.types.NodeTree,
     image: bpy.types.Image,
@@ -145,13 +152,11 @@ def _turned(
 ) -> bpy.types.NodeSocket:
     """`image`, laid out as the photographed sky `name`, in `direction`, turned so the
     photo's sun sits at `sun_bearing_deg`."""
-    photo = skies.library()[name]
     turn = tree.nodes.new("ShaderNodeMapping")
-    # Turning the lookup by d carries the image's sun clockwise by d: no negation.
     turn.inputs["Rotation"].default_value = (
         0.0,
         0.0,
-        math.radians(sun_bearing_deg - photo.sun_bearing_deg),
+        _photo_turn_rad(name, sun_bearing_deg),
     )
     tree.links.new(direction, turn.inputs["Vector"])
     node = tree.nodes.new("ShaderNodeTexEnvironment")
@@ -357,16 +362,15 @@ def _clouds(sky: Sky) -> sea.Clouds | None:
     image.pixels.foreach_get(pixels)
     # Bottom row first, as `_cloudy_sky_image` lays it out.
     elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
-    # As `_turned` turns the photo.
-    turn = sky.sun_bearing_deg - skies.library()[sky.hdri].sun_bearing_deg
     radiance = pixels.reshape(h, w, 4)[..., 0].astype(np.float64)
-    return sea.Clouds(elevation, radiance, math.radians(turn))
+    return sea.Clouds(
+        elevation, radiance, _photo_turn_rad(sky.hdri, sky.sun_bearing_deg)
+    )
 
 
-def _sky_round(sky: Sky) -> sea.SkyCurve:
+def _sky_round(sky: Sky, clouds: sea.Clouds | None) -> sea.SkyCurve:
     """The IR world's radiance against elevation, averaged round the horizon: its clear
     sky's table, or its clouds' rows."""
-    clouds = _clouds(sky)
     if clouds is None:
         elevation = np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
         return elevation, lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
@@ -423,7 +427,8 @@ def _sun_vector(sky: Sky) -> tuple[float, float, float]:
 
 def _light(sky: Sky, band: Band) -> sea.Light:
     if band == "ir":
-        return sea.Light(sky=_sky_round(sky), sun_up=sky.sun_up, clouds=_clouds(sky))
+        clouds = _clouds(sky)
+        return sea.Light(sky=_sky_round(sky, clouds), sun_up=sky.sun_up, clouds=clouds)
     if sky.sun_elevation_deg is None:
         return sea.Light()
     return sea.Light(sun=_sun_vector(sky))
