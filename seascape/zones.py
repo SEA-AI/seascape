@@ -518,9 +518,15 @@ def _heights(found: Parts, per_face: list[np.ndarray], n: int) -> np.ndarray:
     """Each part's lowest and highest point above the waterline, (n, 2)."""
     low = np.full(n, np.inf)
     high = np.full(n, -np.inf)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
     for obj, value in zip(found.objects, per_face, strict=True):
         mesh = obj.data
-        co = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices)).reshape(-1, 3)
+        # Posed: a skinned mesh's own vertices are its rest pose. A pose moves
+        # vertices and keeps the faces, so the loops below still index them.
+        evaluated = obj.evaluated_get(depsgraph)
+        posed = evaluated.to_mesh()
+        co = faces.floats(posed.vertices, "co", 3 * len(posed.vertices)).reshape(-1, 3)
+        evaluated.to_mesh_clear()
         m = np.array(obj.matrix_world)
         z = co @ m[2, :3] + m[2, 3]
         total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))
