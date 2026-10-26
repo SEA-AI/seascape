@@ -643,8 +643,11 @@ def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
         if obj.modifiers
     }
     for obj, mesh in posed.items():
+        rest = obj.data
         obj.modifiers.clear()
         obj.data = mesh
+        if not rest.users:
+            bpy.data.meshes.remove(rest)
     with bpy.context.temp_override(
         active_object=meshes[0], selected_editable_objects=meshes
     ):

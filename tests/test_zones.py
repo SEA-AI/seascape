@@ -102,23 +102,7 @@ def test_a_view_names_only_parts_and_shows_them_all() -> None:
     assert seen == {-1, *range(high, high + len(found.materials))}
 
 
-def test_a_skinned_part_is_measured_in_its_pose() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    rig = bpy.data.objects.new("rig", bpy.data.armatures.new("rig"))
-    bpy.context.scene.collection.objects.link(rig)
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode="EDIT")
-    rig.data.edit_bones.new("bone").tail = (0.0, 0.0, 1.0)
-    bpy.ops.object.mode_set(mode="OBJECT")
-    rig.pose.bones["bone"].location = (0.0, 5.0, 0.0)  # bone y is world -z
-    mesh = bpy.data.meshes.new("skinned")
-    mesh.from_pydata([(0, 0, 0), (1, 0, 0), (0, 1, 0)], [], [(0, 1, 2)])
-    part = bpy.data.objects.new("skinned", mesh)
-    bpy.context.scene.collection.objects.link(part)
-    part.vertex_groups.new(name="bone").add([0, 1, 2], 1.0, "REPLACE")
-    part.modifiers.new("pose", "ARMATURE").object = rig
-    bpy.context.view_layer.update()
-
-    heights = zones._heights(faces.found([part]), [np.array([0])], 1)
+def test_a_skinned_part_is_measured_in_its_pose(skinned: bpy.types.Object) -> None:
+    heights = zones._heights(faces.found([skinned]), [np.array([0])], 1)
 
     assert heights[0] == pytest.approx([5.0, 5.0])
