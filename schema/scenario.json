@@ -827,6 +827,32 @@
             }
           ]
         },
+        "engine_off_min": {
+          "title": "Engine Off Min",
+          "description": "Minutes since its engines stopped; 0 is running. The engine room and exhaust cool toward the air. IR only, with zones.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "count": {
           "title": "Count",
           "description": "How many, each drawn anew. `load` makes the copies, so a loaded scenario holds only 1.",
@@ -2832,6 +2858,32 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "engine_off_min": {
+          "title": "Engine Off Min",
+          "description": "Minutes since its engines stopped; 0 is running. The engine room and exhaust cool toward the air. IR only, with zones.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"

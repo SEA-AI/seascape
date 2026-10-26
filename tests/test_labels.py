@@ -57,6 +57,18 @@ def target(
     )
 
 
+def test_an_annotation_records_when_the_engines_stopped() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10:13, 20:25] = 1
+    truth = labels.Labels()
+    stopped = target(1)._replace(engine_off_min=45.0)
+
+    truth.add(camera(), 0.0, index, FLAT, [stopped], RADIUS_M, faint={})
+
+    (found,) = truth.annotations
+    assert found.engine_off_min == 45.0
+
+
 def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     """COCO's pixel i spans [i, i + 1), so an inclusive box grows by one."""
     index = np.zeros((48, 64), dtype=int)

@@ -125,6 +125,12 @@ In LWIR each face of a hull takes its zone from `assets.toml` (painted hull, dec
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", t_k = 300.0 }]'
 ```
 
+The engine room warms funnels and engine cowls from inside, and uptakes run at the exhaust's temperature. `engine_off_min` stops the engines that many minutes before the frame, and both cool toward the air; `labels.json` records it per target:
+
+```bash
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", engine_off_min = 30.0 }]'
+```
+
 ## Sequences
 
 `outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, and the gusts that roughen them, run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:

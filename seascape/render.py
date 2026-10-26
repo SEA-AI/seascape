@@ -100,6 +100,7 @@ def _targets(built: scene.Built) -> list[labels.Target]:
             waterline_m=scene.waterline_m(anchor),
             heading_deg=math.degrees(scene.heading_rad(anchor)) % 360.0,
             dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
+            engine_off_min=anchor["engine_off_min"],
         )
         for asset, anchors in built.targets.items()
         for anchor in anchors

@@ -121,6 +121,27 @@ def test_exhaust_metal_holds_its_uptake_temperature() -> None:
     assert float(t) == env.t_exhaust_k
 
 
+def test_stopped_engines_cool_toward_the_air() -> None:
+    running = environment(5.0, SUN_ELEVATION_RAD)
+    assert running.stopped(0.0).t_exhaust_k == pytest.approx(running.t_exhaust_k)
+    soon, later = running.stopped(600.0), running.stopped(3600.0)
+    for t in ("t_engine_room_k", "t_exhaust_k"):
+        assert getattr(running, t) > getattr(soon, t) > getattr(later, t) > T_AIR_K
+    assert running.stopped(1e6).t_exhaust_k == pytest.approx(T_AIR_K)
+    assert soon.t_cabin_k == running.t_cabin_k
+
+
+def test_wind_cools_a_stopped_engine_faster() -> None:
+    calm = environment(1.0, SUN_ELEVATION_RAD).stopped(600.0)
+    windy = environment(12.0, SUN_ELEVATION_RAD).stopped(600.0)
+    assert windy.t_exhaust_k < calm.t_exhaust_k
+
+
+def test_engines_cannot_stop_after_the_frame() -> None:
+    with pytest.raises(ValueError, match="before the engines stopped"):
+        environment(5.0, SUN_ELEVATION_RAD).stopped(-1.0)
+
+
 def test_air_mass_is_one_overhead_and_finite_at_the_horizon() -> None:
     """Kasten & Young 1989 tabulate 38.09 at the horizon."""
     assert float(thermal.air_mass(0.5 * math.pi)) == pytest.approx(1.0, abs=1e-3)

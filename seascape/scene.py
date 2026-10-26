@@ -499,6 +499,9 @@ class _Heat(NamedTuple):
     t_water_k: float
     sun: tuple[float, float, float] | None
 
+    def stopped(self, minutes: float) -> "_Heat":
+        return self._replace(env=self.env.stopped(minutes * 60.0))
+
 
 def _heat(scenario: Scenario) -> _Heat:
     sky = scenario.sky
@@ -527,10 +530,13 @@ def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and
     as deep as one that had sat for hours."""
+    zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"
+    if zone.interior in ("engine_room", "exhaust"):
+        # Hulls whose engines stopped at different times differ here.
+        name += f"_{heat.env.interior_k(zone.interior):.1f}K"
     if (found := bpy.data.materials.get(name)) is not None:
         return found
-    zone = thermal.ZONES[zone_name]
     material = bpy.data.materials.new(name)
     tree = material.node_tree
     tree.nodes.clear()
@@ -985,6 +991,7 @@ def measured(name: str, meshes: list[bpy.types.Object]) -> tuple[int, tuple[int,
 def _vessel(
     name: str,
     t_k: float | None,
+    engine_off_min: float,
     sky: Sky,
     heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
@@ -1001,6 +1008,7 @@ def _vessel(
         parts = hulls[name] = _import(name, "eo" if heat is None else "ir")
 
     if heat is not None:
+        heat = heat.stopped(engine_off_min)
         uniform = None if t_k is None else _thermal_skin(f"{name}_ir", t_k, sky)
         for mesh in _meshes(parts):
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
@@ -1011,6 +1019,7 @@ def _vessel(
     anchor = bpy.data.objects.new(name, None)
     for size in ("beam_m", "length_m", "height_m"):
         anchor[size] = parts[0][size]
+    anchor["engine_off_min"] = engine_off_min
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -1041,7 +1050,7 @@ def _ownship(
         bpy.context.collection.objects.link(anchor)
         place(anchor, 0.0, 0.0, 0.0)
     else:
-        anchor = _vessel(ownship.asset, ownship.t_k, sky, heat, hulls)
+        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, sky, heat, hulls)
     anchor.name = "ownship"
     rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
@@ -1180,7 +1189,7 @@ def _targets(
     """The ring's hulls, by asset."""
     anchors: dict[str, list[bpy.types.Object]] = {}
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
-        anchor = _vessel(asset, spec.t_k, sky, heat, hulls)
+        anchor = _vessel(asset, spec.t_k, spec.engine_off_min, sky, heat, hulls)
         anchor.name = f"target_{i}"
         _pose(
             anchor,
@@ -1207,7 +1216,7 @@ def _object(
     trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
     """`spec`'s hulls, each wake under way added to `trails`."""
-    anchor = _vessel(spec.asset, spec.t_k, sky, heat, hulls)
+    anchor = _vessel(spec.asset, spec.t_k, spec.engine_off_min, sky, heat, hulls)
     orbit = spec.orbit
     if orbit is None:
         _pose(
