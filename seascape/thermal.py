@@ -3,8 +3,7 @@
 Each zone is a material with its own LWIR emissivity, solar absorptance and coupling to
 the space behind it. A facet of a zone settles where what it absorbs, sun and sky and
 sea, leaves as its own emission, as convection to the air and as conduction to the
-interior. Once wired into the scene, this replaces `Sky.solar_gain_k`, one warming for
-every sunlit surface.
+interior.
 
 The scenario has no history, only the sun where it stands, so the balance is steady.
 ponytail: no thermal lag; a hull keeps the morning's cold past sunrise and the
@@ -77,7 +76,7 @@ _SWINBANK_W_M2K6 = 5.31e-13
 
 # Water, typical, 0-100 C: 0.95-0.963 (Neutrium compilation). The sea seen below a
 # facet's horizon.
-_SEA_EMISSIVITY = 0.96
+SEA_EMISSIVITY = 0.96
 
 # ISO 6946 Annex A: interior surface resistance for horizontal heat flow, within 30
 # degrees of it. A wall's inner film; its outer one is this module's convection and
@@ -324,8 +323,11 @@ def facet_temperature_k(
     sky and sea, split by view factors (1 +- sin elev) / 2. Lost: eps sigma T^4,
     convection to the air and conduction to the interior.
 
-    ponytail: no sun off the sea, no light from the vessel's own structure, and cloud
-    dims no beam; pass no sun for overcast.
+    Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
+    much weaker on average.
+
+    ponytail: no sun off the sea, no light from the vessel's own structure, and the
+    diffuse share stays clear-sky's under cloud, where it rises.
     """
     elev = np.asarray(normal_elev_rad, dtype=np.float64)
     azimuth = np.asarray(sun_azimuth_rad, dtype=np.float64)
@@ -353,12 +355,12 @@ def lit_temperature_k(
 
     sky_view = 0.5 * (1.0 + up)
     beam = direct_beam_w_m2(env.sun_elevation_rad)
-    solar = beam * (sun_cos + _DIFFUSE_FRACTION * sky_view)
+    solar = beam * ((1.0 - env.cloud_fraction) * sun_cos + _DIFFUSE_FRACTION * sky_view)
 
     sky = sky_longwave_w_m2(env.t_air_k, env.cloud_fraction)
     sea = (
-        _SEA_EMISSIVITY * STEFAN_BOLTZMANN_W_M2K4 * env.t_sea_k**4
-        + (1.0 - _SEA_EMISSIVITY) * sky
+        SEA_EMISSIVITY * STEFAN_BOLTZMANN_W_M2K4 * env.t_sea_k**4
+        + (1.0 - SEA_EMISSIVITY) * sky
     )
     longwave = sky_view * sky + (1.0 - sky_view) * sea
 

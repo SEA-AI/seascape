@@ -203,9 +203,9 @@ def test_a_bad_override_is_refused(override: str, error: type[Exception]) -> Non
 
 
 def test_objects_merge_their_preset(baseline) -> None:
-    """A list-of-tables preset: asset and temperature from cfg, pose here."""
+    """A list-of-tables preset: asset from cfg, pose here."""
     obj = baseline.objects[0]
-    assert (obj.asset, obj.t_k) == ("multipurpose_freighter", 295.0)
+    assert obj.asset == "multipurpose_freighter"
     assert (obj.range_m, obj.bearing_deg) == (2000.0, 8.0)
 
 

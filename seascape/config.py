@@ -510,7 +510,8 @@ class Sky(Model):
     solar_gain_k: float = Field(
         default=8.5,
         ge=0.0,
-        description="How much warmer a sunlit surface is than a shaded one. IR only.",
+        description="How much warmer a sunlit surface is than a shaded one, on a hull "
+        "given one `t_k`. IR only.",
     )
     visibility_km: float | None = Field(
         default=VISIBILITY_KM,
@@ -625,7 +626,10 @@ AssetName = Annotated[
     WithJsonSchema({"type": "string", "enum": sorted(assets.manifest())}),
 ]
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
-_T_HULL = "Shaded hull temperature. IR only."
+_T_HULL = (
+    "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, "
+    "each zone settles at its own heat balance. IR only."
+)
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -668,7 +672,7 @@ class Object(Model):
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
-    t_k: float = Field(default=293.0, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     count: int = Field(
         default=1,
         ge=0,
@@ -721,7 +725,7 @@ class Ownship(Model):
     waterline. Without an asset it is the attitude alone."""
 
     asset: AssetName | None = Field(default=None, description=_ASSET)
-    t_k: float = Field(default=296.0, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
     )
@@ -757,7 +761,7 @@ class Targets(Model):
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
-    t_k: float = Field(default=293.0, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
 
     def _spread(self, span: tuple[float, float], i: int) -> float:
         low, high = span

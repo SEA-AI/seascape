@@ -117,6 +117,14 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
   <sub>The library, highest sun first, each sun circled where <code>seascape.skies</code> measures it (<a href="skies.py"><code>docs/skies.py</code></a>).</sub>
 </p>
 
+## Hull temperature
+
+In LWIR each face of a hull takes its zone from `assets.toml` (painted hull, deck, glass, bare metal and the rest) and the temperature that zone settles at under the scenario's sun, clouds, air, sea and wind. A face turned from the sun takes only the sky's diffuse light; no part of a hull shades another. A hull given `t_k` is that one temperature instead, warmed by `sky.solar_gain_k` where the sun falls:
+
+```bash
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", t_k = 300.0 }]'
+```
+
 ## Sequences
 
 `outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, and the gusts that roughen them, run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:

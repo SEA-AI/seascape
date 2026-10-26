@@ -10,8 +10,10 @@ import bpy
 import cv2
 import numpy as np
 import pytest
+from bpy_extras.object_utils import world_to_camera_view
+from mathutils import Vector
 
-from seascape import agc, labels, lwir, render, scene, sea, server, waves
+from seascape import agc, labels, lwir, render, scene, sea, server, thermal, waves
 from seascape.calibration import Calibration
 from seascape.config import (
     Band,
@@ -649,3 +651,102 @@ def test_no_image_outgrows_what_the_server_reserves_for_it(
         reserved = camera.width_px * camera.height_px
         reserved *= server.BYTES_PER_PX[camera.band, fmt]
         assert (tmp_path / f"{mount.name}.{fmt}").stat().st_size <= reserved
+
+
+def _plate(
+    centre: tuple[float, float, float], normal: tuple[float, float, float], size: float
+) -> list[tuple[float, float, float]]:
+    """A square's corners, counter-clockwise seen from `normal`."""
+    n = np.array(normal) / np.linalg.norm(normal)
+    u = np.cross(n, (0.0, 0.0, 1.0) if abs(n[2]) < 0.9 else (1.0, 0.0, 0.0))
+    u /= np.linalg.norm(u)
+    v = np.cross(n, u)
+    c = np.array(centre)
+    h = size / 2
+    return [
+        tuple(c + h * (a * u + b * v)) for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))
+    ]
+
+
+def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
+    """An empty Cycles scene that writes radiance to a float EXR, under a sky of one
+    brightness temperature."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 16
+    sc.cycles.use_denoising = False
+    sc.render.resolution_x, sc.render.resolution_y = width, height
+    sc.render.compositor_device = "CPU"
+    sc.view_settings.view_transform = "Standard"
+    sc.render.image_settings.file_format = "OPEN_EXR"
+    sc.render.image_settings.color_depth = "32"
+    world = bpy.data.worlds.new("sky")
+    world.node_tree.nodes["Background"].inputs["Color"].default_value = (
+        *(lwir.band_radiance(sky_k),) * 3,
+        1.0,
+    )
+    sc.world = world
+    return sc
+
+
+@pytest.mark.render
+def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
+    """Under a uniform sky, each plate reads eps B(T) + (1 - eps) B(sky), T as
+    `thermal` gives it for that normal and that sunlight; below the waterline, the
+    water's."""
+    sky_k = 270.0
+    sc = _radiance_scene(sky_k, 96, 64)
+
+    elevation, bearing = math.radians(30.0), math.radians(120.0)
+    sun = (
+        math.cos(elevation) * math.sin(bearing),
+        math.cos(elevation) * math.cos(bearing),
+        math.sin(elevation),
+    )
+    env = thermal.Environment(
+        t_air_k=288.0, t_sea_k=287.5, wind_m_s=3.0, sun_elevation_rad=elevation
+    )
+    heat = scene._Heat(env, 286.0, sun)
+    tilted = (0.5 * sun[0], 0.5 * sun[1], 1.0)
+    plates = {
+        "lit": ((-6.0, 0.0, 2.0), (0.0, 0.0, 1.0)),
+        "tilted": ((6.0, 0.0, 2.0), tilted),
+        "wetted": ((0.0, 8.0, -1.0), (0.0, 0.0, 1.0)),
+    }
+    corners = [c for centre, n in plates.values() for c in _plate(centre, n, 4.0)]
+    mesh = bpy.data.meshes.new("hull")
+    quads = [tuple(range(4 * i, 4 * i + 4)) for i in range(len(plates))]
+    mesh.from_pydata(corners, [], quads)
+    hull = bpy.data.objects.new("hull", mesh)
+    sc.collection.objects.link(hull)
+    hull.data.materials.append(scene._zone_skin("paint_hull", heat))
+
+    camera = bpy.data.objects.new("camera", bpy.data.cameras.new("camera"))
+    camera.data.angle = math.radians(40.0)
+    sc.collection.objects.link(camera)
+    camera.location = (-4.0, 12.0, 40.0)
+    direction = Vector((0.0, 3.0, 0.0)) - camera.location
+    camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+    sc.camera = camera
+    sc.render.filepath = str(tmp_path / "frame.exr")
+    bpy.ops.render.render(write_still=True)
+    radiance = render._pixels(tmp_path / "frame.exr")[..., 0]
+
+    zone = thermal.ZONES["paint_hull"]
+    s = np.array(sun)
+    for name, (centre, normal) in plates.items():
+        u, v, _ = world_to_camera_view(sc, camera, Vector(centre))
+        assert 0.1 < u < 0.9 and 0.1 < v < 0.9, name
+        seen = radiance[int(v * 64), int(u * 96)]
+        n = np.array(normal) / np.linalg.norm(normal)
+        if name == "wetted":
+            emissivity, expected = thermal.SEA_EMISSIVITY, heat.t_water_k
+        else:
+            emissivity = zone.emissivity
+            lit = max(0.0, float(n @ s))
+            expected = float(thermal.lit_temperature_k(zone, env, lit, n[2]))
+        emitted = (seen - (1.0 - emissivity) * lwir.band_radiance(sky_k)) / emissivity
+        assert float(lwir.brightness_temperature(emitted)) == pytest.approx(
+            expected, abs=0.3
+        ), name
