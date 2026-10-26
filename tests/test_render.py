@@ -394,8 +394,9 @@ def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
 
 
 @pytest.mark.render
+@pytest.mark.parametrize("band", ["eo", "ir"])
 def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
-    capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, band: Band
 ) -> None:
     """Remembered on every grid level a camera can need, gathered into windrows. The
     stack is the shader's, whatever its frames hold, so none are simulated."""
@@ -405,7 +406,7 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     )
     seen = sea.Seen(foam_grids=grids)
     drawn = _heaviest_drawn_sea(strongest=True)
-    errors = _svm_errors(capfd, drawn, _wakes(1), "eo", seen=seen)
+    errors = _svm_errors(capfd, drawn, _wakes(1), band, seen=seen)
     assert errors == []
     nodes = bpy.data.materials["sea"].node_tree.nodes
     assert {"whitecap_gathered", "sea_foam_0.25m", "sea_foam_4m"} <= set(nodes.keys())

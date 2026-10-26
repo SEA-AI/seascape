@@ -232,7 +232,9 @@ def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
     """Emissivity a sea under foam has over a foam-free one, against viewing zenith;
     a sea partly under foam adds its cover's share (Niclòs et al. 2007, eq. 16).
 
-    Held past the angles measured, where the fit runs away (0.56 at 80 deg).
+    Held past the angles measured, where the fit runs away (0.56 at 80 deg). Below
+    about 44 deg the fit dips under zero, by no more than 0.002; kept as
+    published.
     ponytail: low by grazing, where foam stays near black and bare water does not.
     """
     theta = np.minimum(np.asarray(theta_rad, dtype=np.float64), FOAM_MEASURED_RAD)
