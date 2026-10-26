@@ -8,11 +8,12 @@ import pytest
 from pydantic import ValidationError
 
 from seascape import zones
-from seascape.assets import Zone, Zones, manifest
+from seascape.assets import Zones, manifest
+from seascape.thermal import ZoneName
 
 
 def test_every_asset_has_zones_from_the_vocabulary() -> None:
-    vocabulary = set(get_args(Zone.__value__))
+    vocabulary = set(get_args(ZoneName.__value__))
     for name, asset in manifest().items():
         assert asset.zones is not None, name
         given = {*asset.zones.materials.values(), *asset.zones.islands.values()}
@@ -20,7 +21,7 @@ def test_every_asset_has_zones_from_the_vocabulary() -> None:
 
 
 def test_every_zone_has_a_contact_sheet_colour() -> None:
-    assert set(zones.ZONE_COLOURS) == set(get_args(Zone.__value__))
+    assert set(zones.ZONE_COLOURS) == set(get_args(ZoneName.__value__))
 
 
 @pytest.mark.parametrize(

@@ -22,7 +22,8 @@ from mathutils import Vector
 from PIL import Image, ImageDraw, ImageFont
 
 from seascape import render, scene
-from seascape.assets import Zone, Zones, manifest
+from seascape.assets import Zones, manifest
+from seascape.thermal import ZoneName
 
 # Name, bearing of the camera from the asset's centre (bow at 0), elevation.
 VIEWS: tuple[tuple[str, float, float], ...] = (
@@ -197,7 +198,7 @@ def parts(name: str) -> Parts:
 
 def face_zones(found: Parts, zones: Zones) -> list[np.ndarray]:
     """Per object, each face's index into the zone vocabulary."""
-    vocabulary = list(get_args(Zone.__value__))
+    vocabulary = list(get_args(ZoneName.__value__))
     by_material = np.array(
         [vocabulary.index(zones.materials[m]) for m in found.materials]
     )
@@ -913,7 +914,7 @@ def contact(name: str, out: Path) -> Path:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name)
     check(name, found, asset.zones)
-    vocabulary = list(get_args(Zone.__value__))
+    vocabulary = list(get_args(ZoneName.__value__))
     colours = np.array([ZONE_COLOURS[z] for z in vocabulary], dtype=np.uint8)
     per_face = face_zones(found, asset.zones)
     views = _views(found, per_face)

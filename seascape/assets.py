@@ -15,6 +15,7 @@ from typing import Annotated, ClassVar, Literal
 from pydantic import ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from seascape.model import Model
+from seascape.thermal import ZoneName
 
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
 _XDG = os.environ.get("XDG_CACHE_HOME", "")
@@ -34,23 +35,6 @@ class File(Model):
     sha256: str = Field(pattern=SHA256)
 
 
-# What a part of an asset is made of, for its LWIR emission. The waterline is not one:
-# it comes from `draught_m`.
-type Zone = Literal[
-    "paint_hull",
-    "paint_superstructure",
-    "deck",
-    "glass",
-    "bare_metal",
-    "rubber",
-    "fabric",
-    "funnel",
-    "exhaust",
-    "engine_cowl",
-    "wood_composite",
-]
-
-
 class Zones(Model):
     """Each material's zone, and the islands that differ from their material's.
 
@@ -60,10 +44,10 @@ class Zones(Model):
 
     model_config = ConfigDict(frozen=True)
 
-    materials: dict[str, Zone] = Field(min_length=1)
+    materials: dict[str, ZoneName] = Field(min_length=1)
     # The import's island count: an importer that reorders faces renumbers them.
     island_count: int | None = Field(default=None, ge=1)
-    islands: dict[int, Zone] = Field(default_factory=dict)
+    islands: dict[int, ZoneName] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _counted(self) -> "Zones":
