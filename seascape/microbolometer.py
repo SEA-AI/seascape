@@ -70,7 +70,8 @@ def seen(
     if camera.lens.vignetting:
         radiance = radiance * falloff(radiance.shape, math.radians(camera.hfov_deg))
     if bolometer.f_number is not None and bolometer.pitch_um is not None:
-        median_k = float(np.median(lwir.brightness_temperature(radiance)))
+        # Brightness temperature rises with radiance, so it keeps the median.
+        median_k = float(lwir.brightness_temperature(np.median(radiance)))
         radiance = diffract(
             radiance, bolometer.f_number, bolometer.pitch_um * 1e-6, median_k
         )
