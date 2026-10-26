@@ -197,3 +197,20 @@ def texture(name: str) -> bpy.types.Image | None:
     shader = bsdf(bpy.data.materials.get(name)) if name else None
     found = source(shader.inputs["Base Color"]) if shader is not None else None
     return found[0] if found is not None else None
+
+
+def check(name: str, found: Parts, zones: Zones) -> None:
+    """Refuse zones that name a material the import lacks, leave one of its materials
+    out, or number its islands differently."""
+    if missing := sorted(set(zones.materials) - set(found.materials)):
+        raise ValueError(f"{name}: no material {missing} in the import")
+    if unzoned := sorted(set(found.materials) - set(zones.materials)):
+        raise ValueError(f"{name}: no zone for {unzoned}")
+    if zones.island_count is None:
+        return
+    got = (len(found.islands), found.island_digest)
+    if got != (zones.island_count, zones.island_digest):
+        raise ValueError(
+            f"{name}: {got[0]} islands, digest {got[1]}; assets.toml has "
+            f"{zones.island_count}, {zones.island_digest}: the import's faces moved"
+        )

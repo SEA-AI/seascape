@@ -15,14 +15,13 @@ from pathlib import Path
 from typing import Any, Literal, NamedTuple, get_args
 
 import bpy
-import click
 import cv2
 import numpy as np
 from mathutils import Vector
 from PIL import Image, ImageDraw, ImageFont
 
 from seascape import faces, render, scene
-from seascape.assets import Zones, manifest
+from seascape.assets import manifest
 from seascape.faces import Parts, face_zones
 from seascape.montage import INK, MATTE
 from seascape.thermal import ZoneName
@@ -679,7 +678,7 @@ def sheets(
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name)
     if material is not None and material not in found.materials:
-        raise click.ClickException(f"{name} has no material {material!r}")
+        raise ValueError(f"{name} has no material {material!r}")
     if kind is None:
         kind = "slots" if material is None and len(found.materials) > 1 else "islands"
     into.mkdir(parents=True, exist_ok=True)
@@ -782,10 +781,10 @@ def contact(name: str, out: Path) -> Path:
     """The views coloured by the zones `assets.toml` gives `name`, for approval."""
     asset = manifest()[name]
     if asset.zones is None:
-        raise click.ClickException(f"{name} has no zones in assets.toml")
+        raise ValueError(f"{name} has no zones in assets.toml")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name)
-    check(name, found, asset.zones)
+    faces.check(name, found, asset.zones)
     vocabulary = list(get_args(ZoneName.__value__))
     colours = np.array([ZONE_COLOURS[z] for z in vocabulary], dtype=np.uint8)
     per_face = face_zones(found, asset.zones)
@@ -804,20 +803,3 @@ def contact(name: str, out: Path) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out)
     return out
-
-
-def check(name: str, found: Parts, zones: Zones) -> None:
-    """Refuse zones that name a material the import lacks, leave one of its materials
-    out, or number its islands differently."""
-    if missing := sorted(set(zones.materials) - set(found.materials)):
-        raise click.ClickException(f"{name}: no material {missing} in the import")
-    if unzoned := sorted(set(found.materials) - set(zones.materials)):
-        raise click.ClickException(f"{name}: no zone for {unzoned}")
-    if zones.island_count is None:
-        return
-    got = (len(found.islands), found.island_digest)
-    if got != (zones.island_count, zones.island_digest):
-        raise click.ClickException(
-            f"{name}: {got[0]} islands, digest {got[1]}; assets.toml has "
-            f"{zones.island_count}, {zones.island_digest}: the import's faces moved"
-        )

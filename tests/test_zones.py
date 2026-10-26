@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from seascape import faces, zones
+from seascape import faces, scene, zones
 from seascape.assets import Zones, manifest
 from seascape.thermal import ZoneName
 
@@ -76,12 +76,16 @@ def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
 
 
 @pytest.mark.render
-@pytest.mark.parametrize("name", [n for n, a in manifest().items() if a.zones])
-def test_zones_name_the_import_s_materials_and_number_its_islands(name: str) -> None:
+@pytest.mark.parametrize("name", manifest())
+def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
+    """The triangles and textures the manifest commits, the materials its zones name
+    and the islands they number."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    zoned = manifest()[name].zones
-    assert zoned is not None
-    zones.check(name, zones.parts(name), zoned)
+    asset = manifest()[name]
+    found = zones.parts(name)
+    assert scene.measured(name, found.objects) == (asset.triangles, asset.texture_px)
+    assert asset.zones is not None
+    faces.check(name, found, asset.zones)
 
 
 @pytest.mark.render
