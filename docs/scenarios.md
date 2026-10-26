@@ -125,10 +125,10 @@ In LWIR each face of a hull takes its zone from `assets.toml` (painted hull, dec
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", t_k = 300.0 }]'
 ```
 
-The engine room warms funnels and engine cowls from inside, and uptakes run at the exhaust's temperature. `engine_off_min` stops the engines that many minutes before the frame, and both cool toward the air; `labels.json` records it per target:
+The engine room warms funnels and engine cowls from inside, and uptakes run at the exhaust's temperature. `engine_off_min` stops the engines that many minutes before the frame, and both cool toward the air; `labels.json` records it per target. `paint_absorptance` repaints the hull, superstructure and funnel by the share of sunlight it absorbs, low for white and high for black:
 
 ```bash
-uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", engine_off_min = 30.0 }]'
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", engine_off_min = 30.0, paint_absorptance = 0.9 }]'
 ```
 
 ## Sequences

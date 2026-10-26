@@ -111,7 +111,7 @@ _MACHINERY_WALL_M = 0.01
 # gives navy grey 0.94; unverified, the paper was not read.
 _PAINT_EMISSIVITY = 0.94
 # White paint, 20 C: alpha 0.14; black paint 0.97 (Neutrium compilation).
-_PAINT_ABSORPTANCE = (0.14, 0.97)
+PAINT_ABSORPTANCE = (0.14, 0.97)
 # Unverified: navy grey, Vaitekunas 2010, not read. Between the compilation's white and
 # black, so the default stays within what is verified.
 GREY_PAINT_ABSORPTANCE = 0.65
@@ -148,11 +148,11 @@ ZONES: dict[ZoneName, Zone] = {
     # Judgement: a hull side over tanks, holds and voids. Hull over a machinery space is
     # Thompson et al.'s warm band; give it the engine room.
     "paint_hull": Zone(
-        _PAINT_EMISSIVITY, _PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0
+        _PAINT_EMISSIVITY, PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0
     ),
     "paint_superstructure": Zone(
         _PAINT_EMISSIVITY,
-        _PAINT_ABSORPTANCE,
+        PAINT_ABSORPTANCE,
         GREY_PAINT_ABSORPTANCE,
         "cabin",
         _U_INSULATED_W_M2K,
@@ -174,12 +174,12 @@ ZONES: dict[ZoneName, Zone] = {
     # Unverified: cloth 0.75-0.90 at 300 K, Incropera & DeWitt Table A.11 as recalled.
     # Absorptance by colour, taken as paint's. ponytail: a canopy has air on both
     # sides and convects from each; the balance gives it one.
-    "fabric": Zone(0.85, _PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0),
+    "fabric": Zone(0.85, PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0),
     # Thompson et al. 1998: funnel walls without insulation, heated by the engine
     # room's ventilation and the uptakes inside.
     "funnel": Zone(
         _PAINT_EMISSIVITY,
-        _PAINT_ABSORPTANCE,
+        PAINT_ABSORPTANCE,
         GREY_PAINT_ABSORPTANCE,
         "engine_room",
         _U_BARE_PLATE_W_M2K,
@@ -192,7 +192,7 @@ ZONES: dict[ZoneName, Zone] = {
     # alone; a 5 mm laminate adds a few percent to its resistance.
     "engine_cowl": Zone(
         _PAINT_EMISSIVITY,
-        _PAINT_ABSORPTANCE,
+        PAINT_ABSORPTANCE,
         GREY_PAINT_ABSORPTANCE,
         "engine_room",
         _U_BARE_PLATE_W_M2K,
@@ -201,6 +201,12 @@ ZONES: dict[ZoneName, Zone] = {
     # teak and varnish, light to dark.
     "wood_composite": Zone(0.895, (0.4, 0.8), 0.6, "none", 0.0),
 }
+
+
+# Judgement: one paint scheme covers a hull's sides, its superstructure and its funnel.
+PAINTED: frozenset[ZoneName] = frozenset(
+    {"paint_hull", "paint_superstructure", "funnel"}
+)
 
 
 @dataclass(frozen=True)

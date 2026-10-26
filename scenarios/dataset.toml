@@ -7,14 +7,15 @@ extends = "randomized.toml"
 height_m = { uniform = [5.0, 60.0] }
 yaw_deg = 0.0
 
-# Both bands through one lens, so both frame the same hulls.
+# Both bands through one lens, so both frame the same hulls. The Boson's focal plane
+# and noise, at this field of view.
 [[rigs.bow.cameras.choice]]
 eo = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 42.0, width_px = 1920, height_px = 1080 }
-ir = { band = "ir", hfov_deg = 42.0, width_px = 640, height_px = 512 }
+ir = { preset = "boson_640_32deg", hfov_deg = 42.0 }
 
 [[rigs.bow.cameras.choice]]
 eo = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 49.0, width_px = 1920, height_px = 1080 }
-ir = { band = "ir", hfov_deg = 49.0, width_px = 640, height_px = 512 }
+ir = { preset = "boson_640_32deg", hfov_deg = 49.0 }
 
 # In the inherited options' order: Blender's sky, then a photographed one. The sun
 # anywhere, glare included.
@@ -44,5 +45,8 @@ bearing_deg = { uniform = [-24.5, 24.5] }
 range_m = { uniform = [500.0, 2500.0] }
 # Judgement: up to a merchant ship's service speed, 16 kn.
 speed_mps = { uniform = [0.0, 8.0] }
-# Judgement: the drawn atmospheres' span of surface air, which a shaded hull sits near.
-t_k = { uniform = [257.0, 300.0] }
+# Judgement: three in four run their engines, the rest stopped, from just now to cold.
+# ponytail: drawn apart from speed, so a hull under way can draw its engines off.
+engine_off_min = { choice = [0.0, { uniform = [0.0, 120.0] }], weights = [3, 1] }
+# White to black paint.
+paint_absorptance = { uniform = [0.14, 0.97] }

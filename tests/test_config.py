@@ -1046,3 +1046,8 @@ def test_a_sensor_is_no_narrower_than_its_image() -> None:
             BASELINE,
             ["rigs.bow.cameras.eo.sensor = { full_well_e = 1e4, width_px = 1000 }"],
         )
+
+
+def test_paint_stays_within_white_and_black() -> None:
+    with pytest.raises(ValidationError, match="paint_absorptance"):
+        load(BASELINE, ["objects = [{ asset = 'yacht', paint_absorptance = 1.0 }]"])
