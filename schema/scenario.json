@@ -703,7 +703,7 @@
     },
     "Linear": {
       "additionalProperties": false,
-      "description": "FLIR's Linear AGC: black at the frame's coldest pixel, white at its hottest,\nevery kelvin one grey, so a hot exhaust leaves the rest of the frame a few\nlevels.",
+      "description": "FLIR's Linear AGC: black at the frame's coldest pixel, white at its hottest,\nevery kelvin the same number of greys, so a hot exhaust leaves the rest of the\nframe a few.",
       "properties": {
         "kind": {
           "title": "Kind",

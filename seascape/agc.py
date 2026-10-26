@@ -33,23 +33,44 @@ def kelvin(path: Path) -> np.ndarray | None:
     return image / CENTIKELVIN
 
 
+type Layers = tuple[np.ndarray, np.ndarray | None]
+
+
 def transfer(frames: Sequence[np.ndarray], setting: Setting) -> np.ndarray:
     """The grey of every 16-bit count, for these frames together."""
+    return _transfer([_layers(t_k, setting) for t_k in frames], setting)
+
+
+def grey(t_k: np.ndarray, curve: np.ndarray, setting: Setting) -> np.ndarray:
+    """8-bit grey through a `transfer` curve."""
+    return _grey(_layers(t_k, setting), curve, setting)
+
+
+def _layers(t_k: np.ndarray, setting: Setting) -> Layers:
+    """A frame in counts, split into background and detail where the AGC splits it."""
+    c = counts(t_k)
+    if not isinstance(setting, InformationBased):
+        return c, None
+    # A step past `smoothing` stays in the background.
+    c = c.astype(np.float32)
+    low = cv2.bilateralFilter(c, SMOOTHING_PX, setting.smoothing, SMOOTHING_PX)
+    return low, c - low
+
+
+def _transfer(frames: list[Layers], setting: Setting) -> np.ndarray:
+    c = np.concatenate([np.rint(low).ravel() for low, _ in frames]).astype(np.int64)
     if isinstance(setting, Linear):
-        c = np.concatenate([counts(t_k).ravel() for t_k in frames])
         return _line(int(c.min()), int(c.max()))
-    if isinstance(setting, InformationBased):
-        split = [_split(t_k, setting) for t_k in frames]
-        c = np.concatenate([np.rint(low).ravel() for low, _ in split]).astype(np.int64)
+    weights = np.ones(c.size)
+    details = [high for _, high in frames if high is not None]
+    if details:
         # Judgement: FLIR weights detail pixels up (§6.8.1) without saying by how much;
-        # here by their detail against the frame's mean, so a frame of even texture
-        # equalises as plateau does.
-        detail = np.concatenate([np.abs(high).ravel() for _, high in split])
-        mean = detail.mean()
-        weights = 1 + detail / mean if mean > 0 else np.ones_like(detail)
-        return _plateau(c, weights, setting)
-    c = np.concatenate([counts(t_k).ravel() for t_k in frames]).astype(np.int64)
-    return _plateau(c, np.ones(c.size), setting)
+        # here by their detail against the frames' mean, so frames of even texture
+        # equalise as plateau does.
+        detail = np.concatenate([np.abs(high).ravel() for high in details])
+        if (mean := detail.mean()) > 0:
+            weights += detail / mean
+    return _plateau(c, weights, setting)
 
 
 def _line(low: int, high: int) -> np.ndarray:
@@ -84,23 +105,16 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Equalization) -> np.nd
     return np.interp(np.arange(COUNTS), low + np.arange(level.size), level)
 
 
-def _split(t_k: np.ndarray, setting: InformationBased) -> tuple[np.ndarray, np.ndarray]:
-    """A frame's background and detail, in counts, as an edge-preserving filter
-    separates them: a step past `smoothing` stays in the background."""
-    c = counts(t_k).astype(np.float32)
-    low = cv2.bilateralFilter(c, SMOOTHING_PX, setting.smoothing, SMOOTHING_PX)
-    return low, c - low
-
-
-def grey(t_k: np.ndarray, curve: np.ndarray, setting: Setting) -> np.ndarray:
-    """8-bit grey through a `transfer` curve. Information-based, the background takes
-    the curve and the detail is added on top at the curve's slope there, times DDE."""
-    if not isinstance(setting, InformationBased):
-        return np.rint(curve[counts(t_k)]).astype(np.uint8)
-    low, high = _split(t_k, setting)
+def _grey(frame: Layers, curve: np.ndarray, setting: Setting) -> np.ndarray:
+    """The background takes the curve; detail goes on top at the curve's slope there,
+    times DDE. FLIR keeps Detail Headroom at both ends for it; the datasheet gives no
+    default, so detail past 0-255 clips."""
+    low, high = frame
     at = np.clip(np.rint(low), 0, COUNTS - 1).astype(np.int64)
-    value = curve[at] + setting.dde * np.gradient(curve)[at] * high
-    return np.rint(np.clip(value, 0.0, 255.0)).astype(np.uint8)
+    value = curve[at]
+    if high is not None and isinstance(setting, InformationBased):
+        value = np.clip(value + setting.dde * np.gradient(curve)[at] * high, 0, 255)
+    return np.rint(value).astype(np.uint8)
 
 
 class Agc:
@@ -117,8 +131,9 @@ class Agc:
         self._curve: np.ndarray | None = None
 
     def __call__(self, t_k: np.ndarray) -> np.ndarray:
-        curve = transfer([t_k], self._setting)
+        frame = _layers(t_k, self._setting)
+        curve = _transfer([frame], self._setting)
         if self._curve is not None:
             curve = self._keep * self._curve + (1 - self._keep) * curve
         self._curve = curve
-        return grey(t_k, curve, self._setting)
+        return _grey(frame, curve, self._setting)

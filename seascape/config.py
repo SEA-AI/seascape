@@ -237,8 +237,8 @@ class Microbolometer(Model):
 
 class Linear(Model):
     """FLIR's Linear AGC: black at the frame's coldest pixel, white at its hottest,
-    every kelvin one grey, so a hot exhaust leaves the rest of the frame a few
-    levels."""
+    every kelvin the same number of greys, so a hot exhaust leaves the rest of the
+    frame a few."""
 
     kind: Literal["linear"] = Field(default="linear", description="This AGC.")
     # A display choice, not physics: slow enough not to flash when a hot target enters,
