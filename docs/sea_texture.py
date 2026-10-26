@@ -18,17 +18,18 @@ import numpy as np
 
 from seascape.assets import CACHE
 
-# Each frame's last sky row where its largest jump is not the horizon: haze fades
-# example_3's over some 30 rows, and a streak of glitter jumps further.
-REFERENCES: dict[str, int | None] = {
-    "sentry_twfov.png": None,
-    "sentry_tnfov.png": None,
-    "sailing_tl_640.png": None,
-    "sailing_tr_640.png": None,
-    "example_1_IR.jpg": None,
-    "example_2_IR.jpg": None,
-    "example_3_IR.jpg": 240,
-}
+REFERENCES = (
+    "sentry_twfov.png",
+    "sentry_tnfov.png",
+    "sailing_tl_640.png",
+    "sailing_tr_640.png",
+    "example_1_IR.jpg",
+    "example_2_IR.jpg",
+    "example_3_IR.jpg",
+)
+# The last sky row of a reference whose largest jump is not its horizon: haze spreads
+# example_3's over many rows, and a streak of glitter jumps further.
+HORIZONS = {"example_3_IR.jpg": 240}
 # The high-pass box, and the rows either side of the horizon its step is taken over.
 BOX_PX, STEP_ROWS = 9, 5
 # A jpg's frame line: a row or two that jumps further than any horizon.
@@ -47,10 +48,12 @@ def reference(name: str) -> Path:
             ],
             capture_output=True,
             check=True,
-            # A stalled download must not hang the run.
             timeout=60,
         ).stdout
-        path.write_bytes(raw)
+        # Renamed into place, so an interrupted write never takes the cache name.
+        partial = path.with_suffix(".part")
+        partial.write_bytes(raw)
+        partial.replace(path)
     return path
 
 
@@ -60,7 +63,7 @@ def normalised(path: Path) -> np.ndarray:
     if image is None:
         raise OSError(f"cannot read {path}")
     if image.ndim == 3:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        image = cv2.cvtColor(image[..., :3], cv2.COLOR_BGR2GRAY)
     frame = image.astype(np.float32)
     low, high = np.percentile(frame, (1, 99))
     return (frame - low) / max(high - low, 1e-6)
@@ -101,18 +104,19 @@ def main() -> None:
     args = parser.parse_args()
     if not args.images and not args.references:
         parser.error("give an image or --references")
-    horizons: dict[Path, int | None] = dict.fromkeys(args.images)
+    # An image given by path keeps it, so a before and an after of one name differ.
+    images = [(str(path), path, None) for path in args.images]
     if args.references:
-        horizons |= {reference(name): row for name, row in REFERENCES.items()}
+        images += [(n, reference(n), HORIZONS.get(n)) for n in REFERENCES]
     columns = ["horizon", "step"] + [
         f"{t} {s}" for s in ("med", "std", "skew") for t in THIRDS
     ]
-    width = max(len(p.name) for p in horizons)
+    width = max(len(label) for label, _, _ in images)
     print(f"{'image':<{width}}" + "".join(f"{c:>10}" for c in columns))
-    for path, horizon in horizons.items():
+    for label, path, horizon in images:
         row = measure(normalised(path), horizon)
         cells = [f"{row['horizon']:>10d}"] + [f"{row[c]:>10.3f}" for c in columns[1:]]
-        print(f"{path.name:<{width}}" + "".join(cells))
+        print(f"{label:<{width}}" + "".join(cells))
 
 
 if __name__ == "__main__":
