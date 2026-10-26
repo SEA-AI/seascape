@@ -35,7 +35,7 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets, lwir, skies, skin, waves
+from seascape import assets, lwir, skies, skin, thermal, waves
 from seascape.model import Model
 
 CFG_DIR = Path(__file__).parent / "cfg"
@@ -634,6 +634,10 @@ _ENGINE_OFF = (
     "Minutes since its engines stopped; 0 is running. The engine room and exhaust "
     "cool toward the air. IR only, with zones."
 )
+_PAINT = (
+    "Solar absorptance of the paint on its hull, superstructure and funnel: white "
+    "low, black high. Unset, a mid grey. IR only, with zones."
+)
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -678,6 +682,12 @@ class Object(Model):
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
+    paint_absorptance: float | None = Field(
+        default=None,
+        ge=thermal.PAINT_ABSORPTANCE[0],
+        le=thermal.PAINT_ABSORPTANCE[1],
+        description=_PAINT,
+    )
     count: int = Field(
         default=1,
         ge=0,
@@ -768,6 +778,12 @@ class Targets(Model):
     drift: Drift | None = Field(default=None, description=_DRIFT)
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
+    paint_absorptance: float | None = Field(
+        default=None,
+        ge=thermal.PAINT_ABSORPTANCE[0],
+        le=thermal.PAINT_ABSORPTANCE[1],
+        description=_PAINT,
+    )
 
     def _spread(self, span: tuple[float, float], i: int) -> float:
         low, high = span

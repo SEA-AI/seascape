@@ -4,7 +4,7 @@ import contextlib
 import math
 import uuid
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain, combinations
 from pathlib import Path
 from typing import NamedTuple, get_args
@@ -522,16 +522,24 @@ def _heat(scenario: Scenario) -> _Heat:
     return _Heat(env, scenario.sea.t_sea_k, sun)
 
 
-def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
+def _zone_skin(
+    zone_name: thermal.ZoneName, heat: _Heat, paint_absorptance: float | None = None
+) -> bpy.types.Material:
     """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
     hull: each face looks up its temperature by max(0, n . s) and the normal's z.
-    Below the waterline, the bulk water's.
+    Below the waterline, the bulk water's. `paint_absorptance` repaints the zones of
+    `thermal.PAINTED`.
 
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and
     as deep as one that had sat for hours."""
     zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"
+    if paint_absorptance is not None and zone_name in thermal.PAINTED:
+        # Hulls a hundredth apart share a skin, built at the absorptance it is named.
+        absorptance = round(paint_absorptance, 2)
+        zone = replace(zone, absorptance=absorptance)
+        name += f"_a{absorptance:.2f}"
     if zone.interior in ("engine_room", "exhaust"):
         # Hulls whose engines stopped at different times differ here.
         name += f"_{heat.env.interior_k(zone.interior):.1f}K"
@@ -800,11 +808,14 @@ def heading_rad(anchor: bpy.types.Object) -> float:
 def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
 
-    The waterline is the anchor's level: `_fit` puts the keel a draught below it.
+    The waterline is z = 0 in the attitude's frame, which heaves, pitches and rolls
+    with the waves: `_fit` puts the keel a draught below it.
     """
     # ponytail: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.
-    level = anchor.matrix_world.translation.z
+    (attitude,) = anchor.children
+    to_world = np.array(attitude.matrix_world)
+    to_hull = np.linalg.inv(to_world)
     crossings = []
     for part in _meshes([anchor]):
         mesh = part.data
@@ -812,13 +823,14 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
         mesh.vertices.foreach_get("co", local)
         ends = np.empty(2 * len(mesh.edges), dtype=np.int32)
         mesh.edges.foreach_get("vertices", ends)
-        m = np.array(part.matrix_world)
-        world = local.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
-        a, b = world[ends.reshape(-1, 2)].transpose(1, 0, 2)
-        cross = (a[:, 2] - level) * (b[:, 2] - level) < 0
+        m = to_hull @ np.array(part.matrix_world)
+        hull = local.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+        a, b = hull[ends.reshape(-1, 2)].transpose(1, 0, 2)
+        cross = a[:, 2] * b[:, 2] < 0
         a, b = a[cross], b[cross]
-        t = (level - a[:, 2]) / (b[:, 2] - a[:, 2])
-        crossings.append((a + t[:, None] * (b - a))[:, :2])
+        t = -a[:, 2] / (b[:, 2] - a[:, 2])
+        at = a + t[:, None] * (b - a)
+        crossings.append((at @ to_world[:3, :3].T + to_world[:3, 3])[:, :2])
     return np.concatenate(crossings)
 
 
@@ -992,6 +1004,7 @@ def _vessel(
     name: str,
     t_k: float | None,
     engine_off_min: float,
+    paint_absorptance: float | None,
     sky: Sky,
     heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
@@ -1014,7 +1027,7 @@ def _vessel(
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
                 slot.link = "OBJECT"
-                slot.material = uniform or _zone_skin(zone, heat)
+                slot.material = uniform or _zone_skin(zone, heat, paint_absorptance)
 
     anchor = bpy.data.objects.new(name, None)
     for size in ("beam_m", "length_m", "height_m"):
@@ -1050,7 +1063,7 @@ def _ownship(
         bpy.context.collection.objects.link(anchor)
         place(anchor, 0.0, 0.0, 0.0)
     else:
-        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, sky, heat, hulls)
+        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, None, sky, heat, hulls)
     anchor.name = "ownship"
     rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
@@ -1189,7 +1202,15 @@ def _targets(
     """The ring's hulls, by asset."""
     anchors: dict[str, list[bpy.types.Object]] = {}
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
-        anchor = _vessel(asset, spec.t_k, spec.engine_off_min, sky, heat, hulls)
+        anchor = _vessel(
+            asset,
+            spec.t_k,
+            spec.engine_off_min,
+            spec.paint_absorptance,
+            sky,
+            heat,
+            hulls,
+        )
         anchor.name = f"target_{i}"
         _pose(
             anchor,
@@ -1216,7 +1237,15 @@ def _object(
     trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
     """`spec`'s hulls, each wake under way added to `trails`."""
-    anchor = _vessel(spec.asset, spec.t_k, spec.engine_off_min, sky, heat, hulls)
+    anchor = _vessel(
+        spec.asset,
+        spec.t_k,
+        spec.engine_off_min,
+        spec.paint_absorptance,
+        sky,
+        heat,
+        hulls,
+    )
     orbit = spec.orbit
     if orbit is None:
         _pose(

@@ -103,5 +103,8 @@ range_m = { uniform = [200.0, 2500.0] }
 # Not always in a narrow frame: an empty one is a negative.
 bearing_deg = { uniform = [-8.0, 8.0] }
 heading_deg = { uniform = [0.0, 360.0] }
-# Judgement: the drawn atmospheres' span of surface air, which a shaded hull sits near.
-t_k = { uniform = [257.0, 300.0] }
+# Judgement: three in four run their engines, the rest stopped, from just now to cold.
+# ponytail: drawn apart from speed, so a hull under way can draw its engines off.
+engine_off_min = { choice = [0.0, { uniform = [0.0, 120.0] }], weights = [3, 1] }
+# White to black paint.
+paint_absorptance = { uniform = [0.14, 0.97] }
