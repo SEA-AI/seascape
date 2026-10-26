@@ -150,10 +150,11 @@ UNSEEN = Seen()
 
 class Light(NamedTuple):
     """The ir sky round the horizon, or the unit vector an eo sea glints towards. A sky
-    makes the sea ir."""
+    makes the sea ir, its cool skin thinner with the sun up."""
 
     sky: SkyCurve | None = None
     sun: tuple[float, float, float] | None = None
+    sun_up: bool = True
 
 
 # Cells per side: enough for the tangent point to land on a face, not an accuracy
@@ -1446,8 +1447,11 @@ def _thermal(
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
     slope_max: float,
     sky: SkyCurve,
+    sun_up: bool,
 ) -> bpy.types.NodeSocket:
     """eps(theta) of the sea emitted, the remaining 1 - eps reflected from the sky.
+    It emits at its skin's temperature; the tables keep the bulk's optical constants,
+    which a skin a few kelvin off barely moves.
 
     Complements, so the two very nearly cancel and the sea holds close to ambient at
     every angle. The reflection is a lookup in the wave normal's mirror direction, not
@@ -1491,7 +1495,8 @@ def _thermal(
         incidence,
         fraction,
     )
-    emitted = _math(tree, "SUBTRACT", lwir.band_radiance(sea.t_sea_k), sky_seen)
+    skin_radiance = lwir.band_radiance(sea.t_skin_k(sun_up))
+    emitted = _math(tree, "SUBTRACT", skin_radiance, sky_seen, name="sea_skin")
     radiance = _math(
         tree, "MULTIPLY_ADD", emissivity, emitted, sky_seen, name="sea_radiance"
     )
@@ -2568,7 +2573,9 @@ def material(
         slope_max = math.sqrt(
             2 * max(axes) + gust_max * gust_slope_variance(sea.wind_speed_mps)
         )
-        surface = _thermal(tree, sea, normal, unresolved, slope_max, light.sky)
+        surface = _thermal(
+            tree, sea, normal, unresolved, slope_max, light.sky, light.sun_up
+        )
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])
     _displace(material, output, _displacement(tree, tall, position))

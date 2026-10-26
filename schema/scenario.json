@@ -1622,13 +1622,40 @@
       "properties": {
         "t_sea_k": {
           "title": "T Sea K",
-          "description": "Sea surface temperature. IR only. Unset, the atmosphere's own.",
+          "description": "Bulk sea temperature, under the skin the camera sees. IR only. Unset, the atmosphere's own.",
           "default": 283.88,
           "anyOf": [
             {
               "maximum": 311.0,
               "minimum": 271.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "warm_layer": {
+          "description": "A day's sun trapped near the surface, warming the skin. IR only. Opt-in: the sun's elevation does not say how long it has shone.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WarmLayer"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2708,6 +2735,95 @@
         "bearing_deg"
       ],
       "title": "Targets",
+      "type": "object"
+    },
+    "WarmLayer": {
+      "additionalProperties": false,
+      "description": "The sun's heat trapped near the surface on a calm day, Fairall et al.'s warm\nlayer. Each value is a mean since it formed; unset, their clear COARE day's.",
+      "properties": {
+        "hours": {
+          "title": "Hours",
+          "description": "How long the sun has heated it, from just after sunrise.",
+          "default": 7.0,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 24.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "solar_w_m2": {
+          "title": "Solar W M2",
+          "description": "Net solar at the surface.",
+          "default": 710.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "cooling_w_m2": {
+          "title": "Cooling W M2",
+          "description": "Net cooling at the surface, longwave, sensible and latent. Unset, a clear COARE day's at the sea's wind.",
+          "default": null,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "WarmLayer",
       "type": "object"
     },
     "Uniform": {
