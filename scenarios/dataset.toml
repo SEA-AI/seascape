@@ -36,6 +36,14 @@ asset = { choice = [
     "yacht",
     "lobster_yacht",
     "zodiac",
+    "irwin_38",
+    "cruising_sloop",
+    "viking_glory",
+    "viking_grace",
+    "silja_serenade",
+    "mariella",
+    "pride_of_kent",
+    "meriluoto",
 ] }
 heading_from = "line_of_sight"
 heading_deg = { choice = [0.0, 180.0] }
