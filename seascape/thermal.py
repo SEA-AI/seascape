@@ -3,8 +3,7 @@
 Each zone is a material with its own LWIR emissivity, solar absorptance and coupling to
 the space behind it. A facet of a zone settles where what it absorbs, sun and sky and
 sea, leaves as its own emission, as convection to the air and as conduction to the
-interior. Once wired into the scene, this replaces `Sky.solar_gain_k`, one warming for
-every sunlit surface.
+interior.
 
 The scenario has no history, only the sun where it stands, so the balance is steady.
 ponytail: no thermal lag; a hull keeps the morning's cold past sunrise and the
@@ -77,7 +76,7 @@ _SWINBANK_W_M2K6 = 5.31e-13
 
 # Water, typical, 0-100 C: 0.95-0.963 (Neutrium compilation). The sea seen below a
 # facet's horizon.
-_SEA_EMISSIVITY = 0.96
+SEA_EMISSIVITY = 0.96
 
 # ISO 6946 Annex A: interior surface resistance for horizontal heat flow, within 30
 # degrees of it. A wall's inner film; its outer one is this module's convection and
@@ -357,8 +356,8 @@ def lit_temperature_k(
 
     sky = sky_longwave_w_m2(env.t_air_k, env.cloud_fraction)
     sea = (
-        _SEA_EMISSIVITY * STEFAN_BOLTZMANN_W_M2K4 * env.t_sea_k**4
-        + (1.0 - _SEA_EMISSIVITY) * sky
+        SEA_EMISSIVITY * STEFAN_BOLTZMANN_W_M2K4 * env.t_sea_k**4
+        + (1.0 - SEA_EMISSIVITY) * sky
     )
     longwave = sky_view * sky + (1.0 - sky_view) * sea
 

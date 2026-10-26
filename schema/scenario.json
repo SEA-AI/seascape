@@ -799,13 +799,16 @@
         },
         "t_k": {
           "title": "T K",
-          "description": "Shaded hull temperature. IR only.",
-          "default": 293.0,
+          "description": "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, each zone settles at its own heat balance. IR only.",
+          "default": null,
           "anyOf": [
             {
               "maximum": 400.0,
               "minimum": 250.0,
               "type": "number"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -1193,13 +1196,16 @@
         },
         "t_k": {
           "title": "T K",
-          "description": "Shaded hull temperature. IR only.",
-          "default": 296.0,
+          "description": "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, each zone settles at its own heat balance. IR only.",
+          "default": null,
           "anyOf": [
             {
               "maximum": 400.0,
               "minimum": 250.0,
               "type": "number"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2213,7 +2219,7 @@
         },
         "solar_gain_k": {
           "title": "Solar Gain K",
-          "description": "How much warmer a sunlit surface is than a shaded one. IR only.",
+          "description": "How much warmer a sunlit surface is than a shaded one, on a hull given one `t_k`. IR only.",
           "default": 8.5,
           "anyOf": [
             {
@@ -2816,13 +2822,16 @@
         },
         "t_k": {
           "title": "T K",
-          "description": "Shaded hull temperature. IR only.",
-          "default": 293.0,
+          "description": "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, each zone settles at its own heat balance. IR only.",
+          "default": null,
           "anyOf": [
             {
               "maximum": 400.0,
               "minimum": 250.0,
               "type": "number"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"

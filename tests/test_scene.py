@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import blend, lwir, scene, sea, waves
+from seascape import blend, lwir, scene, sea, thermal, waves
 from seascape.assets import Buoy, Debris, Hull, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import (
@@ -783,6 +783,21 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     assert baked("haze_depth") == pytest.approx(depth, rel=1e-5)
 
 
+def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
+    """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    asset = SCENARIO.objects[0].asset
+    anchor = scene._vessel(asset, 300.0, SCENARIO.sky, scene._heat(SCENARIO), {})
+    hull = next(p for p in anchor.children_recursive if p.type == "MESH")
+    assert "sunlit" not in hull.modifiers, "a uniform skin reads no shadows"
+    skins = {slot.material for slot in hull.material_slots}
+    assert len(skins) == 1
+    emission = next(iter(skins)).node_tree.nodes["Emission"]
+    assert emission.inputs["Strength"].default_value == pytest.approx(
+        lwir.band_radiance(300.0), rel=1e-5
+    )
+
+
 class TestIrBand:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -814,32 +829,66 @@ class TestIrBand:
         assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"
         assert np.all(np.diff(curve) <= 1e-6), "radiance falls towards the zenith"
 
-    def test_a_vessel_reflects_what_it_does_not_emit(self) -> None:
-        """A pure emitter renders a hull one flat value whichever way it is turned."""
-        skin = next(m for m in bpy.data.materials if m.name.endswith("_ir"))
-        # The outermost mix, not the one grading emission from shaded to sunlit.
-        mix = under_the_haze(skin)
-
-        assert scene.PAINT_EMISSIVITY < 1.0, "a blackbody has no angular structure"
-        assert mix.inputs["Factor"].default_value == pytest.approx(
-            scene.PAINT_EMISSIVITY
+    def test_a_zone_emits_its_emissivity_and_reflects_the_rest(self) -> None:
+        """A pure emitter renders a hull one flat value whichever way it is turned;
+        glass and bare metal mirror the sky, paint scatters it."""
+        zoned = {m.name.removeprefix("thermal_") for m in bpy.data.materials}
+        assert {"paint_hull", "glass"} <= zoned, (
+            "the freighter's labels reach the build"
         )
-        assert mix.inputs[1].links[0].from_node.bl_idname == "ShaderNodeBsdfDiffuse"
+        for name in ("paint_hull", "glass"):
+            tree = bpy.data.materials[f"thermal_{name}"].node_tree
+            skin = next(
+                n
+                for n in tree.nodes
+                if n.bl_idname == "ShaderNodeMixShader"
+                and not n.inputs["Factor"].is_linked
+                and "Emission" in upstream(n.inputs[2])
+                and n.inputs["Factor"].default_value != thermal.SEA_EMISSIVITY
+            )
+            zone = thermal.ZONES[name]
+            assert skin.inputs["Factor"].default_value == pytest.approx(zone.emissivity)
+            scatter = skin.inputs[1].links[0].from_node.bl_idname
+            # Blender 4 merged Glossy into Anisotropic and kept Anisotropic's bl_idname.
+            assert scatter == (
+                "ShaderNodeBsdfAnisotropic"
+                if name == "glass"
+                else "ShaderNodeBsdfDiffuse"
+            )
 
-    def test_a_vessel_is_hotter_on_the_side_the_sun_is_on(self) -> None:
-        skin = next(m for m in bpy.data.materials if m.name.endswith("_ir"))
-        grade = under_the_haze(skin).inputs[2].links[0].from_node
+    def test_a_zone_s_table_is_its_heat_balance(self) -> None:
+        """The lookup image holds the zone's band radiance over
+        `thermal.temperature_table_k`."""
+        env = scene._heat(SCENARIO).env
+        _, _, table = thermal.temperature_table_k(thermal.ZONES["paint_hull"], env)
+        expected = np.vectorize(lwir.band_radiance)(table)
+        assert baked("thermal_paint_hull") == pytest.approx(expected, rel=1e-5)
 
-        shaded, sunlit = (grade.inputs[i].links[0].from_node for i in (1, 2))
-        assert (shaded.bl_idname, sunlit.bl_idname) == (
-            "ShaderNodeEmission",
-            "ShaderNodeEmission",
+    def test_a_hull_knows_its_sunlit_faces(self) -> None:
+        """Each face is sunlit where a ray from it toward the sun leaves the hull."""
+        hull = next(
+            p
+            for p in bpy.data.objects[SCENARIO.objects[0].asset].children_recursive
+            if p.type == "MESH"
         )
-        assert sunlit.inputs["Strength"].default_value == pytest.approx(
-            lwir.band_radiance(SCENARIO.objects[0].t_k + SCENARIO.sky.solar_gain_k),
-            rel=1e-5,
-        )
-        assert grade.inputs["Factor"].links[0].from_node.operation == "MAXIMUM"
+        evaluated = hull.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        mesh = evaluated.data
+        sunlit = mesh.attributes["sunlit"]
+        assert sunlit.domain == "FACE"
+        values = np.empty(len(sunlit.data))
+        sunlit.data.foreach_get("value", values)
+        sun = scene._heat(SCENARIO).sun
+        assert sun is not None
+        toward = (hull.matrix_world.inverted().to_3x3() @ Vector(sun)).normalized()
+        picked = np.linspace(0, len(mesh.polygons) - 1, 300).astype(int)
+        cast = [
+            not evaluated.ray_cast(
+                mesh.polygons[i].center + toward * scene.SHADOW_OFFSET_M, toward
+            )[0]
+            for i in picked
+        ]
+        assert values[picked] == pytest.approx(np.array(cast, float))
+        assert 0.0 < values.mean() < 1.0, "part of the deck lies in shadow"
 
     def test_the_sea_reflects_what_it_does_not_emit(self) -> None:
         """Emission alone goes dark toward grazing, where emissivity falls to zero."""
@@ -951,19 +1000,6 @@ class TestIrBand:
         assert rough > 4 * float(np.interp(grazing, theta, flat)), (
             "grazing emissivity is lifted well clear of flat"
         )
-
-    def test_a_target_radiates_at_its_own_temperature(self) -> None:
-        """`t_k` is in the scenario; a target rendering at its albedo ignores it."""
-        for spec in SCENARIO.objects:
-            hull = next(
-                part
-                for part in bpy.data.objects[spec.asset].children_recursive
-                if part.type == "MESH"
-            )
-            emission = hull.material_slots[0].material.node_tree.nodes["Emission"]
-            assert emission.inputs["Strength"].default_value == pytest.approx(
-                lwir.band_radiance(spec.t_k), rel=1e-5
-            )
 
     def test_foam_raises_the_emissivity_by_its_cover(self) -> None:
         """The shader reads the excess by cos(theta) at texel centres, scaled by the
@@ -1668,6 +1704,10 @@ class TestPhotographedThermalSky:
         tree = bpy.data.worlds["sky"].node_tree
         background = tree.nodes["Background"].inputs["Color"].links[0].from_node
         assert background.image.name == "cloudy_sky_radiance"
+
+    def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
+        heat = scene._heat(variant(sky={"hdri": "overcast_soil"}))
+        assert heat.env.cloud_fraction == pytest.approx(1.0)
 
     def test_overhead_reads_a_cloud(self) -> None:
         image = bpy.data.images["cloudy_sky_radiance"]

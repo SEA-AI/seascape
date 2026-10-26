@@ -7,14 +7,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import chain, combinations
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, get_args
 
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import lwir, sea, sensor, skies, wakes, waves
-from seascape.assets import Asset, download, fetch, manifest
+from seascape import faces, lwir, sea, sensor, skies, thermal, wakes, waves
+from seascape.assets import Asset, Zones, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
@@ -41,9 +41,17 @@ from seascape.config import (
     substream,
 )
 
-# Flat paint over steel, 8-14 um. Paints sit at 0.94-0.96 across this band and the
-# colour does not matter, only how flat the finish is.
-PAINT_EMISSIVITY = 0.94
+# Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
+# fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher
+# than a mirror.
+SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
+# The longest edge a hull's face keeps in IR, so a shadow, stored per face, falls no
+# coarser. Judgement: four and a half pixels of a 640 px, 32 deg camera at 500 m.
+# ponytail: the ownship is diced the same, and its own cameras see the steps.
+SHADOW_CELL_M = 2.0
+# A ray from a face toward the sun starts this far off it, clear of the face itself.
+# Judgement: under any hull's plating gaps, over float error at a ship's size.
+SHADOW_OFFSET_M = 0.01
 
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
@@ -349,7 +357,12 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     radiance = lwir.cloudy_sky_radiance(
         elevation[:, None], cloud, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
     )
-    return curve_image("cloudy_sky_radiance", radiance)
+    image = curve_image("cloudy_sky_radiance", radiance)
+    # As a horizontal surface sees the sky: each row by its projected solid angle.
+    up = elevation > 0
+    weight = np.sin(elevation[up]) * np.cos(elevation[up])
+    image["cloud_fraction"] = float(weight @ cloud[up].mean(axis=1) / weight.sum())
+    return image
 
 
 def _clouds(sky: Sky) -> sea.Clouds | None:
@@ -442,19 +455,10 @@ def _thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
     material = bpy.data.materials.new(name)
     tree = material.node_tree
     tree.nodes.clear()
-    # White: the Mix Shader already applies the 1 - eps weighting, so a grey here would
-    # absorb part of the reflected sky a second time.
-    scatter = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    mix = tree.nodes.new("ShaderNodeMixShader")
-    # Mix Shader names both shader inputs "Shader", so they can only be indexed.
-    mix.inputs["Factor"].default_value = PAINT_EMISSIVITY
+    emissivity = thermal.ZONES["paint_hull"].emissivity
+    skin = _reflecting(tree, _sunlit_emission(tree, t_k, sky), emissivity, None)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
-
-    link = tree.links.new
-    link(scatter.outputs["BSDF"], mix.inputs[1])
-    link(_sunlit_emission(tree, t_k, sky), mix.inputs[2])
-    link(mix.outputs["Shader"], output.inputs["Surface"])
+    tree.links.new(skin, output.inputs["Surface"])
     return material
 
 
@@ -491,6 +495,289 @@ def _sunlit_emission(
     link(shaded.outputs["Emission"], grade.inputs[1])
     link(sunlit.outputs["Emission"], grade.inputs[2])
     return grade.outputs["Shader"]
+
+
+class _Heat(NamedTuple):
+    """What a hull's zones settle against, and the water its wetted faces sit in."""
+
+    env: thermal.Environment
+    t_water_k: float
+    sun: tuple[float, float, float] | None
+
+
+def _heat(scenario: Scenario) -> _Heat:
+    sky = scenario.sky
+    elevation = sky.sun_elevation_deg
+    sun_up = elevation is None or elevation > 0
+    clouds = 0.0
+    if sky.hdri is not None:
+        clouds = bpy.data.images["cloudy_sky_radiance"]["cloud_fraction"]
+    env = thermal.Environment(
+        t_air_k=sky.t_air_k,
+        t_sea_k=scenario.sea.t_skin_k(sun_up),
+        # ponytail: the true wind; a hull underway convects in its own way through the
+        # air, and every hull shares one skin per zone.
+        wind_m_s=scenario.sea.wind_speed_mps,
+        sun_elevation_rad=None if elevation is None else math.radians(elevation),
+        cloud_fraction=clouds,
+    )
+    sun = _sun_vector(sky) if elevation is not None and elevation > 0 else None
+    return _Heat(env, scenario.sea.t_sea_k, sun)
+
+
+def _zone_skin(zone_name: thermal.ZoneName, heat: _Heat) -> bpy.types.Material:
+    """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
+    hull: each face looks up its temperature by max(0, n . s) times `sunlit`, and the
+    normal's z. Below the waterline, the bulk water's."""
+    name = f"thermal_{zone_name}"
+    if (found := bpy.data.materials.get(name)) is not None:
+        return found
+    zone = thermal.ZONES[zone_name]
+    material = bpy.data.materials.new(name)
+    tree = material.node_tree
+    tree.nodes.clear()
+    link = tree.links.new
+
+    sun_cos, up, table = thermal.temperature_table_k(zone, heat.env)
+    image = curve_image(name, np.vectorize(lwir.band_radiance)(table))
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    normal = tree.nodes.new("ShaderNodeSeparateXYZ")
+    link(geometry.outputs["Normal"], normal.inputs["Vector"])
+    # At texel centres: the lookup interpolates between them.
+    y = sea._math(
+        tree,
+        "MULTIPLY_ADD",
+        sea._math(tree, "MULTIPLY_ADD", normal.outputs["Z"], 0.5, 0.5),
+        (len(up) - 1) / len(up),
+        0.5 / len(up),
+    )
+    if heat.sun is None:
+        x = tree.nodes.new("ShaderNodeValue")
+        x.outputs["Value"].default_value = 0.5 / len(sun_cos)
+        at = x.outputs["Value"]
+    else:
+        facing = tree.nodes.new("ShaderNodeVectorMath")
+        facing.operation = "DOT_PRODUCT"
+        facing.inputs[1].default_value = heat.sun
+        link(geometry.outputs["Normal"], facing.inputs[0])
+        sunlit = tree.nodes.new("ShaderNodeAttribute")
+        sunlit.attribute_name = "sunlit"
+        lit = sea._math(
+            tree,
+            "MULTIPLY",
+            sea._math(tree, "MAXIMUM", facing.outputs["Value"], 0.0),
+            sunlit.outputs["Fac"],
+        )
+        at = sea._math(
+            tree,
+            "MULTIPLY_ADD",
+            lit,
+            (len(sun_cos) - 1) / len(sun_cos),
+            0.5 / len(sun_cos),
+        )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    link(lookup(tree, image, at, y), emission.inputs["Color"])
+    skin = _reflecting(tree, emission.outputs["Emission"], zone.emissivity, zone_name)
+
+    water = tree.nodes.new("ShaderNodeEmission")
+    water.inputs["Strength"].default_value = lwir.band_radiance(heat.t_water_k)
+    wetted = _reflecting(tree, water.outputs["Emission"], thermal.SEA_EMISSIVITY, None)
+    # The fit puts the waterline at z = 0; the join keeps the hull's frame in metres.
+    coords = tree.nodes.new("ShaderNodeTexCoord")
+    height = tree.nodes.new("ShaderNodeSeparateXYZ")
+    link(coords.outputs["Object"], height.inputs["Vector"])
+    under = sea._math(tree, "LESS_THAN", height.outputs["Z"], 0.0)
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    link(under, mix.inputs["Factor"])
+    # Mix Shader names both shader inputs "Shader", so they can only be indexed.
+    link(skin, mix.inputs[1])
+    link(wetted, mix.inputs[2])
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    link(mix.outputs["Shader"], output.inputs["Surface"])
+    return material
+
+
+def _reflecting(
+    tree: bpy.types.NodeTree,
+    emission: bpy.types.NodeSocket,
+    emissivity: float,
+    zone_name: str | None,
+) -> bpy.types.NodeSocket:
+    """`emission` weighted by `emissivity`, the rest a white reflection: the Mix Shader
+    already weights it by 1 - eps, so a grey would absorb part of it twice."""
+    if zone_name in SPECULAR_ZONES:
+        scatter = tree.nodes.new("ShaderNodeBsdfGlossy")
+        scatter.distribution = "GGX"
+        scatter.inputs["Roughness"].default_value = 0.0
+    else:
+        scatter = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    mix.inputs["Factor"].default_value = emissivity
+    tree.links.new(scatter.outputs["BSDF"], mix.inputs[1])
+    tree.links.new(emission, mix.inputs[2])
+    return mix.outputs["Shader"]
+
+
+def _shadowed(hull: bpy.types.Object, sun: tuple[float, float, float]) -> None:
+    """Store `sunlit` per face: 1 where a ray toward the sun leaves the hull, else 0.
+
+    The sun is a direction in the world, turned into the hull's frame each frame, so a
+    hull that turns or pitches keeps its shadows true."""
+    group = bpy.data.node_groups.get("sunlit")
+    if group is None:
+        group = bpy.data.node_groups.new("sunlit", "GeometryNodeTree")
+        for in_out in ("INPUT", "OUTPUT"):
+            group.interface.new_socket(
+                "Geometry", in_out=in_out, socket_type="NodeSocketGeometry"
+            )
+        nodes, link = group.nodes, group.links.new
+        given = nodes.new("NodeGroupInput")
+        info = nodes.new("GeometryNodeObjectInfo")
+        info.transform_space = "ORIGINAL"
+        link(
+            nodes.new("GeometryNodeSelfObject").outputs["Self Object"],
+            info.inputs["Object"],
+        )
+        inverse = nodes.new("FunctionNodeInvertMatrix")
+        link(info.outputs["Transform"], inverse.inputs["Matrix"])
+        toward = nodes.new("FunctionNodeTransformDirection")
+        toward.inputs["Direction"].default_value = sun
+        link(inverse.outputs["Matrix"], toward.inputs["Transform"])
+        unit = nodes.new("ShaderNodeVectorMath")
+        unit.operation = "NORMALIZE"
+        link(toward.outputs["Direction"], unit.inputs[0])
+
+        # Off along the ray, not the normal: some assets wind faces inward.
+        off = nodes.new("ShaderNodeVectorMath")
+        off.operation = "MULTIPLY_ADD"
+        link(unit.outputs["Vector"], off.inputs[0])
+        off.inputs[1].default_value = (SHADOW_OFFSET_M,) * 3
+        link(nodes.new("GeometryNodeInputPosition").outputs["Position"], off.inputs[2])
+        ray = nodes.new("GeometryNodeRaycast")
+        link(given.outputs["Geometry"], ray.inputs["Target Geometry"])
+        link(off.outputs["Vector"], ray.inputs["Source Position"])
+        link(unit.outputs["Vector"], ray.inputs["Ray Direction"])
+        # Judgement: longer than any hull.
+        ray.inputs["Ray Length"].default_value = 1e4
+        clear = nodes.new("FunctionNodeBooleanMath")
+        clear.operation = "NOT"
+        link(ray.outputs["Is Hit"], clear.inputs[0])
+
+        store = nodes.new("GeometryNodeStoreNamedAttribute")
+        store.data_type = "FLOAT"
+        store.domain = "FACE"
+        store.inputs["Name"].default_value = "sunlit"
+        link(given.outputs["Geometry"], store.inputs["Geometry"])
+        link(clear.outputs["Boolean"], store.inputs["Value"])
+        link(store.outputs["Geometry"], nodes.new("NodeGroupOutput").inputs["Geometry"])
+    hull.modifiers.new("sunlit", "NODES").node_group = group
+
+
+def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
+    """Every mesh under `parts` as one object, its vertices in metres at the fitted
+    pose: one shadow ray then finds any of the hull's structure, and the hull's own
+    frame puts the waterline at z = 0."""
+    everything = [o for part in parts for o in [part, *part.children_recursive]]
+    meshes = [o for o in everything if o.type == "MESH"]
+    others = [o for o in everything if o.type != "MESH"]
+    bpy.context.view_layer.update()
+    with bpy.context.temp_override(
+        active_object=meshes[0], selected_editable_objects=meshes
+    ):
+        bpy.ops.object.join()
+    hull = meshes[0]
+    world = hull.matrix_world.copy()
+    hull.parent = None
+    hull.matrix_parent_inverse.identity()
+    hull.data.transform(world)
+    if world.determinant() < 0:  # a mirrored part turns inside out
+        hull.data.flip_normals()
+    hull.matrix_basis = Matrix.Identity(4)
+    for obj in others:
+        bpy.data.objects.remove(obj)
+    return hull
+
+
+def _diced(hull: bpy.types.Object) -> None:
+    """Split every edge longer than `SHADOW_CELL_M`, flat, so the shape stays."""
+    mesh = hull.data
+    # Edit mode acts on the view layer's active object.
+    bpy.context.view_layer.objects.active = hull
+    with bpy.context.temp_override(selected_editable_objects=[hull]):
+        # Subdivide splits only an n-gon's edges, which would keep it one face.
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bpy.ops.mesh.select_face_by_sides(number=4, type="GREATER")
+        bpy.ops.mesh.quads_convert_to_tris(ngon_method="BEAUTY")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        while True:
+            # Blender's own dtypes, which foreach_get copies without converting.
+            co = np.empty(3 * len(mesh.vertices), np.float32)
+            mesh.vertices.foreach_get("co", co)
+            ends = np.empty(2 * len(mesh.edges), np.int32)
+            mesh.edges.foreach_get("vertices", ends)
+            co, ends = co.reshape(-1, 3), ends.reshape(-1, 2)
+            long = np.linalg.norm(co[ends[:, 0]] - co[ends[:, 1]], axis=1)
+            long = long > SHADOW_CELL_M
+            if not long.any():
+                return
+            # Selection is these attributes; one missing selects nothing.
+            for name in (".select_vert", ".select_poly"):
+                if (stale := mesh.attributes.get(name)) is not None:
+                    mesh.attributes.remove(stale)
+            mesh.edges.foreach_set("select", long)
+            bpy.context.tool_settings.mesh_select_mode = (False, True, False)
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.subdivide(number_cuts=1)
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def _zone_slots(meshes: list[bpy.types.Object], zones: Zones | None) -> None:
+    """Give each face its zone as a material slot, one placeholder per zone, which the
+    join merges. Unlabelled, every face is `paint_hull`.
+
+    The asset's own materials go: they are albedo, which says nothing about 8-14 um,
+    and a later import sharing their names would be renamed past its zone labels.
+    """
+    vocabulary = list(get_args(thermal.ZoneName.__value__))
+    found = faces.found(meshes)
+    if zones is not None and zones.island_digest is not None:
+        fingerprint = (len(found.islands), found.island_digest)
+        if fingerprint != (zones.island_count, zones.island_digest):
+            # A name another object in the file already took renumbers the islands.
+            raise ValueError(f"{fingerprint} does not match the asset's zone islands")
+    per_face = (
+        faces.face_zones(found, zones)
+        if zones is not None
+        else [
+            np.full(len(obj.data.polygons), vocabulary.index("paint_hull"))
+            for obj in found.objects
+        ]
+    )
+    originals = {s.material for obj in found.objects for s in obj.material_slots}
+    for obj, zone in zip(found.objects, per_face, strict=True):
+        present, index = np.unique(zone, return_inverse=True)
+        obj.data.materials.clear()
+        for z in present:
+            name = f"zone_{vocabulary[z]}"
+            placeholder = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+            obj.data.materials.append(placeholder)
+        obj.data.polygons.foreach_set("material_index", index.astype(np.int32))
+    for material in originals - {None}:
+        bpy.data.materials.remove(material)
+
+
+def _unslotted(hull: bpy.types.Object) -> None:
+    """Record the joined hull's zone per slot in `hull["zones"]` and empty the slots;
+    each copy fills them with its own skin."""
+    mesh = hull.data
+    placeholders = list(mesh.materials)
+    hull["zones"] = [m.name.removeprefix("zone_") for m in placeholders]
+    for i in range(len(placeholders)):
+        mesh.materials[i] = None
+    for material in placeholders:
+        bpy.data.materials.remove(material)
 
 
 class _RigObjects(NamedTuple):
@@ -748,17 +1035,18 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
         part.matrix_world = fit @ part.matrix_world
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
+    if band == "ir":
+        _zone_slots(_meshes(parts), manifest()[name].zones)
+        parts = [_joined(parts)]
+        # Frees the import's object name, so the next asset's objects keep theirs,
+        # which number its islands.
+        parts[0].name = parts[0].data.name = f"{name}_hull"
+        _diced(parts[0])
+        _unslotted(parts[0])
     parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
     parts[0]["length_m"] = max(c.y for c in fitted) - min(c.y for c in fitted)
     # Above the waterline, which the fit puts at z = 0.
     parts[0]["height_m"] = max(c.z for c in fitted)
-
-    if band == "ir":
-        # The asset's own materials are albedo, which says nothing about 8-14 um.
-        # One empty slot, which each hull fills with its own skin.
-        for mesh in _meshes(parts):
-            mesh.data.materials.clear()
-            mesh.data.materials.append(None)
     return parts
 
 
@@ -799,12 +1087,13 @@ def measured(name: str, meshes: list[bpy.types.Object]) -> tuple[int, tuple[int,
 
 def _vessel(
     name: str,
-    t_k: float,
-    band: Band,
+    t_k: float | None,
     sky: Sky,
+    heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
 ) -> bpy.types.Object:
-    """A hull fitted and anchored at the origin under an empty.
+    """A hull fitted and anchored at the origin under an empty. `heat` is the LWIR
+    build's, and None in EO.
 
     `hulls` holds each asset's first import for the rest of the build: the FBX
     importer slows with every material already in the file.
@@ -812,15 +1101,21 @@ def _vessel(
     if name in hulls:
         parts = [_copy_tree(part, None) for part in hulls[name]]
     else:
-        parts = hulls[name] = _import(name, band)
+        parts = hulls[name] = _import(name, "eo" if heat is None else "ir")
 
-    if band == "ir":
-        skin = _thermal_skin(f"{name}_ir", t_k, sky)
+    if heat is not None:
+        # Only a zoned skin reads `sunlit`; the modifier costs a copy its instancing.
+        shading = parts[0].modifiers.get("sunlit")
+        if heat.sun is not None and t_k is None and shading is None:
+            _shadowed(parts[0], heat.sun)
+        elif shading is not None and t_k is not None:
+            parts[0].modifiers.remove(shading)
+        uniform = None if t_k is None else _thermal_skin(f"{name}_ir", t_k, sky)
         for mesh in _meshes(parts):
-            # Copies share mesh data, and hulls differ in temperature.
-            slot = mesh.material_slots[0]
-            slot.link = "OBJECT"
-            slot.material = skin
+            for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
+                # Copies share mesh data, and a hull given its own t_k differs.
+                slot.link = "OBJECT"
+                slot.material = uniform or _zone_skin(zone, heat)
 
     anchor = bpy.data.objects.new(name, None)
     for size in ("beam_m", "length_m", "height_m"):
@@ -841,8 +1136,8 @@ def _vessel(
 
 def _ownship(
     ownship: Ownship,
-    band: Band,
     sky: Sky,
+    heat: _Heat | None,
     rigs: bpy.types.Object,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
@@ -855,7 +1150,7 @@ def _ownship(
         bpy.context.collection.objects.link(anchor)
         place(anchor, 0.0, 0.0, 0.0)
     else:
-        anchor = _vessel(ownship.asset, ownship.t_k, band, sky, hulls)
+        anchor = _vessel(ownship.asset, ownship.t_k, sky, heat, hulls)
     anchor.name = "ownship"
     rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
@@ -984,9 +1279,9 @@ def _copy_tree(
 
 def _targets(
     spec: Targets,
-    band: Band,
     radius_m: float,
     sky: Sky,
+    heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
     trails: list[wakes.Wake],
@@ -994,7 +1289,7 @@ def _targets(
     """The ring's hulls, by asset."""
     anchors: dict[str, list[bpy.types.Object]] = {}
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
-        anchor = _vessel(asset, spec.t_k, band, sky, hulls)
+        anchor = _vessel(asset, spec.t_k, sky, heat, hulls)
         anchor.name = f"target_{i}"
         _pose(
             anchor,
@@ -1013,15 +1308,15 @@ def _targets(
 
 def _object(
     spec: Object,
-    band: Band,
     radius_m: float,
     sky: Sky,
+    heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
     trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
     """`spec`'s hulls, each wake under way added to `trails`."""
-    anchor = _vessel(spec.asset, spec.t_k, band, sky, hulls)
+    anchor = _vessel(spec.asset, spec.t_k, sky, heat, hulls)
     orbit = spec.orbit
     if orbit is None:
         _pose(
@@ -1542,26 +1837,22 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
     wind, swell = wind_waves(scenario), swell_waves(scenario)
-    rngs = (
-        substream(scenario.seed, "sea/gust"),
-        substream(scenario.seed, "sea/slick"),
-        substream(scenario.seed, "sea/foam"),
-    )
     rigs = _rigs(scenario, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     tall, _ = sea.displaced((wind, swell))
+    heat = _heat(scenario) if band == "ir" else None
     vessel = _ownship(
-        scenario.ownship, band, scenario.sky, rigs.root, hulls, outputs, tall
+        scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
     )
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
     targets: dict[str, list[bpy.types.Object]] = {}
     trails: list[wakes.Wake] = []
     for spec in scenario.objects:
-        anchors = _object(spec, band, radius_m, scenario.sky, hulls, outputs, trails)
+        anchors = _object(spec, radius_m, scenario.sky, heat, hulls, outputs, trails)
         targets.setdefault(spec.asset, []).extend(anchors)
     if scenario.targets is not None:
         ring = _targets(
-            scenario.targets, band, radius_m, scenario.sky, hulls, outputs, trails
+            scenario.targets, radius_m, scenario.sky, heat, hulls, outputs, trails
         )
         for asset, anchors in ring.items():
             targets.setdefault(asset, []).extend(anchors)
@@ -1574,7 +1865,11 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         wind,
         swell,
         outputs,
-        rngs,
+        (
+            substream(scenario.seed, "sea/gust"),
+            substream(scenario.seed, "sea/slick"),
+            substream(scenario.seed, "sea/foam"),
+        ),
         tuple(trails),
         _light(scenario.sky, band),
         sea.Seen(
