@@ -370,7 +370,7 @@ def _heaviest_drawn_sea(*, strongest: bool = False, **sections: Any) -> Scenario
             },
             "slick_cover": drawn["slick_cover"]["uniform"][1],
         },
-        sky={"visibility_km": None},
+        sky={"visibility_km": None, **sections.pop("sky", {})},
         **sections,
     )
 
@@ -396,20 +396,32 @@ def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
 @pytest.mark.render
 @pytest.mark.parametrize("band", ["eo", "ir"])
 def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
-    capfd: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, band: Band
+    capfd: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    band: Band,
 ) -> None:
-    """Remembered on every grid level a camera can need, gathered into windrows. The
-    stack is the shader's, whatever its frames hold, so none are simulated."""
+    """Remembered on every grid level a camera can need, gathered into windrows, and
+    in IR under a photographed sky, whose clouds the sea reflects. The stack is the
+    shader's, whatever its frames hold, so none are simulated and the photo is
+    white."""
     monkeypatch.setattr(sea, "_simulate", lambda *_: None)
     grids = tuple(
         waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
     )
     seen = sea.Seen(foam_grids=grids)
-    drawn = _heaviest_drawn_sea(strongest=True)
+    sky: dict[str, str] = {}
+    if band == "ir":
+        photo = tmp_path / "white.hdr"
+        cv2.imwrite(str(photo), np.ones((32, 64, 3), np.float32))
+        monkeypatch.setattr(scene, "download", lambda *_: photo)
+        sky = {"hdri": "overcast_soil"}
+    drawn = _heaviest_drawn_sea(strongest=True, sky=sky)
     errors = _svm_errors(capfd, drawn, _wakes(1), band, seen=seen)
     assert errors == []
     nodes = bpy.data.materials["sea"].node_tree.nodes
     assert {"whitecap_gathered", "sea_foam_0.25m", "sea_foam_4m"} <= set(nodes.keys())
+    assert (band == "ir") == ("sea_cloud_ratio" in nodes)
 
 
 @pytest.mark.render

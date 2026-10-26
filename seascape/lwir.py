@@ -287,12 +287,17 @@ def reflected_sky(
     off that wave's plane, `mirror_rad` its mirror's off the horizon. They differ by
     the wave's tilt along the view, which turns every facet's reflection with it. Unset,
     the wave is level and the two are one.
+
+    `sky` may carry trailing axes, one sky per column, each reflected off the same
+    facets; the result carries them after the mirror's axes.
     """
     mirror = np.asarray(mirror_rad, dtype=np.float64)
     elev = np.asarray(sky_elev_rad, dtype=np.float64)
     radiance = np.asarray(sky, dtype=np.float64)
+    columns = radiance.reshape(elev.size, -1).T
     if slope_sigma <= 0.0:
-        return np.interp(mirror, elev, radiance)
+        flat = [np.interp(mirror, elev, column) for column in columns]
+        return np.stack(flat, axis=-1).reshape(mirror.shape + radiance.shape[1:])
     local = mirror if view_rad is None else np.asarray(view_rad, dtype=np.float64)
     normal = _facets(slope_sigma)
     # Facet weights depend on the view alone, so a scalar view against many mirrors
@@ -309,12 +314,26 @@ def reflected_sky(
     up = up_wave * np.cos(tilt) - out_wave * np.sin(tilt)
     # Linear in sin(elevation) on a grid fine enough to match linear in elevation;
     # indexing a uniform grid skips np.interp's search and the arcsine.
-    grid = np.interp(np.arcsin(_SIN_GRID), elev, radiance)
     at = (np.clip(up, -1.0, 1.0) + 1.0) * ((_SIN_GRID.size - 1) / 2)
     below = np.minimum(at.astype(np.intp), _SIN_GRID.size - 2)
     frac = at - below
-    seen = grid[below] * (1.0 - frac) + grid[below + 1] * frac
-    return (seen * weight).sum(axis=-1) / weight.sum(axis=-1)
+    grids = [np.interp(np.arcsin(_SIN_GRID), elev, column) for column in columns]
+    if len(grids) == 1:
+        seen = grids[0][below] * (1.0 - frac) + grids[0][below + 1] * frac
+        total = (seen * weight).sum(axis=-1) / weight.sum(axis=-1)
+        return total.reshape(total.shape + radiance.shape[1:])
+    # Each facet's weight binned onto the grid, so every sky is one product with it:
+    # faster than gathering facets per sky once there are several.
+    weight = np.broadcast_to(weight, below.shape)
+    lead = below.shape[:-1]
+    count = math.prod(lead)
+    offset = (np.arange(count) * _SIN_GRID.size).reshape(*lead, 1)
+    size = count * _SIN_GRID.size
+    binned = np.bincount(
+        (below + offset).ravel(), (weight * (1.0 - frac)).ravel(), size
+    ) + np.bincount((below + 1 + offset).ravel(), (weight * frac).ravel(), size)
+    binned = binned.reshape(count, -1) / weight.sum(axis=-1).reshape(count, 1)
+    return (binned @ np.stack(grids, axis=-1)).reshape(lead + radiance.shape[1:])
 
 
 # A judgement: fine enough that interpolating in sine rather than angle moves no
