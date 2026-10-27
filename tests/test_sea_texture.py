@@ -10,6 +10,7 @@ from docs.sea_texture import (
     glcm_entropy,
     gradient_variance,
     histogram_entropy,
+    measure,
     sobel_magnitude,
     structure,
     target_metrics,
@@ -66,3 +67,11 @@ def test_the_sky_s_noise_leaves_the_sea_s_structure() -> None:
     for metric in ("std", "lx", "gx/gy"):
         assert seen[metric] == pytest.approx(clean[metric], rel=0.1), metric
     assert math.isnan(bare) or bare < 0.1
+
+
+def test_the_horizon_s_step_leaves_no_texture_in_the_sea() -> None:
+    frame = np.zeros((64, 64))
+    frame[30:] = 1.0
+    out = measure(frame)
+    assert out["horizon"] == 29 and out["step"] == 1.0
+    assert all(math.isnan(out[f"{third} std"]) for third in ("far", "mid", "near"))

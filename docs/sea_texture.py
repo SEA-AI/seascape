@@ -143,7 +143,8 @@ def measure(frame: np.ndarray) -> dict[str, float]:
     horizon = last_sky_row(frame)
     reach = BOX_PX // 2
     bottom = frame.shape[0] - reach
-    if not 2 * reach < horizon < bottom - reach - 3:
+    # Two rows a third, for a step down.
+    if not 2 * reach < horizon < bottom - reach - 6:
         raise ValueError(f"a horizon at row {horizon} leaves no sky or no sea thirds")
     sky = frame[horizon + 1 - STEP_ROWS : horizon + 1]
     sea = frame[horizon + 1 : horizon + 1 + STEP_ROWS]
