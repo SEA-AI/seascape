@@ -8,7 +8,10 @@ import pytest
 from PIL import Image as Picture
 
 from seascape import agc, video
+from seascape.config import Agc
 from seascape.labels import Image, Labels
+
+HEADROOM = Agc().detail_headroom
 
 # cv2 decodes as BT.601 whatever the bt709 tag says: saturated colours shift, greys
 # don't.
@@ -73,7 +76,8 @@ def test_the_colours_pass_through_in_time_order(tmp_path) -> None:
 
 
 def test_a_16_bit_thermal_frame_is_toned_not_flattened(tmp_path) -> None:
-    """The sequencer would show centikelvin as one flat grey."""
+    """The sequencer would show centikelvin as one flat grey. Each half is flat, so
+    the AGC's detail headroom bounds it."""
     folder = run(tmp_path, GREYS[:3], [0.0, 0.1, 0.2])
     t_k = np.repeat([280.0, 300.0], [18, 18])[:, None] * np.ones(64)
     for path in (folder / "port").glob("*.png"):
@@ -81,8 +85,9 @@ def test_a_16_bit_thermal_frame_is_toned_not_flattened(tmp_path) -> None:
 
     frames, _ = decoded(video.encode(folder)[0])
 
+    black, white = HEADROOM, 255 - HEADROOM
     for frame in frames:
-        assert frame[0, 0, 0] <= 4 and frame[-1, 0, 0] >= 251
+        assert frame[0, 0, 0] <= black + 4 and frame[-1, 0, 0] >= white - 4
 
 
 def test_one_frame_is_not_a_video(tmp_path) -> None:

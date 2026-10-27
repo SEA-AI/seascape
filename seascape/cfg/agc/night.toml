@@ -1,0 +1,4 @@
+# FLIR's Night preset for the M364C LR, from its web UI.
+dde = 1.05
+detail_headroom = 12
+smoothing = 5000.0

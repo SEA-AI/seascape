@@ -467,9 +467,22 @@ def test_a_randomized_example_loads(path: Path) -> None:
 def test_every_shipped_preset_parses() -> None:
     """A preset directory is named after the block it serves, and holds valid TOML."""
     presets = sorted(CFG_DIR.rglob("*.toml"))
-    assert {path.parent.name for path in presets} == {"rigs", "cameras", "objects"}
+    assert {path.parent.name for path in presets} == {
+        "rigs",
+        "cameras",
+        "objects",
+        "agc",
+    }
     for preset in presets:
         tomllib.load(preset.open("rb"))
+
+
+def test_an_agc_preset_takes_overrides() -> None:
+    scenario = load(
+        BASELINE, ['rigs.bow.cameras.ir.agc = { preset = "night", max_gain = 2.0 }']
+    )
+    (setting,) = [m.camera.agc for m in scenario.mounts if m.name == "bow_ir"]
+    assert (setting.smoothing, setting.max_gain) == (5000.0, 2.0)
 
 
 @pytest.mark.parametrize("stops", [-127.0, 127.0])

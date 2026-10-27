@@ -1,0 +1,2 @@
+# FLIR's Day preset for the M364C LR, from its web UI.
+smoothing = 3000.0

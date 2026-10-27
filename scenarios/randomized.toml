@@ -8,6 +8,13 @@ pitch_deg = { uniform = [-3.0, 1.0] }
 yaw_deg = { uniform = [-8.0, 8.0] }
 cameras.eo.hfov_deg = { uniform = [15.0, 70.0] }
 cameras.ir.hfov_deg = { uniform = [12.0, 40.0] }
+# The presets an operator picks from on a Boson-based FLIR M364C LR.
+cameras.ir.agc = { choice = [
+    { preset = "day" },
+    { preset = "night" },
+    { preset = "high_contrast" },
+    { preset = "dock" },
+] }
 
 [ownship]
 roll_deg = { uniform = [-4.0, 4.0] }

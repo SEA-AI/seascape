@@ -1,0 +1,5 @@
+# FLIR's High contrast preset for the M364C LR, from its web UI.
+max_gain = 2.38
+dde = 1.35
+detail_headroom = 12
+smoothing = 2000.0

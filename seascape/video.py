@@ -10,7 +10,8 @@ import bpy
 import cv2
 
 from seascape import agc
-from seascape.labels import FILENAME, Image, Labels
+from seascape.config import Agc
+from seascape.labels import FILENAME, Image, Labels, agcs
 
 
 def _nothing() -> None:
@@ -32,19 +33,20 @@ def encode(
     """`quality` is a Blender `constant_rate_factor` preset. `advance` runs after each
     camera's video."""
     run = run.resolve()
+    settings = agcs(run)
     written = []
     for camera, frames in cameras(run).items():
-        written.append(_encode(run, camera, frames, quality))
+        written.append(_encode(run, camera, frames, quality, settings[camera]))
         advance()
     return written
 
 
-def _toned(paths: list[Path], step_s: float, into: Path) -> list[Path]:
+def _toned(paths: list[Path], setting: Agc, step_s: float, into: Path) -> list[Path]:
     """8-bit copies of 16-bit thermal frames, which the sequencer shows as flat grey;
     any other frame as it is."""
     if agc.kelvin(paths[0]) is None:
         return paths
-    tone, toned = agc.Agc(step_s), []
+    tone, toned = agc.Agc(setting, step_s), []
     for i, path in enumerate(paths):
         t_k = agc.kelvin(path)
         if t_k is None:
@@ -55,7 +57,9 @@ def _toned(paths: list[Path], step_s: float, into: Path) -> list[Path]:
     return toned
 
 
-def _encode(run: Path, camera: str, frames: list[Image], quality: str) -> Path:
+def _encode(
+    run: Path, camera: str, frames: list[Image], quality: str, setting: Agc
+) -> Path:
     if len(frames) < 2:
         raise ValueError(f"{camera}: one frame is a still, not a video")
     times = [frame.time_s for frame in frames]
@@ -70,7 +74,7 @@ def _encode(run: Path, camera: str, frames: list[Image], quality: str) -> Path:
         raise FileNotFoundError(f"{camera}: no frame at {', '.join(missing)}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        paths = _toned(paths, step, Path(tmp))
+        paths = _toned(paths, setting, step, Path(tmp))
         bpy.ops.wm.read_factory_settings(use_empty=True)
         sc = bpy.context.scene
         strip = sc.sequence_editor_create().strips.new_image(

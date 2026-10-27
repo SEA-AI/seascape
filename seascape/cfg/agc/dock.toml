@@ -1,0 +1,5 @@
+# FLIR's Dock preset for the M364C LR, from its web UI.
+max_gain = 2.38
+dde = 1.25
+detail_headroom = 40
+smoothing = 3000.0

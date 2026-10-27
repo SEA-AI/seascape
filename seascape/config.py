@@ -235,6 +235,78 @@ class Microbolometer(Model):
         return self
 
 
+class Agc(Model):
+    """FLIR's AGC: one equalisation, with or without its information-based mode, and
+    a share of linear ramp. Defaults are a Boson+'s factory settings, Product
+    Datasheet 102-2013-45 Rev 100 §6.8; the presets in `cfg/agc` are FLIR's for its
+    Boson-based M364C LR."""
+
+    # §6.8.1, AGC Mode.
+    information_based: bool = Field(
+        default=True,
+        description="Weight detail up in the histogram and add it back on top, so a "
+        "hull's edges take greys a smooth sea or sky would; off, plain plateau "
+        "equalisation.",
+    )
+    # §6.8.2. Judgement: a bin is one count, as the datasheet gives no bin width.
+    plateau: float = Field(
+        default=0.07,
+        gt=0.0,
+        le=1.0,
+        description="The most pixels one histogram bin counts, as a fraction of the "
+        "frame.",
+    )
+    # §6.8.5, Linear Percent.
+    linear_fraction: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="The share of the grey range spread evenly over the frame's "
+        "temperatures; the rest follows its histogram. 1 is a linear stretch.",
+    )
+    # §6.8.4; FLIR Camera Adjustments 102-2013-100-01 §2.2 gives the unit: 200 counts
+    # need a gain of about 1.25 to fill 255. Judgement: a count is a centikelvin, the
+    # unit `agc.counts` writes; a Boson's counts per kelvin are not published.
+    max_gain: float = Field(
+        default=1.38,
+        gt=0.0,
+        description="The steepest the transfer curve may be, in grey levels per "
+        "centikelvin, so noise on a bland frame stays grain.",
+    )
+    # §6.8.10 keeps 85 % of the curve each frame, and §5.1 runs at 60 Hz.
+    tau_s: float = Field(
+        default=-1 / 60 / math.log(0.85),
+        gt=0.0,
+        description="How fast the curve follows the frame.",
+    )
+    # §6.8.8, Smoothing Factor; a higher value puts more in the detail. Judgement:
+    # Camera Adjustments' parameter table names it SigmaR, read here as an
+    # edge-preserving filter's range sigma, in counts.
+    smoothing: float = Field(
+        default=1250.0,
+        gt=0.0,
+        description="Information-based only: the edge-preserving filter's range "
+        "sigma, in centikelvin; a step well past it stays background rather than "
+        "detail.",
+    )
+    # FLIR Camera Adjustments 102-2013-100-01 §2.5 defines it; the datasheet gives no
+    # default, so this is the M364C LR's Day preset, the one nearest the factory.
+    detail_headroom: int = Field(
+        default=25,
+        ge=0,
+        le=127,
+        description="Information-based only: grey levels kept free at each end for "
+        "the detail, so a sharpened edge does not clip.",
+    )
+    # §6.8.7.
+    dde: float = Field(
+        default=0.95,
+        ge=0.0,
+        description="Information-based only: gain on the detail, below 1 smoothing, "
+        "above 1 sharpening.",
+    )
+
+
 class Processing(Model):
     """The camera's ISP. White balance and sharpening need a sensor."""
 
@@ -285,6 +357,11 @@ class Camera(Model):
     lens: Lens = Field(default_factory=Lens)
     processing: Processing = Field(default_factory=Processing)
     microbolometer: Microbolometer = Field(default_factory=Microbolometer)
+    agc: Agc = Field(
+        default_factory=Agc,
+        description="How an ir jpg, and the montage, panorama and video of an ir "
+        "png, turn temperature into grey.",
+    )
 
     @model_validator(mode="after")
     def _each_band_takes_its_own_camera(self) -> "Camera":
@@ -292,8 +369,11 @@ class Camera(Model):
             (self.sensor, self.processing) != (Sensor(), Processing())
         ):
             raise ValueError("an ir camera takes no sensor or processing")
-        if self.band == "eo" and self.microbolometer != Microbolometer():
-            raise ValueError("an eo camera takes no microbolometer")
+        if self.band == "eo" and (self.microbolometer, self.agc) != (
+            Microbolometer(),
+            Agc(),
+        ):
+            raise ValueError("an eo camera takes no microbolometer or agc")
         isp = self.processing.model_copy(update={"exposure_ev": 0.0})
         if self.sensor.width_px is not None and self.sensor.width_px < self.width_px:
             raise ValueError("sensor.width_px is narrower than the image")

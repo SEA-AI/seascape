@@ -15,7 +15,7 @@ from mathutils import Matrix, Vector
 from seascape import agc, panorama, scene, sea, waves
 from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
-from seascape.config import Mount, Rig, Scenario
+from seascape.config import Agc, Mount, Rig, Scenario
 from seascape.montage import INK
 from tests.scenarios import two_rigs
 
@@ -221,20 +221,31 @@ def test_a_thermal_panorama_is_one_grey_per_temperature(
         for m in SCENARIO.mounts
         if m.rig_name == first.rig_name and m.camera.band == first.camera.band
     ][:2]
+    thermal, white = tmp_path / "thermal", tmp_path / "white"
+    calibration = Calibration(
+        cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
+    )
+    for folder in (thermal, white):
+        folder.mkdir()
+        calibration.write(folder)
     for hot_k, mount in zip((300.0, 290.0), mounts, strict=True):
         t_k = np.full((mount.camera.height_px, mount.camera.width_px), 290.0)
         t_k[:8] = hot_k  # only the first frame has anything warmer than the sea
-        cv2.imwrite(str(tmp_path / f"{mount.name}.png"), agc.counts(t_k))
-    Calibration(
-        cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
-    ).write(tmp_path)
+        cv2.imwrite(str(thermal / f"{mount.name}.png"), agc.counts(t_k))
+        frame = np.full((mount.camera.height_px, mount.camera.width_px, 3), 255)
+        cv2.imwrite(str(white / f"{mount.name}.png"), frame.astype(np.uint8))
 
-    paths = panorama.panoramas(tmp_path, "cylindrical", "rig", max_width=400)
-
-    image = cv2.imread(str(paths[0]))
-    assert image is not None
-    sea = image[image.shape[0] // 2, :, 0]
-    assert sea.max() <= 8, "the second frame's sea came out grey"
+    image, coverage = (
+        cv2.imread(str(panorama.panoramas(f, "cylindrical", "rig", max_width=400)[0]))
+        for f in (thermal, white)
+    )
+    assert image is not None and coverage is not None
+    middle = image.shape[0] // 2
+    sea = image[middle, :, 0][coverage[middle, :, 0] > 127]
+    black = Agc().detail_headroom  # the sea is flat: no detail goes below it
+    assert sea.size > 0
+    assert sea.min() >= black - 8, "the sea lost its detail headroom"
+    assert sea.max() <= black + 8, "the second frame's sea came out grey"
 
 
 def test_the_width_is_capped_and_never_raised(

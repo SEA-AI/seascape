@@ -1,5 +1,223 @@
 {
   "$defs": {
+    "Agc": {
+      "additionalProperties": false,
+      "description": "FLIR's AGC: one equalisation, with or without its information-based mode, and\na share of linear ramp. Defaults are a Boson+'s factory settings, Product\nDatasheet 102-2013-45 Rev 100 \u00a76.8; the presets in `cfg/agc` are FLIR's for its\nBoson-based M364C LR.",
+      "properties": {
+        "information_based": {
+          "title": "Information Based",
+          "description": "Weight detail up in the histogram and add it back on top, so a hull's edges take greys a smooth sea or sky would; off, plain plateau equalisation.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "plateau": {
+          "title": "Plateau",
+          "description": "The most pixels one histogram bin counts, as a fraction of the frame.",
+          "default": 0.07,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "linear_fraction": {
+          "title": "Linear Fraction",
+          "description": "The share of the grey range spread evenly over the frame's temperatures; the rest follows its histogram. 1 is a linear stretch.",
+          "default": 0.2,
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "max_gain": {
+          "title": "Max Gain",
+          "description": "The steepest the transfer curve may be, in grey levels per centikelvin, so noise on a bland frame stays grain.",
+          "default": 1.38,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "tau_s": {
+          "title": "Tau S",
+          "description": "How fast the curve follows the frame.",
+          "default": 0.10255215634370057,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "smoothing": {
+          "title": "Smoothing",
+          "description": "Information-based only: the edge-preserving filter's range sigma, in centikelvin; a step well past it stays background rather than detail.",
+          "default": 1250.0,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "detail_headroom": {
+          "title": "Detail Headroom",
+          "description": "Information-based only: grey levels kept free at each end for the detail, so a sharpened edge does not clip.",
+          "default": 25,
+          "anyOf": [
+            {
+              "maximum": 127,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "dde": {
+          "title": "Dde",
+          "description": "Information-based only: gain on the detail, below 1 smoothing, above 1 sharpening.",
+          "default": 0.95,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Agc",
+      "type": "object"
+    },
     "Atmosphere": {
       "enum": [
         "tropical",
@@ -246,6 +464,29 @@
           "anyOf": [
             {
               "$ref": "#/$defs/Microbolometer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "agc": {
+          "description": "How an ir jpg, and the montage, panorama and video of an ir png, turn temperature into grey.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Agc"
             },
             {
               "$ref": "#/$defs/Uniform"

@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 
 from seascape import agc
-from seascape.config import Scenario
+from seascape.config import Agc, Scenario
 
 TILE_H = 260
 CAPTION_H = 26
@@ -25,11 +25,14 @@ def _font() -> FreeTypeFont | ImageFont.ImageFont:
 
 
 def _tile(
-    path: Path, font: FreeTypeFont | ImageFont.ImageFont, caption: str
+    path: Path,
+    font: FreeTypeFont | ImageFont.ImageFont,
+    caption: str,
+    setting: Agc,
 ) -> Image.Image:
     t_k = agc.kelvin(path)
     frame = (
-        Image.open(path) if t_k is None else Image.fromarray(agc.Agc()(t_k))
+        Image.open(path) if t_k is None else Image.fromarray(agc.Agc(setting)(t_k))
     ).convert("RGB")
     width = round(frame.width * TILE_H / frame.height)
     frame = frame.resize((width, TILE_H), Image.Resampling.LANCZOS)
@@ -60,7 +63,7 @@ def compose(scenario: Scenario, into: Path) -> Path:
             frame = into / f"{mount.name}.{scenario.outputs.format}"
             if scenario.outputs.format == "exr" or not frame.exists():
                 raise FileNotFoundError(f"{frame}: render it, as png or jpg")
-            tiles.append(_tile(frame, font, mount.name))
+            tiles.append(_tile(frame, font, mount.name, mount.camera.agc))
         if tiles:
             rows.append(tiles)
     if not rows:
