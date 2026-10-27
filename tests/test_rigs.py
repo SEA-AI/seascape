@@ -15,7 +15,7 @@ from mathutils import Matrix, Vector
 from seascape import agc, panorama, scene, sea, waves
 from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
-from seascape.config import Mount, Rig, Scenario
+from seascape.config import Agc, Mount, Rig, Scenario
 from seascape.montage import INK
 from tests.scenarios import two_rigs
 
@@ -234,7 +234,8 @@ def test_a_thermal_panorama_is_one_grey_per_temperature(
     image = cv2.imread(str(paths[0]))
     assert image is not None
     sea = image[image.shape[0] // 2, :, 0]
-    assert sea.max() <= 8, "the second frame's sea came out grey"
+    black = Agc().detail_headroom  # the sea is flat: no detail goes below it
+    assert sea.max() <= black + 8, "the second frame's sea came out grey"
 
 
 def test_the_width_is_capped_and_never_raised(
