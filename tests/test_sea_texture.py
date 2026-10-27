@@ -1,14 +1,17 @@
 import math
 
+import cv2
 import numpy as np
 import pytest
 
 from docs.sea_texture import (
+    BOX_PX,
     MIN_CROP_PX,
     glcm_entropy,
     gradient_variance,
     histogram_entropy,
     sobel_magnitude,
+    structure,
     target_metrics,
 )
 
@@ -44,3 +47,22 @@ def test_a_crop_under_the_floor_keeps_its_gradients_but_no_entropy() -> None:
     assert math.isnan(small["hist H"]) and math.isnan(small["GLCM H"])
     assert small["grad var"] > 0
     assert big["hist H"] > 0 and big["GLCM H"] > 0
+
+
+def test_the_sky_s_noise_leaves_the_sea_s_structure() -> None:
+    rng = np.random.default_rng(0)
+    # Streaks four times as long across as down, under as much noise.
+    streaks = cv2.GaussianBlur(rng.standard_normal((256, 256)), (0, 0), 2.0, sigmaY=0.5)
+    sea = streaks / streaks.std()
+    sky, noise = rng.standard_normal((2, 256, 256))
+
+    def texture(frame: np.ndarray) -> np.ndarray:
+        return frame - cv2.blur(frame, (BOX_PX, BOX_PX))
+
+    clean = structure(texture(sea), np.zeros_like(sky))
+    seen = structure(texture(sea + noise), texture(sky))
+    bare = structure(texture(noise), texture(sky))["std"]
+
+    for metric in ("std", "lx", "gx/gy"):
+        assert seen[metric] == pytest.approx(clean[metric], rel=0.1), metric
+    assert math.isnan(bare) or bare < 0.1

@@ -3,8 +3,12 @@
 uv run python -m docs.sea_texture [--references] [IMAGE | RENDER_DIR ...]
 
 Per image, after stretching its 1st to 99th percentile to 0 to 1: the horizon row,
-the sea's step over the sky just across it, and the sea's median, and the std and
-skew of its high-passed texture, in far, mid and near thirds of the rows below.
+the sea's step over the sky just across it, and its noise: the std of the sky's
+high-passed texture in its median row. In far, mid and near thirds of the rows
+below: the sea's median, and its high-passed texture's std, skew, lx (the lag across
+at which it correlates under 1/2) and gx/gy (its RMS step across over down), each
+with the sky's noise taken out, so a noisy camera and a clean render compare by the
+sea's structure alone.
 Per target, in that stretched frame quantised to 8 bits: the histogram and GLCM
 entropy and the Sobel gradient variance inside its box, from a render folder's
 labels.json or, for footage, from `FOOTAGE_BOXES`. --references adds SEA.AI's
@@ -23,12 +27,12 @@ import numpy as np
 from seascape import labels
 from seascape.assets import CACHE
 
+# The frames whose sea is measured. Sentry's sea is mostly its camera's noise, and
+# example_1 is resampled to 960 x 599, which rescales the lags and steps the sea is
+# measured by; both serve only as targets.
 REFERENCES = (
-    "sentry_twfov.png",
-    "sentry_tnfov.png",
     "sailing_tl_640.png",
     "sailing_tr_640.png",
-    "example_1_IR.jpg",
     "example_2_IR.jpg",
     "example_3_IR.jpg",
 )
@@ -97,11 +101,6 @@ def normalised(path: Path) -> np.ndarray:
     return (frame - low) / max(high - low, 1e-6)
 
 
-def skew(x: np.ndarray) -> float:
-    d = x - x.mean()
-    return float((d**3).mean() / max((d**2).mean() ** 1.5, 1e-12))
-
-
 def last_sky_row(frame: np.ndarray) -> int:
     """The row above the largest jump in row medians, away from the frame's edge."""
     jumps = np.abs(np.diff(np.median(frame, axis=1)))
@@ -109,19 +108,63 @@ def last_sky_row(frame: np.ndarray) -> int:
     return int(np.argmax(inner)) + BORDER_ROWS
 
 
+def products(texture: np.ndarray, lag: int, axis: int) -> np.ndarray:
+    """Per row, the mean product of zero-mean `texture` with itself `lag` px along
+    `axis`."""
+    n = texture.shape[axis]
+    a = texture.take(range(n - lag), axis=axis)
+    b = texture.take(range(lag, n), axis=axis)
+    return (a * b).mean(axis=1)
+
+
+def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
+    """The std, skew, lx and gx/gy of `sea`'s high-passed texture less `sky`'s, nan
+    where nothing is left. Noise independent of the scene adds its covariance at every
+    lag and its third cumulant, so the sky's are subtracted; the sky is taken as
+    smooth under the high pass, and its noise as the sea's."""
+    sea, sky = sea - sea.mean(), sky - sky.mean()
+
+    def c(lag: int, axis: int) -> float:
+        # The sky's median row, as a cloud or a mast lifts a few.
+        sky_c = np.median(products(sky, lag, axis))
+        return float(products(sea, lag, axis).mean() - sky_c)
+
+    var = c(0, 0)
+    if var <= 0:
+        return dict.fromkeys(("std", "skew", "lx", "gx/gy"), math.nan)
+    # A step's mean square is 2 (C(0) - C(1)).
+    across, down = var - c(1, 1), var - c(1, 0)
+    return {
+        "std": math.sqrt(var),
+        "skew": ((sea**3).mean() - np.median((sky**3).mean(axis=1))) / var**1.5,
+        "lx": next(
+            (lag for lag in range(1, sea.shape[1]) if c(lag, 1) < var / 2), math.nan
+        ),
+        "gx/gy": math.sqrt(across / down) if across > 0 < down else math.nan,
+    }
+
+
 def measure(frame: np.ndarray, horizon: int | None = None) -> dict[str, float]:
+    """The sky's, then each third's, rows as `__doc__` lists them. A row whose high
+    pass reaches the horizon or the frame's line is left out of either."""
     horizon = last_sky_row(frame) if horizon is None else horizon
-    if not STEP_ROWS - 1 <= horizon < frame.shape[0] - BOX_PX // 2 - 3:
+    reach = BOX_PX // 2
+    if not BORDER_ROWS + 2 * reach < horizon < frame.shape[0] - reach - 3:
         raise ValueError(f"a horizon at row {horizon} leaves no sky or no sea thirds")
     sky = frame[horizon + 1 - STEP_ROWS : horizon + 1]
     sea = frame[horizon + 1 : horizon + 1 + STEP_ROWS]
     texture = frame - cv2.blur(frame, (BOX_PX, BOX_PX))
-    rows = np.array_split(np.arange(horizon + 1 + BOX_PX // 2, frame.shape[0]), 3)
-    out = {"horizon": horizon, "step": float(np.median(sea) - np.median(sky))}
+    noise = texture[BORDER_ROWS + reach : horizon + 1 - reach]
+    rows = np.array_split(np.arange(horizon + 1 + reach, frame.shape[0]), 3)
+    out = {
+        "horizon": horizon,
+        "step": float(np.median(sea) - np.median(sky)),
+        "noise": math.sqrt(np.median((noise - noise.mean()).var(axis=1))),
+    }
     for third, r in zip(THIRDS, rows, strict=True):
         out[f"{third} med"] = float(np.median(frame[r]))
-        out[f"{third} std"] = float(texture[r].std())
-        out[f"{third} skew"] = skew(texture[r])
+        for metric, value in structure(texture[r], noise).items():
+            out[f"{third} {metric}"] = value
     return out
 
 
@@ -200,15 +243,17 @@ def render_targets(run: Path) -> list[tuple[str, Path, list[Box]]]:
 
 
 def print_sea(images: list[tuple[str, Path, int | None]]) -> None:
-    columns = ["horizon", "step"] + [
-        f"{t} {s}" for s in ("med", "std", "skew") for t in THIRDS
-    ]
+    columns = ("horizon", "step", "noise", "med", "std", "skew", "lx", "gx/gy")
     width = max(len(label) for label, _, _ in images)
-    print(f"{'image':<{width}}" + "".join(f"{c:>10}" for c in columns))
+    print(f"{'image':<{width}}{'third':>6}" + "".join(f"{c:>8}" for c in columns))
     for label, path, horizon in images:
         row = measure(normalised(path), horizon)
-        cells = [f"{row['horizon']:>10d}"] + [f"{row[c]:>10.3f}" for c in columns[1:]]
-        print(f"{label:<{width}}" + "".join(cells))
+        for third in THIRDS:
+            cells = [
+                f"{row[c] if c in row else row[f'{third} {c}']:>8.3f}"
+                for c in columns[1:]
+            ]
+            print(f"{label:<{width}}{third:>6}{row['horizon']:>8d}" + "".join(cells))
 
 
 def print_targets(frames: Sequence[tuple[str, Path, Sequence[Box]]]) -> None:
