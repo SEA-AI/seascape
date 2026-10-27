@@ -96,4 +96,4 @@ For bash, `bash_source` in `~/.bashrc`.
 
 ## Licence
 
-MIT. Meshes and skies carry their own licences, in `seascape/assets.toml` and `seascape/skies.toml`; some require attribution, which travels with any released dataset. `seascape/data/water_nk.csv` is CC BY 4.0, from [Nalli et al. 2022](https://doi.org/10.6084/m9.figshare.19341533).
+Apache-2.0, copyright SEA.AI GmbH. Meshes and skies carry their own licences, in `seascape/assets.toml` and `seascape/skies.toml`; some require attribution, which travels with any released dataset. `seascape/data/water_nk.csv` is CC BY 4.0, from [Nalli et al. 2022](https://doi.org/10.6084/m9.figshare.19341533).
