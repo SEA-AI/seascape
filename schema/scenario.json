@@ -712,7 +712,7 @@
       "properties": {
         "netd_k": {
           "title": "Netd K",
-          "description": "Temporal noise: one standard deviation.",
+          "description": "Temporal noise: one standard deviation against a 30 C scene.",
           "default": 0.0,
           "anyOf": [
             {

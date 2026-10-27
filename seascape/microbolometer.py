@@ -17,6 +17,9 @@ from seascape.config import Camera
 type FloatArray = npt.NDArray[np.float64]
 
 _BAND_LAM = np.linspace(*lwir.BAND_M, 64)
+# The background a NETD is quoted against: 30 C (Teledyne FLIR, Boson datasheet
+# 102-2013-40, sec. 11.1, https://flir.netx.net/file/asset/52701/original/attachment/).
+NETD_BACKGROUND_K = 303.15
 
 
 def diffraction_mtf(
@@ -75,7 +78,10 @@ def seen(
         radiance = diffract(
             radiance, bolometer.f_number, bolometer.pitch_um * 1e-6, median_k
         )
-    t_k = lwir.brightness_temperature(radiance)
     if bolometer.netd_k > 0:
-        t_k = t_k + bolometer.netd_k * noise.standard_normal(t_k.shape)
-    return t_k
+        # The noise is a radiance, so it reads larger in kelvin where the scene is
+        # colder: a NETD varies with dW/dT (Boson datasheet sec. 11.1).
+        sigma = lwir.band_radiance(NETD_BACKGROUND_K + bolometer.netd_k)
+        sigma -= lwir.band_radiance(NETD_BACKGROUND_K)
+        radiance = radiance + sigma * noise.standard_normal(radiance.shape)
+    return lwir.brightness_temperature(radiance)
