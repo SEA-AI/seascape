@@ -231,9 +231,6 @@ LOWEST_OF_PEAK = 0.7
 # kg/m^3: below it omega^2 = g k fails.
 CAPILLARY_WAVELENGTH_M = 0.0173
 
-# Footprints per wavelength: gone at Nyquist, whole at a judgement.
-FADE_FOOTPRINTS = (2.0, 4.0)
-
 # A judgement: along over across of the footprint the slope's spread is taken over, a
 # grazing pixel's, where the roughness moves the radiance most.
 SPREAD_ASPECT = 10.0
@@ -1179,20 +1176,13 @@ def twinkle_hz(wind: tuple[Wave, ...]) -> float:
     return math.sqrt(moment / m4) / (2 * math.pi)
 
 
-def fade_footprints_m(
-    wavelength_m: np.ndarray | float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """The footprints at which a wave is gone and whole."""
-    low, high = FADE_FOOTPRINTS
-    return np.asarray(wavelength_m) / low, np.asarray(wavelength_m) / high
-
-
 def visibility(wavelength_m: np.ndarray, footprint_m: np.ndarray | float) -> np.ndarray:
-    """How much of a wave a pixel of `footprint_m` draws: 1 whole, 0 left to the
-    roughness. Smoothstep in footprint squared, as the shader's Map Range."""
-    gone, whole = fade_footprints_m(wavelength_m)
-    x = np.clip((footprint_m**2 - gone**2) / (whole**2 - gone**2), 0, 1)
-    return x * x * (3 - 2 * x)
+    """How much of a wave a pixel of `footprint_m` draws, 1 whole and 0 left to the
+    roughness: a box's transfer function, sin(pi x) / (pi x) at x footprints per
+    wavelength (Goodman, Introduction to Fourier Optics, 2005, table 2.1), so 2 / pi at
+    half a wavelength. Held at 0 past its first zero, as the shader's."""
+    x = np.asarray(footprint_m) / np.asarray(wavelength_m)
+    return np.where(x < 1.0, np.sinc(x), 0.0)
 
 
 def mss_spread(
@@ -1227,13 +1217,12 @@ def _mss_spread_at(
         return 0.0
     along = footprint_m * math.sqrt(SPREAD_ASPECT)
     across = footprint_m / math.sqrt(SPREAD_ASPECT)
-    # Every wave a footprint along draws whole is drawn at every heading; Elfouhaily's
-    # capillaries are gone by ten times their peak.
-    low = 2 * math.pi / (FADE_FOOTPRINTS[1] * along)
-    high = 10 * CAPILLARY_PEAK_RAD_M
-    if low >= high:
-        return 0.0
-    k = np.geomspace(low, high, SPREAD_WAVENUMBERS)
+    # From the sea's longest wave; Elfouhaily's capillaries are gone by ten times their
+    # peak.
+    longest = LOWEST_OF_PEAK * peak_omega_rad_s(wind_speed_mps, fetch_m)
+    k = np.geomspace(
+        longest**2 / GRAVITY_MS2, 10 * CAPILLARY_PEAK_RAD_M, SPREAD_WAVENUMBERS
+    )
     heading = (np.arange(SPREAD_HEADINGS) + 0.5) * (2 * math.pi / SPREAD_HEADINGS)
     # The footprint across a wave running at `heading` off the view, as the shader's.
     seen_m = np.hypot(across, along * np.cos(heading))
@@ -1269,10 +1258,9 @@ def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
 
 
 def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
-    """The waves a pixel no finer than `footprint_m` can draw: the rest are gone by
-    Nyquist."""
-    gone = FADE_FOOTPRINTS[0]
-    return tuple(w for w in field if 2 * math.pi / w.k_rad_m / gone > footprint_m)
+    """The waves a pixel no finer than `footprint_m` can draw: the rest are gone, a
+    footprint a wavelength or wider."""
+    return tuple(w for w in field if 2 * math.pi / w.k_rad_m > footprint_m)
 
 
 def drawn_slope_variance(field: tuple[Wave, ...], footprint_m: float) -> float:

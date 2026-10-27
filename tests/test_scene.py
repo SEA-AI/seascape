@@ -185,10 +185,6 @@ def drawn(
                 assert inputs["Slope X"].default_value[lane] == 0.0
                 assert inputs["Slope Y"].default_value[lane] == 0.0
                 assert inputs["Lift"].default_value[lane] == 0.0
-                assert (
-                    inputs["Gone Sq"].default_value[lane]
-                    > inputs["Whole Sq"].default_value[lane]
-                )
             else:
                 found.append((wave, inputs, lane))
     return found
@@ -312,13 +308,11 @@ class TestEoBand:
             )
             assert max(axes[2]) > 0.0, "and the rest of it is above water"
 
-    def test_each_wave_fades_as_the_core_s_visibility(self) -> None:
+    def test_each_wave_fades_at_its_own_wavenumber(self) -> None:
         for wave, inputs, lane in drawn(SCENARIO):
-            gone, whole = waves.fade_footprints_m(2 * math.pi / wave.k_rad_m)
-            assert (
-                inputs["Gone Sq"].default_value[lane],
-                inputs["Whole Sq"].default_value[lane],
-            ) == pytest.approx((gone**2, whole**2), rel=1e-6)
+            assert inputs["Half K Sq"].default_value[lane] == pytest.approx(
+                (wave.k_rad_m / 2) ** 2, rel=1e-6
+            )
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         field = scene.wave_field(SCENARIO)
