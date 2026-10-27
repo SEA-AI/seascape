@@ -1486,8 +1486,7 @@ def _grouped(
     The cells are square, a power of two across, one to two to the footprint's
     geometric mean, so few fall in a pixel and their spread stays narrow; a grazing
     footprint spans several along and part of one across. Each is redrawn when a group
-    of the waves at the fade crosses the footprint along the view, at their group
-    velocity.
+    of the waves a footprint its own size fades crosses it, at their group velocity.
 
     ponytail: EO keeps the mean, as the glitter carries its own spread. Scale its lobe
     too if its sea reads too even.
@@ -1535,7 +1534,8 @@ def _grouped(
     offset.noise_dimensions = "3D"
     link(cell.outputs["Vector"], offset.inputs["Vector"])
     # The fade starts at FADE_FOOTPRINTS[0] footprints; deep water's group velocity is
-    # half sqrt(g lambda / 2 pi), so a group crosses at sqrt(g F / (8 pi L)) per second.
+    # half sqrt(g lambda / 2 pi), so a group crosses a cell L across at
+    # sqrt(g F / (8 pi L)) per second. Read off the cell, every sample in it agrees.
     rate = _math(
         tree,
         "SQRT",
@@ -1543,7 +1543,7 @@ def _grouped(
             tree,
             "DIVIDE",
             GRAVITY_MS2 * FADE_FOOTPRINTS[0] / (8 * math.pi),
-            pixel.along_m,
+            cell_m,
         ),
     )
     draw = _math(

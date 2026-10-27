@@ -1200,7 +1200,8 @@ def mss_spread(
 ) -> float:
     """How much the mean square of the slope a pixel leaves unresolved varies from one
     of its footprints to the next, relative to its mean: the short waves come in
-    groups. A footprint of `footprint_m` on average, `SPREAD_ASPECT` long.
+    groups. `footprint_m` is the footprint's geometric mean; it is `SPREAD_ASPECT`
+    times as long as it is wide.
 
     The short waves are taken as isotropic, as for the glitter."""
     spreads = _mss_spreads(wind_speed_mps, fetch_m)
@@ -1218,7 +1219,7 @@ def _mss_spreads(wind_speed_mps: float, fetch_m: float | None) -> np.ndarray:
 def _mss_spread_at(
     wind_speed_mps: float, fetch_m: float | None, footprint_m: float
 ) -> float:
-    """Isserlis's spread for a footprint `along` by `across`: the relative variance of
+    """Isserlis's spread over a footprint, as `mss_spread`: the relative variance of
     its mean |s|^2 is 2 E[cos^2(theta_1 - theta_2) |H(k_1 - k_2)|^2], k_1 and k_2 drawn
     independently from the slope spectrum the pixel leaves, H the footprint's box
     transfer function."""
