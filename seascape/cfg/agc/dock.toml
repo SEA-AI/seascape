@@ -1,5 +1,4 @@
-# FLIR's Dock preset for the M364C LR, a Boson-based maritime camera, read off its
-# web UI; the rest is the Boson+ factory default.
+# FLIR's Dock preset for the M364C LR, from its web UI.
 max_gain = 2.38
 dde = 1.25
 detail_headroom = 40

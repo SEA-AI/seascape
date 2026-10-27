@@ -50,7 +50,7 @@ def _layers(t_k: np.ndarray, setting: Setting) -> Layers:
     c = counts(t_k)
     if not setting.information_based:
         return c, None
-    # A step past `smoothing` stays in the background.
+    # A step well past `smoothing` stays in the background.
     c = c.astype(np.float32)
     low = cv2.bilateralFilter(c, SMOOTHING_PX, setting.smoothing, SMOOTHING_PX)
     return low, c - low

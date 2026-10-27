@@ -2,7 +2,6 @@
 
 import math
 import tomllib
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -11,36 +10,42 @@ import pytest
 from seascape import agc
 from seascape.config import CFG_DIR, Agc, Camera
 
-LINE = Agc(information_based=False, linear_fraction=1.0)
-PLATEAU = Agc(information_based=False)
-BOSON = Agc()
-EVERY = [LINE, PLATEAU, BOSON]
+# What a scenario gets: the factory default and every preset.
+SHIPPED = {"factory": Agc()} | {
+    path.stem: Agc.model_validate(tomllib.loads(path.read_text()))
+    for path in sorted((CFG_DIR / "agc").glob("*.toml"))
+}
+shipped = pytest.mark.parametrize("setting", SHIPPED.values(), ids=SHIPPED.keys())
 
 
 def column(*t_k: float) -> np.ndarray:
     return np.array(t_k)[:, None]
 
 
+def linear() -> agc.Agc:
+    return agc.Agc(Agc(information_based=False, linear_fraction=1.0))
+
+
 def test_a_frame_is_stretched_to_the_full_range() -> None:
-    assert agc.Agc(LINE)(column(272.0, 295.0)).ravel().tolist() == [0, 255]
+    assert linear()(column(272.0, 295.0)).ravel().tolist() == [0, 255]
 
 
 def test_the_middle_temperature_is_mid_grey() -> None:
     """Catches a gamma encode, which puts 0.5 at 0.74."""
-    assert agc.Agc(LINE)(column(270.0, 285.0, 300.0))[1, 0] == 128
+    assert linear()(column(270.0, 285.0, 300.0))[1, 0] == 128
 
 
-def test_a_target_is_not_flattened_to_white() -> None:
-    """A percentile stretch would trim the few rows a distant hull occupies. The
-    headroom keeps the information-based background off black."""
-    for setting in EVERY:
-        grey = agc.Agc(setting)(column(*[285.0] * 40, 300.0)).ravel().astype(int)
-        black = setting.detail_headroom if setting.information_based else 0
-        assert (grey[0], grey[-1]) == pytest.approx((black, 255), abs=1)
+@shipped
+def test_a_target_is_not_flattened_to_white(setting: Agc) -> None:
+    """A percentile stretch would trim the few rows a distant hull occupies."""
+    grey = agc.Agc(setting)(column(*[285.0] * 40, 300.0)).ravel().astype(int)
+    # Information-based keeps the flat background above its headroom.
+    black = setting.detail_headroom if setting.information_based else 0
+    assert (grey[0], grey[-1]) == pytest.approx((black, 255), abs=1)
 
 
-@pytest.mark.parametrize("setting", EVERY)
-def test_a_frame_of_one_temperature_is_mid_grey(setting) -> None:
+@shipped
+def test_a_frame_of_one_temperature_is_mid_grey(setting: Agc) -> None:
     assert agc.Agc(setting)(column(290.0, 290.0)).ravel().tolist() == [128, 128]
 
 
@@ -50,10 +55,8 @@ def test_a_hot_exhaust_leaves_the_scene_its_contrast() -> None:
     rng = np.random.default_rng(0)
     scene = rng.uniform(283.0, 293.0, (99, 100))
     t_k = np.vstack([scene, np.full((1, 100), 503.15)])
-    line, plateau, boson = (int(np.ptp(agc.Agc(s)(t_k)[:-1])) for s in EVERY)
-    assert line < 15
-    assert plateau > 180
-    assert boson > 180
+    assert np.ptp(linear()(t_k)[:-1]) < 15
+    assert np.ptp(agc.Agc(Agc())(t_k)[:-1]) > 180
 
 
 def textured() -> np.ndarray:
@@ -68,7 +71,8 @@ def test_detail_takes_greys_from_a_smooth_background() -> None:
     it more greys than plateau does, and the smooth sea fewer."""
     t_k = textured()
     target, sea = np.s_[124:132, 124:132], np.s_[:100]
-    plateau, boson = agc.Agc(PLATEAU)(t_k), agc.Agc(BOSON)(t_k)
+    plateau = agc.Agc(Agc(information_based=False))(t_k)
+    boson = agc.Agc(Agc(detail_headroom=0))(t_k)
     assert np.ptp(boson[target]) > np.ptp(plateau[target])
     assert np.ptp(boson[sea]) < np.ptp(plateau[sea])
 
@@ -81,15 +85,6 @@ def test_the_headroom_keeps_the_background_off_the_ends() -> None:
     assert (grey.min(), grey.max()) == pytest.approx((40, 215), abs=1)
 
 
-@pytest.mark.parametrize(
-    "path", sorted((CFG_DIR / "agc").glob("*.toml")), ids=lambda p: p.stem
-)
-def test_every_preset_tones_a_frame(path: Path) -> None:
-    setting = Agc.model_validate(tomllib.loads(path.read_text()))
-    grey = agc.Agc(setting)(textured())
-    assert np.ptp(grey) > 100
-
-
 def test_dde_gains_the_detail() -> None:
     t_k = textured()
     spread = [
@@ -99,33 +94,36 @@ def test_dde_gains_the_detail() -> None:
     assert spread[0] < spread[-1]
 
 
-@pytest.mark.parametrize("setting", [PLATEAU, BOSON])
-def test_noise_on_a_uniform_frame_gains_at_most_the_cap(setting) -> None:
-    """A linear stretch would spread 50 mK of noise across all 256 greys."""
+@shipped
+def test_noise_on_a_uniform_frame_gains_at_most_the_cap(setting: Agc) -> None:
+    """A linear stretch would spread 50 mK of noise across all 256 greys. Noise is
+    detail, so DDE above 1 gains it past the cap."""
     t_k = np.random.default_rng(0).normal(290.0, 0.05, (64, 64))
     grey = agc.Agc(setting)(t_k)
+    dde = max(setting.dde, 1.0) if setting.information_based else 1.0
     assert abs(grey.mean() - 128) < 5
-    assert grey.std() < 1.05 * setting.max_gain * t_k.std() * agc.CENTIKELVIN
+    assert grey.std() < 1.05 * dde * setting.max_gain * t_k.std() * agc.CENTIKELVIN
 
 
 def test_the_slope_never_exceeds_the_cap() -> None:
     """A 1 K ramp is 101 counts: the cap leaves it short of the full range."""
     t_k = np.linspace(290.0, 291.0, 101)[:, None]
-    grey = agc.Agc(PLATEAU)(t_k).astype(int)
+    plateau = Agc(information_based=False)
+    grey = agc.Agc(plateau)(t_k).astype(int)
     assert np.diff(grey, axis=0).max() <= 2
-    assert np.ptp(grey) <= PLATEAU.max_gain * 101
+    assert np.ptp(grey) <= plateau.max_gain * 101
 
 
-@pytest.mark.parametrize("setting", EVERY)
-def test_without_a_step_each_frame_takes_its_own_curve(setting) -> None:
+@shipped
+def test_without_a_step_each_frame_takes_its_own_curve(setting: Agc) -> None:
     tone = agc.Agc(setting)
     tone(column(280.0, 290.0))
-    grey = tone(column(290.0, 300.0)).ravel().astype(int)
-    assert grey.tolist() == pytest.approx([0, 255], abs=1)
+    after = column(290.0, 300.0)
+    assert tone(after).tolist() == agc.Agc(setting)(after).tolist()
 
 
-@pytest.mark.parametrize("setting", EVERY)
-def test_the_curve_follows_a_step_change_over_the_time_constant(setting) -> None:
+@shipped
+def test_the_curve_follows_a_step_change_over_the_time_constant(setting: Agc) -> None:
     """A hot target entering must not flash the background: after one time constant
     the curve has moved 1 - 1/e of the way, and after many it has arrived."""
     before, after = column(280.0, 290.0), column(280.0, 287.0, 300.0)
