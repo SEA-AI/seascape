@@ -525,12 +525,15 @@ def _heat(scenario: Scenario) -> _Heat:
 
 
 def _zone_skin(
-    zone_name: thermal.ZoneName, heat: _Heat, paint_absorptance: float | None = None
+    zone_name: thermal.ZoneName,
+    heat: _Heat,
+    paint_absorptance: float | None = None,
+    wet: bool = True,
 ) -> bpy.types.Material:
     """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
     hull: each face looks up its temperature by max(0, n . s) and the normal's z.
-    Below the waterline, the bulk water's. `paint_absorptance` repaints the zones of
-    `thermal.PAINTED`.
+    Below the waterline, the bulk water's, unless the part never meets it.
+    `paint_absorptance` repaints the zones of `thermal.PAINTED`.
 
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and
@@ -545,6 +548,8 @@ def _zone_skin(
     if zone.interior in ("engine_room", "exhaust"):
         # Hulls whose engines stopped at different times differ here.
         name += f"_{heat.env.interior_k(zone.interior):.1f}K"
+    if not wet:
+        name += "_dry"
     if (found := bpy.data.materials.get(name)) is not None:
         return found
     material = bpy.data.materials.new(name)
@@ -585,7 +590,16 @@ def _zone_skin(
     emission = tree.nodes.new("ShaderNodeEmission")
     link(lookup(tree, image, at, y), emission.inputs["Color"])
     skin = _reflecting(tree, emission.outputs["Emission"], zone.emissivity, zone_name)
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    link(_wetted(tree, skin, heat) if wet else skin, output.inputs["Surface"])
+    return material
 
+
+def _wetted(
+    tree: bpy.types.NodeTree, skin: bpy.types.NodeSocket, heat: _Heat
+) -> bpy.types.NodeSocket:
+    """`skin` above the waterline, the bulk water below it."""
+    link = tree.links.new
     water = tree.nodes.new("ShaderNodeEmission")
     water.inputs["Strength"].default_value = lwir.band_radiance(heat.t_water_k)
     wetted = _reflecting(tree, water.outputs["Emission"], thermal.SEA_EMISSIVITY, None)
@@ -598,9 +612,7 @@ def _zone_skin(
     link(under, mix.inputs["Factor"])
     link(skin, mix.inputs["Shader"])
     link(wetted, mix.inputs["Shader_001"])
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    link(mix.outputs["Shader"], output.inputs["Surface"])
-    return material
+    return mix.outputs["Shader"]
 
 
 def _reflecting(
@@ -1022,7 +1034,8 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
             hub = rotor.matrix_world.copy()
             rotor.parent = None
             rotor.matrix_world = hub
-            rotor = _joined([rotor], hub)
+            # Without the fit's scale, so the join leaves its vertices in metres.
+            rotor = _joined([rotor], hub.normalized())
         parts = [_joined(parts)]
         # Frees the import's object name, so the next asset's objects keep theirs,
         # which number its islands.
@@ -1102,7 +1115,10 @@ def _vessel(
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
                 slot.link = "OBJECT"
-                slot.material = uniform or _zone_skin(zone, heat, paint_absorptance)
+                # A rotor's frame is its hub, so its z says nothing of the sea.
+                slot.material = uniform or _zone_skin(
+                    zone, heat, paint_absorptance, wet=not mesh.get("rotor")
+                )
 
     anchor = bpy.data.objects.new(name, None)
     for size in ("beam_m", "length_m", "height_m"):

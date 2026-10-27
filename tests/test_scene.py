@@ -1953,6 +1953,12 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
         assert [o for o in anchor.children_recursive if o.get("rotor")] == [rotor]
         hubs.append(rotor.matrix_world.translation.copy())
     assert (hubs[0] - hubs[1]).length == pytest.approx(0.0, abs=1e-3)
+    # Its frame is the hub, 150 m up: no face of it is under the waterline.
+    assert all(
+        node.type != "TEX_COORD"
+        for slot in rotor.material_slots
+        for node in slot.material.node_tree.nodes
+    )
 
 
 def test_a_target_inside_the_ownship_is_refused() -> None:
