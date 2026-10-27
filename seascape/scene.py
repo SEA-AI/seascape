@@ -1045,6 +1045,7 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
             parts.append(rotor)
         _unslotted(parts)
     if rotor is not None:
+        rotor["rotor"] = True
         # The rest angle, read before a copy is animated; YXZ euler is Rz @ Rx @ Ry,
         # the spin about the shaft innermost.
         rotor.rotation_mode = "YXZ"
@@ -1403,7 +1404,7 @@ def _turbine(
     # A loop closes on a third of a turn.
     third_s = outputs.period_s(20.0 / rpm) if rpm else math.inf
     start = rng.uniform(0.0, 2.0 * math.pi)
-    (rotor,) = (o for o in anchor.children_recursive if "rest_rad" in o)
+    (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
     rest = rotor["rest_rad"]
     # A copy shares its original's action.
     rotor.animation_data_clear()

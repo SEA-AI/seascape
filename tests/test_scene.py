@@ -1945,12 +1945,12 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
     for band in ("eo", "ir"):
         built = scene.build(windy, band)
         (anchor,) = built.targets["turbine_15mw_monopile"]
-        (rotor,) = (o for o in anchor.children_recursive if "rest_rad" in o)
+        (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
         shaft = rotor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
 
         assert math.degrees(scene.heading_rad(anchor)) == pytest.approx(60.0)
         assert math.degrees(math.atan2(shaft.x, shaft.y)) == pytest.approx(60.0)
-        assert [o for o in anchor.children_recursive if "rest_rad" in o] == [rotor]
+        assert [o for o in anchor.children_recursive if o.get("rotor")] == [rotor]
         hubs.append(rotor.matrix_world.translation.copy())
     assert (hubs[0] - hubs[1]).length == pytest.approx(0.0, abs=1e-3)
     # Its frame is the hub, 150 m up: no face of it is under the waterline.
@@ -1963,7 +1963,7 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
 
 def _rotor_angle(anchor: bpy.types.Object) -> float:
     """Its turn about the shaft, clockwise seen from upwind."""
-    (rotor,) = (o for o in anchor.children_recursive if "rest_rad" in o)
+    (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
     return -rotor.rotation_euler.to_matrix().to_euler("YXZ").y
 
 
