@@ -114,6 +114,13 @@ def test_the_slope_never_exceeds_the_cap() -> None:
     assert np.ptp(grey) <= plateau.max_gain * 101
 
 
+def test_without_a_linear_share_two_temperatures_take_two_greys() -> None:
+    """The counts between them hold no slope, and must not make the curve NaN."""
+    t_k = np.repeat([[290.0, 310.0]], 10, axis=0)
+    grey = agc.Agc(Agc(information_based=False, linear_fraction=0.0))(t_k)
+    assert (grey[:, 0] < grey[:, 1]).all()
+
+
 @shipped
 def test_without_a_step_each_frame_takes_its_own_curve(setting: Agc) -> None:
     tone = agc.Agc(setting)

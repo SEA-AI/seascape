@@ -82,8 +82,9 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
         + (1 - setting.linear_fraction) * hist / hist.sum()
     )
     # The gain that fills 255 once the steepest counts sit at the cap: at each
-    # breakpoint the m steepest are clipped, and the fill is linear in between.
-    steepest = np.sort(slope)[::-1]
+    # breakpoint the m steepest are clipped, and the fill is linear in between. A
+    # count the frame lacks has no slope to clip, and would make the fill 0 * inf.
+    steepest = np.sort(slope[slope > 0])[::-1]
     gains = setting.max_gain / steepest
     filled = setting.max_gain * np.arange(1, steepest.size + 1) + gains * (
         steepest.sum() - np.cumsum(steepest)
