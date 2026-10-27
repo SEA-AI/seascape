@@ -1483,10 +1483,9 @@ def _grouped(
     holds `mss_spread` of its mean square slope as the short waves' groups do; at
     `where`, (east, north, time). Rough footprints read warm at grazing views.
 
-    The cells are square, a power of two across, one to two to the footprint's
-    geometric mean, so few fall in a pixel and their spread stays narrow; a grazing
-    footprint spans several along and part of one across. Each is redrawn when a group
-    of the waves a footprint its own size fades crosses it, at their group velocity.
+    A grazing footprint spans several cells along and part of one across. Each cell is
+    redrawn when a group of the waves a footprint its own size fades crosses it, at
+    their group velocity.
 
     ponytail: EO keeps the mean, as the glitter carries its own spread. Scale its lobe
     too if its sea reads too even.
@@ -1497,6 +1496,8 @@ def _grouped(
     footprint = _math(
         tree, "SQRT", _math(tree, "MULTIPLY", pixel.along_m, pixel.across_m)
     )
+    # Judgement: square cells, a power of two across, one to two to the footprint's
+    # geometric mean, so few fall in a pixel and their spread stays narrow.
     level = _math(tree, "FLOOR", _math(tree, "LOGARITHM", footprint, 2.0))
     cell_m = _math(tree, "POWER", 2.0, level, name="sea_group_cell")
     spread = _at_footprint(
@@ -1589,7 +1590,8 @@ def _grouped(
             _math(tree, "MULTIPLY", uniform.outputs["Y"], 2 * math.pi),
         ),
     )
-    # exp(sigma z - sigma^2 / 2) has mean 1.
+    # Judgement: a lognormal, so the scale stays positive. exp(sigma z - sigma^2 / 2)
+    # has mean 1.
     scale = _math(
         tree,
         "EXPONENT",

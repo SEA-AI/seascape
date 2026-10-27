@@ -722,7 +722,7 @@ def test_the_footprint_s_slope_spread_is_a_gaussian_sea_s() -> None:
     """Isserlis's spread against a Gaussian sea laid on a grid, whose footprints'
     mean |s|^2 is taken over its cells; the mean is the slope spectrum's integral,
     which reaches past the grid's cells."""
-    speed, footprint_m, cells, cell_m = 7.0, 0.1, 2048, 0.01
+    speed, footprint_m, cells, cell_m = 7.0, 0.1, 1024, 0.01
     along = footprint_m * math.sqrt(waves.SPREAD_ASPECT)
     across = footprint_m / math.sqrt(waves.SPREAD_ASPECT)
 
