@@ -353,10 +353,17 @@ def band_radiance(t_k: float) -> float:
 
 
 # np.interp clamps past the ends: a hull hotter than the grid reads as its top. The top
-# clears a running uptake, `thermal.Environment.t_exhaust_k`.
-_TB_GRID = np.linspace(200.0, 650.0, 2304)
-# Through band_radiance, so the two stay inverses.
-_TB_RADIANCE = np.array([band_radiance(t) for t in _TB_GRID])
+# clears a running uptake, `thermal.Environment.t_exhaust_k`. The bottom is 0 K, which
+# emits nothing, so no radiance a sky, a vignetted corner or a noise draw leaves reads
+# warmer than it is.
+_TB_GRID = np.linspace(0.0, 650.0, 3329)
+# Through band_radiance, so the two stay inverses. Within a few kelvin of 0, exp
+# overflows to the right answer, no radiance; those nodes go, as np.interp needs its
+# radiances to rise.
+with np.errstate(over="ignore"):
+    _TB_RADIANCE = np.array([0.0, *(band_radiance(t) for t in _TB_GRID[1:])])
+_TB_GRID = np.concatenate(([0.0], _TB_GRID[_TB_RADIANCE > 0]))
+_TB_RADIANCE = np.concatenate(([0.0], _TB_RADIANCE[_TB_RADIANCE > 0]))
 
 
 def brightness_temperature(radiance: npt.ArrayLike) -> FloatArray:
