@@ -903,8 +903,8 @@ class Targets(Model):
 
 
 class Farm(Model):
-    """Turbines in rows of equal length, each row right of the last, seen along it. One
-    row of one is a lone turbine."""
+    """Turbines in rows of equal length, each to starboard of the last along
+    `row_bearing_deg`. One row of one is a lone turbine."""
 
     asset: TurbineName = Field(description=f"{_ASSET} A turbine.")
     range_m: float = Field(gt=0.0, description="To the first turbine of the first row.")

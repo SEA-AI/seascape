@@ -605,7 +605,7 @@
     },
     "Farm": {
       "additionalProperties": false,
-      "description": "Turbines in rows of equal length, each row right of the last, seen along it. One\nrow of one is a lone turbine.",
+      "description": "Turbines in rows of equal length, each to starboard of the last along\n`row_bearing_deg`. One row of one is a lone turbine.",
       "properties": {
         "asset": {
           "title": "Asset",

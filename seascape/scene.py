@@ -628,9 +628,8 @@ def _reflecting(
 def _joined(
     parts: list[bpy.types.Object], frame: Matrix | None = None
 ) -> bpy.types.Object:
-    """Every mesh under `parts` as one object at `frame`, the fitted pose's origin by
-    default, its vertices in metres about it: the hull's own frame puts the waterline
-    at z = 0."""
+    """Every mesh under `parts` as one object at `frame`, its vertices in metres about
+    it; the default, the fitted origin, puts the waterline at z = 0."""
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]

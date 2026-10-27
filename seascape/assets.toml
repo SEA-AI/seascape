@@ -1777,9 +1777,8 @@ url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/082d84baade482f9
 sha256 = "27e98df726e00e9599d41744e8f80e2d1ba2f66e681268f21e5c808ddb7e7ac2"
 # The IEA Wind 15 MW reference turbine on the UMaine VolturnUS-S semi-submersible, in
 # its own metres with mean sea level at z = 0: the mesh 268.16 m tall with a blade up,
-# and the hull's pontoons 21.3 m deep
-# against the 20 m draft Allen et al. give ("Definition of the UMaine VolturnUS-S
-# Reference Platform", NREL/TP-5000-76773, 2020, Table 2).
+# its pontoons 21.3 m deep, where Allen et al. give a 20 m draft ("Definition of the
+# UMaine VolturnUS-S Reference Platform", NREL/TP-5000-76773, 2020, Table 2).
 height_m = 289.46
 draught_m = 21.3
 triangles = 67374
