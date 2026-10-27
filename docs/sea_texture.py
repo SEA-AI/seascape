@@ -5,9 +5,9 @@ uv run python -m docs.sea_texture [--references] [IMAGE | RENDER_DIR ...]
 Per image, after stretching its 1st to 99th percentile to 0 to 1: the horizon row,
 the sea's step over the sky just across it, and its noise: the std of the sky's
 high-passed texture in its median row. In far, mid and near thirds of the rows
-below: the sea's median, and its high-passed texture's std, skew, lx (the lag across
-at which it correlates under 1/2) and gx/gy (its RMS step across over down), each
-with the sky's noise taken out, so a noisy camera and a clean render compare by the
+below: the sea's median, and, with the sky's noise taken out, its high-passed
+texture's std, skew, lx (the lag across at which it correlates under 1/2) and gx/gy
+(its RMS step across over down), so a noisy camera and a clean render compare by the
 sea's structure alone.
 Per target, in that stretched frame quantised to 8 bits: the histogram and GLCM
 entropy and the Sobel gradient variance inside its box, from a render folder's
@@ -110,10 +110,10 @@ def products(texture: np.ndarray, lag: int, axis: int) -> np.ndarray:
 
 
 def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
-    """The std, skew, lx and gx/gy of `sea`'s high-passed texture less `sky`'s, nan
-    where nothing is left. Noise independent of the scene adds its covariance at every
-    lag and its third cumulant, so the sky's are subtracted; the sky is taken as
-    smooth under the high pass, and its noise as the sea's."""
+    """The std, skew, lx and gx/gy of the high-passed `sea` less `sky`, nan where
+    nothing is left. Noise independent of the scene adds its covariance at every lag
+    and its third cumulant, so the sky's are subtracted; the sky is taken as smooth
+    under the high pass, and its noise as the sea's."""
     sea, sky = sea - sea.mean(), sky - sky.mean()
 
     def c(lag: int, axis: int) -> float:
