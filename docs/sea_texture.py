@@ -138,9 +138,8 @@ def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
 
 
 def measure(frame: np.ndarray) -> dict[str, float]:
-    """The horizon, step and noise, then each third's metrics, as the module docstring
-    lists them. Rows whose high pass reaches the horizon or the frame's edge are left
-    out."""
+    """The module docstring's numbers for `frame`, leaving out rows whose high pass
+    reaches the horizon or the frame's edge."""
     horizon = last_sky_row(frame)
     reach = BOX_PX // 2
     bottom = frame.shape[0] - reach
