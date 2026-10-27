@@ -180,7 +180,7 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     link(shown.outputs["Vector"], emission.inputs["Color"])
     link(emission.outputs["Emission"], output.inputs["Surface"])
 
-    # A pixel fine enough to draw every wave whole, as the numpy field does, and far
+    # A pixel fine enough to draw every wave, as far as its box passes it, and far
     # enough that every ray runs straight down to within a ripple's phase. Not
     # orthographic: Cycles dices what that camera sees as off-screen.
     height_m = 5000.0
@@ -218,7 +218,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
         (scene.wind_waves(scenario), scene.swell_waves(scenario))
     )
     t_s = scenario.outputs.times_s[frame]
-    slope = waves.slope(shaded[0] + shaded[1], *rest, t_s)
+    seen = waves.filtered(shaded[0] + shaded[1], span_m / px)
+    slope = waves.slope(seen, *rest, t_s)
     tilted = facet - np.array([slope[0], slope[1], np.zeros_like(slope[0])])
     tilted /= np.linalg.norm(tilted, axis=0)
     assert np.abs(normal - tilted).max() < 2e-3

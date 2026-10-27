@@ -254,7 +254,7 @@ def test_a_longer_loop_snaps_the_frequencies_less() -> None:
 def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     built = field(7.0)
     total = waves.cox_munk_slope(7.0) ** 2
-    sharp = waves.unresolved_slope_variance(7.0, built, (), 1e-4)
+    sharp = waves.unresolved_slope_variance(7.0, built, (), 1e-6)
     assert sharp == pytest.approx(total - waves.slope_variance(built))
     assert waves.unresolved_slope_variance(7.0, built, (), 1e4) == pytest.approx(total)
     footprints = [0.01, 0.1, 1.0, 10.0]
@@ -262,12 +262,12 @@ def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
-def test_a_wave_fades_out_before_it_aliases() -> None:
-    lo, hi = waves.FADE_FOOTPRINTS
-    per_footprint = np.array([lo, 2.5, 3.0, hi, 2 * hi])
-    shown = waves.visibility(per_footprint, 1.0)
-    assert (shown[0], shown[3], shown[4]) == (0.0, 1.0, 1.0)
-    assert np.all(np.diff(shown) >= 0)
+def test_a_wave_fades_as_a_box_pixel_passes_it() -> None:
+    footprints = np.array([0.0, 0.5, 1.0, 1.5, 3.0])
+    shown = waves.visibility(np.ones_like(footprints), footprints)
+    assert shown[:2] == pytest.approx([1.0, 2 / math.pi])
+    assert (shown[2:] == 0.0).all(), "gone at the first zero, side lobes and all"
+    assert np.all(np.diff(shown) <= 0)
 
 
 @pytest.mark.parametrize("wind_speed_mps", [0.0, 14.0])
@@ -282,7 +282,7 @@ def test_the_drawn_slope_variance_is_the_filtered_field_s(
         )
 
 
-@pytest.mark.parametrize("footprint_m", [0.02, 0.05, 0.5])
+@pytest.mark.parametrize("footprint_m", [0.03, 0.05, 0.5])
 def test_a_wave_no_pixel_resolves_is_gone_at_every_coarser_one(
     footprint_m: float,
 ) -> None:
@@ -293,7 +293,7 @@ def test_a_wave_no_pixel_resolves_is_gone_at_every_coarser_one(
     wavelengths = np.array([2 * math.pi / w.k_rad_m for w in culled])
     for coarser in np.geomspace(footprint_m, 1e4, 50):
         assert (waves.visibility(wavelengths, coarser) == 0.0).all()
-    assert all(math.pi / w.k_rad_m > footprint_m for w in kept)
+    assert all(2 * math.pi / w.k_rad_m > footprint_m for w in kept)
 
 
 def test_calm_air_builds_no_waves() -> None:

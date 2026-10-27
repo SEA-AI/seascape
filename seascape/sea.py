@@ -58,7 +58,6 @@ from seascape.water import body_color
 from seascape.waves import (
     BEAUFORT_7_MPS,
     BEAUFORT_8_MPS,
-    FADE_FOOTPRINTS,
     FINE_WINDROW_SPACING_M,
     FOAM_VISIBLE_COVER,
     GRAVITY_MS2,
@@ -74,7 +73,6 @@ from seascape.waves import (
     cox_munk_slope,
     cox_munk_variances,
     earth_radius_m,
-    fade_footprints_m,
     foam_drift_mps,
     foam_lattice_field,
     foam_memory,
@@ -564,8 +562,7 @@ _FOOTPRINT = (("Along", "Vector"), ("Across Sq", "Float"), ("Stretch", "Float"))
 _FADE = (
     ("Tx", "Vector"),
     ("Ty", "Vector"),
-    ("Gone Sq", "Vector"),
-    ("Whole Sq", "Vector"),
+    ("Half K Sq", "Vector"),
     ("Damped", "Vector"),
 )
 _SLOPE = (("Slope X", "Vector"), ("Slope Y", "Vector"))
@@ -575,9 +572,10 @@ _SUMS = (("Sum X", "Vector"), ("Sum Y", "Vector"), ("Sum Z", "Vector"))
 def _fade(
     group: bpy.types.NodeTree, given: bpy.types.NodeOutputs, calm: bool
 ) -> tuple[bpy.types.NodeSocket, tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]]:
-    """How much of each lane the pixel draws: 1 to 0 as its footprint along the wave,
-    footprint^2 = across^2 + (along^2 - across^2) cos^2, widens from `Whole Sq` to
-    `Gone Sq`; scaled by `Calm` in a `Damped` lane. And `Along`, (x, y), spread.
+    """How much of each lane the pixel draws, `waves.visibility` at its footprint
+    along the wave, footprint^2 = across^2 + (along^2 - across^2) cos^2: sin(y) / y
+    at y = footprint k / 2, held at 0 past pi; scaled by `Calm` in a `Damped` lane.
+    And `Along`, (x, y), spread.
 
     Built alike in every group, so Cycles merges a triple's fade across them."""
     along = group.nodes.new("ShaderNodeSeparateXYZ")
@@ -590,24 +588,26 @@ def _fade(
         along_xy[1],
         _vector(group, "MULTIPLY", given["Tx"], along_xy[0]),
     )
-    fade = group.nodes.new("ShaderNodeMapRange")
-    # First: a name finds the enabled socket, and the float ones are until then.
-    fade.data_type = "FLOAT_VECTOR"
-    fade.interpolation_type = "SMOOTHSTEP"
-    # From Min above From Max: a wider footprint fades the wave out.
-    group.links.new(given["Gone Sq"], fade.inputs["From Min"])
-    group.links.new(given["Whole Sq"], fade.inputs["From Max"])
-    group.links.new(
-        _vector(
-            group,
-            "MULTIPLY_ADD",
-            _vector(group, "MULTIPLY", heading, heading),
-            _spread(group, given["Stretch"]),
-            _spread(group, given["Across Sq"]),
-        ),
-        fade.inputs["Vector"],
+    footprint_sq = _vector(
+        group,
+        "MULTIPLY_ADD",
+        _vector(group, "MULTIPLY", heading, heading),
+        _spread(group, given["Stretch"]),
+        _spread(group, given["Across Sq"]),
     )
-    seen = fade.outputs["Vector"]
+    y = _vector(
+        group,
+        "POWER",
+        _vector(group, "MULTIPLY", footprint_sq, given["Half K Sq"]),
+        (0.5, 0.5, 0.5),
+    )
+    # An empty lane's y is 0, and Vector Math divides by 0 to 0.
+    seen = _vector(
+        group,
+        "DIVIDE",
+        _vector(group, "SINE", _vector(group, "MINIMUM", y, (math.pi,) * 3)),
+        y,
+    )
     if calm:
         less = _spread(group, _math(group, "SUBTRACT", given["Calm"], 1.0))
         scale = _vector(group, "MULTIPLY_ADD", given["Damped"], less, (1.0, 1.0, 1.0))
@@ -684,18 +684,10 @@ def _set_triple(
     """The inputs of `_fade` and the slopes that place `triple`. An empty lane has no
     amplitude, so whatever it fades adds 0."""
 
-    def wavelength(wave: Wave) -> float:
-        return 2 * math.pi / wave.k_rad_m
-
     sets = {
         "Tx": _lanes(triple, lambda w: math.sin(w.toward_rad)),
         "Ty": _lanes(triple, lambda w: math.cos(w.toward_rad)),
-        "Gone Sq": _lanes(
-            triple, lambda w: float(fade_footprints_m(wavelength(w))[0]) ** 2, 1.0
-        ),
-        "Whole Sq": _lanes(
-            triple, lambda w: float(fade_footprints_m(wavelength(w))[1]) ** 2
-        ),
+        "Half K Sq": _lanes(triple, lambda w: (w.k_rad_m / 2) ** 2),
         "Damped": _lanes(triple, lambda w: float(w in damped)),
         "Slope X": _lanes(triple, lambda w: w.amplitude_m * w.k_east_rad_m),
         "Slope Y": _lanes(triple, lambda w: w.amplitude_m * w.k_north_rad_m),
@@ -1534,16 +1526,16 @@ def _grouped(
     offset = tree.nodes.new("ShaderNodeTexWhiteNoise")
     offset.noise_dimensions = "3D"
     link(cell.outputs["Vector"], offset.inputs["Vector"])
-    # The fade starts at FADE_FOOTPRINTS[0] footprints; deep water's group velocity is
-    # half sqrt(g lambda / 2 pi), so a group crosses a cell L across at
-    # sqrt(g F / (8 pi L)) per second. Read off the cell, every sample in it agrees.
+    # A cell L across leaves the waves up to L long, `waves.visibility`'s zero. Deep
+    # water's group velocity is half sqrt(g lambda / 2 pi), so a group of them crosses
+    # it at sqrt(g / (8 pi L)) per second. Read off the cell, every sample in it agrees.
     rate = _math(
         tree,
         "SQRT",
         _math(
             tree,
             "DIVIDE",
-            GRAVITY_MS2 * FADE_FOOTPRINTS[0] / (8 * math.pi),
+            GRAVITY_MS2 / (8 * math.pi),
             cell_m,
         ),
     )
@@ -2568,25 +2560,17 @@ def _kelvin(
         _math(tree, "MULTIPLY", amplitude, k),
         math.pi * MAX_STEEPNESS,
     )
-    resolved = tree.nodes.new("ShaderNodeMapRange")
-    resolved.interpolation_type = "SMOOTHSTEP"
-    resolved.inputs["From Min"].default_value = FADE_FOOTPRINTS[0]
-    resolved.inputs["From Max"].default_value = FADE_FOOTPRINTS[1]
-    tree.links.new(
-        _math(
-            tree,
-            "DIVIDE",
-            _math(tree, "DIVIDE", 2 * math.pi, k),
-            _math(tree, "MAXIMUM", footprint_m, 1e-3),
-        ),
-        resolved.inputs["Value"],
+    # `waves.visibility`, as the sea's own waves fade.
+    y = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", footprint_m, k), 0.5)
+    resolved = _math(
+        tree, "DIVIDE", _math(tree, "SINE", _math(tree, "MINIMUM", y, math.pi)), y
     )
     slope = steepest
     for factor in (
         _math(tree, "SINE", phase),
         envelope,
         inside,
-        resolved.outputs["Result"],
+        resolved,
     ):
         slope = _math(tree, "MULTIPLY", slope, factor)
     sign = _math(tree, "SIGN", path.across)
