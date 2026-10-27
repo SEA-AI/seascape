@@ -27,22 +27,12 @@ import numpy as np
 from seascape import labels
 from seascape.assets import CACHE
 
-# The frames whose sea is measured. Sentry's sea is mostly its camera's noise, and
-# example_1 is resampled to 960 x 599, which rescales the lags and steps the sea is
-# measured by; both serve only as targets.
-REFERENCES = (
-    "sailing_tl_640.png",
-    "sailing_tr_640.png",
-    "example_2_IR.jpg",
-    "example_3_IR.jpg",
-)
-# The last sky row of a reference whose largest jump is not its horizon: haze spreads
-# example_3's over many rows, and a streak of glitter jumps further.
-HORIZONS = {"example_3_IR.jpg": 240}
+# The frames whose sea is measured: raw counts, so the sky's noise is the sea's.
+# Sentry's sea is mostly its camera's noise, and the jpgs went through an AGC that
+# gives the sea a different gain from the sky's; those serve only as targets.
+REFERENCES = ("sailing_tl_640.png", "sailing_tr_640.png")
 # The high-pass box, and the rows either side of the horizon its step is taken over.
 BOX_PX, STEP_ROWS = 9, 5
-# A jpg's frame line: a row or two that jumps further than any horizon.
-BORDER_ROWS = 2
 THIRDS = ("far", "mid", "near")
 
 # Picked by eye: (x, y, w, h), tight to the hull and superstructure, masts and sails
@@ -102,10 +92,8 @@ def normalised(path: Path) -> np.ndarray:
 
 
 def last_sky_row(frame: np.ndarray) -> int:
-    """The row above the largest jump in row medians, away from the frame's edge."""
-    jumps = np.abs(np.diff(np.median(frame, axis=1)))
-    inner = jumps[BORDER_ROWS:-BORDER_ROWS]
-    return int(np.argmax(inner)) + BORDER_ROWS
+    """The row above the largest jump in row medians."""
+    return int(np.argmax(np.abs(np.diff(np.median(frame, axis=1)))))
 
 
 def products(texture: np.ndarray, lag: int, axis: int) -> np.ndarray:
@@ -144,18 +132,18 @@ def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
     }
 
 
-def measure(frame: np.ndarray, horizon: int | None = None) -> dict[str, float]:
+def measure(frame: np.ndarray) -> dict[str, float]:
     """The sky's, then each third's, rows as `__doc__` lists them. A row whose high
-    pass reaches the horizon or the frame's line is left out of either."""
-    horizon = last_sky_row(frame) if horizon is None else horizon
+    pass reaches the horizon or the frame's edge is left out of either."""
+    horizon = last_sky_row(frame)
     reach = BOX_PX // 2
-    bottom = frame.shape[0] - BORDER_ROWS - reach
-    if not BORDER_ROWS + 2 * reach < horizon < bottom - reach - 3:
+    bottom = frame.shape[0] - reach
+    if not 2 * reach < horizon < bottom - reach - 3:
         raise ValueError(f"a horizon at row {horizon} leaves no sky or no sea thirds")
     sky = frame[horizon + 1 - STEP_ROWS : horizon + 1]
     sea = frame[horizon + 1 : horizon + 1 + STEP_ROWS]
     texture = frame - cv2.blur(frame, (BOX_PX, BOX_PX))
-    noise = texture[BORDER_ROWS + reach : horizon + 1 - reach]
+    noise = texture[reach : horizon + 1 - reach]
     rows = np.array_split(np.arange(horizon + 1 + reach, bottom), 3)
     out = {
         "horizon": horizon,
@@ -243,12 +231,12 @@ def render_targets(run: Path) -> list[tuple[str, Path, list[Box]]]:
     ]
 
 
-def print_sea(images: list[tuple[str, Path, int | None]]) -> None:
+def print_sea(images: list[tuple[str, Path]]) -> None:
     columns = ("horizon", "step", "noise", "med", "std", "skew", "lx", "gx/gy")
-    width = max(len(label) for label, _, _ in images)
+    width = max(len(label) for label, _ in images)
     print(f"{'image':<{width}}{'third':>6}" + "".join(f"{c:>8}" for c in columns))
-    for label, path, horizon in images:
-        row = measure(normalised(path), horizon)
+    for label, path in images:
+        row = measure(normalised(path))
         for third in THIRDS:
             cells = [
                 f"{row[c] if c in row else row[f'{third} {c}']:>8.3f}"
@@ -282,10 +270,10 @@ def main() -> None:
     if not args.paths and not args.references:
         parser.error("give an image, a render folder or --references")
     # An image given by path keeps it, so a before and an after of one name differ.
-    images = [(str(path), path, None) for path in args.paths if not path.is_dir()]
+    images = [(str(path), path) for path in args.paths if not path.is_dir()]
     targets = [t for path in args.paths if path.is_dir() for t in render_targets(path)]
     if args.references:
-        images += [(n, reference(n), HORIZONS.get(n)) for n in REFERENCES]
+        images += [(n, reference(n)) for n in REFERENCES]
         footage = [(n, reference(n), b) for n, b in FOOTAGE_BOXES.items()]
         targets = footage + targets
     if images:
