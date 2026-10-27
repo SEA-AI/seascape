@@ -61,6 +61,12 @@ Number of specular points in a Gaussian surface", JOSA 50(9) 845, 1960
 (doi:10.1364/JOSA.50.000845): specular points per area and slope are p(slope)
 E|det H|, H the surface's Hessian, independent of the slope at a point.
 
+Groups: Isserlis, "On a formula for the product-moment coefficient of any order of a
+normal frequency distribution in any number of variables", Biometrika 12(1/2) 134, 1918
+(doi:10.2307/2331932): a Gaussian sea's slopes have E[s_a s_b s_c s_d] = C_ab C_cd +
+C_ac C_bd + C_ad C_bc, so the mean square slope over a footprint varies with
+2 sum_ab C_ab^2 averaged over pairs of its points.
+
 Wind height: DNV, "DNV-RP-C205: Environmental conditions and environmental loads",
 Det Norske Veritas 2010, section 2.3.2.4: the neutral log profile with Charnock's
 roughness.
@@ -115,6 +121,7 @@ GRAVITY_MS2 = 9.81
 #   foam            youngest break, area exp(-age/3.85 s) Monahan 1971
 #   foam fade       e-fold where the life's mean is 0.22 Koepke 1984
 #   glitter         one specular point per 1 / E|det H| Longuet-Higgins 1960
+#   groups          footprint's unresolved slope^2 varies Isserlis 1918
 #   gust            u / U, sigma 1 / ln(10 / z0)        DNV-RP-C205
 #   gust field      (k0^2 + k^2)^(-4/3), L of Kaimal's  von Karman 1948, IEC 61400-1
 #   gusty slope     + u / U dCM^2 / d ln U, undrawn     Cox & Munk, Plant 1982
@@ -226,6 +233,16 @@ CAPILLARY_WAVELENGTH_M = 0.0173
 
 # Footprints per wavelength: gone at Nyquist, whole at a judgement.
 FADE_FOOTPRINTS = (2.0, 4.0)
+
+# A judgement: along over across of the footprint the slope's spread is taken over, a
+# grazing pixel's, where the roughness moves the radiance most.
+SPREAD_ASPECT = 10.0
+# A judgement: the short waves' slope laid on wavenumbers and headings, and the draws
+# from it that pair with each other.
+SPREAD_WAVENUMBERS, SPREAD_HEADINGS, SPREAD_DRAWS = 128, 64, 600
+# A judgement: the footprints the spread is taken at, four a decade, between which it is
+# interpolated.
+SPREAD_FOOTPRINTS_M = np.geomspace(1e-3, 1e4, 29)
 
 # IEC 61400-1 via DNV-RP-C205 2.3.4.8: L = 8.1 Lambda, Lambda = 0.7 z below 60 m, at the
 # 10 m the wind is given at.
@@ -1170,12 +1187,76 @@ def fade_footprints_m(
     return np.asarray(wavelength_m) / low, np.asarray(wavelength_m) / high
 
 
-def visibility(wavelength_m: np.ndarray, footprint_m: float) -> np.ndarray:
+def visibility(wavelength_m: np.ndarray, footprint_m: np.ndarray | float) -> np.ndarray:
     """How much of a wave a pixel of `footprint_m` draws: 1 whole, 0 left to the
     roughness. Smoothstep in footprint squared, as the shader's Map Range."""
     gone, whole = fade_footprints_m(wavelength_m)
     x = np.clip((footprint_m**2 - gone**2) / (whole**2 - gone**2), 0, 1)
     return x * x * (3 - 2 * x)
+
+
+def mss_spread(
+    wind_speed_mps: float, fetch_m: float | None, footprint_m: float
+) -> float:
+    """How much the mean square of the slope a pixel leaves unresolved varies from one
+    of its footprints to the next, relative to its mean: the short waves come in
+    groups. `footprint_m` is the footprint's geometric mean; it is `SPREAD_ASPECT`
+    times as long as it is wide.
+
+    The short waves are taken as isotropic, as for the glitter."""
+    spreads = _mss_spreads(wind_speed_mps, fetch_m)
+    at = math.log(footprint_m)
+    return float(np.interp(at, np.log(SPREAD_FOOTPRINTS_M), spreads))
+
+
+@cache
+def _mss_spreads(wind_speed_mps: float, fetch_m: float | None) -> np.ndarray:
+    return np.array(
+        [_mss_spread_at(wind_speed_mps, fetch_m, float(f)) for f in SPREAD_FOOTPRINTS_M]
+    )
+
+
+def _mss_spread_at(
+    wind_speed_mps: float, fetch_m: float | None, footprint_m: float
+) -> float:
+    """Isserlis's spread over a footprint, as `mss_spread`: the relative variance of
+    its mean |s|^2 is 2 E[cos^2(theta_1 - theta_2) |H(k_1 - k_2)|^2], k_1 and k_2 drawn
+    independently from the slope spectrum the pixel leaves, H the footprint's box
+    transfer function."""
+    if wind_speed_mps <= 0.0:
+        return 0.0
+    along = footprint_m * math.sqrt(SPREAD_ASPECT)
+    across = footprint_m / math.sqrt(SPREAD_ASPECT)
+    # Every wave a footprint along draws whole is drawn at every heading; Elfouhaily's
+    # capillaries are gone by ten times their peak.
+    low = 2 * math.pi / (FADE_FOOTPRINTS[1] * along)
+    high = 10 * CAPILLARY_PEAK_RAD_M
+    if low >= high:
+        return 0.0
+    k = np.geomspace(low, high, SPREAD_WAVENUMBERS)
+    heading = (np.arange(SPREAD_HEADINGS) + 0.5) * (2 * math.pi / SPREAD_HEADINGS)
+    # The footprint across a wave running at `heading` off the view, as the shader's.
+    seen_m = np.hypot(across, along * np.cos(heading))
+    shown = visibility(2 * math.pi / k[:, None], seen_m[None, :])
+    # Slope variance per log wavenumber and radian is B(k) / 2 pi.
+    left = curvature_spectrum(k, wind_speed_mps, fetch_m)[:, None] * (1 - shown**2)
+    if left.sum() <= 0.0:
+        return 0.0
+    cdf = np.cumsum(left.ravel()) / left.sum()
+    picks = np.searchsorted(cdf, _lattice(SPREAD_DRAWS)[:, :2], side="right")
+    picks = np.minimum(picks, cdf.size - 1)
+    wavenumber = k[picks // SPREAD_HEADINGS]
+    angle = heading[picks % SPREAD_HEADINGS]
+    k_along, k_across = wavenumber * np.cos(angle), wavenumber * np.sin(angle)
+    # np.sinc is sin(pi x) / (pi x); a box of L passes sin(q L / 2) / (q L / 2).
+    passed = (
+        np.sinc(np.subtract.outer(k_along[:, 0], k_along[:, 1]) * along / (2 * math.pi))
+        * np.sinc(
+            np.subtract.outer(k_across[:, 0], k_across[:, 1]) * across / (2 * math.pi)
+        )
+    ) ** 2
+    turned = np.cos(np.subtract.outer(angle[:, 0], angle[:, 1])) ** 2
+    return math.sqrt(2 * float((turned * passed).mean()))
 
 
 def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
