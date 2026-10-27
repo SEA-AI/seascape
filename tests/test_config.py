@@ -479,10 +479,10 @@ def test_every_shipped_preset_parses() -> None:
 
 def test_an_agc_preset_takes_overrides() -> None:
     scenario = load(
-        BASELINE, ['rigs.bow.cameras.ir.agc = { preset = "linear", max_gain = 2.0 }']
+        BASELINE, ['rigs.bow.cameras.ir.agc = { preset = "night", max_gain = 2.0 }']
     )
     (setting,) = [m.camera.agc for m in scenario.mounts if m.name == "bow_ir"]
-    assert (setting.linear_fraction, setting.max_gain) == (1.0, 2.0)
+    assert (setting.smoothing, setting.max_gain) == (5000.0, 2.0)
 
 
 @pytest.mark.parametrize("stops", [-127.0, 127.0])

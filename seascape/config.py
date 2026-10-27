@@ -238,7 +238,8 @@ class Microbolometer(Model):
 class Agc(Model):
     """FLIR's AGC: one equalisation, with or without its information-based mode, and
     a share of linear ramp. Defaults are a Boson+'s factory settings, Product
-    Datasheet 102-2013-45 Rev 100 §6.8; `preset = "linear"` is FLIR's Linear AGC."""
+    Datasheet 102-2013-45 Rev 100 §6.8; the presets in `cfg/agc` are FLIR's for its
+    Boson-based M364C LR."""
 
     # §6.8.1, AGC Mode.
     information_based: bool = Field(
@@ -287,6 +288,15 @@ class Agc(Model):
         description="Information-based only: the edge-preserving filter's range "
         "sigma, in centikelvin; a step well past it stays background rather than "
         "detail.",
+    )
+    # FLIR Camera Adjustments 102-2013-100-01 §2.5 defines it; the datasheet gives no
+    # default, so this is the M364C LR's Day preset, the one nearest the factory.
+    detail_headroom: int = Field(
+        default=25,
+        ge=0,
+        le=127,
+        description="Information-based only: grey levels kept free at each end for "
+        "the detail, so a sharpened edge does not clip.",
     )
     # §6.8.7.
     dde: float = Field(

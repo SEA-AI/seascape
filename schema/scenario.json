@@ -2,7 +2,7 @@
   "$defs": {
     "Agc": {
       "additionalProperties": false,
-      "description": "FLIR's AGC: one equalisation, with or without its information-based mode, and\na share of linear ramp. Defaults are a Boson+'s factory settings, Product\nDatasheet 102-2013-45 Rev 100 \u00a76.8; `preset = \"linear\"` is FLIR's Linear AGC.",
+      "description": "FLIR's AGC: one equalisation, with or without its information-based mode, and\na share of linear ramp. Defaults are a Boson+'s factory settings, Product\nDatasheet 102-2013-45 Rev 100 \u00a76.8; the presets in `cfg/agc` are FLIR's for its\nBoson-based M364C LR.",
       "properties": {
         "information_based": {
           "title": "Information Based",
@@ -143,6 +143,33 @@
             {
               "exclusiveMinimum": 0.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "detail_headroom": {
+          "title": "Detail Headroom",
+          "description": "Information-based only: grey levels kept free at each end for the detail, so a sharpened edge does not clip.",
+          "default": 25,
+          "anyOf": [
+            {
+              "maximum": 127,
+              "minimum": 0,
+              "type": "integer"
             },
             {
               "$ref": "#/$defs/Uniform"

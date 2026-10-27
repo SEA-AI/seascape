@@ -2,6 +2,7 @@
 
 import math
 import tomllib
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -10,7 +11,7 @@ import pytest
 from seascape import agc
 from seascape.config import CFG_DIR, Agc, Camera
 
-LINE = Agc.model_validate(tomllib.loads((CFG_DIR / "agc" / "linear.toml").read_text()))
+LINE = Agc(information_based=False, linear_fraction=1.0)
 PLATEAU = Agc(information_based=False)
 BOSON = Agc()
 EVERY = [LINE, PLATEAU, BOSON]
@@ -30,10 +31,12 @@ def test_the_middle_temperature_is_mid_grey() -> None:
 
 
 def test_a_target_is_not_flattened_to_white() -> None:
-    """A percentile stretch would trim the few rows a distant hull occupies."""
+    """A percentile stretch would trim the few rows a distant hull occupies. The
+    headroom keeps the information-based background off black."""
     for setting in EVERY:
         grey = agc.Agc(setting)(column(*[285.0] * 40, 300.0)).ravel().astype(int)
-        assert (grey[0], grey[-1]) == pytest.approx((0, 255), abs=1)
+        black = setting.detail_headroom if setting.information_based else 0
+        assert (grey[0], grey[-1]) == pytest.approx((black, 255), abs=1)
 
 
 @pytest.mark.parametrize("setting", EVERY)
@@ -68,6 +71,23 @@ def test_detail_takes_greys_from_a_smooth_background() -> None:
     plateau, boson = agc.Agc(PLATEAU)(t_k), agc.Agc(BOSON)(t_k)
     assert np.ptp(boson[target]) > np.ptp(plateau[target])
     assert np.ptp(boson[sea]) < np.ptp(plateau[sea])
+
+
+def test_the_headroom_keeps_the_background_off_the_ends() -> None:
+    """A smooth ramp has no detail: information-based, it spans the curve squeezed
+    inside the headroom."""
+    t_k = np.linspace(280.0, 300.0, 256)[:, None] * np.ones((1, 8))
+    grey = agc.Agc(Agc(detail_headroom=40))(t_k).astype(int)
+    assert (grey.min(), grey.max()) == pytest.approx((40, 215), abs=1)
+
+
+@pytest.mark.parametrize(
+    "path", sorted((CFG_DIR / "agc").glob("*.toml")), ids=lambda p: p.stem
+)
+def test_every_preset_tones_a_frame(path: Path) -> None:
+    setting = Agc.model_validate(tomllib.loads(path.read_text()))
+    grey = agc.Agc(setting)(textured())
+    assert np.ptp(grey) > 100
 
 
 def test_dde_gains_the_detail() -> None:

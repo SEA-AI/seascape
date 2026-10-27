@@ -96,15 +96,16 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
 
 
 def _grey(frame: Layers, curve: np.ndarray, setting: Setting) -> np.ndarray:
-    """The background takes the curve; detail goes on top at the curve's slope there,
-    times DDE. FLIR keeps Detail Headroom at both ends for it; the datasheet gives no
-    default, so detail past 0-255 clips."""
+    """The background takes the curve, squeezed inside the detail headroom; detail
+    goes on top at the curve's slope there, times DDE."""
     low, high = frame
     at = np.clip(np.rint(low), 0, COUNTS - 1).astype(np.int64)
-    value = curve[at]
-    if high is not None:
-        value = np.clip(value + setting.dde * np.gradient(curve)[at] * high, 0, 255)
-    return np.rint(value).astype(np.uint8)
+    if high is None:
+        return np.rint(curve[at]).astype(np.uint8)
+    squeeze = (255 - 2 * setting.detail_headroom) / 255
+    background = setting.detail_headroom + squeeze * curve[at]
+    detail = setting.dde * squeeze * np.gradient(curve)[at] * high
+    return np.rint(np.clip(background + detail, 0, 255)).astype(np.uint8)
 
 
 class Agc:

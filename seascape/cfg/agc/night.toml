@@ -1,0 +1,5 @@
+# FLIR's Night preset for the M364C LR, a Boson-based maritime camera, read off its
+# web UI; the rest is the Boson+ factory default.
+dde = 1.05
+detail_headroom = 12
+smoothing = 5000.0

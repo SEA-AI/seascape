@@ -1,6 +1,0 @@
-# FLIR's Linear AGC: black at the frame's coldest pixel, white at its hottest, so a hot
-# exhaust leaves the rest of the frame a few greys. Camera Adjustments 102-2013-100-01
-# names the preset without its values; judgement: the whole range linear, the factory
-# max gain and damping kept.
-information_based = false
-linear_fraction = 1.0
