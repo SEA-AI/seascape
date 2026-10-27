@@ -149,13 +149,14 @@ def measure(frame: np.ndarray, horizon: int | None = None) -> dict[str, float]:
     pass reaches the horizon or the frame's line is left out of either."""
     horizon = last_sky_row(frame) if horizon is None else horizon
     reach = BOX_PX // 2
-    if not BORDER_ROWS + 2 * reach < horizon < frame.shape[0] - reach - 3:
+    bottom = frame.shape[0] - BORDER_ROWS - reach
+    if not BORDER_ROWS + 2 * reach < horizon < bottom - reach - 3:
         raise ValueError(f"a horizon at row {horizon} leaves no sky or no sea thirds")
     sky = frame[horizon + 1 - STEP_ROWS : horizon + 1]
     sea = frame[horizon + 1 : horizon + 1 + STEP_ROWS]
     texture = frame - cv2.blur(frame, (BOX_PX, BOX_PX))
     noise = texture[BORDER_ROWS + reach : horizon + 1 - reach]
-    rows = np.array_split(np.arange(horizon + 1 + reach, frame.shape[0]), 3)
+    rows = np.array_split(np.arange(horizon + 1 + reach, bottom), 3)
     out = {
         "horizon": horizon,
         "step": float(np.median(sea) - np.median(sky)),
