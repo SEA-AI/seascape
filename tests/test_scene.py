@@ -462,6 +462,10 @@ class TestEoBand:
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
 
+    def test_the_lobe_keeps_its_mean_roughness(self) -> None:
+        """The glitter carries the unresolved slope's spread in EO."""
+        assert "sea_group_scale" not in bpy.data.materials["sea"].node_tree.nodes
+
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
         wind = scene.wind_waves(SCENARIO)
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -892,6 +896,20 @@ class TestIrBand:
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""
         assert "glitter_cells" not in bpy.data.materials["sea"].node_tree.nodes
+
+    def test_the_unresolved_slope_spreads_as_the_short_waves_groups(self) -> None:
+        """The shader reads this by log footprint at texel centres."""
+        table = baked("sea_mss_spread")
+        low, high = sea.FOOTPRINT_RANGE_M
+        texel = (np.arange(len(table)) + 0.5) / len(table)
+        footprints = low * (high / low) ** texel
+        speed, fetch = SCENARIO.sea.wind_speed_mps, SCENARIO.sea.fetch_m
+        for t in (0, len(table) // 2, len(table) - 1):
+            expected = waves.mss_spread(speed, fetch, footprints[t])
+            assert table[t] == pytest.approx(expected, rel=1e-5, abs=1e-7)
+        nodes = bpy.data.materials["sea"].node_tree.nodes
+        assert "sea_group_scale" in upstream(nodes["sea_radiance"].inputs[0])
+        assert "sea_rest" in upstream(nodes["sea_group_draw"].inputs[0])
 
     def test_the_baked_sky_runs_cold_towards_the_zenith(self) -> None:
         """The shader reads this by sin(elevation) at texel centres."""

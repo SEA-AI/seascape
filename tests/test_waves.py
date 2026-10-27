@@ -716,3 +716,58 @@ def test_thinning_foam_keeps_to_its_cell_walls() -> None:
     walls = waves._cell_walls(np.random.default_rng(0), 128, 8)
     kept = tile > np.quantile(tile, 0.85)
     assert walls[kept].mean() < 0.5 * walls.mean()
+
+
+def test_the_footprint_s_slope_spread_is_a_gaussian_sea_s() -> None:
+    """Isserlis's spread against a Gaussian sea laid on a grid, whose footprints'
+    mean |s|^2 is taken over its cells; the mean is the slope spectrum's integral,
+    which reaches past the grid's cells."""
+    speed, footprint_m, cells, cell_m = 7.0, 0.1, 2048, 0.01
+    along = footprint_m * math.sqrt(waves.SPREAD_ASPECT)
+    across = footprint_m / math.sqrt(waves.SPREAD_ASPECT)
+
+    def kept(k: np.ndarray, off_view: np.ndarray) -> np.ndarray:
+        seen_m = np.hypot(across, along * np.cos(off_view))
+        return 1 - waves.visibility(2 * math.pi / k, seen_m) ** 2
+
+    axis = np.fft.fftfreq(cells, cell_m) * 2 * math.pi
+    k_across, k_along = np.meshgrid(axis, axis)
+    k = np.hypot(k_across, k_along)
+    k[0, 0] = 1.0
+    # Isotropic: height variance per wavenumber area is B(k) k^-4 / 2 pi.
+    density = waves.curvature_spectrum(k, speed, None) * k**-4 / (2 * math.pi)
+    density *= kept(k, np.arctan2(k_across, k_along))
+    density[0, 0] = 0.0
+    rng = np.random.default_rng(0)
+    # Each cell of wavenumber holds density dk^2, half of it in the real part taken;
+    # ifft2 divides by cells^2.
+    height = (
+        (rng.standard_normal(k.shape) + 1j * rng.standard_normal(k.shape))
+        * np.sqrt(density)
+        * (axis[1] * cells**2)
+    )
+    slope_across, slope_along = (
+        np.real(np.fft.ifft2(1j * ka * height)) for ka in (k_across, k_along)
+    )
+    square = slope_across**2 + slope_along**2
+    rows, columns = round(along / cell_m), round(across / cell_m)
+    trimmed = square[: cells // rows * rows, : cells // columns * columns]
+    footprints = trimmed.reshape(cells // rows, rows, -1, columns).mean(axis=(1, 3))
+
+    log_k = np.linspace(math.log(1.0), math.log(10 * waves.CAPILLARY_PEAK_RAD_M), 4000)
+    off_view = np.linspace(0, 2 * math.pi, 361)
+    wavenumber = np.exp(log_k)[:, None]
+    per_log_k = waves.curvature_spectrum(wavenumber, speed, None) * kept(
+        wavenumber, off_view[None, :]
+    )
+    mean = np.trapezoid(np.trapezoid(per_log_k, off_view, axis=1), log_k) / (
+        2 * math.pi
+    )
+
+    assert footprints.std() / mean == pytest.approx(
+        waves.mss_spread(speed, None, footprint_m), rel=0.05
+    )
+
+
+def test_calm_water_has_no_groups() -> None:
+    assert waves.mss_spread(0.0, None, 1.0) == 0.0
