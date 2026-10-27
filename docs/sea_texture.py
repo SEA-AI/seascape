@@ -27,10 +27,15 @@ import numpy as np
 from seascape import labels
 from seascape.assets import CACHE
 
-# The frames whose sea is measured: raw counts, so the sky's noise is the sea's.
-# Sentry's sea is mostly its camera's noise, and the jpgs went through an AGC that
-# gives the sea a different gain from the sky's; those serve only as targets.
-REFERENCES = ("sailing_tl_640.png", "sailing_tr_640.png")
+# The frames whose sea is measured: raw counts, so the sky's noise is the sea's. The
+# jpgs went through an AGC that gives the sea a different gain from the sky's, so
+# they serve only as targets.
+REFERENCES = (
+    "sentry_twfov.png",
+    "sentry_tnfov.png",
+    "sailing_tl_640.png",
+    "sailing_tr_640.png",
+)
 # The high-pass box, and the rows either side of the horizon its step is taken over.
 BOX_PX, STEP_ROWS = 9, 5
 THIRDS = ("far", "mid", "near")
@@ -143,6 +148,8 @@ def measure(frame: np.ndarray) -> dict[str, float]:
     sky = frame[horizon + 1 - STEP_ROWS : horizon + 1]
     sea = frame[horizon + 1 : horizon + 1 + STEP_ROWS]
     texture = frame - cv2.blur(frame, (BOX_PX, BOX_PX))
+    # Clouds in these rows overstate the noise, so a third under a cloudy sky can
+    # read nan.
     noise = texture[reach : horizon + 1 - reach]
     rows = np.array_split(np.arange(horizon + 1 + reach, bottom), 3)
     out = {
