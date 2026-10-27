@@ -5,8 +5,8 @@ description = "Maritime scene generator for sensor validation."
 readme = "README.md"
 # bpy ships 3.13-only wheels, and the lock must resolve on every version claimed.
 requires-python = "==3.13.*"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+license = "Apache-2.0 AND CC-BY-4.0"
+license-files = ["LICENSE", "NOTICE", "seascape/data/CC-BY-4.0.txt"]
 authors = [{ name = "Kevin Serrano" }]
 keywords = ["blender", "computer-vision", "lwir", "maritime", "synthetic-data"]
 classifiers = [
