@@ -3,6 +3,7 @@
 import contextlib
 import math
 import uuid
+from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from itertools import chain, combinations
@@ -14,7 +15,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 from seascape import faces, lwir, sea, sensor, skies, thermal, wakes, waves
-from seascape.assets import Asset, Zones, download, fetch, manifest
+from seascape.assets import Asset, Turbine, Zones, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
@@ -30,6 +31,7 @@ from seascape.calibration import CameraCalibration, Matrix4
 from seascape.config import (
     Band,
     Drift,
+    Farm,
     ImageFormat,
     Mount,
     Object,
@@ -623,9 +625,12 @@ def _reflecting(
     return mix.outputs["Shader"]
 
 
-def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
-    """Every mesh under `parts` as one object, its vertices in metres at the fitted
-    pose, so the hull's own frame puts the waterline at z = 0."""
+def _joined(
+    parts: list[bpy.types.Object], frame: Matrix | None = None
+) -> bpy.types.Object:
+    """Every mesh under `parts` as one object at `frame`, the fitted pose's origin by
+    default, its vertices in metres about it: the hull's own frame puts the waterline
+    at z = 0."""
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
@@ -653,13 +658,14 @@ def _joined(parts: list[bpy.types.Object]) -> bpy.types.Object:
     ):
         bpy.ops.object.join()
     hull = meshes[0]
-    world = hull.matrix_world.copy()
+    frame = Matrix.Identity(4) if frame is None else frame
+    baked = frame.inverted() @ hull.matrix_world
     hull.parent = None
     hull.matrix_parent_inverse.identity()
-    hull.data.transform(world)
-    if world.determinant() < 0:  # a mirrored part turns inside out
+    hull.data.transform(baked)
+    if baked.determinant() < 0:  # a mirrored part turns inside out
         hull.data.flip_normals()
-    hull.matrix_basis = Matrix.Identity(4)
+    hull.matrix_basis = frame
     for obj in others:
         bpy.data.objects.remove(obj)
     return hull
@@ -698,14 +704,16 @@ def _zone_slots(name: str, meshes: list[bpy.types.Object], zones: Zones | None) 
         bpy.data.materials.remove(material)
 
 
-def _unslotted(hull: bpy.types.Object) -> None:
-    """Record the joined hull's zone per slot in `hull["zones"]` and empty the slots;
-    each copy fills them with its own skin."""
-    mesh = hull.data
-    placeholders = list(mesh.materials)
-    hull["zones"] = [m.name.removeprefix("zone_") for m in placeholders]
-    for i in range(len(placeholders)):
-        mesh.materials[i] = None
+def _unslotted(joined: list[bpy.types.Object]) -> None:
+    """Record each joined object's zone per slot in its `["zones"]` and empty the
+    slots; each copy fills them with its own skin."""
+    placeholders = set()
+    for obj in joined:
+        mesh = obj.data
+        obj["zones"] = [m.name.removeprefix("zone_") for m in mesh.materials]
+        placeholders.update(mesh.materials)
+        for i in range(len(mesh.materials)):
+            mesh.materials[i] = None
     for material in placeholders:
         bpy.data.materials.remove(material)
 
@@ -903,10 +911,9 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
     low, high = Vector([min(a) for a in axes]), Vector([max(a) for a in axes])
     scale = asset.scale(tuple(high - low))
     low, high = low * scale, high * scale
+    east, north = asset.centre(tuple(low), tuple(high))
     return (
-        Matrix.Translation(
-            (-(low.x + high.x) / 2, -(low.y + high.y) / 2, -low.z - asset.draught_m)
-        )
+        Matrix.Translation((-east, -north, -low.z - asset.draught_m))
         @ Matrix.Scale(scale, 4)
         @ turn
     )
@@ -991,23 +998,42 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     An asset arrives in its author's units, off-origin, in many parts.
     """
     imported = _load(fetch(name))
+    asset = manifest()[name]
     # Measure everything, move the roots. An FBX keeps meshes under empties, and
     # measuring only the roots would leave them out of the fit.
     parts = [o for o in imported if o.parent is None]
 
     corners = _corners(imported)
-    fit = _fit(corners, manifest()[name])
+    fit = _fit(corners, asset)
     for part in parts:
         part.matrix_world = fit @ part.matrix_world
+    rotor = None
+    if isinstance(asset, Turbine):
+        named = [o for o in imported if o.name == asset.rotor.node]
+        if len(named) != 1:
+            raise ValueError(f"{name}: {len(named)} objects named {asset.rotor.node!r}")
+        (rotor,) = named
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
     if band == "ir":
-        _zone_slots(name, _meshes(parts), manifest()[name].zones)
+        _zone_slots(name, _meshes(parts), asset.zones)
+        if rotor is not None:
+            # Joined apart from the rest, so it still turns about its hub.
+            bpy.context.view_layer.update()
+            hub = rotor.matrix_world.copy()
+            rotor.parent = None
+            rotor.matrix_world = hub
+            rotor = _joined([rotor], hub)
         parts = [_joined(parts)]
         # Frees the import's object name, so the next asset's objects keep theirs,
         # which number its islands.
         parts[0].name = parts[0].data.name = f"{name}_hull"
-        _unslotted(parts[0])
+        if rotor is not None:
+            rotor.name = rotor.data.name = f"{name}_rotor"
+            parts.append(rotor)
+        _unslotted(parts)
+    if rotor is not None:
+        rotor["rotor"] = True
     parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
     parts[0]["length_m"] = max(c.y for c in fitted) - min(c.y for c in fitted)
     # Above the waterline, which the fit puts at z = 0.
@@ -1327,6 +1353,32 @@ def _object(
         )
     )
     return anchors
+
+
+def _turbine(
+    farm: Farm,
+    range_m: float,
+    bearing_deg: float,
+    scenario: Scenario,
+    radius_m: float,
+    heat: _Heat | None,
+    hulls: dict[str, list[bpy.types.Object]],
+) -> bpy.types.Object:
+    """A turbine facing the wind."""
+    anchor = _vessel(
+        farm.asset, None, 0.0, farm.paint_absorptance, scenario.sky, heat, hulls
+    )
+    _pose(
+        anchor,
+        range_m,
+        bearing_deg,
+        scenario.sea.wind_from_deg,
+        0.0,
+        None,
+        radius_m,
+        scenario.outputs,
+    )
+    return anchor
 
 
 def _wake(
@@ -1790,6 +1842,34 @@ def _foam_grids(
             return tuple(grids)
 
 
+def _placed(
+    scenario: Scenario,
+    radius_m: float,
+    heat: _Heat | None,
+    hulls: dict[str, list[bpy.types.Object]],
+    trails: list[wakes.Wake],
+) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
+    """Every object and ring hull, then every turbine, by asset; each wake under way
+    added to `trails`."""
+    sky, outputs = scenario.sky, scenario.outputs
+    vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
+    for spec in scenario.objects:
+        vessels[spec.asset] += _object(
+            spec, radius_m, sky, heat, hulls, outputs, trails
+        )
+    if scenario.targets is not None:
+        ring = _targets(scenario.targets, radius_m, sky, heat, hulls, outputs, trails)
+        for asset, anchors in ring.items():
+            vessels[asset] += anchors
+    turbines: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
+    for farm in scenario.farms:
+        for range_m, bearing_deg in farm.positions():
+            turbines[farm.asset].append(
+                _turbine(farm, range_m, bearing_deg, scenario, radius_m, heat, hulls)
+            )
+    return vessels, turbines
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with `scenario` in one band.
 
@@ -1823,17 +1903,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
     )
     radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
-    targets: dict[str, list[bpy.types.Object]] = {}
     trails: list[wakes.Wake] = []
-    for spec in scenario.objects:
-        anchors = _object(spec, radius_m, scenario.sky, heat, hulls, outputs, trails)
-        targets.setdefault(spec.asset, []).extend(anchors)
-    if scenario.targets is not None:
-        ring = _targets(
-            scenario.targets, radius_m, scenario.sky, heat, hulls, outputs, trails
-        )
-        for asset, anchors in ring.items():
-            targets.setdefault(asset, []).extend(anchors)
+    vessels, turbines = _placed(scenario, radius_m, heat, hulls, trails)
+    targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
@@ -1879,7 +1951,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
-    _ride(list(chain(*targets.values())), wind + swell, tall, outputs)
+    # ponytail: a floating turbine stands still; give it its platform's motion
+    # if a sea rocks one visibly.
+    _ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
     solid = list(chain(*targets.values()))
     if scenario.ownship.asset is not None:
         solid.append(vessel)

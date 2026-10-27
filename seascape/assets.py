@@ -105,6 +105,12 @@ class _Mesh(Model):
     def scale(self, size: tuple[float, float, float]) -> float:
         """Metres per mesh unit, from the mesh's extent along x, y and z."""
 
+    def centre(
+        self, low: tuple[float, float, float], high: tuple[float, float, float]
+    ) -> tuple[float, float]:
+        """Where the anchor goes in x and y, from the fitted box's corners."""
+        return (low[0] + high[0]) / 2, (low[1] + high[1]) / 2
+
     @property
     @abstractmethod
     def size(self) -> str: ...
@@ -182,7 +188,45 @@ class Debris(_Mesh):
         return f"{self.length_m:.3g} m long"
 
 
-type Asset = Annotated[Hull | Buoy | Debris, Field(discriminator="kind")]
+class Rotor(Model):
+    """A turbine's hub and blades."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # An empty at the hub whose +Y is the shaft, pointing upwind; hub and blades under
+    # it. Unique across the manifest's files, so an import never renames it.
+    node: str = Field(min_length=1)
+    diameter_m: float = Field(gt=0.0)
+
+
+class Turbine(_Mesh):
+    """A wind turbine on its foundation, fitted keel to blade tip, rotor to +Y.
+
+    Stands where a farm puts it, yawed into the wind.
+    """
+
+    kind: Literal["turbine"]
+    supercategory: ClassVar[str] = "structure"
+    height_m: float = Field(gt=0.0)
+    bow_deg: float = 0.0
+    rotor: Rotor
+
+    def scale(self, size: tuple[float, float, float]) -> float:
+        return self.height_m / size[2]
+
+    def centre(
+        self, low: tuple[float, float, float], high: tuple[float, float, float]
+    ) -> tuple[float, float]:
+        # The authored origin, on the tower's axis: the rotor's overhang would shift
+        # the box's centre.
+        return 0.0, 0.0
+
+    @property
+    def size(self) -> str:
+        return f"{self.rotor.diameter_m:.3g} m rotor"
+
+
+type Asset = Annotated[Hull | Buoy | Debris | Turbine, Field(discriminator="kind")]
 
 
 @cache

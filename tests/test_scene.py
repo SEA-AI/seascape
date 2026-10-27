@@ -16,7 +16,7 @@ import pytest
 from mathutils import Vector
 
 from seascape import blend, lwir, scene, sea, thermal, waves
-from seascape.assets import Buoy, Debris, Hull, manifest
+from seascape.assets import Buoy, Debris, Hull, Turbine, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import (
     Band,
@@ -690,6 +690,20 @@ def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
     assert max(c.z for c in fitted) == pytest.approx(4.5), "6 m tall, 1.5 m under"
     assert min(c.x for c in fitted) == pytest.approx(-2.0), "centred, not turned"
     assert min(c.y for c in fitted) == pytest.approx(-1.0)
+
+
+def test_a_turbine_is_fitted_on_its_tower() -> None:
+    turbine = manifest()["turbine_15mw_monopile"].model_copy(
+        update={"height_m": 200.0, "draught_m": 20.0}
+    )
+    # Its tower at the origin, its rotor 10 units ahead and 50 either side.
+    corners = [Vector((x, y, z)) for x in (-50, 50) for y in (-5, 10) for z in (0, 100)]
+
+    fitted = [scene._fit(corners, turbine) @ c for c in corners]
+
+    assert min(c.y for c in fitted) == pytest.approx(-10.0), "on its tower"
+    assert min(c.x for c in fitted) == pytest.approx(-100.0)
+    assert min(c.z for c in fitted) == pytest.approx(-20.0)
 
 
 def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
@@ -1903,6 +1917,16 @@ def test_a_built_hull_measures_its_manifest_length() -> None:
     assert anchor["length_m"] == pytest.approx(hull.length_m, rel=1e-6)
 
 
+def test_a_built_turbine_measures_its_manifest_height() -> None:
+    farm = {"asset": "turbine_15mw_floating", "range_m": 900.0, "bearing_deg": 0.0}
+    built = scene.build(variant(farms=[farm]), "eo")
+
+    (anchor,) = built.targets["turbine_15mw_floating"]
+    turbine = manifest()["turbine_15mw_floating"]
+    assert isinstance(turbine, Turbine)
+    assert anchor["height_m"] + turbine.draught_m == pytest.approx(turbine.height_m)
+
+
 def test_a_built_buoy_measures_its_manifest_height() -> None:
     built = scene.build(variant(objects=[target("lateral_mark", 900.0)]), "eo")
 
@@ -1910,6 +1934,25 @@ def test_a_built_buoy_measures_its_manifest_height() -> None:
     buoy = manifest()["lateral_mark"]
     assert isinstance(buoy, Buoy)
     assert anchor["height_m"] + buoy.draught_m == pytest.approx(buoy.height_m, rel=1e-6)
+
+
+def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> None:
+    windy = variant(
+        farms=[{"asset": "turbine_15mw_monopile", "range_m": 2000.0, "bearing_deg": 0}],
+        sea={"wind_from_deg": 60.0},
+    )
+    hubs = []
+    for band in ("eo", "ir"):
+        built = scene.build(windy, band)
+        (anchor,) = built.targets["turbine_15mw_monopile"]
+        (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
+        shaft = rotor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
+
+        assert math.degrees(scene.heading_rad(anchor)) == pytest.approx(60.0)
+        assert math.degrees(math.atan2(shaft.x, shaft.y)) == pytest.approx(60.0)
+        assert [o for o in anchor.children_recursive if o.get("rotor")] == [rotor]
+        hubs.append(rotor.matrix_world.translation.copy())
+    assert (hubs[0] - hubs[1]).length == pytest.approx(0.0, abs=1e-3)
 
 
 def test_a_target_inside_the_ownship_is_refused() -> None:

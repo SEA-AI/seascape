@@ -603,6 +603,266 @@
       "title": "Drift",
       "type": "object"
     },
+    "Farm": {
+      "additionalProperties": false,
+      "description": "Turbines in rows of equal length, each row right of the last, seen along it. One\nrow of one is a lone turbine.",
+      "properties": {
+        "asset": {
+          "title": "Asset",
+          "description": "An asset name from the manifest: `seascape assets list` shows them. A turbine.",
+          "anyOf": [
+            {
+              "enum": [
+                "turbine_15mw_floating",
+                "turbine_15mw_monopile"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "range_m": {
+          "title": "Range M",
+          "description": "To the first turbine of the first row.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "bearing_deg": {
+          "title": "Bearing Deg",
+          "description": "Of the first turbine, clockwise from the ownship's bow.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "rows": {
+          "title": "Rows",
+          "description": "How many rows.",
+          "default": 1,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "columns": {
+          "title": "Columns",
+          "description": "Turbines in a row.",
+          "default": 1,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "spacing_d": {
+          "title": "Spacing D",
+          "description": "Along a row, then between rows, in rotor diameters.",
+          "default": [
+            7.0,
+            7.0
+          ],
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "row_bearing_deg": {
+          "title": "Row Bearing Deg",
+          "description": "Where a row runs from its first turbine, clockwise from the ownship's bow.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "staggered": {
+          "title": "Staggered",
+          "description": "Every other row shifted half a spacing along.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "paint_absorptance": {
+          "title": "Paint Absorptance",
+          "description": "Solar absorptance of the paint on its hull, superstructure and funnel: white low, black high. Unset, a mid grey. IR only, with zones.",
+          "default": null,
+          "anyOf": [
+            {
+              "maximum": 0.97,
+              "minimum": 0.14,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "asset",
+        "range_m",
+        "bearing_deg"
+      ],
+      "title": "Farm",
+      "type": "object"
+    },
     "Heave": {
       "additionalProperties": false,
       "description": "A sinusoid about the waterline, starting at it.",
@@ -3647,6 +3907,33 @@
         {
           "items": {
             "$ref": "#/$defs/Object"
+          },
+          "type": "array"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
+          "$ref": "#/$defs/Integer"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
+    },
+    "farms": {
+      "title": "Farms",
+      "description": "Wind turbines, in rows or alone.",
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Farm"
           },
           "type": "array"
         },

@@ -19,6 +19,7 @@ from seascape.config import (
     Band,
     Camera,
     Choice,
+    Farm,
     Integer,
     Lens,
     LogUniform,
@@ -608,6 +609,53 @@ def test_a_ring_takes_a_list_of_assets_in_turn() -> None:
 def test_a_ring_needs_an_asset() -> None:
     with pytest.raises(ValidationError, match="at least 1"):
         Targets(asset=[], count=3, range_m=900.0, bearing_deg=(0.0, 90.0))
+
+
+def test_a_ring_is_of_vessels() -> None:
+    with pytest.raises(ValidationError, match="stands in farms"):
+        Targets(
+            asset="turbine_15mw_monopile",
+            count=2,
+            range_m=900.0,
+            bearing_deg=(0.0, 90.0),
+        )
+
+
+def test_a_turbine_stands_in_a_farm() -> None:
+    with pytest.raises(ValidationError, match="stands in farms"):
+        Object(asset="turbine_15mw_monopile", range_m=900.0, bearing_deg=0.0)
+
+
+def test_a_farm_lays_rows_to_starboard_in_rotor_diameters() -> None:
+    farm = Farm(
+        asset="turbine_15mw_monopile",
+        range_m=1000.0,
+        bearing_deg=0.0,
+        rows=2,
+        columns=2,
+        spacing_d=(7.0, 5.0),
+        row_bearing_deg=90.0,
+        staggered=True,
+    )
+
+    placed = [
+        (r * math.sin(math.radians(b)), r * math.cos(math.radians(b)))
+        for r, b in farm.positions()
+    ]
+
+    d = 240.0
+    expected = [
+        (0, 1000),
+        (7 * d, 1000),
+        (3.5 * d, 1000 - 5 * d),
+        (10.5 * d, 1000 - 5 * d),
+    ]
+    assert placed == [pytest.approx(p) for p in expected]
+
+
+def test_a_farm_is_of_turbines() -> None:
+    with pytest.raises(ValidationError, match="no turbine"):
+        Farm(asset="yacht", range_m=900.0, bearing_deg=0.0)
 
 
 def test_over_the_visibility_a_dark_target_keeps_two_percent_contrast() -> None:
