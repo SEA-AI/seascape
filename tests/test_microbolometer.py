@@ -49,15 +49,20 @@ def test_vignetting_falls_as_the_fourth_power_of_the_cosine() -> None:
     assert shade.max() == pytest.approx(1.0, abs=1e-5)
 
 
-def test_the_noise_is_the_netd() -> None:
+@pytest.mark.parametrize("t_k", [240.0, microbolometer.NETD_BACKGROUND_K])
+def test_the_noise_is_the_netd_s_radiance(t_k: float) -> None:
+    netd_k = 0.05
     camera = Camera(
         band="ir",
         hfov_deg=32.0,
         width_px=256,
         height_px=256,
-        microbolometer=Microbolometer(netd_k=0.05),
+        microbolometer=Microbolometer(netd_k=netd_k),
     )
-    radiance = np.full((256, 256), lwir.band_radiance(290.0))
-    t_k = microbolometer.seen(radiance, camera, substream(0, "test"))
-    assert t_k.mean() == pytest.approx(290.0, abs=1e-3)
-    assert t_k.std() == pytest.approx(0.05, rel=0.02)
+    radiance = np.full((256, 256), lwir.band_radiance(t_k))
+    seen = microbolometer.seen(radiance, camera, substream(0, "test"))
+    background = microbolometer.NETD_BACKGROUND_K
+    sigma = lwir.band_radiance(background + netd_k) - lwir.band_radiance(background)
+    slope = lwir.band_radiance(t_k + netd_k) - lwir.band_radiance(t_k)
+    assert seen.mean() == pytest.approx(t_k, abs=1e-3)
+    assert seen.std() == pytest.approx(netd_k * sigma / slope, rel=0.02)

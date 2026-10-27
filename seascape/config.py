@@ -221,7 +221,9 @@ class Microbolometer(Model):
     """An uncooled LWIR camera's focal plane and lens aperture. Unset, it is ideal."""
 
     netd_k: float = Field(
-        default=0.0, ge=0.0, description="Temporal noise: one standard deviation."
+        default=0.0,
+        ge=0.0,
+        description="Temporal noise: one standard deviation against a 30 C scene.",
     )
     pitch_um: float | None = Field(default=None, gt=0.0, description="Pixel pitch.")
     f_number: float | None = Field(

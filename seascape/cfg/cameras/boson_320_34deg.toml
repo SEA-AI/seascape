@@ -4,3 +4,7 @@ extends = "boson_640_32deg.toml"
 hfov_deg = 34.0
 width_px = 320
 height_px = 256
+
+[microbolometer]
+# The 20320A034 lens (Boson datasheet 102-2013-40, table 13).
+f_number = 1.01

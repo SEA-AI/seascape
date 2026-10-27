@@ -8,6 +8,11 @@ pitch_deg = { uniform = [-3.0, 1.0] }
 yaw_deg = { uniform = [-8.0, 8.0] }
 cameras.eo.hfov_deg = { uniform = [15.0, 70.0] }
 cameras.ir.hfov_deg = { uniform = [12.0, 40.0] }
+# Boson+ Industrial's 20 mK at f/1.0 (Boson+ datasheet,
+# https://flir.netx.net/file/asset/55485/original/attachment/) to Boson Consumer's
+# 60 mK behind its slowest 640 lens, f/1.10 at 90 % transmission, scaled from f/1.0
+# by (f/#)^2 / tau (Boson datasheet 102-2013-40, sec. 11.1 and table 13).
+cameras.ir.microbolometer.netd_k = { uniform = [0.02, 0.081] }
 # The presets an operator picks from on a Boson-based FLIR M364C LR.
 cameras.ir.agc = { choice = [
     { preset = "day" },
