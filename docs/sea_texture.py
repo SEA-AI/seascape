@@ -27,9 +27,8 @@ import numpy as np
 from seascape import labels
 from seascape.assets import CACHE
 
-# The frames whose sea is measured: raw counts, so the sky's noise is the sea's. The
-# jpgs went through an AGC that gives the sea a different gain from the sky's, so
-# they serve only as targets.
+# Raw counts only: the sky's noise stands in for the sea's where both share one gain,
+# which an AGC'd jpg breaks.
 REFERENCES = (
     "sentry_twfov.png",
     "sentry_tnfov.png",
