@@ -1,6 +1,6 @@
 #:schema ../schema/scenario.json
 
-# Monopile turbines in a grid at Horns Rev 1's spacing, rows across the bow.
+# Monopile turbines in a grid, rows across the bow.
 extends = "open-sea.toml"
 
 [sea]

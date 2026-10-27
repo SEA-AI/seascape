@@ -11,7 +11,6 @@ wind_from_deg = 300.0
 asset = "turbine_15mw_monopile"
 range_m = 1500.0
 bearing_deg = 5.0
-# White paint's absorptance.
 paint_absorptance = 0.14
 
 [outputs]

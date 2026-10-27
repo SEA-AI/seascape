@@ -1045,8 +1045,8 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
             parts.append(rotor)
         _unslotted(parts)
     if rotor is not None:
-        # Read before any copy turns it; YXZ euler is Rz @ Rx @ Ry, the spin about
-        # the shaft innermost.
+        # The rest angle, read before a copy is animated; YXZ euler is Rz @ Rx @ Ry,
+        # the spin about the shaft innermost.
         rotor.rotation_mode = "YXZ"
         rotor["rest_rad"] = rotor.rotation_euler.y
     parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
@@ -1383,8 +1383,8 @@ def _turbine(
     heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
 ) -> bpy.types.Object:
-    """A turbine facing the wind, its rotor turning with the wind from an angle of its
-    own: a farm's rotors turn out of step."""
+    """A turbine facing the wind, its rotor starting at an angle of its own so a farm's
+    rotors turn out of step."""
     anchor = _vessel(
         farm.asset, None, 0.0, farm.paint_absorptance, scenario.sky, heat, hulls
     )
@@ -1400,7 +1400,7 @@ def _turbine(
         outputs,
     )
     rpm = farm.rpm(scenario.sea)
-    # Three blades repeat every third of a turn; a loop closes on one.
+    # A loop closes on a third of a turn.
     third_s = outputs.period_s(20.0 / rpm) if rpm else math.inf
     start = rng.uniform(0.0, 2.0 * math.pi)
     (rotor,) = (o for o in anchor.children_recursive if "rest_rad" in o)
