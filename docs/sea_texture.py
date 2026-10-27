@@ -118,7 +118,7 @@ def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
     sea, sky = sea - sea.mean(), sky - sky.mean()
 
     def c(lag: int, axis: int) -> float:
-        # The sky's median row, as a cloud or a mast lifts a few.
+        # The sky's median row: a cloud or a mast lifts only a few.
         sky_c = np.median(products(sky, lag, axis))
         return float(products(sea, lag, axis).mean() - sky_c)
 
@@ -138,8 +138,9 @@ def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
 
 
 def measure(frame: np.ndarray) -> dict[str, float]:
-    """The sky's, then each third's, rows as `__doc__` lists them. A row whose high
-    pass reaches the horizon or the frame's edge is left out of either."""
+    """The horizon, step and noise, then each third's metrics, as the module docstring
+    lists them. Rows whose high pass reaches the horizon or the frame's edge are left
+    out."""
     horizon = last_sky_row(frame)
     reach = BOX_PX // 2
     bottom = frame.shape[0] - reach
