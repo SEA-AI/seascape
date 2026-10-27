@@ -570,6 +570,11 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
             ["sea.swell = { height_m = 1.0, period_s = 40.0 }"],
             "sea.swell's 40.0 s",
         ),
+        (
+            "turbine.toml",
+            ["outputs.loop = true", "outputs.duration_s = 2"],
+            "turbine_15mw_monopile rotor's 2.6",
+        ),
     ],
 )
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:

@@ -1045,7 +1045,10 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
             parts.append(rotor)
         _unslotted(parts)
     if rotor is not None:
-        rotor["rotor"] = True
+        # Read before any copy turns it; YXZ euler is Rz @ Rx @ Ry, the spin about
+        # the shaft innermost.
+        rotor.rotation_mode = "YXZ"
+        rotor["rest_rad"] = rotor.rotation_euler.y
     parts[0]["beam_m"] = max(c.x for c in fitted) - min(c.x for c in fitted)
     parts[0]["length_m"] = max(c.y for c in fitted) - min(c.y for c in fitted)
     # Above the waterline, which the fit puts at z = 0.
@@ -1374,15 +1377,18 @@ def _turbine(
     farm: Farm,
     range_m: float,
     bearing_deg: float,
+    rng: np.random.Generator,
     scenario: Scenario,
     radius_m: float,
     heat: _Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
 ) -> bpy.types.Object:
-    """A turbine facing the wind."""
+    """A turbine facing the wind, its rotor turning with the wind from an angle of its
+    own: a farm's rotors turn out of step."""
     anchor = _vessel(
         farm.asset, None, 0.0, farm.paint_absorptance, scenario.sky, heat, hulls
     )
+    outputs = scenario.outputs
     _pose(
         anchor,
         range_m,
@@ -1391,7 +1397,23 @@ def _turbine(
         0.0,
         None,
         radius_m,
-        scenario.outputs,
+        outputs,
+    )
+    rpm = farm.rpm(scenario.sea)
+    # Three blades repeat every third of a turn; a loop closes on one.
+    third_s = outputs.period_s(20.0 / rpm) if rpm else math.inf
+    start = rng.uniform(0.0, 2.0 * math.pi)
+    (rotor,) = (o for o in anchor.children_recursive if "rest_rad" in o)
+    rest = rotor["rest_rad"]
+    # A copy shares its original's action.
+    rotor.animation_data_clear()
+    # Clockwise seen from upwind, which its +Y faces.
+    animate(
+        rotor,
+        "rotation_euler",
+        outputs.times_s,
+        lambda t: rest - start - 2.0 * math.pi / 3.0 * t / third_s,
+        index=1,
     )
     return anchor
 
@@ -1877,10 +1899,13 @@ def _placed(
         for asset, anchors in ring.items():
             vessels[asset] += anchors
     turbines: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
-    for farm in scenario.farms:
-        for range_m, bearing_deg in farm.positions():
+    for f, farm in enumerate(scenario.farms):
+        for k, (range_m, bearing_deg) in enumerate(farm.positions()):
+            rng = substream(scenario.seed, f"farms/{f}/{k}/rotor")
             turbines[farm.asset].append(
-                _turbine(farm, range_m, bearing_deg, scenario, radius_m, heat, hulls)
+                _turbine(
+                    farm, range_m, bearing_deg, rng, scenario, radius_m, heat, hulls
+                )
             )
     return vessels, turbines
 

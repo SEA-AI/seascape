@@ -939,6 +939,11 @@ class Farm(Model):
         assert isinstance(turbine, assets.Turbine)  # TurbineName checked it
         return turbine
 
+    def rpm(self, sea: "Sea") -> float:
+        """Its rotors' speed in the wind at their hub."""
+        rotor = self.turbine.rotor
+        return rotor.rpm(waves.wind_at_m(sea.wind_speed_mps, rotor.hub_height_m))
+
     def positions(self) -> list[tuple[float, float]]:
         """Range and bearing, row by row."""
         along_m, across_m = (d * self.turbine.rotor.diameter_m for d in self.spacing_d)
@@ -1136,6 +1141,12 @@ class Scenario(Model):
             (f"{spec.asset} orbit", spec.orbit.period_s / spec.orbit.count)
             for spec in self.objects
             if spec.orbit is not None
+        ]
+        # Three blades look the same every third of a turn.
+        periods += [
+            (f"{farm.asset} rotor", 20.0 / rpm)
+            for farm in self.farms
+            if (rpm := farm.rpm(self.sea)) > 0.0
         ]
         span_s = self.outputs.span_s
         for name, period_s in periods:
