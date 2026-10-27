@@ -1,6 +1,7 @@
 """labels.json from an index map and a calibration, without a render."""
 
 import math
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -8,7 +9,7 @@ import pytest
 
 from seascape import labels, waves
 from seascape.calibration import CameraCalibration
-from seascape.config import Camera, Lens, Sensor
+from seascape.config import Agc, Camera, Lens, Sensor
 
 RADIUS_M = waves.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
@@ -627,3 +628,27 @@ def test_a_merge_renumbers_the_dropped_images(tmp_path) -> None:
     merged = labels.merge(tmp_path, folders)
 
     assert [d.image_id for d in merged.dropped] == [1, 2]
+
+
+def recorded(tmp_path: Path, info: dict) -> Path:
+    labels.Labels(info=info).write(tmp_path)
+    return tmp_path
+
+
+def ir(dde: float) -> dict:
+    """A recorded rig, with a field an older seascape had and this one does not."""
+    return {
+        "rigs": {"bow": {"retired_m": 1.0, "cameras": {"ir": {"agc": {"dde": dde}}}}}
+    }
+
+
+def test_a_camera_takes_the_agc_its_scenario_recorded(tmp_path: Path) -> None:
+    found = labels.agcs(recorded(tmp_path, {"scenario": ir(1.2)}))
+    assert found["bow_ir"] == Agc(dde=1.2)
+    assert found["bow_eo"] == Agc()
+
+
+def test_seeds_that_drew_different_agcs_are_not_toned_as_one(tmp_path: Path) -> None:
+    folder = recorded(tmp_path, {"scenarios": {"0": ir(1.2), "1": ir(0.9)}})
+    with pytest.raises(ValueError, match="bow_ir"):
+        labels.agcs(folder)

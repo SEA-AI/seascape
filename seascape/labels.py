@@ -22,7 +22,6 @@ from seascape.config import (
     Lens,
     Microbolometer,
     Processing,
-    Scenario,
     Sensor,
 )
 from seascape.model import Model
@@ -428,16 +427,24 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
 def agcs(folder: Path) -> dict[str, Agc]:
     """Each camera's AGC, by name, from the scenario the labels in `folder` record,
     the default for a camera they do not, or for every camera in a folder without
-    labels. A merged set records one scenario per seed; their cameras are the same."""
+    labels. Only the `agc` tables are read, so a scenario recorded by an older
+    seascape still serves."""
     found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():
         return found
     info = Labels.model_validate_json(path.read_text()).info
-    recorded = info.get("scenario") or next(
-        iter(info.get("scenarios", {}).values()), None
-    )
-    if recorded is not None:
-        scenario = Scenario.model_validate(recorded)
-        found.update((mount.name, mount.camera.agc) for mount in scenario.mounts)
+    # A merged set records one scenario per seed, and seeds can draw different AGCs.
+    recorded = info.get("scenarios") or {"": info.get("scenario") or {}}
+    for scenario in recorded.values():
+        for rig_name, rig in scenario.get("rigs", {}).items():
+            for camera_name, camera in rig.get("cameras", {}).items():
+                name = f"{rig_name}_{camera_name}"
+                setting = Agc.model_validate(camera.get("agc", {}))
+                if found.get(name, setting) != setting:
+                    raise ValueError(
+                        f"{name}: its seeds drew different agcs; tone each seed's "
+                        "folder on its own"
+                    )
+                found[name] = setting
     return found
