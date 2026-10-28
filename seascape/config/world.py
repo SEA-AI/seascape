@@ -12,7 +12,7 @@ from pydantic import (
 
 from seascape.assets import skies
 from seascape.model import Model
-from seascape.physics import skin
+from seascape.physics import fog, skin
 from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
 
@@ -176,7 +176,8 @@ class Sky(Model):
         default=VISIBILITY_KM,
         gt=0.0,
         description="Meteorological range at 550 nm; None is no aerosol. Under 1 km "
-        "it is fog, in which LWIR loses targets about as fast as EO.",
+        "it is fog, which hides targets in LWIR about as fast as in EO, greys the sky "
+        "and dims the sun.",
     )
     atmosphere: Atmosphere = Field(
         default=ATMOSPHERE,
@@ -265,6 +266,20 @@ class Sky(Model):
         if self.visibility_km is None:
             return 0.0
         return math.log(1 / 0.02) / (self.visibility_km * 1000)
+
+    @property
+    def fog(self) -> bool:
+        """WMO's fog: a visibility under 1 km (WMO No. 8, 2018)."""
+        return self.visibility_km is not None and self.visibility_km < 1.0
+
+    @property
+    def sun_transmittance(self) -> float:
+        """What fog leaves of the sun's direct beam; 1 out of it, or with no disc."""
+        if not self.fog or self.sun_elevation_deg is None:
+            return 1.0
+        return fog.sun_transmittance(
+            math.radians(self.sun_elevation_deg), self.extinction_per_m
+        )
 
     @property
     def sun_up(self) -> bool:

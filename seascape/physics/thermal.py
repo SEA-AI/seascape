@@ -219,6 +219,9 @@ class Environment:
     wind_m_s: float
     sun_elevation_rad: float | None  # None, or at or below the horizon: no sun
     cloud_fraction: float = 0.0
+    # Fog under the clouds: its emissivity overhead, and what it leaves of the beam.
+    fog_cover: float = 0.0
+    beam_transmittance: float = 1.0
     # Unverified: ISO 7547's winter design for accommodation, 22 C, as recalled.
     t_cabin_k: float = 295.15
     # Thompson et al. 1998: ventilation should hold compartments below 50 C; the
@@ -231,8 +234,9 @@ class Environment:
     _interiors: dict[Interior, float] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.cloud_fraction <= 1.0:
-            raise ValueError(f"cloud_fraction {self.cloud_fraction} outside [0, 1]")
+        for name in ("cloud_fraction", "fog_cover", "beam_transmittance"):
+            if not 0.0 <= getattr(self, name) <= 1.0:
+                raise ValueError(f"{name} {getattr(self, name)} outside [0, 1]")
         interiors: dict[Interior, float] = {
             "none": self.t_air_k,
             "cabin": self.t_cabin_k,
@@ -364,7 +368,7 @@ def facet_temperature_k(
     convection to the air and conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
-    much weaker on average.
+    much weaker on average; fog keeps `beam_transmittance` of what is left.
 
     ponytail: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.
@@ -395,9 +399,12 @@ def lit_temperature_k(
 
     sky_view = 0.5 * (1.0 + up)
     beam = direct_beam_w_m2(env.sun_elevation_rad)
-    solar = beam * ((1.0 - env.cloud_fraction) * sun_cos + _DIFFUSE_FRACTION * sky_view)
+    direct = (1.0 - env.cloud_fraction) * env.beam_transmittance
+    solar = beam * (direct * sun_cos + _DIFFUSE_FRACTION * sky_view)
 
-    sky = sky_longwave_w_m2(env.t_air_k, env.cloud_fraction)
+    # Fog under the clouds glows at the air as a cloud would.
+    overcast = env.cloud_fraction + (1.0 - env.cloud_fraction) * env.fog_cover
+    sky = sky_longwave_w_m2(env.t_air_k, overcast)
     sea = (
         SEA_EMISSIVITY * STEFAN_BOLTZMANN_W_M2K4 * env.t_sea_k**4
         + (1.0 - SEA_EMISSIVITY) * sky

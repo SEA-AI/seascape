@@ -2824,7 +2824,7 @@
         },
         "visibility_km": {
           "title": "Visibility Km",
-          "description": "Meteorological range at 550 nm; None is no aerosol. Under 1 km it is fog, in which LWIR loses targets about as fast as EO.",
+          "description": "Meteorological range at 550 nm; None is no aerosol. Under 1 km it is fog, which hides targets in LWIR about as fast as in EO, greys the sky and dims the sun.",
           "default": 42.0,
           "anyOf": [
             {

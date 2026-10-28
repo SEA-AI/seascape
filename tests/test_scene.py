@@ -52,7 +52,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import atmosphere, earth, lwir, thermal, waves
+from seascape.physics import atmosphere, earth, fog, lwir, thermal, waves
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
@@ -2130,3 +2130,42 @@ def test_a_combine_xyz_refuses_a_fourth_component() -> None:
             blend.combine(tree, 1.0, 2.0, 3.0, 4.0)
     finally:
         bpy.data.node_groups.remove(tree)
+
+
+FOG = {"visibility_km": 0.5}
+
+
+def test_in_fog_the_eo_sky_is_its_horizon_s_grey_and_the_sun_dims() -> None:
+    fog_ = variant(sky=FOG)
+    scene.build(fog_, "eo")
+    world = bpy.data.worlds["sky"]
+    tree = world.node_tree
+    feeding = upstream(tree.nodes["Background"].inputs["Color"])
+    assert any(tree.nodes[n].bl_idname == "ShaderNodeRGBToBW" for n in feeding)
+    kept = tree.nodes["fog_sun"].outputs["Value"]
+    assert kept.default_value == pytest.approx(fog_.sky.sun_transmittance, rel=1e-5)
+    # The driver follows the sun.
+    world["sun_elevation"] = math.radians(60.0)
+    world.update_tag()
+    bpy.context.view_layer.update()
+    moved = fog.sun_transmittance(math.radians(60.0), fog_.sky.extinction_per_m)
+    assert kept.default_value == pytest.approx(moved, rel=1e-5)
+    haze = bpy.data.node_groups["haze"].nodes
+    airlight = upstream(haze["haze_airlight"].inputs["Color"])
+    assert any(haze[n].bl_idname == "ShaderNodeRGBToBW" for n in airlight)
+    assert sea_light(fog_.sky, "eo").sun == fog_.sky.sun_vector
+
+
+def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
+    fog_ = variant(sky=FOG)
+    scene.build(fog_, "ir")
+    sky = fog_.sky
+    elevation = np.arcsin((np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES)
+    clear = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+    expected = fog.sky_radiance(clear, elevation, 0.5, sky.t_air_k, sky.atmosphere)
+    assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
+    assert _sky_round(sky, None)[1] == pytest.approx(expected)
+    env = surroundings(fog_).env
+    assert env.fog_cover == pytest.approx(fog.cover(0.5, sky.atmosphere))
+    assert env.beam_transmittance == pytest.approx(sky.sun_transmittance)
+    assert 0.0 < sky.sun_transmittance < 1.0

@@ -16,7 +16,7 @@ from seascape.config import (
     Scenario,
     Sky,
 )
-from seascape.physics import lwir, thermal
+from seascape.physics import fog, lwir, thermal
 
 # Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
 # fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher
@@ -53,7 +53,9 @@ def _sunlit_emission(
     if sky.sun_elevation_deg is None:
         return shaded.outputs["Emission"]
     sunlit = tree.nodes.new("ShaderNodeEmission")
-    sunlit.inputs["Strength"].default_value = lwir.band_radiance(t_k + sky.solar_gain_k)
+    # The gain is linear in the beam a surface absorbs.
+    gain_k = sky.solar_gain_k * sky.sun_transmittance
+    sunlit.inputs["Strength"].default_value = lwir.band_radiance(t_k + gain_k)
 
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = tree.nodes.new("ShaderNodeVectorMath")
@@ -91,6 +93,10 @@ def surroundings(scenario: Scenario) -> Heat:
     clouds = 0.0
     if sky.hdri is not None:
         clouds = bpy.data.images["cloudy_sky_radiance"]["cloud_fraction"]
+    fog_cover = 0.0
+    if sky.fog:
+        assert sky.visibility_km is not None
+        fog_cover = fog.cover(sky.visibility_km, sky.atmosphere)
     env = thermal.Environment(
         t_air_k=sky.t_air_k,
         t_sea_k=scenario.sea.t_skin_k(sky.sun_up),
@@ -99,6 +105,8 @@ def surroundings(scenario: Scenario) -> Heat:
         wind_m_s=scenario.sea.wind_speed_mps,
         sun_elevation_rad=None if elevation is None else math.radians(elevation),
         cloud_fraction=clouds,
+        fog_cover=fog_cover,
+        beam_transmittance=sky.sun_transmittance,
     )
     sun = sky.sun_vector if elevation is not None and elevation > 0 else None
     return Heat(env, scenario.sea.t_sea_k, sun)

@@ -133,7 +133,7 @@ def combine(
 def vector(
     tree: bpy.types.NodeTree,
     operation: str,
-    *inputs: bpy.types.NodeSocket | float,
+    *inputs: bpy.types.NodeSocket | float | tuple[float, ...],
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
     node = tree.nodes.new("ShaderNodeVectorMath")

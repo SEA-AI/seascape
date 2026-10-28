@@ -115,6 +115,16 @@ def test_overcast_takes_the_beam_and_leaves_the_diffuse() -> None:
     assert float(facing) < float(clear)
 
 
+def test_opaque_fog_is_overcast_to_a_facet() -> None:
+    zone = thermal.ZONES["paint_hull"]
+    env = environment(5.0, SUN_ELEVATION_RAD)
+    fog = dataclasses.replace(env, fog_cover=1.0, beam_transmittance=0.0)
+    overcast = dataclasses.replace(env, cloud_fraction=1.0)
+    assert float(thermal.facet_temperature_k(zone, fog, 0.0, 0.0)) == pytest.approx(
+        float(thermal.facet_temperature_k(zone, overcast, 0.0, 0.0))
+    )
+
+
 def test_exhaust_metal_holds_its_uptake_temperature() -> None:
     env = environment(10.0, SUN_ELEVATION_RAD)
     t = thermal.facet_temperature_k(thermal.ZONES["exhaust"], env, 0.0, 0.0)
