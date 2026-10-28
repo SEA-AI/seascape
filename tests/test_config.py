@@ -14,31 +14,27 @@ from pydantic import ValidationError
 
 from seascape.assets import skies
 from seascape.config import (
-    _DRAWS,
-    CFG_DIR,
+    PRESETS,
     Band,
     Camera,
-    Choice,
     Farm,
-    Integer,
     Lens,
-    LogUniform,
     Object,
-    Orbit,
     Outputs,
     Processing,
     Rig,
-    Samples,
     Scenario,
     Sea,
     Sensor,
     Sky,
     Targets,
-    Triangular,
     json_schema,
     load,
     substream,
 )
+from seascape.config.draws import _DRAWS, Choice, Integer, LogUniform, Triangular
+from seascape.config.objects import Orbit
+from seascape.config.scenario import Samples
 from seascape.physics import lwir
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
@@ -411,7 +407,7 @@ def test_a_table_over_a_choice_of_tables_goes_into_every_option() -> None:
 def test_a_preset_in_a_choice_is_a_preset_of_the_field() -> None:
     """Bare names, so the shipped ones, whichever: the choice must look under rigs."""
     compared = 0
-    for path in sorted((CFG_DIR / "rigs").glob("*.toml")):
+    for path in sorted((PRESETS / "rigs").glob("*.toml")):
         try:
             direct = load(BASELINE, [f'rigs.bow = {{ preset = "{path.stem}" }}'])
         except ValidationError:
@@ -423,7 +419,7 @@ def test_a_preset_in_a_choice_is_a_preset_of_the_field() -> None:
 
 
 def test_a_preset_in_a_choice_of_cameras_is_a_camera_preset() -> None:
-    path = CFG_DIR / "cameras" / "eo_4k_49deg.toml"
+    path = PRESETS / "cameras" / "eo_4k_49deg.toml"
     cameras = f'{{ choice = [{{ eo = {{ preset = "{path.stem}" }} }}] }}'
     drawn = load(BASELINE, [f"rigs.bow.cameras = {cameras}"]).rigs["bow"]
     with path.open("rb") as handle:
@@ -468,7 +464,7 @@ def test_a_randomized_example_loads(path: Path) -> None:
 
 def test_every_shipped_preset_parses() -> None:
     """A preset directory is named after the block it serves, and holds valid TOML."""
-    presets = sorted(CFG_DIR.rglob("*.toml"))
+    presets = sorted(PRESETS.rglob("*.toml"))
     assert {path.parent.name for path in presets} == {
         "rigs",
         "cameras",

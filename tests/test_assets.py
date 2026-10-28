@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from seascape import assets
-from seascape.config import CFG_DIR
+from seascape.config import PRESETS
 
 BODY = b"not really a mesh"
 DIGEST = hashlib.sha256(BODY).hexdigest()
@@ -38,7 +38,7 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 def test_every_object_preset_names_an_asset() -> None:
     """A preset is validated only when a scenario uses it."""
-    for preset in sorted((CFG_DIR / "objects").glob("*.toml")):
+    for preset in sorted((PRESETS / "objects").glob("*.toml")):
         with preset.open("rb") as handle:
             assert tomllib.load(handle)["asset"] in assets.manifest(), preset
 

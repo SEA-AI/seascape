@@ -34,7 +34,7 @@ width_px = 1920
 height_px = 1080
 ```
 
-A product is a preset under `seascape/cfg/rigs/`; `scenarios/twin-pod.toml` installs two:
+A product is a preset under `seascape/config/presets/rigs/`; `scenarios/twin-pod.toml` installs two:
 
 ```toml
 [rigs.port]
