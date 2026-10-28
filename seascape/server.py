@@ -29,7 +29,8 @@ from pydantic import Field
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from seascape import assets, skies
+from seascape import assets
+from seascape.assets import skies
 from seascape.config import (
     Band,
     ImageFormat,

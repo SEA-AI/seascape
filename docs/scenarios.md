@@ -105,7 +105,7 @@ Each draw comes from a stream named for the field, so a new draw leaves the othe
 
 ## Skies
 
-By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/skies.toml`](../seascape/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, so a scenario with `hdri` leaves `sun_elevation_deg` out. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.
+By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/assets/skies.toml`](../seascape/assets/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, so a scenario with `hdri` leaves `sun_elevation_deg` out. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.
 
 ```bash
 uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain_1"' --set 'sky.sun_bearing_deg = 20'
@@ -114,7 +114,7 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
 <p align="center">
   <img src="skies.jpg" alt="Every photographed sky, highest sun first, with its measured sun circled">
   <br>
-  <sub>The library, highest sun first, each sun circled where <code>seascape.skies</code> measures it (<a href="skies.py"><code>docs/skies.py</code></a>).</sub>
+  <sub>The library, highest sun first, each sun circled where <code>seascape.assets.skies</code> measures it (<a href="skies.py"><code>docs/skies.py</code></a>).</sub>
 </p>
 
 ## Hull temperature

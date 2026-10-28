@@ -7,8 +7,9 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from seascape import faces, zones
+from seascape import zones
 from seascape.assets import Zones, manifest
+from seascape.blender import faces
 from seascape.blender.meshes import measured
 from seascape.physics.thermal import ZoneName
 

@@ -62,7 +62,7 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.cache/seascape
-          key: assets-${{ hashFiles('seascape/assets.toml') }}
+          key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
 
       - run: uv run pytest --shard ${{ matrix.shard }} --durations=20
 

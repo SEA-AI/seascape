@@ -10,8 +10,8 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import faces
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
+from seascape.blender import faces
 from seascape.blender.blend import (
     yaw,
 )

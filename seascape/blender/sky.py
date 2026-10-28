@@ -5,8 +5,7 @@ import math
 import bpy
 import numpy as np
 
-from seascape import skies
-from seascape.assets import download
+from seascape.assets import download, skies
 from seascape.blender import sea
 from seascape.blender.blend import (
     CURVE_SAMPLES,

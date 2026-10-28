@@ -35,7 +35,8 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets, skies
+from seascape import assets
+from seascape.assets import skies
 from seascape.model import Model
 from seascape.physics import lwir, skin, thermal, waves
 
@@ -630,9 +631,9 @@ class Sky(Model):
         | None
     ) = Field(
         default=None,
-        description="A photographed sky from seascape/skies.toml, in place of the Sky "
-        "Texture, which sets `sun_elevation_deg`. LWIR keeps its own clear sky and "
-        "takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
+        description="A photographed sky from seascape/assets/skies.toml, in place of "
+        "the Sky Texture, which sets `sun_elevation_deg`. LWIR keeps its own clear sky "
+        "and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
     )
 
     @model_validator(mode="before")

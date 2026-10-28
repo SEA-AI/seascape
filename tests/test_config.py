@@ -12,7 +12,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from seascape import skies
+from seascape.assets import skies
 from seascape.config import (
     _DRAWS,
     CFG_DIR,
