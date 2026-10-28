@@ -15,7 +15,7 @@ import math
 
 import bpy
 
-from seascape.blend import (
+from seascape.blender.blend import (
     SUN,
     _math,
     _vector,

@@ -51,6 +51,12 @@ type = "forbidden"
 source_modules = ["seascape.physics"]
 forbidden_modules = ["bpy", "bmesh", "mathutils", "seascape.*"]
 
+[[tool.importlinter.contracts]]
+name = "Blender code drives no render"
+type = "forbidden"
+source_modules = ["seascape.blender"]
+forbidden_modules = ["seascape.render"]
+
 [tool.pytest.ini_options]
 # Renders share one GPU: past four workers the suite runs no faster.
 addopts = "-n 4 --dist worksteal"

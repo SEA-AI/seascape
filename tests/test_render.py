@@ -13,9 +13,12 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from seascape import agc, labels, render, scene, server
-from seascape.blender import sea
+from seascape import agc, labels, render, server
+from seascape.blender import scene, sea
+from seascape.blender.compositor import FORMATS, MID_GREY, _compositor, _output, respond
+from seascape.blender.heat import _Heat, _zone_skin
 from seascape.blender.sea import foam
+from seascape.blender.sky import _light, _sky
 from seascape.calibration import Calibration
 from seascape.config import (
     Agc,
@@ -111,7 +114,7 @@ def test_a_microbolometer_integrates_over_its_pixel(
     camera = mount.camera.model_copy(
         update={"microbolometer": Microbolometer(**bolometer)}
     )
-    scene.respond(mount._replace(camera=camera), substream(0, "sensor"))
+    respond(mount._replace(camera=camera), substream(0, "sensor"))
     assert bpy.context.scene.cycles.pixel_filter_type == kind
 
 
@@ -149,7 +152,7 @@ def built(band: Band, **outputs: object) -> bpy.types.Scene:
 class TestSettings:
     def test_every_format_maps_to_one_blender_identifier(self) -> None:
         """A format added to the Literal alone renders as whatever was set last."""
-        assert set(scene.FORMATS) == set(get_args(ImageFormat.__value__))
+        assert set(FORMATS) == set(get_args(ImageFormat.__value__))
 
     @pytest.mark.parametrize("fmt", get_args(ImageFormat.__value__))
     def test_the_extension_matches_the_name_render_files_under(
@@ -158,7 +161,7 @@ class TestSettings:
         """`render` composes its return paths from the format, not from Blender."""
         bpy.ops.wm.read_factory_settings(use_empty=True)
         settings = bpy.context.scene.render
-        settings.image_settings.file_format = scene.FORMATS[fmt][0]
+        settings.image_settings.file_format = FORMATS[fmt][0]
 
         assert settings.file_extension == f".{fmt}"
 
@@ -166,7 +169,7 @@ class TestSettings:
         sc = built("eo", format="png", exposure_compensation_ev=1.0)
 
         gain = sc.compositing_node_group.nodes["exposure"]
-        assert gain.inputs[0].default_value == pytest.approx(2 * scene.MID_GREY)
+        assert gain.inputs[0].default_value == pytest.approx(2 * MID_GREY)
 
     def test_radiance_skips_the_camera(self) -> None:
         sc = built("eo", format="exr")
@@ -308,7 +311,7 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     # As a build leaves it. Factory settings put the compositor on the GPU, which a
     # machine without one aborts on.
     sc.render.compositor_device = "CPU"
-    scene._compositor(None)
+    _compositor(None)
     render._index_output(tmp_path).file_name = "probe."
     sc.render.filepath = str(tmp_path / "frame")
 
@@ -333,9 +336,9 @@ def _svm_errors(
     stack.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    scene._output(scenario.outputs, band, 16)
+    _output(scenario.outputs, band, 16)
     sc = bpy.context.scene
-    sc.world = scene._sky(scenario.sky, band)
+    sc.world = _sky(scenario.sky, band)
     seed = scenario.seed
     # Unculled: culling drops waves, which would shrink the shader under test.
     material = sea.material(
@@ -349,7 +352,7 @@ def _svm_errors(
             substream(seed, "sea/foam"),
         ),
         trails,
-        scene._light(scenario.sky, band),
+        _light(scenario.sky, band),
         seen,
     )
     sea.water(scenario.sea, 300.0, material)
@@ -452,7 +455,7 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     if band == "ir":
         photo = tmp_path / "white.hdr"
         cv2.imwrite(str(photo), np.ones((32, 64, 3), np.float32))
-        monkeypatch.setattr(scene, "download", lambda *_: photo)
+        monkeypatch.setattr("seascape.blender.sky.download", lambda *_: photo)
         sky = {"hdri": "overcast_soil"}
     drawn = _heaviest_drawn_sea(strongest=True, sky=sky)
     errors = _svm_errors(capfd, drawn, _wakes(1), band, seen=seen)
@@ -713,7 +716,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     env = thermal.Environment(
         t_air_k=288.0, t_sea_k=287.5, wind_m_s=3.0, sun_elevation_rad=elevation
     )
-    heat = scene._Heat(env, 286.0, sun)
+    heat = _Heat(env, 286.0, sun)
     tilted = (0.5 * sun[0], 0.5 * sun[1], 1.0)
     plates = {
         "lit": ((-6.0, 0.0, 2.0), (0.0, 0.0, 1.0)),
@@ -726,7 +729,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     mesh.from_pydata(corners, [], quads)
     hull = bpy.data.objects.new("hull", mesh)
     sc.collection.objects.link(hull)
-    hull.data.materials.append(scene._zone_skin("paint_hull", heat))
+    hull.data.materials.append(_zone_skin("paint_hull", heat))
 
     camera = bpy.data.objects.new("camera", bpy.data.cameras.new("camera"))
     camera.data.angle = math.radians(40.0)

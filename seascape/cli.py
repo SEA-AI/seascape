@@ -97,8 +97,7 @@ def build(
     # Deferred: `schema` and a failed validation should not wait for bpy to load.
     import bpy
 
-    from seascape import scene
-    from seascape.blender import sea
+    from seascape.blender import scene, sea
 
     path = output or scenario.with_suffix(f".{band}.blend")
     with _blender_log(path.with_suffix(".log")):
@@ -132,7 +131,7 @@ def render(
     if into.is_dir() and any(into.iterdir()):
         raise click.ClickException(f"{into} is not empty: remove it or pick another")
     from seascape import render as renderer
-    from seascape.scene import OverlapError
+    from seascape.blender.vessels import OverlapError
 
     if variants == 1:
         with (

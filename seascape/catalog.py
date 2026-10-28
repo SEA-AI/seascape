@@ -8,7 +8,8 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import assets, render, scene
+from seascape import assets, render
+from seascape.blender import meshes
 from seascape.config import Band, Scenario, load
 
 TILE = (480, 270)
@@ -81,13 +82,13 @@ def shot(
 
 
 def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
-    meshes = assets.manifest()
-    rows = math.ceil(len(meshes) / COLUMNS)
+    entries = assets.manifest()
+    rows = math.ceil(len(entries) / COLUMNS)
     page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
     draw = ImageDraw.Draw(page)
     font = ImageFont.load_default(size=15)
     with tempfile.TemporaryDirectory() as tmp:
-        for k, (name, mesh) in enumerate(meshes.items()):
+        for k, (name, mesh) in enumerate(entries.items()):
             x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * TILE[1]
             page.paste(shot(name, mesh, scenario, band, Path(tmp) / name), (x, y))
             n = len(mesh.texture_px)
@@ -101,7 +102,7 @@ def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
 
 
 def measure(path: Path) -> str:
-    triangles, texture_px = scene.measure(path)
+    triangles, texture_px = meshes.measure(path)
     lines = [
         f'sha256 = "{assets.digest(path)}"',
         f"triangles = {triangles}",

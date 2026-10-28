@@ -12,7 +12,8 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
-from seascape import labels, render, scene
+from seascape import labels, render
+from seascape.blender import scene
 from seascape.config import load
 
 SCENARIO = Path(__file__).with_name("visibility.toml")

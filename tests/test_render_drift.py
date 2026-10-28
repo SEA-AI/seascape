@@ -10,13 +10,22 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import render, scene, skies
+from seascape import render, skies
 from seascape.assets import Buoy, download, fetch, manifest
-from seascape.blend import _math
-from seascape.blender import sea
+from seascape.blender import scene, sea
+from seascape.blender.blend import _math
+from seascape.blender.compositor import (
+    GLARE_SHARE,
+    GLARE_SHOULDER,
+    GLARE_SLOPE,
+    MID_GREY,
+    respond,
+)
+from seascape.blender.meshes import _import, _meshes, measure
 from seascape.blender.sea.daylight import SEAWATER_IOR, SUN_SLOPE_RADIUS
 from seascape.blender.sea.foam import LATTICE_WALL_M, _frames_folder
 from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CELLS
+from seascape.blender.sky import _sky_texture, _sun_vector, haze
 from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, wakes, waves
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
@@ -726,7 +735,7 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     camera = sc.camera
     camera.parent = None
     camera.rotation_mode = "QUATERNION"
-    camera.rotation_quaternion = Vector(scene._sun_vector(SCENARIO.sky)).to_track_quat(
+    camera.rotation_quaternion = Vector(_sun_vector(SCENARIO.sky)).to_track_quat(
         "-Z", "Y"
     )
     sc.cycles.samples = 4
@@ -771,7 +780,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     emission.inputs["Strength"].default_value = 0.0
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    scene.haze(black)
+    haze(black)
     for range_m in ranges_m:
         bpy.ops.mesh.primitive_plane_add(size=0.01 * range_m)
         card = bpy.context.object
@@ -887,9 +896,7 @@ class TestCamera:
             np.median(frame[:, : width // 4]),
             np.median(frame[:, -width // 4 :]),
         )
-        assert (left, right) == pytest.approx(
-            (scene.MID_GREY / 2, 2 * scene.MID_GREY), rel=0.03
-        )
+        assert (left, right) == pytest.approx((MID_GREY / 2, 2 * MID_GREY), rel=0.03)
 
     def test_the_camera_takes_the_same_picture_at_any_resolution(self) -> None:
         """The frame at twice the width, averaged back down, within a few counts almost
@@ -911,9 +918,9 @@ class TestCamera:
         x = ((np.arange(width) + 0.5) / width * 2 - 1)[None, :]
         y = ((np.arange(height) + 0.5) / height * 2 - 1)[:, None] * height / width
         r = np.hypot(x, y)
-        kernel = (1 + (r / scene.GLARE_SHOULDER) ** 2) ** (-scene.GLARE_SLOPE / 2)
+        kernel = (1 + (r / GLARE_SHOULDER) ** 2) ** (-GLARE_SLOPE / 2)
         far = r * width / 2 > beyond_px
-        expected = scene.GLARE_SHARE * kernel[far].sum() / kernel.sum()
+        expected = GLARE_SHARE * kernel[far].sum() / kernel.sum()
         assert frame[far].sum() / frame.sum() == pytest.approx(expected, rel=0.1)
 
 
@@ -984,7 +991,7 @@ class TestSensor:
         )
         rig = SCENARIO.rigs["bow"]
         mount = Mount("bow", rig, name.removeprefix("bow_"), settings)
-        scene.respond(mount, substream(seed, f"sensor/{name}"))
+        respond(mount, substream(seed, f"sensor/{name}"))
         sc.render.image_settings.file_format = "OPEN_EXR"
         sc.render.resolution_x, sc.render.resolution_y = self.SIZE
         sc.render.filepath = str(Path(bpy.app.tempdir) / "sensor")
@@ -998,7 +1005,7 @@ class TestSensor:
     def test_an_ideal_camera_in_a_sensor_s_tree_takes_the_ideal_frame(self) -> None:
         """No noise, no mosaic: the glare's border falloff is all that varies."""
         frame = self.through((1.0, 1.0, 1.0))
-        assert frame.mean() == pytest.approx(scene.MID_GREY, rel=0.01)
+        assert frame.mean() == pytest.approx(MID_GREY, rel=0.01)
         assert np.ptp(frame) < 0.002
         assert np.array_equal(frame[..., 0], frame[..., 2])
 
@@ -1013,7 +1020,7 @@ class TestSensor:
             },
         )
         gain = 10 ** (gain_db / 20)
-        x = scene.MID_GREY
+        x = MID_GREY
         expected = math.sqrt(
             x * gain / full_well_e + (gain * dark_e / full_well_e) ** 2
         )
@@ -1038,7 +1045,7 @@ class TestSensor:
                 "width_px": 2 * width,
             },
         )
-        x = scene.MID_GREY
+        x = MID_GREY
         site = math.sqrt(x / full_well_e + (dark_e / full_well_e) ** 2)
         red, green = frame[..., 0], frame[..., 1]
         assert red.std() == pytest.approx(site, rel=0.1)
@@ -1092,7 +1099,7 @@ class TestSensor:
         r = np.hypot(x - (width - 1) / 2, y - (height - 1) / 2)
         disc, sky = r < 3, r > 20
         assert np.median(once[disc]) == 1.0
-        assert np.median(twice[sky]) == pytest.approx(scene.MID_GREY, rel=0.1)
+        assert np.median(twice[sky]) == pytest.approx(MID_GREY, rel=0.1)
         # Reinhard's L / (1 + L) undone: the disc is its sky plus nine skies.
         linear = twice / (1 - twice)
         assert np.median(linear[disc]) / np.median(linear[sky]) == pytest.approx(
@@ -1112,7 +1119,7 @@ class TestSensor:
         frame = self.through(
             (1.0, 1.0, 1.0), sensor=hdr, processing={"exposure_ev": 1.0}
         )
-        assert np.median(frame) == pytest.approx(2 * scene.MID_GREY, rel=0.1)
+        assert np.median(frame) == pytest.approx(2 * MID_GREY, rel=0.1)
 
     def test_noise_is_drawn_apart_per_camera_scenario_and_frame(self) -> None:
         noisy = {"full_well_e": 400.0, "dark_noise_e": 4.0}
@@ -1266,7 +1273,7 @@ def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
     camera.parent = None
     camera.location = (0.0, 0.0, 10.0)
     camera.rotation_mode = "QUATERNION"
-    sun = Vector(scene._sun_vector(scenario.sky))
+    sun = Vector(_sun_vector(scenario.sky))
     camera.rotation_quaternion = sun.to_track_quat("-Z", "Y")
     camera.data.angle_x = math.radians(10.0)
     sc.cycles.samples = 4
@@ -1298,11 +1305,13 @@ def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) ->
     shutil.copy(source, path)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    first = scene.measure(path)
+    first = measure(path)
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    monkeypatch.setattr(scene, "_parse", lambda _: pytest.fail("parsed again"))
+    monkeypatch.setattr(
+        "seascape.blender.meshes._parse", lambda _: pytest.fail("parsed again")
+    )
 
-    assert scene.measure(path) == first
+    assert measure(path) == first
 
 
 @pytest.mark.parametrize(
@@ -1311,11 +1320,11 @@ def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) ->
 def test_a_buoy_floats_on_its_float(name: str) -> None:
     """The water meets the float: the mesh is near its widest at the waterline."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    parts = scene._import(name, "eo")
+    parts = _import(name, "eo")
     bpy.context.view_layer.update()
     points = [
         mesh.matrix_world @ vertex.co
-        for mesh in scene._meshes(parts)
+        for mesh in _meshes(parts)
         for vertex in mesh.data.vertices
     ]
     step = (max(p.z for p in points) - min(p.z for p in points)) / 100
@@ -1336,7 +1345,7 @@ def _horizon(aerosol_density: float) -> np.ndarray:
     sc.cycles.filter_width = 0.01
     sc.world = bpy.data.worlds.new("sky")
     tree = sc.world.node_tree
-    texture = scene._sky_texture(tree, Sky(sun_bearing_deg=180.0))
+    texture = _sky_texture(tree, Sky(sun_bearing_deg=180.0))
     texture.aerosol_density = aerosol_density
     tree.links.new(texture.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     lens = bpy.data.cameras.new("probe")

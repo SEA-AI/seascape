@@ -435,7 +435,8 @@ def serve(host: str, port: int) -> None:
             [
                 sys.executable,
                 "-c",
-                "from seascape import scene; print(scene.enable_gpu())",
+                "from seascape.blender import compositor; "
+                "print(compositor.enable_gpu())",
             ],
             capture_output=True,
             text=True,

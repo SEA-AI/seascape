@@ -7,8 +7,9 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from seascape import faces, scene, zones
+from seascape import faces, zones
 from seascape.assets import Zones, manifest
+from seascape.blender.meshes import measured
 from seascape.physics.thermal import ZoneName
 
 
@@ -83,7 +84,7 @@ def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = manifest()[name]
     found = zones.parts(name)
-    assert scene.measured(name, found.objects) == (asset.triangles, asset.texture_px)
+    assert measured(name, found.objects) == (asset.triangles, asset.texture_px)
     assert asset.zones is not None
     faces.check(name, found, asset.zones)
 

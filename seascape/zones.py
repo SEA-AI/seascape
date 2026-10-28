@@ -20,8 +20,9 @@ import numpy as np
 from mathutils import Vector
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import faces, render, scene
+from seascape import faces, render
 from seascape.assets import manifest
+from seascape.blender.meshes import _corners, _import, _meshes
 from seascape.faces import Parts, face_zones
 from seascape.montage import INK, MATTE
 from seascape.physics.thermal import ZoneName
@@ -130,7 +131,7 @@ def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
 
 
 def _aim(found: Parts, bearing_deg: float, elevation_deg: float) -> None:
-    corners = np.array([tuple(c) for c in scene._corners(found.objects)])
+    corners = np.array([tuple(c) for c in _corners(found.objects)])
     centre = Vector(tuple((corners.min(axis=0) + corners.max(axis=0)) / 2))
     bearing, elevation = math.radians(bearing_deg), math.radians(elevation_deg)
     # A direction, not a rotation: no negation.
@@ -215,9 +216,9 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
 def parts(name: str) -> Parts:
     """Import `name` as an EO build fits it into the current file, with islands
     numbered by object name, then first face."""
-    roots = scene._import(name, "eo")
+    roots = _import(name, "eo")
     bpy.context.view_layer.update()
-    return faces.found(scene._meshes(roots))
+    return faces.found(_meshes(roots))
 
 
 def _on_backdrop(image: Image.Image) -> Image.Image:
