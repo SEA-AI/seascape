@@ -1516,6 +1516,80 @@ material = "paint_superstructure"
 "803" = "paint_superstructure"
 "1239" = "paint_superstructure"
 
+[usv_magura]
+kind = "hull"
+category = "uncrewed surface vessel"
+category_id = 17
+description = "MAGURA V5-style strike USV, grey low-freeboard planing hull, camera mast, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/48a6456ff24141001ac82db149614b052a9cc00c/usv_magura/usv_magura.glb"
+sha256 = "3113fcd842ec3cbb800ac0cb951dbc73c866b048fa04c82f79d77b1e2bae1a8a"
+# MAGURA V5: 5.5 m long, 1.5 m beam, 0.4 m draught (European Security & Defence,
+# "Eurosatory 2024: MAGURA V5, scourge of the Russian navy, makes an appearance in
+# Paris"). This length makes the mesh 1.63 m across.
+length_m = 5.5
+draught_m = 0.4
+bow_deg = 180.0
+triangles = 38472
+texture_px = [1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "MAGURA USV Drone boat by flightclubua, https://sketchfab.com/3d-models/b6da005a8d1e45e0872615f49110e08b"
+
+[usv_magura.zones]
+[usv_magura.zones.materials]
+material_0 = "paint_hull"
+
+[usv_stalker]
+kind = "hull"
+category = "uncrewed surface vessel"
+category_id = 17
+description = "Stalker 5.0 strike USV, black narrow hull, single outboard, camera on an arch, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/48a6456ff24141001ac82db149614b052a9cc00c/usv_stalker/usv_stalker.glb"
+sha256 = "f9d9d349b598bf7d8d569cb73e61f76eb6a7db2c3b783835de545e2dd041f777"
+# Stalker 5.0: about 5 m long and 1.2 m wide (H I Sutton, Covert Shores, "Ukraine's
+# New USV, The Stalker 5.0"); this length makes the mesh 1.08 m across. No published
+# draught: MAGURA V5's 0.4 m, a strike USV of its length, plus the mesh's skeg, 0.2 m
+# below the keel.
+length_m = 5.0
+draught_m = 0.6
+bow_deg = 180.0
+triangles = 37182
+texture_px = [1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Ukrainian USV \"STALKER 5.0\" by flightclubua, https://sketchfab.com/3d-models/e9e9cb1141964b7bb0b566f821bda2b6"
+
+[usv_stalker.zones]
+island_count = 70
+island_digest = "059097bbcc18172e"
+
+[usv_stalker.zones.materials]
+material_0 = "paint_hull"
+
+[usv_stalker.zones.islands]
+"2" = "engine_cowl"
+"35" = "engine_cowl"
+
+[usv_naval_drone]
+kind = "hull"
+category = "uncrewed surface vessel"
+category_id = 17
+description = "First-generation Ukrainian strike USV, dark grey low hull with handling hoops, textured."
+url = "https://huggingface.co/datasets/SEA-AI/seashapes/resolve/2666f4ebaf9a85e05cbb12b84f8170bdd09be029/usv_naval_drone/usv_naval_drone.glb"
+sha256 = "3309d1b68d76b261cfa34795ed20c466f631adce4eb192b156b136c57ab16e28"
+# The United24 naval drone: 5.5 m long, 1000 kg fully loaded (United24, "Naval
+# drones"). This length makes the mesh 1.60 m across, and its hull displaces 1000 kg
+# of seawater at 0.37 m.
+length_m = 5.5
+draught_m = 0.37
+bow_deg = 0.0
+triangles = 10526
+texture_px = [1024, 1024, 1024, 1024]
+licence = "CC-BY-4.0"
+attribution = "Ukrainian navy maritime drone by idmental.id, https://sketchfab.com/3d-models/2c347a181fea41319f75d9acac0c286e"
+
+[usv_naval_drone.zones]
+[usv_naval_drone.zones.materials]
+BOAT = "paint_hull"
+
 [lateral_mark]
 kind = "buoy"
 category = "lateral mark"

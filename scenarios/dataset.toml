@@ -44,6 +44,9 @@ asset = { choice = [
     "mariella",
     "pride_of_kent",
     "meriluoto",
+    "usv_magura",
+    "usv_stalker",
+    "usv_naval_drone",
 ] }
 heading_from = "line_of_sight"
 heading_deg = { choice = [0.0, 180.0] }
