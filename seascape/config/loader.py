@@ -24,25 +24,15 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from seascape.config.draws import _DRAWS, Choice, OpticalDepth, substream
+from seascape.config.draws import DRAWS, Choice, OpticalDepth, kind, substream
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
 PRESETS = Path(__file__).parent / "presets"
 
 
-def _kind(node: Any) -> str | None:
-    """`node`'s draw key, if it holds one and nothing but that draw's fields."""
-    if not isinstance(node, dict):
-        return None
-    kinds = [key for key in node if key in _DRAWS]
-    if len(kinds) == 1 and set(node) <= set(_DRAWS[kinds[0]].model_fields):
-        return kinds[0]
-    return None
-
-
 def _is_draw(node: Any) -> bool:
-    return _kind(node) is not None
+    return kind(node) is not None
 
 
 def _is_table(node: Any) -> bool:
@@ -100,7 +90,7 @@ def _expand(
         return node
     # A draw holds a list of options; an entry by a draw's name would read as one.
     if keyed and (
-        named := [k for k in node if k in _DRAWS and not isinstance(node[k], list)]
+        named := [k for k in node if k in DRAWS and not isinstance(node[k], list)]
     ):
         raise ValueError(f"{named[0]!r} is a draw, not a name: rename it")
     # A draw's options are presets of the field it sits on, never of `choice`.
@@ -158,11 +148,11 @@ def _draw(node: Any, seed: int, path: str) -> Any:
         return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
     if not isinstance(node, dict):
         return node
-    if (kind := _kind(node)) is not None:
+    if (name := kind(node)) is not None:
         rng = substream(seed, _per_rig(path))
-        value = _DRAWS[kind].model_validate(node).draw(rng)
+        value = DRAWS[name].model_validate(node).draw(rng)
         # A chosen draw on the pick's own substream would replay the pick's state.
-        return _draw(value, seed, f"{path}/{kind}" if _is_draw(value) else path)
+        return _draw(value, seed, f"{path}/{name}" if _is_draw(value) else path)
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
 
 
@@ -251,7 +241,7 @@ def load_variants(
 def json_schema() -> dict[str, Any]:
     """The scenario's JSON schema, in which any field can be a draw."""
     schema = Scenario.model_json_schema()
-    draws = [{"$ref": f"#/$defs/{model.__name__}"} for model in _DRAWS.values()]
+    draws = [{"$ref": f"#/$defs/{model.__name__}"} for model in DRAWS.values()]
     for model in (schema, *schema["$defs"].values()):
         for name, spec in model.get("properties", {}).items():
             if model is schema and name == "seed":
@@ -262,7 +252,7 @@ def json_schema() -> dict[str, Any]:
             }
             values = spec.pop("anyOf", None) or [spec]
             model["properties"][name] = {**outer, "anyOf": [*values, *draws]}
-    for model in _DRAWS.values():
+    for model in DRAWS.values():
         schema["$defs"][model.__name__] = model.model_json_schema()
     schema["$defs"]["OpticalDepth"] = OpticalDepth.model_json_schema()
     schema["$defs"]["Object"]["properties"]["range_m"]["anyOf"].append(

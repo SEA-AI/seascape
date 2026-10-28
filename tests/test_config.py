@@ -32,7 +32,7 @@ from seascape.config import (
     load,
     substream,
 )
-from seascape.config.draws import _DRAWS, Choice, Integer, LogUniform, Triangular
+from seascape.config.draws import DRAWS, Choice, Integer, LogUniform, Triangular
 from seascape.config.objects import Orbit
 from seascape.config.scenario import Samples
 from seascape.physics import atmosphere, lwir
@@ -728,7 +728,7 @@ def test_a_dumped_hdri_sky_validates_again_without_a_warning() -> None:
         assert Sky.model_validate(sky.model_dump()) == sky
 
 
-@pytest.mark.parametrize("draw", sorted(_DRAWS))
+@pytest.mark.parametrize("draw", sorted(DRAWS))
 def test_a_camera_cannot_take_a_draws_name(tmp_path, draw) -> None:
     camera = '{ band = "eo", hfov_deg = 45.0, width_px = 64, height_px = 36 }'
     with pytest.raises(ValueError, match=f"'{draw}' is a draw, not a name"):
