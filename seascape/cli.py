@@ -248,7 +248,7 @@ def schema() -> None:
 @click.option(
     "--scenarios",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default="scenarios",
+    default=Path(__file__).parents[1] / "scenarios",
     envvar="SEASCAPE_SCENARIOS",
     show_default=True,
     help="The folder of scenarios clients render.",

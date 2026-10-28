@@ -273,7 +273,8 @@ class Sky(Model):
     @property
     def sun_vector(self) -> tuple[float, float, float]:
         """Unit vector towards the sun: a direction, so its bearing is not negated."""
-        assert self.sun_elevation_deg is not None
+        if self.sun_elevation_deg is None:
+            raise ValueError("a photographed sun without a disc has no direction")
         elevation = math.radians(self.sun_elevation_deg)
         bearing = math.radians(self.sun_bearing_deg)
         return (

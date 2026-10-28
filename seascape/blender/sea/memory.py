@@ -240,7 +240,8 @@ def foam_frames(
     simulated before the first render, breaking at Monahan's cover for the mean wind.
 
     No gust moves the threshold: whitecaps break off the drawn waves, which grow too
-    slowly to follow a gust (Plant 1982), as `_gusty` holds them at the mean wind."""
+    slowly to follow a gust (Plant 1982), as `wind._gusty` holds them at the mean
+    wind."""
     drift = surface_drift(sea, outputs)
     fraction = whitecap_fraction(sea.wind_speed_mps)
     if remember_foam not in bpy.app.handlers.render_pre:

@@ -237,7 +237,8 @@ async def render(
 
     `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
     `sea.wind_speed_mps = { uniform = [2, 12] }`. `variants` renders that many
-    seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet.
+    seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet,
+    up to the server's image limit.
     """
     state = _state(ctx)
     settings = state.settings

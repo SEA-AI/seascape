@@ -702,6 +702,8 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
     sky = Sky.model_validate({"hdri": "overcast_soil"})
     assert sky.sun_elevation_deg is None
     assert sky.solar_gain_k == 0.0
+    with pytest.raises(ValueError, match="no direction"):
+        _ = sky.sun_vector
 
 
 def test_an_unknown_hdri_names_the_library() -> None:

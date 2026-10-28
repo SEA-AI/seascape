@@ -2071,3 +2071,12 @@ def test_the_shortest_breaker_a_foam_grid_draws_cannot_follow_a_gust(
         0.04 * (waves.friction_velocity_mps(speed) * k / omega) ** 2 * omega
     )
     assert growth_s > waves.GUST_LENGTH_M / speed
+
+
+def test_a_combine_xyz_refuses_a_fourth_component() -> None:
+    tree = bpy.data.node_groups.new("combine_probe", "ShaderNodeTree")
+    try:
+        with pytest.raises(ValueError, match="3 components"):
+            blend.combine(tree, 1.0, 2.0, 3.0, 4.0)
+    finally:
+        bpy.data.node_groups.remove(tree)
