@@ -1,0 +1,31 @@
+#:schema ../schema/scenario.json
+
+# Three strike USVs closing from ahead.
+extends = "baseline.toml"
+
+[[objects]]
+asset = "usv_stalker"
+range_m = 180.0
+bearing_deg = -7.0
+heading_deg = 130.0
+heading_from = "line_of_sight"
+speed_mps = 15.0
+
+[[objects]]
+asset = "usv_magura"
+range_m = 250.0
+bearing_deg = 2.0
+heading_deg = 220.0
+heading_from = "line_of_sight"
+speed_mps = 15.0
+
+[[objects]]
+asset = "usv_naval_drone"
+range_m = 320.0
+bearing_deg = 9.0
+heading_deg = 140.0
+heading_from = "line_of_sight"
+speed_mps = 12.0
+
+[outputs]
+duration_s = 0.0

@@ -116,6 +116,9 @@ asset = { choice = [
     "mariella",
     "pride_of_kent",
     "meriluoto",
+    "usv_magura",
+    "usv_stalker",
+    "usv_naval_drone",
     "lateral_mark",
     "pillar_buoy",
 ] }
