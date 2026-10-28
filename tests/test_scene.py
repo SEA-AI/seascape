@@ -2144,7 +2144,6 @@ def test_in_fog_the_eo_sky_is_its_horizon_s_grey_and_the_sun_dims() -> None:
     assert any(tree.nodes[n].bl_idname == "ShaderNodeRGBToBW" for n in feeding)
     kept = tree.nodes["fog_sun"].outputs["Value"]
     assert kept.default_value == pytest.approx(fog_.sky.sun_transmittance, rel=1e-5)
-    # The driver follows the sun.
     world["sun_elevation"] = math.radians(60.0)
     world.update_tag()
     bpy.context.view_layer.update()

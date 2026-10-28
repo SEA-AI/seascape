@@ -375,8 +375,8 @@ def facet_temperature_k(
     convection to the air and conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
-    much weaker on average; fog keeps `beam_transmittance` of what is left, and
-    `fog_diffuse_transmittance` of the rest of the sunlight as diffuse light.
+    much weaker on average. Fog passes `fog_diffuse_transmittance` of the sunlight,
+    `beam_transmittance` of the beam and the rest as diffuse light.
 
     ponytail: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.

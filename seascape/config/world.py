@@ -175,9 +175,8 @@ class Sky(Model):
     visibility_km: float | None = Field(
         default=VISIBILITY_KM,
         gt=0.0,
-        description="Meteorological range at 550 nm; None is no aerosol. Under 1 km "
-        "it is fog, which hides targets in LWIR about as fast as in EO, greys the sky "
-        "and dims the sun.",
+        description="Meteorological range at 550 nm; None is no aerosol. Under "
+        f"{fog.VISIBILITY_KM:g} km it is fog, in both bands.",
     )
     atmosphere: Atmosphere = Field(
         default=ATMOSPHERE,

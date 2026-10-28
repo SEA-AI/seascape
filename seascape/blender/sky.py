@@ -54,8 +54,7 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     if not sky.fog:
         tree.links.new(node.outputs["Color"], background)
         return world
-    # The sun's disc alone, the sky with it less the sky without, kept as the fog keeps
-    # its beam.
+    # The sun's disc alone: the sky with it less the sky without.
     disc = vector(
         tree, "SUBTRACT", node.outputs["Color"], _clear_eo(tree, sky, world, ray)
     )
@@ -105,9 +104,9 @@ def _grey(
 ) -> bpy.types.NodeSocket:
     """Fog's sky, from the clear sky's `colour` at the horizon ahead.
 
-    Judgement: fog drops scatter the visible without colour and many times over, so the
-    sun spreads into a dome with no disc. Its brightness is the clear horizon's, the
-    sky the haze already fades every target into, so fog and sky meet without a seam.
+    Judgement: fog drops scatter the visible without colour and many times over. Its
+    brightness is the clear horizon's, which the haze fades every target into, so fog
+    and sky meet without a seam.
     """
     node = tree.nodes.new("ShaderNodeRGBToBW")
     tree.links.new(colour, node.inputs["Color"])

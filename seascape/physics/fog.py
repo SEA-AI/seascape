@@ -47,8 +47,7 @@ def sky_radiance(
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
     """`radiance`, an LWIR sky, seen up through the fog: it passes `transmittance` of
-    the sky and emits the rest as a blackbody at air temperature (Kirchhoff), as
-    `lwir.cloudy_sky_radiance` takes a cloud."""
+    the sky and emits the rest as a blackbody at air temperature (Kirchhoff)."""
     passed = transmittance(elev_rad, visibility_km, atmosphere)
     return passed * np.asarray(radiance) + (1.0 - passed) * lwir.band_radiance(t_air_k)
 

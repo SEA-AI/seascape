@@ -433,12 +433,10 @@ def path_optical_depth(
     """-ln of the band transmittance along a horizontal path near the sea.
 
     Linear in 1 / visibility, which is how aerosol extinction scales, and in log range.
-    The aerosol is maritime haze down to 2 km and advection fog from 1 km, WMO's fog
-    (WMO No. 8, 2018), whose drops take LWIR about as fast as visible light; between
-    the two the depth runs from one to the other. A visibility below the table's
-    shortest is held at it. Short of the table it follows the power law of its first
-    two rows: band depth grows as a power of the path, not linearly, while the
-    strongest lines saturate.
+    The aerosol is the table's maritime haze, then advection fog, whose drops take LWIR
+    about as fast as visible light. A visibility below the table's shortest is held at
+    it. Short of the table it follows the power law of its first two rows: band depth
+    grows as a power of the path, not linearly, while the strongest lines saturate.
     """
     ranges, inverse, depth = _path_table()[atmosphere]
     x = 0.0 if visibility_km is None else 1 / visibility_km
