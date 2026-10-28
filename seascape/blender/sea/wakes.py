@@ -15,6 +15,7 @@ from seascape.blender.blend import (
     lookup,
 )
 from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M
+from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.wakes import (
     BUBBLE_EFOLD_S,
     BUBBLE_GAIN,
@@ -24,9 +25,6 @@ from seascape.physics.wakes import (
     NARROWING_FROUDE,
     SEEN_SLOPE_VARIANCE,
     Wake,
-)
-from seascape.physics.waves import (
-    GRAVITY_MS2,
 )
 
 

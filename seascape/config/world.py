@@ -12,7 +12,8 @@ from pydantic import (
 
 from seascape.assets import skies
 from seascape.model import Model
-from seascape.physics import lwir, skin
+from seascape.physics import skin
+from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
 
 class Swell(Model):
@@ -67,7 +68,7 @@ class Sea(Model):
     """
 
     t_sea_k: float = Field(
-        default=lwir.T_SEA_K,
+        default=T_SEA_K,
         ge=271.0,
         le=311.0,
         description="Bulk sea temperature, under the skin the camera sees. IR only. "
@@ -176,14 +177,14 @@ class Sky(Model):
         gt=0.0,
         description="Meteorological range at 550 nm; None is no aerosol.",
     )
-    atmosphere: lwir.Atmosphere = Field(
-        default=lwir.ATMOSPHERE,
+    atmosphere: Atmosphere = Field(
+        default=ATMOSPHERE,
         description="LOWTRAN 7's model atmosphere, or the North Sea's, for the LWIR "
         "sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so "
         "its horizon sky reads warmer than LOWTRAN's.",
     )
     t_air_k: float = Field(
-        default=lwir.SURFACE_AIR_K[lwir.ATMOSPHERE],
+        default=SURFACE_AIR_K[ATMOSPHERE],
         ge=250.0,
         le=320.0,
         description="Scales the IR sky. EO ignores it. Unset, the atmosphere's own.",
@@ -251,7 +252,7 @@ class Sky(Model):
     @classmethod
     def _air_follows_the_atmosphere(cls, data: Any) -> Any:
         if isinstance(data, dict) and "t_air_k" not in data:
-            air_k = lwir.SURFACE_AIR_K.get(data.get("atmosphere", lwir.ATMOSPHERE))
+            air_k = SURFACE_AIR_K.get(data.get("atmosphere", ATMOSPHERE))
             if air_k is not None:  # an unknown profile fails its own validation
                 data = {**data, "t_air_k": air_k}
         return data

@@ -45,10 +45,17 @@ import functools
 import math
 from pathlib import Path
 from statistics import NormalDist
-from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
+
+from seascape.physics.atmosphere import (
+    ATMOSPHERE,
+    SURFACE_AIR_K,
+    T_SEA_K,
+    Atmosphere,
+    header,
+)
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -56,38 +63,6 @@ _TABLE_CSV = Path(__file__).parent / "data" / "water_nk.csv"
 _PATH_CSV = Path(__file__).parent / "data" / "lowtran_path.csv"
 _SKY_CSV = Path(__file__).parent / "data" / "lowtran_sky.csv"
 
-type Atmosphere = Literal[
-    "tropical",
-    "midlatitude_summer",
-    "midlatitude_winter",
-    "subarctic_summer",
-    "subarctic_winter",
-    "us_standard",
-    "north_sea",
-    "north_sea_winter",
-    "north_sea_summer",
-]
-# Judgement: European waters, as measured at Helgoland.
-ATMOSPHERE: Atmosphere = "north_sea"
-_SURFACE_CSV = Path(__file__).parent / "data" / "lowtran_surface.csv"
-
-
-def _columns(csv: Path) -> list[str]:
-    """The names after the first in the last comment line, the header."""
-    with csv.open() as f:
-        header = [line for line in f if line.startswith("#")][-1]
-    return header.removeprefix("#").strip().split(",")[1:]
-
-
-def _surface(column: str) -> dict[str, float]:
-    names = ["profile", *_columns(_SURFACE_CSV)]
-    rows = np.genfromtxt(_SURFACE_CSV, delimiter=",", dtype=None, names=names)
-    return dict(zip(rows["profile"].tolist(), rows[column].tolist(), strict=True))
-
-
-# Each profile's air and sea at the surface; `data/lowtran_surface.csv` says whose.
-SURFACE_AIR_K = _surface("air_k")
-SURFACE_SEA_K = _surface("sea_k")
 
 BAND_M = (8.0e-6, 14.0e-6)
 
@@ -95,8 +70,6 @@ BAND_M = (8.0e-6, 14.0e-6)
 PLANCK_H = 6.62607015e-34  # J s
 LIGHT_C = 2.99792458e8  # m s^-1
 BOLTZMANN_K = 1.380649e-23  # J K^-1
-
-T_SEA_K = SURFACE_SEA_K[ATMOSPHERE]
 
 
 def _checked_kelvin(t_k: float) -> float:
@@ -378,7 +351,7 @@ def _sky_table() -> tuple[FloatArray, dict[str, FloatArray]]:
     """(elevation deg, each profile's sky against its horizon)."""
     raw = np.loadtxt(_SKY_CSV, delimiter=",", comments="#")
     raw.setflags(write=False)
-    curves = {name: raw[:, i + 1] for i, name in enumerate(_columns(_SKY_CSV))}
+    curves = {name: raw[:, i + 1] for i, name in enumerate(header(_SKY_CSV))}
     return raw[:, 0], curves
 
 
@@ -433,7 +406,7 @@ def cloudy_sky_radiance(
 def _path_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
     """Per profile: (range m, 1 / visibility km with 0 for no aerosol, optical depth),
     the optical depth shaped (range, visibility) and the visibilities ascending."""
-    columns = _columns(_PATH_CSV)[1:]
+    columns = header(_PATH_CSV)[1:]
     km = [c.removeprefix("vis_").removesuffix("km") for c in columns]
     inverse = np.array([0.0 if c == "none" else 1 / float(c) for c in km])
     order = np.argsort(inverse)

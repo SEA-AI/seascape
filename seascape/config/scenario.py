@@ -12,7 +12,8 @@ from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.objects import Farm, Object, Ownship, Targets
 from seascape.config.world import Sea, Sky
 from seascape.model import Model
-from seascape.physics import lwir, waves
+from seascape.physics import waves
+from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_SEA_K
 
 type ImageFormat = Literal["exr", "png", "jpg"]
 
@@ -151,9 +152,9 @@ class Scenario(Model):
         if not isinstance(data, dict) or not isinstance(data.get("sea", {}), dict):
             return data
         sea = data.get("sea", {})
-        atmosphere = data.get("sky", {}).get("atmosphere", lwir.ATMOSPHERE)
-        if "t_sea_k" not in sea and atmosphere in lwir.SURFACE_SEA_K:
-            data = {**data, "sea": {**sea, "t_sea_k": lwir.SURFACE_SEA_K[atmosphere]}}
+        atmosphere = data.get("sky", {}).get("atmosphere", ATMOSPHERE)
+        if "t_sea_k" not in sea and atmosphere in SURFACE_SEA_K:
+            data = {**data, "sea": {**sea, "t_sea_k": SURFACE_SEA_K[atmosphere]}}
         return data
 
     @model_validator(mode="after")

@@ -1,6 +1,9 @@
-"""The earth's curve under the sea, and the horizon it makes."""
+"""The earth under the sea: its pull, and its curve to the horizon."""
 
 import math
+
+# Standard gravity is 9.80665 (3rd CGPM, 1901); the wave models quote 9.81.
+GRAVITY_MS2 = 9.81
 
 # Mean radius, IUGG.
 EARTH_RADIUS_M = 6_371_000.0

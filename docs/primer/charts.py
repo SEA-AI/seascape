@@ -22,7 +22,7 @@ from docs.primer.figures import (
     PRIMER,
 )
 from seascape.config import load
-from seascape.physics import earth, lwir
+from seascape.physics import atmosphere, earth, lwir
 
 OUT = HERE / "charts"
 # The crops' scenario, so the rays chart describes the camera that took them.
@@ -61,7 +61,7 @@ def glow(ax: Axes, t: dict) -> None:
         ax.axvspan(low, high, color=t["grid"], zorder=0)
         ax.text(math.sqrt(low * high), 1.12, name, ha="center", color=t["muted"])
     for colour, t_k, name in zip(
-        t["series"], (SUN_K, lwir.T_SEA_K), ("the sun", "the sea"), strict=False
+        t["series"], (SUN_K, atmosphere.T_SEA_K), ("the sun", "the sea"), strict=False
     ):
         b = lwir.planck(lam_um * 1e-6, t_k)
         ax.plot(lam_um, b / b.max(), color=colour, lw=2)

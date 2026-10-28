@@ -14,13 +14,13 @@ from dataclasses import replace
 
 import numpy as np
 
+from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.waves.slopes import cox_munk_variances, drawn_slope_variances
 from seascape.physics.waves.spectrum import (
     CAPILLARY_PEAK_RAD_M,
     CAPILLARY_SPEED_MPS,
     CAPILLARY_WAVELENGTH_M,
     FREQUENCIES,
-    GRAVITY_MS2,
     LOWEST_OF_PEAK,
     Wave,
     curvature_spectrum,

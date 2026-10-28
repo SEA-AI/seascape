@@ -32,7 +32,7 @@ def test_published_values_have_not_drifted() -> None:
     # Elfouhaily et al. 1997: a fully developed sea at 7 m/s peaks at
     # 2 pi U^2 / (g 0.84^2), 44.5 m.
     peak = waves.peak_omega_rad_s(7.0, None)
-    assert 2 * math.pi * waves.GRAVITY_MS2 / peak**2 == pytest.approx(44.5, abs=0.2)
+    assert 2 * math.pi * earth.GRAVITY_MS2 / peak**2 == pytest.approx(44.5, abs=0.2)
 
 
 def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
@@ -144,7 +144,7 @@ def test_a_fully_developed_sea_is_as_high_as_pierson_moskowitz_s(
     # in Elfouhaily et al. 1997 adds some.
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
     wind = waves.wind_at_m(wind_speed_mps, 19.5)
-    assert hs == pytest.approx(0.209 * wind**2 / waves.GRAVITY_MS2, rel=0.12)
+    assert hs == pytest.approx(0.209 * wind**2 / earth.GRAVITY_MS2, rel=0.12)
 
 
 @pytest.mark.parametrize(
@@ -161,7 +161,7 @@ def test_a_sea_short_of_fetch_is_as_high_as_jonswap_measured(
         wind_speed_mps, 0.0, fetch_km * 1e3, lambda p: p, np.random.default_rng(0)
     )
     hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in young))
-    g = waves.GRAVITY_MS2
+    g = earth.GRAVITY_MS2
     x = g * fetch_km * 1e3 / wind_speed_mps**2
     assert hs == pytest.approx(1.6e-3 * math.sqrt(x) * wind_speed_mps**2 / g, rel=0.1)
 
@@ -519,7 +519,7 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
 def test_a_hull_floats_at_the_mean_of_the_water_under_it(length_m: float) -> None:
     """Over a low wave, as linear: a cos(phase) sinc(k L / 2) along it."""
     wave = waves.Wave(
-        1e-3, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi / 60.0), math.radians(30.0), 0.7
+        1e-3, math.sqrt(earth.GRAVITY_MS2 * 2 * math.pi / 60.0), math.radians(30.0), 0.7
     )
     east, north, t_s = 12.0, -7.0, 2.5
     heave = waves.heave_m((wave,), east, north, math.radians(30.0), length_m, 0.0, t_s)
@@ -541,7 +541,7 @@ def test_calm_water_holds_a_hull_level() -> None:
 
 
 def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
-    ripple = waves.Wave(0.05, math.sqrt(waves.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
+    ripple = waves.Wave(0.05, math.sqrt(earth.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
     pitch, roll = waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0)
     own_slope = ripple.amplitude_m * ripple.k_rad_m
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
@@ -593,17 +593,17 @@ def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
     # m4 = int k^4 S dk = int B k dk; the twinkle is its mean omega^2 = g k.
     cutoff = 2 * math.pi / waves.CAPILLARY_WAVELENGTH_M
     k = np.geomspace(
-        waves.peak_omega_rad_s(wind_speed_mps, None) ** 2 / waves.GRAVITY_MS2,
+        waves.peak_omega_rad_s(wind_speed_mps, None) ** 2 / earth.GRAVITY_MS2,
         cutoff,
         100_000,
     )
     sea = field(wind_speed_mps)
     # A light wind's sea is held to Cox & Munk's slope, every wave alike.
-    _, variance = waves._bins(wind_speed_mps, None)
+    _, variance = waves.sea._bins(wind_speed_mps, None)
     held = sum(w.amplitude_m**2 / 2 for w in sea) / variance.sum()
     weight = held * waves.curvature_spectrum(k, wind_speed_mps, None) * k
     m4 = np.trapezoid(weight, k)
-    omega_sq = np.trapezoid(weight * waves.GRAVITY_MS2 * k, k) / m4
+    omega_sq = np.trapezoid(weight * earth.GRAVITY_MS2 * k, k) / m4
     assert waves.specular_cell_m2(sea) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.1)
     assert waves.twinkle_hz(sea) == pytest.approx(
         math.sqrt(omega_sq) / (2 * math.pi), rel=0.1
@@ -688,7 +688,7 @@ def test_no_axis_draws_more_slope_than_cox_and_munk_measured(
 
 def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None:
     """Elfouhaily's height variance is the bins'; the hold only trims a light wind."""
-    _, variance = waves._bins(7.0, None)
+    _, variance = waves.sea._bins(7.0, None)
     built = field(7.0)
     assert sum(w.amplitude_m**2 / 2 for w in built) == pytest.approx(variance.sum())
 
@@ -713,7 +713,7 @@ def test_thinning_foam_keeps_to_its_cell_walls() -> None:
     """The texels left at the lowest share lie nearer a wall than the tile's average:
     aged foam stays a network as it thins."""
     tile = waves.foam_lattice_field(np.random.default_rng(0), 128, 4.0, (0.5,), 0.6)
-    walls = waves._cell_walls(np.random.default_rng(0), 128, 8)
+    walls = waves.foam._cell_walls(np.random.default_rng(0), 128, 8)
     kept = tile > np.quantile(tile, 0.85)
     assert walls[kept].mean() < 0.5 * walls.mean()
 

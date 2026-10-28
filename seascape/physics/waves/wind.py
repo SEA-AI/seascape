@@ -31,7 +31,7 @@ from statistics import NormalDist
 import numpy as np
 
 from seascape.physics.waves.slopes import cox_munk_slope
-from seascape.physics.waves.spectrum import _roughness_m
+from seascape.physics.waves.spectrum import roughness_m
 
 WINDROW_SPACING_S = 4.8
 # Assaf, Gerard & Gordon 1971: finer rows nest between windrows, about an eighth of
@@ -56,7 +56,7 @@ def turbulence_intensity(wind_speed_mps: float) -> float:
     """The wind's standard deviation over its mean, at 10 m."""
     if wind_speed_mps <= 0.0:
         return 0.0
-    return 1.0 / math.log(10.0 / _roughness_m(wind_speed_mps))
+    return 1.0 / math.log(10.0 / roughness_m(wind_speed_mps))
 
 
 def gust_slope_variance(wind_speed_mps: float) -> float:
@@ -94,17 +94,5 @@ def von_karman_field(
     k_sq = k[:, None] ** 2 + k[None, :] ** 2
     white = np.fft.fft2(rng.standard_normal((cells, cells)))
     field = np.fft.ifft2(white * (k0_rad_m**2 + k_sq) ** (-2 / 3)).real
-    field -= field.mean()
-    return field / field.std()
-
-
-def _smooth_field(
-    rng: np.random.Generator, cells: int, sigma_texels: float
-) -> np.ndarray:
-    """A periodic tile, (cells, cells), of white noise blurred by a Gaussian
-    `sigma_texels` wide, zero mean and unit variance."""
-    k = 2 * np.pi * np.fft.fftfreq(cells)
-    blur = np.exp(-(k[:, None] ** 2 + k[None, :] ** 2) * sigma_texels**2 / 2)
-    field = np.fft.ifft2(np.fft.fft2(rng.standard_normal((cells, cells))) * blur).real
     field -= field.mean()
     return field / field.std()
