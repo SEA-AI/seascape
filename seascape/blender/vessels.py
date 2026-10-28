@@ -28,7 +28,7 @@ from seascape.config import (
     Targets,
     substream,
 )
-from seascape.physics import wakes, waves
+from seascape.physics import earth, wakes, waves
 
 
 def heading_rad(anchor: bpy.types.Object) -> float:
@@ -180,7 +180,7 @@ def _pose(
             + along * math.cos(heading)
             - across * math.sin(heading)
         )
-        return east, north, waves.sea_z_m(east, north, radius_m)
+        return east, north, earth.sea_z_m(east, north, radius_m)
 
     place(anchor, *at(0.0))
     animate(anchor, "location", outputs.times_s, at)
@@ -201,7 +201,7 @@ def _orbit(
     def at(t_s: float) -> tuple[float, float, float]:
         bearing = math.radians(bearing_at_deg(t_s))
         east, north = range_m * math.sin(bearing), range_m * math.cos(bearing)
-        return east, north, waves.sea_z_m(east, north, radius_m)
+        return east, north, earth.sea_z_m(east, north, radius_m)
 
     place(anchor, *at(0.0))
     animate(anchor, "location", times_s, at)
