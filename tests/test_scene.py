@@ -2172,3 +2172,22 @@ def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
         fog.diffuse_transmittance(sky.extinction_per_m)
     )
     assert 0.0 < sky.sun_transmittance < 1.0
+
+
+def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
+    path = tmp_path / "white.hdr"
+    image = bpy.data.images.new("white", 64, 32, float_buffer=True)
+    image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+    image.filepath_raw = str(path)
+    image.file_format = "HDR"
+    image.save()
+    sky = variant(sky={"hdri": "overcast_soil", **FOG}).sky
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("seascape.blender.sky.download", lambda *_: path)
+        scene.build(variant(sky={"hdri": "overcast_soil", **FOG}), "ir")
+    top = baked("cloudy_sky_radiance")[-1]
+    cloud = lwir.cloudy_sky_radiance(
+        np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+    )
+    expected = fog.sky_radiance(cloud, np.pi / 2, 0.5, sky.t_air_k, sky.atmosphere)
+    assert top == pytest.approx(float(expected), rel=1e-3)

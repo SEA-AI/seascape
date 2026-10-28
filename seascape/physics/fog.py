@@ -9,6 +9,9 @@ from seascape.physics.atmosphere import ATMOSPHERE, Atmosphere
 
 FloatArray = npt.NDArray[np.float64]
 
+# WMO's fog: a visibility under 1 km (WMO No. 8, 2018).
+VISIBILITY_KM = 1.0
+
 # Typical of water clouds (Kokhanovsky, Earth-Sci. Rev. 64 189, 2004, 3.1.4).
 ASYMMETRY = 0.85
 

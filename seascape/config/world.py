@@ -269,8 +269,7 @@ class Sky(Model):
 
     @property
     def fog(self) -> bool:
-        """WMO's fog: a visibility under 1 km (WMO No. 8, 2018)."""
-        return self.visibility_km is not None and self.visibility_km < 1.0
+        return self.visibility_km is not None and self.visibility_km < fog.VISIBILITY_KM
 
     @property
     def sun_transmittance(self) -> float:
