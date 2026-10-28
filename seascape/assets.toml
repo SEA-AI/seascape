@@ -1759,6 +1759,12 @@ attribution = "IEA-15-240-RWT by IEA Wind TCP Task 37, https://github.com/IEAWin
 node = "iea_15_240_rwt_monopile_rotor"
 # Gaertner et al. 2020, Table 1-1.
 diameter_m = 240.0
+hub_height_m = 150.0
+tip_speed_ratio = 9.0
+min_rpm = 5.0
+rated_rpm = 7.56
+cut_in_mps = 3.0
+cut_out_mps = 25.0
 
 [turbine_15mw_monopile.zones]
 [turbine_15mw_monopile.zones.materials]
@@ -1790,6 +1796,12 @@ attribution = "IEA-15-240-RWT and VolturnUS-S by IEA Wind TCP Task 37, https://g
 node = "iea_15_240_rwt_volturnus_rotor"
 # Gaertner et al. 2020, Table 1-1.
 diameter_m = 240.0
+hub_height_m = 150.0
+tip_speed_ratio = 9.0
+min_rpm = 5.0
+rated_rpm = 7.56
+cut_in_mps = 3.0
+cut_out_mps = 25.0
 
 [turbine_15mw_floating.zones]
 [turbine_15mw_floating.zones.materials]

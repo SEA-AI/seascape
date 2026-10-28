@@ -1,0 +1,19 @@
+#:schema ../schema/scenario.json
+
+# Floating turbines in staggered rows.
+extends = "open-sea.toml"
+
+[sea]
+wind_speed_mps = 9.0
+wind_from_deg = 240.0
+
+[[farms]]
+asset = "turbine_15mw_floating"
+range_m = 3200.0
+bearing_deg = 16.0
+rows = 2
+columns = 3
+spacing_d = [4.5, 6.0]
+row_bearing_deg = 270.0
+staggered = true
+paint_absorptance = 0.14

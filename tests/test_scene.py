@@ -1961,6 +1961,52 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
     )
 
 
+def _rotor_angle(anchor: bpy.types.Object) -> float:
+    """Its turn about the shaft, clockwise seen from upwind."""
+    (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
+    return -rotor.rotation_euler.to_matrix().to_euler("YXZ").y
+
+
+def test_a_rotor_turns_at_its_wind_s_speed_from_an_angle_of_its_own() -> None:
+    fps = 4
+    farm = {"asset": "turbine_15mw_monopile", "range_m": 2000.0, "bearing_deg": 0.0}
+    clip = variant(
+        farms=[farm | {"rows": 1, "columns": 2}],
+        outputs={"duration_s": 1.0, "fps": fps},
+    )
+    rpm = clip.farms[0].rpm(clip.sea)
+
+    built = scene.build(clip, "eo")
+
+    sc = bpy.context.scene
+    first, second = built.targets["turbine_15mw_monopile"]
+    sc.frame_set(0)
+    starts = [_rotor_angle(first), _rotor_angle(second)]
+    sc.frame_set(1)
+    turned = _rotor_angle(first) - starts[0]
+    assert math.remainder(turned, 2 * math.pi) == pytest.approx(
+        rpm * math.pi / 30 / fps
+    )
+    assert math.remainder(starts[0] - starts[1], 2 * math.pi / 3) != pytest.approx(0)
+
+
+def test_a_looping_rotor_s_last_frame_is_one_step_short_of_a_whole_third() -> None:
+    fps = 4
+    farm = {"asset": "turbine_15mw_monopile", "range_m": 2000.0, "bearing_deg": 0.0}
+    clip = variant(farms=[farm], outputs={"duration_s": 4.0, "fps": fps, "loop": True})
+    third_s = clip.outputs.period_s(20.0 / clip.farms[0].rpm(clip.sea))
+
+    built = scene.build(clip, "eo")
+
+    sc = bpy.context.scene
+    (anchor,) = built.targets["turbine_15mw_monopile"]
+    sc.frame_set(0)
+    start = _rotor_angle(anchor)
+    sc.frame_set(sc.frame_end)
+    seam = math.remainder(start - _rotor_angle(anchor), 2 * math.pi / 3)
+    assert seam == pytest.approx(2 * math.pi / (3 * third_s * fps))
+
+
 def test_a_target_inside_the_ownship_is_refused() -> None:
     aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "cargo_ship"})
 

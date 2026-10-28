@@ -133,7 +133,7 @@ uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "mul
 
 ## Wind turbines
 
-`[[farms]]` stands turbines in rows, spaced in rotor diameters; one row of one is a lone turbine. Each faces `sea.wind_from_deg`.
+`[[farms]]` stands turbines in rows, spaced in rotor diameters; one row of one is a lone turbine. Each faces `sea.wind_from_deg`. Its rotor turns clockwise seen from upwind, holding its tip-speed ratio in its hub's wind, between minimum and rated speed. Below cut-in and above cut-out it parks. Each rotor starts at an angle of its own.
 
 ```toml
 [[farms]]
@@ -147,7 +147,7 @@ row_bearing_deg = 270.0
 staggered = false      # true shifts every other row half a spacing
 ```
 
-A floating turbine stands as still as one on a monopile.
+`scenarios/turbine.toml`, `scenarios/wind-farm.toml` and `scenarios/floating-farm.toml` show one turbine, a grid and a staggered floating farm. A floating turbine stands as still as one on a monopile.
 
 ## Sequences
 

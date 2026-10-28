@@ -1,0 +1,18 @@
+#:schema ../schema/scenario.json
+
+# One turbine on its monopile, its rotor at rated speed.
+extends = "open-sea.toml"
+
+[sea]
+wind_speed_mps = 9.0
+wind_from_deg = 300.0
+
+[[farms]]
+asset = "turbine_15mw_monopile"
+range_m = 1500.0
+bearing_deg = 5.0
+paint_absorptance = 0.14
+
+[outputs]
+duration_s = 4.0
+fps = 5
