@@ -18,13 +18,13 @@ import bpy
 import cv2
 import numpy as np
 from mathutils import Vector
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from seascape.assets import manifest
 from seascape.blender import blend, faces
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import _corners, _import, _meshes
-from seascape.outputs.montage import INK, MATTE
+from seascape.outputs.montage import INK, MATTE, font
 from seascape.physics.thermal import ZoneName
 
 
@@ -227,10 +227,6 @@ def _on_backdrop(image: Image.Image) -> Image.Image:
     return Image.alpha_composite(backdrop, image.convert("RGBA")).convert("RGB")
 
 
-def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    return ImageFont.load_default(size=size)
-
-
 def palette(n: int) -> np.ndarray:
     """`n` colours apart from their neighbours: golden-ratio hues, three values."""
     hues = (np.arange(n) * 0.618034) % 1.0
@@ -268,8 +264,8 @@ def _mark(
     edge: tuple[int, ...],
     taken: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
-    font = _font(15)
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    typeface = font(15)
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=typeface)
     w, h = right - left + 8, bottom - top + 6
     box = (xy[0] - w / 2, xy[1] - h / 2, xy[0] + w / 2, xy[1] + h / 2)
     if taken is not None:
@@ -280,7 +276,7 @@ def _mark(
             return
         taken.append(box)
     draw.rectangle(box, fill=(0, 0, 0), outline=tuple(edge), width=2)
-    draw.text((box[0] + 4 - left, box[1] + 3 - top), text, font=font, fill=INK)
+    draw.text((box[0] + 4 - left, box[1] + 3 - top), text, font=typeface, fill=INK)
 
 
 def _grid(tiles: list[tuple[Image.Image, str]], title: list[str]) -> Image.Image:
@@ -292,12 +288,12 @@ def _grid(tiles: list[tuple[Image.Image, str]], title: list[str]) -> Image.Image
     )
     draw = ImageDraw.Draw(sheet)
     for k, line in enumerate(title[:2]):
-        draw.text((8, 4 + 22 * k), line, font=_font(18 if k == 0 else 14), fill=INK)
+        draw.text((8, 4 + 22 * k), line, font=font(18 if k == 0 else 14), fill=INK)
     for k, (tile, caption) in enumerate(tiles):
         x = (k % COLUMNS) * TILE[0]
         y = TITLE_H + (k // COLUMNS) * (TILE[1] + CAPTION_H)
         sheet.paste(tile, (x, y))
-        draw.text((x + 6, y + TILE[1] + 3), caption, font=_font(14), fill=INK)
+        draw.text((x + 6, y + TILE[1] + 3), caption, font=font(14), fill=INK)
     return sheet
 
 
@@ -388,7 +384,7 @@ def legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Im
     for k, (label, name) in enumerate(zip(labels, names, strict=True)):
         x, y = (k // rows) * width + 8, 4 + (k % rows) * line
         draw.rectangle((x, y + 2, x + 14, y + 16), fill=tuple(colours[k]))
-        draw.text((x + 20, y), f"{label}  {name}"[:52], font=_font(14), fill=INK)
+        draw.text((x + 20, y), f"{label}  {name}"[:52], font=font(14), fill=INK)
     return image
 
 

@@ -20,8 +20,8 @@ MATTE = (24, 24, 24)
 INK = (232, 232, 232)
 
 
-def _font() -> FreeTypeFont | ImageFont.ImageFont:
-    return ImageFont.load_default(size=16)
+def font(size: int = 16) -> FreeTypeFont | ImageFont.ImageFont:
+    return ImageFont.load_default(size=size)
 
 
 def _tile(
@@ -52,7 +52,7 @@ def _tile(
 
 def compose(scenario: Scenario, into: Path) -> Path:
     """Write `montage.png` beside the frames in `into`, one row per band."""
-    font = _font()
+    typeface = font()
     rows: list[list[Image.Image]] = []
     for band in scenario.outputs.bands:
         tiles = []
@@ -63,7 +63,7 @@ def compose(scenario: Scenario, into: Path) -> Path:
             frame = into / f"{mount.name}.{scenario.outputs.format}"
             if scenario.outputs.format == "exr" or not frame.exists():
                 raise FileNotFoundError(f"{frame}: render it, as png or jpg")
-            tiles.append(_tile(frame, font, mount.name, mount.camera.agc))
+            tiles.append(_tile(frame, typeface, mount.name, mount.camera.agc))
         if tiles:
             rows.append(tiles)
     if not rows:
