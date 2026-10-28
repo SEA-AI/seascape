@@ -97,7 +97,8 @@ def build(
     # Deferred: `schema` and a failed validation should not wait for bpy to load.
     import bpy
 
-    from seascape import scene, sea
+    from seascape import scene
+    from seascape.blender import sea
 
     path = output or scenario.with_suffix(f".{band}.blend")
     with _blender_log(path.with_suffix(".log")):

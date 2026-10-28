@@ -9,7 +9,7 @@ import math
 import bpy
 import numpy as np
 
-from seascape import sea
+from seascape.blend import _math, _vector
 from seascape.config import Camera
 from seascape.physics import colour
 
@@ -51,8 +51,8 @@ def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
     tree.links.new(image, node.inputs["Image"])
     # An operation takes its first input's domain: the image's own, not the shifted
     # one, whose first row or column would otherwise copy its neighbour.
-    return sea._vector(
-        tree, "ADD", sea._vector(tree, "SCALE", image, 0.0), node.outputs["Image"]
+    return _vector(
+        tree, "ADD", _vector(tree, "SCALE", image, 0.0), node.outputs["Image"]
     )
 
 
@@ -72,28 +72,26 @@ def _channels(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, ...]:
 def _bilinear(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     """Bilinear interpolation's kernels with the centre at 1: red and blue through
     [1 2 1] / 2 across and down, green through its four neighbours at a quarter."""
-    across = sea._vector(
-        tree, "ADD", _shift(tree, image, 1, 0), _shift(tree, image, -1, 0)
-    )
-    rows = sea._vector(tree, "MULTIPLY_ADD", across, (0.5, 0.5, 0.5), image)
-    filled = sea._vector(
+    across = _vector(tree, "ADD", _shift(tree, image, 1, 0), _shift(tree, image, -1, 0))
+    rows = _vector(tree, "MULTIPLY_ADD", across, (0.5, 0.5, 0.5), image)
+    filled = _vector(
         tree,
         "MULTIPLY_ADD",
-        sea._vector(tree, "ADD", _shift(tree, rows, 0, 1), _shift(tree, rows, 0, -1)),
+        _vector(tree, "ADD", _shift(tree, rows, 0, 1), _shift(tree, rows, 0, -1)),
         (0.5, 0.5, 0.5),
         rows,
     )
-    cross = sea._vector(
+    cross = _vector(
         tree,
         "ADD",
         across,
-        sea._vector(tree, "ADD", _shift(tree, image, 0, 1), _shift(tree, image, 0, -1)),
+        _vector(tree, "ADD", _shift(tree, image, 0, 1), _shift(tree, image, 0, -1)),
     )
     _, centre_g, _ = _channels(tree, image)
     _, cross_g, _ = _channels(tree, cross)
     fill_r, _, fill_b = _channels(tree, filled)
     return _rgb(
-        tree, fill_r, sea._math(tree, "MULTIPLY_ADD", cross_g, 0.25, centre_g), fill_b
+        tree, fill_r, _math(tree, "MULTIPLY_ADD", cross_g, 0.25, centre_g), fill_b
     )
 
 
@@ -101,11 +99,9 @@ def _electrons(
     tree: bpy.types.NodeTree, x: Socket, shot: Socket, well: Socket, noise: Socket
 ) -> Socket:
     """What a well collects of a mean `x`, with shot noise, up to `well`."""
-    lit = sea._math(tree, "MINIMUM", sea._math(tree, "MAXIMUM", x, 0.0), well)
-    spread = sea._math(tree, "SQRT", sea._math(tree, "MULTIPLY", lit, shot))
-    return sea._math(
-        tree, "MINIMUM", sea._math(tree, "MULTIPLY_ADD", spread, noise, x), well
-    )
+    lit = _math(tree, "MINIMUM", _math(tree, "MAXIMUM", x, 0.0), well)
+    spread = _math(tree, "SQRT", _math(tree, "MULTIPLY", lit, shot))
+    return _math(tree, "MINIMUM", _math(tree, "MULTIPLY_ADD", spread, noise, x), well)
 
 
 def _read(
@@ -123,12 +119,12 @@ def _read(
     noise of standard deviation `dark`."""
     shot_noise, dark_noise = _gaussian(tree, seeded, w)
     collected = _electrons(tree, x, shot, well, shot_noise)
-    noisy = sea._math(tree, "MULTIPLY_ADD", dark, dark_noise, collected)
-    counts = sea._math(tree, "ROUND", sea._math(tree, "MULTIPLY", noisy, levels))
-    return sea._math(
+    noisy = _math(tree, "MULTIPLY_ADD", dark, dark_noise, collected)
+    counts = _math(tree, "ROUND", _math(tree, "MULTIPLY", noisy, levels))
+    return _math(
         tree,
         "MINIMUM",
-        sea._math(tree, "MAXIMUM", sea._math(tree, "DIVIDE", counts, levels), 0.0),
+        _math(tree, "MAXIMUM", _math(tree, "DIVIDE", counts, levels), 0.0),
         1.0,
     )
 
@@ -147,51 +143,47 @@ def _merge(
     a long read within three times a saturated read's spread of white, here at most
     the dark noise, counts as saturated and is left out. The ADC's rounding,
     (1 / levels)^2 / 12, keeps a noiseless read finite."""
-    rounding = sea._math(
-        tree, "DIVIDE", 1.0 / 12, sea._math(tree, "MULTIPLY", levels, levels)
-    )
-    floor = sea._math(tree, "ADD", dark_variance, rounding)
-    unsaturated = sea._math(
+    rounding = _math(tree, "DIVIDE", 1.0 / 12, _math(tree, "MULTIPLY", levels, levels))
+    floor = _math(tree, "ADD", dark_variance, rounding)
+    unsaturated = _math(
         tree,
         "LESS_THAN",
         long,
-        sea._math(
-            tree, "MULTIPLY_ADD", sea._math(tree, "SQRT", dark_variance), -3.0, 1.0
-        ),
+        _math(tree, "MULTIPLY_ADD", _math(tree, "SQRT", dark_variance), -3.0, 1.0),
     )
-    long_weight = sea._math(
+    long_weight = _math(
         tree,
         "DIVIDE",
         unsaturated,
-        sea._math(tree, "MULTIPLY_ADD", long, shot, floor),
+        _math(tree, "MULTIPLY_ADD", long, shot, floor),
     )
-    short_weight = sea._math(
+    short_weight = _math(
         tree,
         "DIVIDE",
         1.0,
-        sea._math(
+        _math(
             tree,
             "MULTIPLY",
-            sea._math(tree, "MULTIPLY_ADD", short, shot, floor),
-            sea._math(tree, "MULTIPLY", ratio, ratio),
+            _math(tree, "MULTIPLY_ADD", short, shot, floor),
+            _math(tree, "MULTIPLY", ratio, ratio),
         ),
     )
-    return sea._math(
+    return _math(
         tree,
         "DIVIDE",
-        sea._math(
+        _math(
             tree,
             "MULTIPLY_ADD",
             long_weight,
             long,
-            sea._math(
+            _math(
                 tree,
                 "MULTIPLY",
                 short_weight,
-                sea._math(tree, "MULTIPLY", short, ratio),
+                _math(tree, "MULTIPLY", short, ratio),
             ),
         ),
-        sea._math(tree, "ADD", long_weight, short_weight),
+        _math(tree, "ADD", long_weight, short_weight),
     )
 
 
@@ -205,25 +197,23 @@ def _gaussian(
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
         noise.noise_dimensions = "4D"
         tree.links.new(pixel, noise.inputs["Vector"])
-        tree.links.new(sea._math(tree, "ADD", w, offset), noise.inputs["W"])
+        tree.links.new(_math(tree, "ADD", w, offset), noise.inputs["W"])
         uniforms.append(noise.outputs["Value"])
     # 1 - u is in (0, 1], and Blender's log of 0 is 0.
-    radius = sea._math(
+    radius = _math(
         tree,
         "SQRT",
-        sea._math(
+        _math(
             tree,
             "MULTIPLY",
-            sea._math(
-                tree, "LOGARITHM", sea._math(tree, "SUBTRACT", 1.0, uniforms[0]), math.e
-            ),
+            _math(tree, "LOGARITHM", _math(tree, "SUBTRACT", 1.0, uniforms[0]), math.e),
             -2.0,
         ),
     )
-    angle = sea._math(tree, "MULTIPLY", uniforms[1], 2 * math.pi)
+    angle = _math(tree, "MULTIPLY", uniforms[1], 2 * math.pi)
     return (
-        sea._math(tree, "MULTIPLY", radius, sea._math(tree, "COSINE", angle)),
-        sea._math(tree, "MULTIPLY", radius, sea._math(tree, "SINE", angle)),
+        _math(tree, "MULTIPLY", radius, _math(tree, "COSINE", angle)),
+        _math(tree, "MULTIPLY", radius, _math(tree, "SINE", angle)),
     )
 
 
@@ -236,17 +226,17 @@ def chain(
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
     # RGGB from the bottom-left pixel; no phase changes a statistic.
-    odd_x = sea._math(tree, "FLOORED_MODULO", xy.outputs["X"], 2.0)
-    odd_y = sea._math(tree, "FLOORED_MODULO", xy.outputs["Y"], 2.0)
-    blue = sea._math(tree, "MULTIPLY", odd_x, odd_y)
-    red = sea._math(
+    odd_x = _math(tree, "FLOORED_MODULO", xy.outputs["X"], 2.0)
+    odd_y = _math(tree, "FLOORED_MODULO", xy.outputs["Y"], 2.0)
+    blue = _math(tree, "MULTIPLY", odd_x, odd_y)
+    red = _math(
         tree,
         "MULTIPLY",
-        sea._math(tree, "SUBTRACT", 1.0, odd_x),
-        sea._math(tree, "SUBTRACT", 1.0, odd_y),
+        _math(tree, "SUBTRACT", 1.0, odd_x),
+        _math(tree, "SUBTRACT", 1.0, odd_y),
     )
-    green = sea._math(tree, "SUBTRACT", 1.0, sea._math(tree, "ADD", red, blue))
-    seeded = sea._vector(
+    green = _math(tree, "SUBTRACT", 1.0, _math(tree, "ADD", red, blue))
+    seeded = _vector(
         tree, "ADD", pixel, _combine(tree, 0.0, 0.0, _value(tree, "sensor.seed"))
     )
     frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
@@ -257,16 +247,16 @@ def chain(
     for index, x in enumerate(_channels(tree, image)):
         # An average of n sites divides the variances by n.
         sites = _value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
-        shot_c = sea._math(tree, "DIVIDE", shot, sites)
-        dark_c = sea._math(tree, "DIVIDE", dark, sites)
-        noise = (seeded, shot_c, well, sea._math(tree, "SQRT", dark_c), levels)
+        shot_c = _math(tree, "DIVIDE", shot, sites)
+        dark_c = _math(tree, "DIVIDE", dark, sites)
+        noise = (seeded, shot_c, well, _math(tree, "SQRT", dark_c), levels)
         # Two normals per colour, exposure and frame: W at 8f + 2i + e and + 0.5.
-        w = sea._math(tree, "MULTIPLY_ADD", frame, 8.0, 2.0 * index)
+        w = _math(tree, "MULTIPLY_ADD", frame, 8.0, 2.0 * index)
         long = _read(tree, x, w, *noise)
         short = _read(
             tree,
-            sea._math(tree, "DIVIDE", x, ratio),
-            sea._math(tree, "ADD", w, 1.0),
+            _math(tree, "DIVIDE", x, ratio),
+            _math(tree, "ADD", w, 1.0),
             *noise,
         )
         longs.append(long)
@@ -277,10 +267,8 @@ def chain(
     # averages only the neighbours it has. A finer one, demosaiced and scaled down
     # by the ISP, reads each colour averaged over its sites.
     masks = _rgb(tree, red, green, blue)
-    sites = sea._vector(tree, "MULTIPLY", masks, raw)
-    demosaiced = sea._vector(
-        tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks)
-    )
+    sites = _vector(tree, "MULTIPLY", masks, raw)
+    demosaiced = _vector(tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks))
     demosaiced = _switch(tree, "sensor.mosaic", raw, demosaiced)
     gains = _combine(
         tree,
@@ -288,7 +276,7 @@ def chain(
         _value(tree, "sensor.wb_g", 1.0),
         _value(tree, "sensor.wb_b", 1.0),
     )
-    balanced = sea._vector(tree, "MULTIPLY", demosaiced, gains)
+    balanced = _vector(tree, "MULTIPLY", demosaiced, gains)
     balanced = _switch(
         tree, "sensor.tone", _clip(tree, balanced), _reinhard(tree, balanced, grey)
     )
@@ -297,12 +285,12 @@ def chain(
     blur.inputs["Type"].default_value = "Gaussian"
     blur.inputs["Size"].default_value = (1.0, 1.0)
     tree.links.new(balanced, blur.inputs["Image"])
-    detail = sea._vector(tree, "SUBTRACT", balanced, blur.outputs["Image"])
-    sharpened = sea._vector(
+    detail = _vector(tree, "SUBTRACT", balanced, blur.outputs["Image"])
+    sharpened = _vector(
         tree,
         "ADD",
         balanced,
-        sea._vector(tree, "SCALE", detail, _value(tree, "sensor.sharpen")),
+        _vector(tree, "SCALE", detail, _value(tree, "sensor.sharpen")),
     )
     return _clip(tree, sharpened)
 
@@ -312,21 +300,19 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
     a bright colour."""
     # IEC 61966-2-1: the luminance of linear sRGB.
-    luminance = sea._vector(tree, "DOT_PRODUCT", image, (0.2126, 0.7152, 0.0722))
+    luminance = _vector(tree, "DOT_PRODUCT", image, (0.2126, 0.7152, 0.0722))
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
-    lit = sea._math(tree, "MAXIMUM", luminance, 1e-6)
+    lit = _math(tree, "MAXIMUM", luminance, 1e-6)
     levels = tree.nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
-    tree.links.new(sea._math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
-    log_average = sea._math(tree, "EXPONENT", levels.outputs["Mean"])
+    tree.links.new(_math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
+    log_average = _math(tree, "EXPONENT", levels.outputs["Mean"])
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
-    grey = sea._math(tree, "MINIMUM", grey, 0.99)
-    key = sea._math(tree, "DIVIDE", grey, sea._math(tree, "SUBTRACT", 1.0, grey))
-    scaled = sea._math(
-        tree, "MULTIPLY", lit, sea._math(tree, "DIVIDE", key, log_average)
-    )
-    mapped = sea._math(tree, "DIVIDE", scaled, sea._math(tree, "ADD", scaled, 1.0))
-    return sea._vector(tree, "SCALE", image, sea._math(tree, "DIVIDE", mapped, lit))
+    grey = _math(tree, "MINIMUM", grey, 0.99)
+    key = _math(tree, "DIVIDE", grey, _math(tree, "SUBTRACT", 1.0, grey))
+    scaled = _math(tree, "MULTIPLY", lit, _math(tree, "DIVIDE", key, log_average))
+    mapped = _math(tree, "DIVIDE", scaled, _math(tree, "ADD", scaled, 1.0))
+    return _vector(tree, "SCALE", image, _math(tree, "DIVIDE", mapped, lit))
 
 
 def _combine(tree: bpy.types.NodeTree, *xyz: Socket | float) -> Socket:
@@ -340,10 +326,10 @@ def _combine(tree: bpy.types.NodeTree, *xyz: Socket | float) -> Socket:
 
 
 def _clip(tree: bpy.types.NodeTree, image: Socket) -> Socket:
-    return sea._vector(
+    return _vector(
         tree,
         "MINIMUM",
-        sea._vector(tree, "MAXIMUM", image, (0.0, 0.0, 0.0)),
+        _vector(tree, "MAXIMUM", image, (0.0, 0.0, 0.0)),
         (1.0, 1.0, 1.0),
     )
 

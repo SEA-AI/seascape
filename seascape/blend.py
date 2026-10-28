@@ -104,3 +104,50 @@ def lookup(
         tree.links.new(y, coords.inputs["Y"])
     tree.links.new(coords.outputs["Vector"], texture.inputs["Vector"])
     return texture.outputs["Color"]
+
+
+def _vector(
+    tree: bpy.types.NodeTree,
+    operation: str,
+    *inputs: bpy.types.NodeSocket | float,
+    name: str | None = None,
+) -> bpy.types.NodeSocket:
+    node = tree.nodes.new("ShaderNodeVectorMath")
+    node.operation = operation
+    if name:
+        node.name = name
+    sockets = list(node.inputs)
+    if operation == "SCALE":
+        sockets = [node.inputs["Vector"], node.inputs["Scale"]]
+    for socket, value in zip(sockets, inputs, strict=False):
+        if isinstance(value, bpy.types.NodeSocket):
+            tree.links.new(value, socket)
+        else:
+            socket.default_value = value
+    scalar = operation in {"DOT_PRODUCT", "LENGTH", "DISTANCE"}
+    return node.outputs["Value" if scalar else "Vector"]
+
+
+def _math(
+    tree: bpy.types.NodeTree,
+    operation: str,
+    *inputs: float | bpy.types.NodeSocket,
+    name: str | None = None,
+) -> bpy.types.NodeSocket:
+    """A Math node. Unset inputs read 0.5."""
+    node = tree.nodes.new("ShaderNodeMath")
+    node.operation = operation
+    if name:
+        node.name = name
+    for socket, value in zip(node.inputs, inputs, strict=False):
+        if isinstance(value, bpy.types.NodeSocket):
+            tree.links.new(value, socket)
+        else:
+            socket.default_value = value
+    return node.outputs["Value"]
+
+
+def _clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+    out = _math(tree, "MAXIMUM", x, 0.0)
+    out.node.use_clamp = True
+    return out

@@ -20,8 +20,9 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, microbolometer, scene, sea
+from seascape import agc, labels, microbolometer, scene
 from seascape.assets import manifest
+from seascape.blender import sea
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import Camera, ImageFormat, Scenario, substream
 from seascape.physics import waves
