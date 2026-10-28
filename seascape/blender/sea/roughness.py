@@ -12,8 +12,8 @@ from seascape.blender.blend import (
 from seascape.blender.sea.pixel import _at_footprint, _footprint_table, _Pixel
 from seascape.blender.sea.wind import _gusty
 from seascape.config import Sea
+from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.waves import (
-    GRAVITY_MS2,
     Wave,
     cox_munk_slick_variances,
     cox_munk_variances,

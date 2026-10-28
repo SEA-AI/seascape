@@ -35,7 +35,7 @@ it.
 import math
 from dataclasses import dataclass
 
-from seascape.physics.waves import GRAVITY_MS2
+from seascape.physics.earth import GRAVITY_MS2
 
 # DLMF 36.13.
 KELVIN_HALF_ANGLE_RAD = math.asin(1 / 3)

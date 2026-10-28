@@ -14,7 +14,7 @@ import numpy as np
 from seascape.physics.waves.spectrum import Wave
 
 
-def _phase(
+def phases(
     field: tuple[Wave, ...],
     east_m: np.ndarray,
     north_m: np.ndarray,
@@ -35,7 +35,7 @@ def height_m(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> np.ndarray:
     amplitude = np.array([w.amplitude_m for w in field])
-    phase = _phase(field, np.asarray(east_m), np.asarray(north_m), t_s)
+    phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     return np.tensordot(amplitude, np.cos(phase), axes=1)
 
 
@@ -43,7 +43,7 @@ def slope(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> tuple[np.ndarray, np.ndarray]:
     """d height / d east and d height / d north."""
-    sine = np.sin(_phase(field, np.asarray(east_m), np.asarray(north_m), t_s))
+    sine = np.sin(phases(field, np.asarray(east_m), np.asarray(north_m), t_s))
     a_east = np.array([-w.amplitude_m * w.k_east_rad_m for w in field])
     a_north = np.array([-w.amplitude_m * w.k_north_rad_m for w in field])
     return np.tensordot(a_east, sine, axes=1), np.tensordot(a_north, sine, axes=1)
@@ -55,7 +55,7 @@ def gerstner_offset_m(
     """(east, north, up) that `field`'s Gerstner surface moves the water at rest at
     (`east_m`, `north_m`): up a cos(phase), and -k_hat a sin(phase) along the sea
     (Tessendorf, "Simulating ocean water", SIGGRAPH 2001 course, eq. 29, lambda 1)."""
-    phase = _phase(field, np.asarray(east_m), np.asarray(north_m), t_s)
+    phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
     along_east = np.array([-w.amplitude_m * w.k_east_rad_m / w.k_rad_m for w in field])
     along_north = np.array(
@@ -90,7 +90,7 @@ def gerstner_normal(
     """The unit normal of `field`'s Gerstner surface at the water at rest at
     (`east_m`, `north_m`): the cross product of the surface's derivatives along east
     and north at rest."""
-    phase = _phase(field, np.asarray(east_m), np.asarray(north_m), t_s)
+    phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
 
     def summed(of: Callable[[Wave], float], wave: np.ndarray) -> np.ndarray:
@@ -124,7 +124,7 @@ def _gerstner_height_m(
     k_north = np.array([w.k_north_rad_m for w in field])
     along = np.array([w.amplitude_m / w.k_rad_m for w in field])
     for _ in range(50):
-        phase = _phase(field, rest_east, rest_north, t_s)
+        phase = phases(field, rest_east, rest_north, t_s)
         sine, cosine = np.sin(phase), np.cos(phase)
         miss_east = rest_east - np.tensordot(along * k_east, sine, 1) - east_m
         miss_north = rest_north - np.tensordot(along * k_north, sine, 1) - north_m
@@ -235,7 +235,7 @@ def attitude(
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
-    at = _phase(field, np.array(east_m), np.array(north_m), t_s)
+    at = phases(field, np.array(east_m), np.array(north_m), t_s)
     amplitude = np.array([w.amplitude_m for w in field])
     # 1, x, y are orthogonal over a hull centred here, so each wave's slope separates.
     rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
@@ -266,7 +266,7 @@ def heave_m(
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
     rest = gerstner_rest_m(field, np.array(east_m), np.array(north_m), t_s)
-    at = _phase(field, *rest, t_s)
+    at = phases(field, *rest, t_s)
     amplitude = np.array([w.amplitude_m for w in field])
     under = amplitude * np.cos(at) * np.sinc(u / math.pi) * np.sinc(v / math.pi)
     return float(under.sum())

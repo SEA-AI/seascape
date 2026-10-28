@@ -29,12 +29,11 @@ from statistics import NormalDist
 
 import numpy as np
 
-from seascape.physics.waves.slopes import _lattice, slope_variance
+from seascape.physics.waves.slopes import lattice, slope_variance
 from seascape.physics.waves.spectrum import Wave
-from seascape.physics.waves.surface import _phase, tallest
+from seascape.physics.waves.surface import phases, tallest
 from seascape.physics.waves.wind import (
     SLICK_DRIFT,
-    _smooth_field,
     gaussian_ranks,
     von_karman_field,
 )
@@ -83,6 +82,18 @@ FOAM_REFERENCE_SAMPLES = 8192
 # Monahan & O'Muircheartaigh 1980, robust biweight fit, U at 10 m.
 WHITECAP_COEFFICIENT = 3.84e-6
 WHITECAP_EXPONENT = 3.41
+
+
+def _smooth_field(
+    rng: np.random.Generator, cells: int, sigma_texels: float
+) -> np.ndarray:
+    """A periodic tile, (cells, cells), of white noise blurred by a Gaussian
+    `sigma_texels` wide, zero mean and unit variance."""
+    k = 2 * np.pi * np.fft.fftfreq(cells)
+    blur = np.exp(-(k[:, None] ** 2 + k[None, :] ** 2) * sigma_texels**2 / 2)
+    field = np.fft.ifft2(np.fft.fft2(rng.standard_normal((cells, cells))) * blur).real
+    field -= field.mean()
+    return field / field.std()
 
 
 def _cell_walls(rng: np.random.Generator, cells: int, period: int) -> np.ndarray:
@@ -282,8 +293,8 @@ def _reference_accelerations(
     seconds before each step."""
     longest_m = max(2 * math.pi / w.k_rad_m for w in use)
     slowest_s = max(2 * math.pi / w.omega_rad_s for w in use)
-    x, y, t = (SAMPLE_SPAN * _lattice(FOAM_REFERENCE_SAMPLES)).T
-    phase = _phase(use, x * longest_m, y * longest_m, t * slowest_s)
+    x, y, t = (SAMPLE_SPAN * lattice(FOAM_REFERENCE_SAMPLES)).T
+    phase = phases(use, x * longest_m, y * longest_m, t * slowest_s)
     amplitude = np.array([w.amplitude_m * w.k_rad_m for w in use])
     state = (amplitude[:, None] * np.exp(1j * phase)).astype(np.complex64)
     rate = _drifting_rad_s(use, drift_mps)[:, None]

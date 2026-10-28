@@ -51,7 +51,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import earth, lwir, thermal, waves
+from seascape.physics import atmosphere, earth, lwir, thermal, waves
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
@@ -843,9 +843,9 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     data["sky"]["atmosphere"] = "tropical"
     data["objects"] = []
     tropical = Scenario.model_validate(data)
-    assert tropical.sea.t_sea_k == lwir.SURFACE_SEA_K["tropical"]
-    assert tropical.sky.atmosphere != lwir.ATMOSPHERE
-    assert tropical.sky.t_air_k == lwir.SURFACE_AIR_K["tropical"]
+    assert tropical.sea.t_sea_k == atmosphere.SURFACE_SEA_K["tropical"]
+    assert tropical.sky.atmosphere != atmosphere.ATMOSPHERE
+    assert tropical.sky.t_air_k == atmosphere.SURFACE_AIR_K["tropical"]
     scene.build(tropical, "ir")
     sky = tropical.sky
     centres = (np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES
@@ -1845,7 +1845,9 @@ def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
     radiance = np.tile(clear[:, None], (1, CLOUD_BEARINGS))
     radiance[:, :half] = lwir.cloudy_sky_radiance(elevation, 1.0, 500.0)[:, None]
     slope_max = 0.3
-    image = _cloud_image(lwir.T_SEA_K, sea.Clouds(elevation, radiance, 0.0), slope_max)
+    image = _cloud_image(
+        atmosphere.T_SEA_K, sea.Clouds(elevation, radiance, 0.0), slope_max
+    )
     width, height = image.size
     pixels = np.empty(width * height * 4, np.float32)
     image.pixels.foreach_get(pixels)
@@ -2065,7 +2067,7 @@ def test_the_shortest_breaker_a_foam_grid_draws_cannot_follow_a_gust(
     omega, takes longer than a gust, its integral scale over the wind, lasts."""
     shortest_m = waves.FOAM_CELLS_PER_WAVE * scene.FOAM_NEAR_CELL_M
     k = 2 * math.pi / shortest_m
-    omega = math.sqrt(waves.GRAVITY_MS2 * k)
+    omega = math.sqrt(earth.GRAVITY_MS2 * k)
     growth_s = 1 / (
         0.04 * (waves.friction_velocity_mps(speed) * k / omega) ** 2 * omega
     )

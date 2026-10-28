@@ -34,9 +34,9 @@ from functools import cache
 
 import numpy as np
 
+from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.waves.spectrum import (
     CAPILLARY_PEAK_RAD_M,
-    GRAVITY_MS2,
     LOWEST_OF_PEAK,
     Wave,
     curvature_spectrum,
@@ -106,7 +106,7 @@ def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
 
 
 @cache
-def _lattice(count: int) -> np.ndarray:
+def lattice(count: int) -> np.ndarray:
     """(x, y, t) in [0, 1)^3 by Roberts' additive recurrence on the root of
     x^4 = x + 1 (Roberts 2018, "The unreasonable effectiveness of quasirandom
     sequences"): evenly spread, without a generator."""
@@ -206,7 +206,7 @@ def _mss_spread_at(
     if left.sum() <= 0.0:
         return 0.0
     cdf = np.cumsum(left.ravel()) / left.sum()
-    picks = np.searchsorted(cdf, _lattice(SPREAD_DRAWS)[:, :2], side="right")
+    picks = np.searchsorted(cdf, lattice(SPREAD_DRAWS)[:, :2], side="right")
     picks = np.minimum(picks, cdf.size - 1)
     wavenumber = k[picks // SPREAD_HEADINGS]
     angle = heading[picks % SPREAD_HEADINGS]

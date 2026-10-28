@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-GRAVITY_MS2 = 9.81
+from seascape.physics.earth import GRAVITY_MS2
 
 # Elfouhaily et al. 1997: eq. 37 (0.84, X0), eq. 3's range (5), section 5.2.2 (k_m),
 # eq. 43 (c_m).
@@ -66,7 +66,7 @@ class Wave:
         return self.k_rad_m * math.cos(self.toward_rad)
 
 
-def _roughness_m(wind_speed_mps: float) -> float:
+def roughness_m(wind_speed_mps: float) -> float:
     """Charnock's z0 = A u*^2 / g, with u* = kappa U10 / ln(10 / z0), to a fixed
     point."""
     z0_m = 1e-4
@@ -80,13 +80,13 @@ def wind_at_m(wind_speed_mps: float, height_m: float) -> float:
     """The wind at `height_m` for `wind_speed_mps` at 10 m, over a neutral sea."""
     if wind_speed_mps <= 0.0:
         return 0.0
-    z0_m = _roughness_m(wind_speed_mps)
+    z0_m = roughness_m(wind_speed_mps)
     return wind_speed_mps * math.log(height_m / z0_m) / math.log(10.0 / z0_m)
 
 
 def friction_velocity_mps(wind_speed_mps: float) -> float:
     """u* of DNV's log profile, not Elfouhaily's own."""
-    return VON_KARMAN * wind_speed_mps / math.log(10.0 / _roughness_m(wind_speed_mps))
+    return VON_KARMAN * wind_speed_mps / math.log(10.0 / roughness_m(wind_speed_mps))
 
 
 def inverse_wave_age(wind_speed_mps: float, fetch_m: float | None) -> float:

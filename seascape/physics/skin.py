@@ -19,7 +19,7 @@ import math
 
 import numpy as np
 
-from seascape.physics.waves import GRAVITY_MS2
+from seascape.physics.earth import GRAVITY_MS2
 
 # Fairall et al. 1996, abstract: the mean cool skin at local noon and at night. It
 # depends on the net heat flux and the wind (their Figure 2), which a scenario does not

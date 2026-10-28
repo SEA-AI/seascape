@@ -6,7 +6,7 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from seascape.physics import lwir
+from seascape.physics import atmosphere, lwir
 
 # sigma = 2 pi^5 k^4 / (15 h^3 c^2), exactly.
 STEFAN_BOLTZMANN = (
@@ -190,7 +190,7 @@ def test_a_path_of_no_length_keeps_all_its_light() -> None:
 
 
 def test_below_the_table_the_power_law_meets_it() -> None:
-    first = lwir._path_table()[lwir.ATMOSPHERE][0][0]
+    first = lwir._path_table()[atmosphere.ATMOSPHERE][0][0]
     below, above = lwir.path_optical_depth([first * 0.999, first * 1.001], 42.0)
     assert below == pytest.approx(above, rel=1e-2)
 
@@ -202,10 +202,10 @@ def test_aerosol_adds_to_water_vapour_which_takes_most_of_the_path() -> None:
 
 
 def test_every_atmosphere_has_a_sky_a_path_and_a_surface_air() -> None:
-    names = set(get_args(lwir.Atmosphere.__value__))
+    names = set(get_args(atmosphere.Atmosphere.__value__))
     assert set(lwir._sky_table()[1]) == names
     assert set(lwir._path_table()) == names
-    assert set(lwir.SURFACE_AIR_K) == names
+    assert set(atmosphere.SURFACE_AIR_K) == names
 
 
 def test_a_cloud_overhead_reads_between_the_clear_sky_and_its_base() -> None:
@@ -276,7 +276,7 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
 ) -> None:
     """The shader takes eps B + (1 - eps) S of facet means; each facet emits and
     reflects in its own proportion."""
-    t_sea_k, sigma = lwir.T_SEA_K, 0.1
+    t_sea_k, sigma = atmosphere.T_SEA_K, 0.1
     elev = np.radians(np.linspace(0.0, 90.0, 181))
     sky = lwir.sky_radiance(elev)
     mirror = math.radians(mirror_deg)
@@ -306,7 +306,7 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
 def _tilted_facet_sum(depression: float, tilt: float, sigma: float) -> float:
     """Each facet of a wave tilted by `tilt` toward the eye, seen `depression` below
     the horizon, emitting and reflecting the sky in its own direction."""
-    t_sea_k = lwir.T_SEA_K
+    t_sea_k = atmosphere.T_SEA_K
     elev = np.radians(np.linspace(-90.0, 90.0, 721))
     sky = lwir.sky_radiance(elev)
     c, s = math.cos(tilt), math.sin(tilt)
@@ -336,7 +336,7 @@ def _shaded(depression: float, tilt: float, sigma: float) -> float:
     theta, eps = lwir.emissivity_curve(slope_sigma=sigma)
     mean_eps = np.interp(math.pi / 2 - view, theta, eps)
     return float(
-        mean_eps * lwir.band_radiance(lwir.T_SEA_K) + (1 - mean_eps) * reflected
+        mean_eps * lwir.band_radiance(atmosphere.T_SEA_K) + (1 - mean_eps) * reflected
     )
 
 
