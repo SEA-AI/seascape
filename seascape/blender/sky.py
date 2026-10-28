@@ -335,6 +335,9 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     radiance = _ir_sky(tree, sky, coord.outputs["Generated"])
     shown = scalar(tree, "SUBTRACT", 1.0, _rough_glossy(tree))
     link(vector(tree, "SCALE", radiance, shown), background.inputs["Color"])
+    # A light sample reads the world as no glossy ray, so it would add the sky the
+    # sea's tables already hold.
+    world.cycles.sampling_method = "NONE"
     return world
 
 

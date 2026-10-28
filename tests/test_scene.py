@@ -1018,6 +1018,7 @@ class TestIrBand:
         assert path.outputs["Is Glossy Ray"].is_linked
         assert path.outputs["Is Singular Ray"].is_linked
         assert path.name in upstream(tree.nodes["Background"].inputs["Color"])
+        assert bpy.data.worlds["sky"].cycles.sampling_method == "NONE"
 
     def test_what_a_rough_glossy_ray_meets_returns_its_excess_over_the_sky(
         self,
