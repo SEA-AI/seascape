@@ -14,6 +14,8 @@ from seascape.blender.blend import (
     scalar,
     vector,
 )
+from seascape.blender.sea.daylight import _lobe, _stretchable, _widest
+from seascape.blender.sea.pixel import _Pixel
 from seascape.blender.sea.wakes import _Wakes
 from seascape.config import Sea
 from seascape.physics import lwir
@@ -181,8 +183,8 @@ def _thermal(
     light: Light,
     skin: bpy.types.NodeSocket | float,
     foam: bpy.types.NodeSocket,
-) -> bpy.types.NodeSocket:
-    """eps(theta) of the sea emitted, the remaining 1 - eps reflected from the sky.
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """The sea's emission plus the 1 - eps(theta) of sky it reflects, and eps(theta).
     It emits `skin`, a band radiance; the tables keep the bulk's optical constants,
     which a skin a few kelvin off barely moves. `foam`, the share of the pixel under
     foam, raises eps by that share of foam's excess.
@@ -201,7 +203,7 @@ def _thermal(
     across the view by d turns the mirror's bearing by about 2 d sin(depression), which
     vanishes at the grazing views the sea is seen at.
 
-    ponytail: no hulls in the reflection; trace a sharp mirror if they must show.
+    The sky alone: `_traced` adds the hulls.
     """
     sky = light.sky
     assert sky is not None
@@ -253,7 +255,34 @@ def _thermal(
     emission = tree.nodes.new("ShaderNodeEmission")
     emission.inputs["Strength"].default_value = 1.0
     tree.links.new(radiance, emission.inputs["Color"])
-    return emission.outputs["Emission"]
+    return emission.outputs["Emission"], emissivity
+
+
+def _traced(
+    tree: bpy.types.NodeTree,
+    sky: bpy.types.NodeSocket,
+    emissivity: bpy.types.NodeSocket,
+    normal: bpy.types.NodeSocket,
+    pixel: _Pixel,
+    unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
+) -> bpy.types.NodeSocket:
+    """The sea reflecting the sky, plus what a lobe of its unresolved slopes meets
+    besides: hulls, and waves that hide the sky. Weighted 1 - `emissivity`, the
+    pixel's, not each facet's own."""
+    wide, narrow, tangent = _widest(tree, pixel, unresolved)
+    roughness, anisotropy = _lobe(tree, wide, _stretchable(tree, wide, narrow))
+    lobe = tree.nodes.new("ShaderNodeBsdfGlossy")
+    lobe.name = "sea_traced"
+    lobe.distribution = "BECKMANN"
+    tree.links.new(normal, lobe.inputs["Normal"])
+    tree.links.new(tangent, lobe.inputs["Tangent"])
+    tree.links.new(roughness, lobe.inputs["Roughness"])
+    tree.links.new(anisotropy, lobe.inputs["Anisotropy"])
+    tree.links.new(scalar(tree, "SUBTRACT", 1.0, emissivity), lobe.inputs["Color"])
+    both = tree.nodes.new("ShaderNodeAddShader")
+    tree.links.new(sky, both.inputs[0])
+    tree.links.new(lobe.outputs["BSDF"], both.inputs[1])
+    return both.outputs["Shader"]
 
 
 def _cloud_ratio(

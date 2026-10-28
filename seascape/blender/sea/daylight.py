@@ -210,9 +210,10 @@ def _lobe(
     along: bpy.types.NodeSocket,
     across: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """Beckmann roughness and aspect, alpha across / alpha along, for the unresolved
-    slope variance at the two footprints. Per axis alpha = sqrt(2) sigma_axis =
-    sqrt(variance); Blender's roughness is their geometric mean's square root."""
+    """Beckmann roughness and Cycles anisotropy for the unresolved slope variance at
+    the two footprints, `along` the lobe's tangent. Per axis alpha = sqrt(2)
+    sigma_axis = sqrt(variance); Blender's roughness is their geometric mean's square
+    root."""
     along = scalar(tree, "MAXIMUM", along, 1e-12)
     across = scalar(tree, "MAXIMUM", across, 1e-12)
     product = scalar(tree, "MULTIPLY", along, across)
@@ -223,7 +224,20 @@ def _lobe(
         1.0,
         name="sea_roughness",
     )
-    return roughness, scalar(tree, "SQRT", scalar(tree, "DIVIDE", across, along))
+    aspect = scalar(tree, "SQRT", scalar(tree, "DIVIDE", across, along))
+    # Cycles' alpha_y / alpha_x = 1 - 0.9 a (kernel/svm/closure.h), so
+    # a = (1 - aspect) / 0.9.
+    return roughness, scalar(
+        tree, "MULTIPLY", scalar(tree, "SUBTRACT", 1.0, aspect), 1 / 0.9
+    )
+
+
+def _stretchable(
+    tree: bpy.types.NodeTree, wide: bpy.types.NodeSocket, narrow: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """`narrow`, no narrower than Cycles stretches a lobe: 10 to 1 in alpha, 100 in
+    variance."""
+    return scalar(tree, "MAXIMUM", narrow, scalar(tree, "MULTIPLY", wide, 0.01))
 
 
 def _daylight(
@@ -241,7 +255,7 @@ def _daylight(
     Beckmann, as Cox & Munk's slopes are near Gaussian; Principled offers only GGX. A
     conductor's Fresnel at zero extinction is the dielectric's.
     """
-    roughness, aspect = _lobe(tree, *unresolved)
+    roughness, anisotropy = _lobe(tree, *unresolved)
     link = tree.links.new
     mirror = tree.nodes.new("ShaderNodeBsdfMetallic")
     mirror.name = "sea_specular"
@@ -252,12 +266,7 @@ def _daylight(
     link(normal, mirror.inputs["Normal"])
     link(tangent, mirror.inputs["Tangent"])
     link(roughness, mirror.inputs["Roughness"])
-    # Cycles' alpha_y / alpha_x = 1 - 0.9 a (kernel/svm/closure.h), so
-    # a = (1 - aspect) / 0.9.
-    link(
-        scalar(tree, "MULTIPLY", scalar(tree, "SUBTRACT", 1.0, aspect), 1 / 0.9),
-        mirror.inputs["Anisotropy"],
-    )
+    link(anisotropy, mirror.inputs["Anisotropy"])
     fresnel = tree.nodes.new("ShaderNodeFresnel")
     fresnel.inputs["IOR"].default_value = SEAWATER_IOR
     link(normal, fresnel.inputs["Normal"])
