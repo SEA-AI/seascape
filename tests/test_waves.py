@@ -5,7 +5,7 @@ from statistics import NormalDist
 import numpy as np
 import pytest
 
-from seascape.physics import lwir, waves
+from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
 
 
@@ -28,7 +28,7 @@ def test_published_values_have_not_drifted() -> None:
     assert slope == pytest.approx(0.197, abs=5e-4)
     # Surveying's rule of thumb for the horizon, 3.86 sqrt(h_m) km at k = 0.13.
     rule_m = 3.86e3 * math.sqrt(51.8)
-    assert waves.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
+    assert earth.horizon_m(51.8, 0.13) == pytest.approx(rule_m, rel=0.01)
     # Elfouhaily et al. 1997: a fully developed sea at 7 m/s peaks at
     # 2 pi U^2 / (g 0.84^2), 44.5 m.
     peak = waves.peak_omega_rad_s(7.0, None)

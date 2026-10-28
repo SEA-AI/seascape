@@ -1,4 +1,4 @@
-"""The sea surface as numbers: the earth's curve under it and the waves on it."""
+"""The waves on the sea, as numbers."""
 
 # Waves, end to end. Each step is a published relation or follows from one:
 #
@@ -25,7 +25,6 @@
 #   windrows        4.8 s x U apart, 3-10x as long      Leibovich 1983, Thorpe 2004
 #   windrow cutoff  none below 3 m/s                    Leibovich 1983
 
-from seascape.physics.waves.earth import earth_radius_m, horizon_m, sea_z_m
 from seascape.physics.waves.foam import (
     FOAM_CELLS_PER_WAVE,
     FOAM_VISIBLE_COVER,
@@ -142,7 +141,6 @@ __all__ = [
     "curvature_spectrum",
     "drawn_slope_variance",
     "drawn_slope_variances",
-    "earth_radius_m",
     "filtered",
     "foam_drift_mps",
     "foam_lattice_field",
@@ -157,11 +155,9 @@ __all__ = [
     "gust_slope_variance",
     "heave_m",
     "height_m",
-    "horizon_m",
     "mss_spread",
     "peak_omega_rad_s",
     "resolvable",
-    "sea_z_m",
     "slick_survivors",
     "slope",
     "slope_variance",

@@ -11,7 +11,7 @@ import pytest
 from seascape.outputs import recording
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
-from seascape.physics import waves
+from seascape.physics import earth
 
 
 def rotation(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:
@@ -44,7 +44,7 @@ def rows(m: np.ndarray) -> tuple:
 HULL = [(2.0, 0.5, 0.0), (-1.5, 1.0, -1e-7)]
 POD_YAW_DEG, CAMERA_YAW_DEG, CAMERA_PITCH_DEG = -60.0, 40.0, -10.0
 WIDTH, HEIGHT, F = 640, 480, 1000.0
-RADIUS_M = waves.earth_radius_m(0.13)
+RADIUS_M = earth.earth_radius_m(0.13)
 
 
 def make_run(into: Path, camera_yaw_deg: float) -> Path:

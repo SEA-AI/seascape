@@ -10,9 +10,9 @@ import pytest
 from seascape.config import Agc, Camera, Lens, Sensor
 from seascape.outputs import labels
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import waves
+from seascape.physics import earth
 
-RADIUS_M = waves.earth_radius_m(0.13)
+RADIUS_M = earth.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
 
 

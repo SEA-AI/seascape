@@ -12,13 +12,8 @@ from seascape.blender.blend import (
 )
 from seascape.blender.sea.pixel import _instance, _Pixel, _pixel
 from seascape.config import Scenario, Sea
-from seascape.physics.waves import (
-    Wave,
-    earth_radius_m,
-    horizon_m,
-    sea_z_m,
-    tallest,
-)
+from seascape.physics.earth import earth_radius_m, horizon_m, sea_z_m
+from seascape.physics.waves import Wave, tallest
 
 # A judgement: the waves carrying this share of their own sea's height variance are
 # drawn as geometry, the rest as shading.

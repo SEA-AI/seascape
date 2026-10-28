@@ -15,7 +15,7 @@ from PIL import Image
 from docs.hero import SKIES, captioned, render
 from seascape.config import load
 from seascape.outputs.calibration import Calibration
-from seascape.physics import waves
+from seascape.physics import earth
 
 HERE = Path(__file__).parent
 PRIMER = HERE / "primer.toml"
@@ -30,7 +30,7 @@ FULL_HD = "rigs.bow.cameras.eo = { hfov_deg = 45.0, width_px = 1920, height_px =
 CROP_PX, CROP_SCALE = (192, 56), 4
 EYE_M = 30.0
 # In front of the horizon seen from EYE_M up, on it, and hull-down behind it.
-HORIZON_KM = round(waves.horizon_m(EYE_M, load(PRIMER).sea.refraction_k) / 1000)
+HORIZON_KM = round(earth.horizon_m(EYE_M, load(PRIMER).sea.refraction_k) / 1000)
 HULL_DOWN_KM = (12, HORIZON_KM, 35)
 TELE = "rigs.bow.cameras.eo = { hfov_deg = 1.15, width_px = 640, height_px = 360 }"
 
@@ -97,7 +97,7 @@ def frame(overrides: list[str], out: Path, caption: str) -> Image.Image:
 
 def crops() -> None:
     """The sea at 100 m and at 1 km in one full-size frame, pixels blown up."""
-    radius_m = waves.earth_radius_m(load(PRIMER).sea.refraction_k)
+    radius_m = earth.earth_radius_m(load(PRIMER).sea.refraction_k)
     with tempfile.TemporaryDirectory() as tmp:
         render(PRIMER, [FULL_HD], Path(tmp))
         (camera,) = Calibration.read(Path(tmp)).cameras
@@ -108,7 +108,7 @@ def crops() -> None:
     sheet = Image.new("RGB", (size[0], 2 * size[1] + GAP_PX), "white")
     for i, (d_m, caption) in enumerate(((100.0, "100 m away"), (1000.0, "1 km away"))):
         east_m, north_m = pose[:2, 3] + d_m * ahead
-        sea = np.array([east_m, north_m, waves.sea_z_m(east_m, north_m, radius_m)])
+        sea = np.array([east_m, north_m, earth.sea_z_m(east_m, north_m, radius_m)])
         u, v, z = np.array(camera.K) @ pose[:3, :3].T @ (sea - pose[:3, 3])
         left, top = round(u / z - w / 2), round(v / z - h / 2)
         panel = full.crop((left, top, left + w, top + h))

@@ -51,7 +51,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import lwir, thermal, waves
+from seascape.physics import earth, lwir, thermal, waves
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
@@ -371,7 +371,7 @@ class TestEoBand:
             for c in bpy.data.objects["sea"].bound_box
         ]
         reach = min(max(abs(v.x), abs(v.y)) for v in corners)
-        horizon = waves.horizon_m(
+        horizon = earth.horizon_m(
             SCENARIO.rigs["bow"].height_m, SCENARIO.sea.refraction_k
         )
 
@@ -381,21 +381,21 @@ class TestEoBand:
     def test_a_hull_floats_on_the_sea_and_not_on_the_tangent_plane(self) -> None:
         """Hulls left at z = 0 fly with range and bearing still right, so nothing else
         catches it."""
-        radius = waves.earth_radius_m(SCENARIO.sea.refraction_k)
+        radius = earth.earth_radius_m(SCENARIO.sea.refraction_k)
 
         for spec in SCENARIO.objects:
             anchor = bpy.data.objects[spec.asset]
             east, north, up = anchor.matrix_world.translation
 
-            assert up == pytest.approx(waves.sea_z_m(east, north, radius), abs=1e-3)
+            assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
 
     def test_a_hull_beyond_the_horizon_is_cut_off(self) -> None:
         """A target past the horizon shows its waterline when it should be hull-down."""
         eye = Vector((0.0, 0.0, SCENARIO.rigs["bow"].height_m))
-        radius = waves.earth_radius_m(SCENARIO.sea.refraction_k)
+        radius = earth.earth_radius_m(SCENARIO.sea.refraction_k)
         beyond = 18_000.0
         surface = beyond * beyond / (2.0 * radius)
-        horizon = waves.horizon_m(
+        horizon = earth.horizon_m(
             SCENARIO.rigs["bow"].height_m, SCENARIO.sea.refraction_k
         )
         assert horizon < beyond < sea.sea_reach_m(SCENARIO)
@@ -821,7 +821,7 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     corners = _corners(_meshes([anchor]))
     top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
     k = scenario.sea.refraction_k
-    assert range_m < waves.horizon_m(5.0, k) + waves.horizon_m(top_m, k)
+    assert range_m < earth.horizon_m(5.0, k) + earth.horizon_m(top_m, k)
     camera = built.cameras["bow_eo"]
     eye = camera.matrix_world.translation
     assert camera.data.clip_end > max((c - eye).length for c in corners)
@@ -1183,7 +1183,7 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
         ],
     )
     (spec,) = scenario.objects
-    radius = waves.earth_radius_m(scenario.sea.refraction_k)
+    radius = earth.earth_radius_m(scenario.sea.refraction_k)
     anchor = scene.build(scenario).targets[spec.asset][0]
     sc = bpy.context.scene
 
@@ -1199,7 +1199,7 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
         assert math.degrees(math.atan2(run_east, run_north)) % 360 == pytest.approx(
             spec.heading_deg % 360
         )
-        assert up == pytest.approx(waves.sea_z_m(east, north, radius), abs=1e-3)
+        assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
     sc.frame_set(0)
     assert anchor.matrix_world.translation == start
     assert start.xy.length == pytest.approx(spec.range_m)
@@ -1577,7 +1577,7 @@ class TestDrifting:
         heading = math.radians(spec.heading_deg)
         ahead = Vector((math.sin(heading), math.cos(heading)))
         starboard = Vector((math.cos(heading), -math.sin(heading)))
-        radius = waves.earth_radius_m(scenario.sea.refraction_k)
+        radius = earth.earth_radius_m(scenario.sea.refraction_k)
         pose = anchor.matrix_world.translation.xy.copy()
         s = math.sqrt(0.5)
         eighths = [(0, 0), (s, 1), (1, 0), (s, -1), (0, 0), (-s, 1), (-1, 0), (-s, -1)]
@@ -1593,7 +1593,7 @@ class TestDrifting:
             assert offset.dot(ahead) == pytest.approx(
                 along * spec.drift.surge_m, abs=1e-2
             )
-            assert up == pytest.approx(waves.sea_z_m(east, north, radius), abs=1e-3)
+            assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
             assert anchor.rotation_euler.z == pytest.approx(blend.yaw(spec.heading_deg))
         assert pose.length == pytest.approx(spec.range_m)
 

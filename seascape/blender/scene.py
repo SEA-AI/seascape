@@ -23,7 +23,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs.calibration import CameraCalibration, Matrix4
-from seascape.physics import wakes, waves
+from seascape.physics import earth, wakes, waves
 
 # A foam memory's finest cells resolve waves a metre long, whose crests break in
 # whitecaps as wide and as brief as field video measures (Korinenko & Malinovsky 2023;
@@ -145,7 +145,7 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
         heave.amplitude_m if heave is not None else 0.0
     )
     k = scenario.sea.refraction_k
-    return waves.horizon_m(eye_m, k) + waves.horizon_m(max(tops_m), k)
+    return earth.horizon_m(eye_m, k) + earth.horizon_m(max(tops_m), k)
 
 
 def _finest_footprint_m(
@@ -155,7 +155,7 @@ def _finest_footprint_m(
     height over the sea below it, which the curved sea's crests come no nearer than,
     times the angle of a pixel."""
     sc = bpy.context.scene
-    radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     tall, _ = sea.displaced((wind_waves(scenario), swell_waves(scenario)))
     crest_m = sum(w.amplitude_m for w in tall)
     finest = math.inf
@@ -168,7 +168,7 @@ def _finest_footprint_m(
                 continue
             camera = cameras[mount.name]
             east, north, up = camera.matrix_world.translation
-            height_m = max(up - waves.sea_z_m(east, north, radius_m) - crest_m, 0.0)
+            height_m = max(up - earth.sea_z_m(east, north, radius_m) - crest_m, 0.0)
             pixel_rad = camera.data.angle_x / mount.camera.width_px
             finest = min(finest, height_m * pixel_rad)
     sc.frame_set(0)
@@ -267,7 +267,7 @@ def _foam_grids(
         return ()
     mounts = [m for m in scenario.mounts if m.camera.band == band]
     rays = _rays(scenario, mounts, cameras)
-    horizon = waves.horizon_m(
+    horizon = earth.horizon_m(
         max(origin.z for origin, _, _ in rays), scenario.sea.refraction_k
     )
     longest_m = max(2 * math.pi / w.k_rad_m for w in wind)
@@ -320,7 +320,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     vessel = _ownship(
         scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
     )
-    radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     trails: list[wakes.Wake] = []
     vessels, turbines = _placed(scenario, radius_m, heat, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both

@@ -27,7 +27,7 @@ from seascape.blender.vessels import heading_rad, waterline_m
 from seascape.config import Camera, ImageFormat, Scenario, substream
 from seascape.outputs import agc, labels, microbolometer
 from seascape.outputs.calibration import Calibration, CameraCalibration
-from seascape.physics import waves
+from seascape.physics import earth
 
 
 def _pixels(path: Path) -> np.ndarray:
@@ -179,7 +179,7 @@ def render(
     into = into.resolve()
     into.mkdir(parents=True, exist_ok=True)
     outputs = scenario.outputs
-    radius_m = waves.earth_radius_m(scenario.sea.refraction_k)
+    radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     sequence = len(outputs.times_s) > 1
     written: list[Path] = []
     cameras: list[CameraCalibration] = []
