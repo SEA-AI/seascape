@@ -6,9 +6,9 @@ from collections.abc import Callable
 import bpy
 
 from seascape.blender.blend import (
-    _math,
-    _vector,
     place,
+    scalar,
+    vector,
 )
 from seascape.blender.sea.pixel import _instance, _Pixel, _pixel
 from seascape.config import Scenario, Sea
@@ -91,7 +91,7 @@ def _spread(
 def _total(
     tree: bpy.types.NodeTree, lanes: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    return _vector(tree, "DOT_PRODUCT", lanes, (1.0, 1.0, 1.0))
+    return vector(tree, "DOT_PRODUCT", lanes, (1.0, 1.0, 1.0))
 
 
 # What the pixel resolves: shared by every triple.
@@ -119,37 +119,37 @@ def _fade(
     along = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(given["Along"], along.inputs["Vector"])
     along_xy = (_spread(group, along.outputs["X"]), _spread(group, along.outputs["Y"]))
-    heading = _vector(
+    heading = vector(
         group,
         "MULTIPLY_ADD",
         given["Ty"],
         along_xy[1],
-        _vector(group, "MULTIPLY", given["Tx"], along_xy[0]),
+        vector(group, "MULTIPLY", given["Tx"], along_xy[0]),
     )
-    footprint_sq = _vector(
+    footprint_sq = vector(
         group,
         "MULTIPLY_ADD",
-        _vector(group, "MULTIPLY", heading, heading),
+        vector(group, "MULTIPLY", heading, heading),
         _spread(group, given["Stretch"]),
         _spread(group, given["Across Sq"]),
     )
-    y = _vector(
+    y = vector(
         group,
         "POWER",
-        _vector(group, "MULTIPLY", footprint_sq, given["Half K Sq"]),
+        vector(group, "MULTIPLY", footprint_sq, given["Half K Sq"]),
         (0.5, 0.5, 0.5),
     )
     # An empty lane's y is 0, and Vector Math divides by 0 to 0.
-    seen = _vector(
+    seen = vector(
         group,
         "DIVIDE",
-        _vector(group, "SINE", _vector(group, "MINIMUM", y, (math.pi,) * 3)),
+        vector(group, "SINE", vector(group, "MINIMUM", y, (math.pi,) * 3)),
         y,
     )
     if calm:
-        less = _spread(group, _math(group, "SUBTRACT", given["Calm"], 1.0))
-        scale = _vector(group, "MULTIPLY_ADD", given["Damped"], less, (1.0, 1.0, 1.0))
-        seen = _vector(group, "MULTIPLY", seen, scale)
+        less = _spread(group, scalar(group, "SUBTRACT", given["Calm"], 1.0))
+        scale = vector(group, "MULTIPLY_ADD", given["Damped"], less, (1.0, 1.0, 1.0))
+        seen = vector(group, "MULTIPLY", seen, scale)
     return seen, along_xy
 
 
@@ -180,23 +180,23 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
     position = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(given["Position"], position.inputs["Vector"])
     east, north, time_s = (_spread(group, position.outputs[a]) for a in "XYZ")
-    phase = _vector(
+    phase = vector(
         group,
         "MULTIPLY_ADD",
         given["Kx"],
         east,
-        _vector(
+        vector(
             group,
             "MULTIPLY_ADD",
             given["Ky"],
             north,
-            _vector(group, "MULTIPLY_ADD", given["W"], time_s, given["Phase"]),
+            vector(group, "MULTIPLY_ADD", given["W"], time_s, given["Phase"]),
         ),
     )
     seen, _ = _fade(group, given, calm)
 
     def shown(trig: str) -> bpy.types.NodeSocket:
-        return _vector(group, "MULTIPLY", _vector(group, trig, phase), seen)
+        return vector(group, "MULTIPLY", vector(group, trig, phase), seen)
 
     sine = shown("SINE")
     # -d height / dx of a cos(phase) is a k_x sin(phase).
@@ -206,7 +206,7 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
         ("Sum Z", "Lift", shown("COSINE")),
     ):
         group.links.new(
-            _vector(group, "MULTIPLY_ADD", wave, given[factor], given[total]),
+            vector(group, "MULTIPLY_ADD", wave, given[factor], given[total]),
             out[total],
         )
     return group
@@ -326,7 +326,7 @@ def _displacement(
     if sums is not None:
         for axis, name, sign in (("X", "Sum X", -1.0), ("Y", "Sum Y", -1.0)):
             tree.links.new(
-                _math(tree, "MULTIPLY", _total(tree, sums[name]), sign),
+                scalar(tree, "MULTIPLY", _total(tree, sums[name]), sign),
                 offset.inputs[axis],
             )
         tree.links.new(_total(tree, sums["Sum Z"]), offset.inputs["Z"])
@@ -404,8 +404,8 @@ def _normal(
         tree, _normal_group(triples, len(_triples(wind)), damped), pixel, calm
     )
     tree.links.new(position, drawn.inputs["Position"])
-    tilted = _vector(tree, "ADD", geometry.outputs["Normal"], drawn.outputs["Gradient"])
-    return _vector(tree, "NORMALIZE", tilted, name="wave_normal")
+    tilted = vector(tree, "ADD", geometry.outputs["Normal"], drawn.outputs["Gradient"])
+    return vector(tree, "NORMALIZE", tilted, name="wave_normal")
 
 
 def water(sea: Sea, reach_m: float, material: bpy.types.Material) -> bpy.types.Object:

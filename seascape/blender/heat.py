@@ -8,9 +8,9 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
-    _math,
     curve_image,
     lookup,
+    scalar,
 )
 from seascape.config import (
     Scenario,
@@ -143,10 +143,10 @@ def _zone_skin(
     normal = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(geometry.outputs["Normal"], normal.inputs["Vector"])
     # At texel centres: the lookup interpolates between them.
-    y = _math(
+    y = scalar(
         tree,
         "MULTIPLY_ADD",
-        _math(tree, "MULTIPLY_ADD", normal.outputs["Z"], 0.5, 0.5),
+        scalar(tree, "MULTIPLY_ADD", normal.outputs["Z"], 0.5, 0.5),
         (len(up) - 1) / len(up),
         0.5 / len(up),
     )
@@ -159,8 +159,8 @@ def _zone_skin(
         facing.operation = "DOT_PRODUCT"
         facing.inputs["Vector_001"].default_value = heat.sun
         link(geometry.outputs["Normal"], facing.inputs["Vector"])
-        lit = _math(tree, "MAXIMUM", facing.outputs["Value"], 0.0)
-        at = _math(
+        lit = scalar(tree, "MAXIMUM", facing.outputs["Value"], 0.0)
+        at = scalar(
             tree,
             "MULTIPLY_ADD",
             lit,
@@ -187,7 +187,7 @@ def _wetted(
     coords = tree.nodes.new("ShaderNodeTexCoord")
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(coords.outputs["Object"], height.inputs["Vector"])
-    under = _math(tree, "LESS_THAN", height.outputs["Z"], 0.0)
+    under = scalar(tree, "LESS_THAN", height.outputs["Z"], 0.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(under, mix.inputs["Factor"])
     link(skin, mix.inputs["Shader"])

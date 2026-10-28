@@ -1,5 +1,6 @@
 import math
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 import bpy
 import numpy as np
@@ -106,7 +107,28 @@ def lookup(
     return texture.outputs["Color"]
 
 
-def _vector(
+def _feed(
+    tree: bpy.types.NodeTree,
+    socket: bpy.types.NodeSocket,
+    value: bpy.types.NodeSocket | float | tuple[float, ...],
+) -> None:
+    if isinstance(value, bpy.types.NodeSocket):
+        tree.links.new(value, socket)
+    else:
+        socket.default_value = value
+
+
+def combine(
+    tree: bpy.types.NodeTree, *xyz: bpy.types.NodeSocket | float
+) -> bpy.types.NodeSocket:
+    """Components left out read 0."""
+    node = tree.nodes.new("ShaderNodeCombineXYZ")
+    for name, value in zip("XYZ", xyz, strict=False):
+        _feed(tree, node.inputs[name], value)
+    return node.outputs["Vector"]
+
+
+def vector(
     tree: bpy.types.NodeTree,
     operation: str,
     *inputs: bpy.types.NodeSocket | float,
@@ -120,15 +142,12 @@ def _vector(
     if operation == "SCALE":
         sockets = [node.inputs["Vector"], node.inputs["Scale"]]
     for socket, value in zip(sockets, inputs, strict=False):
-        if isinstance(value, bpy.types.NodeSocket):
-            tree.links.new(value, socket)
-        else:
-            socket.default_value = value
-    scalar = operation in {"DOT_PRODUCT", "LENGTH", "DISTANCE"}
-    return node.outputs["Value" if scalar else "Vector"]
+        _feed(tree, socket, value)
+    single = operation in {"DOT_PRODUCT", "LENGTH", "DISTANCE"}
+    return node.outputs["Value" if single else "Vector"]
 
 
-def _math(
+def scalar(
     tree: bpy.types.NodeTree,
     operation: str,
     *inputs: float | bpy.types.NodeSocket,
@@ -140,14 +159,28 @@ def _math(
     if name:
         node.name = name
     for socket, value in zip(node.inputs, inputs, strict=False):
-        if isinstance(value, bpy.types.NodeSocket):
-            tree.links.new(value, socket)
-        else:
-            socket.default_value = value
+        _feed(tree, socket, value)
     return node.outputs["Value"]
 
 
-def _clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-    out = _math(tree, "MAXIMUM", x, 0.0)
+def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+    out = scalar(tree, "MAXIMUM", x, 0.0)
     out.node.use_clamp = True
     return out
+
+
+def pixels(image: bpy.types.Image) -> np.ndarray:
+    """An image's RGBA, (height, width, 4), bottom row first as Blender stores it."""
+    width, height = image.size
+    buffer = np.empty(width * height * 4, dtype=np.float32)
+    image.pixels.foreach_get(buffer)
+    return buffer.reshape(height, width, 4)
+
+
+def read(path: Path) -> np.ndarray:
+    """A file's `pixels`, the image loaded only to be read."""
+    image = bpy.data.images.load(str(path))
+    try:
+        return pixels(image)
+    finally:
+        bpy.data.images.remove(image)

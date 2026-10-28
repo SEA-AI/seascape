@@ -7,8 +7,8 @@ import numpy as np
 
 from seascape.blender import sensor
 from seascape.blender.blend import (
-    _math,
-    _vector,
+    scalar,
+    vector,
 )
 from seascape.config import (
     Band,
@@ -133,22 +133,22 @@ def _camera(
     links.new(image, info.inputs["Image"])
     # Uniform spans -1 to 1 along the longer side, so the kernel is a fixed share of
     # the frame at any resolution. Fog Glow and Bloom change shape with it.
-    radius = _vector(tree, "LENGTH", coords.outputs["Uniform"])
+    radius = vector(tree, "LENGTH", coords.outputs["Uniform"])
     # Natural vignetting: irradiance falls as cos^4 of the field angle, 1 / (1 +
     # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
-    tangent = _math(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
-    falloff = _math(
+    tangent = scalar(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
+    falloff = scalar(
         tree,
         "POWER",
-        _math(tree, "MULTIPLY_ADD", tangent, tangent, 1.0),
+        scalar(tree, "MULTIPLY_ADD", tangent, tangent, 1.0),
         -2.0,
     )
-    image = _vector(tree, "SCALE", image, falloff)
-    shoulder = _math(tree, "DIVIDE", radius, GLARE_SHOULDER)
-    harvey = _math(
+    image = vector(tree, "SCALE", image, falloff)
+    shoulder = scalar(tree, "DIVIDE", radius, GLARE_SHOULDER)
+    harvey = scalar(
         tree,
         "POWER",
-        _math(tree, "MULTIPLY_ADD", shoulder, shoulder, 1.0),
+        scalar(tree, "MULTIPLY_ADD", shoulder, shoulder, 1.0),
         -GLARE_SLOPE / 2,
     )
     glare = nodes.new("CompositorNodeGlare")
@@ -164,9 +164,9 @@ def _camera(
     links.new(image, glare.inputs["Image"])
     side = nodes.new("ShaderNodeSeparateXYZ")
     links.new(info.outputs["Resolution"], side.inputs["Vector"])
-    longer_px = _math(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
+    longer_px = scalar(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
-    size_px = _math(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
+    size_px = scalar(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
     size = nodes.new("ShaderNodeCombineXYZ")
     links.new(size_px, size.inputs["X"])
     links.new(size_px, size.inputs["Y"])
@@ -178,21 +178,21 @@ def _camera(
     luminance = nodes.new("CompositorNodeRGBToBW")
     links.new(image, luminance.inputs["Image"])
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
-    lit = _math(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
+    lit = scalar(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
     levels = nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
-    links.new(_math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
-    log_average = _math(tree, "EXPONENT", levels.outputs["Mean"])
-    gain = _math(
+    links.new(scalar(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
+    log_average = scalar(tree, "EXPONENT", levels.outputs["Mean"])
+    gain = scalar(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
     )
     processing = sensor._value(tree, "processing.gain", 1.0)
-    gain = _math(tree, "MULTIPLY", gain, processing)
-    exposed = _vector(tree, "SCALE", image, gain)
+    gain = scalar(tree, "MULTIPLY", gain, processing)
+    exposed = vector(tree, "SCALE", image, gain)
     if not with_sensor:
         return exposed
     # A camera without a full well shares the tree, and takes the ideal frame.
-    grey = _math(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
+    grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
     read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
     return sensor._switch(tree, "sensor.on", exposed, read)
 

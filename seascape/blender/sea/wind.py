@@ -10,10 +10,10 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
-    _clamped,
-    _math,
-    _vector,
+    clamped,
     curve_image,
+    scalar,
+    vector,
 )
 from seascape.config import Outputs, Sea
 from seascape.physics.waves import (
@@ -68,14 +68,14 @@ def _drifting(
     here = tree.nodes.new("ShaderNodeCombineXYZ")
     here.name = f"{name}_axes"
     for axis, out in zip(axes, ("X", "Y"), strict=True):
-        along = _vector(tree, "DOT_PRODUCT", flat.outputs["Vector"])
+        along = vector(tree, "DOT_PRODUCT", flat.outputs["Vector"])
         along.node.inputs["Vector_001"].default_value = (*axis, 0.0)
         tree.links.new(along, here.inputs[out])
     # The tile read at x - v t is the tile at x carried v t.
     carry = [-(velocity_mps[0] * e + velocity_mps[1] * n) for e, n in axes]
 
     def layer(carried_s: bpy.types.NodeSocket, shift: float) -> bpy.types.NodeSocket:
-        at = _vector(tree, "MULTIPLY_ADD", name=f"{name}_carry")
+        at = vector(tree, "MULTIPLY_ADD", name=f"{name}_carry")
         at.node.inputs["Vector"].default_value = (*carry, 0.0)
         tree.links.new(carried_s, at.node.inputs["Vector_001"])
         at.node.inputs["Vector_002"].default_value = (shift, shift, 0.0)
@@ -83,7 +83,8 @@ def _drifting(
         texture.image = tile
         texture.extension = "REPEAT"
         tree.links.new(
-            _vector(tree, "ADD", here.outputs["Vector"], at), texture.inputs["Vector"]
+            vector(tree, "ADD", here.outputs["Vector"], at),
+            texture.inputs["Vector"],
         )
         return texture.outputs["Color"]
 
@@ -94,30 +95,30 @@ def _drifting(
     weighted = []
     # Half a tile apart, so the two layers are independent.
     for i, lag in enumerate((0.0, 0.5)):
-        cycle = _math(
+        cycle = scalar(
             tree,
             "FRACT",
-            _math(tree, "MULTIPLY_ADD", time_s, 1 / span_s, lag),
+            scalar(tree, "MULTIPLY_ADD", time_s, 1 / span_s, lag),
         )
-        weight = _math(
+        weight = scalar(
             tree,
             "SUBTRACT",
             1.0,
-            _math(tree, "ABSOLUTE", _math(tree, "MULTIPLY_ADD", cycle, 2.0, -1.0)),
+            scalar(tree, "ABSOLUTE", scalar(tree, "MULTIPLY_ADD", cycle, 2.0, -1.0)),
             name=f"{name}_weight_{i}",
         )
-        carried_s = _math(tree, "MULTIPLY", cycle, span_s, name=f"{name}_carried_{i}")
+        carried_s = scalar(tree, "MULTIPLY", cycle, span_s, name=f"{name}_carried_{i}")
         weighted.append((weight, layer(carried_s, start + lag)))
     (w0, n0), (w1, n1) = weighted
-    norm = _math(
+    norm = scalar(
         tree,
         "SQRT",
-        _math(tree, "MULTIPLY_ADD", w0, w0, _math(tree, "MULTIPLY", w1, w1)),
+        scalar(tree, "MULTIPLY_ADD", w0, w0, scalar(tree, "MULTIPLY", w1, w1)),
     )
-    return _math(
+    return scalar(
         tree,
         "DIVIDE",
-        _math(tree, "MULTIPLY_ADD", w0, n0, _math(tree, "MULTIPLY", w1, n1)),
+        scalar(tree, "MULTIPLY_ADD", w0, n0, scalar(tree, "MULTIPLY", w1, n1)),
         norm,
     )
 
@@ -159,7 +160,7 @@ def _gust(
         0.0,
         "gust",
     )
-    return _math(tree, "MULTIPLY", unit, turbulence_intensity(speed), name="gust")
+    return scalar(tree, "MULTIPLY", unit, turbulence_intensity(speed), name="gust")
 
 
 class _RowRead(NamedTuple):
@@ -251,7 +252,7 @@ def _slick(
         return None
     # The tile is Gaussian, so its top `slick_cover` lies above this.
     threshold = NormalDist().inv_cdf(1.0 - sea.slick_cover)
-    return _math(tree, "GREATER_THAN", rows.windrows.read(), threshold, name="slick")
+    return scalar(tree, "GREATER_THAN", rows.windrows.read(), threshold, name="slick")
 
 
 def _streaking(sea: Sea) -> float:
@@ -276,11 +277,11 @@ def _gathered(
     for read, spacing_m in rows:
         # A pixel wider than half the rows' spacing cannot draw them: they fade, gone
         # at a whole spacing.
-        fade = _clamped(
-            tree, _math(tree, "MULTIPLY_ADD", footprint_m, -2 / spacing_m, 2.0)
+        fade = clamped(
+            tree, scalar(tree, "MULTIPLY_ADD", footprint_m, -2 / spacing_m, 2.0)
         )
         pulls.append(
-            _math(tree, "MULTIPLY", read(), _math(tree, "MULTIPLY", fade, share))
+            scalar(tree, "MULTIPLY", read(), scalar(tree, "MULTIPLY", fade, share))
         )
     return tuple(pulls)
 
@@ -300,7 +301,7 @@ def _gusty(
     samples average it, until too few fall in one; filter it to the footprint if
     distant gusts shimmer.
     """
-    offset = _math(
+    offset = scalar(
         tree,
         "MULTIPLY",
         gust,
@@ -309,6 +310,6 @@ def _gusty(
     )
     # A lull can take more than the pixel leaves.
     return tuple(
-        _math(tree, "MAXIMUM", _math(tree, "ADD", variance, offset), 0.0)
+        scalar(tree, "MAXIMUM", scalar(tree, "ADD", variance, offset), 0.0)
         for variance in unresolved
     )

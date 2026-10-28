@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 from seascape.assets import manifest
-from seascape.blender import scene, sea
+from seascape.blender import blend, scene, sea
 from seascape.blender.compositor import JPEG_QUALITY, respond
 from seascape.blender.vessels import heading_rad, waterline_m
 from seascape.config import Camera, ImageFormat, Scenario, substream
@@ -30,22 +30,10 @@ from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import earth
 
 
-def _pixels(path: Path) -> np.ndarray:
-    """An image's RGBA, (height, width, 4), bottom row first as Blender stores it."""
-    image = bpy.data.images.load(str(path))
-    try:
-        width, height = image.size
-        buffer = np.empty(width * height * 4, dtype=np.float32)
-        image.pixels.foreach_get(buffer)
-    finally:
-        bpy.data.images.remove(image)
-    return buffer.reshape(height, width, 4)
-
-
 def _frame(path: Path) -> np.ndarray:
     """An image as written, top row first: RGB, or its one channel."""
     if path.suffix == ".exr":
-        return _pixels(path)[::-1, :, :3]
+        return blend.read(path)[::-1, :, :3]
     image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if image is None:
         raise OSError(f"cannot read {path}")
@@ -62,7 +50,7 @@ def _write_thermal(
     """Rewrite a float LWIR render as `fmt` beside it, as `camera` reads it, and delete
     the exr."""
     # cv2 writes the top row first
-    radiance = _pixels(exr)[::-1, :, 0].astype(np.float64)
+    radiance = blend.read(exr)[::-1, :, 0].astype(np.float64)
     t_k = microbolometer.seen(radiance, camera, noise)
     out = exr.with_suffix(f".{fmt}")
     image = agc.counts(t_k) if fmt == "png" else tone(t_k)
@@ -235,7 +223,7 @@ def render(
                     advance()
                     camera = scene.calibrate(built, mount, file_name)
                     cameras.append(camera)
-                    index = _pixels(passes / f"{mount.name}.index.exr")[::-1, :, 0]
+                    index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
                     shot.append(
                         (
                             mount,

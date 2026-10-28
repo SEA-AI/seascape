@@ -10,10 +10,9 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import render
 from seascape.assets import Buoy, download, fetch, manifest, skies
-from seascape.blender import scene, sea
-from seascape.blender.blend import _math
+from seascape.blender import blend, scene, sea
+from seascape.blender.blend import scalar
 from seascape.blender.compositor import (
     GLARE_SHARE,
     GLARE_SHOULDER,
@@ -298,7 +297,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
             10.0,
         )
         rendered = shoot((px, px), f"memory_probe_{frame}")
-        stored = render._pixels(first.with_name(f"foam_{frame + 1:04d}.exr"))[..., 0]
+        stored = blend.read(first.with_name(f"foam_{frame + 1:04d}.exr"))[..., 0]
         expected = stored[row : row + px, column : column + px][::-1]
         assert expected.max() > 0.0
         np.testing.assert_allclose(rendered, expected, atol=2e-3)
@@ -857,15 +856,15 @@ class TestCamera:
         generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
         direction = tree.nodes.new("ShaderNodeSeparateXYZ")
         tree.links.new(generated, direction.inputs[0])
-        east = _math(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
-        halves = _math(tree, "MULTIPLY_ADD", east, right - left, left)
-        overhead = _math(
+        east = scalar(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
+        halves = scalar(tree, "MULTIPLY_ADD", east, right - left, left)
+        overhead = scalar(
             tree,
             "GREATER_THAN",
             direction.outputs["Z"],
             math.cos(math.radians(sun_radius_deg)),
         )
-        sky = _math(tree, "MULTIPLY_ADD", overhead, sun, halves)
+        sky = scalar(tree, "MULTIPLY_ADD", overhead, sun, halves)
         background = tree.nodes["Background"]
         tree.links.new(sky, background.inputs["Color"])
         background.inputs["Strength"].default_value = 1.0
@@ -967,14 +966,14 @@ class TestSensor:
             generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
             direction = tree.nodes.new("ShaderNodeSeparateXYZ")
             tree.links.new(generated, direction.inputs[0])
-            overhead = _math(
+            overhead = scalar(
                 tree,
                 "GREATER_THAN",
                 direction.outputs["Z"],
                 math.cos(math.radians(1.8)),
             )
             tree.links.new(
-                _math(tree, "MULTIPLY_ADD", overhead, sun, colour[0]),
+                scalar(tree, "MULTIPLY_ADD", overhead, sun, colour[0]),
                 background.inputs["Color"],
             )
         width, height = self.SIZE

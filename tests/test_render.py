@@ -14,7 +14,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from seascape import render, server
-from seascape.blender import scene, sea
+from seascape.blender import blend, scene, sea
 from seascape.blender.compositor import FORMATS, MID_GREY, _compositor, _output, respond
 from seascape.blender.heat import _Heat, _zone_skin
 from seascape.blender.sea import foam
@@ -318,7 +318,7 @@ def test_the_object_index_pass_samples_the_pixel_centre(
 
     bpy.ops.render.render(write_still=True)
 
-    index = np.rint(render._pixels(tmp_path / "probe.index.exr")[..., 0])
+    index = np.rint(blend.read(tmp_path / "probe.index.exr")[..., 0])
     assert (index[:, :columns] == 1).all()
     assert (index[:, columns:] == 0).all()
 
@@ -508,8 +508,8 @@ def test_a_render_culls_only_waves_no_pixel_of_it_draws(tmp_path: Path) -> None:
     sc.render.filepath = str(tmp_path / "whole")
     bpy.ops.render.render(write_still=True)
 
-    whole = render._pixels(tmp_path / "whole.exr")[..., :3]
-    drawn = render._pixels(culled)[..., :3]
+    whole = blend.read(tmp_path / "whole.exr")[..., :3]
+    drawn = blend.read(culled)[..., :3]
     assert np.abs(drawn - whole).mean() / whole.mean() < 1e-4
 
 
@@ -741,7 +741,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     sc.camera = camera
     sc.render.filepath = str(tmp_path / "frame.exr")
     bpy.ops.render.render(write_still=True)
-    radiance = render._pixels(tmp_path / "frame.exr")[..., 0]
+    radiance = blend.read(tmp_path / "frame.exr")[..., 0]
 
     zone = thermal.ZONES["paint_hull"]
     s = np.array(sun)
