@@ -597,12 +597,10 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     return float(np.sum(area * _mirrored(facing) * lit * sky[:, None]) / np.sum(area))
 
 
-def _uniform_sky_reflectance(
-    scenario: Scenario, depressions_deg: tuple[float, ...]
-) -> list[float]:
-    """The sea's reflection alone of a white sky, one build looking down at each
-    depression. A steep frame sees a few metres of sea tilted by the long wave under
-    it; frames a long wave apart average to the sea's."""
+def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float:
+    """The sea's reflection alone of a white sky, looking down at `depression_deg`. A
+    steep frame sees a few metres of sea tilted by the long wave under it; frames a
+    long wave apart average to the sea's."""
     scene.build(scenario, "eo")
     world = bpy.context.scene.world.node_tree
     background = world.nodes["Background"]
@@ -622,28 +620,25 @@ def _uniform_sky_reflectance(
     sc = bpy.context.scene
     sc.collection.objects.link(camera)
     sc.camera = camera
-    seen = []
-    for depression_deg in depressions_deg:
-        camera.rotation_euler = (math.radians(90.0 - depression_deg), 0.0, 0.0)
-        frames = []
-        for i in range(32):
-            camera.location = (97.0 * i, 59.0 * i, PROBE_HEIGHT_M)
-            frames.append(shoot(PROBE_PX, f"reflectance_{i}").mean())
-        seen.append(float(np.mean(frames)))
-    return seen
+    camera.rotation_euler = (math.radians(90.0 - depression_deg), 0.0, 0.0)
+    frames = []
+    for i in range(32):
+        camera.location = (97.0 * i, 59.0 * i, PROBE_HEIGHT_M)
+        frames.append(shoot(PROBE_PX, f"reflectance_{i}").mean())
+    return float(np.mean(frames))
 
 
+@pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
 @pytest.mark.parametrize("wind_from_deg", [0.0, 90.0])
 def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
-    wind_from_deg: float,
+    wind_from_deg: float, depression_deg: float
 ) -> None:
     """The lobe's distribution sets how much sky the sea returns near the horizon,
     looking upwind and across the wind."""
     scenario = _clear(variant(sea={"wind_from_deg": wind_from_deg}))
-    depressions_deg = (3.0, 10.0, 40.0)
-    expected = [_sea_reflectance(scenario, d) for d in depressions_deg]
+    expected = _sea_reflectance(scenario, depression_deg)
 
-    rendered = _uniform_sky_reflectance(scenario, depressions_deg)
+    rendered = _uniform_sky_reflectance(scenario, depression_deg)
 
     # A judgement.
     assert rendered == pytest.approx(expected, rel=0.06)

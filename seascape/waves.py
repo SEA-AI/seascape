@@ -308,9 +308,18 @@ def gust_slope_variance(wind_speed_mps: float) -> float:
 def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
     """`tile` with its values replaced, rank for rank, by a unit Gaussian's quantiles:
     the same pattern, exactly symmetric about 0."""
-    ranks = np.argsort(np.argsort(tile, axis=None)).reshape(tile.shape)
-    levels = (ranks + 0.5) / tile.size
-    return np.vectorize(NormalDist().inv_cdf)(levels).astype(tile.dtype)
+    ranked = np.empty(tile.size, tile.dtype)
+    ranked[np.argsort(tile, axis=None)] = _gaussian_quantiles(tile.size)
+    return ranked.reshape(tile.shape)
+
+
+@cache
+def _gaussian_quantiles(count: int) -> np.ndarray:
+    """A unit Gaussian's quantiles at the centres of `count` equal shares, ascending.
+    Frozen: the cache hands every caller the same array."""
+    quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(count) + 0.5) / count)
+    quantiles.setflags(write=False)
+    return quantiles
 
 
 def von_karman_field(

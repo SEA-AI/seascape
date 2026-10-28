@@ -927,36 +927,22 @@ def _clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Nod
     return out
 
 
-def _texels(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
-    """(rows, columns): `tile` (rows bottom first, as `curve_image` lays it) at each
-    column's u and each row's v, in tiles, as Cycles' linear lookup with repeat reads
-    it. Separable: two tile rows blended per row, then two columns per column."""
-    height, width = tile.shape
-    x, y = u * width - 0.5, v * height - 0.5
-    i, j = np.floor(x).astype(int), np.floor(y).astype(int)
-    fx, fy = x - i, (y - j)[:, None]
-    rows = (1 - fy) * tile[j % height] + fy * tile[(j + 1) % height]
-    return rows[:, i % width] * (1 - fx) + rows[:, (i + 1) % width] * fx
-
-
 def _looked_up_sigma(tile: np.ndarray) -> float:
-    """`tile`'s spread as Cycles' linear lookup reads it, between texels as on them:
-    interpolation averages neighbours, so it is under the texels' own."""
-    height, width = tile.shape
-    shares = (np.arange(FOAM_LOOKUP_SHARES) + 0.5) / FOAM_LOOKUP_SHARES
-    variance = np.mean(
-        [
-            np.var(
-                _texels(
-                    tile,
-                    (np.arange(width) + 0.5 + a) / width,
-                    (np.arange(height) + 0.5 + b) / height,
-                )
-            )
-            for a in shares
-            for b in shares
-        ]
+    """`tile`'s spread as Cycles' linear lookup with repeat reads it, between texels as
+    on them: interpolation averages neighbours, so it is under the texels' own.
+
+    A lookup a share along a texel blends the same four neighbours, with the same
+    weights, wherever it reads: its variance over the tile is those weights' quadratic
+    form in the neighbours' covariance."""
+    neighbours = np.stack(
+        [np.roll(tile, (-dy, -dx), (0, 1)).ravel() for dy in (0, 1) for dx in (0, 1)]
     )
+    covariance = np.cov(neighbours, bias=True)
+    shares = (np.arange(FOAM_LOOKUP_SHARES) + 0.5) / FOAM_LOOKUP_SHARES
+    blend = np.stack([1 - shares, shares], axis=-1)
+    # (share up, share across) x (neighbour up, neighbour across), as `neighbours`.
+    weights = np.einsum("ai,bj->abij", blend, blend).reshape(-1, 4)
+    variance = np.einsum("si,ij,sj->s", weights, covariance, weights).mean()
     return float(np.sqrt(variance))
 
 
