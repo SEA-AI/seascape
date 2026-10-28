@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seascape import recording
-from seascape.calibration import Calibration, CameraCalibration
-from seascape.labels import Image, Labels, horizon_px
+from seascape.outputs import recording
+from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.labels import Image, Labels, horizon_px
 from seascape.physics import waves
 
 

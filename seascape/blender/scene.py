@@ -16,13 +16,13 @@ from seascape.blender.meshes import _corners, _meshes
 from seascape.blender.rigs import _rigs
 from seascape.blender.sky import _haze, _light, _sky
 from seascape.blender.vessels import OverlapError, _overlaps, _ownship, _placed, _ride
-from seascape.calibration import CameraCalibration, Matrix4
 from seascape.config import (
     Band,
     Mount,
     Scenario,
     substream,
 )
+from seascape.outputs.calibration import CameraCalibration, Matrix4
 from seascape.physics import wakes, waves
 
 # A foam memory's finest cells resolve waves a metre long, whose crests break in

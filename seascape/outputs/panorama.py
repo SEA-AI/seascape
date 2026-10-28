@@ -14,11 +14,11 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
-from seascape import agc
-from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import Agc
-from seascape.labels import agcs
-from seascape.montage import INK, MATTE
+from seascape.outputs import agc
+from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.labels import agcs
+from seascape.outputs.montage import INK, MATTE
 
 # CLI name to cv2.PyRotationWarper type.
 PROJECTIONS = {

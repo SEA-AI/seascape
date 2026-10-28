@@ -29,7 +29,7 @@ from pydantic import Field
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from seascape import assets, montage, skies
+from seascape import assets, skies
 from seascape.config import (
     Band,
     ImageFormat,
@@ -38,9 +38,10 @@ from seascape.config import (
     load,
     load_variants,
 )
+from seascape.outputs import montage
 
-SCENARIOS = Path(__file__).parents[1] / "scenarios"
 RENDERS = assets.CACHE / "renders"
+SCENARIOS = Path(os.environ.get("SEASCAPE_SCENARIOS", "scenarios"))
 KEEP_S = 24 * 3600
 # A client may end a tool call after a minute.
 WAIT_S = 45.0

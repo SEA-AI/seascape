@@ -29,5 +29,16 @@ ignore = [
 [lint.pylint]
 max-args = 8
 
+[lint.flake8-tidy-imports.banned-api]
+"sys.path".msg = "Import by package, not by editing the import path."
+"site.addsitedir".msg = "Import by package, not by editing the import path."
+"importlib.reload".msg = "Build fresh instead of reloading modules."
+"importlib.util.spec_from_file_location".msg = "Import by package, not by file."
+"importlib.machinery.SourceFileLoader".msg = "Import by package, not by file."
+"importlib.import_module".msg = "Import by package, with an import statement."
+"importlib.util.module_from_spec".msg = "Import by package, not by file."
+"sys.meta_path".msg = "Import by package, not by editing the import machinery."
+"sys.path_hooks".msg = "Import by package, not by editing the import machinery."
+
 [format]
 docstring-code-format = true

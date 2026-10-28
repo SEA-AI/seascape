@@ -13,13 +13,12 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from seascape import agc, labels, render, server
+from seascape import render, server
 from seascape.blender import scene, sea
 from seascape.blender.compositor import FORMATS, MID_GREY, _compositor, _output, respond
 from seascape.blender.heat import _Heat, _zone_skin
 from seascape.blender.sea import foam
 from seascape.blender.sky import _light, _sky
-from seascape.calibration import Calibration
 from seascape.config import (
     Agc,
     Band,
@@ -30,6 +29,8 @@ from seascape.config import (
     load,
     substream,
 )
+from seascape.outputs import agc, labels
+from seascape.outputs.calibration import Calibration
 from seascape.physics import lwir, thermal, waves
 from seascape.physics.wakes import Wake
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
@@ -630,7 +631,7 @@ def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
 def test_an_install_without_git_names_the_image_s_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(render, "__file__", str(tmp_path / "seascape" / "render.py"))
+    monkeypatch.setattr(render, "__file__", str(tmp_path / "__init__.py"))
     monkeypatch.setenv("SEASCAPE_COMMIT", "abc123")
     assert render._commit() == "abc123"
     monkeypatch.setenv("SEASCAPE_COMMIT", "")

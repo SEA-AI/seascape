@@ -12,14 +12,14 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
-from seascape import agc, panorama
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.vessels import waterline_m
-from seascape.calibration import Calibration
 from seascape.config import Agc, Mount, Rig, Scenario
-from seascape.montage import INK
+from seascape.outputs import agc, panorama
+from seascape.outputs.calibration import Calibration
+from seascape.outputs.montage import INK
 from seascape.physics import waves
 from tests.scenarios import two_rigs
 

@@ -7,9 +7,10 @@ import numpy as np
 import pytest
 from PIL import Image as Picture
 
-from seascape import agc, video
 from seascape.config import Agc
-from seascape.labels import Image, Labels
+from seascape.outputs import agc
+from seascape.outputs.labels import Image, Labels
+from seascape.render import video
 
 HEADROOM = Agc().detail_headroom
 

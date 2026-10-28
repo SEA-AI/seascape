@@ -20,13 +20,13 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, microbolometer
 from seascape.assets import manifest
 from seascape.blender import scene, sea
 from seascape.blender.compositor import JPEG_QUALITY, respond
 from seascape.blender.vessels import heading_rad, waterline_m
-from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import Camera, ImageFormat, Scenario, substream
+from seascape.outputs import agc, labels, microbolometer
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import waves
 
 
@@ -118,24 +118,24 @@ def _write_truth(
 
 
 def _commit() -> str | None:
-    """The source checkout's commit, else the image's, else None."""
-    root = Path(__file__).parents[1]
-    # A wheel installed into another project's .venv sits inside that project's work
-    # tree, and git would answer with its commit.
-    if not (root / ".git").exists():
+    """This module's commit, else the image's, else None."""
+    here = Path(__file__)
+    try:
+        # A wheel in another project's .venv sits in a work tree that does not track it.
+        _git(here.parent, "ls-files", "--error-unmatch", here.name)
+        # --exclude: a tag would otherwise replace the hash with its own name.
+        return _git(
+            here.parent, "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"
+        )
+    except (OSError, subprocess.CalledProcessError):
         # The Dockerfile's build arg: an image carries no .git.
         return os.environ.get("SEASCAPE_COMMIT") or None
-    try:
-        return subprocess.run(
-            # --exclude: a tag would otherwise replace the hash with its own name.
-            ["git", "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+    ).stdout.strip()
 
 
 def _info(scenario: Scenario) -> dict[str, Any]:

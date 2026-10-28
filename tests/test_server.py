@@ -19,9 +19,14 @@ from PIL import Image
 
 from seascape import server
 from seascape.config import load_variants
-from seascape.server import SCENARIOS
+from tests.scenarios import SCENARIOS
 
 BASELINE = SCENARIOS / "baseline.toml"
+
+
+@pytest.fixture(autouse=True)
+def _scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "SCENARIOS", SCENARIOS)
 
 
 def _call(tool: str, **arguments: Any) -> Any:

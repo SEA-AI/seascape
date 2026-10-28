@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape import agc
 from seascape.config import CFG_DIR, Agc, Camera
+from seascape.outputs import agc
 
 # What a scenario gets: the factory default and every preset.
 SHIPPED = {"factory": Agc()} | {

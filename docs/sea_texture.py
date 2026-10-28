@@ -24,8 +24,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from seascape import labels
 from seascape.assets import CACHE
+from seascape.outputs import labels
 
 # Raw counts only: the sky's noise stands in for the sea's where both share one gain,
 # which an AGC'd jpg breaks.
