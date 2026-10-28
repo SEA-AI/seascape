@@ -113,7 +113,7 @@ def _unslotted(joined: list[bpy.types.Object]) -> None:
         bpy.data.materials.remove(material)
 
 
-def _corners(
+def box_corners(
     objects: Iterable[bpy.types.Object], into: Matrix | None = None
 ) -> list[Vector]:
     """Corners of the axis-aligned box around the vertices of the meshes in
@@ -167,7 +167,7 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
     )
 
 
-def _meshes(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
+def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
     return [
         obj
         for part in parts
@@ -240,7 +240,7 @@ def _parse(path: Path) -> set[bpy.types.Object]:
     return imported
 
 
-def _import(name: str, band: Band) -> list[bpy.types.Object]:
+def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
     """Import an asset and fit it; returns the root parts.
 
     An asset arrives in its author's units, off-origin, in many parts.
@@ -251,7 +251,7 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     # measuring only the roots would leave them out of the fit.
     parts = [o for o in imported if o.parent is None]
 
-    corners = _corners(imported)
+    corners = box_corners(imported)
     fit = _fit(corners, asset)
     for part in parts:
         part.matrix_world = fit @ part.matrix_world
@@ -264,7 +264,7 @@ def _import(name: str, band: Band) -> list[bpy.types.Object]:
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
     if band == "ir":
-        _zone_slots(name, _meshes(parts), asset.zones)
+        _zone_slots(name, mesh_objects(parts), asset.zones)
         if rotor is not None:
             # Joined apart from the rest, so it still turns about its hub.
             bpy.context.view_layer.update()

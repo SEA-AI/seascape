@@ -15,8 +15,8 @@ from seascape.blender.blend import (
     sine,
     yaw,
 )
-from seascape.blender.heat import _Heat, _thermal_skin, _zone_skin
-from seascape.blender.meshes import _corners, _import, _meshes
+from seascape.blender.heat import Heat, thermal_skin, zone_skin
+from seascape.blender.meshes import box_corners, import_asset, mesh_objects
 from seascape.config import (
     Drift,
     Farm,
@@ -43,7 +43,7 @@ def _vessel(
     engine_off_min: float,
     paint_absorptance: float | None,
     sky: Sky,
-    heat: _Heat | None,
+    heat: Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
 ) -> bpy.types.Object:
     """A hull fitted and anchored at the origin under an empty. `heat` is the LWIR
@@ -55,17 +55,17 @@ def _vessel(
     if name in hulls:
         parts = [_copy_tree(part, None) for part in hulls[name]]
     else:
-        parts = hulls[name] = _import(name, "eo" if heat is None else "ir")
+        parts = hulls[name] = import_asset(name, "eo" if heat is None else "ir")
 
     if heat is not None:
         heat = heat.stopped(engine_off_min)
-        uniform = None if t_k is None else _thermal_skin(f"{name}_ir", t_k, sky)
-        for mesh in _meshes(parts):
+        uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, sky)
+        for mesh in mesh_objects(parts):
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
                 slot.link = "OBJECT"
                 # A rotor's frame is its hub, so its z says nothing of the sea.
-                slot.material = uniform or _zone_skin(
+                slot.material = uniform or zone_skin(
                     zone, heat, paint_absorptance, wet=not mesh.get("rotor")
                 )
 
@@ -87,10 +87,10 @@ def _vessel(
     return anchor
 
 
-def _ownship(
+def add_ownship(
     ownship: Ownship,
     sky: Sky,
-    heat: _Heat | None,
+    heat: Heat | None,
     rigs: bpy.types.Object,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
@@ -234,7 +234,7 @@ def _targets(
     spec: Targets,
     radius_m: float,
     sky: Sky,
-    heat: _Heat | None,
+    heat: Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
     trails: list[wakes.Wake],
@@ -271,7 +271,7 @@ def _object(
     spec: Object,
     radius_m: float,
     sky: Sky,
-    heat: _Heat | None,
+    heat: Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
     outputs: Outputs,
     trails: list[wakes.Wake],
@@ -326,7 +326,7 @@ def _turbine(
     rng: np.random.Generator,
     scenario: Scenario,
     radius_m: float,
-    heat: _Heat | None,
+    heat: Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
 ) -> bpy.types.Object:
     """A turbine facing the wind, its rotor starting at an angle of its own so a farm's
@@ -396,12 +396,12 @@ def _waterplane(anchor: bpy.types.Object) -> tuple[float, float]:
     """A hull's length and beam, in its own frame, bow to +Y."""
     # The parts' matrix_world is stale until the depsgraph runs.
     bpy.context.view_layer.update()
-    corners = _corners(_meshes([anchor]), anchor.matrix_world.inverted())
+    corners = box_corners(mesh_objects([anchor]), anchor.matrix_world.inverted())
     xs, ys = [c.x for c in corners], [c.y for c in corners]
     return max(ys) - min(ys), max(xs) - min(xs)
 
 
-def _ride(
+def ride(
     anchors: Sequence[bpy.types.Object],
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
@@ -439,7 +439,7 @@ class OverlapError(ValueError):
     """Two targets' hulls meet."""
 
 
-def _overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, str]]:
+def overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, str]]:
     """Pairs of hulls whose footprints meet in any frame: each a circle of half its
     larger horizontal extent about its anchor, where the frame has moved it."""
     radius_m = {a.name: max(a["length_m"], a["beam_m"]) / 2 for a in anchors}
@@ -454,10 +454,10 @@ def _overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, s
     return sorted(found)
 
 
-def _placed(
+def add_vessels(
     scenario: Scenario,
     radius_m: float,
-    heat: _Heat | None,
+    heat: Heat | None,
     hulls: dict[str, list[bpy.types.Object]],
     trails: list[wakes.Wake],
 ) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
@@ -497,7 +497,7 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     to_world = np.array(attitude.matrix_world)
     to_hull = np.linalg.inv(to_world)
     crossings = []
-    for part in _meshes([anchor]):
+    for part in mesh_objects([anchor]):
         mesh = part.data
         local = np.empty(3 * len(mesh.vertices), dtype=np.float32)
         mesh.vertices.foreach_get("co", local)

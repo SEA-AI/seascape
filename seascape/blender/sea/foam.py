@@ -1,4 +1,4 @@
-"""Whitecaps: their lace and lattice, and the foam a build remembers on its grids."""
+"""Whitecaps: their lace and lattice, shaded from the foam memory."""
 
 import math
 from statistics import NormalDist

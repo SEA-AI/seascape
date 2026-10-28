@@ -21,7 +21,7 @@ class _RigObjects(NamedTuple):
     cameras: dict[str, bpy.types.Object]
 
 
-def _rigs(scenario: Scenario, far_m: float) -> _RigObjects:
+def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
     root = bpy.data.objects.new("rigs", None)
     bpy.context.collection.objects.link(root)
     place(root, 0.0, 0.0, 0.0)

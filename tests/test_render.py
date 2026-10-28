@@ -15,10 +15,16 @@ from mathutils import Vector
 
 from seascape import render, server
 from seascape.blender import blend, scene, sea
-from seascape.blender.compositor import FORMATS, MID_GREY, _compositor, _output, respond
-from seascape.blender.heat import _Heat, _zone_skin
+from seascape.blender.compositor import (
+    FORMATS,
+    MID_GREY,
+    _compositor,
+    respond,
+    set_output,
+)
+from seascape.blender.heat import Heat, zone_skin
 from seascape.blender.sea import memory
-from seascape.blender.sky import _light, _sky
+from seascape.blender.sky import add_world, sea_light
 from seascape.config import (
     Agc,
     Band,
@@ -337,9 +343,9 @@ def _svm_errors(
     stack.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    _output(scenario.outputs, band, 16)
+    set_output(scenario.outputs, band, 16)
     sc = bpy.context.scene
-    sc.world = _sky(scenario.sky, band)
+    sc.world = add_world(scenario.sky, band)
     seed = scenario.seed
     # Unculled: culling drops waves, which would shrink the shader under test.
     material = sea.material(
@@ -353,7 +359,7 @@ def _svm_errors(
             substream(seed, "sea/foam"),
         ),
         trails,
-        _light(scenario.sky, band),
+        sea_light(scenario.sky, band),
         seen,
     )
     sea.water(scenario.sea, 300.0, material)
@@ -717,7 +723,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     env = thermal.Environment(
         t_air_k=288.0, t_sea_k=287.5, wind_m_s=3.0, sun_elevation_rad=elevation
     )
-    heat = _Heat(env, 286.0, sun)
+    heat = Heat(env, 286.0, sun)
     tilted = (0.5 * sun[0], 0.5 * sun[1], 1.0)
     plates = {
         "lit": ((-6.0, 0.0, 2.0), (0.0, 0.0, 1.0)),
@@ -730,7 +736,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     mesh.from_pydata(corners, [], quads)
     hull = bpy.data.objects.new("hull", mesh)
     sc.collection.objects.link(hull)
-    hull.data.materials.append(_zone_skin("paint_hull", heat))
+    hull.data.materials.append(zone_skin("paint_hull", heat))
 
     camera = bpy.data.objects.new("camera", bpy.data.cameras.new("camera"))
     camera.data.angle = math.radians(40.0)

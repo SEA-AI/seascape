@@ -24,7 +24,7 @@ from seascape.physics import lwir, thermal
 SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
 
 
-def _thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
+def thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
     """eps of a painted hull emitted, the remaining 1 - eps reflected from the sky.
 
     Diffuse: flat marine paint is near-Lambertian in this band.
@@ -74,18 +74,18 @@ def _sunlit_emission(
     return grade.outputs["Shader"]
 
 
-class _Heat(NamedTuple):
+class Heat(NamedTuple):
     """What a hull's zones settle against, and the water its wetted faces sit in."""
 
     env: thermal.Environment
     t_water_k: float
     sun: tuple[float, float, float] | None
 
-    def stopped(self, minutes: float) -> "_Heat":
+    def stopped(self, minutes: float) -> "Heat":
         return self._replace(env=self.env.stopped(minutes * 60.0))
 
 
-def _heat(scenario: Scenario) -> _Heat:
+def surroundings(scenario: Scenario) -> Heat:
     sky = scenario.sky
     elevation = sky.sun_elevation_deg
     clouds = 0.0
@@ -101,12 +101,12 @@ def _heat(scenario: Scenario) -> _Heat:
         cloud_fraction=clouds,
     )
     sun = sky.sun_vector if elevation is not None and elevation > 0 else None
-    return _Heat(env, scenario.sea.t_sea_k, sun)
+    return Heat(env, scenario.sea.t_sea_k, sun)
 
 
-def _zone_skin(
+def zone_skin(
     zone_name: thermal.ZoneName,
-    heat: _Heat,
+    heat: Heat,
     paint_absorptance: float | None = None,
     wet: bool = True,
 ) -> bpy.types.Material:
@@ -176,7 +176,7 @@ def _zone_skin(
 
 
 def _wetted(
-    tree: bpy.types.NodeTree, skin: bpy.types.NodeSocket, heat: _Heat
+    tree: bpy.types.NodeTree, skin: bpy.types.NodeSocket, heat: Heat
 ) -> bpy.types.NodeSocket:
     """`skin` above the waterline, the bulk water below it."""
     link = tree.links.new

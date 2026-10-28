@@ -20,7 +20,7 @@ from seascape.blender.compositor import (
     MID_GREY,
     respond,
 )
-from seascape.blender.meshes import _import, _meshes, measure
+from seascape.blender.meshes import import_asset, measure, mesh_objects
 from seascape.blender.sea.daylight import SEAWATER_IOR, SUN_SLOPE_RADIUS
 from seascape.blender.sea.foam import LATTICE_WALL_M
 from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CELLS
@@ -1318,11 +1318,11 @@ def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) ->
 def test_a_buoy_floats_on_its_float(name: str) -> None:
     """The water meets the float: the mesh is near its widest at the waterline."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    parts = _import(name, "eo")
+    parts = import_asset(name, "eo")
     bpy.context.view_layer.update()
     points = [
         mesh.matrix_world @ vertex.co
-        for mesh in _meshes(parts)
+        for mesh in mesh_objects(parts)
         for vertex in mesh.data.vertices
     ]
     step = (max(p.z for p in points) - min(p.z for p in points)) / 100

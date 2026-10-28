@@ -137,7 +137,7 @@ def test_an_installation_takes_its_model_and_height_from_its_presets(twin) -> No
 
 
 def test_samples_covers_every_band() -> None:
-    """`compositor._output` reads this with `getattr(samples, band)`, so a band added
+    """`compositor.set_output` reads this with `getattr(samples, band)`, so a band added
     to the Literal without a field here fails mid-build rather than in validation."""
     assert set(Samples.model_fields) == set(get_args(Band.__value__))
 

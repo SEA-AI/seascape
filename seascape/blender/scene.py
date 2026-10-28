@@ -9,12 +9,18 @@ import bpy
 from mathutils import Matrix
 
 from seascape.blender import sea
-from seascape.blender.compositor import _output, respond
-from seascape.blender.heat import _heat
-from seascape.blender.meshes import _corners, _meshes
-from seascape.blender.rigs import _rigs
-from seascape.blender.sky import _haze, _light, _sky
-from seascape.blender.vessels import OverlapError, _overlaps, _ownship, _placed, _ride
+from seascape.blender.compositor import respond, set_output
+from seascape.blender.heat import surroundings
+from seascape.blender.meshes import box_corners, mesh_objects
+from seascape.blender.rigs import add_rigs
+from seascape.blender.sky import add_haze, add_world, sea_light
+from seascape.blender.vessels import (
+    OverlapError,
+    add_ownship,
+    add_vessels,
+    overlaps,
+    ride,
+)
 from seascape.config import (
     Band,
     Mount,
@@ -89,7 +95,7 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     # The parts' matrix_world is stale until the depsgraph runs.
     bpy.context.view_layer.update()
     tops_m = [
-        max(c.z for c in _corners(_meshes([anchor])))
+        max(c.z for c in box_corners(mesh_objects([anchor])))
         - anchor.matrix_world.translation.z
         for anchor in anchors
     ]
@@ -149,22 +155,22 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for m in scenario.mounts
         if m.camera.band == band
     )
-    _output(scenario.outputs, band, max(sides), graded)
-    bpy.context.scene.world = _sky(scenario.sky, band)
+    set_output(scenario.outputs, band, max(sides), graded)
+    bpy.context.scene.world = add_world(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
-    rigs = _rigs(scenario, far_m)
+    rigs = add_rigs(scenario, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     tall, _ = sea.displaced((wind, swell))
-    heat = _heat(scenario) if band == "ir" else None
-    vessel = _ownship(
+    heat = surroundings(scenario) if band == "ir" else None
+    vessel = add_ownship(
         scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
     )
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     trails: list[wakes.Wake] = []
-    vessels, turbines = _placed(scenario, radius_m, heat, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, heat, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
@@ -181,7 +187,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
             substream(scenario.seed, "sea/foam"),
         ),
         tuple(trails),
-        _light(scenario.sky, band),
+        sea_light(scenario.sky, band),
         sea.Seen(
             _finest_footprint_m(scenario, band, rigs.cameras) if cull else 0.0,
             sea.foam_grids(scenario, band, rigs.cameras, wind),
@@ -189,7 +195,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.
-    _haze(scenario.sky, band, far_m)
+    add_haze(scenario.sky, band, far_m)
     # The object-index pass reads 0 for sky and sea. The ownship takes the index after
     # the targets: no box, and no target's background.
     anchors = [*chain(*targets.values()), vessel]
@@ -213,11 +219,11 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     # ponytail: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
-    _ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
+    ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
     solid = list(chain(*targets.values()))
     if scenario.ownship.asset is not None:
         solid.append(vessel)
-    if meeting := _overlaps(solid, len(outputs.times_s)):
+    if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)
     # Until the depsgraph runs, every child still reports its pre-parenting
