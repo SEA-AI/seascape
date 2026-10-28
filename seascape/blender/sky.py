@@ -351,23 +351,10 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     return world
 
 
-def _sun_vector(sky: Sky) -> tuple[float, float, float]:
-    """Unit vector towards the sun. A direction, so the bearing is not negated: that
-    belongs to rotations, and `vessels._pose` places by the same sin/cos."""
-    assert sky.sun_elevation_deg is not None
-    elevation = math.radians(sky.sun_elevation_deg)
-    bearing = math.radians(sky.sun_bearing_deg)
-    return (
-        math.cos(elevation) * math.sin(bearing),
-        math.cos(elevation) * math.cos(bearing),
-        math.sin(elevation),
-    )
-
-
 def _light(sky: Sky, band: Band) -> sea.Light:
     if band == "ir":
         clouds = _clouds(sky)
         return sea.Light(sky=_sky_round(sky, clouds), sun_up=sky.sun_up, clouds=clouds)
     if sky.sun_elevation_deg is None:
         return sea.Light()
-    return sea.Light(sun=_sun_vector(sky))
+    return sea.Light(sun=sky.sun_vector)

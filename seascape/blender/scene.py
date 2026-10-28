@@ -41,34 +41,6 @@ FOAM_RAYS = 9
 FOAM_MAX_CELLS = 1024
 
 
-def wind_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
-    sea = scenario.sea
-    return waves.wind_sea(
-        sea.wind_speed_mps,
-        sea.wind_from_deg,
-        sea.fetch_m,
-        scenario.outputs.period_s,
-        substream(scenario.seed, "sea/surface"),
-    )
-
-
-def swell_waves(scenario: Scenario) -> tuple[waves.Wave, ...]:
-    swell = scenario.sea.swell
-    if swell is None:
-        return ()
-    return waves.swell(
-        swell.height_m,
-        swell.period_s,
-        swell.from_deg,
-        scenario.outputs.period_s,
-        substream(scenario.seed, "sea/swell"),
-    )
-
-
-def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
-    return wind_waves(scenario) + swell_waves(scenario)
-
-
 # Blender's camera looks down -Z with +Y up; OpenCV's looks down +Z with +Y down.
 _BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 
@@ -156,7 +128,7 @@ def _finest_footprint_m(
     times the angle of a pixel."""
     sc = bpy.context.scene
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
-    tall, _ = sea.displaced((wind_waves(scenario), swell_waves(scenario)))
+    tall, _ = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     crest_m = sum(w.amplitude_m for w in tall)
     finest = math.inf
     for frame in range(len(scenario.outputs.times_s)):
@@ -312,7 +284,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
-    wind, swell = wind_waves(scenario), swell_waves(scenario)
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = _rigs(scenario, far_m)
     hulls: dict[str, list[bpy.types.Object]] = {}
     tall, _ = sea.displaced((wind, swell))

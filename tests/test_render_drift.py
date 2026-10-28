@@ -25,7 +25,7 @@ from seascape.blender.meshes import _import, _meshes, measure
 from seascape.blender.sea.daylight import SEAWATER_IOR, SUN_SLOPE_RADIUS
 from seascape.blender.sea.foam import LATTICE_WALL_M, _frames_folder
 from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CELLS
-from seascape.blender.sky import _sky_texture, _sun_vector, haze
+from seascape.blender.sky import _sky_texture, haze
 from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, wakes, waves
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
@@ -229,9 +229,7 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     normal = read(tree.nodes["wave_normal"].outputs["Vector"], 1.0)
 
     # The rest of the waves tilt the facet where its water was at rest.
-    tall, shaded = sea.displaced(
-        (scene.wind_waves(scenario), scene.swell_waves(scenario))
-    )
+    tall, shaded = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     t_s = scenario.outputs.times_s[frame]
     seen = waves.filtered(shaded[0] + shaded[1], span_m / px)
     slope = waves.slope(seen, *rest, t_s)
@@ -264,7 +262,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     built = scene.build(clip, "eo")
     # A build clears the last one's frames.
     assert not stale.exists()
-    grid = scene._foam_grids(clip, "eo", built.cameras, scene.wind_waves(clip))[0]
+    grid = scene._foam_grids(clip, "eo", built.cameras, clip.wind_waves())[0]
     tree = bpy.data.materials["sea"].node_tree
     texture = tree.nodes[f"sea_foam_{grid.cell_m:g}m"]
     texture.interpolation = "Closest"
@@ -343,7 +341,7 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
     east, north = np.meshgrid(centres, centres[::-1])
     distance = np.sqrt(east**2 + north**2 + height_m**2)
-    wind = scene.wind_waves(SCENARIO)
+    wind = SCENARIO.wind_waves()
     footprints = distance.ravel() * pixel_rad
     lobes = [
         lobe(
@@ -363,7 +361,7 @@ def unresolved(
 ) -> tuple[float, float]:
     """The pixel's unresolved variance along and across a view at cos^2 `cos2` to the
     wind, each twice its axis's."""
-    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
     speed, axis = scenario.sea.wind_speed_mps, math.radians(scenario.sea.wind_from_deg)
     up_a, cross_a = waves.unresolved_slope_variances(speed, axis, wind, swell, along_m)
     up_c, cross_c = waves.unresolved_slope_variances(speed, axis, wind, swell, across_m)
@@ -451,7 +449,7 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     top_right, bottom_right, bottom_left, top_left = (np.array(c) for c in corners)
     origin = np.array(camera.matrix_world.translation)
     pixel_rad = lens.angle_x / px[0]
-    wind = scene.wind_waves(SCENARIO)
+    wind = SCENARIO.wind_waves()
     checked = []
     for row in range(px[1]):
         for col in range(px[0]):
@@ -551,7 +549,7 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     up, cross = waves.cox_munk_variances(speed)
     c2 = math.cos(wind_axis) ** 2
     sides = np.array((up * (1 - c2) + cross * c2, up * c2 + cross * (1 - c2)))
-    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
     geometry = np.array(
         [
@@ -735,7 +733,7 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     camera = sc.camera
     camera.parent = None
     camera.rotation_mode = "QUATERNION"
-    camera.rotation_quaternion = Vector(_sun_vector(SCENARIO.sky)).to_track_quat(
+    camera.rotation_quaternion = Vector(SCENARIO.sky.sun_vector).to_track_quat(
         "-Z", "Y"
     )
     sc.cycles.samples = 4
@@ -1273,7 +1271,7 @@ def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
     camera.parent = None
     camera.location = (0.0, 0.0, 10.0)
     camera.rotation_mode = "QUATERNION"
-    sun = Vector(_sun_vector(scenario.sky))
+    sun = Vector(scenario.sky.sun_vector)
     camera.rotation_quaternion = sun.to_track_quat("-Z", "Y")
     camera.data.angle_x = math.radians(10.0)
     sc.cycles.samples = 4

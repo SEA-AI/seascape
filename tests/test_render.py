@@ -344,8 +344,8 @@ def _svm_errors(
     # Unculled: culling drops waves, which would shrink the shader under test.
     material = sea.material(
         scenario.sea,
-        scene.wind_waves(scenario),
-        scene.swell_waves(scenario),
+        scenario.wind_waves(),
+        scenario.swell_waves(),
         scenario.outputs,
         (
             substream(seed, "sea/gust"),

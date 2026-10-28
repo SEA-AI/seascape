@@ -9,6 +9,7 @@ from pydantic import (
 )
 
 from seascape.config.cameras import Band, Mount, Name, Rig
+from seascape.config.draws import substream
 from seascape.config.objects import Farm, Object, Ownship, Targets
 from seascape.config.world import Sea, Sky
 from seascape.model import Model
@@ -135,6 +136,31 @@ class Scenario(Model):
         bands = self.outputs.bands
         mounts = [m for m in self.mounts if m.camera.band in bands]
         return len(mounts) * len(self.outputs.times_s)
+
+    def wind_waves(self) -> tuple[waves.Wave, ...]:
+        sea = self.sea
+        return waves.wind_sea(
+            sea.wind_speed_mps,
+            sea.wind_from_deg,
+            sea.fetch_m,
+            self.outputs.period_s,
+            substream(self.seed, "sea/surface"),
+        )
+
+    def swell_waves(self) -> tuple[waves.Wave, ...]:
+        swell = self.sea.swell
+        if swell is None:
+            return ()
+        return waves.swell(
+            swell.height_m,
+            swell.period_s,
+            swell.from_deg,
+            self.outputs.period_s,
+            substream(self.seed, "sea/swell"),
+        )
+
+    def wave_field(self) -> tuple[waves.Wave, ...]:
+        return self.wind_waves() + self.swell_waves()
 
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":

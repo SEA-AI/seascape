@@ -12,7 +12,6 @@ from seascape.blender.blend import (
     curve_image,
     lookup,
 )
-from seascape.blender.sky import _sun_vector
 from seascape.config import (
     Scenario,
     Sky,
@@ -59,7 +58,7 @@ def _sunlit_emission(
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = tree.nodes.new("ShaderNodeVectorMath")
     facing.operation = "DOT_PRODUCT"
-    facing.inputs[1].default_value = _sun_vector(sky)
+    facing.inputs[1].default_value = sky.sun_vector
     # Clamped, or a surface turned away from the sun would cool below shaded.
     lit = tree.nodes.new("ShaderNodeMath")
     lit.operation = "MAXIMUM"
@@ -101,7 +100,7 @@ def _heat(scenario: Scenario) -> _Heat:
         sun_elevation_rad=None if elevation is None else math.radians(elevation),
         cloud_fraction=clouds,
     )
-    sun = _sun_vector(sky) if elevation is not None and elevation > 0 else None
+    sun = sky.sun_vector if elevation is not None and elevation > 0 else None
     return _Heat(env, scenario.sea.t_sea_k, sun)
 
 
