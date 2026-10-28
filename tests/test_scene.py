@@ -1843,6 +1843,15 @@ class TestPhotographedThermalSky:
         assert photo.image.name == "cloudy_sky_radiance"
         assert photo.name in upstream(tree.nodes["Background"].inputs["Color"])
 
+    def test_the_haze_takes_its_airlight_from_the_clouds(self) -> None:
+        nodes = bpy.data.node_groups["haze"].nodes
+        airlight = upstream(nodes["haze_airlight"].inputs["Color"])
+        assert any(
+            nodes[name].bl_idname == "ShaderNodeTexEnvironment"
+            and nodes[name].image.name == "cloudy_sky_radiance"
+            for name in airlight
+        )
+
     def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
         heat = surroundings(variant(sky={"hdri": "overcast_soil"}))
         assert heat.env.cloud_fraction == pytest.approx(1.0)
