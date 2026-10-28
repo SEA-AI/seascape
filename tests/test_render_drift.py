@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import render, skies
-from seascape.assets import Buoy, download, fetch, manifest
+from seascape import render
+from seascape.assets import Buoy, download, fetch, manifest, skies
 from seascape.blender import scene, sea
 from seascape.blender.blend import _math
 from seascape.blender.compositor import (

@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pytest
 
-from seascape import skies
+from seascape.assets import skies
 
 W, H = 2048, 1024
 

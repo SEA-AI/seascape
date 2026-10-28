@@ -20,10 +20,11 @@ import numpy as np
 from mathutils import Vector
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import faces, render
+from seascape import render
 from seascape.assets import manifest
+from seascape.blender import faces
+from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import _corners, _import, _meshes
-from seascape.faces import Parts, face_zones
 from seascape.outputs.montage import INK, MATTE
 from seascape.physics.thermal import ZoneName
 

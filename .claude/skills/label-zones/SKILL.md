@@ -1,12 +1,12 @@
 ---
 name: label-zones
-description: Give an asset's material slots or islands their LWIR thermal zones in seascape/assets.toml, by reading the sheets `seascape zones` renders, and render the contact sheet a person approves. Use when an asset in assets.toml has no `zones` table, or a new asset is added.
+description: Give an asset's material slots or islands their LWIR thermal zones in seascape/assets/assets.toml, by reading the sheets `seascape zones` renders, and render the contact sheet a person approves. Use when an asset in assets.toml has no `zones` table, or a new asset is added.
 ---
 
 # Label thermal zones
 
 An LWIR build needs to know what each part of a mesh is made of. You read numbered
-renders of the asset and write one zone per part into `seascape/assets.toml`. A person
+renders of the asset and write one zone per part into `seascape/assets/assets.toml`. A person
 approves the result from a contact sheet.
 
 ## The vocabulary
@@ -31,7 +31,7 @@ The waterline is not a zone: it comes from `draught_m`.
 
 ## Steps
 
-1. Read the asset's line in `seascape/assets.toml`, or `uv run seascape assets show
+1. Read the asset's line in `seascape/assets/assets.toml`, or `uv run seascape assets show
    <asset>`: its `description` says what the vessel is.
 2. `uv run seascape zones <asset> -o <dir>`. An asset of more than one material gives
    slot sheets; one of a single material gives island sheets. `--islands` forces

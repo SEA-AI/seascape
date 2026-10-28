@@ -11,8 +11,7 @@ import bpy
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import skies
-from seascape.assets import download
+from seascape.assets import download, skies
 
 TILE = (512, 150)
 COLUMNS = 3

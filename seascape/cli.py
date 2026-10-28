@@ -11,7 +11,8 @@ from typing import Any, get_args
 
 import click
 
-from seascape import assets, skies
+from seascape import assets
+from seascape.assets import skies
 from seascape.config import Band, json_schema, load
 from seascape.outputs import labels, montage, panorama, recording
 
