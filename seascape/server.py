@@ -29,7 +29,7 @@ from pydantic import Field
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from seascape import assets, checkout, skies
+from seascape import assets, skies
 from seascape.config import (
     Band,
     ImageFormat,
@@ -41,6 +41,7 @@ from seascape.config import (
 from seascape.outputs import montage
 
 RENDERS = assets.CACHE / "renders"
+SCENARIOS = Path(os.environ.get("SEASCAPE_SCENARIOS", "scenarios"))
 KEEP_S = 24 * 3600
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
@@ -154,11 +155,7 @@ _jobs: dict[str, Job] = {}
 
 
 def _scenarios() -> dict[str, Path]:
-    """The repository's scenarios; only an editable install has them."""
-    root = checkout.root()
-    if root is None:
-        return {}
-    return {path.stem: path for path in sorted((root / "scenarios").glob("*.toml"))}
+    return {path.stem: path for path in sorted(SCENARIOS.glob("*.toml"))}
 
 
 def _includes(node: Any) -> Iterator[str]:

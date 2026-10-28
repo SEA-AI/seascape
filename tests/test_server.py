@@ -24,6 +24,11 @@ from tests.scenarios import SCENARIOS
 BASELINE = SCENARIOS / "baseline.toml"
 
 
+@pytest.fixture(autouse=True)
+def _scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server, "SCENARIOS", SCENARIOS)
+
+
 def _call(tool: str, **arguments: Any) -> Any:
     async def call() -> Any:
         async with Client(server.server) as client:

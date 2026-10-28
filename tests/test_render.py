@@ -631,7 +631,7 @@ def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
 def test_an_install_without_git_names_the_image_s_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("seascape.checkout.root", lambda: tmp_path)
+    monkeypatch.setattr(render, "__file__", str(tmp_path / "__init__.py"))
     monkeypatch.setenv("SEASCAPE_COMMIT", "abc123")
     assert render._commit() == "abc123"
     monkeypatch.setenv("SEASCAPE_COMMIT", "")
