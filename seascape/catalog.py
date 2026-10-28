@@ -6,11 +6,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from seascape import assets, render
 from seascape.blender import meshes
 from seascape.config import Band, Scenario, load
+from seascape.outputs import montage
 
 TILE = (480, 270)
 COLUMNS = 4
@@ -86,7 +87,7 @@ def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
     rows = math.ceil(len(entries) / COLUMNS)
     page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
     draw = ImageDraw.Draw(page)
-    font = ImageFont.load_default(size=15)
+    font = montage.font(15)
     with tempfile.TemporaryDirectory() as tmp:
         for k, (name, mesh) in enumerate(entries.items()):
             x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * TILE[1]
