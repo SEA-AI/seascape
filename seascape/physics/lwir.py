@@ -407,8 +407,9 @@ def _path_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
     """Per profile: (range m, 1 / visibility km with 0 for no aerosol, optical depth),
     the optical depth shaped (range, visibility) and the visibilities ascending."""
     columns = header(_PATH_CSV)[1:]
-    km = [c.removeprefix("vis_").removesuffix("km") for c in columns]
-    inverse = np.array([0.0 if c == "none" else 1 / float(c) for c in km])
+    # "vis_2km" is maritime haze and "fog_1km" advection fog, on one axis.
+    km = [c.partition("_")[2].removesuffix("km") for c in columns]
+    inverse = np.array([1 / float(k) if k else 0.0 for k in km])  # "none" has no km
     order = np.argsort(inverse)
     names = np.loadtxt(_PATH_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
     raw = np.loadtxt(
@@ -432,9 +433,12 @@ def path_optical_depth(
     """-ln of the band transmittance along a horizontal path near the sea.
 
     Linear in 1 / visibility, which is how aerosol extinction scales, and in log range.
-    A visibility below the table's shortest is held at it. Short of the table it
-    follows the power law of its first two rows: band depth grows as a power of the
-    path, not linearly, while the strongest lines saturate.
+    The aerosol is maritime haze down to 2 km and advection fog from 1 km, WMO's fog
+    (WMO No. 8, 2018), whose drops take LWIR about as fast as visible light; between
+    the two the depth runs from one to the other. A visibility below the table's
+    shortest is held at it. Short of the table it follows the power law of its first
+    two rows: band depth grows as a power of the path, not linearly, while the
+    strongest lines saturate.
     """
     ranges, inverse, depth = _path_table()[atmosphere]
     x = 0.0 if visibility_km is None else 1 / visibility_km

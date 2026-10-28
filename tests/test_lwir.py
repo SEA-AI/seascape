@@ -201,6 +201,42 @@ def test_aerosol_adds_to_water_vapour_which_takes_most_of_the_path() -> None:
     assert clear / typical > 0.8
 
 
+# LOWTRAN 7, north_sea over 501.381 m: maritime aerosol (IHAZE 4) at 2 km, advection
+# fog (IHAZE 8) at 1 and 0.5 km.
+HAZE_2KM, FOG_1KM, FOG_500M = 6.648157e-01, 9.606802e-02, 1.140348e-02
+
+
+def test_under_a_kilometre_the_path_is_lowtrans_advection_fog() -> None:
+    depth = [lwir.path_optical_depth(501.381, v) for v in (2.0, 1.0, 0.5)]
+    assert np.exp(-np.array(depth)) == pytest.approx(
+        [HAZE_2KM, FOG_1KM, FOG_500M], rel=1e-6
+    )
+
+
+def test_mist_runs_from_haze_to_fog_without_a_step() -> None:
+    edge = [lwir.path_optical_depth(501.381, v) for v in (2.001, 1.999, 1.5, 1.0)]
+    assert edge == sorted(edge)
+    assert edge[1] - edge[0] < 0.01 * (edge[-1] - edge[0])
+
+
+def test_fog_takes_lwir_about_as_fast_as_visible_light_and_haze_does_not() -> None:
+    clear = lwir.path_optical_depth(500.0, None)
+
+    def ratio(visibility_km: float) -> float:
+        """The aerosol's LWIR depth over 500 m against Koschmieder's."""
+        eo = math.log(1 / 0.02) * 0.5 / visibility_km
+        return float(lwir.path_optical_depth(500.0, visibility_km) - clear) / eo
+
+    assert 0.8 < ratio(0.5) < 1.25
+    assert ratio(5.0) < 0.3
+
+
+def test_a_fog_denser_than_the_table_is_held_at_its_densest() -> None:
+    densest = lwir._path_table()[atmosphere.ATMOSPHERE][1][-1]
+    held, below = (lwir.path_optical_depth(100.0, v) for v in (1 / densest, 0.01))
+    assert held == below
+
+
 def test_every_atmosphere_has_a_sky_a_path_and_a_surface_air() -> None:
     names = set(get_args(atmosphere.Atmosphere.__value__))
     assert set(lwir._sky_table()[1]) == names
