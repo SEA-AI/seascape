@@ -694,18 +694,36 @@ class Sky(Model):
         return self.sun_elevation_deg is None or self.sun_elevation_deg > 0.0
 
 
-def _in_the_manifest(name: str) -> str:
-    known = assets.manifest()
-    if name not in known:
-        raise ValueError(f"no asset {name!r} in {sorted(known)}")
+def _names(turbines: bool) -> list[str]:
+    return sorted(
+        name
+        for name, asset in assets.manifest().items()
+        if isinstance(asset, assets.Turbine) == turbines
+    )
+
+
+def _a_vessel(name: str) -> str:
+    if name not in (names := _names(turbines=False)):
+        raise ValueError(f"no asset {name!r} in {names}; a turbine stands in farms")
+    return name
+
+
+def _a_turbine(name: str) -> str:
+    if name not in (names := _names(turbines=True)):
+        raise ValueError(f"no turbine {name!r} in {names}")
     return name
 
 
 # The names go in the schema too, so an editor completes them.
-AssetName = Annotated[
+VesselName = Annotated[
     str,
-    AfterValidator(_in_the_manifest),
-    WithJsonSchema({"type": "string", "enum": sorted(assets.manifest())}),
+    AfterValidator(_a_vessel),
+    WithJsonSchema({"type": "string", "enum": _names(turbines=False)}),
+]
+TurbineName = Annotated[
+    str,
+    AfterValidator(_a_turbine),
+    WithJsonSchema({"type": "string", "enum": _names(turbines=True)}),
 ]
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = (
@@ -748,7 +766,7 @@ class Orbit(Model):
 class Object(Model):
     """Something to detect."""
 
-    asset: AssetName = Field(description=_ASSET)
+    asset: VesselName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
     heading_deg: float = Field(
@@ -821,7 +839,7 @@ class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the attitude alone."""
 
-    asset: AssetName | None = Field(default=None, description=_ASSET)
+    asset: VesselName | None = Field(default=None, description=_ASSET)
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
@@ -842,7 +860,7 @@ class Targets(Model):
     Placed in the world, so nothing guarantees a camera sees one.
     """
 
-    asset: AssetName | Annotated[list[AssetName], Field(min_length=1)] = Field(
+    asset: VesselName | Annotated[list[VesselName], Field(min_length=1)] = Field(
         description=f"{_ASSET} A list is taken in turn round the ring."
     )
     count: int = Field(gt=0, description="How many.")
@@ -882,6 +900,70 @@ class Targets(Model):
             )
             for i in range(self.count)
         ]
+
+
+class Farm(Model):
+    """Turbines in rows of equal length, each to starboard of the last along
+    `row_bearing_deg`. One row of one is a lone turbine."""
+
+    asset: TurbineName = Field(description=f"{_ASSET} A turbine.")
+    range_m: float = Field(gt=0.0, description="To the first turbine of the first row.")
+    bearing_deg: float = Field(
+        description="Of the first turbine, clockwise from the ownship's bow."
+    )
+    rows: int = Field(default=1, gt=0, description="How many rows.")
+    columns: int = Field(default=1, gt=0, description="Turbines in a row.")
+    # Horns Rev 1: 560 m both ways, 7 rotor diameters (Vattenfall, "Horns Rev").
+    spacing_d: tuple[float, float] = Field(
+        default=(7.0, 7.0),
+        description="Along a row, then between rows, in rotor diameters.",
+    )
+    row_bearing_deg: float = Field(
+        default=0.0,
+        description="Where a row runs from its first turbine, clockwise from the "
+        "ownship's bow.",
+    )
+    staggered: bool = Field(
+        default=False, description="Every other row shifted half a spacing along."
+    )
+    paint_absorptance: float | None = Field(
+        default=None,
+        ge=thermal.PAINT_ABSORPTANCE[0],
+        le=thermal.PAINT_ABSORPTANCE[1],
+        description=_PAINT,
+    )
+
+    @property
+    def turbine(self) -> assets.Turbine:
+        turbine = assets.manifest()[self.asset]
+        assert isinstance(turbine, assets.Turbine)  # TurbineName checked it
+        return turbine
+
+    def positions(self) -> list[tuple[float, float]]:
+        """Range and bearing, row by row."""
+        along_m, across_m = (d * self.turbine.rotor.diameter_m for d in self.spacing_d)
+        bearing = math.radians(self.bearing_deg)
+        row = math.radians(self.row_bearing_deg)
+        placed = []
+        for r in range(self.rows):
+            shift = 0.5 if self.staggered and r % 2 else 0.0
+            for c in range(self.columns):
+                ahead_m = along_m * (c + shift)
+                # Starboard of a row's bearing is (cos, -sin).
+                east = (
+                    self.range_m * math.sin(bearing)
+                    + ahead_m * math.sin(row)
+                    + r * across_m * math.cos(row)
+                )
+                north = (
+                    self.range_m * math.cos(bearing)
+                    + ahead_m * math.cos(row)
+                    - r * across_m * math.sin(row)
+                )
+                placed.append(
+                    (math.hypot(east, north), math.degrees(math.atan2(east, north)))
+                )
+        return placed
 
 
 class Samples(Model):
@@ -981,6 +1063,9 @@ class Scenario(Model):
     sky: Sky = Field(default_factory=Sky)
     objects: list[Object] = Field(
         default_factory=list, description="Vessels placed one by one."
+    )
+    farms: list[Farm] = Field(
+        default_factory=list, description="Wind turbines, in rows or alone."
     )
     outputs: Outputs = Field(default_factory=Outputs)
 
