@@ -20,9 +20,8 @@ import numpy as np
 from mathutils import Vector
 from PIL import Image, ImageDraw, ImageFont
 
-from seascape import render
 from seascape.assets import manifest
-from seascape.blender import faces
+from seascape.blender import blend, faces
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import _corners, _import, _meshes
 from seascape.outputs.montage import INK, MATTE
@@ -199,7 +198,7 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
             _shoot(ids, "VERTEX", "FLAT", "OFF", exr=True)
             _shoot(grey, "SINGLE", "STUDIO", "FXAA", exr=False)
             _shoot(tex, "TEXTURE", "STUDIO", "FXAA", exr=False)
-            rgba = render._pixels(ids)[::-1]
+            rgba = blend.read(ids)[::-1]
             digits = np.rint(rgba[..., :3]).astype(np.int64)
             value = digits @ (DIGIT ** np.arange(3))
             part = np.where(rgba[..., 3] > 0.5, value, -1)
@@ -413,10 +412,8 @@ def _texels(image: bpy.types.Image) -> np.ndarray:
     if (cached := _texel_cache.get(image.name)) is not None:
         return cached
     width, height = image.size
-    buffer = np.empty(width * height * 4, dtype=np.float32)
-    image.pixels.foreach_get(buffer)
     step = max(1, math.ceil(max(width, height) / ATLAS_PX))
-    texels = buffer.reshape(height, width, 4)[::-step, ::step]
+    texels = blend.pixels(image)[::-step, ::step]
     _texel_cache[image.name] = texels
     return texels
 

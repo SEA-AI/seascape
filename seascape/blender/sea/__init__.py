@@ -8,10 +8,10 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
-    _math,
-    _vector,
     animate,
     curve_image,
+    scalar,
+    vector,
 )
 from seascape.blender.sea.daylight import _daylight, _glinting, _glitter, _widest
 from seascape.blender.sea.foam import (
@@ -169,7 +169,9 @@ def material(
         else slick_survivors(speed, wind, math.radians(sea.wind_from_deg))
     )
     damped = frozenset(wind) - frozenset(survivors)
-    calm = _math(tree, "SUBTRACT", 1.0, slick) if slick is not None and damped else None
+    calm = (
+        scalar(tree, "SUBTRACT", 1.0, slick) if slick is not None and damped else None
+    )
     normal = _normal(tree, *shaded, position, pixel, calm, damped)
     wake = None
     if wakes:
@@ -177,10 +179,10 @@ def material(
         wake = _wakes(tree, wakes, position, pixel.along_m, foam(), sea_variance)
     smooth = _smoothed(tree, slick, wake)
     if wake is not None and wake.tilt is not None:
-        normal = _vector(
+        normal = vector(
             tree,
             "NORMALIZE",
-            _vector(tree, "ADD", normal, wake.tilt),
+            vector(tree, "ADD", normal, wake.tilt),
             name="wake_normal",
         )
     unresolved = _unresolved(tree, sea, wind, swell, survivors, pixel, gust, smooth)
@@ -215,21 +217,21 @@ def material(
             # The wider spread reaches the most facets. A judgement.
             glinting = _glinting(tree, normal, light.sun, wide)
             tilt, carried = _glitter(tree, wind, position, pixel, narrow, glinting)
-            normal = _vector(
+            normal = vector(
                 tree,
                 "NORMALIZE",
-                _vector(tree, "ADD", normal, tilt),
+                vector(tree, "ADD", normal, tilt),
                 name="glitter_normal",
             )
-        wide = _math(tree, "MAXIMUM", _math(tree, "SUBTRACT", wide, carried), 0.0)
+        wide = scalar(tree, "MAXIMUM", scalar(tree, "SUBTRACT", wide, carried), 0.0)
         # Cycles stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
         unresolved = (
             wide,
-            _math(
+            scalar(
                 tree,
                 "MAXIMUM",
-                _math(tree, "SUBTRACT", narrow, carried),
-                _math(tree, "MULTIPLY", wide, 0.01),
+                scalar(tree, "SUBTRACT", narrow, carried),
+                scalar(tree, "MULTIPLY", wide, 0.01),
             ),
         )
         surface = _daylight(tree, sea, normal, tangent, unresolved, whitecaps, wake)
@@ -255,7 +257,7 @@ def material(
             _skin_radiance(tree, sea, light.sun_up, wake),
             whitecaps[0]
             if wake is None
-            else _math(tree, "MAXIMUM", whitecaps[0], wake.foam),
+            else scalar(tree, "MAXIMUM", whitecaps[0], wake.foam),
         )
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])

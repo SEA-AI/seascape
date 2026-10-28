@@ -6,8 +6,8 @@ from collections.abc import Callable
 import bpy
 
 from seascape.blender.blend import (
-    _math,
-    _vector,
+    scalar,
+    vector,
 )
 from seascape.blender.sea.pixel import _at_footprint, _footprint_table, _Pixel
 from seascape.blender.sea.wind import _gusty
@@ -43,13 +43,13 @@ def _grouped(
     if sea.wind_speed_mps <= 0.0:
         return unresolved
     link = tree.links.new
-    footprint = _math(
-        tree, "SQRT", _math(tree, "MULTIPLY", pixel.along_m, pixel.across_m)
+    footprint = scalar(
+        tree, "SQRT", scalar(tree, "MULTIPLY", pixel.along_m, pixel.across_m)
     )
     # Judgement: square cells, a power of two across, one to two to the footprint's
     # geometric mean, so few fall in a pixel and their spread stays narrow.
-    level = _math(tree, "FLOOR", _math(tree, "LOGARITHM", footprint, 2.0))
-    cell_m = _math(tree, "POWER", 2.0, level, name="sea_group_cell")
+    level = scalar(tree, "FLOOR", scalar(tree, "LOGARITHM", footprint, 2.0))
+    cell_m = scalar(tree, "POWER", 2.0, level, name="sea_group_cell")
     spread = _at_footprint(
         tree,
         _footprint_table(
@@ -59,17 +59,17 @@ def _grouped(
         footprint,
         "sea_mss_spread",
     )
-    kept = _math(
+    kept = scalar(
         tree,
         "MULTIPLY",
-        _box_kept(tree, _math(tree, "DIVIDE", pixel.along_m, cell_m)),
-        _box_kept(tree, _math(tree, "DIVIDE", pixel.across_m, cell_m)),
+        _box_kept(tree, scalar(tree, "DIVIDE", pixel.along_m, cell_m)),
+        _box_kept(tree, scalar(tree, "DIVIDE", pixel.across_m, cell_m)),
     )
-    per_cell = _math(tree, "DIVIDE", spread, _math(tree, "SQRT", kept))
-    sigma_sq = _math(
+    per_cell = scalar(tree, "DIVIDE", spread, scalar(tree, "SQRT", kept))
+    sigma_sq = scalar(
         tree,
         "LOGARITHM",
-        _math(tree, "MULTIPLY_ADD", per_cell, per_cell, 1.0),
+        scalar(tree, "MULTIPLY_ADD", per_cell, per_cell, 1.0),
         math.e,
     )
     split = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -77,7 +77,7 @@ def _grouped(
     cell = tree.nodes.new("ShaderNodeCombineXYZ")
     for axis in "XY":
         link(
-            _math(tree, "FLOOR", _math(tree, "DIVIDE", split.outputs[axis], cell_m)),
+            scalar(tree, "FLOOR", scalar(tree, "DIVIDE", split.outputs[axis], cell_m)),
             cell.inputs[axis],
         )
     link(level, cell.inputs["Z"])
@@ -87,20 +87,20 @@ def _grouped(
     # A cell L across leaves the waves up to L long, `waves.visibility`'s zero. Deep
     # water's group velocity is half sqrt(g lambda / 2 pi), so a group of them crosses
     # it at sqrt(g / (8 pi L)) per second. Read off the cell, every sample in it agrees.
-    rate = _math(
+    rate = scalar(
         tree,
         "SQRT",
-        _math(
+        scalar(
             tree,
             "DIVIDE",
             GRAVITY_MS2 / (8 * math.pi),
             cell_m,
         ),
     )
-    draw = _math(
+    draw = scalar(
         tree,
         "FLOOR",
-        _math(
+        scalar(
             tree,
             "MULTIPLY_ADD",
             split.outputs["Z"],
@@ -116,46 +116,48 @@ def _grouped(
     uniform = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(noise.outputs["Color"], uniform.inputs["Vector"])
     # Box-Muller.
-    normal = _math(
+    normal = scalar(
         tree,
         "MULTIPLY",
-        _math(
+        scalar(
             tree,
             "SQRT",
-            _math(
+            scalar(
                 tree,
                 "MULTIPLY",
-                _math(
+                scalar(
                     tree,
                     "LOGARITHM",
-                    _math(tree, "MAXIMUM", uniform.outputs["X"], 1e-7),
+                    scalar(tree, "MAXIMUM", uniform.outputs["X"], 1e-7),
                     math.e,
                 ),
                 -2.0,
             ),
         ),
-        _math(
+        scalar(
             tree,
             "COSINE",
-            _math(tree, "MULTIPLY", uniform.outputs["Y"], 2 * math.pi),
+            scalar(tree, "MULTIPLY", uniform.outputs["Y"], 2 * math.pi),
         ),
     )
     # Judgement: a lognormal, so the scale stays positive. exp(sigma z - sigma^2 / 2)
     # has mean 1.
-    scale = _math(
+    scale = scalar(
         tree,
         "EXPONENT",
-        _math(
+        scalar(
             tree,
             "MULTIPLY_ADD",
             normal,
-            _math(tree, "SQRT", sigma_sq),
-            _math(tree, "MULTIPLY", sigma_sq, -0.5),
+            scalar(tree, "SQRT", sigma_sq),
+            scalar(tree, "MULTIPLY", sigma_sq, -0.5),
         ),
         name="sea_group_scale",
     )
     along, across = unresolved
-    return _math(tree, "MULTIPLY", along, scale), _math(tree, "MULTIPLY", across, scale)
+    return scalar(tree, "MULTIPLY", along, scale), scalar(
+        tree, "MULTIPLY", across, scale
+    )
 
 
 def _box_kept(
@@ -164,18 +166,18 @@ def _box_kept(
     """The share of a cell's variance a box `cells` cells long keeps, at a random
     offset on the grid: the mean over the box of the triangle 1 - |d|, which is
     (1 - 1 / 3m) / m from one cell up and 1 - m / 3 below."""
-    over = _math(
+    over = scalar(
         tree,
         "DIVIDE",
-        _math(tree, "MULTIPLY_ADD", cells, 3.0, -1.0),
-        _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", cells, cells), 3.0),
+        scalar(tree, "MULTIPLY_ADD", cells, 3.0, -1.0),
+        scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", cells, cells), 3.0),
     )
-    under = _math(tree, "MULTIPLY_ADD", cells, -1 / 3, 1.0)
-    return _math(
+    under = scalar(tree, "MULTIPLY_ADD", cells, -1 / 3, 1.0)
+    return scalar(
         tree,
         "MULTIPLY_ADD",
-        _math(tree, "GREATER_THAN", cells, 1.0),
-        _math(tree, "SUBTRACT", over, under),
+        scalar(tree, "GREATER_THAN", cells, 1.0),
+        scalar(tree, "SUBTRACT", over, under),
         under,
     )
 
@@ -201,13 +203,13 @@ def _unresolved(
     speed = sea.wind_speed_mps
     # From or toward, the axis is the same.
     wind_axis = math.radians(sea.wind_from_deg)
-    facing = _vector(
+    facing = vector(
         tree,
         "DOT_PRODUCT",
         pixel.along_dir,
         (math.sin(wind_axis), math.cos(wind_axis), 0),
     )
-    cos2 = _math(tree, "MULTIPLY", facing, facing, name="sea_wind_facing")
+    cos2 = scalar(tree, "MULTIPLY", facing, facing, name="sea_wind_facing")
     footprints = (pixel.along_m, pixel.across_m)
 
     def tabled(
@@ -226,16 +228,20 @@ def _unresolved(
         )
         out = []
         for f, on_up in zip(
-            footprints, (cos2, _math(tree, "SUBTRACT", 1.0, cos2)), strict=True
+            footprints, (cos2, scalar(tree, "SUBTRACT", 1.0, cos2)), strict=True
         ):
             up, cross = (
                 _at_footprint(tree, t, f, f"{name}_{axis}")
                 for t, axis in zip(axes, ("upwind", "crosswind"), strict=True)
             )
-            mixed = _math(
-                tree, "MULTIPLY_ADD", _math(tree, "SUBTRACT", up, cross), on_up, cross
+            mixed = scalar(
+                tree,
+                "MULTIPLY_ADD",
+                scalar(tree, "SUBTRACT", up, cross),
+                on_up,
+                cross,
             )
-            out.append(_math(tree, "MULTIPLY", mixed, 2.0))
+            out.append(scalar(tree, "MULTIPLY", mixed, 2.0))
         return out[0], out[1]
 
     unresolved = tabled("sea_unresolved_variance", wind, cox_munk_variances)
@@ -245,7 +251,7 @@ def _unresolved(
         return unresolved
     slick = tabled("sea_unresolved_slick_variance", survivors, cox_munk_slick_variances)
     along, across = (
-        _math(tree, "MULTIPLY_ADD", smooth, _math(tree, "SUBTRACT", s, v), v)
+        scalar(tree, "MULTIPLY_ADD", smooth, scalar(tree, "SUBTRACT", s, v), v)
         for s, v in zip(slick, unresolved, strict=True)
     )
     return along, across

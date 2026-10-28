@@ -9,11 +9,11 @@ import numpy as np
 
 from seascape.blender.blend import (
     CURVE_SAMPLES,
-    _math,
-    _vector,
     curve_image,
     drive,
     lookup,
+    scalar,
+    vector,
 )
 
 # A judgement: the footprints a sea pixel spans.
@@ -36,8 +36,8 @@ def _pixel(
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     if incoming is None:
         incoming = geometry.outputs["Incoming"]
-    facing = _vector(tree, "DOT_PRODUCT", incoming, geometry.outputs["Normal"])
-    across = _math(tree, "MULTIPLY", camera.outputs["View Distance"], 0.0)
+    facing = vector(tree, "DOT_PRODUCT", incoming, geometry.outputs["Normal"])
+    across = scalar(tree, "MULTIPLY", camera.outputs["View Distance"], 0.0)
     # ponytail: the build's cameras fit their angle to the width; a camera added in
     # Blender with another sensor fit gets the wrong pixel. Read `sensor_fit` when
     # such a camera must render.
@@ -51,12 +51,12 @@ def _pixel(
         percent="render.resolution_percentage",
     )
     # Grazing stretches the pixel by 1 / cos along the view; the floor keeps it finite.
-    cosine = _math(tree, "MAXIMUM", _math(tree, "ABSOLUTE", facing), 1e-3)
-    tilt = _vector(tree, "SCALE", geometry.outputs["Normal"])
+    cosine = scalar(tree, "MAXIMUM", scalar(tree, "ABSOLUTE", facing), 1e-3)
+    tilt = vector(tree, "SCALE", geometry.outputs["Normal"])
     tree.links.new(facing, tilt.node.inputs["Scale"])
-    level = _vector(tree, "SUBTRACT", incoming, tilt)
-    along = _vector(tree, "NORMALIZE", level)
-    return _Pixel(across, _math(tree, "DIVIDE", across, cosine), along)
+    level = vector(tree, "SUBTRACT", incoming, tilt)
+    along = vector(tree, "NORMALIZE", level)
+    return _Pixel(across, scalar(tree, "DIVIDE", across, cosine), along)
 
 
 def _instance(
@@ -68,13 +68,13 @@ def _instance(
     """`group` fed the pixel's footprint. Cycles merges the identical nodes each call
     adds."""
     link = tree.links.new
-    across_sq = _math(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
-    along_sq = _math(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
+    across_sq = scalar(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
+    along_sq = scalar(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
     node = tree.nodes.new("ShaderNodeGroup")
     node.node_tree = group
     link(pixel.along_dir, node.inputs["Along"])
     link(across_sq, node.inputs["Across Sq"])
-    link(_math(tree, "SUBTRACT", along_sq, across_sq), node.inputs["Stretch"])
+    link(scalar(tree, "SUBTRACT", along_sq, across_sq), node.inputs["Stretch"])
     if calm is not None:
         link(calm, node.inputs["Calm"])
     return node
@@ -98,10 +98,10 @@ def _at_footprint(
 ) -> bpy.types.NodeSocket:
     low, high = FOOTPRINT_RANGE_M
     decades = math.log10(high / low)
-    x = _math(
+    x = scalar(
         tree,
         "MULTIPLY_ADD",
-        _math(tree, "LOGARITHM", footprint_m, 10.0),
+        scalar(tree, "LOGARITHM", footprint_m, 10.0),
         1 / decades,
         -math.log10(low) / decades,
     )

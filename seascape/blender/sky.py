@@ -10,10 +10,11 @@ from seascape.blender import sea
 from seascape.blender.blend import (
     CURVE_SAMPLES,
     SUN,
-    _math,
     curve_image,
     drive,
     lookup,
+    pixels,
+    scalar,
 )
 from seascape.config import (
     Band,
@@ -149,10 +150,10 @@ def _haze(sky: Sky, band: Band, far_m: float) -> None:
         airlight.inputs["Color"],
     )
     depth = _optical_depth(group, sky, band, far_m)
-    kept = _math(group, "EXPONENT", _math(group, "MULTIPLY", depth, -1.0))
+    kept = scalar(group, "EXPONENT", scalar(group, "MULTIPLY", depth, -1.0))
     mix = group.nodes.new("ShaderNodeMixShader")
     mix.name = "haze_mix"
-    link(_math(group, "SUBTRACT", 1.0, kept), mix.inputs["Fac"])
+    link(scalar(group, "SUBTRACT", 1.0, kept), mix.inputs["Fac"])
     link(group.nodes.new("NodeGroupInput").outputs["Shader"], mix.inputs[1])
     link(airlight.outputs["Emission"], mix.inputs[2])
     link(mix.outputs["Shader"], group.nodes.new("NodeGroupOutput").inputs["Shader"])
@@ -223,7 +224,7 @@ def _optical_depth(
     """
     length = tree.nodes.new("ShaderNodeLightPath").outputs["Ray Length"]
     if band == "eo":
-        return _math(tree, "MULTIPLY", length, sky.extinction_per_m, name="haze_beta")
+        return scalar(tree, "MULTIPLY", length, sky.extinction_per_m, name="haze_beta")
     ranges = _haze_ranges_m(far_m)
     image = curve_image(
         "haze_depth", lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
@@ -232,17 +233,17 @@ def _optical_depth(
 
     def at(range_m: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         # Blender's log of a negative number is 0, which is a range inside the table.
-        near = _math(tree, "MAXIMUM", range_m, HAZE_NEAR_M)
-        texel = _math(tree, "LOGARITHM", near, span)
-        texel = _math(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
+        near = scalar(tree, "MAXIMUM", range_m, HAZE_NEAR_M)
+        texel = scalar(tree, "LOGARITHM", near, span)
+        texel = scalar(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
         return lookup(tree, image, texel)
 
     distance = tree.nodes.new("ShaderNodeVectorMath")
     distance.operation = "LENGTH"
     camera = tree.nodes.new("ShaderNodeTexCoord").outputs["Camera"]
     tree.links.new(camera, distance.inputs["Vector"])
-    start = _math(tree, "SUBTRACT", distance.outputs["Value"], length)
-    return _math(tree, "SUBTRACT", at(distance.outputs["Value"]), at(start))
+    start = scalar(tree, "SUBTRACT", distance.outputs["Value"], length)
+    return scalar(tree, "SUBTRACT", at(distance.outputs["Value"]), at(start))
 
 
 def _sky_image(sky: Sky) -> bpy.types.Image:
@@ -266,13 +267,12 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     """`lwir.cloudy_sky_radiance` under the photo's clouds, laid out as the photo."""
     assert sky.hdri is not None
     photo = _photo_image(sky.hdri)
-    w, h = photo.size
-    pixels = np.empty(w * h * 4, np.float32)
-    photo.pixels.foreach_get(pixels)
+    rgba = pixels(photo)
+    h, w = rgba.shape[:2]
     bpy.data.images.remove(photo)
     # Bottom row first, as Blender stores an image: the sky is the top half.
     cloud = np.zeros((h, w), np.float32)
-    cloud[h // 2 :] = skies.cloud(pixels.reshape(h, w, 4)[h // 2 :, :, :3])
+    cloud[h // 2 :] = skies.cloud(rgba[h // 2 :, :, :3])
     f = max(1, w // THERMAL_SKY_PX)
     cloud = cloud[: h // f * f, : w // f * f]
     cloud = cloud.reshape(h // f, f, w // f, f).mean(axis=(1, 3))
@@ -296,12 +296,11 @@ def _clouds(sky: Sky) -> sea.Clouds | None:
     if sky.hdri is None:
         return None
     image = bpy.data.images["cloudy_sky_radiance"]
-    w, h = image.size
-    pixels = np.empty(w * h * 4, np.float32)
-    image.pixels.foreach_get(pixels)
+    rgba = pixels(image)
+    h = rgba.shape[0]
     # Bottom row first, as `_cloudy_sky_image` lays it out.
     elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
-    radiance = pixels.reshape(h, w, 4)[..., 0].astype(np.float64)
+    radiance = rgba[..., 0].astype(np.float64)
     return sea.Clouds(
         elevation, radiance, _photo_turn_rad(sky.hdri, sky.sun_bearing_deg)
     )

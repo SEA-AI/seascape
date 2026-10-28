@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 
 from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
 from seascape import render
-from seascape.blender import scene
+from seascape.blender import blend, scene
 from seascape.config import load
 from seascape.outputs import labels
 
@@ -34,7 +34,7 @@ def shots(out: Path) -> tuple[np.ndarray, np.ndarray, list[int]]:
     sc.render.filepath = str(out / "frame")
     bpy.ops.render.render(write_still=True)
     frame = render._frame(out / f"frame.{scenario.outputs.format}")
-    index = np.rint(render._pixels(out / "eo.index.exr")[::-1, :, 0]).astype(int)
+    index = np.rint(blend.read(out / "eo.index.exr")[::-1, :, 0]).astype(int)
     at = camera.matrix_world.translation
     anchors = [anchor for group in built.targets.values() for anchor in group]
     anchors.sort(key=lambda a: (a.matrix_world.translation - at).length)

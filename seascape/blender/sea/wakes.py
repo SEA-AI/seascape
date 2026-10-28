@@ -9,10 +9,11 @@ import numpy as np
 
 from seascape.blender.blend import (
     CURVE_SAMPLES,
-    _math,
-    _vector,
+    combine,
     curve_image,
     lookup,
+    scalar,
+    vector,
 )
 from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M
 from seascape.physics.earth import GRAVITY_MS2
@@ -45,20 +46,6 @@ class _Path(NamedTuple):
     fixed: bpy.types.NodeSocket  # along and across, fixed in the water
 
 
-def _pair(
-    tree: bpy.types.NodeTree,
-    east: bpy.types.NodeSocket | float,
-    north: bpy.types.NodeSocket | float,
-) -> bpy.types.NodeSocket:
-    node = tree.nodes.new("ShaderNodeCombineXYZ")
-    for socket, value in zip(("X", "Y"), (east, north), strict=True):
-        if isinstance(value, bpy.types.NodeSocket):
-            tree.links.new(value, node.inputs[socket])
-        else:
-            node.inputs[socket].default_value = value
-    return node.outputs["Vector"]
-
-
 def _orbit_path(
     tree: bpy.types.NodeTree,
     wake: Wake,
@@ -67,34 +54,34 @@ def _orbit_path(
     north: bpy.types.NodeSocket,
 ) -> _Path:
     assert wake.orbit_m is not None
-    bearing = _math(tree, "ARCTAN2", east, north)
-    hull = _math(
+    bearing = scalar(tree, "ARCTAN2", east, north)
+    hull = scalar(
         tree, "MULTIPLY_ADD", time_s, 2 * math.pi / wake.lap_s, wake.start_bearing_rad
     )
     # Clockwise: behind a hull is anticlockwise of it, as far as the hull after it.
-    angle = _math(
+    angle = scalar(
         tree,
         "FLOORED_MODULO",
-        _math(tree, "SUBTRACT", hull, bearing),
+        scalar(tree, "SUBTRACT", hull, bearing),
         2 * math.pi / wake.count,
     )
-    radius = _vector(tree, "LENGTH", _pair(tree, east, north))
-    cos_b, sin_b = _math(tree, "COSINE", bearing), _math(tree, "SINE", bearing)
+    radius = vector(tree, "LENGTH", combine(tree, east, north))
+    cos_b, sin_b = scalar(tree, "COSINE", bearing), scalar(tree, "SINE", bearing)
     # Round the circle in whole foam tiles, so the bearing's wrap is no seam.
     round_m = FOAM_STREAK * FOAM_TILE_M
     round_m *= max(1, round(2 * math.pi * wake.orbit_m / round_m))
     return _Path(
-        along=_math(tree, "MULTIPLY", angle, wake.orbit_m),
+        along=scalar(tree, "MULTIPLY", angle, wake.orbit_m),
         # Clockwise, starboard is in towards the centre.
-        across=_math(tree, "SUBTRACT", wake.orbit_m, radius),
-        d_along=_pair(tree, _math(tree, "MULTIPLY", cos_b, -1.0), sin_b),
-        d_across=_pair(
+        across=scalar(tree, "SUBTRACT", wake.orbit_m, radius),
+        d_along=combine(tree, scalar(tree, "MULTIPLY", cos_b, -1.0), sin_b),
+        d_across=combine(
             tree,
-            _math(tree, "MULTIPLY", sin_b, -1.0),
-            _math(tree, "MULTIPLY", cos_b, -1.0),
+            scalar(tree, "MULTIPLY", sin_b, -1.0),
+            scalar(tree, "MULTIPLY", cos_b, -1.0),
         ),
-        fixed=_pair(
-            tree, _math(tree, "MULTIPLY", bearing, -round_m / (2 * math.pi)), radius
+        fixed=combine(
+            tree, scalar(tree, "MULTIPLY", bearing, -round_m / (2 * math.pi)), radius
         ),
     )
 
@@ -108,26 +95,30 @@ def _line_path(
 ) -> _Path:
     sin_h, cos_h = math.sin(wake.heading_rad), math.cos(wake.heading_rad)
     e0, n0 = wake.start_m
-    hull_e = _math(tree, "MULTIPLY_ADD", time_s, wake.speed_mps * sin_h, e0)
-    hull_n = _math(tree, "MULTIPLY_ADD", time_s, wake.speed_mps * cos_h, n0)
-    de = _math(tree, "SUBTRACT", east, hull_e)
-    dn = _math(tree, "SUBTRACT", north, hull_n)
+    hull_e = scalar(tree, "MULTIPLY_ADD", time_s, wake.speed_mps * sin_h, e0)
+    hull_n = scalar(tree, "MULTIPLY_ADD", time_s, wake.speed_mps * cos_h, n0)
+    de = scalar(tree, "SUBTRACT", east, hull_e)
+    dn = scalar(tree, "SUBTRACT", north, hull_n)
 
     def ahead(e: bpy.types.NodeSocket, n: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        return _math(tree, "MULTIPLY_ADD", e, sin_h, _math(tree, "MULTIPLY", n, cos_h))
+        return scalar(
+            tree, "MULTIPLY_ADD", e, sin_h, scalar(tree, "MULTIPLY", n, cos_h)
+        )
 
     def starboard(
         e: bpy.types.NodeSocket, n: bpy.types.NodeSocket
     ) -> bpy.types.NodeSocket:
         # Starboard of the heading is (cos, -sin).
-        return _math(tree, "MULTIPLY_ADD", e, cos_h, _math(tree, "MULTIPLY", n, -sin_h))
+        return scalar(
+            tree, "MULTIPLY_ADD", e, cos_h, scalar(tree, "MULTIPLY", n, -sin_h)
+        )
 
     return _Path(
-        along=_math(tree, "MULTIPLY", ahead(de, dn), -1.0),
+        along=scalar(tree, "MULTIPLY", ahead(de, dn), -1.0),
         across=starboard(de, dn),
-        d_along=_pair(tree, -sin_h, -cos_h),
-        d_across=_pair(tree, cos_h, -sin_h),
-        fixed=_pair(tree, ahead(east, north), starboard(east, north)),
+        d_along=combine(tree, -sin_h, -cos_h),
+        d_across=combine(tree, cos_h, -sin_h),
+        fixed=combine(tree, ahead(east, north), starboard(east, north)),
     )
 
 
@@ -147,11 +138,11 @@ def _gaussian(
     half: bpy.types.NodeSocket | float,
 ) -> bpy.types.NodeSocket:
     """exp(-(x / half)^2)."""
-    ratio = _math(tree, "DIVIDE", x, half)
-    return _math(
+    ratio = scalar(tree, "DIVIDE", x, half)
+    return scalar(
         tree,
         "EXPONENT",
-        _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", ratio, ratio), -1.0),
+        scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", ratio, ratio), -1.0),
     )
 
 
@@ -177,45 +168,49 @@ def _wakes(
     tilt = None
     for wake in wakes:
         path = _path(tree, wake, where)
-        behind = _math(tree, "GREATER_THAN", path.along, 0.0)
+        behind = scalar(tree, "GREATER_THAN", path.along, 0.0)
         # Ahead of the hull nothing has aged: unclamped, the exponentials overflow
         # there, and the power below takes a negative base.
-        astern = _math(tree, "MAXIMUM", path.along, 0.0)
-        side = _math(tree, "ABSOLUTE", path.across)
+        astern = scalar(tree, "MAXIMUM", path.along, 0.0)
+        side = scalar(tree, "ABSOLUTE", path.across)
         # A judgement: a beam wide at the stern, widening as distance^(1/5).
-        width = _math(
+        width = scalar(
             tree,
             "MULTIPLY",
-            _math(
+            scalar(
                 tree,
                 "POWER",
-                _math(tree, "MULTIPLY_ADD", astern, 1 / wake.length_m, 1.0),
+                scalar(tree, "MULTIPLY_ADD", astern, 1 / wake.length_m, 1.0),
                 0.2,
             ),
             wake.beam_m,
         )
-        core = _math(
+        core = scalar(
             tree,
             "MULTIPLY",
             behind,
-            _gaussian(tree, side, _math(tree, "MULTIPLY", width, 0.5)),
+            _gaussian(tree, side, scalar(tree, "MULTIPLY", width, 0.5)),
         )
-        band = _math(tree, "MAXIMUM", band, core)
-        age = _math(tree, "DIVIDE", astern, wake.speed_mps)
-        fresh = _math(tree, "EXPONENT", _math(tree, "MULTIPLY", age, -1 / FOAM_EFOLD_S))
-        stern = _math(tree, "MULTIPLY", behind, _gaussian(tree, side, wake.beam_m / 2))
-        cover = _math(tree, "MULTIPLY", stern, fresh)
-        foam = _math(
+        band = scalar(tree, "MAXIMUM", band, core)
+        age = scalar(tree, "DIVIDE", astern, wake.speed_mps)
+        fresh = scalar(
+            tree, "EXPONENT", scalar(tree, "MULTIPLY", age, -1 / FOAM_EFOLD_S)
+        )
+        stern = scalar(tree, "MULTIPLY", behind, _gaussian(tree, side, wake.beam_m / 2))
+        cover = scalar(tree, "MULTIPLY", stern, fresh)
+        foam = scalar(
             tree, "MAXIMUM", foam, _patchy(tree, cover, path.fixed, noise, ppf)
         )
-        rising = _math(
-            tree, "EXPONENT", _math(tree, "MULTIPLY", age, -1 / BUBBLE_EFOLD_S)
+        rising = scalar(
+            tree, "EXPONENT", scalar(tree, "MULTIPLY", age, -1 / BUBBLE_EFOLD_S)
         )
-        bubbles = _math(
+        bubbles = scalar(
             tree,
             "MAXIMUM",
             bubbles,
-            _math(tree, "MULTIPLY", core, _math(tree, "MULTIPLY", rising, BUBBLE_GAIN)),
+            scalar(
+                tree, "MULTIPLY", core, scalar(tree, "MULTIPLY", rising, BUBBLE_GAIN)
+            ),
         )
         if wake.steepest_arm**2 / 2 < SEEN_SLOPE_VARIANCE * sea_slope_variance:
             continue
@@ -223,17 +218,19 @@ def _wakes(
         if wake.orbit_m is not None:
             # A judgement: faded over the radius, past which the straight-path pattern
             # no longer follows the turn.
-            fade = _math(
-                tree, "EXPONENT", _math(tree, "MULTIPLY", path.along, -1 / wake.orbit_m)
+            fade = scalar(
+                tree,
+                "EXPONENT",
+                scalar(tree, "MULTIPLY", path.along, -1 / wake.orbit_m),
             )
-            lasting = _math(tree, "MULTIPLY", behind, fade)
+            lasting = scalar(tree, "MULTIPLY", behind, fade)
         # Above the narrowing only the divergent wave, round its peak (Darmon et al.).
         roots = (1.0, -1.0) if wake.froude <= NARROWING_FROUDE else (1.0,)
         for root in roots:
-            arm = _vector(
+            arm = vector(
                 tree, "SCALE", _kelvin(tree, wake, root, path, footprint_m), lasting
             )
-            tilt = arm if tilt is None else _vector(tree, "ADD", tilt, arm)
+            tilt = arm if tilt is None else vector(tree, "ADD", tilt, arm)
     return _Wakes(band, foam, bubbles, tilt)
 
 
@@ -251,99 +248,102 @@ def _kelvin(
     tan(psi) (1 + 2 t^2) = t, t = tan(theta), and its phase is
     g / U^2 (along cos(theta) + side sin(theta)) / cos(theta)^2 (DLMF 36.13).
     """
-    side = _math(tree, "ABSOLUTE", path.across)
+    side = scalar(tree, "ABSOLUTE", path.across)
     edge = math.tan(KELVIN_HALF_ANGLE_RAD)
-    tan_psi = _math(tree, "DIVIDE", side, _math(tree, "MAXIMUM", path.along, 1e-3))
-    inside = _math(tree, "LESS_THAN", tan_psi, edge)
-    tan_psi = _math(tree, "MAXIMUM", _math(tree, "MINIMUM", tan_psi, edge), 1e-4)
-    disc = _math(
+    tan_psi = scalar(tree, "DIVIDE", side, scalar(tree, "MAXIMUM", path.along, 1e-3))
+    inside = scalar(tree, "LESS_THAN", tan_psi, edge)
+    tan_psi = scalar(tree, "MAXIMUM", scalar(tree, "MINIMUM", tan_psi, edge), 1e-4)
+    disc = scalar(
         tree,
         "SQRT",
-        _math(
+        scalar(
             tree,
             "MAXIMUM",
-            _math(
+            scalar(
                 tree,
                 "MULTIPLY_ADD",
-                _math(tree, "MULTIPLY", tan_psi, tan_psi),
+                scalar(tree, "MULTIPLY", tan_psi, tan_psi),
                 -8.0,
                 1.0,
             ),
             0.0,
         ),
     )
-    t = _math(
+    t = scalar(
         tree,
         "DIVIDE",
-        _math(tree, "MULTIPLY_ADD", disc, root, 1.0),
-        _math(tree, "MULTIPLY", tan_psi, 4.0),
+        scalar(tree, "MULTIPLY_ADD", disc, root, 1.0),
+        scalar(tree, "MULTIPLY", tan_psi, 4.0),
     )
-    cos_sq = _math(tree, "DIVIDE", 1.0, _math(tree, "MULTIPLY_ADD", t, t, 1.0))
-    cos_t = _math(tree, "SQRT", cos_sq)
-    sin_t = _math(tree, "MULTIPLY", t, cos_t)
-    k = _math(tree, "DIVIDE", GRAVITY_MS2 / wake.speed_mps**2, cos_sq)
-    phase = _math(
+    cos_sq = scalar(tree, "DIVIDE", 1.0, scalar(tree, "MULTIPLY_ADD", t, t, 1.0))
+    cos_t = scalar(tree, "SQRT", cos_sq)
+    sin_t = scalar(tree, "MULTIPLY", t, cos_t)
+    k = scalar(tree, "DIVIDE", GRAVITY_MS2 / wake.speed_mps**2, cos_sq)
+    phase = scalar(
         tree,
         "MULTIPLY",
         k,
-        _math(
+        scalar(
             tree,
             "MULTIPLY_ADD",
             path.along,
             cos_t,
-            _math(tree, "MULTIPLY", side, sin_t),
+            scalar(tree, "MULTIPLY", side, sin_t),
         ),
     )
     envelope: bpy.types.NodeSocket | float = 1.0
     if wake.froude > NARROWING_FROUDE:
         peak = wake.peak_angle_rad
         # A judgement: the peak half as wide as its angle.
-        off = _math(
+        off = scalar(
             tree,
             "SUBTRACT",
-            _math(tree, "ARCTANGENT", tan_psi),
+            scalar(tree, "ARCTANGENT", tan_psi),
             peak,
         )
         envelope = _gaussian(tree, off, peak / 2)
     # Kriebel & Seelig's height, half of it the amplitude.
-    amplitude = _math(
+    amplitude = scalar(
         tree,
         "MULTIPLY",
-        _math(
+        scalar(
             tree,
             "POWER",
-            _math(tree, "MAXIMUM", _math(tree, "DIVIDE", side, wake.length_m), 1e-2),
+            scalar(tree, "MAXIMUM", scalar(tree, "DIVIDE", side, wake.length_m), 1e-2),
             -1 / 3,
         ),
         wake.height_scale_m / 2,
     )
-    steepest = _math(
+    steepest = scalar(
         tree,
         "MINIMUM",
-        _math(tree, "MULTIPLY", amplitude, k),
+        scalar(tree, "MULTIPLY", amplitude, k),
         math.pi * MAX_STEEPNESS,
     )
     # `waves.visibility`, as the sea's own waves fade.
-    y = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", footprint_m, k), 0.5)
-    resolved = _math(
-        tree, "DIVIDE", _math(tree, "SINE", _math(tree, "MINIMUM", y, math.pi)), y
+    y = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", footprint_m, k), 0.5)
+    resolved = scalar(
+        tree,
+        "DIVIDE",
+        scalar(tree, "SINE", scalar(tree, "MINIMUM", y, math.pi)),
+        y,
     )
     slope = steepest
     for factor in (
-        _math(tree, "SINE", phase),
+        scalar(tree, "SINE", phase),
         envelope,
         inside,
         resolved,
     ):
-        slope = _math(tree, "MULTIPLY", slope, factor)
-    sign = _math(tree, "SIGN", path.across)
-    direction = _vector(
+        slope = scalar(tree, "MULTIPLY", slope, factor)
+    sign = scalar(tree, "SIGN", path.across)
+    direction = vector(
         tree,
         "ADD",
-        _vector(tree, "SCALE", path.d_along, cos_t),
-        _vector(tree, "SCALE", path.d_across, _math(tree, "MULTIPLY", sin_t, sign)),
+        vector(tree, "SCALE", path.d_along, cos_t),
+        vector(tree, "SCALE", path.d_across, scalar(tree, "MULTIPLY", sin_t, sign)),
     )
-    return _vector(tree, "SCALE", direction, slope)
+    return vector(tree, "SCALE", direction, slope)
 
 
 def _patchy(
@@ -370,15 +370,15 @@ def _patchy(
     tree.links.new(stretch.outputs["Vector"], texture.inputs["Vector"])
     threshold = lookup(tree, ppf, cover)
     # A judgement: edges half the tile's sigma wide.
-    edge = _math(
+    edge = scalar(
         tree,
         "MULTIPLY_ADD",
-        _math(tree, "SUBTRACT", texture.outputs["Color"], threshold),
+        scalar(tree, "SUBTRACT", texture.outputs["Color"], threshold),
         2.0,
         0.5,
     )
     edge.node.use_clamp = True
-    return _math(tree, "MULTIPLY", edge, _math(tree, "GREATER_THAN", cover, 1e-3))
+    return scalar(tree, "MULTIPLY", edge, scalar(tree, "GREATER_THAN", cover, 1e-3))
 
 
 def _smoothed(
@@ -392,4 +392,4 @@ def _smoothed(
         return slick
     if slick is None:
         return wake.band
-    return _math(tree, "MAXIMUM", slick, wake.band)
+    return scalar(tree, "MAXIMUM", slick, wake.band)

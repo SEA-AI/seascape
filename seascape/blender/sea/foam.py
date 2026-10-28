@@ -13,10 +13,11 @@ import numpy as np
 
 from seascape.blender.blend import (
     CURVE_SAMPLES,
-    _clamped,
-    _math,
+    clamped,
     curve_image,
     lookup,
+    pixels,
+    scalar,
 )
 from seascape.blender.sea.wind import _downwind, _drifting, _streaking, surface_drift
 from seascape.config import Outputs, Sea
@@ -106,11 +107,11 @@ def _write_frames(
     settings = frames_scene.render.image_settings
     settings.file_format, settings.color_mode = "OPEN_EXR", "RGB"
     settings.color_depth, settings.exr_codec = "16", "ZIP"
-    pixels = np.zeros((grid.rows, grid.columns, 4), np.float32)
-    pixels[..., 3] = 1.0
+    rgba = np.zeros((grid.rows, grid.columns, 4), np.float32)
+    rgba[..., 3] = 1.0
     for i, (cover, breaking) in enumerate(frames):
-        pixels[..., 0], pixels[..., 1] = cover, breaking
-        image.pixels.foreach_set(pixels.ravel())
+        rgba[..., 0], rgba[..., 1] = cover, breaking
+        image.pixels.foreach_set(rgba.ravel())
         image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
     bpy.data.scenes.remove(frames_scene)
     bpy.data.images.remove(image)
@@ -238,7 +239,7 @@ def _remembered(
     drift = surface_drift(sea, outputs)
     # The memory's grid drifts: water at x is at grid x - v t.
     on_grid = [
-        _math(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis])
+        scalar(tree, "MULTIPLY_ADD", split.outputs["Z"], -v, split.outputs[axis])
         for axis, v in zip("XY", drift, strict=True)
     ]
     # Past the coarsest grid the foam is finer than a pixel: Monahan's cover, as bright
@@ -249,14 +250,14 @@ def _remembered(
     ) / (1 - THIN_FOAM_SHARE)
     # Coarsest first, so each finer grid overwrites where it holds.
     for grid, sequence in sorted(memory, key=lambda m: -m[0].cell_m):
-        u = _math(
+        u = scalar(
             tree,
             "MULTIPLY_ADD",
             on_grid[0],
             1 / (grid.columns * grid.cell_m),
             -grid.west_m / (grid.columns * grid.cell_m),
         )
-        w = _math(
+        w = scalar(
             tree,
             "MULTIPLY_ADD",
             on_grid[1],
@@ -280,38 +281,38 @@ def _remembered(
         tree.links.new(texture.outputs["Color"], channels.inputs["Color"])
         # Taken where the pixel spans under a cell, fading out by two, and faded in from
         # its edge, so neither a finer grid's reach nor its border leaves a seam.
-        fine_enough = _clamped(
-            tree, _math(tree, "MULTIPLY_ADD", footprint_m, -1 / grid.cell_m, 2.0)
+        fine_enough = clamped(
+            tree, scalar(tree, "MULTIPLY_ADD", footprint_m, -1 / grid.cell_m, 2.0)
         )
-        inside = _math(
+        inside = scalar(
             tree,
             "MULTIPLY",
             *(
-                _clamped(
+                clamped(
                     tree,
-                    _math(
+                    scalar(
                         tree,
                         "MULTIPLY",
-                        _math(tree, "MINIMUM", x, _math(tree, "SUBTRACT", 1.0, x)),
+                        scalar(tree, "MINIMUM", x, scalar(tree, "SUBTRACT", 1.0, x)),
                         cells / FOAM_SEAM_CELLS,
                     ),
                 )
                 for x, cells in ((u, grid.columns), (w, grid.rows))
             ),
         )
-        inside = _math(tree, "MULTIPLY", inside, fine_enough)
-        cover = _math(
+        inside = scalar(tree, "MULTIPLY", inside, fine_enough)
+        cover = scalar(
             tree,
             "MULTIPLY_ADD",
             inside,
-            _math(tree, "SUBTRACT", channels.outputs["Red"], cover),
+            scalar(tree, "SUBTRACT", channels.outputs["Red"], cover),
             cover,
         )
-        breaking = _math(
+        breaking = scalar(
             tree,
             "MULTIPLY_ADD",
             inside,
-            _math(tree, "SUBTRACT", channels.outputs["Green"], breaking),
+            scalar(tree, "SUBTRACT", channels.outputs["Green"], breaking),
             breaking,
         )
     assert isinstance(cover, bpy.types.NodeSocket)
@@ -319,60 +320,60 @@ def _remembered(
         # Each pull s g is clipped to [-a, a]: g is Gaussian, so 1 + clamp(s g) averages
         # 1 and Monahan's cover holds; (1 + a)^2 under 1 / cover keeps it under full.
         # The floor keeps INVERSE_SQRT, which reads 0 at 0, off an empty cell.
-        headroom = _math(
+        headroom = scalar(
             tree,
             "MINIMUM",
-            _math(
+            scalar(
                 tree,
                 "SUBTRACT",
-                _math(tree, "INVERSE_SQRT", _math(tree, "MAXIMUM", cover, 1e-6)),
+                scalar(tree, "INVERSE_SQRT", scalar(tree, "MAXIMUM", cover, 1e-6)),
                 1.0,
             ),
             1.0,
         )
-        floor = _math(tree, "MULTIPLY", headroom, -1.0)
+        floor = scalar(tree, "MULTIPLY", headroom, -1.0)
         densities = [
-            _math(
+            scalar(
                 tree,
                 "ADD",
-                _math(tree, "MINIMUM", _math(tree, "MAXIMUM", pull, floor), headroom),
+                scalar(tree, "MINIMUM", scalar(tree, "MAXIMUM", pull, floor), headroom),
                 1.0,
             )
             for pull in pulls
         ]
         gathered = densities[0]
         for density in densities[1:]:
-            gathered = _math(tree, "MULTIPLY", gathered, density)
+            gathered = scalar(tree, "MULTIPLY", gathered, density)
         gathered.node.name = "whitecap_gathered"
         # Foam still breaking has not been gathered yet.
-        kept = _math(
+        kept = scalar(
             tree,
             "MULTIPLY_ADD",
             breaking,
-            _math(tree, "SUBTRACT", 1.0, gathered),
+            scalar(tree, "SUBTRACT", 1.0, gathered),
             gathered,
         )
-        cover = _math(tree, "MULTIPLY", cover, kept)
+        cover = scalar(tree, "MULTIPLY", cover, kept)
     levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
     # Above its 1 - cover quantile, the lace covers `cover` of the pixel.
-    laced = _math(
+    laced = scalar(
         tree,
         "MULTIPLY_ADD",
-        _math(tree, "SUBTRACT", lace, lookup(tree, ppf, cover)),
+        scalar(tree, "SUBTRACT", lace, lookup(tree, ppf, cover)),
         # Foam still breaking is dense to its edge; aged foam thins out to it.
-        _math(tree, "MULTIPLY_ADD", breaking, FRESH_EDGE - AGED_EDGE, AGED_EDGE),
+        scalar(tree, "MULTIPLY_ADD", breaking, FRESH_EDGE - AGED_EDGE, AGED_EDGE),
         0.5,
     )
     laced.node.use_clamp = True
-    laced = _math(
+    laced = scalar(
         tree,
         "MULTIPLY",
         laced,
-        _math(tree, "GREATER_THAN", cover, FOAM_VISIBLE_COVER),
+        scalar(tree, "GREATER_THAN", cover, FOAM_VISIBLE_COVER),
         name="whitecaps",
     )
-    bright = _math(
+    bright = scalar(
         tree,
         "MULTIPLY_ADD",
         breaking,
@@ -381,7 +382,7 @@ def _remembered(
         name="whitecap_bright",
     )
     foam = _latticed(tree, laced, bright, textures, lookup(tree, ppf, bright))
-    under = _math(tree, "MAXIMUM", cover, 0.0, name="whitecap_bubbles")
+    under = scalar(tree, "MAXIMUM", cover, 0.0, name="whitecap_bubbles")
     return laced, foam, under
 
 
@@ -396,31 +397,31 @@ def _latticed(
     fresh foam's white over `bright` of that area, the lattice above `threshold`, its
     quantile, not a grey film: the same mean. Its albedo, varying with the texture's
     density about fresh foam's, is the node `whitecap_albedo`."""
-    held = _math(
+    held = scalar(
         tree,
         "MULTIPLY_ADD",
-        _math(tree, "SUBTRACT", texture.lattice, threshold),
+        scalar(tree, "SUBTRACT", texture.lattice, threshold),
         LATTICE_SHARPNESS,
         0.5,
     )
     held.node.use_clamp = True
     # A pixel longer than the lattice's walls draws their mean: from one wall's width,
     # gone at two. Its longer side, as a mipmap without anisotropic filtering takes.
-    fade = _clamped(
-        tree, _math(tree, "MULTIPLY_ADD", texture.pixel_m, 1 / LATTICE_WALL_M, -1.0)
+    fade = clamped(
+        tree, scalar(tree, "MULTIPLY_ADD", texture.pixel_m, 1 / LATTICE_WALL_M, -1.0)
     )
-    held = _math(
-        tree, "MULTIPLY_ADD", fade, _math(tree, "SUBTRACT", bright, held), held
+    held = scalar(
+        tree, "MULTIPLY_ADD", fade, scalar(tree, "SUBTRACT", bright, held), held
     )
     # The density's symmetric clip keeps the mean albedo fresh foam's; it fades with
     # the walls, and with it the bump it lifts.
-    swing = _math(
+    swing = scalar(
         tree,
         "MULTIPLY",
-        _math(tree, "MINIMUM", _math(tree, "MAXIMUM", texture.shade, -2.0), 2.0),
-        _math(tree, "SUBTRACT", 1.0, fade),
+        scalar(tree, "MINIMUM", scalar(tree, "MAXIMUM", texture.shade, -2.0), 2.0),
+        scalar(tree, "SUBTRACT", 1.0, fade),
     )
-    _math(
+    scalar(
         tree,
         "MULTIPLY_ADD",
         swing,
@@ -428,7 +429,7 @@ def _latticed(
         FRESH_FOAM_REFLECTANCE,
         name="whitecap_albedo",
     )
-    return _math(tree, "MULTIPLY", laced, held, name="whitecap_foam")
+    return scalar(tree, "MULTIPLY", laced, held, name="whitecap_foam")
 
 
 def _bare(
@@ -436,7 +437,7 @@ def _bare(
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """No whitecaps: a calm sea, or one no camera sees."""
     area, foam, under = (
-        _math(tree, "MAXIMUM", 0.0, 0.0, name=name)
+        scalar(tree, "MAXIMUM", 0.0, 0.0, name=name)
         for name in ("whitecaps", "whitecap_foam", "whitecap_bubbles")
     )
     return area, foam, under
@@ -494,10 +495,7 @@ def _foam_lace(
 ) -> bpy.types.NodeSocket:
     """Whitecap foam's lace, a unit Gaussian drifting with the surface, read at `where`,
     (east, north, time): a read of `tile` and the `ragged` lattice, rescaled to one."""
-    width, height = tile.size
-    texels = np.empty(width * height * 4, np.float32)
-    tile.pixels.foreach_get(texels)
-    sigma = _looked_up_sigma(texels.reshape(height, width, 4)[..., 0])
+    sigma = _looked_up_sigma(pixels(tile)[..., 0])
     east, north = _downwind(sea)
     per_m = 1 / FOAM_TILE_M
     along = per_m / FOAM_STREAK
@@ -511,10 +509,10 @@ def _foam_lace(
         0.0,
         "whitecap_lace",
     )
-    coarse = _math(tree, "MULTIPLY", coarse, 1 / sigma)
+    coarse = scalar(tree, "MULTIPLY", coarse, 1 / sigma)
     weight = LACE_RAGGED_WEIGHT
-    summed = _math(tree, "MULTIPLY_ADD", ragged, weight, coarse)
-    return _math(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2))
+    summed = scalar(tree, "MULTIPLY_ADD", ragged, weight, coarse)
+    return scalar(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2))
 
 
 def _foam_lattice(
@@ -527,10 +525,7 @@ def _foam_lattice(
 ) -> bpy.types.NodeSocket:
     """Aged foam's lattice, a unit Gaussian drifting with the surface, read at
     `where`, (east, north, time), offset `start` tiles."""
-    width, height = tile.size
-    texels = np.empty(width * height * 4, np.float32)
-    tile.pixels.foreach_get(texels)
-    sigma = _looked_up_sigma(texels.reshape(height, width, 4)[..., 0])
+    sigma = _looked_up_sigma(pixels(tile)[..., 0])
     east, north = _downwind(sea)
     layers = []
     # From force 7 the lattice is blown into streaks along the wind.
@@ -551,5 +546,5 @@ def _foam_lattice(
             )
         )
     weight = LATTICE_FINE_WEIGHT
-    summed = _math(tree, "MULTIPLY_ADD", layers[1], weight, layers[0])
-    return _math(tree, "MULTIPLY", summed, 1 / (sigma * math.sqrt(1 + weight**2)))
+    summed = scalar(tree, "MULTIPLY_ADD", layers[1], weight, layers[0])
+    return scalar(tree, "MULTIPLY", summed, 1 / (sigma * math.sqrt(1 + weight**2)))
