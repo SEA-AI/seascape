@@ -51,41 +51,25 @@ root_package = "seascape"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Physics imports no Blender or other seascape"
-type = "forbidden"
-source_modules = ["seascape.physics"]
-forbidden_modules = ["bpy", "bmesh", "mathutils", "seascape.*"]
-
-[[tool.importlinter.contracts]]
-name = "Blender code drives no render"
-type = "forbidden"
-source_modules = ["seascape.blender"]
-forbidden_modules = ["seascape.render"]
-
-[[tool.importlinter.contracts]]
-name = "Outputs import no Blender or render"
-type = "forbidden"
-source_modules = ["seascape.outputs"]
-forbidden_modules = ["bpy", "bmesh", "mathutils", "seascape.blender", "seascape.render"]
-
-[[tool.importlinter.contracts]]
-name = "Assets import no Blender or render"
-type = "forbidden"
-source_modules = ["seascape.assets"]
-forbidden_modules = ["bpy", "bmesh", "mathutils", "seascape.blender", "seascape.render"]
-
-[[tool.importlinter.contracts]]
-name = "Config imports no Blender, render or outputs"
-type = "forbidden"
-source_modules = ["seascape.config"]
-forbidden_modules = [
-    "bpy",
-    "bmesh",
-    "mathutils",
-    "seascape.blender",
-    "seascape.outputs",
-    "seascape.render",
+name = "Each layer imports only those below it"
+type = "layers"
+containers = ["seascape"]
+layers = [
+    "cli",
+    "server | catalog | zones",
+    "render",
+    "blender",
+    "outputs",
+    "config",
+    "assets",
+    "physics | model",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Only Blender code imports Blender"
+type = "protected"
+protected_modules = ["bpy", "mathutils"]
+allowed_importers = ["seascape.blender", "seascape.render", "seascape.cli", "seascape.zones"]
 
 [tool.pytest.ini_options]
 # Renders share one GPU: past four workers the suite runs no faster.
