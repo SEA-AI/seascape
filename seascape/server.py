@@ -6,7 +6,6 @@ it. Its files are served under /renders/ and deleted after `KEEP_S`.
 
 import asyncio
 import json
-import math
 import os
 import shutil
 import subprocess
@@ -15,7 +14,8 @@ import tempfile
 import time
 import tomllib
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
@@ -25,7 +25,8 @@ from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from PIL import Image as Picture
-from pydantic import Field
+from pydantic import Field, PositiveFloat, PositiveInt, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
@@ -41,8 +42,6 @@ from seascape.config import (
 )
 from seascape.outputs import montage
 
-RENDERS = assets.CACHE / "renders"
-SCENARIOS = Path(os.environ.get("SEASCAPE_SCENARIOS", "scenarios"))
 KEEP_S = 24 * 3600
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
@@ -58,27 +57,31 @@ PROBE_S = 60.0
 LOCAL_HOSTS = ("localhost:*", "127.0.0.1:*", "[::1]:*")
 
 
-def _limit(name: str, default: float) -> float:
-    # Compose passes a variable set empty in .env as "".
-    if not (value := os.environ.get(f"SEASCAPE_{name}")):
-        return default
-    try:
-        limit = float(value)
-    except ValueError:
-        limit = math.nan
-    # nan would pass every comparison and turn the limit off.
-    if not (math.isfinite(limit) and limit > 0):
-        raise ValueError(f"SEASCAPE_{name}={value!r} is not a positive number")
-    return limit
+class Settings(BaseSettings):
+    """The scenarios served, and what one job may ask of a shared machine."""
 
+    # Compose passes a variable set empty in .env as "". nan would pass every
+    # comparison and turn a limit off.
+    model_config = SettingsConfigDict(
+        env_prefix="SEASCAPE_", env_ignore_empty=True, allow_inf_nan=False, frozen=True
+    )
 
-# What one job may ask of a shared machine.
-MAX_DURATION_S = _limit("MAX_DURATION_S", 60.0)
-MAX_PIXELS = int(_limit("MAX_PIXELS", 3840 * 2160))
-MAX_IMAGES = int(_limit("MAX_IMAGES", 10_000))
-MIN_FREE_GB = _limit("MIN_FREE_GB", 10.0)
-MAX_RUN_S = _limit("MAX_RUN_S", 12 * 3600.0)
-MAX_QUEUED = int(_limit("MAX_QUEUED", 20))
+    scenarios: Path
+    allowed_hosts: Annotated[tuple[str, ...], NoDecode] = LOCAL_HOSTS
+    max_duration_s: PositiveFloat = 60.0
+    max_pixels: PositiveInt = 3840 * 2160
+    max_images: PositiveInt = 10_000
+    min_free_gb: PositiveFloat = 10.0
+    max_run_s: PositiveFloat = 12 * 3600.0
+    max_queued: PositiveInt = 20
+
+    @field_validator("allowed_hosts", mode="before")
+    @classmethod
+    def _listed(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(h for h in value.split(",") if h) or LOCAL_HOSTS
+        return value
+
 
 # The most a pixel takes on disk, by band and format; a render test pins each. An exr
 # and an EO png hold at most Blender's RGBA, 4 channels of float32 or 8 bits, and an
@@ -92,15 +95,6 @@ BYTES_PER_PX: dict[tuple[Band, ImageFormat], float] = {
     ("eo", "jpg"): 1.0,
     ("ir", "jpg"): 0.5,
 }
-
-server = MCPServer(
-    "seascape",
-    instructions="Synthetic maritime camera frames with exact ground truth. Read "
-    "`catalog` once, start a job with `render`, then call `render_result` until it "
-    "is done. Without draws, variants differ only in their waves: for varied "
-    "images, render `randomized`, or draw fields in `overrides`.",
-)
-_gpu = asyncio.Lock()
 
 
 @dataclass
@@ -152,11 +146,21 @@ class Job:
         return self.state in ("queued", "running")
 
 
-_jobs: dict[str, Job] = {}
+@dataclass
+class State:
+    """What the tools share; jobs take turns on `gpu`."""
+
+    settings: Settings
+    renders: Path = assets.CACHE / "renders"
+    jobs: dict[str, Job] = field(default_factory=dict)
+    gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def scenarios(self) -> dict[str, Path]:
+        return {p.stem: p for p in sorted(self.settings.scenarios.glob("*.toml"))}
 
 
-def _scenarios() -> dict[str, Path]:
-    return {path.stem: path for path in sorted(SCENARIOS.glob("*.toml"))}
+def _state(ctx: Context[State, Any]) -> State:
+    return ctx.request_context.lifespan_context
 
 
 def _includes(node: Any) -> Iterator[str]:
@@ -171,50 +175,49 @@ def _includes(node: Any) -> Iterator[str]:
             yield from _includes(value)
 
 
-def _url(ctx: Context) -> str:
+def _url(ctx: Context[Any, Any]) -> str:
     """Where this client reaches the jobs' files."""
     return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
 
 
-def _refuse_oversized(scenes: list[Scenario]) -> None:
+def _refuse_oversized(scenes: list[Scenario], settings: Settings) -> None:
     images = sum(scene.images for scene in scenes)
-    if images > MAX_IMAGES:
-        raise ToolError(f"{images} images; a job writes at most {MAX_IMAGES}")
+    if images > settings.max_images:
+        raise ToolError(f"{images} images; a job writes at most {settings.max_images}")
     for scene in scenes:
-        if scene.outputs.duration_s > MAX_DURATION_S:
-            raise ToolError(f"a clip lasts at most {MAX_DURATION_S} s")
+        if scene.outputs.duration_s > settings.max_duration_s:
+            raise ToolError(f"a clip lasts at most {settings.max_duration_s} s")
         for mount in scene.mounts:
             camera = mount.camera
-            if camera.width_px * camera.height_px > MAX_PIXELS:
+            if camera.width_px * camera.height_px > settings.max_pixels:
                 raise ToolError(
                     f"{mount.name} is {camera.width_px} x {camera.height_px}; a "
-                    f"camera has at most {MAX_PIXELS} pixels"
+                    f"camera has at most {settings.max_pixels} pixels"
                 )
 
 
-def _prune() -> None:
+def _prune(state: State) -> None:
     cutoff = time.time() - KEEP_S
-    for path in RENDERS.glob("*"):
+    for path in state.renders.glob("*"):
         if path.stat().st_mtime < cutoff:
-            _jobs.pop(path.stem, None)
+            state.jobs.pop(path.stem, None)
             if path.is_dir():
                 shutil.rmtree(path)
             else:
                 path.unlink()
     # A cancelled job leaves no folder to age; a queued one has none yet.
-    for name, job in list(_jobs.items()):
+    for name, job in list(state.jobs.items()):
         done = job.task is not None and job.task.done()
         if done and job.created_s < cutoff and not job.folder.exists():
-            del _jobs[name]
+            del state.jobs[name]
 
 
-@server.tool()
-def catalog() -> dict[str, Any]:
+def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
     """The scenarios `render` starts from, the meshes and skies a scenario can name,
     and the scenario's JSON schema. Any field can be a draw instead of a value:
     `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed."""
     return {
-        "scenarios": {name: path.read_text() for name, path in _scenarios().items()},
+        "scenarios": {n: p.read_text() for n, p in _state(ctx).scenarios().items()},
         "meshes": {
             name: f"{mesh.kind}, {mesh.category}, {mesh.size}"
             for name, mesh in assets.manifest().items()
@@ -224,12 +227,11 @@ def catalog() -> dict[str, Any]:
     }
 
 
-@server.tool()
 async def render(
+    ctx: Context[State, Any],
     scenario: str = "baseline",
     overrides: list[str] | None = None,
-    # Each variant writes an image at least, so the bound refuses before loading.
-    variants: Annotated[int, Field(ge=1, le=MAX_IMAGES)] = 1,
+    variants: Annotated[int, Field(ge=1)] = 1,
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
 
@@ -237,10 +239,14 @@ async def render(
     `sea.wind_speed_mps = { uniform = [2, 12] }`. `variants` renders that many
     seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet.
     """
-    if scenario not in _scenarios():
-        raise ToolError(f"no scenario {scenario!r} in {sorted(_scenarios())}")
+    state = _state(ctx)
+    settings = state.settings
+    if (path := state.scenarios().get(scenario)) is None:
+        raise ToolError(f"no scenario {scenario!r} in {sorted(state.scenarios())}")
+    # Each variant writes an image at least, so this refuses before loading.
+    if variants > settings.max_images:
+        raise ToolError(f"a job writes at most {settings.max_images} images")
     lines = overrides or []
-    path = _scenarios()[scenario]
     try:
         for line in lines:
             # A path would read any TOML here, and an error echoes what it read.
@@ -250,29 +256,32 @@ async def render(
                 raise ToolError(f"{line!r}: an override names presets, never files")
         first = await asyncio.to_thread(load, path, lines)
         # A scene the full check would refuse, before loading the other variants.
-        _refuse_oversized([first])
+        _refuse_oversized([first], settings)
         scenes = await asyncio.to_thread(load_variants, path, lines, variants)
     # pydantic and tomllib raise ValueError, a bad preset TypeError or OSError.
     except (ValueError, TypeError, OSError) as error:
         raise ToolError(str(error)) from error
-    _refuse_oversized(scenes)
-    RENDERS.mkdir(parents=True, exist_ok=True)
-    _prune()
-    if (ahead := sum(j.waiting for j in _jobs.values())) >= MAX_QUEUED:
-        raise ToolError(f"{ahead} jobs queued; the server takes at most {MAX_QUEUED}")
+    _refuse_oversized(scenes, settings)
+    state.renders.mkdir(parents=True, exist_ok=True)
+    _prune(state)
+    if (ahead := sum(j.waiting for j in state.jobs.values())) >= settings.max_queued:
+        raise ToolError(
+            f"{ahead} jobs queued; the server takes at most {settings.max_queued}"
+        )
     name = uuid.uuid4().hex
-    job = Job(RENDERS / name, scenario, scenes)
+    job = Job(state.renders / name, scenario, scenes)
     # A running job's images count twice, as written and as still to come; a
     # finishing one still writes its zip.
-    writing = [j for j in _jobs.values() if j.waiting or j.state == "finishing"]
-    free_gb = (shutil.disk_usage(RENDERS).free - sum(j.bytes for j in writing)) / 1e9
-    if (needs_gb := job.bytes / 1e9 + MIN_FREE_GB) > free_gb:
+    writing = [j for j in state.jobs.values() if j.waiting or j.state == "finishing"]
+    free = shutil.disk_usage(state.renders).free - sum(j.bytes for j in writing)
+    free_gb = free / 1e9
+    if (needs_gb := job.bytes / 1e9 + settings.min_free_gb) > free_gb:
         raise ToolError(
             f"{free_gb:.0f} GB free after the jobs queued; this job needs "
-            f"{needs_gb:.0f}, {MIN_FREE_GB:.0f} of it kept free"
+            f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
         )
-    _jobs[name] = job
-    job.task = asyncio.create_task(_run(job, path, lines, variants))
+    state.jobs[name] = job
+    job.task = asyncio.create_task(_run(state, job, path, lines, variants))
     return {"job": name, "images": job.total, "jobs_ahead": ahead}
 
 
@@ -300,13 +309,16 @@ async def _seascape(*args: str) -> None:
         raise RuntimeError(stderr.decode(errors="replace").strip()[-2000:])
 
 
-async def _run(job: Job, path: Path, overrides: list[str], variants: int) -> None:
+async def _run(
+    state: State, job: Job, path: Path, overrides: list[str], variants: int
+) -> None:
     sets = [arg for line in overrides for arg in ("--set", line)]
+    max_run_s = state.settings.max_run_s
     try:
-        async with _gpu:
+        async with state.gpu:
             job.state, job.started_s = "running", time.time()
             # Past it, the process awaited is killed as on `cancel`.
-            async with asyncio.timeout(MAX_RUN_S):
+            async with asyncio.timeout(max_run_s):
                 await _seascape(
                     "render", str(path), "-o", str(job.folder), "--variants",
                     str(variants), *sets,
@@ -321,7 +333,7 @@ async def _run(job: Job, path: Path, overrides: list[str], variants: int) -> Non
         await asyncio.to_thread(_finish, job)
         job.state = "done"
     except TimeoutError:
-        job.state, job.error = "failed", f"ran past {MAX_RUN_S:g} s"
+        job.state, job.error = "failed", f"ran past {max_run_s:g} s"
     except Exception as error:  # whatever it was, the client polling is told
         job.state, job.error = "failed", f"{type(error).__name__}: {error}"
 
@@ -341,13 +353,12 @@ def _finish(job: Job) -> None:
     shutil.make_archive(str(job.folder), "zip", job.folder)
 
 
-# Unstructured: the previews are images, which structured content cannot carry.
-@server.tool(structured_output=False)
-async def render_result(job: str, ctx: Context) -> list[Any]:
+async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, or its
     error, or every file as a URL with a preview of each of the first `PREVIEWS`
     stills."""
-    found = _jobs.get(job)
+    state = _state(ctx)
+    found = state.jobs.get(job)
     if found is None or found.task is None:
         raise ToolError(
             f"no job {job!r}: a job is forgotten when it expires or the server restarts"
@@ -364,7 +375,7 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
         url = _url(ctx)
         # A sequence's frames are in the archive only.
         report["files"] = [f"{url}/{job}.zip"] + [
-            f"{url}/{path.relative_to(RENDERS)}"
+            f"{url}/{path.relative_to(state.renders)}"
             for path in sorted(found.folder.rglob("*"))
             if path.is_file() and not path.stem.isdigit()
         ]
@@ -374,7 +385,7 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
             if (preview := folder / "preview.jpg").exists()
         ]
     elif found.state == "queued":
-        jobs = list(_jobs.values())
+        jobs = list(state.jobs.values())
         report["jobs_ahead"] = sum(j.waiting for j in jobs[: jobs.index(found)])
     elif found.state == "running":
         done, total = found.images, found.total
@@ -385,10 +396,9 @@ async def render_result(job: str, ctx: Context) -> list[Any]:
     return [json.dumps(report, indent=1), *previews]
 
 
-@server.tool()
-async def cancel(job: str) -> dict[str, Any]:
+async def cancel(job: str, ctx: Context[State, Any]) -> dict[str, Any]:
     """Stop a queued or running job from `render`, and delete what it wrote."""
-    found = _jobs.get(job)
+    found = _state(ctx).jobs.get(job)
     if found is None or found.task is None:
         raise ToolError(f"no job {job!r}")
     if not found.waiting:
@@ -401,12 +411,12 @@ async def cancel(job: str) -> dict[str, Any]:
     return {"job": job, "status": found.state}
 
 
-@server.tool()
-def jobs(ctx: Context) -> dict[str, Any]:
+def jobs(ctx: Context[State, Any]) -> dict[str, Any]:
     """Every job the server remembers, newest first, and the disk left for more."""
     url = _url(ctx)
+    state = _state(ctx)
     return {
-        "free_gb": round(shutil.disk_usage(RENDERS).free / 1e9, 1),
+        "free_gb": round(shutil.disk_usage(state.renders).free / 1e9, 1),
         "jobs": [
             {
                 "job": name,
@@ -424,12 +434,35 @@ def jobs(ctx: Context) -> dict[str, Any]:
                     else {}
                 ),
             }
-            for name, job in reversed(_jobs.items())
+            for name, job in reversed(state.jobs.items())
         ],
     }
 
 
-def serve(host: str, port: int) -> None:
+def mcp(state: State) -> MCPServer:
+    state.renders.mkdir(parents=True, exist_ok=True)
+
+    # The in-memory client enters the lifespan per connection; jobs outlive one.
+    @asynccontextmanager
+    async def lifespan(_: MCPServer) -> AsyncGenerator[State]:
+        yield state
+
+    served = MCPServer(
+        "seascape",
+        instructions="Synthetic maritime camera frames with exact ground truth. Read "
+        "`catalog` once, start a job with `render`, then call `render_result` until "
+        "it is done. Without draws, variants differ only in their waves: for varied "
+        "images, render `randomized`, or draw fields in `overrides`.",
+        lifespan=lifespan,
+    )
+    for tool in (catalog, render, cancel, jobs):
+        served.add_tool(tool)
+    # Unstructured: the previews are images, which structured content cannot carry.
+    served.add_tool(render_result, structured_output=False)
+    return served
+
+
+def serve(state: State, host: str, port: int) -> None:
     """Serve `app` on `port`."""
     # In a process of its own, so the server never holds Blender.
     try:
@@ -454,20 +487,18 @@ def serve(host: str, port: int) -> None:
             f"Cycles renders on {'the CPU' if backend == 'None' else backend}",
             flush=True,
         )
-    uvicorn.run(app(host), host=host, port=port)
+    uvicorn.run(app(state, host), host=host, port=port)
 
 
-def app(host: str) -> Starlette:
+def app(state: State, host: str) -> Starlette:
     """MCP at /mcp and the jobs' files at /renders/."""
     # A web page can point a browser on the network at this port by DNS rebinding,
     # so MCP refuses any Host or Origin not listed.
-    listed = os.environ.get("SEASCAPE_ALLOWED_HOSTS", "").split(",")
-    hosts = [h for h in listed if h] or list(LOCAL_HOSTS)
+    hosts = list(state.settings.allowed_hosts)
     security = TransportSecuritySettings(
         allowed_hosts=hosts,
         allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
     )
-    RENDERS.mkdir(parents=True, exist_ok=True)
-    served = server.streamable_http_app(host=host, transport_security=security)
-    served.mount("/renders", StaticFiles(directory=RENDERS))
+    served = mcp(state).streamable_http_app(host=host, transport_security=security)
+    served.mount("/renders", StaticFiles(directory=state.renders))
     return served

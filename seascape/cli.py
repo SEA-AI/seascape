@@ -245,11 +245,19 @@ def schema() -> None:
 @main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8765, show_default=True)
-def serve(host: str, port: int) -> None:
-    """Render for MCP clients, at http://HOST:PORT/mcp."""
+@click.option(
+    "--scenarios",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="scenarios",
+    envvar="SEASCAPE_SCENARIOS",
+    show_default=True,
+    help="The folder of scenarios clients render.",
+)
+def serve(host: str, port: int, scenarios: Path) -> None:
+    """Render for MCP clients at http://HOST:PORT/mcp; SEASCAPE_* sets the limits."""
     from seascape import server
 
-    server.serve(host, port)
+    server.serve(server.State(server.Settings(scenarios=scenarios)), host, port)
 
 
 @main.group("assets")

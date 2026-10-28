@@ -35,7 +35,12 @@ seascape = "seascape.cli:main"
 [dependency-groups]
 dev = ["pytest>=9.0", "pytest-xdist>=3.8"]
 blender = ["bpy>=5.2"]
-serve = ["mcp>=2.3", "starlette>=1.8", "uvicorn>=0.54"]
+serve = [
+    "mcp>=2.3",
+    "pydantic-settings>=2.16",
+    "starlette>=1.8",
+    "uvicorn>=0.54",
+]
 
 [build-system]
 requires = ["hatchling"]
