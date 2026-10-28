@@ -15,6 +15,7 @@ from seascape.blender.blend import (
     lookup,
     pixels,
     scalar,
+    vector,
 )
 from seascape.config import (
     Band,
@@ -156,7 +157,10 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
     link(scalar(group, "SUBTRACT", 1.0, kept), mix.inputs["Fac"])
     link(group.nodes.new("NodeGroupInput").outputs["Shader"], mix.inputs[1])
     link(airlight.outputs["Emission"], mix.inputs[2])
-    link(mix.outputs["Shader"], group.nodes.new("NodeGroupOutput").inputs["Shader"])
+    shader = mix.outputs["Shader"]
+    if band == "ir":
+        shader = _less_sky(group, sky, ahead.outputs["Vector"], shader)
+    link(shader, group.nodes.new("NodeGroupOutput").inputs["Shader"])
     for material in bpy.data.materials:
         haze(material)
 
@@ -266,6 +270,9 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
 def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     """`lwir.cloudy_sky_radiance` under the photo's clouds, laid out as the photo."""
     assert sky.hdri is not None
+    # The world baked it first.
+    if (baked := bpy.data.images.get("cloudy_sky_radiance")) is not None:
+        return baked
     photo = _photo_image(sky.hdri)
     rgba = pixels(photo)
     h, w = rgba.shape[:2]
@@ -317,7 +324,7 @@ def _sky_round(sky: Sky, clouds: sea.Clouds | None) -> sea.SkyCurve:
 
 def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     """Downwelling radiance, as raw W m^-2 sr^-1: against elevation, or under the
-    photo's clouds."""
+    photo's clouds. A rough glossy ray sees none of it (`_less_sky`)."""
     tree = world.node_tree
     tree.nodes.clear()
     link = tree.links.new
@@ -325,29 +332,67 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     background = tree.nodes.new("ShaderNodeBackground")
     output = tree.nodes.new("ShaderNodeOutputWorld")
     link(background.outputs["Background"], output.inputs["Surface"])
+    radiance = _ir_sky(tree, sky, coord.outputs["Generated"])
+    shown = scalar(tree, "SUBTRACT", 1.0, _rough_glossy(tree))
+    link(vector(tree, "SCALE", radiance, shown), background.inputs["Color"])
+    return world
+
+
+def _ir_sky(
+    tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """The ir world's radiance in `direction`."""
     if sky.hdri is not None:
         radiance = _turned(
-            tree,
-            _cloudy_sky_image(sky),
-            sky.hdri,
-            sky.sun_bearing_deg,
-            coord.outputs["Generated"],
+            tree, _cloudy_sky_image(sky), sky.hdri, sky.sun_bearing_deg, direction
         )
         # Linear shows the texel grid where a texel spans several pixels.
         radiance.node.interpolation = "Cubic"
-        link(radiance, background.inputs["Color"])
-        return world
+        return radiance
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     above = tree.nodes.new("ShaderNodeMath")
     above.operation = "MAXIMUM"
     above.use_clamp = True
     above.inputs["Value_001"].default_value = 0.0
+    tree.links.new(direction, height.inputs["Vector"])
+    tree.links.new(height.outputs["Z"], above.inputs["Value"])
+    return lookup(tree, _sky_image(sky), above.outputs["Value"])
 
-    link(coord.outputs["Generated"], height.inputs["Vector"])
-    link(height.outputs["Z"], above.inputs["Value"])
-    radiance = lookup(tree, _sky_image(sky), above.outputs["Value"])
-    link(radiance, background.inputs["Color"])
-    return world
+
+def _rough_glossy(tree: bpy.types.NodeTree) -> bpy.types.NodeSocket:
+    """1 on a glossy ray off a lobe, 0 on any other: a hull's glass and bare metal are
+    sharp mirrors."""
+    path = tree.nodes.new("ShaderNodeLightPath")
+    sharp = scalar(tree, "SUBTRACT", 1.0, path.outputs["Is Singular Ray"])
+    return scalar(tree, "MULTIPLY", path.outputs["Is Glossy Ray"], sharp)
+
+
+def _less_sky(
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    ahead: bpy.types.NodeSocket,
+    shader: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`shader`, less the sky a rough glossy ray would have met `ahead` of it.
+
+    The sea's tables integrate the sky exactly, and sampling it through the lobe is
+    what leaves the sea grainy. So the world shows a rough glossy ray nothing, and what
+    the ray meets instead returns only its difference from that sky: a control variate.
+    Outside the haze, as the world's sky is.
+    """
+    behind = vector(
+        tree,
+        "SCALE",
+        _ir_sky(tree, sky, ahead),
+        scalar(tree, "MULTIPLY", _rough_glossy(tree), -1.0),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "haze_less_sky"
+    tree.links.new(behind, emission.inputs["Color"])
+    add = tree.nodes.new("ShaderNodeAddShader")
+    tree.links.new(shader, add.inputs[0])
+    tree.links.new(emission.outputs["Emission"], add.inputs[1])
+    return add.outputs["Shader"]
 
 
 def sea_light(sky: Sky, band: Band) -> sea.Light:

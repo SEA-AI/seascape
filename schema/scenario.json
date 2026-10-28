@@ -2288,7 +2288,7 @@
         "ir": {
           "title": "Ir",
           "description": "Per pixel, for IR frames.",
-          "default": 32,
+          "default": 128,
           "anyOf": [
             {
               "exclusiveMinimum": 0,

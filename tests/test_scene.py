@@ -997,9 +997,48 @@ class TestIrBand:
         emission = radiance.outputs["Value"].links[0].to_node
         assert emission.bl_idname == "ShaderNodeEmission"
 
-    def test_the_sea_reflects_by_lookup_not_by_sampling(self) -> None:
-        kinds = {n.bl_idname for n in bpy.data.materials["sea"].node_tree.nodes}
-        assert not any(k.startswith("ShaderNodeBsdf") for k in kinds)
+    def test_the_sea_samples_only_what_its_tables_lack(self) -> None:
+        """The sky is a lookup; one lobe, weighted 1 - eps, traces the rest."""
+        tree = bpy.data.materials["sea"].node_tree
+        (lobe,) = (n for n in tree.nodes if n.bl_idname.startswith("ShaderNodeBsdf"))
+        assert lobe.name == "sea_traced"
+        assert lobe.distribution == "BECKMANN"
+        weight = lobe.inputs["Color"].links[0].from_node
+        assert weight.operation == "SUBTRACT"
+        assert weight.inputs[0].default_value == 1.0
+        assert weight.inputs[1].links[0].from_node.name == "sea_emissivity"
+        assert {"sea_unresolved_wide", "sea_unresolved_narrow"} <= upstream(
+            lobe.inputs["Roughness"]
+        )
+
+    def test_a_rough_glossy_ray_finds_no_sky(self) -> None:
+        """The sea's tables already hold it."""
+        tree = bpy.data.worlds["sky"].node_tree
+        (path,) = (n for n in tree.nodes if n.bl_idname == "ShaderNodeLightPath")
+        assert path.outputs["Is Glossy Ray"].is_linked
+        assert path.outputs["Is Singular Ray"].is_linked
+        assert path.name in upstream(tree.nodes["Background"].inputs["Color"])
+
+    def test_what_a_rough_glossy_ray_meets_returns_its_excess_over_the_sky(
+        self,
+    ) -> None:
+        """The sky ahead of the ray, taken off outside the haze."""
+        nodes = bpy.data.node_groups["haze"].nodes
+        less = nodes["haze_less_sky"]
+        (path,) = (
+            n
+            for n in nodes
+            if n.bl_idname == "ShaderNodeLightPath"
+            and n.outputs["Is Glossy Ray"].is_linked
+        )
+        assert {path.name, "haze_ahead"} <= upstream(less.inputs["Color"])
+        assert "haze_horizon" not in upstream(less.inputs["Color"])
+        (output,) = (n for n in nodes if n.bl_idname == "NodeGroupOutput")
+        both = output.inputs["Shader"].links[0].from_node
+        assert {link.from_node.name for s in both.inputs for link in s.links} == {
+            "haze_mix",
+            "haze_less_sky",
+        }
 
     def test_the_reflection_and_the_emissivity_share_one_slope(self) -> None:
         """Both come from the pixel's unresolved slope, and must move together."""
@@ -1799,8 +1838,9 @@ class TestPhotographedThermalSky:
 
     def test_the_clouds_are_the_world(self) -> None:
         tree = bpy.data.worlds["sky"].node_tree
-        background = tree.nodes["Background"].inputs["Color"].links[0].from_node
-        assert background.image.name == "cloudy_sky_radiance"
+        (photo,) = (n for n in tree.nodes if n.bl_idname == "ShaderNodeTexEnvironment")
+        assert photo.image.name == "cloudy_sky_radiance"
+        assert photo.name in upstream(tree.nodes["Background"].inputs["Color"])
 
     def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
         heat = surroundings(variant(sky={"hdri": "overcast_soil"}))

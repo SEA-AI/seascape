@@ -2,6 +2,7 @@
 
 import math
 import tomllib
+from itertools import chain
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, get_args
@@ -766,3 +767,42 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
         assert float(lwir.brightness_temperature(emitted)) == pytest.approx(
             expected, abs=0.3
         ), name
+
+
+@pytest.mark.render
+def test_a_hull_warms_the_calm_sea_below_it(tmp_path: Path) -> None:
+    """The sea's lobe meets the hull, warmer than the low sky it hides. Hidden from
+    glossy rays, the hull leaves the sea as its tables have it."""
+    scenario = variant(
+        rig={"height_m": 15.0, "pitch_deg": -2.0},
+        cameras={"ir": {"hfov_deg": 4.0, "width_px": 96, "height_px": 64}},
+        objects=[
+            {
+                "asset": "cruising_sloop",
+                "range_m": 450.0,
+                "bearing_deg": 0.0,
+                "heading_deg": 90.0,
+            }
+        ],
+        sea={"wind_speed_mps": 3.0},
+    )
+    built = scene.build(scenario, "ir")
+    sc = bpy.context.scene
+    sc.camera = built.cameras["bow_ir"]
+    sc.render.resolution_x, sc.render.resolution_y = 96, 64
+    sc.cycles.samples = 64
+    sc.cycles.use_adaptive_sampling = False
+
+    def kelvin(name: str) -> np.ndarray:
+        sc.render.filepath = str(tmp_path / f"{name}.exr")
+        bpy.ops.render.render(write_still=True)
+        return lwir.brightness_temperature(blend.read(tmp_path / f"{name}.exr")[..., 0])
+
+    seen = kelvin("seen")
+    for hull in chain.from_iterable(built.targets.values()):
+        for part in (hull, *hull.children_recursive):
+            part.visible_glossy = False
+    hidden = kelvin("hidden")
+    warmer = seen - hidden
+    assert warmer.max() > 1.0
+    assert warmer.mean() > 0.0

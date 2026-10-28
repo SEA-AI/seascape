@@ -13,7 +13,13 @@ from seascape.blender.blend import (
     scalar,
     vector,
 )
-from seascape.blender.sea.daylight import _daylight, _glinting, _glitter, _widest
+from seascape.blender.sea.daylight import (
+    _daylight,
+    _glinting,
+    _glitter,
+    _stretchable,
+    _widest,
+)
 from seascape.blender.sea.foam import (
     FOAM_CELLS,
     FOAM_LENGTH_M,
@@ -46,6 +52,7 @@ from seascape.blender.sea.radiance import (
     SkyCurve,
     _skin_radiance,
     _thermal,
+    _traced,
 )
 from seascape.blender.sea.roughness import _grouped, _unresolved
 from seascape.blender.sea.wakes import _smoothed, _wakes
@@ -227,15 +234,9 @@ def material(
                 name="glitter_normal",
             )
         wide = scalar(tree, "MAXIMUM", scalar(tree, "SUBTRACT", wide, carried), 0.0)
-        # Cycles stretches a lobe 10:1 at most, alpha 10 to 1, variance 100.
         unresolved = (
             wide,
-            scalar(
-                tree,
-                "MAXIMUM",
-                scalar(tree, "SUBTRACT", narrow, carried),
-                scalar(tree, "MULTIPLY", wide, 0.01),
-            ),
+            _stretchable(tree, wide, scalar(tree, "SUBTRACT", narrow, carried)),
         )
         surface = _daylight(tree, sea, normal, tangent, unresolved, whitecaps, wake)
     else:
@@ -250,17 +251,23 @@ def material(
         slope_max = math.sqrt(
             2 * max(axes) + gust_max * gust_slope_variance(sea.wind_speed_mps)
         )
-        surface = _thermal(
+        surface = _traced(
             tree,
-            sea,
+            *_thermal(
+                tree,
+                sea,
+                normal,
+                unresolved,
+                slope_max,
+                light,
+                _skin_radiance(tree, sea, light.sun_up, wake),
+                whitecaps[0]
+                if wake is None
+                else scalar(tree, "MAXIMUM", whitecaps[0], wake.foam),
+            ),
             normal,
+            pixel,
             unresolved,
-            slope_max,
-            light,
-            _skin_radiance(tree, sea, light.sun_up, wake),
-            whitecaps[0]
-            if wake is None
-            else scalar(tree, "MAXIMUM", whitecaps[0], wake.foam),
         )
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(surface, output.inputs["Surface"])

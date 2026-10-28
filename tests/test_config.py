@@ -177,7 +177,8 @@ def test_an_override_can_be_the_table_its_line_parses_to(rig) -> None:
 def test_an_override_merges_a_table_rather_than_replacing_it() -> None:
     scenario = load(BASELINE, ["outputs.samples.eo = 8"])
 
-    assert (scenario.outputs.samples.eo, scenario.outputs.samples.ir) == (8, 32)
+    assert scenario.outputs.samples.eo == 8
+    assert scenario.outputs.samples.ir == Samples().ir
 
 
 def test_overrides_apply_in_order() -> None:
