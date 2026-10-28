@@ -62,4 +62,4 @@ echo "SEASCAPE_MAX_DURATION_S=120" >> .env
 docker compose up -d
 ```
 
-Without Docker, `uv run seascape serve --host 0.0.0.0` serves `./scenarios`, or `SEASCAPE_SCENARIOS`.
+Without Docker, `uv run seascape serve --host 0.0.0.0` serves `./scenarios`, or `--scenarios DIR`.

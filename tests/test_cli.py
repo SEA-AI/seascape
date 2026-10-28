@@ -10,7 +10,7 @@ import bpy
 import pytest
 from click.testing import CliRunner, Result
 
-from seascape import assets, cli
+from seascape import assets, cli, server
 from seascape.assets import skies
 from seascape.config import load
 from seascape.outputs import labels
@@ -47,6 +47,16 @@ def test_every_command_has_help(run: Run, command: tuple[str, ...]) -> None:
 
 def test_version(run: Run) -> None:
     assert run("--version").stdout.startswith("seascape, version ")
+
+
+def test_serve_takes_its_scenarios_folder(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served: list[server.State] = []
+    monkeypatch.setattr(server, "serve", lambda state, *_: served.append(state))
+    assert run("serve", "--scenarios", tmp_path).exit_code == 0
+    assert run("serve", env={"SEASCAPE_SCENARIOS": str(tmp_path)}).exit_code == 0
+    assert [s.settings.scenarios for s in served] == [tmp_path] * 2
 
 
 def test_a_scenario_mistake_is_an_error_on_stderr_and_exit_1(run: Run) -> None:
