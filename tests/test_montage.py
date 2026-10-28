@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from seascape import montage
 from seascape.config import Scenario
+from seascape.outputs import montage
 from tests.scenarios import two_rigs
 
 

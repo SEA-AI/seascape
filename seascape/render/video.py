@@ -9,9 +9,9 @@ from pathlib import Path
 import bpy
 import cv2
 
-from seascape import agc
 from seascape.config import Agc
-from seascape.labels import FILENAME, Image, Labels, agcs
+from seascape.outputs import agc
+from seascape.outputs.labels import FILENAME, Image, Labels, agcs
 
 
 def _nothing() -> None:

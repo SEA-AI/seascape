@@ -19,7 +19,7 @@ from PIL import Image
 
 from seascape import server
 from seascape.config import load_variants
-from seascape.server import SCENARIOS
+from tests.scenarios import SCENARIOS
 
 BASELINE = SCENARIOS / "baseline.toml"
 

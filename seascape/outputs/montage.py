@@ -9,8 +9,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 
-from seascape import agc
 from seascape.config import Agc, Scenario
+from seascape.outputs import agc
 
 TILE_H = 260
 CAPTION_H = 26

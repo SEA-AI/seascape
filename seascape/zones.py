@@ -24,7 +24,7 @@ from seascape import faces, render
 from seascape.assets import manifest
 from seascape.blender.meshes import _corners, _import, _meshes
 from seascape.faces import Parts, face_zones
-from seascape.montage import INK, MATTE
+from seascape.outputs.montage import INK, MATTE
 from seascape.physics.thermal import ZoneName
 
 

@@ -5,8 +5,8 @@ import math
 import numpy as np
 import pytest
 
-from seascape import microbolometer
 from seascape.config import Camera, Microbolometer, substream
+from seascape.outputs import microbolometer
 from seascape.physics import lwir
 
 PITCH_M = 12e-6

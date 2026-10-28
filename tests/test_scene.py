@@ -39,7 +39,6 @@ from seascape.blender.sea.radiance import (
 from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
 from seascape.blender.sky import _haze_ranges_m, _light, _sky_round, _sun_vector, haze
 from seascape.blender.vessels import _vessel, heading_rad, waterline_m
-from seascape.calibration import CameraCalibration
 from seascape.config import (
     Band,
     Camera,
@@ -51,6 +50,7 @@ from seascape.config import (
     load,
     substream,
 )
+from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import lwir, thermal, waves
 from tests.scenarios import (
     BASELINE,

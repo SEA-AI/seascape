@@ -11,8 +11,9 @@ from typing import Any, get_args
 
 import click
 
-from seascape import assets, labels, montage, panorama, recording, skies
+from seascape import assets, skies
 from seascape.config import Band, json_schema, load
+from seascape.outputs import labels, montage, panorama, recording
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -215,7 +216,7 @@ def panorama_(
 )
 def video(folder: Path, quality: str) -> None:
     """Encode each camera's frames as an mp4, from labels.json."""
-    from seascape import video as encoder
+    from seascape.render import video as encoder
 
     with (
         _progress(len(encoder.cameras(folder)), "Encoding") as bar,

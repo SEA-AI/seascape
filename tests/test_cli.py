@@ -10,8 +10,9 @@ import bpy
 import pytest
 from click.testing import CliRunner, Result
 
-from seascape import assets, cli, labels, skies
+from seascape import assets, cli, skies
 from seascape.config import load
+from seascape.outputs import labels
 
 BASELINE = Path(__file__).parents[1] / "scenarios" / "baseline.toml"
 

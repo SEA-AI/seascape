@@ -15,8 +15,8 @@ from typing import Any
 
 import numpy as np
 
-from seascape import labels
-from seascape.calibration import Calibration, CameraCalibration
+from seascape.outputs import labels
+from seascape.outputs.calibration import Calibration, CameraCalibration
 
 COLUMNS = [
     "counter",

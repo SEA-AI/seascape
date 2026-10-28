@@ -7,9 +7,9 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape import labels
-from seascape.calibration import CameraCalibration
 from seascape.config import Agc, Camera, Lens, Sensor
+from seascape.outputs import labels
+from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import waves
 
 RADIUS_M = waves.earth_radius_m(0.13)

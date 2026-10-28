@@ -20,13 +20,14 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, microbolometer
+from seascape import checkout
 from seascape.assets import manifest
 from seascape.blender import scene, sea
 from seascape.blender.compositor import JPEG_QUALITY, respond
 from seascape.blender.vessels import heading_rad, waterline_m
-from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import Camera, ImageFormat, Scenario, substream
+from seascape.outputs import agc, labels, microbolometer
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import waves
 
 
@@ -119,10 +120,8 @@ def _write_truth(
 
 def _commit() -> str | None:
     """The source checkout's commit, else the image's, else None."""
-    root = Path(__file__).parents[1]
-    # A wheel installed into another project's .venv sits inside that project's work
-    # tree, and git would answer with its commit.
-    if not (root / ".git").exists():
+    root = checkout.root()
+    if root is None or not (root / ".git").exists():
         # The Dockerfile's build arg: an image carries no .git.
         return os.environ.get("SEASCAPE_COMMIT") or None
     try:
