@@ -1536,7 +1536,7 @@ attribution = "MAGURA USV Drone boat by flightclubua, https://sketchfab.com/3d-m
 
 [usv_magura.zones]
 [usv_magura.zones.materials]
-material_0 = "wood_composite"
+material_0 = "paint_hull"
 
 [usv_stalker]
 kind = "hull"
@@ -1562,7 +1562,7 @@ island_count = 70
 island_digest = "059097bbcc18172e"
 
 [usv_stalker.zones.materials]
-material_0 = "wood_composite"
+material_0 = "paint_hull"
 
 [usv_stalker.zones.islands]
 "2" = "engine_cowl"
@@ -1588,7 +1588,7 @@ attribution = "Ukrainian navy maritime drone by idmental.id, https://sketchfab.c
 
 [usv_naval_drone.zones]
 [usv_naval_drone.zones.materials]
-BOAT = "wood_composite"
+BOAT = "paint_hull"
 
 [lateral_mark]
 kind = "buoy"
