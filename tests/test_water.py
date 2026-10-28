@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
+from seascape.blender.sea.daylight import SEAWATER_IOR
 from seascape.config import Sea
 from seascape.physics import water
-from seascape.sea import SEAWATER_IOR
 
 
 def test_the_default_water_matches_the_model_under_tabulated_d65() -> None:

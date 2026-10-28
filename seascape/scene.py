@@ -14,11 +14,13 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import faces, sea, sensor, skies
+from seascape import faces, sensor, skies
 from seascape.assets import Asset, Turbine, Zones, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
+    _math,
+    _vector,
     animate,
     curve_image,
     drive,
@@ -27,6 +29,7 @@ from seascape.blend import (
     sine,
     yaw,
 )
+from seascape.blender import sea
 from seascape.calibration import CameraCalibration, Matrix4
 from seascape.config import (
     Band,
@@ -219,10 +222,10 @@ def _haze(sky: Sky, band: Band, far_m: float) -> None:
         airlight.inputs["Color"],
     )
     depth = _optical_depth(group, sky, band, far_m)
-    kept = sea._math(group, "EXPONENT", sea._math(group, "MULTIPLY", depth, -1.0))
+    kept = _math(group, "EXPONENT", _math(group, "MULTIPLY", depth, -1.0))
     mix = group.nodes.new("ShaderNodeMixShader")
     mix.name = "haze_mix"
-    link(sea._math(group, "SUBTRACT", 1.0, kept), mix.inputs["Fac"])
+    link(_math(group, "SUBTRACT", 1.0, kept), mix.inputs["Fac"])
     link(group.nodes.new("NodeGroupInput").outputs["Shader"], mix.inputs[1])
     link(airlight.outputs["Emission"], mix.inputs[2])
     link(mix.outputs["Shader"], group.nodes.new("NodeGroupOutput").inputs["Shader"])
@@ -293,9 +296,7 @@ def _optical_depth(
     """
     length = tree.nodes.new("ShaderNodeLightPath").outputs["Ray Length"]
     if band == "eo":
-        return sea._math(
-            tree, "MULTIPLY", length, sky.extinction_per_m, name="haze_beta"
-        )
+        return _math(tree, "MULTIPLY", length, sky.extinction_per_m, name="haze_beta")
     ranges = _haze_ranges_m(far_m)
     image = curve_image(
         "haze_depth", lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
@@ -304,17 +305,17 @@ def _optical_depth(
 
     def at(range_m: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         # Blender's log of a negative number is 0, which is a range inside the table.
-        near = sea._math(tree, "MAXIMUM", range_m, HAZE_NEAR_M)
-        texel = sea._math(tree, "LOGARITHM", near, span)
-        texel = sea._math(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
+        near = _math(tree, "MAXIMUM", range_m, HAZE_NEAR_M)
+        texel = _math(tree, "LOGARITHM", near, span)
+        texel = _math(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
         return lookup(tree, image, texel)
 
     distance = tree.nodes.new("ShaderNodeVectorMath")
     distance.operation = "LENGTH"
     camera = tree.nodes.new("ShaderNodeTexCoord").outputs["Camera"]
     tree.links.new(camera, distance.inputs["Vector"])
-    start = sea._math(tree, "SUBTRACT", distance.outputs["Value"], length)
-    return sea._math(tree, "SUBTRACT", at(distance.outputs["Value"]), at(start))
+    start = _math(tree, "SUBTRACT", distance.outputs["Value"], length)
+    return _math(tree, "SUBTRACT", at(distance.outputs["Value"]), at(start))
 
 
 def _sky_image(sky: Sky) -> bpy.types.Image:
@@ -564,10 +565,10 @@ def _zone_skin(
     normal = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(geometry.outputs["Normal"], normal.inputs["Vector"])
     # At texel centres: the lookup interpolates between them.
-    y = sea._math(
+    y = _math(
         tree,
         "MULTIPLY_ADD",
-        sea._math(tree, "MULTIPLY_ADD", normal.outputs["Z"], 0.5, 0.5),
+        _math(tree, "MULTIPLY_ADD", normal.outputs["Z"], 0.5, 0.5),
         (len(up) - 1) / len(up),
         0.5 / len(up),
     )
@@ -580,8 +581,8 @@ def _zone_skin(
         facing.operation = "DOT_PRODUCT"
         facing.inputs["Vector_001"].default_value = heat.sun
         link(geometry.outputs["Normal"], facing.inputs["Vector"])
-        lit = sea._math(tree, "MAXIMUM", facing.outputs["Value"], 0.0)
-        at = sea._math(
+        lit = _math(tree, "MAXIMUM", facing.outputs["Value"], 0.0)
+        at = _math(
             tree,
             "MULTIPLY_ADD",
             lit,
@@ -608,7 +609,7 @@ def _wetted(
     coords = tree.nodes.new("ShaderNodeTexCoord")
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(coords.outputs["Object"], height.inputs["Vector"])
-    under = sea._math(tree, "LESS_THAN", height.outputs["Z"], 0.0)
+    under = _math(tree, "LESS_THAN", height.outputs["Z"], 0.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(under, mix.inputs["Factor"])
     link(skin, mix.inputs["Shader"])
@@ -1601,22 +1602,22 @@ def _camera(
     links.new(image, info.inputs["Image"])
     # Uniform spans -1 to 1 along the longer side, so the kernel is a fixed share of
     # the frame at any resolution. Fog Glow and Bloom change shape with it.
-    radius = sea._vector(tree, "LENGTH", coords.outputs["Uniform"])
+    radius = _vector(tree, "LENGTH", coords.outputs["Uniform"])
     # Natural vignetting: irradiance falls as cos^4 of the field angle, 1 / (1 +
     # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
-    tangent = sea._math(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
-    falloff = sea._math(
+    tangent = _math(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
+    falloff = _math(
         tree,
         "POWER",
-        sea._math(tree, "MULTIPLY_ADD", tangent, tangent, 1.0),
+        _math(tree, "MULTIPLY_ADD", tangent, tangent, 1.0),
         -2.0,
     )
-    image = sea._vector(tree, "SCALE", image, falloff)
-    shoulder = sea._math(tree, "DIVIDE", radius, GLARE_SHOULDER)
-    harvey = sea._math(
+    image = _vector(tree, "SCALE", image, falloff)
+    shoulder = _math(tree, "DIVIDE", radius, GLARE_SHOULDER)
+    harvey = _math(
         tree,
         "POWER",
-        sea._math(tree, "MULTIPLY_ADD", shoulder, shoulder, 1.0),
+        _math(tree, "MULTIPLY_ADD", shoulder, shoulder, 1.0),
         -GLARE_SLOPE / 2,
     )
     glare = nodes.new("CompositorNodeGlare")
@@ -1632,9 +1633,9 @@ def _camera(
     links.new(image, glare.inputs["Image"])
     side = nodes.new("ShaderNodeSeparateXYZ")
     links.new(info.outputs["Resolution"], side.inputs["Vector"])
-    longer_px = sea._math(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
+    longer_px = _math(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
-    size_px = sea._math(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
+    size_px = _math(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
     size = nodes.new("ShaderNodeCombineXYZ")
     links.new(size_px, size.inputs["X"])
     links.new(size_px, size.inputs["Y"])
@@ -1646,21 +1647,21 @@ def _camera(
     luminance = nodes.new("CompositorNodeRGBToBW")
     links.new(image, luminance.inputs["Image"])
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
-    lit = sea._math(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
+    lit = _math(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
     levels = nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
-    links.new(sea._math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
-    log_average = sea._math(tree, "EXPONENT", levels.outputs["Mean"])
-    gain = sea._math(
+    links.new(_math(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
+    log_average = _math(tree, "EXPONENT", levels.outputs["Mean"])
+    gain = _math(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
     )
     processing = sensor._value(tree, "processing.gain", 1.0)
-    gain = sea._math(tree, "MULTIPLY", gain, processing)
-    exposed = sea._vector(tree, "SCALE", image, gain)
+    gain = _math(tree, "MULTIPLY", gain, processing)
+    exposed = _vector(tree, "SCALE", image, gain)
     if not with_sensor:
         return exposed
     # A camera without a full well shares the tree, and takes the ideal frame.
-    grey = sea._math(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
+    grey = _math(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
     read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
     return sensor._switch(tree, "sensor.on", exposed, read)
 

@@ -1,4 +1,12 @@
-"""The colour of the water's body from its chlorophyll."""
+"""The colour of the water's body from its chlorophyll.
+
+Sources
+-------
+Morel & Maritorena, "Bio-optical properties of oceanic waters: a reappraisal", JGR
+106(C4) 7163, 2001 (doi:10.1029/2000JC000319); Lee, Carder & Arnone, "Deriving inherent
+optical properties from water color: a multiband quasi-analytical algorithm for
+optically deep waters", Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
+"""
 
 from pathlib import Path
 

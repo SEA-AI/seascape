@@ -15,8 +15,26 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import blend, scene, sea
+from seascape import blend, scene
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest
+from seascape.blender import sea
+from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
+from seascape.blender.sea.geometry import _triples
+from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
+from seascape.blender.sea.radiance import (
+    CLOUD_BEARINGS,
+    CLOUD_MIRRORS,
+    CLOUD_SLOPES,
+    CLOUD_VIEWS,
+    MIRROR_SAMPLES,
+    SLOPE_ROWS,
+    VIEW_ROWS,
+    _cloud_image,
+    _mirror_columns,
+    _row_sigmas,
+    _view_rows,
+)
+from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
 from seascape.calibration import CameraCalibration
 from seascape.config import (
     Band,
@@ -177,7 +195,7 @@ def drawn(
         wind = tuple(w for w in wind if w in kept)
         swell = tuple(w for w in swell if w in kept)
     _, (wind, swell) = sea.displaced((wind, swell))
-    triples = sea._triples(wind) + sea._triples(swell)
+    triples = _triples(wind) + _triples(swell)
     found = []
     for i, triple in enumerate(triples):
         inputs = nodes[f"waves_{i}"].inputs
@@ -392,7 +410,7 @@ class TestEoBand:
         axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
         for i, axis in enumerate(("upwind", "crosswind")):
             table = baked(f"sea_unresolved_variance_{axis}")
-            low, high = sea.FOOTPRINT_RANGE_M
+            low, high = FOOTPRINT_RANGE_M
             texel = (np.arange(len(table)) + 0.5) / len(table)
             footprints = low * (high / low) ** texel
             for t in (0, len(table) // 2, len(table) - 1):
@@ -416,15 +434,15 @@ class TestEoBand:
         tile = baked("sea_gust")
         seeded = waves.von_karman_field(
             substream(SCENARIO.seed, "sea/gust"),
-            sea.GUST_CELLS,
-            sea.GUST_SPACING_M,
+            GUST_CELLS,
+            GUST_SPACING_M,
             waves.GUST_LENGTH_M,
         )
         assert tile == pytest.approx(seeded, abs=1e-5)
 
     def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
         carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
-        per_m = 1 / sea.GUST_TILE_M
+        per_m = 1 / GUST_TILE_M
         downwind = math.radians(SCENARIO.sea.wind_from_deg + 180.0)
         speed = SCENARIO.sea.wind_speed_mps
         # The noise read at x - U t is the noise at x carried U t downwind.
@@ -471,7 +489,7 @@ class TestEoBand:
 
     def test_the_glint_is_the_sky_texture_s_sun(self) -> None:
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        assert sky.sun_size == pytest.approx(4 * sea.SUN_SLOPE_RADIUS)
+        assert sky.sun_size == pytest.approx(4 * SUN_SLOPE_RADIUS)
 
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
         nodes = bpy.data.node_groups["haze"].nodes
@@ -909,7 +927,7 @@ class TestIrBand:
     def test_the_unresolved_slope_spreads_as_the_short_waves_groups(self) -> None:
         """The shader reads this by log footprint at texel centres."""
         table = baked("sea_mss_spread")
-        low, high = sea.FOOTPRINT_RANGE_M
+        low, high = FOOTPRINT_RANGE_M
         texel = (np.arange(len(table)) + 0.5) / len(table)
         footprints = low * (high / low) ** texel
         speed, fetch = SCENARIO.sea.wind_speed_mps, SCENARIO.sea.fetch_m
@@ -998,20 +1016,20 @@ class TestIrBand:
 
     def test_the_baked_reflection_matches_the_sky_it_reflects(self) -> None:
         table = baked("sea_reflection")
-        assert table.shape == (sea.SLOPE_ROWS * sea.VIEW_ROWS, sea.MIRROR_SAMPLES)
-        mirror = np.arcsin(sea._mirror_columns())
-        view = np.arcsin(sea._view_rows())
+        assert table.shape == (SLOPE_ROWS * VIEW_ROWS, MIRROR_SAMPLES)
+        mirror = np.arcsin(_mirror_columns())
+        view = np.arcsin(_view_rows())
         sky = scene._sky_round(SCENARIO.sky, None)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
-        sigmas = sea._row_sigmas(slope_max)
-        roughest = table[(sea.SLOPE_ROWS - 1) * sea.VIEW_ROWS]  # its grazing view
+        sigmas = _row_sigmas(slope_max)
+        roughest = table[(SLOPE_ROWS - 1) * VIEW_ROWS]  # its grazing view
         grazing = (mirror >= 0) & (mirror < math.radians(5.0))
         flat = lwir.reflected_sky(mirror[grazing], *sky)
         assert np.all(roughest[grazing] < flat), "facets seen grazing lean to the eye"
-        for tile in (0, sea.SLOPE_ROWS - 1):
-            for row in (0, sea.VIEW_ROWS - 1):
-                scale = table[tile * sea.VIEW_ROWS + row] / lwir.reflected_sky(
+        for tile in (0, SLOPE_ROWS - 1):
+            for row in (0, VIEW_ROWS - 1):
+                scale = table[tile * VIEW_ROWS + row] / lwir.reflected_sky(
                     mirror,
                     *sky,
                     t_sea_k=SCENARIO.sea.t_sea_k,
@@ -1026,11 +1044,11 @@ class TestIrBand:
         sky = scene._sky_round(SCENARIO.sky, None)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
-        sigmas = sea._row_sigmas(slope_max)
-        rows, cols = sea.VIEW_ROWS, sea.MIRROR_SAMPLES
+        sigmas = _row_sigmas(slope_max)
+        rows, cols = VIEW_ROWS, MIRROR_SAMPLES
         rng = np.random.default_rng(0)
         hot = lwir.band_radiance(SCENARIO.sea.t_sea_k)
-        for tile in (0, sea.SLOPE_ROWS // 2, sea.SLOPE_ROWS - 1):
+        for tile in (0, SLOPE_ROWS // 2, SLOPE_ROWS - 1):
             mu = rng.uniform(0.02, 0.98, 40) ** 2  # grazing views too
             sin_mirror = rng.uniform(-0.3, 0.98, 40)  # below the horizon too
             y = np.clip(np.sqrt(mu) * rows - 0.5, 0, rows - 1)
@@ -1250,8 +1268,8 @@ class TestSlicks:
         seeded = waves.gaussian_ranks(
             waves.von_karman_field(
                 substream(self.SLICKS.seed, "sea/slick"),
-                sea.GUST_CELLS,
-                sea.GUST_SPACING_M,
+                GUST_CELLS,
+                GUST_SPACING_M,
                 spacing_m,
             )
         )
@@ -1272,7 +1290,7 @@ class TestSlicks:
         assert across @ downwind == pytest.approx(
             0.0, abs=1e-6 * np.linalg.norm(across)
         )
-        assert np.linalg.norm(across) == pytest.approx(1 / sea.GUST_TILE_M)
+        assert np.linalg.norm(across) == pytest.approx(1 / GUST_TILE_M)
         assert np.linalg.norm(along) == pytest.approx(
             np.linalg.norm(across) / waves.WINDROW_ASPECT
         )
@@ -1304,7 +1322,7 @@ class TestSlicks:
         left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS), axis_rad)
         for i, axis in enumerate(("upwind", "crosswind")):
             table = baked(f"sea_unresolved_slick_variance_{axis}")
-            low, high = sea.FOOTPRINT_RANGE_M
+            low, high = FOOTPRINT_RANGE_M
             texel = (np.arange(len(table)) + 0.5) / len(table)
             footprints = low * (high / low) ** texel
             for t in (0, len(table) // 2, len(table) - 1):
@@ -1802,7 +1820,7 @@ class TestPhotographedThermalSky:
     def test_the_sea_reflects_the_clouds(self) -> None:
         """A sea under overcast reflecting a clear sky would read cold."""
         table = baked("sea_reflection")
-        mirror = np.arcsin(sea._mirror_columns())
+        mirror = np.arcsin(_mirror_columns())
         sky = variant(sky={"hdri": "overcast_soil"}).sky
         # Off the horizon, where a clear sky runs cold.
         high = mirror[mirror > math.radians(30.0)]
@@ -1821,31 +1839,29 @@ def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
     over the round sky's."""
     elevation = np.radians(np.arange(-89.0, 90.0, 2.0))
     clear = lwir.sky_radiance(elevation)
-    half = sea.CLOUD_BEARINGS // 2
-    radiance = np.tile(clear[:, None], (1, sea.CLOUD_BEARINGS))
+    half = CLOUD_BEARINGS // 2
+    radiance = np.tile(clear[:, None], (1, CLOUD_BEARINGS))
     radiance[:, :half] = lwir.cloudy_sky_radiance(elevation, 1.0, 500.0)[:, None]
     slope_max = 0.3
-    image = sea._cloud_image(
-        lwir.T_SEA_K, sea.Clouds(elevation, radiance, 0.0), slope_max
-    )
+    image = _cloud_image(lwir.T_SEA_K, sea.Clouds(elevation, radiance, 0.0), slope_max)
     width, height = image.size
     pixels = np.empty(width * height * 4, np.float32)
     image.pixels.foreach_get(pixels)
     table = pixels.reshape(height, width, 4)[..., 0]
     # The roughest tile, its last view row, a mirror row above the horizon.
     tile, view, k = (
-        sea.CLOUD_SLOPES - 1,
-        sea.CLOUD_VIEWS - 1,
-        3 * sea.CLOUD_MIRRORS // 4,
+        CLOUD_SLOPES - 1,
+        CLOUD_VIEWS - 1,
+        3 * CLOUD_MIRRORS // 4,
     )
-    row = table[(tile * sea.CLOUD_VIEWS + view) * sea.CLOUD_MIRRORS + k]
-    root = (k + 0.5) / sea.CLOUD_MIRRORS * 2.0 - 1.0
+    row = table[(tile * CLOUD_VIEWS + view) * CLOUD_MIRRORS + k]
+    root = (k + 0.5) / CLOUD_MIRRORS * 2.0 - 1.0
     reflect = partial(
         lwir.reflected_sky,
         math.asin(root**2),
         elevation,
-        slope_sigma=sea._row_sigmas(slope_max, sea.CLOUD_SLOPES)[tile],
-        view_rad=math.asin(sea._view_rows(sea.CLOUD_VIEWS)[view]),
+        slope_sigma=_row_sigmas(slope_max, CLOUD_SLOPES)[tile],
+        view_rad=math.asin(_view_rows(CLOUD_VIEWS)[view]),
     )
     expected = reflect(radiance) / reflect(radiance.mean(axis=1))
     assert row == pytest.approx(expected, rel=1e-5)

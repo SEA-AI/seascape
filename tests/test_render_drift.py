@@ -10,10 +10,15 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import render, scene, sea, skies
+from seascape import render, scene, skies
 from seascape.assets import Buoy, download, fetch, manifest
+from seascape.blend import _math
+from seascape.blender import sea
+from seascape.blender.sea.daylight import SEAWATER_IOR, SUN_SLOPE_RADIUS
+from seascape.blender.sea.foam import LATTICE_WALL_M, _frames_folder
+from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CELLS
 from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
-from seascape.physics import colour, lwir, waves
+from seascape.physics import colour, lwir, wakes, waves
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render
@@ -196,12 +201,12 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
     # The build's finest edge; a pixel this fine would dice to it anyway.
     water = bpy.data.objects["sea"]
-    dice_m = water.dimensions.x / sea.SEA_CELLS / 2**sc.cycles.max_subdivisions
-    assert dice_m <= sea.DICED_EDGE_M
+    dice_m = water.dimensions.x / SEA_CELLS / 2**sc.cycles.max_subdivisions
+    assert dice_m <= DICED_EDGE_M
     water.modifiers["dice"].adaptive_pixel_size = dice_m * px / span_m
     # Dicing the kilometres of sea off-screen is most of the render. This much coarser
     # than the build leaves every pixel as it was.
-    sc.cycles.offscreen_dicing_scale = 4 * sea.OFFSCREEN_DICING
+    sc.cycles.offscreen_dicing_scale = 4 * OFFSCREEN_DICING
 
     def read(socket: bpy.types.NodeSocket, unit: float) -> np.ndarray:
         """`socket`, east, north and up, in units of `unit`, which keep it in -1..1."""
@@ -244,7 +249,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     each pixel over a cell of the finest grid reads that cell of that frame, the
     water having drifted since."""
     clip = _clear(variant(OPEN_SEA, outputs={"duration_s": 1.0, "fps": 4}))
-    stale = sea._frames_folder() / "0.25m" / "foam_0001.exr"
+    stale = _frames_folder() / "0.25m" / "foam_0001.exr"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.touch()
     built = scene.build(clip, "eo")
@@ -373,7 +378,7 @@ def lobe(
     cannot."""
     wide, narrow = max(along, across), min(along, across)
     cells = along_m * across_m / waves.specular_cell_m2(wind)
-    widen = max(cells / samples - 1, 0.0) * sea.SUN_SLOPE_RADIUS**2
+    widen = max(cells / samples - 1, 0.0) * SUN_SLOPE_RADIUS**2
     carried = max(narrow - widen, 0.0) if glints else 0.0
     left = max(wide - carried, 0.0)
     return max(left, 1e-12), max(narrow - carried, left / 100, 1e-12)
@@ -514,7 +519,7 @@ PROBE_HEIGHT_M, PROBE_FOV_DEG, PROBE_PX = 15.0, 4.0, (64, 16)
 def _mirrored(cosine: np.ndarray) -> np.ndarray:
     """Seawater's Fresnel reflectance at incidence `cosine`."""
     theta = np.arccos(np.clip(cosine, 0.0, 1.0))
-    return 1 - lwir.fresnel_emissivity(theta, sea.SEAWATER_IOR, 0.0)
+    return 1 - lwir.fresnel_emissivity(theta, SEAWATER_IOR, 0.0)
 
 
 def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
@@ -565,8 +570,7 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     )
     sky = np.where(
         blocked,
-        1
-        - lwir.fresnel_emissivity(np.arccos(np.clip(met, 0, 1)), sea.SEAWATER_IOR, 0.0),
+        1 - lwir.fresnel_emissivity(np.arccos(np.clip(met, 0, 1)), SEAWATER_IOR, 0.0),
         1.0,
     )
 
@@ -703,14 +707,14 @@ def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     def grey(footprint_m: float) -> np.ndarray:
         return read(footprint_m, "whitecaps") * read(footprint_m, "whitecap_bright")
 
-    wide_m = 3 * sea.LATTICE_WALL_M
+    wide_m = 3 * LATTICE_WALL_M
     foamed = read(wide_m, "whitecaps") > 0.0
     assert foamed.mean() > 0.01, "no foam in view would pass vacuously"
     np.testing.assert_allclose(read(wide_m, "whitecap_foam"), grey(wide_m), atol=1e-3)
     np.testing.assert_allclose(
-        read(wide_m, "whitecap_albedo"), sea.FRESH_FOAM_REFLECTANCE, atol=1e-3
+        read(wide_m, "whitecap_albedo"), wakes.FRESH_FOAM_REFLECTANCE, atol=1e-3
     )
-    narrow_m = sea.LATTICE_WALL_M / 2
+    narrow_m = LATTICE_WALL_M / 2
     assert np.abs(read(narrow_m, "whitecap_foam") - grey(narrow_m)).max() > 0.1
 
 
@@ -846,15 +850,15 @@ class TestCamera:
         generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
         direction = tree.nodes.new("ShaderNodeSeparateXYZ")
         tree.links.new(generated, direction.inputs[0])
-        east = sea._math(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
-        halves = sea._math(tree, "MULTIPLY_ADD", east, right - left, left)
-        overhead = sea._math(
+        east = _math(tree, "GREATER_THAN", direction.outputs["X"], 0.0)
+        halves = _math(tree, "MULTIPLY_ADD", east, right - left, left)
+        overhead = _math(
             tree,
             "GREATER_THAN",
             direction.outputs["Z"],
             math.cos(math.radians(sun_radius_deg)),
         )
-        sky = sea._math(tree, "MULTIPLY_ADD", overhead, sun, halves)
+        sky = _math(tree, "MULTIPLY_ADD", overhead, sun, halves)
         background = tree.nodes["Background"]
         tree.links.new(sky, background.inputs["Color"])
         background.inputs["Strength"].default_value = 1.0
@@ -958,14 +962,14 @@ class TestSensor:
             generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
             direction = tree.nodes.new("ShaderNodeSeparateXYZ")
             tree.links.new(generated, direction.inputs[0])
-            overhead = sea._math(
+            overhead = _math(
                 tree,
                 "GREATER_THAN",
                 direction.outputs["Z"],
                 math.cos(math.radians(1.8)),
             )
             tree.links.new(
-                sea._math(tree, "MULTIPLY_ADD", overhead, sun, colour[0]),
+                _math(tree, "MULTIPLY_ADD", overhead, sun, colour[0]),
                 background.inputs["Color"],
             )
         width, height = self.SIZE

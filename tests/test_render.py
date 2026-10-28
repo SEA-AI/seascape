@@ -13,7 +13,9 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from seascape import agc, labels, render, scene, sea, server
+from seascape import agc, labels, render, scene, server
+from seascape.blender import sea
+from seascape.blender.sea import foam
 from seascape.calibration import Calibration
 from seascape.config import (
     Agc,
@@ -441,7 +443,7 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     in IR under a photographed sky, whose clouds the sea reflects. The stack is the
     shader's, whatever its frames hold, so none are simulated and the photo is
     white."""
-    monkeypatch.setattr(sea, "_simulate", lambda *_: None)
+    monkeypatch.setattr(foam, "_simulate", lambda *_: None)
     grids = tuple(
         waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
     )
