@@ -96,7 +96,10 @@ def _face_components(
         key[:, 3:5] = np.round(uv * 1e6) * textured[material[face], None]
     # A vertex per material, so slots that meet stay apart.
     key[:, 5] = material[face]
-    node = np.unique(key, axis=0, return_inverse=True)[1].ravel()
+    # One bytes value per row groups as `axis=0` does, in another order: islands are
+    # numbered by their first face, so only the grouping is read.
+    rows = key.view(np.dtype((np.void, key.itemsize * key.shape[1]))).ravel()
+    node = np.unique(rows, return_inverse=True)[1]
     following = np.arange(n_loops) + 1
     following[start + total - 1] = start
     label = _components(int(node.max()) + 1, node, node[following])
