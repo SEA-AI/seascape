@@ -1,10 +1,6 @@
-"""Whitecaps: their lace and lattice, and the foam a build remembers on its grids."""
+"""Whitecaps: their lace and lattice, shaded from the foam memory."""
 
 import math
-import shutil
-from collections.abc import Callable, Iterator
-from functools import partial
-from pathlib import Path
 from statistics import NormalDist
 from typing import NamedTuple
 
@@ -29,10 +25,7 @@ from seascape.physics.waves import (
     THIN_FOAM_SHARE,
     WHITECAP_EFFECTIVE_REFLECTANCE,
     FoamGrid,
-    Wave,
     foam_lattice_field,
-    foam_memory,
-    foam_memory_thresholds_g,
     whitecap_fraction,
 )
 
@@ -88,135 +81,6 @@ def _looked_up_sigma(tile: np.ndarray) -> float:
     weights = np.einsum("ai,bj->abij", blend, blend).reshape(-1, 4)
     variance = np.einsum("si,ij,sj->s", weights, covariance, weights).mean()
     return float(np.sqrt(variance))
-
-
-def _write_frames(
-    folder: Path,
-    grid: FoamGrid,
-    frames: Iterator[tuple[np.ndarray, np.ndarray]],
-) -> None:
-    """Each frame's (cover, breaking) as an EXR in `folder`."""
-    folder.mkdir(parents=True)
-    image = bpy.data.images.new(
-        "sea_foam_frame", grid.columns, grid.rows, float_buffer=True
-    )
-    image.colorspace_settings.name = "Non-Color"
-    # `Image.save` writes 32-bit floats uncompressed; a scene's output settings write
-    # half floats, which keep cover to a part in 2048, zipped.
-    frames_scene = bpy.data.scenes.new("sea_foam_frames")
-    settings = frames_scene.render.image_settings
-    settings.file_format, settings.color_mode = "OPEN_EXR", "RGB"
-    settings.color_depth, settings.exr_codec = "16", "ZIP"
-    rgba = np.zeros((grid.rows, grid.columns, 4), np.float32)
-    rgba[..., 3] = 1.0
-    for i, (cover, breaking) in enumerate(frames):
-        rgba[..., 0], rgba[..., 1] = cover, breaking
-        image.pixels.foreach_set(rgba.ravel())
-        image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
-    bpy.data.scenes.remove(frames_scene)
-    bpy.data.images.remove(image)
-
-
-# The foam memories the last build asked for and has not simulated: a build that never
-# renders never pays for them.
-_PENDING: list[Callable[[], None]] = []
-
-
-def _frames_folder() -> Path:
-    """Where a build writes its foam memory: Blender's session temporary folder, which
-    it deletes on exit."""
-    return Path(bpy.app.tempdir) / "sea_foam"
-
-
-def forget_foam() -> None:
-    """Drop the last build's foam memory, pending or written: every build starts here,
-    with foam or without."""
-    _PENDING.clear()
-    shutil.rmtree(_frames_folder(), ignore_errors=True)
-
-
-def _foam_sequences() -> list[bpy.types.Image]:
-    return [
-        image
-        for image in bpy.data.images
-        if image.name.startswith("sea_foam_") and image.source == "SEQUENCE"
-    ]
-
-
-def remember_foam(*_: object) -> None:
-    """Simulate every foam memory the last build left pending, and point their image
-    sequences at the frames: on `render_pre`, and by `keep_foam`."""
-    while _PENDING:
-        _PENDING.pop()()
-    for image in _foam_sequences():
-        image.reload()
-
-
-def keep_foam(blend: Path) -> None:
-    """Simulate the foam memory and move its frames beside `blend`, where a `.blend`
-    about to be saved there finds them, as Blender keeps a simulation's bake."""
-    remember_foam()
-    # A rebuild without foam leaves no frames of the last one beside it.
-    beside = blend.with_suffix(".foam")
-    if beside.exists():
-        shutil.rmtree(beside)
-    frames = _frames_folder()
-    if not frames.is_dir():
-        return
-    shutil.move(frames, beside)
-    for image in _foam_sequences():
-        moved = beside / Path(image.filepath).relative_to(frames)
-        image.filepath = bpy.path.relpath(str(moved), start=str(blend.parent))
-
-
-def _foam_frames(
-    sea: Sea,
-    wind: tuple[Wave, ...],
-    outputs: Outputs,
-    grids: tuple[FoamGrid, ...],
-) -> list[tuple[FoamGrid, bpy.types.Image]]:
-    """Each grid's foam memory over the clip, an image sequence of (cover, breaking),
-    simulated before the first render, breaking at Monahan's cover for the mean wind.
-
-    No gust moves the threshold: whitecaps break off the drawn waves, which grow too
-    slowly to follow a gust (Plant 1982), as `_gusty` holds them at the mean wind."""
-    drift = surface_drift(sea, outputs)
-    fraction = whitecap_fraction(sea.wind_speed_mps)
-    if remember_foam not in bpy.app.handlers.render_pre:
-        bpy.app.handlers.render_pre.append(remember_foam)
-    out = []
-    for grid in grids:
-        folder = _frames_folder() / f"{grid.cell_m:g}m"
-        _PENDING.append(
-            partial(_simulate, wind, outputs, grid, folder, drift, fraction)
-        )
-        sequence = bpy.data.images.new(
-            f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
-        )
-        sequence.source = "SEQUENCE"
-        sequence.filepath = str(folder / "foam_0001.exr")
-        sequence.colorspace_settings.name = "Non-Color"
-        out.append((grid, sequence))
-    return out
-
-
-def _simulate(
-    wind: tuple[Wave, ...],
-    outputs: Outputs,
-    grid: FoamGrid,
-    folder: Path,
-    drift: tuple[float, float],
-    fraction: float,
-) -> None:
-    """One grid's foam memory over the clip, written to `folder`."""
-    step = 1 / outputs.fps
-    (threshold,) = foam_memory_thresholds_g(wind, drift, grid.cell_m, step, (fraction,))
-    times = outputs.times_s
-    _write_frames(
-        folder,
-        grid,
-        foam_memory(wind, drift, grid, times[0], step, len(times), float(threshold)),
-    )
 
 
 def _remembered(

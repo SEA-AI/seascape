@@ -29,7 +29,7 @@ HAZE_NEAR_M = 0.1
 THERMAL_SKY_PX = 2048
 
 
-def _sky(sky: Sky, band: Band) -> bpy.types.World:
+def add_world(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
     # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
     world.sun_threshold = 0.0
@@ -114,7 +114,7 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     return node
 
 
-def _haze(sky: Sky, band: Band, far_m: float) -> None:
+def add_haze(sky: Sky, band: Band, far_m: float) -> None:
     """Koschmieder's airlight, in every surface: a ray keeps exp(-optical depth) of the
     light it brings back and takes the rest from the sky ahead of it, no lower than the
     horizon. That sky is constant along the ray, so the mix is exact over its length,
@@ -350,7 +350,7 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     return world
 
 
-def _light(sky: Sky, band: Band) -> sea.Light:
+def sea_light(sky: Sky, band: Band) -> sea.Light:
     if band == "ir":
         clouds = _clouds(sky)
         return sea.Light(sky=_sky_round(sky, clouds), sun_up=sky.sun_up, clouds=clouds)

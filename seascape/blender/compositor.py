@@ -63,7 +63,7 @@ def enable_gpu() -> str | None:
     return None
 
 
-def _output(
+def set_output(
     outputs: Outputs, band: Band, largest_px: int, graded: bool = False
 ) -> None:
     """Render and display settings, in the .blend, so F12 renders what `render` does.

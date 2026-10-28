@@ -56,7 +56,10 @@ def test_serve_takes_its_scenarios_folder(
     monkeypatch.setattr(server, "serve", lambda state, *_: served.append(state))
     assert run("serve", "--scenarios", tmp_path).exit_code == 0
     assert run("serve", env={"SEASCAPE_SCENARIOS": str(tmp_path)}).exit_code == 0
-    assert [s.settings.scenarios for s in served] == [tmp_path] * 2
+    monkeypatch.chdir(tmp_path)
+    assert run("serve").exit_code == 0
+    shipped = Path(cli.__file__).parents[1] / "scenarios"
+    assert [s.settings.scenarios for s in served] == [tmp_path, tmp_path, shipped]
 
 
 def test_a_scenario_mistake_is_an_error_on_stderr_and_exit_1(run: Run) -> None:

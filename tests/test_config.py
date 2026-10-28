@@ -32,7 +32,7 @@ from seascape.config import (
     load,
     substream,
 )
-from seascape.config.draws import _DRAWS, Choice, Integer, LogUniform, Triangular
+from seascape.config.draws import DRAWS, Choice, Integer, LogUniform, Triangular
 from seascape.config.objects import Orbit
 from seascape.config.scenario import Samples
 from seascape.physics import atmosphere, lwir
@@ -137,7 +137,7 @@ def test_an_installation_takes_its_model_and_height_from_its_presets(twin) -> No
 
 
 def test_samples_covers_every_band() -> None:
-    """`compositor._output` reads this with `getattr(samples, band)`, so a band added
+    """`compositor.set_output` reads this with `getattr(samples, band)`, so a band added
     to the Literal without a field here fails mid-build rather than in validation."""
     assert set(Samples.model_fields) == set(get_args(Band.__value__))
 
@@ -702,6 +702,8 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
     sky = Sky.model_validate({"hdri": "overcast_soil"})
     assert sky.sun_elevation_deg is None
     assert sky.solar_gain_k == 0.0
+    with pytest.raises(ValueError, match="no direction"):
+        _ = sky.sun_vector
 
 
 def test_an_unknown_hdri_names_the_library() -> None:
@@ -728,7 +730,7 @@ def test_a_dumped_hdri_sky_validates_again_without_a_warning() -> None:
         assert Sky.model_validate(sky.model_dump()) == sky
 
 
-@pytest.mark.parametrize("draw", sorted(_DRAWS))
+@pytest.mark.parametrize("draw", sorted(DRAWS))
 def test_a_camera_cannot_take_a_draws_name(tmp_path, draw) -> None:
     camera = '{ band = "eo", hfov_deg = 45.0, width_px = 64, height_px = 36 }'
     with pytest.raises(ValueError, match=f"'{draw}' is a draw, not a name"):

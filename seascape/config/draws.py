@@ -125,10 +125,20 @@ class OpticalDepth(Model):
         return self
 
 
-_DRAWS: dict[str, type[Uniform | LogUniform | Triangular | Integer | Choice]] = {
+DRAWS: dict[str, type[Uniform | LogUniform | Triangular | Integer | Choice]] = {
     "uniform": Uniform,
     "log_uniform": LogUniform,
     "triangular": Triangular,
     "integer": Integer,
     "choice": Choice,
 }
+
+
+def kind(node: Any) -> str | None:
+    """`node`'s draw key, if it holds one and nothing but that draw's fields."""
+    if not isinstance(node, dict):
+        return None
+    kinds = [key for key in node if key in DRAWS]
+    if len(kinds) == 1 and set(node) <= set(DRAWS[kinds[0]].model_fields):
+        return kinds[0]
+    return None

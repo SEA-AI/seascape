@@ -20,12 +20,8 @@ from seascape.blender.sea.foam import (
     FOAM_SEAM_CELLS,
     FOAM_SPACING_M,
     _bare,
-    _foam_frames,
     _foam_texture,
     _remembered,
-    forget_foam,
-    keep_foam,
-    remember_foam,
 )
 from seascape.blender.sea.geometry import (
     _displace,
@@ -35,6 +31,13 @@ from seascape.blender.sea.geometry import (
     displaced,
     sea_reach_m,
     water,
+)
+from seascape.blender.sea.memory import (
+    foam_frames,
+    foam_grids,
+    forget_foam,
+    keep_foam,
+    remember_foam,
 )
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M, _pixel
 from seascape.blender.sea.radiance import (
@@ -203,7 +206,7 @@ def material(
                 foam_rng.spawn(1)[0],
                 pixel.along_m,
             ),
-            _foam_frames(sea, wind, outputs, seen.foam_grids),
+            foam_frames(sea, wind, outputs, seen.foam_grids),
             _gathered(tree, sea, pixel.along_m, rows),
         )
         if wind and seen.foam_grids
@@ -273,6 +276,7 @@ __all__ = [
     "Seen",
     "SkyCurve",
     "displaced",
+    "foam_grids",
     "forget_foam",
     "keep_foam",
     "material",

@@ -122,6 +122,8 @@ def combine(
     tree: bpy.types.NodeTree, *xyz: bpy.types.NodeSocket | float
 ) -> bpy.types.NodeSocket:
     """Components left out read 0."""
+    if len(xyz) > 3:
+        raise ValueError(f"a Combine XYZ takes 3 components, not {len(xyz)}")
     node = tree.nodes.new("ShaderNodeCombineXYZ")
     for name, value in zip("XYZ", xyz, strict=False):
         _feed(tree, node.inputs[name], value)
