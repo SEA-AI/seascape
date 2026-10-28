@@ -1,31 +1,50 @@
 #:schema ../schema/scenario.json
 
-# Three strike USVs closing from ahead.
+# Three strike USVs running in on a patrol boat at dawn, in mist on a glassy sea.
 extends = "baseline.toml"
 
-[[objects]]
-asset = "usv_stalker"
-range_m = 180.0
-bearing_deg = -7.0
-heading_deg = 130.0
-heading_from = "line_of_sight"
-speed_mps = 15.0
+[rigs.bow]
+height_m = 6.0
+
+[rigs.bow.cameras.eo]
+hfov_deg = 20.0
+
+[sky]
+hdri = "kloofendal_misty_morning"
+visibility_km = 8.0
+
+[sea]
+wind_speed_mps = 2.0
+wind_from_deg = 30.0
+
+[sea.swell]
+height_m = 0.2
+period_s = 12.0
+from_deg = 20.0
 
 [[objects]]
 asset = "usv_magura"
-range_m = 250.0
-bearing_deg = 2.0
-heading_deg = 220.0
+range_m = 90.0
+bearing_deg = -5.0
+heading_deg = 130.0
 heading_from = "line_of_sight"
-speed_mps = 15.0
+speed_mps = 18.0
+
+[[objects]]
+asset = "usv_stalker"
+range_m = 120.0
+bearing_deg = 1.0
+heading_deg = 230.0
+heading_from = "line_of_sight"
+speed_mps = 18.0
 
 [[objects]]
 asset = "usv_naval_drone"
-range_m = 320.0
-bearing_deg = 9.0
-heading_deg = 140.0
+range_m = 115.0
+bearing_deg = 6.5
+heading_deg = 135.0
 heading_from = "line_of_sight"
-speed_mps = 12.0
+speed_mps = 15.0
 
 [outputs]
 duration_s = 0.0
