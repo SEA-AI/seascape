@@ -27,8 +27,7 @@ class Samples(Model):
     """
 
     eo: int = Field(default=16, gt=0, description="Per pixel, for EO frames.")
-    # A judgement: where the sea's lobe noise falls to about a Boson preset's NETD.
-    ir: int = Field(default=128, gt=0, description="Per pixel, for IR frames.")
+    ir: int = Field(default=32, gt=0, description="Per pixel, for IR frames.")
 
 
 class Outputs(Model):
