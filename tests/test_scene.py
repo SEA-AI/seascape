@@ -2168,4 +2168,7 @@ def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
     env = surroundings(fog_).env
     assert env.fog_cover == pytest.approx(fog.cover(0.5, sky.atmosphere))
     assert env.beam_transmittance == pytest.approx(sky.sun_transmittance)
+    assert env.fog_diffuse_transmittance == pytest.approx(
+        fog.diffuse_transmittance(sky.extinction_per_m)
+    )
     assert 0.0 < sky.sun_transmittance < 1.0

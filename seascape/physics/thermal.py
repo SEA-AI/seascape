@@ -222,6 +222,8 @@ class Environment:
     # Fog under the clouds: its emissivity overhead, and what it leaves of the beam.
     fog_cover: float = 0.0
     beam_transmittance: float = 1.0
+    # And what it passes of sunlight, scattered rather than absorbed.
+    fog_diffuse_transmittance: float = 1.0
     # Unverified: ISO 7547's winter design for accommodation, 22 C, as recalled.
     t_cabin_k: float = 295.15
     # Thompson et al. 1998: ventilation should hold compartments below 50 C; the
@@ -234,7 +236,12 @@ class Environment:
     _interiors: dict[Interior, float] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        for name in ("cloud_fraction", "fog_cover", "beam_transmittance"):
+        for name in (
+            "cloud_fraction",
+            "fog_cover",
+            "beam_transmittance",
+            "fog_diffuse_transmittance",
+        ):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} {getattr(self, name)} outside [0, 1]")
         interiors: dict[Interior, float] = {
@@ -368,7 +375,8 @@ def facet_temperature_k(
     convection to the air and conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
-    much weaker on average; fog keeps `beam_transmittance` of what is left.
+    much weaker on average; fog keeps `beam_transmittance` of what is left, and
+    `fog_diffuse_transmittance` of the rest of the sunlight as diffuse light.
 
     ponytail: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.
@@ -400,7 +408,13 @@ def lit_temperature_k(
     sky_view = 0.5 * (1.0 + up)
     beam = direct_beam_w_m2(env.sun_elevation_rad)
     direct = (1.0 - env.cloud_fraction) * env.beam_transmittance
-    solar = beam * (direct * sun_cos + _DIFFUSE_FRACTION * sky_view)
+    # The beam the fog takes and does not absorb arrives as diffuse light, on a
+    # horizontal surface sin e of the beam's.
+    passed = env.fog_diffuse_transmittance
+    up_sun = math.sin(env.sun_elevation_rad or 0.0)
+    scattered = up_sun * max(passed - env.beam_transmittance, 0.0)
+    diffuse = _DIFFUSE_FRACTION * passed + (1.0 - env.cloud_fraction) * scattered
+    solar = beam * (direct * sun_cos + diffuse * sky_view)
 
     # Fog under the clouds glows at the air as a cloud would.
     overcast = env.cloud_fraction + (1.0 - env.cloud_fraction) * env.fog_cover

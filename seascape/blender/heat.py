@@ -107,6 +107,9 @@ def surroundings(scenario: Scenario) -> Heat:
         cloud_fraction=clouds,
         fog_cover=fog_cover,
         beam_transmittance=sky.sun_transmittance,
+        fog_diffuse_transmittance=(
+            fog.diffuse_transmittance(sky.extinction_per_m) if sky.fog else 1.0
+        ),
     )
     sun = sky.sun_vector if elevation is not None and elevation > 0 else None
     return Heat(env, scenario.sea.t_sea_k, sun)

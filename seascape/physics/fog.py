@@ -9,6 +9,9 @@ from seascape.physics.atmosphere import ATMOSPHERE, Atmosphere
 
 FloatArray = npt.NDArray[np.float64]
 
+# Typical of water clouds (Kokhanovsky, Earth-Sci. Rev. 64 189, 2004, 3.1.4).
+ASYMMETRY = 0.85
+
 # LOWTRAN 7's depth of a fog at the surface where its input gives none (lowtran7.f,
 # the vertical structure algorithm's case 1: "DEPTH OF FOG/CLOUD IS 0.2 KM").
 DEPTH_M = 200.0
@@ -62,3 +65,15 @@ def sun_transmittance(elev_rad: float, extinction_per_m: float) -> float:
     the slant path. Drops far larger than the wavelength extinguish it alike across
     the sun's band, Mie's efficiency near 2 (van de Hulst 1957)."""
     return float(np.exp(-extinction_per_m * _slant_m(elev_rad)))
+
+
+def diffuse_transmittance(extinction_per_m: float) -> float:
+    """What the fog passes of sunlight, direct and scattered, its drops absorbing none:
+    the two-stream T = 2 / (2 + (1 - g) tau) of a non-absorbing layer, tau its depth
+    overhead (Stephens, AT622 notes 15, Colorado State, eq. 15.20b).
+
+    ponytail: 15.20b takes the light as diffuse. A collimated sun moves the split
+    between reflected and passed with its angle, most for a low sun, which this does
+    not follow."""
+    tau = extinction_per_m * DEPTH_M
+    return 2.0 / (2.0 + (1.0 - ASYMMETRY) * tau)

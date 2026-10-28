@@ -38,3 +38,11 @@ def test_a_high_sun_dims_through_the_fog_and_a_low_one_vanishes() -> None:
     assert overhead == pytest.approx(math.exp(-BETA_500M * fog.DEPTH_M))
     assert fog.sun_transmittance(math.radians(5.0), BETA_500M) < 1e-6
     assert fog.sun_transmittance(-0.1, BETA_500M) == 0.0
+
+
+def test_fog_passes_more_sunlight_than_its_beam_and_all_without_drops() -> None:
+    passed = fog.diffuse_transmittance(BETA_500M)
+    # 2 / (2 + 0.15 x 1.565), by hand.
+    assert passed == pytest.approx(0.8950, abs=1e-4)
+    assert passed > fog.sun_transmittance(math.pi / 2, BETA_500M)
+    assert fog.diffuse_transmittance(0.0) == 1.0
