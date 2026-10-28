@@ -25,7 +25,7 @@ Claude Desktop, through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 
 Then ask for what you want: *"render the baseline at sunset with a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
-A job's files are served at `http://<host>:8765/renders/<job>/`, and everything in `http://<host>:8765/renders/<job>.zip`. `jobs` lists the jobs still kept, with their download links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
+A job's files are served at `http://<host>:8765/renders/<job>/` and zipped at `http://<host>:8765/renders/<job>.zip`. `jobs` lists the jobs still kept, with their download links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
 
 A job past the limits in [`seascape/server.py`](../seascape/server.py) is refused, as is one whose images and archive, at their largest, would leave less than `SEASCAPE_MIN_FREE_GB` beside the jobs queued.
 

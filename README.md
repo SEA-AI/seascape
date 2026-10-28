@@ -55,7 +55,7 @@ out/
 
 `seascape build` writes the `.blend` instead, to open in Blender.
 
-A scenario is a TOML file, and `extends` makes a variant a diff. Tables merge; a list such as `objects` replaces the parent's whole:
+A scenario is a TOML file, and `extends` makes a variant a diff. Tables merge; a list such as `objects` replaces the parent's:
 
 ```toml
 extends = "baseline.toml"

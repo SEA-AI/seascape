@@ -112,9 +112,9 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
 ```
 
 <p align="center">
-  <img src="skies.jpg" alt="Every photographed sky, highest sun first, with its measured sun circled where it shows one">
+  <img src="skies.jpg" alt="Every photographed sky, highest sun first, with its measured sun circled">
   <br>
-  <sub>The library, highest sun first, each sun with a disc circled where <code>seascape.assets.skies</code> measures it (<a href="skies.py"><code>docs/skies.py</code></a>).</sub>
+  <sub>The library, highest sun first, each sun circled where <code>seascape.assets.skies</code> measures it (<a href="skies.py"><code>docs/skies.py</code></a>).</sub>
 </p>
 
 ## Hull temperature
