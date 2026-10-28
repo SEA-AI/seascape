@@ -1,0 +1,17 @@
+#:schema ../schema/scenario.json
+
+# Monopile turbines in a grid, rows across the bow.
+extends = "open-sea.toml"
+
+[sea]
+wind_speed_mps = 9.0
+wind_from_deg = 240.0
+
+[[farms]]
+asset = "turbine_15mw_monopile"
+range_m = 1500.0
+bearing_deg = 30.0
+rows = 4
+columns = 4
+row_bearing_deg = 270.0
+paint_absorptance = 0.14

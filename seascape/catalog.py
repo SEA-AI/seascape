@@ -13,10 +13,10 @@ from seascape.config import Band, Scenario, load
 
 TILE = (480, 270)
 COLUMNS = 4
-# Buoys and debris through a long lens, as a ship sees them.
-HFOV_DEG = {"hull": 45.0, "buoy": 10.0, "debris": 10.0}
-# A hull or debris spans this much of the tile's width, a buoy's freeboard this much
-# of its height.
+# Buoys, debris and turbines through a long lens, as a ship sees them.
+HFOV_DEG = {"hull": 45.0, "buoy": 10.0, "debris": 10.0, "turbine": 10.0}
+# A hull or debris spans this much of the tile's width, anything else's freeboard
+# this much of its height.
 FILL = 0.7
 # Three-quarter on, bow towards the camera's left.
 HEADING_DEG = 210.0
@@ -50,11 +50,16 @@ def shot(
             }
         },
     }
+    at = f'asset = "{name}", range_m = {range_m}, bearing_deg = 0.0'
+    if isinstance(mesh, assets.Turbine):
+        # It faces the wind, so the wind turns it.
+        placed = [f"farms = [{{ {at} }}]", f"sea.wind_from_deg = {HEADING_DEG}"]
+    else:
+        placed = [f"objects = [{{ {at}, heading_deg = {HEADING_DEG} }}]"]
     built = load(
         scenario,
         [
-            f'objects = [{{ asset = "{name}", range_m = {range_m}, bearing_deg = 0.0, '
-            f"heading_deg = {HEADING_DEG} }}]",
+            *placed,
             f'outputs.bands = ["{band}"]',
             "outputs.duration_s = 0.0",
         ],

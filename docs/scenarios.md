@@ -131,6 +131,24 @@ The engine room warms funnels and engine cowls from inside, and uptakes run at t
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", engine_off_min = 30.0, paint_absorptance = 0.9 }]'
 ```
 
+## Wind turbines
+
+`[[farms]]` stands turbines in rows, spaced in rotor diameters; one row of one is a lone turbine. Each faces `sea.wind_from_deg`. Its rotor turns clockwise seen from upwind, holding its tip-speed ratio in its hub's wind, between minimum and rated speed. Below cut-in and above cut-out it parks. Each rotor starts at an angle of its own.
+
+```toml
+[[farms]]
+asset = "turbine_15mw_monopile"
+range_m = 1500.0       # to the first turbine
+bearing_deg = 30.0
+rows = 4               # default 1
+columns = 4            # turbines in a row, default 1
+spacing_d = [7.0, 7.0] # along a row, then between rows
+row_bearing_deg = 270.0
+staggered = false      # true shifts every other row half a spacing
+```
+
+`scenarios/turbine.toml`, `scenarios/wind-farm.toml` and `scenarios/floating-farm.toml` show one turbine, a grid and a staggered floating farm. A floating turbine stands as still as one on a monopile.
+
 ## Sequences
 
 `outputs.duration_s` turns a scenario into a clip. Targets make `speed_mps` along their heading, the ownship follows `[ownship.roll]`, `[ownship.pitch]` and `[ownship.heave]`, and the waves, and the gusts that roughen them, run downwind from `sea.wind_from_deg`. `scenarios/underway.toml` has all three:

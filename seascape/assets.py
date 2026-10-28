@@ -1,6 +1,7 @@
 """Asset manifest: where a mesh comes from, and the download cache."""
 
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -105,6 +106,12 @@ class _Mesh(Model):
     def scale(self, size: tuple[float, float, float]) -> float:
         """Metres per mesh unit, from the mesh's extent along x, y and z."""
 
+    def centre(
+        self, low: tuple[float, float, float], high: tuple[float, float, float]
+    ) -> tuple[float, float]:
+        """Where the anchor goes in x and y, from the fitted box's corners."""
+        return (low[0] + high[0]) / 2, (low[1] + high[1]) / 2
+
     @property
     @abstractmethod
     def size(self) -> str: ...
@@ -182,7 +189,65 @@ class Debris(_Mesh):
         return f"{self.length_m:.3g} m long"
 
 
-type Asset = Annotated[Hull | Buoy | Debris, Field(discriminator="kind")]
+class Rotor(Model):
+    """A turbine's hub and blades, and the speed its controller turns them at."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # An empty at the hub whose +Y is the shaft, pointing upwind; hub and blades under
+    # it. Unique across the manifest's files, so an import never renames it.
+    node: str = Field(min_length=1)
+    diameter_m: float = Field(gt=0.0)
+    hub_height_m: float = Field(gt=0.0)  # above the waterline
+    tip_speed_ratio: float = Field(gt=0.0)
+    min_rpm: float = Field(ge=0.0)
+    rated_rpm: float = Field(gt=0.0)
+    cut_in_mps: float = Field(ge=0.0)
+    cut_out_mps: float = Field(gt=0.0)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> "Rotor":
+        if self.min_rpm > self.rated_rpm or self.cut_in_mps >= self.cut_out_mps:
+            raise ValueError(f"{self.node}: min_rpm > rated_rpm or cut_in >= cut_out")
+        return self
+
+    def rpm(self, hub_mps: float) -> float:
+        """At the hub's wind: parked outside cut-in and cut-out, else the speed that
+        holds the tip-speed ratio, between minimum and rated."""
+        if not self.cut_in_mps <= hub_mps <= self.cut_out_mps:
+            return 0.0
+        tracking = 60.0 * self.tip_speed_ratio * hub_mps / (math.pi * self.diameter_m)
+        return min(max(tracking, self.min_rpm), self.rated_rpm)
+
+
+class Turbine(_Mesh):
+    """A wind turbine on its foundation, fitted keel to blade tip, rotor to +Y.
+
+    Stands where a farm puts it, yawed into the wind; only its rotor turns.
+    """
+
+    kind: Literal["turbine"]
+    supercategory: ClassVar[str] = "structure"
+    height_m: float = Field(gt=0.0)
+    bow_deg: float = 0.0
+    rotor: Rotor
+
+    def scale(self, size: tuple[float, float, float]) -> float:
+        return self.height_m / size[2]
+
+    def centre(
+        self, low: tuple[float, float, float], high: tuple[float, float, float]
+    ) -> tuple[float, float]:
+        # The authored origin, on the tower's axis: the rotor's overhang would shift
+        # the box's centre.
+        return 0.0, 0.0
+
+    @property
+    def size(self) -> str:
+        return f"{self.rotor.diameter_m:.3g} m rotor"
+
+
+type Asset = Annotated[Hull | Buoy | Debris | Turbine, Field(discriminator="kind")]
 
 
 @cache

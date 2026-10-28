@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
 import pytest
+from pydantic import ValidationError
 
 from seascape import assets
 from seascape.config import CFG_DIR
@@ -103,3 +104,21 @@ def test_a_file_outside_the_mesh_s_folder_is_refused() -> None:
     entry["files"] = {"../../.bashrc": {"url": "x", "sha256": DIGEST}}
     with pytest.raises(ValueError, match="outside the mesh's folder"):
         assets.Hull.model_validate(entry)
+
+
+@pytest.mark.parametrize(
+    ("hub_mps", "rpm"),
+    [(2.9, 0.0), (3.0, 5.0), (9.0, 6.45), (11.0, 7.56), (25.0, 7.56), (25.1, 0.0)],
+)
+def test_a_rotor_tracks_its_tip_speed_ratio_between_its_limits(hub_mps, rpm) -> None:
+    """Parked, at its minimum, holding the ratio, at rated, parked past cut-out."""
+    turbine = assets.manifest()["turbine_15mw_monopile"]
+    assert isinstance(turbine, assets.Turbine)
+    assert turbine.rotor.rpm(hub_mps) == pytest.approx(rpm, abs=0.01)
+
+
+def test_a_rotor_s_limits_are_in_order() -> None:
+    turbine = assets.manifest()["turbine_15mw_monopile"]
+    assert isinstance(turbine, assets.Turbine)
+    with pytest.raises(ValidationError, match="cut_in >= cut_out"):
+        assets.Rotor.model_validate(turbine.rotor.model_dump() | {"cut_in_mps": 30.0})
