@@ -205,9 +205,7 @@ def _sky_ahead(
         node.sun_disc = False
         tree.links.new(direction, node.inputs["Vector"])
         return node.outputs["Color"]
-    height = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(direction, height.inputs["Vector"])
-    return lookup(tree, _sky_image(sky), height.outputs["Z"])
+    return _ir_sky(tree, sky, direction)
 
 
 def _haze_ranges_m(far_m: float) -> np.ndarray:
