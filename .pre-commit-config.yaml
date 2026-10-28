@@ -31,3 +31,9 @@ repos:
         language: system
         types: [toml]
         require_serial: true
+      - id: lint-imports
+        name: lint-imports
+        entry: uvx --from import-linter lint-imports
+        language: system
+        types_or: [python, toml]
+        pass_filenames: false

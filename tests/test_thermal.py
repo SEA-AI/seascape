@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from seascape import thermal
+from seascape.physics import thermal
 
 T_AIR_K = 288.15
 # Thompson et al. 1998's frigate cruises at 20 kn.

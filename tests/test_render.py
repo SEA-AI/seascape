@@ -13,7 +13,7 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from seascape import agc, labels, lwir, render, scene, sea, server, thermal, waves
+from seascape import agc, labels, render, scene, sea, server
 from seascape.calibration import Calibration
 from seascape.config import (
     Agc,
@@ -25,7 +25,8 @@ from seascape.config import (
     load,
     substream,
 )
-from seascape.wakes import Wake
+from seascape.physics import lwir, thermal, waves
+from seascape.physics.wakes import Wake
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, UNDERWAY, target, variant
 
 LINEAR = Agc(information_based=False, linear_fraction=1.0)

@@ -9,8 +9,9 @@ import math
 import bpy
 import numpy as np
 
-from seascape import colour, sea
+from seascape import sea
 from seascape.config import Camera
+from seascape.physics import colour
 
 type Socket = bpy.types.NodeSocket
 

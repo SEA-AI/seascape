@@ -35,8 +35,9 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets, lwir, skies, skin, thermal, waves
+from seascape import assets, skies
 from seascape.model import Model
+from seascape.physics import lwir, skin, thermal, waves
 
 CFG_DIR = Path(__file__).parent / "cfg"
 

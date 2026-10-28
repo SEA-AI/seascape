@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from seascape import wakes
+from seascape.physics import wakes
 
 
 def _hull(froude: float, length_m: float = 20.0) -> wakes.Wake:

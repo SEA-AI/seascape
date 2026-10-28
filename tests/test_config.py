@@ -12,7 +12,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from seascape import lwir, skies
+from seascape import skies
 from seascape.config import (
     _DRAWS,
     CFG_DIR,
@@ -39,6 +39,7 @@ from seascape.config import (
     load,
     substream,
 )
+from seascape.physics import lwir
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"

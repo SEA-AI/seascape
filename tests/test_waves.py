@@ -5,8 +5,8 @@ from statistics import NormalDist
 import numpy as np
 import pytest
 
-from seascape import lwir, waves
-from seascape.wakes import FRESH_FOAM_REFLECTANCE
+from seascape.physics import lwir, waves
+from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
 
 
 def field(

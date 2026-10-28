@@ -115,7 +115,7 @@ These produce wrong output with no error. They are the reason this file exists.
 
 ## Where code goes
 
-- **Physics imports no `bpy`.** A relation with a source lives in a module tested without Blender; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
+- **Physics imports no `bpy` and no other seascape.** A relation with a source lives in `seascape/physics`; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
 - **One wave field**, from `scene.wind_waves` and `scene.swell_waves`.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
@@ -129,10 +129,11 @@ uvx ruff check .
 uvx ruff format --check .
 uvx tombi format --check
 uvx ty check
+uvx --from import-linter lint-imports
 uv run pytest
 ```
 
-ruff, tombi and ty go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates the ruff and tombi lines.
+The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but ty and pytest.
 
 The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 

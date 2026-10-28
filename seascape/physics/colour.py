@@ -1,4 +1,4 @@
-"""Colour temperature and white balance. Imports no Blender."""
+"""Colour temperature and white balance."""
 
 import numpy as np
 

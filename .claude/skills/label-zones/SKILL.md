@@ -11,7 +11,7 @@ approves the result from a contact sheet.
 
 ## The vocabulary
 
-Exactly one of these per part, as `seascape.thermal.ZoneName` lists them:
+Exactly one of these per part, as `seascape.physics.thermal.ZoneName` lists them:
 
 | zone | what |
 |---|---|

@@ -6,7 +6,7 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from seascape import lwir
+from seascape.physics import lwir
 
 # sigma = 2 pi^5 k^4 / (15 h^3 c^2), exactly.
 STEFAN_BOLTZMANN = (

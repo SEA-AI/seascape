@@ -12,11 +12,12 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
-from seascape import agc, panorama, scene, sea, waves
+from seascape import agc, panorama, scene, sea
 from seascape.assets import Hull, manifest
 from seascape.calibration import Calibration
 from seascape.config import Agc, Mount, Rig, Scenario
 from seascape.montage import INK
+from seascape.physics import waves
 from tests.scenarios import two_rigs
 
 SCENARIO: Scenario = two_rigs()

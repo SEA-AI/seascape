@@ -24,7 +24,7 @@ from seascape import faces, render, scene
 from seascape.assets import manifest
 from seascape.faces import Parts, face_zones
 from seascape.montage import INK, MATTE
-from seascape.thermal import ZoneName
+from seascape.physics.thermal import ZoneName
 
 
 class Aim(NamedTuple):

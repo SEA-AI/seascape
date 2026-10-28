@@ -7,9 +7,10 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape import labels, waves
+from seascape import labels
 from seascape.calibration import CameraCalibration
 from seascape.config import Agc, Camera, Lens, Sensor
+from seascape.physics import waves
 
 RADIUS_M = waves.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))

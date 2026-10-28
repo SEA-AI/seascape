@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from seascape import colour
 from seascape.config import Processing
+from seascape.physics import colour
 
 
 def test_the_locus_passes_through_illuminant_a() -> None:

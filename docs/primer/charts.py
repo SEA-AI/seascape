@@ -21,8 +21,8 @@ from docs.primer.figures import (
     HULL_DOWN_KM,
     PRIMER,
 )
-from seascape import lwir, waves
 from seascape.config import load
+from seascape.physics import lwir, waves
 
 OUT = HERE / "charts"
 # The crops' scenario, so the rays chart describes the camera that took them.

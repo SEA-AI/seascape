@@ -8,9 +8,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seascape import recording, waves
+from seascape import recording
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.labels import Image, Labels, horizon_px
+from seascape.physics import waves
 
 
 def rotation(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:

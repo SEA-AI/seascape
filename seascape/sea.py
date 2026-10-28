@@ -32,7 +32,6 @@ from typing import NamedTuple
 import bpy
 import numpy as np
 
-from seascape import lwir
 from seascape.blend import (
     CURVE_SAMPLES,
     SUN,
@@ -43,7 +42,8 @@ from seascape.blend import (
     place,
 )
 from seascape.config import Outputs, Scenario, Sea
-from seascape.wakes import (
+from seascape.physics import lwir
+from seascape.physics.wakes import (
     BUBBLE_EFOLD_S,
     BUBBLE_GAIN,
     FOAM_EFOLD_S,
@@ -54,8 +54,8 @@ from seascape.wakes import (
     SEEN_SLOPE_VARIANCE,
     Wake,
 )
-from seascape.water import body_color
-from seascape.waves import (
+from seascape.physics.water import body_color
+from seascape.physics.waves import (
     BEAUFORT_7_MPS,
     BEAUFORT_8_MPS,
     FINE_WINDROW_SPACING_M,

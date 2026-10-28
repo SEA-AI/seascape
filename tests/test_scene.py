@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import blend, lwir, scene, sea, thermal, waves
+from seascape import blend, scene, sea
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest
 from seascape.calibration import CameraCalibration
 from seascape.config import (
@@ -29,6 +29,7 @@ from seascape.config import (
     load,
     substream,
 )
+from seascape.physics import lwir, thermal, waves
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
