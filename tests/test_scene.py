@@ -37,7 +37,7 @@ from seascape.blender.sea.radiance import (
     _view_rows,
 )
 from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
-from seascape.blender.sky import _haze_ranges_m, _light, _sky_round, _sun_vector, haze
+from seascape.blender.sky import _haze_ranges_m, _light, _sky_round, haze
 from seascape.blender.vessels import _vessel, heading_rad, waterline_m
 from seascape.config import (
     Band,
@@ -94,7 +94,7 @@ def test_the_sun_is_out_of_every_frame() -> None:
         update={"objects": [], "targets": None, "ownship": ownship}
     )
     built = scene.build(bare, "eo")
-    sun = np.array(_sun_vector(scenario.sky))
+    sun = np.array(scenario.sky.sun_vector)
     for mount in scenario.mounts:
         camera = scene.calibrate(built, mount, "")
         assert not _in_frame(camera, sun), mount.name
@@ -179,7 +179,7 @@ def shaded(
 ) -> list[waves.Wave]:
     """The scenario's field, or the `kept` part of it, less the waves drawn as
     geometry: what the normal draws."""
-    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
     if kept is not None:
         wind = tuple(w for w in wind if w in kept)
         swell = tuple(w for w in swell if w in kept)
@@ -194,7 +194,7 @@ def drawn(
     lane there, of the scenario's field or the `kept` part of it, less the waves drawn
     as geometry. Every other lane must be empty."""
     nodes = bpy.data.node_groups["sea_waves"].nodes
-    wind, swell = scene.wind_waves(scenario), scene.swell_waves(scenario)
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
     if kept is not None:
         wind = tuple(w for w in wind if w in kept)
         swell = tuple(w for w in swell if w in kept)
@@ -338,12 +338,10 @@ class TestEoBand:
             )
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
-        field = scene.wave_field(SCENARIO)
+        field = SCENARIO.wave_field()
         assert len(field) == waves.FREQUENCIES * waves.WIND_HEADINGS
         carried = drawn(SCENARIO)
-        tall, _ = sea.displaced(
-            (scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO))
-        )
+        tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
         assert tall
         assert [wave for wave, _, _ in carried] == [w for w in field if w not in tall]
         for wave, inputs, lane in carried:
@@ -409,7 +407,7 @@ class TestEoBand:
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         assert nodes["sea_specular"].inputs["Roughness"].is_linked
-        wind, swell = scene.wind_waves(SCENARIO), scene.swell_waves(SCENARIO)
+        wind, swell = SCENARIO.wind_waves(), SCENARIO.swell_waves()
         speed = SCENARIO.sea.wind_speed_mps
         axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
         for i, axis in enumerate(("upwind", "crosswind")):
@@ -484,7 +482,7 @@ class TestEoBand:
         assert "sea_group_scale" not in bpy.data.materials["sea"].node_tree.nodes
 
     def test_the_sea_glitters_one_specular_point_per_cell(self) -> None:
-        wind = scene.wind_waves(SCENARIO)
+        wind = SCENARIO.wind_waves()
         nodes = bpy.data.materials["sea"].node_tree.nodes
         scale = nodes["glitter_cells"].inputs["Scale"].default_value
         assert scale == pytest.approx(1 / math.sqrt(waves.specular_cell_m2(wind)))
@@ -548,8 +546,8 @@ class TestEoBand:
 def test_a_fetch_grows_the_scenario_s_sea_no_further() -> None:
     young, full = variant(sea={"fetch_km": 10.0}), variant()
 
-    longest_young = min(w.omega_rad_s for w in scene.wind_waves(young))
-    longest_full = min(w.omega_rad_s for w in scene.wind_waves(full))
+    longest_young = min(w.omega_rad_s for w in young.wind_waves())
+    longest_full = min(w.omega_rad_s for w in full.wind_waves())
 
     assert longest_young > longest_full
 
@@ -1206,7 +1204,7 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
 
 
 def _tall(scenario: Scenario) -> tuple[waves.Wave, ...]:
-    return sea.displaced((scene.wind_waves(scenario), scene.swell_waves(scenario)))[0]
+    return sea.displaced((scenario.wind_waves(), scenario.swell_waves()))[0]
 
 
 def _ridden_m(scenario: Scenario, t_s: float) -> float:
@@ -1306,7 +1304,7 @@ class TestSlicks:
         assert "sea_rest" in upstream(_sea_node("windrows_axes").inputs["X"])
 
     def test_a_slick_calms_the_waves_it_damps(self) -> None:
-        wind = scene.wind_waves(self.SLICKS)
+        wind = self.SLICKS.wind_waves()
         sea_ = self.SLICKS.sea
         left = set(
             waves.slick_survivors(
@@ -1323,7 +1321,7 @@ class TestSlicks:
     def test_under_a_slick_the_pixel_leaves_what_the_slick_does(self) -> None:
         speed = self.SLICKS.sea.wind_speed_mps
         axis_rad = math.radians(self.SLICKS.sea.wind_from_deg)
-        left = waves.slick_survivors(speed, scene.wind_waves(self.SLICKS), axis_rad)
+        left = waves.slick_survivors(speed, self.SLICKS.wind_waves(), axis_rad)
         for i, axis in enumerate(("upwind", "crosswind")):
             table = baked(f"sea_unresolved_slick_variance_{axis}")
             low, high = FOOTPRINT_RANGE_M
@@ -1334,7 +1332,7 @@ class TestSlicks:
                     speed,
                     axis_rad,
                     left,
-                    scene.swell_waves(self.SLICKS),
+                    self.SLICKS.swell_waves(),
                     footprints[t],
                     waves.cox_munk_slick_variances,
                 )[i]
@@ -1404,8 +1402,8 @@ class TestSeaEvolves:
 
     def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
         swell = variant(BASELINE, sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
-        wind = scene.wave_field(SCENARIO)
-        assert scene.wave_field(swell)[: len(wind)] == wind
+        wind = SCENARIO.wave_field()
+        assert swell.wave_field()[: len(wind)] == wind
 
     def test_the_sea_draws_a_swell_in_triples_of_its_own(self) -> None:
         swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
@@ -1447,7 +1445,7 @@ class TestSeaEvolves:
     ) -> None:
         """Probes and a hand-moved camera need every wave in a default build."""
         scenario = variant(rig={"height_m": 100.0})
-        field = scene.wave_field(scenario)
+        field = scenario.wave_field()
         scene.build(scenario, "eo")
         assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
@@ -1485,7 +1483,7 @@ class TestLoop:
 
     def test_every_wave_in_a_loop_turns_a_whole_number_of_times(self) -> None:
         span_s = self.LOOP.outputs.span_s
-        for wave in scene.wave_field(self.LOOP):
+        for wave in self.LOOP.wave_field():
             turns = wave.omega_rad_s * span_s / (2 * math.pi)
             assert turns == pytest.approx(round(turns), abs=1e-9)
 
@@ -1614,7 +1612,7 @@ class TestDrifting:
                 scenario.objects[0].heading_deg % 360, abs=1e-4
             )
             pitch, roll = waves.attitude(
-                scene.wave_field(scenario),
+                scenario.wave_field(),
                 east,
                 north,
                 heading,

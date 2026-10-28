@@ -116,7 +116,7 @@ These produce wrong output with no error. They are the reason this file exists.
 ## Where code goes
 
 - **Physics imports no `bpy` and no other seascape.** A relation with a source lives in `seascape/physics`; Blender-side code only turns its values into nodes and keyframes, and its tests check the graph carries them without re-deriving.
-- **One wave field**, from `scene.wind_waves` and `scene.swell_waves`.
+- **One wave field**, from `Scenario.wind_waves` and `Scenario.swell_waves`.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 

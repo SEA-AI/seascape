@@ -269,3 +269,15 @@ class Sky(Model):
     def sun_up(self) -> bool:
         """A photo's sun with no disc is behind cloud, not set."""
         return self.sun_elevation_deg is None or self.sun_elevation_deg > 0.0
+
+    @property
+    def sun_vector(self) -> tuple[float, float, float]:
+        """Unit vector towards the sun: a direction, so its bearing is not negated."""
+        assert self.sun_elevation_deg is not None
+        elevation = math.radians(self.sun_elevation_deg)
+        bearing = math.radians(self.sun_bearing_deg)
+        return (
+            math.cos(elevation) * math.sin(bearing),
+            math.cos(elevation) * math.cos(bearing),
+            math.sin(elevation),
+        )
