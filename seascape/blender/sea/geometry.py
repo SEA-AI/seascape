@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 import bpy
 
-from seascape.blend import (
+from seascape.blender.blend import (
     _math,
     _vector,
     place,

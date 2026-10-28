@@ -435,7 +435,7 @@ class Mount(NamedTuple):
     @property
     def nominal_bearing_deg(self) -> float:
         """Not the achieved boresight: the rig's pitch sits between the two yaws, so
-        an off-axis camera points elsewhere. `scene.boresight_deg` measures the
+        an off-axis camera points elsewhere. `rigs.boresight_deg` measures the
         built camera."""
         return self.rig.yaw_deg + self.camera.yaw_deg
 

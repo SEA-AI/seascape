@@ -9,7 +9,7 @@ import math
 import bpy
 import numpy as np
 
-from seascape.blend import _math, _vector
+from seascape.blender.blend import _math, _vector
 from seascape.config import Camera
 from seascape.physics import colour
 

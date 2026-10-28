@@ -12,9 +12,11 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
-from seascape import agc, panorama, scene
+from seascape import agc, panorama
 from seascape.assets import Hull, manifest
-from seascape.blender import sea
+from seascape.blender import scene, sea
+from seascape.blender.rigs import boresight_deg
+from seascape.blender.vessels import waterline_m
 from seascape.calibration import Calibration
 from seascape.config import Agc, Mount, Rig, Scenario
 from seascape.montage import INK
@@ -136,7 +138,7 @@ def test_a_waterline_rings_its_hull_within_its_length(built: scene.Built) -> Non
     for asset, anchors in built.targets.items():
         for anchor in anchors:
             centre = np.array(anchor.matrix_world.translation.xy)
-            reach = np.linalg.norm(scene.waterline_m(anchor) - centre, axis=1)
+            reach = np.linalg.norm(waterline_m(anchor) - centre, axis=1)
 
             hull = manifest()[asset]
             assert isinstance(hull, Hull), asset
@@ -183,7 +185,7 @@ def test_a_panorama_puts_each_principal_point_on_its_boresight(
     u, v = warper.warpPoint((float(k[0, 2]), float(k[1, 2])), k, r)
 
     assert (math.degrees(u), 90.0 - math.degrees(v)) == pytest.approx(
-        scene.boresight_deg(built.cameras[mount.name]), abs=1e-3
+        boresight_deg(built.cameras[mount.name]), abs=1e-3
     )
 
 

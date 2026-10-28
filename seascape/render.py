@@ -20,9 +20,11 @@ import bpy
 import cv2
 import numpy as np
 
-from seascape import agc, labels, microbolometer, scene
+from seascape import agc, labels, microbolometer
 from seascape.assets import manifest
-from seascape.blender import sea
+from seascape.blender import scene, sea
+from seascape.blender.compositor import JPEG_QUALITY, respond
+from seascape.blender.vessels import heading_rad, waterline_m
 from seascape.calibration import Calibration, CameraCalibration
 from seascape.config import Camera, ImageFormat, Scenario, substream
 from seascape.physics import waves
@@ -64,7 +66,7 @@ def _write_thermal(
     t_k = microbolometer.seen(radiance, camera, noise)
     out = exr.with_suffix(f".{fmt}")
     image = agc.counts(t_k) if fmt == "png" else tone(t_k)
-    if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, scene.JPEG_QUALITY]):
+    if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]):
         raise OSError(f"cannot write {out}")
     exr.unlink()
 
@@ -99,8 +101,8 @@ def _targets(built: scene.Built) -> list[labels.Target]:
             category=manifest()[asset].category,
             supercategory=manifest()[asset].supercategory,
             centre_m=tuple(anchor.matrix_world.translation.xy),
-            waterline_m=scene.waterline_m(anchor),
-            heading_deg=math.degrees(scene.heading_rad(anchor)) % 360.0,
+            waterline_m=waterline_m(anchor),
+            heading_deg=math.degrees(heading_rad(anchor)) % 360.0,
             dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
             engine_off_min=anchor["engine_off_min"],
         )
@@ -217,9 +219,7 @@ def render(
                     name = f"{mount.name}/{frame:04d}" if sequence else mount.name
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
-                    scene.respond(
-                        mount, substream(scenario.seed, f"sensor/{mount.name}")
-                    )
+                    respond(mount, substream(scenario.seed, f"sensor/{mount.name}"))
                     rendered = into / f"{name}.{'exr' if thermal else outputs.format}"
                     _render_still(rendered, f"frame {frame} of camera {mount.name}")
                     if thermal:

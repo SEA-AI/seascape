@@ -7,7 +7,7 @@ from typing import NamedTuple
 import bpy
 import numpy as np
 
-from seascape.blend import (
+from seascape.blender.blend import (
     _math,
     _vector,
     animate,

@@ -95,7 +95,7 @@ class _Mesh(Model):
     files: dict[str, File] = Field(default_factory=dict)
     # Required: a default of zero floats the hull and looks almost right.
     draught_m: float = Field(ge=0.0)
-    # As `scene.measure` reads them.
+    # As `meshes.measure` reads them.
     triangles: int = Field(gt=0)
     texture_px: tuple[int, ...]
     licence: str = Field(min_length=1)

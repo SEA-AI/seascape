@@ -15,9 +15,11 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import blend, scene
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest
-from seascape.blender import sea
+from seascape.blender import blend, scene, sea
+from seascape.blender.heat import _heat, _sunlit_emission, _zone_skin
+from seascape.blender.meshes import _corners, _fit, _images, _joined, _meshes
+from seascape.blender.rigs import boresight_deg
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
 from seascape.blender.sea.geometry import _triples
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
@@ -35,6 +37,8 @@ from seascape.blender.sea.radiance import (
     _view_rows,
 )
 from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
+from seascape.blender.sky import _haze_ranges_m, _light, _sky_round, _sun_vector, haze
+from seascape.blender.vessels import _vessel, heading_rad, waterline_m
 from seascape.calibration import CameraCalibration
 from seascape.config import (
     Band,
@@ -90,7 +94,7 @@ def test_the_sun_is_out_of_every_frame() -> None:
         update={"objects": [], "targets": None, "ownship": ownship}
     )
     built = scene.build(bare, "eo")
-    sun = np.array(scene._sun_vector(scenario.sky))
+    sun = np.array(_sun_vector(scenario.sky))
     for mount in scenario.mounts:
         camera = scene.calibrate(built, mount, "")
         assert not _in_frame(camera, sun), mount.name
@@ -220,7 +224,7 @@ class TestEoBand:
     def test_a_flat_rig_points_where_the_scenario_asked(self) -> None:
         """The one negation. Two of them cancel and the whole rig mirrors unnoticed."""
         for mount in SCENARIO.mounts:
-            bearing, _ = scene.boresight_deg(camera_of(mount))
+            bearing, _ = boresight_deg(camera_of(mount))
             assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-6)
 
     def test_the_foam_grid_takes_each_frame_s_view_where_the_water_drifted_from(
@@ -531,7 +535,7 @@ class TestEoBand:
 
     def test_a_hazed_material_is_not_hazed_again(self) -> None:
         material = bpy.data.materials["sea"]
-        scene.haze(material)
+        haze(material)
         assert under_the_haze(material).bl_idname != "ShaderNodeGroup"
 
     def test_building_twice_leaves_the_same_scene(self) -> None:
@@ -582,7 +586,7 @@ def test_an_image_inside_a_node_group_is_counted() -> None:
     group.nodes.new("ShaderNodeTexImage").image = image
     outer = bpy.data.node_groups.new("outer", "ShaderNodeTree")
     outer.nodes.new("ShaderNodeGroup").node_tree = group
-    assert scene._images(outer) == {image}
+    assert _images(outer) == {image}
 
 
 def test_a_turned_part_is_measured_by_its_vertices() -> None:
@@ -595,7 +599,7 @@ def test_a_turned_part_is_measured_by_its_vertices() -> None:
     rod.rotation_euler.z = math.radians(-45.0)
     bpy.context.view_layer.update()
     try:
-        ys = [c.y for c in scene._corners([rod])]
+        ys = [c.y for c in _corners([rod])]
     finally:
         bpy.data.objects.remove(rod)
         bpy.data.meshes.remove(mesh)
@@ -613,7 +617,7 @@ def test_a_skinned_part_joins_in_its_pose(skinned: bpy.types.Object) -> None:
         .vertices
     ]
 
-    hull = scene._joined([part.parent])
+    hull = _joined([part.parent])
     try:
         got = [v.co.copy() for v in hull.data.vertices]
     finally:
@@ -653,7 +657,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
         for z in (0, 1)
     ]
 
-    fit = scene._fit(corners, asset)
+    fit = _fit(corners, asset)
     fitted = [fit @ c for c in corners]
 
     ys = [c.y for c in fitted]
@@ -680,7 +684,7 @@ def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None
     )
     corners = [Vector((x, y, z)) for x in (0, 1) for y in (0, 3) for z in (0, 1)]
 
-    fitted = [scene._fit(corners, debris) @ c for c in corners]
+    fitted = [_fit(corners, debris) @ c for c in corners]
 
     assert max(c.y for c in fitted) - min(c.y for c in fitted) == pytest.approx(6.0)
     assert max(c.x for c in fitted) == pytest.approx(1.0), "not turned to its bow"
@@ -704,7 +708,7 @@ def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
     )
     corners = [Vector((x, y, z)) for x in (9, 11) for y in (0, 1) for z in (3, 6)]
 
-    fitted = [scene._fit(corners, buoy) @ c for c in corners]
+    fitted = [_fit(corners, buoy) @ c for c in corners]
 
     assert max(c.z for c in fitted) == pytest.approx(4.5), "6 m tall, 1.5 m under"
     assert min(c.x for c in fitted) == pytest.approx(-2.0), "centred, not turned"
@@ -718,7 +722,7 @@ def test_a_turbine_is_fitted_on_its_tower() -> None:
     # Its tower at the origin, its rotor 10 units ahead and 50 either side.
     corners = [Vector((x, y, z)) for x in (-50, 50) for y in (-5, 10) for z in (0, 100)]
 
-    fitted = [scene._fit(corners, turbine) @ c for c in corners]
+    fitted = [_fit(corners, turbine) @ c for c in corners]
 
     assert min(c.y for c in fitted) == pytest.approx(-10.0), "on its tower"
     assert min(c.x for c in fitted) == pytest.approx(-100.0)
@@ -756,7 +760,7 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to() -> None:
     mount = scenario.mounts[0]
 
     camera = bpy.data.objects[mount.name]
-    bearing, elevation = scene.boresight_deg(camera)
+    bearing, elevation = boresight_deg(camera)
     assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-4)
     assert elevation == pytest.approx(pitch_deg, abs=1e-4)
     across = camera.matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))
@@ -776,7 +780,7 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() 
     )
     scene.build(scenario, "eo")
     centre, off_axis = (
-        (scene.boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
+        (boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
         for m in scenario.mounts
         if m.camera.band == "eo"
     )
@@ -814,7 +818,7 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
     )
     built = scene.build(scenario, "eo")
     (anchor,) = built.targets["multipurpose_freighter"]
-    corners = scene._corners(scene._meshes([anchor]))
+    corners = _corners(_meshes([anchor]))
     top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
     k = scenario.sea.refraction_k
     assert range_m < waves.horizon_m(5.0, k) + waves.horizon_m(top_m, k)
@@ -844,10 +848,10 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     assert tropical.sky.t_air_k == lwir.SURFACE_AIR_K["tropical"]
     scene.build(tropical, "ir")
     sky = tropical.sky
-    centres = (np.arange(scene.CURVE_SAMPLES) + 0.5) / scene.CURVE_SAMPLES
+    centres = (np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES
     expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, "tropical")
     assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
-    ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
+    ranges = _haze_ranges_m(bpy.context.scene.camera.data.clip_end)
     depth = lwir.path_optical_depth(ranges, sky.visibility_km, "tropical")
     assert baked("haze_depth") == pytest.approx(depth, rel=1e-5)
 
@@ -856,8 +860,8 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = SCENARIO.objects[0].asset
-    heat = scene._heat(SCENARIO)
-    anchor = scene._vessel(asset, 300.0, 0.0, None, SCENARIO.sky, heat, {})
+    heat = _heat(SCENARIO)
+    anchor = _vessel(asset, 300.0, 0.0, None, SCENARIO.sky, heat, {})
     hull = next(p for p in anchor.children_recursive if p.type == "MESH")
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
@@ -869,11 +873,11 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
 
 def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    heat, hulls = scene._heat(SCENARIO), {}
+    heat, hulls = _heat(SCENARIO), {}
     asset = SCENARIO.objects[0].asset
     skins = []
     for minutes in (0.0, 30.0):
-        anchor = scene._vessel(asset, None, minutes, None, SCENARIO.sky, heat, hulls)
+        anchor = _vessel(asset, None, minutes, None, SCENARIO.sky, heat, hulls)
         assert anchor["engine_off_min"] == minutes
         hull = next(p for p in anchor.children_recursive if p.type == "MESH")
         skins.append({s.material.name for s in hull.material_slots})
@@ -887,22 +891,22 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    anchor = scene._vessel("zodiac", None, 0.0, None, SCENARIO.sky, None, {})
+    anchor = _vessel("zodiac", None, 0.0, None, SCENARIO.sky, None, {})
     bpy.context.view_layer.update()
-    level = scene.waterline_m(anchor)
+    level = waterline_m(anchor)
     (attitude,) = anchor.children
     attitude.location.z = 2.0
     bpy.context.view_layer.update()
-    assert scene.waterline_m(anchor) == pytest.approx(level, abs=1e-4)
+    assert waterline_m(anchor) == pytest.approx(level, abs=1e-4)
 
 
 def test_paint_repaints_only_the_painted_zones() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    heat = scene._heat(SCENARIO)
-    white = scene._zone_skin("paint_hull", heat, 0.14)
-    black = scene._zone_skin("paint_hull", heat, 0.97)
+    heat = _heat(SCENARIO)
+    white = _zone_skin("paint_hull", heat, 0.14)
+    black = _zone_skin("paint_hull", heat, 0.97)
     assert white != black
-    assert scene._zone_skin("glass", heat, 0.14) == scene._zone_skin("glass", heat)
+    assert _zone_skin("glass", heat, 0.14) == _zone_skin("glass", heat)
 
 
 class TestIrBand:
@@ -915,7 +919,7 @@ class TestIrBand:
         """The shader reads this by log range at texel centres."""
         assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
         table = baked("haze_depth")
-        ranges = scene._haze_ranges_m(bpy.context.scene.camera.data.clip_end)
+        ranges = _haze_ranges_m(bpy.context.scene.camera.data.clip_end)
         sky = SCENARIO.sky
         depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
         assert table == pytest.approx(depth, rel=1e-5)
@@ -980,7 +984,7 @@ class TestIrBand:
     def test_a_zone_s_table_is_its_heat_balance(self) -> None:
         """The lookup image holds the zone's band radiance over
         `thermal.temperature_table_k`."""
-        env = scene._heat(SCENARIO).env
+        env = _heat(SCENARIO).env
         _, _, table = thermal.temperature_table_k(thermal.ZONES["paint_hull"], env)
         expected = np.vectorize(lwir.band_radiance)(table)
         assert baked("thermal_paint_hull") == pytest.approx(expected, rel=1e-5)
@@ -1019,7 +1023,7 @@ class TestIrBand:
         assert table.shape == (SLOPE_ROWS * VIEW_ROWS, MIRROR_SAMPLES)
         mirror = np.arcsin(_mirror_columns())
         view = np.arcsin(_view_rows())
-        sky = scene._sky_round(SCENARIO.sky, None)
+        sky = _sky_round(SCENARIO.sky, None)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
         sigmas = _row_sigmas(slope_max)
@@ -1041,7 +1045,7 @@ class TestIrBand:
     def test_the_reflection_between_texels_is_the_sky_it_reflects(self) -> None:
         """Bilinear within a tile, as the image interpolates."""
         table = baked("sea_reflection")
-        sky = scene._sky_round(SCENARIO.sky, None)
+        sky = _sky_round(SCENARIO.sky, None)
         tree = bpy.data.materials["sea"].node_tree
         slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
         sigmas = _row_sigmas(slope_max)
@@ -1377,7 +1381,7 @@ def test_a_wake_mixes_the_skin_down_to_the_bulk() -> None:
 
 def test_the_sea_s_cool_skin_is_thicker_at_night() -> None:
     night = variant(sky={"sun_elevation_deg": -10.0})
-    assert not scene._light(night.sky, "ir").sun_up
+    assert not _light(night.sky, "ir").sun_up
     assert night.sea.t_skin_k(sun_up=False) < night.sea.t_skin_k(sun_up=True)
 
 
@@ -1597,9 +1601,7 @@ class TestDrifting:
         scenario = self.SCENARIO
         (anchor,) = built.targets[scenario.objects[0].asset]
         (attitude,) = anchor.children
-        corners = scene._corners(
-            scene._meshes([anchor]), attitude.matrix_world.inverted()
-        )
+        corners = _corners(_meshes([anchor]), attitude.matrix_world.inverted())
         length = max(c.y for c in corners) - min(c.y for c in corners)
         beam = max(c.x for c in corners) - min(c.x for c in corners)
         sc = bpy.context.scene
@@ -1762,7 +1764,7 @@ class TestPhotographedSky:
         image.file_format = "HDR"
         image.save()
         with pytest.MonkeyPatch.context() as patch:
-            patch.setattr(scene, "download", lambda *_: path)
+            patch.setattr("seascape.blender.sky.download", lambda *_: path)
             scene.build(variant(sky={"hdri": cls.SKY}), "eo")
 
     def _photos(self, tree: bpy.types.NodeTree) -> list[bpy.types.Node]:
@@ -1793,7 +1795,7 @@ class TestPhotographedThermalSky:
         image.file_format = "HDR"
         image.save()
         with pytest.MonkeyPatch.context() as patch:
-            patch.setattr(scene, "download", lambda *_: path)
+            patch.setattr("seascape.blender.sky.download", lambda *_: path)
             scene.build(variant(sky={"hdri": "overcast_soil"}), "ir")
 
     def test_the_clouds_are_the_world(self) -> None:
@@ -1802,7 +1804,7 @@ class TestPhotographedThermalSky:
         assert background.image.name == "cloudy_sky_radiance"
 
     def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
-        heat = scene._heat(variant(sky={"hdri": "overcast_soil"}))
+        heat = _heat(variant(sky={"hdri": "overcast_soil"}))
         assert heat.env.cloud_fraction == pytest.approx(1.0)
 
     def test_overhead_reads_a_cloud(self) -> None:
@@ -1872,9 +1874,7 @@ def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
 def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:
     sky = variant(sky={"hdri": "overcast_soil"}).sky
     tree = bpy.data.materials.new("hull").node_tree
-    assert (
-        scene._sunlit_emission(tree, 290.0, sky).node.bl_idname == "ShaderNodeEmission"
-    )
+    assert _sunlit_emission(tree, 290.0, sky).node.bl_idname == "ShaderNodeEmission"
 
 
 def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
@@ -1885,7 +1885,7 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
     built = scene.build(variant(objects=[yacht]), "eo")
 
     (anchor,) = built.targets["yacht"]
-    assert math.degrees(scene.heading_rad(anchor)) % 360.0 == pytest.approx(210.0)
+    assert math.degrees(heading_rad(anchor)) % 360.0 == pytest.approx(210.0)
 
 
 def test_hulls_inside_each_other_are_refused() -> None:
@@ -1965,7 +1965,7 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
         (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
         shaft = rotor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
 
-        assert math.degrees(scene.heading_rad(anchor)) == pytest.approx(60.0)
+        assert math.degrees(heading_rad(anchor)) == pytest.approx(60.0)
         assert math.degrees(math.atan2(shaft.x, shaft.y)) == pytest.approx(60.0)
         assert [o for o in anchor.children_recursive if o.get("rotor")] == [rotor]
         hubs.append(rotor.matrix_world.translation.copy())
