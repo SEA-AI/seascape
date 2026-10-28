@@ -20,6 +20,7 @@ from seascape.blender import blend, scene, sea
 from seascape.blender.heat import _heat, _sunlit_emission, _zone_skin
 from seascape.blender.meshes import _corners, _fit, _images, _joined, _meshes
 from seascape.blender.rigs import boresight_deg
+from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
 from seascape.blender.sea.geometry import _triples
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
@@ -236,8 +237,8 @@ class TestEoBand:
         calm = variant(BASELINE, outputs={"duration_s": 1.0}, sea={"wind_speed_mps": 0})
         drift = sea.surface_drift(clip.sea, clip.outputs)
         assert sea.surface_drift(calm.sea, calm.outputs) == (0.0, 0.0) != drift
-        moved = scene._rays(clip, mounts, built.cameras)
-        held = scene._rays(calm, mounts, built.cameras)
+        moved = memory._rays(clip, mounts, built.cameras)
+        held = memory._rays(calm, mounts, built.cameras)
         per_frame = len(moved) // len(clip.outputs.times_s)
         for i, ((at, _, _), (still, _, _)) in enumerate(zip(moved, held, strict=True)):
             t_s = clip.outputs.times_s[i // per_frame]
@@ -250,7 +251,7 @@ class TestEoBand:
         tall = variant(BASELINE, cameras={"eo": {"width_px": 512, "height_px": 640}})
         mount = next(m for m in tall.mounts if m.camera.band == "eo")
         back = built.cameras[mount.name].matrix_world.to_3x3().inverted()
-        rays = scene._rays(tall, [mount], built.cameras)
+        rays = memory._rays(tall, [mount], built.cameras)
         seen = [back @ ray for _, ray, _ in rays]
         x = max(abs(v.x / v.z) for v in seen)
         y = max(abs(v.y / v.z) for v in seen)
@@ -2049,12 +2050,12 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
 def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
     down = Vector((0.0, 1.0, -0.2)).normalized()
     rays = [(Vector((0.0, y, 20.0)), down, 1e-3) for y in (-150.0, 150.0)]
-    assert scene._foam_box(rays, scene.FOAM_NEAR_CELL_M) is None
-    cell_m = scene.FOAM_NEAR_CELL_M * scene.FOAM_LEVEL_RATIO
-    fit = scene._foam_box(rays, cell_m)
+    assert memory._foam_box(rays, memory.FOAM_NEAR_CELL_M) is None
+    cell_m = memory.FOAM_NEAR_CELL_M * memory.FOAM_LEVEL_RATIO
+    fit = memory._foam_box(rays, cell_m)
     assert fit is not None
     _, _, width, height, _ = fit
-    assert max(width, height) <= scene.FOAM_MAX_CELLS * cell_m
+    assert max(width, height) <= memory.FOAM_MAX_CELLS * cell_m
 
 
 @pytest.mark.parametrize("speed", [3.0, 21.0])
@@ -2063,7 +2064,7 @@ def test_the_shortest_breaker_a_foam_grid_draws_cannot_follow_a_gust(
 ) -> None:
     """Why whitecaps break at the mean wind: Plant 1982's growth, 0.04 (u* / c)^2
     omega, takes longer than a gust, its integral scale over the wind, lasts."""
-    shortest_m = waves.FOAM_CELLS_PER_WAVE * scene.FOAM_NEAR_CELL_M
+    shortest_m = waves.FOAM_CELLS_PER_WAVE * memory.FOAM_NEAR_CELL_M
     k = 2 * math.pi / shortest_m
     omega = math.sqrt(earth.GRAVITY_MS2 * k)
     growth_s = 1 / (

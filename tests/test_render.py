@@ -17,7 +17,7 @@ from seascape import render, server
 from seascape.blender import blend, scene, sea
 from seascape.blender.compositor import FORMATS, MID_GREY, _compositor, _output, respond
 from seascape.blender.heat import _Heat, _zone_skin
-from seascape.blender.sea import foam
+from seascape.blender.sea import memory
 from seascape.blender.sky import _light, _sky
 from seascape.config import (
     Agc,
@@ -447,7 +447,7 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     in IR under a photographed sky, whose clouds the sea reflects. The stack is the
     shader's, whatever its frames hold, so none are simulated and the photo is
     white."""
-    monkeypatch.setattr(foam, "_simulate", lambda *_: None)
+    monkeypatch.setattr(memory, "_simulate", lambda *_: None)
     grids = tuple(
         waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
     )
