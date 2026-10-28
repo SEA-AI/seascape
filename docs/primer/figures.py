@@ -13,9 +13,9 @@ import numpy as np
 from PIL import Image
 
 from docs.hero import SKIES, captioned, render
-from seascape import waves
 from seascape.calibration import Calibration
 from seascape.config import load
+from seascape.physics import waves
 
 HERE = Path(__file__).parent
 PRIMER = HERE / "primer.toml"

@@ -10,9 +10,10 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import colour, lwir, render, scene, sea, skies, waves
+from seascape import render, scene, sea, skies
 from seascape.assets import Buoy, download, fetch, manifest
 from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
+from seascape.physics import colour, lwir, waves
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render

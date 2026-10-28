@@ -17,7 +17,7 @@ from typing import Annotated, ClassVar, Literal
 from pydantic import ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from seascape.model import Model
-from seascape.thermal import ZoneName
+from seascape.physics.thermal import ZoneName
 
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
 _XDG = os.environ.get("XDG_CACHE_HOME", "")

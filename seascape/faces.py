@@ -13,7 +13,7 @@ import bpy
 import numpy as np
 
 from seascape.assets import Zones
-from seascape.thermal import ZoneName
+from seascape.physics.thermal import ZoneName
 
 
 @dataclass(frozen=True)

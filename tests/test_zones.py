@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from seascape import faces, scene, zones
 from seascape.assets import Zones, manifest
-from seascape.thermal import ZoneName
+from seascape.physics.thermal import ZoneName
 
 
 def test_every_asset_has_zones_from_the_vocabulary() -> None:

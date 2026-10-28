@@ -6,7 +6,7 @@ readme = "README.md"
 # bpy ships 3.13-only wheels, and the lock must resolve on every version claimed.
 requires-python = "==3.13.*"
 license = "Apache-2.0 AND CC-BY-4.0"
-license-files = ["LICENSE", "NOTICE", "seascape/data/CC-BY-4.0.txt"]
+license-files = ["LICENSE", "NOTICE", "seascape/physics/data/CC-BY-4.0.txt"]
 authors = [{ name = "Kevin Serrano" }]
 keywords = ["blender", "computer-vision", "lwir", "maritime", "synthetic-data"]
 classifiers = [
@@ -40,6 +40,16 @@ serve = ["mcp>=2.3", "starlette>=1.8", "uvicorn>=0.54"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.importlinter]
+root_package = "seascape"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Physics imports no Blender or other seascape"
+type = "forbidden"
+source_modules = ["seascape.physics"]
+forbidden_modules = ["bpy", "bmesh", "mathutils", "seascape.*"]
 
 [tool.pytest.ini_options]
 # Renders share one GPU: past four workers the suite runs no faster.

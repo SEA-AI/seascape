@@ -11,8 +11,8 @@ import math
 import numpy as np
 import numpy.typing as npt
 
-from seascape import lwir
 from seascape.config import Camera
+from seascape.physics import lwir
 
 type FloatArray = npt.NDArray[np.float64]
 

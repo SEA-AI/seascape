@@ -1,4 +1,4 @@
-"""The colour of the water's body from its chlorophyll. Imports no Blender."""
+"""The colour of the water's body from its chlorophyll."""
 
 from pathlib import Path
 

@@ -5,8 +5,8 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from seascape import skin
 from seascape.config import Sea, WarmLayer
+from seascape.physics import skin
 from tests.scenarios import variant
 
 # Fairall et al. 1996, Table 3: wind, net cooling, u*^2, depth, f_w, peak warming.

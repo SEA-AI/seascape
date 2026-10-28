@@ -14,7 +14,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from seascape import faces, lwir, sea, sensor, skies, thermal, wakes, waves
+from seascape import faces, sea, sensor, skies
 from seascape.assets import Asset, Turbine, Zones, download, fetch, manifest
 from seascape.blend import (
     CURVE_SAMPLES,
@@ -42,6 +42,7 @@ from seascape.config import (
     Targets,
     substream,
 )
+from seascape.physics import lwir, thermal, wakes, waves
 
 # Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
 # fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher

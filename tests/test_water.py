@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from seascape import water
 from seascape.config import Sea
+from seascape.physics import water
 from seascape.sea import SEAWATER_IOR
 
 
