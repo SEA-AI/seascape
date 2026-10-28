@@ -7,13 +7,13 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape.config import CFG_DIR, Agc, Camera
+from seascape.config import PRESETS, Agc, Camera
 from seascape.outputs import agc
 
 # What a scenario gets: the factory default and every preset.
 SHIPPED = {"factory": Agc()} | {
     path.stem: Agc.model_validate(tomllib.loads(path.read_text()))
-    for path in sorted((CFG_DIR / "agc").glob("*.toml"))
+    for path in sorted((PRESETS / "agc").glob("*.toml"))
 }
 shipped = pytest.mark.parametrize("setting", SHIPPED.values(), ids=SHIPPED.keys())
 

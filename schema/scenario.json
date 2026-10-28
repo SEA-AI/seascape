@@ -2,7 +2,7 @@
   "$defs": {
     "Agc": {
       "additionalProperties": false,
-      "description": "FLIR's AGC: one equalisation, with or without its information-based mode, and\na share of linear ramp. Defaults are a Boson+'s factory settings, Product\nDatasheet 102-2013-45 Rev 100 \u00a76.8; the presets in `cfg/agc` are FLIR's for its\nBoson-based M364C LR.",
+      "description": "FLIR's AGC: one equalisation, with or without its information-based mode, and\na share of linear ramp. Defaults are a Boson+'s factory settings, Product\nDatasheet 102-2013-45 Rev 100 \u00a76.8; the presets in `presets/agc` are FLIR's for its\nBoson-based M364C LR.",
       "properties": {
         "information_based": {
           "title": "Information Based",
