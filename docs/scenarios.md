@@ -76,7 +76,7 @@ Each camera draws its own noise. `labels.json` records each image's `sensor`, `l
 
 ## Randomization
 
-Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ triangular = [lo, mode, hi] }` for a float that clusters near `mode`, which may be a bound, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ choice = [...] }` for one of several values, tables included. `weights` beside a choice makes it uneven: `{ choice = ["a", "b"], weights = [1, 4] }` draws `b` four times as often. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
+Any field can be drawn instead of set: `{ uniform = [lo, hi] }` for a float, `{ triangular = [lo, mode, hi] }` for a float that clusters near `mode`, which may be a bound, `{ integer = [lo, hi] }` for a whole number, both bounds included, `{ log_uniform = [lo, hi] }` for a float spread evenly in its logarithm, `{ choice = [...] }` for one of several values, tables included. `weights` beside a choice makes it uneven: `{ choice = ["a", "b"], weights = [1, 4] }` draws `b` four times as often. A drawn table replaces the one it would merge with, so `[[sky.choice]]` picks between whole skies:
 
 ```toml
 [rigs.bow]
@@ -105,7 +105,7 @@ Each draw comes from a stream named for the field, so a new draw leaves the othe
 
 ## Skies
 
-By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/assets/skies.toml`](../seascape/assets/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, so a scenario with `hdri` leaves `sun_elevation_deg` out. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.
+By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/assets/skies.toml`](../seascape/assets/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, or none where the photo's sun shows no disc, so a scenario with `hdri` leaves `sun_elevation_deg` out. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.
 
 ```bash
 uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain_1"' --set 'sky.sun_bearing_deg = 20'
@@ -122,13 +122,13 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
 In LWIR each face of a hull takes its zone from `assets.toml` (painted hull, deck, glass, bare metal and the rest) and the temperature that zone settles at under the scenario's sun, clouds, air, sea and wind. A face turned from the sun takes only the sky's diffuse light; no part of a hull shades another. A hull given `t_k` is that one temperature instead, warmed by `sky.solar_gain_k` where the sun falls:
 
 ```bash
-uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", t_k = 300.0 }]'
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", range_m = 2000.0, bearing_deg = 8.0, t_k = 300.0 }]'
 ```
 
 The engine room warms funnels and engine cowls from inside, and uptakes run at the exhaust's temperature. `engine_off_min` stops the engines that many minutes before the frame, and both cool toward the air; `labels.json` records it per target. `paint_absorptance` repaints the hull, superstructure and funnel by the share of sunlight it absorbs, low for white and high for black:
 
 ```bash
-uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", engine_off_min = 30.0, paint_absorptance = 0.9 }]'
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", range_m = 2000.0, bearing_deg = 8.0, engine_off_min = 30.0, paint_absorptance = 0.9 }]'
 ```
 
 ## Wind turbines

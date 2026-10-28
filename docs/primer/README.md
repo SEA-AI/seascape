@@ -19,7 +19,7 @@ Every frame comes with `labels.json` (a COCO box per target, with its range and 
 
 ## Limitations
 
-`seascape` simplifies a few things on purpose. The tall waves displace the sea and can hide a target, but the shorter ones are drawn by tilting the surface's shading, so they neither occlude nor shadow each other. The cameras have no distortion or rolling shutter, and are otherwise ideal unless a scenario gives them a sensor, lens or microbolometer. The sky is either clear or a still photo. Fog, a visibility under 1 km, hides targets in both bands, but the sky above it stays clear: the sun still lights and glints off the sea, and in LWIR the near sea still reflects a cold sky. There is no rain. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
+`seascape` simplifies a few things on purpose. The tall waves displace the sea and can hide a target, but the shorter ones are drawn by tilting the surface's shading, so they neither occlude one another nor cast shadows. The cameras have no distortion or rolling shutter, and are otherwise ideal unless a scenario gives them a sensor, lens or microbolometer. The sky is either clear or a still photo. There is no rain. The LWIR is good for looking at and for regression tests, but it isn't a radiometric reference, so treat a detection range or contrast read off a render as a rough estimate.
 
 ## Rendering
 
@@ -86,7 +86,7 @@ Same scene, both cameras:
 
 <p align="center"><img src="eo-ir.jpg" alt="The same scene under a cumulus sky, EO and LWIR side by side"></p>
 
-The ship is warm. The clouds are warm too: a thick cloud glows at the temperature of the air at its base, while the clear sky between them is cold. The sea also acts as a mirror: water mostly glows like itself when you look straight down, and mostly reflects the sky as you look toward the horizon. That's why the waves show up even when sea and air are at exactly the same temperature (middle panel; each panel sets its own grey scale, like a thermal camera does):
+The ship is warm. The clouds are warm too: a thick cloud glows at the temperature of the air at its base, while the clear sky between them is cold. The sea also acts as a mirror: water mostly glows like itself when you look straight down, and mostly reflects the sky and the ships as you look toward the horizon. That's why the waves show up even when sea and air are at exactly the same temperature (middle panel; each panel sets its own grey scale, like a thermal camera does):
 
 <p align="center"><img src="lwir.jpg" alt="LWIR with the sea 5 K below, equal to and 5 K above the air"></p>
 
@@ -94,7 +94,7 @@ A ship isn't one temperature either. Each part settles where the sunlight it abs
 
 The thin top layer of the sea, the part a thermal camera sees, is a few tenths of a kelvin cooler than the water below. A scenario can add the warm layer that makes it a few kelvin warmer on a calm sunny day. A ship's wake stirs either one back into the water beneath it. Foam emits more and reflects less, so it reads closer to the sea's own temperature and shows less of the cold sky. A real thermal camera also blurs the image slightly and adds noise, and a scenario can set both.
 
-Blender only knows red, green and blue, so all of this is NumPy: emissivity from measured optical constants of water, the sky from a standard atmospheric model. Blender just gets lookup tables.
+Blender only knows red, green and blue, so all of this is NumPy: emissivity from measured optical constants of water, the sky from a standard atmospheric model. Blender gets lookup tables, and traces the rest of what the sea reflects.
 
 ## Haze and horizon
 

@@ -18,3 +18,8 @@ heading_deg = 250.0
 asset = "lateral_mark"
 range_m = 200.0
 bearing_deg = -6.0
+
+[[farms]]
+asset = "turbine_15mw_monopile"
+range_m = 4000.0
+bearing_deg = -3.5
