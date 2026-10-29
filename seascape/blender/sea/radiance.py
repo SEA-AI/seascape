@@ -337,7 +337,7 @@ def _skin_radiance(
     turbulence mixes the skin away. A wake reads warm under a cool skin and cold where
     a warm layer lifts the skin above the bulk (Nylund et al. 2021, Ocean Sci. 17 1285).
 
-    ponytail: the wake mixes down to the bulk only; colder water it raises from below
+    Limitation: the wake mixes down to the bulk only; colder water it raises from below
     the bulk is not modelled."""
     skin = lwir.band_radiance(sea.t_skin_k(sun_up))
     if wake is None:

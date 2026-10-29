@@ -188,7 +188,7 @@ def _langmuir_rows(
     symmetric clip keeps its mean and a quantile its share. `rng` draws the windrows
     first, as every reader reads them first.
 
-    ponytail: the integral scale stands for the windrow spacing, a judgement, and
+    Limitation: the integral scale stands for the windrow spacing, a judgement, and
     there are rows at every wind, where below the cutoff real slicks lie in patches.
     Give the slicks their own spectrum if the rows read wrong.
     """
@@ -245,7 +245,7 @@ def _slick(
     """1 under a slick: where the windrows' convergence is in its top `slick_cover`;
     None with no slicks.
 
-    ponytail: whitecaps break as on the clean sea; simulate the foam memory on the
+    Limitation: whitecaps break as on the clean sea; simulate the foam memory on the
     survivors under a slick if slicks foam too often.
     """
     if sea.slick_cover <= 0.0:
@@ -294,7 +294,7 @@ def _gusty(
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """`unresolved` with Cox & Munk's variance at the local wind for the mean's.
 
-    ponytail: drawn waves and swell hold the mean wind, as waves long enough to draw
+    Limitation: drawn waves and swell hold the mean wind, as waves long enough to draw
     grow too slowly to follow a gust (Plant 1982); a close camera that draws its
     capillaries sees no gust in them. Scale the drawn slopes below the growth cutoff if
     that shows. The tile is not filtered to the footprint either: past the pixel the

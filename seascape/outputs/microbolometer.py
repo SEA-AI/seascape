@@ -3,7 +3,7 @@
 Blender has no 8-14 um band, so diffraction, which scales with wavelength, and noise
 quoted in kelvin act here, between the float render and `agc`.
 
-ponytail: no bolometer lag; the Boson's time constant is unpublished.
+Limitation: no bolometer lag; the Boson's time constant is unpublished.
 """
 
 import math

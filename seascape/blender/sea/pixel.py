@@ -38,7 +38,7 @@ def _pixel(
         incoming = geometry.outputs["Incoming"]
     facing = vector(tree, "DOT_PRODUCT", incoming, geometry.outputs["Normal"])
     across = scalar(tree, "MULTIPLY", camera.outputs["View Distance"], 0.0)
-    # ponytail: the build's cameras fit their angle to the width; a camera added in
+    # Limitation: the build's cameras fit their angle to the width; a camera added in
     # Blender with another sensor fit gets the wrong pixel. Read `sensor_fit` when
     # such a camera must render.
     drive(

@@ -121,7 +121,7 @@ def _camera(
     the sensor and ISP. Without one the Standard view clips at white, as a sensor
     does. `respond` sets the camera.
 
-    ponytail: each frame meters itself; a real camera's exposure lags, so add a time
+    Limitation: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
     """
     nodes, links = tree.nodes, tree.links

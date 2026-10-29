@@ -57,7 +57,7 @@ range_m = { uniform = [500.0, 2500.0] }
 # Judgement: up to a merchant ship's service speed, 16 kn.
 speed_mps = { uniform = [0.0, 8.0] }
 # Judgement: three in four run their engines, the rest stopped, from just now to cold.
-# ponytail: drawn apart from speed, so a hull under way can draw its engines off.
+# Limitation: drawn apart from speed, so a hull under way can draw its engines off.
 engine_off_min = { choice = [0.0, { uniform = [0.0, 120.0] }], weights = [3, 1] }
 # White to black paint.
 paint_absorptance = { uniform = [0.14, 0.97] }

@@ -169,7 +169,7 @@ class Ownship(Model):
     pitch_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is bow up."
     )
-    # ponytail: one sine per axis, a sum over a wave spectrum when irregular motion
+    # Limitation: one sine per axis, a sum over a wave spectrum when irregular motion
     # matters.
     roll: Swing | None = Field(default=None, description="About roll_deg.")
     pitch: Swing | None = Field(default=None, description="About pitch_deg.")

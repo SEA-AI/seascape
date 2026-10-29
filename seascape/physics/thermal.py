@@ -6,7 +6,7 @@ sea, leaves as its own emission, as convection to the air and as conduction to t
 interior.
 
 The scenario has no history, only the sun where it stands, so the balance is steady.
-ponytail: no thermal lag; a hull keeps the morning's cold past sunrise and the
+Limitation: no thermal lag; a hull keeps the morning's cold past sunrise and the
 afternoon's heat past sunset, which a transient balance over the day would carry.
 
 Broadband throughout: the balance is energy, so the sky enters as its total longwave
@@ -173,7 +173,7 @@ ZONES: dict[ZoneName, Zone] = {
     # taken as paint's.
     "rubber": Zone(0.859, (GREY_PAINT_ABSORPTANCE, 0.97), 0.9, "none", 0.0),
     # Unverified: cloth 0.75-0.90 at 300 K, Incropera & DeWitt Table A.11 as recalled.
-    # Absorptance by colour, taken as paint's. ponytail: a canopy has air on both
+    # Absorptance by colour, taken as paint's. Limitation: a canopy has air on both
     # sides and convects from each; the balance gives it one.
     "fabric": Zone(0.85, PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0),
     # Thompson et al. 1998: funnel walls without insulation, heated by the engine
@@ -189,8 +189,8 @@ ZONES: dict[ZoneName, Zone] = {
     # uptake metal runs at. Unverified absorptance, dark oxide; at uptake temperature
     # the sun is lost in it.
     "exhaust": Zone(0.79, (0.8, 0.95), 0.9, "exhaust", math.inf),
-    # Unverified: gelcoat or painted composite emits as paint. ponytail: the inner film
-    # alone; a 5 mm laminate adds a few percent to its resistance.
+    # Unverified: gelcoat or painted composite emits as paint. Limitation: the inner
+    # film alone; a 5 mm laminate adds a few percent to its resistance.
     "engine_cowl": Zone(
         _PAINT_EMISSIVITY,
         PAINT_ABSORPTANCE,
@@ -231,7 +231,7 @@ class Environment:
     t_engine_room_k: float = 323.15
     # A four-stroke diesel's gas behind the turbocharger, ~230 C from half to full
     # load (CIMAC Congress 2012, paper 7-1-016). Uptake metal, uninsulated, sits near
-    # its gas. ponytail: a wet exhaust, as on most small craft, runs near the sea.
+    # its gas. Limitation: a wet exhaust, as on most small craft, runs near the sea.
     t_exhaust_k: float = 503.15
     _interiors: dict[Interior, float] = field(init=False, repr=False, compare=False)
 
@@ -260,8 +260,8 @@ class Environment:
         toward the air as a steel wall: lumped capacitance (Incropera & DeWitt 5.2),
         tau = rho c_p d / h, h the wind's convection and the wall's radiation.
 
-        ponytail: radiation linearised at the air, so a hot uptake's first minutes cool
-        a little slowly; and the engine's own mass keeps a closed engine room warm
+        Limitation: radiation linearised at the air, so a hot uptake's first minutes
+        cool a little slowly; and the engine's own mass keeps a closed engine room warm
         longer than its walls.
         """
         if off_s < 0.0:
@@ -304,7 +304,7 @@ def sky_longwave_w_m2(t_air_k: float, cloud_fraction: float = 0.0) -> float:
     Clear sky by Swinbank 1963. Cloud covers its fraction as a blackbody at air
     temperature: thick water cloud is near-black in the infrared (Stephens 1978, as
     `lwir` cites), mixed linearly with the clear sky as in Crawford & Duchon, J. Appl.
-    Meteor. 38(4) 474, 1999 (unverified, not read). ponytail: the cloud base is colder
+    Meteor. 38(4) 474, 1999 (unverified, not read). Limitation: the cloud base is colder
     than the air at the surface.
     """
     clear = _SWINBANK_W_M2K6 * t_air_k**6
@@ -315,7 +315,7 @@ def sky_longwave_w_m2(t_air_k: float, cloud_fraction: float = 0.0) -> float:
 def wind_convection_w_m2k(wind_m_s: npt.ArrayLike) -> FloatArray:
     """McAdams 1954: h = 5.7 + 3.8 V, V in m/s, a flat plate in wind.
 
-    ponytail: the fit was to plates whose loss included some radiation and free
+    Limitation: the fit was to plates whose loss included some radiation and free
     convection, which the balance also counts, so it runs high and sunlit facets a
     little cool.
     """
@@ -378,7 +378,7 @@ def facet_temperature_k(
     much weaker on average. Fog passes `fog_sunlight_transmittance` of the sunlight,
     `beam_transmittance` of the beam and the rest as diffuse light.
 
-    ponytail: no sun off the sea, no light from the vessel's own structure, and the
+    Limitation: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.
     """
     elev = np.asarray(normal_elev_rad, dtype=np.float64)

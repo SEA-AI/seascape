@@ -151,7 +151,7 @@ def diffuse_transmittance(visibility_km: float | None) -> float:
     the two-stream T = 2 / (2 + (1 - g) tau) of a non-absorbing layer, tau
     `fog_beam_depth` (Stephens, AT622 notes 15, Colorado State, eq. 15.20b).
 
-    ponytail: 15.20b takes the light as diffuse. A collimated sun moves the split
+    Limitation: 15.20b takes the light as diffuse. A collimated sun moves the split
     between reflected and passed with its angle, most for a low sun, which this does
     not follow."""
     tau = fog_beam_depth(visibility_km)
