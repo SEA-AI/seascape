@@ -85,3 +85,15 @@ def test_an_overcast_photo_is_cloud_down_to_the_horizon() -> None:
     cloud = skies.cloud(_clear_sky(), PHOTO.model_copy(update={"overcast": True}))
     assert cloud[: CH // 2].min() == 1.0
     assert cloud[CH // 2 :].max() == 0.0
+
+
+def test_gaps_in_a_mostly_grey_sky_leave_the_grey_cloud() -> None:
+    sky = _clear_sky()
+    gaps = np.zeros(sky.shape[:2], bool)
+    # Few enough gaps that a fit through every pixel lies near grey.
+    gaps[::4, ::80] = True
+    sky[~gaps] = 0.8
+    # Above 45 degrees the clear sky is blue enough for grey to read whole cloud.
+    above_45 = slice(0, CH // 4)
+    cloud = skies.cloud(sky, PHOTO)[above_45]
+    assert cloud[~gaps[above_45]].min() > 0.95

@@ -218,11 +218,15 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     basis = np.stack(list(_terms(elevation[grid[0]], cos_sun[grid])), axis=-1)
     seen = blueness[grid]
     clear_ones = np.ones(seen.shape, bool)
+    # The first refit keeps what lies above the fit, so a few gaps in a mostly grey sky
+    # lift it off grey before the band can take the grey for clear.
+    band = 0.0
     for _ in range(FIT_PASSES):
         coefficients, *_ = np.linalg.lstsq(
             basis[clear_ones], seen[clear_ones], rcond=None
         )
-        refit = seen >= basis @ coefficients - CLEAR_BAND
+        refit = seen >= basis @ coefficients - band
+        band = CLEAR_BAND
         if not refit.any() or np.array_equal(refit, clear_ones):
             break
         clear_ones = refit
