@@ -778,7 +778,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     assert far_m < sc.camera.data.clip_end, "past the far plane there is no haze"
     lens = bpy.data.cameras.new("probe")
     lens.angle, lens.clip_end = math.radians(0.2), 2 * far_m
-    # The air starts at the lens, not the near plane.
+    # A rig's near plane, which the haze ignores.
     lens.clip_start = hazy.rigs["bow"].near_clip_m
     camera = bpy.data.objects.new("probe", lens)
     sc.collection.objects.link(camera)

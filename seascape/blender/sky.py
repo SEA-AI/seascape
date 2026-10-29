@@ -331,8 +331,7 @@ def _optical_depth(
     """
     light_path = tree.nodes.new("ShaderNodeLightPath")
     secondary = scalar(tree, "SUBTRACT", 1.0, light_path.outputs["Is Camera Ray"])
-    camera = tree.nodes.new("ShaderNodeTexCoord").outputs["Camera"]
-    distance = vector(tree, "LENGTH", camera)
+    distance = tree.nodes.new("ShaderNodeCameraData").outputs["View Distance"]
     # Cycles starts a camera ray at the near plane; the air starts at the lens.
     start = scalar(
         tree,
@@ -357,7 +356,7 @@ def _optical_depth(
         texel = scalar(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
         return lookup(tree, image, texel)
 
-    # The table starts past 0, which a camera ray's start would read.
+    # at(0) reads the depth to HAZE_NEAR_M, not 0.
     behind = scalar(tree, "MULTIPLY", at(start), secondary)
     return scalar(tree, "SUBTRACT", at(distance), behind)
 
