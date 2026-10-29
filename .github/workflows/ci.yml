@@ -14,8 +14,30 @@ permissions:
   contents: read
 
 jobs:
+  # Whether a pull request touches anything but images, which nothing checks.
+  changes:
+    name: Changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.jpg'
+              - '!**/*.png'
+
   lint:
     name: Lint
+    needs: changes
+    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,6 +59,8 @@ jobs:
 
   tests:
     name: Tests (${{ matrix.shard }})
+    needs: changes
+    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports its failures, not only the first to fail.
@@ -70,7 +94,7 @@ jobs:
   checks:
     name: Checks
     if: always()
-    needs: [lint, tests]
+    needs: [changes, lint, tests]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
