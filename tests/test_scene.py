@@ -1853,6 +1853,16 @@ class TestPhotographedThermalSky:
         assert tuple(bpy.data.images["cloudy_sky_radiance"].size) == (64, 32)
         assert photo.name in upstream(tree.nodes["Background"].inputs["Color"])
 
+    def test_the_world_adds_the_share_of_a_whole_cloud_to_the_clear_sky(self) -> None:
+        tree = bpy.data.worlds["sky"].node_tree
+        (mix,) = (
+            tree.nodes[n]
+            for n in upstream(tree.nodes["Background"].inputs["Color"])
+            if getattr(tree.nodes[n], "operation", None) == "MULTIPLY_ADD"
+        )
+        images = [i.links[0].from_node.image.name for i in mix.inputs]
+        assert images == ["cloud_share", "cloud_excess", "sky_radiance"]
+
     def test_the_world_s_whole_cloud_is_lwir_s(self) -> None:
         top = baked("sky_radiance")[-1] + baked("cloud_excess")[-1]
         sky = variant(sky={"hdri": "overcast_soil"}).sky
