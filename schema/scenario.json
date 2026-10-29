@@ -58,7 +58,7 @@
         },
         "ace": {
           "title": "Ace",
-          "description": "Bends the curve toward dark below 1 and toward bright above, giving the hotter or the colder part of the scene more contrast.",
+          "description": "Below 1 darkens the frame for more contrast in hot content, above 1 brightens it for the cold.",
           "default": 0.97,
           "anyOf": [
             {
@@ -112,7 +112,7 @@
         },
         "max_gain": {
           "title": "Max Gain",
-          "description": "The steepest the transfer curve may be, in grey levels per centikelvin, so noise on a bland frame stays grain.",
+          "description": "The steepest the transfer curve may be before ACE bends it, in grey levels per centikelvin, so noise on a bland frame stays grain.",
           "default": 1.38,
           "anyOf": [
             {

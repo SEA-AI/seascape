@@ -73,7 +73,8 @@ def _transfer(frames: list[Layers], setting: Setting) -> np.ndarray:
 def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray:
     """Each count's slope is the blend of its clipped histogram share and the linear
     ramp, scaled up until the curve fills 0-255 but never steeper than the max gain.
-    A curve that cannot fill the range, as a bland frame's cannot, is centred on it."""
+    A curve that cannot fill the range, as a bland frame's cannot, is centred on it.
+    ACE bends the result."""
     low = int(c.min())
     hist = np.bincount(c - low, weights=weights)
     hist = np.minimum(hist, setting.plateau * weights.sum())
@@ -99,19 +100,14 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
 
 def _grey(frame: Layers, curve: np.ndarray, setting: Setting) -> np.ndarray:
     """The background takes the curve, squeezed inside the detail headroom; detail
-    goes on top at the curve's mean slope over the frame, times DDE."""
+    goes on top at the curve's slope there, times DDE."""
     low, high = frame
     at = np.clip(np.rint(low), 0, COUNTS - 1).astype(np.int64)
     if high is None:
         return np.rint(curve[at]).astype(np.uint8)
     squeeze = (255 - 2 * setting.detail_headroom) / 255
     background = setting.detail_headroom + squeeze * curve[at]
-    # One gain for the whole frame, as FLIR's detail-to-background ratio names it: the
-    # slope over the counts the frame holds, each once. At the local slope a smooth sea,
-    # steep where it fills the histogram, would gain its own grain twice; over the
-    # frame's span, a small hot exhaust would take the scene's detail away.
-    gain = np.gradient(curve)[np.unique(at)].mean()
-    detail = setting.dde * squeeze * gain * high
+    detail = setting.dde * squeeze * np.gradient(curve)[at] * high
     return np.rint(np.clip(background + detail, 0, 255)).astype(np.uint8)
 
 

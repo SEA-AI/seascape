@@ -95,18 +95,6 @@ def test_the_headroom_keeps_the_background_off_the_ends() -> None:
     assert (grey.min(), grey.max()) == pytest.approx((40, 215), abs=1)
 
 
-def test_a_smooth_sea_gains_its_grain_no_more_than_a_hull() -> None:
-    """Detail takes one gain for the frame, not the curve's slope where the sea fills
-    the histogram."""
-    rng = np.random.default_rng(0)
-    t_k = 288.0 + rng.normal(0.0, 0.05, (128, 128))
-    ramp = np.linspace(280.0, 300.0, 64)[None, :]
-    t_k[:, 64:] = ramp + rng.normal(0.0, 0.05, (128, 64))
-    grey = agc.Agc(Agc())(t_k).astype(float)
-    grain = grey - cv2.GaussianBlur(grey, (0, 0), 2)
-    assert grain[:, 8:56].std() < 1.5 * grain[:, 72:120].std()
-
-
 def test_dde_gains_the_detail() -> None:
     t_k = textured()
     spread = [
