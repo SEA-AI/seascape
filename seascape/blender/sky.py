@@ -40,7 +40,9 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     background = tree.nodes["Background"].inputs["Color"]
     ray = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
     if sky.hdri is not None:
-        # A photo's sun is its pixels: in fog it greys with the rest.
+        # A photo's sun is its pixels, which nothing separates from its sky: fog greys
+        # it with the rest, and at full fog weight it is gone, where the Sky Texture
+        # keeps `sun_transmittance` of its disc.
         colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, ray)
         if sky.fog_weight:
             horizon = _photo(tree, sky.hdri, sky.sun_bearing_deg, _horizon(tree, ray))
