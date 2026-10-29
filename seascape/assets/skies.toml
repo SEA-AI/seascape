@@ -5,6 +5,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_28d_misty
 sha256 = "a33c17b9cb8609d641b0d0a0ebc3738a7583b3c0e7f8d9a76f3b37819f20555e"
 sun_bearing_deg = 79.2
 sun_elevation_deg = 28.5
+sun_floor = 747.65
 licence = "CC0-1.0"
 attribution = "kloofendal_28d_misty by Greg Zaal & Jenelle van Heerden, https://polyhaven.com/a/kloofendal_28d_misty_puresky"
 
@@ -13,6 +14,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_38d_partl
 sha256 = "ba9b7c130a3637a8d4731ef85641e6a23bb5fb724d941d3c0b701c8c77c728f5"
 sun_bearing_deg = 125.9
 sun_elevation_deg = 38.0
+sun_floor = 4843.3
 licence = "CC0-1.0"
 attribution = "kloofendal_38d_partly_cloudy by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloofendal_38d_partly_cloudy_puresky"
 
@@ -21,6 +23,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_48d_partl
 sha256 = "30ff6bb1eec58c11b52254e89b5dc39aaf756dd332c9a14a4976d68f23feaa71"
 sun_bearing_deg = 124.3
 sun_elevation_deg = 47.9
+sun_floor = 7504.7
 licence = "CC0-1.0"
 attribution = "kloofendal_48d_partly_cloudy by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky"
 
@@ -29,6 +32,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloppenheim_03_pures
 sha256 = "c6e58ef3b5581264633c96a1b93a92b1f5df960071fe5499cfd11af49f8403d0"
 sun_bearing_deg = 126.1
 sun_elevation_deg = 58.6
+sun_floor = 4043.3
 licence = "CC0-1.0"
 attribution = "kloppenheim_03 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloppenheim_03_puresky"
 
@@ -37,6 +41,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloppenheim_05_pures
 sha256 = "d80ffef8da49a4c8db52fabbf8a1adda0dbf24564020a0c41b73319f73b25087"
 sun_bearing_deg = 125.9
 sun_elevation_deg = 74.5
+sun_floor = 12345.0
 licence = "CC0-1.0"
 attribution = "kloppenheim_05 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/kloppenheim_05_puresky"
 
@@ -45,6 +50,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/sunflowers_puresky_8
 sha256 = "1e7f02404d55a96bbe80f162cf4a77676d3159f2f813fd62284942b70a685920"
 sun_bearing_deg = 126.2
 sun_elevation_deg = 43.0
+sun_floor = 7262.3
 licence = "CC0-1.0"
 attribution = "sunflowers by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/sunflowers_puresky"
 
@@ -53,6 +59,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/rocky_ridge_puresky_
 sha256 = "a653d868b595baab6594c035dcbe812a0a7d13549417ed6a8ae69beb312427ed"
 sun_bearing_deg = 140.1
 sun_elevation_deg = 5.7
+sun_floor = 1773.5
 licence = "CC0-1.0"
 attribution = "rocky_ridge by Greg Zaal & Jarod Guest, https://polyhaven.com/a/rocky_ridge_puresky"
 
@@ -61,6 +68,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/scythian_tombs_pures
 sha256 = "aa3ba5daf723c6c636f8f9ce2919eeb37f429c336e961966ff5be09b7e25283a"
 sun_bearing_deg = 125.6
 sun_elevation_deg = 13.2
+sun_floor = 410.35
 licence = "CC0-1.0"
 attribution = "scythian_tombs by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/scythian_tombs_puresky"
 
@@ -69,6 +77,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/table_mountain_1_pur
 sha256 = "fa4e4d04ac82f4c79e6054e37e86120f4b9ae8cbf4acb24c84993d7813224777"
 sun_bearing_deg = 139.5
 sun_elevation_deg = 12.8
+sun_floor = 12056.0
 licence = "CC0-1.0"
 attribution = "table_mountain_1 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/table_mountain_1_puresky"
 
@@ -77,6 +86,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/table_mountain_2_pur
 sha256 = "9f047ae66248853afa52f141deefcf27e39b8592572d0400381e86417cafc53b"
 sun_bearing_deg = 139.8
 sun_elevation_deg = 7.3
+sun_floor = 6955.2
 licence = "CC0-1.0"
 attribution = "table_mountain_2 by Greg Zaal & Jarod Guest, https://polyhaven.com/a/table_mountain_2_puresky"
 
@@ -85,6 +95,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/wasteland_clouds_pur
 sha256 = "7d5bcce385925f13cf306d2ab248157a0d42a3974257917fd4a9e35f89d80d61"
 sun_bearing_deg = 126.0
 sun_elevation_deg = 7.7
+sun_floor = 261.48
 licence = "CC0-1.0"
 attribution = "wasteland_clouds by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/wasteland_clouds_puresky"
 
@@ -93,6 +104,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/drackenstein_quarry_
 sha256 = "11088a9d497c49ec802d17aa9c234313bffb8c5d84d49fc564de4cfae92a6013"
 sun_bearing_deg = 126.1
 sun_elevation_deg = 5.9
+sun_floor = 1260.9
 licence = "CC0-1.0"
 attribution = "drackenstein_quarry by Andreas Mischok & Jarod Guest, https://polyhaven.com/a/drackenstein_quarry_puresky"
 
@@ -101,6 +113,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/hilly_terrain_01_pur
 sha256 = "9dd3a106e93a4685fdb544e41cd982ef3de9ad6fadddee4e018816d2a7a81820"
 sun_bearing_deg = 125.9
 sun_elevation_deg = 11.4
+sun_floor = 2576.7
 licence = "CC0-1.0"
 attribution = "hilly_terrain_01 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/hilly_terrain_01_puresky"
 
@@ -109,6 +122,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/industrial_sunset_pu
 sha256 = "bbc9ac6d2bc103ad7f4b3db6e7736717e0f9c6dc9af3300c2e4fdda9b7a247e8"
 sun_bearing_deg = 126.5
 sun_elevation_deg = 4.1
+sun_floor = 55.083
 licence = "CC0-1.0"
 attribution = "industrial_sunset by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/industrial_sunset_puresky"
 
@@ -117,6 +131,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/industrial_sunset_02
 sha256 = "589f6151b04a4641e88cf485cf6dca68e2adc35031217f77af17219c543ebfbb"
 sun_bearing_deg = 126.0
 sun_elevation_deg = 2.2
+sun_floor = 342.89
 licence = "CC0-1.0"
 attribution = "industrial_sunset_02 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/industrial_sunset_02_puresky"
 
@@ -125,6 +140,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/quarry_04_puresky_8k
 sha256 = "9e291ef20106e22cc35c7d8933268b18c6545ec64f5c238b07b4e44b89c8df5f"
 sun_bearing_deg = 126.1
 sun_elevation_deg = 5.8
+sun_floor = 30.577
 licence = "CC0-1.0"
 attribution = "quarry_04 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/quarry_04_puresky"
 
@@ -154,6 +170,7 @@ url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/citrus_orchard_road_
 sha256 = "d6a88bb8c31d8f0e99033b8a2ca5b93a20ac7491eae7064edd00c22f2b348ac3"
 sun_bearing_deg = 118.6
 sun_elevation_deg = 3.6
+sun_floor = 26.675
 licence = "CC0-1.0"
 attribution = "citrus_orchard_road by Dimitrios Savva & Jarod Guest, https://polyhaven.com/a/citrus_orchard_road_puresky"
 

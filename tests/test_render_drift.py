@@ -743,6 +743,19 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     assert abs(row - 75) <= 2 and abs(col - 100) <= 2
 
 
+def _hazed_black() -> bpy.types.Material:
+    """A surface that brings back only the haze's airlight."""
+    black = bpy.data.materials.new("black")
+    tree = black.node_tree
+    tree.nodes.clear()
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.inputs["Strength"].default_value = 0.0
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    haze(black)
+    return black
+
+
 @pytest.mark.render
 @pytest.mark.parametrize(
     ("band", "ranges_m"),
@@ -771,14 +784,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     sc.cycles.samples = 16
     sky = shoot((16, 16), "haze_sky")
 
-    black = bpy.data.materials.new("black")
-    tree = black.node_tree
-    tree.nodes.clear()
-    emission = tree.nodes.new("ShaderNodeEmission")
-    emission.inputs["Strength"].default_value = 0.0
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    haze(black)
+    black = _hazed_black()
     for range_m in ranges_m:
         bpy.ops.mesh.primitive_plane_add(size=0.01 * range_m)
         card = bpy.context.object
@@ -1280,6 +1286,92 @@ def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
     assert abs(row - 31.5) <= 2 and abs(col - 31.5) <= 2
 
 
+SKY_RGB = (0.5, 1.0, 2.0)
+# Exact in Radiance's shared exponent, and a disc to `skies.sun`.
+DISC_RGB = (1024.0, 768.0, 512.0)
+DISC_RADIUS_DEG = 0.5
+
+
+def _photo_with_a_sun(path: Path, photo: skies.Photo) -> None:
+    """A sky of one colour, its disc where `photo`'s sun is."""
+    assert photo.sun_elevation_deg is not None
+    w, h = 2048, 1024
+    bearing = np.radians((360.0 * (np.arange(w) + 0.5) / w - 90.0) % 360.0)
+    elevation = np.radians(90.0 - (np.arange(h) + 0.5) / h * 180.0)[:, None]
+    b, e = math.radians(photo.sun_bearing_deg), math.radians(photo.sun_elevation_deg)
+    toward = np.cos(elevation) * np.cos(e) * np.cos(bearing - b) + np.sin(
+        elevation
+    ) * math.sin(e)
+    disc = toward > math.cos(math.radians(DISC_RADIUS_DEG))
+    rgba = np.ones((h, w, 4), np.float32)
+    rgba[..., :3] = np.where(disc[..., None], DISC_RGB, SKY_RGB)
+    image = bpy.data.images.new("photo", w, h, float_buffer=True)
+    # From the default colour space the file holds the buffer sRGB-encoded. Set before
+    # the pixels.
+    image.colorspace_settings.name = "Non-Color"
+    # Bottom row first.
+    image.pixels.foreach_set(rgba[::-1].ravel())
+    image.filepath_raw = str(path)
+    image.file_format = "HDR"
+    image.save()
+    bpy.data.images.remove(image)
+
+
+@pytest.mark.parametrize("visibility_km", [None, 1.5, 0.8])
+def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
+    visibility_km: float | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    name = "kloofendal_28d_misty"
+    path = tmp_path / "sun.hdr"
+    _photo_with_a_sun(path, skies.library()[name])
+    scenario = variant(
+        sky={"hdri": name, "visibility_km": visibility_km},
+        outputs={"format": "exr"},
+    )
+    sky = scenario.sky
+    floor = skies.DISC_FLOOR * float(np.dot(DISC_RGB, skies.LUMINANCE))
+    monkeypatch.setattr("seascape.blender.sky.download", lambda *_: path)
+    photo = skies.library()[name].model_copy(update={"sun_floor": floor})
+    monkeypatch.setitem(skies.library(), name, photo)
+    scene.build(scenario, "eo")
+    sc = bpy.context.scene
+    camera = sc.camera
+    camera.parent = None
+    camera.location = (0.0, 0.0, 10.0)
+    camera.rotation_mode = "QUATERNION"
+    camera.rotation_quaternion = Vector(sky.sun_vector).to_track_quat("-Z", "Y")
+    camera.data.angle_x = math.radians(4.0)
+    sc.cycles.samples = 4
+    frame = shoot_rgb((64, 64), f"photo_sun_fog_{visibility_km}")
+    w = sky.fog_weight
+    grey = float(np.dot(SKY_RGB, skies.LUMINANCE))
+    sky_rgb = np.array(SKY_RGB) + w * (grey - np.array(SKY_RGB))
+    sun_rgb = w * grey + np.array(DISC_RGB) * sky.sun_transmittance
+    assert frame[32, 32] == pytest.approx(sun_rgb, rel=1e-3)
+    assert frame[0, 0] == pytest.approx(sky_rgb, rel=1e-3)
+    if not w:
+        background = bpy.data.worlds["sky"].node_tree.nodes["Background"]
+        (link,) = background.inputs["Color"].links
+        assert link.from_node.bl_idname == "ShaderNodeTexEnvironment"
+        return
+    assert 0.0 < sky.sun_transmittance < 1.0
+
+    # A card across the frame, its airlight the sky without the disc, as the Sky
+    # Texture's is.
+    range_m = math.log(2.0) / sky.extinction_per_m
+    # A ray's length starts at the near plane.
+    camera.data.clip_start = 1e-3
+    bpy.ops.mesh.primitive_plane_add(size=range_m)
+    card = bpy.context.object
+    card.location = camera.location + range_m * Vector(sky.sun_vector)
+    card.rotation_mode = "QUATERNION"
+    card.rotation_quaternion = camera.rotation_quaternion
+    card.data.materials.append(_hazed_black())
+    frame = shoot_rgb((64, 64), f"photo_sun_haze_{visibility_km}")
+    assert frame[32, 32] == pytest.approx(0.5 * w * grey, rel=1e-3)
+    assert frame[0, 0] == pytest.approx(0.5 * sky_rgb, rel=1e-3)
+
+
 @pytest.mark.parametrize("name", skies.library())
 def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
     photo = skies.library()[name]
@@ -1294,6 +1386,7 @@ def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
         assert sun.elevation_deg is None
     else:
         assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
+        assert sun.floor == pytest.approx(photo.sun_floor, rel=1e-4)
 
 
 def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) -> None:

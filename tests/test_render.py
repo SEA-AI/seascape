@@ -25,7 +25,7 @@ from seascape.blender.compositor import (
 )
 from seascape.blender.heat import Heat, zone_skin
 from seascape.blender.sea import memory
-from seascape.blender.sky import add_world, sea_light
+from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.config import (
     Agc,
     Band,
@@ -364,6 +364,7 @@ def _svm_errors(
         seen,
     )
     sea.water(scenario.sea, 300.0, material)
+    add_haze(scenario.sky, band, 300.0)
     tree = material.node_tree
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
     surface = output.inputs["Surface"].links[0].from_socket
@@ -431,15 +432,35 @@ def _wakes(hulls: int) -> tuple[Wake, ...]:
     )
 
 
+def _misted_photo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
+    """The heaviest sky: a photo, whose clouds the IR sea reflects, in mist, whose haze
+    takes off the photo's sun disc. The stack is the shader's, so the photo is white."""
+    photo = tmp_path / "white.hdr"
+    cv2.imwrite(str(photo), np.ones((32, 64, 3), np.float32))
+    monkeypatch.setattr("seascape.blender.sky.download", lambda *_: photo)
+    return {"hdri": "rocky_ridge", "visibility_km": 1.5}
+
+
+def _heaviest_haze(band: Band) -> None:
+    nodes = bpy.data.node_groups["haze"].nodes
+    assert (band == "eo") == ("photo_disc" in nodes)
+
+
 @pytest.mark.render
 @pytest.mark.parametrize("band", ["eo", "ir"])
 @pytest.mark.parametrize("hulls", [0, 1])
 def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
-    capfd: pytest.CaptureFixture[str], band: Band, hulls: int
+    capfd: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    band: Band,
+    hulls: int,
 ) -> None:
     """Cycles renders a shader past its SVM stack black and logs an error."""
-    errors = _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(hulls), band)
+    drawn = _heaviest_drawn_sea(sky=_misted_photo(monkeypatch, tmp_path))
+    errors = _svm_errors(capfd, drawn, _wakes(hulls), band)
     assert errors == []
+    _heaviest_haze(band)
 
 
 @pytest.mark.render
@@ -450,24 +471,18 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     tmp_path: Path,
     band: Band,
 ) -> None:
-    """Remembered on every grid level a camera can need, gathered into windrows, and
-    in IR under a photographed sky, whose clouds the sea reflects. The stack is the
-    shader's, whatever its frames hold, so none are simulated and the photo is
-    white."""
+    """Remembered on every grid level a camera can need and gathered into windrows.
+    The stack is the shader's, whatever its frames hold, so none are simulated."""
     monkeypatch.setattr(memory, "_simulate", lambda *_: None)
     grids = tuple(
         waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
     )
     seen = sea.Seen(foam_grids=grids)
-    sky: dict[str, str] = {}
-    if band == "ir":
-        photo = tmp_path / "white.hdr"
-        cv2.imwrite(str(photo), np.ones((32, 64, 3), np.float32))
-        monkeypatch.setattr("seascape.blender.sky.download", lambda *_: photo)
-        sky = {"hdri": "overcast_soil"}
+    sky = _misted_photo(monkeypatch, tmp_path)
     drawn = _heaviest_drawn_sea(strongest=True, sky=sky)
     errors = _svm_errors(capfd, drawn, _wakes(1), band, seen=seen)
     assert errors == []
+    _heaviest_haze(band)
     nodes = bpy.data.materials["sea"].node_tree.nodes
     assert {"whitecap_gathered", "sea_foam_0.25m", "sea_foam_4m"} <= set(nodes.keys())
     assert (band == "ir") == ("sea_cloud_ratio" in nodes)
