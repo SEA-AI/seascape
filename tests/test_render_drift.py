@@ -759,7 +759,10 @@ def _hazed_black() -> bpy.types.Material:
 @pytest.mark.render
 @pytest.mark.parametrize(
     ("band", "ranges_m"),
-    [("eo", (1000.0, 5000.0, 25000.0, 28000.0)), ("ir", (1000.0, 5000.0, 25000.0))],
+    [
+        ("eo", (100.0, 1000.0, 5000.0, 25000.0, 28000.0)),
+        ("ir", (100.0, 1000.0, 5000.0, 25000.0)),
+    ],
 )
 def test_haze_leaves_a_black_card_its_share_of_the_sky(
     band: Band, ranges_m: tuple[float, ...]
@@ -775,6 +778,8 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     assert far_m < sc.camera.data.clip_end, "past the far plane there is no haze"
     lens = bpy.data.cameras.new("probe")
     lens.angle, lens.clip_end = math.radians(0.2), 2 * far_m
+    # The air starts at the lens, not the near plane.
+    lens.clip_start = hazy.rigs["bow"].near_clip_m
     camera = bpy.data.objects.new("probe", lens)
     sc.collection.objects.link(camera)
     elevation = math.radians(0.2)  # under the haze's top at every range
@@ -1359,8 +1364,6 @@ def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
     # A card across the frame, its airlight the sky without the disc, as the Sky
     # Texture's is.
     range_m = math.log(2.0) / sky.extinction_per_m
-    # A ray's length starts at the near plane.
-    camera.data.clip_start = 1e-3
     bpy.ops.mesh.primitive_plane_add(size=range_m)
     card = bpy.context.object
     card.location = camera.location + range_m * Vector(sky.sun_vector)

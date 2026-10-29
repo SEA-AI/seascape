@@ -497,7 +497,7 @@ class TestEoBand:
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
         nodes = bpy.data.node_groups["haze"].nodes
         beta = nodes["haze_beta"]
-        assert beta.inputs[0].links[0].from_socket.name == "Ray Length"
+        assert "haze_start" in upstream(beta.inputs[0])
         assert beta.inputs[1].default_value == pytest.approx(
             SCENARIO.sky.extinction_per_m
         )
