@@ -1281,8 +1281,7 @@ def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
 
 
 SKY_RGB = (0.5, 1.0, 2.0)
-# Exact in Radiance's shared exponent, and a disc to `skies.sun`: a hundred times the
-# ring and a uniform 0.5 degrees, RMS 0.35.
+# Exact in Radiance's shared exponent, and a disc to `skies.sun`.
 DISC_RGB = (1024.0, 768.0, 512.0)
 DISC_RADIUS_DEG = 0.5
 
@@ -1314,7 +1313,7 @@ def _photo_with_a_sun(path: Path, photo: skies.Photo) -> None:
 
 @pytest.mark.parametrize("visibility_km", [None, 1.5, 0.8])
 def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
-    visibility_km: float | None, tmp_path: Path
+    visibility_km: float | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     name = "kloofendal_28d_misty"
     path = tmp_path / "sun.hdr"
@@ -1324,9 +1323,11 @@ def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
         outputs={"format": "exr"},
     )
     sky = scenario.sky
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("seascape.blender.sky.download", lambda *_: path)
-        scene.build(scenario, "eo")
+    floor = skies.DISC_FLOOR * float(np.dot(DISC_RGB, skies.LUMINANCE))
+    monkeypatch.setattr("seascape.blender.sky.download", lambda *_: path)
+    photo = skies.library()[name].model_copy(update={"sun_floor": floor})
+    monkeypatch.setitem(skies.library(), name, photo)
+    scene.build(scenario, "eo")
     sc = bpy.context.scene
     camera = sc.camera
     camera.parent = None
@@ -1364,6 +1365,7 @@ def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
         assert sun.elevation_deg is None
     else:
         assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
+        assert sun.floor == pytest.approx(photo.sun_floor, rel=1e-4)
 
 
 def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) -> None:

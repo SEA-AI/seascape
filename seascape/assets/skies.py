@@ -24,7 +24,7 @@ from functools import cache
 from pathlib import Path
 
 import numpy as np
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from seascape.assets import SHA256
 from seascape.model import Model
@@ -54,7 +54,8 @@ ONE_MODE_STD = 0.03
 
 class Photo(Model):
     """One sky, and its sun as the image holds it: a bearing clockwise from +Y as
-    Cycles maps the image unrotated, and an elevation only where a disc shows."""
+    Cycles maps the image unrotated, and an elevation and the disc's `Sun.floor` only
+    where a disc shows."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -62,8 +63,15 @@ class Photo(Model):
     sha256: str = Field(pattern=SHA256)
     sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
     sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
+    sun_floor: float | None = Field(default=None, gt=0.0)
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _a_disc_has_a_floor(self) -> "Photo":
+        if (self.sun_elevation_deg is None) != (self.sun_floor is None):
+            raise ValueError("sun_elevation_deg and sun_floor come together")
+        return self
 
     @property
     def sun(self) -> str:
