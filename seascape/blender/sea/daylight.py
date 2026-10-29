@@ -125,7 +125,7 @@ def _glitter(
     catches the sun n / s times as often: variance r^2 (n / s - 1) about a sun of slope
     radius r, s being `cycles.samples`.
 
-    ponytail: the cells keep the mean wind's size through a gust, as a size that
+    Limitation: the cells keep the mean wind's size through a gust, as a size that
     varied over the sea would re-cut the grid as the gust moves; crossfade two fixed
     grids by the local wind if glints should thin in the lulls.
     """

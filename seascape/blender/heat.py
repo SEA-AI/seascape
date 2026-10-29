@@ -19,8 +19,8 @@ from seascape.config import (
 from seascape.physics import aerosol, lwir, thermal
 
 # Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
-# fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher
-# than a mirror.
+# fabric and wood scatter it. Limitation: dull stainless, as thermal takes it, is
+# rougher than a mirror.
 SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
 
 
@@ -96,7 +96,7 @@ def surroundings(scenario: Scenario) -> Heat:
     env = thermal.Environment(
         t_air_k=sky.t_air_k,
         t_sea_k=scenario.sea.t_skin_k(sky.sun_up),
-        # ponytail: the true wind; a hull underway convects in its own way through the
+        # Limitation: the true wind; a hull underway convects in its own way through the
         # air, and every hull shares one skin per zone.
         wind_m_s=scenario.sea.wind_speed_mps,
         sun_elevation_rad=None if elevation is None else math.radians(elevation),

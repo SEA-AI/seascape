@@ -217,7 +217,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
-    # ponytail: a floating turbine stands still; give it its platform's motion
+    # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
     solid = list(chain(*targets.values()))

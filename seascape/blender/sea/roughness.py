@@ -37,7 +37,7 @@ def _grouped(
     redrawn when a group of the waves a footprint its own size fades crosses it, at
     their group velocity.
 
-    ponytail: EO keeps the mean, as the glitter carries its own spread. Scale its lobe
+    Limitation: EO keeps the mean, as the glitter carries its own spread. Scale its lobe
     too if its sea reads too even.
     """
     if sea.wind_speed_mps <= 0.0:
@@ -196,9 +196,9 @@ def _unresolved(
     gusty sea's, and a slick's where `smooth` is 1. Each is twice its axis's, the total
     an isotropic sea of that slope would hold.
 
-    Cox & Munk's axes are the wind's. ponytail: the view's take their variances by cos^2
-    of the angle between and leave out the covariance, so a lobe 45 degrees off the
-    wind stays aligned with the view. Rotate the tangent if a glitter shows it.
+    Cox & Munk's axes are the wind's. Limitation: the view's take their variances by
+    cos^2 of the angle between and leave out the covariance, so a lobe 45 degrees off
+    the wind stays aligned with the view. Rotate the tangent if a glitter shows it.
     """
     speed = sea.wind_speed_mps
     # From or toward, the axis is the same.
