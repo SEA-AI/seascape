@@ -40,13 +40,10 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     background = tree.nodes["Background"].inputs["Color"]
     ray = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
     if sky.hdri is not None:
-        # A photo's sun is its pixels, which nothing separates from its sky: fog greys
-        # it with the rest, and at full fog weight it is gone, where the Sky Texture
-        # keeps `sun_transmittance` of its disc.
         colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, ray)
         if sky.fog_weight:
             horizon = _photo(tree, sky.hdri, sky.sun_bearing_deg, _horizon(tree, ray))
-            colour = _misted(tree, sky, colour, horizon)
+            colour = _fogged_photo(tree, sky, ray, colour, horizon)
         tree.links.new(colour, background)
         return world
     node = _sky_texture(tree, sky)
@@ -76,6 +73,46 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     sun = vector(tree, "SCALE", disc, kept.outputs["Value"])
     tree.links.new(vector(tree, "ADD", dome, sun), background)
     return world
+
+
+def _fogged_photo(
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    ray: bpy.types.NodeSocket,
+    colour: bpy.types.NodeSocket,
+    horizon: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """The photo's `colour` misted, less its sun's disc, which keeps
+    `sun_transmittance`, as the Sky Texture's does. A sun behind cloud greys with it."""
+    if sky.sun_elevation_deg is None:
+        return _misted(tree, sky, colour, horizon)
+    disc = _photo_disc(tree, sky, ray, colour)
+    dome = vector(tree, "SCALE", colour, scalar(tree, "SUBTRACT", 1.0, disc))
+    kept = scalar(tree, "MULTIPLY", disc, sky.sun_transmittance)
+    sun = vector(tree, "SCALE", colour, kept)
+    return vector(tree, "ADD", _misted(tree, sky, dome, horizon), sun)
+
+
+def _photo_disc(
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    ray: bpy.types.NodeSocket,
+    colour: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """1 where `ray` meets the photo's sun, 0 elsewhere: within `skies.DISC_DEG` of it
+    and brighter than the floor `skies.sun` measures its disc by."""
+    assert sky.hdri is not None
+    # Bottom row first, as Blender stores an image.
+    floor = skies.sun(pixels(_photo_image(sky.hdri))[::-1, :, :3]).floor
+    assert floor is not None
+    unit = vector(tree, "NORMALIZE", ray)
+    toward = vector(tree, "DOT_PRODUCT", unit, sky.sun_vector)
+    near = scalar(tree, "GREATER_THAN", toward, math.cos(math.radians(skies.DISC_DEG)))
+    luminance = vector(
+        tree, "DOT_PRODUCT", colour, tuple(float(c) for c in skies.LUMINANCE)
+    )
+    bright = scalar(tree, "GREATER_THAN", luminance, floor)
+    return scalar(tree, "MULTIPLY", near, bright)
 
 
 def _clear_eo(

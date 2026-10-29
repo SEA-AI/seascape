@@ -79,8 +79,11 @@ def library() -> dict[str, Photo]:
 
 @dataclass(frozen=True)
 class Sun:
+    """`floor`: the luminance a pixel of the disc exceeds; None with no disc."""
+
     bearing_deg: float
     elevation_deg: float | None
+    floor: float | None = None
 
 
 def _bearing_deg(u: np.ndarray) -> np.ndarray:
@@ -132,7 +135,8 @@ def sun(radiance: np.ndarray) -> Sun:
     ring = np.median(near[(angle > RING_DEG[0]) & (angle < RING_DEG[1])])
     if near.max() < DISC_CONTRAST * ring:
         return Sun(glow, None)
-    disc = (angle < DISC_DEG) & (near > DISC_FLOOR * near.max())
+    floor = DISC_FLOOR * float(near.max())
+    disc = (angle < DISC_DEG) & (near > floor)
     # Weighted by radiance and by each pixel's solid angle, cos(elevation).
     cosines = np.broadcast_to(np.cos(np.radians(elevations))[:, None], near.shape)
     weight = near[disc] * cosines[disc]
@@ -144,6 +148,7 @@ def sun(radiance: np.ndarray) -> Sun:
     return Sun(
         math.degrees(math.atan2(centre[0], centre[1])) % 360.0,
         math.degrees(math.asin(centre[2])),
+        floor,
     )
 
 
