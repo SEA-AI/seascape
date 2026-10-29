@@ -3,7 +3,7 @@ name: label-zones
 description: Give an asset's material slots or islands their LWIR thermal zones in seascape/assets/assets.toml, by reading the sheets `seascape zones` renders, and render the contact sheet a person approves. Use when an asset in assets.toml has no `zones` table, or a new asset is added.
 ---
 
-# Label thermal zones
+# Label the thermal zones
 
 An LWIR build needs to know what each part of a mesh is made of. You read numbered
 renders of the asset and write one zone per part into `seascape/assets/assets.toml`. A person
