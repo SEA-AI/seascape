@@ -104,6 +104,14 @@ class Agc(Model):
         description="The most pixels one histogram bin counts, as a fraction of the "
         "frame.",
     )
+    # Rev 114 §6.8.6. Judgement: Figure 28's curves read as a power 1 / ace.
+    ace: float = Field(
+        default=0.97,
+        ge=0.5,
+        le=4.0,
+        description="Below 1 darkens the frame for more contrast in hot content, "
+        "above 1 brightens it for the cold.",
+    )
     # §6.8.5, Linear Percent.
     linear_fraction: float = Field(
         default=0.20,
@@ -118,8 +126,8 @@ class Agc(Model):
     max_gain: float = Field(
         default=1.38,
         gt=0.0,
-        description="The steepest the transfer curve may be, in grey levels per "
-        "centikelvin, so noise on a bland frame stays grain.",
+        description="The steepest the transfer curve may be before ACE bends it, in "
+        "grey levels per centikelvin, so noise on a bland frame stays grain.",
     )
     # §6.8.10 keeps 85 % of the curve each frame, and §5.1 runs at 60 Hz.
     tau_s: float = Field(

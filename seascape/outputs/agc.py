@@ -73,7 +73,8 @@ def _transfer(frames: list[Layers], setting: Setting) -> np.ndarray:
 def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray:
     """Each count's slope is the blend of its clipped histogram share and the linear
     ramp, scaled up until the curve fills 0-255 but never steeper than the max gain.
-    A curve that cannot fill the range, as a bland frame's cannot, is centred on it."""
+    A curve that cannot fill the range, as a bland frame's cannot, is centred on it.
+    ACE bends the result."""
     low = int(c.min())
     hist = np.bincount(c - low, weights=weights)
     hist = np.minimum(hist, setting.plateau * weights.sum())
@@ -93,6 +94,7 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
     slope = np.minimum(gain * slope, setting.max_gain)
     # Each count at the middle of its step, the curve centred on 127.5.
     level = 127.5 + np.cumsum(slope) - slope / 2 - slope.sum() / 2
+    level = 255.0 * np.clip(level / 255.0, 0.0, 1.0) ** (1.0 / setting.ace)
     return np.interp(np.arange(COUNTS), low + np.arange(level.size), level)
 
 
