@@ -1,123 +1,68 @@
 ---
 name: label-zones
-description: Give an asset's material slots or islands their LWIR thermal zones in seascape/assets/assets.toml, by reading the sheets `seascape zones` renders, and render the contact sheet a person approves. Use when an asset in assets.toml has no `zones` table, or a new asset is added.
+description: Give an asset's parts their LWIR thermal zones in seascape/assets/assets.toml, from the sheets `seascape zones` renders, and render the contact sheet a person approves. Use when an asset has no `zones` table, a new asset is added, or a zone sheet shows a part wrong.
 ---
 
 # Label thermal zones
 
-An LWIR build needs to know what each part of a mesh is made of. You read numbered
-renders of the asset and write one zone per part into `seascape/assets/assets.toml`. A person
-approves the result from a contact sheet.
+An LWIR build gives every face of an asset the emissivity, absorptance and interior of
+its zone. You decide what each part of the mesh is made of, write it into
+`seascape/assets/assets.toml`, and prove it with a sheet a person approves.
 
-## The vocabulary
+## Where the facts live
 
-Exactly one of these per part, as `seascape.physics.thermal.ZoneName` lists them:
+Read these:
 
-| zone | what |
-|---|---|
-| `paint_hull` | painted shell plating, topsides and bottom |
-| `paint_superstructure` | painted house, bridge, masts, cranes, hatch covers, buoy bodies |
-| `deck` | walking surfaces: steel decks, teak, non-slip |
-| `glass` | windows, portholes, windscreens, lamp lenses |
-| `bare_metal` | unpainted steel, stainless, aluminium, chrome |
-| `rubber` | inflatable tubes, fenders, tyres, hoses |
-| `fabric` | canvas, biminis, cushions, sails, rope |
-| `funnel` | the stack's casing |
-| `exhaust` | the hot outlet inside or atop a funnel, an exhaust pipe |
-| `engine_cowl` | outboard engine covers |
-| `wood_composite` | timber, plywood, logs, GRP/carbon hulls of small craft |
+- `seascape.physics.thermal`: `ZoneName` is the vocabulary and what each zone covers;
+  `ZONES` gives each zone's numbers and the source behind them.
+- `seascape.assets.Zones` and `Rule`: what a zones table may hold, and how materials,
+  rules and listed islands combine. Their validators say what is refused.
+- `uv run seascape zones --help`: the sheets it renders and how to aim them.
+- `slots.json` or `islands.json` beside the sheets: each part's material, colour,
+  inputs and height, measured from the import. Island means are what a rule reads.
+- The zones tables already in `assets.toml`: working examples of every form.
 
-The waterline is not a zone: it comes from `draught_m`.
+## What a zone means
 
-## Steps
+A zone is what the surface emits and absorbs, so the top layer decides it. Paint on
+steel emits as paint; bare stainless reflects the sky and reads cold. A small craft's
+moulded hull is not a ship's painted plating. The waterline is no zone: the sea meets
+the hull at the asset's `draught_m`, so zone the hull below it as above. When two
+zones fit, pick the one whose `ZONES` numbers fit this surface, and weigh how much an
+error would show: a part a few pixels wide matters less than a hull side.
 
-1. Read the asset's line in `seascape/assets/assets.toml`, or `uv run seascape assets show
-   <asset>`: its `description` says what the vessel is.
-2. `uv run seascape zones <asset> -o <dir>`. An asset of more than one material gives
-   slot sheets; one of a single material gives island sheets. `--islands` forces
-   islands, to split a slot of two zones; `--material NAME` marks only that material's
-   islands, the rest grey. The output directory must be empty.
-3. Read `<dir>/slots.json` (or `islands.json`). Each part has its material, objects,
-   triangles, colour (flat or mean texel), alpha, metallic, and `height_m`: its lowest
-   and highest point above the waterline. An island's `metallic`, `roughness` and
-   `alpha` are its means, which rules read. Alpha is a constant, or a texture's stats
-   (`mean`, `min`, `over_half`). An untextured material's islands take its flat base
-   colour. A textured island's colour is the mean texel at its triangles' centres,
-   which mirrored halves and shared UVs share.
-4. Look at `<dir>/overview.png`: the textured views, then every part in its own colour
-   with its number. A slots overview ends in a legend. Then open `slot-N.png` (or
-   `island-N.png`) for each part: it is bright orange, the rest grey, cropped to it in
-   every view that shows it. An island's sheet exists only when it is large enough to
-   mark; `atlas-*.png` shows every island over the texture it reads.
-5. Decide each part's zone, by these rules:
-   - A constant alpha below 1 is glass. An alpha texture is a cutout, a
-     railing or a mesh drawn on a plane, not glass. Glass with alpha 1 also exists: a
-     dark, flat band of windows on a house is glass. Windows painted into a texture
-     share their island with the wall and stay the wall's zone.
-   - Never invent a funnel on a yacht, a sailboat, a RIB or a buoy. `funnel` and
-     `exhaust` need a ship with a stack.
-   - A small part, a rail, antenna, cleat or ladder, is `bare_metal` only when it is
-     clearly metal: grey or chrome, thin, and not painted the colour of what carries it.
-     Otherwise it takes the zone around it.
-   - Below the waterline and on the topsides is `paint_hull` for a painted ship;
-     a small craft's moulded hull is `wood_composite`.
-   - Metallic maps are unreliable: use them to break a tie, never against the picture.
-   - A part that holds two zones: give its material the zone of most of its area, then
-     run `--islands --material NAME` and override the islands that differ.
-     An atlas of thousands of islands is labelled the same way: the material takes the
-     majority zone and only the large marked islands are overridden. Where the small
-     parts of one zone share a range of metallic, roughness or alpha that the rest of
-     the material lacks, a rule (below) zones them all; keep it only if the contact
-     sheet shows it right.
-   - When unsure, report the part and why.
-6. Write the result (below), then render the contact sheet:
-   `uv run seascape zones <asset> -o <dir> --zones` writes `<dir>/zones.png`. Look at it:
-   every surface in the zone it should be, nothing in a zone it should not. Hand it to a
-   person to approve.
-7. `uv run pytest tests/test_zones.py` checks every material is named and the islands
-   are numbered as the import numbers them.
+## Weighing the evidence
 
-## Writing assets.toml
+Trust the evidence in this order:
 
-Under the asset, after its other keys:
+1. The textured render: colour, sheen, shape, and what the part is attached to.
+2. Context: the asset's `description`, where the part sits, how big and thin it is,
+   what the same vessel type is built from.
+3. The model's own material data: names, metallic, roughness, alpha. An artist set
+   these for the look in daylight; they break a tie, they do not decide one. A
+   metallic map often marks painted steel, and an alpha texture is a cutout as often
+   as it is glass; opaque glass exists too, as a dark, flat band of windows on a house.
 
-```toml
-[zodiac.zones.materials]
-Carbon_Fiber = "wood_composite"
-Glass = "glass"
-Rubber = "rubber"
-```
+Do not add what the model does not show: no funnel on a vessel without a stack, no
+glass where windows are only painted into a wall's texture.
 
-Every material of the import needs a zone, by its name as `slots.json` gives it; quote
-a name that is not a bare key (`"01_-_Default" = "paint_superstructure"`).
+## Describing it as simply as is right
 
-Islands override their material's zone, by id. They need `island_count` and
-`island_digest` from `islands.json`: the import's number of islands and a fingerprint of
-their numbering, so an import that renumbers its islands fails the tests instead of
-moving the zones:
+Pick the coarsest description that is still true, and refine only where a sheet shows
+it wrong:
 
-```toml
-[yacht.zones]
-island_count = 1082
-island_digest = "a6c3a5bae7ac1fbe"
+1. A zone per material, the one covering most of its area. Most assets need nothing
+   else.
+2. A rule, where one material holds two zones and a property of the model separates
+   them, as a metallic atlas separates rails from hull. Write it from the numbers in
+   the JSON, then check it on the sheet: a rule that also catches what it should not is
+   worse than none.
+3. Single islands, last, for what neither catches. Listed islands are tied to the
+   import's numbering, which the tests guard.
 
-[yacht.zones.materials]
-"01_-_Default" = "paint_superstructure"
+## Proving it
 
-[yacht.zones.islands]
-"0" = "paint_hull"
-"5" = "deck"
-```
-
-A rule zones the islands of one material whose means fall in every range it gives; the
-first rule an island matches wins, and a listed island wins over every rule:
-
-```toml
-[[irwin_38.zones.rules]]
-material = "Base_Material_Other_01.001"
-metallic = [0.5, 1.0]
-zone = "bare_metal"
-```
-
-An island neither listed nor ruled takes its material's zone. Run `uvx tombi format`
-after editing.
+Render the zones sheet and look at every view: each surface in the zone it should be,
+nothing in a zone it should not. Run `uv run pytest tests/test_zones.py`, which checks
+the table against the import. Hand the sheet to a person, and say which parts you were
+unsure of and why.
