@@ -206,6 +206,7 @@ attribution = "kloppenheim_06 by Greg Zaal & Jarod Guest, https://polyhaven.com/
 url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_overcast_puresky_8k.hdr"
 sha256 = "489b1552b02e8a15a39278476049ce82421f985064b4a888fa8d1fd49a5c7e77"
 sun_bearing_deg = 120.2
+overcast = true
 licence = "CC0-1.0"
 attribution = "kloofendal_overcast by Greg Zaal, https://polyhaven.com/a/kloofendal_overcast_puresky"
 
@@ -213,6 +214,7 @@ attribution = "kloofendal_overcast by Greg Zaal, https://polyhaven.com/a/kloofen
 url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/kloofendal_misty_morning_puresky_8k.hdr"
 sha256 = "3c7ad177e2cf36c1750d31f325f5b4a6d7ba40a9ad09fdb3322c36937226648d"
 sun_bearing_deg = 130.1
+overcast = true
 licence = "CC0-1.0"
 attribution = "kloofendal_misty_morning by Greg Zaal, https://polyhaven.com/a/kloofendal_misty_morning_puresky"
 
@@ -220,6 +222,7 @@ attribution = "kloofendal_misty_morning by Greg Zaal, https://polyhaven.com/a/kl
 url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/overcast_soil_puresky_8k.hdr"
 sha256 = "bacac45822cecfd5f22135d96d85e0f6be07220f54a08b4d7ed730715040edd3"
 sun_bearing_deg = 78.0
+overcast = true
 licence = "CC0-1.0"
 attribution = "overcast_soil by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/overcast_soil_puresky"
 
@@ -227,6 +230,7 @@ attribution = "overcast_soil by Jarod Guest & Sergej Majboroda, https://polyhave
 url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/mud_road_puresky_8k.hdr"
 sha256 = "fe64758b66ed2f5b85aa2d2341f59f0ad4da3f1cfad238906a2b9bed6f5f1842"
 sun_bearing_deg = 0.7
+overcast = true
 licence = "CC0-1.0"
 attribution = "mud_road by Sergey Rudavin & Jarod Guest, https://polyhaven.com/a/mud_road_puresky"
 
@@ -234,6 +238,7 @@ attribution = "mud_road by Sergey Rudavin & Jarod Guest, https://polyhaven.com/a
 url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/snow_field_puresky_8k.hdr"
 sha256 = "608f6c115e2917c182ce73956bbfabeb21345aec0bd863dac2e18a01c8285388"
 sun_bearing_deg = 127.3
+overcast = true
 licence = "CC0-1.0"
 attribution = "snow_field by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/snow_field_puresky"
 
@@ -241,6 +246,7 @@ attribution = "snow_field by Jarod Guest & Sergej Majboroda, https://polyhaven.c
 url = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/8k/snow_field_2_puresky_8k.hdr"
 sha256 = "76e902578b538589ae4acfe3e1fb18061b20d66974b1c81aeecd764eef7a46b1"
 sun_bearing_deg = 130.1
+overcast = true
 licence = "CC0-1.0"
 attribution = "snow_field_2 by Jarod Guest & Sergej Majboroda, https://polyhaven.com/a/snow_field_2_puresky"
 
