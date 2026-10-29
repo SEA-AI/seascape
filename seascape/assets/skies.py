@@ -18,11 +18,12 @@ fraction determined by thermal infrared and visible all-sky cameras", Atmos. Mea
 Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit their clear sky to the pixels
 near it and refit; the clear-sky library of Ghonima et al. (Atmos. Meas. Tech. 5 2881,
 2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith and angle from the sun. An
-overcast photo has no clear sky to fit; the library says which photos are.
+overcast photo has no clear sky to fit; `skies.toml` marks which.
 """
 
 import math
 import tomllib
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -53,22 +54,21 @@ GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgements: how far under the fitted clear sky a pixel's blueness may fall and still
-# be refitted as clear; the clear blueness under which a sky is too grey to show a cloud
-# by colour; the passes the fit takes at most to settle.
+# Judgement: how far under the fitted clear sky a blueness may fall and refit as clear.
 CLEAR_BAND = 0.03
+# Judgement: a clear blueness under this is too grey to show a cloud by colour.
 GREY_CLEAR = 0.05
 FIT_PASSES = 10
 # Every FIT_STRIDE-th pixel each way is fitted: the clear sky is smooth.
 FIT_STRIDE = 4
-# A judgement: powers of the horizon's nearness and the sun's, steep enough to follow a
-# haze at the horizon and a glow a few degrees round the sun.
+# A judgement: powers of the horizon's nearness and the sun's. The steepest halve 5 deg
+# above the horizon and 24 deg from the sun.
 HORIZON_POWERS = (0, 1, 2, 4, 8)
 SUN_POWERS = (0, 1, 2, 4, 8, 16)
-# Judgements: the aureole round a disc, as white as cloud and too steep to fit, and the
-# neighbourhood each of its pixels is filled from.
+# Judgements: the aureole round a disc, as white as cloud, and how far round each of its
+# pixels it is filled from.
 AUREOLE_DEG = 8.0
-INPAINT_RADIUS_PX = 3
+INPAINT_RADIUS_DEG = 0.5
 
 
 class Photo(Model):
@@ -181,13 +181,11 @@ def sun(radiance: np.ndarray) -> Sun:
     )
 
 
-def _clear_basis(elevation_deg: np.ndarray, cos_sun: np.ndarray) -> np.ndarray:
-    """Products of powers of the horizon's nearness and the sun's, (..., terms)."""
-    horizon = 1.0 - np.sin(np.radians(elevation_deg))
-    sun = (1.0 + cos_sun) / 2.0
-    return np.stack(
-        [horizon**i * sun**j for i in HORIZON_POWERS for j in SUN_POWERS], axis=-1
-    ).astype(np.float32)
+def _terms(elevation_deg: np.ndarray, cos_sun: np.ndarray) -> Iterator[np.ndarray]:
+    """Products of powers of the horizon's nearness and the sun's."""
+    horizon = (1.0 - np.sin(np.radians(elevation_deg))).astype(np.float32)
+    sun = ((1.0 + cos_sun) / 2.0).astype(np.float32)
+    return (horizon**i * sun**j for i in HORIZON_POWERS for j in SUN_POWERS)
 
 
 def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
@@ -210,37 +208,40 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     blueness = (blue - red) / np.maximum(blue + red, 1e-6)
     elevation = _elevation_deg(np.arange(h // 2), h)[:, None]
     bearing = _bearing_deg((np.arange(w) + 0.5) / w)[None, :]
+    disc = photo.sun_elevation_deg is not None
     # A judgement: with no disc, the glow's bearing at the horizon.
-    toward = _directions(
-        np.array(photo.sun_bearing_deg), np.array(photo.sun_elevation_deg or 0.0)
-    )
+    sun_elevation_deg = photo.sun_elevation_deg if disc else 0.0
+    toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
     cos_sun = _directions(bearing, elevation) @ toward
-    basis = _clear_basis(elevation, cos_sun)
-    sampled = np.zeros(blueness.shape, bool)
-    sampled[::FIT_STRIDE, ::FIT_STRIDE] = True
-    aureole = np.zeros(blueness.shape, bool)
-    if photo.sun_elevation_deg is not None:
-        aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG))
-    clear_ones = sampled
+    aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
+    grid = np.s_[::FIT_STRIDE, ::FIT_STRIDE]
+    basis = np.stack(list(_terms(elevation[grid[0]], cos_sun[grid])), axis=-1)
+    seen = blueness[grid]
+    clear_ones = np.ones(seen.shape, bool)
     for _ in range(FIT_PASSES):
         coefficients, *_ = np.linalg.lstsq(
-            basis[clear_ones], blueness[clear_ones], rcond=None
+            basis[clear_ones], seen[clear_ones], rcond=None
         )
-        clear = basis @ coefficients
-        refit = sampled & (blueness >= clear - CLEAR_BAND)
-        if np.array_equal(refit, clear_ones):
+        refit = seen >= basis @ coefficients - CLEAR_BAND
+        if not refit.any() or np.array_equal(refit, clear_ones):
             break
         clear_ones = refit
-    cloud = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
-    if aureole.any():
-        # Bertalmio, Bertozzi & Sapiro, "Navier-Stokes, fluid dynamics, and image and
-        # video inpainting", CVPR 2001: the cloud round the aureole, carried in.
-        # OpenCV's Telea overshoots on float images.
-        cloud = cv2.inpaint(
-            cloud.astype(np.float32),
-            aureole.astype(np.uint8),
-            INPAINT_RADIUS_PX,
-            cv2.INPAINT_NS,
-        )
-    out[sky] = cloud
+    clear = sum(
+        c * t for c, t in zip(coefficients, _terms(elevation, cos_sun), strict=True)
+    )
+    share = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
+    share = share.astype(np.float32)
+    out[sky] = share if aureole is None else _filled(share, aureole)
     return out
+
+
+def _filled(share: np.ndarray, hole: np.ndarray) -> np.ndarray:
+    """`share` with `hole` carried in from round it (Bertalmio, Bertozzi & Sapiro,
+    "Navier-Stokes, fluid dynamics, and image and video inpainting", CVPR 2001).
+    OpenCV's Telea overshoots on float images."""
+    return cv2.inpaint(
+        share,
+        hole.astype(np.uint8),
+        max(1, round(INPAINT_RADIUS_DEG * share.shape[1] / 360.0)),
+        cv2.INPAINT_NS,
+    )

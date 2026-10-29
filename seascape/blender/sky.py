@@ -3,6 +3,7 @@
 import math
 
 import bpy
+import cv2
 import numpy as np
 
 from seascape.assets import download, skies
@@ -400,8 +401,7 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     h, w = rgba.shape[:2]
     bpy.data.images.remove(photo)
     f = max(1, w // THERMAL_SKY_PX)
-    rgb = rgba[: h // f * f, : w // f * f, :3]
-    rgb = rgb.reshape(h // f, f, w // f, f, 3).mean(axis=(1, 3))
+    rgb = cv2.resize(rgba, (w // f, h // f), interpolation=cv2.INTER_AREA)[..., :3]
     # Bottom row first, as Blender stores an image; `skies` reads top row first.
     cloud = skies.cloud(rgb[::-1], skies.library()[sky.hdri])[::-1]
     rows = cloud.shape[0]
