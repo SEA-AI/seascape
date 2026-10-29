@@ -23,7 +23,7 @@ def column(*t_k: float) -> np.ndarray:
 
 
 def linear() -> agc.Agc:
-    return agc.Agc(Agc(information_based=False, linear_fraction=1.0))
+    return agc.Agc(Agc(information_based=False, linear_fraction=1.0, ace=1.0))
 
 
 def test_a_frame_is_stretched_to_the_full_range() -> None:
@@ -45,8 +45,18 @@ def test_a_target_is_not_flattened_to_white(setting: Agc) -> None:
 
 
 @shipped
-def test_a_frame_of_one_temperature_is_mid_grey(setting: Agc) -> None:
-    assert agc.Agc(setting)(column(290.0, 290.0)).ravel().tolist() == [128, 128]
+def test_a_frame_of_one_temperature_is_mid_grey_bent_by_ace(setting: Agc) -> None:
+    mid = 255 * 0.5 ** (1 / setting.ace)
+    if setting.information_based:
+        mid = setting.detail_headroom + (255 - 2 * setting.detail_headroom) / 255 * mid
+    mid = round(mid)
+    assert agc.Agc(setting)(column(290.0, 290.0)).ravel().tolist() == [mid, mid]
+
+
+def test_ace_below_1_darkens() -> None:
+    t_k = np.linspace(280.0, 300.0, 256)[:, None] * np.ones((1, 8))
+    flat, dark = (agc.Agc(Agc(ace=ace))(t_k).mean() for ace in (1.0, 0.9))
+    assert dark < flat
 
 
 def test_a_hot_exhaust_leaves_the_scene_its_contrast() -> None:
@@ -83,6 +93,18 @@ def test_the_headroom_keeps_the_background_off_the_ends() -> None:
     t_k = np.linspace(280.0, 300.0, 256)[:, None] * np.ones((1, 8))
     grey = agc.Agc(Agc(detail_headroom=40))(t_k).astype(int)
     assert (grey.min(), grey.max()) == pytest.approx((40, 215), abs=1)
+
+
+def test_a_smooth_sea_gains_its_grain_no_more_than_a_hull() -> None:
+    """Detail takes one gain for the frame, not the curve's slope where the sea fills
+    the histogram."""
+    rng = np.random.default_rng(0)
+    t_k = 288.0 + rng.normal(0.0, 0.05, (128, 128))
+    ramp = np.linspace(280.0, 300.0, 64)[None, :]
+    t_k[:, 64:] = ramp + rng.normal(0.0, 0.05, (128, 64))
+    grey = agc.Agc(Agc())(t_k).astype(float)
+    grain = grey - cv2.GaussianBlur(grey, (0, 0), 2)
+    assert grain[:, 8:56].std() < 1.5 * grain[:, 72:120].std()
 
 
 def test_dde_gains_the_detail() -> None:

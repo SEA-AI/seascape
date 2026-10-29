@@ -93,19 +93,25 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
     slope = np.minimum(gain * slope, setting.max_gain)
     # Each count at the middle of its step, the curve centred on 127.5.
     level = 127.5 + np.cumsum(slope) - slope / 2 - slope.sum() / 2
+    level = 255.0 * np.clip(level / 255.0, 0.0, 1.0) ** (1.0 / setting.ace)
     return np.interp(np.arange(COUNTS), low + np.arange(level.size), level)
 
 
 def _grey(frame: Layers, curve: np.ndarray, setting: Setting) -> np.ndarray:
     """The background takes the curve, squeezed inside the detail headroom; detail
-    goes on top at the curve's slope there, times DDE."""
+    goes on top at the curve's mean slope over the frame, times DDE."""
     low, high = frame
     at = np.clip(np.rint(low), 0, COUNTS - 1).astype(np.int64)
     if high is None:
         return np.rint(curve[at]).astype(np.uint8)
     squeeze = (255 - 2 * setting.detail_headroom) / 255
     background = setting.detail_headroom + squeeze * curve[at]
-    detail = setting.dde * squeeze * np.gradient(curve)[at] * high
+    # One gain for the whole frame, as FLIR's detail-to-background ratio names it: the
+    # slope over the counts the frame holds, each once. At the local slope a smooth sea,
+    # steep where it fills the histogram, would gain its own grain twice; over the
+    # frame's span, a small hot exhaust would take the scene's detail away.
+    gain = np.gradient(curve)[np.unique(at)].mean()
+    detail = setting.dde * squeeze * gain * high
     return np.rint(np.clip(background + detail, 0, 255)).astype(np.uint8)
 
 

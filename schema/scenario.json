@@ -56,6 +56,33 @@
             }
           ]
         },
+        "ace": {
+          "title": "Ace",
+          "description": "Bends the curve toward dark below 1 and toward bright above, giving the hotter or the colder part of the scene more contrast.",
+          "default": 0.97,
+          "anyOf": [
+            {
+              "maximum": 4.0,
+              "minimum": 0.5,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "linear_fraction": {
           "title": "Linear Fraction",
           "description": "The share of the grey range spread evenly over the frame's temperatures; the rest follows its histogram. 1 is a linear stretch.",
