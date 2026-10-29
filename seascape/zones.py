@@ -423,10 +423,7 @@ def _uv_triangles(obj: bpy.types.Object) -> tuple[np.ndarray, np.ndarray]:
     face = faces.ints(mesh.loop_triangles, "polygon_index", n)
     if not mesh.uv_layers:
         return np.zeros((0, 3, 2)), np.zeros(0, dtype=np.int64)
-    uv = faces.floats(mesh.uv_layers.active.data, "uv", 2 * len(mesh.loops)).reshape(
-        -1, 2
-    )
-    return uv[loops], face
+    return faces.uv(mesh)[loops], face
 
 
 def _raster(

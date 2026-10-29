@@ -56,6 +56,13 @@ def floats(collection: Any, attribute: str, n: int) -> np.ndarray:
     return out
 
 
+def uv(mesh: bpy.types.Mesh) -> np.ndarray:
+    """Each loop's UV, (loops, 2), from the layer an image node with no Vector link
+    reads: the one marked for render, not the one active for editing."""
+    layer = next(u for u in mesh.uv_layers if u.active_render)
+    return floats(layer.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
+
+
 def _components(n: int, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Each node's connected component, as the smallest-numbered node reached in it."""
     label = np.arange(n)
@@ -94,8 +101,7 @@ def _face_components(
         ints(mesh.loops, "vertex_index", n_loops)
     ]
     if mesh.uv_layers:
-        uv = floats(mesh.uv_layers.active.data, "uv", 2 * n_loops).reshape(-1, 2)
-        key[:, 3:5] = np.round(uv * 1e6) * textured[material[face], None]
+        key[:, 3:5] = np.round(uv(mesh) * 1e6) * textured[material[face], None]
     # A vertex per material, so slots that meet stay apart.
     key[:, 5] = material[face]
     # One bytes value per row groups as `axis=0` does, in another order: islands are
@@ -225,8 +231,7 @@ def _input(
     total = ints(mesh.polygons, "loop_total", n_faces)[faces]
     first = np.cumsum(total) - total
     loops = np.repeat(start - first, total) + np.arange(total.sum())
-    uv = floats(mesh.uv_layers.active.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
-    centre = np.add.reduceat(uv[loops], first) / total[:, None]
+    centre = np.add.reduceat(uv(mesh)[loops], first) / total[:, None]
     x = np.clip((centre[:, 0] % 1.0 * width).astype(int), 0, width - 1)
     y = np.clip((centre[:, 1] % 1.0 * height).astype(int), 0, height - 1)
     return pixels[y, x, found.channel or 0] * found.scale
@@ -258,6 +263,11 @@ def source(socket: Any) -> Source | None:
     if node.type == "TEX_IMAGE":
         if node.image is None:
             return None
+        # Every reader samples the render UV layer as is.
+        if node.inputs["Vector"].is_linked:
+            raise ValueError(
+                f"{node.name}: its UVs come through a node no reader follows"
+            )
         return Source(node.image, 3 if out == "Alpha" else None, node, 1.0)
     if node.type == "MATH" and node.operation != "MULTIPLY":
         raise ValueError(f"{node.name}: a Math {node.operation} on a texture's way")

@@ -136,6 +136,21 @@ def test_a_rule_zones_the_islands_its_ranges_hold(
     assert [vocabulary[z] for z in zone] == expected
 
 
+def test_a_texture_whose_uvs_come_through_a_node_is_refused() -> None:
+    """A UV Map or Mapping node moves what the shader samples; no reader follows it."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    material = bpy.data.materials.new("m")
+    tree = material.node_tree
+    shader = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED")
+    texture = tree.nodes.new("ShaderNodeTexImage")
+    texture.image = bpy.data.images.new("t", 2, 2)
+    mapping = tree.nodes.new("ShaderNodeMapping")
+    tree.links.new(mapping.outputs["Vector"], texture.inputs["Vector"])
+    tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
+    with pytest.raises(ValueError, match="no reader follows"):
+        faces.source(shader.inputs["Base Color"])
+
+
 @pytest.mark.render
 @pytest.mark.parametrize("name", manifest())
 def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
