@@ -62,6 +62,7 @@ type FloatArray = npt.NDArray[np.float64]
 _TABLE_CSV = Path(__file__).parent / "data" / "water_nk.csv"
 _PATH_CSV = Path(__file__).parent / "data" / "lowtran_path.csv"
 _SKY_CSV = Path(__file__).parent / "data" / "lowtran_sky.csv"
+_HAZE_CSV = Path(__file__).parent / "data" / "lowtran_haze.csv"
 
 
 BAND_M = (8.0e-6, 14.0e-6)
@@ -402,23 +403,38 @@ def cloudy_sky_radiance(
     return clear + np.asarray(cloud) * transmitted * base
 
 
-@functools.lru_cache(maxsize=1)
-def _path_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
-    """Per profile: (range m, 1 / visibility km with 0 for no aerosol, optical depth),
-    the optical depth shaped (range, visibility) and the visibilities ascending."""
-    columns = header(_PATH_CSV)[1:]
+def haze_depth(
+    elev_rad: npt.ArrayLike,
+    visibility_km: float | None,
+    atmosphere: Atmosphere = ATMOSPHERE,
+) -> FloatArray:
+    """The maritime haze's optical depth looking up at `elev_rad`, linear in
+    1 / visibility, which is how LOWTRAN scales it. Under the table's shortest
+    visibility it holds."""
+    elev, inverse, depth = _depth_table(_HAZE_CSV)[atmosphere]
+    x = 0.0 if visibility_km is None else min(1 / visibility_km, inverse[-1])
+    column = np.array([np.interp(x, inverse, row) for row in depth])
+    return np.interp(np.asarray(elev_rad, dtype=np.float64), np.radians(elev), column)
+
+
+@functools.cache
+def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
+    """Per profile of a LOWTRAN transmittance table: (its first column, 1 / visibility
+    km with 0 for no aerosol, optical depth), the optical depth shaped (rows,
+    visibility) and the visibilities ascending."""
+    columns = header(csv)[1:]
     # "vis_2km" is maritime haze and "fog_1km" advection fog, on one axis.
     km = [c.partition("_")[2].removesuffix("km") for c in columns]
     inverse = np.array([1 / float(k) if k else 0.0 for k in km])  # "none" has no km
     order = np.argsort(inverse)
-    names = np.loadtxt(_PATH_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(
-        _PATH_CSV, delimiter=",", comments="#", usecols=range(1, 2 + len(columns))
-    )
+    names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
+    raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=range(1, 2 + len(km)))
     tables = {}
     for name in np.unique(names):
         rows = raw[names == name]
-        depth = -np.log(rows[:, 1:][:, order])
+        # An opaque cell is as deep as a float goes.
+        passed = np.maximum(rows[:, 1:][:, order], np.finfo(np.float64).tiny)
+        depth = -np.log(passed)
         rows.setflags(write=False)
         depth.setflags(write=False)
         tables[str(name)] = (rows[:, 0], inverse[order], depth)
@@ -438,7 +454,7 @@ def path_optical_depth(
     it. Short of the table it follows the power law of its first two rows: band depth
     grows as a power of the path, not linearly, while the strongest lines saturate.
     """
-    ranges, inverse, depth = _path_table()[atmosphere]
+    ranges, inverse, depth = _depth_table(_PATH_CSV)[atmosphere]
     x = 0.0 if visibility_km is None else 1 / visibility_km
     x = float(np.clip(x, inverse[0], inverse[-1]))
     at = np.array([np.interp(x, inverse, row) for row in depth])

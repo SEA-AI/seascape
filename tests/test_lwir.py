@@ -190,7 +190,7 @@ def test_a_path_of_no_length_keeps_all_its_light() -> None:
 
 
 def test_below_the_table_the_power_law_meets_it() -> None:
-    first = lwir._path_table()[atmosphere.ATMOSPHERE][0][0]
+    first = lwir._depth_table(lwir._PATH_CSV)[atmosphere.ATMOSPHERE][0][0]
     below, above = lwir.path_optical_depth([first * 0.999, first * 1.001], 42.0)
     assert below == pytest.approx(above, rel=1e-2)
 
@@ -232,15 +232,16 @@ def test_fog_takes_lwir_about_as_fast_as_visible_light_and_haze_does_not() -> No
 
 
 def test_a_fog_denser_than_the_table_is_held_at_its_densest() -> None:
-    densest = lwir._path_table()[atmosphere.ATMOSPHERE][1][-1]
+    densest = lwir._depth_table(lwir._PATH_CSV)[atmosphere.ATMOSPHERE][1][-1]
     held, below = (lwir.path_optical_depth(100.0, v) for v in (1 / densest, 0.01))
     assert held == below
 
 
-def test_every_atmosphere_has_a_sky_a_path_and_a_surface_air() -> None:
+def test_every_atmosphere_has_a_sky_a_haze_a_path_and_a_surface_air() -> None:
     names = set(get_args(atmosphere.Atmosphere.__value__))
     assert set(lwir._sky_table()[1]) == names
-    assert set(lwir._path_table()) == names
+    assert set(lwir._depth_table(lwir._HAZE_CSV)) == names
+    assert set(lwir._depth_table(lwir._PATH_CSV)) == names
     assert set(atmosphere.SURFACE_AIR_K) == names
 
 

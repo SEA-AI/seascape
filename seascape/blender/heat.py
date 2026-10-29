@@ -16,7 +16,7 @@ from seascape.config import (
     Scenario,
     Sky,
 )
-from seascape.physics import fog, lwir, thermal
+from seascape.physics import aerosol, lwir, thermal
 
 # Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
 # fabric and wood scatter it. ponytail: dull stainless, as thermal takes it, is rougher
@@ -93,10 +93,6 @@ def surroundings(scenario: Scenario) -> Heat:
     clouds = 0.0
     if sky.hdri is not None:
         clouds = bpy.data.images["cloudy_sky_radiance"]["cloud_fraction"]
-    fog_cover = 0.0
-    if sky.fog:
-        assert sky.visibility_km is not None
-        fog_cover = fog.cover(sky.visibility_km, sky.atmosphere)
     env = thermal.Environment(
         t_air_k=sky.t_air_k,
         t_sea_k=scenario.sea.t_skin_k(sky.sun_up),
@@ -105,11 +101,9 @@ def surroundings(scenario: Scenario) -> Heat:
         wind_m_s=scenario.sea.wind_speed_mps,
         sun_elevation_rad=None if elevation is None else math.radians(elevation),
         cloud_fraction=clouds,
-        fog_cover=fog_cover,
+        fog_cover=aerosol.fog_cover(sky.visibility_km, sky.atmosphere),
         beam_transmittance=sky.sun_transmittance,
-        fog_diffuse_transmittance=(
-            fog.diffuse_transmittance(sky.extinction_per_m) if sky.fog else 1.0
-        ),
+        fog_diffuse_transmittance=aerosol.diffuse_transmittance(sky.visibility_km),
     )
     sun = sky.sun_vector if elevation is not None and elevation > 0 else None
     return Heat(env, scenario.sea.t_sea_k, sun)

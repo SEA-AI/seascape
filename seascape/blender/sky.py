@@ -21,7 +21,7 @@ from seascape.config import (
     Band,
     Sky,
 )
-from seascape.physics import fog, lwir
+from seascape.physics import aerosol, lwir
 
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
@@ -41,9 +41,11 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     ray = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
     if sky.hdri is not None:
         # A photo's sun is its pixels: in fog it greys with the rest.
-        direction = _horizon(tree, ray) if sky.fog else ray
-        colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, direction)
-        tree.links.new(_grey(tree, colour) if sky.fog else colour, background)
+        colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, ray)
+        if sky.fog_weight:
+            horizon = _photo(tree, sky.hdri, sky.sun_bearing_deg, _horizon(tree, ray))
+            colour = _misted(tree, sky, colour, horizon)
+        tree.links.new(colour, background)
         return world
     node = _sky_texture(tree, sky)
     for prop in SUN:
@@ -51,25 +53,24 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
         drive(node, prop, "sky", world, sky=f'["{prop}"]')
     for prop in SUN[:2]:
         world.id_properties_ui(prop).update(subtype="ANGLE")
-    if not sky.fog:
+    if not sky.fog_weight:
         tree.links.new(node.outputs["Color"], background)
         return world
+    clear = _clear_eo(tree, sky, world, ray)
     # The sun's disc alone: the sky with it less the sky without.
-    disc = vector(
-        tree, "SUBTRACT", node.outputs["Color"], _clear_eo(tree, sky, world, ray)
-    )
+    disc = vector(tree, "SUBTRACT", node.outputs["Color"], clear)
     kept = tree.nodes.new("ShaderNodeValue")
     kept.name = "fog_sun"
     kept.outputs["Value"].default_value = sky.sun_transmittance
-    # fog.sun_transmittance, as the sun moves.
+    # aerosol.sun_transmittance, as the sun moves.
     drive(
         kept.outputs["Value"],
         "default_value",
-        f"exp(-{sky.extinction_per_m * fog.DEPTH_M!r} / max(sin(e), 1e-6))",
+        f"exp(-{aerosol.fog_beam_depth(sky.visibility_km)!r} / max(sin(e), 1e-6))",
         world,
         e=f'["{SUN[0]}"]',
     )
-    dome = _grey(tree, _clear_eo(tree, sky, world, _horizon(tree, ray)))
+    dome = _misted(tree, sky, clear, _clear_eo(tree, sky, world, _horizon(tree, ray)))
     sun = vector(tree, "SCALE", disc, kept.outputs["Value"])
     tree.links.new(vector(tree, "ADD", dome, sun), background)
     return world
@@ -97,6 +98,21 @@ def _horizon(
     """The horizon under or over `direction`."""
     flat = vector(tree, "MULTIPLY", direction, (1.0, 1.0, 0.0))
     return vector(tree, "NORMALIZE", flat)
+
+
+def _misted(
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    colour: bpy.types.NodeSocket,
+    horizon: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """The clear sky's `colour` greyed by `Sky.fog_weight` toward the fog's grey of
+    `horizon`, the clear sky on the horizon under or over it."""
+    grey = _grey(tree, horizon)
+    if sky.fog_weight == 1.0:
+        return grey
+    toward = vector(tree, "SUBTRACT", grey, colour)
+    return vector(tree, "ADD", colour, vector(tree, "SCALE", toward, sky.fog_weight))
 
 
 def _grey(
@@ -254,14 +270,17 @@ def _sky_ahead(
     """The band's sky in `direction`."""
     if band == "ir":
         return _ir_sky(tree, sky, direction)
-    if sky.fog:
-        direction = _horizon(tree, direction)
-    if sky.hdri is not None:
-        colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, direction)
-    else:
-        colour = _clear_eo(tree, sky, bpy.context.scene.world, direction)
+
+    def clear(toward: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        if sky.hdri is not None:
+            return _photo(tree, sky.hdri, sky.sun_bearing_deg, toward)
+        colour = _clear_eo(tree, sky, bpy.context.scene.world, toward)
         colour.node.name = "haze_sky"
-    return _grey(tree, colour) if sky.fog else colour
+        return colour
+
+    if not sky.fog_weight:
+        return clear(direction)
+    return _misted(tree, sky, clear(direction), clear(_horizon(tree, direction)))
 
 
 def _haze_ranges_m(far_m: float) -> np.ndarray:
@@ -321,16 +340,13 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
 
 
 def _table_sky(sky: Sky, elevation: np.ndarray) -> np.ndarray:
-    """`lwir.sky_radiance` at `elevation`, through the fog if there is one."""
+    """`lwir.sky_radiance` at `elevation`, through the aerosol."""
     radiance = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
-    return _fogged(sky, radiance, elevation)
+    return _hazed(sky, radiance, elevation)
 
 
-def _fogged(sky: Sky, radiance: np.ndarray, elevation: np.ndarray) -> np.ndarray:
-    if not sky.fog:
-        return radiance
-    assert sky.visibility_km is not None
-    return fog.sky_radiance(
+def _hazed(sky: Sky, radiance: np.ndarray, elevation: np.ndarray) -> np.ndarray:
+    return aerosol.sky_radiance(
         radiance, elevation, sky.visibility_km, sky.t_air_k, sky.atmosphere
     )
 
@@ -357,7 +373,7 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
         elevation[:, None], cloud, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
     )
     image = curve_image(
-        "cloudy_sky_radiance", _fogged(sky, radiance, elevation[:, None])
+        "cloudy_sky_radiance", _hazed(sky, radiance, elevation[:, None])
     )
     # As a horizontal surface sees the sky: each row by its projected solid angle.
     up = elevation > 0
