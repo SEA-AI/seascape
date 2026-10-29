@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  # Whether a pull request touches anything but images, which nothing checks.
+  # No check reads an image; the tests read the docs' Markdown.
   changes:
     name: Changes
     if: github.event_name == 'pull_request'
