@@ -66,7 +66,7 @@ island_digest = "a6c3a5bae7ac1fbe"
 # Its rails and trim are the glossy islands the atlas marks metallic.
 [[yacht.zones.rules]]
 material = "01_-_Default"
-metallic = [0.5, 1.0]
+metallic = [0.25, 1.0]
 roughness = [0.0, 0.25]
 zone = "bare_metal"
 

@@ -106,7 +106,7 @@ def _textures() -> None:
             continue
         source = faces.source(bsdf.inputs["Base Color"])
         if source is not None:
-            material.node_tree.nodes.active = source[2]
+            material.node_tree.nodes.active = source.node
         else:
             material.diffuse_color = (*bsdf.inputs["Base Color"].default_value[:3], 1)
 
@@ -492,7 +492,7 @@ def _input(
         if socket == "Base Color":
             return {"colour": _hex(_srgb(np.array(value[:3])))}
         return {"value": round(float(value), 3)}
-    image, channel, _ = source
+    image = source.image
     texels = _texels(image)
     covered = _raster(texels.shape[:2], triangles) >= 0
     if not covered.any():
@@ -505,7 +505,7 @@ def _input(
         is_linear = image.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}
         out["colour"] = _hex(_srgb(mean) if is_linear else mean)
     else:
-        out |= _channel_stats(picked[:, channel if channel is not None else 0])
+        out |= _channel_stats(picked[:, source.channel or 0] * source.scale)
     return out
 
 
@@ -639,7 +639,7 @@ def _island_records(
             "faces": i.faces,
             "triangles": int(triangles[i.id]),
             "colour": colour[i.id],
-            **{k: round(float(v[i.id]), 2) for k, v in channels.items()},
+            **{k: float(v[i.id]) for k, v in channels.items()},
             "height_m": [round(float(h), 2) for h in heights[i.id]],
         }
         for i in found.islands

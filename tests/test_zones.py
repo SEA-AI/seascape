@@ -85,8 +85,9 @@ def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
     assert len({label[0], label[2], label[3]}) == 3
 
 
-def test_a_rule_zones_the_islands_its_ranges_hold() -> None:
-    """Three loose triangles, two over a metal texel; the listed island still wins."""
+def _three_triangles(factor: float) -> faces.Parts:
+    """Three loose triangles, the first and last over a metal texel, its metallic read
+    through a Math node multiplying by `factor`, as glTF imports a metallic factor."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
     mesh = bpy.data.meshes.new("probe")
@@ -107,18 +108,32 @@ def test_a_rule_zones_the_islands_its_ranges_hold() -> None:
     texture = tree.nodes.new("ShaderNodeTexImage")
     texture.image = image
     split = tree.nodes.new("ShaderNodeSeparateColor")
+    scale = tree.nodes.new("ShaderNodeMath")
+    scale.operation = "MULTIPLY"
+    scale.inputs[1].default_value = factor
     tree.links.new(texture.outputs["Color"], split.inputs["Color"])
-    tree.links.new(split.outputs["Blue"], shader.inputs["Metallic"])
+    tree.links.new(split.outputs["Blue"], scale.inputs[0])
+    tree.links.new(scale.outputs["Value"], shader.inputs["Metallic"])
     mesh.materials.append(material)
-    obj = bpy.data.objects.new("probe", mesh)
-    found = faces.found([obj])
+    return faces.found([bpy.data.objects.new("probe", mesh)])
+
+
+@pytest.mark.parametrize(
+    ("factor", "expected"),
+    [(1.0, ["bare_metal", "deck", "glass"]), (0.4, ["deck", "deck", "glass"])],
+)
+def test_a_rule_zones_the_islands_its_ranges_hold(
+    factor: float, expected: list[str]
+) -> None:
+    """A rule reads metallic as the shader does, factor applied; the listed island
+    still wins."""
     zones_ = Zones.model_validate(
         {"materials": {"m": "deck"}, **NUMBERED, "islands": {"2": "glass"}}
         | {"rules": [{"material": "m", "metallic": [0.5, 1.0], "zone": "bare_metal"}]}
     )
     vocabulary = list(get_args(ZoneName.__value__))
-    (zone,) = faces.face_zones(found, zones_)
-    assert [vocabulary[z] for z in zone] == ["bare_metal", "deck", "glass"]
+    (zone,) = faces.face_zones(_three_triangles(factor), zones_)
+    assert [vocabulary[z] for z in zone] == expected
 
 
 @pytest.mark.render

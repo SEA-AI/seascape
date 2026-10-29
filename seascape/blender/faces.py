@@ -6,8 +6,9 @@ touch at a vertex, and also at a UV where the material is textured.
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import Any, NamedTuple, get_args
 
 import bpy
 import numpy as np
@@ -208,17 +209,16 @@ def _input(
     images: dict[str, np.ndarray],
 ) -> np.ndarray:
     """`name`'s `socket` at each of `faces`: the nearest texel to the face's mean UV,
-    red where the link is colour, or its flat value."""
+    red where the link is colour, times the factors on its way; or its flat value."""
     shader = bsdf(bpy.data.materials.get(name)) if name else None
     if shader is None:
         return np.zeros(len(faces))
     found = source(shader.inputs[socket])
     if found is None or not mesh.uv_layers:
         return np.full(len(faces), float(shader.inputs[socket].default_value))
-    image, channel, _ = found
-    if image.name not in images:
-        images[image.name] = blend.pixels(image)
-    pixels = images[image.name]
+    if found.image.name not in images:
+        images[found.image.name] = blend.pixels(found.image)
+    pixels = images[found.image.name]
     height, width = pixels.shape[:2]
     n_faces = len(mesh.polygons)
     start = ints(mesh.polygons, "loop_start", n_faces)[faces]
@@ -229,7 +229,7 @@ def _input(
     centre = np.add.reduceat(uv[loops], first) / total[:, None]
     x = np.clip((centre[:, 0] % 1.0 * width).astype(int), 0, width - 1)
     y = np.clip((centre[:, 1] % 1.0 * height).astype(int), 0, height - 1)
-    return pixels[y, x, 0 if channel is None else channel]
+    return pixels[y, x, found.channel or 0] * found.scale
 
 
 def bsdf(material: bpy.types.Material) -> Any:
@@ -240,21 +240,37 @@ def bsdf(material: bpy.types.Material) -> Any:
     )
 
 
-def source(socket: Any) -> tuple[bpy.types.Image, int | None, Any] | None:
+class Source(NamedTuple):
+    image: bpy.types.Image
+    channel: int | None  # None for colour
+    node: Any
+    scale: float  # what the shader multiplies the texel by
+
+
+def source(socket: Any) -> Source | None:
     """The first image upstream of `socket`, following each node's first linked input
-    but not into groups; its channel, None for colour; and its node."""
+    but not into groups, and the factors a Math node multiplies it by on the way: glTF
+    imports a metallic or roughness factor as one."""
     if not socket.is_linked:
         return None
     link = socket.links[0]
     node, out = link.from_node, link.from_socket.name
     if node.type == "TEX_IMAGE":
-        return (node.image, 3 if out == "Alpha" else None, node) if node.image else None
+        if node.image is None:
+            return None
+        return Source(node.image, 3 if out == "Alpha" else None, node, 1.0)
+    if node.type == "MATH" and node.operation != "MULTIPLY":
+        raise ValueError(f"{node.name}: a Math {node.operation} on a texture's way")
     channel = {"Red": 0, "Green": 1, "Blue": 2}.get(out)
     for socket_in in node.inputs:
         upstream = source(socket_in)
         if upstream is not None:
-            image, inner, tex = upstream
-            return image, channel if channel is not None else inner, tex
+            if node.type == "MATH":
+                factors = [i.default_value for i in node.inputs[:2] if not i.is_linked]
+                upstream = upstream._replace(scale=upstream.scale * math.prod(factors))
+            if channel is not None:
+                upstream = upstream._replace(channel=channel)
+            return upstream
     return None
 
 
@@ -262,7 +278,7 @@ def texture(name: str) -> bpy.types.Image | None:
     """The image a material's base colour reads, if any."""
     shader = bsdf(bpy.data.materials.get(name)) if name else None
     found = source(shader.inputs["Base Color"]) if shader is not None else None
-    return found[0] if found is not None else None
+    return found.image if found is not None else None
 
 
 def check(name: str, found: Parts, zones: Zones) -> None:
