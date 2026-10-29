@@ -329,9 +329,20 @@ def _optical_depth(
     point's distance; its true start needs the path's length so far, which a shader
     cannot read.
     """
-    length = tree.nodes.new("ShaderNodeLightPath").outputs["Ray Length"]
+    light_path = tree.nodes.new("ShaderNodeLightPath")
+    secondary = scalar(tree, "SUBTRACT", 1.0, light_path.outputs["Is Camera Ray"])
+    distance = tree.nodes.new("ShaderNodeCameraData").outputs["View Distance"]
+    # Cycles starts a camera ray at the near plane; the air starts at the lens.
+    start = scalar(
+        tree,
+        "MULTIPLY",
+        scalar(tree, "SUBTRACT", distance, light_path.outputs["Ray Length"]),
+        secondary,
+        name="haze_start",
+    )
     if band == "eo":
-        return scalar(tree, "MULTIPLY", length, sky.extinction_per_m, name="haze_beta")
+        path = scalar(tree, "SUBTRACT", distance, start)
+        return scalar(tree, "MULTIPLY", path, sky.extinction_per_m, name="haze_beta")
     ranges = _haze_ranges_m(far_m)
     image = curve_image(
         "haze_depth", lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
@@ -345,12 +356,9 @@ def _optical_depth(
         texel = scalar(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
         return lookup(tree, image, texel)
 
-    distance = tree.nodes.new("ShaderNodeVectorMath")
-    distance.operation = "LENGTH"
-    camera = tree.nodes.new("ShaderNodeTexCoord").outputs["Camera"]
-    tree.links.new(camera, distance.inputs["Vector"])
-    start = scalar(tree, "SUBTRACT", distance.outputs["Value"], length)
-    return scalar(tree, "SUBTRACT", at(distance.outputs["Value"]), at(start))
+    # at(0) reads the depth to HAZE_NEAR_M, not 0.
+    behind = scalar(tree, "MULTIPLY", at(start), secondary)
+    return scalar(tree, "SUBTRACT", at(distance), behind)
 
 
 def _sky_image(sky: Sky) -> bpy.types.Image:
