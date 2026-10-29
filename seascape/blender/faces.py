@@ -13,6 +13,7 @@ import bpy
 import numpy as np
 
 from seascape.assets import Zones
+from seascape.blender import blend
 from seascape.physics.thermal import ZoneName
 
 
@@ -159,14 +160,76 @@ def face_zones(parts: Parts, zones: Zones) -> list[np.ndarray]:
         [vocabulary.index(zones.materials[m]) for m in parts.materials]
     )
     by_island = np.array(
-        [
-            vocabulary.index(zones.islands[i.id])
-            if i.id in zones.islands
-            else by_material[parts.materials.index(i.material)]
-            for i in parts.islands
-        ]
+        [by_material[parts.materials.index(i.material)] for i in parts.islands]
     )
+    means: dict[str, np.ndarray] = {}
+    material = np.array([i.material for i in parts.islands])
+    # Applied last to first, so the first rule an island matches wins.
+    for rule in reversed(zones.rules):
+        hit = material == rule.material
+        for channel, (low, high) in rule.ranges.items():
+            if channel not in means:
+                means[channel] = island_means(parts, CHANNELS[channel])
+            hit &= (means[channel] >= low) & (means[channel] <= high)
+        by_island[hit] = vocabulary.index(rule.zone)
+    for i, zone in zones.islands.items():
+        by_island[i] = vocabulary.index(zone)
     return [by_island[island] for island in parts.face_island]
+
+
+# A rule's channels, by the Principled BSDF input each reads.
+CHANNELS = {"metallic": "Metallic", "roughness": "Roughness", "alpha": "Alpha"}
+
+
+def island_means(parts: Parts, socket: str) -> np.ndarray:
+    """Each island's mean of a Principled BSDF input over its faces, read at each
+    face's mean UV."""
+    total = np.zeros(len(parts.islands))
+    count = np.zeros(len(parts.islands))
+    images: dict[str, np.ndarray] = {}  # objects share an atlas: read it once
+    for obj, material, island in zip(
+        parts.objects, parts.face_material, parts.face_island, strict=True
+    ):
+        value = np.zeros(len(island))
+        for m, name in enumerate(parts.materials):
+            on = np.flatnonzero(material == m)
+            if len(on):
+                value[on] = _input(obj.data, name, socket, on, images)
+        total += np.bincount(island, value, len(parts.islands))
+        count += np.bincount(island, minlength=len(parts.islands))
+    return total / np.maximum(count, 1)
+
+
+def _input(
+    mesh: bpy.types.Mesh,
+    name: str,
+    socket: str,
+    faces: np.ndarray,
+    images: dict[str, np.ndarray],
+) -> np.ndarray:
+    """`name`'s `socket` at each of `faces`: the nearest texel to the face's mean UV,
+    red where the link is colour, or its flat value."""
+    shader = bsdf(bpy.data.materials.get(name)) if name else None
+    if shader is None:
+        return np.zeros(len(faces))
+    found = source(shader.inputs[socket])
+    if found is None or not mesh.uv_layers:
+        return np.full(len(faces), float(shader.inputs[socket].default_value))
+    image, channel, _ = found
+    if image.name not in images:
+        images[image.name] = blend.pixels(image)
+    pixels = images[image.name]
+    height, width = pixels.shape[:2]
+    n_faces = len(mesh.polygons)
+    start = ints(mesh.polygons, "loop_start", n_faces)[faces]
+    total = ints(mesh.polygons, "loop_total", n_faces)[faces]
+    first = np.cumsum(total) - total
+    loops = np.repeat(start - first, total) + np.arange(total.sum())
+    uv = floats(mesh.uv_layers.active.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
+    centre = np.add.reduceat(uv[loops], first) / total[:, None]
+    x = np.clip((centre[:, 0] % 1.0 * width).astype(int), 0, width - 1)
+    y = np.clip((centre[:, 1] % 1.0 * height).astype(int), 0, height - 1)
+    return pixels[y, x, 0 if channel is None else channel]
 
 
 def bsdf(material: bpy.types.Material) -> Any:

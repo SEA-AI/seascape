@@ -38,8 +38,39 @@ class File(Model):
     sha256: str = Field(pattern=SHA256)
 
 
+Range = Annotated[tuple[float, float], Field(description="Lowest and highest, 0-1.")]
+
+
+class Rule(Model):
+    """A zone for the islands of one material whose means of its Principled BSDF
+    inputs all fall in the given ranges. Scoped to a material, since a map one slot
+    gets right another may not."""
+
+    model_config = ConfigDict(frozen=True)
+
+    material: str
+    zone: ZoneName
+    metallic: Range | None = None
+    roughness: Range | None = None
+    alpha: Range | None = None
+
+    @model_validator(mode="after")
+    def _bounded(self) -> "Rule":
+        if not self.ranges:
+            raise ValueError("a rule needs a range")
+        if any(not 0.0 <= lo <= hi <= 1.0 for lo, hi in self.ranges.values()):
+            raise ValueError("a range runs low to high within 0-1")
+        return self
+
+    @property
+    def ranges(self) -> dict[str, tuple[float, float]]:
+        channels = ("metallic", "roughness", "alpha")
+        return {k: v for k in channels if (v := getattr(self, k)) is not None}
+
+
 class Zones(Model):
-    """Each material's zone, and the islands that differ from their material's.
+    """Each material's zone, and the islands that differ from their material's: those
+    listed, then those the first matching rule names.
 
     An island is the faces of one material in one object that touch at a vertex, and at
     a UV where the material is textured, numbered by object name, then first face, as
@@ -54,6 +85,7 @@ class Zones(Model):
     island_count: int | None = Field(default=None, ge=1)
     island_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
     islands: dict[int, ZoneName] = Field(default_factory=dict)
+    rules: list[Rule] = Field(default_factory=list)
 
     @field_validator("islands", mode="before")
     @classmethod
@@ -76,6 +108,8 @@ class Zones(Model):
             not 0 <= i < self.island_count for i in self.islands
         ):
             raise ValueError(f"an island id is outside 0-{self.island_count - 1}")
+        if unknown := {r.material for r in self.rules} - set(self.materials):
+            raise ValueError(f"a rule names no material of these: {sorted(unknown)}")
         return self
 
 

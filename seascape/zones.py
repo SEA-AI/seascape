@@ -628,6 +628,8 @@ def _island_records(
             colour[j] = _hex(sums[j] / counts[j])
         texels = np.bincount(cover.ravel() + 1, minlength=n + 1)[1:]
         atlases[source.name] = _atlas(rgb, cover, texels)
+    # A rule's inputs, so one can be written from islands.json.
+    channels = {k: faces.island_means(found, s) for k, s in faces.CHANNELS.items()}
     records = [
         {
             "island": i.id,
@@ -637,6 +639,7 @@ def _island_records(
             "faces": i.faces,
             "triangles": int(triangles[i.id]),
             "colour": colour[i.id],
+            **{k: round(float(v[i.id]), 2) for k, v in channels.items()},
             "height_m": [round(float(h), 2) for h in heights[i.id]],
         }
         for i in found.islands
@@ -774,8 +777,8 @@ def _safe(text: str) -> str:
 def _summary(record: dict[str, Any]) -> str:
     low, high = record["height_m"]
     base = record.get("base_colour", {}).get("colour") or record.get("colour", "")
-    alpha = record.get("alpha", {})
-    a = alpha.get("value", alpha.get("mean", 1.0))
+    alpha = record.get("alpha", 1.0)  # an island's mean, or a slot's stats
+    a = alpha if isinstance(alpha, float) else alpha.get("value", alpha.get("mean"))
     span = f"{low:.1f} to {high:.1f} m"
     return f"{record['triangles']:,} tris, {span}, colour {base}, alpha {a}"
 

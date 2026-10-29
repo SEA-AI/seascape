@@ -46,6 +46,14 @@ NUMBERED = {"island_count": 3, "island_digest": DIGEST}
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"0": "glass"}}
         | {"island_digest": "not hex"},
         {"materials": {}},
+        {
+            "materials": {"hull": "deck"},
+            "rules": [{"material": "hull", "zone": "glass"}],
+        },
+        {"materials": {"hull": "deck"}}
+        | {"rules": [{"material": "hull", "alpha": [0.6, 0.4], "zone": "glass"}]},
+        {"materials": {"hull": "deck"}}
+        | {"rules": [{"material": "other", "alpha": [0, 0.5], "zone": "glass"}]},
     ],
 )
 def test_zones_outside_the_rules_are_refused(body: dict) -> None:
@@ -75,6 +83,42 @@ def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
     label = faces._face_components(mesh, material, np.array([False, False]))
     assert label[0] == label[1]
     assert len({label[0], label[2], label[3]}) == 3
+
+
+def test_a_rule_zones_the_islands_its_ranges_hold() -> None:
+    """Three loose triangles, two over a metal texel; the listed island still wins."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+    mesh = bpy.data.meshes.new("probe")
+    mesh.from_pydata(
+        [(x + 5 * k, y, z) for k in range(3) for x, y, z in vertices],
+        [],
+        [(0, 1, 2), (3, 4, 5), (6, 7, 8)],
+    )
+    uv = mesh.uv_layers.new()
+    for loop, u in zip(uv.data, [0.25] * 3 + [0.75] * 3 + [0.25] * 3, strict=True):
+        loop.uv = (u, 0.5)
+    image = bpy.data.images.new("metal", 2, 1)
+    image.colorspace_settings.name = "Non-Color"
+    image.pixels = [0, 0, 1, 1, 0, 0, 0, 1]  # metal left, dielectric right, in blue
+    material = bpy.data.materials.new("m")
+    tree = material.node_tree
+    shader = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED")
+    texture = tree.nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    split = tree.nodes.new("ShaderNodeSeparateColor")
+    tree.links.new(texture.outputs["Color"], split.inputs["Color"])
+    tree.links.new(split.outputs["Blue"], shader.inputs["Metallic"])
+    mesh.materials.append(material)
+    obj = bpy.data.objects.new("probe", mesh)
+    found = faces.found([obj])
+    zones_ = Zones.model_validate(
+        {"materials": {"m": "deck"}, **NUMBERED, "islands": {"2": "glass"}}
+        | {"rules": [{"material": "m", "metallic": [0.5, 1.0], "zone": "bare_metal"}]}
+    )
+    vocabulary = list(get_args(ZoneName.__value__))
+    (zone,) = faces.face_zones(found, zones_)
+    assert [vocabulary[z] for z in zone] == ["bare_metal", "deck", "glass"]
 
 
 @pytest.mark.render
