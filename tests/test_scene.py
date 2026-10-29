@@ -52,7 +52,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import atmosphere, earth, lwir, thermal, waves
+from seascape.physics import aerosol, atmosphere, earth, lwir, thermal, waves
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
@@ -848,7 +848,10 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     scene.build(tropical, "ir")
     sky = tropical.sky
     centres = (np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES
-    expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, "tropical")
+    clear = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, "tropical")
+    expected = aerosol.sky_radiance(
+        clear, np.arcsin(centres), sky.visibility_km, sky.t_air_k, "tropical"
+    )
     assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
     ranges = _haze_ranges_m(bpy.context.scene.camera.data.clip_end)
     depth = lwir.path_optical_depth(ranges, sky.visibility_km, "tropical")
@@ -947,7 +950,11 @@ class TestIrBand:
 
         centres = (np.arange(len(curve)) + 0.5) / len(curve)
         sky = SCENARIO.sky
-        expected = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, sky.atmosphere)
+        elevation = np.arcsin(centres)
+        clear = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+        expected = aerosol.sky_radiance(
+            clear, elevation, sky.visibility_km, sky.t_air_k, sky.atmosphere
+        )
         assert curve == pytest.approx(expected, rel=1e-5)
         ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
         assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"
@@ -1863,8 +1870,11 @@ class TestPhotographedThermalSky:
         image.pixels.foreach_get(pixels)
         top = pixels.reshape(h, w, 4)[-1, :, 0]
         sky = variant(sky={"hdri": "overcast_soil"}).sky
-        expected = lwir.cloudy_sky_radiance(
+        cloud = lwir.cloudy_sky_radiance(
             np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+        )
+        expected = aerosol.sky_radiance(
+            cloud, np.pi / 2, sky.visibility_km, sky.t_air_k, sky.atmosphere
         )
         assert top == pytest.approx(float(expected), rel=1e-3)
 
@@ -2130,3 +2140,78 @@ def test_a_combine_xyz_refuses_a_fourth_component() -> None:
             blend.combine(tree, 1.0, 2.0, 3.0, 4.0)
     finally:
         bpy.data.node_groups.remove(tree)
+
+
+FOG = {"visibility_km": 0.5}
+
+
+def test_in_fog_the_eo_sky_is_its_horizon_s_grey_and_the_sun_dims() -> None:
+    fog_ = variant(sky=FOG)
+    scene.build(fog_, "eo")
+    world = bpy.data.worlds["sky"]
+    tree = world.node_tree
+    feeding = upstream(tree.nodes["Background"].inputs["Color"])
+    assert any(tree.nodes[n].bl_idname == "ShaderNodeRGBToBW" for n in feeding)
+    kept = tree.nodes["fog_sun"].outputs["Value"]
+    assert kept.default_value == pytest.approx(fog_.sky.sun_transmittance, rel=1e-5)
+    world["sun_elevation"] = math.radians(60.0)
+    world.update_tag()
+    bpy.context.view_layer.update()
+    moved = aerosol.sun_transmittance(math.radians(60.0), 0.5)
+    assert kept.default_value == pytest.approx(moved, rel=1e-5)
+    haze = bpy.data.node_groups["haze"].nodes
+    airlight = upstream(haze["haze_airlight"].inputs["Color"])
+    assert any(haze[n].bl_idname == "ShaderNodeRGBToBW" for n in airlight)
+    assert sea_light(fog_.sky, "eo").sun == fog_.sky.sun_vector
+
+
+def test_in_mist_the_eo_sky_is_part_way_to_fog_s_grey() -> None:
+    mist = variant(sky={"visibility_km": 1.5})
+    scene.build(mist, "eo")
+    tree = bpy.data.worlds["sky"].node_tree
+    feeding = upstream(tree.nodes["Background"].inputs["Color"])
+    nodes = [tree.nodes[n] for n in feeding]
+    weights = [
+        n.inputs["Scale"].default_value
+        for n in nodes
+        if n.bl_idname == "ShaderNodeVectorMath" and n.operation == "SCALE"
+    ]
+    assert any(w == pytest.approx(mist.sky.fog_weight) for w in weights)
+    assert any(tree.nodes[n].bl_idname == "ShaderNodeRGBToBW" for n in feeding)
+
+
+def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
+    fog_ = variant(sky=FOG)
+    scene.build(fog_, "ir")
+    sky = fog_.sky
+    elevation = np.arcsin((np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES)
+    clear = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+    expected = aerosol.sky_radiance(clear, elevation, 0.5, sky.t_air_k, sky.atmosphere)
+    assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
+    assert _sky_round(sky, None)[1] == pytest.approx(expected)
+    env = surroundings(fog_).env
+    assert env.fog_cover == pytest.approx(aerosol.cover(0.5, sky.atmosphere))
+    assert env.beam_transmittance == pytest.approx(sky.sun_transmittance)
+    assert env.fog_sunlight_transmittance == pytest.approx(
+        aerosol.diffuse_transmittance(0.5)
+    )
+    assert 0.0 < sky.sun_transmittance < 1.0
+
+
+def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
+    path = tmp_path / "white.hdr"
+    image = bpy.data.images.new("white", 64, 32, float_buffer=True)
+    image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+    image.filepath_raw = str(path)
+    image.file_format = "HDR"
+    image.save()
+    sky = variant(sky={"hdri": "overcast_soil", **FOG}).sky
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("seascape.blender.sky.download", lambda *_: path)
+        scene.build(variant(sky={"hdri": "overcast_soil", **FOG}), "ir")
+    top = baked("cloudy_sky_radiance")[-1]
+    cloud = lwir.cloudy_sky_radiance(
+        np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+    )
+    expected = aerosol.sky_radiance(cloud, np.pi / 2, 0.5, sky.t_air_k, sky.atmosphere)
+    assert top == pytest.approx(float(expected), rel=1e-3)

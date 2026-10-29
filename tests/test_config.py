@@ -667,6 +667,13 @@ def test_over_the_visibility_a_dark_target_keeps_two_percent_contrast() -> None:
     assert Sky(visibility_km=None).extinction_per_m == 0.0
 
 
+def test_fog_is_a_visibility_under_a_kilometre_and_haze_over_two() -> None:
+    assert Sky(visibility_km=0.999).fog_weight == 1.0
+    assert 0.0 < Sky(visibility_km=1.5).fog_weight < 1.0
+    assert Sky(visibility_km=2.0).fog_weight == 0.0
+    assert Sky(visibility_km=None).fog_weight == 0.0
+
+
 def test_the_air_takes_its_atmosphere_s_temperature_unless_set() -> None:
     assert Sky().t_air_k == atmosphere.SURFACE_AIR_K[atmosphere.ATMOSPHERE]
     assert Sky(atmosphere="tropical").t_air_k == atmosphere.SURFACE_AIR_K["tropical"]

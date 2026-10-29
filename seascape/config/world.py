@@ -12,7 +12,7 @@ from pydantic import (
 
 from seascape.assets import skies
 from seascape.model import Model
-from seascape.physics import skin
+from seascape.physics import aerosol, skin
 from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
 
@@ -147,8 +147,8 @@ class Sky(Model):
     the sea reflects in IR.
 
     Haze is `visibility_km`, in the air between the camera and what it sees, in both
-    bands. In LWIR, `atmosphere` adds its water vapour, shapes the sky, and gives
-    `t_air_k` unless it is set.
+    bands, and overhead. In LWIR, `atmosphere` adds its water vapour, shapes the sky,
+    and gives `t_air_k` unless it is set.
     """
 
     sun_elevation_deg: float | None = Field(
@@ -175,7 +175,8 @@ class Sky(Model):
     visibility_km: float | None = Field(
         default=VISIBILITY_KM,
         gt=0.0,
-        description="Meteorological range at 550 nm; None is no aerosol.",
+        description="Meteorological range at 550 nm; None is no aerosol. Under "
+        f"{aerosol.FOG_KM:g} km it is fog, in both bands.",
     )
     atmosphere: Atmosphere = Field(
         default=ATMOSPHERE,
@@ -259,11 +260,20 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
-        """Koschmieder's law: over `visibility_km` a dark target keeps 2% of its
-        contrast against the horizon sky."""
-        if self.visibility_km is None:
-            return 0.0
-        return math.log(1 / 0.02) / (self.visibility_km * 1000)
+        return aerosol.extinction_per_m(self.visibility_km)
+
+    @property
+    def fog_weight(self) -> float:
+        return aerosol.fog_weight(self.visibility_km)
+
+    @property
+    def sun_transmittance(self) -> float:
+        """What fog leaves of the sun's direct beam; 1 with no sun."""
+        if self.sun_elevation_deg is None:
+            return 1.0
+        return aerosol.sun_transmittance(
+            math.radians(self.sun_elevation_deg), self.visibility_km
+        )
 
     @property
     def sun_up(self) -> bool:
