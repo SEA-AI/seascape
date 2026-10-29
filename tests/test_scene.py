@@ -1835,27 +1835,42 @@ class TestPhotographedThermalSky:
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
         path = tmp_path_factory.mktemp("sky") / "white.hdr"
-        image = bpy.data.images.new("white", 64, 32, float_buffer=True)
-        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+        image = bpy.data.images.new("white", 128, 64, float_buffer=True)
+        image.pixels.foreach_set(np.ones(128 * 64 * 4, np.float32))
         image.filepath_raw = str(path)
         image.file_format = "HDR"
         image.save()
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("seascape.blender.sky.download", lambda *_: path)
+            patch.setattr("seascape.blender.sky.THERMAL_SKY_PX", 64)
             scene.build(variant(sky={"hdri": "overcast_soil"}), "ir")
 
-    def test_the_clouds_are_the_world(self) -> None:
+    def test_the_clouds_are_the_world_at_the_photo_s_resolution(self) -> None:
         tree = bpy.data.worlds["sky"].node_tree
         (photo,) = (n for n in tree.nodes if n.bl_idname == "ShaderNodeTexEnvironment")
-        assert photo.image.name == "cloudy_sky_radiance"
+        assert photo.image.name == "cloud_share"
+        assert tuple(photo.image.size) == (128, 64)
+        assert tuple(bpy.data.images["cloudy_sky_radiance"].size) == (64, 32)
         assert photo.name in upstream(tree.nodes["Background"].inputs["Color"])
+
+    def test_the_world_s_whole_cloud_is_lwir_s(self) -> None:
+        top = baked("sky_radiance")[-1] + baked("cloud_excess")[-1]
+        sky = variant(sky={"hdri": "overcast_soil"}).sky
+        elevation = np.arcsin((blend.CURVE_SAMPLES - 0.5) / blend.CURVE_SAMPLES)
+        cloud = lwir.cloudy_sky_radiance(
+            elevation, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+        )
+        expected = aerosol.sky_radiance(
+            cloud, elevation, sky.visibility_km, sky.t_air_k, sky.atmosphere
+        )
+        assert top == pytest.approx(float(expected), rel=1e-5)
 
     def test_the_haze_takes_its_airlight_from_the_clouds(self) -> None:
         nodes = bpy.data.node_groups["haze"].nodes
         airlight = upstream(nodes["haze_airlight"].inputs["Color"])
         assert any(
             nodes[name].bl_idname == "ShaderNodeTexEnvironment"
-            and nodes[name].image.name == "cloudy_sky_radiance"
+            and nodes[name].image.name == "cloud_share"
             for name in airlight
         )
 

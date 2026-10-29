@@ -374,8 +374,12 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
     # this build's.
     if (baked := bpy.data.images.get("sky_radiance")) is not None:
         return baked
-    sin_elevation = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    return curve_image("sky_radiance", _table_sky(sky, np.arcsin(sin_elevation)))
+    return curve_image("sky_radiance", _table_sky(sky, _curve_elevation()))
+
+
+def _curve_elevation() -> np.ndarray:
+    """The elevation at each texel centre of a curve baked against sin(elevation)."""
+    return np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
 
 
 def _table_sky(sky: Sky, elevation: np.ndarray) -> np.ndarray:
@@ -390,20 +394,23 @@ def _hazed(sky: Sky, radiance: np.ndarray, elevation: np.ndarray) -> np.ndarray:
     )
 
 
-def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
-    """`lwir.cloudy_sky_radiance` under the photo's clouds, laid out as the photo."""
+def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
+    """The photo's cloud share at its own resolution, and `lwir.cloudy_sky_radiance`
+    under it at THERMAL_SKY_PX, both laid out as the photo."""
     assert sky.hdri is not None
-    # The world baked it first.
+    # The world baked them first.
     if (baked := bpy.data.images.get("cloudy_sky_radiance")) is not None:
-        return baked
+        return bpy.data.images["cloud_share"], baked
     photo = _photo_image(sky.hdri)
     rgba = pixels(photo)
-    h, w = rgba.shape[:2]
     bpy.data.images.remove(photo)
-    f = max(1, w // THERMAL_SKY_PX)
-    rgb = cv2.resize(rgba, (w // f, h // f), interpolation=cv2.INTER_AREA)[..., :3]
     # Bottom row first, as Blender stores an image; `skies` reads top row first.
-    cloud = skies.cloud(rgb[::-1], skies.library()[sky.hdri])[::-1]
+    share = skies.cloud(rgba[::-1, :, :3], skies.library()[sky.hdri])[::-1]
+    # Judgement: steps of 1/255 of a whole cloud, for a quarter of a float image.
+    share_image = curve_image("cloud_share", share, float_buffer=False)
+    h, w = share.shape
+    f = max(1, w // THERMAL_SKY_PX)
+    cloud = cv2.resize(share, (w // f, h // f), interpolation=cv2.INTER_AREA)
     rows = cloud.shape[0]
     elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
     radiance = lwir.cloudy_sky_radiance(
@@ -418,17 +425,49 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     fraction = weight @ cloud[up].mean(axis=1) / weight.sum()
     # A weighted mean of values in [0, 1] can round past 1.
     image["cloud_fraction"] = float(np.clip(fraction, 0.0, 1.0))
-    return image
+    return share_image, image
+
+
+def _cloudy_sky(
+    tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """The photo's sky in `direction`: radiance is affine in the cloud share, so the
+    clear sky plus the share of what a whole cloud adds."""
+    assert sky.hdri is not None
+    share_image, _ = _cloud_images(sky)
+    share = _turned(tree, share_image, sky.hdri, sky.sun_bearing_deg, direction)
+    # Linear shows the texel grid where a texel spans several pixels.
+    share.node.interpolation = "Cubic"
+    up = _sin_elevation(tree, direction)
+    return scalar(
+        tree,
+        "MULTIPLY_ADD",
+        share,
+        lookup(tree, _cloud_excess_image(sky), up),
+        lookup(tree, _sky_image(sky), up),
+    )
+
+
+def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
+    """What a whole cloud adds to the hazed clear sky, baked as `_sky_image` is."""
+    if (baked := bpy.data.images.get("cloud_excess")) is not None:
+        return baked
+    elevation = _curve_elevation()
+    whole = lwir.cloudy_sky_radiance(
+        elevation, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+    )
+    excess = _hazed(sky, whole, elevation) - _table_sky(sky, elevation)
+    return curve_image("cloud_excess", excess)
 
 
 def _clouds(sky: Sky) -> sea.Clouds | None:
     """The IR world's clouds by bearing, read off the image the world baked first."""
     if sky.hdri is None:
         return None
-    image = bpy.data.images["cloudy_sky_radiance"]
+    _, image = _cloud_images(sky)
     rgba = pixels(image)
     h = rgba.shape[0]
-    # Bottom row first, as `_cloudy_sky_image` lays it out.
+    # Bottom row first, as `_cloud_images` lays it out.
     elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
     radiance = rgba[..., 0].astype(np.float64)
     return sea.Clouds(
@@ -440,7 +479,7 @@ def _sky_round(sky: Sky, clouds: sea.Clouds | None) -> sea.SkyCurve:
     """The IR world's radiance against elevation, averaged round the horizon: its clear
     sky's table, or its clouds' rows."""
     if clouds is None:
-        elevation = np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
+        elevation = _curve_elevation()
         return elevation, _table_sky(sky, elevation)
     return clouds.elevation, clouds.radiance.mean(axis=1)
 
@@ -469,12 +508,14 @@ def _ir_sky(
 ) -> bpy.types.NodeSocket:
     """The ir world's radiance in `direction`."""
     if sky.hdri is not None:
-        radiance = _turned(
-            tree, _cloudy_sky_image(sky), sky.hdri, sky.sun_bearing_deg, direction
-        )
-        # Linear shows the texel grid where a texel spans several pixels.
-        radiance.node.interpolation = "Cubic"
-        return radiance
+        return _cloudy_sky(tree, sky, direction)
+    return lookup(tree, _sky_image(sky), _sin_elevation(tree, direction))
+
+
+def _sin_elevation(
+    tree: bpy.types.NodeTree, direction: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """A unit `direction`'s Z, held at 0 below the horizon."""
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     above = tree.nodes.new("ShaderNodeMath")
     above.operation = "MAXIMUM"
@@ -482,7 +523,7 @@ def _ir_sky(
     above.inputs["Value_001"].default_value = 0.0
     tree.links.new(direction, height.inputs["Vector"])
     tree.links.new(height.outputs["Z"], above.inputs["Value"])
-    return lookup(tree, _sky_image(sky), above.outputs["Value"])
+    return above.outputs["Value"]
 
 
 def _rough_glossy(tree: bpy.types.NodeTree) -> bpy.types.NodeSocket:
