@@ -53,7 +53,7 @@ def _fog_depth(
     elev_rad: npt.ArrayLike, visibility_km: float, atmosphere: Atmosphere
 ) -> FloatArray:
     """The fog drops' LWIR depth along the slant path: the path table's less the same
-    path's without aerosol. The gases are the sky's above it."""
+    path's without aerosol. The sky already holds the gases."""
     path = _slant_m(elev_rad)
     return lwir.path_optical_depth(
         path, visibility_km, atmosphere

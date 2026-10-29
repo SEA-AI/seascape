@@ -133,7 +133,7 @@ def test_fog_that_scatters_the_whole_beam_keeps_a_deck_as_warm_as_clear_sky() ->
     deck = math.sin(SUN_ELEVATION_RAD)
     clear = thermal.lit_temperature_k(zone, env, deck, 1.0)
     assert thermal.lit_temperature_k(zone, scattered, 0.0, 1.0) == pytest.approx(clear)
-    absorbed = dataclasses.replace(scattered, fog_diffuse_transmittance=0.0)
+    absorbed = dataclasses.replace(scattered, fog_sunlight_transmittance=0.0)
     assert float(thermal.lit_temperature_k(zone, absorbed, 0.0, 1.0)) < float(clear)
 
 

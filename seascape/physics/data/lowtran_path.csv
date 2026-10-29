@@ -4,7 +4,7 @@
 # model atmosphere, 5 cm^-1 steps, maritime aerosol (IHAZE 4) at each meteorological
 # range of 2 km and over, advection fog (IHAZE 8), the sea's, at each under, or none.
 # LOWTRAN scales either model's 0-2 km extinction at 0.55 um linearly in 1/VIS
-# (AERPRF), so a fog column holds at any VIS, not only the model's own 0.2 km.
+# (AERPRF), so a fog column holds at any VIS.
 # Run with `lowtran` on PyPI, whose Python entry point fixes card 2 at IHAZE 0. After
 # those defaults, in lowtran7.f's `If (Python)` block:
 #         OPEN(98,FILE='card2.txt',STATUS='OLD',ERR=97)
@@ -17,8 +17,7 @@
 # lowtran_surface.csv; its vapour pressure goes in as relative humidity at its mean
 # temperature (saturation over water, WMO No. 8, 2008). The Python entry point takes
 # H2O as relative humidity and every other gas as partial pressure, so LOWTRAN's surface
-# amounts go in as that fraction of the pressure: CO2 330, O3 0.03, N2O 0.32, CO 0.15,
-# CH4 1.7, O2 209000 ppmv. At
+# amounts are given: CO2 330, O3 0.03, N2O 0.32, CO 0.15, CH4 1.7, O2 209000 ppmv. At
 # MODEL 3's own surface air this reproduces MODEL 3's path to 1e-4.
 # profile,range_m,none,vis_50km,vis_42km,vis_35km,vis_23km,vis_10km,vis_5km,vis_2km,fog_1km,fog_0.5km,fog_0.2km,fog_0.1km,fog_0.05km
 tropical,10,9.752573e-01,9.751562e-01,9.751334e-01,9.751051e-01,9.750163e-01,9.746761e-01,9.740766e-01,9.722856e-01,9.340340e-01,8.944700e-01,7.856110e-01,6.329730e-01,4.112868e-01

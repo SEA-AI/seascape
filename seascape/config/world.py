@@ -147,8 +147,8 @@ class Sky(Model):
     the sea reflects in IR.
 
     Haze is `visibility_km`, in the air between the camera and what it sees, in both
-    bands, and overhead in LWIR. In LWIR, `atmosphere` adds its water vapour, shapes
-    the sky, and gives `t_air_k` unless it is set.
+    bands, and overhead. In LWIR, `atmosphere` adds its water vapour, shapes the sky,
+    and gives `t_air_k` unless it is set.
     """
 
     sun_elevation_deg: float | None = Field(
@@ -268,7 +268,7 @@ class Sky(Model):
 
     @property
     def sun_transmittance(self) -> float:
-        """What fog leaves of the sun's direct beam; 1 with no disc."""
+        """What fog leaves of the sun's direct beam; 1 with no sun."""
         if self.sun_elevation_deg is None:
             return 1.0
         return aerosol.sun_transmittance(

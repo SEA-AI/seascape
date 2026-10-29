@@ -222,8 +222,7 @@ class Environment:
     # Fog under the clouds: its emissivity overhead, and what it leaves of the beam.
     fog_cover: float = 0.0
     beam_transmittance: float = 1.0
-    # And what it passes of sunlight, scattered rather than absorbed.
-    fog_diffuse_transmittance: float = 1.0
+    fog_sunlight_transmittance: float = 1.0
     # Unverified: ISO 7547's winter design for accommodation, 22 C, as recalled.
     t_cabin_k: float = 295.15
     # Thompson et al. 1998: ventilation should hold compartments below 50 C; the
@@ -240,7 +239,7 @@ class Environment:
             "cloud_fraction",
             "fog_cover",
             "beam_transmittance",
-            "fog_diffuse_transmittance",
+            "fog_sunlight_transmittance",
         ):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} {getattr(self, name)} outside [0, 1]")
@@ -375,7 +374,7 @@ def facet_temperature_k(
     convection to the air and conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
-    much weaker on average. Fog passes `fog_diffuse_transmittance` of the sunlight,
+    much weaker on average. Fog passes `fog_sunlight_transmittance` of the sunlight,
     `beam_transmittance` of the beam and the rest as diffuse light.
 
     ponytail: no sun off the sea, no light from the vessel's own structure, and the
@@ -410,7 +409,7 @@ def lit_temperature_k(
     direct = (1.0 - env.cloud_fraction) * env.beam_transmittance
     # The beam the fog takes and does not absorb arrives as diffuse light, on a
     # horizontal surface sin e of the beam's.
-    passed = env.fog_diffuse_transmittance
+    passed = env.fog_sunlight_transmittance
     up_sun = math.sin(env.sun_elevation_rad or 0.0)
     scattered = up_sun * max(passed - env.beam_transmittance, 0.0)
     diffuse = _DIFFUSE_FRACTION * passed + (1.0 - env.cloud_fraction) * scattered
