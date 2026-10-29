@@ -14,8 +14,37 @@ permissions:
   contents: read
 
 jobs:
+  # No check reads an image. Lint formats the code in every Markdown file, skills
+  # included; the tests read the docs' Markdown but not the agents' skills.
+  changes:
+    name: Changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      lint: ${{ steps.filter.outputs.lint }}
+      tests: ${{ steps.filter.outputs.tests }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            lint:
+              - '**'
+              - '!**/*.jpg'
+              - '!**/*.png'
+            tests:
+              - '**'
+              - '!**/*.jpg'
+              - '!**/*.png'
+              - '!.claude/**'
+
   lint:
     name: Lint
+    needs: changes
+    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.lint == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,6 +66,8 @@ jobs:
 
   tests:
     name: Tests (${{ matrix.shard }})
+    needs: changes
+    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports its failures, not only the first to fail.
@@ -70,7 +101,7 @@ jobs:
   checks:
     name: Checks
     if: always()
-    needs: [lint, tests]
+    needs: [changes, lint, tests]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
