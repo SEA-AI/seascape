@@ -195,7 +195,8 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
 
     Limitation: colour alone, so a cloud as white as the circumsolar sky beside it reads
     clear, a disc's aureole takes the cloud round it, a dusk's glow redder than grey
-    reads cloud, and a gap in an overcast photo reads cloud.
+    reads cloud, a gap in an overcast photo reads cloud, and a gap narrower than
+    FIT_STRIDE pixels can fall between the pixels the clear sky is fitted to.
     """
     h, w = radiance.shape[:2]
     out = np.zeros((h, w), np.float32)
