@@ -1,5 +1,5 @@
 """The aerosol overhead that the sky and the sun shine through: maritime haze, and
-under a kilometre a layer of fog drops at the surface. In LWIR from LOWTRAN's tables,
+in fog a layer of drops at the surface. In LWIR from LOWTRAN's tables,
 in the visible by Koschmieder."""
 
 import math
@@ -15,8 +15,7 @@ FloatArray = npt.NDArray[np.float64]
 # WMO's fog: a visibility under 1 km (WMO No. 8, 2018).
 FOG_KM = 1.0
 
-# LOWTRAN 7's shortest maritime haze, HZ2K's 2 km profile (lowtran7.f, AERPRF). Between
-# it and fog, mist, AERPRF scales aerosol extinction linearly in 1 / visibility.
+# LOWTRAN 7's shortest maritime haze, HZ2K's 2 km profile (lowtran7.f, AERPRF).
 HAZE_KM = 2.0
 
 # Typical of water clouds (Kokhanovsky, Earth-Sci. Rev. 64 189, 2004, 3.1.4).
@@ -66,8 +65,8 @@ def depth(
     visibility_km: float | None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """The aerosol's LWIR optical depth looking up at `elev_rad`: the haze's, or the
-    fog's, or in mist the two blended by `fog_weight`."""
+    """The aerosol's LWIR optical depth looking up at `elev_rad`: haze and fog blended
+    by `fog_weight`."""
     weight = fog_weight(visibility_km)
     if weight == 1.0:
         assert visibility_km is not None
@@ -138,10 +137,13 @@ def sun_transmittance(elev_rad: float, visibility_km: float | None) -> float:
     """What the fog leaves of the sun's direct beam along the slant path. Drops far
     larger than the wavelength extinguish it alike across the sun's band, Mie's
     efficiency near 2 (van de Hulst 1957)."""
+    depth = fog_beam_depth(visibility_km)
+    if depth == 0.0:
+        return 1.0
     up = math.sin(elev_rad)
     if up <= 0.0:
         return 0.0
-    return math.exp(-fog_beam_depth(visibility_km) / up)
+    return math.exp(-depth / up)
 
 
 def diffuse_transmittance(visibility_km: float | None) -> float:

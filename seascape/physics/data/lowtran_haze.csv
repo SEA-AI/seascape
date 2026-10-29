@@ -7,7 +7,7 @@
 # HZ2K, after Shettle & Fenn, AFGL-TR-79-0214, 1979), against no aerosol. The haze is
 # taken as a layer at air temperature over the clean sky (Kirchhoff), so it passes
 # (L_horizon - L_hazy) / (L_horizon - L_clean), L_horizon the clean sky at 0 degrees;
-# clipped to 0 to 1, as near the horizon the hazy sky is the air's; no aerosol passes all. The 0 degree row is
+# clipped to 0 to 1, as near the horizon the hazy sky is the air's. The 0 degree row is
 # the 1 degree row's: there both skies are the air's. Run with `lowtran` on PyPI, card 2
 # from card2.txt as in lowtran_path.csv, holding "4 0 <VIS> 0. 0." or "0 0 0. 0. 0.".
 # The north_sea profiles take their named standard profile's, as lowtran_sky.csv does.

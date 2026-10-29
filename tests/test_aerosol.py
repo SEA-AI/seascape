@@ -48,7 +48,6 @@ def test_fog_is_its_layer_of_drops_alone() -> None:
 @pytest.mark.parametrize("edge_km", [aerosol.FOG_KM, aerosol.HAZE_KM])
 def test_the_sky_and_the_sun_run_on_through_mist(edge_km: float) -> None:
     over, under = edge_km * 1.001, edge_km * 0.999
-    # A tenth of a kelvin over 0.1% of visibility.
     assert _sky_k(over) == pytest.approx(_sky_k(under), abs=0.1)
     assert aerosol.cover(over) == pytest.approx(aerosol.cover(under), abs=0.01)
     assert aerosol.fog_cover(over) == pytest.approx(aerosol.fog_cover(under), abs=0.01)
@@ -81,6 +80,7 @@ def test_the_heat_balance_takes_the_fog_alone() -> None:
     assert aerosol.fog_cover(5.0) == 0.0
     assert aerosol.fog_cover(0.5) == aerosol.cover(0.5)
     assert aerosol.sun_transmittance(math.pi / 2, 5.0) == 1.0
+    assert aerosol.sun_transmittance(-0.1, None) == 1.0
     assert aerosol.diffuse_transmittance(None) == 1.0
 
 

@@ -106,8 +106,7 @@ def _misted(
     colour: bpy.types.NodeSocket,
     horizon: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """The clear sky's `colour` greyed by `Sky.fog_weight` toward the fog's grey of
-    `horizon`, the clear sky on the horizon under or over it."""
+    """`colour` moved `Sky.fog_weight` of the way to the fog's grey of `horizon`."""
     grey = _grey(tree, horizon)
     if sky.fog_weight == 1.0:
         return grey
