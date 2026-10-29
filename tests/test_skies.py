@@ -54,7 +54,7 @@ PHOTO = skies.Photo(
     attribution="a test sky",
 )
 CW, CH = 512, 256
-# Rows above 2 degrees: the last ones the fit cannot follow into a white horizon.
+# Below 2 degrees the fit cannot follow a white horizon.
 ABOVE_2_DEG = slice(0, round(CH * 88 / 180))
 
 
