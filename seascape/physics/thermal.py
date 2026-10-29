@@ -46,18 +46,19 @@ import numpy.typing as npt
 
 type FloatArray = npt.NDArray[np.float64]
 
+# What each zone covers; its numbers are in ZONES.
 type ZoneName = Literal[
-    "paint_hull",
-    "paint_superstructure",
-    "deck",
-    "glass",
-    "bare_metal",
-    "rubber",
-    "fabric",
-    "funnel",
-    "exhaust",
-    "engine_cowl",
-    "wood_composite",
+    "paint_hull",  # a painted ship's shell plating, topsides and bottom
+    "paint_superstructure",  # painted house, bridge, masts, cranes, buoy bodies
+    "deck",  # walking surfaces: steel deck, teak, non-slip
+    "glass",  # windows, portholes, windscreens, lamp lenses
+    "bare_metal",  # unpainted steel, stainless, aluminium, chrome
+    "rubber",  # inflatable tubes, fenders, tyres, hoses
+    "fabric",  # canvas, biminis, cushions, sails, rope
+    "funnel",  # a ship's stack casing
+    "exhaust",  # the hot outlet in or atop a funnel, an exhaust pipe
+    "engine_cowl",  # an outboard engine's cover
+    "wood_composite",  # timber, and a small craft's moulded GRP or carbon hull
 ]
 type Interior = Literal["none", "cabin", "engine_room", "exhaust"]
 
