@@ -99,7 +99,7 @@ def _fogged_photo(
         tree, "DOT_PRODUCT", colour, tuple(float(c) for c in skies.LUMINANCE)
     )
     bright = scalar(tree, "GREATER_THAN", luminance, floor)
-    disc = scalar(tree, "MULTIPLY", near, bright)
+    disc = scalar(tree, "MULTIPLY", near, bright, name="photo_disc")
     sun = vector(tree, "SCALE", colour, scalar(tree, "MULTIPLY", disc, extra))
     return vector(tree, "ADD", misted, sun)
 

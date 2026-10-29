@@ -743,6 +743,19 @@ def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     assert abs(row - 75) <= 2 and abs(col - 100) <= 2
 
 
+def _hazed_black() -> bpy.types.Material:
+    """A surface that brings back only the haze's airlight."""
+    black = bpy.data.materials.new("black")
+    tree = black.node_tree
+    tree.nodes.clear()
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.inputs["Strength"].default_value = 0.0
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    haze(black)
+    return black
+
+
 @pytest.mark.render
 @pytest.mark.parametrize(
     ("band", "ranges_m"),
@@ -771,14 +784,7 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     sc.cycles.samples = 16
     sky = shoot((16, 16), "haze_sky")
 
-    black = bpy.data.materials.new("black")
-    tree = black.node_tree
-    tree.nodes.clear()
-    emission = tree.nodes.new("ShaderNodeEmission")
-    emission.inputs["Strength"].default_value = 0.0
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
-    haze(black)
+    black = _hazed_black()
     for range_m in ranges_m:
         bpy.ops.mesh.primitive_plane_add(size=0.01 * range_m)
         card = bpy.context.object
@@ -1343,12 +1349,27 @@ def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
     sun_rgb = w * grey + np.array(DISC_RGB) * sky.sun_transmittance
     assert frame[32, 32] == pytest.approx(sun_rgb, rel=1e-3)
     assert frame[0, 0] == pytest.approx(sky_rgb, rel=1e-3)
-    if w:
-        assert 0.0 < sky.sun_transmittance < 1.0
-    else:
+    if not w:
         background = bpy.data.worlds["sky"].node_tree.nodes["Background"]
         (link,) = background.inputs["Color"].links
         assert link.from_node.bl_idname == "ShaderNodeTexEnvironment"
+        return
+    assert 0.0 < sky.sun_transmittance < 1.0
+
+    # A card across the frame, its airlight the sky without the disc, as the Sky
+    # Texture's is.
+    range_m = math.log(2.0) / sky.extinction_per_m
+    # A ray's length starts at the near plane.
+    camera.data.clip_start = 1e-3
+    bpy.ops.mesh.primitive_plane_add(size=range_m)
+    card = bpy.context.object
+    card.location = camera.location + range_m * Vector(sky.sun_vector)
+    card.rotation_mode = "QUATERNION"
+    card.rotation_quaternion = camera.rotation_quaternion
+    card.data.materials.append(_hazed_black())
+    frame = shoot_rgb((64, 64), f"photo_sun_haze_{visibility_km}")
+    assert frame[32, 32] == pytest.approx(0.5 * w * grey, rel=1e-3)
+    assert frame[0, 0] == pytest.approx(0.5 * sky_rgb, rel=1e-3)
 
 
 @pytest.mark.parametrize("name", skies.library())
