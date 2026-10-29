@@ -106,7 +106,7 @@ def _textures() -> None:
             continue
         source = faces.source(bsdf.inputs["Base Color"])
         if source is not None:
-            material.node_tree.nodes.active = source[2]
+            material.node_tree.nodes.active = source.node
         else:
             material.diffuse_color = (*bsdf.inputs["Base Color"].default_value[:3], 1)
 
@@ -423,10 +423,7 @@ def _uv_triangles(obj: bpy.types.Object) -> tuple[np.ndarray, np.ndarray]:
     face = faces.ints(mesh.loop_triangles, "polygon_index", n)
     if not mesh.uv_layers:
         return np.zeros((0, 3, 2)), np.zeros(0, dtype=np.int64)
-    uv = faces.floats(mesh.uv_layers.active.data, "uv", 2 * len(mesh.loops)).reshape(
-        -1, 2
-    )
-    return uv[loops], face
+    return faces.uv(mesh)[loops], face
 
 
 def _raster(
@@ -492,7 +489,7 @@ def _input(
         if socket == "Base Color":
             return {"colour": _hex(_srgb(np.array(value[:3])))}
         return {"value": round(float(value), 3)}
-    image, channel, _ = source
+    image = source.image
     texels = _texels(image)
     covered = _raster(texels.shape[:2], triangles) >= 0
     if not covered.any():
@@ -505,7 +502,7 @@ def _input(
         is_linear = image.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}
         out["colour"] = _hex(_srgb(mean) if is_linear else mean)
     else:
-        out |= _channel_stats(picked[:, channel if channel is not None else 0])
+        out |= _channel_stats(picked[:, source.channel or 0] * source.scale)
     return out
 
 
@@ -628,6 +625,8 @@ def _island_records(
             colour[j] = _hex(sums[j] / counts[j])
         texels = np.bincount(cover.ravel() + 1, minlength=n + 1)[1:]
         atlases[source.name] = _atlas(rgb, cover, texels)
+    # A rule's inputs, so one can be written from islands.json.
+    channels = {k: faces.island_means(found, s) for k, s in faces.CHANNELS.items()}
     records = [
         {
             "island": i.id,
@@ -637,6 +636,7 @@ def _island_records(
             "faces": i.faces,
             "triangles": int(triangles[i.id]),
             "colour": colour[i.id],
+            **{k: float(v[i.id]) for k, v in channels.items()},
             "height_m": [round(float(h), 2) for h in heights[i.id]],
         }
         for i in found.islands
@@ -774,8 +774,8 @@ def _safe(text: str) -> str:
 def _summary(record: dict[str, Any]) -> str:
     low, high = record["height_m"]
     base = record.get("base_colour", {}).get("colour") or record.get("colour", "")
-    alpha = record.get("alpha", {})
-    a = alpha.get("value", alpha.get("mean", 1.0))
+    alpha = record.get("alpha", 1.0)  # an island's mean, or a slot's stats
+    a = alpha if isinstance(alpha, float) else alpha.get("value", alpha.get("mean"))
     span = f"{low:.1f} to {high:.1f} m"
     return f"{record['triangles']:,} tris, {span}, colour {base}, alpha {a}"
 

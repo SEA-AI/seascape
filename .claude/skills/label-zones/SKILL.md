@@ -39,7 +39,8 @@ The waterline is not a zone: it comes from `draught_m`.
    islands, the rest grey. The output directory must be empty.
 3. Read `<dir>/slots.json` (or `islands.json`). Each part has its material, objects,
    triangles, colour (flat or mean texel), alpha, metallic, and `height_m`: its lowest
-   and highest point above the waterline. Alpha is a constant, or a texture's stats
+   and highest point above the waterline. An island's `metallic`, `roughness` and
+   `alpha` are its means, which rules read. Alpha is a constant, or a texture's stats
    (`mean`, `min`, `over_half`). An untextured material's islands take its flat base
    colour. A textured island's colour is the mean texel at its triangles' centres,
    which mirrored halves and shared UVs share.
@@ -64,7 +65,10 @@ The waterline is not a zone: it comes from `draught_m`.
    - A part that holds two zones: give its material the zone of most of its area, then
      run `--islands --material NAME` and override the islands that differ.
      An atlas of thousands of islands is labelled the same way: the material takes the
-     majority zone and only the large marked islands are overridden.
+     majority zone and only the large marked islands are overridden. Where the small
+     parts of one zone share a range of metallic, roughness or alpha that the rest of
+     the material lacks, a rule (below) zones them all; keep it only if the contact
+     sheet shows it right.
    - When unsure, report the part and why.
 6. Write the result (below), then render the contact sheet:
    `uv run seascape zones <asset> -o <dir> --zones` writes `<dir>/zones.png`. Look at it:
@@ -105,4 +109,15 @@ island_digest = "a6c3a5bae7ac1fbe"
 "5" = "deck"
 ```
 
-An island not listed takes its material's zone. Run `uvx tombi format` after editing.
+A rule zones the islands of one material whose means fall in every range it gives; the
+first rule an island matches wins, and a listed island wins over every rule:
+
+```toml
+[[irwin_38.zones.rules]]
+material = "Base_Material_Other_01.001"
+metallic = [0.5, 1.0]
+zone = "bare_metal"
+```
+
+An island neither listed nor ruled takes its material's zone. Run `uvx tombi format`
+after editing.

@@ -63,6 +63,13 @@ island_digest = "a6c3a5bae7ac1fbe"
 "365" = "glass"
 "367" = "glass"
 
+# Its rails and trim are the glossy islands the atlas marks metallic.
+[[yacht.zones.rules]]
+material = "01_-_Default"
+metallic = [0.25, 1.0]
+roughness = [0.0, 0.25]
+zone = "bare_metal"
+
 [lobster_yacht]
 kind = "hull"
 category = "motor yacht"
@@ -188,6 +195,12 @@ island_digest = "af6140e7e9a49fd0"
 "1986" = "fabric"
 "4301" = "fabric"
 "4410" = "fabric"
+
+# The atlas's metallic map marks its stainless pulpits, stanchions and fittings.
+[[irwin_38.zones.rules]]
+material = "Base_Material_Other_01.001"
+metallic = [0.5, 1.0]
+zone = "bare_metal"
 
 [cruising_sloop]
 kind = "hull"

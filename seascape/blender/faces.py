@@ -6,13 +6,15 @@ touch at a vertex, and also at a UV where the material is textured.
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
-from typing import Any, get_args
+from typing import Any, NamedTuple, get_args
 
 import bpy
 import numpy as np
 
 from seascape.assets import Zones
+from seascape.blender import blend
 from seascape.physics.thermal import ZoneName
 
 
@@ -54,6 +56,13 @@ def floats(collection: Any, attribute: str, n: int) -> np.ndarray:
     return out
 
 
+def uv(mesh: bpy.types.Mesh) -> np.ndarray:
+    """Each loop's UV, (loops, 2), from the layer an image node with no Vector link
+    reads: the one marked for render, not the one active for editing."""
+    layer = next(u for u in mesh.uv_layers if u.active_render)
+    return floats(layer.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
+
+
 def _components(n: int, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Each node's connected component, as the smallest-numbered node reached in it."""
     label = np.arange(n)
@@ -92,8 +101,7 @@ def _face_components(
         ints(mesh.loops, "vertex_index", n_loops)
     ]
     if mesh.uv_layers:
-        uv = floats(mesh.uv_layers.active.data, "uv", 2 * n_loops).reshape(-1, 2)
-        key[:, 3:5] = np.round(uv * 1e6) * textured[material[face], None]
+        key[:, 3:5] = np.round(uv(mesh) * 1e6) * textured[material[face], None]
     # A vertex per material, so slots that meet stay apart.
     key[:, 5] = material[face]
     # One bytes value per row groups as `axis=0` does, in another order: islands are
@@ -159,14 +167,74 @@ def face_zones(parts: Parts, zones: Zones) -> list[np.ndarray]:
         [vocabulary.index(zones.materials[m]) for m in parts.materials]
     )
     by_island = np.array(
-        [
-            vocabulary.index(zones.islands[i.id])
-            if i.id in zones.islands
-            else by_material[parts.materials.index(i.material)]
-            for i in parts.islands
-        ]
+        [by_material[parts.materials.index(i.material)] for i in parts.islands]
     )
+    means: dict[str, np.ndarray] = {}
+    material = np.array([i.material for i in parts.islands])
+    # Applied last to first, so the first rule an island matches wins.
+    for rule in reversed(zones.rules):
+        hit = material == rule.material
+        for channel, (low, high) in rule.ranges.items():
+            if channel not in means:
+                means[channel] = island_means(parts, CHANNELS[channel])
+            hit &= (means[channel] >= low) & (means[channel] <= high)
+        by_island[hit] = vocabulary.index(rule.zone)
+    for i, zone in zones.islands.items():
+        by_island[i] = vocabulary.index(zone)
     return [by_island[island] for island in parts.face_island]
+
+
+# A rule's channels, by the Principled BSDF input each reads.
+CHANNELS = {"metallic": "Metallic", "roughness": "Roughness", "alpha": "Alpha"}
+
+
+def island_means(parts: Parts, socket: str) -> np.ndarray:
+    """Each island's mean of a Principled BSDF input over its faces, read at each
+    face's mean UV."""
+    total = np.zeros(len(parts.islands))
+    count = np.zeros(len(parts.islands))
+    images: dict[str, np.ndarray] = {}  # objects share an atlas: read it once
+    for obj, material, island in zip(
+        parts.objects, parts.face_material, parts.face_island, strict=True
+    ):
+        value = np.zeros(len(island))
+        for m, name in enumerate(parts.materials):
+            on = np.flatnonzero(material == m)
+            if len(on):
+                value[on] = _input(obj.data, name, socket, on, images)
+        total += np.bincount(island, value, len(parts.islands))
+        count += np.bincount(island, minlength=len(parts.islands))
+    return total / np.maximum(count, 1)
+
+
+def _input(
+    mesh: bpy.types.Mesh,
+    name: str,
+    socket: str,
+    faces: np.ndarray,
+    images: dict[str, np.ndarray],
+) -> np.ndarray:
+    """`name`'s `socket` at each of `faces`: the nearest texel to the face's mean UV,
+    red where the link is colour, times the factors on its way; or its flat value."""
+    shader = bsdf(bpy.data.materials.get(name)) if name else None
+    if shader is None:
+        return np.zeros(len(faces))
+    found = source(shader.inputs[socket])
+    if found is None or not mesh.uv_layers:
+        return np.full(len(faces), float(shader.inputs[socket].default_value))
+    if found.image.name not in images:
+        images[found.image.name] = blend.pixels(found.image)
+    pixels = images[found.image.name]
+    height, width = pixels.shape[:2]
+    n_faces = len(mesh.polygons)
+    start = ints(mesh.polygons, "loop_start", n_faces)[faces]
+    total = ints(mesh.polygons, "loop_total", n_faces)[faces]
+    first = np.cumsum(total) - total
+    loops = np.repeat(start - first, total) + np.arange(total.sum())
+    centre = np.add.reduceat(uv(mesh)[loops], first) / total[:, None]
+    x = np.clip((centre[:, 0] % 1.0 * width).astype(int), 0, width - 1)
+    y = np.clip((centre[:, 1] % 1.0 * height).astype(int), 0, height - 1)
+    return pixels[y, x, found.channel or 0] * found.scale
 
 
 def bsdf(material: bpy.types.Material) -> Any:
@@ -177,21 +245,42 @@ def bsdf(material: bpy.types.Material) -> Any:
     )
 
 
-def source(socket: Any) -> tuple[bpy.types.Image, int | None, Any] | None:
+class Source(NamedTuple):
+    image: bpy.types.Image
+    channel: int | None  # None for colour
+    node: Any
+    scale: float  # what the shader multiplies the texel by
+
+
+def source(socket: Any) -> Source | None:
     """The first image upstream of `socket`, following each node's first linked input
-    but not into groups; its channel, None for colour; and its node."""
+    but not into groups, and the factors a Math node multiplies it by on the way: glTF
+    imports a metallic or roughness factor as one."""
     if not socket.is_linked:
         return None
     link = socket.links[0]
     node, out = link.from_node, link.from_socket.name
     if node.type == "TEX_IMAGE":
-        return (node.image, 3 if out == "Alpha" else None, node) if node.image else None
+        if node.image is None:
+            return None
+        # Every reader samples the render UV layer as is.
+        if node.inputs["Vector"].is_linked:
+            raise ValueError(
+                f"{node.name}: its UVs come through a node no reader follows"
+            )
+        return Source(node.image, 3 if out == "Alpha" else None, node, 1.0)
+    if node.type == "MATH" and node.operation != "MULTIPLY":
+        raise ValueError(f"{node.name}: a Math {node.operation} on a texture's way")
     channel = {"Red": 0, "Green": 1, "Blue": 2}.get(out)
     for socket_in in node.inputs:
         upstream = source(socket_in)
         if upstream is not None:
-            image, inner, tex = upstream
-            return image, channel if channel is not None else inner, tex
+            if node.type == "MATH":
+                factors = [i.default_value for i in node.inputs[:2] if not i.is_linked]
+                upstream = upstream._replace(scale=upstream.scale * math.prod(factors))
+            if channel is not None:
+                upstream = upstream._replace(channel=channel)
+            return upstream
     return None
 
 
@@ -199,7 +288,7 @@ def texture(name: str) -> bpy.types.Image | None:
     """The image a material's base colour reads, if any."""
     shader = bsdf(bpy.data.materials.get(name)) if name else None
     found = source(shader.inputs["Base Color"]) if shader is not None else None
-    return found[0] if found is not None else None
+    return found.image if found is not None else None
 
 
 def check(name: str, found: Parts, zones: Zones) -> None:
