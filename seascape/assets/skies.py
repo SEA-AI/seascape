@@ -11,10 +11,14 @@ radius of 0.19 degrees.
 
 Cloud: Li, Lu & Yang, "A hybrid thresholding algorithm for cloud detection on
 ground-based color images", J. Atmos. Oceanic Technol. 28(10) 1286, 2011. Clear sky is
-bluer than cloud in (B - R) / (B + R) of camera counts. A sky of one mode is taken as
-all cloud; one of two is split into Otsu's classes ("A threshold selection method from
-gray-level histograms", IEEE Trans. SMC 9(1) 62, 1979), which stand in for their
-minimum cross entropy, and graded between the two classes' means.
+bluer than cloud in (B - R) / (B + R) of camera counts, and cloud is grey, B = R. The
+clear sky's own blueness falls toward the horizon and the sun, so a cloud is told from
+it by its departure from a clear sky fitted to the photo, as Aebi et al. ("Cloud
+fraction determined by thermal infrared and visible all-sky cameras", Atmos. Meas.
+Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit their clear sky to the pixels
+near it and refit; the clear-sky library of Ghonima et al. (Atmos. Meas. Tech. 5 2881,
+2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith and angle from the sun. An
+overcast photo has no clear sky to fit; the library says which photos are.
 """
 
 import math
@@ -23,6 +27,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+import cv2
 import numpy as np
 from pydantic import ConfigDict, Field, model_validator
 
@@ -48,8 +53,22 @@ GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgement: the (B - R) / (B + R) spread below which a sky has one mode.
-ONE_MODE_STD = 0.03
+# Judgements: how far under the fitted clear sky a pixel's blueness may fall and still
+# be refitted as clear; the clear blueness under which a sky is too grey to show a cloud
+# by colour; the passes the fit takes at most to settle.
+CLEAR_BAND = 0.03
+GREY_CLEAR = 0.05
+FIT_PASSES = 10
+# Every FIT_STRIDE-th pixel each way is fitted: the clear sky is smooth.
+FIT_STRIDE = 4
+# A judgement: powers of the horizon's nearness and the sun's, steep enough to follow a
+# haze at the horizon and a glow a few degrees round the sun.
+HORIZON_POWERS = (0, 1, 2, 4, 8)
+SUN_POWERS = (0, 1, 2, 4, 8, 16)
+# Judgements: the aureole round a disc, as white as cloud and too steep to fit, and the
+# neighbourhood each of its pixels is filled from.
+AUREOLE_DEG = 8.0
+INPAINT_RADIUS_PX = 3
 
 
 class Photo(Model):
@@ -64,6 +83,8 @@ class Photo(Model):
     sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
     sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
     sun_floor: float | None = Field(default=None, gt=0.0)
+    # Labelled by eye: no clear sky shows, so none can be fitted.
+    overcast: bool = False
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 
@@ -160,29 +181,66 @@ def sun(radiance: np.ndarray) -> Sun:
     )
 
 
-def _otsu_means(values: np.ndarray) -> tuple[float, float]:
-    counts, edges = np.histogram(values, 256)
-    centres = (edges[:-1] + edges[1:]) / 2
-    below = np.cumsum(counts)[:-1]
-    above = values.size - below
-    sums = np.cumsum(counts * centres)
-    mean_below = sums[:-1] / np.maximum(below, 1)
-    mean_above = (sums[-1] - sums[:-1]) / np.maximum(above, 1)
-    best = np.argmax(below * above * (mean_below - mean_above) ** 2)
-    return float(mean_below[best]), float(mean_above[best])
+def _clear_basis(elevation_deg: np.ndarray, cos_sun: np.ndarray) -> np.ndarray:
+    """Products of powers of the horizon's nearness and the sun's, (..., terms)."""
+    horizon = 1.0 - np.sin(np.radians(elevation_deg))
+    sun = (1.0 + cos_sun) / 2.0
+    return np.stack(
+        [horizon**i * sun**j for i in HORIZON_POWERS for j in SUN_POWERS], axis=-1
+    ).astype(np.float32)
 
 
-def cloud(radiance: np.ndarray) -> np.ndarray:
-    """How much of `radiance`, (..., 3) of one sky, is cloud: 1 as grey as the cloud's
-    mean, 0 as blue as the clear sky's.
+def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
+    """How much of each pixel of `radiance`, (h, w, 3) of `photo` top row first, is
+    cloud: 0 as blue as the photo's clear sky there, 1 as grey as B = R, and none below
+    the horizon.
 
-    ponytail: colour alone, so a sun's glow, a dusk's red and a clear sky of one mode
-    read as cloud; a clear-sky reference per photo when that matters.
+    Limitation: colour alone, so a cloud as white as the circumsolar sky beside it reads
+    clear, a disc's aureole takes the cloud round it, a dusk's glow redder than grey
+    reads cloud, and a gap in an overcast photo reads cloud.
     """
-    counts = np.maximum(radiance, 0.0) ** (1.0 / GAMMA)
+    h, w = radiance.shape[:2]
+    out = np.zeros((h, w), np.float32)
+    sky = slice(0, h // 2)
+    if photo.overcast:
+        out[sky] = 1.0
+        return out
+    counts = np.maximum(radiance[sky], 0.0) ** (1.0 / GAMMA)
     red, blue = counts[..., 0], counts[..., 2]
     blueness = (blue - red) / np.maximum(blue + red, 1e-6)
-    if blueness.std() < ONE_MODE_STD:
-        return np.ones(blueness.shape, np.float32)
-    cloudy, clear = _otsu_means(blueness)
-    return np.clip((clear - blueness) / (clear - cloudy), 0.0, 1.0).astype(np.float32)
+    elevation = _elevation_deg(np.arange(h // 2), h)[:, None]
+    bearing = _bearing_deg((np.arange(w) + 0.5) / w)[None, :]
+    # A judgement: with no disc, the glow's bearing at the horizon.
+    toward = _directions(
+        np.array(photo.sun_bearing_deg), np.array(photo.sun_elevation_deg or 0.0)
+    )
+    cos_sun = _directions(bearing, elevation) @ toward
+    basis = _clear_basis(elevation, cos_sun)
+    sampled = np.zeros(blueness.shape, bool)
+    sampled[::FIT_STRIDE, ::FIT_STRIDE] = True
+    aureole = np.zeros(blueness.shape, bool)
+    if photo.sun_elevation_deg is not None:
+        aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG))
+    clear_ones = sampled
+    for _ in range(FIT_PASSES):
+        coefficients, *_ = np.linalg.lstsq(
+            basis[clear_ones], blueness[clear_ones], rcond=None
+        )
+        clear = basis @ coefficients
+        refit = sampled & (blueness >= clear - CLEAR_BAND)
+        if np.array_equal(refit, clear_ones):
+            break
+        clear_ones = refit
+    cloud = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
+    if aureole.any():
+        # Bertalmio, Bertozzi & Sapiro, "Navier-Stokes, fluid dynamics, and image and
+        # video inpainting", CVPR 2001: the cloud round the aureole, carried in.
+        # OpenCV's Telea overshoots on float images.
+        cloud = cv2.inpaint(
+            cloud.astype(np.float32),
+            aureole.astype(np.uint8),
+            INPAINT_RADIUS_PX,
+            cv2.INPAINT_NS,
+        )
+    out[sky] = cloud
+    return out
