@@ -74,17 +74,21 @@ def drive(
     driver.expression = expression
 
 
-def curve_image(name: str, values: np.ndarray) -> bpy.types.Image:
+def curve_image(
+    name: str, values: np.ndarray, float_buffer: bool = True
+) -> bpy.types.Image:
     """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
-    or rows bottom first."""
+    or rows bottom first. Without `float_buffer`, 8 bits of values in [0, 1]."""
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
     height, width = table.shape
-    image = bpy.data.images.new(name, width, height, float_buffer=True, is_data=True)
+    image = bpy.data.images.new(
+        name, width, height, float_buffer=float_buffer, is_data=True
+    )
     pixels = np.ones((height, width, 4), dtype=np.float32)
     pixels[..., :3] = table[..., None]
     image.pixels.foreach_set(pixels.ravel())
     # Unpacked, a generated image saves as its fill colour; EXR keeps floats.
-    image.file_format = "OPEN_EXR"
+    image.file_format = "OPEN_EXR" if float_buffer else "PNG"
     image.pack()
     return image
 
