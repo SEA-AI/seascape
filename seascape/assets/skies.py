@@ -95,6 +95,9 @@ class Photo(Model):
     sun_floor: float | None = Field(default=None, gt=0.0)
     # Labelled by eye: no clear sky shows, so none can be fitted.
     overcast: bool = False
+    # The genus covering most of the sky, labelled by eye (WMO International Cloud
+    # Atlas); any high cloud is cirrus.
+    cloud_genus: lwir.CloudGenus
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 

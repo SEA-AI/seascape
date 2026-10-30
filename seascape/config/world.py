@@ -12,7 +12,7 @@ from pydantic import (
 
 from seascape.assets import skies
 from seascape.model import Model
-from seascape.physics import aerosol, skin
+from seascape.physics import aerosol, lwir, skin
 from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
 
@@ -195,9 +195,9 @@ class Sky(Model):
     cloud_base_m: float = Field(
         default=1000.0,
         ge=0.0,
-        le=2000.0,
+        le=3000.0,
         description="The photo's cloud base, which sets its clouds' temperature in IR. "
-        "EO ignores it.",
+        "Unset, its cloud genus's. Cirrus takes its own. EO ignores it.",
     )
 
     hdri: (
@@ -221,7 +221,8 @@ class Sky(Model):
         photos = skies.library()
         if data["hdri"] not in photos:
             raise ValueError(f"no sky {data['hdri']!r} in {sorted(photos)}")
-        elevation = photos[data["hdri"]].sun_elevation_deg
+        photo = photos[data["hdri"]]
+        elevation = photo.sun_elevation_deg
         # Warned, not refused: `extends` and `--set` cannot remove a key. A dumped
         # scenario holds the photo's own values and is not warned about.
         if data.get("sun_elevation_deg", elevation) != elevation:
@@ -229,6 +230,8 @@ class Sky(Model):
                 "the hdri sets the sky; sun_elevation_deg is ignored", stacklevel=2
             )
         data = {**data, "sun_elevation_deg": elevation}
+        if base := lwir.CLOUD_BASE_M.get(photo.cloud_genus):
+            data.setdefault("cloud_base_m", base)
         if elevation is None:
             # No disc, no direct beam: nothing warms a sunlit side over a shaded one.
             data.setdefault("solar_gain_k", 0.0)

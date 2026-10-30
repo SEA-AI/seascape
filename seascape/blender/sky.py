@@ -423,6 +423,7 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
         sky.t_air_k,
         sky.atmosphere,
         height_m=height[:, None],
+        cirrus=_cirrus(sky),
     )
     image = curve_image(
         "cloudy_sky_radiance", _hazed(sky, radiance, elevation[:, None])
@@ -457,6 +458,10 @@ def _cloudy_sky(
     )
 
 
+def _cirrus(sky: Sky) -> bool:
+    return sky.hdri is not None and skies.library()[sky.hdri].cloud_genus == "cirrus"
+
+
 def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
     """What a whole cloud adds to the hazed clear sky, baked with `_cloud_images`."""
     _cloud_images(sky)
@@ -474,6 +479,7 @@ def _bake_cloud_excess(sky: Sky, rows_rad: np.ndarray, height_m: np.ndarray) -> 
         sky.t_air_k,
         sky.atmosphere,
         height_m=np.interp(elevation, rows_rad, height_m),
+        cirrus=_cirrus(sky),
     )
     excess = _hazed(sky, whole, elevation) - _table_sky(sky, elevation)
     curve_image("cloud_excess", excess)

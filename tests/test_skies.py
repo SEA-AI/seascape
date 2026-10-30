@@ -51,6 +51,7 @@ PHOTO = skies.Photo(
     sun_bearing_deg=SUN_DEG[0],
     sun_elevation_deg=SUN_DEG[1],
     sun_floor=1.0,
+    cloud_genus="cumulus",
     licence="CC0-1.0",
     attribution="a test sky",
 )
