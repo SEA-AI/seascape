@@ -161,6 +161,8 @@ CURVE_ANGLES = 91
 FACET_SAMPLES = 4096
 
 
+# A sea's bake asks for the same few curves hundreds of times.
+@functools.lru_cache(maxsize=64)
 def emissivity_curve(
     *, t_sea_k: float = T_SEA_K, slope_sigma: float = 0.0
 ) -> tuple[FloatArray, FloatArray]:
@@ -184,7 +186,7 @@ def emissivity_curve(
 
     flat = np.trapezoid(fresnel_emissivity(theta[:, None], n, k) * weight, lam, -1)
     if slope_sigma <= 0.0:
-        return theta, flat / band
+        return _frozen(theta), _frozen(flat / band)
 
     table = flat / band
     normal = _facets(slope_sigma)
@@ -192,7 +194,13 @@ def emissivity_curve(
     cos_i = view @ normal.T  # (angle, facet)
     area = _seen_area(cos_i, normal)
     eps = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, table)
-    return theta, (eps * area).sum(axis=1) / area.sum(axis=1)
+    return _frozen(theta), _frozen((eps * area).sum(axis=1) / area.sum(axis=1))
+
+
+def _frozen(a: FloatArray) -> FloatArray:
+    """`a` read-only, as a cache hands the same array to every caller."""
+    a.setflags(write=False)
+    return a
 
 
 # Niclòs et al. 2007, JGR 112 C12020, eq. 13 and Table 1, CE 312 channel 1, 8-14 um:
@@ -217,6 +225,7 @@ def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
     return (a * x + b) * x + c
 
 
+@functools.lru_cache(maxsize=64)
 def _facets(slope_sigma: float) -> FloatArray:
     """Unit normals of facets whose slopes are Gaussian, `slope_sigma` per axis.
 
@@ -229,7 +238,7 @@ def _facets(slope_sigma: float) -> FloatArray:
     quantiles /= quantiles.std()
     east, north = np.meshgrid(slope_sigma * quantiles, slope_sigma * quantiles)
     normal = np.stack([-east.ravel(), -north.ravel(), np.ones(side**2)], axis=-1)
-    return normal / np.linalg.norm(normal, axis=-1, keepdims=True)
+    return _frozen(normal / np.linalg.norm(normal, axis=-1, keepdims=True))
 
 
 def _seen_area(cos_i: FloatArray, normal: FloatArray) -> FloatArray:

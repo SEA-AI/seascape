@@ -1,6 +1,8 @@
 """The LWIR sea: its emissivity, its skin's radiance and the sky it reflects."""
 
 import math
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import NamedTuple
 
@@ -123,14 +125,32 @@ def _reflection_table(
     mirror = np.arcsin(_mirror_columns())
     sky = np.frombuffer(elevation), np.frombuffer(radiance)
     return np.array(
-        [
-            lwir.reflected_sky(
+        _each(
+            lambda sigma, view: lwir.reflected_sky(
                 mirror, *sky, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=view
-            )
-            for sigma in _row_sigmas(slope_max)
-            for view in np.arcsin(_view_rows())
-        ]
+            ),
+            _tiles(slope_max, SLOPE_ROWS, VIEW_ROWS),
+        )
     )
+
+
+def _tiles(slope_max: float, slopes: int, views: int) -> list[tuple[float, float]]:
+    """(unresolved slope, view off the wave normal) for each tile, views nested in
+    slopes."""
+    return [
+        (sigma, view)
+        for sigma in _row_sigmas(slope_max, slopes)
+        for view in np.arcsin(_view_rows(views))
+    ]
+
+
+def _each[T](
+    bake: Callable[[float, float], T], tiles: Iterable[tuple[float, float]]
+) -> list[T]:
+    """`bake` of every tile, in order. Numpy lets go of the GIL over a tile's arrays,
+    so threads share the bake."""
+    with ThreadPoolExecutor() as pool:
+        return list(pool.map(lambda tile: bake(*tile), tiles))
 
 
 def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.Image:
@@ -145,21 +165,22 @@ def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.
     widths = np.diff(edges)
     bearings = np.add.reduceat(clouds.radiance, edges[:-1], axis=1) / widths
     round_ = clouds.radiance.mean(axis=1)
-    rows = []
-    for sigma in _row_sigmas(slope_max, CLOUD_SLOPES):
-        for view in np.arcsin(_view_rows(CLOUD_VIEWS)):
-            seen, mean = (
-                lwir.reflected_sky(
-                    mirror,
-                    clouds.elevation,
-                    sky,
-                    t_sea_k=t_sea_k,
-                    slope_sigma=sigma,
-                    view_rad=view,
-                )
-                for sky in (bearings, round_)
+
+    def ratio(sigma: float, view: float) -> np.ndarray:
+        seen, mean = (
+            lwir.reflected_sky(
+                mirror,
+                clouds.elevation,
+                sky,
+                t_sea_k=t_sea_k,
+                slope_sigma=sigma,
+                view_rad=view,
             )
-            rows.append(seen / mean[:, None])
+            for sky in (bearings, round_)
+        )
+        return seen / mean[:, None]
+
+    rows = _each(ratio, _tiles(slope_max, CLOUD_SLOPES, CLOUD_VIEWS))
     return curve_image("sea_clouds", np.concatenate(rows))
 
 
