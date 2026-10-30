@@ -59,7 +59,7 @@ CLEAR_BAND = 0.03
 # Judgement: a clear blueness under this is too grey to show a cloud by colour.
 GREY_CLEAR = 0.05
 FIT_PASSES = 10
-# Every FIT_STRIDE-th pixel each way is fitted: the clear sky is smooth.
+# The bluest pixel of each FIT_STRIDE square is fitted: the clear sky is smooth.
 FIT_STRIDE = 4
 # A judgement: powers of the horizon's nearness and the sun's. The steepest halve 5 deg
 # above the horizon and 24 deg from the sun.
@@ -188,6 +188,17 @@ def _terms(elevation_deg: np.ndarray, cos_sun: np.ndarray) -> Iterator[np.ndarra
     return (horizon**i * sun**j for i in HORIZON_POWERS for j in SUN_POWERS)
 
 
+def _bluest(blueness: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Row and column of the bluest pixel in each FIT_STRIDE square of `blueness`."""
+    s = FIT_STRIDE
+    h, w = blueness.shape
+    padded = np.pad(blueness, ((0, -h % s), (0, -w % s)), constant_values=-np.inf)
+    rows, cols = padded.shape[0] // s, padded.shape[1] // s
+    squares = padded.reshape(rows, s, cols, s).swapaxes(1, 2).reshape(rows, cols, -1)
+    at = squares.argmax(axis=-1)
+    return np.arange(rows)[:, None] * s + at // s, np.arange(cols) * s + at % s
+
+
 def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     """How much of each pixel of `radiance`, (h, w, 3) of `photo` top row first, is
     cloud: 0 as blue as the photo's clear sky there, 1 as grey as B = R, and none below
@@ -195,8 +206,7 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
 
     Limitation: colour alone, so a cloud as white as the circumsolar sky beside it reads
     clear, a disc's aureole takes the cloud round it, a dusk's glow redder than grey
-    reads cloud, a gap in an overcast photo reads cloud, and a gap narrower than
-    FIT_STRIDE pixels can fall between the pixels the clear sky is fitted to.
+    reads cloud, and a gap in an overcast photo reads cloud.
     """
     h, w = radiance.shape[:2]
     out = np.zeros((h, w), np.float32)
@@ -215,9 +225,12 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
     cos_sun = _directions(bearing, elevation) @ toward
     aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
-    grid = np.s_[::FIT_STRIDE, ::FIT_STRIDE]
-    basis = np.stack(list(_terms(elevation[grid[0]], cos_sun[grid])), axis=-1)
-    seen = blueness[grid]
+    # Cloud only greys the sky, so the clear sky is blueness's upper envelope: a gap
+    # anywhere in a square holds it up. A square's noise lifts the fit by the top of
+    # its spread, which the share reads as a trace of cloud on clear sky.
+    rows, cols = _bluest(blueness)
+    basis = np.stack(list(_terms(elevation[rows, 0], cos_sun[rows, cols])), axis=-1)
+    seen = blueness[rows, cols]
     clear_ones = np.ones(seen.shape, bool)
     # The first refit keeps what lies above the fit, so a few gaps in a mostly grey sky
     # lift it off grey before the band can take the grey for clear.
