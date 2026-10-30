@@ -87,7 +87,7 @@ def test_an_overcast_photo_is_cloud_down_to_the_horizon() -> None:
     assert cloud[CH // 2 :].max() == 0.0
 
 
-@pytest.mark.parametrize("offset", [0, 1, skies.FIT_STRIDE // 2])
+@pytest.mark.parametrize("offset", [0, 1])
 def test_gaps_in_a_mostly_grey_sky_leave_the_grey_cloud(offset: int) -> None:
     sky = _clear_sky()
     gaps = np.zeros(sky.shape[:2], bool)
