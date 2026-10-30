@@ -198,6 +198,27 @@ def _terms(elevation_deg: np.ndarray, cos_sun: np.ndarray) -> Iterator[np.ndarra
     return (horizon**i * sun**j for i in HORIZON_POWERS for j in SUN_POWERS)
 
 
+def _fitted(
+    coefficients: np.ndarray, elevation_deg: np.ndarray, cos_sun: np.ndarray
+) -> np.ndarray:
+    """The sum of `_terms` by `coefficients`: the horizon's powers summed per row,
+    then the sun's per pixel."""
+    horizon = 1.0 - np.sin(np.radians(elevation_deg))
+    sun = ((1.0 + cos_sun) / 2.0).astype(np.float32)
+    by = coefficients.reshape(len(HORIZON_POWERS), len(SUN_POWERS))
+    per_row = sum(horizon**i * c for i, c in zip(HORIZON_POWERS, by, strict=True))
+    per_row = per_row.astype(np.float32)
+    return sum(per_row[..., [k]] * sun**j for k, j in enumerate(SUN_POWERS))
+
+
+def _least_squares(basis: np.ndarray, value: np.ndarray) -> np.ndarray:
+    """Least squares by the normal equations: a million rows of `basis` sum to a
+    square of its columns."""
+    b = basis.astype(np.float64)
+    coefficients, *_ = np.linalg.lstsq(b.T @ b, b.T @ value, rcond=None)
+    return coefficients
+
+
 def _bluest(blueness: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Row and column of the bluest pixel in each FIT_STRIDE square of `blueness`."""
     s = FIT_STRIDE
@@ -229,8 +250,9 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     if photo.overcast:
         out[sky] = 1.0
         return out
-    counts = np.maximum(radiance[sky], 0.0) ** (1.0 / GAMMA)
-    red, blue = counts[..., 0], counts[..., 2]
+    red, blue = np.maximum(radiance[sky][..., ::2], 0.0).transpose(2, 0, 1) ** (
+        1 / GAMMA
+    )
     blueness = (blue - red) / np.maximum(blue + red, 1e-6)
     elevation = _elevation_deg(np.arange(h // 2), h)[:, None]
     bearing = _bearing_deg((np.arange(w) + 0.5) / w)[None, :]
@@ -251,17 +273,13 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     # lift it off grey before the band can take the grey for clear.
     band = 0.0
     for _ in range(FIT_PASSES):
-        coefficients, *_ = np.linalg.lstsq(
-            basis[clear_ones], seen[clear_ones], rcond=None
-        )
+        coefficients = _least_squares(basis[clear_ones], seen[clear_ones])
         refit = seen >= basis @ coefficients - band
         band = CLEAR_BAND
         if not refit.any() or np.array_equal(refit, clear_ones):
             break
         clear_ones = refit
-    clear = sum(
-        c * t for c, t in zip(coefficients, _terms(elevation, cos_sun), strict=True)
-    )
+    clear = _fitted(coefficients, elevation, cos_sun)
     share = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
     # Colour and darkness are two ways off the clear sky: either, or part of both.
     share = np.minimum(share + _darkness(radiance[sky], share), 1.0).astype(np.float32)
@@ -328,8 +346,11 @@ def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
 def _beside(weight: np.ndarray, value: np.ndarray, sigma_px: float) -> np.ndarray:
     """`value` averaged round each pixel over `weight`, a Gaussian of `sigma_px`."""
     h, w = weight.shape
-    f = max(1.0, sigma_px / CELLS_PER_SIGMA)
-    size = (max(1, round(w / f)), max(1, round(h / f)))
+    # OpenCV's area resize is fast only by a whole factor of both sides.
+    whole = math.gcd(h, w)
+    most = max(1, int(sigma_px / CELLS_PER_SIGMA))
+    f = max(d for d in range(1, most + 1) if whole % d == 0)
+    size = (w // f, h // f)
     cells = cv2.resize(weight, size, interpolation=cv2.INTER_AREA)
     sums = cv2.resize(weight * value, size, interpolation=cv2.INTER_AREA)
     mean = _pull_push(cells, sums / np.maximum(cells, 1e-12), sigma_px / f)
