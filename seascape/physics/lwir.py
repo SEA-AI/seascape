@@ -161,8 +161,6 @@ CURVE_ANGLES = 91
 FACET_SAMPLES = 4096
 
 
-# A sea's bake asks for the same few curves hundreds of times.
-@functools.lru_cache(maxsize=64)
 def emissivity_curve(
     *, t_sea_k: float = T_SEA_K, slope_sigma: float = 0.0
 ) -> tuple[FloatArray, FloatArray]:
@@ -179,22 +177,26 @@ def emissivity_curve(
     included; both raise emissivity further at grazing, so this is a lower bound there.
     Wu & Smith put the multiple-reflection term at 0.02-0.03 around 73 deg.
     """
-    lam, n, k = optical_constants(t_sea_k)
-    weight = planck(lam, t_sea_k)
-    band = np.trapezoid(weight, lam)
-    theta = np.linspace(0.0, np.pi / 2, CURVE_ANGLES)
-
-    flat = np.trapezoid(fresnel_emissivity(theta[:, None], n, k) * weight, lam, -1)
+    theta, table = _flat_curve(t_sea_k)
     if slope_sigma <= 0.0:
-        return _frozen(theta), _frozen(flat / band)
-
-    table = flat / band
+        return theta, table
     normal = _facets(slope_sigma)
     view = np.stack([np.sin(theta), np.zeros(CURVE_ANGLES), np.cos(theta)], axis=-1)
     cos_i = view @ normal.T  # (angle, facet)
     area = _seen_area(cos_i, normal)
     eps = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, table)
-    return _frozen(theta), _frozen((eps * area).sum(axis=1) / area.sum(axis=1))
+    return theta, (eps * area).sum(axis=1) / area.sum(axis=1)
+
+
+@functools.lru_cache(maxsize=64)
+def _flat_curve(t_sea_k: float) -> tuple[FloatArray, FloatArray]:
+    """`emissivity_curve` of a flat sea."""
+    lam, n, k = optical_constants(t_sea_k)
+    weight = planck(lam, t_sea_k)
+    band = np.trapezoid(weight, lam)
+    theta = np.linspace(0.0, np.pi / 2, CURVE_ANGLES)
+    flat = np.trapezoid(fresnel_emissivity(theta[:, None], n, k) * weight, lam, -1)
+    return _frozen(theta), _frozen(flat / band)
 
 
 def _frozen(a: FloatArray) -> FloatArray:

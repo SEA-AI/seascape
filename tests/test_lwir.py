@@ -41,6 +41,11 @@ def test_grazing_emissivity_collapses(curve) -> None:
     assert eps_at(curve, 89.0) < 0.6
 
 
+def test_a_cached_curve_refuses_writes(curve) -> None:
+    with pytest.raises(ValueError, match="read-only"):
+        curve[1][0] = 0.0
+
+
 def test_foam_raises_emissivity_as_niclos_measured_at_65_deg() -> None:
     """Niclòs et al. 2007: 0.039 +/- 0.007 at 65 deg, 8-14 um, foam taken Lambertian."""
     excess = lwir.foam_emissivity_excess(math.radians(65.0))

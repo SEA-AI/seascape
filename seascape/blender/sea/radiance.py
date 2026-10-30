@@ -135,8 +135,7 @@ def _reflection_table(
 
 
 def _tiles(slope_max: float, slopes: int, views: int) -> list[tuple[float, float]]:
-    """(unresolved slope, view off the wave normal) for each tile, views nested in
-    slopes."""
+    """(unresolved slope, view off the wave normal) per tile, views nested in slopes."""
     return [
         (sigma, view)
         for sigma in _row_sigmas(slope_max, slopes)
@@ -147,8 +146,7 @@ def _tiles(slope_max: float, slopes: int, views: int) -> list[tuple[float, float
 def _each[T](
     bake: Callable[[float, float], T], tiles: Iterable[tuple[float, float]]
 ) -> list[T]:
-    """`bake` of every tile, in order. Numpy lets go of the GIL over a tile's arrays,
-    so threads share the bake."""
+    """`bake` of each tile, in order; numpy releases the GIL, so threads share it."""
     with ThreadPoolExecutor() as pool:
         return list(pool.map(lambda tile: bake(*tile), tiles))
 
