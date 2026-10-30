@@ -81,28 +81,20 @@ def test_grey_on_a_clear_sky_is_cloud() -> None:
     assert cloud[ABOVE_2_DEG, :250].max() < 0.05
 
 
-def test_a_shaded_base_as_blue_as_the_sky_is_cloud() -> None:
+def test_a_shaded_base_is_cloud_only_past_dark() -> None:
     sky = _clear_sky()
     base = np.s_[50:54, 318:322]  # about BESIDE_DEG across
+    faint = np.s_[50:54, 150:154]
     sky[base] *= 0.9 * skies.DARK[1]
-    cloud = skies.cloud(sky, PHOTO)
-    assert cloud[base].min() == pytest.approx(1.0)
-    assert cloud[ABOVE_2_DEG, :250].max() < 0.05
-
-
-def test_a_base_little_darker_than_the_sky_beside_it_is_no_cloud() -> None:
-    sky = _clear_sky()
-    sky[50:54, 318:322] *= 0.95  # over DARK[0]
-    assert skies.cloud(sky, PHOTO)[50:54, 318:322].max() < 0.05
-
-
-def test_a_base_across_the_photo_s_seam_is_cloud() -> None:
-    sky = _clear_sky()
+    sky[faint] *= 0.95  # over DARK[0]
+    # One across the photo's seam.
     sky[50:54, :2] *= 0.9 * skies.DARK[1]
     sky[50:54, -2:] *= 0.9 * skies.DARK[1]
     cloud = skies.cloud(sky, PHOTO)
-    assert cloud[50:54, :2].min() == pytest.approx(1.0)
-    assert cloud[50:54, -2:].min() == pytest.approx(1.0)
+    assert cloud[base].min() == pytest.approx(1.0)
+    assert cloud[50:54, :2].min() == cloud[50:54, -2:].min() == pytest.approx(1.0)
+    assert cloud[faint].max() < 0.05
+    assert cloud[ABOVE_2_DEG, 200:250].max() < 0.05
 
 
 def test_a_clear_sky_darker_across_the_photo_is_no_cloud() -> None:
