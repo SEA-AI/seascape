@@ -413,19 +413,21 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     cloud = cv2.resize(share, (w // f, h // f), interpolation=cv2.INTER_AREA)
     rows = cloud.shape[0]
     elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
-    height = _cloud_height_m(sky, share, rows)
+    # One height a row keeps cloud a function of elevation, as the world draws it:
+    # radiance is close to linear over a cloud's few kelvin.
+    height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m)[::-1]
     radiance = lwir.cloudy_sky_radiance(
         elevation[:, None],
         cloud,
         sky.cloud_base_m,
         sky.t_air_k,
         sky.atmosphere,
-        height[:, None],
+        height_m=height[:, None],
     )
     image = curve_image(
         "cloudy_sky_radiance", _hazed(sky, radiance, elevation[:, None])
     )
-    image["cloud_height_m"] = height.tolist()
+    _bake_cloud_excess(sky, elevation, height)
     # As a horizontal surface sees the sky: each row by its projected solid angle.
     up = elevation > 0
     weight = np.sin(elevation[up]) * np.cos(elevation[up])
@@ -455,48 +457,26 @@ def _cloudy_sky(
     )
 
 
-def _cloud_height_m(sky: Sky, share: np.ndarray, rows: int) -> np.ndarray:
-    """How far over its base the photo's cloud is in each of `rows` from the bottom:
-    `lwir.cloud_height_m` averaged by share over the cloud whose bottom shows, and the
-    base where none does. One height a row keeps cloud a function of elevation, as the
-    world draws it: radiance is close to linear over a cloud's few kelvin."""
-    # Bottom row first, as `_cloud_images` passes it; `skies` reads top row first.
-    top = share[::-1]
-    h, w = top.shape
-    bottom = skies.cloud_bottom_deg(top)
-    elevation = (90.0 - (np.arange(h) + 0.5) / h * 180.0)[:, None]
-    seen = ~np.isnan(bottom)
-    height = lwir.cloud_height_m(
-        np.radians(elevation), np.radians(np.where(seen, bottom, 1.0)), sky.cloud_base_m
-    )
-    weight = np.where(seen, top, 0.0)
-    f = h // rows
-    span = slice(0, rows * f)
-    summed = (weight * height)[span].reshape(rows, f, w).sum(axis=(1, 2))
-    total = weight[span].reshape(rows, f, w).sum(axis=(1, 2))
-    mean = np.divide(summed, total, out=np.zeros(rows), where=total > 0)
-    return mean[::-1]
-
-
 def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
-    """What a whole cloud adds to the hazed clear sky, baked as `_sky_image` is."""
-    if (baked := bpy.data.images.get("cloud_excess")) is not None:
-        return baked
+    """What a whole cloud adds to the hazed clear sky, baked with `_cloud_images`."""
+    _cloud_images(sky)
+    return bpy.data.images["cloud_excess"]
+
+
+def _bake_cloud_excess(sky: Sky, rows_rad: np.ndarray, height_m: np.ndarray) -> None:
+    """`_cloud_excess_image`, a whole cloud `height_m` over its base at `rows_rad`,
+    baked as `_sky_image` is."""
     elevation = _curve_elevation()
-    _, image = _cloud_images(sky)
-    height = np.asarray(image["cloud_height_m"], dtype=np.float64)
-    rows = len(height)
-    at = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
     whole = lwir.cloudy_sky_radiance(
         elevation,
         1.0,
         sky.cloud_base_m,
         sky.t_air_k,
         sky.atmosphere,
-        np.interp(elevation, at, height),
+        height_m=np.interp(elevation, rows_rad, height_m),
     )
     excess = _hazed(sky, whole, elevation) - _table_sky(sky, elevation)
-    return curve_image("cloud_excess", excess)
+    curve_image("cloud_excess", excess)
 
 
 def _clouds(sky: Sky) -> sea.Clouds | None:

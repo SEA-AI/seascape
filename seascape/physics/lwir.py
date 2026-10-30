@@ -379,8 +379,7 @@ def sky_radiance(
 # g / c_p: air lifted from the surface cools at it to the cloud base, where it condenses
 # (Wallace & Hobbs, Atmospheric Science, 2nd ed., 2006).
 DRY_LAPSE_K_PER_M = 9.8e-3
-# The U.S. Standard Atmosphere's (1976) troposphere: a cloud's side is at the air round
-# it.
+# U.S. Standard Atmosphere (1976) troposphere: a cloud's side is at the air round it.
 STANDARD_LAPSE_K_PER_M = 6.5e-3
 # LOWTRAN 7's cumulus, base 0.66 km and top 2.7 km (lowtran7.f, ICLD 1).
 CUMULUS_DEPTH_M = 2040.0
@@ -390,16 +389,17 @@ def cloud_height_m(
     elev_rad: npt.ArrayLike, bottom_rad: npt.ArrayLike, cloud_base_m: float
 ) -> FloatArray:
     """How far over its base a line of sight at `elev_rad` meets a cloud whose bottom
-    shows at `bottom_rad`, above the horizon: on the side it turns to the camera, as
-    far off as its base under that bottom, and no higher than a cumulus' top.
+    shows at `bottom_rad`: on the side it turns to the camera, as far off as its base
+    under that bottom. A bottom at or under the horizon is out of sight: the base.
 
     On a flat Earth: the curve matters only near the horizon, where the air in front
     hides the cloud.
     """
     elev = np.asarray(elev_rad, dtype=np.float64)
     bottom = np.asarray(bottom_rad, dtype=np.float64)
-    rise = np.tan(elev) / np.tan(bottom) - 1.0
-    return np.clip(cloud_base_m * rise, 0.0, CUMULUS_DEPTH_M)
+    seen = bottom > 0.0
+    rise = np.tan(elev) / np.tan(np.where(seen, bottom, np.pi / 4)) - 1.0
+    return np.where(seen, np.clip(cloud_base_m * rise, 0.0, CUMULUS_DEPTH_M), 0.0)
 
 
 def cloudy_sky_radiance(

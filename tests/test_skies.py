@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from seascape.assets import skies
+from seascape.physics import lwir
 
 W, H = 2048, 1024
 
@@ -130,8 +131,27 @@ def test_a_cloud_s_bottom_is_the_foot_of_its_run_down_its_column() -> None:
     share = np.zeros((CH, CW), np.float32)
     share[30:60, 10] = 1.0  # a cloud with clear sky under it
     share[100 : CH // 2, 20] = 1.0  # one down to the horizon
+    share[10:20, 30] = share[40:60, 30] = 1.0  # two runs in a column
+    share[CH // 2 :] = 1.0
     bottom = skies.cloud_bottom_deg(share)
     foot = 90.0 - 60.0 / CH * 180.0
     assert bottom[30:60, 10] == pytest.approx(foot)
+    assert bottom[10:20, 30] == pytest.approx(90.0 - 20.0 / CH * 180.0)
     assert np.isnan(bottom[100 : CH // 2, 20]).all()
     assert np.isnan(bottom[:, 0]).all()
+    assert np.isnan(bottom[CH // 2 :]).all()
+
+
+def test_a_row_s_cloud_height_is_its_share_weighted_side() -> None:
+    share = np.zeros((CH, CW), np.float32)
+    share[50:60, :10] = 1.0
+    share[50:60, 10:20] = 0.5
+    share[60 : CH // 2, 20] = 1.0  # bottom out of sight: no weight
+    height = skies.cloud_height_m(share, 1000.0)
+    elevation = np.radians(90.0 - 55.5 / CH * 180.0)
+    bottom = np.radians(90.0 - 60.0 / CH * 180.0)
+    assert height[55] == pytest.approx(
+        float(lwir.cloud_height_m(elevation, bottom, 1000.0)), rel=1e-5
+    )
+    assert height[70] == 0.0
+    assert height[CH // 2 :].max() == 0.0

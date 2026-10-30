@@ -275,7 +275,6 @@ def test_a_cloud_s_side_over_its_base_is_colder_by_the_standard_lapse() -> None:
 def test_a_line_of_sight_meets_the_side_of_a_cloud_over_its_base() -> None:
     bottom = np.radians(5.0)
     assert float(lwir.cloud_height_m(bottom, bottom, 1000.0)) == pytest.approx(0.0)
-    # tan 10 deg / tan 5 deg - 1 of the base.
     up = math.tan(math.radians(10.0)) / math.tan(bottom) - 1.0
     assert float(lwir.cloud_height_m(np.radians(10.0), bottom, 1000.0)) == (
         pytest.approx(1000.0 * up)
@@ -283,6 +282,8 @@ def test_a_line_of_sight_meets_the_side_of_a_cloud_over_its_base() -> None:
     assert float(lwir.cloud_height_m(np.radians(80.0), bottom, 1000.0)) == (
         lwir.CUMULUS_DEPTH_M
     )
+    assert float(lwir.cloud_height_m(np.radians(2.0), bottom, 1000.0)) == 0.0
+    assert float(lwir.cloud_height_m(np.radians(2.0), 0.0, 1000.0)) == 0.0
 
 
 def test_no_cloud_is_the_clear_sky() -> None:
