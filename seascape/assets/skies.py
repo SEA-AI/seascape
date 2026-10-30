@@ -214,7 +214,7 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     the horizon.
 
     A pixel as blue as the clear sky but darker than the clear sky beside it is a
-    shaded cloud base, lit by the blue sky: DARK ramps it in.
+    shaded cloud base, lit by the blue sky: DARK ramps it in, added to the colour's.
 
     Limitation: a cloud as white as the circumsolar sky beside it reads clear, a disc's
     aureole takes the cloud round it, a dusk's glow redder than grey reads cloud, a gap
@@ -262,7 +262,8 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
         c * t for c, t in zip(coefficients, _terms(elevation, cos_sun), strict=True)
     )
     share = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
-    share = np.maximum(share, _darkness(radiance[sky], share)).astype(np.float32)
+    # Colour and darkness are two ways off the clear sky: either, or part of both.
+    share = np.minimum(share + _darkness(radiance[sky], share), 1.0).astype(np.float32)
     out[sky] = share if aureole is None else _filled(share, aureole)
     return out
 
