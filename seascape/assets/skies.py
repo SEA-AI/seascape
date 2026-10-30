@@ -69,6 +69,15 @@ SUN_POWERS = (0, 1, 2, 4, 8, 16)
 # pixels it is filled from.
 AUREOLE_DEG = 8.0
 INPAINT_RADIUS_DEG = 0.5
+# Judgement: a pixel under this share by colour is clear sky to judge darkness against.
+CLEAR_SHARE = 0.5
+# Judgements: the luminance, as a fraction of the clear sky's beside it, where a pixel
+# starts to read as shaded cloud and where it reads as all cloud.
+DARK = (0.9, 0.6)
+# Judgement: the Gaussian sigma of "beside".
+BESIDE_DEG = 3.0
+# The clear sky beside a pixel is solved on a grid of this many cells to a sigma.
+CELLS_PER_SIGMA = 4
 
 
 class Photo(Model):
@@ -204,9 +213,14 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     cloud: 0 as blue as the photo's clear sky there, 1 as grey as B = R, and none below
     the horizon.
 
-    Limitation: colour alone, so a cloud as white as the circumsolar sky beside it reads
-    clear, a disc's aureole takes the cloud round it, a dusk's glow redder than grey
-    reads cloud, and a gap in an overcast photo reads cloud.
+    A pixel as blue as the clear sky but darker than the clear sky beside it is a
+    shaded cloud base, lit by the blue sky: DARK ramps it in, added to the colour's.
+
+    Limitation: a cloud as white as the circumsolar sky beside it reads clear, a disc's
+    aureole takes the cloud round it, a dusk's glow redder than grey reads cloud, a gap
+    in an overcast photo reads cloud, haze darker than the clear sky beside it reads
+    cloud, and a shaded base much wider than BESIDE_DEG reads cloud only at its
+    rim.
     """
     h, w = radiance.shape[:2]
     out = np.zeros((h, w), np.float32)
@@ -248,9 +262,80 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
         c * t for c, t in zip(coefficients, _terms(elevation, cos_sun), strict=True)
     )
     share = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
-    share = share.astype(np.float32)
+    # Colour and darkness are two ways off the clear sky: either, or part of both.
+    share = np.minimum(share + _darkness(radiance[sky], share), 1.0).astype(np.float32)
     out[sky] = share if aureole is None else _filled(share, aureole)
     return out
+
+
+def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
+    """How much darker each pixel of `radiance` is than the clear sky beside it, 0 to
+    1 over DARK, judged against the pixels `share` takes for clear."""
+    log_lum = np.log(np.maximum(radiance @ LUMINANCE, 1e-9)).astype(
+        np.float32, copy=False
+    )
+    clear = (share < CLEAR_SHARE).astype(np.float32)
+    if not clear.any():
+        return np.zeros(share.shape, np.float32)
+    sigma_px = BESIDE_DEG * radiance.shape[1] / 360.0
+    # Shaded cloud read clear by colour leaves the clear set until none is DARK[0]
+    # darker than the rest beside it.
+    for _ in range(FIT_PASSES):
+        beside = _beside(clear, log_lum, sigma_px)
+        kept = clear * (log_lum - beside >= math.log(DARK[0]))
+        if not kept.any() or np.array_equal(kept, clear):
+            break
+        clear = kept
+    else:
+        beside = _beside(clear, log_lum, sigma_px)
+    start, full = -math.log(DARK[0]), -math.log(DARK[1])
+    return np.clip((beside - log_lum - start) / (full - start), 0.0, 1.0)
+
+
+def _beside(weight: np.ndarray, value: np.ndarray, sigma_px: float) -> np.ndarray:
+    """`value` averaged round each pixel over `weight`, a Gaussian of `sigma_px`."""
+    h, w = weight.shape
+    f = max(1.0, sigma_px / CELLS_PER_SIGMA)
+    size = (max(1, round(w / f)), max(1, round(h / f)))
+    cells = cv2.resize(weight, size, interpolation=cv2.INTER_AREA)
+    sums = cv2.resize(weight * value, size, interpolation=cv2.INTER_AREA)
+    mean = _pull_push(cells, sums / np.maximum(cells, 1e-12), sigma_px / f)
+    return cv2.resize(mean, (w, h), interpolation=cv2.INTER_LINEAR)
+
+
+def _pull_push(weight: np.ndarray, value: np.ndarray, sigma: float) -> np.ndarray:
+    """Normalized convolution (Knutsson & Westin, "Normalized and differential
+    convolution", CVPR 1993) at doubling scales, each finer one trusted as far as it
+    holds a weight of one cell, the rest pushed from the coarser (Gortler et al.,
+    "The Lumigraph", SIGGRAPH 1996)."""
+    h, w = weight.shape
+    # Doublings until a sigma spans the strip's circumference.
+    levels = max(0, math.ceil(math.log2(w / (2.0 * math.pi * sigma)))) + 1
+    mean = value
+    for k in reversed(range(levels)):
+        size = (max(1, math.ceil(w / 2**k)), max(1, math.ceil(h / 2**k)))
+        cells = cv2.resize(weight, size, interpolation=cv2.INTER_AREA)
+        sums = cv2.resize(weight * value, size, interpolation=cv2.INTER_AREA)
+        total = _wrapped_blur(cells, sigma)
+        level = _wrapped_blur(sums, sigma) / np.maximum(total, 1e-12)
+        # 2 pi sigma^2 turns a unit-sum Gaussian's weight into cells.
+        level = cv2.resize(level, (w, h), interpolation=cv2.INTER_LINEAR)
+        if k == levels - 1:
+            # Nothing coarser to push from.
+            mean = level
+            continue
+        trust = np.minimum(1.0, total * 2.0 * math.pi * sigma**2)
+        trust = cv2.resize(trust, (w, h), interpolation=cv2.INTER_LINEAR)
+        mean = trust * level + (1.0 - trust) * mean
+    return mean
+
+
+def _wrapped_blur(a: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian blur of an equirectangular strip, wrapped in bearing."""
+    # OpenCV's float kernel reaches 4 sigma.
+    pad = min(math.ceil(4.0 * sigma), a.shape[1])
+    wrapped = cv2.copyMakeBorder(a, 0, 0, pad, pad, cv2.BORDER_WRAP)
+    return cv2.GaussianBlur(wrapped, (0, 0), sigma)[:, pad:-pad]
 
 
 def _filled(share: np.ndarray, hole: np.ndarray) -> np.ndarray:

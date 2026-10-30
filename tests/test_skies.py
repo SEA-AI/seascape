@@ -81,6 +81,30 @@ def test_grey_on_a_clear_sky_is_cloud() -> None:
     assert cloud[ABOVE_2_DEG, :250].max() < 0.05
 
 
+def test_a_shaded_base_is_cloud_only_past_dark() -> None:
+    sky = _clear_sky()
+    base = np.s_[50:54, 318:322]  # about BESIDE_DEG across
+    faint = np.s_[50:54, 150:154]
+    sky[base] *= 0.9 * skies.DARK[1]
+    sky[faint] *= 0.95  # over DARK[0]
+    # One across the photo's seam.
+    sky[50:54, :2] *= 0.9 * skies.DARK[1]
+    sky[50:54, -2:] *= 0.9 * skies.DARK[1]
+    cloud = skies.cloud(sky, PHOTO)
+    assert cloud[base].min() == pytest.approx(1.0)
+    assert cloud[50:54, :2].min() == cloud[50:54, -2:].min() == pytest.approx(1.0)
+    assert cloud[faint].max() < 0.05
+    assert cloud[ABOVE_2_DEG, 200:250].max() < 0.05
+
+
+def test_a_clear_sky_darker_across_the_photo_is_no_cloud() -> None:
+    sky = _clear_sky()
+    # Half as bright opposite the sun, smoothly, as a clear sky's dark band is.
+    bearing = np.radians(np.arange(CW) * 360.0 / CW - SUN_DEG[0])
+    sky *= (0.75 + 0.25 * np.cos(bearing))[None, :, None]
+    assert skies.cloud(sky, PHOTO)[ABOVE_2_DEG].max() < 0.05
+
+
 def test_an_overcast_photo_is_cloud_down_to_the_horizon() -> None:
     cloud = skies.cloud(_clear_sky(), PHOTO.model_copy(update={"overcast": True}))
     assert cloud[: CH // 2].min() == 1.0
