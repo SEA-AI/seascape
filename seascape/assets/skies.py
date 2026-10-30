@@ -34,6 +34,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from seascape.assets import SHA256
 from seascape.model import Model
+from seascape.physics import lwir
 
 LIBRARY = Path(__file__).parent / "skies.toml"
 # ITU-R BT.709.
@@ -266,6 +267,38 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     share = np.minimum(share + _darkness(radiance[sky], share), 1.0).astype(np.float32)
     out[sky] = share if aureole is None else _filled(share, aureole)
     return out
+
+
+def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
+    """The elevation where the run of cloud (share at least CLEAR_SHARE) over each
+    pixel of `share` ends down its column, (h, w) top row first as `cloud` gives it.
+    NaN where the pixel is clear or its run reaches the horizon."""
+    h = share.shape[0]
+    rows = np.arange(h // 2, dtype=np.int32)[:, None]
+    clear = share[: h // 2] < CLEAR_SHARE
+    # The nearest clear row at or under each row; past the horizon, none.
+    under = np.minimum.accumulate(np.where(clear, rows, h // 2)[::-1], axis=0)[::-1]
+    foot = _elevation_deg(np.arange(h // 2 + 1) - 0.5, h).astype(np.float32)
+    out = np.full(share.shape, np.nan, np.float32)
+    out[: h // 2] = np.where(clear | (under == h // 2), np.nan, foot[under])
+    return out
+
+
+def cloud_height_m(share: np.ndarray, cloud_base_m: float) -> np.ndarray:
+    """How far over its base the cloud in each row of `share`, top row first, is:
+    `lwir.cloud_height_m` averaged by share over the cloud whose bottom shows, and the
+    base where none does."""
+    h = share.shape[0]
+    bottom = cloud_bottom_deg(share)
+    seen = ~np.isnan(bottom)
+    elevation = np.radians(_elevation_deg(np.arange(h), h))[:, None]
+    height = lwir.cloud_height_m(
+        elevation, np.radians(np.where(seen, bottom, 0.0)), cloud_base_m
+    )
+    weight = np.where(seen, share, 0.0)
+    total = weight.sum(axis=1)
+    summed = (weight * height).sum(axis=1)
+    return np.divide(summed, total, out=np.zeros(h), where=total > 0)
 
 
 def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
