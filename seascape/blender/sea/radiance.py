@@ -1,6 +1,7 @@
 """The LWIR sea: its emissivity, its skin's radiance and the sky it reflects."""
 
 import math
+import os
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -147,7 +148,8 @@ def _each[T](
     bake: Callable[[float, float], T], tiles: Iterable[tuple[float, float]]
 ) -> list[T]:
     """`bake` of each tile, in order; numpy releases the GIL, so threads share it."""
-    with ThreadPoolExecutor() as pool:
+    # CPU-bound: a thread past the cores only holds another tile's arrays.
+    with ThreadPoolExecutor(os.process_cpu_count()) as pool:
         return list(pool.map(lambda tile: bake(*tile), tiles))
 
 

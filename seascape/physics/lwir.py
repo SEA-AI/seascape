@@ -179,13 +179,13 @@ def emissivity_curve(
     """
     theta, table = _flat_curve(t_sea_k)
     if slope_sigma <= 0.0:
-        return theta, table
+        return theta.copy(), table.copy()
     normal = _facets(slope_sigma)
     view = np.stack([np.sin(theta), np.zeros(CURVE_ANGLES), np.cos(theta)], axis=-1)
     cos_i = view @ normal.T  # (angle, facet)
     area = _seen_area(cos_i, normal)
     eps = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, table)
-    return theta, (eps * area).sum(axis=1) / area.sum(axis=1)
+    return theta.copy(), (eps * area).sum(axis=1) / area.sum(axis=1)
 
 
 @functools.lru_cache(maxsize=64)
@@ -289,7 +289,7 @@ def reflected_sky(
     # weighs its facets once.
     view = np.stack([np.cos(local), np.zeros_like(local), np.sin(local)], axis=-1)
     cos_i = view @ normal.T  # (angle, facet)
-    theta, flat = emissivity_curve(t_sea_k=t_sea_k)
+    theta, flat = _flat_curve(t_sea_k)
     reflectance = 1.0 - np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), theta, flat)
     weight = _seen_area(cos_i, normal) * reflectance
     # Each facet's reflection in the wave's frame, turned up by the wave's tilt.
