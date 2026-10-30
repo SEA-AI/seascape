@@ -349,7 +349,7 @@ def respond(
     for channel, gain in zip("rgb", gains, strict=True):
         _set(tree, f"sensor.wb_{channel}", gain / min(gains))
     _set(tree, "sensor.sharpen", camera.processing.sharpen)
-    # Sites of the sensor across an output pixel. ponytail: below 2 the sensor
+    # Sites of the sensor across an output pixel. Limitation: below 2 the sensor
     # mosaics at the output's pitch; a scale between would need the mosaic resampled.
     k = (sensor.width_px or camera.width_px) / camera.width_px
     _toggle(tree, "sensor.mosaic", k < 2)

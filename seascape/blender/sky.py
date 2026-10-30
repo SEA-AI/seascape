@@ -3,6 +3,7 @@
 import math
 
 import bpy
+import cv2
 import numpy as np
 
 from seascape.assets import download, skies
@@ -324,8 +325,8 @@ def _optical_depth(
 ) -> bpy.types.NodeSocket:
     """The band's optical depth over the ray that reached the shading point.
 
-    ponytail: exact along camera rays. LWIR takes a secondary ray, the sea reflected in
-    a hull's paint, as if it ran straight out from the camera, ending at the shading
+    Limitation: exact along camera rays. LWIR takes a secondary ray, the sea reflected
+    in a hull's paint, as if it ran straight out from the camera, ending at the shading
     point's distance; its true start needs the path's length so far, which a shader
     cannot read.
     """
@@ -399,12 +400,10 @@ def _cloudy_sky_image(sky: Sky) -> bpy.types.Image:
     rgba = pixels(photo)
     h, w = rgba.shape[:2]
     bpy.data.images.remove(photo)
-    # Bottom row first, as Blender stores an image: the sky is the top half.
-    cloud = np.zeros((h, w), np.float32)
-    cloud[h // 2 :] = skies.cloud(rgba[h // 2 :, :, :3])
     f = max(1, w // THERMAL_SKY_PX)
-    cloud = cloud[: h // f * f, : w // f * f]
-    cloud = cloud.reshape(h // f, f, w // f, f).mean(axis=(1, 3))
+    rgb = cv2.resize(rgba, (w // f, h // f), interpolation=cv2.INTER_AREA)[..., :3]
+    # Bottom row first, as Blender stores an image; `skies` reads top row first.
+    cloud = skies.cloud(rgb[::-1], skies.library()[sky.hdri])[::-1]
     rows = cloud.shape[0]
     elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
     radiance = lwir.cloudy_sky_radiance(

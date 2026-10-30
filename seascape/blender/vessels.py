@@ -372,7 +372,7 @@ def _wake(
 ) -> list[wakes.Wake]:
     """The wake `_pose` leaves, if the hull is under way.
 
-    ponytail: along the heading from the start, without the drift's figure-eight; give
+    Limitation: along the heading from the start, without the drift's figure-eight; give
     the wake the drift's offset if a drifting hull under way shows its wake beside it.
     """
     if spec.speed_mps <= 0.0:
@@ -491,7 +491,7 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     The waterline is z = 0 in the attitude's frame, which heaves, pitches and rolls
     with the waves: `_fit` puts the keel a draught below it.
     """
-    # ponytail: the crossings, not the segments between them, so the nearest one to a
+    # Limitation: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.
     (attitude,) = anchor.children
     to_world = np.array(attitude.matrix_world)

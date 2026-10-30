@@ -157,7 +157,7 @@ def _wakes(
     """Every hull's turbulent band, stern foam and Kelvin arms: the strongest band and
     foam, and the arms summed, read at `where`, (east, north, time).
 
-    ponytail: the arms are Kelvin's straight-path pattern laid along the path, which a
+    Limitation: the arms are Kelvin's straight-path pattern laid along the path, which a
     tight turn bends; sum the arms from past poses if a turn reads wrong.
     """
     levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES

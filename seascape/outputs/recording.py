@@ -49,7 +49,7 @@ COLUMNS = [
     "proc_surveil_speed",
 ]
 
-# ponytail: nominal pitches, not a datasheet's; seascape models no sensor.
+# Limitation: nominal pitches, not a datasheet's; seascape models no sensor.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 
 # The recording's camera frame, +X right, +Y forward, +Z up, as OpenCV's axes.

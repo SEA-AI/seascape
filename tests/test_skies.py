@@ -43,17 +43,60 @@ def test_a_star_is_no_sun() -> None:
     assert skies.sun(sky).elevation_deg is None
 
 
-def test_broken_cloud_splits_from_the_blue_between() -> None:
-    pixels = np.array([[0.2, 0.4, 1.0]] * 3 + [[1.0, 1.0, 1.0]] * 2)
-    assert skies.cloud(pixels).tolist() == [0.0, 0.0, 0.0, 1.0, 1.0]
+SUN_DEG = (90.0, 20.0)
+PHOTO = skies.Photo(
+    url="https://example.com/sky.hdr",
+    sha256="0" * 64,
+    sun_bearing_deg=SUN_DEG[0],
+    sun_elevation_deg=SUN_DEG[1],
+    sun_floor=1.0,
+    licence="CC0-1.0",
+    attribution="a test sky",
+)
+CW, CH = 512, 256
+# Below 2 degrees the fit cannot follow a white horizon.
+ABOVE_2_DEG = slice(0, round(CH * 88 / 180))
 
 
-def test_a_pixel_between_the_classes_is_part_cloud() -> None:
-    blue, white = [0.2, 0.4, 1.0], [1.0, 1.0, 1.0]
-    between = np.sqrt(np.multiply(blue, white))
-    pixels = np.array([blue] * 4 + [white] * 4 + [between])
-    assert 0.0 < skies.cloud(pixels)[-1] < 1.0
+def _clear_sky() -> np.ndarray:
+    """Blue overhead, whitening to the horizon and round the sun as a clear sky does."""
+    rows = np.arange(H)
+    elevation = np.radians(np.clip(90.0 - (rows + 0.5) / H * 180.0, 0.0, 90.0))
+    glow = _sky(*SUN_DEG, 15.0, 1.0)[..., 0] - 1.0
+    white = 1.0 - np.sin(elevation)[:, None] * (1.0 - glow)
+    blue = np.array([0.2, 0.4, 1.0], np.float32)
+    sky = blue + white[..., None] * (1.0 - blue)
+    return sky[:: H // CH, :: W // CW]
 
 
-def test_a_sky_of_one_grey_is_overcast() -> None:
-    assert skies.cloud(np.full((4, 3), 0.7)).tolist() == [1.0] * 4
+def test_a_clear_sky_hazed_at_the_horizon_and_the_sun_is_no_cloud() -> None:
+    assert skies.cloud(_clear_sky(), PHOTO)[ABOVE_2_DEG].max() < 0.05
+
+
+def test_grey_on_a_clear_sky_is_cloud() -> None:
+    sky = _clear_sky()
+    sky[40:60, 300:340] = 0.8
+    cloud = skies.cloud(sky, PHOTO)
+    assert cloud[40:60, 300:340].min() == pytest.approx(1.0)
+    assert cloud[ABOVE_2_DEG, :250].max() < 0.05
+
+
+def test_an_overcast_photo_is_cloud_down_to_the_horizon() -> None:
+    cloud = skies.cloud(_clear_sky(), PHOTO.model_copy(update={"overcast": True}))
+    assert cloud[: CH // 2].min() == 1.0
+    assert cloud[CH // 2 :].max() == 0.0
+
+
+@pytest.mark.parametrize("offset", [0, 1])
+def test_gaps_in_a_mostly_grey_sky_leave_the_grey_cloud(offset: int) -> None:
+    sky = _clear_sky()
+    gaps = np.zeros(sky.shape[:2], bool)
+    # Gaps a pixel wide, on and off the fit's stride, few enough that a fit through
+    # every pixel lies near grey.
+    s = skies.FIT_STRIDE
+    gaps[offset::s, offset :: 20 * s] = True
+    sky[~gaps] = 0.8
+    # Above 45 degrees the clear sky is blue enough for grey to read whole cloud.
+    above_45 = slice(0, CH // 4)
+    cloud = skies.cloud(sky, PHOTO)[above_45]
+    assert cloud[~gaps[above_45]].min() > 0.95
