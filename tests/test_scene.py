@@ -5,7 +5,6 @@ Blender is one global session, so each class rebuilds in its own band on entry.
 
 import math
 from collections.abc import Iterator
-from functools import partial
 from pathlib import Path
 from statistics import NormalDist
 from typing import Any
@@ -1075,13 +1074,12 @@ class TestIrBand:
         sigmas = _row_sigmas(slope_max)
         roughest = table[(SLOPE_ROWS - 1) * VIEW_ROWS]  # its grazing view
         grazing = (mirror >= 0) & (mirror < math.radians(5.0))
-        flat = lwir.reflected_sky(mirror[grazing], *sky)
+        flat = lwir.Sky(*sky).reflected(mirror[grazing])
         assert np.all(roughest[grazing] < flat), "facets seen grazing lean to the eye"
         for tile in (0, SLOPE_ROWS - 1):
             for row in (0, VIEW_ROWS - 1):
-                scale = table[tile * VIEW_ROWS + row] / lwir.reflected_sky(
+                scale = table[tile * VIEW_ROWS + row] / lwir.Sky(*sky).reflected(
                     mirror,
-                    *sky,
                     t_sea_k=SCENARIO.sea.t_sea_k,
                     slope_sigma=sigmas[tile],
                     view_rad=view[row],
@@ -1114,9 +1112,8 @@ class TestIrBand:
             )
             exact = np.array(
                 [
-                    lwir.reflected_sky(
+                    lwir.Sky(*sky).reflected(
                         math.asin(s),
-                        *sky,
                         t_sea_k=SCENARIO.sea.t_sea_k,
                         slope_sigma=sigmas[tile],
                         view_rad=math.asin(m),
@@ -1922,7 +1919,7 @@ class TestPhotographedThermalSky:
 
 
 def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
-    """The baked share at a texel centre is `lwir.reflected_sky` of the bearing's sky
+    """The baked share at a texel centre is `lwir.Sky.reflected` of the bearing's sky
     over the round sky's."""
     elevation = np.radians(np.arange(-89.0, 90.0, 2.0))
     clear = lwir.sky_radiance(elevation)
@@ -1945,13 +1942,14 @@ def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
     )
     row = table[(tile * CLOUD_VIEWS + view) * CLOUD_MIRRORS + k]
     root = (k + 0.5) / CLOUD_MIRRORS * 2.0 - 1.0
-    reflect = partial(
-        lwir.reflected_sky,
-        math.asin(root**2),
-        elevation,
-        slope_sigma=_row_sigmas(slope_max, CLOUD_SLOPES)[tile],
-        view_rad=math.asin(_view_rows(CLOUD_VIEWS)[view]),
-    )
+
+    def reflect(sky: np.ndarray) -> np.ndarray:
+        return lwir.Sky(elevation, sky).reflected(
+            math.asin(root**2),
+            slope_sigma=_row_sigmas(slope_max, CLOUD_SLOPES)[tile],
+            view_rad=math.asin(_view_rows(CLOUD_VIEWS)[view]),
+        )
+
     expected = reflect(radiance) / reflect(radiance.mean(axis=1))
     assert row == pytest.approx(expected, rel=1e-5)
     assert np.all(row[:half] > 1.0), "under the cloud"
