@@ -379,6 +379,27 @@ def sky_radiance(
 # g / c_p: air lifted from the surface cools at it to the cloud base, where it condenses
 # (Wallace & Hobbs, Atmospheric Science, 2nd ed., 2006).
 DRY_LAPSE_K_PER_M = 9.8e-3
+# The U.S. Standard Atmosphere's (1976) troposphere: a cloud's side is at the air round
+# it.
+STANDARD_LAPSE_K_PER_M = 6.5e-3
+# LOWTRAN 7's cumulus, base 0.66 km and top 2.7 km (lowtran7.f, ICLD 1).
+CUMULUS_DEPTH_M = 2040.0
+
+
+def cloud_height_m(
+    elev_rad: npt.ArrayLike, bottom_rad: npt.ArrayLike, cloud_base_m: float
+) -> FloatArray:
+    """How far over its base a line of sight at `elev_rad` meets a cloud whose bottom
+    shows at `bottom_rad`, above the horizon: on the side it turns to the camera, as
+    far off as its base under that bottom, and no higher than a cumulus' top.
+
+    On a flat Earth: the curve matters only near the horizon, where the air in front
+    hides the cloud.
+    """
+    elev = np.asarray(elev_rad, dtype=np.float64)
+    bottom = np.asarray(bottom_rad, dtype=np.float64)
+    rise = np.tan(elev) / np.tan(bottom) - 1.0
+    return np.clip(cloud_base_m * rise, 0.0, CUMULUS_DEPTH_M)
 
 
 def cloudy_sky_radiance(
@@ -387,9 +408,11 @@ def cloudy_sky_radiance(
     cloud_base_m: float,
     t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
+    height_m: npt.ArrayLike = 0.0,
 ) -> FloatArray:
-    """`sky_radiance` with a `cloud` fraction, 0 to 1, a blackbody at the cloud base
-    seen through the clear column.
+    """`sky_radiance` with a `cloud` fraction, 0 to 1, a blackbody at the air
+    `height_m` over the cloud base seen through the clear column: air lifted dry to the
+    base, and the standard lapse over it.
 
     The column, emissivity eps the clear sky over a blackbody at air temperature,
     transmits 1 - eps of what lies behind it (Kirchhoff). It is taken to lie wholly
@@ -399,8 +422,13 @@ def cloudy_sky_radiance(
         t_air_k = SURFACE_AIR_K[atmosphere]
     clear = sky_radiance(elev_rad, t_air_k, atmosphere)
     transmitted = 1.0 - clear / band_radiance(t_air_k)
-    base = band_radiance(t_air_k - DRY_LAPSE_K_PER_M * cloud_base_m)
-    return clear + np.asarray(cloud) * transmitted * base
+    t_cloud_k = (
+        t_air_k
+        - DRY_LAPSE_K_PER_M * cloud_base_m
+        - STANDARD_LAPSE_K_PER_M * np.asarray(height_m, dtype=np.float64)
+    )
+    cloud_radiance = np.interp(t_cloud_k, _TB_GRID, _TB_RADIANCE)
+    return clear + np.asarray(cloud) * transmitted * cloud_radiance
 
 
 def haze_depth(

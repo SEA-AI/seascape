@@ -268,6 +268,22 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     return out
 
 
+def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
+    """The elevation of the lower edge of the cloud over each pixel of `share`, (h, w)
+    top row first as `cloud` gives it: of its run of at least CLEAR_SHARE cloud down its
+    column. NaN where the pixel is clear or its run reaches the horizon, its bottom out
+    of sight."""
+    h = share.shape[0]
+    rows = np.arange(h // 2)[:, None]
+    clear = share[: h // 2] < CLEAR_SHARE
+    # The nearest clear row at or under each row; past the horizon, none.
+    under = np.minimum.accumulate(np.where(clear, rows, h // 2)[::-1], axis=0)[::-1]
+    bottom = _elevation_deg(under - 0.5, h)
+    out = np.full(share.shape, np.nan, np.float32)
+    out[: h // 2] = np.where(clear | (under == h // 2), np.nan, bottom)
+    return out
+
+
 def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
     """How much darker each pixel of `radiance` is than the clear sky beside it, 0 to
     1 over DARK, judged against the pixels `share` takes for clear."""

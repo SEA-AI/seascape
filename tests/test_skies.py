@@ -124,3 +124,14 @@ def test_gaps_in_a_mostly_grey_sky_leave_the_grey_cloud(offset: int) -> None:
     above_45 = slice(0, CH // 4)
     cloud = skies.cloud(sky, PHOTO)[above_45]
     assert cloud[~gaps[above_45]].min() > 0.95
+
+
+def test_a_cloud_s_bottom_is_the_foot_of_its_run_down_its_column() -> None:
+    share = np.zeros((CH, CW), np.float32)
+    share[30:60, 10] = 1.0  # a cloud with clear sky under it
+    share[100 : CH // 2, 20] = 1.0  # one down to the horizon
+    bottom = skies.cloud_bottom_deg(share)
+    foot = 90.0 - 60.0 / CH * 180.0
+    assert bottom[30:60, 10] == pytest.approx(foot)
+    assert np.isnan(bottom[100 : CH // 2, 20]).all()
+    assert np.isnan(bottom[:, 0]).all()

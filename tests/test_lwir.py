@@ -259,6 +259,32 @@ def test_a_cloud_never_cools_the_sky_it_hides() -> None:
     assert float(cloudy[0]) == pytest.approx(float(clear[0]))
 
 
+def test_a_cloud_s_side_over_its_base_is_colder_by_the_standard_lapse() -> None:
+    at = {
+        h: lwir.cloudy_sky_radiance(np.pi / 2, 1.0, 1000.0, 290.0, height_m=h)
+        for h in (0.0, 1000.0)
+    }
+    clear = lwir.sky_radiance(np.pi / 2, 290.0)
+    transmitted = 1.0 - clear / lwir.band_radiance(290.0)
+    base_k = 290.0 - lwir.DRY_LAPSE_K_PER_M * 1000.0
+    side = clear + transmitted * lwir.band_radiance(base_k - 6.5)
+    assert float(at[1000.0]) == pytest.approx(float(side), rel=1e-4)
+    assert at[1000.0] < at[0.0]
+
+
+def test_a_line_of_sight_meets_the_side_of_a_cloud_over_its_base() -> None:
+    bottom = np.radians(5.0)
+    assert float(lwir.cloud_height_m(bottom, bottom, 1000.0)) == pytest.approx(0.0)
+    # tan 10 deg / tan 5 deg - 1 of the base.
+    up = math.tan(math.radians(10.0)) / math.tan(bottom) - 1.0
+    assert float(lwir.cloud_height_m(np.radians(10.0), bottom, 1000.0)) == (
+        pytest.approx(1000.0 * up)
+    )
+    assert float(lwir.cloud_height_m(np.radians(80.0), bottom, 1000.0)) == (
+        lwir.CUMULUS_DEPTH_M
+    )
+
+
 def test_no_cloud_is_the_clear_sky() -> None:
     elevation = np.radians([0.0, 30.0, 90.0])
     assert lwir.cloudy_sky_radiance(elevation, 0.0, 1000.0) == pytest.approx(
