@@ -76,6 +76,9 @@ def set_output(
     sc.eevee.clamp_surface_indirect = 0.0
     sc.cycles.device = "GPU" if enable_gpu() else "CPU"
     sc.cycles.samples = getattr(outputs.samples, band)
+    # Adaptive sampling stops a pixel at a noise threshold set for a picture, not for
+    # kelvin; ir's samples are what holds its grain below the NETD.
+    sc.cycles.use_adaptive_sampling = band != "ir"
     # On by default. OIDN breaks the ir frame's R=G=B and blurs the waves.
     sc.cycles.use_denoising = False
     # Cycles merges tiles through a file on disk; a frame in one tile renders the same

@@ -27,8 +27,9 @@ class Samples(Model):
     """
 
     eo: int = Field(default=16, gt=0, description="Per pixel, for EO frames.")
-    # Where the open sea's grain falls below a Boson's NETD.
-    ir: int = Field(default=128, gt=0, description="Per pixel, for IR frames.")
+    # Where the open sea's grain, every sample taken, falls below a Boson's NETD of
+    # 50 mK (datasheet 102-2013-40, table 15).
+    ir: int = Field(default=64, gt=0, description="Per pixel, for IR frames.")
 
 
 class Outputs(Model):

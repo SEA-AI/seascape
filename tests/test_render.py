@@ -224,6 +224,9 @@ class TestEachBand:
     def test_no_band_is_denoised(self, sc: bpy.types.Scene) -> None:
         assert sc.cycles.use_denoising is False
 
+    def test_ir_takes_every_sample(self, sc: bpy.types.Scene, band: Band) -> None:
+        assert sc.cycles.use_adaptive_sampling is (band != "ir")
+
     def test_the_compositor_runs_on_the_cpu(self, sc: bpy.types.Scene) -> None:
         assert sc.render.compositor_device == "CPU"
 
