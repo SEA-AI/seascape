@@ -1,6 +1,9 @@
 """The LWIR sea: its emissivity, its skin's radiance and the sky it reflects."""
 
 import math
+import os
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import NamedTuple
 
@@ -22,13 +25,13 @@ from seascape.physics import lwir
 
 # A judgement: emissivity and the reflected sky move slowly with slope.
 SLOPE_ROWS = 16
-# Measured against `lwir.reflected_sky` evaluated exactly: bilinear in these, the
+# Measured against `lwir.Sky.reflected` evaluated exactly: bilinear in these, the
 # sea's brightness temperature stays within 0.25 K, grazing views included.
 VIEW_ROWS = 32
 MIRROR_SAMPLES = 256
 # A judgement: the bearing resolution of a cloud's reflection.
 CLOUD_BEARINGS = 64
-# Measured against `lwir.reflected_sky` evaluated exactly under the photo
+# Measured against `lwir.Sky.reflected` evaluated exactly under the photo
 # kloofendal_48d_partly_cloudy: interpolated in these, the clouds' share moves the
 # sea under 0.3 K.
 CLOUD_SLOPES = 16
@@ -104,7 +107,7 @@ def _mirror_columns() -> np.ndarray:
 def _reflection_image(
     t_sea_k: float, sky: SkyCurve, slope_max: float
 ) -> bpy.types.Image:
-    """`lwir.reflected_sky` baked against sin(mirror elevation) along a row
+    """`lwir.Sky.reflected` baked against sin(mirror elevation) along a row
     (`_mirror_columns`), the view off the wave normal up a tile's rows
     (`_view_rows`), and the unresolved RMS slope from tile to tile, all at texel
     centres."""
@@ -121,16 +124,33 @@ def _reflection_table(
     t_sea_k: float, elevation: bytes, radiance: bytes, slope_max: float
 ) -> np.ndarray:
     mirror = np.arcsin(_mirror_columns())
-    sky = np.frombuffer(elevation), np.frombuffer(radiance)
+    sky = lwir.Sky(np.frombuffer(elevation), np.frombuffer(radiance))
     return np.array(
-        [
-            lwir.reflected_sky(
-                mirror, *sky, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=view
-            )
-            for sigma in _row_sigmas(slope_max)
-            for view in np.arcsin(_view_rows())
-        ]
+        _each(
+            lambda sigma, view: sky.reflected(
+                mirror, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=view
+            ),
+            _tiles(slope_max, SLOPE_ROWS, VIEW_ROWS),
+        )
     )
+
+
+def _tiles(slope_max: float, slopes: int, views: int) -> list[tuple[float, float]]:
+    """(unresolved slope, view off the wave normal) per tile, views nested in slopes."""
+    return [
+        (sigma, view)
+        for sigma in _row_sigmas(slope_max, slopes)
+        for view in np.arcsin(_view_rows(views))
+    ]
+
+
+def _each[T](
+    bake: Callable[[float, float], T], tiles: Iterable[tuple[float, float]]
+) -> list[T]:
+    """`bake` of each tile, in order; numpy releases the GIL, so threads share it."""
+    # CPU-bound: a thread past the cores only holds another tile's arrays.
+    with ThreadPoolExecutor(os.process_cpu_count()) as pool:
+        return list(pool.map(lambda tile: bake(*tile), tiles))
 
 
 def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.Image:
@@ -145,21 +165,16 @@ def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.
     widths = np.diff(edges)
     bearings = np.add.reduceat(clouds.radiance, edges[:-1], axis=1) / widths
     round_ = clouds.radiance.mean(axis=1)
-    rows = []
-    for sigma in _row_sigmas(slope_max, CLOUD_SLOPES):
-        for view in np.arcsin(_view_rows(CLOUD_VIEWS)):
-            seen, mean = (
-                lwir.reflected_sky(
-                    mirror,
-                    clouds.elevation,
-                    sky,
-                    t_sea_k=t_sea_k,
-                    slope_sigma=sigma,
-                    view_rad=view,
-                )
-                for sky in (bearings, round_)
-            )
-            rows.append(seen / mean[:, None])
+    skies = [lwir.Sky(clouds.elevation, sky) for sky in (bearings, round_)]
+
+    def ratio(sigma: float, view: float) -> np.ndarray:
+        seen, mean = (
+            sky.reflected(mirror, t_sea_k=t_sea_k, slope_sigma=sigma, view_rad=view)
+            for sky in skies
+        )
+        return seen / mean[:, None]
+
+    rows = _each(ratio, _tiles(slope_max, CLOUD_SLOPES, CLOUD_VIEWS))
     return curve_image("sea_clouds", np.concatenate(rows))
 
 

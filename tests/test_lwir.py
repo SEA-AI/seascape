@@ -41,6 +41,11 @@ def test_grazing_emissivity_collapses(curve) -> None:
     assert eps_at(curve, 89.0) < 0.6
 
 
+def test_a_curve_is_the_caller_s_own() -> None:
+    lwir.emissivity_curve()[1][0] = 0.0
+    assert lwir.emissivity_curve()[1][0] > 0.98
+
+
 def test_foam_raises_emissivity_as_niclos_measured_at_65_deg() -> None:
     """Niclòs et al. 2007: 0.039 +/- 0.007 at 65 deg, 8-14 um, foam taken Lambertian."""
     excess = lwir.foam_emissivity_excess(math.radians(65.0))
@@ -59,11 +64,11 @@ def test_several_skies_reflect_as_each_alone() -> None:
     skies = np.stack([sky, 1.3 * sky, np.full_like(sky, 20.0)], axis=-1)
     mirror = np.radians([-2.0, 1.0, 10.0])
     each = [
-        lwir.reflected_sky(mirror, elevation, s, slope_sigma=0.1, view_rad=0.05)
+        lwir.Sky(elevation, s).reflected(mirror, slope_sigma=0.1, view_rad=0.05)
         for s in skies.T
     ]
-    together = lwir.reflected_sky(
-        mirror, elevation, skies, slope_sigma=0.1, view_rad=0.05
+    together = lwir.Sky(elevation, skies).reflected(
+        mirror, slope_sigma=0.1, view_rad=0.05
     )
     assert together == pytest.approx(np.stack(each, axis=-1), rel=1e-12)
 
@@ -307,7 +312,7 @@ def test_the_facets_show_the_view_the_mean_surface_s_area(theta_deg: float) -> N
 
 
 def test_the_facets_carry_their_slope_sigma() -> None:
-    """Per axis, as `emissivity_curve` and `reflected_sky` read it."""
+    """Per axis, as `emissivity_curve` and `Sky.reflected` read it."""
     normal = lwir._facets(0.1)
     slope = -normal[:, :2] / normal[:, 2:]
     assert slope.mean(axis=0) == pytest.approx([0.0, 0.0], abs=1e-12)
@@ -318,7 +323,7 @@ def test_a_flat_sea_reflects_the_sky_in_its_mirror_direction() -> None:
     elev = np.radians(np.linspace(0.0, 90.0, 91))
     sky = lwir.sky_radiance(elev)
     mirror = np.radians([1.0, 10.0, 45.0])
-    assert lwir.reflected_sky(mirror, elev, sky) == pytest.approx(
+    assert lwir.Sky(elev, sky).reflected(mirror) == pytest.approx(
         lwir.sky_radiance(mirror)
     )
 
@@ -327,9 +332,9 @@ def test_a_rough_sea_seen_grazing_reflects_sky_from_above_its_mirror() -> None:
     elev = np.radians(np.linspace(0.0, 90.0, 91))
     sky = lwir.sky_radiance(elev)
     mirror = np.radians(1.0)
-    flat = lwir.reflected_sky(mirror, elev, sky)
+    flat = lwir.Sky(elev, sky).reflected(mirror)
     smooth, rough = (
-        lwir.reflected_sky(mirror, elev, sky, slope_sigma=s) for s in (0.05, 0.15)
+        lwir.Sky(elev, sky).reflected(mirror, slope_sigma=s) for s in (0.05, 0.15)
     )
     assert rough < smooth < flat
 
@@ -344,8 +349,8 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
     elev = np.radians(np.linspace(0.0, 90.0, 181))
     sky = lwir.sky_radiance(elev)
     mirror = math.radians(mirror_deg)
-    reflected = lwir.reflected_sky(
-        mirror, elev, sky, t_sea_k=t_sea_k, slope_sigma=sigma
+    reflected = lwir.Sky(elev, sky).reflected(
+        mirror, t_sea_k=t_sea_k, slope_sigma=sigma
     )
     theta, eps = lwir.emissivity_curve(t_sea_k=t_sea_k, slope_sigma=sigma)
     mean_eps = np.interp(math.pi / 2 - mirror, theta, eps)
@@ -394,8 +399,8 @@ def _shaded(depression: float, tilt: float, sigma: float) -> float:
     elev = np.radians(np.linspace(0.0, 90.0, 361))
     view = depression + tilt  # off the wave's plane
     mirror = depression + 2 * tilt  # off the horizon
-    reflected = lwir.reflected_sky(
-        mirror, elev, lwir.sky_radiance(elev), slope_sigma=sigma, view_rad=view
+    reflected = lwir.Sky(elev, lwir.sky_radiance(elev)).reflected(
+        mirror, slope_sigma=sigma, view_rad=view
     )
     theta, eps = lwir.emissivity_curve(slope_sigma=sigma)
     mean_eps = np.interp(math.pi / 2 - view, theta, eps)
