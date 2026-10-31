@@ -17,7 +17,6 @@ import numpy as np
 from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.waves.slopes import cox_munk_variances, drawn_slope_variances
 from seascape.physics.waves.spectrum import (
-    CAPILLARY_PEAK_RAD_M,
     CAPILLARY_SPEED_MPS,
     CAPILLARY_WAVELENGTH_M,
     FREQUENCIES,
@@ -27,6 +26,7 @@ from seascape.physics.waves.spectrum import (
     friction_velocity_mps,
     inverse_wave_age,
     peak_omega_rad_s,
+    phase_speed_mps,
 )
 
 # Elfouhaily et al. 1997, eq. 59; a_m is per u* / c_m.
@@ -51,7 +51,7 @@ def spreading_delta(
     peak and least between it and the capillaries."""
     k = omega_rad_s**2 / GRAVITY_MS2
     c_m = CAPILLARY_SPEED_MPS
-    c = np.sqrt(GRAVITY_MS2 / k * (1 + (k / CAPILLARY_PEAK_RAD_M) ** 2))
+    c = phase_speed_mps(k)
     c_p = wind_speed_mps / inverse_wave_age(wind_speed_mps, fetch_m)
     a_m = SPREAD_AM * friction_velocity_mps(wind_speed_mps) / c_m
     return np.tanh(SPREAD_A0 + SPREAD_AP * (c / c_p) ** 2.5 + a_m * (c_m / c) ** 2.5)

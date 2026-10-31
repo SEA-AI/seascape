@@ -72,15 +72,11 @@ def gerstner_offset_m(
 def gerstner_rest_m(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Where the water now over (`east_m`, `north_m`) was at rest. The offset's
-    gradient is under 1 while no crest folds, so stepping back by it converges."""
+    """Where the water now over (`east_m`, `north_m`) was at rest."""
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
-    rest_east, rest_north = east, north
-    for _ in range(64):
-        moved_east, moved_north, _ = gerstner_offset_m(
-            field, rest_east, rest_north, t_s
-        )
-        rest_east, rest_north = east - moved_east, north - moved_north
+    _, rest_east, rest_north = _gerstner_height_m(
+        field, east, north, t_s, (east, north)
+    )
     return rest_east, rest_north
 
 

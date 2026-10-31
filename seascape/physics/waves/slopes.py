@@ -241,19 +241,12 @@ def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     return tuple(w for w in field if 2 * math.pi / w.k_rad_m > footprint_m)
 
 
-def drawn_slope_variance(field: tuple[Wave, ...], footprint_m: float) -> float:
-    """`slope_variance(filtered(field, footprint_m))`, without building the waves."""
-    if not field:
-        return 0.0
-    k = np.array([w.k_rad_m for w in field])
-    ak = np.array([w.amplitude_m for w in field]) * k
-    return float(np.sum((ak * visibility(2 * math.pi / k, footprint_m)) ** 2) / 2)
-
-
 def drawn_slope_variances(
     field: tuple[Wave, ...], footprint_m: float, downwind_rad: float
 ) -> tuple[float, float]:
-    """`drawn_slope_variance` along and across `downwind_rad`."""
+    """The slope variance a pixel `footprint_m` long draws of `field`, along and
+    across `downwind_rad`: `slope_variance(filtered(field, footprint_m))` without
+    building the waves."""
     if not field:
         return 0.0, 0.0
     k = np.array([w.k_rad_m for w in field])
@@ -281,25 +274,6 @@ def slick_survivors(
     return tuple(left)
 
 
-def unresolved_slope_variance(
-    wind_speed_mps: float,
-    wind: tuple[Wave, ...],
-    swell: tuple[Wave, ...],
-    footprint_m: float,
-    total_slope: Callable[[float], float] = cox_munk_slope,
-) -> float:
-    """Cox & Munk's is the wind sea's variance; a swell adds its own undrawn part.
-
-    A sea short of fetch keeps Cox & Munk's open-ocean total, so the lobe takes the
-    slope of its missing long waves.
-    """
-    wind_left = total_slope(wind_speed_mps) ** 2 - drawn_slope_variance(
-        wind, footprint_m
-    )
-    swell_left = slope_variance(swell) - drawn_slope_variance(swell, footprint_m)
-    return max(wind_left, 0.0) + swell_left
-
-
 def unresolved_slope_variances(
     wind_speed_mps: float,
     downwind_rad: float,
@@ -308,7 +282,10 @@ def unresolved_slope_variances(
     footprint_m: float,
     fit: Callable[[float], tuple[float, float]] = cox_munk_variances,
 ) -> tuple[float, float]:
-    """`unresolved_slope_variance` upwind and crosswind, each against its own fit."""
+    """The slope variance a pixel `footprint_m` long leaves undrawn, upwind and
+    crosswind: Cox & Munk's per axis less what the wind sea draws, and a swell's own
+    undrawn part. A sea short of fetch keeps Cox & Munk's open-ocean total, so the lobe
+    takes the slope of its missing long waves."""
     drawn = drawn_slope_variances(wind, footprint_m, downwind_rad)
     swell_all = drawn_slope_variances(swell, 0.0, downwind_rad)
     swell_drawn = drawn_slope_variances(swell, footprint_m, downwind_rad)
