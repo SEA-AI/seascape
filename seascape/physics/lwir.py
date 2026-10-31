@@ -370,12 +370,12 @@ def brightness_temperature(radiance: npt.ArrayLike) -> FloatArray:
     return np.interp(np.asarray(radiance, dtype=np.float64), _TB_RADIANCE, _TB_GRID)
 
 
-@functools.lru_cache(maxsize=1)
-def _sky_table() -> tuple[FloatArray, dict[str, FloatArray]]:
+@functools.cache
+def _sky_table(csv: Path = _SKY_CSV) -> tuple[FloatArray, dict[str, FloatArray]]:
     """(elevation deg, each profile's sky against its horizon)."""
-    raw = np.loadtxt(_SKY_CSV, delimiter=",", comments="#")
+    raw = np.loadtxt(csv, delimiter=",", comments="#")
     raw.setflags(write=False)
-    curves = {name: raw[:, i + 1] for i, name in enumerate(header(_SKY_CSV))}
+    curves = {name: raw[:, i + 1] for i, name in enumerate(header(csv))}
     return raw[:, 0], curves
 
 
@@ -469,8 +469,9 @@ def cloudy_sky_radiance(
     elev = np.asarray(elev_rad, dtype=np.float64)
     clear = sky_radiance(elev, t_air_k, atmosphere)
     if cirrus:
-        at, sky = _cirrus_table()[atmosphere]
-        overcast = np.interp(elev, np.radians(at), sky) * band_radiance(t_air_k)
+        at, skies = _sky_table(_CIRRUS_CSV)
+        overcast = np.interp(elev, np.radians(at), skies[atmosphere])
+        overcast = overcast * band_radiance(t_air_k)
         return clear + np.asarray(cloud) * (overcast - clear)
     path, transmitted = _under_base(elev, cloud_base_m, atmosphere)
     t_cloud_k = (
@@ -487,28 +488,24 @@ def cloudy_sky_radiance(
 def _cloud_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray, FloatArray]]:
     """Per profile: (base m, elevation deg, path, transmittance), the last two shaped
     (base, elevation)."""
+    columns = header(_CLOUD_CSV)[1:]
+    # "path_250m" then "trans_250m": each quantity's columns, by base ascending.
+    base = np.array([float(c.split("_")[1].removesuffix("m")) for c in columns])
+    n = base.size // 2
     names = np.loadtxt(_CLOUD_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(_CLOUD_CSV, delimiter=",", comments="#", usecols=(1, 2, 3, 4))
+    raw = np.loadtxt(
+        _CLOUD_CSV, delimiter=",", comments="#", usecols=range(1, 2 + 2 * n)
+    )
     tables = {}
     for name in np.unique(names):
         rows = raw[names == name]
-        base, elev = np.unique(rows[:, 0]), np.unique(rows[:, 1])
-        shape = (base.size, elev.size)
         tables[str(name)] = (
-            base,
-            elev,
-            rows[:, 2].reshape(shape),
-            rows[:, 3].reshape(shape),
+            base[:n],
+            rows[:, 0],
+            rows[:, 1 : 1 + n].T,
+            rows[:, 1 + n :].T,
         )
     return tables
-
-
-@functools.lru_cache(maxsize=1)
-def _cirrus_table() -> dict[str, tuple[FloatArray, FloatArray]]:
-    """Per profile: (elevation deg, the cirrus sky against the clear horizon)."""
-    names = np.loadtxt(_CIRRUS_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(_CIRRUS_CSV, delimiter=",", comments="#", usecols=(1, 2))
-    return {str(n): (raw[names == n, 0], raw[names == n, 1]) for n in np.unique(names)}
 
 
 def _under_base(

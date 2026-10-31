@@ -248,7 +248,7 @@ def test_every_atmosphere_has_a_sky_a_haze_a_path_and_a_surface_air() -> None:
     assert set(lwir._depth_table(lwir._HAZE_CSV)) == names
     assert set(lwir._depth_table(lwir._PATH_CSV)) == names
     assert set(lwir._cloud_table()) == names
-    assert set(lwir._cirrus_table()) == names
+    assert set(lwir._sky_table(lwir._CIRRUS_CSV)[1]) == names
     assert set(atmosphere.SURFACE_AIR_K) == names
 
 
