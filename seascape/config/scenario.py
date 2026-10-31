@@ -177,9 +177,10 @@ class Scenario(Model):
     def _sea_follows_the_atmosphere(self) -> "Scenario":
         """The sea's own field cannot see the sky's, so the scenario fills it."""
         if "t_sea_k" not in self.sea.model_fields_set:
-            # A copy: the caller may still hold the Sea it passed.
+            # Validated anew, which model_copy would skip; the caller's Sea stays.
+            sea = self.sea.model_dump(exclude_unset=True)
             t_sea_k = SURFACE_SEA_K[self.sky.atmosphere]
-            self.sea = self.sea.model_copy(update={"t_sea_k": t_sea_k})
+            self.sea = Sea.model_validate({**sea, "t_sea_k": t_sea_k})
         return self
 
     @model_validator(mode="after")

@@ -702,6 +702,8 @@ def test_the_sea_takes_its_atmosphere_s_temperature_unless_set() -> None:
         == atmosphere.SURFACE_SEA_K["tropical"]
     )
     assert "t_sea_k" not in passed.model_fields_set
+    by_hand = {**models, "sea": Sea(**sea, t_sea_k=290.0)}
+    assert Scenario.model_validate(by_hand).sea.t_sea_k == 290.0
 
 
 def test_an_hdri_keeps_its_own_sky_over_an_inherited_one() -> None:
