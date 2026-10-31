@@ -415,7 +415,8 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
     # One height a row keeps cloud a function of elevation, as the world draws it:
     # radiance is close to linear over a cloud's few kelvin.
-    height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m)[::-1]
+    depth = lwir.cloud_depth_m(skies.library()[sky.hdri].cloud_genus)
+    height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m, depth)[::-1]
     radiance = lwir.cloudy_sky_radiance(
         elevation[:, None],
         cloud,

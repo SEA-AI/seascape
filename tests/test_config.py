@@ -717,7 +717,7 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
 def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
     photos = skies.library()
     for name in ("sunflowers", "mud_road", "snow_field"):
-        base = lwir.CLOUD_BASE_M[photos[name].cloud_genus]
+        base, _ = lwir.CLOUD_LAYER_M[photos[name].cloud_genus]
         assert Sky.model_validate({"hdri": name}).cloud_base_m == base
     given = Sky.model_validate({"hdri": "sunflowers", "cloud_base_m": 1500.0})
     assert given.cloud_base_m == 1500.0

@@ -404,9 +404,6 @@ def sky_radiance(
 DRY_LAPSE_K_PER_M = 9.8e-3
 # U.S. Standard Atmosphere (1976) troposphere: a cloud's side is at the air round it.
 STANDARD_LAPSE_K_PER_M = 6.5e-3
-# LOWTRAN 7's cumulus, base 0.66 km and top 2.7 km (lowtran7.f, ICLD 1).
-CUMULUS_DEPTH_M = 2040.0
-
 type CloudGenus = Literal[
     "clear",
     "cumulus",
@@ -416,25 +413,36 @@ type CloudGenus = Literal[
     "altostratus",
     "cirrus",
 ]
-# Each genus's base in LOWTRAN 7's cloud models (lowtran7.f, card 2: ICLD 1 to 4).
-# Judgement: altocumulus shares altostratus's level, the middle one (WMO International
-# Cloud Atlas), and LOWTRAN models no other cloud there. Cirrus takes its own base, in
-# LOWTRAN's cirrus sky; a clear sky's stray cloud, the default's.
-CLOUD_BASE_M: dict[CloudGenus, float] = {
-    "cumulus": 660.0,
-    "stratocumulus": 660.0,
-    "stratus": 330.0,
-    "altocumulus": 2400.0,
-    "altostratus": 2400.0,
+# Each genus's base and top in LOWTRAN 7's cloud models (lowtran7.f, card 2: ICLD 1 to
+# 4). Judgement: altocumulus shares altostratus's level, the middle one (WMO
+# International Cloud Atlas), and LOWTRAN models no other cloud there. Cirrus takes its
+# own, in LOWTRAN's cirrus sky; a clear sky's stray cloud, the default base and a
+# cumulus's depth.
+CLOUD_LAYER_M: dict[CloudGenus, tuple[float, float]] = {
+    "cumulus": (660.0, 2700.0),
+    "stratocumulus": (660.0, 2000.0),
+    "stratus": (330.0, 1000.0),
+    "altocumulus": (2400.0, 3000.0),
+    "altostratus": (2400.0, 3000.0),
 }
 
 
+def cloud_depth_m(genus: CloudGenus) -> float:
+    """How far over its base a cloud of `genus` reaches."""
+    base, top = CLOUD_LAYER_M.get(genus, CLOUD_LAYER_M["cumulus"])
+    return top - base
+
+
 def cloud_height_m(
-    elev_rad: npt.ArrayLike, bottom_rad: npt.ArrayLike, cloud_base_m: float
+    elev_rad: npt.ArrayLike,
+    bottom_rad: npt.ArrayLike,
+    cloud_base_m: float,
+    depth_m: float,
 ) -> FloatArray:
     """How far over its base a line of sight at `elev_rad` meets a cloud whose bottom
     shows at `bottom_rad`: on the side it turns to the camera, as far off as its base
-    under that bottom. A bottom at or under the horizon is out of sight: the base.
+    under that bottom, and no further than its `depth_m`. A bottom at or under the
+    horizon is out of sight: the base.
 
     On a flat Earth: the curve matters only near the horizon, where the air in front
     hides the cloud.
@@ -443,7 +451,7 @@ def cloud_height_m(
     bottom = np.asarray(bottom_rad, dtype=np.float64)
     seen = bottom > 0.0
     rise = np.tan(elev) / np.tan(np.where(seen, bottom, np.pi / 4)) - 1.0
-    return np.where(seen, np.clip(cloud_base_m * rise, 0.0, CUMULUS_DEPTH_M), 0.0)
+    return np.where(seen, np.clip(cloud_base_m * rise, 0.0, depth_m), 0.0)
 
 
 def cloudy_sky_radiance(

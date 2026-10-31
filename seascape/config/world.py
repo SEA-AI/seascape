@@ -230,8 +230,8 @@ class Sky(Model):
                 "the hdri sets the sky; sun_elevation_deg is ignored", stacklevel=2
             )
         data = {**data, "sun_elevation_deg": elevation}
-        if base := lwir.CLOUD_BASE_M.get(photo.cloud_genus):
-            data.setdefault("cloud_base_m", base)
+        if layer := lwir.CLOUD_LAYER_M.get(photo.cloud_genus):
+            data.setdefault("cloud_base_m", layer[0])
         if elevation is None:
             # No disc, no direct beam: nothing warms a sunlit side over a shaded one.
             data.setdefault("solar_gain_k", 0.0)

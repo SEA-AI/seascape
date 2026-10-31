@@ -300,16 +300,18 @@ def test_a_cloud_s_side_over_its_base_is_colder_by_the_standard_lapse() -> None:
 
 def test_a_line_of_sight_meets_the_side_of_a_cloud_over_its_base() -> None:
     bottom = np.radians(5.0)
-    assert float(lwir.cloud_height_m(bottom, bottom, 1000.0)) == pytest.approx(0.0)
+    assert float(lwir.cloud_height_m(bottom, bottom, 1000.0, 2000.0)) == pytest.approx(
+        0.0
+    )
     up = math.tan(math.radians(10.0)) / math.tan(bottom) - 1.0
-    assert float(lwir.cloud_height_m(np.radians(10.0), bottom, 1000.0)) == (
+    assert float(lwir.cloud_height_m(np.radians(10.0), bottom, 1000.0, 2000.0)) == (
         pytest.approx(1000.0 * up)
     )
-    assert float(lwir.cloud_height_m(np.radians(80.0), bottom, 1000.0)) == (
-        lwir.CUMULUS_DEPTH_M
+    assert (
+        float(lwir.cloud_height_m(np.radians(80.0), bottom, 1000.0, 2000.0)) == 2000.0
     )
-    assert float(lwir.cloud_height_m(np.radians(2.0), bottom, 1000.0)) == 0.0
-    assert float(lwir.cloud_height_m(np.radians(2.0), 0.0, 1000.0)) == 0.0
+    assert float(lwir.cloud_height_m(np.radians(2.0), bottom, 1000.0, 2000.0)) == 0.0
+    assert float(lwir.cloud_height_m(np.radians(2.0), 0.0, 1000.0, 2000.0)) == 0.0
 
 
 def test_no_cloud_is_the_clear_sky() -> None:
@@ -448,3 +450,8 @@ def test_a_wave_tilted_away_mirrors_the_warm_sky_near_the_horizon() -> None:
     assert _shaded(depression, math.radians(-8.0), sigma) > _shaded(
         depression, 0.0, sigma
     )
+
+
+def test_a_clear_sky_s_stray_cloud_is_as_deep_as_a_cumulus() -> None:
+    assert lwir.cloud_depth_m("clear") == lwir.cloud_depth_m("cumulus")
+    assert lwir.cloud_depth_m("stratus") < lwir.cloud_depth_m("cumulus")
