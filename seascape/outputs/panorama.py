@@ -261,6 +261,9 @@ def panoramas(
 
     written = []
     for (rig, band), cameras in groups.items():
+        names = [camera.name for camera in cameras]
+        if len(set(names)) < len(names):
+            raise ValueError(f"{rig} {band}: a sequence; a panorama takes stills")
         name = "_".join((rig, band, projection, frame))
         path = folder / f"panorama_{name}.png"
         try:
@@ -270,6 +273,7 @@ def panoramas(
         if ruler:
             # World bearings are true bearings; every other frame's are relative.
             image = ruled(image, layout, true=frame == "world")
-        cv2.imwrite(str(path), image)
+        if not cv2.imwrite(str(path), image):
+            raise OSError(f"cannot write {path}")
         written.append(path)
     return written
