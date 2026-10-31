@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from seascape import zones
 from seascape.assets import Zones, manifest
 from seascape.blender import faces
-from seascape.blender.meshes import measured
+from seascape.blender.meshes import _load, measured
 from seascape.physics.thermal import ZoneName
 
 
@@ -162,6 +162,29 @@ def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
     assert measured(name, found.objects) == (asset.triangles, asset.texture_px)
     assert asset.zones is not None
     faces.check(name, found, asset.zones)
+
+
+def test_a_cached_import_keeps_the_names_of_its_file(tmp_path) -> None:
+    """A parse into a file that already holds its names caches none of the renames."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.mesh.primitive_plane_add()
+    bpy.context.object.data.materials.append(bpy.data.materials.new("material"))
+    path = tmp_path / "plane.glb"
+    bpy.ops.export_scene.gltf(filepath=str(path))
+
+    def names() -> set[str]:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        objects = _load(path)
+        return {o.name for o in objects} | {
+            m.name for o in objects for m in o.data.materials
+        }
+
+    own = names()
+    for cache in tmp_path.glob("*.blend"):
+        cache.unlink()
+    _load(path)  # into a file holding every name
+
+    assert names() == own
 
 
 @pytest.mark.render
