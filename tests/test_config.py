@@ -286,6 +286,7 @@ def test_bad_presets_fail_loudly(tmp_path, preset, error, match) -> None:
     [
         "seed = 1.5\n[sea]\nwind_speed_mps = { uniform = [2.0, 8.0] }\n",
         "[sky]\natmosphere = [1]\n",
+        "seed = -1\n",
         "objects = [{ choice = [1, 2] }]\n",
     ],
 )

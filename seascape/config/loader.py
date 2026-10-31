@@ -171,25 +171,27 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             )
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
-        copies = [_draw(spec, seed, f"{path}/{k}") for k in range(count)]
-        # A pick's count would come after the copies were made.
-        dicts = [c for c in copies if isinstance(c, dict)]
-        if _is_draw(spec) and any(c.get("count", 1) != 1 for c in dicts):
-            raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
-        out += [
-            c | {"count": 1} | _range_m(c, seed, f"{path}/{k}/range_m", sky, i)
-            if isinstance(c, dict)
-            else c  # validation names what it should have been
-            for k, c in enumerate(copies)
-        ]
+        for k in range(count):
+            copy = _draw(spec, seed, f"{path}/{k}")
+            if not isinstance(copy, dict):
+                out.append(copy)  # pydantic reports a copy that is not a table
+                continue
+            # A pick's count would come after the copies were made.
+            if _is_draw(spec) and copy.get("count", 1) != 1:
+                raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
+            out.append(
+                copy
+                | {"count": 1}
+                | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
+            )
     return out
 
 
 def _range_m(
     copy: dict[str, Any], seed: int, path: str, sky: Any, i: int
 ) -> dict[str, Any]:
-    """The copy's range by optical depth, drawn here so a change to an earlier entry's
-    count leaves it be, through the drawn sky's haze."""
+    """The copy's range by optical depth, in metres through the drawn sky's haze.
+    Drawn here so an earlier entry's count leaves it be."""
     depth = copy.get("range_m")
     if not (isinstance(depth, dict) and "optical_depth" in depth):
         return {}
@@ -217,11 +219,11 @@ def load(
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")
-    # numpy's own error for one is a TypeError.
-    if isinstance(seed, bool) or not isinstance(seed, int):
-        raise ValueError(f"seed must be a whole number, not {seed!r}")
-    # The sky first: a range by optical depth needs its haze. Its draws are on the
-    # substreams the whole tree's would use.
+    # numpy would raise TypeError, which escapes the CLI as a traceback.
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError(f"seed must be a whole number from 0, not {seed!r}")
+    # The sky first: a range by optical depth needs its haze. `draw/sky` is the path
+    # the whole tree's draw gives it, so its values do not change.
     if "sky" in data:
         data["sky"] = _draw(data["sky"], seed, "draw/sky")
     if isinstance(objects := data.get("objects"), list):

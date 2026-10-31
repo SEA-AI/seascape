@@ -252,15 +252,11 @@ class Sky(Model):
             raise ValueError("aerosol_density is gone: visibility_km is the haze")
         return data
 
-    @model_validator(mode="before")
-    @classmethod
-    def _air_follows_the_atmosphere(cls, data: Any) -> Any:
-        if isinstance(data, dict) and "t_air_k" not in data:
-            atmosphere = data.get("atmosphere", ATMOSPHERE)
-            # An unknown profile, or not a name at all, fails its own validation.
-            if isinstance(atmosphere, str) and atmosphere in SURFACE_AIR_K:
-                data = {**data, "t_air_k": SURFACE_AIR_K[atmosphere]}
-        return data
+    @model_validator(mode="after")
+    def _air_follows_the_atmosphere(self) -> "Sky":
+        if "t_air_k" not in self.model_fields_set:
+            self.t_air_k = SURFACE_AIR_K[self.atmosphere]
+        return self
 
     @property
     def extinction_per_m(self) -> float:
