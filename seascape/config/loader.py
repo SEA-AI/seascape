@@ -231,6 +231,16 @@ def load(
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
+# Seeds `render --variants` tries per variant before it gives up on hulls that meet.
+TRIES_PER_VARIANT = 10
+
+
+def seeds(first: int, variants: int) -> range:
+    """Every seed `render --variants` may try, in order; a lone variant is never
+    replaced."""
+    return range(first, first + (1 if variants == 1 else TRIES_PER_VARIANT * variants))
+
+
 def load_variants(
     path: str | Path, overrides: Iterable[str] = (), count: int = 1
 ) -> list[Scenario]:

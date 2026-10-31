@@ -12,7 +12,7 @@ from click.testing import CliRunner, Result
 
 from seascape import assets, cli, server
 from seascape.assets import skies
-from seascape.config import load
+from seascape.config import load, loader
 from seascape.outputs import labels
 
 BASELINE = Path(__file__).parents[1] / "scenarios" / "baseline.toml"
@@ -226,7 +226,7 @@ def test_one_scene_whose_hulls_meet_is_an_error(run: Run, tmp_path: Path) -> Non
 def test_variants_give_up_when_every_seed_has_hulls_meeting(
     run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(cli, "TRIES_PER_VARIANT", 1)
+    monkeypatch.setattr(loader, "TRIES_PER_VARIANT", 1)
 
     result = run(
         "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
