@@ -72,7 +72,7 @@ preset = "boson_640_32deg"   # pitch, f-number and NETD
 lens.vignetting = true
 ```
 
-Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens`, `processing` and `microbolometer`.
+Each camera draws its own noise. `labels.json` records each image's `sensor`, `lens`, `processing`, `microbolometer` and `agc`.
 
 ## Randomization
 
