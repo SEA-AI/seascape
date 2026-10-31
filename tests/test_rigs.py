@@ -16,7 +16,7 @@ from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.vessels import waterline_m
-from seascape.config import Agc, Mount, Rig, Scenario
+from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, panorama
 from seascape.outputs.calibration import Calibration
 from seascape.outputs.montage import INK
@@ -171,6 +171,15 @@ def test_in_its_rig_a_camera_points_exactly_as_asked(
     assert (bearing, elevation) == pytest.approx(
         (mount.camera.yaw_deg, mount.camera.pitch_deg), abs=1e-4
     )
+
+
+def test_a_calibration_records_its_camera_s_pitch(built: scene.Built) -> None:
+    mount = next(m for m in SCENARIO.mounts if m.camera.band == "ir")
+    sensor = Microbolometer(pitch_um=17.0, f_number=1.0)
+    pitched = mount._replace(
+        camera=mount.camera.model_copy(update={"microbolometer": sensor})
+    )
+    assert scene.calibrate(built, pitched, "ir.png").pitch_um == 17.0
 
 
 @pytest.mark.parametrize("mount", MOUNTS)
