@@ -181,7 +181,11 @@ class Scenario(Model):
             return data
         sea = data.get("sea", {})
         atmosphere = data.get("sky", {}).get("atmosphere", ATMOSPHERE)
-        if "t_sea_k" not in sea and atmosphere in SURFACE_SEA_K:
+        if (
+            "t_sea_k" not in sea
+            and isinstance(atmosphere, str)
+            and (atmosphere in SURFACE_SEA_K)
+        ):
             data = {**data, "sea": {**sea, "t_sea_k": SURFACE_SEA_K[atmosphere]}}
         return data
 

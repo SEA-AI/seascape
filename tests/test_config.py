@@ -281,6 +281,19 @@ def test_bad_presets_fail_loudly(tmp_path, preset, error, match) -> None:
         load(variant(tmp_path, f"[rigs.bow]\npreset = {json.dumps(preset)}\n"))
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "seed = 1.5\n[sea]\nwind_speed_mps = { uniform = [2.0, 8.0] }\n",
+        "[sky]\natmosphere = [1]\n",
+        "objects = [{ choice = [1, 2] }]\n",
+    ],
+)
+def test_a_malformed_scenario_is_a_value_error(tmp_path, body: str) -> None:
+    with pytest.raises(ValueError):
+        load(variant(tmp_path, body))
+
+
 def test_objects_not_a_list_is_a_validation_error(tmp_path) -> None:
     with pytest.raises(ValidationError, match="objects"):
         load(variant(tmp_path, "objects = 5\n"))

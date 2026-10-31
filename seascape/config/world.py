@@ -256,9 +256,10 @@ class Sky(Model):
     @classmethod
     def _air_follows_the_atmosphere(cls, data: Any) -> Any:
         if isinstance(data, dict) and "t_air_k" not in data:
-            air_k = SURFACE_AIR_K.get(data.get("atmosphere", ATMOSPHERE))
-            if air_k is not None:  # an unknown profile fails its own validation
-                data = {**data, "t_air_k": air_k}
+            atmosphere = data.get("atmosphere", ATMOSPHERE)
+            # An unknown profile, or not a name at all, fails its own validation.
+            if isinstance(atmosphere, str) and atmosphere in SURFACE_AIR_K:
+                data = {**data, "t_air_k": SURFACE_AIR_K[atmosphere]}
         return data
 
     @property
