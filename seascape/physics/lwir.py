@@ -410,6 +410,13 @@ def _over_horizon(
 DRY_LAPSE_K_PER_M = 9.8e-3
 # U.S. Standard Atmosphere (1976) troposphere: a cloud's side is at the air round it.
 STANDARD_LAPSE_K_PER_M = 6.5e-3
+
+
+def cloud_base_k(t_air_k: float, cloud_base_m: float) -> float:
+    """The cloud base's temperature: surface air lifted dry to it."""
+    return t_air_k - DRY_LAPSE_K_PER_M * cloud_base_m
+
+
 type CloudGenus = Literal[
     "clear",
     "cumulus",
@@ -474,11 +481,9 @@ def cloudy_sky_radiance(
     elev = np.asarray(elev_rad, dtype=np.float64)
     clear = sky_radiance(elev, t_air_k, atmosphere)
     path, transmitted = _under_base(elev, cloud_base_m, atmosphere)
-    t_cloud_k = (
-        t_air_k
-        - DRY_LAPSE_K_PER_M * cloud_base_m
-        - STANDARD_LAPSE_K_PER_M * np.asarray(height_m, dtype=np.float64)
-    )
+    t_cloud_k = cloud_base_k(
+        t_air_k, cloud_base_m
+    ) - STANDARD_LAPSE_K_PER_M * np.asarray(height_m, dtype=np.float64)
     cloud_radiance = np.interp(t_cloud_k, _TB_GRID, _TB_RADIANCE)
     overcast = path * band_radiance(t_air_k) + transmitted * cloud_radiance
     return clear + np.asarray(cloud) * (overcast - clear)
