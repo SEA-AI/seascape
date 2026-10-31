@@ -176,13 +176,16 @@ def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
     ]
 
 
+_CACHE_FORMAT = 2  # raise to orphan every cache already written
+
+
 def _load(path: Path) -> set[bpy.types.Object]:
     """Import a mesh file; returns what it added. Caches the parse as a .blend beside
     the file and appends from it on later calls."""
     stat = path.stat()
     version = ".".join(map(str, bpy.app.version))
     imported = path.with_name(
-        f"{path.name}.{stat.st_size}-{stat.st_mtime_ns}.{version}.blend"
+        f"{path.name}.{stat.st_size}-{stat.st_mtime_ns}.{version}.{_CACHE_FORMAT}.blend"
     )
     if imported.exists():
         try:
@@ -199,16 +202,30 @@ def _load(path: Path) -> set[bpy.types.Object]:
             # The fit reads matrix_world, which an append leaves stale.
             bpy.context.view_layer.update()
             return set(into.objects)
-    objects = _parse(path)
-    # A killed write must not leave a truncated file under the cache name.
-    part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
+    # The cache and the zones key on the mesh file's own names: the .blend's datablocks
+    # step aside for the parse, then take their names back from the import.
+    held: dict[bpy.types.ID, str] = {}
     try:
-        bpy.data.libraries.write(
-            str(part), objects, path_remap="ABSOLUTE", compress=False
-        )
-        part.replace(imported)
-    except (OSError, RuntimeError):  # a read-only or full cache is only slower
-        part.unlink(missing_ok=True)
+        for datablock in bpy.data.user_map():
+            name = datablock.name
+            # A linked name is its library's; the built-in font's cannot be set.
+            with contextlib.suppress(AttributeError):
+                if datablock.library is None:
+                    datablock.name = uuid.uuid4().hex
+                    held[datablock] = name
+        objects = _parse(path)
+        # A killed write must not leave a truncated file under the cache name.
+        part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
+        try:
+            bpy.data.libraries.write(
+                str(part), objects, path_remap="ABSOLUTE", compress=False
+            )
+            part.replace(imported)
+        except (OSError, RuntimeError):  # a read-only or full cache is only slower
+            part.unlink(missing_ok=True)
+    finally:
+        for datablock, name in held.items():
+            datablock.rename(name, mode="ALWAYS")
     return objects
 
 
