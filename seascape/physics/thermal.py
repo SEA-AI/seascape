@@ -212,8 +212,8 @@ PAINTED: frozenset[ZoneName] = frozenset(
 
 @dataclass(frozen=True)
 class Environment:
-    """The air, sea and sun a facet balances against. Wind is apparent: the vessel's
-    way through the air plus the true wind."""
+    """The air, sea and sun a facet balances against. Wind is the air's speed past
+    the facet."""
 
     t_air_k: float
     t_sea_k: float

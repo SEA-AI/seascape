@@ -21,7 +21,6 @@ from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_ob
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
-from seascape.blender.sea.foam import _looked_up_sigma
 from seascape.blender.sea.geometry import _triples
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
 from seascape.blender.sea.radiance import (
@@ -37,7 +36,12 @@ from seascape.blender.sea.radiance import (
     _row_sigmas,
     _view_rows,
 )
-from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
+from seascape.blender.sea.wind import (
+    GUST_CELLS,
+    GUST_SPACING_M,
+    GUST_TILE_M,
+    _looked_up_sigma,
+)
 from seascape.blender.sky import _haze_ranges_m, _sky_round, haze, sea_light
 from seascape.blender.vessels import _vessel, heading_rad, waterline_m
 from seascape.config import (
@@ -441,7 +445,7 @@ class TestEoBand:
             GUST_SPACING_M,
             waves.GUST_LENGTH_M,
         )
-        assert tile == pytest.approx(seeded, abs=1e-5)
+        assert tile == pytest.approx(seeded / _looked_up_sigma(seeded), abs=1e-5)
 
     def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
         carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
@@ -470,7 +474,7 @@ class TestEoBand:
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
 
-    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice"])
+    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice", "sea_gust"])
     def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
         assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
 
@@ -1327,7 +1331,8 @@ class TestSlicks:
                 spacing_m,
             )
         )
-        assert baked("sea_windrows") == pytest.approx(seeded, abs=1e-5)
+        unit = seeded / _looked_up_sigma(seeded)
+        assert baked("sea_windrows") == pytest.approx(unit, abs=1e-5)
 
     def test_windrows_run_along_the_wind_at_faller_and_woodcock_s_spacing(
         self,
@@ -2031,12 +2036,19 @@ def test_a_built_hull_measures_its_manifest_length() -> None:
 
 def test_a_built_turbine_measures_its_manifest_height() -> None:
     farm = {"asset": "turbine_15mw_floating", "range_m": 900.0, "bearing_deg": 0.0}
-    built = scene.build(variant(farms=[farm]), "eo")
+    scenario = variant(farms=[farm])
+    built = scene.build(scenario, "eo")
 
     (anchor,) = built.targets["turbine_15mw_floating"]
     turbine = manifest()["turbine_15mw_floating"]
     assert isinstance(turbine, Turbine)
     assert anchor["height_m"] + turbine.draught_m == pytest.approx(turbine.height_m)
+    # Past the tips at top dead centre, wherever the rotor's spin has them.
+    k = scenario.sea.refraction_k
+    eye_m = max(rig.height_m for rig in scenario.rigs.values())
+    assert scene._sightline_m(scenario, [anchor]) == pytest.approx(
+        earth.horizon_m(eye_m, k) + earth.horizon_m(anchor["height_m"], k)
+    )
 
 
 def test_a_built_buoy_measures_its_manifest_height() -> None:

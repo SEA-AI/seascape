@@ -16,7 +16,7 @@ from seascape.blender.blend import (
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
-from seascape.blender.meshes import box_corners, import_asset, mesh_objects
+from seascape.blender.meshes import import_asset, mesh_objects
 from seascape.config import (
     Drift,
     Farm,
@@ -131,7 +131,9 @@ def add_ownship(
         )
     if heave is not None or tall:
         # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
-        length_m, beam_m = _waterplane(anchor) if ownship.asset else (0.0, 0.0)
+        length_m, beam_m = (
+            (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
+        )
 
         def value_at(t_s: float) -> float:
             rest = map(
@@ -395,15 +397,6 @@ def _wake(
     ]
 
 
-def _waterplane(anchor: bpy.types.Object) -> tuple[float, float]:
-    """A hull's length and beam, in its own frame, bow to +Y."""
-    # The parts' matrix_world is stale until the depsgraph runs.
-    bpy.context.view_layer.update()
-    corners = box_corners(mesh_objects([anchor]), anchor.matrix_world.inverted())
-    xs, ys = [c.x for c in corners], [c.y for c in corners]
-    return max(ys) - min(ys), max(xs) - min(xs)
-
-
 def ride(
     anchors: Sequence[bpy.types.Object],
     field: tuple[waves.Wave, ...],
@@ -417,7 +410,7 @@ def ride(
     hulls = []
     for anchor in anchors:
         (attitude,) = anchor.children
-        hulls.append((anchor, attitude, *_waterplane(anchor)))
+        hulls.append((anchor, attitude, anchor["length_m"], anchor["beam_m"]))
     keyed = len(outputs.times_s) > 1
     for frame, t_s in enumerate(outputs.times_s):
         sc.frame_set(frame)

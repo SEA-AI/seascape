@@ -15,9 +15,8 @@ Rules:
 3. Tables merge, everything else replaces. A list, or a table naming a preset, is
    replaced whole.
 
-Any field can instead be a draw, `{ uniform = [lo, hi] }`, `{ log_uniform = [lo, hi] }`,
-`{ triangular = [lo, mode, hi] }` or `{ choice = [...] }`, resolved after both forms of
-reuse and before validation."""
+Any field can instead be a draw, a table named for one of `draws.DRAWS` such as
+`{ uniform = [lo, hi] }`, resolved after both forms of reuse and before validation."""
 
 import tomllib
 from collections.abc import Iterable, Mapping

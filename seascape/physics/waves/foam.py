@@ -272,11 +272,7 @@ def foam_memory(
     last = times[0]
     for t_s in times:
         acceleration = crests.at(t_s)
-        rows, columns = np.nonzero(acceleration > threshold_g + FOAM_VISIBLE_Z * edge)
-        breaking = np.zeros_like(cover)
-        breaking[rows, columns] = _normal_cdf(
-            (acceleration[rows, columns] - threshold_g) / edge
-        )
+        breaking = _laid((acceleration - threshold_g) / edge)
         cover = np.maximum(
             cover * math.exp(-(t_s - last) / WHITECAP_AREA_EFOLD_S), breaking
         )
