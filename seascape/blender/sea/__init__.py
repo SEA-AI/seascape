@@ -27,6 +27,7 @@ from seascape.blender.sea.foam import (
     FOAM_SPACING_M,
     _bare,
     _foam_texture,
+    _quantiles,
     _remembered,
 )
 from seascape.blender.sea.geometry import (
@@ -169,14 +170,20 @@ def material(
         gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
         gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
         slick = _slick(tree, sea, rows)
-    # Made where foam shows: an image nothing reads is not saved.
-    foam = cache(
-        lambda: curve_image(
-            "sea_foam",
-            _unit(
-                von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M)
-            ),
-        )
+    # Made where foam shows: an image nothing reads is not saved. Whitecaps and wakes
+    # threshold the tile by the unit normal's quantiles.
+    foam, ppf = (
+        cache(
+            lambda: curve_image(
+                "sea_foam",
+                _unit(
+                    von_karman_field(
+                        foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M
+                    )
+                ),
+            )
+        ),
+        cache(lambda: curve_image("normal_ppf", _quantiles())),
     )
     survivors = (
         wind
@@ -191,7 +198,7 @@ def material(
     wake = None
     if wakes:
         sea_variance = cox_munk_slope(speed) ** 2
-        wake = _wakes(tree, wakes, position, pixel.along_m, foam(), sea_variance)
+        wake = _wakes(tree, wakes, position, pixel.along_m, foam(), ppf(), sea_variance)
     smooth = _smoothed(tree, slick, wake)
     if wake is not None and wake.tilt is not None:
         normal = vector(
@@ -217,6 +224,7 @@ def material(
                 # Its own stream, so the lace's draws stay as they were.
                 foam_rng.spawn(1)[0],
                 pixel.along_m,
+                ppf(),
             ),
             foam_frames(sea, wind, outputs, seen.foam_grids),
             _gathered(tree, sea, pixel.along_m, rows),
@@ -266,9 +274,9 @@ def material(
                 slope_max,
                 light,
                 _skin_radiance(tree, sea, light.sun_up, wake),
-                whitecaps[0]
+                whitecaps.area
                 if wake is None
-                else scalar(tree, "MAXIMUM", whitecaps[0], wake.foam),
+                else scalar(tree, "MAXIMUM", whitecaps.area, wake.foam),
             ),
             normal,
             pixel,

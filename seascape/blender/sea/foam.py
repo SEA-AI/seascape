@@ -76,11 +76,11 @@ def _remembered(
     textures: "_FoamTexture",
     memory: list[tuple[FoamGrid, bpy.types.Image]],
     pulls: tuple[bpy.types.NodeSocket, ...],
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """How much of the pixel foam covers; that, as a share of fresh foam's brightness;
-    and the share of the sea under foam, where its bubbles are: read off the finest
-    foam memory that holds `position`, (east, north, time), aged foam `gathered` by the
-    windrows, the lace above its quantile covering that share."""
+) -> "_Whitecaps":
+    """The whitecaps read off the finest foam memory that holds `position`, (east,
+    north, time), aged foam `gathered` by the windrows, the lace above its quantile
+    covering that share."""
+    ppf = textures.ppf
     lace = textures.lace
     split = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(position, split.inputs["Vector"])
@@ -202,8 +202,6 @@ def _remembered(
             gathered,
         )
         cover = scalar(tree, "MULTIPLY", cover, kept)
-    levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
     # Above its 1 - cover quantile, the lace covers `cover` of the pixel.
     laced = scalar(
         tree,
@@ -229,9 +227,9 @@ def _remembered(
         THIN_FOAM_SHARE,
         name="whitecap_bright",
     )
-    foam = _latticed(tree, laced, bright, textures, lookup(tree, ppf, bright))
+    foam, albedo = _latticed(tree, laced, bright, textures, lookup(tree, ppf, bright))
     under = scalar(tree, "MAXIMUM", cover, 0.0, name="whitecap_bubbles")
-    return laced, foam, under
+    return _Whitecaps(laced, foam, under, albedo)
 
 
 def _latticed(
@@ -240,11 +238,11 @@ def _latticed(
     bright: bpy.types.NodeSocket,
     texture: "_FoamTexture",
     threshold: bpy.types.NodeSocket,
-) -> bpy.types.NodeSocket:
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """Foam over the `laced` area at `bright` of fresh foam's brightness, drawn as
     fresh foam's white over `bright` of that area, the lattice above `threshold`, its
-    quantile, not a grey film: the same mean. Its albedo, varying with the texture's
-    density about fresh foam's, is the node `whitecap_albedo`."""
+    quantile, not a grey film: the same mean; and its albedo, varying with the
+    texture's density about fresh foam's."""
     held = scalar(
         tree,
         "MULTIPLY_ADD",
@@ -269,7 +267,7 @@ def _latticed(
         scalar(tree, "MINIMUM", scalar(tree, "MAXIMUM", texture.shade, -2.0), 2.0),
         scalar(tree, "SUBTRACT", 1.0, fade),
     )
-    scalar(
+    albedo = scalar(
         tree,
         "MULTIPLY_ADD",
         swing,
@@ -277,28 +275,44 @@ def _latticed(
         FRESH_FOAM_REFLECTANCE,
         name="whitecap_albedo",
     )
-    return scalar(tree, "MULTIPLY", laced, held, name="whitecap_foam")
+    return scalar(tree, "MULTIPLY", laced, held, name="whitecap_foam"), albedo
 
 
-def _bare(
-    tree: bpy.types.NodeTree,
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+class _Whitecaps(NamedTuple):
+    """The share of the pixel foam covers; that as a share of fresh foam's brightness;
+    the share bubbles lie under; and the foam's albedo, None with no whitecaps."""
+
+    area: bpy.types.NodeSocket
+    foam: bpy.types.NodeSocket
+    bubbles: bpy.types.NodeSocket
+    albedo: bpy.types.NodeSocket | None
+
+
+def _bare(tree: bpy.types.NodeTree) -> _Whitecaps:
     """No whitecaps: a calm sea, or one no camera sees."""
     area, foam, under = (
         scalar(tree, "MAXIMUM", 0.0, 0.0, name=name)
         for name in ("whitecaps", "whitecap_foam", "whitecap_bubbles")
     )
-    return area, foam, under
+    return _Whitecaps(area, foam, under, None)
+
+
+def _quantiles() -> np.ndarray:
+    """The unit normal's 1 - p quantile, sampled in p."""
+    levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    return np.vectorize(NormalDist().inv_cdf)(1 - levels)
 
 
 class _FoamTexture(NamedTuple):
     """Unit Gaussians drifting with the surface: whitecaps' outline, aged foam's
-    lattice, and its density; and the pixel's longer side, which fades the lattice."""
+    lattice, and its density; the pixel's longer side, which fades the lattice; and the
+    unit normal's quantiles, which threshold them."""
 
     lace: bpy.types.NodeSocket
     lattice: bpy.types.NodeSocket
     shade: bpy.types.NodeSocket
     pixel_m: bpy.types.NodeSocket
+    ppf: bpy.types.Image
 
 
 def _foam_texture(
@@ -309,6 +323,7 @@ def _foam_texture(
     tile: bpy.types.Image,
     rng: np.random.Generator,
     pixel_m: bpy.types.NodeSocket,
+    ppf: bpy.types.Image,
 ) -> _FoamTexture:
     """Whitecap foam's texture read at `where`, (east, north, time): the lace off
     `tile`, frayed by a lattice drawn from `rng`, and that lattice twice more, for a
@@ -331,7 +346,7 @@ def _foam_texture(
         for start in (0.25, 0.0, 0.5)
     )
     return _FoamTexture(
-        _foam_lace(tree, sea, where, outputs, tile, ragged), holes, shade, pixel_m
+        _foam_lace(tree, sea, where, outputs, tile, ragged), holes, shade, pixel_m, ppf
     )
 
 

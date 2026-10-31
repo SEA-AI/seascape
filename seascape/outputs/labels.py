@@ -24,7 +24,7 @@ from seascape.config import (
     Sensor,
 )
 from seascape.model import Model
-from seascape.outputs.calibration import CameraCalibration
+from seascape.outputs.calibration import CameraCalibration, write_json
 
 FILENAME = "labels.json"
 
@@ -70,6 +70,7 @@ class Image(Model):
     lens: Lens | None = None
     processing: Processing | None = None
     microbolometer: Microbolometer | None = None
+    agc: Agc | None = None
 
 
 class Category(Model):
@@ -131,11 +132,11 @@ class Labels(Model):
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
         the image as written, both top row first. `settings` is the scenario's camera,
-        whose sensor, lens and processing an EO image carries, and lens and
-        microbolometer an LWIR one. A target in `faint`, by name, is dropped with its
-        excess ΔE*ab."""
+        whose sensor, lens and processing an EO image carries, and lens,
+        microbolometer and AGC an LWIR one. A target in `faint`, by name, is dropped
+        with its excess ΔE*ab."""
         # Only an 8-bit EO frame went through the camera's chain, and only an integer
-        # LWIR one (png, jpg) through the microbolometer.
+        # LWIR one (png, jpg) through the microbolometer and the AGC that tones it.
         grade = (
             settings is not None and settings.band == "eo" and frame.dtype == np.uint8
         )
@@ -158,6 +159,7 @@ class Labels(Model):
             lens=settings.lens if grade or thermal else None,
             processing=settings.processing if grade else None,
             microbolometer=settings.microbolometer if thermal else None,
+            agc=settings.agc if thermal else None,
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
@@ -224,10 +226,7 @@ class Labels(Model):
         return target.category_id
 
     def write(self, folder: Path) -> Path:
-        path = folder / FILENAME
-        partial = path.with_name(f"{path.name}.partial")
-        partial.write_text(self.model_dump_json(indent=2) + "\n")
-        return partial.replace(path)
+        return write_json(self, folder / FILENAME)
 
 
 def merge(root: Path, folders: Sequence[Path]) -> Labels:
@@ -425,21 +424,16 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
 
 
 def agcs(folder: Path) -> dict[str, Agc]:
-    """Each camera's AGC, by name, from the scenario the labels in `folder` record,
-    the default for a camera they do not, or for every camera in a folder without
-    labels. Only the `agc` tables are read, so a scenario recorded by an older
-    seascape still serves. A merged set is refused."""
+    """Each camera's AGC, by name, as its thermal frames in `folder` record it, the
+    default for a camera with none, or for every camera in a folder without labels.
+    A merged set is refused."""
     found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():
         return found
-    info = Labels.model_validate_json(path.read_text()).info
+    labels = Labels.model_validate_json(path.read_text())
     # A merged set records one scenario per seed, so a camera has one AGC per seed.
-    if "scenarios" in info:
+    if "scenarios" in labels.info:
         raise ValueError(f"{folder}: a merged set; use each seed's folder on its own")
-    for rig_name, rig in (info.get("scenario") or {}).get("rigs", {}).items():
-        for camera_name, camera in rig.get("cameras", {}).items():
-            found[f"{rig_name}_{camera_name}"] = Agc.model_validate(
-                camera.get("agc", {})
-            )
+    found.update((i.camera, i.agc) for i in labels.images if i.agc is not None)
     return found
