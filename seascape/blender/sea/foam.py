@@ -12,7 +12,6 @@ from seascape.blender.blend import (
     clamped,
     curve_image,
     lookup,
-    pixels,
     scalar,
 )
 from seascape.blender.sea.wind import _downwind, _drifting, _streaking, surface_drift
@@ -81,6 +80,11 @@ def _looked_up_sigma(tile: np.ndarray) -> float:
     weights = np.einsum("ai,bj->abij", blend, blend).reshape(-1, 4)
     variance = np.einsum("si,ij,sj->s", weights, covariance, weights).mean()
     return float(np.sqrt(variance))
+
+
+def _unit(tile: np.ndarray) -> np.ndarray:
+    """`tile` at unit sigma as Cycles' linear lookup reads it."""
+    return tile / _looked_up_sigma(tile)
 
 
 def _remembered(
@@ -331,12 +335,14 @@ def _foam_texture(
     pixel `pixel_m` long."""
     lattice = curve_image(
         "sea_foam_lattice",
-        foam_lattice_field(
-            rng,
-            LATTICE_CELLS,
-            LATTICE_TILE_M,
-            LATTICE_CELL_SIZES_M,
-            LATTICE_OPENING_M,
+        _unit(
+            foam_lattice_field(
+                rng,
+                LATTICE_CELLS,
+                LATTICE_TILE_M,
+                LATTICE_CELL_SIZES_M,
+                LATTICE_OPENING_M,
+            )
         ),
     )
     # A quarter tile apart, each read is independent of the others.
@@ -358,8 +364,8 @@ def _foam_lace(
     ragged: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     """Whitecap foam's lace, a unit Gaussian drifting with the surface, read at `where`,
-    (east, north, time): a read of `tile` and the `ragged` lattice, rescaled to one."""
-    sigma = _looked_up_sigma(pixels(tile)[..., 0])
+    (east, north, time): a read of the unit `tile` summed with the `ragged` lattice,
+    rescaled to one."""
     east, north = _downwind(sea)
     per_m = 1 / FOAM_TILE_M
     along = per_m / FOAM_STREAK
@@ -373,7 +379,6 @@ def _foam_lace(
         0.0,
         "whitecap_lace",
     )
-    coarse = scalar(tree, "MULTIPLY", coarse, 1 / sigma)
     weight = LACE_RAGGED_WEIGHT
     summed = scalar(tree, "MULTIPLY_ADD", ragged, weight, coarse)
     return scalar(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2))
@@ -389,7 +394,6 @@ def _foam_lattice(
 ) -> bpy.types.NodeSocket:
     """Aged foam's lattice, a unit Gaussian drifting with the surface, read at
     `where`, (east, north, time), offset `start` tiles."""
-    sigma = _looked_up_sigma(pixels(tile)[..., 0])
     east, north = _downwind(sea)
     layers = []
     # From force 7 the lattice is blown into streaks along the wind.
@@ -411,4 +415,4 @@ def _foam_lattice(
         )
     weight = LATTICE_FINE_WEIGHT
     summed = scalar(tree, "MULTIPLY_ADD", layers[1], weight, layers[0])
-    return scalar(tree, "MULTIPLY", summed, 1 / (sigma * math.sqrt(1 + weight**2)))
+    return scalar(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2))

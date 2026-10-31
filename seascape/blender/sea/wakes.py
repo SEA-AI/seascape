@@ -353,7 +353,7 @@ def _patchy(
     noise: bpy.types.Image,
     ppf: bpy.types.Image,
 ) -> bpy.types.NodeSocket:
-    """`cover` as white where the Gaussian `noise` tops its own `cover` fraction,
+    """`cover` as white where the unit Gaussian `noise` tops its own `cover` fraction,
     `ppf` its quantiles: patches whose mean is the cover, laid along the path at
     `fixed`."""
     stretch = tree.nodes.new("ShaderNodeVectorMath")

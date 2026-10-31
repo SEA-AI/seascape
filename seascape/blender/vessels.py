@@ -134,8 +134,11 @@ def add_ownship(
         length_m, beam_m = _waterplane(anchor) if ownship.asset else (0.0, 0.0)
 
         def value_at(t_s: float) -> float:
+            rest = map(
+                float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+            )
             return scripted(t_s) + waves.heave_m(
-                tall, 0.0, 0.0, 0.0, length_m, beam_m, t_s
+                tall, *rest, 0.0, length_m, beam_m, t_s
             )
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
@@ -421,13 +424,18 @@ def ride(
         for anchor, attitude, length_m, beam_m in hulls:
             east, north, _ = anchor.matrix_world.translation
             heading = heading_rad(anchor)
-            pitch, roll = waves.attitude(
-                field, east, north, heading, length_m, beam_m, t_s
-            )
+            # The tall waves are the geometry the hull floats on; the rest only shade.
+            rest = [
+                float(r)
+                for r in waves.gerstner_rest_m(
+                    tall, np.array(east), np.array(north), t_s
+                )
+            ]
+            pitch, roll = waves.attitude(field, *rest, heading, length_m, beam_m, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
             attitude.location.z = waves.heave_m(
-                tall, east, north, heading, length_m, beam_m, t_s
+                tall, *rest, heading, length_m, beam_m, t_s
             )
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)

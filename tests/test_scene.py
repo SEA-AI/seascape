@@ -21,6 +21,7 @@ from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_ob
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
+from seascape.blender.sea.foam import _looked_up_sigma
 from seascape.blender.sea.geometry import _triples
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
 from seascape.blender.sea.radiance import (
@@ -468,6 +469,10 @@ class TestEoBand:
             tree.nodes["whitecap_lace_axes"].inputs["X"],
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
+
+    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice"])
+    def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
+        assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
 
     def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -1254,7 +1259,9 @@ def _tall(scenario: Scenario) -> tuple[waves.Wave, ...]:
 
 def _ridden_m(scenario: Scenario, t_s: float) -> float:
     """How high a hull-less ownship rides the water under it."""
-    return waves.heave_m(_tall(scenario), 0.0, 0.0, 0.0, 0.0, 0.0, t_s)
+    tall = _tall(scenario)
+    rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+    return waves.heave_m(tall, *map(float, rest), 0.0, 0.0, 0.0, t_s)
 
 
 class TestOwnshipMotion:
@@ -1656,27 +1663,22 @@ class TestDrifting:
             assert math.degrees(heading) % 360 == pytest.approx(
                 scenario.objects[0].heading_deg % 360, abs=1e-4
             )
+            t_s = scenario.outputs.times_s[frame]
+            # Only the tall waves move the water the hull sits on.
+            assert len(_tall(scenario)) < len(scenario.wave_field())
+            rest = waves.gerstner_rest_m(
+                _tall(scenario), np.array(east), np.array(north), t_s
+            )
+            rest_east, rest_north = map(float, rest)
             pitch, roll = waves.attitude(
-                scenario.wave_field(),
-                east,
-                north,
-                heading,
-                length,
-                beam,
-                scenario.outputs.times_s[frame],
+                scenario.wave_field(), rest_east, rest_north, heading, length, beam, t_s
             )
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
                 (pitch, -roll), abs=1e-5
             )
             assert attitude.location.z == pytest.approx(
                 waves.heave_m(
-                    _tall(scenario),
-                    east,
-                    north,
-                    heading,
-                    length,
-                    beam,
-                    scenario.outputs.times_s[frame],
+                    _tall(scenario), rest_east, rest_north, heading, length, beam, t_s
                 ),
                 abs=1e-5,
             )

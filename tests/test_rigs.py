@@ -59,7 +59,8 @@ def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
     anchor = built.vessel
     tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
     t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
-    ridden = waves.heave_m(tall, 0.0, 0.0, 0.0, 0.0, 0.0, t_s)
+    rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+    ridden = waves.heave_m(tall, *map(float, rest), 0.0, 0.0, 0.0, t_s)
 
     assert tuple(anchor.location) == pytest.approx((0.0, 0.0, ridden))
 
@@ -214,6 +215,15 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
     row = image[image.shape[0] // 2]
     columns = [np.flatnonzero(row[:, c] > 127).mean() for c in range(len(mounts))]
     assert columns == sorted(columns)
+
+
+def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
+    mount = SCENARIO.mounts[0]
+    Calibration(
+        cameras=[scene.calibrate(built, mount, f"{mount.name}_{i}.png") for i in (0, 1)]
+    ).write(tmp_path)
+    with pytest.raises(ValueError, match="a sequence"):
+        panorama.panoramas(tmp_path, "cylindrical", "rig")
 
 
 def test_a_thermal_panorama_is_one_grey_per_temperature(
