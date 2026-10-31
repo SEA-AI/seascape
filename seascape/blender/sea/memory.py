@@ -48,8 +48,6 @@ def _rays(
     rays = []
     for frame, t_s in enumerate(scenario.outputs.times_s):
         sc.frame_set(frame)
-        # matrix_world is stale until the depsgraph runs.
-        bpy.context.view_layer.update()
         for mount in mounts:
             camera = cameras[mount.name]
             pixel_rad = camera.data.angle_x / mount.camera.width_px

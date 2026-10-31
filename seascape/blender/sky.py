@@ -394,6 +394,15 @@ def _hazed(sky: Sky, radiance: np.ndarray, elevation: np.ndarray) -> np.ndarray:
     )
 
 
+def cloud_fraction(sky: Sky) -> float:
+    """The share of a horizontal surface's sky the photo's cloud covers, 0 under a
+    Sky Texture."""
+    if sky.hdri is None:
+        return 0.0
+    _, image = _cloud_images(sky)
+    return image["cloud_fraction"]
+
+
 def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     """The photo's cloud share at its own resolution, and `lwir.cloudy_sky_radiance`
     under it at THERMAL_SKY_PX, both laid out as the photo."""

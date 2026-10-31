@@ -297,10 +297,8 @@ def chain(
     return _clip(tree, sharpened)
 
 
-def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
-    """Reinhard et al. 2002's global operator on luminance, L / (1 + L), with the
-    log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
-    a bright colour."""
+def _log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
+    """`image`'s luminance, kept off 0, and its log-average (Reinhard et al. 2002)."""
     # IEC 61966-2-1: the luminance of linear sRGB.
     luminance = vector(tree, "DOT_PRODUCT", image, (0.2126, 0.7152, 0.0722))
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
@@ -308,7 +306,14 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     levels = tree.nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
     tree.links.new(scalar(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
-    log_average = scalar(tree, "EXPONENT", levels.outputs["Mean"])
+    return lit, scalar(tree, "EXPONENT", levels.outputs["Mean"])
+
+
+def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
+    """Reinhard et al. 2002's global operator on luminance, L / (1 + L), with the
+    log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
+    a bright colour."""
+    lit, log_average = _log_average(tree, image)
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     grey = scalar(tree, "MINIMUM", grey, 0.99)
     key = scalar(tree, "DIVIDE", grey, scalar(tree, "SUBTRACT", 1.0, grey))

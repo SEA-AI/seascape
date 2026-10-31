@@ -1726,6 +1726,11 @@ class TestWakes:
         assert "wake_normal" in tree.nodes
         # Read off the flat sea, the foam slides off the crests.
         assert "sea_rest" in upstream(tree.nodes["wake_position"].inputs["Vector"])
+        # The wake and the whitecaps threshold through one quantile table.
+        assert "whitecap_albedo" in tree.nodes
+        assert [i.name for i in bpy.data.images if "normal_ppf" in i.name] == [
+            "normal_ppf"
+        ]
 
     def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
         tree = self._built(
@@ -2261,3 +2266,9 @@ def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
     )
     expected = aerosol.sky_radiance(cloud, np.pi / 2, 0.5, sky.t_air_k, sky.atmosphere)
     assert top == pytest.approx(float(expected), rel=1e-3)
+
+
+def test_the_hull_finds_the_photo_s_clouds_before_the_world_is_built() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    heat = surroundings(variant(sky={"hdri": "overcast_soil"}))
+    assert heat.env.cloud_fraction == pytest.approx(1.0)

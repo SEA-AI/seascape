@@ -12,6 +12,7 @@ from seascape.blender.blend import (
     lookup,
     scalar,
 )
+from seascape.blender.sky import cloud_fraction
 from seascape.config import (
     Scenario,
     Sky,
@@ -92,9 +93,6 @@ class Heat(NamedTuple):
 def surroundings(scenario: Scenario) -> Heat:
     sky = scenario.sky
     elevation = sky.sun_elevation_deg
-    clouds = 0.0
-    if sky.hdri is not None:
-        clouds = bpy.data.images["cloudy_sky_radiance"]["cloud_fraction"]
     env = thermal.Environment(
         t_air_k=sky.t_air_k,
         t_sea_k=scenario.sea.t_skin_k(sky.sun_up),
@@ -102,7 +100,7 @@ def surroundings(scenario: Scenario) -> Heat:
         # air, and every hull shares one skin per zone.
         wind_m_s=scenario.sea.wind_speed_mps,
         sun_elevation_rad=None if elevation is None else math.radians(elevation),
-        cloud_fraction=clouds,
+        cloud_fraction=cloud_fraction(sky),
         fog_cover=aerosol.fog_cover(sky.visibility_km, sky.atmosphere),
         beam_transmittance=sky.sun_transmittance,
         fog_sunlight_transmittance=aerosol.diffuse_transmittance(sky.visibility_km),
