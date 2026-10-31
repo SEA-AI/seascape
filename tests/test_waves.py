@@ -550,7 +550,20 @@ def test_a_point_floats_on_the_gerstner_surface() -> None:
     tall = _tall(14.0)
     rest = waves.gerstner_rest_m(tall, np.array(30.0), np.array(-40.0), 3.0)
     water = waves.gerstner_offset_m(tall, *rest, 3.0)[2]
-    assert waves.heave_m(tall, 30.0, -40.0, 1.0, 0.0, 0.0, 3.0) == pytest.approx(water)
+    heave = waves.heave_m(tall, *map(float, rest), 1.0, 0.0, 0.0, 3.0)
+    assert heave == pytest.approx(water)
+
+
+def test_a_hull_pitches_with_the_water_under_it() -> None:
+    """At rest phase pi/2 a Gerstner wave's slope is exactly -ak, as the linear one."""
+    k = 2 * math.pi / 60.0
+    wave = waves.Wave(0.2 / k, math.sqrt(earth.GRAVITY_MS2 * k), 0.0, math.pi / 2)
+    # Over the water at rest at the origin, one amplitude back against the wave.
+    hull = np.zeros(()), np.array(-wave.amplitude_m)
+    rest = waves.gerstner_rest_m((wave,), *hull, 0.0)
+    assert np.allclose(rest, 0.0)
+    pitch, _ = waves.attitude((wave,), *map(float, rest), 0.0, 0.0, 0.0, 0.0)
+    assert pitch == pytest.approx(math.atan(-0.2))
 
 
 def test_calm_water_holds_a_hull_level() -> None:
@@ -572,13 +585,19 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
         (np.arange(181) + 0.5) / 181 * beam - beam / 2,
     )
     along, across = along.ravel(), across.ravel()
-    x = east + along * math.sin(heading) + across * math.cos(heading)
-    y = north + along * math.cos(heading) - across * math.sin(heading)
+    # The linear field's plane, centred where the water under the hull was at rest.
+    rest_east, rest_north = waves.gerstner_rest_m(
+        sea, np.array(east), np.array(north), t
+    )
+    x = rest_east + along * math.sin(heading) + across * math.cos(heading)
+    y = rest_north + along * math.cos(heading) - across * math.sin(heading)
     plane = np.column_stack([np.ones_like(along), along, across])
     _, rise_along, rise_across = np.linalg.lstsq(
         plane, waves.height_m(sea, x, y, t), rcond=None
     )[0]
-    pitch, roll = waves.attitude(sea, east, north, heading, length, beam, t)
+    pitch, roll = waves.attitude(
+        sea, float(rest_east), float(rest_north), heading, length, beam, t
+    )
     assert (pitch, roll) == pytest.approx(
         (math.atan(rise_along), math.atan(rise_across)), abs=1e-5
     )
