@@ -178,14 +178,7 @@ def _camera(
     links.new(size.outputs["Vector"], blur.inputs["Size"])
     links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
-    luminance = nodes.new("CompositorNodeRGBToBW")
-    links.new(image, luminance.inputs["Image"])
-    # Blender's log of 0 is 0, which would count black as a luminance of 1.
-    lit = scalar(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
-    levels = nodes.new("CompositorNodeLevels")
-    levels.inputs["Channel"].default_value = "Luminance"
-    links.new(scalar(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
-    log_average = scalar(tree, "EXPONENT", levels.outputs["Mean"])
+    _, log_average = sensor._log_average(tree, image)
     gain = scalar(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
     )
