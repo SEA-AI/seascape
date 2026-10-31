@@ -235,7 +235,8 @@ def attitude(
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
-    at = phases(field, np.array(east_m), np.array(north_m), t_s)
+    rest = gerstner_rest_m(field, np.array(east_m), np.array(north_m), t_s)
+    at = phases(field, *rest, t_s)
     amplitude = np.array([w.amplitude_m for w in field])
     # 1, x, y are orthogonal over a hull centred here, so each wave's slope separates.
     rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
