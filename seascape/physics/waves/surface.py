@@ -70,13 +70,36 @@ def gerstner_offset_m(
 
 
 def gerstner_rest_m(
-    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
+    field: tuple[Wave, ...],
+    east_m: np.ndarray,
+    north_m: np.ndarray,
+    t_s: float,
+    guess: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Where the water now over (`east_m`, `north_m`) was at rest."""
+    """Where the water now over (`east_m`, `north_m`) was at rest, by Newton's method
+    from `guess`, there by default, to a nanometre. It holds while no crest folds."""
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
-    _, rest_east, rest_north = _gerstner_height_m(
-        field, east, north, t_s, (east, north)
-    )
+    rest_east, rest_north = (east, north) if guess is None else guess
+    k_east = np.array([w.k_east_rad_m for w in field])
+    k_north = np.array([w.k_north_rad_m for w in field])
+    along = np.array([w.amplitude_m / w.k_rad_m for w in field])
+    for _ in range(50):
+        phase = phases(field, rest_east, rest_north, t_s)
+        sine, cosine = np.sin(phase), np.cos(phase)
+        miss_east = rest_east - np.tensordot(along * k_east, sine, 1) - east
+        miss_north = rest_north - np.tensordot(along * k_north, sine, 1) - north
+        if (
+            max(np.abs(miss_east).max(initial=0), np.abs(miss_north).max(initial=0))
+            < 1e-9
+        ):
+            break
+        # d(rest + offset)/d(rest), as `gerstner_normal`'s.
+        ee = 1 - np.tensordot(along * k_east**2, cosine, 1)
+        nn = 1 - np.tensordot(along * k_north**2, cosine, 1)
+        en = -np.tensordot(along * k_east * k_north, cosine, 1)
+        det = ee * nn - en * en
+        rest_east = rest_east - (nn * miss_east - en * miss_north) / det
+        rest_north = rest_north - (ee * miss_north - en * miss_east) / det
     return rest_east, rest_north
 
 
@@ -104,40 +127,6 @@ def gerstner_normal(
     normal = np.array([en * un - ue * nn, ue * en - ee * un, ee * nn - en * en])
     normal /= np.linalg.norm(normal, axis=0)
     return normal[0], normal[1], normal[2]
-
-
-def _gerstner_height_m(
-    field: tuple[Wave, ...],
-    east_m: np.ndarray,
-    north_m: np.ndarray,
-    t_s: float,
-    rest: tuple[np.ndarray, np.ndarray],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The Gerstner surface's height over (`east_m`, `north_m`), and the water's rest
-    there, by Newton's method from `rest`, to a nanometre."""
-    rest_east, rest_north = rest
-    k_east = np.array([w.k_east_rad_m for w in field])
-    k_north = np.array([w.k_north_rad_m for w in field])
-    along = np.array([w.amplitude_m / w.k_rad_m for w in field])
-    for _ in range(50):
-        phase = phases(field, rest_east, rest_north, t_s)
-        sine, cosine = np.sin(phase), np.cos(phase)
-        miss_east = rest_east - np.tensordot(along * k_east, sine, 1) - east_m
-        miss_north = rest_north - np.tensordot(along * k_north, sine, 1) - north_m
-        if (
-            max(np.abs(miss_east).max(initial=0), np.abs(miss_north).max(initial=0))
-            < 1e-9
-        ):
-            break
-        # d(rest + offset)/d(rest), as `gerstner_normal`'s.
-        ee = 1 - np.tensordot(along * k_east**2, cosine, 1)
-        nn = 1 - np.tensordot(along * k_north**2, cosine, 1)
-        en = -np.tensordot(along * k_east * k_north, cosine, 1)
-        det = ee * nn - en * en
-        rest_east = rest_east - (nn * miss_east - en * miss_north) / det
-        rest_north = rest_north - (ee * miss_north - en * miss_east) / det
-    _, _, up = gerstner_offset_m(field, rest_east, rest_north, t_s)
-    return up, rest_east, rest_north
 
 
 def gerstner_hit(
@@ -179,7 +168,7 @@ def gerstner_hit(
         far[i] = near[i] + step
         at = origin[:, i] + far[i] * direction[:, i]
         # The water under a point moves with it, near enough to start from.
-        up, rest_east[i], rest_north[i] = _gerstner_height_m(
+        rest_east[i], rest_north[i] = gerstner_rest_m(
             field,
             at[0],
             at[1],
@@ -189,6 +178,7 @@ def gerstner_hit(
                 rest_north[i] + step * direction[1, i],
             ),
         )
+        up = gerstner_offset_m(field, rest_east[i], rest_north[i], t_s)[2]
         gap[i] = at[2] - up
         below = gap[i] < 0
         met[i] = below
@@ -203,9 +193,10 @@ def gerstner_hit(
     for _ in range(int(np.ceil(np.log2(widest / 1e-6)))):
         middle = (near[i] + far[i]) / 2
         at = origin[:, i] + middle * direction[:, i]
-        up, rest_east[i], rest_north[i] = _gerstner_height_m(
+        rest_east[i], rest_north[i] = gerstner_rest_m(
             field, at[0], at[1], t_s, (rest_east[i], rest_north[i])
         )
+        up = gerstner_offset_m(field, rest_east[i], rest_north[i], t_s)[2]
         below = at[2] < up
         far[i] = np.where(below, middle, far[i])
         near[i] = np.where(below, near[i], middle)
