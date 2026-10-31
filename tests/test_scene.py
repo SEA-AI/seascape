@@ -18,7 +18,7 @@ from seascape.assets import Buoy, Debris, Hull, Turbine, manifest
 from seascape.blender import blend, scene, sea
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
 from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_objects
-from seascape.blender.rigs import boresight_deg
+from seascape.blender.rigs import boresight_deg, views
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
 from seascape.blender.sea.geometry import _triples
@@ -236,13 +236,12 @@ class TestEoBand:
         self, built: scene.Built
     ) -> None:
         """Water seen at x at time t is on the drifting grid at x - v t."""
-        mounts = [m for m in SCENARIO.mounts if m.camera.band == "eo"]
         clip = variant(BASELINE, outputs={"duration_s": 1.0})
         calm = variant(BASELINE, outputs={"duration_s": 1.0}, sea={"wind_speed_mps": 0})
         drift = sea.surface_drift(clip.sea, clip.outputs)
         assert sea.surface_drift(calm.sea, calm.outputs) == (0.0, 0.0) != drift
-        moved = memory._rays(clip, mounts, built.cameras)
-        held = memory._rays(calm, mounts, built.cameras)
+        moved = memory._rays(clip, views(clip, "eo", built.cameras))
+        held = memory._rays(calm, views(calm, "eo", built.cameras))
         per_frame = len(moved) // len(clip.outputs.times_s)
         for i, ((at, _, _), (still, _, _)) in enumerate(zip(moved, held, strict=True)):
             t_s = clip.outputs.times_s[i // per_frame]
@@ -255,7 +254,9 @@ class TestEoBand:
         tall = variant(BASELINE, cameras={"eo": {"width_px": 512, "height_px": 640}})
         mount = next(m for m in tall.mounts if m.camera.band == "eo")
         back = built.cameras[mount.name].matrix_world.to_3x3().inverted()
-        rays = memory._rays(tall, [mount], built.cameras)
+        rays = memory._rays(
+            tall, [v for v in views(tall, "eo", built.cameras) if v.mount == mount]
+        )
         seen = [back @ ray for _, ray, _ in rays]
         x = max(abs(v.x / v.z) for v in seen)
         y = max(abs(v.y / v.z) for v in seen)
@@ -1476,8 +1477,13 @@ class TestSeaEvolves:
         crest_m = sum(w.amplitude_m for w in _tall(scenario))
         lowest = min(_ridden_m(scenario, t) for t in scenario.outputs.times_s)
         assert scene._finest_footprint_m(
-            scenario, "eo", built.cameras
+            scenario, views(scenario, "eo", built.cameras)
         ) == pytest.approx((mount.rig.height_m + lowest - crest_m) * pixel_rad)
+        # The shader's pixel, and so the finest one, scales with the render's size.
+        bpy.context.scene.render.resolution_percentage = 50
+        assert scene._finest_footprint_m(
+            scenario, views(scenario, "eo", built.cameras)
+        ) == pytest.approx(2 * (mount.rig.height_m + lowest - crest_m) * pixel_rad)
 
     def test_the_finest_pixel_is_taken_at_the_lowest_heave(self) -> None:
         heave = {"amplitude_m": 2.0, "period_s": 4.0}
@@ -1492,7 +1498,7 @@ class TestSeaEvolves:
             for t in scenario.outputs.times_s
         )
         assert scene._finest_footprint_m(
-            scenario, "eo", built.cameras
+            scenario, views(scenario, "eo", built.cameras)
         ) == pytest.approx(
             (mount.rig.height_m + lowest - crest_m) * pixel_rad, rel=1e-5
         )
@@ -1506,7 +1512,9 @@ class TestSeaEvolves:
         scene.build(scenario, "eo")
         assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
-        finest = scene._finest_footprint_m(scenario, "eo", built.cameras)
+        finest = scene._finest_footprint_m(
+            scenario, views(scenario, "eo", built.cameras)
+        )
         resolved = waves.resolvable(field, finest)
         kept = [w for w, _, _ in drawn(scenario, resolved)]
         assert kept == shaded(scenario, resolved) != shaded(scenario)

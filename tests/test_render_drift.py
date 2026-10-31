@@ -21,6 +21,7 @@ from seascape.blender.compositor import (
     respond,
 )
 from seascape.blender.meshes import import_asset, measure, mesh_objects
+from seascape.blender.rigs import views
 from seascape.blender.sea.daylight import SEAWATER_IOR, SUN_SLOPE_RADIUS
 from seascape.blender.sea.foam import LATTICE_WALL_M
 from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CELLS
@@ -262,7 +263,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     built = scene.build(clip, "eo")
     # A build clears the last one's frames.
     assert not stale.exists()
-    grid = sea.foam_grids(clip, "eo", built.cameras, clip.wind_waves())[0]
+    grid = sea.foam_grids(clip, views(clip, "eo", built.cameras), clip.wind_waves())[0]
     tree = bpy.data.materials["sea"].node_tree
     texture = tree.nodes[f"sea_foam_{grid.cell_m:g}m"]
     texture.interpolation = "Closest"

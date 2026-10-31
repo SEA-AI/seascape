@@ -11,7 +11,7 @@ from mathutils import Matrix
 from seascape.blender import sea
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
-from seascape.blender.rigs import add_rigs
+from seascape.blender.rigs import View, add_rigs, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
     OverlapError,
@@ -92,7 +92,7 @@ def _viewport(near_m: float, far_m: float) -> None:
 def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
     """Past the camera's horizon plus the tallest hull's own, every hull is below the
     horizon."""
-    # As imported: a rotor's blades are wherever its spin has them.
+    # Stored at import, blade up: measured now, a rotor's top follows its spin.
     tops_m = [anchor["height_m"] for anchor in anchors]
     if not tops_m:
         return 0.0
@@ -104,28 +104,18 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     return earth.horizon_m(eye_m, k) + earth.horizon_m(max(tops_m), k)
 
 
-def _finest_footprint_m(
-    scenario: Scenario, band: Band, cameras: dict[str, bpy.types.Object]
-) -> float:
-    """The finest pixel any of the band's cameras lays on the sea in any frame: its
-    height over the sea below it, which the curved sea's crests come no nearer than,
-    times the angle of a pixel."""
-    sc = bpy.context.scene
+def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
+    """The finest pixel any camera `seen` lays on the sea in any frame: its height over
+    the sea below it, which the curved sea's crests come no nearer than, times the
+    angle of a pixel."""
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     tall, _ = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     crest_m = sum(w.amplitude_m for w in tall)
     finest = math.inf
-    for frame in range(len(scenario.outputs.times_s)):
-        sc.frame_set(frame)
-        for mount in scenario.mounts:
-            if mount.camera.band != band:
-                continue
-            camera = cameras[mount.name]
-            east, north, up = camera.matrix_world.translation
-            height_m = max(up - earth.sea_z_m(east, north, radius_m) - crest_m, 0.0)
-            pixel_rad = camera.data.angle_x / mount.camera.width_px
-            finest = min(finest, height_m * pixel_rad)
-    sc.frame_set(0)
+    for view in seen:
+        east, north, up = view.matrix.translation
+        height_m = max(up - earth.sea_z_m(east, north, radius_m) - crest_m, 0.0)
+        finest = min(finest, height_m * view.pixel_rad)
     return finest
 
 
@@ -168,6 +158,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
+    seen = views(scenario, band, rigs.cameras)
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(
         scenario.sea,
@@ -182,8 +173,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         tuple(trails),
         sea_light(scenario.sky, band),
         sea.Seen(
-            _finest_footprint_m(scenario, band, rigs.cameras) if cull else 0.0,
-            sea.foam_grids(scenario, band, rigs.cameras, wind),
+            _finest_footprint_m(scenario, seen) if cull else 0.0,
+            sea.foam_grids(scenario, seen, wind),
         ),
     )
     sea.water(scenario.sea, reach_m, material)
