@@ -132,11 +132,11 @@ class Labels(Model):
     ) -> None:
         """One frame: `index` is its object-index pass, (height, width), and `frame`
         the image as written, both top row first. `settings` is the scenario's camera,
-        whose sensor, lens and processing an EO image carries, and lens and
-        microbolometer an LWIR one. A target in `faint`, by name, is dropped with its
-        excess ΔE*ab."""
+        whose sensor, lens and processing an EO image carries, and lens,
+        microbolometer and AGC an LWIR one. A target in `faint`, by name, is dropped with
+        its excess ΔE*ab."""
         # Only an 8-bit EO frame went through the camera's chain, and only an integer
-        # LWIR one (png, jpg) through the microbolometer.
+        # LWIR one (png, jpg) through the microbolometer and the AGC that tones it.
         grade = (
             settings is not None and settings.band == "eo" and frame.dtype == np.uint8
         )

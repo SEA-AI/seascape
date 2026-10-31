@@ -636,27 +636,22 @@ def recorded(tmp_path: Path, info: dict) -> Path:
     return tmp_path
 
 
-def ir(dde: float) -> dict:
-    """A recorded rig, with a field an older seascape had and this one does not."""
-    return {
-        "rigs": {"bow": {"retired_m": 1.0, "cameras": {"ir": {"agc": {"dde": dde}}}}}
-    }
-
-
 def test_a_camera_takes_the_agc_its_thermal_frames_recorded(tmp_path: Path) -> None:
-    settings = Camera(band="ir", hfov_deg=24.0, width_px=64, height_px=48)
-    settings = settings.model_copy(update={"agc": Agc(dde=1.2)})
+    settings = Camera(
+        band="ir", hfov_deg=24.0, width_px=64, height_px=48, agc=Agc(dde=1.2)
+    )
+    ir = camera().model_copy(update={"band": "ir"})
     truth = labels.Labels()
     frame = FLAT.astype(np.uint16)
     index = np.zeros((48, 64), int)
-    truth.add(camera(), 0.0, index, frame, [], RADIUS_M, settings, faint={})
+    truth.add(ir, 0.0, index, frame, [], RADIUS_M, settings, faint={})
     truth.write(tmp_path)
     found = labels.agcs(tmp_path)
-    assert found[camera().name] == Agc(dde=1.2)
+    assert found[ir.name] == Agc(dde=1.2)
     assert found["elsewhere"] == Agc()
 
 
 def test_a_merged_set_is_refused(tmp_path: Path) -> None:
-    folder = recorded(tmp_path, {"scenarios": {"0": ir(1.2), "1": ir(1.2)}})
+    folder = recorded(tmp_path, {"scenarios": {"0": {}, "1": {}}})
     with pytest.raises(ValueError, match="each seed's folder"):
         labels.agcs(folder)
