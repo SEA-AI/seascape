@@ -216,6 +216,15 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
     assert columns == sorted(columns)
 
 
+def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
+    mount = SCENARIO.mounts[0]
+    Calibration(
+        cameras=[scene.calibrate(built, mount, f"{mount.name}_{i}.png") for i in (0, 1)]
+    ).write(tmp_path)
+    with pytest.raises(ValueError, match="a sequence"):
+        panorama.panoramas(tmp_path, "cylindrical", "rig")
+
+
 def test_a_thermal_panorama_is_one_grey_per_temperature(
     tmp_path: Path, built: scene.Built
 ) -> None:
