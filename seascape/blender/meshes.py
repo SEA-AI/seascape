@@ -1,8 +1,6 @@
 """An asset's meshes: imported, joined, fitted to its size, and measured."""
 
 import contextlib
-import subprocess
-import sys
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
@@ -181,37 +179,14 @@ def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
 _CACHE_FORMAT = 2  # raise to orphan every cache already written
 
 
-def _cache(path: str, imported: str) -> None:
-    """Parse `path` into an empty file and write it to `imported`, keeping the file's
-    own names, which zones and islands key on."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    objects = _parse(Path(path))
-    # A killed write must not leave a truncated file under the cache name.
-    part = Path(f"{imported}.{uuid.uuid4().hex}.part")
-    try:
-        bpy.data.libraries.write(
-            str(part), objects, path_remap="ABSOLUTE", compress=False
-        )
-        part.replace(imported)
-    except (OSError, RuntimeError):  # a read-only or full cache is only slower
-        part.unlink(missing_ok=True)
-
-
 def _load(path: Path) -> set[bpy.types.Object]:
     """Import a mesh file; returns what it added. Caches the parse as a .blend beside
-    the file and appends from it."""
+    the file and appends from it on later calls."""
     stat = path.stat()
     version = ".".join(map(str, bpy.app.version))
     imported = path.with_name(
         f"{path.name}.{stat.st_size}-{stat.st_mtime_ns}.{version}.{_CACHE_FORMAT}.blend"
     )
-    if not imported.exists():
-        # In a process of its own: here, a name this file holds would be renamed.
-        subprocess.run(
-            [sys.executable, "-m", __name__, str(path), str(imported)],
-            check=False,
-            capture_output=True,
-        )
     if imported.exists():
         try:
             with bpy.data.libraries.load(str(imported)) as (found, into):
@@ -227,7 +202,26 @@ def _load(path: Path) -> set[bpy.types.Object]:
             # The fit reads matrix_world, which an append leaves stale.
             bpy.context.view_layer.update()
             return set(into.objects)
-    return _parse(path)
+    # The cache and the zones key on the mesh file's own names: the .blend's datablocks
+    # step aside for the parse, then take their names back from the import.
+    held = {d: d.name for d in bpy.data.user_map() if d.library is None}
+    try:
+        for datablock in held:
+            datablock.name = uuid.uuid4().hex
+        objects = _parse(path)
+        # A killed write must not leave a truncated file under the cache name.
+        part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
+        try:
+            bpy.data.libraries.write(
+                str(part), objects, path_remap="ABSOLUTE", compress=False
+            )
+            part.replace(imported)
+        except (OSError, RuntimeError):  # a read-only or full cache is only slower
+            part.unlink(missing_ok=True)
+    finally:
+        for datablock, name in held.items():
+            datablock.rename(name, mode="ALWAYS")
+    return objects
 
 
 def _parse(path: Path) -> set[bpy.types.Object]:
@@ -345,7 +339,3 @@ def measured(name: str, meshes: list[bpy.types.Object]) -> tuple[int, tuple[int,
         sum(len(mesh.data.loop_triangles) for mesh in meshes),
         tuple(sorted((max(image.size) for image in images), reverse=True)),
     )
-
-
-if __name__ == "__main__":
-    _cache(*sys.argv[1:])
