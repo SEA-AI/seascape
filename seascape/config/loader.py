@@ -64,7 +64,7 @@ def _merge_value(base: Any, over: Any) -> Any:
 def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
     """Resolve rule 2. `block` is the preset directory; None allows only a path."""
     if not isinstance(name, str):
-        raise TypeError(f"include must be a string, got {name!r}")
+        raise ValueError(f"include must be a string, got {name!r}")
     if "/" in name or name.endswith(".toml"):
         return base / name
     if block is None:
@@ -218,7 +218,9 @@ def load(
 
 def _range_by_optical_depth(data: dict[str, Any]) -> None:
     """Replace each drawn optical depth with metres, once the visibility is drawn."""
-    for i, spec in enumerate(data.get("objects") or []):
+    if not isinstance(objects := data.get("objects"), list):
+        return  # pydantic reports it
+    for i, spec in enumerate(objects):
         depth = spec.get("range_m") if isinstance(spec, dict) else None
         if not (isinstance(depth, dict) and "drawn_optical_depth" in depth):
             continue

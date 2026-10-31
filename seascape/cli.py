@@ -31,7 +31,6 @@ class _Seascape(click.Group):
         except (
             OSError,
             ValueError,  # pydantic and tomllib both raise it
-            TypeError,
             RuntimeError,  # bpy.ops.render.render, e.g. an unwritable output directory
         ) as error:
             # A traceback buries a scenario mistake.

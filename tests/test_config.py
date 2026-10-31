@@ -273,12 +273,17 @@ def test_preset_can_be_a_path(tmp_path, name) -> None:
     ("preset", "error", "match"),
     [
         ("not_a_real_preset", FileNotFoundError, "not_a_real_preset.toml"),
-        (12, TypeError, "must be a string"),
+        (12, ValueError, "must be a string"),
     ],
 )
 def test_bad_presets_fail_loudly(tmp_path, preset, error, match) -> None:
     with pytest.raises(error, match=match):
         load(variant(tmp_path, f"[rigs.bow]\npreset = {json.dumps(preset)}\n"))
+
+
+def test_objects_not_a_list_is_a_validation_error(tmp_path) -> None:
+    with pytest.raises(ValidationError, match="objects"):
+        load(variant(tmp_path, "objects = 5\n"))
 
 
 def test_extends_demands_a_path(tmp_path) -> None:
