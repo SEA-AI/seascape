@@ -5,6 +5,7 @@ it. Its files are served under /renders/ and deleted after `KEEP_S`.
 """
 
 import asyncio
+import heapq
 import json
 import os
 import shutil
@@ -38,7 +39,7 @@ from seascape.config import (
     Scenario,
     json_schema,
     load,
-    load_variants,
+    seeds,
 )
 from seascape.outputs import montage
 
@@ -107,19 +108,13 @@ class Job:
     state: str = "queued"
     error: str | None = None
     task: asyncio.Task[None] | None = None
+    # The largest scenes a replacement seed may draw.
+    worst_bytes: float = 0.0
 
     @property
     def bytes(self) -> float:
         """At most what the job writes: its images, and the archive of them."""
-        return 2 * sum(
-            len(scene.outputs.times_s)
-            * mount.camera.width_px
-            * mount.camera.height_px
-            * BYTES_PER_PX[mount.camera.band, scene.outputs.format]
-            for scene in self.scenes
-            for mount in scene.mounts
-            if mount.camera.band in scene.outputs.bands
-        )
+        return max(self.worst_bytes, sum(_bytes(scene) for scene in self.scenes))
 
     @property
     def folders(self) -> list[Path]:
@@ -180,11 +175,29 @@ def _url(ctx: Context[Any, Any]) -> str:
     return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
 
 
-def _refuse_oversized(scenes: list[Scenario], settings: Settings) -> None:
-    images = sum(scene.images for scene in scenes)
-    if images > settings.max_images:
-        raise ToolError(f"{images} images; a job writes at most {settings.max_images}")
-    for scene in scenes:
+def _bytes(scene: Scenario) -> float:
+    """What a scene writes: its images, and the archive of them."""
+    return 2 * sum(
+        len(scene.outputs.times_s)
+        * mount.camera.width_px
+        * mount.camera.height_px
+        * BYTES_PER_PX[mount.camera.band, scene.outputs.format]
+        for mount in scene.mounts
+        if mount.camera.band in scene.outputs.bands
+    )
+
+
+def _tried(
+    path: Path, lines: list[str], variants: int, settings: Settings
+) -> tuple[list[Scenario], float]:
+    """The first `variants` scenes, and the most any `variants` of the seeds `render`
+    may try write. Refuses any of those seeds past a clip or camera limit, and the
+    largest `variants` of them past the image limit."""
+    first = load(path, lines)
+    scenes: list[Scenario] = []
+    images, sizes = [], []
+    for seed in seeds(first.seed, variants):
+        scene = first if seed == first.seed else load(path, [*lines, f"seed = {seed}"])
         if scene.outputs.duration_s > settings.max_duration_s:
             raise ToolError(f"a clip lasts at most {settings.max_duration_s} s")
         for mount in scene.mounts:
@@ -194,6 +207,13 @@ def _refuse_oversized(scenes: list[Scenario], settings: Settings) -> None:
                     f"{mount.name} is {camera.width_px} x {camera.height_px}; a "
                     f"camera has at most {settings.max_pixels} pixels"
                 )
+        if len(scenes) < variants:
+            scenes.append(scene)
+        images.append(scene.images)
+        sizes.append(_bytes(scene))
+    if (most := sum(heapq.nlargest(variants, images))) > settings.max_images:
+        raise ToolError(f"{most} images; a job writes at most {settings.max_images}")
+    return scenes, sum(heapq.nlargest(variants, sizes))
 
 
 def _prune(state: State) -> None:
@@ -238,7 +258,8 @@ async def render(
     `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
     `sea.wind_speed_mps = { uniform = [2, 12] }`. `variants` renders that many
     seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet,
-    up to the server's image limit.
+    up to the server's image limit. Every seed it may try must fit the clip and
+    camera limits.
     """
     state = _state(ctx)
     settings = state.settings
@@ -255,14 +276,12 @@ async def render(
                 "/" in n or n.endswith(".toml") for n in _includes(tomllib.loads(line))
             ):
                 raise ToolError(f"{line!r}: an override names presets, never files")
-        first = await asyncio.to_thread(load, path, lines)
-        # A scene the full check would refuse, before loading the other variants.
-        _refuse_oversized([first], settings)
-        scenes = await asyncio.to_thread(load_variants, path, lines, variants)
+        scenes, worst_bytes = await asyncio.to_thread(
+            _tried, path, lines, variants, settings
+        )
     # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
     except (ValueError, OSError) as error:
         raise ToolError(str(error)) from error
-    _refuse_oversized(scenes, settings)
     state.renders.mkdir(parents=True, exist_ok=True)
     _prune(state)
     if (ahead := sum(j.waiting for j in state.jobs.values())) >= settings.max_queued:
@@ -270,7 +289,7 @@ async def render(
             f"{ahead} jobs queued; the server takes at most {settings.max_queued}"
         )
     name = uuid.uuid4().hex
-    job = Job(state.renders / name, scenario, scenes)
+    job = Job(state.renders / name, scenario, scenes, worst_bytes=worst_bytes)
     # A running job's images count twice, as written and as still to come; a
     # finishing one still writes its zip.
     writing = [j for j in state.jobs.values() if j.waiting or j.state == "finishing"]

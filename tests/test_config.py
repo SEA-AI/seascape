@@ -30,6 +30,7 @@ from seascape.config import (
     Targets,
     json_schema,
     load,
+    seeds,
     substream,
 )
 from seascape.config.draws import DRAWS, Choice, Integer, LogUniform, Triangular
@@ -1162,3 +1163,9 @@ def test_a_sensor_is_no_narrower_than_its_image() -> None:
 def test_paint_stays_within_white_and_black() -> None:
     with pytest.raises(ValidationError, match="paint_absorptance"):
         load(BASELINE, ["objects = [{ asset = 'yacht', paint_absorptance = 1.0 }]"])
+
+
+def test_a_lone_variant_is_never_replaced() -> None:
+    assert list(seeds(7, 1)) == [7]
+    assert seeds(7, 2)[0] == 7
+    assert len(seeds(7, 2)) > 2
