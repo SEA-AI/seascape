@@ -12,10 +12,11 @@ from seascape.blender.blend import (
     combine,
     curve_image,
     lookup,
+    pixels,
     scalar,
     vector,
 )
-from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M
+from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M, _looked_up_sigma
 from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.wakes import (
     BUBBLE_EFOLD_S,
@@ -368,12 +369,15 @@ def _patchy(
     texture.image = noise
     texture.extension = "REPEAT"
     tree.links.new(stretch.outputs["Vector"], texture.inputs["Vector"])
+    # `ppf` assumes unit sigma; the lookup reads less than the texels' own.
+    sigma = _looked_up_sigma(pixels(noise)[..., 0])
+    read = scalar(tree, "MULTIPLY", texture.outputs["Color"], 1 / sigma)
     threshold = lookup(tree, ppf, cover)
     # A judgement: edges half the tile's sigma wide.
     edge = scalar(
         tree,
         "MULTIPLY_ADD",
-        scalar(tree, "SUBTRACT", texture.outputs["Color"], threshold),
+        scalar(tree, "SUBTRACT", read, threshold),
         2.0,
         0.5,
     )
