@@ -42,7 +42,8 @@ def thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
 def _sunlit_emission(
     tree: bpy.types.NodeTree, t_k: float, sky: Sky
 ) -> bpy.types.NodeSocket:
-    """Emission graded from shaded to sunlit by Lambert's cosine on the real sun.
+    """Emission graded from shaded to sunlit by Lambert's cosine on a sun above the
+    horizon.
 
     Two emissions mixed by `max(0, n . sun)`, so both ends are the exact band radiance
     and only the middle interpolates: no shader node can evaluate the Planck integral
@@ -50,7 +51,8 @@ def _sunlit_emission(
     """
     shaded = tree.nodes.new("ShaderNodeEmission")
     shaded.inputs["Strength"].default_value = lwir.band_radiance(t_k)
-    if sky.sun_elevation_deg is None:
+    elevation = sky.sun_elevation_deg
+    if elevation is None or elevation <= 0:
         return shaded.outputs["Emission"]
     sunlit = tree.nodes.new("ShaderNodeEmission")
     # The gain is linear in the beam a surface absorbs.
