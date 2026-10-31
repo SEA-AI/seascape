@@ -142,6 +142,16 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))
 
 
+def test_a_camera_s_own_pitch_sizes_its_pixels(run: Path) -> None:
+    eo = Calibration.read(run).cameras[0]
+    ir = eo.model_copy(update={"name": "IR", "band": "ir", "pitch_um": 17.0})
+    sensor = recording._sensor(ir)
+    assert sensor["pixel_size"]["value"] == pytest.approx(0.017)
+    assert sensor["focal_length"]["value"] == pytest.approx(
+        sensor["focal_length_x"]["value"] * 0.017
+    )
+
+
 def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
     recording.export(run)
     (folder,) = run.glob("recordings/port/*/POWER_Const")
