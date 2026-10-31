@@ -217,10 +217,14 @@ def _lanes(triple: Triple, value: Callable[[Wave], float], pad: float = 0.0) -> 
 
 
 def _set_triple(
-    inputs: bpy.types.NodeInputs, triple: Triple, damped: frozenset[Wave]
+    inputs: bpy.types.NodeInputs,
+    triple: Triple,
+    damped: frozenset[Wave],
+    lift: Callable[[Wave], float],
 ) -> None:
-    """The inputs of `_fade` and the phases that place `triple`; its slopes and lift
-    are the caller's. An empty lane has no amplitude, so whatever it fades adds 0."""
+    """The inputs of `_fade`, the phases that place `triple`, and each wave's `lift`,
+    split along its heading for the slopes. An empty lane has no amplitude, so whatever
+    it fades adds 0."""
 
     sets = {
         "Tx": _lanes(triple, lambda w: math.sin(w.toward_rad)),
@@ -231,6 +235,9 @@ def _set_triple(
         "Ky": _lanes(triple, lambda w: w.k_north_rad_m),
         "W": _lanes(triple, lambda w: -w.omega_rad_s),
         "Phase": _lanes(triple, lambda w: w.phase_rad),
+        "Lift": _lanes(triple, lift),
+        "Slope X": _lanes(triple, lambda w: lift(w) * math.sin(w.toward_rad)),
+        "Slope Y": _lanes(triple, lambda w: lift(w) * math.cos(w.toward_rad)),
     }
     for name, value in sets.items():
         inputs[name].default_value = value
@@ -270,16 +277,7 @@ def _normal_group(
         if sums is not None:
             for name, _ in _SUMS:
                 group.links.new(sums[name], node.inputs[name])
-        _set_triple(node.inputs, triple, damped)
-        node.inputs["Slope X"].default_value = _lanes(
-            triple, lambda w: w.amplitude_m * w.k_east_rad_m
-        )
-        node.inputs["Slope Y"].default_value = _lanes(
-            triple, lambda w: w.amplitude_m * w.k_north_rad_m
-        )
-        node.inputs["Lift"].default_value = _lanes(
-            triple, lambda w: w.amplitude_m * w.k_rad_m
-        )
+        _set_triple(node.inputs, triple, damped, lambda w: w.amplitude_m * w.k_rad_m)
         sums = node.outputs
         if i == wind_triples - 1:
             group.links.new(_total(group, sums["Sum Z"]), out["Acceleration"])
@@ -316,14 +314,7 @@ def _displacement(
         if sums is not None:
             for name, _ in _SUMS:
                 tree.links.new(sums[name], node.inputs[name])
-        _set_triple(node.inputs, triple, frozenset())
-        node.inputs["Slope X"].default_value = _lanes(
-            triple, lambda w: w.amplitude_m * w.k_east_rad_m / w.k_rad_m
-        )
-        node.inputs["Slope Y"].default_value = _lanes(
-            triple, lambda w: w.amplitude_m * w.k_north_rad_m / w.k_rad_m
-        )
-        node.inputs["Lift"].default_value = _lanes(triple, lambda w: w.amplitude_m)
+        _set_triple(node.inputs, triple, frozenset(), lambda w: w.amplitude_m)
         sums = node.outputs
     offset = tree.nodes.new("ShaderNodeCombineXYZ")
     if sums is not None:

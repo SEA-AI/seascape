@@ -21,7 +21,7 @@ from seascape.blender.blend import (
     scalar,
     vector,
 )
-from seascape.blender.sea.foam import Whitecaps
+from seascape.blender.sea.foam import _Whitecaps
 from seascape.blender.sea.pixel import _Pixel
 from seascape.blender.sea.wakes import _Wakes
 from seascape.config import Sea
@@ -247,7 +247,7 @@ def _daylight(
     normal: bpy.types.NodeSocket,
     tangent: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
-    whitecaps: Whitecaps,
+    whitecaps: _Whitecaps,
     wake: _Wakes | None = None,
 ) -> bpy.types.NodeSocket:
     """Water reflecting at seawater's IOR over its body's colour, white where its crests
@@ -295,7 +295,6 @@ def _daylight(
         link(whitecaps.albedo, foam.inputs["Color"])
         # Foam is lumpy: its own normal, bumped by its density over the water's.
         bump = tree.nodes.new("ShaderNodeBump")
-        bump.name = "whitecap_bump"
         bump.inputs["Strength"].default_value = FOAM_BUMP_STRENGTH
         bump.inputs["Distance"].default_value = FOAM_BUMP_M
         link(whitecaps.albedo, bump.inputs["Height"])

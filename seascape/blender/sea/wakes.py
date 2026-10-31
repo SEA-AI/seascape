@@ -11,7 +11,7 @@ from seascape.blender.blend import (
     scalar,
     vector,
 )
-from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M, normal_ppf
+from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M
 from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.wakes import (
     BUBBLE_EFOLD_S,
@@ -148,6 +148,7 @@ def _wakes(
     where: bpy.types.NodeSocket,
     footprint_m: bpy.types.NodeSocket,
     noise: bpy.types.Image,
+    ppf: bpy.types.Image,
     sea_slope_variance: float,
 ) -> _Wakes:
     """Every hull's turbulent band, stern foam and Kelvin arms: the strongest band and
@@ -156,7 +157,6 @@ def _wakes(
     Limitation: the arms are Kelvin's straight-path pattern laid along the path, which a
     tight turn bends; sum the arms from past poses if a turn reads wrong.
     """
-    ppf = normal_ppf()
     band: bpy.types.NodeSocket | float = 0.0
     foam: bpy.types.NodeSocket | float = 0.0
     bubbles: bpy.types.NodeSocket | float = 0.0
