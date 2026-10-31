@@ -381,12 +381,12 @@ def _pull_push(weight: np.ndarray, value: np.ndarray, sigma: float) -> np.ndarra
         sums = cv2.resize(weight * value, size, interpolation=cv2.INTER_AREA)
         total = _wrapped_blur(cells, sigma)
         level = _wrapped_blur(sums, sigma) / np.maximum(total, 1e-12)
-        # 2 pi sigma^2 turns a unit-sum Gaussian's weight into cells.
         level = cv2.resize(level, (w, h), interpolation=cv2.INTER_LINEAR)
         if k == levels - 1:
             # Nothing coarser to push from.
             mean = level
             continue
+        # 2 pi sigma^2 turns a unit-sum Gaussian's weight into cells.
         trust = np.minimum(1.0, total * 2.0 * math.pi * sigma**2)
         trust = cv2.resize(trust, (w, h), interpolation=cv2.INTER_LINEAR)
         mean = trust * level + (1.0 - trust) * mean
