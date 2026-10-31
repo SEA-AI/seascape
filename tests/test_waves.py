@@ -142,7 +142,7 @@ def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
     built = field(7.0)
     # lwir takes the slope per axis: half the total variance.
     near, far = (
-        math.sqrt(waves.unresolved_slope_variance(7.0, built, (), f) / 2)
+        math.sqrt(sum(waves.unresolved_slope_variances(7.0, 0.0, built, (), f)) / 2)
         for f in (0.01, 50)
     )
     eps = {}
@@ -271,11 +271,16 @@ def test_a_longer_loop_snaps_the_frequencies_less() -> None:
 def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     built = field(7.0)
     total = waves.cox_munk_slope(7.0) ** 2
-    sharp = waves.unresolved_slope_variance(7.0, built, (), 1e-6)
+    sharp = sum(waves.unresolved_slope_variances(7.0, 0.0, built, (), 1e-6))
     assert sharp == pytest.approx(total - waves.slope_variance(built))
-    assert waves.unresolved_slope_variance(7.0, built, (), 1e4) == pytest.approx(total)
+    assert sum(
+        waves.unresolved_slope_variances(7.0, 0.0, built, (), 1e4)
+    ) == pytest.approx(total)
     footprints = [0.01, 0.1, 1.0, 10.0]
-    rest = [waves.unresolved_slope_variance(7.0, built, (), f) for f in footprints]
+    rest = [
+        sum(waves.unresolved_slope_variances(7.0, 0.0, built, (), f))
+        for f in footprints
+    ]
     assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
@@ -294,7 +299,7 @@ def test_the_drawn_slope_variance_is_the_filtered_field_s(
     swell = waves.swell(2.0, 10.0, 0.0, lambda p: p, np.random.default_rng(0))
     sea = field(wind_speed_mps) + swell
     for footprint_m in np.geomspace(1e-3, 1e4, 50):
-        assert waves.drawn_slope_variance(sea, footprint_m) == pytest.approx(
+        assert sum(waves.drawn_slope_variances(sea, footprint_m, 0.0)) == pytest.approx(
             waves.slope_variance(waves.filtered(sea, footprint_m)), rel=1e-12
         )
 
@@ -315,9 +320,9 @@ def test_a_wave_no_pixel_resolves_is_gone_at_every_coarser_one(
 
 def test_calm_air_builds_no_waves() -> None:
     assert field(0.0) == ()
-    assert waves.unresolved_slope_variance(0.0, (), (), 1.0) == pytest.approx(
-        waves.cox_munk_slope(0.0) ** 2
-    )
+    assert sum(
+        waves.unresolved_slope_variances(0.0, 0.0, (), (), 1.0)
+    ) == pytest.approx(waves.cox_munk_slope(0.0) ** 2)
 
 
 def test_the_slope_is_the_height_s_gradient() -> None:
@@ -606,12 +611,14 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
 def test_a_swell_adds_its_own_unresolved_slope_to_cox_and_munk_s() -> None:
     wind = field(7.0)
     swell = waves.swell(2.0, 12.0, 90.0, lambda p: p, np.random.default_rng(0))
-    far = waves.unresolved_slope_variance(7.0, wind, swell, 1e4)
+    far = sum(waves.unresolved_slope_variances(7.0, 0.0, wind, swell, 1e4))
     assert far == pytest.approx(
         waves.cox_munk_slope(7.0) ** 2 + waves.slope_variance(swell)
     )
-    near = waves.unresolved_slope_variance(7.0, wind, swell, 1e-3)
-    assert near == pytest.approx(waves.unresolved_slope_variance(7.0, wind, (), 1e-3))
+    near = sum(waves.unresolved_slope_variances(7.0, 0.0, wind, swell, 1e-3))
+    assert near == pytest.approx(
+        sum(waves.unresolved_slope_variances(7.0, 0.0, wind, (), 1e-3))
+    )
 
 
 def test_an_isotropic_gaussian_surface_has_e_det_h_of_m4_over_2_sqrt_3() -> None:
@@ -697,17 +704,6 @@ def test_the_axes_split_cox_and_munk_s_total(
 
     assert up + cross == pytest.approx(waves.cox_munk_slope(wind_speed_mps) ** 2)
     assert (up > cross) == upwind_heavier
-
-
-@pytest.mark.parametrize("footprint_m", [0.01, 1.0, 100.0])
-def test_the_axes_left_unresolved_sum_to_the_total(footprint_m: float) -> None:
-    built, swell = field(7.0), (waves.Wave(0.5, 0.6, 1.0, 0.0),)
-
-    up, cross = waves.unresolved_slope_variances(7.0, 0.0, built, swell, footprint_m)
-
-    assert up + cross == pytest.approx(
-        waves.unresolved_slope_variance(7.0, built, swell, footprint_m), rel=1e-9
-    )
 
 
 @pytest.mark.parametrize("wind_speed_mps", [1.0, 2.0, 3.0, 7.0, 15.0])
