@@ -419,8 +419,9 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     genus = photo_sky.cloud_genus
     height = np.zeros(rows)
     if genus != "cirrus":
-        base, top = lwir.CLOUD_LAYER_M[genus]
-        height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m, top - base)[::-1]
+        _, top = lwir.CLOUD_LAYER_M[genus]
+        depth = max(0.0, top - sky.cloud_base_m)
+        height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m, depth)[::-1]
     radiance = _cloud_radiance(
         sky, genus, elevation[:, None], cloud, height_m=height[:, None]
     )
