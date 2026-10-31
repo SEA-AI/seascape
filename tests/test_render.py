@@ -105,8 +105,13 @@ class TestThermalImage:
         params: list[int],
     ) -> None:
         """OpenCV warns once per frame on a png given a jpeg flag."""
-        seen = []
-        monkeypatch.setattr(cv2, "imwrite", lambda _, __, p: seen.append(p) or True)
+        seen: list[list[int]] = []
+
+        def imwrite(_path: str, _image: np.ndarray, params: list[int]) -> bool:
+            seen.append(params)
+            return True
+
+        monkeypatch.setattr(cv2, "imwrite", imwrite)
         render._write_thermal(
             exr_of(tmp_path, [lwir.band_radiance(285.0)]), fmt, agc.Agc(LINEAR), *IDEAL
         )
