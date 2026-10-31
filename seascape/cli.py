@@ -13,7 +13,7 @@ import click
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import TRIES_PER_VARIANT, Band, json_schema, load
+from seascape.config import Band, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
 
 _BANDS = click.Choice(get_args(Band.__value__))
@@ -144,16 +144,10 @@ def render(
             _progress(variants, "Rendering") as bar,
             _blender_log(into / "blender.log"),
         ):
-            seed = built.seed
-            while len(folders) < variants:
-                if seed == built.seed + TRIES_PER_VARIANT * variants:
-                    raise click.ClickException(
-                        f"{len(folders)} of {variants} variants in "
-                        f"{seed - built.seed} seeds: hulls meet in the rest"
-                    )
+            tries = seeds(built.seed, variants)
+            for seed in tries:
                 folder = into / str(seed)
                 variant = load(scenario, [*overrides, f"seed = {seed}"])
-                seed += 1
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
@@ -162,6 +156,13 @@ def render(
                     continue
                 folders.append(folder)
                 bar.update(1)
+                if len(folders) == variants:
+                    break
+            else:
+                raise click.ClickException(
+                    f"{len(folders)} of {variants} variants in {len(tries)} seeds: "
+                    "hulls meet in the rest"
+                )
         written.append(labels.merge(into, folders).write(into))
     for path in written:
         click.echo(path)
