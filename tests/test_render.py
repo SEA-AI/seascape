@@ -18,6 +18,7 @@ from seascape import render, server
 from seascape.blender import blend, scene, sea
 from seascape.blender.compositor import (
     FORMATS,
+    JPEG_QUALITY,
     MID_GREY,
     _compositor,
     respond,
@@ -91,6 +92,25 @@ class TestThermalImage:
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
+
+    @pytest.mark.parametrize(
+        ("fmt", "params"),
+        [("png", []), ("jpg", [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])],
+    )
+    def test_only_a_jpg_takes_the_jpeg_quality(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        fmt: ImageFormat,
+        params: list[int],
+    ) -> None:
+        """OpenCV warns once per frame on a png given a jpeg flag."""
+        seen = []
+        monkeypatch.setattr(cv2, "imwrite", lambda _, __, p: seen.append(p) or True)
+        render._write_thermal(
+            exr_of(tmp_path, [lwir.band_radiance(285.0)]), fmt, agc.Agc(LINEAR), *IDEAL
+        )
+        assert seen == [params]
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])

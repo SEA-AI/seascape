@@ -53,8 +53,11 @@ def _write_thermal(
     radiance = blend.read(exr)[::-1, :, 0].astype(np.float64)
     t_k = microbolometer.seen(radiance, camera, noise)
     out = exr.with_suffix(f".{fmt}")
-    image = agc.counts(t_k) if fmt == "png" else tone(t_k)
-    if not cv2.imwrite(str(out), image, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]):
+    if fmt == "png":
+        image, params = agc.counts(t_k), []
+    else:
+        image, params = tone(t_k), [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
+    if not cv2.imwrite(str(out), image, params):
         raise OSError(f"cannot write {out}")
     exr.unlink()
 
