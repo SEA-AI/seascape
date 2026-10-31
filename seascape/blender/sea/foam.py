@@ -14,7 +14,13 @@ from seascape.blender.blend import (
     lookup,
     scalar,
 )
-from seascape.blender.sea.wind import _downwind, _drifting, _streaking, surface_drift
+from seascape.blender.sea.wind import (
+    _downwind,
+    _drifting,
+    _streaking,
+    _unit,
+    surface_drift,
+)
 from seascape.config import Outputs, Sea
 from seascape.physics.wakes import (
     FRESH_FOAM_REFLECTANCE,
@@ -35,8 +41,6 @@ AGED_EDGE = 2.0
 FOAM_ALBEDO_SWING = 0.2
 # A judgement: how much the lattice frays a whitecap's outline.
 LACE_RAGGED_WEIGHT = 0.4
-# Numerics: the offsets within a texel, per axis, a lookup's spread is averaged over.
-FOAM_LOOKUP_SHARES = 8
 # Numerics: a finer foam grid fades in over this many of its cells from its edge.
 FOAM_SEAM_CELLS = 8
 
@@ -61,30 +65,6 @@ LATTICE_OCTAVE = 4.0
 LATTICE_FINE_WEIGHT = 0.8
 # A judgement: how long a streak of aged foam is for its width at force 8.
 LATTICE_STREAK = 4.0
-
-
-def _looked_up_sigma(tile: np.ndarray) -> float:
-    """`tile`'s spread as Cycles' linear lookup with repeat reads it, between texels as
-    on them: interpolation averages neighbours, so it is under the texels' own.
-
-    A lookup a share along a texel blends the same four neighbours, with the same
-    weights, wherever it reads: its variance over the tile is those weights' quadratic
-    form in the neighbours' covariance."""
-    neighbours = np.stack(
-        [np.roll(tile, (-dy, -dx), (0, 1)).ravel() for dy in (0, 1) for dx in (0, 1)]
-    )
-    covariance = np.cov(neighbours, bias=True)
-    shares = (np.arange(FOAM_LOOKUP_SHARES) + 0.5) / FOAM_LOOKUP_SHARES
-    blend = np.stack([1 - shares, shares], axis=-1)
-    # (share up, share across) x (neighbour up, neighbour across), as `neighbours`.
-    weights = np.einsum("ai,bj->abij", blend, blend).reshape(-1, 4)
-    variance = np.einsum("si,ij,sj->s", weights, covariance, weights).mean()
-    return float(np.sqrt(variance))
-
-
-def _unit(tile: np.ndarray) -> np.ndarray:
-    """`tile` at unit sigma as Cycles' linear lookup reads it."""
-    return tile / _looked_up_sigma(tile)
 
 
 def _remembered(
