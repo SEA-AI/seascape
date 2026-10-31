@@ -405,7 +405,8 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     rgba = pixels(photo)
     bpy.data.images.remove(photo)
     # Bottom row first, as Blender stores an image; `skies` reads top row first.
-    share = skies.cloud(rgba[::-1, :, :3], skies.library()[sky.hdri])[::-1]
+    photo_sky = skies.library()[sky.hdri]
+    share = skies.cloud(rgba[::-1, :, :3], photo_sky)[::-1]
     # Judgement: steps of 1/255 of a whole cloud, for a quarter of a float image.
     share_image = curve_image("cloud_share", share, float_buffer=False)
     h, w = share.shape
@@ -415,21 +416,18 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
     # One height a row keeps cloud a function of elevation, as the world draws it:
     # radiance is close to linear over a cloud's few kelvin.
-    depth = lwir.cloud_depth_m(skies.library()[sky.hdri].cloud_genus)
-    height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m, depth)[::-1]
-    radiance = lwir.cloudy_sky_radiance(
-        elevation[:, None],
-        cloud,
-        sky.cloud_base_m,
-        sky.t_air_k,
-        sky.atmosphere,
-        height_m=height[:, None],
-        cirrus=_cirrus(sky),
+    genus = photo_sky.cloud_genus
+    height = np.zeros(rows)
+    if genus != "cirrus":
+        base, top = lwir.CLOUD_LAYER_M[genus]
+        height = skies.cloud_height_m(cloud[::-1], sky.cloud_base_m, top - base)[::-1]
+    radiance = _cloud_radiance(
+        sky, genus, elevation[:, None], cloud, height_m=height[:, None]
     )
     image = curve_image(
         "cloudy_sky_radiance", _hazed(sky, radiance, elevation[:, None])
     )
-    _bake_cloud_excess(sky, elevation, height)
+    _bake_cloud_excess(sky, genus, elevation, height)
     # As a horizontal surface sees the sky: each row by its projected solid angle.
     up = elevation > 0
     weight = np.sin(elevation[up]) * np.cos(elevation[up])
@@ -459,8 +457,24 @@ def _cloudy_sky(
     )
 
 
-def _cirrus(sky: Sky) -> bool:
-    return sky.hdri is not None and skies.library()[sky.hdri].cloud_genus == "cirrus"
+def _cloud_radiance(
+    sky: Sky,
+    genus: lwir.CloudGenus,
+    elevation: np.ndarray,
+    cloud: np.ndarray | float,
+    height_m: np.ndarray,
+) -> np.ndarray:
+    """The sky under a `cloud` fraction of the photo's `genus`."""
+    if genus == "cirrus":
+        return lwir.cirrus_sky_radiance(elevation, cloud, sky.t_air_k, sky.atmosphere)
+    return lwir.cloudy_sky_radiance(
+        elevation,
+        cloud,
+        sky.cloud_base_m,
+        sky.t_air_k,
+        sky.atmosphere,
+        height_m=height_m,
+    )
 
 
 def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
@@ -469,19 +483,14 @@ def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
     return bpy.data.images["cloud_excess"]
 
 
-def _bake_cloud_excess(sky: Sky, rows_rad: np.ndarray, height_m: np.ndarray) -> None:
+def _bake_cloud_excess(
+    sky: Sky, genus: lwir.CloudGenus, rows_rad: np.ndarray, height_m: np.ndarray
+) -> None:
     """`_cloud_excess_image`, a whole cloud `height_m` over its base at `rows_rad`,
     baked as `_sky_image` is."""
     elevation = _curve_elevation()
-    whole = lwir.cloudy_sky_radiance(
-        elevation,
-        1.0,
-        sky.cloud_base_m,
-        sky.t_air_k,
-        sky.atmosphere,
-        height_m=np.interp(elevation, rows_rad, height_m),
-        cirrus=_cirrus(sky),
-    )
+    height = np.interp(elevation, rows_rad, height_m)
+    whole = _cloud_radiance(sky, genus, elevation, 1.0, height_m=height)
     excess = _hazed(sky, whole, elevation) - _table_sky(sky, elevation)
     curve_image("cloud_excess", excess)
 

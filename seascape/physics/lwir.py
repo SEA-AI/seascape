@@ -371,7 +371,7 @@ def brightness_temperature(radiance: npt.ArrayLike) -> FloatArray:
 
 
 @functools.cache
-def _sky_table(csv: Path = _SKY_CSV) -> tuple[FloatArray, dict[str, FloatArray]]:
+def _sky_table(csv: Path) -> tuple[FloatArray, dict[str, FloatArray]]:
     """(elevation deg, each profile's sky against its horizon)."""
     raw = np.loadtxt(csv, delimiter=",", comments="#")
     raw.setflags(write=False)
@@ -392,11 +392,17 @@ def sky_radiance(
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
-    elev, curves = _sky_table()
-    fraction = np.interp(
+    return _over_horizon(_SKY_CSV, elev_rad, atmosphere) * band_radiance(t_air_k)
+
+
+def _over_horizon(
+    csv: Path, elev_rad: npt.ArrayLike, atmosphere: Atmosphere
+) -> FloatArray:
+    """A `_sky_table` sky at `elev_rad`, over the clear horizon's."""
+    elev, curves = _sky_table(csv)
+    return np.interp(
         np.asarray(elev_rad, dtype=np.float64), np.radians(elev), curves[atmosphere]
     )
-    return fraction * band_radiance(t_air_k)
 
 
 # g / c_p: air lifted from the surface cools at it to the cloud base, where it condenses
@@ -413,11 +419,9 @@ type CloudGenus = Literal[
     "altostratus",
     "cirrus",
 ]
-# Each genus's base and top in LOWTRAN 7's cloud models (lowtran7.f, card 2: ICLD 1 to
-# 4). Judgement: altocumulus shares altostratus's level, the middle one (WMO
-# International Cloud Atlas), and LOWTRAN models no other cloud there. Cirrus takes its
-# own, in LOWTRAN's cirrus sky; a clear sky's stray cloud, the default base and a
-# cumulus's depth.
+# Each genus's base and top in LOWTRAN 7's cloud models (lowtran7.f, card 2: ICLD 1
+# to 4). Altocumulus takes altostratus's, a judgement: LOWTRAN models no other cloud
+# at the middle level (WMO International Cloud Atlas). Cirrus has its own table.
 CLOUD_LAYER_M: dict[CloudGenus, tuple[float, float]] = {
     "cumulus": (660.0, 2700.0),
     "stratocumulus": (660.0, 2000.0),
@@ -425,12 +429,8 @@ CLOUD_LAYER_M: dict[CloudGenus, tuple[float, float]] = {
     "altocumulus": (2400.0, 3000.0),
     "altostratus": (2400.0, 3000.0),
 }
-
-
-def cloud_depth_m(genus: CloudGenus) -> float:
-    """How far over its base a cloud of `genus` reaches."""
-    base, top = CLOUD_LAYER_M.get(genus, CLOUD_LAYER_M["cumulus"])
-    return top - base
+# A clear sky's stray cloud is a fair-weather cumulus.
+CLOUD_LAYER_M["clear"] = CLOUD_LAYER_M["cumulus"]
 
 
 def cloud_height_m(
@@ -461,26 +461,18 @@ def cloudy_sky_radiance(
     t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
     height_m: npt.ArrayLike = 0.0,
-    cirrus: bool = False,
 ) -> FloatArray:
     """`sky_radiance` with a `cloud` fraction, 0 to 1, a blackbody at the air
     `height_m` over the cloud base: air lifted dry to the base, and the standard lapse
     over it.
 
-    The cloud hides the air over its base, and the air under it emits and transmits as
-    LOWTRAN's path to the base (Kirchhoff). Its side, over the base, is seen through
-    the air under the base. `cirrus` is LOWTRAN's standard cirrus instead, at its own
-    height and temperature and seen through, and takes no base.
+    The cloud hides the air over its base; the air under it, LOWTRAN's path to the base,
+    emits and transmits in front of the base and the side alike.
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     elev = np.asarray(elev_rad, dtype=np.float64)
     clear = sky_radiance(elev, t_air_k, atmosphere)
-    if cirrus:
-        at, skies = _sky_table(_CIRRUS_CSV)
-        overcast = np.interp(elev, np.radians(at), skies[atmosphere])
-        overcast = overcast * band_radiance(t_air_k)
-        return clear + np.asarray(cloud) * (overcast - clear)
     path, transmitted = _under_base(elev, cloud_base_m, atmosphere)
     t_cloud_k = (
         t_air_k
@@ -492,27 +484,42 @@ def cloudy_sky_radiance(
     return clear + np.asarray(cloud) * (overcast - clear)
 
 
+def cirrus_sky_radiance(
+    elev_rad: npt.ArrayLike,
+    cloud: npt.ArrayLike,
+    t_air_k: float | None = None,
+    atmosphere: Atmosphere = ATMOSPHERE,
+) -> FloatArray:
+    """`sky_radiance` with a `cloud` fraction of LOWTRAN's standard cirrus sky."""
+    if t_air_k is None:
+        t_air_k = SURFACE_AIR_K[atmosphere]
+    clear = sky_radiance(elev_rad, t_air_k, atmosphere)
+    overcast = _over_horizon(_CIRRUS_CSV, elev_rad, atmosphere) * band_radiance(t_air_k)
+    return clear + np.asarray(cloud) * (overcast - clear)
+
+
 @functools.lru_cache(maxsize=1)
 def _cloud_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray, FloatArray]]:
-    """Per profile: (base m, elevation deg, path, transmittance), the last two shaped
-    (base, elevation)."""
+    """Per profile: (base m ascending, elevation deg, path, transmittance), the last two
+    shaped (base, elevation)."""
     columns = header(_CLOUD_CSV)[1:]
-    # "path_250m" then "trans_250m": each quantity's columns, by base ascending.
-    base = np.array([float(c.split("_")[1].removesuffix("m")) for c in columns])
-    n = base.size // 2
+    bases = sorted(
+        (c.removeprefix("path_") for c in columns if c.startswith("path_")),
+        key=lambda b: float(b.removesuffix("m")),
+    )
+    # Each base's path and transmittance by name; usecols puts elevation first.
+    path_at = [1 + columns.index(f"path_{b}") for b in bases]
+    trans_at = [1 + columns.index(f"trans_{b}") for b in bases]
+    base = np.array([float(b.removesuffix("m")) for b in bases])
     names = np.loadtxt(_CLOUD_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
     raw = np.loadtxt(
-        _CLOUD_CSV, delimiter=",", comments="#", usecols=range(1, 2 + 2 * n)
+        _CLOUD_CSV, delimiter=",", comments="#", usecols=range(1, 2 + len(columns))
     )
+    raw.setflags(write=False)
     tables = {}
     for name in np.unique(names):
         rows = raw[names == name]
-        tables[str(name)] = (
-            base[:n],
-            rows[:, 0],
-            rows[:, 1 : 1 + n].T,
-            rows[:, 1 + n :].T,
-        )
+        tables[str(name)] = (base, rows[:, 0], rows[:, path_at].T, rows[:, trans_at].T)
     return tables
 
 
@@ -522,18 +529,10 @@ def _under_base(
     """The air under a cloud base: its band radiance over the horizon's, and its
     transmittance, at each elevation."""
     base, elev, path, trans = _cloud_table()[atmosphere]
-    i = int(np.clip(np.searchsorted(base, cloud_base_m) - 1, 0, base.size - 2))
-    w = float(np.clip((cloud_base_m - base[i]) / (base[i + 1] - base[i]), 0.0, 1.0))
     at = np.radians(elev)
-
-    def row(table: FloatArray) -> FloatArray:
-        lo, hi = (
-            np.interp(elev_rad, at, table[i]),
-            np.interp(elev_rad, at, table[i + 1]),
-        )
-        return (1.0 - w) * lo + w * hi
-
-    return row(path), row(trans)
+    path_at = [np.interp(cloud_base_m, base, column) for column in path.T]
+    trans_at = [np.interp(cloud_base_m, base, column) for column in trans.T]
+    return np.interp(elev_rad, at, path_at), np.interp(elev_rad, at, trans_at)
 
 
 def haze_depth(

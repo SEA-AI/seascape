@@ -6,9 +6,9 @@
 # band in wavelength, over the horizon's to space: lowtran_sky.csv's normaliser, so it
 # scales with the air as that table does. trans is its transmittance, weighted by
 # Planck in wavenumber at the base's temperature: the horizon's brightness temperature,
-# lifted dry (9.8 K/km) to the base. A base at 0 m has no air under it. Run with
-# `lowtran` on PyPI, card 2 from card2.txt as in lowtran_path.csv, holding "0 0 0. 0. 0.". The north_sea
-# profiles take their named standard profile's, as lowtran_sky.csv does.
+# lifted dry (9.8 K/km) to the base. Run with `lowtran` on PyPI, card 2 from card2.txt
+# as in lowtran_path.csv, holding "0 0 0. 0. 0.". The north_sea profiles take their
+# named standard profile's, as lowtran_sky.csv does.
 # profile,elevation_deg,path_0m,path_250m,path_500m,path_750m,path_1000m,path_1250m,path_1500m,path_2000m,path_2500m,path_3000m,trans_0m,trans_250m,trans_500m,trans_750m,trans_1000m,trans_1250m,trans_1500m,trans_2000m,trans_2500m,trans_3000m
 tropical,0,0.0000,1.0227,1.0151,1.0076,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,1.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000
 tropical,1,0.0000,1.0029,1.0068,0.9972,0.9871,0.9871,0.9871,0.9871,0.9871,0.9871,1.0000,0.0159,0.0013,0.0002,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000

@@ -197,7 +197,7 @@ class Sky(Model):
         ge=0.0,
         le=3000.0,
         description="The photo's cloud base, which sets its clouds' temperature in IR. "
-        "Unset, its cloud genus's. Cirrus takes its own. EO ignores it.",
+        "Unset, its cloud genus's; cirrus and EO ignore it.",
     )
 
     hdri: (
@@ -214,7 +214,7 @@ class Sky(Model):
 
     @model_validator(mode="before")
     @classmethod
-    def _sun_follows_the_photo(cls, data: Any) -> Any:
+    def _sky_follows_the_photo(cls, data: Any) -> Any:
         # Anything but a name is left for the field's own validation to refuse.
         if not isinstance(data, dict) or not isinstance(data.get("hdri"), str):
             return data

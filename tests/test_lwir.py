@@ -244,7 +244,7 @@ def test_a_fog_denser_than_the_table_is_held_at_its_densest() -> None:
 
 def test_every_atmosphere_has_a_sky_a_haze_a_path_and_a_surface_air() -> None:
     names = set(get_args(atmosphere.Atmosphere.__value__))
-    assert set(lwir._sky_table()[1]) == names
+    assert set(lwir._sky_table(lwir._SKY_CSV)[1]) == names
     assert set(lwir._depth_table(lwir._HAZE_CSV)) == names
     assert set(lwir._depth_table(lwir._PATH_CSV)) == names
     assert set(lwir._cloud_table()) == names
@@ -274,14 +274,9 @@ def test_a_cloud_on_the_sea_reads_as_the_air() -> None:
 def test_cirrus_warms_the_clear_sky_less_than_a_low_cloud() -> None:
     elevation = np.radians([5.0, 30.0, 90.0])
     clear = lwir.sky_radiance(elevation, 290.0)
-    cirrus = lwir.cloudy_sky_radiance(elevation, 1.0, 1000.0, 290.0, cirrus=True)
+    cirrus = lwir.cirrus_sky_radiance(elevation, 1.0, 290.0)
     low = lwir.cloudy_sky_radiance(elevation, 1.0, 1000.0, 290.0)
     assert np.all((clear < cirrus) & (cirrus < low))
-
-
-def test_cirrus_takes_no_base() -> None:
-    at = [lwir.cloudy_sky_radiance(1.0, 1.0, b, 290.0, cirrus=True) for b in (0, 3000)]
-    assert at[0] == at[1]
 
 
 def test_a_cloud_s_side_over_its_base_is_colder_by_the_standard_lapse() -> None:
@@ -450,8 +445,3 @@ def test_a_wave_tilted_away_mirrors_the_warm_sky_near_the_horizon() -> None:
     assert _shaded(depression, math.radians(-8.0), sigma) > _shaded(
         depression, 0.0, sigma
     )
-
-
-def test_a_clear_sky_s_stray_cloud_is_as_deep_as_a_cumulus() -> None:
-    assert lwir.cloud_depth_m("clear") == lwir.cloud_depth_m("cumulus")
-    assert lwir.cloud_depth_m("stratus") < lwir.cloud_depth_m("cumulus")
