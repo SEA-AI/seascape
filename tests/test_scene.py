@@ -445,7 +445,7 @@ class TestEoBand:
             GUST_SPACING_M,
             waves.GUST_LENGTH_M,
         )
-        assert tile == pytest.approx(seeded, abs=1e-5)
+        assert tile == pytest.approx(seeded / _looked_up_sigma(seeded), abs=1e-5)
 
     def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
         carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
@@ -474,7 +474,7 @@ class TestEoBand:
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
 
-    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice"])
+    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice", "sea_gust"])
     def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
         assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
 
@@ -1333,9 +1333,6 @@ class TestSlicks:
         )
         unit = seeded / _looked_up_sigma(seeded)
         assert baked("sea_windrows") == pytest.approx(unit, abs=1e-5)
-
-    def test_the_windrows_read_at_unit_sigma(self) -> None:
-        assert _looked_up_sigma(baked("sea_windrows")) == pytest.approx(1.0, rel=1e-5)
 
     def test_windrows_run_along_the_wind_at_faller_and_woodcock_s_spacing(
         self,

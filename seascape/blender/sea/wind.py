@@ -186,7 +186,8 @@ def _langmuir_rows(
     rng: np.random.Generator,
 ) -> _Rows:
     """Langmuir circulation's convergence, which gathers slicks and aged foam alike:
-    the windrows and the finer rows between them, each exactly Gaussian, so a
+    the windrows and the finer rows between them, each Gaussian at unit sigma as
+    Cycles reads it, so a
     symmetric clip keeps its mean and a quantile its share. `rng` draws the windrows
     first, as every reader reads them first.
 

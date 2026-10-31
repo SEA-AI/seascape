@@ -162,7 +162,9 @@ def material(
     rows = _langmuir_rows(tree, sea, position, outputs, slick_rng)
     gust_max, gust, slick, tile = 0.0, None, None, None
     if speed > 0.0:
-        tile = von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
+        tile = _unit(
+            von_karman_field(gust_rng, GUST_CELLS, GUST_SPACING_M, GUST_LENGTH_M)
+        )
         # A crossfade reaches sqrt(2) of the tile's peak at most.
         gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
         gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
