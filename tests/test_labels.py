@@ -649,7 +649,7 @@ def test_a_camera_takes_the_agc_its_scenario_recorded(tmp_path: Path) -> None:
     assert found["bow_eo"] == Agc()
 
 
-def test_a_merged_set_is_not_toned_as_one(tmp_path: Path) -> None:
+def test_a_merged_set_is_refused(tmp_path: Path) -> None:
     folder = recorded(tmp_path, {"scenarios": {"0": ir(1.2), "1": ir(1.2)}})
     with pytest.raises(ValueError, match="each seed's folder"):
         labels.agcs(folder)

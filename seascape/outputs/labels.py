@@ -428,13 +428,13 @@ def agcs(folder: Path) -> dict[str, Agc]:
     """Each camera's AGC, by name, from the scenario the labels in `folder` record,
     the default for a camera they do not, or for every camera in a folder without
     labels. Only the `agc` tables are read, so a scenario recorded by an older
-    seascape still serves."""
+    seascape still serves. A merged set is refused."""
     found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():
         return found
     info = Labels.model_validate_json(path.read_text()).info
-    # Its seeds repeat each camera's times and can draw different AGCs.
+    # A merged set records one scenario per seed, so a camera has one AGC per seed.
     if "scenarios" in info:
         raise ValueError(f"{folder}: a merged set; use each seed's folder on its own")
     for rig_name, rig in (info.get("scenario") or {}).get("rigs", {}).items():

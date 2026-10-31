@@ -16,11 +16,11 @@ Every target left without a box is listed under `dropped`, with its image, range
 
 ![A ship too faint to box](visibility.png)
 
-`render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder.
+`render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder. `video` and `panorama` take one seed folder: a merged root has no `calibration.json`, and its seeds repeat each camera's times.
 
 An LWIR jpg is what a thermal camera shows: 8-bit grey through the camera's `agc`, its curve damped so a clip does not flicker. An LWIR png is what it measures: 16-bit centikelvin, the unit radiometric thermal cameras write, so `cv2.imread(path, cv2.IMREAD_UNCHANGED) / 100` is kelvin. A viewer shows that as flat grey; `montage`, `panorama` and `video` tone it through the same AGC as the jpg.
 
-The AGC defaults to a FLIR Boson+'s factory settings, information-based equalisation: detail takes the greys a smooth sea or sky would. `agc = { preset = "night" }` takes one of FLIR's presets for its Boson-based M364C LR (`day`, `night`, `high_contrast`, `dock`); a field beside it, set or drawn, overrides the preset. `information_based = false` is plain plateau equalisation, and `linear_fraction = 1` a linear stretch, which leaves a frame with a hot exhaust a few greys. `panorama` and `video` take one seed folder at a time and refuse a merged set, whose seeds repeat each camera's times and can draw different AGCs.
+The AGC defaults to a FLIR Boson+'s factory settings, information-based equalisation: detail takes the greys a smooth sea or sky would. `agc = { preset = "night" }` takes one of FLIR's presets for its Boson-based M364C LR (`day`, `night`, `high_contrast`, `dock`); a field beside it, set or drawn, overrides the preset. `information_based = false` is plain plateau equalisation, and `linear_fraction = 1` a linear stretch, which leaves a frame with a hot exhaust a few greys.
 
 `seascape montage` lays a render out for review, one row per band, each frame captioned with its camera. It reads the images already written, so it needs no Blender and a layout can be redone without re-rendering:
 
