@@ -11,7 +11,6 @@ from mathutils import Matrix
 from seascape.blender import sea
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
-from seascape.blender.meshes import box_corners, mesh_objects
 from seascape.blender.rigs import add_rigs
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
@@ -92,13 +91,8 @@ def _viewport(near_m: float, far_m: float) -> None:
 def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
     """Past the camera's horizon plus the tallest hull's own, every hull is below the
     horizon."""
-    # The parts' matrix_world is stale until the depsgraph runs.
-    bpy.context.view_layer.update()
-    tops_m = [
-        max(c.z for c in box_corners(mesh_objects([anchor])))
-        - anchor.matrix_world.translation.z
-        for anchor in anchors
-    ]
+    # As imported: a rotor's blades are wherever its spin has them.
+    tops_m = [anchor["height_m"] for anchor in anchors]
     if not tops_m:
         return 0.0
     heave = scenario.ownship.heave
@@ -122,8 +116,6 @@ def _finest_footprint_m(
     finest = math.inf
     for frame in range(len(scenario.outputs.times_s)):
         sc.frame_set(frame)
-        # matrix_world is stale until the depsgraph runs.
-        bpy.context.view_layer.update()
         for mount in scenario.mounts:
             if mount.camera.band != band:
                 continue
@@ -226,7 +218,4 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)
-    # Until the depsgraph runs, every child still reports its pre-parenting
-    # matrix_world, so anything measuring the scene reads the wrong place.
-    bpy.context.view_layer.update()
     return Built(vessel, rigs.rigs, rigs.cameras, targets)
