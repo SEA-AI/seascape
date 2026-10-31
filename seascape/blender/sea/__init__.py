@@ -28,7 +28,6 @@ from seascape.blender.sea.foam import (
     _bare,
     _foam_texture,
     _remembered,
-    _unit,
 )
 from seascape.blender.sea.geometry import (
     _displace,
@@ -64,6 +63,7 @@ from seascape.blender.sea.wind import (
     _gust,
     _langmuir_rows,
     _slick,
+    _unit,
     surface_drift,
 )
 from seascape.config import Outputs, Sea

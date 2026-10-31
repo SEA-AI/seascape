@@ -36,6 +36,8 @@ from seascape.physics.waves import (
 GUST_CELLS = 512
 GUST_SPACING_M = 4.0
 GUST_TILE_M = GUST_CELLS * GUST_SPACING_M
+# Numerics: the offsets within a texel, per axis, a lookup's spread is averaged over.
+LOOKUP_SHARES = 8
 # A judgement: the finer rows' tile, a few texels to a band 3-5 m wide (Zedel & Farmer
 # 1991).
 FINE_ROWS_TEXEL_M = 0.5
@@ -196,14 +198,18 @@ def _langmuir_rows(
     fine_tile_m = GUST_CELLS * FINE_ROWS_TEXEL_M
 
     def windrows() -> bpy.types.NodeSocket:
-        tile = gaussian_ranks(
-            von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m)
+        tile = _unit(
+            gaussian_ranks(von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m))
         )
         return _rows(tree, sea, where, outputs, tile, GUST_TILE_M, "windrows")
 
     def fine() -> bpy.types.NodeSocket:
-        tile = gaussian_ranks(
-            von_karman_field(rng, GUST_CELLS, FINE_ROWS_TEXEL_M, FINE_WINDROW_SPACING_M)
+        tile = _unit(
+            gaussian_ranks(
+                von_karman_field(
+                    rng, GUST_CELLS, FINE_ROWS_TEXEL_M, FINE_WINDROW_SPACING_M
+                )
+            )
         )
         return _rows(tree, sea, where, outputs, tile, fine_tile_m, "fine_rows")
 
@@ -211,6 +217,30 @@ def _langmuir_rows(
         _RowRead(cache(windrows), spacing_m),
         _RowRead(cache(fine), FINE_WINDROW_SPACING_M),
     )
+
+
+def _looked_up_sigma(tile: np.ndarray) -> float:
+    """`tile`'s spread as Cycles' linear lookup with repeat reads it, between texels as
+    on them: interpolation averages neighbours, so it is under the texels' own.
+
+    A lookup a share along a texel blends the same four neighbours, with the same
+    weights, wherever it reads: its variance over the tile is those weights' quadratic
+    form in the neighbours' covariance."""
+    neighbours = np.stack(
+        [np.roll(tile, (-dy, -dx), (0, 1)).ravel() for dy in (0, 1) for dx in (0, 1)]
+    )
+    covariance = np.cov(neighbours, bias=True)
+    shares = (np.arange(LOOKUP_SHARES) + 0.5) / LOOKUP_SHARES
+    blend = np.stack([1 - shares, shares], axis=-1)
+    # (share up, share across) x (neighbour up, neighbour across), as `neighbours`.
+    weights = np.einsum("ai,bj->abij", blend, blend).reshape(-1, 4)
+    variance = np.einsum("si,ij,sj->s", weights, covariance, weights).mean()
+    return float(np.sqrt(variance))
+
+
+def _unit(tile: np.ndarray) -> np.ndarray:
+    """`tile` at unit sigma as Cycles' linear lookup reads it."""
+    return tile / _looked_up_sigma(tile)
 
 
 def _rows(
@@ -250,7 +280,7 @@ def _slick(
     """
     if sea.slick_cover <= 0.0:
         return None
-    # The tile is Gaussian, so its top `slick_cover` lies above this.
+    # The tile reads as a unit Gaussian, so its top `slick_cover` lies above this.
     threshold = NormalDist().inv_cdf(1.0 - sea.slick_cover)
     return scalar(tree, "GREATER_THAN", rows.windrows.read(), threshold, name="slick")
 

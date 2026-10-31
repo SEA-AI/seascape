@@ -21,7 +21,6 @@ from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_ob
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
-from seascape.blender.sea.foam import _looked_up_sigma
 from seascape.blender.sea.geometry import _triples
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
 from seascape.blender.sea.radiance import (
@@ -37,7 +36,12 @@ from seascape.blender.sea.radiance import (
     _row_sigmas,
     _view_rows,
 )
-from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
+from seascape.blender.sea.wind import (
+    GUST_CELLS,
+    GUST_SPACING_M,
+    GUST_TILE_M,
+    _looked_up_sigma,
+)
 from seascape.blender.sky import _haze_ranges_m, _sky_round, haze, sea_light
 from seascape.blender.vessels import _vessel, heading_rad, waterline_m
 from seascape.config import (
@@ -1327,7 +1331,11 @@ class TestSlicks:
                 spacing_m,
             )
         )
-        assert baked("sea_windrows") == pytest.approx(seeded, abs=1e-5)
+        unit = seeded / _looked_up_sigma(seeded)
+        assert baked("sea_windrows") == pytest.approx(unit, abs=1e-5)
+
+    def test_the_windrows_read_at_unit_sigma(self) -> None:
+        assert _looked_up_sigma(baked("sea_windrows")) == pytest.approx(1.0, rel=1e-5)
 
     def test_windrows_run_along_the_wind_at_faller_and_woodcock_s_spacing(
         self,
