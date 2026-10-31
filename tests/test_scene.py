@@ -1726,6 +1726,11 @@ class TestWakes:
         assert "wake_normal" in tree.nodes
         # Read off the flat sea, the foam slides off the crests.
         assert "sea_rest" in upstream(tree.nodes["wake_position"].inputs["Vector"])
+        # The wake and the whitecaps threshold through one quantile table.
+        assert "whitecap_albedo" in tree.nodes
+        assert [i.name for i in bpy.data.images if "normal_ppf" in i.name] == [
+            "normal_ppf"
+        ]
 
     def test_a_slow_ship_s_arms_go_unseen_and_unbuilt(self) -> None:
         tree = self._built(
