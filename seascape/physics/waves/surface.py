@@ -218,15 +218,17 @@ def gerstner_hit(
 
 def attitude(
     field: tuple[Wave, ...],
-    east_m: float,
-    north_m: float,
+    rest_east_m: float,
+    rest_north_m: float,
     heading_rad: float,
     length_m: float,
     beam_m: float,
     t_s: float,
 ) -> tuple[float, float]:
-    """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull.
-    The hull follows it at once: no inertia."""
+    """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull:
+    each wave's least-squares slope at its phase where the water under the centre was
+    at rest, (`rest_east_m`, `rest_north_m`). The hull follows it at once: no
+    inertia."""
     if not field:
         return 0.0, 0.0
     k_east = np.array([w.k_east_rad_m for w in field])
@@ -235,10 +237,10 @@ def attitude(
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
-    rest = gerstner_rest_m(field, np.array(east_m), np.array(north_m), t_s)
-    at = phases(field, *rest, t_s)
+    at = phases(field, np.array(rest_east_m), np.array(rest_north_m), t_s)
     amplitude = np.array([w.amplitude_m for w in field])
-    # 1, x, y are orthogonal over a hull centred here, so each wave's slope separates.
+    # 1, x, y are orthogonal over a hull centred at the rest position, so each wave's
+    # slope separates.
     rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
     rise_across = -amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
     return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
@@ -246,8 +248,8 @@ def attitude(
 
 def heave_m(
     field: tuple[Wave, ...],
-    east_m: float,
-    north_m: float,
+    rest_east_m: float,
+    rest_north_m: float,
     heading_rad: float,
     length_m: float,
     beam_m: float,
@@ -255,7 +257,8 @@ def heave_m(
 ) -> float:
     """Mean height of `field`'s Gerstner surface over a hull's waterplane, where a
     wall-sided hull floats (Archimedes): each wave's mean over the rectangle, as
-    `attitude`'s, at its phase where the water under the centre was at rest. Exact
+    `attitude`'s, at its phase where the water under the centre was at rest,
+    (`rest_east_m`, `rest_north_m`). Exact
     for a point; under a hull, it misses the Gerstner surface's second order in
     steepness. The hull follows it at once: no inertia."""
     if not field:
@@ -266,8 +269,7 @@ def heave_m(
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
-    rest = gerstner_rest_m(field, np.array(east_m), np.array(north_m), t_s)
-    at = phases(field, *rest, t_s)
+    at = phases(field, np.array(rest_east_m), np.array(rest_north_m), t_s)
     amplitude = np.array([w.amplitude_m for w in field])
     under = amplitude * np.cos(at) * np.sinc(u / math.pi) * np.sinc(v / math.pi)
     return float(under.sum())

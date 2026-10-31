@@ -59,7 +59,8 @@ def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
     anchor = built.vessel
     tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
     t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
-    ridden = waves.heave_m(tall, 0.0, 0.0, 0.0, 0.0, 0.0, t_s)
+    rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+    ridden = waves.heave_m(tall, *map(float, rest), 0.0, 0.0, 0.0, t_s)
 
     assert tuple(anchor.location) == pytest.approx((0.0, 0.0, ridden))
 
