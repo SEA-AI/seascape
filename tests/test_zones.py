@@ -165,7 +165,7 @@ def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
 
 
 def test_a_cached_import_keeps_the_names_of_its_file(tmp_path) -> None:
-    """A parse into a file that already holds its names caches none of the renames."""
+    """A parse into a file that already holds its names caches it without renames."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.mesh.primitive_plane_add()
     bpy.context.object.data.materials.append(bpy.data.materials.new("material"))
@@ -184,6 +184,7 @@ def test_a_cached_import_keeps_the_names_of_its_file(tmp_path) -> None:
         cache.unlink()
     _load(path)  # into a file holding every name
 
+    assert any(tmp_path.glob("*.blend"))
     assert names() == own
 
 
