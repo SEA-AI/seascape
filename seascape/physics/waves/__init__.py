@@ -67,7 +67,6 @@ from seascape.physics.waves.slopes import (
 )
 from seascape.physics.waves.spectrum import (
     CAPILLARY_PEAK_RAD_M,
-    CAPILLARY_WAVELENGTH_M,
     FREQUENCIES,
     Wave,
     curvature_spectrum,
@@ -105,7 +104,6 @@ __all__ = [
     "BEAUFORT_7_MPS",
     "BEAUFORT_8_MPS",
     "CAPILLARY_PEAK_RAD_M",
-    "CAPILLARY_WAVELENGTH_M",
     "COX_MUNK_WIND_HEIGHT_M",
     "FINE_WINDROW_SPACING_M",
     "FOAM_CELLS_PER_WAVE",
