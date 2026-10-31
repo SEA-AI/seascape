@@ -296,12 +296,6 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
-def _verify(path: Path, sha256: str) -> None:
-    got = digest(path)
-    if got != sha256:
-        raise ValueError(f"{path}: sha256 {got}, manifest says {sha256}")
-
-
 def fetch(name: str) -> Path:
     """The cached mesh for `name`, and the files it reads, downloaded once."""
     asset = manifest()[name]
@@ -344,13 +338,17 @@ def _get(path: Path, url: str, sha256: str) -> Path:
     # A killed or corrupt transfer must never take the cache name, and concurrent
     # callers must not share a scratch file.
     part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
-    # The default socket timeout is None, so a server that stops sending hangs the
-    # build forever.
-    with (
-        urllib.request.urlopen(url, timeout=30) as response,
-        part.open("wb") as out,
-    ):
-        shutil.copyfileobj(response, out)
-    _verify(part, sha256)
-    part.replace(path)
+    try:
+        # The default socket timeout is None, so a server that stops sending hangs
+        # the build forever.
+        with (
+            urllib.request.urlopen(url, timeout=30) as response,
+            part.open("wb") as out,
+        ):
+            shutil.copyfileobj(response, out)
+        if (got := digest(part)) != sha256:
+            raise ValueError(f"{url}: sha256 {got}, manifest says {sha256}")
+        part.replace(path)
+    finally:
+        part.unlink(missing_ok=True)
     return path
