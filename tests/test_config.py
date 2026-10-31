@@ -30,6 +30,7 @@ from seascape.config import (
     Targets,
     json_schema,
     load,
+    seeds,
     substream,
 )
 from seascape.config.draws import DRAWS, Choice, Integer, LogUniform, Triangular
@@ -273,12 +274,31 @@ def test_preset_can_be_a_path(tmp_path, name) -> None:
     ("preset", "error", "match"),
     [
         ("not_a_real_preset", FileNotFoundError, "not_a_real_preset.toml"),
-        (12, TypeError, "must be a string"),
+        (12, ValueError, "must be a string"),
     ],
 )
 def test_bad_presets_fail_loudly(tmp_path, preset, error, match) -> None:
     with pytest.raises(error, match=match):
         load(variant(tmp_path, f"[rigs.bow]\npreset = {json.dumps(preset)}\n"))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "seed = 1.5\n[sea]\nwind_speed_mps = { uniform = [2.0, 8.0] }\n",
+        "[sky]\natmosphere = [1]\n",
+        "seed = -1\n",
+        "objects = [{ choice = [1, 2] }]\n",
+    ],
+)
+def test_a_malformed_scenario_is_a_value_error(tmp_path, body: str) -> None:
+    with pytest.raises(ValueError):
+        load(variant(tmp_path, body))
+
+
+def test_objects_not_a_list_is_a_validation_error(tmp_path) -> None:
+    with pytest.raises(ValidationError, match="objects"):
+        load(variant(tmp_path, "objects = 5\n"))
 
 
 def test_extends_demands_a_path(tmp_path) -> None:
@@ -1143,3 +1163,9 @@ def test_a_sensor_is_no_narrower_than_its_image() -> None:
 def test_paint_stays_within_white_and_black() -> None:
     with pytest.raises(ValidationError, match="paint_absorptance"):
         load(BASELINE, ["objects = [{ asset = 'yacht', paint_absorptance = 1.0 }]"])
+
+
+def test_a_lone_variant_is_never_replaced() -> None:
+    assert list(seeds(7, 1)) == [7]
+    assert seeds(7, 2)[0] == 7
+    assert len(seeds(7, 2)) > 2

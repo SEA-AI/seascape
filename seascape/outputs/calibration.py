@@ -34,6 +34,9 @@ class CameraCalibration(_Record):
     image: str = Field(description="relative to the calibration file's folder")
     rig: str
     model: str | None = None
+    pitch_um: float | None = Field(
+        default=None, gt=0.0, description="Pixel pitch, where the camera sets one."
+    )
     width_px: int = Field(gt=0)
     height_px: int = Field(gt=0)
     K: Matrix3
