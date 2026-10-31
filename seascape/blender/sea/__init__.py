@@ -28,6 +28,7 @@ from seascape.blender.sea.foam import (
     _bare,
     _foam_texture,
     _remembered,
+    _unit,
 )
 from seascape.blender.sea.geometry import (
     _displace,
@@ -170,7 +171,9 @@ def material(
     foam = cache(
         lambda: curve_image(
             "sea_foam",
-            von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M),
+            _unit(
+                von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M)
+            ),
         )
     )
     survivors = (

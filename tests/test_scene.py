@@ -21,6 +21,7 @@ from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_ob
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
+from seascape.blender.sea.foam import _looked_up_sigma
 from seascape.blender.sea.geometry import _triples
 from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
 from seascape.blender.sea.radiance import (
@@ -468,6 +469,10 @@ class TestEoBand:
             tree.nodes["whitecap_lace_axes"].inputs["X"],
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
+
+    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice"])
+    def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
+        assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
 
     def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
