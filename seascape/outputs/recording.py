@@ -49,7 +49,7 @@ COLUMNS = [
     "proc_surveil_speed",
 ]
 
-# Limitation: nominal pitches, not a datasheet's; seascape models no sensor.
+# Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 
 # The recording's camera frame, +X right, +Y forward, +Z up, as OpenCV's axes.
@@ -120,7 +120,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw
     (fx, _, cx), (_, fy, cy), _ = camera.K
-    pixel_mm = PIXEL_SIZE_MM[camera.band]
+    pixel_mm = camera.pitch_um / 1000 if camera.pitch_um else PIXEL_SIZE_MM[camera.band]
     return {
         # Never a hardware model's name: a live pipeline picks its driver by it.
         "camera_type": f"Blender {camera.band.upper()}",

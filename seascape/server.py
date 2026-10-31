@@ -259,8 +259,8 @@ async def render(
         # A scene the full check would refuse, before loading the other variants.
         _refuse_oversized([first], settings)
         scenes = await asyncio.to_thread(load_variants, path, lines, variants)
-    # pydantic and tomllib raise ValueError, a bad preset TypeError or OSError.
-    except (ValueError, TypeError, OSError) as error:
+    # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
+    except (ValueError, OSError) as error:
         raise ToolError(str(error)) from error
     _refuse_oversized(scenes, settings)
     state.renders.mkdir(parents=True, exist_ok=True)
