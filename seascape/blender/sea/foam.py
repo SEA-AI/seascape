@@ -359,7 +359,6 @@ def _foam_lace(
 ) -> bpy.types.NodeSocket:
     """Whitecap foam's lace, a unit Gaussian drifting with the surface, read at `where`,
     (east, north, time): a read of `tile` and the `ragged` lattice, rescaled to one."""
-    sigma = _looked_up_sigma(pixels(tile)[..., 0])
     east, north = _downwind(sea)
     per_m = 1 / FOAM_TILE_M
     along = per_m / FOAM_STREAK
@@ -373,7 +372,6 @@ def _foam_lace(
         0.0,
         "whitecap_lace",
     )
-    coarse = scalar(tree, "MULTIPLY", coarse, 1 / sigma)
     weight = LACE_RAGGED_WEIGHT
     summed = scalar(tree, "MULTIPLY_ADD", ragged, weight, coarse)
     return scalar(tree, "MULTIPLY", summed, 1 / math.sqrt(1 + weight**2))

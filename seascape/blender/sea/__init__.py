@@ -27,6 +27,7 @@ from seascape.blender.sea.foam import (
     FOAM_SPACING_M,
     _bare,
     _foam_texture,
+    _looked_up_sigma,
     _remembered,
 )
 from seascape.blender.sea.geometry import (
@@ -128,6 +129,10 @@ def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocke
     return clock.outputs["Value"]
 
 
+def _unit(tile: np.ndarray) -> np.ndarray:
+    return tile / _looked_up_sigma(tile)
+
+
 def material(
     sea: Sea,
     wind: tuple[Wave, ...],
@@ -167,10 +172,13 @@ def material(
         gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
         slick = _slick(tree, sea, rows)
     # Made where foam shows: an image nothing reads is not saved.
+    # Its readers threshold it as a unit Gaussian, which the lookup must read.
     foam = cache(
         lambda: curve_image(
             "sea_foam",
-            von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M),
+            _unit(
+                von_karman_field(foam_rng, FOAM_CELLS, FOAM_SPACING_M, FOAM_LENGTH_M)
+            ),
         )
     )
     survivors = (

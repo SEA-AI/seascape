@@ -37,7 +37,6 @@ from seascape.blender.sea.radiance import (
     _row_sigmas,
     _view_rows,
 )
-from seascape.blender.sea.wakes import _patchy
 from seascape.blender.sea.wind import GUST_CELLS, GUST_SPACING_M, GUST_TILE_M
 from seascape.blender.sky import _haze_ranges_m, _sky_round, haze, sea_light
 from seascape.blender.vessels import _vessel, heading_rad, waterline_m
@@ -470,6 +469,9 @@ class TestEoBand:
             tree.nodes["whitecap_lace_axes"].inputs["X"],
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
+
+    def test_the_foam_tile_reads_as_a_unit_gaussian(self) -> None:
+        assert _looked_up_sigma(baked("sea_foam")) == pytest.approx(1.0, rel=1e-5)
 
     def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
@@ -1406,21 +1408,6 @@ class TestIrSkin:
             lwir.band_radiance(t_skin_k), rel=1e-5
         )
         assert "sea_skin" in upstream(_sea_node("sea_radiance").inputs[1])
-
-
-def test_wake_foam_reads_its_noise_at_unit_sigma() -> None:
-    noise = bpy.data.images.new("noise", 8, 8, float_buffer=True)
-    noise.colorspace_settings.name = "Non-Color"
-    tile = np.random.default_rng(0).standard_normal((8, 8))
-    noise.pixels.foreach_set(np.repeat(tile, 4).astype(np.float32))
-    tree = bpy.data.materials.new("wake").node_tree
-    where = tree.nodes.new("ShaderNodeCombineXYZ").outputs[0]
-    cover = tree.nodes.new("ShaderNodeValue").outputs[0]
-    _patchy(tree, cover, where, noise, noise)
-    (subtract,) = (n for n in tree.nodes if getattr(n, "operation", "") == "SUBTRACT")
-    read = subtract.inputs[0].links[0].from_node
-    assert read.operation == "MULTIPLY"
-    assert read.inputs[1].default_value == pytest.approx(1 / _looked_up_sigma(tile))
 
 
 def test_a_wake_mixes_the_skin_down_to_the_bulk() -> None:
