@@ -12,13 +12,20 @@ from seascape.config.cameras import (
     Sensor,
 )
 from seascape.config.draws import substream
-from seascape.config.loader import PRESETS, json_schema, load, load_variants
+from seascape.config.loader import (
+    PRESETS,
+    TRIES_PER_VARIANT,
+    json_schema,
+    load,
+    load_variants,
+)
 from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
 from seascape.config.scenario import ImageFormat, Outputs, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
 __all__ = [
     "PRESETS",
+    "TRIES_PER_VARIANT",
     "Agc",
     "Band",
     "Camera",

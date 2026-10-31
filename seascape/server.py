@@ -33,6 +33,7 @@ from starlette.staticfiles import StaticFiles
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import (
+    TRIES_PER_VARIANT,
     Band,
     ImageFormat,
     Scenario,
@@ -180,11 +181,14 @@ def _url(ctx: Context[Any, Any]) -> str:
     return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
 
 
-def _refuse_oversized(scenes: list[Scenario], settings: Settings) -> None:
+def _refuse_oversized(
+    scenes: list[Scenario], settings: Settings, tried: list[Scenario] | None = None
+) -> None:
+    """The images `scenes` write, and each scene of `tried`, which defaults to them."""
     images = sum(scene.images for scene in scenes)
     if images > settings.max_images:
         raise ToolError(f"{images} images; a job writes at most {settings.max_images}")
-    for scene in scenes:
+    for scene in tried or scenes:
         if scene.outputs.duration_s > settings.max_duration_s:
             raise ToolError(f"a clip lasts at most {settings.max_duration_s} s")
         for mount in scene.mounts:
@@ -258,11 +262,15 @@ async def render(
         first = await asyncio.to_thread(load, path, lines)
         # A scene the full check would refuse, before loading the other variants.
         _refuse_oversized([first], settings)
-        scenes = await asyncio.to_thread(load_variants, path, lines, variants)
+        # Every seed `render` may try in place of one whose hulls meet.
+        tried = await asyncio.to_thread(
+            load_variants, path, lines, TRIES_PER_VARIANT * variants
+        )
     # pydantic and tomllib raise ValueError, a bad preset TypeError or OSError.
     except (ValueError, TypeError, OSError) as error:
         raise ToolError(str(error)) from error
-    _refuse_oversized(scenes, settings)
+    scenes = tried[:variants]
+    _refuse_oversized(scenes, settings, tried)
     state.renders.mkdir(parents=True, exist_ok=True)
     _prune(state)
     if (ahead := sum(j.waiting for j in state.jobs.values())) >= settings.max_queued:

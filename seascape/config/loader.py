@@ -228,6 +228,10 @@ def _range_by_optical_depth(data: dict[str, Any]) -> None:
         spec["range_m"] = depth["drawn_optical_depth"] / extinction_per_m
 
 
+# Seeds `render --variants` tries per variant before it gives up on hulls that meet.
+TRIES_PER_VARIANT = 10
+
+
 def load_variants(
     path: str | Path, overrides: Iterable[str] = (), count: int = 1
 ) -> list[Scenario]:

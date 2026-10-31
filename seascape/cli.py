@@ -13,7 +13,7 @@ import click
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import Band, json_schema, load
+from seascape.config import TRIES_PER_VARIANT, Band, json_schema, load
 from seascape.outputs import labels, montage, panorama, recording
 
 _BANDS = click.Choice(get_args(Band.__value__))
@@ -72,9 +72,6 @@ def _blender_log(path: Path) -> Generator[None]:
             log.flush()
             os.dup2(stdout, 1)
             os.close(stdout)
-
-
-TRIES_PER_VARIANT = 10
 
 
 def _progress(length: int, label: str) -> Any:

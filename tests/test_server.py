@@ -77,6 +77,8 @@ def test_an_unknown_scenario_is_refused(state: server.State) -> None:
             "pixels",
         ),
         (["outputs.duration_s = 60.0", "outputs.fps = 100"], 2, "images"),
+        # The first seed's clip fits; a seed render tries when hulls meet does not.
+        (["outputs.duration_s = { uniform = [0.0, 70.0] }"], 1, "a clip lasts"),
     ],
 )
 def test_an_oversized_job_is_refused(
