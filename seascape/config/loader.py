@@ -64,7 +64,7 @@ def _merge_value(base: Any, over: Any) -> Any:
 def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
     """Resolve rule 2. `block` is the preset directory; None allows only a path."""
     if not isinstance(name, str):
-        raise TypeError(f"include must be a string, got {name!r}")
+        raise ValueError(f"include must be a string, got {name!r}")
     if "/" in name or name.endswith(".toml"):
         return base / name
     if block is None:
@@ -156,7 +156,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
 
 
-def _copies(objects: list[Any], seed: int) -> list[Any]:
+def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     """Each entry `count` times, every copy drawn from a substream of its own."""
     out = []
     for i, spec in enumerate(objects):
@@ -171,25 +171,35 @@ def _copies(objects: list[Any], seed: int) -> list[Any]:
             )
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
-        copies = [_draw(spec, seed, f"{path}/{k}") for k in range(count)]
-        # A pick's count would come after the copies were made.
-        if _is_draw(spec) and any(c.get("count", 1) != 1 for c in copies):
-            raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
-        out += [
-            c | {"count": 1} | _optical_depth(c, seed, f"{path}/{k}/range_m")
-            for k, c in enumerate(copies)
-        ]
+        for k in range(count):
+            copy = _draw(spec, seed, f"{path}/{k}")
+            if not isinstance(copy, dict):
+                out.append(copy)  # pydantic reports a copy that is not a table
+                continue
+            # A pick's count would come after the copies were made.
+            if _is_draw(spec) and copy.get("count", 1) != 1:
+                raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
+            out.append(
+                copy
+                | {"count": 1}
+                | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
+            )
     return out
 
 
-def _optical_depth(copy: dict[str, Any], seed: int, path: str) -> dict[str, Any]:
-    """The copy's depth, drawn here so a change to an earlier entry's count leaves it
-    be; `_range_by_optical_depth` turns it into metres."""
+def _range_m(
+    copy: dict[str, Any], seed: int, path: str, sky: Any, i: int
+) -> dict[str, Any]:
+    """The copy's range by optical depth, in metres through the drawn sky's haze.
+    Drawn here so an earlier entry's count leaves it be."""
     depth = copy.get("range_m")
     if not (isinstance(depth, dict) and "optical_depth" in depth):
         return {}
     bounds = OpticalDepth.model_validate(depth).optical_depth
-    return {"range_m": {"drawn_optical_depth": substream(seed, path).uniform(*bounds)}}
+    extinction_per_m = Sky.model_validate(sky or {}).extinction_per_m
+    if not extinction_per_m:
+        raise ValueError(f"objects[{i}]: optical_depth needs sky.visibility_km")
+    return {"range_m": substream(seed, path).uniform(*bounds) / extinction_per_m}
 
 
 def load(
@@ -209,23 +219,16 @@ def load(
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")
+    # numpy would raise TypeError, which escapes the CLI as a traceback.
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError(f"seed must be a whole number from 0, not {seed!r}")
+    # The sky first: a range by optical depth needs its haze. `draw/sky` is the path
+    # the whole tree's draw gives it, so its values do not change.
+    if "sky" in data:
+        data["sky"] = _draw(data["sky"], seed, "draw/sky")
     if isinstance(objects := data.get("objects"), list):
-        data["objects"] = _copies(objects, seed)
-    drawn = _draw(data, seed, "draw")
-    _range_by_optical_depth(drawn)
-    return Scenario.model_validate(drawn)
-
-
-def _range_by_optical_depth(data: dict[str, Any]) -> None:
-    """Replace each drawn optical depth with metres, once the visibility is drawn."""
-    for i, spec in enumerate(data.get("objects") or []):
-        depth = spec.get("range_m") if isinstance(spec, dict) else None
-        if not (isinstance(depth, dict) and "drawn_optical_depth" in depth):
-            continue
-        extinction_per_m = Sky.model_validate(data.get("sky") or {}).extinction_per_m
-        if not extinction_per_m:
-            raise ValueError(f"objects[{i}]: optical_depth needs sky.visibility_km")
-        spec["range_m"] = depth["drawn_optical_depth"] / extinction_per_m
+        data["objects"] = _copies(objects, seed, data.get("sky"))
+    return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
 # Seeds `render --variants` tries per variant before it gives up on hulls that meet.

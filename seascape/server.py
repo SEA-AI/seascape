@@ -279,8 +279,8 @@ async def render(
         scenes, worst_bytes = await asyncio.to_thread(
             _tried, path, lines, variants, settings
         )
-    # pydantic and tomllib raise ValueError, a bad preset TypeError or OSError.
-    except (ValueError, TypeError, OSError) as error:
+    # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
+    except (ValueError, OSError) as error:
         raise ToolError(str(error)) from error
     state.renders.mkdir(parents=True, exist_ok=True)
     _prune(state)
