@@ -1956,8 +1956,11 @@ def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
     assert np.all(row[half:] < 1.0), "under the clear sky"
 
 
-def test_a_sky_without_a_disc_grades_no_hull_sunlit() -> None:
-    sky = variant(sky={"hdri": "overcast_soil"}).sky
+@pytest.mark.parametrize(
+    "sky", [{"hdri": "overcast_soil"}, {"sun_elevation_deg": -10.0}]
+)
+def test_a_sky_without_a_disc_or_with_a_set_sun_grades_no_hull_sunlit(sky) -> None:
+    sky = variant(sky=sky).sky
     tree = bpy.data.materials.new("hull").node_tree
     assert _sunlit_emission(tree, 290.0, sky).node.bl_idname == "ShaderNodeEmission"
 

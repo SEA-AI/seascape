@@ -50,7 +50,7 @@ def _sunlit_emission(
     """
     shaded = tree.nodes.new("ShaderNodeEmission")
     shaded.inputs["Strength"].default_value = lwir.band_radiance(t_k)
-    if sky.sun_elevation_deg is None:
+    if sky.sun_elevation_deg is None or not sky.sun_up:
         return shaded.outputs["Emission"]
     sunlit = tree.nodes.new("ShaderNodeEmission")
     # The gain is linear in the beam a surface absorbs.
