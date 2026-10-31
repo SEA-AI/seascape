@@ -2031,12 +2031,19 @@ def test_a_built_hull_measures_its_manifest_length() -> None:
 
 def test_a_built_turbine_measures_its_manifest_height() -> None:
     farm = {"asset": "turbine_15mw_floating", "range_m": 900.0, "bearing_deg": 0.0}
-    built = scene.build(variant(farms=[farm]), "eo")
+    scenario = variant(farms=[farm])
+    built = scene.build(scenario, "eo")
 
     (anchor,) = built.targets["turbine_15mw_floating"]
     turbine = manifest()["turbine_15mw_floating"]
     assert isinstance(turbine, Turbine)
     assert anchor["height_m"] + turbine.draught_m == pytest.approx(turbine.height_m)
+    # Past the tips at top dead centre, wherever the rotor's spin has them.
+    k = scenario.sea.refraction_k
+    eye_m = max(rig.height_m for rig in scenario.rigs.values())
+    assert scene._sightline_m(scenario, [anchor]) == pytest.approx(
+        earth.horizon_m(eye_m, k) + earth.horizon_m(anchor["height_m"], k)
+    )
 
 
 def test_a_built_buoy_measures_its_manifest_height() -> None:
