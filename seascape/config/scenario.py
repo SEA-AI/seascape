@@ -1,7 +1,7 @@
 """A whole scenario, and what its render writes."""
 
 import warnings
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import (
     Field,
@@ -14,7 +14,7 @@ from seascape.config.objects import Farm, Object, Ownship, Targets
 from seascape.config.world import Sea, Sky
 from seascape.model import Model
 from seascape.physics import waves
-from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_SEA_K
+from seascape.physics.atmosphere import SURFACE_SEA_K
 
 type ImageFormat = Literal["exr", "png", "jpg"]
 
@@ -173,17 +173,15 @@ class Scenario(Model):
             raise ValueError(f"two cameras share a name: {sorted(names)}")
         return self
 
-    @model_validator(mode="before")
-    @classmethod
-    def _sea_follows_the_atmosphere(cls, data: Any) -> Any:
+    @model_validator(mode="after")
+    def _sea_follows_the_atmosphere(self) -> "Scenario":
         """The sea's own field cannot see the sky's, so the scenario fills it."""
-        if not isinstance(data, dict) or not isinstance(data.get("sea", {}), dict):
-            return data
-        sea = data.get("sea", {})
-        atmosphere = data.get("sky", {}).get("atmosphere", ATMOSPHERE)
-        if "t_sea_k" not in sea and atmosphere in SURFACE_SEA_K:
-            data = {**data, "sea": {**sea, "t_sea_k": SURFACE_SEA_K[atmosphere]}}
-        return data
+        if "t_sea_k" not in self.sea.model_fields_set:
+            # Validated anew, which model_copy would skip; the caller's Sea stays.
+            sea = self.sea.model_dump(exclude_unset=True)
+            t_sea_k = SURFACE_SEA_K[self.sky.atmosphere]
+            self.sea = Sea.model_validate({**sea, "t_sea_k": t_sea_k})
+        return self
 
     @model_validator(mode="after")
     def _a_warm_layer_needs_the_sun(self) -> "Scenario":
