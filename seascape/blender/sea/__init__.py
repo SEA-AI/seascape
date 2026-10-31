@@ -266,9 +266,9 @@ def material(
                 slope_max,
                 light,
                 _skin_radiance(tree, sea, light.sun_up, wake),
-                whitecaps[0]
+                whitecaps.area
                 if wake is None
-                else scalar(tree, "MAXIMUM", whitecaps[0], wake.foam),
+                else scalar(tree, "MAXIMUM", whitecaps.area, wake.foam),
             ),
             normal,
             pixel,

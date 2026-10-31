@@ -21,6 +21,7 @@ from seascape.blender.blend import (
     scalar,
     vector,
 )
+from seascape.blender.sea.foam import Whitecaps
 from seascape.blender.sea.pixel import _Pixel
 from seascape.blender.sea.wakes import _Wakes
 from seascape.config import Sea
@@ -246,7 +247,7 @@ def _daylight(
     normal: bpy.types.NodeSocket,
     tangent: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
-    whitecaps: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket],
+    whitecaps: Whitecaps,
     wake: _Wakes | None = None,
 ) -> bpy.types.NodeSocket:
     """Water reflecting at seawater's IOR over its body's colour, white where its crests
@@ -272,7 +273,7 @@ def _daylight(
     link(normal, fresnel.inputs["Normal"])
     through = scalar(tree, "SUBTRACT", 1.0, fresnel.outputs["Fac"])
     # A whitecap's bubbles brighten the water under all its foam, as a wake's do.
-    bubbles = scalar(tree, "MULTIPLY", whitecaps[2], BUBBLE_GAIN)
+    bubbles = scalar(tree, "MULTIPLY", whitecaps.bubbles, BUBBLE_GAIN)
     if wake is not None:
         bubbles = scalar(tree, "MAXIMUM", bubbles, wake.bubbles)
     through = scalar(tree, "MULTIPLY", through, scalar(tree, "ADD", bubbles, 1.0))
@@ -290,18 +291,18 @@ def _daylight(
     foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
     link(normal, foam.inputs["Normal"])
     foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
-    if "whitecap_albedo" in tree.nodes:
-        link(tree.nodes["whitecap_albedo"].outputs[0], foam.inputs["Color"])
+    if whitecaps.albedo is not None:
+        link(whitecaps.albedo, foam.inputs["Color"])
         # Foam is lumpy: its own normal, bumped by its density over the water's.
         bump = tree.nodes.new("ShaderNodeBump")
         bump.name = "whitecap_bump"
         bump.inputs["Strength"].default_value = FOAM_BUMP_STRENGTH
         bump.inputs["Distance"].default_value = FOAM_BUMP_M
-        link(tree.nodes["whitecap_albedo"].outputs[0], bump.inputs["Height"])
+        link(whitecaps.albedo, bump.inputs["Height"])
         link(normal, bump.inputs["Normal"])
         link(bump.outputs["Normal"], foam.inputs["Normal"])
     mix = tree.nodes.new("ShaderNodeMixShader")
-    cover = whitecaps[1]
+    cover = whitecaps.foam
     if wake is not None:
         # Wake and whitecap foam are one Diffuse, mixed at 1 - (1 - a)(1 - b): a second
         # Diffuse and Mix overflow Cycles' SVM stack. Mix clamps its factor to 1, the

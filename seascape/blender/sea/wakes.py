@@ -1,21 +1,17 @@
 """A hull's wake: its turbulent band, stern foam and Kelvin arms."""
 
 import math
-from statistics import NormalDist
 from typing import NamedTuple
 
 import bpy
-import numpy as np
 
 from seascape.blender.blend import (
-    CURVE_SAMPLES,
     combine,
-    curve_image,
     lookup,
     scalar,
     vector,
 )
-from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M
+from seascape.blender.sea.foam import FOAM_STREAK, FOAM_TILE_M, normal_ppf
 from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.wakes import (
     BUBBLE_EFOLD_S,
@@ -160,8 +156,7 @@ def _wakes(
     Limitation: the arms are Kelvin's straight-path pattern laid along the path, which a
     tight turn bends; sum the arms from past poses if a turn reads wrong.
     """
-    levels = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    ppf = curve_image("normal_ppf", np.vectorize(NormalDist().inv_cdf)(1 - levels))
+    ppf = normal_ppf()
     band: bpy.types.NodeSocket | float = 0.0
     foam: bpy.types.NodeSocket | float = 0.0
     bubbles: bpy.types.NodeSocket | float = 0.0
