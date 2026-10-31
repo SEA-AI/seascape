@@ -95,6 +95,8 @@ class Photo(Model):
     sun_floor: float | None = Field(default=None, gt=0.0)
     # Labelled by eye: no clear sky shows, so none can be fitted.
     overcast: bool = False
+    # The genus over most of the sky, by eye (WMO Cloud Atlas); high cloud is cirrus.
+    cloud_genus: lwir.CloudGenus
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
 
@@ -305,7 +307,9 @@ def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
     return out
 
 
-def cloud_height_m(share: np.ndarray, cloud_base_m: float) -> np.ndarray:
+def cloud_height_m(
+    share: np.ndarray, cloud_base_m: float, depth_m: float
+) -> np.ndarray:
     """How far over its base the cloud in each row of `share`, top row first, is:
     `lwir.cloud_height_m` averaged by share over the cloud whose bottom shows, and the
     base where none does."""
@@ -314,7 +318,7 @@ def cloud_height_m(share: np.ndarray, cloud_base_m: float) -> np.ndarray:
     seen = ~np.isnan(bottom)
     elevation = np.radians(_elevation_deg(np.arange(h), h))[:, None]
     height = lwir.cloud_height_m(
-        elevation, np.radians(np.where(seen, bottom, 0.0)), cloud_base_m
+        elevation, np.radians(np.where(seen, bottom, 0.0)), cloud_base_m, depth_m
     )
     weight = np.where(seen, share, 0.0)
     total = weight.sum(axis=1)

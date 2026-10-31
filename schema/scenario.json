@@ -2931,11 +2931,11 @@
         },
         "cloud_base_m": {
           "title": "Cloud Base M",
-          "description": "The photo's cloud base, which sets its clouds' temperature in IR. EO ignores it.",
+          "description": "The photo's cloud base, which sets its clouds' temperature in IR. Unset, its cloud genus's; cirrus and EO ignore it.",
           "default": 1000.0,
           "anyOf": [
             {
-              "maximum": 2000.0,
+              "maximum": 3000.0,
               "minimum": 0.0,
               "type": "number"
             },

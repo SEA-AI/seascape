@@ -51,6 +51,7 @@ PHOTO = skies.Photo(
     sun_bearing_deg=SUN_DEG[0],
     sun_elevation_deg=SUN_DEG[1],
     sun_floor=1.0,
+    cloud_genus="cumulus",
     licence="CC0-1.0",
     attribution="a test sky",
 )
@@ -147,11 +148,11 @@ def test_a_row_s_cloud_height_is_its_share_weighted_side() -> None:
     share[50:60, :10] = 1.0
     share[50:60, 10:20] = 0.5
     share[60 : CH // 2, 20] = 1.0  # bottom out of sight: no weight
-    height = skies.cloud_height_m(share, 1000.0)
+    height = skies.cloud_height_m(share, 1000.0, 2000.0)
     elevation = np.radians(90.0 - 55.5 / CH * 180.0)
     bottom = np.radians(90.0 - 60.0 / CH * 180.0)
     assert height[55] == pytest.approx(
-        float(lwir.cloud_height_m(elevation, bottom, 1000.0)), rel=1e-5
+        float(lwir.cloud_height_m(elevation, bottom, 1000.0, 2000.0)), rel=1e-5
     )
     assert height[70] == 0.0
     assert height[CH // 2 :].max() == 0.0

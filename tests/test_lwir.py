@@ -244,9 +244,11 @@ def test_a_fog_denser_than_the_table_is_held_at_its_densest() -> None:
 
 def test_every_atmosphere_has_a_sky_a_haze_a_path_and_a_surface_air() -> None:
     names = set(get_args(atmosphere.Atmosphere.__value__))
-    assert set(lwir._sky_table()[1]) == names
+    assert set(lwir._sky_table(lwir._SKY_CSV)[1]) == names
     assert set(lwir._depth_table(lwir._HAZE_CSV)) == names
     assert set(lwir._depth_table(lwir._PATH_CSV)) == names
+    assert set(lwir._cloud_table()) == names
+    assert set(lwir._sky_table(lwir._CIRRUS_CSV)[1]) == names
     assert set(atmosphere.SURFACE_AIR_K) == names
 
 
@@ -261,7 +263,20 @@ def test_a_cloud_never_cools_the_sky_it_hides() -> None:
     clear = lwir.sky_radiance(elevation, 290.0)
     cloudy = lwir.cloudy_sky_radiance(elevation, 1.0, 1000.0, 290.0)
     assert np.all(cloudy >= clear)
-    assert float(cloudy[0]) == pytest.approx(float(clear[0]))
+
+
+def test_a_cloud_on_the_sea_reads_as_the_air() -> None:
+    elevation = np.radians([5.0, 45.0, 90.0])
+    cloudy = lwir.cloudy_sky_radiance(elevation, 1.0, 0.0, 290.0)
+    assert cloudy == pytest.approx(lwir.band_radiance(290.0), rel=1e-4)
+
+
+def test_cirrus_warms_the_clear_sky_less_than_a_low_cloud() -> None:
+    elevation = np.radians([5.0, 30.0, 90.0])
+    clear = lwir.sky_radiance(elevation, 290.0)
+    cirrus = lwir.cirrus_sky_radiance(elevation, 1.0, 290.0)
+    low = lwir.cloudy_sky_radiance(elevation, 1.0, 1000.0, 290.0)
+    assert np.all((clear < cirrus) & (cirrus < low))
 
 
 def test_a_cloud_s_side_over_its_base_is_colder_by_the_standard_lapse() -> None:
@@ -269,26 +284,29 @@ def test_a_cloud_s_side_over_its_base_is_colder_by_the_standard_lapse() -> None:
         h: lwir.cloudy_sky_radiance(np.pi / 2, 1.0, 1000.0, 290.0, height_m=h)
         for h in (0.0, 1000.0)
     }
-    clear = lwir.sky_radiance(np.pi / 2, 290.0)
-    transmitted = 1.0 - clear / lwir.band_radiance(290.0)
+    path, transmitted = lwir._under_base(np.array(np.pi / 2), 1000.0, lwir.ATMOSPHERE)
     base_k = 290.0 - lwir.DRY_LAPSE_K_PER_M * 1000.0
-    side = clear + transmitted * lwir.band_radiance(base_k - 6.5)
+    side = path * lwir.band_radiance(290.0) + transmitted * lwir.band_radiance(
+        base_k - 6.5
+    )
     assert float(at[1000.0]) == pytest.approx(float(side), rel=1e-4)
     assert at[1000.0] < at[0.0]
 
 
 def test_a_line_of_sight_meets_the_side_of_a_cloud_over_its_base() -> None:
     bottom = np.radians(5.0)
-    assert float(lwir.cloud_height_m(bottom, bottom, 1000.0)) == pytest.approx(0.0)
+    assert float(lwir.cloud_height_m(bottom, bottom, 1000.0, 2000.0)) == pytest.approx(
+        0.0
+    )
     up = math.tan(math.radians(10.0)) / math.tan(bottom) - 1.0
-    assert float(lwir.cloud_height_m(np.radians(10.0), bottom, 1000.0)) == (
+    assert float(lwir.cloud_height_m(np.radians(10.0), bottom, 1000.0, 2000.0)) == (
         pytest.approx(1000.0 * up)
     )
-    assert float(lwir.cloud_height_m(np.radians(80.0), bottom, 1000.0)) == (
-        lwir.CUMULUS_DEPTH_M
+    assert (
+        float(lwir.cloud_height_m(np.radians(80.0), bottom, 1000.0, 2000.0)) == 2000.0
     )
-    assert float(lwir.cloud_height_m(np.radians(2.0), bottom, 1000.0)) == 0.0
-    assert float(lwir.cloud_height_m(np.radians(2.0), 0.0, 1000.0)) == 0.0
+    assert float(lwir.cloud_height_m(np.radians(2.0), bottom, 1000.0, 2000.0)) == 0.0
+    assert float(lwir.cloud_height_m(np.radians(2.0), 0.0, 1000.0, 2000.0)) == 0.0
 
 
 def test_no_cloud_is_the_clear_sky() -> None:
