@@ -17,6 +17,13 @@ type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
 
 
+def write_json(model: Model, path: Path) -> Path:
+    """`model` as JSON at `path`, whole or not at all: a reader never sees half."""
+    partial = path.with_name(f"{path.name}.partial")
+    partial.write_text(model.model_dump_json(indent=2) + "\n")
+    return partial.replace(path)
+
+
 class _Record(Model):
     # Another writer's file, or a newer one, carries fields this reader has no use for.
     model_config = ConfigDict(extra="ignore")
@@ -54,10 +61,7 @@ class Calibration(_Record):
     cameras: list[CameraCalibration] = Field(min_length=1)
 
     def write(self, folder: Path) -> Path:
-        path = folder / FILENAME
-        partial = path.with_name(f"{path.name}.partial")
-        partial.write_text(self.model_dump_json(indent=2) + "\n")
-        return partial.replace(path)
+        return write_json(self, folder / FILENAME)
 
     @classmethod
     def read(cls, folder: Path) -> "Calibration":

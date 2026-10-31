@@ -643,10 +643,17 @@ def ir(dde: float) -> dict:
     }
 
 
-def test_a_camera_takes_the_agc_its_scenario_recorded(tmp_path: Path) -> None:
-    found = labels.agcs(recorded(tmp_path, {"scenario": ir(1.2)}))
-    assert found["bow_ir"] == Agc(dde=1.2)
-    assert found["bow_eo"] == Agc()
+def test_a_camera_takes_the_agc_its_thermal_frames_recorded(tmp_path: Path) -> None:
+    settings = Camera(band="ir", hfov_deg=24.0, width_px=64, height_px=48)
+    settings = settings.model_copy(update={"agc": Agc(dde=1.2)})
+    truth = labels.Labels()
+    frame = FLAT.astype(np.uint16)
+    index = np.zeros((48, 64), int)
+    truth.add(camera(), 0.0, index, frame, [], RADIUS_M, settings, faint={})
+    truth.write(tmp_path)
+    found = labels.agcs(tmp_path)
+    assert found[camera().name] == Agc(dde=1.2)
+    assert found["elsewhere"] == Agc()
 
 
 def test_a_merged_set_is_refused(tmp_path: Path) -> None:
