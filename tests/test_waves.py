@@ -634,7 +634,7 @@ def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
     wind_speed_mps,
 ) -> None:
     # m4 = int k^4 S dk = int B k dk; the twinkle is its mean omega^2 = g k.
-    cutoff = 2 * math.pi / waves.CAPILLARY_WAVELENGTH_M
+    cutoff = waves.CAPILLARY_PEAK_RAD_M
     k = np.geomspace(
         waves.peak_omega_rad_s(wind_speed_mps, None) ** 2 / earth.GRAVITY_MS2,
         cutoff,
