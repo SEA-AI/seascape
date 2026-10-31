@@ -204,10 +204,15 @@ def _load(path: Path) -> set[bpy.types.Object]:
             return set(into.objects)
     # The cache and the zones key on the mesh file's own names: the .blend's datablocks
     # step aside for the parse, then take their names back from the import.
-    held = {d: d.name for d in bpy.data.user_map() if d.library is None}
+    held: dict[bpy.types.ID, str] = {}
     try:
-        for datablock in held:
-            datablock.name = uuid.uuid4().hex
+        for datablock in bpy.data.user_map():
+            name = datablock.name
+            # A linked name is its library's; the built-in font's cannot be set.
+            with contextlib.suppress(AttributeError):
+                if datablock.library is None:
+                    datablock.name = uuid.uuid4().hex
+                    held[datablock] = name
         objects = _parse(path)
         # A killed write must not leave a truncated file under the cache name.
         part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")

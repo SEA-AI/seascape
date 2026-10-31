@@ -182,6 +182,7 @@ def test_a_cached_import_keeps_the_names_of_its_file(tmp_path) -> None:
     own = names()
     for cache in tmp_path.glob("*.blend"):
         cache.unlink()
+    bpy.ops.object.text_add()  # the built-in font's name is read-only
     _load(path)  # into a .blend already holding every name
 
     assert any(tmp_path.glob("*.blend"))
