@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from seascape.config import Microbolometer
 from seascape.outputs import recording
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -140,6 +141,18 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["yaw"]) == pytest.approx(POD_YAW_DEG, abs=0.05)
         assert float(row["temp"]) == pytest.approx(10.0)
         assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))
+
+
+def test_a_microbolometer_s_own_pitch_sizes_its_pixels(run: Path) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    pitch = Microbolometer(pitch_um=17.0, f_number=1.0)
+    for image in truth.images:
+        image.microbolometer = pitch
+    truth.write(run)
+    recording.export(run)
+    (folder,) = run.glob("recordings/port/*/POWER_Const")
+    sensor = json.loads((folder / "pod_sensors.json").read_text())["cameras"]["EO"]
+    assert sensor["pixel_size"]["value"] == pytest.approx(0.017)
 
 
 def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:

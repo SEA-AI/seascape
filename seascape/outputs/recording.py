@@ -49,7 +49,8 @@ COLUMNS = [
     "proc_surveil_speed",
 ]
 
-# Limitation: nominal pitches, not a datasheet's; seascape models no sensor.
+# Limitation: nominal pitches, not a datasheet's, for a camera whose labels record
+# no microbolometer pitch; config models no EO sensor pitch.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 
 # The recording's camera frame, +X right, +Y forward, +Z up, as OpenCV's axes.
@@ -113,14 +114,14 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
     return {"value": value, "unit": unit}
 
 
-def _sensor(camera: CameraCalibration) -> dict[str, Any]:
+def _sensor(camera: CameraCalibration, pitch_mm: dict[str, float]) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
     roll, pitch, yaw = attitude_deg(rig[:3, :3] @ _BODY_TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw
     (fx, _, cx), (_, fy, cy), _ = camera.K
-    pixel_mm = PIXEL_SIZE_MM[camera.band]
+    pixel_mm = pitch_mm.get(camera.name, PIXEL_SIZE_MM[camera.band])
     return {
         # Never a hardware model's name: a live pipeline picks its driver by it.
         "camera_type": f"Blender {camera.band.upper()}",
@@ -145,7 +146,9 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     }
 
 
-def _pod_sensors(cameras: list[CameraCalibration], created: datetime) -> dict:
+def _pod_sensors(
+    cameras: list[CameraCalibration], created: datetime, pitch_mm: dict[str, float]
+) -> dict:
     """The simulated IMU sits exactly on the rig's axes, so its corrections are 0."""
     zero = {"value": 0.0, "unit": "deg"}
     return {
@@ -170,12 +173,12 @@ def _pod_sensors(cameras: list[CameraCalibration], created: datetime) -> dict:
                 ("yaw", "pitch", "roll", "yaw_err", "pitch_err", "roll_err"), zero
             ),
         },
-        "cameras": {camera.name: _sensor(camera) for camera in cameras},
+        "cameras": {camera.name: _sensor(camera, pitch_mm) for camera in cameras},
     }
 
 
 def _camera_parameters(cameras: list[CameraCalibration]) -> dict:
-    sensors = {camera.name: _sensor(camera) for camera in cameras}
+    sensors = {camera.name: _sensor(camera, {}) for camera in cameras}
     return {
         name: {k: sensor[k]["value"] for k in ("roll", "pitch", "yaw")}
         | {"barrel": 0.0}
@@ -199,6 +202,11 @@ def export(run: Path) -> list[Path]:
     created = datetime.fromisoformat(truth.info["date_created"])
     ts = created.strftime("%Y_%m_%d_%H_%M_%S")
     time_s = {image.file_name: image.time_s for image in truth.images}
+    pitch_mm = {
+        image.camera: image.microbolometer.pitch_um / 1000
+        for image in truth.images
+        if image.microbolometer and image.microbolometer.pitch_um
+    }
 
     frames: dict[str, dict[str, list[CameraCalibration]]] = {}
     models: dict[str, str | None] = {}
@@ -253,6 +261,6 @@ def export(run: Path) -> list[Path]:
         parameters = into / "POWER_Const" / "camera_parameters.json"
         _write_json(parameters, _camera_parameters(firsts))
         sensors = into / "POWER_Const" / "pod_sensors.json"
-        _write_json(sensors, _pod_sensors(firsts, created))
+        _write_json(sensors, _pod_sensors(firsts, created, pitch_mm))
         written += [settings, parameters, sensors]
     return written
