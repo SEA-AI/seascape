@@ -107,8 +107,8 @@ class TestThermalImage:
         """OpenCV warns once per frame on a png given a jpeg flag."""
         seen: list[list[int]] = []
 
-        def imwrite(_path: str, _image: np.ndarray, params: list[int]) -> bool:
-            seen.append(params)
+        def imwrite(_path: str, _image: np.ndarray, flags: list[int]) -> bool:
+            seen.append(flags)
             return True
 
         monkeypatch.setattr(cv2, "imwrite", imwrite)
