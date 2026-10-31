@@ -100,9 +100,13 @@ def cox_munk_variances(wind_speed_mps: float) -> tuple[float, float]:
 
 
 def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
+    """Upwind and crosswind slope variance under a slick: the slick total split as its
+    axes' fits, upwind capped at the clean sea's, as a film only damps; the clean
+    split turns isotropic in light wind, the slick's does not."""
     total = cox_munk_slick_slope(wind_speed_mps) ** 2
-    up, cross = _axis_shares(wind_speed_mps, AXES_SLICK)
-    return total * up, total * cross
+    up_share, _ = _axis_shares(wind_speed_mps, AXES_SLICK)
+    up = min(total * up_share, cox_munk_variances(wind_speed_mps)[0])
+    return up, total - up
 
 
 @cache
@@ -263,8 +267,8 @@ def slick_survivors(
     wind_speed_mps: float, wind: tuple[Wave, ...], axis_rad: float
 ) -> tuple[Wave, ...]:
     """The longest waves that fit in Cox & Munk's slick variance on both axes, the
-    wind's along `axis_rad`: what a slick leaves of `wind`, damping the shortest
-    first."""
+    wind's along `axis_rad`, a budget the clean fit caps: what a slick leaves of
+    `wind`, damping the shortest first."""
     budget = np.array(cox_munk_slick_variances(wind_speed_mps))
     left: list[Wave] = []
     # A wavelength goes at every heading at once.
