@@ -91,6 +91,13 @@ def test_a_slick_smooths_the_sea_as_cox_and_munk_measured() -> None:
     assert waves.cox_munk_slick_slope(0.5) == waves.cox_munk_slope(0.5)
 
 
+@pytest.mark.parametrize("wind_speed_mps", [0.5, 1.0, 1.5, 2.0, 8.0])
+def test_a_slick_roughens_neither_axis(wind_speed_mps: float) -> None:
+    slick = waves.cox_munk_slick_variances(wind_speed_mps)
+    clean = waves.cox_munk_variances(wind_speed_mps)
+    assert all(s <= c for s, c in zip(slick, clean, strict=True))
+
+
 @pytest.mark.parametrize("wind_speed_mps", [7.0, 15.0])
 def test_a_slick_damps_the_shortest_waves_first(wind_speed_mps: float) -> None:
     built = field(wind_speed_mps)

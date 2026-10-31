@@ -100,9 +100,12 @@ def cox_munk_variances(wind_speed_mps: float) -> tuple[float, float]:
 
 
 def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
+    """Each axis capped at the clean sea's: the clean split turns isotropic in a calm,
+    the slick's does not."""
     total = cox_munk_slick_slope(wind_speed_mps) ** 2
     up, cross = _axis_shares(wind_speed_mps, AXES_SLICK)
-    return total * up, total * cross
+    clean_up, clean_cross = cox_munk_variances(wind_speed_mps)
+    return min(total * up, clean_up), min(total * cross, clean_cross)
 
 
 @cache
