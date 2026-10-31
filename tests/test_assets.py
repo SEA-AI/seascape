@@ -84,8 +84,7 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     with pytest.raises(ValueError, match="manifest says"):
         assets.fetch("ship")
     assert not (assets.CACHE / "ship.fbx").exists()
-    (part,) = assets.CACHE.glob("*.part")
-    assert part.read_bytes() == b"a different mesh"
+    assert not list(assets.CACHE.glob("*.part"))
 
 
 def test_fetch_puts_a_mesh_s_files_where_it_names_them(one: Path) -> None:
