@@ -470,8 +470,9 @@ class TestEoBand:
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
 
-    def test_the_foam_tile_reads_as_a_unit_gaussian(self) -> None:
-        assert _looked_up_sigma(baked("sea_foam")) == pytest.approx(1.0, rel=1e-5)
+    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice"])
+    def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
+        assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
 
     def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
         nodes = bpy.data.materials["sea"].node_tree.nodes
