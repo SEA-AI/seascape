@@ -5,6 +5,7 @@ import re
 import tomllib
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 import pytest
 from pydantic import ValidationError
@@ -84,6 +85,19 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     with pytest.raises(ValueError, match="manifest says"):
         assets.fetch("ship")
     assert not (assets.CACHE / "ship.fbx").exists()
+    assert not list(assets.CACHE.glob("*.part"))
+
+
+def test_a_download_cut_off_mid_write_leaves_no_part(
+    one: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def cut_off(source: object, out: BinaryIO) -> None:
+        out.write(BODY[:1])
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(assets.shutil, "copyfileobj", cut_off)
+    with pytest.raises(OSError, match="connection reset"):
+        assets.fetch("ship")
     assert not list(assets.CACHE.glob("*.part"))
 
 

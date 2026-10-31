@@ -338,9 +338,9 @@ def _get(path: Path, url: str, sha256: str) -> Path:
     # A killed or corrupt transfer must never take the cache name, and concurrent
     # callers must not share a scratch file.
     part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
-    # The default socket timeout is None, so a server that stops sending hangs the
-    # build forever.
     try:
+        # The default socket timeout is None, so a server that stops sending hangs
+        # the build forever.
         with (
             urllib.request.urlopen(url, timeout=30) as response,
             part.open("wb") as out,
@@ -349,7 +349,6 @@ def _get(path: Path, url: str, sha256: str) -> Path:
         if (got := digest(part)) != sha256:
             raise ValueError(f"{url}: sha256 {got}, manifest says {sha256}")
         part.replace(path)
-    except BaseException:
+    finally:
         part.unlink(missing_ok=True)
-        raise
     return path
