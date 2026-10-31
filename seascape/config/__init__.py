@@ -14,7 +14,6 @@ from seascape.config.cameras import (
 from seascape.config.draws import substream
 from seascape.config.loader import (
     PRESETS,
-    TRIES_PER_VARIANT,
     json_schema,
     load,
     load_variants,
@@ -26,7 +25,6 @@ from seascape.config.world import Sea, Sky, WarmLayer
 
 __all__ = [
     "PRESETS",
-    "TRIES_PER_VARIANT",
     "Agc",
     "Band",
     "Camera",
