@@ -105,6 +105,12 @@ def peak_omega_rad_s(wind_speed_mps: float, fetch_m: float | None) -> float:
     return GRAVITY_MS2 * inverse_wave_age(wind_speed_mps, fetch_m) / wind_speed_mps
 
 
+def phase_speed_mps(k_rad_m: np.ndarray) -> np.ndarray:
+    """Gravity-capillary phase speed in deep water, the capillary peak at Elfouhaily's
+    k_m."""
+    return np.sqrt(GRAVITY_MS2 / k_rad_m * (1 + (k_rad_m / CAPILLARY_PEAK_RAD_M) ** 2))
+
+
 def curvature_spectrum(
     k_rad_m: np.ndarray, wind_speed_mps: float, fetch_m: float | None
 ) -> np.ndarray:
@@ -112,7 +118,7 @@ def curvature_spectrum(
     age = inverse_wave_age(wind_speed_mps, fetch_m)
     k_p = GRAVITY_MS2 * age**2 / wind_speed_mps**2
     k_m, c_m = CAPILLARY_PEAK_RAD_M, CAPILLARY_SPEED_MPS
-    c = np.sqrt(GRAVITY_MS2 / k_rad_m * (1 + (k_rad_m / k_m) ** 2))
+    c = phase_speed_mps(k_rad_m)
     # Eq. 3.
     gamma = 1.7 if age < 1.0 else 1.7 + 6 * math.log10(age)
     sigma = 0.08 * (1 + 4 * age**-3)

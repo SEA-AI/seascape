@@ -71,8 +71,7 @@ def depth(
     if weight == 1.0:
         assert visibility_km is not None
         return _fog_depth(elev_rad, visibility_km, atmosphere)
-    haze = None if visibility_km is None else max(visibility_km, HAZE_KM)
-    hazy = lwir.haze_depth(elev_rad, haze, atmosphere)
+    hazy = lwir.haze_depth(elev_rad, visibility_km, atmosphere)
     if weight == 0.0:
         return hazy
     fog = _fog_depth(elev_rad, FOG_KM, atmosphere)
