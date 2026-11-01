@@ -45,7 +45,7 @@ import numpy as np
 import numpy.typing as npt
 
 from seascape.physics.atmosphere import ATMOSPHERE, Atmosphere
-from seascape.physics.lwir import cloud_window_w_m2
+from seascape.physics.lwir import cloud_window_deficit_w_m2
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -312,16 +312,19 @@ def sky_longwave_w_m2(
 ) -> float:
     """Downwelling broadband longwave on a horizontal surface.
 
-    Clear sky by Swinbank 1963. Fog covers `fog_cover` of it as a blackbody at the air.
-    Cloud adds only through the 8-14 um window, where the clear sky is thin enough to
-    see its base (Kimball, Idso & Aase, Water Resour. Res. 18(4) 931, 1982): each
-    `cloud_fraction` of the sky the fog leaves adds `lwir.cloud_window_w_m2`.
+    Clear sky by Swinbank 1963. Cloud covers its fraction as a blackbody at the air,
+    mixed linearly with the clear sky as in Crawford & Duchon, J. Appl. Meteor. 38(4)
+    474, 1999 (unverified, not read), less what the 8-14 um window loses to a colder
+    base: only the window sees past the lowest air (Kimball, Idso & Aase, Water Resour.
+    Res. 18(4) 931, 1982). Fog covers `fog_cover` as a blackbody at the air, hiding the
+    cloud. Past about 312 K, extrapolated, Swinbank's clear sky outshines an overcast at
+    2400 m.
     """
     air = STEFAN_BOLTZMANN_W_M2K4 * t_air_k**4
     clear = _SWINBANK_W_M2K6 * t_air_k**6
-    window = cloud_window_w_m2(cloud_base_m, t_air_k, atmosphere)
-    under = (1.0 - fog_cover) * (clear + cloud_fraction * window)
-    return under + fog_cover * air
+    cloud = air - cloud_window_deficit_w_m2(cloud_base_m, t_air_k, atmosphere)
+    sky = (1.0 - cloud_fraction) * clear + cloud_fraction * cloud
+    return (1.0 - fog_cover) * sky + fog_cover * air
 
 
 def wind_convection_w_m2k(wind_m_s: npt.ArrayLike) -> FloatArray:

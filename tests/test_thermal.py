@@ -54,12 +54,9 @@ def test_swinbank_sky_runs_tens_of_watts_below_the_air() -> None:
     assert 0.7 < ratio < 0.85
 
 
-def test_overcast_at_the_sea_radiates_about_as_the_air() -> None:
-    """Swinbank's clear sky and LOWTRAN's window are separate fits: their sum under a
-    cloud at the surface lands near, not on, a blackbody at the air."""
+def test_overcast_at_the_sea_radiates_as_the_air() -> None:
     sky = thermal.sky_longwave_w_m2(T_AIR_K, cloud_fraction=1.0)
-    air = thermal.STEFAN_BOLTZMANN_W_M2K4 * T_AIR_K**4
-    assert sky == pytest.approx(air, rel=0.02)
+    assert sky == pytest.approx(thermal.STEFAN_BOLTZMANN_W_M2K4 * T_AIR_K**4)
 
 
 def test_opaque_fog_radiates_as_the_air() -> None:
@@ -67,15 +64,16 @@ def test_opaque_fog_radiates_as_the_air() -> None:
     assert sky == pytest.approx(thermal.STEFAN_BOLTZMANN_W_M2K4 * T_AIR_K**4)
 
 
+@pytest.mark.parametrize("t_air_k", [250.0, 300.0])
 @pytest.mark.parametrize(
     "layer_m", lwir.CLOUD_LAYER_M.values(), ids=lwir.CLOUD_LAYER_M.keys()
 )
 def test_an_overcast_sky_outshines_a_clear_one_at_any_base(
-    layer_m: tuple[float, float],
+    layer_m: tuple[float, float], t_air_k: float
 ) -> None:
     base_m, _ = layer_m
-    clear = thermal.sky_longwave_w_m2(T_AIR_K)
-    assert thermal.sky_longwave_w_m2(T_AIR_K, 1.0, base_m) >= clear
+    clear = thermal.sky_longwave_w_m2(t_air_k)
+    assert thermal.sky_longwave_w_m2(t_air_k, 1.0, base_m) >= clear
 
 
 def test_a_higher_cloud_base_adds_less() -> None:
