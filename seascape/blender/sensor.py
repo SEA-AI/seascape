@@ -299,10 +299,10 @@ def chain(
 
 def _log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
     """`image`'s luminance, kept off 0, and its log-average (Reinhard et al. 2002)."""
-    # IEC 61966-2-1: the luminance of linear sRGB.
-    luminance = vector(tree, "DOT_PRODUCT", image, (0.2126, 0.7152, 0.0722))
+    luminance = tree.nodes.new("CompositorNodeRGBToBW")
+    tree.links.new(image, luminance.inputs["Image"])
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
-    lit = scalar(tree, "MAXIMUM", luminance, 1e-6)
+    lit = scalar(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
     levels = tree.nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
     tree.links.new(scalar(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])

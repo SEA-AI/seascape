@@ -396,7 +396,7 @@ def _hazed(sky: Sky, radiance: np.ndarray, elevation: np.ndarray) -> np.ndarray:
 
 def cloud_fraction(sky: Sky) -> float:
     """The share of a horizontal surface's sky the photo's cloud covers, 0 under a
-    Sky Texture."""
+    Sky Texture. Bakes the cloud images if the world has not."""
     if sky.hdri is None:
         return 0.0
     _, image = _cloud_images(sky)
@@ -407,7 +407,7 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     """The photo's cloud share at its own resolution, and `lwir.cloudy_sky_radiance`
     under it at THERMAL_SKY_PX, both laid out as the photo."""
     assert sky.hdri is not None
-    # The world baked them first.
+    # An earlier call baked them.
     if (baked := bpy.data.images.get("cloudy_sky_radiance")) is not None:
         return bpy.data.images["cloud_share"], baked
     photo = _photo_image(sky.hdri)
