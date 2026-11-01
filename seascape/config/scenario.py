@@ -139,6 +139,15 @@ class Scenario(Model):
         mounts = [m for m in self.mounts if m.camera.band in bands]
         return len(mounts) * len(self.outputs.times_s)
 
+    @property
+    def worn(self) -> frozenset[str]:
+        """The assets an object, the ring or a farm wears."""
+        wearing = [(o.asset, o.wear) for o in self.objects]
+        wearing += [(f.asset, f.wear) for f in self.farms]
+        if (ring := self.targets) is not None:
+            wearing += [(asset, ring.wear) for asset, _, _ in ring.poses()]
+        return frozenset(asset for asset, wear in wearing if wear > 0.0)
+
     def wind_waves(self) -> tuple[waves.Wave, ...]:
         sea = self.sea
         return waves.wind_sea(

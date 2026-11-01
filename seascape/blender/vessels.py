@@ -3,6 +3,7 @@
 import math
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from itertools import combinations
 
 import bpy
@@ -16,7 +17,7 @@ from seascape.blender.blend import (
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
-from seascape.blender.meshes import free_names, import_asset, mesh_objects
+from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
 from seascape.config import (
     Drift,
     Farm,
@@ -30,8 +31,14 @@ from seascape.config import (
 )
 from seascape.physics import earth, wakes, waves
 
-# Each asset's first import, by name and whether it is worn.
-type Hulls = dict[tuple[str, bool], list[bpy.types.Object]]
+
+@dataclass
+class Hulls:
+    """Each asset's first import, copied for the rest of the build: the FBX importer
+    slows with every material already in the file. An asset in `worn` is tagged."""
+
+    worn: frozenset[str] = frozenset()
+    imported: dict[str, list[bpy.types.Object]] = field(default_factory=dict)
 
 
 def heading_rad(anchor: bpy.types.Object) -> float:
@@ -42,6 +49,7 @@ def heading_rad(anchor: bpy.types.Object) -> float:
 
 def _vessel(
     name: str,
+    *,
     t_k: float | None,
     engine_off_min: float,
     paint_absorptance: float | None,
@@ -51,19 +59,15 @@ def _vessel(
     hulls: Hulls,
 ) -> bpy.types.Object:
     """A hull fitted and anchored at the origin under an empty. `heat` is the LWIR
-    build's, and None in EO.
-
-    `hulls` holds each asset's first import, worn or not, for the rest of the build:
-    the FBX importer slows with every material already in the file.
-    """
-    key = (name, wear > 0.0)
-    if key in hulls:
-        parts = [_copy_tree(part, None) for part in hulls[key]]
+    build's, and None in EO."""
+    if name in hulls.imported:
+        parts = [_copy_tree(part, None) for part in hulls.imported[name]]
     else:
         band = "eo" if heat is None else "ir"
-        parts = hulls[key] = import_asset(name, band, worn=wear > 0.0)
+        worn = name in hulls.worn
+        parts = hulls.imported[name] = import_asset(name, band, worn=worn)
         if heat is None:
-            free_names(name, parts)
+            prefix_names(name, parts)
 
     if heat is not None:
         heat = heat.stopped(engine_off_min)
@@ -81,6 +85,7 @@ def _vessel(
     for size in ("beam_m", "length_m", "height_m"):
         anchor[size] = parts[0][size]
     anchor["engine_off_min"] = engine_off_min
+    anchor["wear"] = wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -111,7 +116,16 @@ def add_ownship(
         bpy.context.collection.objects.link(anchor)
         place(anchor, 0.0, 0.0, 0.0)
     else:
-        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, None, 0.0, sky, heat, hulls)
+        anchor = _vessel(
+            ownship.asset,
+            t_k=ownship.t_k,
+            engine_off_min=0.0,
+            paint_absorptance=None,
+            wear=0.0,
+            sky=sky,
+            heat=heat,
+            hulls=hulls,
+        )
     anchor.name = "ownship"
     rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
@@ -257,13 +271,13 @@ def _targets(
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
         anchor = _vessel(
             asset,
-            spec.t_k,
-            spec.engine_off_min,
-            spec.paint_absorptance,
-            spec.wear,
-            sky,
-            heat,
-            hulls,
+            t_k=spec.t_k,
+            engine_off_min=spec.engine_off_min,
+            paint_absorptance=spec.paint_absorptance,
+            wear=spec.wear,
+            sky=sky,
+            heat=heat,
+            hulls=hulls,
         )
         anchor.name = f"target_{i}"
         _pose(
@@ -293,13 +307,13 @@ def _object(
     """`spec`'s hulls, each wake under way added to `trails`."""
     anchor = _vessel(
         spec.asset,
-        spec.t_k,
-        spec.engine_off_min,
-        spec.paint_absorptance,
-        spec.wear,
-        sky,
-        heat,
-        hulls,
+        t_k=spec.t_k,
+        engine_off_min=spec.engine_off_min,
+        paint_absorptance=spec.paint_absorptance,
+        wear=spec.wear,
+        sky=sky,
+        heat=heat,
+        hulls=hulls,
     )
     orbit = spec.orbit
     if orbit is None:
@@ -348,13 +362,13 @@ def _turbine(
     rotors turn out of step."""
     anchor = _vessel(
         farm.asset,
-        None,
-        0.0,
-        farm.paint_absorptance,
-        farm.wear,
-        scenario.sky,
-        heat,
-        hulls,
+        t_k=None,
+        engine_off_min=0.0,
+        paint_absorptance=farm.paint_absorptance,
+        wear=farm.wear,
+        sky=scenario.sky,
+        heat=heat,
+        hulls=hulls,
     )
     outputs = scenario.outputs
     _pose(

@@ -1,61 +1,68 @@
-"""Where an asset wears, written on its meshes at import for the wear masks to read.
+"""Wear attributes written at import, in the fitted hull frame: metres, bow +Y,
+waterline z = 0."""
 
-Per face, each layer's weight for the face's zone, and whether runoff streaks it.
-Per vertex, its place in the fitted hull frame: metres, bow to +Y, the waterline at
-z = 0. Per face corner, its depth below the edge above it, where runoff starts.
-"""
-
-from typing import get_args
+from typing import NamedTuple
 
 import bpy
 import numpy as np
 
 from seascape.assets import Material
 from seascape.blender import faces
-from seascape.physics.thermal import ZoneName
+from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
-LAYERS = ("grime", "rust", "stain", "soot", "fade")
 
-# Judgement: how much of each layer a zone collects, in the order of LAYERS. A stain
-# is the waterline's, so only what the sea wets takes one.
-PROFILE: dict[ZoneName, tuple[float, float, float, float, float]] = {
-    "paint_hull": (1.0, 1.0, 1.0, 0.0, 0.5),
-    "paint_superstructure": (0.8, 0.7, 0.0, 0.0, 0.5),
-    "deck": (1.0, 0.6, 0.0, 0.0, 0.3),
-    "glass": (0.35, 0.0, 0.0, 0.0, 0.0),
-    "bare_metal": (0.6, 0.6, 0.0, 0.0, 0.0),
-    "rubber": (0.6, 0.0, 0.6, 0.0, 0.7),
-    "fabric": (0.8, 0.0, 0.0, 0.0, 0.7),
-    "funnel": (0.5, 0.5, 0.0, 1.0, 0.3),
-    "exhaust": (0.4, 0.0, 0.0, 1.0, 0.0),
-    "engine_cowl": (0.5, 0.0, 0.0, 0.0, 0.7),
-    "wood_composite": (0.8, 0.0, 1.0, 0.0, 0.6),
+class Weights(NamedTuple):
+    """How much of each layer a zone collects, and whether runoff streaks it."""
+
+    grime: float
+    rust: float
+    stain: float
+    soot: float
+    fade: float
+    runoff: float
+
+
+# The layers the masks cover; `runoff` only gates streaks.
+LAYERS = Weights._fields[:-1]
+
+# Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
+# one; cloth sags and flexes, so water runs off it without leaving a streak.
+PROFILE: dict[ZoneName, Weights] = {
+    "paint_hull": Weights(1.0, 1.0, 1.0, 0.0, 0.5, 1.0),
+    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.5, 1.0),
+    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.3, 1.0),
+    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 1.0),
+    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 1.0),
+    "rubber": Weights(0.6, 0.0, 0.6, 0.0, 0.7, 1.0),
+    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.7, 0.0),
+    "funnel": Weights(0.5, 0.5, 0.0, 1.0, 0.3, 1.0),
+    "exhaust": Weights(0.4, 0.0, 0.0, 1.0, 0.0, 1.0),
+    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.7, 1.0),
+    "wood_composite": Weights(0.8, 0.0, 1.0, 0.0, 0.6, 1.0),
 }
-# Judgement: cloth sags and flexes, so water runs off it without leaving a streak.
-SHEDS: frozenset[ZoneName] = frozenset({"fabric"})
-_VOCABULARY: list[ZoneName] = list(get_args(ZoneName.__value__))
 
 
 def weights(material: Material) -> np.ndarray:
-    """Each zone's layer weights, (zones, layers), in the zone vocabulary's order."""
-    table = np.array([PROFILE[z] for z in _VOCABULARY], dtype=np.float32)
+    """(zones, weights), zones in vocabulary order."""
+    table = np.array([PROFILE[z] for z in ZONE_NAMES], dtype=np.float32)
     if material != "steel":
-        table[:, LAYERS.index("rust")] = 0.0  # fittings on other hulls are stainless
+        # Judgement: other hulls' fittings are stainless.
+        table[:, Weights._fields.index("rust")] = 0.0
     return table
 
 
 def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     """Each point's depth below the highest point of its zone over the same patch of
-    plan: for a hull side the sheer, for a house wall its roof edge.
-
-    Patches are 1/200 of the asset's length, no less than 10 cm, and each reaches its
-    eight neighbours, so a side that flares out by a patch still finds its sheer.
-    """
+    plan: for a hull side the sheer, for a house wall its roof edge."""
     # shortcut: a plan grid, not a walk up the surface; a tier stepped back by less
     # than a patch reads its upper tier's edge.
     length_m = float(np.ptp(position_m[:, :2], axis=0).max())
+    # Judgement: patches 1/200 of the length, no less than 10 cm, each reaching its
+    # eight neighbours, so a side flared out by a patch still finds its sheer.
     patch = np.floor(position_m[:, :2] / max(length_m / 200.0, 0.1)).astype(np.int64)
-    patch -= patch.min(axis=0) - 1  # a border of empty patches round the plan
+    patch -= (
+        patch.min(axis=0) - 1
+    )  # an empty border, so np.roll never wraps a patch into the plan
     rows, cols = patch.max(axis=0) + 2
     cell = (zone * rows + patch[:, 0]) * cols + patch[:, 1]
     order = np.argsort(cell, kind="stable")
@@ -73,15 +80,10 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
 def tag(
     objects: list[bpy.types.Object], zones: list[np.ndarray], material: Material
 ) -> None:
-    """Write the wear attributes on fitted `objects`, given each face's zone.
-
-    Objects whose world is the hull frame: at import, after the fit. A skinned mesh is
-    read as posed, where it renders.
-    """
+    """`objects` already fitted; a skinned mesh is read as posed."""
     bpy.context.view_layer.update()  # the fit leaves matrix_world stale
     depsgraph = bpy.context.evaluated_depsgraph_get()
     table = weights(material)
-    runoff = np.array([z not in SHEDS for z in _VOCABULARY], dtype=np.float32)
     corners_m, corner_zones = [], []
     for obj, zone in zip(objects, zones, strict=True):
         mesh = obj.data
@@ -97,14 +99,14 @@ def tag(
         normal = faces.floats(posed.polygons, "normal", 3 * len(zone)).reshape(-1, 3)
         if posed is not mesh:
             obj.evaluated_get(depsgraph).to_mesh_clear()
-        # A normal takes the inverse transpose.
-        normal = normal @ np.linalg.inv(world[:3, :3])
+        # A normal takes the inverse transpose; a mirrored part's winding turns it in.
+        linear = world[:3, :3]
+        normal = normal @ np.linalg.inv(linear) * np.sign(np.linalg.det(linear))
         normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
         _write(mesh, "wear_position_m", "POINT", position_m)
         _write(mesh, "wear_normal", "FACE", normal)
-        for i, layer in enumerate(LAYERS):
-            _write(mesh, f"wear_{layer}", "FACE", table[zone, i])
-        _write(mesh, "wear_runoff", "FACE", runoff[zone])
+        for i, name in enumerate(Weights._fields):
+            _write(mesh, f"wear_{name}", "FACE", table[zone, i])
         n_loops = len(mesh.loops)
         totals = faces.ints(mesh.polygons, "loop_total", len(zone))
         corners_m.append(position_m[faces.ints(mesh.loops, "vertex_index", n_loops)])
@@ -118,7 +120,15 @@ def tag(
 def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> None:
     vector = values.ndim == 2
     kind = "FLOAT_VECTOR" if vector else "FLOAT"
-    attribute = mesh.attributes.get(name) or mesh.attributes.new(name, kind, domain)
+    attribute = mesh.attributes.get(name)
+    if attribute is not None and (attribute.data_type, attribute.domain) != (
+        kind,
+        domain,
+    ):
+        mesh.attributes.remove(attribute)
+        attribute = None
+    if attribute is None:
+        attribute = mesh.attributes.new(name, kind, domain)
     attribute.data.foreach_set(
         "vector" if vector else "value", values.astype(np.float32).ravel()
     )

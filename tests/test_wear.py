@@ -1,5 +1,3 @@
-from typing import get_args
-
 import bpy
 import numpy as np
 import pytest
@@ -7,10 +5,10 @@ import pytest
 from seascape.blender import wear
 from seascape.blender.vessels import Hulls, _vessel
 from seascape.config import load
-from seascape.physics.thermal import ZoneName
+from seascape.physics.thermal import ZONE_NAMES
 from tests.scenarios import BASELINE
 
-ZONES = list(get_args(ZoneName.__value__))
+ZONES = list(ZONE_NAMES)
 
 
 def _read(mesh: bpy.types.Mesh, name: str) -> np.ndarray:
@@ -23,9 +21,6 @@ def _read(mesh: bpy.types.Mesh, name: str) -> np.ndarray:
 
 @pytest.fixture
 def box() -> tuple[bpy.types.Object, np.ndarray]:
-    """A 4 x 10 x 3 m box, its top a deck at 2 m, its sides hull from 2 m down to
-    1 m below the waterline; authored at the origin, placed 10 m east and turned a
-    quarter, as the fit leaves an import."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mesh = bpy.data.meshes.new("box")
     corners = [(x, y, z) for x in (-2, 2) for y in (-5, 5) for z in (-1, 2)]
@@ -64,6 +59,21 @@ def test_a_face_normal_turns_with_the_fit(box) -> None:
     np.testing.assert_allclose(normal[facing], [[-1.0, 0.0, 0.0]], atol=1e-6)
 
 
+def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
+    """Blender takes a face's normal from its winding in world space, which a mirror
+    reverses."""
+    obj, zone = box
+    obj.scale.x = -1.0
+    wear.tag([obj], [zone], "steel")
+    world = obj.data.copy()
+    world.transform(obj.matrix_world)
+    rendered = np.empty(3 * len(zone))
+    world.polygons.foreach_get("normal", rendered)
+    np.testing.assert_allclose(
+        _read(obj.data, "wear_normal"), rendered.reshape(-1, 3), atol=1e-6
+    )
+
+
 def test_a_side_is_as_deep_as_it_sits_below_the_sheer(box) -> None:
     obj, zone = box
     wear.tag([obj], [zone], "steel")
@@ -71,14 +81,13 @@ def test_a_side_is_as_deep_as_it_sits_below_the_sheer(box) -> None:
     position_m = _read(obj.data, "wear_position_m")
     z = position_m[[loop.vertex_index for loop in obj.data.loops], 2]
     side = np.repeat(zone == ZONES.index("paint_hull"), 4)
-    # The sheer is at 2 m: the side's top corners are at its edge, the bottom 3 m down.
+    # Sheer at 2 m.
     np.testing.assert_allclose(below_m[side], 2.0 - z[side], atol=1e-5)
     np.testing.assert_allclose(below_m[~side], 0.0, atol=1e-5)  # the deck is its top
 
 
 def test_a_flared_side_finds_its_sheer_a_patch_outboard() -> None:
-    """A waterline point under a sheer flared out by one patch, of another zone's
-    point higher still."""
+    """The sheer sits one patch outboard; a higher point of another zone is ignored."""
     position_m = np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 3.0], [0.0, 0.0, 9.0]])
     patch_m = 100.0 / 200.0
     position_m = np.vstack([position_m, [[100.0, 0.0, 0.0]]])  # sets the length
@@ -119,21 +128,35 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
     )
 
 
-def test_a_build_tags_only_its_worn_hulls_and_frees_their_names() -> None:
-    """A worn copy of an asset already in an EO file imports again, under the names
-    its zones key on."""
+def _zodiacs(hulls: Hulls, wears: tuple[float, ...]) -> list[bpy.types.Object]:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    hulls: Hulls = {}
-    sky = load(BASELINE).sky
-    clean, worn = (
-        _vessel("zodiac", None, 0.0, None, wear, sky, None, hulls) for wear in (0, 1)
-    )
-    tagged = [
-        "wear_position_m" in o.data.attributes
-        for anchor in (clean, worn)
-        for o in anchor.children_recursive
-        if o.type == "MESH"
+    return [
+        _vessel(
+            "zodiac",
+            t_k=None,
+            engine_off_min=0.0,
+            paint_absorptance=None,
+            wear=amount,
+            sky=load(BASELINE).sky,
+            heat=None,
+            hulls=hulls,
+        )
+        for amount in wears
     ]
-    half = len(tagged) // 2
-    assert not any(tagged[:half])
-    assert all(tagged[half:])
+
+
+def _meshes(anchor: bpy.types.Object) -> list[bpy.types.Object]:
+    return [o for o in anchor.children_recursive if o.type == "MESH"]
+
+
+def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
+    clean, worn = _zodiacs(Hulls(frozenset({"zodiac"})), (0.0, 0.6))
+    assert (clean["wear"], worn["wear"]) == (0.0, 0.6)
+    for anchor in (clean, worn):
+        assert all("wear_position_m" in o.data.attributes for o in _meshes(anchor))
+        assert all(o.name.startswith("zodiac/") for o in _meshes(anchor))
+
+
+def test_a_clean_build_is_not_tagged() -> None:
+    (clean,) = _zodiacs(Hulls(), (0.0,))
+    assert not any("wear_position_m" in o.data.attributes for o in _meshes(clean))

@@ -146,7 +146,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     outputs = scenario.outputs
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
-    hulls: Hulls = {}
+    hulls = Hulls(scenario.worn)
     tall, _ = sea.displaced((wind, swell))
     heat = surroundings(scenario) if band == "ir" else None
     vessel = add_ownship(

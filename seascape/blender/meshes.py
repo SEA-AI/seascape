@@ -4,7 +4,6 @@ import contextlib
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
-from typing import get_args
 
 import bpy
 import numpy as np
@@ -67,10 +66,9 @@ def _joined(
 
 
 def _face_zones(name: str, found: faces.Parts, zones: Zones | None) -> list[np.ndarray]:
-    """Per object, each face's index into the zone vocabulary. Unlabelled, every face
-    is `paint_hull`."""
+    """Each face's zone index, per object; unlabelled, all `paint_hull`."""
     if zones is None:
-        paint = list(get_args(thermal.ZoneName.__value__)).index("paint_hull")
+        paint = thermal.ZONE_NAMES.index("paint_hull")
         return [np.full(len(obj.data.polygons), paint) for obj in found.objects]
     # A name another object in the file already took renumbers the islands.
     faces.check(name, found, zones)
@@ -84,7 +82,7 @@ def _zone_slots(found: faces.Parts, per_face: list[np.ndarray]) -> None:
     The asset's own materials go: they are albedo, which says nothing about 8-14 um,
     and a later import sharing their names would be renamed past its zone labels.
     """
-    vocabulary = list(get_args(thermal.ZoneName.__value__))
+    vocabulary = thermal.ZONE_NAMES
     originals = {s.material for obj in found.objects for s in obj.material_slots}
     for obj, zone in zip(found.objects, per_face, strict=True):
         present, index = np.unique(zone, return_inverse=True)
@@ -257,8 +255,7 @@ def _parse(path: Path) -> set[bpy.types.Object]:
 
 
 def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Object]:
-    """Import an asset and fit it; returns the root parts. `worn` tags it with where
-    it wears.
+    """Import an asset and fit it; returns the root parts.
 
     An asset arrives in its author's units, off-origin, in many parts.
     """
@@ -280,11 +277,12 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
         (rotor,) = named
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
-    if band == "ir" or worn:
+    zoned = band == "ir" or worn
+    if zoned:
         found = faces.found(mesh_objects(parts))
         per_face = _face_zones(name, found, asset.zones)
-        if worn:
-            wear.tag(found.objects, per_face, asset.material)
+    if worn:
+        wear.tag(found.objects, per_face, asset.material)
     if band == "ir":
         _zone_slots(found, per_face)
         if rotor is not None:
@@ -316,9 +314,9 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
     return parts
 
 
-def free_names(name: str, parts: list[bpy.types.Object]) -> None:
-    """Prefix an EO import's objects and materials with its asset's name, so the next
-    import keeps the names its zones key on."""
+def prefix_names(name: str, parts: list[bpy.types.Object]) -> None:
+    """Prefix with the asset name, so a later import keeps the names its zones key
+    on."""
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     for material in {s.material for o in everything for s in o.material_slots}:
         if material is not None:

@@ -8,14 +8,14 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
-from typing import Any, NamedTuple, get_args
+from typing import Any, NamedTuple
 
 import bpy
 import numpy as np
 
 from seascape.assets import Zones
 from seascape.blender import blend
-from seascape.physics.thermal import ZoneName
+from seascape.physics.thermal import ZONE_NAMES
 
 
 @dataclass(frozen=True)
@@ -162,7 +162,7 @@ def found(meshes: list[bpy.types.Object]) -> Parts:
 
 def face_zones(parts: Parts, zones: Zones) -> list[np.ndarray]:
     """Per object, each face's index into the zone vocabulary."""
-    vocabulary = list(get_args(ZoneName.__value__))
+    vocabulary = list(ZONE_NAMES)
     by_material = np.array(
         [vocabulary.index(zones.materials[m]) for m in parts.materials]
     )
