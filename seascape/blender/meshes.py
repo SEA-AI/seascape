@@ -11,7 +11,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
-from seascape.blender import faces
+from seascape.blender import faces, wear
 from seascape.blender.blend import (
     yaw,
 )
@@ -66,26 +66,25 @@ def _joined(
     return hull
 
 
-def _zone_slots(name: str, meshes: list[bpy.types.Object], zones: Zones | None) -> None:
+def _face_zones(name: str, found: faces.Parts, zones: Zones | None) -> list[np.ndarray]:
+    """Per object, each face's index into the zone vocabulary. Unlabelled, every face
+    is `paint_hull`."""
+    if zones is None:
+        paint = list(get_args(thermal.ZoneName.__value__)).index("paint_hull")
+        return [np.full(len(obj.data.polygons), paint) for obj in found.objects]
+    # A name another object in the file already took renumbers the islands.
+    faces.check(name, found, zones)
+    return faces.face_zones(found, zones)
+
+
+def _zone_slots(found: faces.Parts, per_face: list[np.ndarray]) -> None:
     """Give each face its zone as a material slot, one placeholder per zone, which the
-    join merges. Unlabelled, every face is `paint_hull`.
+    join merges.
 
     The asset's own materials go: they are albedo, which says nothing about 8-14 um,
     and a later import sharing their names would be renamed past its zone labels.
     """
     vocabulary = list(get_args(thermal.ZoneName.__value__))
-    found = faces.found(meshes)
-    if zones is not None:
-        # A name another object in the file already took renumbers the islands.
-        faces.check(name, found, zones)
-    per_face = (
-        faces.face_zones(found, zones)
-        if zones is not None
-        else [
-            np.full(len(obj.data.polygons), vocabulary.index("paint_hull"))
-            for obj in found.objects
-        ]
-    )
     originals = {s.material for obj in found.objects for s in obj.material_slots}
     for obj, zone in zip(found.objects, per_face, strict=True):
         present, index = np.unique(zone, return_inverse=True)
@@ -280,8 +279,11 @@ def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
         (rotor,) = named
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
+    found = faces.found(mesh_objects(parts))
+    per_face = _face_zones(name, found, asset.zones)
+    wear.tag(found.objects, per_face, asset.hull)
     if band == "ir":
-        _zone_slots(name, mesh_objects(parts), asset.zones)
+        _zone_slots(found, per_face)
         if rotor is not None:
             # Joined apart from the rest, so it still turns about its hub.
             bpy.context.view_layer.update()
