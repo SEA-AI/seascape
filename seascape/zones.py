@@ -824,6 +824,7 @@ def contact(name: str, out: Path) -> Path:
         raise ValueError(f"{name} has no zones in assets.toml")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name, worn=not asset.weathered)
+    faces.check(name, found, asset.zones)
     vocabulary: list[str] = list(ZONE_NAMES)
     colours = np.array([ZONE_COLOURS[z] for z in ZONE_NAMES], dtype=np.uint8)
     per_face = face_zones(found, asset.zones)
