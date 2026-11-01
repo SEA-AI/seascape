@@ -111,6 +111,16 @@ def test_each_face_weighs_its_zone_and_only_steel_rusts(box) -> None:
     )
 
 
+def test_each_face_knows_its_asset_length_and_whether_it_is_steel(box) -> None:
+    obj, zone = box
+    wear.tag([obj], [zone], "steel")
+    # Turned a quarter, the box's 4 m runs along the fitted bow, north.
+    np.testing.assert_allclose(_read(obj.data, "wear_length_m"), 4.0, atol=1e-5)
+    np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 1.0)
+    wear.tag([obj], [zone], "grp")
+    np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 0.0)
+
+
 def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
     obj, zone = box
     zone[:] = ZONE_NAMES.index("paint_hull")

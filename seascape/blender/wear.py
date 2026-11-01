@@ -110,10 +110,17 @@ def tag(
         totals = faces.ints(mesh.polygons, "loop_total", len(zone))
         corners_m.append(position_m[faces.ints(mesh.loops, "vertex_index", n_loops)])
         corner_zones.append(np.repeat(zone, totals))
-    below_m = below_edge_m(np.concatenate(corners_m), np.concatenate(corner_zones))
+    corner_m = np.concatenate(corners_m)
+    below_m = below_edge_m(corner_m, np.concatenate(corner_zones))
+    # Per asset, on every face, so they survive the LWIR import's join.
+    length_m = float(np.ptp(corner_m[:, 1]))
+    steel = float(material == "steel")
     for obj, at in zip(objects, np.cumsum([len(c) for c in corners_m]), strict=True):
-        n = len(obj.data.loops)
-        _write(obj.data, "wear_below_m", "CORNER", below_m[at - n : at])
+        mesh = obj.data
+        n, faces_n = len(mesh.loops), len(mesh.polygons)
+        _write(mesh, "wear_below_m", "CORNER", below_m[at - n : at])
+        _write(mesh, "wear_length_m", "FACE", np.full(faces_n, length_m))
+        _write(mesh, "wear_steel", "FACE", np.full(faces_n, steel))
 
 
 def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> None:
