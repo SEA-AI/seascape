@@ -644,7 +644,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     length measured along the beam. Any other bow catches both."""
     asset = Hull(
         kind="hull",
-        hull="steel",
+        material="steel",
         description="x",
         category="x",
         category_id=1,
@@ -679,7 +679,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
 def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None:
     debris = Debris(
         kind="debris",
-        hull="wood",
+        material="wood",
         description="x",
         category="x",
         category_id=1,
@@ -704,7 +704,7 @@ def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None
 def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
     buoy = Buoy(
         kind="buoy",
-        hull="steel",
+        material="steel",
         description="x",
         category="x",
         category_id=1,

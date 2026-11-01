@@ -19,7 +19,7 @@ from seascape.config.loader import (
     load_variants,
     seeds,
 )
-from seascape.config.objects import Drift, Farm, Object, Ownship, Targets, Wear
+from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
 from seascape.config.scenario import ImageFormat, Outputs, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
@@ -45,7 +45,6 @@ __all__ = [
     "Sky",
     "Targets",
     "WarmLayer",
-    "Wear",
     "json_schema",
     "load",
     "load_variants",

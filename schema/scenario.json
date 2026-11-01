@@ -880,6 +880,33 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "wear": {
+          "title": "Wear",
+          "description": "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 long neglected.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -1423,10 +1450,14 @@
           ]
         },
         "wear": {
-          "description": "How weathered.",
+          "title": "Wear",
+          "description": "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 long neglected.",
+          "default": 0.0,
           "anyOf": [
             {
-              "$ref": "#/$defs/Wear"
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -3558,10 +3589,14 @@
           ]
         },
         "wear": {
-          "description": "How weathered.",
+          "title": "Wear",
+          "description": "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 long neglected.",
+          "default": 0.0,
           "anyOf": [
             {
-              "$ref": "#/$defs/Wear"
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -3677,41 +3712,6 @@
         }
       },
       "title": "WarmLayer",
-      "type": "object"
-    },
-    "Wear": {
-      "additionalProperties": false,
-      "description": "Grime, rust, waterline stain, soot and faded paint on its surfaces.",
-      "properties": {
-        "amount": {
-          "title": "Amount",
-          "description": "0 is as delivered, 1 long neglected.",
-          "default": 0.0,
-          "anyOf": [
-            {
-              "maximum": 1.0,
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "title": "Wear",
       "type": "object"
     },
     "Uniform": {

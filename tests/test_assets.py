@@ -24,7 +24,7 @@ def one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     source.write_bytes(BODY)
     manifest = tmp_path / "assets.toml"
     manifest.write_text(
-        f'[ship]\nkind = "hull"\nhull = "steel"\ndescription = "A hull."\n'
+        f'[ship]\nkind = "hull"\nmaterial = "steel"\ndescription = "A hull."\n'
         'category = "ship"\n'
         "category_id = 1\n"
         f'url = "{source.as_uri()}"\n'
