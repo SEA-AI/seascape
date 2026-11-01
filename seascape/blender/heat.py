@@ -102,6 +102,7 @@ def surroundings(scenario: Scenario) -> Heat:
         sun_elevation_rad=None if elevation is None else math.radians(elevation),
         cloud_fraction=cloud_fraction(sky),
         cloud_base_m=sky.cloud_base_m,
+        atmosphere=sky.atmosphere,
         fog_cover=aerosol.fog_cover(sky.visibility_km, sky.atmosphere),
         beam_transmittance=sky.sun_transmittance,
         fog_sunlight_transmittance=aerosol.diffuse_transmittance(sky.visibility_km),

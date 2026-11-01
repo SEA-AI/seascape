@@ -489,6 +489,22 @@ def cloudy_sky_radiance(
     return clear + np.asarray(cloud) * (overcast - clear)
 
 
+@functools.cache
+def cloud_window_w_m2(
+    cloud_base_m: float, t_air_k: float, atmosphere: Atmosphere = ATMOSPHERE
+) -> float:
+    """What an overcast at `cloud_base_m` adds to a horizontal surface's in-band
+    irradiance over the clear sky's: 2 pi times the integral of the radiance excess
+    times sin e cos e over elevation e."""
+    edges = np.linspace(0.0, math.pi / 2, 91)
+    elev = (edges[:-1] + edges[1:]) / 2
+    excess = cloudy_sky_radiance(
+        elev, 1.0, cloud_base_m, t_air_k, atmosphere
+    ) - sky_radiance(elev, t_air_k, atmosphere)
+    weight = np.sin(elev) * np.cos(elev) * np.diff(edges)
+    return float(2.0 * math.pi * np.sum(excess * weight))
+
+
 def cirrus_sky_radiance(
     elev_rad: npt.ArrayLike,
     cloud: npt.ArrayLike,

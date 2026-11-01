@@ -44,7 +44,8 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
-from seascape.physics.lwir import cloud_base_k
+from seascape.physics.atmosphere import ATMOSPHERE, Atmosphere
+from seascape.physics.lwir import cloud_window_w_m2
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -223,6 +224,7 @@ class Environment:
     sun_elevation_rad: float | None  # None, or at or below the horizon: no sun
     cloud_fraction: float = 0.0
     cloud_base_m: float = 0.0
+    atmosphere: Atmosphere = ATMOSPHERE
     # Fog under the clouds: its emissivity overhead, and what it leaves of the beam.
     fog_cover: float = 0.0
     beam_transmittance: float = 1.0
@@ -304,23 +306,22 @@ def direct_beam_w_m2(elevation_rad: float | None) -> float:
 def sky_longwave_w_m2(
     t_air_k: float,
     cloud_fraction: float = 0.0,
-    t_cloud_k: float | None = None,
+    cloud_base_m: float = 0.0,
     fog_cover: float = 0.0,
+    atmosphere: Atmosphere = ATMOSPHERE,
 ) -> float:
     """Downwelling broadband longwave on a horizontal surface.
 
-    Clear sky by Swinbank 1963. Cloud covers its fraction as a blackbody at
-    `t_cloud_k`, the air's unless given: thick water cloud is near-black in the
-    infrared (Stephens 1978, as `lwir` cites), mixed linearly with the clear sky as in
-    Crawford & Duchon, J. Appl. Meteor. 38(4) 474, 1999 (unverified, not read). Fog
-    covers `fog_cover` of the sky under the cloud as a blackbody at the air.
+    Clear sky by Swinbank 1963. Fog covers `fog_cover` of it as a blackbody at the air.
+    Cloud adds only through the 8-14 um window, where the clear sky is thin enough to
+    see its base (Kimball, Idso & Aase, Water Resour. Res. 18(4) 931, 1982): each
+    `cloud_fraction` of the sky the fog leaves adds `lwir.cloud_window_w_m2`.
     """
     air = STEFAN_BOLTZMANN_W_M2K4 * t_air_k**4
     clear = _SWINBANK_W_M2K6 * t_air_k**6
-    under = (1.0 - fog_cover) * clear + fog_cover * air
-    t_cloud_k = t_air_k if t_cloud_k is None else t_cloud_k
-    cloud = STEFAN_BOLTZMANN_W_M2K4 * t_cloud_k**4
-    return (1.0 - cloud_fraction) * under + cloud_fraction * cloud
+    window = cloud_window_w_m2(cloud_base_m, t_air_k, atmosphere)
+    under = (1.0 - fog_cover) * (clear + cloud_fraction * window)
+    return under + fog_cover * air
 
 
 def wind_convection_w_m2k(wind_m_s: npt.ArrayLike) -> FloatArray:
@@ -430,8 +431,9 @@ def lit_temperature_k(
     sky = sky_longwave_w_m2(
         env.t_air_k,
         env.cloud_fraction,
-        cloud_base_k(env.t_air_k, env.cloud_base_m),
+        env.cloud_base_m,
         env.fog_cover,
+        env.atmosphere,
     )
     sea = (
         SEA_EMISSIVITY * STEFAN_BOLTZMANN_W_M2K4 * env.t_sea_k**4
