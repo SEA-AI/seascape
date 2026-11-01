@@ -6,8 +6,10 @@ from typing import NamedTuple
 import bpy
 import numpy as np
 
-from seascape.assets import Material
+from seascape.assets import Material, manifest
 from seascape.blender import faces
+from seascape.blender.blend import clamped, scalar, vector
+from seascape.config import substream
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 
@@ -125,3 +127,352 @@ def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> 
     attribute.data.foreach_set(
         "vector" if vector else "value", values.astype(np.float32).ravel()
     )
+
+
+type Socket = bpy.types.NodeSocket | float
+
+
+class _Graph:
+    """Nodes on one tree, each input linked from a socket or set to a number."""
+
+    def __init__(self, tree: bpy.types.NodeTree) -> None:
+        self.tree = tree
+
+    def node(self, kind: str, **props: object) -> bpy.types.Node:
+        node = self.tree.nodes.new(kind)
+        for key, value in props.items():
+            setattr(node, key, value)
+        return node
+
+    def put(self, socket: bpy.types.NodeSocket, value: object) -> None:
+        if isinstance(value, bpy.types.NodeSocket):
+            self.tree.links.new(value, socket)
+        else:
+            socket.default_value = value
+
+    def m(self, operation: str, *inputs: Socket) -> bpy.types.NodeSocket:
+        return scalar(self.tree, operation, *inputs)
+
+    def smooth(self, x: Socket, low: Socket, high: Socket) -> bpy.types.NodeSocket:
+        """0 below `low`, 1 above `high`, smoothstep between."""
+        node = self.node("ShaderNodeMapRange", interpolation_type="SMOOTHSTEP")
+        for name, value in (("Value", x), ("From Min", low), ("From Max", high)):
+            self.put(node.inputs[name], value)
+        return node.outputs["Result"]
+
+    def attribute(self, name: str, kind: str = "GEOMETRY") -> bpy.types.Node:
+        return self.node(
+            "ShaderNodeAttribute", attribute_type=kind, attribute_name=name
+        )
+
+    def xyz(self, vector: bpy.types.NodeSocket) -> list[bpy.types.NodeSocket]:
+        node = self.node("ShaderNodeSeparateXYZ")
+        self.tree.links.new(vector, node.inputs["Vector"])
+        return [node.outputs[k] for k in "XYZ"]
+
+
+class _Masks(_Graph):
+    """The `wear_masks` group: what `tag` wrote and the object's own wear, and a
+    method per layer. Judgement, every number: shapes eyeballed against photographs
+    of worn hulls."""
+
+    def __init__(self, tree: bpy.types.NodeTree) -> None:
+        super().__init__(tree)
+        self.position = self.attribute("wear_position_m").outputs["Vector"]
+        self.x, self.y, self.z = self.xyz(self.position)
+        normal = self.attribute("wear_normal").outputs["Vector"]
+        self.nx, self.ny, self.up = self.xyz(normal)
+        self.below = self.attribute("wear_below_m").outputs["Factor"]
+        self.amount, self.seed, self.length, self.steel = (
+            self.attribute(name, "OBJECT").outputs["Factor"]
+            for name in ("wear", "wear_seed", "wear_length_m", "wear_steel")
+        )
+        m = self.m
+        stain = self.attribute("wear_stain").outputs["Factor"]
+        self.shell = m("GREATER_THAN", stain, 0.0)  # what the sea wets
+        freeboard_m = m("MAXIMUM", m("ADD", self.z, self.below), 0.01)
+        # 0 at the waterline, 1 at the edge above.
+        self.height = m("DIVIDE", self.z, freeboard_m)
+        # Some plates and panels are far worse than others.
+        self.region = m(
+            "MULTIPLY_ADD", self.smooth(self.noise(0.04, 21.0, 2.0), 0.3, 0.7), 1.3, 0.2
+        )
+
+    def noise(
+        self,
+        per_m: float,
+        offset: float,
+        detail: float = 6.0,
+        stretch: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    ) -> Socket:
+        """A fractal noise, its features `per_m` to a metre, `stretch` times as many
+        along each axis."""
+        node = self.node("ShaderNodeTexNoise", noise_dimensions="4D")
+        self.put(
+            node.inputs["Vector"], vector(self.tree, "MULTIPLY", self.position, stretch)
+        )
+        node.inputs["Scale"].default_value = per_m
+        node.inputs["Detail"].default_value = detail
+        self.put(node.inputs["W"], self.m("ADD", self.seed, offset))
+        return node.outputs["Factor"]
+
+    def cover(self, field: Socket, soft: float, boost: float = 0.0) -> Socket:
+        """`field` past a threshold that falls as wear rises."""
+        m = self.m
+        threshold = m("MULTIPLY_ADD", m("ADD", self.amount, boost), -0.45, 0.72)
+        return self.smooth(field, threshold, m("ADD", threshold, soft))
+
+    def grime(self) -> Socket:
+        """In crevices, a thin film, pooled on what faces up."""
+        m, smooth = self.m, self.smooth
+        occlusion = self.node("ShaderNodeAmbientOcclusion", only_local=True)
+        occlusion.inputs["Distance"].default_value = 0.6
+        crevice = smooth(m("SUBTRACT", 1.0, occlusion.outputs["AO"]), 0.05, 0.6)
+        grime = m("MULTIPLY", crevice, self.cover(self.noise(0.8, 1.0), 0.3))
+        film = m("MULTIPLY", self.cover(self.noise(0.15, 3.0), 0.3, -0.2), 0.35)
+        pooled = m("MULTIPLY", smooth(self.up, 0.6, 0.95), 0.5)
+        pooled = m("MULTIPLY", pooled, self.cover(self.noise(1.5, 4.0), 0.3))
+        return m("MAXIMUM", m("MAXIMUM", grime, film), pooled)
+
+    def streaks(self) -> Socket:
+        """Runoff from the edge above: one source per cell along it, each its own
+        length and width, most dormant on a lightly worn hull. Along the edge is y
+        on a side, x on a face looking fore or aft."""
+        m, smooth = self.m, self.smooth
+        side = m("GREATER_THAN", m("ABSOLUTE", self.nx), m("ABSOLUTE", self.ny))
+        along = m(
+            "ADD",
+            m("MULTIPLY", side, self.y),
+            m("MULTIPLY", m("SUBTRACT", 1.0, side), self.x),
+        )
+        spacing_m = m("MINIMUM", m("MAXIMUM", m("DIVIDE", self.length, 30.0), 0.6), 4.0)
+        cells = self.node("ShaderNodeTexVoronoi", voronoi_dimensions="1D")
+        self.put(
+            cells.inputs["W"],
+            m("ADD", m("DIVIDE", along, spacing_m), m("MULTIPLY", self.seed, 7.31)),
+        )
+        draw = self.node("ShaderNodeSeparateColor")
+        self.tree.links.new(cells.outputs["Color"], draw.inputs["Color"])
+        run, width, live = (draw.outputs[k] for k in ("Red", "Green", "Blue"))
+        active = m("GREATER_THAN", live, m("MULTIPLY_ADD", self.amount, -0.7, 0.85))
+        run_m = m("MULTIPLY", m("MULTIPLY_ADD", run, 0.9, 0.1), self.length)
+        run_m = m("MULTIPLY", run_m, m("MULTIPLY_ADD", self.amount, 0.05, 0.02))
+        width = m("MULTIPLY_ADD", width, 0.12, 0.03)  # of a cell
+        core = smooth(cells.outputs["Distance"], m("MULTIPLY", width, 0.4), width)
+        falling = smooth(self.below, m("MULTIPLY", run_m, 0.2), run_m)
+        wall = smooth(m("ABSOLUTE", self.up), 0.2, 0.5)
+        streak = m(
+            "MULTIPLY",
+            m("SUBTRACT", 1.0, core),
+            m("MULTIPLY", m("SUBTRACT", 1.0, falling), m("SUBTRACT", 1.0, wall)),
+        )
+        broken = smooth(self.noise(2.0, 17.0, 4.0), 0.25, 0.6)
+        broken = m("MULTIPLY", broken, self.attribute("wear_runoff").outputs["Factor"])
+        return m(
+            "MULTIPLY",
+            m("MULTIPLY", streak, active),
+            m("MULTIPLY", broken, self.region),
+        )
+
+    def chips(self) -> Socket:
+        """Coating failing at edges, worse in bad regions."""
+        m = self.m
+        bevel = self.node("ShaderNodeBevel")
+        bevel.inputs["Radius"].default_value = 0.08
+        geometry = self.node("ShaderNodeNewGeometry")
+        facing = vector(
+            self.tree,
+            "DOT_PRODUCT",
+            bevel.outputs["Normal"],
+            geometry.outputs["Normal"],
+        )
+        edge = self.smooth(m("SUBTRACT", 1.0, facing), 0.01, 0.08)
+        chipped = m("MULTIPLY", edge, self.cover(self.noise(3.0, 7.0), 0.15))
+        return m("MULTIPLY", chipped, self.region)
+
+    def scuffs(self) -> Socket:
+        """Fenders and quays, amidships and halfway up the freeboard."""
+        m, smooth = self.m, self.smooth
+        ahead = m("ABSOLUTE", m("DIVIDE", self.y, self.length))
+        amidships = m("SUBTRACT", 1.0, smooth(ahead, 0.2, 0.35))
+        fendered = m(
+            "MULTIPLY",
+            smooth(self.height, 0.25, 0.4),
+            m("SUBTRACT", 1.0, smooth(self.height, 0.6, 0.75)),
+        )
+        # Long and low: a fender rubs along the hull.
+        scuff = self.cover(self.noise(1.5, 41.0, 3.0, (1.0, 0.25, 6.0)), 0.05, -0.35)
+        return m(
+            "MULTIPLY",
+            m("MULTIPLY", scuff, fendered),
+            m("MULTIPLY", amidships, m("MULTIPLY", self.shell, 0.6)),
+        )
+
+    def stain(self) -> Socket:
+        """A yacht's waterline stain is a hand's width, a ship's boot top a metre or
+        so, higher where the bow wave rides."""
+        m, smooth = self.m, self.smooth
+        bow = smooth(m("DIVIDE", self.y, self.length), 0.32, 0.45)
+        top_m = m("MULTIPLY", self.length, m("MULTIPLY_ADD", self.steel, 0.01, 0.008))
+        top_m = m(
+            "MULTIPLY", m("MINIMUM", top_m, 1.2), m("MULTIPLY_ADD", bow, 0.8, 1.0)
+        )
+        top_m = m(
+            "MULTIPLY", top_m, m("MULTIPLY_ADD", self.noise(0.5, 5.0, 2.0), 0.8, 0.6)
+        )
+        band = m(
+            "MULTIPLY",
+            smooth(self.z, -0.3, 0.0),
+            m("SUBTRACT", 1.0, smooth(self.z, m("MULTIPLY", top_m, 0.5), top_m)),
+        )
+        return m("MULTIPLY", band, self.cover(self.noise(0.6, 5.0), 0.3, 0.3))
+
+    def layers(self) -> tuple[Socket, ...]:
+        """Grime, rust, stain, soot and fade, unweighted by zone."""
+        m = self.m
+        streak, scuff = self.streaks(), self.scuffs()
+        not_steel = m("SUBTRACT", 1.0, self.steel)
+        # Steel bleeds rust down a streak and at a scuff; anything else, grime.
+        grime = m(
+            "MAXIMUM",
+            self.grime(),
+            m("MULTIPLY", m("MAXIMUM", streak, scuff), not_steel),
+        )
+        washed = m(
+            "MULTIPLY",
+            self.shell,
+            m("SUBTRACT", 1.0, self.smooth(self.height, 0.0, 0.5)),
+        )
+        grime = m("MULTIPLY", grime, m("SUBTRACT", 1.0, washed))
+        rust = m(
+            "MAXIMUM",
+            self.chips(),
+            m("MULTIPLY", m("MAXIMUM", streak, scuff), self.steel),
+        )
+        soot = self.cover(self.noise(0.5, 13.0), 0.4, 0.3)
+        sky = m("MULTIPLY_ADD", self.smooth(self.up, 0.0, 1.0), 0.5, 0.5)
+        return grime, rust, self.stain(), soot, m("MULTIPLY", self.amount, sky)
+
+
+def masks() -> bpy.types.NodeTree:
+    """Each layer's cover, 0-1, weighted by the face's zone and the object's wear.
+
+    Reads what `tag` writes, and the object's `wear`, `wear_seed`, `wear_length_m`
+    and `wear_steel`.
+    """
+    if (group := bpy.data.node_groups.get("wear_masks")) is not None:
+        return group
+    group = bpy.data.node_groups.new("wear_masks", "ShaderNodeTree")
+    for layer in LAYERS:
+        group.interface.new_socket(
+            layer, in_out="OUTPUT", socket_type="NodeSocketFloat"
+        )
+    g = _Masks(group)
+    out = g.node("NodeGroupOutput")
+    # An unworn copy shares its worn twin's import and materials: no cover at all.
+    worn = g.m("GREATER_THAN", g.amount, 0.0)
+    for layer, mask in zip(LAYERS, g.layers(), strict=True):
+        weight = g.attribute(f"wear_{layer}").outputs["Factor"]
+        weight = g.m("MULTIPLY", weight, worn)
+        g.put(out.inputs[layer], clamped(g.tree, g.m("MULTIPLY", mask, weight)))
+    return group
+
+
+# Judgement: linear albedo of each layer, from photographs of worn hulls.
+GRIME = (0.045, 0.038, 0.030, 1.0)
+RUST = (0.20, 0.065, 0.022, 1.0)
+STAIN_STEEL = (0.06, 0.07, 0.035, 1.0)  # algae on a ship's boot top
+STAIN = (0.22, 0.14, 0.05, 1.0)  # a yacht's: tannin, oil and algae
+SOOT = (0.015, 0.014, 0.013, 1.0)
+
+
+def dirty(parts: list[bpy.types.Object]) -> None:
+    """Lay the wear over every material of an EO import's `parts`."""
+    meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+    for material in {s.material for o in meshes for s in o.material_slots} - {None}:
+        _dirty(material)
+
+
+def _dirty(material: bpy.types.Material) -> None:
+    """A second, rough dielectric surface mixed in by the wear's cover, and the paint
+    faded. Tinting a metallic surface instead would colour its mirror: rust on steel
+    reads as copper."""
+    g = _Graph(material.node_tree)
+    shader = next((n for n in g.tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if shader is None:
+        return
+    group = g.node("ShaderNodeGroup", node_tree=masks())
+    cover = {layer: group.outputs[layer] for layer in LAYERS}
+    base = shader.inputs["Base Color"]
+    if base.is_linked:
+        colour = base.links[0].from_socket
+    else:
+        rgb = g.node("ShaderNodeRGB")
+        rgb.outputs["Color"].default_value = base.default_value
+        colour = rgb.outputs["Color"]
+    faded = g.node("ShaderNodeHueSaturation")
+    g.tree.links.new(colour, faded.inputs["Color"])
+    g.tree.links.new(
+        g.m("MULTIPLY_ADD", cover["fade"], -0.5, 1.0), faded.inputs["Saturation"]
+    )
+    g.tree.links.new(
+        g.m("MULTIPLY_ADD", cover["fade"], 0.15, 1.0), faded.inputs["Value"]
+    )
+    g.tree.links.new(faded.outputs["Color"], base)
+
+    total = g.m(
+        "MAXIMUM",
+        g.m("MAXIMUM", cover["grime"], cover["rust"]),
+        g.m("MAXIMUM", cover["stain"], cover["soot"]),
+    )
+    stain = g.node("ShaderNodeMix", data_type="RGBA")
+    g.tree.links.new(
+        g.attribute("wear_steel", "OBJECT").outputs["Factor"], stain.inputs["Factor"]
+    )
+    stain.inputs["A"].default_value = STAIN
+    stain.inputs["B"].default_value = STAIN_STEEL
+    # Each layer's colour by its share of the cover, so rust is not muddied by grime.
+    layered: Socket | tuple[float, ...] = GRIME
+    for layer, colour in (
+        ("rust", RUST),
+        ("stain", stain.outputs["Result"]),
+        ("soot", SOOT),
+    ):
+        mix = g.node("ShaderNodeMix", data_type="RGBA")
+        share = clamped(
+            g.tree, g.m("DIVIDE", cover[layer], g.m("MAXIMUM", total, 1e-3))
+        )
+        g.tree.links.new(share, mix.inputs["Factor"])
+        g.put(mix.inputs["A"], layered)
+        g.put(mix.inputs["B"], colour)
+        layered = mix.outputs["Result"]
+    dirt = g.node("ShaderNodeBsdfPrincipled")
+    g.put(dirt.inputs["Base Color"], layered)
+    dirt.inputs["Roughness"].default_value = 0.9
+    if shader.inputs["Normal"].is_linked:
+        g.tree.links.new(
+            shader.inputs["Normal"].links[0].from_socket, dirt.inputs["Normal"]
+        )
+    consumers = [link.to_socket for link in shader.outputs["BSDF"].links]
+    mix = g.node("ShaderNodeMixShader")
+    g.tree.links.new(total, mix.inputs["Factor"])
+    g.tree.links.new(shader.outputs["BSDF"], mix.inputs["Shader"])
+    g.tree.links.new(dirt.outputs["BSDF"], mix.inputs["Shader_001"])
+    for socket in consumers:
+        g.tree.links.new(mix.outputs["Shader"], socket)
+
+
+def vary(anchors: list[bpy.types.Object], seed: int) -> None:
+    """Give each worn hull's meshes what the masks read of it, its noise drawn from
+    a substream of its own so copies of one asset wear apart."""
+    for anchor in anchors:
+        if not anchor.get("wear"):
+            continue
+        offset = float(substream(seed, f"wear/{anchor.name}").uniform(0.0, 1000.0))
+        steel = float(manifest()[anchor["asset"]].material == "steel")
+        for part in anchor.children_recursive:
+            if part.type == "MESH":
+                part["wear"] = anchor["wear"]
+                part["wear_seed"] = offset
+                part["wear_length_m"] = anchor["length_m"]
+                part["wear_steel"] = steel

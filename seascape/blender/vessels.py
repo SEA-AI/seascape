@@ -18,6 +18,7 @@ from seascape.blender.blend import (
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
+from seascape.blender.wear import dirty
 from seascape.config import (
     Drift,
     Farm,
@@ -68,6 +69,8 @@ def _vessel(
         parts = hulls.imported[name] = import_asset(name, band, worn=worn)
         if heat is None:
             prefix_names(name, parts)
+            if worn:
+                dirty(parts)
 
     if heat is not None:
         heat = heat.stopped(engine_off_min)
@@ -86,6 +89,7 @@ def _vessel(
         anchor[size] = parts[0][size]
     anchor["engine_off_min"] = engine_off_min
     anchor["wear"] = wear
+    anchor["asset"] = name
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
