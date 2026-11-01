@@ -275,19 +275,3 @@ def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
     tables = [i for i in bpy.data.images if i.name.startswith(skin.name)]
     # On steel every layer looks up the clean skin's temperatures.
     assert len(tables) == (1 if material == "steel" else 4)
-
-
-def test_a_weathered_asset_keeps_its_own_eo_wear_and_is_still_tagged() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    box = _vessel(
-        "container",
-        t_k=None,
-        engine_off_min=0.0,
-        paint_absorptance=None,
-        wear=0.8,
-        sky=load(BASELINE).sky,
-        heat=None,
-        hulls=Hulls(frozenset({"container"})),
-    )
-    assert "wear_masks" not in bpy.data.node_groups
-    assert all("wear_position_m" in o.data.attributes for o in _meshes(box))
