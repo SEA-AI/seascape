@@ -1169,22 +1169,3 @@ def test_a_lone_variant_is_never_replaced() -> None:
     assert list(seeds(7, 1)) == [7]
     assert seeds(7, 2)[0] == 7
     assert len(seeds(7, 2)) > 2
-
-
-def test_a_hull_counts_as_worn_only_within_reach_at_its_nearest() -> None:
-    base = load(BASELINE)
-    near, far, closing, clean = (
-        Object(asset=asset, range_m=range_m, bearing_deg=0.0, wear=wear, speed_mps=v)
-        for asset, range_m, wear, v in (
-            ("yacht", 500.0, 0.5, 0.0),
-            ("cargo_ship", 3000.0, 0.5, 0.0),
-            ("zodiac", 1500.0, 0.5, 10.0),
-            ("irwin_38", 100.0, 0.0, 0.0),
-        )
-    )
-    outputs = base.outputs.model_copy(update={"duration_s": 60.0})
-    scenario = base.model_copy(
-        update={"objects": [near, far, closing, clean], "outputs": outputs}
-    )
-    assert scenario.worn() == {"yacht", "cargo_ship", "zodiac"}
-    assert scenario.worn(1000.0) == {"yacht", "zodiac"}

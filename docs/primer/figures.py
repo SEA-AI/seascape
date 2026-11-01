@@ -64,6 +64,23 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
             )
         ],
     ),
+    "wear": (
+        # Beam-on and close, the sun behind the camera on the side it sees.
+        [
+            "rigs.bow.cameras.eo.hfov_deg = 22.0",
+            "rigs.bow.cameras.ir.hfov_deg = 22.0",
+            "sky.sun_bearing_deg = 180.0",
+            "sky.sun_elevation_deg = 35.0",
+        ],
+        [
+            (f"{name}, {state}", [f'outputs.bands = ["{band}"]', f"objects = [{ship}]"])
+            for name, band in (("EO", "eo"), ("LWIR", "ir"))
+            for state, ship in (
+                ("as delivered", SHIP % 260.0),
+                ("wear 0.8", SHIP.replace(" }", ", wear = 0.8 }") % 260.0),
+            )
+        ],
+    ),
     "haze": (
         [f"objects = [{SHIP % 1200.0}]"],
         [(f"visibility {v} km", [f"sky.visibility_km = {v}.0"]) for v in (42, 10, 3)],
