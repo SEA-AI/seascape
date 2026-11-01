@@ -4,13 +4,15 @@ import math
 from typing import NamedTuple
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from seascape.blender.blend import (
     place,
     yaw,
 )
 from seascape.config import (
+    Band,
+    Mount,
     Scenario,
 )
 
@@ -66,6 +68,43 @@ def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
         )
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
+
+
+class View(NamedTuple):
+    """A camera's pose at one instant, and its pixel at the render's scale."""
+
+    mount: Mount
+    t_s: float
+    matrix: Matrix
+    angle_x_rad: float
+    pixel_rad: float
+
+
+def views(
+    scenario: Scenario, band: Band, cameras: dict[str, bpy.types.Object]
+) -> list[View]:
+    """Every frame's pose of each of `band`'s cameras, the scene left at frame 0."""
+    sc = bpy.context.scene
+    # As the shader's pixel does, so a cull matches what it draws.
+    scale = sc.render.resolution_percentage / 100
+    found = []
+    for frame, t_s in enumerate(scenario.outputs.times_s):
+        sc.frame_set(frame)
+        for mount in scenario.mounts:
+            if mount.camera.band != band:
+                continue
+            data = cameras[mount.name].data
+            found.append(
+                View(
+                    mount,
+                    t_s,
+                    cameras[mount.name].matrix_world.copy(),
+                    data.angle_x,
+                    data.angle_x / (mount.camera.width_px * scale),
+                )
+            )
+    sc.frame_set(0)
+    return found
 
 
 def boresight_deg(camera: bpy.types.Object) -> tuple[float, float]:

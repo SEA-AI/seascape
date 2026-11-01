@@ -10,9 +10,10 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from seascape.blender.rigs import View
 from seascape.blender.sea.foam import FOAM_SEAM_CELLS
 from seascape.blender.sea.wind import surface_drift
-from seascape.config import Band, Mount, Outputs, Scenario, Sea
+from seascape.config import Outputs, Scenario, Sea
 from seascape.physics import earth, waves
 from seascape.physics.waves import (
     FoamGrid,
@@ -38,38 +39,31 @@ FOAM_RAYS = 9
 FOAM_MAX_CELLS = 1024
 
 
-def _rays(
-    scenario: Scenario, mounts: list[Mount], cameras: dict[str, bpy.types.Object]
-) -> list[tuple[Vector, Vector, float]]:
+def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, float]]:
     """(origin, unit direction, the camera's pixel in rad) of rays across each camera's
-    frame, in every frame, on the foam memory's drifting grid."""
-    sc = bpy.context.scene
+    frame `seen`, on the foam memory's drifting grid."""
     drift = surface_drift(scenario.sea, scenario.outputs)
     rays = []
-    for frame, t_s in enumerate(scenario.outputs.times_s):
-        sc.frame_set(frame)
-        for mount in mounts:
-            camera = cameras[mount.name]
-            pixel_rad = camera.data.angle_x / mount.camera.width_px
-            turn = camera.matrix_world.to_3x3()
-            # Not `view_frame`: it takes the scene's aspect, which the build sets last.
-            across = math.tan(camera.data.angle_x / 2)
-            up = across * mount.camera.height_px / mount.camera.width_px
-            corners = [
-                Vector((x * across, y * up, -1.0))
-                for x, y in ((1, 1), (1, -1), (-1, -1), (-1, 1))
-            ]
-            for a in np.linspace(0.0, 1.0, FOAM_RAYS):
-                for b in np.linspace(0.0, 1.0, FOAM_RAYS):
-                    toward = (corners[2].lerp(corners[1], a)).lerp(
-                        corners[3].lerp(corners[0], a), b
-                    )
-                    # Water at x is on the grid at x - v t.
-                    origin = camera.matrix_world.translation - Vector(
-                        (drift[0] * t_s, drift[1] * t_s, 0.0)
-                    )
-                    rays.append((origin, (turn @ toward).normalized(), pixel_rad))
-    sc.frame_set(0)
+    for view in seen:
+        turn = view.matrix.to_3x3()
+        camera = view.mount.camera
+        # Not `view_frame`: it takes the scene's aspect, which the build sets last.
+        across = math.tan(view.angle_x_rad / 2)
+        up = across * camera.height_px / camera.width_px
+        corners = [
+            Vector((x * across, y * up, -1.0))
+            for x, y in ((1, 1), (1, -1), (-1, -1), (-1, 1))
+        ]
+        # Water at x is on the grid at x - v t.
+        origin = view.matrix.translation - Vector(
+            (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
+        )
+        for a in np.linspace(0.0, 1.0, FOAM_RAYS):
+            for b in np.linspace(0.0, 1.0, FOAM_RAYS):
+                toward = (corners[2].lerp(corners[1], a)).lerp(
+                    corners[3].lerp(corners[0], a), b
+                )
+                rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
     return rays
 
 
@@ -114,20 +108,16 @@ def _foam_box(
 
 
 def foam_grids(
-    scenario: Scenario,
-    band: Band,
-    cameras: dict[str, bpy.types.Object],
-    wind: tuple[waves.Wave, ...],
+    scenario: Scenario, seen: list[View], wind: tuple[waves.Wave, ...]
 ) -> tuple[waves.FoamGrid, ...]:
-    """Grids over every stretch of sea the band's cameras see in any frame, each on a
+    """Grids over every stretch of sea the cameras `seen` see in any frame, each on a
     lattice of its own cells, so a cell remembers the same foam whatever else is in
     view. The finest has `FOAM_NEAR_CELL_M` cells, out to where a camera's pixel spans
     one; each next is `FOAM_LEVEL_RATIO` coarser, out to the horizon or to cells too
     coarse for any breaker. A grid too wide to hold reaches less far."""
     if not wind:
         return ()
-    mounts = [m for m in scenario.mounts if m.camera.band == band]
-    rays = _rays(scenario, mounts, cameras)
+    rays = _rays(scenario, seen)
     horizon = earth.horizon_m(
         max(origin.z for origin, _, _ in rays), scenario.sea.refraction_k
     )

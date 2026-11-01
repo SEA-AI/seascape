@@ -96,3 +96,10 @@ def test_fog_passes_more_sunlight_than_its_beam() -> None:
     # 2 / (2 + 0.15 x 1.565), by hand.
     assert passed == pytest.approx(0.8950, abs=1e-4)
     assert passed > aerosol.sun_transmittance(math.pi / 2, 0.5)
+
+
+def test_haze_thicker_than_the_table_holds_at_its_shortest_visibility() -> None:
+    elevation = np.radians([1.0, 10.0, 60.0])
+    assert lwir.haze_depth(elevation, aerosol.HAZE_KM / 2) == pytest.approx(
+        lwir.haze_depth(elevation, aerosol.HAZE_KM)
+    )
