@@ -8,7 +8,7 @@ from itertools import chain
 import bpy
 from mathutils import Matrix
 
-from seascape.blender import sea
+from seascape.blender import sea, wear
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, views
@@ -187,6 +187,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     for index, anchor in enumerate(anchors, start=1):
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
+    wear.vary(anchors, scenario.seed)
     # The first camera may belong to the other band, whose optics this build lacks.
     first = next(mount for mount in scenario.mounts if mount.camera.band == band)
     sc = bpy.context.scene
