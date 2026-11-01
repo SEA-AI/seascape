@@ -2,6 +2,7 @@ import bpy
 import numpy as np
 import pytest
 
+from seascape.assets import Material
 from seascape.blender import wear
 from seascape.blender.heat import surroundings, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects
@@ -233,30 +234,45 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
     assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"
 
 
-def test_a_worn_lwir_skin_mixes_each_layer_at_its_own_emissivity() -> None:
+def test_every_lwir_layer_is_one_the_masks_cover() -> None:
+    assert set(thermal.WEAR_LAYERS) | {"stain"} <= set(wear.LAYERS)
+
+
+def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
+    """From the output back to the clean skin: each wear mix's layer and the emissivity
+    of what it lays over."""
+    out = next(n for n in material.node_tree.nodes if n.type == "OUTPUT_MATERIAL")
+    node = out.inputs["Surface"].links[0].from_node
+    chain = []
+    while node.inputs["Factor"].is_linked:
+        factor = node.inputs["Factor"].links[0].from_socket.name
+        covered = node.inputs["Shader_001"].links[0].from_node
+        # `_reflecting` mixes at the emissivity.
+        chain.append((factor, round(covered.inputs["Factor"].default_value, 3)))
+        node = node.inputs["Shader"].links[0].from_node
+    return chain[::-1]
+
+
+@pytest.mark.parametrize(
+    ("material", "laid"),
+    [
+        ("grp", ["grime", "rust", "stain", "soot"]),
+        ("steel", ["rust", "stain", "soot"]),  # grime only absorbs, in a steel's heat
+    ],
+)
+def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
+    material: Material, laid: list[str]
+) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     heat = surroundings(load(BASELINE))
-    clean = zone_skin("paint_hull", heat)
-    worn = zone_skin("paint_hull", heat, worn=True)
-    assert worn != clean
-    assert not any(n.type == "GROUP" for n in clean.node_tree.nodes)
-    (group,) = (n for n in worn.node_tree.nodes if n.type == "GROUP")
-    assert group.node_tree.name == "wear_masks"
-    # Each layer's skin is a Mix Shader at its emissivity, as `_reflecting` builds it.
-    unlinked = {
-        round(n.inputs["Factor"].default_value, 3)
-        for n in worn.node_tree.nodes
-        if n.type == "MIX_SHADER" and not n.inputs["Factor"].is_linked
+    skin = zone_skin("paint_hull", heat, wet=False, wear_material=material)
+    emissivity = {
+        "grime": thermal.ZONES["paint_hull"].emissivity,
+        "rust": thermal.RUST_EMISSIVITY,
+        "stain": thermal.SEA_EMISSIVITY,
+        "soot": thermal.SOOT_EMISSIVITY,
     }
-    assert {
-        thermal.ZONES["paint_hull"].emissivity,
-        thermal.RUST_EMISSIVITY,
-        thermal.SOOT_EMISSIVITY,
-        thermal.SEA_EMISSIVITY,
-    } <= unlinked
-    mixed = {
-        link.from_socket.name
-        for link in worn.node_tree.links
-        if link.from_node == group and link.to_socket.name == "Factor"
-    }
-    assert mixed == {"grime", "rust", "soot", "stain"}
+    assert _chain(skin) == [(layer, emissivity[layer]) for layer in laid]
+    tables = [i for i in bpy.data.images if i.name.startswith(skin.name)]
+    # On steel every layer looks up the clean skin's temperatures.
+    assert len(tables) == (1 if material == "steel" else 4)

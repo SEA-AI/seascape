@@ -10,6 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from seascape.assets import manifest
 from seascape.blender.blend import (
     animate,
     place,
@@ -85,7 +86,9 @@ def _vessel(
                     heat,
                     paint_absorptance,
                     wet=not mesh.get("rotor"),
-                    worn=name in hulls.worn,
+                    wear_material=(
+                        manifest()[name].material if name in hulls.worn else None
+                    ),
                 )
 
     anchor = bpy.data.objects.new(name, None)

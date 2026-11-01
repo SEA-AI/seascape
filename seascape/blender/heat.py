@@ -2,11 +2,12 @@
 
 import math
 from dataclasses import replace
-from typing import NamedTuple, get_args
+from typing import NamedTuple
 
 import bpy
 import numpy as np
 
+from seascape.assets import Material
 from seascape.blender import wear
 from seascape.blender.blend import (
     curve_image,
@@ -117,13 +118,13 @@ def zone_skin(
     heat: Heat,
     paint_absorptance: float | None = None,
     wet: bool = True,
-    worn: bool = False,
+    wear_material: Material | None = None,
 ) -> bpy.types.Material:
     """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
     hull: each face looks up its temperature by max(0, n . s) and the normal's z.
     Below the waterline, the bulk water's, unless the part never meets it.
-    `paint_absorptance` repaints the zones of `thermal.PAINTED`. `worn` lays the wear
-    masks' grime, rust, soot and waterline stain over it.
+    `paint_absorptance` repaints the zones of `thermal.PAINTED`. `wear_material`, the
+    hull's, mixes in the wear layers.
 
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and
@@ -140,32 +141,32 @@ def zone_skin(
         name += f"_{heat.env.interior_k(zone.interior):.1f}K"
     if not wet:
         name += "_dry"
-    if worn:
-        name += "_worn"
+    steel = wear_material == "steel"
+    if wear_material is not None:
+        name += "_worn_steel" if steel else "_worn"
     if (found := bpy.data.materials.get(name)) is not None:
         return found
     material = bpy.data.materials.new(name)
     tree = material.node_tree
     tree.nodes.clear()
-    link = tree.links.new
 
-    skin = _skin(tree, zone, heat, name, zone_name)
-    if worn:
-        skin = _worn(tree, skin, zone, heat, name)
+    clean = _emission(tree, zone, heat, name)
+    skin = _reflecting(tree, clean, zone.emissivity, zone_name)
+    water = _water(tree, heat) if wet or wear_material is not None else None
+    if wear_material is not None:
+        assert water is not None
+        skin = _worn(tree, skin, clean, zone, heat, name, steel, water)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
-    link(_wetted(tree, skin, heat) if wet else skin, output.inputs["Surface"])
+    if wet:
+        assert water is not None
+        skin = _wetted(tree, skin, water)
+    tree.links.new(skin, output.inputs["Surface"])
     return material
 
 
-def _skin(
-    tree: bpy.types.NodeTree,
-    zone: thermal.Zone,
-    heat: Heat,
-    name: str,
-    zone_name: str | None,
+def _emission(
+    tree: bpy.types.NodeTree, zone: thermal.Zone, heat: Heat, name: str
 ) -> bpy.types.NodeSocket:
-    """`zone`'s emission at its heat balance and its reflection, looked up per face by
-    max(0, n . s) and the normal's z from a table named `name`."""
     link = tree.links.new
     sun_cos, up, table = thermal.temperature_table_k(zone, heat.env)
     image = curve_image(name, np.vectorize(lwir.band_radiance)(table))
@@ -199,47 +200,61 @@ def _skin(
         )
     emission = tree.nodes.new("ShaderNodeEmission")
     link(lookup(tree, image, at, y), emission.inputs["Color"])
-    return _reflecting(tree, emission.outputs["Emission"], zone.emissivity, zone_name)
+    return emission.outputs["Emission"]
+
+
+def _water(tree: bpy.types.NodeTree, heat: Heat) -> bpy.types.NodeSocket:
+    water = tree.nodes.new("ShaderNodeEmission")
+    water.inputs["Strength"].default_value = lwir.band_radiance(heat.t_water_k)
+    return _reflecting(tree, water.outputs["Emission"], thermal.SEA_EMISSIVITY, None)
 
 
 def _worn(
     tree: bpy.types.NodeTree,
+    skin: bpy.types.NodeSocket,
     clean: bpy.types.NodeSocket,
     zone: thermal.Zone,
     heat: Heat,
     name: str,
+    steel: bool,
+    water: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`clean` under each layer's skin, mixed in by the wear masks' cover."""
     group = tree.nodes.new("ShaderNodeGroup")
     group.node_tree = wear.masks()
-    water = tree.nodes.new("ShaderNodeEmission")
-    water.inputs["Strength"].default_value = lwir.band_radiance(heat.t_water_k)
-    layers = {
-        layer: _skin(tree, thermal.worn(zone, layer), heat, f"{name}_{layer}", None)
-        for layer in get_args(thermal.Wear.__value__)
-    }
-    # Judgement: the stain is the splash zone, kept wet at the bulk water's temperature.
-    layers["stain"] = _reflecting(
-        tree, water.outputs["Emission"], thermal.SEA_EMISSIVITY, None
-    )
-    skin = clean
-    for layer, under in layers.items():
+    for layer in ("grime", "rust", "stain", "soot"):  # as EO lays them
+        if layer == "stain":
+            # Judgement: the stain is the splash zone, kept wet at the bulk water's
+            # temperature.
+            covered = water
+        elif steel:
+            # Steel spreads a strip's heat sideways over L = sqrt(k t / h), 0.16 m for
+            # 12 mm plate at k = 60.5 W m^-1 K^-1 (Incropera & DeWitt Table A.1, plain
+            # carbon steel) and h = 30 W m^-2 K^-1 (Judgement: wind and radiation). A
+            # strip w wide keeps 1 - exp(-w / 2L) of its own balance (Incropera &
+            # DeWitt section 3.6, fins), a few percent for a streak: so on steel a
+            # layer keeps the hull's temperature and changes only its emissivity, and
+            # grime, which only absorbs more sun, changes nothing. GRP's L is 1-2 cm.
+            if layer == "grime":
+                continue
+            emissivity = thermal.under(zone, layer).emissivity
+            covered = _reflecting(tree, clean, emissivity, None)
+        else:
+            layered = thermal.under(zone, layer)
+            emission = _emission(tree, layered, heat, f"{name}_{layer}")
+            covered = _reflecting(tree, emission, layered.emissivity, None)
         mix = tree.nodes.new("ShaderNodeMixShader")
         tree.links.new(group.outputs[layer], mix.inputs["Factor"])
         tree.links.new(skin, mix.inputs["Shader"])
-        tree.links.new(under, mix.inputs["Shader_001"])
+        tree.links.new(covered, mix.inputs["Shader_001"])
         skin = mix.outputs["Shader"]
     return skin
 
 
 def _wetted(
-    tree: bpy.types.NodeTree, skin: bpy.types.NodeSocket, heat: Heat
+    tree: bpy.types.NodeTree, skin: bpy.types.NodeSocket, water: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """`skin` above the waterline, the bulk water below it."""
     link = tree.links.new
-    water = tree.nodes.new("ShaderNodeEmission")
-    water.inputs["Strength"].default_value = lwir.band_radiance(heat.t_water_k)
-    wetted = _reflecting(tree, water.outputs["Emission"], thermal.SEA_EMISSIVITY, None)
     # The fit puts the waterline at z = 0; the join keeps the hull's frame in metres.
     coords = tree.nodes.new("ShaderNodeTexCoord")
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
@@ -248,7 +263,7 @@ def _wetted(
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(under, mix.inputs["Factor"])
     link(skin, mix.inputs["Shader"])
-    link(wetted, mix.inputs["Shader_001"])
+    link(water, mix.inputs["Shader_001"])
     return mix.outputs["Shader"]
 
 
