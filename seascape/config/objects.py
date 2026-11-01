@@ -60,6 +60,10 @@ _PAINT = (
     "Solar absorptance of the paint on its hull, superstructure and funnel: white "
     "low, black high. Unset, a mid grey. IR only, with zones."
 )
+_WEAR = (
+    "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 long "
+    "neglected."
+)
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -110,6 +114,7 @@ class Object(Model):
         le=thermal.PAINT_ABSORPTANCE[1],
         description=_PAINT,
     )
+    wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
     count: int = Field(
         default=1,
         ge=0,
@@ -206,6 +211,7 @@ class Targets(Model):
         le=thermal.PAINT_ABSORPTANCE[1],
         description=_PAINT,
     )
+    wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
 
     def _spread(self, span: tuple[float, float], i: int) -> float:
         low, high = span
@@ -254,6 +260,7 @@ class Farm(Model):
         le=thermal.PAINT_ABSORPTANCE[1],
         description=_PAINT,
     )
+    wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
 
     @property
     def turbine(self) -> assets.Turbine:
