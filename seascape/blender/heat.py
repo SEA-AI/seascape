@@ -119,12 +119,13 @@ def zone_skin(
     paint_absorptance: float | None = None,
     wet: bool = True,
     wear_material: Material | None = None,
+    crevice: bpy.types.Image | None = None,
 ) -> bpy.types.Material:
     """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
     hull: each face looks up its temperature by max(0, n . s) and the normal's z.
     Below the waterline, the bulk water's, unless the part never meets it.
     `paint_absorptance` repaints the zones of `thermal.PAINTED`. `wear_material`, the
-    hull's, mixes in the wear layers.
+    hull's, mixes in the wear layers, over its `crevice` mask.
 
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and
@@ -143,7 +144,8 @@ def zone_skin(
         name += "_dry"
     steel = wear_material == "steel"
     if wear_material is not None:
-        name += "_worn_steel" if steel else "_worn"
+        assert crevice is not None
+        name += f"_worn{'_steel' if steel else ''}/{crevice.name}"
     if (found := bpy.data.materials.get(name)) is not None:
         return found
     material = bpy.data.materials.new(name)
@@ -155,7 +157,9 @@ def zone_skin(
     water = _water(tree, heat) if wet or wear_material is not None else None
     if wear_material is not None:
         assert water is not None
-        skin = _worn(tree, skin, clean, zone, heat, name, steel, water)
+        masks = tree.nodes.new("ShaderNodeGroup")
+        masks.node_tree = wear.masks(crevice)
+        skin = _worn(masks, skin, clean, zone, heat, name, steel, water)
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     if wet:
         assert water is not None
@@ -210,7 +214,7 @@ def _water(tree: bpy.types.NodeTree, heat: Heat) -> bpy.types.NodeSocket:
 
 
 def _worn(
-    tree: bpy.types.NodeTree,
+    masks: bpy.types.ShaderNodeGroup,
     skin: bpy.types.NodeSocket,
     clean: bpy.types.NodeSocket,
     zone: thermal.Zone,
@@ -219,8 +223,7 @@ def _worn(
     steel: bool,
     water: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    group = tree.nodes.new("ShaderNodeGroup")
-    group.node_tree = wear.masks()
+    tree = masks.id_data
     for layer in ("grime", "rust", "stain", "soot"):  # as EO lays them
         if layer == "stain":
             # Judgement: the stain is the splash zone, kept wet at the bulk water's
@@ -243,7 +246,7 @@ def _worn(
             emission = _emission(tree, layered, heat, f"{name}_{layer}")
             covered = _reflecting(tree, emission, layered.emissivity, None)
         mix = tree.nodes.new("ShaderNodeMixShader")
-        tree.links.new(group.outputs[layer], mix.inputs["Factor"])
+        tree.links.new(masks.outputs[layer], mix.inputs["Factor"])
         tree.links.new(skin, mix.inputs["Shader"])
         tree.links.new(covered, mix.inputs["Shader_001"])
         skin = mix.outputs["Shader"]

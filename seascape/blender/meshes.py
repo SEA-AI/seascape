@@ -173,17 +173,22 @@ def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
     ]
 
 
-_CACHE_FORMAT = 2  # raise to orphan every cache already written
+_CACHE_FORMAT = 3  # raise to orphan every cache already written
+
+
+def _cached(path: Path) -> Path:
+    """Where the parse of the mesh file `path` is cached."""
+    stat = path.stat()
+    version = ".".join(map(str, bpy.app.version))
+    return path.with_name(
+        f"{path.name}.{stat.st_size}-{stat.st_mtime_ns}.{version}.{_CACHE_FORMAT}.blend"
+    )
 
 
 def _load(path: Path) -> set[bpy.types.Object]:
-    """Import a mesh file; returns what it added. Caches the parse as a .blend beside
-    the file and appends from it on later calls."""
-    stat = path.stat()
-    version = ".".join(map(str, bpy.app.version))
-    imported = path.with_name(
-        f"{path.name}.{stat.st_size}-{stat.st_mtime_ns}.{version}.{_CACHE_FORMAT}.blend"
-    )
+    """Import a mesh file; returns what it added. Caches the parse, unwrapped for wear,
+    as a .blend beside the file and appends from it on later calls."""
+    imported = _cached(path)
     if imported.exists():
         try:
             with bpy.data.libraries.load(str(imported)) as (found, into):
@@ -211,6 +216,7 @@ def _load(path: Path) -> set[bpy.types.Object]:
                     datablock.name = uuid.uuid4().hex
                     held[datablock] = name
         objects = _parse(path)
+        wear.unwrap(list(objects))
         # A killed write must not leave a truncated file under the cache name.
         part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
         try:
@@ -259,7 +265,8 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
 
     An asset arrives in its author's units, off-origin, in many parts.
     """
-    imported = _load(fetch(name))
+    path = fetch(name)
+    imported = _load(path)
     asset = manifest()[name]
     # Measure everything, move the roots. An FBX keeps meshes under empties, and
     # measuring only the roots would leave them out of the fit.
@@ -283,6 +290,7 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
         per_face = _face_zones(name, found, asset.zones)
     if worn:
         wear.tag(found.objects, per_face, asset.material)
+        _crevice(name, found.objects, fit.to_scale().x, _cached(path))
     if band == "ir":
         _zone_slots(found, per_face)
         if rotor is not None:
@@ -312,6 +320,46 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
     # Above the waterline, which the fit puts at z = 0.
     parts[0]["height_m"] = max(c.z for c in fitted)
     return parts
+
+
+def _crevice(
+    name: str, objects: list[bpy.types.Object], scale: float, parse: Path
+) -> None:
+    """Gives each of `objects` `name`'s crevice mask, baked once per parse and fitted
+    size, and cached beside the parse: the fit scales the asset under a crevice
+    distance in metres. A join keeps it, on the object joined into."""
+    crevice = f"{parse.name}.crevice-{scale:.6g}.{wear.CREVICE_FORMAT}.png"
+    path = parse.with_name(crevice)
+    if path.exists():
+        image = bpy.data.images.load(str(path))
+        image.colorspace_settings.is_data = True
+    else:
+        copies = []
+        for obj in objects:
+            copy = obj.copy()
+            copy.data = obj.data.copy()
+            bpy.context.scene.collection.objects.link(copy)
+            copies.append(copy)
+        joined = _joined(copies)
+        image = wear.bake_crevice(joined, f"{name}/crevice")
+        mesh = joined.data
+        bpy.data.objects.remove(joined)
+        bpy.data.meshes.remove(mesh)
+        # A killed write must not leave a truncated file under the cache name.
+        part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part.png")
+        image.filepath_raw, image.file_format = str(part), "PNG"
+        try:
+            image.save()
+            image.pack()
+            part.replace(path)
+        except (OSError, RuntimeError):  # a read-only or full cache only rebakes
+            part.unlink(missing_ok=True)
+    image.name = f"{name}/crevice"
+    # Unpacked, a saved .blend would point into the cache.
+    if not image.packed_file:
+        image.pack()
+    for obj in objects:
+        obj[wear.CREVICE] = image
 
 
 def prefix_names(name: str, parts: list[bpy.types.Object]) -> None:

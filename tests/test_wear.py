@@ -181,7 +181,7 @@ def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
 
 def test_a_clean_build_keeps_its_import_graph() -> None:
     (clean,) = _zodiacs(Hulls(), (0.0,))
-    assert "wear_masks" not in bpy.data.node_groups
+    assert not any(g.name.startswith("wear_masks") for g in bpy.data.node_groups)
     built = {m.name.split("/", 1)[1]: len(m.node_tree.nodes) for m in _materials(clean)}
     bpy.ops.wm.read_factory_settings(use_empty=True)
     slots = [
@@ -197,7 +197,8 @@ def test_a_worn_asset_lays_dirt_over_every_principled_material() -> None:
         if not any(n.type == "BSDF_PRINCIPLED" for n in nodes):
             continue
         (group,) = (n for n in nodes if n.type == "GROUP")
-        assert group.node_tree.name == "wear_masks"
+        assert group.node_tree.name == "wear_masks/zodiac/crevice"
+        assert not any(n.type == "AMBIENT_OCCLUSION" for n in group.node_tree.nodes)
         (mix,) = (n for n in nodes if n.type == "MIX_SHADER")
         assert mix.outputs["Shader"].links
 
@@ -224,13 +225,58 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
     clean = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
     clean.inputs["Alpha"].default_value = 0.3
     clean.inputs["Metallic"].default_value = 1.0
-    wear._dirty(material)
+    wear._dirty(material, bpy.data.images.new("crevice", 16, 16))
     (dirt,) = (n for n in nodes if n.type == "BSDF_PRINCIPLED" and n != clean)
     assert dirt.inputs["Alpha"].default_value == pytest.approx(0.3)
     # 1 - metallic scales the fade
     (paint,) = (n for n in nodes if n.type == "MATH" and n.operation == "SUBTRACT")
     assert paint.inputs[1].default_value == 1.0
     assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"
+
+
+def test_the_atlas_lies_in_the_unit_square_and_leaves_the_uv_maps_alone(box) -> None:
+    obj, _ = box
+    obj.data.uv_layers.new(name="authored")
+    wear.unwrap([obj])
+    uv = _read(obj.data, wear.UV)
+    assert uv.min() >= 0.0 and uv[:, :2].max() <= 1.0
+    assert [layer.name for layer in obj.data.uv_layers] == ["authored"]
+    assert obj.data.uv_layers.active_render.name == "authored"
+
+
+def test_a_crevice_is_dark_out_in_the_open_and_bright_in_a_corner() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    mesh = bpy.data.meshes.new("corner")
+    # A 4 m floor in two strips, the first against a 4 m wall.
+    corners = [(x, y, 0) for y in (0, 0.3, 4) for x in (0, 4)]
+    corners += [(0, 0, 4), (4, 0, 4)]
+    mesh.from_pydata(corners, [], [(0, 1, 3, 2), (2, 3, 5, 4), (0, 6, 7, 1)])
+    obj = bpy.data.objects.new("corner", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    wear.unwrap([obj])
+    image = wear.bake_crevice(obj, "corner/crevice")
+    pixels = np.array(image.pixels).reshape(image.size[1], image.size[0], 4)
+    uv = _read(mesh, wear.UV)[:, :2]
+
+    def at(face: int) -> float:
+        loops = list(mesh.polygons[face].loop_indices)
+        u, v = uv[loops].mean(axis=0)
+        return pixels[int(v * image.size[1]), int(u * image.size[0]), 0]
+
+    assert at(0) > 0.2
+    assert at(1) < 0.05
+
+
+def test_a_crevice_is_baked_once_per_fitted_size(monkeypatch) -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    import_asset("zodiac", "eo", worn=True)
+    first = bpy.data.images["zodiac/crevice"].pixels[:]
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    monkeypatch.setattr(wear, "bake_crevice", None)  # a bake would fail
+    (part, *_) = import_asset("zodiac", "eo", worn=True)
+    image = mesh_objects([part])[0][wear.CREVICE]
+    assert image.packed_file and image.colorspace_settings.is_data
+    np.testing.assert_allclose(image.pixels[:], first, atol=1 / 255)
 
 
 def test_every_lwir_layer_is_one_the_masks_cover() -> None:
@@ -264,7 +310,10 @@ def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
 ) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     heat = surroundings(load(BASELINE))
-    skin = zone_skin("paint_hull", heat, wet=False, wear_material=material)
+    crevice = bpy.data.images.new("crevice", 16, 16)
+    skin = zone_skin(
+        "paint_hull", heat, wet=False, wear_material=material, crevice=crevice
+    )
     emissivity = {
         "grime": thermal.ZONES["paint_hull"].emissivity,
         "rust": thermal.RUST_EMISSIVITY,

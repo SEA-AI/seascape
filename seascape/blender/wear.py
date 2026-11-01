@@ -9,7 +9,18 @@ import numpy as np
 from seascape.assets import Material
 from seascape.blender import faces
 from seascape.blender.blend import clamped, feed, scalar, vector
+from seascape.blender.compositor import enable_gpu
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
+
+# Occlusion is ray-traced and only the shape decides it, so each asset bakes its
+# crevices once into an image, read through the corner attribute UV.
+UV = "wear_uv"
+CREVICE = "wear_crevice"  # on each mesh object: its asset's baked image
+CREVICE_FORMAT = 1  # raise to rebake every cached crevice image
+# Judgement: a crevice is what lies within 0.6 m of other surfaces.
+CREVICE_M = 0.6
+# A quarter of the crevice distance per texel holds its occlusion's falloff.
+TEXEL_M = CREVICE_M / 4
 
 
 class Weights(NamedTuple):
@@ -135,6 +146,101 @@ def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> 
     )
 
 
+def unwrap(objects: list[bpy.types.Object]) -> None:
+    """One atlas over every mesh in `objects`, written as the corner attribute UV;
+    their own UV maps stay as they were. A shared mesh is split first, so each object
+    has texels of its own."""
+    meshes = [o for o in objects if o.type == "MESH" and o.data.polygons]
+    if not meshes:
+        return
+    actives = []
+    for obj in meshes:
+        if obj.data.users > 1:
+            obj.data = obj.data.copy()
+        layers = obj.data.uv_layers
+        actives.append(layers.active.name if layers.active else None)
+        layers.active = layers.new(name=UV)
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in meshes:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(island_margin=0.0, scale_to_bounds=False)
+    # A few texels of the sizes `bake_crevice` picks, which the bake's margin fills.
+    bpy.ops.uv.pack_islands(margin=0.002, rotate=True, scale=True)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for obj, active in zip(meshes, actives, strict=True):
+        mesh = obj.data
+        layer = mesh.uv_layers[UV]
+        uv = faces.floats(layer.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
+        mesh.uv_layers.remove(layer)
+        if active is not None:
+            mesh.uv_layers.active = mesh.uv_layers[active]
+        # A vector, not a UV map: islands, zones and image nodes read UV maps.
+        _write(mesh, UV, "CORNER", np.column_stack([uv, np.zeros(len(uv))]))
+
+
+def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
+    """The crevice mask over `joined`, every mesh of one asset in metres, into an
+    image sized to TEXEL_M on its atlas."""
+    mesh = joined.data
+    n_loops = len(mesh.loops)
+    uv = faces.floats(mesh.attributes[UV].data, "vector", 3 * n_loops).reshape(-1, 3)
+    layer = mesh.uv_layers.new(name="wear_bake")
+    layer.data.foreach_set("uv", uv[:, :2].ravel())
+    image = bpy.data.images.new(name, *[_texels(mesh, uv[:, :2])] * 2, is_data=True)
+
+    material = bpy.data.materials.new(name)
+    t = material.node_tree
+    t.nodes.clear()
+    occlusion = _node(t, "ShaderNodeAmbientOcclusion", only_local=True)
+    occlusion.inputs["Distance"].default_value = CREVICE_M
+    crevice = _smooth(t, scalar(t, "SUBTRACT", 1.0, occlusion.outputs["AO"]), 0.05, 0.6)
+    emission = _node(t, "ShaderNodeEmission")
+    feed(t, emission.inputs["Color"], crevice)
+    t.links.new(
+        emission.outputs["Emission"],
+        _node(t, "ShaderNodeOutputMaterial").inputs["Surface"],
+    )
+    t.nodes.active = _node(t, "ShaderNodeTexImage", image=image)
+    mesh.materials.clear()
+    mesh.materials.append(material)
+
+    sc = bpy.context.scene
+    held = sc.render.engine, sc.cycles.samples, sc.cycles.device
+    sc.render.engine = "CYCLES"
+    # Judgement: 16 samples of 16 rays each settle the mask below an 8-bit step.
+    sc.cycles.samples = 16
+    sc.cycles.device = "GPU" if enable_gpu() else "CPU"
+    with bpy.context.temp_override(
+        active_object=joined, selected_objects=[joined], object=joined
+    ):
+        bpy.ops.object.bake(
+            type="EMIT", uv_layer=layer.name, margin=4, margin_type="EXTEND"
+        )
+    sc.render.engine, sc.cycles.samples, sc.cycles.device = held
+    bpy.data.materials.remove(material)
+    return image
+
+
+def _texels(mesh: bpy.types.Mesh, uv: np.ndarray) -> int:
+    """The square image's side that gives `mesh`'s atlas TEXEL_M."""
+    n_faces = len(mesh.polygons)
+    area_m2 = float(faces.floats(mesh.polygons, "area", n_faces).sum())
+    start = faces.ints(mesh.polygons, "loop_start", n_faces)
+    total = faces.ints(mesh.polygons, "loop_total", n_faces)
+    covered = 0.0
+    for k in range(1, int(total.max()) - 1):  # each polygon as a fan
+        has = total > k + 1
+        a, b, c = uv[start[has]], uv[start[has] + k], uv[start[has] + k + 1]
+        ab, ac = b - a, c - a
+        covered += float(np.abs(ab[:, 0] * ac[:, 1] - ab[:, 1] * ac[:, 0]).sum()) / 2
+    side = np.sqrt(area_m2 / max(covered, 1e-12)) / TEXEL_M
+    # shortcut: one image, capped at 8k; past that, the texel grows; tile it then.
+    return int(np.clip(np.ceil(side), 16, 8192))
+
+
 def _node(tree: bpy.types.NodeTree, kind: str, **props: object) -> bpy.types.Node:
     node = tree.nodes.new(kind)
     for key, value in props.items():
@@ -171,8 +277,9 @@ def _xyz(
 class _Masks:
     """Judgement, every number: eyeballed against photographs of worn hulls."""
 
-    def __init__(self, tree: bpy.types.NodeTree) -> None:
+    def __init__(self, tree: bpy.types.NodeTree, crevice: bpy.types.Image) -> None:
         self.tree = t = tree
+        self.crevice = crevice
         self.position = _attribute(t, "wear_position_m").outputs["Vector"]
         self.x, self.y, self.z = _xyz(t, self.position)
         normal = _attribute(t, "wear_normal").outputs["Vector"]
@@ -218,12 +325,10 @@ class _Masks:
 
     def grime(self) -> bpy.types.NodeSocket:
         t = self.tree
-        occlusion = _node(t, "ShaderNodeAmbientOcclusion", only_local=True)
-        # Judgement: a crevice is what lies within 0.6 m of other surfaces.
-        occlusion.inputs["Distance"].default_value = 0.6
-        crevice = _smooth(
-            t, scalar(t, "SUBTRACT", 1.0, occlusion.outputs["AO"]), 0.05, 0.6
-        )
+        uv = _attribute(t, UV).outputs["Vector"]
+        texture = _node(t, "ShaderNodeTexImage", image=self.crevice)
+        t.links.new(uv, texture.inputs["Vector"])
+        crevice = texture.outputs["Color"]  # grey: any channel
         grime = scalar(t, "MULTIPLY", crevice, self.cover(self.noise(0.8, 1.0), 0.3))
         pooled = scalar(t, "MULTIPLY", _smooth(t, self.up, 0.6, 0.95), 0.5)
         pooled = scalar(t, "MULTIPLY", pooled, self.cover(self.noise(1.5, 4.0), 0.3))
@@ -367,16 +472,17 @@ class _Masks:
         return grime, rust, self.stain(), soot, scalar(t, "MULTIPLY", self.amount, sky)
 
 
-def masks() -> bpy.types.NodeTree:
-    """Each layer's cover, 0-1."""
-    if (group := bpy.data.node_groups.get("wear_masks")) is not None:
+def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
+    """Each layer's cover, 0-1, for the asset whose crevices `crevice` holds."""
+    name = f"wear_masks/{crevice.name}"
+    if (group := bpy.data.node_groups.get(name)) is not None:
         return group
-    group = bpy.data.node_groups.new("wear_masks", "ShaderNodeTree")
+    group = bpy.data.node_groups.new(name, "ShaderNodeTree")
     for layer in LAYERS:
         group.interface.new_socket(
             layer, in_out="OUTPUT", socket_type="NodeSocketFloat"
         )
-    g = _Masks(group)
+    g = _Masks(group, crevice)
     out = _node(group, "NodeGroupOutput")
     # An unworn copy shares its worn twin's import and materials: no cover at all.
     worn = scalar(group, "GREATER_THAN", g.amount, 0.0)
@@ -411,8 +517,9 @@ SOOT = (0.015, 0.014, 0.013, 1.0)
 
 def dirty(parts: list[bpy.types.Object]) -> None:
     meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+    crevice = meshes[0][CREVICE]
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:
-        _dirty(material)
+        _dirty(material, crevice)
 
 
 def _source(
@@ -425,7 +532,7 @@ def _source(
     return value if isinstance(value, float) else tuple(value)
 
 
-def _dirty(material: bpy.types.Material) -> None:
+def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     """A second dielectric BSDF, not a tinted one: tinting a metallic surface colours
     its mirror (rust reads as copper), and mixing the one BSDF's inputs would need
     Metallic, Roughness and Coat mixed in every material."""
@@ -433,7 +540,7 @@ def _dirty(material: bpy.types.Material) -> None:
     shader = next((n for n in t.nodes if n.type == "BSDF_PRINCIPLED"), None)
     if shader is None:
         return
-    group = _node(t, "ShaderNodeGroup", node_tree=masks())
+    group = _node(t, "ShaderNodeGroup", node_tree=masks(crevice))
     cover = {layer: group.outputs[layer] for layer in LAYERS}
 
     # Paint fades; metal does not.

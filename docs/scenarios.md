@@ -133,7 +133,7 @@ uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "mul
 
 ## Wear
 
-`wear` lays grime, runoff streaks, a waterline stain, soot and faded paint over an object, a ring or a farm, from 0 as delivered to 1 heavily weathered. Steel also rusts at its edges, and its streaks run rust instead of grime. In LWIR rust and soot emit at their own emissivity, the stain stays at the water's temperature, and off steel grime absorbs more sun; on bare metal it also raises the emissivity. An asset whose textures already show wear is `weathered` and takes none. Copies of one asset wear apart:
+`wear` lays grime, runoff streaks, a waterline stain, soot and faded paint over an object, a ring or a farm, from 0 as delivered to 1 heavily weathered. Steel also rusts at its edges, and its streaks run rust instead of grime. In LWIR rust and soot emit at their own emissivity, the stain stays at the water's temperature, and off steel grime absorbs more sun; on bare metal it also raises the emissivity. An asset whose textures already show wear is `weathered` and takes none. Grime gathers in crevices, which the first worn build of an asset bakes into an image, a few seconds, and caches beside the asset at each size it is fitted to. Copies of one asset wear apart:
 
 ```bash
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", range_m = 2000.0, bearing_deg = 8.0, wear = 0.8 }]'

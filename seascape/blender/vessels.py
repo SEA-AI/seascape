@@ -19,7 +19,7 @@ from seascape.blender.blend import (
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
-from seascape.blender.wear import dirty, mark
+from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
     Drift,
     Farm,
@@ -88,6 +88,7 @@ def _vessel(
                     paint_absorptance,
                     wet=not mesh.get("rotor"),
                     wear_material=worn_on,
+                    crevice=mesh.get(CREVICE),
                 )
 
     anchor = bpy.data.objects.new(name, None)
