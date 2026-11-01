@@ -23,4 +23,3 @@ sun_elevation_deg = 35.0
 [outputs.samples]
 eo = 64
 ir = 64
-
