@@ -264,14 +264,15 @@ class _Masks:
         active = scalar(
             t, "GREATER_THAN", live, scalar(t, "MULTIPLY_ADD", self.amount, -0.7, 0.85)
         )
-        # Judgement: a streak runs a share of its edge's height above the water, up to
-        # four fifths of it on a neglected hull.
+        # Judgement: a streak runs a share of its edge's height above the water, at most
+        # 8 m, so a turbine's tower does not streak from its nacelle to the sea.
         run_m = scalar(
             t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.9, 0.1), self.edge_m
         )
         run_m = scalar(
             t, "MULTIPLY", run_m, scalar(t, "MULTIPLY_ADD", self.amount, 0.6, 0.2)
         )
+        run_m = scalar(t, "MINIMUM", run_m, 8.0)
         width = scalar(t, "MULTIPLY_ADD", width, 0.12, 0.03)  # of a cell
         core = _smooth(
             t, cells.outputs["Distance"], scalar(t, "MULTIPLY", width, 0.4), width
