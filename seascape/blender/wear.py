@@ -186,9 +186,9 @@ class _Masks:
             for name in ("wear", "wear_offset")
         )
         self.shell = scalar(t, "GREATER_THAN", stain, 0.0)  # what the sea wets
-        freeboard_m = scalar(t, "MAXIMUM", scalar(t, "ADD", self.z, self.below), 0.01)
+        self.edge_m = scalar(t, "MAXIMUM", scalar(t, "ADD", self.z, self.below), 0.01)
         # 0 at the waterline, 1 at the edge above.
-        self.height = scalar(t, "DIVIDE", self.z, freeboard_m)
+        self.height = scalar(t, "DIVIDE", self.z, self.edge_m)
         bad = _smooth(t, self.noise(0.04, 21.0, 2.0), 0.3, 0.7)
         self.region = scalar(t, "MULTIPLY_ADD", bad, 1.3, 0.2)
 
@@ -264,17 +264,21 @@ class _Masks:
         active = scalar(
             t, "GREATER_THAN", live, scalar(t, "MULTIPLY_ADD", self.amount, -0.7, 0.85)
         )
+        # Judgement: a streak runs a quarter to all of its edge's height above the
+        # water, longer on a neglected hull, at most 8 m, so a turbine's tower does not
+        # streak from its nacelle to the sea; it holds for the first half of its run.
         run_m = scalar(
-            t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.9, 0.1), self.length
+            t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.75, 0.25), self.edge_m
         )
         run_m = scalar(
-            t, "MULTIPLY", run_m, scalar(t, "MULTIPLY_ADD", self.amount, 0.05, 0.02)
+            t, "MULTIPLY", run_m, scalar(t, "MULTIPLY_ADD", self.amount, 0.7, 0.3)
         )
+        run_m = scalar(t, "MINIMUM", run_m, 8.0)
         width = scalar(t, "MULTIPLY_ADD", width, 0.12, 0.03)  # of a cell
         core = _smooth(
             t, cells.outputs["Distance"], scalar(t, "MULTIPLY", width, 0.4), width
         )
-        falling = _smooth(t, self.below, scalar(t, "MULTIPLY", run_m, 0.2), run_m)
+        falling = _smooth(t, self.below, scalar(t, "MULTIPLY", run_m, 0.5), run_m)
         wall = _smooth(t, scalar(t, "ABSOLUTE", self.up), 0.2, 0.5)
         streak = scalar(
             t,

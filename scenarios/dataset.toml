@@ -61,3 +61,5 @@ speed_mps = { uniform = [0.0, 8.0] }
 engine_off_min = { choice = [0.0, { uniform = [0.0, 120.0] }], weights = [3, 1] }
 # White to black paint.
 paint_absorptance = { uniform = [0.14, 0.97] }
+# Judgement: no hull at sea is fresh from the yard; any wear up to neglect.
+wear = { uniform = [0.1, 1.0] }
