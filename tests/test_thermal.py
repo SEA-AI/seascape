@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from seascape.physics import thermal
+from seascape.physics import lwir, thermal
 
 T_AIR_K = 288.15
 # Thompson et al. 1998's frigate cruises at 20 kn.
@@ -54,9 +54,47 @@ def test_swinbank_sky_runs_tens_of_watts_below_the_air() -> None:
     assert 0.7 < ratio < 0.85
 
 
-def test_overcast_sky_radiates_as_the_air() -> None:
+def test_overcast_at_the_sea_radiates_as_the_air() -> None:
     sky = thermal.sky_longwave_w_m2(T_AIR_K, cloud_fraction=1.0)
     assert sky == pytest.approx(thermal.STEFAN_BOLTZMANN_W_M2K4 * T_AIR_K**4)
+
+
+def test_opaque_fog_radiates_as_the_air() -> None:
+    sky = thermal.sky_longwave_w_m2(T_AIR_K, 1.0, 2400.0, fog_cover=1.0)
+    assert sky == pytest.approx(thermal.STEFAN_BOLTZMANN_W_M2K4 * T_AIR_K**4)
+
+
+@pytest.mark.parametrize("t_air_k", [250.0, 300.0])
+@pytest.mark.parametrize(
+    "layer_m", lwir.CLOUD_LAYER_M.values(), ids=lwir.CLOUD_LAYER_M.keys()
+)
+def test_an_overcast_sky_outshines_a_clear_one_at_any_base(
+    layer_m: tuple[float, float], t_air_k: float
+) -> None:
+    base_m, _ = layer_m
+    clear = thermal.sky_longwave_w_m2(t_air_k)
+    assert thermal.sky_longwave_w_m2(t_air_k, 1.0, base_m) >= clear
+
+
+def test_a_higher_cloud_base_adds_less() -> None:
+    low = thermal.sky_longwave_w_m2(T_AIR_K, 1.0, 330.0)
+    assert thermal.sky_longwave_w_m2(T_AIR_K, 1.0, 2400.0) < low
+
+
+def test_a_high_cloud_base_cools_a_deck_and_not_the_fog_under_it() -> None:
+    zone = thermal.ZONES["paint_hull"]
+    env = environment(5.0, None)
+    low = dataclasses.replace(env, cloud_fraction=1.0)
+    high = dataclasses.replace(low, cloud_base_m=2400.0)
+    deck = thermal.facet_temperature_k(zone, high, math.pi / 2, 0.0)
+    assert float(deck) < float(thermal.facet_temperature_k(zone, low, math.pi / 2, 0.0))
+    fog = dataclasses.replace(high, fog_cover=1.0, beam_transmittance=0.0)
+    clear_fog = dataclasses.replace(fog, cloud_fraction=0.0)
+    assert float(thermal.facet_temperature_k(zone, fog, math.pi / 2, 0.0)) == (
+        pytest.approx(
+            float(thermal.facet_temperature_k(zone, clear_fog, math.pi / 2, 0.0))
+        )
+    )
 
 
 def test_grey_paint_in_sun_at_twenty_knots_is_about_ten_kelvin_over_air() -> None:
@@ -113,16 +151,6 @@ def test_overcast_takes_the_beam_and_leaves_the_diffuse() -> None:
     assert float(facing) == pytest.approx(float(turned))
     clear = thermal.facet_temperature_k(zone, env, 0.0, 0.0)
     assert float(facing) < float(clear)
-
-
-def test_opaque_fog_is_overcast_to_a_facet_at_night() -> None:
-    zone = thermal.ZONES["paint_hull"]
-    env = environment(5.0, None)
-    fog = dataclasses.replace(env, fog_cover=1.0, beam_transmittance=0.0)
-    overcast = dataclasses.replace(env, cloud_fraction=1.0)
-    assert float(thermal.facet_temperature_k(zone, fog, 0.0, 0.0)) == pytest.approx(
-        float(thermal.facet_temperature_k(zone, overcast, 0.0, 0.0))
-    )
 
 
 def test_fog_that_scatters_the_whole_beam_keeps_a_deck_as_warm_as_clear_sky() -> None:
