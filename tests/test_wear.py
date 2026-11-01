@@ -8,8 +8,6 @@ from seascape.config import load
 from seascape.physics.thermal import ZONE_NAMES
 from tests.scenarios import BASELINE
 
-ZONES = list(ZONE_NAMES)
-
 
 def _read(mesh: bpy.types.Mesh, name: str) -> np.ndarray:
     attribute = mesh.attributes[name]
@@ -33,7 +31,7 @@ def box() -> tuple[bpy.types.Object, np.ndarray]:
     normals = np.empty(3 * len(mesh.polygons))
     mesh.polygons.foreach_get("normal", normals)
     up = normals.reshape(-1, 3)[:, 2] > 0.5
-    zone = np.where(up, ZONES.index("deck"), ZONES.index("paint_hull"))
+    zone = np.where(up, ZONE_NAMES.index("deck"), ZONE_NAMES.index("paint_hull"))
     return obj, zone
 
 
@@ -80,7 +78,7 @@ def test_a_side_is_as_deep_as_it_sits_below_the_sheer(box) -> None:
     below_m = _read(obj.data, "wear_below_m")
     position_m = _read(obj.data, "wear_position_m")
     z = position_m[[loop.vertex_index for loop in obj.data.loops], 2]
-    side = np.repeat(zone == ZONES.index("paint_hull"), 4)
+    side = np.repeat(zone == ZONE_NAMES.index("paint_hull"), 4)
     # Sheer at 2 m.
     np.testing.assert_allclose(below_m[side], 2.0 - z[side], atol=1e-5)
     np.testing.assert_allclose(below_m[~side], 0.0, atol=1e-5)  # the deck is its top
@@ -101,7 +99,7 @@ def test_a_flared_side_finds_its_sheer_a_patch_outboard() -> None:
 def test_each_face_weighs_its_zone_and_only_steel_rusts(box) -> None:
     obj, zone = box
     wear.tag([obj], [zone], "grp")
-    deck = zone == ZONES.index("deck")
+    deck = zone == ZONE_NAMES.index("deck")
     for i, layer in enumerate(wear.LAYERS):
         got = _read(obj.data, f"wear_{layer}")
         want = 0.0 if layer == "rust" else wear.PROFILE["deck"][i]
@@ -115,8 +113,8 @@ def test_each_face_weighs_its_zone_and_only_steel_rusts(box) -> None:
 
 def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
     obj, zone = box
-    zone[:] = ZONES.index("paint_hull")
-    zone[0] = ZONES.index("fabric")
+    zone[:] = ZONE_NAMES.index("paint_hull")
+    zone[0] = ZONE_NAMES.index("fabric")
     wear.tag([obj], [zone], "steel")
     np.testing.assert_array_equal(_read(obj.data, "wear_runoff"), zone != zone[0])
 

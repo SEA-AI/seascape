@@ -60,9 +60,8 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     # Judgement: patches 1/200 of the length, no less than 10 cm, each reaching its
     # eight neighbours, so a side flared out by a patch still finds its sheer.
     patch = np.floor(position_m[:, :2] / max(length_m / 200.0, 0.1)).astype(np.int64)
-    patch -= (
-        patch.min(axis=0) - 1
-    )  # an empty border, so np.roll never wraps a patch into the plan
+    # An empty border, so np.roll never wraps a patch into the plan.
+    patch -= patch.min(axis=0) - 1
     rows, cols = patch.max(axis=0) + 2
     cell = (zone * rows + patch[:, 0]) * cols + patch[:, 1]
     order = np.argsort(cell, kind="stable")
@@ -120,15 +119,9 @@ def tag(
 def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> None:
     vector = values.ndim == 2
     kind = "FLOAT_VECTOR" if vector else "FLOAT"
-    attribute = mesh.attributes.get(name)
-    if attribute is not None and (attribute.data_type, attribute.domain) != (
-        kind,
-        domain,
-    ):
-        mesh.attributes.remove(attribute)
-        attribute = None
-    if attribute is None:
-        attribute = mesh.attributes.new(name, kind, domain)
+    if old := mesh.attributes.get(name):
+        mesh.attributes.remove(old)
+    attribute = mesh.attributes.new(name, kind, domain)
     attribute.data.foreach_set(
         "vector" if vector else "value", values.astype(np.float32).ravel()
     )
