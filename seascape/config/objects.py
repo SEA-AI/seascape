@@ -61,8 +61,8 @@ _PAINT = (
     "low, black high. Unset, a mid grey. IR only, with zones."
 )
 _WEAR = (
-    "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 long "
-    "neglected. In IR a hull given `t_k` is that one temperature and shows none. A "
+    "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 heavily "
+    "weathered. In IR a hull given `t_k` is that one temperature and shows none. A "
     "`weathered` asset ignores it: its textures are its wear."
 )
 _RANGE = "Horizontal, from the ownship's origin."

@@ -265,7 +265,7 @@ class _Masks:
             t, "GREATER_THAN", live, scalar(t, "MULTIPLY_ADD", self.amount, -0.7, 0.85)
         )
         # Judgement: a streak runs a quarter to all of its edge's height above the
-        # water, longer on a neglected hull, at most 8 m, so a turbine's tower does not
+        # water, longer on a weathered hull, at most 8 m, so a turbine's tower does not
         # streak from its nacelle to the sea; it holds for the first half of its run.
         run_m = scalar(
             t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.75, 0.25), self.edge_m
