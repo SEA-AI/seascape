@@ -211,9 +211,9 @@ ZONES: dict[ZoneName, Zone] = {
 
 
 # Iron and steel, rusted red, sheet, 22 C: 0.69; carbon, candle soot, 20 C: 0.95; soil,
-# dry, 20 C: 0.92, as grime (Optris, emissivity table for long-wave thermal cameras,
-# after Wolfe, Handbook of Military Infrared Technology, and Wolfe & Zissis, The
-# Infrared Handbook).
+# dry, 20 C: 0.92 (Optris, emissivity table for long-wave thermal cameras, after
+# Wolfe, Handbook of Military Infrared Technology, and Wolfe & Zissis, The Infrared
+# Handbook); Judgement: grime as dry soil.
 RUST_EMISSIVITY = 0.69
 SOOT_EMISSIVITY = 0.95
 GRIME_EMISSIVITY = 0.92
