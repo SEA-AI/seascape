@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from seascape.assets import Material
-from seascape.blender import wear
+from seascape.blender import blend, wear
 from seascape.blender.heat import surroundings, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects
 from seascape.blender.vessels import Hulls, _vessel, _worn
@@ -237,9 +237,17 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
 def test_the_atlas_lies_in_the_unit_square_and_leaves_the_uv_maps_alone(box) -> None:
     obj, _ = box
     obj.data.uv_layers.new(name="authored")
-    wear.unwrap([obj])
+    hidden = obj.copy()
+    hidden.data = obj.data.copy()
+    bpy.context.scene.collection.objects.link(hidden)
+    hidden.hide_set(True)  # edit mode would leave it out
+    wear.unwrap([obj, hidden])
     uv = _read(obj.data, wear.UV)
     assert uv.min() >= 0.0 and uv[:, :2].max() <= 1.0
+    authored = np.empty(2 * len(hidden.data.loops))
+    hidden.data.uv_layers["authored"].data.foreach_get("uv", authored)
+    assert not np.allclose(_read(hidden.data, wear.UV)[:, :2].ravel(), authored)
+    assert hidden.hide_get()
     assert [layer.name for layer in obj.data.uv_layers] == ["authored"]
     assert obj.data.uv_layers.active_render.name == "authored"
 
@@ -255,7 +263,7 @@ def test_a_crevice_is_dark_out_in_the_open_and_bright_in_a_corner() -> None:
     bpy.context.scene.collection.objects.link(obj)
     wear.unwrap([obj])
     image = wear.bake_crevice(obj, "corner/crevice")
-    pixels = np.array(image.pixels).reshape(image.size[1], image.size[0], 4)
+    pixels = blend.pixels(image)
     uv = _read(mesh, wear.UV)[:, :2]
 
     def at(face: int) -> float:
@@ -272,7 +280,7 @@ def test_a_crevice_is_baked_once_per_fitted_size(monkeypatch) -> None:
     import_asset("zodiac", "eo", worn=True)
     first = bpy.data.images["zodiac/crevice"].pixels[:]
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    monkeypatch.setattr(wear, "bake_crevice", None)  # a bake would fail
+    monkeypatch.setattr(wear, "bake_crevice", lambda *_: pytest.fail("rebaked"))
     (part, *_) = import_asset("zodiac", "eo", worn=True)
     image = mesh_objects([part])[0][wear.CREVICE]
     assert image.packed_file and image.colorspace_settings.is_data

@@ -125,7 +125,7 @@ def zone_skin(
     hull: each face looks up its temperature by max(0, n . s) and the normal's z.
     Below the waterline, the bulk water's, unless the part never meets it.
     `paint_absorptance` repaints the zones of `thermal.PAINTED`. `wear_material`, the
-    hull's, mixes in the wear layers, over its `crevice` mask.
+    hull's, mixes in the wear layers.
 
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and

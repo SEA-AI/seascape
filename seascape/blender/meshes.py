@@ -326,8 +326,8 @@ def _crevice(
     name: str, objects: list[bpy.types.Object], scale: float, parse: Path
 ) -> None:
     """Gives each of `objects` `name`'s crevice mask, baked once per parse and fitted
-    size, and cached beside the parse: the fit scales the asset under a crevice
-    distance in metres. A join keeps it, on the object joined into."""
+    size and cached beside the parse; the size matters because the crevice distance
+    is in metres."""
     crevice = f"{parse.name}.crevice-{scale:.6g}.{wear.CREVICE_FORMAT}.png"
     path = parse.with_name(crevice)
     if path.exists():
@@ -341,17 +341,20 @@ def _crevice(
             bpy.context.scene.collection.objects.link(copy)
             copies.append(copy)
         joined = _joined(copies)
-        image = wear.bake_crevice(joined, f"{name}/crevice")
-        mesh = joined.data
-        bpy.data.objects.remove(joined)
-        bpy.data.meshes.remove(mesh)
+        try:
+            image = wear.bake_crevice(joined, f"{name}/crevice")
+        finally:
+            mesh = joined.data
+            bpy.data.objects.remove(joined)
+            bpy.data.meshes.remove(mesh)
         # A killed write must not leave a truncated file under the cache name.
         part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part.png")
         image.filepath_raw, image.file_format = str(part), "PNG"
         try:
             image.save()
-            image.pack()
+            image.pack()  # before the move: it reads the saved file
             part.replace(path)
+            image.filepath_raw = str(path)
         except (OSError, RuntimeError):  # a read-only or full cache only rebakes
             part.unlink(missing_ok=True)
     image.name = f"{name}/crevice"

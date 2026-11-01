@@ -19,7 +19,7 @@ CREVICE = "wear_crevice"  # on each mesh object: its asset's baked image
 CREVICE_FORMAT = 1  # raise to rebake every cached crevice image
 # Judgement: a crevice is what lies within 0.6 m of other surfaces.
 CREVICE_M = 0.6
-# A quarter of the crevice distance per texel holds its occlusion's falloff.
+# Judgement.
 TEXEL_M = CREVICE_M / 4
 
 
@@ -160,16 +160,25 @@ def unwrap(objects: list[bpy.types.Object]) -> None:
         layers = obj.data.uv_layers
         actives.append(layers.active.name if layers.active else None)
         layers.active = layers.new(name=UV)
+    # Edit mode leaves out a hidden object, whose old UVs would overlap the atlas.
+    hidden = [(o, o.hide_get(), o.hide_viewport, o.hide_select) for o in meshes]
     bpy.ops.object.select_all(action="DESELECT")
     for obj in meshes:
+        obj.hide_set(False)
+        obj.hide_viewport = obj.hide_select = False
         obj.select_set(True)
     bpy.context.view_layer.objects.active = meshes[0]
     bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(island_margin=0.0, scale_to_bounds=False)
-    # A few texels of the sizes `bake_crevice` picks, which the bake's margin fills.
-    bpy.ops.uv.pack_islands(margin=0.002, rotate=True, scale=True)
-    bpy.ops.object.mode_set(mode="OBJECT")
+    try:
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.smart_project(island_margin=0.0, scale_to_bounds=False)
+        # Judgement: 0.002 of the atlas; the bake's margin fills the gap.
+        bpy.ops.uv.pack_islands(margin=0.002, rotate=True, scale=True)
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for obj, hide, viewport, select in hidden:
+            obj.hide_set(hide)
+            obj.hide_viewport, obj.hide_select = viewport, select
     for obj, active in zip(meshes, actives, strict=True):
         mesh = obj.data
         layer = mesh.uv_layers[UV]
@@ -210,32 +219,31 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     sc = bpy.context.scene
     held = sc.render.engine, sc.cycles.samples, sc.cycles.device
     sc.render.engine = "CYCLES"
-    # Judgement: 16 samples of 16 rays each settle the mask below an 8-bit step.
+    # Judgement: 16 samples of the node's 16 rays; a few grey levels of noise.
     sc.cycles.samples = 16
+    # The device a build already chose, so no kernels compile again.
     sc.cycles.device = "GPU" if enable_gpu() else "CPU"
-    with bpy.context.temp_override(
-        active_object=joined, selected_objects=[joined], object=joined
-    ):
-        bpy.ops.object.bake(
-            type="EMIT", uv_layer=layer.name, margin=4, margin_type="EXTEND"
-        )
-    sc.render.engine, sc.cycles.samples, sc.cycles.device = held
-    bpy.data.materials.remove(material)
+    try:
+        with bpy.context.temp_override(
+            active_object=joined, selected_objects=[joined], object=joined
+        ):
+            bpy.ops.object.bake(
+                type="EMIT", uv_layer=layer.name, margin=4, margin_type="EXTEND"
+            )
+    finally:
+        sc.render.engine, sc.cycles.samples, sc.cycles.device = held
+        bpy.data.materials.remove(material)
     return image
 
 
 def _texels(mesh: bpy.types.Mesh, uv: np.ndarray) -> int:
     """The square image's side that gives `mesh`'s atlas TEXEL_M."""
-    n_faces = len(mesh.polygons)
-    area_m2 = float(faces.floats(mesh.polygons, "area", n_faces).sum())
-    start = faces.ints(mesh.polygons, "loop_start", n_faces)
-    total = faces.ints(mesh.polygons, "loop_total", n_faces)
-    covered = 0.0
-    for k in range(1, int(total.max()) - 1):  # each polygon as a fan
-        has = total > k + 1
-        a, b, c = uv[start[has]], uv[start[has] + k], uv[start[has] + k + 1]
-        ab, ac = b - a, c - a
-        covered += float(np.abs(ab[:, 0] * ac[:, 1] - ab[:, 1] * ac[:, 0]).sum()) / 2
+    area_m2 = float(faces.floats(mesh.polygons, "area", len(mesh.polygons)).sum())
+    mesh.calc_loop_triangles()
+    n = len(mesh.loop_triangles)
+    t = uv[faces.ints(mesh.loop_triangles, "loops", 3 * n).reshape(-1, 3)]
+    ab, ac = t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]
+    covered = float(np.abs(ab[:, 0] * ac[:, 1] - ab[:, 1] * ac[:, 0]).sum()) / 2
     side = np.sqrt(area_m2 / max(covered, 1e-12)) / TEXEL_M
     # shortcut: one image, capped at 8k; past that, the texel grows; tile it then.
     return int(np.clip(np.ceil(side), 16, 8192))
