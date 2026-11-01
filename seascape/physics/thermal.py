@@ -39,7 +39,7 @@ resistance and thermal transmittance, Annex A.
 
 import math
 from dataclasses import dataclass, field, replace
-from typing import Literal, get_args
+from typing import Literal, assert_never, get_args
 
 import numpy as np
 import numpy.typing as npt
@@ -208,6 +208,44 @@ ZONES: dict[ZoneName, Zone] = {
     # teak and varnish, light to dark; no source.
     "wood_composite": Zone(0.895, (0.4, 0.8), 0.6, "none", 0.0),
 }
+
+
+# Iron and steel, rusted red, sheet, 22 C: 0.69; carbon, candle soot, 20 C: 0.95; soil,
+# dry, 20 C: 0.92 (Optris, emissivity table for long-wave thermal cameras, after
+# Wolfe, Handbook of Military Infrared Technology, and Wolfe & Zissis, The Infrared
+# Handbook); Judgement: grime as dry soil.
+RUST_EMISSIVITY = 0.69
+SOOT_EMISSIVITY = 0.95
+GRIME_EMISSIVITY = 0.92
+# Judgement: rust absorbs as red-brown oxide, grime as grey-to-black paint, soot as
+# black paint; no measured solar absorptance of any was found.
+RUST_ABSORPTANCE = 0.75
+GRIME_ABSORPTANCE = 0.8
+SOOT_ABSORPTANCE = PAINT_ABSORPTANCE[1]
+
+type WearLayer = Literal["grime", "rust", "soot"]
+WEAR_LAYERS: tuple[WearLayer, ...] = get_args(WearLayer.__value__)
+
+
+def under(zone: Zone, layer: WearLayer) -> Zone:
+    """`zone` under `layer`: grime raises absorptance and a bare metal's
+    emissivity, rust and soot replace the surface; the interior stays."""
+    match layer:
+        case "grime":
+            emissivity = max(zone.emissivity, GRIME_EMISSIVITY)
+            absorptance = max(zone.absorptance, GRIME_ABSORPTANCE)
+        case "rust":
+            emissivity, absorptance = RUST_EMISSIVITY, RUST_ABSORPTANCE
+        case "soot":
+            emissivity, absorptance = SOOT_EMISSIVITY, SOOT_ABSORPTANCE
+        case _:
+            assert_never(layer)
+    return replace(
+        zone,
+        emissivity=emissivity,
+        absorptance=absorptance,
+        absorptance_range=(absorptance, absorptance),
+    )
 
 
 # Judgement: one paint scheme covers a hull's sides, its superstructure and its funnel.

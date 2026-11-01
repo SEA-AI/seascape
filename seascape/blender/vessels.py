@@ -10,6 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from seascape.assets import manifest
 from seascape.blender.blend import (
     animate,
     place,
@@ -81,7 +82,13 @@ def _vessel(
                 slot.link = "OBJECT"
                 # A rotor's frame is its hub, so its z says nothing of the sea.
                 slot.material = uniform or zone_skin(
-                    zone, heat, paint_absorptance, wet=not mesh.get("rotor")
+                    zone,
+                    heat,
+                    paint_absorptance,
+                    wet=not mesh.get("rotor"),
+                    wear_material=(
+                        manifest()[name].material if name in hulls.worn else None
+                    ),
                 )
 
     anchor = bpy.data.objects.new(name, None)
