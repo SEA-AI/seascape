@@ -230,13 +230,13 @@ def _worn(
             # Steel spreads a strip's heat sideways over L = sqrt(k t / h), 0.16 m for
             # 12 mm plate at k = 60.5 W m^-1 K^-1 (Incropera & DeWitt Table A.1, plain
             # carbon steel) and h = 30 W m^-2 K^-1 (Judgement: wind and radiation). A
-            # strip w wide keeps 1 - exp(-w / 2L) of its own balance (Incropera &
-            # DeWitt section 3.6, fins), a few percent for a streak: so on steel a
-            # layer keeps the hull's temperature and changes only its emissivity, and
-            # grime, which only absorbs more sun, changes nothing. GRP's L is 1-2 cm.
-            if layer == "grime":
-                continue
+            # strip w wide keeps 1 - exp(-w / 2L) of its own balance (after
+            # Incropera & DeWitt section 3.6, infinite fin), a few percent for a
+            # streak: so on steel a layer keeps the hull's temperature and changes
+            # only its emissivity. GRP's L is 1-2 cm.
             emissivity = thermal.under(zone, layer).emissivity
+            if emissivity == zone.emissivity:
+                continue
             covered = _reflecting(tree, clean, emissivity, None)
         else:
             layered = thermal.under(zone, layer)

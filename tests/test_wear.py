@@ -256,7 +256,7 @@ def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
     ("material", "laid"),
     [
         ("grp", ["grime", "rust", "stain", "soot"]),
-        ("steel", ["rust", "stain", "soot"]),  # grime only absorbs, in a steel's heat
+        ("steel", ["rust", "stain", "soot"]),  # grime keeps paint's emissivity
     ],
 )
 def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
