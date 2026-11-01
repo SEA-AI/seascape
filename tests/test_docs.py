@@ -8,6 +8,8 @@ import pytest
 
 from docs.hero import SCENARIO, SKIES
 from docs.primer.figures import FIGURES, FULL_HD, PRIMER
+from docs.wear import SCENARIO as WEAR
+from docs.wear import WEARS
 from seascape.config import load
 
 DOCS = Path(__file__).parents[1] / "docs"
@@ -17,6 +19,7 @@ RUNS = {
     **{f"hero {sky}": (SCENARIO, sets) for sky, sets in SKIES.items()},
     "crops": (PRIMER, [FULL_HD]),
     "visibility": (Path(__file__).parents[1] / "docs" / "visibility.toml", []),
+    **{f"wear {name}": (WEAR, sets) for name, sets in WEARS.items()},
     **{
         f"{name}: {caption}": (PRIMER, shared + sets)
         for name, (shared, panels) in FIGURES.items()
