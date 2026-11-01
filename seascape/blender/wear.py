@@ -264,20 +264,21 @@ class _Masks:
         active = scalar(
             t, "GREATER_THAN", live, scalar(t, "MULTIPLY_ADD", self.amount, -0.7, 0.85)
         )
-        # Judgement: a streak runs a share of its edge's height above the water, at most
-        # 8 m, so a turbine's tower does not streak from its nacelle to the sea.
+        # Judgement: a streak runs a quarter to all of its edge's height above the
+        # water, longer on a neglected hull, at most 8 m, so a turbine's tower does not
+        # streak from its nacelle to the sea; it holds for the first half of its run.
         run_m = scalar(
-            t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.9, 0.1), self.edge_m
+            t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.75, 0.25), self.edge_m
         )
         run_m = scalar(
-            t, "MULTIPLY", run_m, scalar(t, "MULTIPLY_ADD", self.amount, 0.6, 0.2)
+            t, "MULTIPLY", run_m, scalar(t, "MULTIPLY_ADD", self.amount, 0.7, 0.3)
         )
         run_m = scalar(t, "MINIMUM", run_m, 8.0)
         width = scalar(t, "MULTIPLY_ADD", width, 0.12, 0.03)  # of a cell
         core = _smooth(
             t, cells.outputs["Distance"], scalar(t, "MULTIPLY", width, 0.4), width
         )
-        falling = _smooth(t, self.below, scalar(t, "MULTIPLY", run_m, 0.2), run_m)
+        falling = _smooth(t, self.below, scalar(t, "MULTIPLY", run_m, 0.5), run_m)
         wall = _smooth(t, scalar(t, "ABSOLUTE", self.up), 0.2, 0.5)
         streak = scalar(
             t,
