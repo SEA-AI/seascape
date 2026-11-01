@@ -224,8 +224,7 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
     wear._dirty(material)
     (dirt,) = (n for n in nodes if n.type == "BSDF_PRINCIPLED" and n != clean)
     assert dirt.inputs["Alpha"].default_value == pytest.approx(0.3)
-    (paint,) = (
-        n for n in nodes if n.type == "MATH" and n.operation == "SUBTRACT"
-    )  # 1 - metallic scales the fade
+    # 1 - metallic scales the fade
+    (paint,) = (n for n in nodes if n.type == "MATH" and n.operation == "SUBTRACT")
     assert paint.inputs[1].default_value == 1.0
     assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"
