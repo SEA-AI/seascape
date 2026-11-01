@@ -793,14 +793,15 @@ def _worn_tiles(found: Parts, weathered: bool) -> list[tuple[Image.Image, str]]:
             obj["wear"], obj["wear_offset"] = SHOWN_WEAR, 0.0
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
-    # Judgement: enough samples to see a streak at a tile's size.
-    sc.cycles.samples = 32
+    # Judgement: past 128 a sail's grain barely falls, and the time per view doubles.
+    sc.cycles.samples = 128
     sc.cycles.use_denoising = False  # it smooths the streaks a person judges
     sc.render.resolution_x, sc.render.resolution_y = TILE
     sc.render.film_transparent = True
     world = bpy.data.worlds.new("zones")
     world.use_nodes = True
-    # A white sky lights every side alike, so a stain reads as itself, not a shadow.
+    # A white sky lights every side alike, so a stain reads as itself, not a shadow,
+    # and a matte pixel shows its albedo, not the textured rows' studio shading.
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (1, 1, 1, 1)
     sc.world = world
     settings = sc.render.image_settings
