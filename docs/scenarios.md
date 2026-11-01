@@ -131,6 +131,18 @@ The engine room warms funnels and engine cowls from inside, and uptakes run at t
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", range_m = 2000.0, bearing_deg = 8.0, engine_off_min = 30.0, paint_absorptance = 0.9 }]'
 ```
 
+## Wear
+
+`wear` lays grime, runoff streaks, a waterline stain, soot and faded paint over an object, a ring or a farm, from 0 as delivered to 1 long neglected. Steel rusts, at its edges and down its streaks; GRP, wood and rubber collect grime instead. In LWIR, grime absorbs more sun, rust and soot emit at their own emissivity, and the stain stays wet at the water's temperature. Copies of one asset wear apart, each from its own substream of the seed:
+
+```bash
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", range_m = 2000.0, bearing_deg = 8.0, wear = 0.8 }]'
+```
+
+![A freighter as delivered and worn, in EO and LWIR](wear.jpg)
+
+`seascape render` wears only the hulls its own cameras can resolve wear on; a farther hull renders as delivered.
+
 ## Wind turbines
 
 `[[farms]]` stands turbines in rows, spaced in rotor diameters; one row of one is a lone turbine. Each faces `sea.wind_from_deg`. Its rotor turns clockwise seen from upwind, holding its tip-speed ratio in its hub's wind, between minimum and rated speed. Below cut-in and above cut-out it parks. Each rotor starts at an angle of its own.
