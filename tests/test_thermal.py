@@ -216,19 +216,24 @@ def test_zone_refuses_an_absorptance_outside_its_range() -> None:
         painted(0.99)
 
 
-def test_rust_and_soot_replace_the_surface_and_keep_what_lies_behind() -> None:
-    cabin = thermal.ZONES["paint_superstructure"]
-    for layer, emissivity, absorptance in (
+@pytest.mark.parametrize(
+    ("layer", "emissivity", "absorptance"),
+    [
         ("rust", thermal.RUST_EMISSIVITY, thermal.RUST_ABSORPTANCE),
         ("soot", thermal.SOOT_EMISSIVITY, thermal.SOOT_ABSORPTANCE),
-    ):
-        under = thermal.worn(cabin, layer)
-        assert (under.emissivity, under.absorptance) == (emissivity, absorptance)
-        assert (under.interior, under.u_w_m2k) == (cabin.interior, cabin.u_w_m2k)
+    ],
+)
+def test_rust_and_soot_replace_the_surface_and_keep_the_interior(
+    layer: thermal.WearLayer, emissivity: float, absorptance: float
+) -> None:
+    cabin = thermal.ZONES["paint_superstructure"]
+    covered = thermal.under(cabin, layer)
+    assert (covered.emissivity, covered.absorptance) == (emissivity, absorptance)
+    assert (covered.interior, covered.u_w_m2k) == (cabin.interior, cabin.u_w_m2k)
 
 
 def test_grime_darkens_white_paint_in_the_sun_and_never_lightens_black() -> None:
     white, black = painted(0.14), painted(0.97)
-    assert facing_sun_k(thermal.worn(white, "grime"), 3.0) > facing_sun_k(white, 3.0)
-    assert thermal.worn(black, "grime").absorptance == black.absorptance
-    assert thermal.worn(white, "grime").emissivity == white.emissivity
+    assert facing_sun_k(thermal.under(white, "grime"), 3.0) > facing_sun_k(white, 3.0)
+    assert thermal.under(black, "grime").absorptance == black.absorptance
+    assert thermal.under(white, "grime").emissivity == white.emissivity

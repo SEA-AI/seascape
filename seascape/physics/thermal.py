@@ -39,7 +39,7 @@ resistance and thermal transmittance, Annex A.
 
 import math
 from dataclasses import dataclass, field, replace
-from typing import Literal, get_args
+from typing import Literal, assert_never, get_args
 
 import numpy as np
 import numpy.typing as npt
@@ -210,33 +210,34 @@ ZONES: dict[ZoneName, Zone] = {
 }
 
 
-# Plate, completely rusted, 20 C: 0.685 (Neutrium compilation, as a search quoted it;
-# unchecked against the table).
-RUST_EMISSIVITY = 0.685
-# Lampblack, thin layer on iron plate, 21 C: 0.927 (Neutrium compilation, as a search
-# quoted it; unchecked against the table).
-SOOT_EMISSIVITY = 0.927
-# Judgement: red-brown oxide absorbs most of the sun; soot as black paint; dirt over
-# paint as the compilation's grey to black. No source for any.
+# Iron and steel, rusted red, sheet, 22 C: 0.69; carbon, candle soot, 20 C: 0.95
+# (Optris, emissivity table for long-wave thermal cameras, after Wolfe, Handbook of
+# Military Infrared Technology, and Wolfe & Zissis, The Infrared Handbook).
+RUST_EMISSIVITY = 0.69
+SOOT_EMISSIVITY = 0.95
+# Judgement: rust absorbs as red-brown oxide, grime as grey-to-black paint, soot as
+# black paint; no measured solar absorptance of any was found.
 RUST_ABSORPTANCE = 0.75
-SOOT_ABSORPTANCE = PAINT_ABSORPTANCE[1]
 GRIME_ABSORPTANCE = 0.8
+SOOT_ABSORPTANCE = PAINT_ABSORPTANCE[1]
 
-type Wear = Literal["grime", "rust", "soot"]
+type WearLayer = Literal["grime", "rust", "soot"]
+WEAR_LAYERS: tuple[WearLayer, ...] = get_args(WearLayer.__value__)
 
 
-def worn(zone: Zone, layer: Wear) -> Zone:
-    """`zone` under a layer of grime, which darkens it in the sun, or of rust or soot,
-    which replace its surface. What lies behind it stays."""
-    if layer == "grime":
-        emissivity, absorptance = (
-            zone.emissivity,
-            max(zone.absorptance, GRIME_ABSORPTANCE),
-        )
-    elif layer == "rust":
-        emissivity, absorptance = RUST_EMISSIVITY, RUST_ABSORPTANCE
-    else:
-        emissivity, absorptance = SOOT_EMISSIVITY, SOOT_ABSORPTANCE
+def under(zone: Zone, layer: WearLayer) -> Zone:
+    """`zone` under `layer`: grime raises absorptance, rust and soot replace the
+    surface; the interior stays."""
+    match layer:
+        case "grime":
+            emissivity = zone.emissivity
+            absorptance = max(zone.absorptance, GRIME_ABSORPTANCE)
+        case "rust":
+            emissivity, absorptance = RUST_EMISSIVITY, RUST_ABSORPTANCE
+        case "soot":
+            emissivity, absorptance = SOOT_EMISSIVITY, SOOT_ABSORPTANCE
+        case _:
+            assert_never(layer)
     return replace(
         zone,
         emissivity=emissivity,

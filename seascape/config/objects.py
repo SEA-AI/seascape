@@ -62,7 +62,7 @@ _PAINT = (
 )
 _WEAR = (
     "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 long "
-    "neglected."
+    "neglected. In IR a hull given `t_k` is that one temperature and shows none."
 )
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
