@@ -83,13 +83,12 @@ SEA_EMISSIVITY = 0.96
 # degrees of it. A wall's inner film; its outer one is this module's convection and
 # radiation.
 _R_SI_M2K_W = 0.13
-# Judgement: a glass fibre blanket, ~0.04 W m^-1 K^-1. Incropera & DeWitt Table A.3,
-# 0.035-0.046 by density as recalled, was not reachable to check.
+# Judgement: a glass fibre blanket, ~0.04 W m^-1 K^-1, Incropera & DeWitt Table A.3
+# (0.035-0.046 by density) as recalled, unchecked.
 _GLASS_WOOL_W_MK = 0.04
 # Thompson et al. 1998: 25 mm (1") of glass wool on a heated compartment's bulkheads.
 _INSULATION_M = 0.025
-# Judgement: soda-lime glass, 1.0 W m^-1 K^-1, EN 673's value as recalled; the
-# standard was not reachable to check.
+# Judgement: soda-lime glass, 1.0 W m^-1 K^-1, EN 673's value as recalled, unchecked.
 _GLASS_W_MK = 1.0
 # Judgement: a 6 mm wheelhouse pane.
 _PANE_M = 0.006
@@ -110,12 +109,12 @@ _MACHINERY_WALL_M = 0.01
 # Paint over steel. Oil paints, 100 C: 0.92-0.96; black paint 0.97, white paint 0.93
 # (Neutrium compilation). Colour hardly moves it: what absorbs the sun is pigment, what
 # emits at 10 um is the binder. Judgement: 0.94, mid-range of the oil paints. Navy
-# grey's own figure was not found: the abstract of Vaitekunas (SPIE 7662, 2010,
-# doi:10.1117/12.852131) gives none, and its text was not reachable.
+# grey's own figure is unsourced: Vaitekunas (SPIE 7662, 2010, doi:10.1117/12.852131)
+# gives none in its abstract.
 _PAINT_EMISSIVITY = 0.94
 # White paint, 20 C: alpha 0.14; black paint 0.97 (Neutrium compilation).
 PAINT_ABSORPTANCE = (0.14, 0.97)
-# Judgement: no measured navy grey absorptance was reachable. Between the
+# Judgement: no measured navy grey absorptance is sourced. Between the
 # compilation's white and black, so the default stays within what is verified.
 GREY_PAINT_ABSORPTANCE = 0.65
 
@@ -165,17 +164,17 @@ ZONES: dict[ZoneName, Zone] = {
     "deck": Zone(_PAINT_EMISSIVITY, (GREY_PAINT_ABSORPTANCE, 0.97), 0.8, "none", 0.0),
     # Rubin, "Optical constants and bulk optical properties of soda lime silica glasses
     # for windows", Sol. Energy Mater. 12(4) 275, 1985: hemispherical total 0.837 at
-    # 20 C. Judgement: absorptance, clear float to tinted; no source checked.
+    # 20 C. Judgement: absorptance, clear float to tinted; no source.
     "glass": Zone(0.837, (0.1, 0.5), 0.15, "cabin", _U_PANE_W_M2K),
     # Stainless steel, typical dull, 20 C: eps 0.21, alpha 0.50; polished alpha 0.37
     # (Neutrium compilation). Rails, stanchions, fittings.
     "bare_metal": Zone(0.21, (0.37, 0.50), 0.50, "none", 0.0),
     # Rubber, soft, grey, rough, 25 C: 0.859; hard glossy 0.945 (Neutrium
     # compilation). Fenders and inflatable tubes. Judgement: absorptance grey to black,
-    # taken as paint's; no source checked.
+    # taken as paint's; no source.
     "rubber": Zone(0.859, (GREY_PAINT_ABSORPTANCE, 0.97), 0.9, "none", 0.0),
-    # Judgement: cloth 0.75-0.90 at 300 K, Incropera & DeWitt Table A.11 as recalled;
-    # the table was not reachable to check.
+    # Judgement: cloth 0.75-0.90 at 300 K, Incropera & DeWitt Table A.11 as recalled,
+    # unchecked.
     # Absorptance by colour, taken as paint's. Limitation: a canopy has air on both
     # sides and convects from each; the balance gives it one.
     "fabric": Zone(0.85, PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0),
@@ -189,7 +188,7 @@ ZONES: dict[ZoneName, Zone] = {
         _U_BARE_PLATE_W_M2K,
     ),
     # Iron, steel oxidised at 872 K, 199-599 C: 0.79 (Neutrium compilation), the range
-    # uptake metal runs at. Judgement: absorptance, dark oxide, no source checked; at
+    # uptake metal runs at. Judgement: absorptance, dark oxide, no source; at
     # uptake temperature the sun is lost in it.
     "exhaust": Zone(0.79, (0.8, 0.95), 0.9, "exhaust", math.inf),
     # Judgement: gelcoat or painted composite emits as paint. Limitation: the inner
@@ -202,7 +201,7 @@ ZONES: dict[ZoneName, Zone] = {
         _U_BARE_PLATE_W_M2K,
     ),
     # Wood, oak, planed, 21 C: 0.895 (Neutrium compilation). Judgement: absorptance,
-    # teak and varnish, light to dark; no source checked.
+    # teak and varnish, light to dark; no source.
     "wood_composite": Zone(0.895, (0.4, 0.8), 0.6, "none", 0.0),
 }
 
@@ -227,8 +226,8 @@ class Environment:
     fog_cover: float = 0.0
     beam_transmittance: float = 1.0
     fog_sunlight_transmittance: float = 1.0
-    # Judgement: 22 C, ISO 7547's winter design for accommodation as recalled; the
-    # standard was not reachable to check.
+    # Judgement: 22 C, ISO 7547's winter design for accommodation as recalled,
+    # unchecked.
     t_cabin_k: float = 295.15
     # Thompson et al. 1998: ventilation should hold compartments below 50 C; the
     # ceiling, so a hard-run engine room.
@@ -307,8 +306,8 @@ def sky_longwave_w_m2(t_air_k: float, cloud_fraction: float = 0.0) -> float:
 
     Clear sky by Swinbank 1963. Cloud covers its fraction as a blackbody at air
     temperature: thick water cloud is near-black in the infrared (Stephens 1978, as
-    `lwir` cites). Judgement: mixed linearly with the clear sky, the use Crawford &
-    Duchon, J. Appl. Meteor. 38(4) 474, 1999 is cited for; its text was not reachable.
+    `lwir` cites). Judgement: mixed linearly with the clear sky, as in Crawford &
+    Duchon, J. Appl. Meteor. 38(4) 474, 1999, unchecked.
     Limitation: the cloud base is colder than the air at the surface.
     """
     clear = _SWINBANK_W_M2K6 * t_air_k**6
