@@ -9,7 +9,6 @@ import numpy as np
 from seascape.assets import Material
 from seascape.blender import faces
 from seascape.blender.blend import clamped, feed, scalar, vector
-from seascape.blender.compositor import enable_gpu
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 # Occlusion is ray-traced and only the shape decides it, so each asset bakes its
@@ -217,12 +216,11 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     mesh.materials.append(material)
 
     sc = bpy.context.scene
-    held = sc.render.engine, sc.cycles.samples, sc.cycles.device
+    # On the device the build chose: a switch mid-process compiles kernels again.
+    held = sc.render.engine, sc.cycles.samples
     sc.render.engine = "CYCLES"
     # Judgement: 16 samples of the node's 16 rays; a few grey levels of noise.
     sc.cycles.samples = 16
-    # The device a build already chose, so no kernels compile again.
-    sc.cycles.device = "GPU" if enable_gpu() else "CPU"
     try:
         with bpy.context.temp_override(
             active_object=joined, selected_objects=[joined], object=joined
@@ -231,7 +229,7 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
                 type="EMIT", uv_layer=layer.name, margin=4, margin_type="EXTEND"
             )
     finally:
-        sc.render.engine, sc.cycles.samples, sc.cycles.device = held
+        sc.render.engine, sc.cycles.samples = held
         bpy.data.materials.remove(material)
     return image
 

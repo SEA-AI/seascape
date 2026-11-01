@@ -352,7 +352,6 @@ def _crevice(
         image.filepath_raw, image.file_format = str(part), "PNG"
         try:
             image.save()
-            image.pack()  # before the move: it reads the saved file
             part.replace(path)
             image.filepath_raw = str(path)
         except (OSError, RuntimeError):  # a read-only or full cache only rebakes
