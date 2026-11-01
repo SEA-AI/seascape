@@ -71,12 +71,12 @@ def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
 
 
 class View(NamedTuple):
-    """A camera at one frame: where it is, how it turns, and its pixel as rendered."""
+    """A camera's pose at one instant, and its pixel at the render's scale."""
 
     mount: Mount
     t_s: float
     matrix: Matrix
-    angle_x: float
+    angle_x_rad: float
     pixel_rad: float
 
 
@@ -85,7 +85,7 @@ def views(
 ) -> list[View]:
     """Every frame's pose of each of `band`'s cameras, the scene left at frame 0."""
     sc = bpy.context.scene
-    # The shader's pixel scales with it too.
+    # As the shader's pixel does, so a cull matches what it draws.
     scale = sc.render.resolution_percentage / 100
     found = []
     for frame, t_s in enumerate(scenario.outputs.times_s):

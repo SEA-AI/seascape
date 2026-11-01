@@ -77,7 +77,8 @@ def gerstner_rest_m(
     guess: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Where the water now over (`east_m`, `north_m`) was at rest, by Newton's method
-    from `guess`, there by default, to a nanometre. It holds while no crest folds."""
+    from `guess`, or from that point itself, to a nanometre. It converges while no
+    crest folds."""
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
     rest_east, rest_north = (east, north) if guess is None else guess
     k_east = np.array([w.k_east_rad_m for w in field])

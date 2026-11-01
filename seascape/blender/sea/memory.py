@@ -48,7 +48,7 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
         turn = view.matrix.to_3x3()
         camera = view.mount.camera
         # Not `view_frame`: it takes the scene's aspect, which the build sets last.
-        across = math.tan(view.angle_x / 2)
+        across = math.tan(view.angle_x_rad / 2)
         up = across * camera.height_px / camera.width_px
         corners = [
             Vector((x * across, y * up, -1.0))
