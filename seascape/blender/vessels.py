@@ -3,6 +3,7 @@
 import math
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from itertools import combinations
 
 import bpy
@@ -16,7 +17,7 @@ from seascape.blender.blend import (
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
-from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
 from seascape.config import (
     Drift,
     Farm,
@@ -31,6 +32,15 @@ from seascape.config import (
 from seascape.physics import earth, wakes, waves
 
 
+@dataclass
+class Hulls:
+    """Each asset's first import, copied for the rest of the build: the FBX importer
+    slows with every material already in the file. An asset in `worn` is tagged."""
+
+    worn: frozenset[str] = frozenset()
+    imported: dict[str, list[bpy.types.Object]] = field(default_factory=dict)
+
+
 def heading_rad(anchor: bpy.types.Object) -> float:
     """Where a hull's bow points, clockwise from north: bow to +Y, as fitted."""
     bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
@@ -39,23 +49,25 @@ def heading_rad(anchor: bpy.types.Object) -> float:
 
 def _vessel(
     name: str,
+    *,
     t_k: float | None,
     engine_off_min: float,
     paint_absorptance: float | None,
+    wear: float,
     sky: Sky,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
 ) -> bpy.types.Object:
     """A hull fitted and anchored at the origin under an empty. `heat` is the LWIR
-    build's, and None in EO.
-
-    `hulls` holds each asset's first import for the rest of the build: the FBX
-    importer slows with every material already in the file.
-    """
-    if name in hulls:
-        parts = [_copy_tree(part, None) for part in hulls[name]]
+    build's, and None in EO."""
+    if name in hulls.imported:
+        parts = [_copy_tree(part, None) for part in hulls.imported[name]]
     else:
-        parts = hulls[name] = import_asset(name, "eo" if heat is None else "ir")
+        band = "eo" if heat is None else "ir"
+        worn = name in hulls.worn
+        parts = hulls.imported[name] = import_asset(name, band, worn=worn)
+        if heat is None:
+            prefix_names(name, parts)
 
     if heat is not None:
         heat = heat.stopped(engine_off_min)
@@ -73,6 +85,7 @@ def _vessel(
     for size in ("beam_m", "length_m", "height_m"):
         anchor[size] = parts[0][size]
     anchor["engine_off_min"] = engine_off_min
+    anchor["wear"] = wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -92,7 +105,7 @@ def add_ownship(
     sky: Sky,
     heat: Heat | None,
     rigs: bpy.types.Object,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
 ) -> bpy.types.Object:
@@ -103,7 +116,16 @@ def add_ownship(
         bpy.context.collection.objects.link(anchor)
         place(anchor, 0.0, 0.0, 0.0)
     else:
-        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, None, sky, heat, hulls)
+        anchor = _vessel(
+            ownship.asset,
+            t_k=ownship.t_k,
+            engine_off_min=0.0,
+            paint_absorptance=None,
+            wear=0.0,
+            sky=sky,
+            heat=heat,
+            hulls=hulls,
+        )
     anchor.name = "ownship"
     rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
@@ -240,7 +262,7 @@ def _targets(
     radius_m: float,
     sky: Sky,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     outputs: Outputs,
     trails: list[wakes.Wake],
 ) -> dict[str, list[bpy.types.Object]]:
@@ -249,12 +271,13 @@ def _targets(
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
         anchor = _vessel(
             asset,
-            spec.t_k,
-            spec.engine_off_min,
-            spec.paint_absorptance,
-            sky,
-            heat,
-            hulls,
+            t_k=spec.t_k,
+            engine_off_min=spec.engine_off_min,
+            paint_absorptance=spec.paint_absorptance,
+            wear=spec.wear,
+            sky=sky,
+            heat=heat,
+            hulls=hulls,
         )
         anchor.name = f"target_{i}"
         _pose(
@@ -277,19 +300,20 @@ def _object(
     radius_m: float,
     sky: Sky,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     outputs: Outputs,
     trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
     """`spec`'s hulls, each wake under way added to `trails`."""
     anchor = _vessel(
         spec.asset,
-        spec.t_k,
-        spec.engine_off_min,
-        spec.paint_absorptance,
-        sky,
-        heat,
-        hulls,
+        t_k=spec.t_k,
+        engine_off_min=spec.engine_off_min,
+        paint_absorptance=spec.paint_absorptance,
+        wear=spec.wear,
+        sky=sky,
+        heat=heat,
+        hulls=hulls,
     )
     orbit = spec.orbit
     if orbit is None:
@@ -332,12 +356,19 @@ def _turbine(
     scenario: Scenario,
     radius_m: float,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
 ) -> bpy.types.Object:
     """A turbine facing the wind, its rotor starting at an angle of its own so a farm's
     rotors turn out of step."""
     anchor = _vessel(
-        farm.asset, None, 0.0, farm.paint_absorptance, scenario.sky, heat, hulls
+        farm.asset,
+        t_k=None,
+        engine_off_min=0.0,
+        paint_absorptance=farm.paint_absorptance,
+        wear=farm.wear,
+        sky=scenario.sky,
+        heat=heat,
+        hulls=hulls,
     )
     outputs = scenario.outputs
     _pose(
@@ -459,7 +490,7 @@ def add_vessels(
     scenario: Scenario,
     radius_m: float,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     trails: list[wakes.Wake],
 ) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
     """Every object and ring hull, then every turbine, by asset; each wake under way

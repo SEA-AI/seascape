@@ -4,14 +4,13 @@ import contextlib
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
-from typing import get_args
 
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
-from seascape.blender import faces
+from seascape.blender import faces, wear
 from seascape.blender.blend import (
     yaw,
 )
@@ -66,26 +65,24 @@ def _joined(
     return hull
 
 
-def _zone_slots(name: str, meshes: list[bpy.types.Object], zones: Zones | None) -> None:
+def _face_zones(name: str, found: faces.Parts, zones: Zones | None) -> list[np.ndarray]:
+    """Each face's zone index, per object; unlabelled, all `paint_hull`."""
+    if zones is None:
+        paint = thermal.ZONE_NAMES.index("paint_hull")
+        return [np.full(len(obj.data.polygons), paint) for obj in found.objects]
+    # A name another object in the file already took renumbers the islands.
+    faces.check(name, found, zones)
+    return faces.face_zones(found, zones)
+
+
+def _zone_slots(found: faces.Parts, per_face: list[np.ndarray]) -> None:
     """Give each face its zone as a material slot, one placeholder per zone, which the
-    join merges. Unlabelled, every face is `paint_hull`.
+    join merges.
 
     The asset's own materials go: they are albedo, which says nothing about 8-14 um,
     and a later import sharing their names would be renamed past its zone labels.
     """
-    vocabulary = list(get_args(thermal.ZoneName.__value__))
-    found = faces.found(meshes)
-    if zones is not None:
-        # A name another object in the file already took renumbers the islands.
-        faces.check(name, found, zones)
-    per_face = (
-        faces.face_zones(found, zones)
-        if zones is not None
-        else [
-            np.full(len(obj.data.polygons), vocabulary.index("paint_hull"))
-            for obj in found.objects
-        ]
-    )
+    vocabulary = thermal.ZONE_NAMES
     originals = {s.material for obj in found.objects for s in obj.material_slots}
     for obj, zone in zip(found.objects, per_face, strict=True):
         present, index = np.unique(zone, return_inverse=True)
@@ -257,7 +254,7 @@ def _parse(path: Path) -> set[bpy.types.Object]:
     return imported
 
 
-def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
+def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Object]:
     """Import an asset and fit it; returns the root parts.
 
     An asset arrives in its author's units, off-origin, in many parts.
@@ -280,8 +277,14 @@ def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
         (rotor,) = named
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
+    zoned = band == "ir" or worn
+    if zoned:
+        found = faces.found(mesh_objects(parts))
+        per_face = _face_zones(name, found, asset.zones)
+    if worn:
+        wear.tag(found.objects, per_face, asset.material)
     if band == "ir":
-        _zone_slots(name, mesh_objects(parts), asset.zones)
+        _zone_slots(found, per_face)
         if rotor is not None:
             # Joined apart from the rest, so it still turns about its hub.
             bpy.context.view_layer.update()
@@ -309,6 +312,17 @@ def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
     # Above the waterline, which the fit puts at z = 0.
     parts[0]["height_m"] = max(c.z for c in fitted)
     return parts
+
+
+def prefix_names(name: str, parts: list[bpy.types.Object]) -> None:
+    """Prefix with the asset name, so a later import keeps the names its zones key
+    on."""
+    everything = [o for part in parts for o in [part, *part.children_recursive]]
+    for material in {s.material for o in everything for s in o.material_slots}:
+        if material is not None:
+            material.name = f"{name}/{material.name}"
+    for obj in everything:
+        obj.name = f"{name}/{obj.name}"
 
 
 def _images(tree: bpy.types.NodeTree) -> set[bpy.types.Image]:

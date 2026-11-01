@@ -12,7 +12,7 @@ import math
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, get_args
+from typing import Any, Literal, NamedTuple
 
 import bpy
 import cv2
@@ -25,7 +25,7 @@ from seascape.blender import blend, faces
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import box_corners, import_asset, mesh_objects
 from seascape.outputs.montage import INK, MATTE, font
-from seascape.physics.thermal import ZoneName
+from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 
 class Aim(NamedTuple):
@@ -788,8 +788,8 @@ def contact(name: str, out: Path) -> Path:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     found = parts(name)
     faces.check(name, found, asset.zones)
-    vocabulary = list(get_args(ZoneName.__value__))
-    colours = np.array([ZONE_COLOURS[z] for z in vocabulary], dtype=np.uint8)
+    vocabulary: list[str] = list(ZONE_NAMES)
+    colours = np.array([ZONE_COLOURS[z] for z in ZONE_NAMES], dtype=np.uint8)
     per_face = face_zones(found, asset.zones)
     views = _views(found, per_face)
     triangles = _triangle_counts(found, per_face, len(vocabulary))

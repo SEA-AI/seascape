@@ -1,7 +1,5 @@
 """Thermal zones in the manifest, and the parts they name."""
 
-from typing import get_args
-
 import bpy
 import numpy as np
 import pytest
@@ -11,11 +9,11 @@ from seascape import zones
 from seascape.assets import Zones, manifest
 from seascape.blender import faces
 from seascape.blender.meshes import _load, measured
-from seascape.physics.thermal import ZoneName
+from seascape.physics.thermal import ZONE_NAMES
 
 
 def test_every_asset_has_zones_from_the_vocabulary() -> None:
-    vocabulary = set(get_args(ZoneName.__value__))
+    vocabulary = set(ZONE_NAMES)
     for name, asset in manifest().items():
         assert asset.zones is not None, name
         given = {*asset.zones.materials.values(), *asset.zones.islands.values()}
@@ -23,7 +21,7 @@ def test_every_asset_has_zones_from_the_vocabulary() -> None:
 
 
 def test_every_zone_has_a_contact_sheet_colour() -> None:
-    assert set(zones.ZONE_COLOURS) == set(get_args(ZoneName.__value__))
+    assert set(zones.ZONE_COLOURS) == set(ZONE_NAMES)
 
 
 DIGEST = "0123456789abcdef"
@@ -131,7 +129,7 @@ def test_a_rule_zones_the_islands_its_ranges_hold(
         {"materials": {"m": "deck"}, **NUMBERED, "islands": {"2": "glass"}}
         | {"rules": [{"material": "m", "metallic": [0.5, 1.0], "zone": "bare_metal"}]}
     )
-    vocabulary = list(get_args(ZoneName.__value__))
+    vocabulary = list(ZONE_NAMES)
     (zone,) = faces.face_zones(_three_triangles(factor), zones_)
     assert [vocabulary[z] for z in zone] == expected
 

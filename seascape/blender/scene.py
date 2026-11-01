@@ -14,6 +14,7 @@ from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
+    Hulls,
     OverlapError,
     add_ownship,
     add_vessels,
@@ -145,7 +146,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     outputs = scenario.outputs
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
-    hulls: dict[str, list[bpy.types.Object]] = {}
+    hulls = Hulls(scenario.worn)
     tall, _ = sea.displaced((wind, swell))
     heat = surroundings(scenario) if band == "ir" else None
     vessel = add_ownship(

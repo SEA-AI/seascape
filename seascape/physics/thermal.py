@@ -39,7 +39,7 @@ resistance and thermal transmittance, Annex A.
 
 import math
 from dataclasses import dataclass, field, replace
-from typing import Literal
+from typing import Literal, get_args
 
 import numpy as np
 import numpy.typing as npt
@@ -63,6 +63,7 @@ type ZoneName = Literal[
     "engine_cowl",  # an outboard engine's cover
     "wood_composite",  # timber, and a small craft's moulded GRP or carbon hull
 ]
+ZONE_NAMES: tuple[ZoneName, ...] = get_args(ZoneName.__value__)
 type Interior = Literal["none", "cabin", "engine_room", "exhaust"]
 
 # CODATA 2018, exact from the defining constants.
