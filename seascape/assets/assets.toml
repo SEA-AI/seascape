@@ -1,5 +1,6 @@
 [yacht]
 kind = "hull"
+hull = "grp"
 category = "motor yacht"
 category_id = 5
 description = "Tri-deck motor yacht, white superstructure, teak decks, textured."
@@ -72,6 +73,7 @@ zone = "bare_metal"
 
 [lobster_yacht]
 kind = "hull"
+hull = "grp"
 category = "motor yacht"
 category_id = 5
 description = "Lobster-style motor yacht with a dark hull and hardtop, twin sterndrives."
@@ -115,6 +117,7 @@ attribution = "motoryacht 35 by angelo raffaele catalano, https://sketchfab.com/
 
 [zodiac]
 kind = "hull"
+hull = "rubber"
 category = "rigid inflatable boat"
 category_id = 13
 description = "Grey rigid inflatable boat with a centre console, radar arch and twin outboards."
@@ -151,6 +154,7 @@ island_digest = "e4a915c8068478f8"
 
 [irwin_38]
 kind = "hull"
+hull = "grp"
 category = "sailing yacht"
 category_id = 14
 description = "Masthead sloop under main and genoa, white topsides over a navy bottom."
@@ -204,6 +208,7 @@ zone = "bare_metal"
 
 [cruising_sloop]
 kind = "hull"
+hull = "grp"
 category = "sailing yacht"
 category_id = 14
 description = "Modern cruising sloop with a white hull, fin keel and spade rudder, sails furled."
@@ -252,6 +257,7 @@ metal = "bare_metal"
 
 [cargo_ship]
 kind = "hull"
+hull = "steel"
 category = "general cargo ship"
 category_id = 2
 description = "Multipurpose cargo ship with two deck cranes, textured, superstructure aft."
@@ -306,6 +312,7 @@ island_digest = "e0053fd2726cbfba"
 
 [bulk_carrier]
 kind = "hull"
+hull = "steel"
 category = "bulk carrier"
 category_id = 3
 description = "Geared bulk carrier with four deck cranes, black hull, textured."
@@ -363,6 +370,7 @@ island_digest = "dee302f9dc7a3a67"
 
 [patrol_vessel]
 kind = "hull"
+hull = "steel"
 category = "patrol vessel"
 category_id = 4
 description = "Naval patrol vessel, faceted grey hull, helicopter deck aft, textured."
@@ -453,6 +461,7 @@ island_digest = "492acf8964a335f3"
 
 [coaster]
 kind = "hull"
+hull = "steel"
 category = "container ship"
 category_id = 1
 description = "Small coaster with one tier of containers stowed athwartships, bridge aft, textured."
@@ -588,6 +597,7 @@ attribution = "Coaster 01 by gogiart, https://sketchfab.com/3d-models/e7cd374918
 
 [short_sea_freighter]
 kind = "hull"
+hull = "steel"
 category = "general cargo ship"
 category_id = 2
 description = "Short-sea multipurpose ship with containers and box cranes, bridge forward, textured."
@@ -732,6 +742,7 @@ island_digest = "600d5814fa9f2998"
 
 [multipurpose_freighter]
 kind = "hull"
+hull = "steel"
 category = "general cargo ship"
 category_id = 2
 description = "Multipurpose cargo ship with containers stacked five high and two deck cranes, bridge aft, textured."
@@ -835,6 +846,7 @@ attribution = "Multi-purpose Vessel II by gogiart, https://sketchfab.com/3d-mode
 
 [ultramax_bulk_carrier]
 kind = "hull"
+hull = "steel"
 category = "bulk carrier"
 category_id = 3
 description = "Ultramax bulk carrier with four deck cranes and a red deck, bridge aft, textured."
@@ -892,6 +904,7 @@ attribution = "Alassia M/V Cymona Eagle (2024) by FHA_studios, https://sketchfab
 
 [panamax_container_ship]
 kind = "hull"
+hull = "steel"
 category = "container ship"
 category_id = 1
 description = "Container ship with 40 ft containers up to five tiers on deck, bridge aft of midships, textured."
@@ -926,6 +939,7 @@ island_digest = "b202c28820cc0399"
 
 [crude_tanker]
 kind = "hull"
+hull = "steel"
 category = "tanker"
 category_id = 12
 description = "Large crude tanker with deck piping, catwalk and hose cranes, bridge aft, textured."
@@ -1078,6 +1092,7 @@ attribution = "Tanker by gogiart, https://sketchfab.com/3d-models/31bb4e74880147
 
 [viking_glory]
 kind = "hull"
+hull = "steel"
 category = "passenger ferry"
 category_id = 15
 description = "Cruise ferry in Viking Line red and white, helideck forward, textured."
@@ -1169,6 +1184,7 @@ material_0 = "paint_hull"
 
 [viking_grace]
 kind = "hull"
+hull = "steel"
 category = "passenger ferry"
 category_id = 15
 description = "Cruise ferry in Viking Line red and white with a rounded funnel, helideck forward, textured."
@@ -1289,6 +1305,7 @@ island_digest = "e454bb306fa91f6a"
 
 [silja_serenade]
 kind = "hull"
+hull = "steel"
 category = "passenger ferry"
 category_id = 15
 description = "Cruise ferry, white with blue Silja Line bands and the seal funnel, textured."
@@ -1361,6 +1378,7 @@ kaidevalk-removebg-preview = "bare_metal"
 
 [mariella]
 kind = "hull"
+hull = "steel"
 category = "passenger ferry"
 category_id = 15
 description = "Cruise ferry in Viking Line red and white, helideck aft, textured."
@@ -1424,6 +1442,7 @@ material_0 = "paint_hull"
 
 [pride_of_kent]
 kind = "hull"
+hull = "steel"
 category = "passenger ferry"
 category_id = 15
 description = "Ro-pax ferry in P&O white and navy, bridge forward, textured."
@@ -1477,6 +1496,7 @@ glassair = "glass"
 
 [meriluoto]
 kind = "hull"
+hull = "steel"
 category = "passenger ferry"
 category_id = 15
 description = "Double-ended road ferry, yellow superstructure over an open car deck, textured."
@@ -1531,6 +1551,7 @@ material = "paint_superstructure"
 
 [usv_magura]
 kind = "hull"
+hull = "grp"
 category = "uncrewed surface vessel"
 category_id = 17
 description = "MAGURA V5-style strike USV, grey low-freeboard planing hull, camera mast, textured."
@@ -1553,6 +1574,7 @@ material_0 = "paint_hull"
 
 [usv_stalker]
 kind = "hull"
+hull = "grp"
 category = "uncrewed surface vessel"
 category_id = 17
 description = "Stalker 5.0 strike USV, black narrow hull, single outboard, camera on an arch, textured."
@@ -1583,6 +1605,7 @@ material_0 = "paint_hull"
 
 [usv_naval_drone]
 kind = "hull"
+hull = "grp"
 category = "uncrewed surface vessel"
 category_id = 17
 description = "First-generation Ukrainian strike USV, dark grey low hull with handling hoops, textured."
@@ -1605,6 +1628,7 @@ BOAT = "paint_hull"
 
 [lateral_mark]
 kind = "buoy"
+hull = "steel"
 category = "lateral mark"
 category_id = 6
 description = "Red lateral mark: float, column, light and daymark, weathered, textured."
@@ -1642,6 +1666,7 @@ sha256 = "904f59238995c859c6977ebcf34fab34cf724bcf376002c2a1c935683f7c70ff"
 
 [ocean_buoy]
 kind = "buoy"
+hull = "steel"
 category = "lateral mark"
 category_id = 6
 description = "Red steel buoy with cage light, bell and ring guard, weathered, textured."
@@ -1683,6 +1708,7 @@ sha256 = "bb302687cb174769a5c995842340cbd9569953b2d5afb643f94361ffd1d558f0"
 
 [pillar_buoy]
 kind = "buoy"
+hull = "steel"
 category = "lateral mark"
 category_id = 6
 description = "Green steel pillar buoy with lattice tower and light, weathered, textured."
@@ -1703,6 +1729,7 @@ attribution = "Buoy by honix, https://sketchfab.com/3d-models/cdd198814e874379b6
 
 [mooring_buoy]
 kind = "buoy"
+hull = "polyethylene"
 category = "mooring buoy"
 category_id = 7
 description = "Small white rigid mooring buoy with a lifting eye."
@@ -1724,6 +1751,7 @@ attribution = "Buoy by ean47, https://sketchfab.com/3d-models/da1a9915bd04462999
 
 [log]
 kind = "debris"
+hull = "wood"
 category = "log"
 category_id = 8
 description = "Dead tree trunk, bark worn off in places, textured."
@@ -1760,6 +1788,7 @@ sha256 = "9447959386aa3ee0e3552bd095c3dbbcb13c58cc6a87cb4b51cc4517b695040c"
 
 [pallet]
 kind = "debris"
+hull = "wood"
 category = "pallet"
 category_id = 9
 description = "EUR pallet in light wood, textured."
@@ -1783,6 +1812,7 @@ attribution = "Euro-pallet by wittybacon, https://sketchfab.com/3d-models/4f38d1
 
 [container]
 kind = "debris"
+hull = "steel"
 category = "container"
 category_id = 10
 description = "Weathered red 20 ft ISO container, textured."
@@ -1804,6 +1834,7 @@ attribution = "20ft Red by aidancallaghan, https://sketchfab.com/3d-models/f555c
 
 [sea_mine]
 kind = "debris"
+hull = "steel"
 category = "sea mine"
 category_id = 11
 description = "Black horned contact mine broken from its mooring, upper case and horns above water, textured."
@@ -1826,6 +1857,7 @@ attribution = "Sea Mine Black by AbsoluteMadLadd, https://sketchfab.com/3d-model
 
 [turbine_15mw_monopile]
 kind = "turbine"
+hull = "steel"
 category = "wind turbine"
 category_id = 16
 description = "15 MW offshore wind turbine, light grey, on a monopile with a yellow transition piece."
@@ -1863,6 +1895,7 @@ cut_out_mps = 25.0
 
 [turbine_15mw_floating]
 kind = "turbine"
+hull = "steel"
 category = "wind turbine"
 category_id = 16
 description = "15 MW floating wind turbine, light grey, on a yellow three-column semi-submersible."

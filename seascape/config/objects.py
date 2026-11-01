@@ -85,6 +85,14 @@ class Orbit(Model):
     count: int = Field(default=1, gt=0, description="Hulls spaced evenly on it.")
 
 
+class Wear(Model):
+    """Grime, rust, waterline stain, soot and faded paint on its surfaces."""
+
+    amount: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="0 is as delivered, 1 long neglected."
+    )
+
+
 class Object(Model):
     """Something to detect."""
 
@@ -110,6 +118,7 @@ class Object(Model):
         le=thermal.PAINT_ABSORPTANCE[1],
         description=_PAINT,
     )
+    wear: Wear = Field(default_factory=Wear, description="How weathered.")
     count: int = Field(
         default=1,
         ge=0,
@@ -206,6 +215,7 @@ class Targets(Model):
         le=thermal.PAINT_ABSORPTANCE[1],
         description=_PAINT,
     )
+    wear: Wear = Field(default_factory=Wear, description="How weathered.")
 
     def _spread(self, span: tuple[float, float], i: int) -> float:
         low, high = span

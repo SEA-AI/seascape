@@ -113,6 +113,10 @@ class Zones(Model):
         return self
 
 
+# What the hull is made of, which sets how it wears: only steel rusts.
+HullMaterial = Literal["steel", "grp", "rubber", "wood", "polyethylene"]
+
+
 class _Mesh(Model):
     model_config = ConfigDict(frozen=True)
 
@@ -120,6 +124,7 @@ class _Mesh(Model):
     supercategory: ClassVar[str]
 
     description: str = Field(min_length=1)
+    hull: HullMaterial
     category: str = Field(min_length=1)
     # One per category, so labels.json files merge.
     category_id: int = Field(ge=1)
