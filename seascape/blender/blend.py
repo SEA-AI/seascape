@@ -111,7 +111,7 @@ def lookup(
     return texture.outputs["Color"]
 
 
-def _feed(
+def feed(
     tree: bpy.types.NodeTree,
     socket: bpy.types.NodeSocket,
     value: bpy.types.NodeSocket | float | tuple[float, ...],
@@ -130,7 +130,7 @@ def combine(
         raise ValueError(f"a Combine XYZ takes 3 components, not {len(xyz)}")
     node = tree.nodes.new("ShaderNodeCombineXYZ")
     for name, value in zip("XYZ", xyz, strict=False):
-        _feed(tree, node.inputs[name], value)
+        feed(tree, node.inputs[name], value)
     return node.outputs["Vector"]
 
 
@@ -148,7 +148,7 @@ def vector(
     if operation == "SCALE":
         sockets = [node.inputs["Vector"], node.inputs["Scale"]]
     for socket, value in zip(sockets, inputs, strict=False):
-        _feed(tree, socket, value)
+        feed(tree, socket, value)
     single = operation in {"DOT_PRODUCT", "LENGTH", "DISTANCE"}
     return node.outputs["Value" if single else "Vector"]
 
@@ -165,7 +165,7 @@ def scalar(
     if name:
         node.name = name
     for socket, value in zip(node.inputs, inputs, strict=False):
-        _feed(tree, socket, value)
+        feed(tree, socket, value)
     return node.outputs["Value"]
 
 

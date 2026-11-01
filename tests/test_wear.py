@@ -4,8 +4,8 @@ import pytest
 
 from seascape.blender import wear
 from seascape.blender.meshes import import_asset, mesh_objects
-from seascape.blender.vessels import Hulls, _vessel
-from seascape.config import load
+from seascape.blender.vessels import Hulls, _vessel, _worn
+from seascape.config import load, substream
 from seascape.physics.thermal import ZONE_NAMES
 from tests.scenarios import BASELINE
 
@@ -187,7 +187,7 @@ def test_a_clean_build_keeps_its_import_graph() -> None:
     assert built == {s.material.name: len(s.material.node_tree.nodes) for s in slots}
 
 
-def test_a_worn_asset_lays_dirt_over_every_surface() -> None:
+def test_a_worn_asset_lays_dirt_over_every_principled_material() -> None:
     (worn,) = _zodiacs(Hulls(frozenset({"zodiac"})), (0.5,))
     for material in _materials(worn):
         nodes = material.node_tree.nodes
@@ -196,18 +196,36 @@ def test_a_worn_asset_lays_dirt_over_every_surface() -> None:
         (group,) = (n for n in nodes if n.type == "GROUP")
         assert group.node_tree.name == "wear_masks"
         (mix,) = (n for n in nodes if n.type == "MIX_SHADER")
-        assert mix.outputs["Shader"].links  # it took the clean surface's place
+        assert mix.outputs["Shader"].links
 
 
 def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> None:
     def parts() -> list[bpy.types.Object]:
         anchors = _zodiacs(Hulls(frozenset({"zodiac"})), (0.7, 0.7, 0.0))
-        wear.vary(anchors, 3)
+        _worn(anchors[:2], 0.7, substream(3, "wear/objects/0"))
+        _worn(anchors[2:], 0.0, substream(3, "wear/objects/1"))
         return [_meshes(a)[0] for a in anchors]
 
     first = parts()
-    seeds = [p["wear_seed"] for p in first[:2]]
-    assert seeds[0] != seeds[1]
-    assert all(p["wear"] == 0.7 and p["wear_steel"] == 0.0 for p in first[:2])
+    offsets = [p["wear_offset"] for p in first[:2]]
+    assert offsets[0] != offsets[1]
+    assert all(p["wear"] == 0.7 for p in first[:2])
     assert "wear" not in first[2]  # reads 0, which the masks gate to no cover
-    assert [p["wear_seed"] for p in parts()[:2]] == seeds
+    assert [p["wear_offset"] for p in parts()[:2]] == offsets
+
+
+def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    material = bpy.data.materials.new("glass")
+    nodes = material.node_tree.nodes
+    clean = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
+    clean.inputs["Alpha"].default_value = 0.3
+    clean.inputs["Metallic"].default_value = 1.0
+    wear._dirty(material)
+    (dirt,) = (n for n in nodes if n.type == "BSDF_PRINCIPLED" and n != clean)
+    assert dirt.inputs["Alpha"].default_value == pytest.approx(0.3)
+    (paint,) = (
+        n for n in nodes if n.type == "MATH" and n.operation == "SUBTRACT"
+    )  # 1 - metallic scales the fade
+    assert paint.inputs[1].default_value == 1.0
+    assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"

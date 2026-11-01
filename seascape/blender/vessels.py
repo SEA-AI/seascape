@@ -4,7 +4,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from itertools import combinations
+from itertools import chain, combinations
 
 import bpy
 import numpy as np
@@ -18,7 +18,7 @@ from seascape.blender.blend import (
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
-from seascape.blender.wear import dirty
+from seascape.blender.wear import dirty, mark
 from seascape.config import (
     Drift,
     Farm,
@@ -89,7 +89,6 @@ def _vessel(
         anchor[size] = parts[0][size]
     anchor["engine_off_min"] = engine_off_min
     anchor["wear"] = wear
-    anchor["asset"] = name
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     for obj in (anchor, attitude):
@@ -501,24 +500,37 @@ def add_vessels(
     added to `trails`."""
     sky, outputs = scenario.sky, scenario.outputs
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
-    for spec in scenario.objects:
-        vessels[spec.asset] += _object(
-            spec, radius_m, sky, heat, hulls, outputs, trails
+    for i, spec in enumerate(scenario.objects):
+        anchors = _object(spec, radius_m, sky, heat, hulls, outputs, trails)
+        _worn(anchors, spec.wear, substream(scenario.seed, f"wear/objects/{i}"))
+        vessels[spec.asset] += anchors
+    if (ring := scenario.targets) is not None:
+        hulls_by = _targets(ring, radius_m, sky, heat, hulls, outputs, trails)
+        _worn(
+            list(chain(*hulls_by.values())),
+            ring.wear,
+            substream(scenario.seed, "wear/targets"),
         )
-    if scenario.targets is not None:
-        ring = _targets(scenario.targets, radius_m, sky, heat, hulls, outputs, trails)
-        for asset, anchors in ring.items():
+        for asset, anchors in hulls_by.items():
             vessels[asset] += anchors
     turbines: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
     for f, farm in enumerate(scenario.farms):
         for k, (range_m, bearing_deg) in enumerate(farm.positions()):
             rng = substream(scenario.seed, f"farms/{f}/{k}/rotor")
-            turbines[farm.asset].append(
-                _turbine(
-                    farm, range_m, bearing_deg, rng, scenario, radius_m, heat, hulls
-                )
+            anchor = _turbine(
+                farm, range_m, bearing_deg, rng, scenario, radius_m, heat, hulls
             )
+            _worn([anchor], farm.wear, substream(scenario.seed, f"wear/farms/{f}/{k}"))
+            turbines[farm.asset].append(anchor)
     return vessels, turbines
+
+
+def _worn(
+    anchors: list[bpy.types.Object], amount: float, rng: np.random.Generator
+) -> None:
+    if amount > 0.0:
+        for anchor in anchors:
+            mark(anchor, amount, rng)
 
 
 def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
