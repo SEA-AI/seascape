@@ -3,9 +3,11 @@ import numpy as np
 import pytest
 
 from seascape.blender import wear
+from seascape.blender.heat import surroundings, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects
 from seascape.blender.vessels import Hulls, _vessel, _worn
 from seascape.config import load, substream
+from seascape.physics import thermal
 from seascape.physics.thermal import ZONE_NAMES
 from tests.scenarios import BASELINE
 
@@ -229,3 +231,32 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
     )  # 1 - metallic scales the fade
     assert paint.inputs[1].default_value == 1.0
     assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"
+
+
+def test_a_worn_lwir_skin_mixes_each_layer_at_its_own_emissivity() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    heat = surroundings(load(BASELINE))
+    clean = zone_skin("paint_hull", heat)
+    worn = zone_skin("paint_hull", heat, worn=True)
+    assert worn != clean
+    assert not any(n.type == "GROUP" for n in clean.node_tree.nodes)
+    (group,) = (n for n in worn.node_tree.nodes if n.type == "GROUP")
+    assert group.node_tree.name == "wear_masks"
+    # Each layer's skin is a Mix Shader at its emissivity, as `_reflecting` builds it.
+    unlinked = {
+        round(n.inputs["Factor"].default_value, 3)
+        for n in worn.node_tree.nodes
+        if n.type == "MIX_SHADER" and not n.inputs["Factor"].is_linked
+    }
+    assert {
+        thermal.ZONES["paint_hull"].emissivity,
+        thermal.RUST_EMISSIVITY,
+        thermal.SOOT_EMISSIVITY,
+        thermal.SEA_EMISSIVITY,
+    } <= unlinked
+    mixed = {
+        link.from_socket.name
+        for link in worn.node_tree.links
+        if link.from_node == group and link.to_socket.name == "Factor"
+    }
+    assert mixed == {"grime", "rust", "soot", "stain"}
