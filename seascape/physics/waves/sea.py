@@ -17,8 +17,8 @@ import numpy as np
 from seascape.physics.earth import GRAVITY_MS2
 from seascape.physics.waves.slopes import cox_munk_variances, drawn_slope_variances
 from seascape.physics.waves.spectrum import (
+    CAPILLARY_PEAK_RAD_M,
     CAPILLARY_SPEED_MPS,
-    CAPILLARY_WAVELENGTH_M,
     FREQUENCIES,
     LOWEST_OF_PEAK,
     Wave,
@@ -77,7 +77,8 @@ def _bins(
         return np.empty(0), np.empty(0)
     peak = peak_omega_rad_s(wind_speed_mps, fetch_m)
     low = LOWEST_OF_PEAK * peak
-    high = math.sqrt(2 * math.pi * GRAVITY_MS2 / CAPILLARY_WAVELENGTH_M)
+    # Elfouhaily's k_m, the minimum phase speed: past it omega^2 = g k fails.
+    high = math.sqrt(GRAVITY_MS2 * CAPILLARY_PEAK_RAD_M)
     if low >= high:
         return np.empty(0), np.empty(0)
     edges = np.geomspace(low, high, FREQUENCIES + 1)

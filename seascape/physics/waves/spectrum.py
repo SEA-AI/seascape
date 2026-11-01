@@ -38,10 +38,6 @@ FREQUENCIES = 32
 # exp(-5/4 (w_p / w)^4) leaves little height variance below it.
 LOWEST_OF_PEAK = 0.7
 
-# Minimum phase speed, 2 pi sqrt(gamma / rho g) at gamma = 0.074 N/m, rho = 1000
-# kg/m^3: below it omega^2 = g k fails.
-CAPILLARY_WAVELENGTH_M = 0.0173
-
 
 @dataclass(frozen=True)
 class Wave:
