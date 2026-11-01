@@ -205,3 +205,39 @@ def test_a_skinned_part_is_measured_in_its_pose(skinned: bpy.types.Object) -> No
     heights = zones._heights(faces.found([skinned]), [np.array([0])], 1)
 
     assert heights[0] == pytest.approx([5.0, 5.0])
+
+
+@pytest.mark.render
+def test_the_worn_row_wears_only_an_asset_not_weathered(monkeypatch) -> None:
+    name = min(
+        (n for n, a in manifest().items() if not a.weathered),
+        key=lambda n: manifest()[n].triangles,
+    )
+    monkeypatch.setattr(zones, "VIEWS", zones.VIEWS[2:3])
+    monkeypatch.setattr(zones, "TILE", (96, 72))
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    found = zones.parts(name, worn=True)
+    camera = bpy.data.objects.new("zones", bpy.data.cameras.new("zones"))
+    camera.data.type = "ORTHO"
+    bpy.context.scene.camera = camera
+    [(clean, clean_caption)] = zones._worn_tiles(found, weathered=True)
+    [(worn, worn_caption)] = zones._worn_tiles(found, weathered=False)
+    assert clean_caption.endswith("its textures' own wear")
+    assert worn_caption == zones.VIEWS[0].name
+    change = np.abs(np.asarray(worn, float) - np.asarray(clean, float)).max(axis=-1)
+    assert (change > 8).mean() > 0.01
+
+
+@pytest.mark.render
+def test_the_contact_sheet_leaves_a_weathered_asset_untagged(
+    monkeypatch, tmp_path
+) -> None:
+    name = min(
+        (n for n, a in manifest().items() if a.weathered),
+        key=lambda n: manifest()[n].triangles,
+    )
+    monkeypatch.setattr(zones, "VIEWS", zones.VIEWS[2:3])
+    monkeypatch.setattr(zones, "TILE", (96, 72))
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    zones.contact(name, tmp_path / "zones.png")
+    assert not any("wear_position_m" in m.attributes for m in bpy.data.meshes)

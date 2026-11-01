@@ -140,6 +140,9 @@ class _Mesh(Model):
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
     zones: Zones | None = None
+    # Textures already show wear: they are its wear in both bands, and `wear` does
+    # nothing to it.
+    weathered: bool = False
 
     @abstractmethod
     def scale(self, size: tuple[float, float, float]) -> float:

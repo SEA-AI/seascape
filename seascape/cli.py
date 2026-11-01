@@ -402,7 +402,7 @@ def sheet(scenario: Path, out: Path, band: Band) -> None:
     help="Mark only this material's islands, the rest grey. Implies --islands.",
 )
 @click.option(
-    "--zones",
+    "--preview",
     "contact",
     is_flag=True,
     help="One sheet coloured by the zones in assets.toml, for approval.",
@@ -418,7 +418,7 @@ def zones(
     if asset not in assets.manifest():
         raise click.BadParameter(f"no mesh {asset!r}; see `seascape assets list`")
     if contact and (islands or material):
-        raise click.UsageError("--zones takes neither --islands nor --material")
+        raise click.UsageError("--preview takes neither --islands nor --material")
     from seascape import zones as sheets
 
     into = output or Path("zones") / asset
