@@ -104,6 +104,14 @@ def test_each_face_weighs_its_zone_and_only_steel_rusts(box) -> None:
     )
 
 
+def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
+    obj, zone = box
+    zone[:] = ZONES.index("paint_hull")
+    zone[0] = ZONES.index("fabric")
+    wear.tag([obj], [zone], "steel")
+    np.testing.assert_array_equal(_read(obj.data, "wear_runoff"), zone != zone[0])
+
+
 def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
     wear.tag([skinned], [np.zeros(1, dtype=np.int64)], "steel")
     np.testing.assert_allclose(

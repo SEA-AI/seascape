@@ -1,8 +1,8 @@
 """Where an asset wears, written on its meshes at import for the wear masks to read.
 
-Per face, each layer's weight for the face's zone. Per vertex, its place in the
-fitted hull frame: metres, bow to +Y, the waterline at z = 0. Per face corner, its
-depth below the edge above it, where runoff starts.
+Per face, each layer's weight for the face's zone, and whether runoff streaks it.
+Per vertex, its place in the fitted hull frame: metres, bow to +Y, the waterline at
+z = 0. Per face corner, its depth below the edge above it, where runoff starts.
 """
 
 from typing import get_args
@@ -31,6 +31,8 @@ PROFILE: dict[ZoneName, tuple[float, float, float, float, float]] = {
     "engine_cowl": (0.5, 0.0, 0.0, 0.0, 0.7),
     "wood_composite": (0.8, 0.0, 1.0, 0.0, 0.6),
 }
+# Judgement: cloth sags and flexes, so water runs off it without leaving a streak.
+SHEDS: frozenset[ZoneName] = frozenset({"fabric"})
 _VOCABULARY: list[ZoneName] = list(get_args(ZoneName.__value__))
 
 
@@ -79,6 +81,7 @@ def tag(
     bpy.context.view_layer.update()  # the fit leaves matrix_world stale
     depsgraph = bpy.context.evaluated_depsgraph_get()
     table = weights(material)
+    runoff = np.array([z not in SHEDS for z in _VOCABULARY], dtype=np.float32)
     corners_m, corner_zones = [], []
     for obj, zone in zip(objects, zones, strict=True):
         mesh = obj.data
@@ -101,6 +104,7 @@ def tag(
         _write(mesh, "wear_normal", "FACE", normal)
         for i, layer in enumerate(LAYERS):
             _write(mesh, f"wear_{layer}", "FACE", table[zone, i])
+        _write(mesh, "wear_runoff", "FACE", runoff[zone])
         n_loops = len(mesh.loops)
         totals = faces.ints(mesh.polygons, "loop_total", len(zone))
         corners_m.append(position_m[faces.ints(mesh.loops, "vertex_index", n_loops)])
