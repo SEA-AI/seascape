@@ -120,11 +120,31 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
+# Judgement: streaks and a waterline stain are tens of centimetres across; a pixel
+# wider than this averages them into the paint.
+WEAR_DETAIL_M = 0.5
+
+
+def _wear_reach_m(
+    scenario: Scenario, band: Band, cameras: dict[str, bpy.types.Object]
+) -> float:
+    """How far `band`'s cameras resolve wear: where their finest pixel spans
+    `WEAR_DETAIL_M`."""
+    scale = bpy.context.scene.render.resolution_percentage / 100
+    pixel_rad = min(
+        cameras[m.name].data.angle_x / (m.camera.width_px * scale)
+        for m in scenario.mounts
+        if m.camera.band == band
+    )
+    return WEAR_DETAIL_M / pixel_rad
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with `scenario` in one band.
 
-    `cull` draws only the waves the scenario's own cameras resolve, at their own
-    resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
+    `cull` draws only the waves and the wear the scenario's own cameras resolve, at
+    their own resolution: a camera zoomed, enlarged or added later loses its finest
+    ripples and sees far hulls clean."""
     if not any(mount.camera.band == band for mount in scenario.mounts):
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -146,7 +166,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     outputs = scenario.outputs
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
-    hulls = Hulls(scenario.worn)
+    hulls = Hulls(
+        scenario.worn(_wear_reach_m(scenario, band, rigs.cameras) if cull else math.inf)
+    )
     tall, _ = sea.displaced((wind, swell))
     heat = surroundings(scenario) if band == "ir" else None
     vessel = add_ownship(
