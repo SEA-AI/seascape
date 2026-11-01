@@ -210,6 +210,41 @@ ZONES: dict[ZoneName, Zone] = {
 }
 
 
+# Plate, completely rusted, 20 C: 0.685 (Neutrium compilation, as a search quoted it;
+# unchecked against the table).
+RUST_EMISSIVITY = 0.685
+# Lampblack, thin layer on iron plate, 21 C: 0.927 (Neutrium compilation, as a search
+# quoted it; unchecked against the table).
+SOOT_EMISSIVITY = 0.927
+# Judgement: red-brown oxide absorbs most of the sun; soot as black paint; dirt over
+# paint as the compilation's grey to black. No source for any.
+RUST_ABSORPTANCE = 0.75
+SOOT_ABSORPTANCE = PAINT_ABSORPTANCE[1]
+GRIME_ABSORPTANCE = 0.8
+
+type Wear = Literal["grime", "rust", "soot"]
+
+
+def worn(zone: Zone, layer: Wear) -> Zone:
+    """`zone` under a layer of grime, which darkens it in the sun, or of rust or soot,
+    which replace its surface. What lies behind it stays."""
+    if layer == "grime":
+        emissivity, absorptance = (
+            zone.emissivity,
+            max(zone.absorptance, GRIME_ABSORPTANCE),
+        )
+    elif layer == "rust":
+        emissivity, absorptance = RUST_EMISSIVITY, RUST_ABSORPTANCE
+    else:
+        emissivity, absorptance = SOOT_EMISSIVITY, SOOT_ABSORPTANCE
+    return replace(
+        zone,
+        emissivity=emissivity,
+        absorptance=absorptance,
+        absorptance_range=(absorptance, absorptance),
+    )
+
+
 # Judgement: one paint scheme covers a hull's sides, its superstructure and its funnel.
 PAINTED: frozenset[ZoneName] = frozenset(
     {"paint_hull", "paint_superstructure", "funnel"}

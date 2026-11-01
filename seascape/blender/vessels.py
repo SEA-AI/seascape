@@ -81,7 +81,11 @@ def _vessel(
                 slot.link = "OBJECT"
                 # A rotor's frame is its hub, so its z says nothing of the sea.
                 slot.material = uniform or zone_skin(
-                    zone, heat, paint_absorptance, wet=not mesh.get("rotor")
+                    zone,
+                    heat,
+                    paint_absorptance,
+                    wet=not mesh.get("rotor"),
+                    worn=name in hulls.worn,
                 )
 
     anchor = bpy.data.objects.new(name, None)
