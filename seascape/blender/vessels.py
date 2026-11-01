@@ -70,7 +70,7 @@ def _vessel(
         parts = hulls.imported[name] = import_asset(name, band, worn=worn)
         if heat is None:
             prefix_names(name, parts)
-            if worn:
+            if worn and not manifest()[name].weathered:
                 dirty(parts)
 
     if heat is not None:

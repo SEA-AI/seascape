@@ -1629,6 +1629,7 @@ BOAT = "paint_hull"
 [lateral_mark]
 kind = "buoy"
 material = "steel"
+weathered = true
 category = "lateral mark"
 category_id = 6
 description = "Red lateral mark: float, column, light and daymark, weathered, textured."
@@ -1667,6 +1668,7 @@ sha256 = "904f59238995c859c6977ebcf34fab34cf724bcf376002c2a1c935683f7c70ff"
 [ocean_buoy]
 kind = "buoy"
 material = "steel"
+weathered = true
 category = "lateral mark"
 category_id = 6
 description = "Red steel buoy with cage light, bell and ring guard, weathered, textured."
@@ -1709,6 +1711,7 @@ sha256 = "bb302687cb174769a5c995842340cbd9569953b2d5afb643f94361ffd1d558f0"
 [pillar_buoy]
 kind = "buoy"
 material = "steel"
+weathered = true
 category = "lateral mark"
 category_id = 6
 description = "Green steel pillar buoy with lattice tower and light, weathered, textured."
@@ -1813,6 +1816,7 @@ attribution = "Euro-pallet by wittybacon, https://sketchfab.com/3d-models/4f38d1
 [container]
 kind = "debris"
 material = "steel"
+weathered = true
 category = "container"
 category_id = 10
 description = "Weathered red 20 ft ISO container, textured."

@@ -21,9 +21,10 @@ from mathutils import Vector
 from PIL import Image, ImageDraw
 
 from seascape.assets import manifest
-from seascape.blender import blend, faces
+from seascape.blender import blend, faces, wear
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import box_corners, import_asset, mesh_objects
+from seascape.config import substream
 from seascape.outputs.montage import INK, MATTE, font
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
@@ -213,10 +214,10 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     return views
 
 
-def parts(name: str) -> Parts:
+def parts(name: str, worn: bool = False) -> Parts:
     """Import `name` as an EO build fits it into the current file, with islands
     numbered by object name, then first face."""
-    roots = import_asset(name, "eo")
+    roots = import_asset(name, "eo", worn)
     bpy.context.view_layer.update()
     return faces.found(mesh_objects(roots))
 
@@ -780,13 +781,57 @@ def _summary(record: dict[str, Any]) -> str:
     return f"{record['triangles']:,} tris, {span}, colour {base}, alpha {a}"
 
 
+# The wear the contact sheet shows a person: plenty, so a misplaced layer is plain.
+SHOWN_WEAR = 0.8
+
+
+def _worn_tiles(name: str, found: Parts) -> list[tuple[Image.Image, str]]:
+    """Each view in Cycles, the import worn as a build wears it, under a grey sky.
+    `found` must come from `parts(name, worn=True)`."""
+    if not manifest()[name].weathered:
+        wear.dirty(found.objects)
+    offset = float(substream(0, f"wear/{name}").uniform(0.0, 1000.0))
+    for obj in found.objects:
+        obj["wear"], obj["wear_offset"] = SHOWN_WEAR, offset
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 32
+    sc.cycles.use_denoising = False  # it smooths the streaks a person judges
+    sc.render.resolution_x, sc.render.resolution_y = TILE
+    sc.render.film_transparent = True
+    world = bpy.data.worlds.new("zones")
+    world.use_nodes = True
+    # A white sky lights every side alike, so a stain reads as itself, not a shadow.
+    world.node_tree.nodes["Background"].inputs["Color"].default_value = (1, 1, 1, 1)
+    sc.world = world
+    if bpy.context.scene.camera is None:
+        data = bpy.data.cameras.new("zones")
+        data.type = "ORTHO"
+        camera = bpy.data.objects.new("zones", data)
+        sc.collection.objects.link(camera)
+        sc.camera = camera
+    settings = sc.render.image_settings
+    settings.file_format, settings.color_mode, settings.color_depth = "PNG", "RGBA", "8"
+    caption = "" if not manifest()[name].weathered else ", its textures' own wear"
+    tiles = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for aim in VIEWS:
+            _aim(found, aim.bearing_deg, aim.elevation_deg)
+            sc.render.filepath = str(Path(tmp) / f"{aim.name}.png")
+            bpy.ops.render.render(write_still=True)
+            tile = _on_backdrop(Image.open(sc.render.filepath))
+            tiles.append((tile, f"{aim.name}{caption}"))
+    return tiles
+
+
 def contact(name: str, out: Path) -> Path:
-    """The views coloured by the zones `assets.toml` gives `name`, for approval."""
+    """The views coloured by the zones `assets.toml` gives `name`, and worn, for
+    approval."""
     asset = manifest()[name]
     if asset.zones is None:
         raise ValueError(f"{name} has no zones in assets.toml")
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    found = parts(name)
+    found = parts(name, worn=True)
     faces.check(name, found, asset.zones)
     vocabulary: list[str] = list(ZONE_NAMES)
     colours = np.array([ZONE_COLOURS[z] for z in ZONE_NAMES], dtype=np.uint8)
@@ -801,7 +846,9 @@ def contact(name: str, out: Path) -> Path:
         views, colours, vocabulary, [head, f"share of triangles below; {numbering}"]
     )
     sheet = _stack(
-        sheet, legend(colours[present], shares, [vocabulary[z] for z in present])
+        sheet,
+        legend(colours[present], shares, [vocabulary[z] for z in present]),
+        _grid(_worn_tiles(name, found), [f"worn {SHOWN_WEAR}, as a build lays it"]),
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out)
