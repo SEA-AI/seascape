@@ -140,8 +140,8 @@ class _Mesh(Model):
     licence: str = Field(min_length=1)
     attribution: str = Field(min_length=1)
     zones: Zones | None = None
-    # Its textures already show wear, so EO lays none of its own over them; LWIR, which
-    # reads no texture, still does.
+    # Textures already show wear: they are its wear in both bands, and `wear` does
+    # nothing to it.
     weathered: bool = False
 
     @abstractmethod

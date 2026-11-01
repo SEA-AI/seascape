@@ -12,7 +12,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from seascape.assets import skies
+from seascape.assets import manifest, skies
 from seascape.config import (
     PRESETS,
     Band,
@@ -1169,3 +1169,14 @@ def test_a_lone_variant_is_never_replaced() -> None:
     assert list(seeds(7, 1)) == [7]
     assert seeds(7, 2)[0] == 7
     assert len(seeds(7, 2)) > 2
+
+
+def test_a_weathered_asset_is_never_worn() -> None:
+    base = load(BASELINE)
+    weathered, painted = (
+        Object(asset=asset, range_m=500.0, bearing_deg=0.0, wear=0.8)
+        for asset in ("container", "cargo_ship")
+    )
+    scenario = base.model_copy(update={"objects": [weathered, painted]})
+    assert manifest()["container"].weathered
+    assert scenario.worn == {"cargo_ship"}

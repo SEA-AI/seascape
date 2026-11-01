@@ -70,12 +70,13 @@ def _vessel(
         parts = hulls.imported[name] = import_asset(name, band, worn=worn)
         if heat is None:
             prefix_names(name, parts)
-            if worn and not manifest()[name].weathered:
+            if worn:
                 dirty(parts)
 
     if heat is not None:
         heat = heat.stopped(engine_off_min)
         uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, sky)
+        worn_on = manifest()[name].material if name in hulls.worn else None
         for mesh in mesh_objects(parts):
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
@@ -86,9 +87,7 @@ def _vessel(
                     heat,
                     paint_absorptance,
                     wet=not mesh.get("rotor"),
-                    wear_material=(
-                        manifest()[name].material if name in hulls.worn else None
-                    ),
+                    wear_material=worn_on,
                 )
 
     anchor = bpy.data.objects.new(name, None)

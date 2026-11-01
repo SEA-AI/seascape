@@ -8,6 +8,7 @@ from pydantic import (
     model_validator,
 )
 
+from seascape.assets import manifest
 from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
 from seascape.config.objects import Farm, Object, Ownship, Targets
@@ -141,12 +142,15 @@ class Scenario(Model):
 
     @property
     def worn(self) -> frozenset[str]:
-        """The assets an object, the ring or a farm wears."""
+        """The assets an object, the ring or a farm wears, less the weathered ones,
+        whose textures are their wear."""
         wearing = [(o.asset, o.wear) for o in self.objects]
         wearing += [(f.asset, f.wear) for f in self.farms]
         if (ring := self.targets) is not None:
             wearing += [(asset, ring.wear) for asset, _, _ in ring.poses()]
-        return frozenset(asset for asset, wear in wearing if wear > 0.0)
+        return frozenset(
+            a for a, wear in wearing if wear > 0.0 and not manifest()[a].weathered
+        )
 
     def wind_waves(self) -> tuple[waves.Wave, ...]:
         sea = self.sea
