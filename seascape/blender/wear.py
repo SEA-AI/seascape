@@ -10,7 +10,7 @@ from typing import get_args
 import bpy
 import numpy as np
 
-from seascape.assets import HullMaterial
+from seascape.assets import Material
 from seascape.blender import faces
 from seascape.physics.thermal import ZoneName
 
@@ -34,10 +34,10 @@ PROFILE: dict[ZoneName, tuple[float, float, float, float, float]] = {
 _VOCABULARY: list[ZoneName] = list(get_args(ZoneName.__value__))
 
 
-def weights(hull: HullMaterial) -> np.ndarray:
+def weights(material: Material) -> np.ndarray:
     """Each zone's layer weights, (zones, layers), in the zone vocabulary's order."""
     table = np.array([PROFILE[z] for z in _VOCABULARY], dtype=np.float32)
-    if hull != "steel":
+    if material != "steel":
         table[:, LAYERS.index("rust")] = 0.0  # fittings on other hulls are stainless
     return table
 
@@ -53,23 +53,23 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     # than a patch reads its upper tier's edge.
     length_m = float(np.ptp(position_m[:, :2], axis=0).max())
     patch = np.floor(position_m[:, :2] / max(length_m / 200.0, 0.1)).astype(np.int64)
-    patch -= patch.min(axis=0) - 1  # a neighbour of the lowest is still >= 0
+    patch -= patch.min(axis=0) - 1  # a border of empty patches round the plan
     rows, cols = patch.max(axis=0) + 2
-    key = (zone * rows + patch[:, 0]) * cols + patch[:, 1]
-    keys, inverse = np.unique(key, return_inverse=True)
-    top = np.full(len(keys), -np.inf)
-    np.maximum.at(top, inverse, position_m[:, 2])
-    highest = np.full(len(key), -np.inf)
+    cell = (zone * rows + patch[:, 0]) * cols + patch[:, 1]
+    order = np.argsort(cell, kind="stable")
+    first = np.flatnonzero(np.diff(cell[order], prepend=-1))
+    top = np.full((zone.max() + 1) * rows * cols, -np.inf)
+    top[cell[order][first]] = np.maximum.reduceat(position_m[order, 2], first)
+    top = top.reshape(-1, rows, cols)
+    reach = top.copy()
     for di in (-1, 0, 1):
         for dj in (-1, 0, 1):
-            near = key + di * cols + dj
-            at = np.minimum(np.searchsorted(keys, near), len(keys) - 1)
-            highest = np.maximum(highest, np.where(keys[at] == near, top[at], -np.inf))
-    return highest - position_m[:, 2]
+            np.maximum(reach, np.roll(top, (di, dj), axis=(1, 2)), out=reach)
+    return reach.ravel()[cell] - position_m[:, 2]
 
 
 def tag(
-    objects: list[bpy.types.Object], zones: list[np.ndarray], hull: HullMaterial
+    objects: list[bpy.types.Object], zones: list[np.ndarray], material: Material
 ) -> None:
     """Write the wear attributes on fitted `objects`, given each face's zone.
 
@@ -78,7 +78,7 @@ def tag(
     """
     bpy.context.view_layer.update()  # the fit leaves matrix_world stale
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    table = weights(hull)
+    table = weights(material)
     corners_m, corner_zones = [], []
     for obj, zone in zip(objects, zones, strict=True):
         mesh = obj.data

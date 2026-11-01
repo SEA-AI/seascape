@@ -256,8 +256,9 @@ def _parse(path: Path) -> set[bpy.types.Object]:
     return imported
 
 
-def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
-    """Import an asset and fit it; returns the root parts.
+def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Object]:
+    """Import an asset and fit it; returns the root parts. `worn` tags it with where
+    it wears.
 
     An asset arrives in its author's units, off-origin, in many parts.
     """
@@ -279,9 +280,11 @@ def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
         (rotor,) = named
     # Fitted bow to +Y, so the beam is the width along x and the length along y.
     fitted = [fit @ c for c in corners]
-    found = faces.found(mesh_objects(parts))
-    per_face = _face_zones(name, found, asset.zones)
-    wear.tag(found.objects, per_face, asset.hull)
+    if band == "ir" or worn:
+        found = faces.found(mesh_objects(parts))
+        per_face = _face_zones(name, found, asset.zones)
+        if worn:
+            wear.tag(found.objects, per_face, asset.material)
     if band == "ir":
         _zone_slots(found, per_face)
         if rotor is not None:
@@ -311,6 +314,17 @@ def import_asset(name: str, band: Band) -> list[bpy.types.Object]:
     # Above the waterline, which the fit puts at z = 0.
     parts[0]["height_m"] = max(c.z for c in fitted)
     return parts
+
+
+def free_names(name: str, parts: list[bpy.types.Object]) -> None:
+    """Prefix an EO import's objects and materials with its asset's name, so the next
+    import keeps the names its zones key on."""
+    everything = [o for part in parts for o in [part, *part.children_recursive]]
+    for material in {s.material for o in everything for s in o.material_slots}:
+        if material is not None:
+            material.name = f"{name}/{material.name}"
+    for obj in everything:
+        obj.name = f"{name}/{obj.name}"
 
 
 def _images(tree: bpy.types.NodeTree) -> set[bpy.types.Image]:

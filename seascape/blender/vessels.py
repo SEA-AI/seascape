@@ -16,7 +16,7 @@ from seascape.blender.blend import (
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
-from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.meshes import free_names, import_asset, mesh_objects
 from seascape.config import (
     Drift,
     Farm,
@@ -30,6 +30,9 @@ from seascape.config import (
 )
 from seascape.physics import earth, wakes, waves
 
+# Each asset's first import, by name and whether it is worn.
+type Hulls = dict[tuple[str, bool], list[bpy.types.Object]]
+
 
 def heading_rad(anchor: bpy.types.Object) -> float:
     """Where a hull's bow points, clockwise from north: bow to +Y, as fitted."""
@@ -42,20 +45,25 @@ def _vessel(
     t_k: float | None,
     engine_off_min: float,
     paint_absorptance: float | None,
+    wear: float,
     sky: Sky,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
 ) -> bpy.types.Object:
     """A hull fitted and anchored at the origin under an empty. `heat` is the LWIR
     build's, and None in EO.
 
-    `hulls` holds each asset's first import for the rest of the build: the FBX
-    importer slows with every material already in the file.
+    `hulls` holds each asset's first import, worn or not, for the rest of the build:
+    the FBX importer slows with every material already in the file.
     """
-    if name in hulls:
-        parts = [_copy_tree(part, None) for part in hulls[name]]
+    key = (name, wear > 0.0)
+    if key in hulls:
+        parts = [_copy_tree(part, None) for part in hulls[key]]
     else:
-        parts = hulls[name] = import_asset(name, "eo" if heat is None else "ir")
+        band = "eo" if heat is None else "ir"
+        parts = hulls[key] = import_asset(name, band, worn=wear > 0.0)
+        if heat is None:
+            free_names(name, parts)
 
     if heat is not None:
         heat = heat.stopped(engine_off_min)
@@ -92,7 +100,7 @@ def add_ownship(
     sky: Sky,
     heat: Heat | None,
     rigs: bpy.types.Object,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
 ) -> bpy.types.Object:
@@ -103,7 +111,7 @@ def add_ownship(
         bpy.context.collection.objects.link(anchor)
         place(anchor, 0.0, 0.0, 0.0)
     else:
-        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, None, sky, heat, hulls)
+        anchor = _vessel(ownship.asset, ownship.t_k, 0.0, None, 0.0, sky, heat, hulls)
     anchor.name = "ownship"
     rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
@@ -240,7 +248,7 @@ def _targets(
     radius_m: float,
     sky: Sky,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     outputs: Outputs,
     trails: list[wakes.Wake],
 ) -> dict[str, list[bpy.types.Object]]:
@@ -252,6 +260,7 @@ def _targets(
             spec.t_k,
             spec.engine_off_min,
             spec.paint_absorptance,
+            spec.wear,
             sky,
             heat,
             hulls,
@@ -277,7 +286,7 @@ def _object(
     radius_m: float,
     sky: Sky,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     outputs: Outputs,
     trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
@@ -287,6 +296,7 @@ def _object(
         spec.t_k,
         spec.engine_off_min,
         spec.paint_absorptance,
+        spec.wear,
         sky,
         heat,
         hulls,
@@ -332,12 +342,19 @@ def _turbine(
     scenario: Scenario,
     radius_m: float,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
 ) -> bpy.types.Object:
     """A turbine facing the wind, its rotor starting at an angle of its own so a farm's
     rotors turn out of step."""
     anchor = _vessel(
-        farm.asset, None, 0.0, farm.paint_absorptance, scenario.sky, heat, hulls
+        farm.asset,
+        None,
+        0.0,
+        farm.paint_absorptance,
+        farm.wear,
+        scenario.sky,
+        heat,
+        hulls,
     )
     outputs = scenario.outputs
     _pose(
@@ -459,7 +476,7 @@ def add_vessels(
     scenario: Scenario,
     radius_m: float,
     heat: Heat | None,
-    hulls: dict[str, list[bpy.types.Object]],
+    hulls: Hulls,
     trails: list[wakes.Wake],
 ) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
     """Every object and ring hull, then every turbine, by asset; each wake under way

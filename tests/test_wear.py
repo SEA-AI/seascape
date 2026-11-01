@@ -5,7 +5,10 @@ import numpy as np
 import pytest
 
 from seascape.blender import wear
+from seascape.blender.vessels import Hulls, _vessel
+from seascape.config import load
 from seascape.physics.thermal import ZoneName
+from tests.scenarios import BASELINE
 
 ZONES = list(get_args(ZoneName.__value__))
 
@@ -106,3 +109,23 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
     np.testing.assert_allclose(
         _read(skinned.data, "wear_position_m")[:, 2], 5.0, atol=1e-5
     )
+
+
+def test_a_build_tags_only_its_worn_hulls_and_frees_their_names() -> None:
+    """A worn copy of an asset already in an EO file imports again, under the names
+    its zones key on."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    hulls: Hulls = {}
+    sky = load(BASELINE).sky
+    clean, worn = (
+        _vessel("zodiac", None, 0.0, None, wear, sky, None, hulls) for wear in (0, 1)
+    )
+    tagged = [
+        "wear_position_m" in o.data.attributes
+        for anchor in (clean, worn)
+        for o in anchor.children_recursive
+        if o.type == "MESH"
+    ]
+    half = len(tagged) // 2
+    assert not any(tagged[:half])
+    assert all(tagged[half:])

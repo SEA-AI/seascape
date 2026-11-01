@@ -875,7 +875,7 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = SCENARIO.objects[0].asset
     heat = surroundings(SCENARIO)
-    anchor = _vessel(asset, 300.0, 0.0, None, SCENARIO.sky, heat, {})
+    anchor = _vessel(asset, 300.0, 0.0, None, 0.0, SCENARIO.sky, heat, {})
     hull = next(p for p in anchor.children_recursive if p.type == "MESH")
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
@@ -891,7 +891,7 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     asset = SCENARIO.objects[0].asset
     skins = []
     for minutes in (0.0, 30.0):
-        anchor = _vessel(asset, None, minutes, None, SCENARIO.sky, heat, hulls)
+        anchor = _vessel(asset, None, minutes, None, 0.0, SCENARIO.sky, heat, hulls)
         assert anchor["engine_off_min"] == minutes
         hull = next(p for p in anchor.children_recursive if p.type == "MESH")
         skins.append({s.material.name for s in hull.material_slots})
@@ -905,7 +905,7 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    anchor = _vessel("zodiac", None, 0.0, None, SCENARIO.sky, None, {})
+    anchor = _vessel("zodiac", None, 0.0, None, 0.0, SCENARIO.sky, None, {})
     bpy.context.view_layer.update()
     level = waterline_m(anchor)
     (attitude,) = anchor.children
