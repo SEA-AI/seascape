@@ -176,6 +176,39 @@ def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Node
     return out
 
 
+def value(
+    tree: bpy.types.NodeTree, name: str, initial: float = 0.0
+) -> bpy.types.NodeSocket:
+    """A named Value node, which `set_value` changes after the build."""
+    node = tree.nodes.new("ShaderNodeValue")
+    node.name = name
+    node.outputs["Value"].default_value = initial
+    return node.outputs["Value"]
+
+
+def set_value(tree: bpy.types.NodeTree, name: str, to: float) -> None:
+    tree.nodes[name].outputs["Value"].default_value = to
+
+
+def switch(
+    tree: bpy.types.NodeTree,
+    name: str,
+    off: bpy.types.NodeSocket,
+    on: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`on` or `off` for the whole frame, as `toggle` sets it: a pick, where a blend
+    by 0 would turn an inf in the unpicked image into a nan."""
+    node = tree.nodes.new("CompositorNodeSwitch")
+    node.name = name
+    tree.links.new(off, node.inputs["Off"])
+    tree.links.new(on, node.inputs["On"])
+    return node.outputs["Image"]
+
+
+def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
+    tree.nodes[name].inputs["Switch"].default_value = on
+
+
 def pixels(image: bpy.types.Image) -> np.ndarray:
     """An image's RGBA, (height, width, 4), bottom row first as Blender stores it."""
     width, height = image.size
