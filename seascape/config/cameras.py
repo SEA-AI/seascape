@@ -9,6 +9,7 @@ from pydantic import (
 )
 
 from seascape.model import Model
+from seascape.physics.colour import Tone
 
 type Band = Literal["eo", "ir"]
 
@@ -172,7 +173,8 @@ class Agc(Model):
 
 
 class Processing(Model):
-    """The camera's ISP. White balance and sharpening need a sensor."""
+    """The camera's ISP. White balance and sharpening need a sensor; exposure and
+    tone do not."""
 
     # 2^±126 stays a normal float32 (IEEE 754), as the compositor computes.
     exposure_ev: float = Field(
@@ -194,6 +196,13 @@ class Processing(Model):
     )
     sharpen: float = Field(
         default=0.0, ge=0.0, le=4.0, description="Unsharp mask amount."
+    )
+    tone: Tone | Literal["none"] = Field(
+        default="none",
+        description="The curve the ISP encodes with, in place of sRGB's: bt709 is "
+        "BT.709's OETF, emor the mean response of 201 cameras and films (Grossberg "
+        "& Nayar 2004). Both darken shadows and midtones. Only png and jpg output "
+        "use it.",
     )
 
 
@@ -238,7 +247,7 @@ class Camera(Model):
             Agc(),
         ):
             raise ValueError("an eo camera takes no microbolometer or agc")
-        isp = self.processing.model_copy(update={"exposure_ev": 0.0})
+        isp = self.processing.model_copy(update={"exposure_ev": 0.0, "tone": "none"})
         if self.sensor.width_px is not None and self.sensor.width_px < self.width_px:
             raise ValueError("sensor.width_px is narrower than the image")
         if self.sensor.full_well_e is None and isp != Processing():
