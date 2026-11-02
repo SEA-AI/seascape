@@ -37,3 +37,9 @@ repos:
         language: system
         types_or: [python, toml]
         pass_filenames: false
+      - id: ty
+        name: ty check
+        entry: uvx ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
