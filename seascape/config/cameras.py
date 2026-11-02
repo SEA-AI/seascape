@@ -29,6 +29,9 @@ class Sensor(Model):
         default=0.0, ge=0.0, description="Analogue gain: fewer electrons fill the ADC."
     )
     adc_bits: int = Field(default=12, ge=8, le=16, description="Bits per read.")
+    pitch_um: float | None = Field(
+        default=None, gt=0.0, description="Pixel pitch, for the lens's diffraction."
+    )
     width_px: int | None = Field(
         default=None,
         gt=0,
@@ -60,6 +63,12 @@ class Lens(Model):
 
     vignetting: bool = Field(
         default=False, description="Natural falloff, cos^4 of the field angle."
+    )
+    f_number: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="EO only, and needs a sensor.pitch_um: its diffraction, an Airy "
+        "pattern per colour. An ir camera's is its microbolometer's.",
     )
 
 
@@ -223,8 +232,11 @@ class Camera(Model):
     def _each_band_takes_its_own_camera(self) -> "Camera":
         if self.band == "ir" and (
             (self.sensor, self.processing) != (Sensor(), Processing())
+            or self.lens.f_number is not None
         ):
-            raise ValueError("an ir camera takes no sensor or processing")
+            raise ValueError(
+                "an ir camera takes no sensor, processing or lens.f_number"
+            )
         if self.band == "eo" and (self.microbolometer, self.agc) != (
             Microbolometer(),
             Agc(),
@@ -233,6 +245,8 @@ class Camera(Model):
         isp = self.processing.model_copy(update={"exposure_ev": 0.0})
         if self.sensor.width_px is not None and self.sensor.width_px < self.width_px:
             raise ValueError("sensor.width_px is narrower than the image")
+        if self.lens.f_number is not None and self.sensor.pitch_um is None:
+            raise ValueError("lens.f_number needs a sensor.pitch_um")
         if self.sensor.full_well_e is None and isp != Processing():
             raise ValueError("white balance and sharpening need a sensor.full_well_e")
         return self

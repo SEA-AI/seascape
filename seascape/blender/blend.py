@@ -78,14 +78,15 @@ def curve_image(
     name: str, values: np.ndarray, float_buffer: bool = True
 ) -> bpy.types.Image:
     """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
-    or rows bottom first. Without `float_buffer`, 8 bits of values in [0, 1]."""
+    or rows bottom first, grey or with a last axis of RGB. Without `float_buffer`, 8
+    bits of values in [0, 1]."""
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
-    height, width = table.shape
+    height, width = table.shape[:2]
     image = bpy.data.images.new(
         name, width, height, float_buffer=float_buffer, is_data=True
     )
     pixels = np.ones((height, width, 4), dtype=np.float32)
-    pixels[..., :3] = table[..., None]
+    pixels[..., :3] = table if table.ndim == 3 else table[..., None]
     image.pixels.foreach_set(pixels.ravel())
     # Unpacked, a generated image saves as its fill colour; EXR keeps floats.
     image.file_format = "OPEN_EXR" if float_buffer else "PNG"

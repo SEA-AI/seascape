@@ -1015,6 +1015,35 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "f_number": {
+          "title": "F Number",
+          "description": "EO only, and needs a sensor.pitch_um: its diffraction, an Airy pattern per colour. An ir camera's is its microbolometer's.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Lens",
@@ -2741,6 +2770,35 @@
               "maximum": 16,
               "minimum": 8,
               "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "pitch_um": {
+          "title": "Pitch Um",
+          "description": "Pixel pitch, for the lens's diffraction.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"

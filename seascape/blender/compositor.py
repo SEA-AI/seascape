@@ -7,15 +7,18 @@ import numpy as np
 
 from seascape.blender import sensor
 from seascape.blender.blend import (
+    curve_image,
     scalar,
     vector,
 )
 from seascape.config import (
     Band,
+    Camera,
     ImageFormat,
     Mount,
     Outputs,
 )
+from seascape.physics import colour, optics
 
 JPEG_QUALITY = 95
 
@@ -120,9 +123,9 @@ def _camera(
     compensation_ev: float,
     with_sensor: bool = False,
 ) -> bpy.types.NodeSocket:
-    """A lens's falloff, glare and blur, then auto-exposure, and with `with_sensor`
-    the sensor and ISP. Without one the Standard view clips at white, as a sensor
-    does. `respond` sets the camera.
+    """A lens's falloff, diffraction, glare and blur, then auto-exposure, and with
+    `with_sensor` the sensor and ISP. Without one the Standard view clips at white, as
+    a sensor does. `respond` sets the camera.
 
     Limitation: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
@@ -147,6 +150,7 @@ def _camera(
         -2.0,
     )
     image = vector(tree, "SCALE", image, falloff)
+    image = _diffraction(tree, image)
     shoulder = scalar(tree, "DIVIDE", radius, GLARE_SHOULDER)
     harvey = scalar(
         tree,
@@ -193,6 +197,43 @@ def _camera(
     return sensor._switch(tree, "sensor.on", exposed, read)
 
 
+def _diffraction(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """`image` through the kernel `respond` puts in `lens.psf`, or as it is."""
+    kernel = tree.nodes.new("CompositorNodeImage")
+    kernel.name = "lens.psf"
+
+    def convolved(source: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+        node = tree.nodes.new("CompositorNodeConvolve")
+        node.inputs["Kernel Data Type"].default_value = "Color"
+        tree.links.new(source, node.inputs["Image"])
+        rgb = next(s for s in node.inputs if s.name == "Kernel" and s.type == "RGBA")
+        tree.links.new(kernel.outputs["Image"], rgb)
+        return node.outputs["Image"]
+
+    # Convolve reads black past the frame; normalized (Knutsson & Westin 1993), a
+    # border pixel spreads only over the pixels there are.
+    ones = vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
+    spread = vector(tree, "DIVIDE", convolved(image), convolved(ones))
+    return sensor._switch(tree, "lens.diffract", image, spread)
+
+
+def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
+    f_number = camera.lens.f_number
+    sensor._toggle(tree, "lens.diffract", f_number is not None)
+    if f_number is None or camera.sensor.pitch_um is None:
+        return
+    # An output pixel spans the sensor's width over the image's.
+    sites = (camera.sensor.width_px or camera.width_px) / camera.width_px
+    pitch_m = camera.sensor.pitch_um * 1e-6 * sites
+    node = tree.nodes["lens.psf"]
+    if node.image is not None:
+        bpy.data.images.remove(node.image)
+    kernel = optics.airy_kernel(colour.SRGB_DOMINANT_M, f_number, pitch_m)
+    node.image = curve_image("lens.psf", kernel)
+
+
 def respond(mount: Mount, noise: np.random.Generator) -> None:
     """Set Cycles' pixel filter and the compositor's camera to `mount`'s, its sensor
     noise seeded from `noise`; a build without a compositor takes only the filter."""
@@ -212,6 +253,7 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
     sensor._set(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
     sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
+    _set_diffraction(tree, camera)
     if "sensor.on" not in tree.nodes:
         return
     sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
