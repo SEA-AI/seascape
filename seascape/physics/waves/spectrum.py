@@ -31,7 +31,8 @@ CAPILLARY_SPEED_MPS = 0.23
 CHARNOCK = 0.011
 VON_KARMAN = 0.4
 
-# A judgement: frequencies, enough that no single wave shows.
+# A judgement: runs of neighbouring frequencies, each spanning the spread, enough that
+# no single wave shows.
 FREQUENCIES = 32
 
 # A judgement, as a fraction of the peak frequency: the spectrum's

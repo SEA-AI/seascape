@@ -36,8 +36,8 @@ SPREAD_AM = 0.13
 # Goda 2000: swell with a long decay distance.
 SWELL_S_MAX = 75.0
 
-# A judgement: each frequency at several headings, so its crests cross and break off
-# instead of running across the frame as one line.
+# A judgement: neighbouring frequencies in runs this long span the spread, so their
+# crests cross and break off instead of running across the frame as one line.
 WIND_HEADINGS = 3
 
 # A judgement: enough headings that a swell's crests do not read as one line.
@@ -71,8 +71,8 @@ def _downwind_rad(delta: np.ndarray, u: np.ndarray) -> np.ndarray:
 def _bins(
     wind_speed_mps: float, fetch_m: float | None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Frequencies log-spaced from the longest wave to the shortest, and the height
-    variance each carries."""
+    """Frequency bins log-spaced from the longest wave to the shortest, one per wave:
+    their edges, and the height variance each carries."""
     if wind_speed_mps <= 0.0:
         return np.empty(0), np.empty(0)
     peak = peak_omega_rad_s(wind_speed_mps, fetch_m)
@@ -81,12 +81,16 @@ def _bins(
     high = math.sqrt(GRAVITY_MS2 * CAPILLARY_PEAK_RAD_M)
     if low >= high:
         return np.empty(0), np.empty(0)
-    edges = np.geomspace(low, high, FREQUENCIES + 1)
-    omega = np.sqrt(edges[:-1] * edges[1:])
+    edges = np.geomspace(low, high, FREQUENCIES * WIND_HEADINGS + 1)
+    omega = _centres(edges)
     k = omega**2 / GRAVITY_MS2
     # S(k) dk with dk = 2 omega / g d omega: deep water, as the drawn waves run.
     density = curvature_spectrum(k, wind_speed_mps, fetch_m) * k**-3 * 2 * omega
-    return omega, density / GRAVITY_MS2 * np.diff(edges)
+    return edges, density / GRAVITY_MS2 * np.diff(edges)
+
+
+def _centres(edges: np.ndarray) -> np.ndarray:
+    return np.sqrt(edges[:-1] * edges[1:])
 
 
 def _snapped(omega: np.ndarray, snap: Callable[[float], float]) -> np.ndarray:
@@ -114,13 +118,16 @@ def wind_sea(
     Where it carries more slope than Cox & Munk measured, as below the 3-21 m/s it was
     fitted over, the whole sea is scaled to their variance on the axis it overshoots
     most, as Elfouhaily tied their short waves to it."""
-    omega, variance = _bins(wind_speed_mps, fetch_m)
-    if not len(omega):
+    edges, variance = _bins(wind_speed_mps, fetch_m)
+    if not len(variance):
         return ()
-    # Stratified, so a frequency's headings fall in separate shares of the spread.
-    share = np.tile(np.arange(WIND_HEADINGS), len(omega))
-    omega = np.repeat(omega, WIND_HEADINGS)
-    variance = np.repeat(variance / WIND_HEADINGS, WIND_HEADINGS)
+    # Log-uniform in its bin: on the bins' centres, the few waves that carry the slope
+    # keep a fixed spacing and beat into bands.
+    omega = edges[:-1] * (edges[1:] / edges[:-1]) ** rng.uniform(size=len(variance))
+    # Stratified, so each run's waves fall in separate shares of the spread, in an
+    # order of their own.
+    runs = np.tile(np.arange(WIND_HEADINGS), (FREQUENCIES, 1))
+    share = rng.permuted(runs, axis=1).ravel()
     delta = spreading_delta(omega, wind_speed_mps, fetch_m)
     # Wind is named for where it blows from; waves run the other way.
     toward = math.radians(wind_from_deg + 180.0) + _downwind_rad(
@@ -168,8 +175,9 @@ def snap_error(
     wind_speed_mps: float, fetch_m: float | None, snap: Callable[[float], float]
 ) -> float:
     """Relative frequency error a loop's snapping costs, weighted by height variance."""
-    omega, variance = _bins(wind_speed_mps, fetch_m)
-    if not len(omega):
+    edges, variance = _bins(wind_speed_mps, fetch_m)
+    if not len(variance):
         return 0.0
+    omega = _centres(edges)
     error = np.abs(_snapped(omega, snap) - omega) / omega
     return float(np.sum(error * variance) / np.sum(variance))

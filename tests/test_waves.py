@@ -1,5 +1,4 @@
 import math
-from collections import defaultdict
 from statistics import NormalDist
 
 import numpy as np
@@ -116,15 +115,12 @@ def test_a_slick_damps_the_shortest_waves_first(wind_speed_mps: float) -> None:
     left = waves.slick_survivors(wind_speed_mps, built, 0.0)
 
     gone = set(built) - set(left)
-    k = min(w.k_rad_m for w in gone)
-    next_frequency = tuple(w for w in gone if w.k_rad_m == k)
-    assert max(w.k_rad_m for w in left) < k
-    assert len(next_frequency) == waves.WIND_HEADINGS
-    # Each axis within Cox & Munk's slick fit, and one more wavelength breaks one.
+    next_wave = min(gone, key=lambda w: w.k_rad_m)
+    assert max(w.k_rad_m for w in left) < next_wave.k_rad_m
+    # Each axis within Cox & Munk's slick fit, and one more wave breaks one.
     assert np.all(np.array(waves.drawn_slope_variances(left, 0.0, 0.0)) <= budget)
     assert np.any(
-        np.array(waves.drawn_slope_variances((*left, *next_frequency), 0.0, 0.0))
-        > budget
+        np.array(waves.drawn_slope_variances((*left, next_wave), 0.0, 0.0)) > budget
     )
 
 
@@ -200,17 +196,14 @@ def test_a_light_wind_still_raises_a_sea(wind_speed_mps: float) -> None:
     assert all(w.amplitude_m > 0.0 for w in built)
 
 
-def test_each_frequency_runs_both_sides_of_the_wind() -> None:
-    built = field(7.0)
+def test_each_run_of_frequencies_runs_both_sides_of_the_wind() -> None:
+    built = sorted(field(7.0), key=lambda w: w.omega_rad_s)
 
     # A wind from the north runs its waves toward pi.
-    off = defaultdict(list)
-    for wave in built:
-        off[wave.omega_rad_s].append(
-            math.remainder(wave.toward_rad - math.pi, 2 * math.pi)
-        )
+    off = np.array([math.remainder(w.toward_rad - math.pi, 2 * math.pi) for w in built])
 
-    assert all(min(o) < 0.0 < max(o) for o in off.values())
+    runs = off.reshape(-1, waves.WIND_HEADINGS)
+    assert np.all((runs.min(axis=1) < 0.0) & (runs.max(axis=1) > 0.0))
 
 
 @pytest.mark.parametrize("share", [0.9, 0.999])
@@ -640,15 +633,20 @@ def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
         cutoff,
         100_000,
     )
-    sea = field(wind_speed_mps)
-    # A light wind's sea is held to Cox & Munk's slope, every wave alike.
-    _, variance = waves.sea._bins(wind_speed_mps, None)
-    held = sum(w.amplitude_m**2 / 2 for w in sea) / variance.sum()
-    weight = held * waves.curvature_spectrum(k, wind_speed_mps, None) * k
+    weight = waves.curvature_spectrum(k, wind_speed_mps, None) * k
     m4 = np.trapezoid(weight, k)
     omega_sq = np.trapezoid(weight * earth.GRAVITY_MS2 * k, k) / m4
-    assert waves.specular_cell_m2(sea) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.1)
-    assert waves.twinkle_hz(sea) == pytest.approx(
+    _, variance = waves.sea._bins(wind_speed_mps, None)
+    cells, twinkles = [], []
+    # Each wave's frequency is drawn in its bin, so the seeds average.
+    for seed in range(8):
+        sea = field(wind_speed_mps, seed=seed)
+        # A light wind's sea is held to Cox & Munk's slope, every wave alike.
+        held = sum(w.amplitude_m**2 / 2 for w in sea) / variance.sum()
+        cells.append(waves.specular_cell_m2(sea) * held)
+        twinkles.append(waves.twinkle_hz(sea))
+    assert np.mean(cells) == pytest.approx(2 * math.sqrt(3) / m4, rel=0.1)
+    assert np.mean(twinkles) == pytest.approx(
         math.sqrt(omega_sq) / (2 * math.pi), rel=0.1
     )
 
@@ -723,6 +721,16 @@ def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None
     _, variance = waves.sea._bins(7.0, None)
     built = field(7.0)
     assert sum(w.amplitude_m**2 / 2 for w in built) == pytest.approx(variance.sum())
+
+
+def test_each_wave_carries_its_own_bin_s_height_off_the_bin_s_centre() -> None:
+    """Off the centres, so the waves keep no fixed spacing to beat at."""
+    edges, variance = waves.sea._bins(7.0, None)
+    built = sorted(field(7.0), key=lambda w: w.omega_rad_s)
+    omega = np.array([w.omega_rad_s for w in built])
+    assert np.all((edges[:-1] < omega) & (omega < edges[1:]))
+    assert np.ptp(np.diff(np.log(omega))) > 0.5 * np.log(edges[1] / edges[0])
+    assert [w.amplitude_m**2 / 2 for w in built] == pytest.approx(variance)
 
 
 def test_a_tile_ranked_onto_a_gaussian_keeps_its_pattern_and_loses_its_skew() -> None:
