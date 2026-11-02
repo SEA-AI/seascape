@@ -176,16 +176,17 @@ def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Node
 
 
 def value(
-    tree: bpy.types.NodeTree, name: str, value: float = 0.0
+    tree: bpy.types.NodeTree, name: str, initial: float = 0.0
 ) -> bpy.types.NodeSocket:
+    """A named Value node, which `set_value` changes after the build."""
     node = tree.nodes.new("ShaderNodeValue")
     node.name = name
-    node.outputs["Value"].default_value = value
+    node.outputs["Value"].default_value = initial
     return node.outputs["Value"]
 
 
-def set_value(tree: bpy.types.NodeTree, name: str, value: float) -> None:
-    tree.nodes[name].outputs["Value"].default_value = value
+def set_value(tree: bpy.types.NodeTree, name: str, to: float) -> None:
+    tree.nodes[name].outputs["Value"].default_value = to
 
 
 def switch(
