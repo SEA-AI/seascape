@@ -173,7 +173,13 @@ def _camera(
     links.new(info.outputs["Resolution"], side.inputs["Vector"])
     longer_px = scalar(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
-    size_px = scalar(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
+    # `lens.blur` is 0 once diffraction draws the lens's softness.
+    size_px = scalar(
+        tree,
+        "MULTIPLY",
+        scalar(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE),
+        sensor._value(tree, "lens.blur", 1.0),
+    )
     size = nodes.new("ShaderNodeCombineXYZ")
     links.new(size_px, size.inputs["X"])
     links.new(size_px, size.inputs["Y"])
@@ -212,8 +218,8 @@ def _diffraction(
         tree.links.new(kernel.outputs["Image"], rgb)
         return node.outputs["Image"]
 
-    # Convolve reads black past the frame; normalized (Knutsson & Westin 1993), a
-    # border pixel spreads only over the pixels there are.
+    # Convolve reads black past the frame. Dividing by the convolved ones (Knutsson
+    # & Westin 1993) keeps a border pixel at its level.
     ones = vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
     spread = vector(tree, "DIVIDE", convolved(image), convolved(ones))
     return sensor._switch(tree, "lens.diffract", image, spread)
@@ -222,14 +228,16 @@ def _diffraction(
 def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
     f_number = camera.lens.f_number
     sensor._toggle(tree, "lens.diffract", f_number is not None)
-    if f_number is None or camera.sensor.pitch_um is None:
-        return
-    # An output pixel spans the sensor's width over the image's.
-    sites = (camera.sensor.width_px or camera.width_px) / camera.width_px
-    pitch_m = camera.sensor.pitch_um * 1e-6 * sites
+    sensor._set(tree, "lens.blur", 1.0 if f_number is None else 0.0)
     node = tree.nodes["lens.psf"]
+    # A Switch evaluates both branches, so a kernel left behind is convolved anyway.
     if node.image is not None:
         bpy.data.images.remove(node.image)
+    if f_number is None:
+        return
+    assert camera.sensor.pitch_um is not None, "Camera validates it"
+    sites_per_px = (camera.sensor.width_px or camera.width_px) / camera.width_px
+    pitch_m = camera.sensor.pitch_um * 1e-6 * sites_per_px
     kernel = optics.airy_kernel(colour.SRGB_DOMINANT_M, f_number, pitch_m)
     node.image = curve_image("lens.psf", kernel)
 

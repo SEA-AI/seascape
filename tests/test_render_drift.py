@@ -1101,8 +1101,8 @@ class TestSensor:
         )
 
     def test_the_lens_spreads_each_colour_by_its_airy_pattern(self) -> None:
-        """A disc on a flat sky through f/11: the sharp frame through each colour's
-        kernel, a border pixel spread over the pixels there are."""
+        """A disc on a flat sky through f/11 is the sharp frame convolved with each
+        colour's kernel, normalized at the border."""
         width, _ = self.SIZE
         f_number, pitch_um = 11.0, 2.1
         # Twice as fine: no mosaic, so the sensor reads each colour where it falls.
@@ -1116,6 +1116,10 @@ class TestSensor:
         )
         expected = convolved(sharp, kernel) / convolved(np.ones_like(sharp), kernel)
         assert np.abs(soft - expected).max() < 0.02 * np.abs(soft - sharp).max()
+        # A camera without one, after it, convolves nothing.
+        again = self.through((1.0, 1.0, 1.0), sun=1.0, sensor=sensor)
+        assert bpy.context.scene.compositing_node_group.nodes["lens.psf"].image is None
+        assert again == pytest.approx(sharp, abs=1e-3)
 
     def test_no_exposure_turns_a_frame_into_nans(self) -> None:
         """At the largest gain the ideal frame stays a number, and a sensor reads

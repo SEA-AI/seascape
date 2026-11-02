@@ -14,9 +14,10 @@ XYZ_TO_SRGB = np.array(
     ]
 )
 
-# The dominant wavelengths of the sRGB primaries (IEC 61966-2-1) seen from D65: where
-# the line from D65 through each meets the CIE 1931 2 degree spectral locus (CIE
-# 015:2018). Limitation: a channel spans a band, and a sensor's response weights it.
+# The dominant wavelength of each sRGB primary (IEC 61966-2-1) from D65: where the
+# line from D65 through the primary meets the spectral locus of the CIE 1931 2 degree
+# colour-matching functions (CIE 015:2018). Limitation: a channel spans a band, and a
+# sensor's response weights it.
 SRGB_DOMINANT_M = (611.3e-9, 549.1e-9, 464.3e-9)
 
 

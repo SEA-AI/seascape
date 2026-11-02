@@ -78,8 +78,8 @@ def curve_image(
     name: str, values: np.ndarray, float_buffer: bool = True
 ) -> bpy.types.Image:
     """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
-    or rows bottom first, grey or with a last axis of RGB. Without `float_buffer`, 8
-    bits of values in [0, 1]."""
+    or rows bottom first, grey or RGB on a last axis. Without `float_buffer`, 8 bits
+    of values in [0, 1]."""
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
     height, width = table.shape[:2]
     image = bpy.data.images.new(

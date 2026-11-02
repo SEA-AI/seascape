@@ -1039,7 +1039,7 @@ def test_a_camera_is_ideal_unless_told_otherwise(baseline) -> None:
         "rigs.bow.cameras.ir.lens.f_number = 1.0",
     ],
 )
-def test_an_ir_camera_takes_no_sensor_or_processing(line: str) -> None:
+def test_an_ir_camera_takes_no_eo_parts(line: str) -> None:
     with pytest.raises(ValidationError, match="an ir camera"):
         load(BASELINE, [line])
 

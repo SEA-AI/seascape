@@ -67,8 +67,9 @@ class Lens(Model):
     f_number: float | None = Field(
         default=None,
         gt=0.0,
-        description="EO only, and needs a sensor.pitch_um: its diffraction, an Airy "
-        "pattern per colour. An ir camera's is its microbolometer's.",
+        description="The lens's f-number, which blurs each colour by its diffraction "
+        "pattern. It needs sensor.pitch_um. Only png and jpg output use it. An LWIR "
+        "camera sets microbolometer.f_number instead.",
     )
 
 
