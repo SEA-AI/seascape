@@ -62,7 +62,10 @@ sensor.gain_db = 12.0
 sensor.hdr_ratio = 16.0
 lens.vignetting = true
 processing.white_balance_k = 800
+processing.tone = "emor"
 ```
+
+`processing.tone` swaps sRGB's encoding for a published camera curve, which darkens shadows and midtones the way a consumer JPEG does: `bt709`, BT.709's OETF, or `emor`, the mean response of 201 cameras and films (Grossberg & Nayar 2004). An ideal camera takes it too.
 
 An LWIR camera can carry a lens and a microbolometer: `lens.vignetting` for natural falloff, and `microbolometer` for the lens's diffraction, the pixel's aperture and NETD noise. The pixel aperture is Cycles' pixel filter, so an exr carries it; the rest acts on a png or jpg.
 

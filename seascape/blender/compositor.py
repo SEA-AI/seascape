@@ -16,6 +16,7 @@ from seascape.config import (
     Mount,
     Outputs,
 )
+from seascape.physics import colour
 
 JPEG_QUALITY = 95
 
@@ -121,8 +122,8 @@ def _camera(
     with_sensor: bool = False,
 ) -> bpy.types.NodeSocket:
     """A lens's falloff, glare and blur, then auto-exposure, and with `with_sensor`
-    the sensor and ISP. Without one the Standard view clips at white, as a sensor
-    does. `respond` sets the camera.
+    the sensor and ISP, then the ISP's tone curve. Without a sensor the Standard view
+    clips at white, as a sensor does. `respond` sets the camera.
 
     Limitation: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
@@ -185,12 +186,43 @@ def _camera(
     processing = sensor._value(tree, "processing.gain", 1.0)
     gain = scalar(tree, "MULTIPLY", gain, processing)
     exposed = vector(tree, "SCALE", image, gain)
-    if not with_sensor:
-        return exposed
-    # A camera without a full well shares the tree, and takes the ideal frame.
-    grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
-    read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
-    return sensor._switch(tree, "sensor.on", exposed, read)
+    if with_sensor:
+        # A camera without a full well shares the tree, and takes the ideal frame.
+        grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
+        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
+        exposed = sensor._switch(tree, "sensor.on", exposed, read)
+    return _tone(tree, exposed)
+
+
+def _tone(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """`image` through the curve `respond` gives "processing.tone", which takes and
+    gives sRGB-encoded values, so the Standard view writes the curve's own."""
+    nodes, links = tree.nodes, tree.links
+    encode, decode = (nodes.new("CompositorNodeConvertColorSpace") for _ in range(2))
+    encode.to_color_space = decode.from_color_space = "sRGB"
+    curve = nodes.new("CompositorNodeCurveRGB")
+    curve.name = "processing.tone"
+    links.new(image, encode.inputs["Image"])
+    links.new(encode.outputs["Image"], curve.inputs["Image"])
+    links.new(curve.outputs["Image"], decode.inputs["Image"])
+    return sensor._switch(tree, "processing.toned", image, decode.outputs["Image"])
+
+
+def _set_curve(node: bpy.types.Node, y: np.ndarray) -> None:
+    """`node`'s combined curve through `y` at `colour.TONE_IN`."""
+    points = node.mapping.curves[3].points
+    while len(points) > 2:
+        points.remove(points[1])
+    points[0].location = (0.0, float(y[0]))
+    points[-1].location = (1.0, float(y[-1]))
+    for x, value in zip(colour.TONE_IN[1:-1], y[1:-1], strict=True):
+        points.new(float(x), float(value))
+    for point in points:
+        # Clamped: a monotonic curve's spline does not overshoot its knots.
+        point.handle_type = "AUTO_CLAMPED"
+    node.mapping.update()
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:
@@ -212,6 +244,10 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
     sensor._set(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
     sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
+    tone = camera.processing.tone
+    sensor._toggle(tree, "processing.toned", tone != "none")
+    if tone != "none":
+        _set_curve(tree.nodes["processing.tone"], colour.tone_curve(tone))
     if "sensor.on" not in tree.nodes:
         return
     sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)

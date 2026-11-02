@@ -3,6 +3,7 @@
 import math
 import shutil
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
 
 import bpy
@@ -18,6 +19,7 @@ from seascape.blender.compositor import (
     GLARE_SHOULDER,
     GLARE_SLOPE,
     MID_GREY,
+    _set_curve,
     respond,
 )
 from seascape.blender.meshes import import_asset, measure, mesh_objects
@@ -962,7 +964,7 @@ class TestSensor:
         seed: int = 0,
         frame: int = 0,
         sun: float = 0.0,
-        **camera: dict[str, float | bool],
+        **camera: Mapping[str, float | bool | str],
     ) -> np.ndarray:
         """The frame, RGB top row first, of a sky of `colour`, with `sun` added in a
         disc overhead if given, through a camera the size of the probe's with
@@ -1161,6 +1163,30 @@ class TestSensor:
             processing={"white_balance_k": 3000.0, "exposure_ev": 4.0},
         )
         assert frame[2:-2, 2:-2] == pytest.approx(1.0)
+
+    @pytest.mark.parametrize("tone", ["bt709", "emor"])
+    def test_a_tone_curve_takes_the_metered_grey_where_its_curve_does(
+        self, tone: str
+    ) -> None:
+        """A camera without a sensor takes it too."""
+        frame = self.through((1.0, 1.0, 1.0), processing={"tone": tone})
+        encoded = 1.055 * MID_GREY ** (1 / 2.4) - 0.055
+        toned = np.interp(encoded, colour.TONE_IN, colour.tone_curve(tone))
+        assert frame.mean() == pytest.approx(colour.srgb_decode(toned), rel=0.02)
+        assert self.through((1.0, 1.0, 1.0)).mean() == pytest.approx(MID_GREY, rel=0.01)
+
+
+def test_the_tone_node_carries_bt709_to_within_a_level_of_8_bits() -> None:
+    tree = bpy.data.node_groups.new("tone", "CompositorNodeTree")
+    node = tree.nodes.new("CompositorNodeCurveRGB")
+    _set_curve(node, colour.tone_curve("bt709"))
+    encoded = np.linspace(0.0, 1.0, 1001)
+    linear = colour.srgb_decode(encoded)
+    oetf = np.where(linear < 0.018, 4.5 * linear, 1.099 * linear**0.45 - 0.099)
+    curve = node.mapping.curves[3]
+    got = [node.mapping.evaluate(curve, float(x)) for x in encoded]
+    assert np.abs(got - oetf).max() < 1 / 255
+    bpy.data.node_groups.remove(tree)
 
 
 def test_a_hull_s_foam_trails_behind_it() -> None:
