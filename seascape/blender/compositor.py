@@ -172,13 +172,8 @@ def _camera(
     links.new(info.outputs["Resolution"], side.inputs["Vector"])
     longer_px = scalar(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
-    # `lens.blur` is 0 once diffraction draws the lens's softness.
-    size_px = scalar(
-        tree,
-        "MULTIPLY",
-        scalar(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE),
-        sensor._value(tree, "lens.blur", 1.0),
-    )
+    share = sensor._value(tree, "lens.blur_of_side", BLUR_OF_SIDE)
+    size_px = scalar(tree, "MULTIPLY", longer_px, share)
     size = nodes.new("ShaderNodeCombineXYZ")
     links.new(size_px, size.inputs["X"])
     links.new(size_px, size.inputs["Y"])
@@ -202,43 +197,69 @@ def _camera(
     return sensor._switch(tree, "sensor.on", exposed, read)
 
 
+def _ones_like(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """A frame of ones the size of `image`: an operation takes its first input's
+    domain, and a colour alone has none."""
+    return vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
+
+
+def _convolve(
+    tree: bpy.types.NodeTree,
+    image: bpy.types.NodeSocket,
+    kernel: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`image` convolved with a colour `kernel`, each channel by its own."""
+    node = tree.nodes.new("CompositorNodeConvolve")
+    node.inputs["Kernel Data Type"].default_value = "Color"
+    tree.links.new(image, node.inputs["Image"])
+    rgb = next(s for s in node.inputs if s.name == "Kernel" and s.type == "RGBA")
+    tree.links.new(kernel, rgb)
+    return node.outputs["Image"]
+
+
 def _diffraction(
     tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """`image` through the kernel `respond` puts in `lens.psf`, or as it is."""
-    kernel = tree.nodes.new("CompositorNodeImage")
-    kernel.name = "lens.psf"
-
-    def convolved(source: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        node = tree.nodes.new("CompositorNodeConvolve")
-        node.inputs["Kernel Data Type"].default_value = "Color"
-        tree.links.new(source, node.inputs["Image"])
-        rgb = next(s for s in node.inputs if s.name == "Kernel" and s.type == "RGBA")
-        tree.links.new(kernel.outputs["Image"], rgb)
-        return node.outputs["Image"]
-
+    psf = tree.nodes.new("CompositorNodeImage")
+    psf.name = "lens.psf"
+    kernel = psf.outputs["Image"]
     # Convolve reads black past the frame. Dividing by the convolved ones (Knutsson
     # & Westin 1993) keeps a border pixel at its level.
-    ones = vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
-    spread = vector(tree, "DIVIDE", convolved(image), convolved(ones))
+    spread = vector(
+        tree,
+        "DIVIDE",
+        _convolve(tree, image, kernel),
+        _convolve(tree, _ones_like(tree, image), kernel),
+    )
     return sensor._switch(tree, "lens.diffract", image, spread)
 
 
 def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
+    """Turn diffraction on for `camera` or off, building its kernel when it changes."""
     f_number = camera.lens.f_number
     sensor._toggle(tree, "lens.diffract", f_number is not None)
-    sensor._set(tree, "lens.blur", 1.0 if f_number is None else 0.0)
+    # The Airy pattern is the lens's softness; the judgement blur stands in for it.
+    sensor._set(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
     node = tree.nodes["lens.psf"]
-    # A Switch evaluates both branches, so a kernel left behind is convolved anyway.
-    if node.image is not None:
-        bpy.data.images.remove(node.image)
     if f_number is None:
+        # A Switch evaluates both branches, so a kernel left behind is convolved.
+        if node.image is not None:
+            bpy.data.images.remove(node.image)
         return
-    assert camera.sensor.pitch_um is not None, "Camera validates it"
+    assert camera.sensor.pitch_um is not None, "f_number needs sensor.pitch_um"
     sites_per_px = (camera.sensor.width_px or camera.width_px) / camera.width_px
     pitch_m = camera.sensor.pitch_um * 1e-6 * sites_per_px
+    built = (node.get("f_number"), node.get("pitch_m"))
+    if node.image is not None and built == (f_number, pitch_m):
+        return
+    if node.image is not None:
+        bpy.data.images.remove(node.image)
     kernel = optics.airy_kernel(colour.SRGB_DOMINANT_M, f_number, pitch_m)
     node.image = curve_image("lens.psf", kernel)
+    node["f_number"], node["pitch_m"] = f_number, pitch_m
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:
