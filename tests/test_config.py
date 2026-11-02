@@ -7,7 +7,7 @@ import statistics
 import tomllib
 import warnings
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import pytest
 from pydantic import ValidationError
@@ -741,6 +741,29 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
     assert sky.solar_gain_k == 0.0
     with pytest.raises(ValueError, match="no direction"):
         _ = sky.sun_vector
+
+
+def test_a_hidden_sun_sits_where_the_scenario_puts_it() -> None:
+    sky = Sky.model_validate(
+        {"hdri": "overcast_soil", "sun_diffuse_fraction": 0.7, "sun_elevation_deg": 20}
+    )
+    assert sky.sun_elevation_deg == 20.0
+
+
+@pytest.mark.parametrize(
+    ("sky", "match"),
+    [
+        ({"hdri": "kloofendal_48d_partly_cloudy"}, "with no disc"),
+        ({}, "needs an hdri"),
+        ({"hdri": "overcast_soil", "sun_elevation_deg": -5.0}, "above the horizon"),
+        ({"hdri": "overcast_soil"}, "needs sun_elevation_deg"),
+    ],
+)
+def test_a_hidden_sun_needs_a_hidden_disc_above_the_horizon(
+    sky: dict[str, Any], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Sky.model_validate({**sky, "sun_diffuse_fraction": 0.7})
 
 
 def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:

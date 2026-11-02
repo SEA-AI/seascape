@@ -164,3 +164,10 @@ def test_the_clear_sky_beside_a_pixel_ignores_the_grid_s_margin() -> None:
     weight = np.random.default_rng(0).random((37, 101), np.float32)
     value = np.full_like(weight, 2.0)
     assert np.allclose(skies._beside(weight, value, 12.0), 2.0, atol=1e-5)
+
+
+def test_a_uniform_sky_lights_a_horizontal_surface_with_pi_times_its_radiance() -> None:
+    """Below the horizon counts nothing."""
+    radiance = np.ones((64, 128, 3), np.float32)
+    radiance[32:] = 100.0
+    assert skies.diffuse_irradiance(radiance) == pytest.approx(math.pi, rel=1e-3)

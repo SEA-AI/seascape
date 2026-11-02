@@ -211,6 +211,18 @@ class Sky(Model):
         "the Sky Texture, which sets `sun_elevation_deg`. LWIR keeps its own clear sky "
         "and takes the photo's sun and clouds, turned to `sun_bearing_deg`.",
     )
+    sun_diffuse_fraction: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="Only with an `hdri` whose sun shows no disc. It puts a sun "
+        "behind the photo's cloud, at `sun_elevation_deg`. The value is the sky's "
+        "share of the light a horizontal surface takes, and the sun's beam is the "
+        "rest: about 0.17 clear, 0.7 under thin cloud and near 1 overcast (Erbs, "
+        "Klein & Duffie, Solar Energy 28(4) 293, 1982). In LWIR the same beam warms a "
+        "hull's zones. A hull given one `t_k` warms only by a `solar_gain_k` the "
+        "scenario sets.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -223,13 +235,18 @@ class Sky(Model):
             raise ValueError(f"no sky {data['hdri']!r} in {sorted(photos)}")
         photo = photos[data["hdri"]]
         elevation = photo.sun_elevation_deg
-        # Warned, not refused: `extends` and `--set` cannot remove a key. A dumped
-        # scenario holds the photo's own values and is not warned about.
-        if data.get("sun_elevation_deg", elevation) != elevation:
-            warnings.warn(
-                "the hdri sets the sky; sun_elevation_deg is ignored", stacklevel=2
-            )
-        data = {**data, "sun_elevation_deg": elevation}
+        if data.get("sun_diffuse_fraction") is None:
+            # Warned, not refused: `extends` and `--set` cannot remove a key. A dumped
+            # scenario holds the photo's own values and is not warned about.
+            if data.get("sun_elevation_deg", elevation) != elevation:
+                warnings.warn(
+                    "the hdri sets the sky; sun_elevation_deg is ignored", stacklevel=2
+                )
+            data = {**data, "sun_elevation_deg": elevation}
+        elif elevation is not None:
+            raise ValueError("sun_diffuse_fraction is for an hdri with no disc")
+        elif "sun_elevation_deg" not in data:
+            raise ValueError("sun_diffuse_fraction needs sun_elevation_deg")
         if layer := lwir.CLOUD_LAYER_M.get(photo.cloud_genus):
             data.setdefault("cloud_base_m", layer[0])
         if elevation is None:
@@ -243,6 +260,16 @@ class Sky(Model):
             raise ValueError(
                 "sun_elevation_deg is None only for an hdri without a disc"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _a_hidden_sun_is_up(self) -> "Sky":
+        if self.sun_diffuse_fraction is None:
+            return self
+        if self.hdri is None:
+            raise ValueError("sun_diffuse_fraction needs an hdri")
+        if self.sun_elevation_deg is None or self.sun_elevation_deg <= 0.0:
+            raise ValueError("sun_diffuse_fraction needs a sun above the horizon")
         return self
 
     @model_validator(mode="before")
