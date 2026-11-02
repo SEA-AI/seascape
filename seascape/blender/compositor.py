@@ -182,9 +182,9 @@ def _camera(
     links.new(size.outputs["Vector"], blur.inputs["Size"])
     links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
-    _, log_average = sensor.log_average(tree, image)
+    _, average = sensor.log_average(tree, image)
     gain = scalar(
-        tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
+        tree, "DIVIDE", 2**compensation_ev * MID_GREY, average, name="exposure"
     )
     processing = value(tree, "processing.gain", 1.0)
     gain = scalar(tree, "MULTIPLY", gain, processing)
