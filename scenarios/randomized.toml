@@ -32,7 +32,7 @@ sun_elevation_deg = { uniform = [2.0, 60.0] }
 # 0.30 to a dark hull's 0.90 under the same clear sky.
 solar_gain_k = { uniform = [8.5, 25.5] }
 sun_bearing_deg = { uniform = [100.0, 260.0] }
-visibility_km = { uniform = [4.0, 42.0] }
+visibility_km = { uniform = [3.1, 32.2] }
 atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
 
 [[sky.choice]]
@@ -71,7 +71,7 @@ hdri = { choice = [
     "wasteland_clouds",
 ] }
 sun_bearing_deg = { uniform = [100.0, 260.0] }
-visibility_km = { uniform = [4.0, 42.0] }
+visibility_km = { uniform = [3.1, 32.2] }
 atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
 
 [sea]

@@ -5,8 +5,8 @@ import pytest
 
 from seascape.physics import aerosol, lwir
 
-# Koschmieder's extinction at 0.5 km: 2% contrast over the visibility.
-BETA_500M = math.log(50) / 500.0
+# The extinction at 0.5 km: 5% contrast over the visibility.
+BETA_500M = math.log(20) / 500.0
 
 # lowtran_haze.csv, north_sea at 90 degrees: what 2 km maritime haze passes overhead.
 HAZE_2KM_ZENITH = 0.782024
@@ -30,7 +30,7 @@ def test_fog_glows_at_the_air_along_the_horizon_and_thins_overhead() -> None:
 
 
 def test_haze_overhead_is_lowtran_s() -> None:
-    depth = aerosol.depth(math.pi / 2, 2.0, "north_sea")
+    depth = aerosol.depth(math.pi / 2, aerosol.HAZE_KM, "north_sea")
     assert depth == pytest.approx(-math.log(HAZE_2KM_ZENITH), rel=1e-6)
     assert aerosol.depth(math.pi / 2, 1.5, "north_sea") > depth
     assert aerosol.depth(ELEVATIONS, None) == pytest.approx(0.0)
@@ -73,7 +73,7 @@ def test_thicker_air_covers_more_of_the_sky() -> None:
     covers = [aerosol.cover(v) for v in (None, 42.0, 5.0, 1.5, 0.99, 0.5, 0.2)]
     assert covers == sorted(covers)
     assert covers[0] == 0.0
-    assert covers[-1] > 0.99
+    assert covers[-1] == pytest.approx(0.9872, abs=1e-4)
 
 
 def test_the_heat_balance_takes_the_fog_alone() -> None:
@@ -87,14 +87,17 @@ def test_the_heat_balance_takes_the_fog_alone() -> None:
 def test_a_high_sun_dims_through_the_fog_and_a_low_one_vanishes() -> None:
     overhead = aerosol.sun_transmittance(math.pi / 2, 0.5)
     assert overhead == pytest.approx(math.exp(-BETA_500M * aerosol.DEPTH_M))
-    assert aerosol.sun_transmittance(math.radians(5.0), 0.5) < 1e-6
+    low = math.radians(5.0)
+    assert aerosol.sun_transmittance(low, 0.5) == pytest.approx(
+        math.exp(-BETA_500M * aerosol.DEPTH_M / math.sin(low))
+    )
     assert aerosol.sun_transmittance(-0.1, 0.5) == 0.0
 
 
 def test_fog_passes_more_sunlight_than_its_beam() -> None:
     passed = aerosol.diffuse_transmittance(0.5)
-    # 2 / (2 + 0.15 x 1.565), by hand.
-    assert passed == pytest.approx(0.8950, abs=1e-4)
+    # 2 / (2 + 0.15 x 1.198), by hand.
+    assert passed == pytest.approx(0.9175, abs=1e-4)
     assert passed > aerosol.sun_transmittance(math.pi / 2, 0.5)
 
 

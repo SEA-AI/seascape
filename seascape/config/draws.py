@@ -111,7 +111,7 @@ class Choice(Model):
 
 class OpticalDepth(Model):
     """An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,
-    with `sky.visibility_km` taken as Koschmieder's 2%."""
+    with a dark target keeping 5% of its contrast over `sky.visibility_km`."""
 
     optical_depth: tuple[
         Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
