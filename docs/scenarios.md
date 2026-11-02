@@ -50,7 +50,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ### The camera itself
 
-An EO camera can carry a sensor, a lens and an ISP. Without them it is ideal: no noise, no mosaic, a hard clip at white.
+An EO camera can carry a sensor, a lens and an ISP. Without them it is ideal: no noise, no mosaic, a hard clip at white. Even an ideal lens scatters `lens.veiling_glare` of the light across the frame; behind a smudged cover glass, raise it.
 
 ```toml
 [rigs.bow.cameras.eo]

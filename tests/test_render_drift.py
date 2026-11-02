@@ -14,7 +14,6 @@ from seascape.assets import Buoy, download, fetch, manifest, skies
 from seascape.blender import blend, scene, sea
 from seascape.blender.blend import scalar
 from seascape.blender.compositor import (
-    GLARE_SHARE,
     GLARE_SHOULDER,
     GLARE_SLOPE,
     MID_GREY,
@@ -27,7 +26,7 @@ from seascape.blender.sea.foam import LATTICE_WALL_M
 from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CELLS
 from seascape.blender.sea.memory import _frames_folder
 from seascape.blender.sky import _sky_texture, haze
-from seascape.config import Band, Camera, Mount, Scenario, Sky, load, substream
+from seascape.config import Band, Camera, Lens, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, wakes, waves
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
@@ -917,11 +916,18 @@ class TestCamera:
         off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
         assert np.percentile(off, 99) <= 4
 
-    def test_the_glare_scatters_its_share_in_harvey_s_form(self) -> None:
+    # The default last, as the class's later renders take it.
+    @pytest.mark.parametrize("share", [0.05, Lens().veiling_glare])
+    def test_the_glare_scatters_its_share_in_harvey_s_form(self, share: float) -> None:
         """A sun of about a pixel on black sky: the light beyond a few pixels of it is
-        the glare's share of the kernel's weight there."""
+        the lens's veiling glare share of the kernel's weight there."""
         # Half-resolution glare blurs the first few pixels round the sun.
         width, height, beyond_px = 384, 216, 12
+        rig = SCENARIO.rigs["bow"]
+        camera = rig.cameras["eo"].model_copy(
+            update={"lens": Lens(veiling_glare=share)}
+        )
+        respond(Mount("bow", rig, "eo", camera), substream(0, "sensor/bow_eo"))
         frame = self.through_the_camera(
             0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
         )
@@ -930,7 +936,7 @@ class TestCamera:
         r = np.hypot(x, y)
         kernel = (1 + (r / GLARE_SHOULDER) ** 2) ** (-GLARE_SLOPE / 2)
         far = r * width / 2 > beyond_px
-        expected = GLARE_SHARE * kernel[far].sum() / kernel.sum()
+        expected = share * kernel[far].sum() / kernel.sum()
         assert frame[far].sum() / frame.sum() == pytest.approx(expected, rel=0.1)
 
 

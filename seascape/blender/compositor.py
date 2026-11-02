@@ -26,9 +26,9 @@ MID_GREY = 10 / 78
 
 
 # A lens scatters in Harvey's form, (1 + (r / r0)^2)^(-g / 2) off the direct light
-# (Harvey 1976, the ABg model). Judgements, for a generic lens: the share of the light
-# it scatters, r0 in half the image's longer side, and g.
-GLARE_SHARE, GLARE_SHOULDER, GLARE_SLOPE = 0.02, 0.01, 3.0
+# (Harvey 1976, the ABg model). Judgements, for a generic lens: r0 in half the image's
+# longer side, and g. `lens.veiling_glare` is the share of the light it scatters.
+GLARE_SHOULDER, GLARE_SLOPE = 0.01, 3.0
 
 
 # Judgement: the Blur node's size, in the image's longer side; a pixel of a 4K frame.
@@ -155,13 +155,12 @@ def _camera(
         -GLARE_SLOPE / 2,
     )
     glare = nodes.new("CompositorNodeGlare")
+    glare.name = "lens.veiling_glare"
     glare.inputs["Type"].default_value = "Kernel"
     # Half the resolution: Harvey's glow is smooth, so only the sun's rim shows it.
     glare.inputs["Quality"].default_value = "Medium"
     # A lens scatters all the light, not only what clips.
     glare.inputs["Threshold"].default_value = 0.0
-    # Glare adds its glow to the image; normalized, the glow is this share of the sum.
-    glare.inputs["Strength"].default_value = GLARE_SHARE / (1 - GLARE_SHARE)
     kernel = next(s for s in glare.inputs if s.name == "Kernel" and s.type == "VALUE")
     links.new(harvey, kernel)
     links.new(image, glare.inputs["Image"])
@@ -212,6 +211,10 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
     sensor._set(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
     sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
+    share = camera.lens.veiling_glare
+    # Glare adds its glow to the image; normalized, the glow is this share of the sum.
+    strength = tree.nodes["lens.veiling_glare"].inputs["Strength"]
+    strength.default_value = share / (1 - share)
     if "sensor.on" not in tree.nodes:
         return
     sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
