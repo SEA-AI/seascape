@@ -32,7 +32,8 @@ HAZE_NEAR_M = 0.1
 # Judgement.
 THERMAL_SKY_PX = 2048
 
-# Judgement: 0.7 deg a texel, against a CIE weight blurred by skies.CIE_BLUR_DEG.
+# Judgement: width and height, 0.7 deg a texel, against a CIE weight blurred by
+# skies.CIE_BLUR_DEG.
 CIE_GRID_PX = (512, 256)
 
 # The Astronomical Almanac: the sun's mean semi-diameter is 16 arcminutes.
@@ -50,17 +51,16 @@ def add_world(sky: Sky, band: Band, seen: list[View]) -> bpy.types.World:
     background = tree.nodes["Background"].inputs["Color"]
     ray = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
     if sky.hdri is not None:
-        diffuse = skies.library()[sky.hdri].diffuse_irradiance
         if sky.cie_type is not None:
-            diffuse = _cie_weight_image(sky, seen)["diffuse_irradiance"]
+            # Before the photo, which reads it.
+            _bake_cie_weight(sky, seen)
         if sky.fog_weight:
             colour = _fogged_photo(tree, sky, ray, sky.sun_transmittance)
         else:
             colour = _photo(tree, sky, ray)
         tree.links.new(colour, background)
         if sky.sun_diffuse_fraction is not None:
-            assert diffuse is not None
-            _add_hidden_sun(sky, diffuse)
+            _add_hidden_sun(sky)
         return world
     node = _sky_texture(tree, sky)
     for prop in SUN:
@@ -91,11 +91,14 @@ def add_world(sky: Sky, band: Band, seen: list[View]) -> bpy.types.World:
     return world
 
 
-def _add_hidden_sun(sky: Sky, diffuse: float) -> None:
-    """A Sun behind the photo's cloud, whose sky lights a horizontal surface with
-    `diffuse`."""
+def _add_hidden_sun(sky: Sky) -> None:
+    assert sky.hdri is not None
     assert sky.sun_diffuse_fraction is not None
     assert sky.sun_elevation_deg is not None
+    diffuse = skies.library()[sky.hdri].diffuse_irradiance
+    if sky.cie_type is not None:
+        diffuse = bpy.data.images["cie_weight"]["diffuse_irradiance"]
+    assert diffuse is not None
     beam = solar.beam_normal(
         diffuse, sky.sun_diffuse_fraction, math.radians(sky.sun_elevation_deg)
     )
@@ -227,9 +230,10 @@ def _photo_turn_deg(name: str, sun_bearing_deg: float) -> float:
     return sun_bearing_deg - skies.library()[name].sun_bearing_deg
 
 
-def _cie_weight_image(sky: Sky, seen: list[View]) -> bpy.types.Image:
-    """`skies.cie_weight` on a CIE_GRID_PX grid, laid out as the photo, keeping the
-    mean of the sky `seen` frames, and the diffuse irradiance of the sky it gives."""
+def _bake_cie_weight(sky: Sky, seen: list[View]) -> None:
+    """`skies.cie_weight` on a CIE_GRID_PX grid as the image "cie_weight", laid out as
+    the photo and keeping the mean of the sky `seen` frames, with the diffuse
+    irradiance of the sky it gives."""
     assert sky.hdri is not None
     assert sky.cie_type is not None
     assert sky.sun_elevation_deg is not None
@@ -247,11 +251,9 @@ def _cie_weight_image(sky: Sky, seen: list[View]) -> bpy.types.Image:
         _framed(seen, skies.directions(*rgb.shape[:2], turn_deg)),
     )
     image = curve_image("cie_weight", weight[::-1])
-    gain = skies.diffuse_irradiance(rgb * weight[..., None]) / skies.diffuse_irradiance(
-        rgb
-    )
+    reweighted = skies.diffuse_irradiance(rgb * weight[..., None])
+    gain = reweighted / skies.diffuse_irradiance(rgb)
     image["diffuse_irradiance"] = photo.diffuse_irradiance * gain
-    return image
 
 
 def _framed(seen: list[View], directions: np.ndarray) -> np.ndarray:

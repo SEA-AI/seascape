@@ -55,8 +55,8 @@ GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgement, a few times a cloud's width: the scale of the photo's own light that a CIE
-# type replaces.
+# Judgement: wider than most clouds, so they stay, and narrower than the gradients a CIE
+# type sets.
 CIE_BLUR_DEG = 15.0
 # Judgement: how far under the fitted clear sky a blueness may fall and refit as clear.
 CLEAR_BAND = 0.03
@@ -234,6 +234,7 @@ def cie_weight(
     h, w = radiance.shape[:2]
     sky = slice(0, h // 2)
     lum = (radiance[sky] @ LUMINANCE).astype(np.float32)
+    # Floored, so a black patch takes a finite weight.
     blurred = np.maximum(_wrapped_blur(lum, CIE_BLUR_DEG * w / 360.0), 1e-12)
     toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
     up = directions(h, w)[sky]
