@@ -345,7 +345,7 @@ class TestEoBand:
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         field = SCENARIO.wave_field()
-        assert len(field) == waves.FREQUENCIES * waves.WIND_HEADINGS
+        assert len(field) == waves.WIND_WAVES
         carried = drawn(SCENARIO)
         tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
         assert tall

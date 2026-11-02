@@ -31,8 +31,8 @@ CAPILLARY_SPEED_MPS = 0.23
 CHARNOCK = 0.011
 VON_KARMAN = 0.4
 
-# A judgement: frequencies, enough that no single wave shows.
-FREQUENCIES = 32
+# A judgement: frequencies, one per wave, enough that no single wave shows.
+WIND_WAVES = 96
 
 # A judgement, as a fraction of the peak frequency: the spectrum's
 # exp(-5/4 (w_p / w)^4) leaves little height variance below it.
