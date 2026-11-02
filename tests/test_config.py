@@ -1059,9 +1059,10 @@ def test_a_camera_is_ideal_unless_told_otherwise(baseline) -> None:
     [
         "rigs.bow.cameras.ir.sensor.full_well_e = 10000.0",
         "rigs.bow.cameras.ir.processing.sharpen = 1.0",
+        "rigs.bow.cameras.ir.lens.f_number = 1.0",
     ],
 )
-def test_an_ir_camera_takes_no_sensor_or_processing(line: str) -> None:
+def test_an_ir_camera_takes_no_eo_parts(line: str) -> None:
     with pytest.raises(ValidationError, match="an ir camera"):
         load(BASELINE, [line])
 
@@ -1074,6 +1075,11 @@ def test_an_eo_camera_takes_no_microbolometer() -> None:
 def test_f_number_and_pitch_go_together() -> None:
     with pytest.raises(ValidationError, match="pitch_um"):
         load(BASELINE, ["rigs.bow.cameras.ir.microbolometer.f_number = 1.0"])
+
+
+def test_an_eo_f_number_needs_the_sensor_s_pitch() -> None:
+    with pytest.raises(ValidationError, match="pitch_um"):
+        load(BASELINE, ["rigs.bow.cameras.eo.lens.f_number = 5.6"])
 
 
 def test_a_boson_preset_extends_another() -> None:
