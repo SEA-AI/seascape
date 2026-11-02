@@ -139,7 +139,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for m in scenario.mounts
         if m.camera.band == band
     )
-    set_output(scenario.outputs, band, max(sides), graded)
+    grey_world = any(
+        m.camera.processing.white_balance == "grey_world"
+        for m in scenario.mounts
+        if m.camera.band == band
+    )
+    set_output(scenario.outputs, band, max(sides), graded, grey_world)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     outputs = scenario.outputs
@@ -159,7 +164,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
     seen = views(scenario, band, rigs.cameras)
-    # After the views, whose frame a CIE sky keeps the mean of.
+    # After the views: a CIE sky keeps the mean of what they frame.
     bpy.context.scene.world = add_world(scenario.sky, band, seen)
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(

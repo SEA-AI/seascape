@@ -2110,9 +2110,38 @@
             }
           ]
         },
+        "white_balance": {
+          "title": "White Balance",
+          "description": "fixed balances by white_balance_k. grey_world has the ISP balance each frame so the mean of its unsaturated pixels is grey (Buchsbaum 1980).",
+          "default": "fixed",
+          "anyOf": [
+            {
+              "enum": [
+                "fixed",
+                "grey_world"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "white_balance_k": {
           "title": "White Balance K",
-          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses bluer light, so the frame comes out warmer.",
+          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses bluer light, so the frame comes out warmer. Only the fixed white balance uses it.",
           "default": 0.0,
           "anyOf": [
             {
