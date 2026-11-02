@@ -1331,7 +1331,7 @@ def _photo_with_a_sun(path: Path, photo: skies.Photo) -> None:
     bpy.data.images.remove(image)
 
 
-@pytest.mark.parametrize("visibility_km", [None, 1.5, 0.8])
+@pytest.mark.parametrize("visibility_km", [None, 1.2, 0.8])
 def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
     visibility_km: float | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

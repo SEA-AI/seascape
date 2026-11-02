@@ -681,9 +681,9 @@ def test_a_farm_is_of_turbines() -> None:
         Farm(asset="yacht", range_m=900.0, bearing_deg=0.0)
 
 
-def test_over_the_visibility_a_dark_target_keeps_two_percent_contrast() -> None:
+def test_over_the_visibility_a_dark_target_keeps_five_percent_contrast() -> None:
     sky = Sky(visibility_km=23.0)
-    assert math.exp(-sky.extinction_per_m * 23_000) == pytest.approx(0.02)
+    assert math.exp(-sky.extinction_per_m * 23_000) == pytest.approx(0.05)
     assert Sky(visibility_km=None).extinction_per_m == 0.0
 
 
@@ -872,7 +872,7 @@ def optical_depth_ship(bounds: str) -> str:
 
 
 def test_a_range_by_optical_depth_follows_a_drawn_visibility() -> None:
-    """Koschmieder: a ray keeps 2% of its contrast over `visibility_km`."""
+    """A ray keeps 5% of its contrast over `visibility_km`."""
     drawn = "sky.visibility_km = { uniform = [4.0, 42.0] }"
     for seed in range(3):
         scenario = load(

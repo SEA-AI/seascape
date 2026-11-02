@@ -67,6 +67,13 @@ _HAZE_CSV = Path(__file__).parent / "data" / "lowtran_haze.csv"
 _CLOUD_CSV = Path(__file__).parent / "data" / "lowtran_cloud.csv"
 _CIRRUS_CSV = Path(__file__).parent / "data" / "lowtran_cirrus.csv"
 
+# LOWTRAN's VIS keeps 2% contrast, 3.912 / extinction at 0.55 um (lowtran7.f, MARINE);
+# the meteorological optical range keeps 5% (WMO No. 8, 2018).
+MOR_PER_VIS = math.log(20) / math.log(50)
+
+# WMO's fog: a visibility under 1 km (WMO No. 8, 2018).
+FOG_KM = 1.0
+
 
 BAND_M = (8.0e-6, 14.0e-6)
 
@@ -578,7 +585,14 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
     columns = header(csv)[1:]
     # "vis_2km" is maritime haze and "fog_1km" advection fog, on one axis.
     km = [c.partition("_")[2].removesuffix("km") for c in columns]
-    inverse = np.array([1 / float(k) if k else 0.0 for k in km])  # "none" has no km
+    mor_km = [float(k) * MOR_PER_VIS if k else math.inf for k in km]  # "none" has no km
+    inverse = 1 / np.array(mor_km)
+    fogs = [i for i, c in enumerate(columns) if c.startswith("fog_")]
+    if fogs:
+        # LOWTRAN scales fog's extinction linearly in 1 / VIS (AERPRF), so the thinnest
+        # fog's excess over clear air extends to the WMO's fog.
+        thinnest = min(fogs, key=lambda i: inverse[i])
+        inverse = np.append(inverse, 1 / FOG_KM)
     order = np.argsort(inverse)
     names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
     raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=range(1, 2 + len(km)))
@@ -586,8 +600,12 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
     for name in np.unique(names):
         rows = raw[names == name]
         # An opaque cell is as deep as a float goes.
-        passed = np.maximum(rows[:, 1:][:, order], np.finfo(np.float64).tiny)
-        depth = -np.log(passed)
+        depth = -np.log(np.maximum(rows[:, 1:], np.finfo(np.float64).tiny))
+        if fogs:
+            clear = depth[:, columns.index("none")]
+            drops = (depth[:, thinnest] - clear) * inverse[-1] / inverse[thinnest]
+            depth = np.column_stack([depth, clear + drops])
+        depth = depth[:, order]
         rows.setflags(write=False)
         depth.setflags(write=False)
         tables[str(name)] = (rows[:, 0], inverse[order], depth)
