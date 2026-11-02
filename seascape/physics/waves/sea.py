@@ -174,7 +174,8 @@ def swell(
 def snap_error(
     wind_speed_mps: float, fetch_m: float | None, snap: Callable[[float], float]
 ) -> float:
-    """Relative frequency error a loop's snapping costs, weighted by height variance."""
+    """Relative frequency error a loop's snapping costs, weighted by height variance,
+    at the bins' centres: the drawn frequencies lie within them."""
     edges, variance = _bins(wind_speed_mps, fetch_m)
     if not len(variance):
         return 0.0
