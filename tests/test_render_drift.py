@@ -1198,6 +1198,29 @@ class TestSensor:
             (gain_r / gain_g, gain_b / gain_g), rel=0.01
         )
 
+    @pytest.mark.parametrize("hdr_ratio", [1.0, 16.0])
+    def test_grey_world_takes_a_tinted_sky_to_grey(self, hdr_ratio: float) -> None:
+        frame = self.through(
+            (1.0, 0.6, 0.3),
+            sensor={"full_well_e": 1e12, "hdr_ratio": hdr_ratio},
+            processing={"white_balance_k": "grey_world"},
+        )
+        r, g, b = frame[2:-2, 2:-2].reshape(-1, 3).mean(axis=0)
+        assert (r / g, b / g) == pytest.approx((1.0, 1.0), rel=0.01)
+
+    def test_grey_world_counts_no_pixel_that_clips(self) -> None:
+        """Red clips across the sky, so nothing counts and the colours stay as read;
+        counted, the clipped red would whiten the frame."""
+        clean, bright = {"full_well_e": 1e12}, {"exposure_ev": 3.0}
+        read = self.through((1.0, 0.6, 0.3), sensor=clean, processing=bright)
+        balanced = self.through(
+            (1.0, 0.6, 0.3),
+            sensor=clean,
+            processing={**bright, "white_balance_k": "grey_world"},
+        )
+        assert read[..., 0] == pytest.approx(1.0)
+        assert balanced == pytest.approx(read, abs=1e-3)
+
     def test_what_clipped_white_stays_white_under_any_balance(self) -> None:
         frame = self.through(
             (1.0, 1.0, 1.0),

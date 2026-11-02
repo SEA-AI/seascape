@@ -110,10 +110,24 @@ def _read(
     )
 
 
+def _unsaturated(
+    tree: bpy.types.NodeTree, read: Socket, dark_variance: Socket
+) -> Socket:
+    """1 where `read` did not saturate, else 0: a read within three times a saturated
+    read's spread of white, here at most the dark noise, counts as saturated."""
+    return scalar(
+        tree,
+        "LESS_THAN",
+        read,
+        scalar(tree, "MULTIPLY_ADD", scalar(tree, "SQRT", dark_variance), -3.0, 1.0),
+    )
+
+
 def _merge(
     tree: bpy.types.NodeTree,
     long: Socket,
     short: Socket,
+    unsaturated: Socket,
     ratio: Socket,
     shot: Socket,
     dark_variance: Socket,
@@ -121,19 +135,12 @@ def _merge(
 ) -> Socket:
     """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
     its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
-    a long read within three times a saturated read's spread of white, here at most
-    the dark noise, counts as saturated and is left out. The ADC's rounding,
+    a long read that saturated, `unsaturated` 0, is left out. The ADC's rounding,
     (1 / levels)^2 / 12, keeps a noiseless read finite."""
     rounding = scalar(
         tree, "DIVIDE", 1.0 / 12, scalar(tree, "MULTIPLY", levels, levels)
     )
     floor = scalar(tree, "ADD", dark_variance, rounding)
-    unsaturated = scalar(
-        tree,
-        "LESS_THAN",
-        long,
-        scalar(tree, "MULTIPLY_ADD", scalar(tree, "SQRT", dark_variance), -3.0, 1.0),
-    )
     long_weight = scalar(
         tree,
         "DIVIDE",
@@ -228,7 +235,7 @@ def chain(
     shot, well = value(tree, "sensor.shot"), value(tree, "sensor.well", 1.0)
     dark, levels = value(tree, "sensor.dark"), value(tree, "sensor.levels", 4095.0)
     ratio = value(tree, "sensor.ratio", 1.0)
-    longs, merged = [], []
+    longs, merged, long_counted, short_counted = [], [], [], []
     for index, x in enumerate(_channels(tree, image)):
         # An average of n sites divides the variances by n.
         sites = value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
@@ -245,8 +252,19 @@ def chain(
             *noise,
         )
         longs.append(long)
-        merged.append(_merge(tree, long, short, ratio, shot_c, dark_c, levels))
+        long_counted.append(_unsaturated(tree, long, dark_c))
+        short_counted.append(_unsaturated(tree, short, dark_c))
+        merged.append(
+            _merge(tree, long, short, long_counted[-1], ratio, shot_c, dark_c, levels)
+        )
     raw = switch(tree, "sensor.hdr", combine(tree, *longs), combine(tree, *merged))
+    # An HDR pixel clips only where its short read does.
+    counted = switch(
+        tree,
+        "sensor.hdr",
+        combine(tree, *long_counted),
+        combine(tree, *short_counted),
+    )
     # A sensor at the output's pitch reads one colour a pixel: its sites, then a
     # bilinear demosaic, normalized (Knutsson & Westin 1993) so a border site
     # averages only the neighbours it has. A finer one, demosaiced and scaled down
@@ -255,12 +273,13 @@ def chain(
     sites = vector(tree, "MULTIPLY", masks, raw)
     demosaiced = vector(tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks))
     demosaiced = switch(tree, "sensor.mosaic", raw, demosaiced)
-    gains = combine(
+    fixed = combine(
         tree,
         value(tree, "sensor.wb_r", 1.0),
         value(tree, "sensor.wb_g", 1.0),
         value(tree, "sensor.wb_b", 1.0),
     )
+    gains = switch(tree, "sensor.grey_world", fixed, _grey_world(tree, raw, counted))
     balanced = vector(tree, "MULTIPLY", demosaiced, gains)
     balanced = switch(
         tree, "sensor.tone", _clip(tree, balanced), _reinhard(tree, balanced, grey)
@@ -278,6 +297,25 @@ def chain(
         vector(tree, "SCALE", detail, value(tree, "sensor.sharpen")),
     )
     return _clip(tree, sharpened)
+
+
+def _grey_world(tree: bpy.types.NodeTree, image: Socket, counted: Socket) -> Socket:
+    """The gains that take the mean of `image` to grey (Buchsbaum 1980), over the
+    pixels whose three colours `counted` holds at 1, as an ISP leaves saturated pixels
+    out of its statistics. The smallest gain is 1, as the fixed balance's is."""
+    r, g, b = _channels(tree, counted)
+    every = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
+    sampled = vector(tree, "SCALE", image, every)
+    means = []
+    # The count of pixels divides every mean alike, so it cancels from the gains.
+    for channel in ("Red", "Green", "Blue"):
+        levels = tree.nodes.new("CompositorNodeLevels")
+        levels.inputs["Channel"].default_value = channel
+        tree.links.new(sampled, levels.inputs["Image"])
+        # Blender's x / 0 is 0. A frame clipped everywhere keeps its colours.
+        means.append(scalar(tree, "MAXIMUM", levels.outputs["Mean"], 1e-6))
+    brightest = scalar(tree, "MAXIMUM", scalar(tree, "MAXIMUM", *means[:2]), means[2])
+    return combine(tree, *(scalar(tree, "DIVIDE", brightest, mean) for mean in means))
 
 
 def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
@@ -332,10 +370,13 @@ def respond(
         toggle(tree, name, sensor.hdr_ratio > 1.0)
     # Float32 holds integers exactly to 2^24.
     set_value(tree, "sensor.seed", float(noise.integers(2**24)))
-    gains = colour.white_balance_gains(camera.processing.white_balance_k)
-    # dcraw's: the smallest gain is 1, so what clipped white stays white.
-    for channel, gain in zip("rgb", gains, strict=True):
-        set_value(tree, f"sensor.wb_{channel}", gain / min(gains))
+    error_k = camera.processing.white_balance_k
+    toggle(tree, "sensor.grey_world", error_k == "grey_world")
+    if error_k != "grey_world":
+        gains = colour.white_balance_gains(error_k)
+        # dcraw's: the smallest gain is 1, so what clipped white stays white.
+        for channel, gain in zip("rgb", gains, strict=True):
+            set_value(tree, f"sensor.wb_{channel}", gain / min(gains))
     set_value(tree, "sensor.sharpen", camera.processing.sharpen)
     # Sites of the sensor across an output pixel. Limitation: below 2 the sensor
     # mosaics at the output's pitch; a scale between would need the mosaic resampled.
