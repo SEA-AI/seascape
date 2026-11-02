@@ -3101,12 +3101,12 @@
         },
         "sun_diffuse_fraction": {
           "title": "Sun Diffuse Fraction",
-          "description": "Only with an `hdri` whose sun shows no disc. It puts a sun behind the photo's cloud, at `sun_elevation_deg`. On a horizontal surface, its beam is (1 - k) / k times the light the photo gives there, so k is the sky's share of all the light the surface takes: about 0.3 clear, 0.7 under thin cloud and 1 overcast (Erbs, Klein & Duffie, Solar Energy 28(4) 293, 1982). The beam lights EO only. LWIR takes where the sun is, and the photo's cloud still takes its beam.",
+          "description": "Only with an `hdri` whose sun shows no disc. It puts a sun behind the photo's cloud, at `sun_elevation_deg`. The value is the sky's share of the light a horizontal surface takes, and the sun's beam is the rest: about 0.17 clear, 0.7 under thin cloud and near 1 overcast (Erbs, Klein & Duffie, Solar Energy 28(4) 293, 1982). In LWIR the same beam warms a hull's zones. A hull given one `t_k` warms only by a `solar_gain_k` the scenario sets.",
           "default": null,
           "anyOf": [
             {
+              "exclusiveMaximum": 1.0,
               "exclusiveMinimum": 0.0,
-              "maximum": 1.0,
               "type": "number"
             },
             {

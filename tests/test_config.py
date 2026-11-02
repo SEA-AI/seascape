@@ -756,6 +756,7 @@ def test_a_hidden_sun_sits_where_the_scenario_puts_it() -> None:
         ({"hdri": "kloofendal_48d_partly_cloudy"}, "with no disc"),
         ({}, "needs an hdri"),
         ({"hdri": "overcast_soil", "sun_elevation_deg": -5.0}, "above the horizon"),
+        ({"hdri": "overcast_soil"}, "needs sun_elevation_deg"),
     ],
 )
 def test_a_hidden_sun_needs_a_hidden_disc_above_the_horizon(

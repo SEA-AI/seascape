@@ -214,14 +214,14 @@ class Sky(Model):
     sun_diffuse_fraction: float | None = Field(
         default=None,
         gt=0.0,
-        le=1.0,
-        description="Only with an `hdri` whose sun shows no disc. It puts a sun behind "
-        "the photo's cloud, at `sun_elevation_deg`. On a horizontal surface, its beam "
-        "is (1 - k) / k times the light the photo gives there, so k is the sky's share "
-        "of all the light the surface takes: about 0.3 clear, 0.7 under thin cloud and "
-        "1 overcast (Erbs, Klein & Duffie, Solar Energy 28(4) 293, 1982). The beam "
-        "lights EO only. LWIR takes where the sun is, and the photo's cloud still "
-        "takes its beam.",
+        lt=1.0,
+        description="Only with an `hdri` whose sun shows no disc. It puts a sun "
+        "behind the photo's cloud, at `sun_elevation_deg`. The value is the sky's "
+        "share of the light a horizontal surface takes, and the sun's beam is the "
+        "rest: about 0.17 clear, 0.7 under thin cloud and near 1 overcast (Erbs, "
+        "Klein & Duffie, Solar Energy 28(4) 293, 1982). In LWIR the same beam warms a "
+        "hull's zones. A hull given one `t_k` warms only by a `solar_gain_k` the "
+        "scenario sets.",
     )
 
     @model_validator(mode="before")
@@ -244,8 +244,9 @@ class Sky(Model):
                 )
             data = {**data, "sun_elevation_deg": elevation}
         elif elevation is not None:
-            # The scenario's sun would be a second one.
             raise ValueError("sun_diffuse_fraction is for an hdri with no disc")
+        elif "sun_elevation_deg" not in data:
+            raise ValueError("sun_diffuse_fraction needs sun_elevation_deg")
         if layer := lwir.CLOUD_LAYER_M.get(photo.cloud_genus):
             data.setdefault("cloud_base_m", layer[0])
         if elevation is None:

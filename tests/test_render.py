@@ -2,6 +2,7 @@
 
 import math
 import tomllib
+from collections.abc import Sequence
 from itertools import chain
 from pathlib import Path
 from types import SimpleNamespace
@@ -321,6 +322,34 @@ def test_an_unwritten_frame_raises(
         render._render_still(path, "frame 0")
 
 
+def _plane_seen_from_above(
+    corners: Sequence[tuple[float, float, float]],
+    resolution: tuple[int, int],
+    camera_location: tuple[float, float, float],
+    ortho_scale: float,
+) -> bpy.types.Object:
+    """A factory scene in Cycles: a plane on z = 0, looked straight down on by an
+    orthographic camera."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.render.resolution_x, sc.render.resolution_y = resolution
+    # As a build leaves it. Factory settings put the compositor on the GPU, which a
+    # machine without one aborts on.
+    sc.render.compositor_device = "CPU"
+    mesh = bpy.data.meshes.new("plane")
+    mesh.from_pydata(corners, [], [(0, 1, 2, 3)])
+    plane = bpy.data.objects.new("plane", mesh)
+    lens = bpy.data.cameras.new("lens")
+    lens.type, lens.sensor_fit, lens.ortho_scale = "ORTHO", "HORIZONTAL", ortho_scale
+    camera = bpy.data.objects.new("camera", lens)
+    camera.location = camera_location
+    for obj in (plane, camera):
+        sc.collection.objects.link(obj)
+    sc.camera = camera
+    return plane
+
+
 @pytest.mark.render
 @pytest.mark.parametrize(("edge_m", "columns"), [(3.45, 3), (3.55, 4)])
 def test_the_object_index_pass_samples_the_pixel_centre(
@@ -328,28 +357,12 @@ def test_the_object_index_pass_samples_the_pixel_centre(
 ) -> None:
     """A plane's edge just either side of a column of centres: a sample anywhere
     else in the pixel filter would put it in a different column from row to row."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    sc = bpy.context.scene
-    sc.render.engine = "CYCLES"
-    sc.render.resolution_x, sc.render.resolution_y = 8, 64
-    mesh = bpy.data.meshes.new("plane")
     corners = [(-10, -10, 0), (edge_m, -10, 0), (edge_m, 74, 0), (-10, 74, 0)]
-    mesh.from_pydata(corners, [], [(0, 1, 2, 3)])
-    plane = bpy.data.objects.new("plane", mesh)
+    plane = _plane_seen_from_above(corners, (8, 64), (4.0, 32.0, 10.0), 8.0)
     plane.pass_index = 1
-    lens = bpy.data.cameras.new("lens")
-    lens.type, lens.sensor_fit, lens.ortho_scale = "ORTHO", "HORIZONTAL", 8.0
-    camera = bpy.data.objects.new("camera", lens)
-    camera.location = (4.0, 32.0, 10.0)
-    for obj in (plane, camera):
-        sc.collection.objects.link(obj)
-    sc.camera = camera
-    # As a build leaves it. Factory settings put the compositor on the GPU, which a
-    # machine without one aborts on.
-    sc.render.compositor_device = "CPU"
     _compositor(None)
     render._index_output(tmp_path).file_name = "probe."
-    sc.render.filepath = str(tmp_path / "frame")
+    bpy.context.scene.render.filepath = str(tmp_path / "frame")
 
     bpy.ops.render.render(write_still=True)
 
@@ -363,24 +376,8 @@ def test_the_object_index_pass_samples_the_pixel_centre(
 def test_a_sun_s_strength_is_irradiance_in_the_world_s_radiance(
     tmp_path: Path, sun: float, world: float
 ) -> None:
-    """A Sun of pi and a world of radiance 1 light a white Lambertian plane alike."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    sc = bpy.context.scene
-    sc.render.engine = "CYCLES"
-    sc.cycles.samples, sc.cycles.use_denoising = 16, False
-    sc.render.resolution_x = sc.render.resolution_y = 4
-    sc.render.compositor_device = "CPU"
-    sc.world = bpy.data.worlds.new("world")
-    sc.world.node_tree.nodes["Background"].inputs["Color"].default_value = (
-        *(world,) * 3,
-        1.0,
-    )
-    mesh = bpy.data.meshes.new("plane")
-    mesh.from_pydata(
-        [(-1e3, -1e3, 0), (1e3, -1e3, 0), (1e3, 1e3, 0), (-1e3, 1e3, 0)],
-        [],
-        [(0, 1, 2, 3)],
-    )
+    corners = [(-1e3, -1e3, 0), (1e3, -1e3, 0), (1e3, 1e3, 0), (-1e3, 1e3, 0)]
+    plane = _plane_seen_from_above(corners, (4, 4), (0.0, 0.0, 1.0), 1.0)
     material = bpy.data.materials.new("white")
     tree = material.node_tree
     diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
@@ -388,20 +385,17 @@ def test_a_sun_s_strength_is_irradiance_in_the_world_s_radiance(
     tree.links.new(
         diffuse.outputs["BSDF"], tree.nodes["Material Output"].inputs["Surface"]
     )
-    mesh.materials.append(material)
+    plane.data.materials.append(material)
+    sc = bpy.context.scene
+    sc.world = bpy.data.worlds.new("world")
+    sc.world.node_tree.nodes["Background"].inputs["Color"].default_value = (
+        *(world,) * 3,
+        1.0,
+    )
     light = bpy.data.lights.new("sun", "SUN")
     light.energy, light.angle = sun, 0.0
-    lens = bpy.data.cameras.new("lens")
-    lens.type = "ORTHO"
-    camera = bpy.data.objects.new("camera", lens)
-    camera.location = (0.0, 0.0, 1.0)
-    for obj in (
-        bpy.data.objects.new("plane", mesh),
-        bpy.data.objects.new("sun", light),
-        camera,
-    ):
-        sc.collection.objects.link(obj)
-    sc.camera = camera
+    sc.collection.objects.link(bpy.data.objects.new("sun", light))
+    sc.cycles.samples, sc.cycles.use_denoising = 16, False
     sc.view_settings.view_transform = "Standard"
     sc.render.image_settings.file_format = "OPEN_EXR"
     sc.render.filepath = str(tmp_path / "frame.exr")

@@ -44,6 +44,7 @@ from typing import Literal, assert_never, get_args
 import numpy as np
 import numpy.typing as npt
 
+from seascape.physics import solar
 from seascape.physics.atmosphere import ATMOSPHERE, Atmosphere
 from seascape.physics.lwir import cloud_window_deficit_w_m2
 
@@ -264,6 +265,9 @@ class Environment:
     wind_m_s: float
     sun_elevation_rad: float | None  # None, or at or below the horizon: no sun
     cloud_fraction: float = 0.0
+    # Erbs, Klein & Duffie's, for a sun behind the cloud; None leaves the beam to
+    # `cloud_fraction`.
+    sun_diffuse_fraction: float | None = None
     cloud_base_m: float = 0.0
     atmosphere: Atmosphere = ATMOSPHERE
     # Fog under the clouds: its emissivity overhead, and what it leaves of the beam.
@@ -432,8 +436,10 @@ def facet_temperature_k(
     convection to the air and conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
-    much weaker on average. Fog passes `fog_sunlight_transmittance` of the sunlight,
-    `beam_transmittance` of the beam and the rest as diffuse light.
+    much weaker on average. With `sun_diffuse_fraction`, the beam is instead what that
+    fraction leaves beside the clear sky's diffuse light. Fog passes
+    `fog_sunlight_transmittance` of the sunlight, `beam_transmittance` of the beam and
+    the rest as diffuse light.
 
     Limitation: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.
@@ -464,13 +470,14 @@ def lit_temperature_k(
 
     sky_view = 0.5 * (1.0 + up)
     beam = direct_beam_w_m2(env.sun_elevation_rad)
-    direct = (1.0 - env.cloud_fraction) * env.beam_transmittance
+    through_cloud = _through_cloud(env)
+    direct = through_cloud * env.beam_transmittance
     # The beam the fog takes and does not absorb arrives as diffuse light, on a
     # horizontal surface sin e of the beam's.
     passed = env.fog_sunlight_transmittance
     up_sun = math.sin(env.sun_elevation_rad or 0.0)
     scattered = up_sun * max(passed - env.beam_transmittance, 0.0)
-    diffuse = _DIFFUSE_FRACTION * passed + (1.0 - env.cloud_fraction) * scattered
+    diffuse = _DIFFUSE_FRACTION * passed + through_cloud * scattered
     solar = beam * (direct * sun_cos + diffuse * sky_view)
 
     sky = sky_longwave_w_m2(
@@ -493,6 +500,16 @@ def lit_temperature_k(
     return np.broadcast_to(
         balance_temperature_k(absorbed, zone.emissivity, g, t_ref), shape
     ).copy()
+
+
+def _through_cloud(env: Environment) -> float:
+    """The share of the clear sky's beam the cloud lets through."""
+    k = env.sun_diffuse_fraction
+    if k is None or not env.sun_elevation_rad or env.sun_elevation_rad <= 0.0:
+        return 1.0 - env.cloud_fraction
+    # The sky's diffuse light is _DIFFUSE_FRACTION of the clear beam. No cloud passes
+    # more than a clear sky does.
+    return min(solar.beam_normal(_DIFFUSE_FRACTION, k, env.sun_elevation_rad), 1.0)
 
 
 def temperature_table_k(

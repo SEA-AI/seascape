@@ -1392,10 +1392,13 @@ def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
     pixels = np.empty(w * h * 4, np.float32)
     image.pixels.foreach_get(pixels)
     bpy.data.images.remove(image)
-    sun = skies.sun(pixels.reshape(h, w, 4)[::-1, :, :3])
+    radiance = pixels.reshape(h, w, 4)[::-1, :, :3]
+    sun = skies.sun(radiance)
     assert sun.bearing_deg == pytest.approx(photo.sun_bearing_deg, abs=0.06)
     if photo.sun_elevation_deg is None:
         assert sun.elevation_deg is None
+        diffuse = skies.diffuse_irradiance(radiance)
+        assert diffuse == pytest.approx(photo.diffuse_irradiance, rel=1e-4)
     else:
         assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
         assert sun.floor == pytest.approx(photo.sun_floor, rel=1e-4)

@@ -23,7 +23,7 @@ from seascape.config import (
     Band,
     Sky,
 )
-from seascape.physics import aerosol, lwir
+from seascape.physics import aerosol, lwir, solar
 
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
@@ -83,25 +83,21 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
 
 
 def _add_hidden_sun(sky: Sky) -> None:
-    """The sun the photo's cloud hides: a beam of E_d (1 - k) / (k sin e) through any
-    fog, from the photo's diffuse irradiance E_d and `Sky.sun_diffuse_fraction` k."""
     assert sky.hdri is not None
     assert sky.sun_diffuse_fraction is not None
     assert sky.sun_elevation_deg is not None
-    k = sky.sun_diffuse_fraction
-    # Bottom row first, as Blender stores an image.
-    diffuse = skies.diffuse_irradiance(pixels(_photo_image(sky.hdri))[::-1, :, :3])
+    diffuse = skies.library()[sky.hdri].diffuse_irradiance
+    assert diffuse is not None
+    beam = solar.beam_normal(
+        diffuse, sky.sun_diffuse_fraction, math.radians(sky.sun_elevation_deg)
+    )
     light = bpy.data.lights.new("sun", "SUN")
     light.angle = math.radians(SUN_DIAMETER_DEG)
-    # Measured: a Sun's strength is its irradiance across the beam in the units the
-    # world's radiance integrates to. One of pi lights a white Lambertian plane facing
-    # it as a world of radiance 1 does.
-    light.energy = (
-        diffuse
-        * (1.0 - k)
-        / (k * math.sin(math.radians(sky.sun_elevation_deg)))
-        * sky.sun_transmittance
-    )
+    # Measured: a Sun's strength is its irradiance across the beam, in the units the
+    # world's radiance integrates to.
+    # Limitation: the diffuse light is the unmisted photo's, and the beam fog takes is
+    # not given back as diffuse light, as LWIR gives it.
+    light.energy = beam * sky.sun_transmittance
     sun = bpy.data.objects.new("sun", light)
     # A Sun shines down its -Z.
     sun.rotation_euler = Vector(sky.sun_vector).to_track_quat("Z", "Y").to_euler()
