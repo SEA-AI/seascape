@@ -193,7 +193,8 @@ class Processing(Model):
         default="none",
         description="The curve the ISP encodes with, in place of sRGB's: bt709 is "
         "BT.709's OETF, emor the mean response of 201 cameras and films (Grossberg "
-        "& Nayar 2004). Both darken shadows and midtones. A png or jpg takes it.",
+        "& Nayar 2004). Both darken shadows and midtones. Only png and jpg output "
+        "use it.",
     )
 
 
