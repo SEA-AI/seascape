@@ -1,11 +1,9 @@
 """Colour temperature, white balance and tone curves. No Blender."""
 
-import typing
-
 import numpy as np
 import pytest
 
-from seascape.config.cameras import WhiteBalanceErrorK
+from seascape.config import Processing
 from seascape.physics import colour
 
 
@@ -31,8 +29,9 @@ def test_the_locus_refuses_what_its_cubic_does_not_cover() -> None:
 
 
 def test_every_allowed_balance_has_finite_positive_gains() -> None:
-    _, field = typing.get_args(WhiteBalanceErrorK.__value__)
-    bounds = {type(m).__name__: m for m in field.metadata}
+    bounds = {
+        type(m).__name__: m for m in Processing.model_fields["white_balance_k"].metadata
+    }
     for error_k in np.linspace(bounds["Ge"].ge, bounds["Le"].le, 221):
         gains = colour.white_balance_gains(float(error_k))
         assert all(0.0 < g < 10.0 for g in gains), error_k

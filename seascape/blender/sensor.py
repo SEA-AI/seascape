@@ -18,7 +18,7 @@ from seascape.blender.blend import (
     value,
     vector,
 )
-from seascape.config import Camera
+from seascape.config import Camera, Processing
 from seascape.physics import colour
 
 type Socket = bpy.types.NodeSocket
@@ -135,7 +135,7 @@ def _merge(
 ) -> Socket:
     """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
     its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
-    a long read that saturated, `unsaturated` 0, is left out. The ADC's rounding,
+    a long read that saturated is left out. The ADC's rounding,
     (1 / levels)^2 / 12, keeps a noiseless read finite."""
     rounding = scalar(
         tree, "DIVIDE", 1.0 / 12, scalar(tree, "MULTIPLY", levels, levels)
@@ -210,11 +210,16 @@ def _gaussian(
 
 
 def chain(
-    tree: bpy.types.NodeTree, image: Socket, pixel: Socket, grey: Socket
+    tree: bpy.types.NodeTree,
+    image: Socket,
+    pixel: Socket,
+    grey: Socket,
+    grey_world: bool = False,
 ) -> Socket:
     """`image` as the sensor reads it out, in units of its white; `pixel` is the
     image's integer pixel coordinates, and `grey` where auto-exposure put the
-    log-average, which HDR's tone map keeps."""
+    log-average, which HDR's tone map keeps. `grey_world` builds the auto white
+    balance, for a band where a camera uses it."""
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
     # RGGB from the bottom-left pixel; no phase changes a statistic.
@@ -235,7 +240,7 @@ def chain(
     shot, well = value(tree, "sensor.shot"), value(tree, "sensor.well", 1.0)
     dark, levels = value(tree, "sensor.dark"), value(tree, "sensor.levels", 4095.0)
     ratio = value(tree, "sensor.ratio", 1.0)
-    longs, merged, long_counted, short_counted = [], [], [], []
+    longs, merged, unsaturated_long, unsaturated_short = [], [], [], []
     for index, x in enumerate(_channels(tree, image)):
         # An average of n sites divides the variances by n.
         sites = value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
@@ -252,19 +257,21 @@ def chain(
             *noise,
         )
         longs.append(long)
-        long_counted.append(_unsaturated(tree, long, dark_c))
-        short_counted.append(_unsaturated(tree, short, dark_c))
+        unsaturated_long.append(_unsaturated(tree, long, dark_c))
+        unsaturated_short.append(_unsaturated(tree, short, dark_c))
         merged.append(
-            _merge(tree, long, short, long_counted[-1], ratio, shot_c, dark_c, levels)
+            _merge(
+                tree,
+                long=long,
+                short=short,
+                unsaturated=unsaturated_long[-1],
+                ratio=ratio,
+                shot=shot_c,
+                dark_variance=dark_c,
+                levels=levels,
+            )
         )
     raw = switch(tree, "sensor.hdr", combine(tree, *longs), combine(tree, *merged))
-    # An HDR pixel clips only where its short read does.
-    counted = switch(
-        tree,
-        "sensor.hdr",
-        combine(tree, *long_counted),
-        combine(tree, *short_counted),
-    )
     # A sensor at the output's pitch reads one colour a pixel: its sites, then a
     # bilinear demosaic, normalized (Knutsson & Westin 1993) so a border site
     # averages only the neighbours it has. A finer one, demosaiced and scaled down
@@ -279,7 +286,17 @@ def chain(
         value(tree, "sensor.wb_g", 1.0),
         value(tree, "sensor.wb_b", 1.0),
     )
-    gains = switch(tree, "sensor.grey_world", fixed, _grey_world(tree, raw, counted))
+    gains = fixed
+    if grey_world:
+        # An HDR pixel saturates only where its short read does.
+        unsaturated = switch(
+            tree,
+            "sensor.hdr",
+            combine(tree, *unsaturated_long),
+            combine(tree, *unsaturated_short),
+        )
+        auto = _grey_world(tree, raw, unsaturated)
+        gains = switch(tree, "sensor.grey_world", fixed, auto)
     balanced = vector(tree, "MULTIPLY", demosaiced, gains)
     balanced = switch(
         tree, "sensor.tone", _clip(tree, balanced), _reinhard(tree, balanced, grey)
@@ -299,25 +316,53 @@ def chain(
     return _clip(tree, sharpened)
 
 
-def _grey_world(tree: bpy.types.NodeTree, image: Socket, counted: Socket) -> Socket:
-    """The gains that take the mean of `image` to grey (Buchsbaum 1980), over the
-    pixels whose three colours `counted` holds at 1, as an ISP leaves saturated pixels
-    out of its statistics. The smallest gain is 1, as the fixed balance's is."""
-    r, g, b = _channels(tree, counted)
-    unclipped = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
-    sampled = vector(tree, "SCALE", image, unclipped)
+def _fixed_gains(error_k: float) -> tuple[float, ...]:
+    """The fixed balance's gains for `error_k`. dcraw's: the smallest gain is 1, so
+    what clipped white stays white."""
+    gains = colour.white_balance_gains(error_k)
+    return tuple(gain / min(gains) for gain in gains)
+
+
+def _largest_fixed_gain() -> float:
+    """The largest gain the fixed balance gives over `white_balance_k`'s range."""
+    bounds = {
+        type(m).__name__: m for m in Processing.model_fields["white_balance_k"].metadata
+    }
+    span = np.linspace(bounds["Ge"].ge, bounds["Le"].le, 221)
+    return max(max(_fixed_gains(float(error_k))) for error_k in span)
+
+
+def _grey_world(tree: bpy.types.NodeTree, image: Socket, unsaturated: Socket) -> Socket:
+    """Gains that make the mean of `image` grey (Buchsbaum 1980), counting only pixels
+    where `unsaturated` is 1 in all three colours. The smallest gain is 1, as in the
+    fixed balance. Each gain is at most the largest the fixed balance gives.
+
+    Limitation: the gains can raise the exposure, and without HDR nothing meters the
+    frame again, so it can clip, as it can under the fixed balance's gains.
+    """
+    r, g, b = _channels(tree, unsaturated)
+    all_unsaturated = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
+    sampled = vector(tree, "SCALE", image, all_unsaturated)
     means = []
-    # Levels averages over every pixel, a left-out one as 0, which scales the three
-    # means alike and cancels from the gains.
+    # Levels counts a left-out pixel as 0. That scales all three means alike, so it
+    # cancels in the gains.
     for channel in ("Red", "Green", "Blue"):
         levels = tree.nodes.new("CompositorNodeLevels")
         levels.inputs["Channel"].default_value = channel
         tree.links.new(sampled, levels.inputs["Image"])
-        # Blender's x / 0 is 0. A frame clipped everywhere keeps its colours.
+        # Blender's x / 0 is 0. With no unsaturated pixel every mean is this floor,
+        # so every gain is 1.
         means.append(scalar(tree, "MAXIMUM", levels.outputs["Mean"], 1e-6))
     mean_r, mean_g, mean_b = means
     brightest = scalar(tree, "MAXIMUM", scalar(tree, "MAXIMUM", mean_r, mean_g), mean_b)
-    return combine(tree, *(scalar(tree, "DIVIDE", brightest, mean) for mean in means))
+    largest = value(tree, "sensor.wb_largest", _largest_fixed_gain())
+    return combine(
+        tree,
+        *(
+            scalar(tree, "MINIMUM", scalar(tree, "DIVIDE", brightest, mean), largest)
+            for mean in means
+        ),
+    )
 
 
 def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
@@ -372,13 +417,14 @@ def respond(
         toggle(tree, name, sensor.hdr_ratio > 1.0)
     # Float32 holds integers exactly to 2^24.
     set_value(tree, "sensor.seed", float(noise.integers(2**24)))
-    error_k = camera.processing.white_balance_k
-    toggle(tree, "sensor.grey_world", error_k == "grey_world")
-    if error_k != "grey_world":
-        gains = colour.white_balance_gains(error_k)
-        # dcraw's: the smallest gain is 1, so what clipped white stays white.
-        for channel, gain in zip("rgb", gains, strict=True):
-            set_value(tree, f"sensor.wb_{channel}", gain / min(gains))
+    grey_world = camera.processing.white_balance == "grey_world"
+    if "sensor.grey_world" in tree.nodes:
+        toggle(tree, "sensor.grey_world", grey_world)
+    elif grey_world:
+        raise ValueError("this build has no grey_world: no camera of its band uses it")
+    gains = _fixed_gains(camera.processing.white_balance_k)
+    for channel, gain in zip("rgb", gains, strict=True):
+        set_value(tree, f"sensor.wb_{channel}", gain)
     set_value(tree, "sensor.sharpen", camera.processing.sharpen)
     # Sites of the sensor across an output pixel. Limitation: below 2 the sensor
     # mosaics at the output's pitch; a scale between would need the mosaic resampled.

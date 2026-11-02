@@ -2110,17 +2110,44 @@
             }
           ]
         },
+        "white_balance": {
+          "title": "White Balance",
+          "description": "fixed balances by white_balance_k. grey_world has the ISP balance each frame so the mean of its unsaturated pixels is grey (Buchsbaum 1980).",
+          "default": "fixed",
+          "anyOf": [
+            {
+              "enum": [
+                "fixed",
+                "grey_world"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "white_balance_k": {
           "title": "White Balance K",
-          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses bluer light, so the frame comes out warmer. grey_world has the ISP guess each frame instead: gains that take the mean of the pixels that do not clip to grey (Buchsbaum 1980).",
+          "description": "How far the camera's guess of the light misses D65's 6504 K, along the Planckian locus. Positive guesses bluer light, so the frame comes out warmer. Only the fixed white balance uses it.",
           "default": 0.0,
           "anyOf": [
             {
-              "$ref": "#/$defs/WhiteBalanceErrorK"
-            },
-            {
-              "const": "grey_world",
-              "type": "string"
+              "maximum": 18000.0,
+              "minimum": -4000.0,
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -3866,11 +3893,6 @@
       },
       "title": "WarmLayer",
       "type": "object"
-    },
-    "WhiteBalanceErrorK": {
-      "maximum": 18000.0,
-      "minimum": -4000.0,
-      "type": "number"
     },
     "Uniform": {
       "additionalProperties": false,

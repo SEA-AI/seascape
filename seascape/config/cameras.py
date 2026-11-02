@@ -182,11 +182,6 @@ class Agc(Model):
     )
 
 
-# D65 plus this stays inside Kim et al.'s cubic, 1667-25000 K (US 7,024,034), and, a
-# judgement, above 2500 K, where the locus's sRGB blue nears 0.
-type WhiteBalanceErrorK = Annotated[float, Field(ge=-4000.0, le=18000.0)]
-
-
 class Processing(Model):
     """The camera's ISP. White balance and sharpening need a sensor; exposure and
     tone do not."""
@@ -199,13 +194,21 @@ class Processing(Model):
         description="Stops over auto-exposure, on top of "
         "outputs.exposure_compensation_ev.",
     )
-    white_balance_k: WhiteBalanceErrorK | Literal["grey_world"] = Field(
+    white_balance: Literal["fixed", "grey_world"] = Field(
+        default="fixed",
+        description="fixed balances by white_balance_k. grey_world has the ISP "
+        "balance each frame so the mean of its unsaturated pixels is grey "
+        "(Buchsbaum 1980).",
+    )
+    # D65 plus this stays inside Kim et al.'s cubic, 1667-25000 K (US 7,024,034), and,
+    # a judgement, above 2500 K, where the locus's sRGB blue nears 0.
+    white_balance_k: float = Field(
         default=0.0,
+        ge=-4000.0,
+        le=18000.0,
         description="How far the camera's guess of the light misses D65's 6504 K, "
         "along the Planckian locus. Positive guesses bluer light, so the frame "
-        "comes out warmer. grey_world has the ISP guess each frame instead: gains "
-        "that take the mean of the pixels that do not clip to grey "
-        "(Buchsbaum 1980).",
+        "comes out warmer. Only the fixed white balance uses it.",
     )
     sharpen: float = Field(
         default=0.0, ge=0.0, le=4.0, description="Unsharp mask amount."
