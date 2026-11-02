@@ -65,6 +65,10 @@ _WEAR = (
     "weathered. In IR a hull given `t_k` is that one temperature and shows none. A "
     "`weathered` asset ignores it: its textures are its wear."
 )
+_DRAUGHT = (
+    "How deep it floats, keel to waterline. Unset, the asset's own. It must fall "
+    "within the asset's `draught_range_m`: a ship in ballast rides higher than loaded."
+)
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
@@ -116,6 +120,7 @@ class Object(Model):
         description=_PAINT,
     )
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
+    draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
     count: int = Field(
         default=1,
         ge=0,
@@ -129,6 +134,26 @@ class Object(Model):
         if self.heading_from == "line_of_sight":
             return self.bearing_deg + self.heading_deg
         return self.heading_deg
+
+    @property
+    def rise_m(self) -> float:
+        """How far it rides above the asset's own draught."""
+        if self.draught_m is None:
+            return 0.0
+        return assets.manifest()[self.asset].draught_m - self.draught_m
+
+    @model_validator(mode="after")
+    def _draught_in_range(self) -> "Object":
+        if self.draught_m is None:
+            return self
+        if (span := assets.manifest()[self.asset].draught_range_m) is None:
+            raise ValueError(f"{self.asset} has no draught_range_m: it floats as built")
+        lightest_m, deepest_m = span
+        if not lightest_m <= self.draught_m <= deepest_m:
+            raise ValueError(
+                f"{self.asset}: draught_m {self.draught_m} is outside {span}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _copies_are_made_on_load(self) -> "Object":

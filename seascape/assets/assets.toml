@@ -323,6 +323,10 @@ sha256 = "01d45a6c0840da5664c94bff4ad325a41ab9b5abfd50e280420da2e438d5a218"
 # 32.2 m across.
 length_m = 184.0
 draught_m = 11.0
+# Light: MARPOL Annex I Reg. 18.2.1's least draught amidships in ballast, 2.0 + 0.02 L,
+# for an oil tanker, and taken for a bulk carrier too. L is the length overall here, a
+# little over the rule's. Loaded: the draught above.
+draught_range_m = [5.68, 11.0]
 bow_deg = 180.0
 triangles = 1627998
 texture_px = [1024]
@@ -857,6 +861,10 @@ sha256 = "9965c51d3b9fa99703b03afd9395f14a7288360d4c3350084ce9acf2f8e9d794"
 # 32.5 m across, against her registered 32.26 m.
 length_m = 199.95
 draught_m = 13.3
+# Light: MARPOL Annex I Reg. 18.2.1's least draught amidships in ballast, 2.0 + 0.02 L,
+# for an oil tanker, and taken for a bulk carrier too. L is the length overall here, a
+# little over the rule's. Loaded: the draught above.
+draught_range_m = [6.0, 13.3]
 bow_deg = 90.0
 triangles = 21417
 texture_px = [1024, 512, 512]
@@ -950,6 +958,10 @@ sha256 = "cbc6ad1ea548f7c52bff82c38efcf9f599ad32476030daef0c5fee99363609bb"
 # draught: 13.8 m, where the mesh's bottom paint ends.
 length_m = 303.3
 draught_m = 13.8
+# Light: MARPOL Annex I Reg. 18.2.1's least draught amidships in ballast, 2.0 + 0.02 L,
+# for an oil tanker. L is the length overall here, a little over the rule's. Loaded:
+# the draught above.
+draught_range_m = [8.07, 13.8]
 bow_deg = 180.0
 triangles = 1008321
 texture_px = [
@@ -1764,6 +1776,9 @@ sha256 = "63133e2cd4c8c9d08114ef158284403ba4fad802b7f1162f73a8323b509a1b53"
 # Innovation Center, from the USDA Wood Handbook): 545 / 1025 of its 0.29 m under.
 length_m = 3.05
 draught_m = 0.15
+# Light: air-dry, as above. Deep: waterlogged to seawater's density, it floats
+# awash, its whole 0.29 m under.
+draught_range_m = [0.15, 0.29]
 triangles = 101802
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"
@@ -1802,6 +1817,8 @@ sha256 = "773e6df578ff331e4404bb390355efb5c7720bd7d8064e407bbc7478521a5a9c"
 # weighs up to 0.11 m above its lowest point.
 length_m = 1.2
 draught_m = 0.11
+# Light: dry, as above. Deep: waterlogged, it floats awash, its whole 144 mm under.
+draught_range_m = [0.11, 0.144]
 triangles = 15736
 texture_px = [1024, 1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"
@@ -1826,6 +1843,10 @@ sha256 = "6363ea3e10f072000a58834f5d84196c3bf5c7c78ac2fabcc8caac2b419a39e4"
 # (arXiv:1111.0750) immerse theirs 70%, a typical loading; this mesh is 2.46 m tall.
 length_m = 6.058
 draught_m = 1.72
+# Light: empty, its 2,200 kg tare (Wikipedia, "Intermodal container") over its
+# 6.058 x 2.438 m footprint (ISO 668) displaces 0.15 m of seawater. Deep: flooded,
+# it floats awash, the mesh's whole 2.46 m under.
+draught_range_m = [0.15, 2.46]
 triangles = 190810
 texture_px = [1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"

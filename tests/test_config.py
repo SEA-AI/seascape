@@ -1209,3 +1209,37 @@ def test_a_weathered_asset_is_never_worn() -> None:
     scenario = base.model_copy(update={"objects": [weathered, painted]})
     assert manifest()["container"].weathered
     assert scenario.worn == {"cargo_ship"}
+
+
+def test_an_object_floats_at_its_asset_s_draught_unless_given_one() -> None:
+    loaded = 'objects = [{ asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
+    (asset,), (ballast,) = (
+        load(BASELINE, [loaded + extra + " }]"]).objects
+        for extra in ("", ", draught_m = 6.0")
+    )
+    assert asset.rise_m == 0.0
+    assert ballast.rise_m == pytest.approx(manifest()["bulk_carrier"].draught_m - 6.0)
+
+
+def test_a_drawn_draught_differs_per_copy_within_the_asset_s_range() -> None:
+    drawn = load(
+        BASELINE,
+        [
+            'objects = [{ asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0, '
+            "count = 4, draught_m = { uniform = [6.0, 11.0] } }]"
+        ],
+    )
+    draughts_m = [spec.draught_m for spec in drawn.objects]
+    assert len(set(draughts_m)) == 4
+    assert all(d is not None and 6.0 <= d <= 11.0 for d in draughts_m)
+
+
+@pytest.mark.parametrize(
+    ("asset", "draught_m", "match"),
+    [("bulk_carrier", 4.0, "outside"), ("lateral_mark", 1.0, "no draught_range_m")],
+)
+def test_a_draught_outside_the_asset_s_range_is_refused(
+    asset: str, draught_m: float, match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Object(asset=asset, range_m=500.0, bearing_deg=0.0, draught_m=draught_m)

@@ -43,7 +43,13 @@ from seascape.blender.sea.wind import (
     _looked_up_sigma,
 )
 from seascape.blender.sky import _haze_ranges_m, _sky_round, haze, sea_light
-from seascape.blender.vessels import Hulls, _vessel, heading_rad, waterline_m
+from seascape.blender.vessels import (
+    Hulls,
+    _raise,
+    _vessel,
+    heading_rad,
+    waterline_m,
+)
 from seascape.config import (
     Band,
     Camera,
@@ -939,6 +945,45 @@ def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     attitude.location.z = 2.0
     bpy.context.view_layer.update()
     assert waterline_m(anchor) == pytest.approx(level, abs=1e-4)
+
+
+def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
+    """The keel rises by the asset's draught minus the object's, and the labels'
+    height and waterline go with it."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    hulls = Hulls()
+    level, raised = (
+        _vessel(
+            "bulk_carrier",
+            t_k=None,
+            engine_off_min=0.0,
+            paint_absorptance=None,
+            wear=0.0,
+            sky=SCENARIO.sky,
+            heat=None,
+            hulls=hulls,
+        )
+        for _ in range(2)
+    )
+    _raise(raised, 5.0)
+    bpy.context.view_layer.update()
+    (attitude,) = raised.children
+    into_attitude = attitude.matrix_world.inverted()
+    keel_m = min(
+        (into_attitude @ part.matrix_world @ Vector(corner)).z
+        for part in raised.children_recursive
+        if part.type == "MESH"
+        for corner in part.bound_box
+    )
+    assert keel_m == pytest.approx(5.0 - manifest()["bulk_carrier"].draught_m, abs=1e-3)
+    assert raised["height_m"] == pytest.approx(level["height_m"] + 5.0)
+    # Both hulls stand at the origin, so their waterlines are comparable as they are.
+    # Wall-sided amidships, it keeps its beam; its bulb and stern change its length.
+    (beam_m, length_m), (raised_beam_m, raised_length_m) = (
+        np.ptp(waterline_m(a), axis=0) for a in (level, raised)
+    )
+    assert raised_beam_m == pytest.approx(beam_m, abs=0.1)
+    assert abs(raised_length_m - length_m) > 1.0, "the waterline stayed where it was"
 
 
 def test_paint_repaints_only_the_painted_zones() -> None:

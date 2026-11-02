@@ -134,6 +134,9 @@ class _Mesh(Model):
     files: dict[str, File] = Field(default_factory=dict)
     # Required: a default of zero floats the hull and looks almost right.
     draught_m: float = Field(ge=0.0)
+    # The lightest and deepest it plausibly floats, which an object's own `draught_m`
+    # must fall within. None where a mooring or foundation fixes it.
+    draught_range_m: tuple[float, float] | None = None
     # As `meshes.measure` reads them.
     triangles: int = Field(gt=0)
     texture_px: tuple[int, ...]
@@ -172,6 +175,18 @@ class _Mesh(Model):
             self.textures,
             self.licence,
         )
+
+    @model_validator(mode="after")
+    def _draught_in_range(self) -> "_Mesh":
+        if self.draught_range_m is None:
+            return self
+        lightest_m, deepest_m = self.draught_range_m
+        if not 0.0 <= lightest_m <= self.draught_m <= deepest_m:
+            raise ValueError(
+                f"draught_m {self.draught_m} is outside draught_range_m "
+                f"{self.draught_range_m}"
+            )
+        return self
 
     @field_validator("files")
     @classmethod

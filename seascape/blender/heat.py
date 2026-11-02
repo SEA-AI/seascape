@@ -259,11 +259,16 @@ def _wetted(
 ) -> bpy.types.NodeSocket:
     """`skin` above the waterline, the bulk water below it."""
     link = tree.links.new
-    # The fit puts the waterline at z = 0; the join keeps the hull's frame in metres.
+    # The fit puts the asset's waterline at z = 0, and the join keeps the hull's frame
+    # in metres. A hull raised `rise_m` above it meets the water that far lower.
     coords = tree.nodes.new("ShaderNodeTexCoord")
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(coords.outputs["Object"], height.inputs["Vector"])
-    under = scalar(tree, "LESS_THAN", height.outputs["Z"], 0.0)
+    rise = tree.nodes.new("ShaderNodeAttribute")
+    rise.attribute_type = "OBJECT"
+    rise.attribute_name = "rise_m"
+    above_water_m = scalar(tree, "ADD", height.outputs["Z"], rise.outputs["Factor"])
+    under = scalar(tree, "LESS_THAN", above_water_m, 0.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(under, mix.inputs["Factor"])
     link(skin, mix.inputs["Shader"])

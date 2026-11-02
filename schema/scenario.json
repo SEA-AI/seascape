@@ -1532,6 +1532,35 @@
             }
           ]
         },
+        "draught_m": {
+          "title": "Draught M",
+          "description": "How deep it floats, keel to waterline. Unset, the asset's own. It must fall within the asset's `draught_range_m`: a ship in ballast rides higher than loaded.",
+          "default": null,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "count": {
           "title": "Count",
           "description": "How many, each drawn anew. `load` makes the copies, so a loaded scenario holds only 1.",

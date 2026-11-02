@@ -136,3 +136,9 @@ def test_a_rotor_s_limits_are_in_order() -> None:
     assert isinstance(turbine, assets.Turbine)
     with pytest.raises(ValidationError, match="cut_in >= cut_out"):
         assets.Rotor.model_validate(turbine.rotor.model_dump() | {"cut_in_mps": 30.0})
+
+
+def test_an_asset_s_draught_lies_in_its_own_range() -> None:
+    carrier = assets.manifest()["bulk_carrier"].model_dump(exclude={"zones"})
+    with pytest.raises(ValidationError, match="outside draught_range_m"):
+        assets.Hull.model_validate(carrier | {"draught_range_m": (5.0, 10.0)})
