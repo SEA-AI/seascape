@@ -2905,7 +2905,7 @@
         },
         "visibility_km": {
           "title": "Visibility Km",
-          "description": "Meteorological optical range at 550 nm, a weather report's visibility; None is no aerosol. Under 1 km it is fog, in both bands.",
+          "description": "Meteorological optical range at 550 nm; None is no aerosol. Under 1 km it is fog, in both bands.",
           "default": 32.0,
           "anyOf": [
             {
@@ -3860,7 +3860,7 @@
     },
     "OpticalDepth": {
       "additionalProperties": false,
-      "description": "An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,\nwith `sky.visibility_km` keeping 5% of a dark target's contrast.",
+      "description": "An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,\nwith a dark target keeping 5% of its contrast over `sky.visibility_km`.",
       "properties": {
         "optical_depth": {
           "description": "The bounds, lower first, drawn evenly.",

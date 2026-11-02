@@ -73,7 +73,7 @@ def test_thicker_air_covers_more_of_the_sky() -> None:
     covers = [aerosol.cover(v) for v in (None, 42.0, 5.0, 1.5, 0.99, 0.5, 0.2)]
     assert covers == sorted(covers)
     assert covers[0] == 0.0
-    assert covers[-1] > 0.98
+    assert covers[-1] == pytest.approx(0.9872, abs=1e-4)
 
 
 def test_the_heat_balance_takes_the_fog_alone() -> None:
@@ -87,7 +87,10 @@ def test_the_heat_balance_takes_the_fog_alone() -> None:
 def test_a_high_sun_dims_through_the_fog_and_a_low_one_vanishes() -> None:
     overhead = aerosol.sun_transmittance(math.pi / 2, 0.5)
     assert overhead == pytest.approx(math.exp(-BETA_500M * aerosol.DEPTH_M))
-    assert aerosol.sun_transmittance(math.radians(5.0), 0.5) < 1e-5
+    low = math.radians(5.0)
+    assert aerosol.sun_transmittance(low, 0.5) == pytest.approx(
+        math.exp(-BETA_500M * aerosol.DEPTH_M / math.sin(low))
+    )
     assert aerosol.sun_transmittance(-0.1, 0.5) == 0.0
 
 

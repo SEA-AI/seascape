@@ -12,10 +12,10 @@ from seascape.physics.atmosphere import ATMOSPHERE, Atmosphere
 
 FloatArray = npt.NDArray[np.float64]
 
-# WMO's fog: a visibility under 1 km (WMO No. 8, 2018).
-FOG_KM = 1.0
+FOG_KM = lwir.FOG_KM
 
-# LOWTRAN 7's shortest maritime haze, HZ2K's 2 km profile (lowtran7.f, AERPRF).
+# LOWTRAN 7's shortest maritime haze: the VIS of HZ2K's 2 km profile (lowtran7.f,
+# AERPRF), as an MOR.
 HAZE_KM = 2.0 * lwir.MOR_PER_VIS
 
 # Typical of water clouds (Kokhanovsky, Earth-Sci. Rev. 64 189, 2004, 3.1.4).
@@ -31,7 +31,7 @@ def extinction_per_m(visibility_km: float | None) -> float:
     dark target keeps 5% of its contrast against the horizon sky (WMO No. 8, 2018)."""
     if visibility_km is None:
         return 0.0
-    return math.log(1 / 0.05) / (visibility_km * 1000)
+    return math.log(20) / (visibility_km * 1000)
 
 
 def fog_weight(visibility_km: float | None) -> float:

@@ -466,7 +466,7 @@ def _misted_photo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, 
     photo = tmp_path / "white.hdr"
     cv2.imwrite(str(photo), np.ones((32, 64, 3), np.float32))
     monkeypatch.setattr("seascape.blender.sky.download", lambda *_: photo)
-    return {"hdri": "rocky_ridge", "visibility_km": 1.5}
+    return {"hdri": "rocky_ridge", "visibility_km": 1.2}
 
 
 def _heaviest_haze(band: Band) -> None:

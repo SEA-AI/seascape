@@ -2255,7 +2255,7 @@ def test_in_fog_the_eo_sky_is_its_horizon_s_grey_and_the_sun_dims() -> None:
 
 
 def test_in_mist_the_eo_sky_is_part_way_to_fog_s_grey() -> None:
-    mist = variant(sky={"visibility_km": 1.5})
+    mist = variant(sky={"visibility_km": 1.2})
     scene.build(mist, "eo")
     tree = bpy.data.worlds["sky"].node_tree
     feeding = upstream(tree.nodes["Background"].inputs["Color"])

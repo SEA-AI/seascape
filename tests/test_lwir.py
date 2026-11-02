@@ -217,10 +217,14 @@ def test_under_a_kilometre_the_path_is_lowtrans_advection_fog() -> None:
     assert np.exp(-np.array(depth)) == pytest.approx(
         [HAZE_2KM, FOG_1KM, FOG_500M], rel=1e-6
     )
+    clear = lwir.path_optical_depth(501.381, None)
+    wmo = lwir.path_optical_depth(501.381, aerosol.FOG_KM)
+    assert wmo - clear == pytest.approx((-math.log(FOG_1KM) - clear) * lwir.MOR_PER_VIS)
 
 
 def test_mist_runs_from_haze_to_fog_without_a_step() -> None:
-    edge = [lwir.path_optical_depth(501.381, v) for v in (2.001, 1.999, 1.5, 1.0)]
+    probes = (aerosol.HAZE_KM * 1.001, aerosol.HAZE_KM * 0.999, 1.2, aerosol.FOG_KM)
+    edge = [lwir.path_optical_depth(501.381, v) for v in probes]
     assert edge == sorted(edge)
     assert edge[1] - edge[0] < 0.01 * (edge[-1] - edge[0])
 
