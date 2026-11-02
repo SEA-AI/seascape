@@ -17,6 +17,12 @@ XYZ_TO_SRGB = np.array(
     ]
 )
 
+# The dominant wavelength of each sRGB primary (IEC 61966-2-1) from D65: where the
+# line from D65 through the primary meets the spectral locus of the CIE 1931 2 degree
+# colour-matching functions (CIE 015:2018). Limitation: a channel spans a band, and a
+# sensor's response weights it.
+SRGB_DOMINANT_M = (611.3e-9, 549.1e-9, 464.3e-9)
+
 
 def planck_xy(t_k: float) -> tuple[float, float]:
     """The Planckian locus in CIE 1931 xy, from 1667 to 25000 K: Kim et al.'s cubic

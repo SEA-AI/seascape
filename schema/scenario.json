@@ -1042,6 +1042,35 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "f_number": {
+          "title": "F Number",
+          "description": "The lens's f-number, which blurs each colour by its diffraction pattern. It needs sensor.pitch_um. Only png and jpg output use it. An LWIR camera sets microbolometer.f_number instead.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Lens",
@@ -2815,6 +2844,35 @@
             }
           ]
         },
+        "pitch_um": {
+          "title": "Pitch Um",
+          "description": "Pixel pitch, for the lens's diffraction.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "width_px": {
           "title": "Width Px",
           "description": "Its columns, if more than the image's. At twice or more, the ISP demosaics and scales down, so each pixel averages its sites; below, the sensor reads at the image's pitch.",
@@ -3107,6 +3165,36 @@
                 "wasteland_clouds"
               ],
               "type": "string"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "sun_diffuse_fraction": {
+          "title": "Sun Diffuse Fraction",
+          "description": "Only with an `hdri` whose sun shows no disc. It puts a sun behind the photo's cloud, at `sun_elevation_deg`. The value is the sky's share of the light a horizontal surface takes, and the sun's beam is the rest: about 0.17 clear, 0.7 under thin cloud and near 1 overcast (Erbs, Klein & Duffie, Solar Energy 28(4) 293, 1982). In LWIR the same beam warms a hull's zones. A hull given one `t_k` warms only by a `solar_gain_k` the scenario sets.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
             },
             {
               "type": "null"

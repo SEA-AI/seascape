@@ -29,7 +29,7 @@ from seascape.blender.sea.geometry import DICED_EDGE_M, OFFSCREEN_DICING, SEA_CE
 from seascape.blender.sea.memory import _frames_folder
 from seascape.blender.sky import _sky_texture, haze
 from seascape.config import Band, Camera, Lens, Mount, Scenario, Sky, load, substream
-from seascape.physics import colour, lwir, wakes, waves
+from seascape.physics import colour, lwir, optics, wakes, waves
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render
@@ -944,6 +944,19 @@ class TestCamera:
         assert frame[far].sum() / frame.sum() == pytest.approx(expected, rel=0.1)
 
 
+def convolved(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+    """`image` through an odd `kernel`, per channel, black past the frame."""
+    half = kernel.shape[0] // 2
+    shape = (image.shape[0] + 2 * half, image.shape[1] + 2 * half)
+    spread = np.fft.irfft2(
+        np.fft.rfft2(image, s=shape, axes=(0, 1))
+        * np.fft.rfft2(kernel, s=shape, axes=(0, 1)),
+        s=shape,
+        axes=(0, 1),
+    )
+    return spread[half : half + image.shape[0], half : half + image.shape[1]]
+
+
 class TestSensor:
     """The sensor and ISP on a flat sky, through a camera looking straight up."""
 
@@ -1096,6 +1109,27 @@ class TestSensor:
         assert corner / centre.mean() == pytest.approx(
             falloff[0, 0] / falloff.max(), rel=0.02
         )
+
+    def test_the_lens_spreads_each_colour_by_its_airy_pattern(self) -> None:
+        """A disc on a flat sky through f/11 is the sharp frame convolved with each
+        colour's kernel, normalized at the border."""
+        width, _ = self.SIZE
+        f_number, pitch_um = 11.0, 2.1
+        # Twice as fine: no mosaic, so the sensor reads each colour where it falls.
+        sensor = {"full_well_e": 1e12, "pitch_um": pitch_um, "width_px": 2 * width}
+        sharp = self.through((1.0, 1.0, 1.0), sun=1.0, sensor=sensor)
+        soft = self.through(
+            (1.0, 1.0, 1.0), sun=1.0, sensor=sensor, lens={"f_number": f_number}
+        )
+        kernel = optics.airy_kernel(
+            colour.SRGB_DOMINANT_M, f_number, 2 * pitch_um * 1e-6
+        )
+        expected = convolved(sharp, kernel) / convolved(np.ones_like(sharp), kernel)
+        assert np.abs(soft - expected).max() < 0.02 * np.abs(soft - sharp).max()
+        # A camera without one, after it, convolves nothing.
+        again = self.through((1.0, 1.0, 1.0), sun=1.0, sensor=sensor)
+        assert bpy.context.scene.compositing_node_group.nodes["lens.psf"].image is None
+        assert again == pytest.approx(sharp, abs=1e-3)
 
     def test_no_exposure_turns_a_frame_into_nans(self) -> None:
         """At the largest gain the ideal frame stays a number, and a sensor reads
@@ -1416,10 +1450,13 @@ def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
     pixels = np.empty(w * h * 4, np.float32)
     image.pixels.foreach_get(pixels)
     bpy.data.images.remove(image)
-    sun = skies.sun(pixels.reshape(h, w, 4)[::-1, :, :3])
+    radiance = pixels.reshape(h, w, 4)[::-1, :, :3]
+    sun = skies.sun(radiance)
     assert sun.bearing_deg == pytest.approx(photo.sun_bearing_deg, abs=0.06)
     if photo.sun_elevation_deg is None:
         assert sun.elevation_deg is None
+        diffuse = skies.diffuse_irradiance(radiance)
+        assert diffuse == pytest.approx(photo.diffuse_irradiance, rel=1e-4)
     else:
         assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
         assert sun.floor == pytest.approx(photo.sun_floor, rel=1e-4)

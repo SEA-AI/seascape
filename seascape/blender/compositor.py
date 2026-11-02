@@ -7,16 +7,22 @@ import numpy as np
 
 from seascape.blender import sensor
 from seascape.blender.blend import (
+    curve_image,
     scalar,
+    set_value,
+    switch,
+    toggle,
+    value,
     vector,
 )
 from seascape.config import (
     Band,
+    Camera,
     ImageFormat,
     Mount,
     Outputs,
 )
-from seascape.physics import colour
+from seascape.physics import colour, optics
 
 JPEG_QUALITY = 95
 
@@ -121,9 +127,9 @@ def _camera(
     compensation_ev: float,
     with_sensor: bool = False,
 ) -> bpy.types.NodeSocket:
-    """A lens's falloff, glare and blur, then auto-exposure, and with `with_sensor`
-    the sensor and ISP, then the ISP's tone curve. Without a sensor the Standard view
-    clips at white, as a sensor does. `respond` sets the camera.
+    """A lens's falloff, diffraction, glare and blur, then auto-exposure, and with
+    `with_sensor` the sensor and ISP, then the ISP's tone curve. Without a sensor the
+    Standard view clips at white, as a sensor does. `respond` sets the camera.
 
     Limitation: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
@@ -140,7 +146,7 @@ def _camera(
     radius = vector(tree, "LENGTH", coords.outputs["Uniform"])
     # Natural vignetting: irradiance falls as cos^4 of the field angle, 1 / (1 +
     # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
-    tangent = scalar(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
+    tangent = scalar(tree, "MULTIPLY", radius, value(tree, "lens.vignette"))
     falloff = scalar(
         tree,
         "POWER",
@@ -148,6 +154,7 @@ def _camera(
         -2.0,
     )
     image = vector(tree, "SCALE", image, falloff)
+    image = _diffraction(tree, image)
     shoulder = scalar(tree, "DIVIDE", radius, GLARE_SHOULDER)
     harvey = scalar(
         tree,
@@ -169,7 +176,8 @@ def _camera(
     links.new(info.outputs["Resolution"], side.inputs["Vector"])
     longer_px = scalar(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
-    size_px = scalar(tree, "MULTIPLY", longer_px, BLUR_OF_SIDE)
+    share = value(tree, "lens.blur_of_side", BLUR_OF_SIDE)
+    size_px = scalar(tree, "MULTIPLY", longer_px, share)
     size = nodes.new("ShaderNodeCombineXYZ")
     links.new(size_px, size.inputs["X"])
     links.new(size_px, size.inputs["Y"])
@@ -178,18 +186,18 @@ def _camera(
     links.new(size.outputs["Vector"], blur.inputs["Size"])
     links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
-    _, log_average = sensor._log_average(tree, image)
+    _, average = sensor.log_average(tree, image)
     gain = scalar(
-        tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
+        tree, "DIVIDE", 2**compensation_ev * MID_GREY, average, name="exposure"
     )
-    processing = sensor._value(tree, "processing.gain", 1.0)
+    processing = value(tree, "processing.gain", 1.0)
     gain = scalar(tree, "MULTIPLY", gain, processing)
     exposed = vector(tree, "SCALE", image, gain)
     if with_sensor:
         # A camera without a full well shares the tree, and takes the ideal frame.
         grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
         read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
-        exposed = sensor._switch(tree, "sensor.on", exposed, read)
+        exposed = switch(tree, "sensor.on", exposed, read)
     return _tone(tree, exposed)
 
 
@@ -206,7 +214,7 @@ def _tone(
     links.new(image, encode.inputs["Image"])
     links.new(encode.outputs["Image"], curve.inputs["Image"])
     links.new(curve.outputs["Image"], decode.inputs["Image"])
-    return sensor._switch(tree, "processing.toned", image, decode.outputs["Image"])
+    return switch(tree, "processing.toned", image, decode.outputs["Image"])
 
 
 def _set_curve(node: bpy.types.Node, y: np.ndarray) -> None:
@@ -216,14 +224,79 @@ def _set_curve(node: bpy.types.Node, y: np.ndarray) -> None:
         points.remove(points[1])
     points[0].location = (0.0, float(y[0]))
     points[-1].location = (1.0, float(y[-1]))
-    for x, value in zip(colour.TONE_IN[1:-1], y[1:-1], strict=True):
-        points.new(float(x), float(value))
+    for x, out in zip(colour.TONE_IN[1:-1], y[1:-1], strict=True):
+        points.new(float(x), float(out))
     for point in points:
         # Clamped: a monotonic curve's spline does not overshoot its knots.
         point.handle_type = "AUTO_CLAMPED"
     # Past white the curve stays at white, as the sensor clips, not its slope.
     node.mapping.extend = "HORIZONTAL"
     node.mapping.update()
+
+
+def _ones_like(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """A frame of ones the size of `image`: an operation takes its first input's
+    domain, and a colour alone has none."""
+    return vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
+
+
+def _convolve(
+    tree: bpy.types.NodeTree,
+    image: bpy.types.NodeSocket,
+    kernel: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`image` convolved with a colour `kernel`, each channel by its own."""
+    node = tree.nodes.new("CompositorNodeConvolve")
+    node.inputs["Kernel Data Type"].default_value = "Color"
+    tree.links.new(image, node.inputs["Image"])
+    rgb = next(s for s in node.inputs if s.name == "Kernel" and s.type == "RGBA")
+    tree.links.new(kernel, rgb)
+    return node.outputs["Image"]
+
+
+def _diffraction(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """`image` through the kernel `respond` puts in `lens.psf`, or as it is."""
+    psf = tree.nodes.new("CompositorNodeImage")
+    psf.name = "lens.psf"
+    kernel = psf.outputs["Image"]
+    # Convolve reads black past the frame. Dividing by the convolved ones (Knutsson
+    # & Westin 1993) keeps a border pixel at its level.
+    spread = vector(
+        tree,
+        "DIVIDE",
+        _convolve(tree, image, kernel),
+        _convolve(tree, _ones_like(tree, image), kernel),
+    )
+    return switch(tree, "lens.diffract", image, spread)
+
+
+def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
+    """Turn diffraction on for `camera` or off, building its kernel when it changes."""
+    f_number = camera.lens.f_number
+    toggle(tree, "lens.diffract", f_number is not None)
+    # The Airy pattern is the lens's softness; the judgement blur stands in for it.
+    set_value(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
+    node = tree.nodes["lens.psf"]
+    if f_number is None:
+        # A Switch evaluates both branches, so a kernel left behind is convolved.
+        if node.image is not None:
+            bpy.data.images.remove(node.image)
+        return
+    assert camera.sensor.pitch_um is not None, "f_number needs sensor.pitch_um"
+    sites_per_px = (camera.sensor.width_px or camera.width_px) / camera.width_px
+    pitch_m = camera.sensor.pitch_um * 1e-6 * sites_per_px
+    built = (node.get("f_number"), node.get("pitch_m"))
+    if node.image is not None and built == (f_number, pitch_m):
+        return
+    if node.image is not None:
+        bpy.data.images.remove(node.image)
+    kernel = optics.airy_kernel(colour.SRGB_DOMINANT_M, f_number, pitch_m)
+    node.image = curve_image("lens.psf", kernel)
+    node["f_number"], node["pitch_m"] = f_number, pitch_m
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:
@@ -243,17 +316,18 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     camera = mount.camera
     longer_of_width = max(camera.width_px, camera.height_px) / camera.width_px
     tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
-    sensor._set(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
-    sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
+    set_value(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
+    set_value(tree, "processing.gain", 2**camera.processing.exposure_ev)
     share = camera.lens.veiling_glare
     # Glare adds its glow to the image; normalized, the glow is this share of the sum.
     strength = tree.nodes["lens.veiling_glare"].inputs["Strength"]
     strength.default_value = share / (1 - share)
+    _set_diffraction(tree, camera)
     tone = camera.processing.tone
-    sensor._toggle(tree, "processing.toned", tone != "none")
+    toggle(tree, "processing.toned", tone != "none")
     if tone != "none":
         _set_curve(tree.nodes["processing.tone"], colour.tone_curve(tone))
     if "sensor.on" not in tree.nodes:
         return
-    sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
+    toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
     sensor.respond(tree, camera, noise)

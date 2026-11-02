@@ -12,7 +12,7 @@ import numpy as np
 import numpy.typing as npt
 
 from seascape.config import Camera
-from seascape.physics import lwir
+from seascape.physics import lwir, optics
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -27,15 +27,12 @@ def diffraction_mtf(
 ) -> FloatArray:
     """A circular aperture's MTF at `freq_per_m` in the image plane, over the band.
 
-    Each wavelength's is the incoherent OTF of a clear circular pupil, cut off at
-    1 / (lambda N) (Goodman, Introduction to Fourier Optics, 2005, sec. 6.3); the band
-    weights them by the radiance a blackbody at `t_k` puts at each, as a flat detector
-    sees it (Boreman, Modulation Transfer Function in Optical and Electro-Optical
-    Systems, 2001).
+    Each wavelength's is `optics.pupil_mtf`; the band weights them by the radiance a
+    blackbody at `t_k` puts at each, as a flat detector sees it (Boreman, Modulation
+    Transfer Function in Optical and Electro-Optical Systems, 2001).
     """
     freq = np.asarray(freq_per_m, dtype=np.float64)
-    x = np.minimum(freq[..., None] * _BAND_LAM * f_number, 1.0)
-    mono = 2 / math.pi * (np.arccos(x) - x * np.sqrt(1.0 - x * x))
+    mono = optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
     weight = lwir.planck(_BAND_LAM, t_k)
     return (mono * weight).sum(axis=-1) / weight.sum()
 

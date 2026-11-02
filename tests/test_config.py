@@ -7,7 +7,7 @@ import statistics
 import tomllib
 import warnings
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import pytest
 from pydantic import ValidationError
@@ -743,6 +743,29 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
         _ = sky.sun_vector
 
 
+def test_a_hidden_sun_sits_where_the_scenario_puts_it() -> None:
+    sky = Sky.model_validate(
+        {"hdri": "overcast_soil", "sun_diffuse_fraction": 0.7, "sun_elevation_deg": 20}
+    )
+    assert sky.sun_elevation_deg == 20.0
+
+
+@pytest.mark.parametrize(
+    ("sky", "match"),
+    [
+        ({"hdri": "kloofendal_48d_partly_cloudy"}, "with no disc"),
+        ({}, "needs an hdri"),
+        ({"hdri": "overcast_soil", "sun_elevation_deg": -5.0}, "above the horizon"),
+        ({"hdri": "overcast_soil"}, "needs sun_elevation_deg"),
+    ],
+)
+def test_a_hidden_sun_needs_a_hidden_disc_above_the_horizon(
+    sky: dict[str, Any], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Sky.model_validate({**sky, "sun_diffuse_fraction": 0.7})
+
+
 def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
     photos = skies.library()
     for name in ("sunflowers", "mud_road", "snow_field"):
@@ -1036,9 +1059,10 @@ def test_a_camera_is_ideal_unless_told_otherwise(baseline) -> None:
     [
         "rigs.bow.cameras.ir.sensor.full_well_e = 10000.0",
         "rigs.bow.cameras.ir.processing.sharpen = 1.0",
+        "rigs.bow.cameras.ir.lens.f_number = 1.0",
     ],
 )
-def test_an_ir_camera_takes_no_sensor_or_processing(line: str) -> None:
+def test_an_ir_camera_takes_no_eo_parts(line: str) -> None:
     with pytest.raises(ValidationError, match="an ir camera"):
         load(BASELINE, [line])
 
@@ -1051,6 +1075,11 @@ def test_an_eo_camera_takes_no_microbolometer() -> None:
 def test_f_number_and_pitch_go_together() -> None:
     with pytest.raises(ValidationError, match="pitch_um"):
         load(BASELINE, ["rigs.bow.cameras.ir.microbolometer.f_number = 1.0"])
+
+
+def test_an_eo_f_number_needs_the_sensor_s_pitch() -> None:
+    with pytest.raises(ValidationError, match="pitch_um"):
+        load(BASELINE, ["rigs.bow.cameras.eo.lens.f_number = 5.6"])
 
 
 def test_a_boson_preset_extends_another() -> None:

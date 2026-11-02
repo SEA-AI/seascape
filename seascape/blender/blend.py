@@ -78,14 +78,15 @@ def curve_image(
     name: str, values: np.ndarray, float_buffer: bool = True
 ) -> bpy.types.Image:
     """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
-    or rows bottom first. Without `float_buffer`, 8 bits of values in [0, 1]."""
+    or rows bottom first, grey or RGB on a last axis. Without `float_buffer`, 8 bits
+    of values in [0, 1]."""
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
-    height, width = table.shape
+    height, width = table.shape[:2]
     image = bpy.data.images.new(
         name, width, height, float_buffer=float_buffer, is_data=True
     )
     pixels = np.ones((height, width, 4), dtype=np.float32)
-    pixels[..., :3] = table[..., None]
+    pixels[..., :3] = table if table.ndim == 3 else table[..., None]
     image.pixels.foreach_set(pixels.ravel())
     # Unpacked, a generated image saves as its fill colour; EXR keeps floats.
     image.file_format = "OPEN_EXR" if float_buffer else "PNG"
@@ -173,6 +174,39 @@ def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Node
     out = scalar(tree, "MAXIMUM", x, 0.0)
     out.node.use_clamp = True
     return out
+
+
+def value(
+    tree: bpy.types.NodeTree, name: str, initial: float = 0.0
+) -> bpy.types.NodeSocket:
+    """A named Value node, which `set_value` changes after the build."""
+    node = tree.nodes.new("ShaderNodeValue")
+    node.name = name
+    node.outputs["Value"].default_value = initial
+    return node.outputs["Value"]
+
+
+def set_value(tree: bpy.types.NodeTree, name: str, to: float) -> None:
+    tree.nodes[name].outputs["Value"].default_value = to
+
+
+def switch(
+    tree: bpy.types.NodeTree,
+    name: str,
+    off: bpy.types.NodeSocket,
+    on: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`on` or `off` for the whole frame, as `toggle` sets it: a pick, where a blend
+    by 0 would turn an inf in the unpicked image into a nan."""
+    node = tree.nodes.new("CompositorNodeSwitch")
+    node.name = name
+    tree.links.new(off, node.inputs["Off"])
+    tree.links.new(on, node.inputs["On"])
+    return node.outputs["Image"]
+
+
+def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
+    tree.nodes[name].inputs["Switch"].default_value = on
 
 
 def pixels(image: bpy.types.Image) -> np.ndarray:
