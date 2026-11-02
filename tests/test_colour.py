@@ -1,4 +1,4 @@
-"""Colour temperature and white balance. No Blender."""
+"""Colour temperature, white balance and tone curves. No Blender."""
 
 import numpy as np
 import pytest
@@ -35,3 +35,10 @@ def test_every_allowed_balance_has_finite_positive_gains() -> None:
     for error_k in np.linspace(bounds["Ge"].ge, bounds["Le"].le, 221):
         gains = colour.white_balance_gains(float(error_k))
         assert all(0.0 < g < 10.0 for g in gains), error_k
+
+
+def test_bt709_crushes_the_shadows_that_srgb_lifts() -> None:
+    """BT.709's toe is 4.5 to sRGB's 12.92 (IEC 61966-2-1)."""
+    curve = colour.tone_curve("bt709")
+    assert (curve[0], curve[-1]) == pytest.approx((0.0, 1.0), abs=1e-3)
+    assert (curve[1:-1] < colour.TONE_IN[1:-1]).all()
