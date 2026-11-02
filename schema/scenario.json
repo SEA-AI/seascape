@@ -2052,7 +2052,7 @@
     },
     "Processing": {
       "additionalProperties": false,
-      "description": "The camera's ISP. White balance and sharpening need a sensor.",
+      "description": "The camera's ISP. White balance and sharpening need a sensor; exposure and\ntone do not.",
       "properties": {
         "exposure_ev": {
           "title": "Exposure Ev",
@@ -2117,6 +2117,35 @@
               "maximum": 4.0,
               "minimum": 0.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "tone": {
+          "title": "Tone",
+          "description": "The curve the ISP encodes with, in place of sRGB's: bt709 is BT.709's OETF, emor the mean response of 201 cameras and films (Grossberg & Nayar 2004). Both darken shadows and midtones. Only png and jpg output use it.",
+          "default": "none",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tone"
+            },
+            {
+              "const": "none",
+              "type": "string"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -3651,6 +3680,13 @@
       ],
       "title": "Targets",
       "type": "object"
+    },
+    "Tone": {
+      "enum": [
+        "bt709",
+        "emor"
+      ],
+      "type": "string"
     },
     "WarmLayer": {
       "additionalProperties": false,
