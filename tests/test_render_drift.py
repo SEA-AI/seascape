@@ -916,21 +916,23 @@ class TestCamera:
         off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
         assert np.percentile(off, 99) <= 4
 
-    # The default last, as the class's later renders take it.
     @pytest.mark.parametrize("share", [0.05, Lens().veiling_glare])
     def test_the_glare_scatters_its_share_in_harvey_s_form(self, share: float) -> None:
         """A sun of about a pixel on black sky: the light beyond a few pixels of it is
-        the lens's veiling glare share of the kernel's weight there."""
+        the glare's share of the kernel's weight there."""
         # Half-resolution glare blurs the first few pixels round the sun.
         width, height, beyond_px = 384, 216, 12
         rig = SCENARIO.rigs["bow"]
-        camera = rig.cameras["eo"].model_copy(
-            update={"lens": Lens(veiling_glare=share)}
-        )
-        respond(Mount("bow", rig, "eo", camera), substream(0, "sensor/bow_eo"))
-        frame = self.through_the_camera(
-            0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
-        )
+        camera = rig.cameras["eo"]
+        glaring = camera.model_copy(update={"lens": Lens(veiling_glare=share)})
+        noise = substream(0, "sensor/bow_eo")
+        respond(Mount("bow", rig, "eo", glaring), noise)
+        try:
+            frame = self.through_the_camera(
+                0.0, 0.0, sun=1e6, sun_radius_deg=0.05, size=(width, height)
+            )
+        finally:
+            respond(Mount("bow", rig, "eo", camera), noise)
         x = ((np.arange(width) + 0.5) / width * 2 - 1)[None, :]
         y = ((np.arange(height) + 0.5) / height * 2 - 1)[:, None] * height / width
         r = np.hypot(x, y)

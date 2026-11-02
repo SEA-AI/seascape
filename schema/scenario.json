@@ -1018,7 +1018,7 @@
         },
         "veiling_glare": {
           "title": "Veiling Glare",
-          "description": "The share of the light the lens scatters across the frame, in Harvey's form; a smudged cover glass scatters more. Only an 8-bit EO frame takes it.",
+          "description": "The share of the light the lens scatters across the frame. Only an 8-bit EO frame takes it.",
           "default": 0.02,
           "anyOf": [
             {
