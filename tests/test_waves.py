@@ -202,7 +202,7 @@ def test_each_run_of_frequencies_runs_both_sides_of_the_wind() -> None:
     # A wind from the north runs its waves toward pi.
     off = np.array([math.remainder(w.toward_rad - math.pi, 2 * math.pi) for w in built])
 
-    runs = off.reshape(-1, waves.WIND_HEADINGS)
+    runs = off.reshape(-1, waves.SPREAD_STRATA)
     assert np.all((runs.min(axis=1) < 0.0) & (runs.max(axis=1) > 0.0))
 
 
@@ -636,7 +636,7 @@ def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
     weight = waves.curvature_spectrum(k, wind_speed_mps, None) * k
     m4 = np.trapezoid(weight, k)
     omega_sq = np.trapezoid(weight * earth.GRAVITY_MS2 * k, k) / m4
-    _, variance = waves.sea._bins(wind_speed_mps, None)
+    _, _, variance = waves.sea._bins(wind_speed_mps, None)
     cells, twinkles = [], []
     # Each wave's frequency is drawn in its bin, so the seeds average.
     for seed in range(8):
@@ -718,18 +718,19 @@ def test_no_axis_draws_more_slope_than_cox_and_munk_measured(
 
 def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None:
     """Elfouhaily's height variance is the bins'; the hold only trims a light wind."""
-    _, variance = waves.sea._bins(7.0, None)
+    _, _, variance = waves.sea._bins(7.0, None)
     built = field(7.0)
     assert sum(w.amplitude_m**2 / 2 for w in built) == pytest.approx(variance.sum())
 
 
 def test_each_wave_carries_its_own_bin_s_height_off_the_bin_s_centre() -> None:
-    """Off the centres, so the waves keep no fixed spacing to beat at."""
-    edges, variance = waves.sea._bins(7.0, None)
+    edges, _, variance = waves.sea._bins(7.0, None)
     built = sorted(field(7.0), key=lambda w: w.omega_rad_s)
     omega = np.array([w.omega_rad_s for w in built])
     assert np.all((edges[:-1] < omega) & (omega < edges[1:]))
-    assert np.ptp(np.diff(np.log(omega))) > 0.5 * np.log(edges[1] / edges[0])
+    # On the centres every log step is one bin wide; drawn, they spread over two.
+    spacing_spread = np.ptp(np.diff(np.log(omega))) / np.log(edges[1] / edges[0])
+    assert spacing_spread > 0.5
     assert [w.amplitude_m**2 / 2 for w in built] == pytest.approx(variance)
 
 

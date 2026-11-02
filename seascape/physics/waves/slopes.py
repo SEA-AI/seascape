@@ -264,6 +264,7 @@ def slick_survivors(
     `wind`, damping the shortest first."""
     budget = np.array(cox_munk_slick_variances(wind_speed_mps))
     left: list[Wave] = []
+    # Wave by wave, so the cut can leave its last run of the spread one-sided.
     for wave in sorted(wind, key=lambda w: w.k_rad_m):
         budget -= drawn_slope_variances((wave,), 0.0, axis_rad)
         if np.any(budget < 0.0):
