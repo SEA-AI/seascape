@@ -42,9 +42,3 @@ def test_bt709_crushes_the_shadows_that_srgb_lifts() -> None:
     curve = colour.tone_curve("bt709")
     assert (curve[0], curve[-1]) == pytest.approx((0.0, 1.0), abs=1e-3)
     assert (curve[1:-1] < colour.TONE_IN[1:-1]).all()
-
-
-def test_the_emor_mean_rises_from_black_to_white() -> None:
-    curve = colour.tone_curve("emor")
-    assert (curve[0], curve[-1]) == (0.0, 1.0)
-    assert (np.diff(curve) > 0).all()

@@ -1,5 +1,8 @@
 """Colour temperature, white balance and a camera's tone curve."""
 
+from collections.abc import Callable
+from typing import Literal
+
 import numpy as np
 
 # CIE 15:2004: D65's correlated colour temperature, the white of a linear sRGB render.
@@ -61,17 +64,22 @@ EMOR_F0 = np.array([
     0.5533, 0.6325, 0.7055, 0.7731, 0.8363, 0.8947, 0.9495, 1.0000,
 ])  # fmt: skip
 
-# sRGB-encoded inputs a tone curve is given at. Seventeen carry each curve through a
-# spline to within a level of 8 bits.
+# sRGB-encoded inputs a tone curve is given at, enough for a spline through them to
+# stay within a level of 8 bits.
 TONE_IN = np.linspace(0.0, 1.0, len(EMOR_F0))
 
+type Tone = Literal["bt709", "emor"]
 
-def tone_curve(tone: str) -> np.ndarray:
-    """A camera's encoded output at the sRGB-encoded inputs `TONE_IN`."""
-    linear = srgb_decode(TONE_IN)
-    if tone == "bt709":
-        # ITU-R BT.709-6 item 1.2, the OETF.
-        return np.where(linear < 0.018, 4.5 * linear, 1.099 * linear**0.45 - 0.099)
-    if tone == "emor":
-        return EMOR_F0
-    raise ValueError(f"no tone curve {tone!r}")
+_CURVES: dict[Tone, Callable[[np.ndarray], np.ndarray]] = {
+    # ITU-R BT.709-6 item 1.2, the OETF, of linear light.
+    "bt709": lambda linear: np.where(
+        linear < 0.018, 4.5 * linear, 1.099 * linear**0.45 - 0.099
+    ),
+    "emor": lambda linear: np.interp(linear, srgb_decode(TONE_IN), EMOR_F0),
+}
+
+
+def tone_curve(tone: Tone, encoded: np.ndarray = TONE_IN) -> np.ndarray:
+    """A camera's encoded output at the sRGB-encoded inputs `encoded`. EMoR's is
+    linear between its knots."""
+    return _CURVES[tone](srgb_decode(encoded))

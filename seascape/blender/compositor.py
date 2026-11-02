@@ -222,6 +222,8 @@ def _set_curve(node: bpy.types.Node, y: np.ndarray) -> None:
     for point in points:
         # Clamped: a monotonic curve's spline does not overshoot its knots.
         point.handle_type = "AUTO_CLAMPED"
+    # Past white the curve stays at white, as the sensor clips, not its slope.
+    node.mapping.extend = "HORIZONTAL"
     node.mapping.update()
 
 

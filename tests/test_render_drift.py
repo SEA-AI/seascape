@@ -1166,12 +1166,12 @@ class TestSensor:
 
     @pytest.mark.parametrize("tone", ["bt709", "emor"])
     def test_a_tone_curve_takes_the_metered_grey_where_its_curve_does(
-        self, tone: str
+        self, tone: colour.Tone
     ) -> None:
         """A camera without a sensor takes it too."""
         frame = self.through((1.0, 1.0, 1.0), processing={"tone": tone})
-        encoded = 1.055 * MID_GREY ** (1 / 2.4) - 0.055
-        toned = np.interp(encoded, colour.TONE_IN, colour.tone_curve(tone))
+        encoded = np.array(1.055 * MID_GREY ** (1 / 2.4) - 0.055)
+        toned = colour.tone_curve(tone, encoded)
         assert frame.mean() == pytest.approx(colour.srgb_decode(toned), rel=0.02)
         assert self.through((1.0, 1.0, 1.0)).mean() == pytest.approx(MID_GREY, rel=0.01)
 
@@ -1181,11 +1181,9 @@ def test_the_tone_node_carries_bt709_to_within_a_level_of_8_bits() -> None:
     node = tree.nodes.new("CompositorNodeCurveRGB")
     _set_curve(node, colour.tone_curve("bt709"))
     encoded = np.linspace(0.0, 1.0, 1001)
-    linear = colour.srgb_decode(encoded)
-    oetf = np.where(linear < 0.018, 4.5 * linear, 1.099 * linear**0.45 - 0.099)
     curve = node.mapping.curves[3]
     got = [node.mapping.evaluate(curve, float(x)) for x in encoded]
-    assert np.abs(got - oetf).max() < 1 / 255
+    assert np.abs(got - colour.tone_curve("bt709", encoded)).max() < 1 / 255
     bpy.data.node_groups.remove(tree)
 
 

@@ -2114,11 +2114,10 @@
           "default": "none",
           "anyOf": [
             {
-              "enum": [
-                "none",
-                "bt709",
-                "emor"
-              ],
+              "$ref": "#/$defs/Tone"
+            },
+            {
+              "const": "none",
               "type": "string"
             },
             {
@@ -3654,6 +3653,13 @@
       ],
       "title": "Targets",
       "type": "object"
+    },
+    "Tone": {
+      "enum": [
+        "bt709",
+        "emor"
+      ],
+      "type": "string"
     },
     "WarmLayer": {
       "additionalProperties": false,

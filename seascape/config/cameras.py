@@ -9,6 +9,7 @@ from pydantic import (
 )
 
 from seascape.model import Model
+from seascape.physics.colour import Tone
 
 type Band = Literal["eo", "ir"]
 
@@ -188,7 +189,7 @@ class Processing(Model):
     sharpen: float = Field(
         default=0.0, ge=0.0, le=4.0, description="Unsharp mask amount."
     )
-    tone: Literal["none", "bt709", "emor"] = Field(
+    tone: Tone | Literal["none"] = Field(
         default="none",
         description="The curve the ISP encodes with, in place of sRGB's: bt709 is "
         "BT.709's OETF, emor the mean response of 201 cameras and films (Grossberg "
