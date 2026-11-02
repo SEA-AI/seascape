@@ -3215,6 +3215,36 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "cie_type": {
+          "title": "Cie Type",
+          "description": "Only with `sun_diffuse_fraction`. EO reweights the photo to the luminance by direction of this CIE standard general sky (ISO 15469:2004): 1-5 overcast, 6-10 partly cloudy, 11-15 clear. The photo's clouds stay. The type's sun is the scenario's, and the sky the cameras frame keeps its mean brightness. Cloud cover at the time, from satellite or reanalysis data, picks the type.",
+          "default": null,
+          "anyOf": [
+            {
+              "maximum": 15,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Sky",

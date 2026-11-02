@@ -766,6 +766,11 @@ def test_a_hidden_sun_needs_a_hidden_disc_above_the_horizon(
         Sky.model_validate({**sky, "sun_diffuse_fraction": 0.7})
 
 
+def test_a_cie_sky_needs_a_hidden_sun() -> None:
+    with pytest.raises(ValidationError, match="needs sun_diffuse_fraction"):
+        Sky.model_validate({"hdri": "overcast_soil", "cie_type": 7})
+
+
 def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
     photos = skies.library()
     for name in ("sunflowers", "mud_road", "snow_field"):

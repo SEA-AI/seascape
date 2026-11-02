@@ -224,6 +224,18 @@ class Sky(Model):
         "scenario sets.",
     )
 
+    cie_type: int | None = Field(
+        default=None,
+        ge=1,
+        le=15,
+        description="Only with `sun_diffuse_fraction`. EO reweights the photo to the "
+        "luminance by direction of this CIE standard general sky (ISO 15469:2004): "
+        "1-5 overcast, 6-10 partly cloudy, 11-15 clear. The photo's clouds stay. The "
+        "type's sun is the scenario's, and the sky the cameras frame keeps its mean "
+        "brightness. Cloud cover at the time, from satellite or reanalysis data, "
+        "picks the type.",
+    )
+
     @model_validator(mode="before")
     @classmethod
     def _sky_follows_the_photo(cls, data: Any) -> Any:
@@ -270,6 +282,13 @@ class Sky(Model):
             raise ValueError("sun_diffuse_fraction needs an hdri")
         if self.sun_elevation_deg is None or self.sun_elevation_deg <= 0.0:
             raise ValueError("sun_diffuse_fraction needs a sun above the horizon")
+        return self
+
+    @model_validator(mode="after")
+    def _a_cie_sky_has_a_hidden_sun(self) -> "Sky":
+        # A disc's elevation is the photo's, and the reweight would rescale the disc.
+        if self.cie_type is not None and self.sun_diffuse_fraction is None:
+            raise ValueError("cie_type needs sun_diffuse_fraction")
         return self
 
     @model_validator(mode="before")

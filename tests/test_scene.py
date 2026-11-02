@@ -42,7 +42,13 @@ from seascape.blender.sea.wind import (
     GUST_TILE_M,
     _looked_up_sigma,
 )
-from seascape.blender.sky import _haze_ranges_m, _sky_round, haze, sea_light
+from seascape.blender.sky import (
+    _framed,
+    _haze_ranges_m,
+    _sky_round,
+    haze,
+    sea_light,
+)
 from seascape.blender.vessels import Hulls, _vessel, heading_rad, waterline_m
 from seascape.config import (
     Band,
@@ -1908,6 +1914,42 @@ class TestHiddenSun:
         sky = variant(sky=HIDDEN_SUN).sky
         towards = bpy.data.objects["sun"].matrix_world.to_3x3() @ Vector((0, 0, 1))
         assert tuple(towards) == pytest.approx(sky.sun_vector, abs=1e-6)
+
+
+CIE_SKY = {**HIDDEN_SUN, "cie_type": 7, "sun_bearing_deg": 120.0}
+
+
+class TestCieSky:
+    """A white photo stands in for the download."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
+        path = tmp_path_factory.mktemp("sky") / "white.hdr"
+        image = bpy.data.images.new("white", 64, 32, float_buffer=True)
+        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+        image.filepath_raw = str(path)
+        image.file_format = "HDR"
+        image.save()
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("seascape.blender.sky.download", lambda *_: path)
+            scene.build(variant(sky=CIE_SKY), "eo")
+
+    def test_its_sun_s_beam_follows_the_reweighted_sky(self) -> None:
+        diffuse = bpy.data.images["cie_weight"]["diffuse_irradiance"]
+        assert diffuse != skies.library()["overcast_soil"].diffuse_irradiance
+        # (1 - k) / k is 1 and sin 30 deg is 1/2.
+        assert bpy.data.lights["sun"].energy == pytest.approx(2 * diffuse)
+
+    def test_the_frame_it_keeps_is_where_the_camera_looks(self) -> None:
+        scenario = variant(sky=CIE_SKY)
+        cameras = {o.name: o for o in bpy.data.objects if o.type == "CAMERA"}
+        seen = views(scenario, "eo", cameras)
+        directions = skies.directions(256, 512, 37.0)
+        framed = _framed(seen, directions)
+        x, y, _ = directions[framed].mean(axis=0)
+        bearing, _ = boresight_deg(next(iter(cameras.values())))
+        assert math.degrees(math.atan2(x, y)) == pytest.approx(bearing, abs=0.5)
 
 
 class TestPhotographedThermalSky:

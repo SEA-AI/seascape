@@ -34,7 +34,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from seascape.assets import SHA256
 from seascape.model import Model
-from seascape.physics import lwir
+from seascape.physics import lwir, skylight
 
 LIBRARY = Path(__file__).parent / "skies.toml"
 # ITU-R BT.709.
@@ -55,6 +55,9 @@ GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
+# Judgement, a few times a cloud's width: the scale of the photo's own light that a CIE
+# type replaces.
+CIE_BLUR_DEG = 15.0
 # Judgement: how far under the fitted clear sky a blueness may fall and refit as clear.
 CLEAR_BAND = 0.03
 # Judgement: a clear blueness under this is too grey to show a cloud by colour.
@@ -206,6 +209,48 @@ def diffuse_irradiance(radiance: np.ndarray) -> float:
     # An equirectangular pixel spans dω = cos(elevation) (π / h) (2π / w).
     weight = np.sin(elevation) * np.cos(elevation) * (2.0 * math.pi**2 / (h * w))
     return float(weight @ (radiance[: h // 2] @ LUMINANCE).sum(axis=1))
+
+
+def directions(h: int, w: int, turn_deg: float = 0.0) -> np.ndarray:
+    """Unit vectors through the pixel centres of an (h, w) equirectangular image, top
+    row first, its bearings carried clockwise by `turn_deg`."""
+    bearing = _bearing_deg((np.arange(w) + 0.5) / w) + turn_deg
+    return _directions(bearing[None, :], _elevation_deg(np.arange(h), h)[:, None])
+
+
+def cie_weight(
+    radiance: np.ndarray,
+    photo: Photo,
+    cie_type: int,
+    sun_elevation_deg: float,
+    framed: np.ndarray,
+) -> np.ndarray:
+    """What each pixel of `radiance`, (h, w, 3) of `photo` top row first, is multiplied
+    by to give the sky the large-scale light of CIE sky `cie_type`, its sun at
+    `sun_elevation_deg` and the photo's bearing: the type over the photo's luminance
+    blurred by CIE_BLUR_DEG. The clouds stay, and the sky above the horizon in `framed`,
+    (h, w), keeps its mean luminance; all of it, where `framed` holds none. Below the
+    horizon, the horizon's weight."""
+    h, w = radiance.shape[:2]
+    sky = slice(0, h // 2)
+    lum = (radiance[sky] @ LUMINANCE).astype(np.float32)
+    blurred = np.maximum(_wrapped_blur(lum, CIE_BLUR_DEG * w / 360.0), 1e-12)
+    toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
+    up = directions(h, w)[sky]
+    weight = (
+        skylight.relative_luminance(
+            cie_type,
+            np.arccos(up[..., 2]),
+            np.arccos(np.clip(up @ toward, -1.0, 1.0)),
+            np.radians(90.0 - sun_elevation_deg),
+        )
+        / blurred
+    )
+    # A pixel's solid angle goes as cos(elevation), a unit vector's reach across.
+    solid = np.hypot(up[..., 0], up[..., 1])
+    seen = framed[sky] if framed[sky].any() else np.ones_like(lum, bool)
+    weight *= (lum * solid)[seen].sum() / (lum * weight * solid)[seen].sum()
+    return np.pad(weight, ((0, h - h // 2), (0, 0)), mode="edge")
 
 
 def _nearness(

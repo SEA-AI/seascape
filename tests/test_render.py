@@ -421,7 +421,7 @@ def _svm_errors(
     bpy.ops.wm.read_factory_settings(use_empty=True)
     set_output(scenario.outputs, band, 16)
     sc = bpy.context.scene
-    sc.world = add_world(scenario.sky, band)
+    sc.world = add_world(scenario.sky, band, [])
     seed = scenario.seed
     # Unculled: culling drops waves, which would shrink the shader under test.
     material = sea.material(

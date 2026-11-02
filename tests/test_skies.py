@@ -171,3 +171,39 @@ def test_a_uniform_sky_lights_a_horizontal_surface_with_pi_times_its_radiance() 
     radiance = np.ones((64, 128, 3), np.float32)
     radiance[32:] = 100.0
     assert skies.diffuse_irradiance(radiance) == pytest.approx(math.pi, rel=1e-3)
+
+
+CIE_PHOTO = skies.Photo(
+    url="https://example.com/sky.hdr",
+    sha256="0" * 64,
+    sun_bearing_deg=100.0,
+    diffuse_irradiance=1.0,
+    cloud_genus="stratus",
+    licence="CC0-1.0",
+    attribution="test",
+)
+
+
+def test_a_cie_weight_keeps_the_framed_sky_s_mean() -> None:
+    radiance = _sky(300.0, 20.0, 10.0, 5.0)[::8, ::8]
+    lum = radiance @ skies.LUMINANCE
+    framed = np.zeros(lum.shape, bool)
+    framed[30:60, 100:140] = True
+    weight = skies.cie_weight(radiance, CIE_PHOTO, 7, 20.0, framed)
+    solid = np.cos(np.radians(90.0 - (np.arange(lum.shape[0]) + 0.5) * 180 / 128))
+    kept = (lum * weight * solid[:, None])[framed].sum()
+    assert kept == pytest.approx((lum * solid[:, None])[framed].sum(), rel=1e-6)
+
+
+def test_a_cie_weight_brightens_an_even_sky_toward_the_photo_s_sun() -> None:
+    radiance = np.ones((128, 256, 3), np.float32)
+    framed = np.ones((128, 256), bool)
+    weight = skies.cie_weight(radiance, CIE_PHOTO, 7, 20.0, framed)
+    horizon = weight[63]
+    bearing = (360.0 * (np.arange(256) + 0.5) / 256 - 90.0) % 360.0
+    assert bearing[np.argmax(horizon)] == pytest.approx(100.0, abs=1.5)
+
+
+def test_turned_directions_carry_a_bearing_clockwise() -> None:
+    x, y, _ = skies.directions(64, 128, 30.0)[32, 32]  # photo bearing 0
+    assert math.degrees(math.atan2(x, y)) == pytest.approx(30.0, abs=1.5)
