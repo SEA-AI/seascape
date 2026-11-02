@@ -245,11 +245,11 @@ def chain(
         value(tree, "sensor.wb_b", 1.0),
     )
     gains = switch(tree, "sensor.grey_world", fixed, _grey_world(tree, image, ratio))
-    # Auto-exposure metered the frame before the gains. A camera that meters what it
-    # outputs exposes for less by the luminance they add to a grey, so a grey keeps
-    # its luminance, and white, under gains of at least 1, still clips white.
-    added = vector(tree, "DOT_PRODUCT", gains, colour.LUMINANCE)
-    image = vector(tree, "SCALE", image, scalar(tree, "DIVIDE", 1.0, added))
+    # Auto-exposure metered the frame before the gains. Divide by the luminance the
+    # gains give a grey, as a camera metering its output would. Without HDR, gains of
+    # at least 1 keep clipped white white.
+    luminance_gain = vector(tree, "DOT_PRODUCT", gains, colour.LUMINANCE)
+    image = vector(tree, "SCALE", image, scalar(tree, "DIVIDE", 1.0, luminance_gain))
     longs, merged = [], []
     for index, x in enumerate(_channels(tree, image)):
         # An average of n sites divides the variances by n.
@@ -324,14 +324,14 @@ def _largest_fixed_gain() -> float:
 
 
 def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socket:
-    """Gains that make the mean of `image` grey (Buchsbaum 1980), counting only pixels
-    no read saturates in any colour: below white, or with HDR below `ratio` whites,
-    where the short read saturates. The smallest gain is 1, as in the fixed balance.
-    Each gain is at most the largest the fixed balance gives.
+    """Gains that make the mean of `image` grey (Buchsbaum 1980). It counts only
+    pixels below `ratio` whites in every colour, where the last read saturates. The
+    smallest gain is 1, as in the fixed balance. Each gain is at most the largest the
+    fixed balance gives.
 
-    Limitation: it judges a pixel by the light reaching the sensor, so noise never
-    takes one across white, and before the gains dim the frame, so a pixel they take
-    below white is still left out.
+    Limitation: it judges a pixel by the light before noise and before the frame is
+    dimmed by the gains' luminance. So noise never takes a pixel across white, and
+    one the dimming takes below white is still left out.
     """
     r, g, b = (
         scalar(tree, "LESS_THAN", channel, ratio) for channel in _channels(tree, image)

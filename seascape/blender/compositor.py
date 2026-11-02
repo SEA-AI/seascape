@@ -282,7 +282,6 @@ def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
     set_value(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
     node = tree.nodes["lens.psf"]
     if f_number is None:
-        # The muted switch skips the kernel, which would only hold memory.
         if node.image is not None:
             bpy.data.images.remove(node.image)
         return

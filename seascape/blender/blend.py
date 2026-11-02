@@ -182,6 +182,7 @@ def value(
     """A named Value node, which `set_value` changes after the build."""
     node = tree.nodes.new("ShaderNodeValue")
     node.name = name
+    assert node.name == name, f"{name} is taken"
     node.outputs["Value"].default_value = initial
     return node.outputs["Value"]
 
@@ -200,14 +201,15 @@ def switch(
     by 0 would turn an inf in the unpicked image into a nan."""
     node = tree.nodes.new("CompositorNodeSwitch")
     node.name = name
+    assert node.name == name, f"{name} is taken"
     tree.links.new(off, node.inputs["Off"])
     tree.links.new(on, node.inputs["On"])
     return node.outputs["Image"]
 
 
 def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
-    """Off mutes the switch: the compositor evaluates both inputs of a Switch, and of
-    a muted one only Off, which it passes through."""
+    """The compositor evaluates both inputs of a Switch, so off mutes it: a muted
+    Switch passes Off through and never evaluates On."""
     node = tree.nodes[name]
     node.inputs["Switch"].default_value = on
     node.mute = not on

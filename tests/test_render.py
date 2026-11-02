@@ -153,8 +153,7 @@ def test_a_microbolometer_integrates_over_its_pixel(
     assert bpy.context.scene.cycles.pixel_filter_type == kind
 
 
-def test_a_switch_set_off_is_muted_so_its_branch_costs_nothing() -> None:
-    """The compositor evaluates both inputs of a Switch, and of a muted one only Off."""
+def test_a_switch_set_off_is_muted() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _compositor(0.0, True)
     mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
