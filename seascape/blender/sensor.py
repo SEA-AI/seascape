@@ -333,7 +333,9 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
     takes one across white, and before the gains dim the frame, so a pixel they take
     below white is still left out.
     """
-    r, g, b = (scalar(tree, "LESS_THAN", c, ratio) for c in _channels(tree, image))
+    r, g, b = (
+        scalar(tree, "LESS_THAN", channel, ratio) for channel in _channels(tree, image)
+    )
     all_unsaturated = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
     sampled = vector(tree, "SCALE", image, all_unsaturated)
     means = []
