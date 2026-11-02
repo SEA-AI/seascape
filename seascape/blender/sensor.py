@@ -304,17 +304,19 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, counted: Socket) -> Soc
     pixels whose three colours `counted` holds at 1, as an ISP leaves saturated pixels
     out of its statistics. The smallest gain is 1, as the fixed balance's is."""
     r, g, b = _channels(tree, counted)
-    every = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
-    sampled = vector(tree, "SCALE", image, every)
+    unclipped = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
+    sampled = vector(tree, "SCALE", image, unclipped)
     means = []
-    # The count of pixels divides every mean alike, so it cancels from the gains.
+    # Levels averages over every pixel, a left-out one as 0, which scales the three
+    # means alike and cancels from the gains.
     for channel in ("Red", "Green", "Blue"):
         levels = tree.nodes.new("CompositorNodeLevels")
         levels.inputs["Channel"].default_value = channel
         tree.links.new(sampled, levels.inputs["Image"])
         # Blender's x / 0 is 0. A frame clipped everywhere keeps its colours.
         means.append(scalar(tree, "MAXIMUM", levels.outputs["Mean"], 1e-6))
-    brightest = scalar(tree, "MAXIMUM", scalar(tree, "MAXIMUM", *means[:2]), means[2])
+    mean_r, mean_g, mean_b = means
+    brightest = scalar(tree, "MAXIMUM", scalar(tree, "MAXIMUM", mean_r, mean_g), mean_b)
     return combine(tree, *(scalar(tree, "DIVIDE", brightest, mean) for mean in means))
 
 
