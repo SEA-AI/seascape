@@ -8,6 +8,10 @@ import numpy as np
 from seascape.blender import sensor
 from seascape.blender.blend import (
     scalar,
+    set_value,
+    switch,
+    toggle,
+    value,
     vector,
 )
 from seascape.config import (
@@ -139,7 +143,7 @@ def _camera(
     radius = vector(tree, "LENGTH", coords.outputs["Uniform"])
     # Natural vignetting: irradiance falls as cos^4 of the field angle, 1 / (1 +
     # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
-    tangent = scalar(tree, "MULTIPLY", radius, sensor._value(tree, "lens.vignette"))
+    tangent = scalar(tree, "MULTIPLY", radius, value(tree, "lens.vignette"))
     falloff = scalar(
         tree,
         "POWER",
@@ -177,11 +181,11 @@ def _camera(
     links.new(size.outputs["Vector"], blur.inputs["Size"])
     links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
-    _, log_average = sensor._log_average(tree, image)
+    _, log_average = sensor.log_average(tree, image)
     gain = scalar(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, log_average, name="exposure"
     )
-    processing = sensor._value(tree, "processing.gain", 1.0)
+    processing = value(tree, "processing.gain", 1.0)
     gain = scalar(tree, "MULTIPLY", gain, processing)
     exposed = vector(tree, "SCALE", image, gain)
     if not with_sensor:
@@ -189,7 +193,7 @@ def _camera(
     # A camera without a full well shares the tree, and takes the ideal frame.
     grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
     read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
-    return sensor._switch(tree, "sensor.on", exposed, read)
+    return switch(tree, "sensor.on", exposed, read)
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:
@@ -209,13 +213,13 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     camera = mount.camera
     longer_of_width = max(camera.width_px, camera.height_px) / camera.width_px
     tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
-    sensor._set(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
-    sensor._set(tree, "processing.gain", 2**camera.processing.exposure_ev)
+    set_value(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)
+    set_value(tree, "processing.gain", 2**camera.processing.exposure_ev)
     share = camera.lens.veiling_glare
     # Glare adds its glow to the image; normalized, the glow is this share of the sum.
     strength = tree.nodes["lens.veiling_glare"].inputs["Strength"]
     strength.default_value = share / (1 - share)
     if "sensor.on" not in tree.nodes:
         return
-    sensor._toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
+    toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
     sensor.respond(tree, camera, noise)
