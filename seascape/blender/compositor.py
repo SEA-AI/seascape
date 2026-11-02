@@ -71,15 +71,11 @@ def enable_gpu() -> str | None:
 
 
 def set_output(
-    outputs: Outputs,
-    band: Band,
-    largest_px: int,
-    graded: bool = False,
-    grey_world: bool = False,
+    outputs: Outputs, band: Band, largest_px: int, graded: bool = False
 ) -> None:
     """Render and display settings, in the .blend, so F12 renders what `render` does.
-    `largest_px` is the longest side of any of the band's cameras, `graded` whether
-    any has a sensor, and `grey_world` whether any balances by grey world."""
+    `largest_px` is the longest side of any of the band's cameras, and `graded` whether
+    any has a sensor."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
@@ -101,8 +97,7 @@ def set_output(
     view.exposure, view.gamma = 0.0, 1.0
     # 8-bit radiance is not radiance; `render` maps 8-bit ir from the exr.
     file_format, depth = FORMATS[outputs.format if band == "eo" else "exr"]
-    compensation_ev = outputs.exposure_compensation_ev if depth == "8" else None
-    _compositor(compensation_ev, graded, grey_world)
+    _compositor(outputs.exposure_compensation_ev if depth == "8" else None, graded)
     sc.render.image_settings.file_format = file_format
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
@@ -114,18 +109,15 @@ def set_output(
     sc.cycles.use_animated_seed = True
 
 
-def _compositor(
-    compensation_ev: float | None, graded: bool = False, grey_world: bool = False
-) -> None:
+def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
     """The render as a camera takes it, `compensation_ev` over auto-exposure, through
-    a sensor if `graded`, with grey world's white balance if `grey_world`; as rendered
-    for None."""
+    a sensor if `graded`; as rendered for None."""
     tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
     tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     bpy.context.scene.compositing_node_group = tree
     image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
     if compensation_ev is not None:
-        image = _camera(tree, image, compensation_ev, graded, grey_world)
+        image = _camera(tree, image, compensation_ev, graded)
     tree.links.new(image, tree.nodes.new("NodeGroupOutput").inputs["Image"])
 
 
@@ -134,11 +126,9 @@ def _camera(
     image: bpy.types.NodeSocket,
     compensation_ev: float,
     with_sensor: bool = False,
-    grey_world: bool = False,
 ) -> bpy.types.NodeSocket:
     """A lens's falloff, diffraction, glare and blur, then auto-exposure, and with
-    `with_sensor` the sensor and ISP, its white balance by grey world with
-    `grey_world`, then the ISP's tone curve. Without a sensor the
+    `with_sensor` the sensor and ISP, then the ISP's tone curve. Without a sensor the
     Standard view clips at white, as a sensor does. `respond` sets the camera.
 
     Limitation: each frame meters itself; a real camera's exposure lags, so add a time
@@ -206,7 +196,7 @@ def _camera(
     if with_sensor:
         # A camera without a full well shares the tree, and takes the ideal frame.
         grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
-        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey, grey_world)
+        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
         exposed = switch(tree, "sensor.on", exposed, read)
     return _tone(tree, exposed)
 
@@ -292,7 +282,7 @@ def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
     set_value(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
     node = tree.nodes["lens.psf"]
     if f_number is None:
-        # A Switch evaluates both branches, so a kernel left behind is convolved.
+        # The muted switch skips the kernel, which would only hold memory.
         if node.image is not None:
             bpy.data.images.remove(node.image)
         return
@@ -338,6 +328,8 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     if tone != "none":
         _set_curve(tree.nodes["processing.tone"], colour.tone_curve(tone))
     if "sensor.on" not in tree.nodes:
+        if camera.sensor.full_well_e is not None:
+            raise ValueError("this build has no sensor: no camera of its band has one")
         return
     toggle(tree, "sensor.on", camera.sensor.full_well_e is not None)
     sensor.respond(tree, camera, noise)

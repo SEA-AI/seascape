@@ -206,7 +206,11 @@ def switch(
 
 
 def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
-    tree.nodes[name].inputs["Switch"].default_value = on
+    """Off mutes the switch: the compositor evaluates both inputs of a Switch, and of
+    a muted one only Off, which it passes through."""
+    node = tree.nodes[name]
+    node.inputs["Switch"].default_value = on
+    node.mute = not on
 
 
 def pixels(image: bpy.types.Image) -> np.ndarray:
