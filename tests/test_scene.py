@@ -1875,6 +1875,41 @@ class TestPhotographedSky:
         assert haze.image == world.image
 
 
+HIDDEN_SUN = {
+    "hdri": "overcast_soil",
+    "sun_diffuse_fraction": 0.5,
+    "sun_elevation_deg": 30,
+}
+
+
+class TestHiddenSun:
+    """A white photo, radiance 1 overhead, stands in for the download."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
+        path = tmp_path_factory.mktemp("sky") / "white.hdr"
+        image = bpy.data.images.new("white", 64, 32, float_buffer=True)
+        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+        image.filepath_raw = str(path)
+        image.file_format = "HDR"
+        image.save()
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("seascape.blender.sky.download", lambda *_: path)
+            scene.build(variant(sky=HIDDEN_SUN), "eo")
+
+    def test_its_beam_is_the_photo_s_diffuse_light_over_k_less_one(self) -> None:
+        # The photo gives pi, to its 16 rows' midpoint rule; (1 - k) / k is 1, and
+        # sin 30 deg halves the beam's share.
+        assert bpy.data.lights["sun"].energy == pytest.approx(2 * math.pi, rel=1e-2)
+
+    def test_it_shines_from_the_scenario_s_sun(self) -> None:
+        sky = variant(sky=HIDDEN_SUN).sky
+        towards = bpy.data.objects["sun"].matrix_world.to_3x3() @ Vector((0, 0, 1))
+        assert tuple(towards) == pytest.approx(sky.sun_vector, abs=1e-6)
+        assert sea_light(sky, "eo").sun == sky.sun_vector
+
+
 class TestPhotographedThermalSky:
     """A white photo, all cloud, stands in for the download."""
 

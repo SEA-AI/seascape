@@ -3098,6 +3098,36 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "sun_diffuse_fraction": {
+          "title": "Sun Diffuse Fraction",
+          "description": "Only with an `hdri` whose sun shows no disc. It puts a sun behind the photo's cloud, at `sun_elevation_deg`. On a horizontal surface, its beam is (1 - k) / k times the light the photo gives there, so k is the sky's share of all the light the surface takes: about 0.3 clear, 0.7 under thin cloud and 1 overcast (Erbs, Klein & Duffie, Solar Energy 28(4) 293, 1982). The beam lights EO only. LWIR takes where the sun is, and the photo's cloud still takes its beam.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Sky",

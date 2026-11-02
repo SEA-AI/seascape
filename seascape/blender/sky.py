@@ -5,6 +5,7 @@ import math
 import bpy
 import cv2
 import numpy as np
+from mathutils import Vector
 
 from seascape.assets import download, skies
 from seascape.blender import sea
@@ -30,6 +31,9 @@ HAZE_NEAR_M = 0.1
 # Judgement.
 THERMAL_SKY_PX = 2048
 
+# The Astronomical Almanac: the sun's mean semi-diameter is 16 arcminutes.
+SUN_DIAMETER_DEG = 32.0 / 60.0
+
 
 def add_world(sky: Sky, band: Band) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
@@ -46,6 +50,8 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
         else:
             colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, ray)
         tree.links.new(colour, background)
+        if sky.sun_diffuse_fraction is not None:
+            _add_hidden_sun(sky)
         return world
     node = _sky_texture(tree, sky)
     for prop in SUN:
@@ -74,6 +80,32 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     sun = vector(tree, "SCALE", disc, kept.outputs["Value"])
     tree.links.new(vector(tree, "ADD", dome, sun), background)
     return world
+
+
+def _add_hidden_sun(sky: Sky) -> None:
+    """The sun the photo's cloud hides: a beam of E_d (1 - k) / (k sin e) through any
+    fog, from the photo's diffuse irradiance E_d and `Sky.sun_diffuse_fraction` k."""
+    assert sky.hdri is not None
+    assert sky.sun_diffuse_fraction is not None
+    assert sky.sun_elevation_deg is not None
+    k = sky.sun_diffuse_fraction
+    # Bottom row first, as Blender stores an image.
+    diffuse = skies.diffuse_irradiance(pixels(_photo_image(sky.hdri))[::-1, :, :3])
+    light = bpy.data.lights.new("sun", "SUN")
+    light.angle = math.radians(SUN_DIAMETER_DEG)
+    # Measured: a Sun's strength is its irradiance across the beam in the units the
+    # world's radiance integrates to. One of pi lights a white Lambertian plane facing
+    # it as a world of radiance 1 does.
+    light.energy = (
+        diffuse
+        * (1.0 - k)
+        / (k * math.sin(math.radians(sky.sun_elevation_deg)))
+        * sky.sun_transmittance
+    )
+    sun = bpy.data.objects.new("sun", light)
+    # A Sun shines down its -Z.
+    sun.rotation_euler = Vector(sky.sun_vector).to_track_quat("Z", "Y").to_euler()
+    bpy.context.scene.collection.objects.link(sun)
 
 
 def _fogged_photo(

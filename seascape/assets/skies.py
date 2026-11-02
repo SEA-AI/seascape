@@ -193,6 +193,17 @@ def sun(radiance: np.ndarray) -> Sun:
     )
 
 
+def diffuse_irradiance(radiance: np.ndarray) -> float:
+    """The luminance a horizontal surface takes from the sky above the horizon, the sum
+    of L sin(elevation) dω, in the image's own units. `radiance`, (h, w, 3), top row
+    first."""
+    h, w = radiance.shape[:2]
+    elevation = np.radians(_elevation_deg(np.arange(h // 2), h))
+    # An equirectangular pixel spans dω = cos(elevation) (π / h) (2π / w).
+    weight = np.sin(elevation) * np.cos(elevation) * (2.0 * math.pi**2 / (h * w))
+    return float(weight @ (radiance[: h // 2] @ LUMINANCE).sum(axis=1))
+
+
 def _nearness(
     elevation_deg: np.ndarray, cos_sun: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
