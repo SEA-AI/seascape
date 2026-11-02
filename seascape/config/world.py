@@ -228,12 +228,10 @@ class Sky(Model):
         default=None,
         ge=1,
         le=15,
-        description="Only with `sun_diffuse_fraction`. EO reweights the photo to the "
-        "luminance by direction of this CIE standard general sky (ISO 15469:2004): "
-        "1-5 overcast, 6-10 partly cloudy, 11-15 clear. The photo's clouds stay. The "
-        "type's sun is the scenario's, and the sky the cameras frame keeps its mean "
-        "brightness. Cloud cover at the time, from satellite or reanalysis data, "
-        "picks the type.",
+        description="Only with `sun_diffuse_fraction`. EO reweights the photo to this "
+        "CIE standard general sky (ISO 15469:2004): 1-5 overcast, 6-10 partly "
+        "cloudy, 11-15 clear. The photo's clouds stay. The sky the cameras frame "
+        "keeps its mean brightness, over every camera, so adding a camera shifts it.",
     )
 
     @model_validator(mode="before")

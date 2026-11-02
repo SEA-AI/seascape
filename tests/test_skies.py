@@ -173,35 +173,52 @@ def test_a_uniform_sky_lights_a_horizontal_surface_with_pi_times_its_radiance() 
     assert skies.diffuse_irradiance(radiance) == pytest.approx(math.pi, rel=1e-3)
 
 
-CIE_PHOTO = skies.Photo(
-    url="https://example.com/sky.hdr",
-    sha256="0" * 64,
-    sun_bearing_deg=100.0,
-    diffuse_irradiance=1.0,
-    cloud_genus="stratus",
-    licence="CC0-1.0",
-    attribution="test",
-)
-
-
 def test_a_cie_weight_keeps_the_framed_sky_s_mean() -> None:
     radiance = _sky(300.0, 20.0, 10.0, 5.0)[::8, ::8]
-    lum = radiance @ skies.LUMINANCE
+    lum = radiance[:64] @ skies.LUMINANCE
     framed = np.zeros(lum.shape, bool)
     framed[30:60, 100:140] = True
-    weight = skies.cie_weight(radiance, CIE_PHOTO, 7, 20.0, framed)
-    solid = np.cos(np.radians(90.0 - (np.arange(lum.shape[0]) + 0.5) * 180 / 128))
-    kept = (lum * weight * solid[:, None])[framed].sum()
-    assert kept == pytest.approx((lum * solid[:, None])[framed].sum(), rel=1e-6)
+    blurred = skies.blurred_luminance(radiance)
+    weight = skies.cie_weight(radiance, blurred, 7, 100.0, 20.0, framed)[:64]
+    solid = np.cos(np.radians(90.0 - (np.arange(64) + 0.5) * 180 / 128))[:, None]
+    kept = (lum * weight * solid)[framed].sum()
+    assert kept == pytest.approx((lum * solid)[framed].sum(), rel=1e-6)
 
 
-def test_a_cie_weight_brightens_an_even_sky_toward_the_photo_s_sun() -> None:
+def test_a_cie_weight_brightens_an_even_sky_toward_its_sun() -> None:
     radiance = np.ones((128, 256, 3), np.float32)
-    framed = np.ones((128, 256), bool)
-    weight = skies.cie_weight(radiance, CIE_PHOTO, 7, 20.0, framed)
-    horizon = weight[63]
+    framed = np.ones((64, 256), bool)
+    blurred = np.ones((64, 256))
+    weight = skies.cie_weight(radiance, blurred, 7, 100.0, 20.0, framed)
     bearing = (360.0 * (np.arange(256) + 0.5) / 256 - 90.0) % 360.0
-    assert bearing[np.argmax(horizon)] == pytest.approx(100.0, abs=1.5)
+    assert bearing[np.argmax(weight[63])] == pytest.approx(100.0, abs=1.5)
+
+
+def test_the_blur_spans_the_same_arc_across_a_row_as_down_a_column() -> None:
+    """60 deg up, a pixel spans half its width in arc."""
+    radiance = np.zeros((256, 512, 3), np.float32)
+    row = 42
+    radiance[row, 256] = 1.0
+    blurred = skies.blurred_luminance(radiance)
+    offsets = np.arange(-256, 256)
+    across = blurred[row, 256 + offsets]
+    elevation = math.radians(90.0 - (row + 0.5) * 180 / 256)
+    across_deg = offsets * 360.0 / 512 * math.cos(elevation)
+    down = blurred[:, 256]
+    down_deg = (np.arange(128) - row) * 180.0 / 256
+    sigma_across = math.sqrt((across * across_deg**2).sum() / across.sum())
+    sigma_down = math.sqrt((down * down_deg**2).sum() / down.sum())
+    assert sigma_across == pytest.approx(skies.CIE_BLUR_SIGMA_DEG, rel=0.05)
+    assert sigma_down == pytest.approx(skies.CIE_BLUR_SIGMA_DEG, rel=0.05)
+
+
+def test_the_blur_carries_light_over_the_pole() -> None:
+    radiance = np.zeros((256, 512, 3), np.float32)
+    radiance[2, 0] = 1.0  # beside the zenith, bearing -90
+    blurred = skies.blurred_luminance(radiance)
+    # The pixel across the pole, bearing 90, is as near as the one beside it.
+    assert blurred[2, 256] == pytest.approx(blurred[2, 0], rel=0.2)
+    assert blurred[2, 256] > 0.5 * blurred[2, 0]
 
 
 def test_turned_directions_carry_a_bearing_clockwise() -> None:

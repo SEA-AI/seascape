@@ -421,7 +421,7 @@ def _svm_errors(
     bpy.ops.wm.read_factory_settings(use_empty=True)
     set_output(scenario.outputs, band, 16)
     sc = bpy.context.scene
-    sc.world = add_world(scenario.sky, band, [])
+    sc.world = add_world(scenario.sky, band, None)
     seed = scenario.seed
     # Unculled: culling drops waves, which would shrink the shader under test.
     material = sea.material(
@@ -439,7 +439,7 @@ def _svm_errors(
         seen,
     )
     sea.water(scenario.sea, 300.0, material)
-    add_haze(scenario.sky, band, 300.0)
+    add_haze(scenario.sky, band, 300.0, None)
     tree = material.node_tree
     output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
     surface = output.inputs["Surface"].links[0].from_socket

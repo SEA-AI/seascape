@@ -12,13 +12,13 @@ from typing import Any
 import bpy
 import numpy as np
 import pytest
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
 from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_objects
-from seascape.blender.rigs import boresight_deg, views
+from seascape.blender.rigs import View, boresight_deg, views
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
 from seascape.blender.sea.geometry import _triples
@@ -46,6 +46,7 @@ from seascape.blender.sky import (
     _framed,
     _haze_ranges_m,
     _sky_round,
+    bake_cie_weight,
     haze,
     sea_light,
 )
@@ -1920,7 +1921,8 @@ CIE_SKY = {**HIDDEN_SUN, "cie_type": 7, "sun_bearing_deg": 120.0}
 
 
 class TestCieSky:
-    """A white photo stands in for the download."""
+    """A white photo stands in for the download, and a temporary folder for the
+    cache."""
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -1931,25 +1933,60 @@ class TestCieSky:
         image.filepath_raw = str(path)
         image.file_format = "HDR"
         image.save()
+        cls.cache = tmp_path_factory.mktemp("cache")
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("seascape.blender.sky.download", lambda *_: path)
+            patch.setattr("seascape.blender.sky.CACHE", cls.cache)
             scene.build(variant(sky=CIE_SKY), "eo")
 
-    def test_its_sun_s_beam_follows_the_reweighted_sky(self) -> None:
-        diffuse = bpy.data.images["cie_weight"]["diffuse_irradiance"]
-        assert diffuse != skies.library()["overcast_soil"].diffuse_irradiance
-        # (1 - k) / k is 1 and sin 30 deg is 1/2.
-        assert bpy.data.lights["sun"].energy == pytest.approx(2 * diffuse)
-
-    def test_the_frame_it_keeps_is_where_the_camera_looks(self) -> None:
+    def test_its_sun_s_beam_follows_the_reweighted_sky(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("seascape.blender.sky.CACHE", self.cache)
         scenario = variant(sky=CIE_SKY)
         cameras = {o.name: o for o in bpy.data.objects if o.type == "CAMERA"}
-        seen = views(scenario, "eo", cameras)
-        directions = skies.directions(256, 512, 37.0)
-        framed = _framed(seen, directions)
-        x, y, _ = directions[framed].mean(axis=0)
-        bearing, _ = boresight_deg(next(iter(cameras.values())))
-        assert math.degrees(math.atan2(x, y)) == pytest.approx(bearing, abs=0.5)
+        cie = bake_cie_weight(scenario.sky, "eo", views(scenario, "eo", cameras))
+        assert cie is not None
+        assert (
+            cie.diffuse_irradiance
+            != skies.library()["overcast_soil"].diffuse_irradiance
+        )
+        # (1 - k) / k is 1 and sin 30 deg is 1/2.
+        assert bpy.data.lights["sun"].energy == pytest.approx(
+            2 * cie.diffuse_irradiance
+        )
+
+    def test_the_photo_s_light_is_cached(self) -> None:
+        assert len(list(self.cache.glob("overcast_soil.cie-*.npz"))) == 1
+
+
+def _view_ahead(hfov_deg: float, width_px: int, height_px: int) -> View:
+    """A camera on the bow looking level at bearing 0."""
+    camera = {"hfov_deg": hfov_deg, "width_px": width_px, "height_px": height_px}
+    mount = next(
+        m for m in variant(cameras={"eo": camera}).mounts if m.name == "bow_eo"
+    )
+    # Blender's camera looks down -Z; a quarter turn about X points it along +Y.
+    level = Matrix.Rotation(math.pi / 2, 4, "X")
+    return View(mount, 0.0, level, math.radians(hfov_deg), 0.0)
+
+
+@pytest.mark.parametrize(("width_px", "height_px"), [(640, 360), (360, 640)])
+def test_a_camera_frames_its_field_of_view(width_px: int, height_px: int) -> None:
+    """The rigs fit the sensor horizontally, portrait or not."""
+    directions = skies.directions(256, 512, 37.0)[:128]
+    framed = _framed([_view_ahead(40.0, width_px, height_px)], directions)
+    x, y, _ = np.moveaxis(directions[framed], -1, 0)
+    bearing = np.degrees(np.arctan2(x, y))
+    assert bearing.max() - bearing.min() == pytest.approx(40.0, abs=1.0)
+
+
+def test_a_camera_narrower_than_the_grid_frames_its_boresight() -> None:
+    directions = skies.directions(256, 512, 37.0)[:128]
+    framed = _framed([_view_ahead(0.1, 640, 360)], directions)
+    x, y, _ = directions[framed].mean(axis=0)
+    assert framed.sum() == 1
+    assert math.degrees(math.atan2(x, y)) == pytest.approx(0.0, abs=0.5)
 
 
 class TestPhotographedThermalSky:

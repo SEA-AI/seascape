@@ -1,13 +1,14 @@
 """The world: the sky each band sees, its sun, and the haze between."""
 
 import math
+from typing import NamedTuple
 
 import bpy
 import cv2
 import numpy as np
 from mathutils import Vector
 
-from seascape.assets import download, skies
+from seascape.assets import CACHE, download, skies
 from seascape.blender import sea
 from seascape.blender.blend import (
     CURVE_SAMPLES,
@@ -32,16 +33,24 @@ HAZE_NEAR_M = 0.1
 # Judgement.
 THERMAL_SKY_PX = 2048
 
-# Judgement: width and height, 0.7 deg a texel, against a CIE weight blurred by
-# skies.CIE_BLUR_DEG.
+# Judgement: width and height, fine against skies.CIE_BLUR_SIGMA_DEG.
 CIE_GRID_PX = (512, 256)
+# Raise to recompute every cached photo luminance.
+CIE_CACHE_FORMAT = 1
 
 # The Astronomical Almanac: the sun's mean semi-diameter is 16 arcminutes.
 SUN_DIAMETER_DEG = 32.0 / 60.0
 
 
-def add_world(sky: Sky, band: Band, seen: list[View]) -> bpy.types.World:
-    """The band's sky. A CIE type keeps the mean of the sky `seen` frames."""
+class CieWeight(NamedTuple):
+    """What reweights the photo to its CIE type, laid out as the photo, and the
+    diffuse irradiance of the sky it gives."""
+
+    image: bpy.types.Image
+    diffuse_irradiance: float
+
+
+def add_world(sky: Sky, band: Band, cie: CieWeight | None) -> bpy.types.World:
     world = bpy.data.worlds.new("sky")
     # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
     world.sun_threshold = 0.0
@@ -51,16 +60,18 @@ def add_world(sky: Sky, band: Band, seen: list[View]) -> bpy.types.World:
     background = tree.nodes["Background"].inputs["Color"]
     ray = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
     if sky.hdri is not None:
-        if sky.cie_type is not None:
-            # Before the photo, which reads it.
-            _bake_cie_weight(sky, seen)
+        weight = None if cie is None else cie.image
         if sky.fog_weight:
-            colour = _fogged_photo(tree, sky, ray, sky.sun_transmittance)
+            colour = _fogged_photo(tree, sky, ray, sky.sun_transmittance, weight)
         else:
-            colour = _photo(tree, sky, ray)
+            colour = _photo(tree, sky, ray, weight)
         tree.links.new(colour, background)
         if sky.sun_diffuse_fraction is not None:
-            _add_hidden_sun(sky)
+            diffuse = skies.library()[sky.hdri].diffuse_irradiance
+            if cie is not None:
+                diffuse = cie.diffuse_irradiance
+            assert diffuse is not None
+            _add_hidden_sun(sky, diffuse)
         return world
     node = _sky_texture(tree, sky)
     for prop in SUN:
@@ -91,14 +102,11 @@ def add_world(sky: Sky, band: Band, seen: list[View]) -> bpy.types.World:
     return world
 
 
-def _add_hidden_sun(sky: Sky) -> None:
-    assert sky.hdri is not None
+def _add_hidden_sun(sky: Sky, diffuse: float) -> None:
+    """A Sun behind the photo's cloud, whose sky gives a horizontal surface
+    `diffuse`."""
     assert sky.sun_diffuse_fraction is not None
     assert sky.sun_elevation_deg is not None
-    diffuse = skies.library()[sky.hdri].diffuse_irradiance
-    if sky.cie_type is not None:
-        diffuse = bpy.data.images["cie_weight"]["diffuse_irradiance"]
-    assert diffuse is not None
     beam = solar.beam_normal(
         diffuse, sky.sun_diffuse_fraction, math.radians(sky.sun_elevation_deg)
     )
@@ -120,12 +128,13 @@ def _fogged_photo(
     sky: Sky,
     direction: bpy.types.NodeSocket,
     sun_kept: float,
+    weight: bpy.types.Image | None,
 ) -> bpy.types.NodeSocket:
     """The photo in `direction` misted, its sun's disc keeping `sun_kept` of itself. A
     sun behind cloud greys with it."""
     assert sky.hdri is not None
-    colour = _photo(tree, sky, direction)
-    horizon = _photo(tree, sky, _horizon(tree, direction))
+    colour = _photo(tree, sky, direction, weight)
+    horizon = _photo(tree, sky, _horizon(tree, direction), weight)
     misted = _misted(tree, sky, colour, horizon)
     # The mist keeps 1 - fog_weight of the disc.
     extra = sun_kept - (1.0 - sky.fog_weight)
@@ -197,23 +206,19 @@ def _grey(
 
 
 def _photo(
-    tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    direction: bpy.types.NodeSocket,
+    weight: bpy.types.Image | None,
 ) -> bpy.types.NodeSocket:
     """The photographed sky in `direction`, turned so its sun sits at the sky's
-    bearing, and reweighted to its CIE type by the image `add_world` baked."""
+    bearing, and times `weight`, laid out as the photo."""
     assert sky.hdri is not None
-    colour = _turned(
-        tree, _photo_image(sky.hdri), sky.hdri, sky.sun_bearing_deg, direction
-    )
-    if sky.cie_type is None:
+    turned = _turn(tree, sky.hdri, sky.sun_bearing_deg, direction)
+    colour = _environment(tree, _photo_image(sky.hdri), turned)
+    if weight is None:
         return colour
-    weight = bpy.data.images["cie_weight"]
-    return vector(
-        tree,
-        "MULTIPLY",
-        colour,
-        _turned(tree, weight, sky.hdri, sky.sun_bearing_deg, direction),
-    )
+    return vector(tree, "MULTIPLY", colour, _environment(tree, weight, turned))
 
 
 def _photo_image(name: str) -> bpy.types.Image:
@@ -230,58 +235,84 @@ def _photo_turn_deg(name: str, sun_bearing_deg: float) -> float:
     return sun_bearing_deg - skies.library()[name].sun_bearing_deg
 
 
-def _bake_cie_weight(sky: Sky, seen: list[View]) -> None:
-    """`skies.cie_weight` on a CIE_GRID_PX grid as the image "cie_weight", laid out as
-    the photo and keeping the mean of the sky `seen` frames, with the diffuse
-    irradiance of the sky it gives."""
-    assert sky.hdri is not None
-    assert sky.cie_type is not None
+def bake_cie_weight(sky: Sky, band: Band, seen: list[View]) -> CieWeight | None:
+    """The photo's CIE weight on a CIE_GRID_PX grid, for an EO sky with a CIE type.
+    It keeps the mean of the sky `seen` frames."""
+    if band != "eo" or sky.hdri is None or sky.cie_type is None:
+        return None
     assert sky.sun_elevation_deg is not None
     photo = skies.library()[sky.hdri]
     assert photo.diffuse_irradiance is not None
-    full = pixels(_photo_image(sky.hdri))
-    # Top row first, as `skies` reads an image.
-    rgb = cv2.resize(full, CIE_GRID_PX, interpolation=cv2.INTER_AREA)[::-1, :, :3]
+    rgb, blurred = _photo_light(sky.hdri)
     turn_deg = _photo_turn_deg(sky.hdri, sky.sun_bearing_deg)
+    up = skies.directions(*rgb.shape[:2], turn_deg)[: rgb.shape[0] // 2]
     weight = skies.cie_weight(
         rgb,
-        photo,
+        blurred,
         sky.cie_type,
+        photo.sun_bearing_deg,
         sky.sun_elevation_deg,
-        _framed(seen, skies.directions(*rgb.shape[:2], turn_deg)),
+        _framed(seen, up),
     )
-    image = curve_image("cie_weight", weight[::-1])
     reweighted = skies.diffuse_irradiance(rgb * weight[..., None])
     gain = reweighted / skies.diffuse_irradiance(rgb)
-    image["diffuse_irradiance"] = photo.diffuse_irradiance * gain
+    return CieWeight(
+        curve_image("cie_weight", weight[::-1]), photo.diffuse_irradiance * gain
+    )
+
+
+def _photo_light(name: str) -> tuple[np.ndarray, np.ndarray]:
+    """The photographed sky `name` on a CIE_GRID_PX grid, top row first, and its
+    `skies.blurred_luminance`, cached by the photo's digest."""
+    photo = skies.library()[name]
+    path = CACHE / f"{name}.cie-{photo.sha256[:16]}.{CIE_CACHE_FORMAT}.npz"
+    if path.exists():
+        with np.load(path) as cached:
+            return cached["rgb"], cached["blurred"]
+    image = _photo_image(name)
+    rgba = cv2.resize(pixels(image), CIE_GRID_PX, interpolation=cv2.INTER_AREA)
+    rgb = np.ascontiguousarray(rgba[::-1, :, :3])
+    blurred = skies.blurred_luminance(rgb)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, rgb=rgb, blurred=blurred)
+    return rgb, blurred
 
 
 def _framed(seen: list[View], directions: np.ndarray) -> np.ndarray:
-    """Which of `directions`, (..., 3) in the world, any of `seen` frames."""
+    """Which of `directions`, (..., 3) in the world, any of `seen` frames. A camera
+    that frames none of them, narrower than their spacing, takes the one nearest its
+    boresight."""
     framed = np.zeros(directions.shape[:-1], bool)
-    for view in seen:
-        # A Blender camera looks down its -Z.
-        x, y, z = np.moveaxis(directions @ np.array(view.matrix.to_3x3()), -1, 0)
-        camera = view.mount.camera
-        # AUTO sensor fit: angle_x spans the image's longer side.
-        half = math.tan(view.angle_x_rad / 2) / max(camera.width_px, camera.height_px)
-        framed |= (
-            (z < 0)
-            & (np.abs(x) <= -z * half * camera.width_px)
-            & (np.abs(y) <= -z * half * camera.height_px)
+    poses = {
+        (
+            tuple(map(tuple, view.matrix.to_3x3())),
+            view.angle_x_rad,
+            view.mount.camera.width_px,
+            view.mount.camera.height_px,
         )
+        for view in seen
+    }
+    for rotation, angle_x_rad, width_px, height_px in poses:
+        # A Blender camera looks down its -Z.
+        x, y, z = np.moveaxis(directions @ np.array(rotation), -1, 0)
+        # The rigs fit the sensor horizontally: angle_x spans the width.
+        tan_x = math.tan(angle_x_rad / 2)
+        tan_y = tan_x * height_px / width_px
+        inside = (z < 0) & (np.abs(x) <= -z * tan_x) & (np.abs(y) <= -z * tan_y)
+        if not inside.any():
+            inside.flat[np.argmin(z)] = True
+        framed |= inside
     return framed
 
 
-def _turned(
+def _turn(
     tree: bpy.types.NodeTree,
-    image: bpy.types.Image,
     name: str,
     sun_bearing_deg: float,
     direction: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`image`, laid out as the photographed sky `name`, in `direction`, turned so the
-    photo's sun sits at `sun_bearing_deg`."""
+    """`direction` turned so the photographed sky `name`'s sun sits at
+    `sun_bearing_deg`."""
     turn = tree.nodes.new("ShaderNodeMapping")
     turn.inputs["Rotation"].default_value = (
         0.0,
@@ -289,9 +320,16 @@ def _turned(
         math.radians(_photo_turn_deg(name, sun_bearing_deg)),
     )
     tree.links.new(direction, turn.inputs["Vector"])
+    return turn.outputs["Vector"]
+
+
+def _environment(
+    tree: bpy.types.NodeTree, image: bpy.types.Image, direction: bpy.types.NodeSocket
+) -> bpy.types.NodeSocket:
+    """The equirectangular `image` in `direction`."""
     node = tree.nodes.new("ShaderNodeTexEnvironment")
     node.image = image
-    tree.links.new(turn.outputs["Vector"], node.inputs["Vector"])
+    tree.links.new(direction, node.inputs["Vector"])
     return node.outputs["Color"]
 
 
@@ -309,7 +347,9 @@ def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     return node
 
 
-def add_haze(sky: Sky, band: Band, far_m: float) -> None:
+def add_haze(
+    sky: Sky, band: Band, far_m: float, weight: bpy.types.Image | None
+) -> None:
     """Koschmieder's airlight, in every surface: a ray keeps exp(-optical depth) of the
     light it brings back and takes the rest from the sky ahead of it, no lower than the
     horizon. That sky is constant along the ray, so the mix is exact over its length,
@@ -341,7 +381,7 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
     airlight = group.nodes.new("ShaderNodeEmission")
     airlight.name = "haze_airlight"
     link(
-        _sky_ahead(group, sky, band, horizon.outputs["Vector"]),
+        _sky_ahead(group, sky, band, horizon.outputs["Vector"], weight),
         airlight.inputs["Color"],
     )
     depth = _optical_depth(group, sky, band, far_m)
@@ -384,18 +424,22 @@ def haze(material: bpy.types.Material) -> None:
 
 
 def _sky_ahead(
-    tree: bpy.types.NodeTree, sky: Sky, band: Band, direction: bpy.types.NodeSocket
+    tree: bpy.types.NodeTree,
+    sky: Sky,
+    band: Band,
+    direction: bpy.types.NodeSocket,
+    weight: bpy.types.Image | None,
 ) -> bpy.types.NodeSocket:
-    """The band's sky in `direction`."""
+    """The band's sky in `direction`, the photo times `weight`."""
     if band == "ir":
         return _ir_sky(tree, sky, direction)
     if sky.hdri is not None and sky.fog_weight:
         # The Sky Texture's airlight has no disc either.
-        return _fogged_photo(tree, sky, direction, 0.0)
+        return _fogged_photo(tree, sky, direction, 0.0, weight)
 
     def clear(toward: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         if sky.hdri is not None:
-            return _photo(tree, sky, toward)
+            return _photo(tree, sky, toward, weight)
         colour = _clear_eo(tree, sky, bpy.context.scene.world, toward)
         colour.node.name = "haze_sky"
         return colour
@@ -545,7 +589,8 @@ def _cloudy_sky(
     clear sky plus the share of what a whole cloud adds."""
     assert sky.hdri is not None
     share_image, _ = _cloud_images(sky)
-    share = _turned(tree, share_image, sky.hdri, sky.sun_bearing_deg, direction)
+    turned = _turn(tree, sky.hdri, sky.sun_bearing_deg, direction)
+    share = _environment(tree, share_image, turned)
     # Linear shows the texel grid where a texel spans several pixels.
     share.node.interpolation = "Cubic"
     up = _sin_elevation(tree, direction)

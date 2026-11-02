@@ -9,8 +9,7 @@ indicatrix f(chi) = 1 + c (exp(d chi) - exp(d pi / 2)) + e cos^2 chi.
 
 import numpy as np
 
-# ISO 15469 table 1: a, b, c, d, e of types 1-15. Types 1-5 are overcast, 6-10 partly
-# cloudy and 11-15 clear.
+# ISO 15469 table 1: a, b, c, d, e of types 1-15.
 TYPES: dict[int, tuple[float, float, float, float, float]] = {
     1: (4.0, -0.70, 0.0, -1.0, 0.00),
     2: (4.0, -0.70, 2.0, -1.5, 0.15),

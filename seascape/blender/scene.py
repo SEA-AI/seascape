@@ -12,7 +12,7 @@ from seascape.blender import sea
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, views
-from seascape.blender.sky import add_haze, add_world, sea_light
+from seascape.blender.sky import add_haze, add_world, bake_cie_weight, sea_light
 from seascape.blender.vessels import (
     Hulls,
     OverlapError,
@@ -165,7 +165,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         camera.data.clip_end = far_m
     seen = views(scenario, band, rigs.cameras)
     # After the views: a CIE sky keeps the mean of what they frame.
-    bpy.context.scene.world = add_world(scenario.sky, band, seen)
+    cie = bake_cie_weight(scenario.sky, band, seen)
+    bpy.context.scene.world = add_world(scenario.sky, band, cie)
     # After the hulls, whose poses and beams set the wakes.
     material = sea.material(
         scenario.sea,
@@ -186,7 +187,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     )
     sea.water(scenario.sea, reach_m, material)
     # After the last material.
-    add_haze(scenario.sky, band, far_m)
+    add_haze(scenario.sky, band, far_m, None if cie is None else cie.image)
     # The object-index pass reads 0 for sky and sea. The ownship takes the index after
     # the targets: no box, and no target's background.
     anchors = [*chain(*targets.values()), vessel]

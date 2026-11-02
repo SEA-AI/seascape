@@ -55,9 +55,8 @@ GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgement: wider than most clouds, so they stay, and narrower than the gradients a CIE
-# type sets.
-CIE_BLUR_DEG = 15.0
+# Judgement: wider than most clouds, narrower than a CIE type's gradients.
+CIE_BLUR_SIGMA_DEG = 15.0
 # Judgement: how far under the fitted clear sky a blueness may fall and refit as clear.
 CLEAR_BAND = 0.03
 # Judgement: a clear blueness under this is too grey to show a cloud by colour.
@@ -218,38 +217,53 @@ def directions(h: int, w: int, turn_deg: float = 0.0) -> np.ndarray:
     return _directions(bearing[None, :], _elevation_deg(np.arange(h), h)[:, None])
 
 
+def blurred_luminance(radiance: np.ndarray) -> np.ndarray:
+    """The luminance of the sky above the horizon in `radiance`, (h, w, 3) top row
+    first, blurred by a Gaussian of CIE_BLUR_SIGMA_DEG of arc in every direction."""
+    h, w = radiance.shape[:2]
+    lum = (radiance[: h // 2] @ LUMINANCE).astype(np.float32)
+    # Up a column, over the pole and down the bearing opposite.
+    meridian = np.vstack([np.roll(lum, w // 2, axis=1)[::-1], lum])
+    sigma_rows = CIE_BLUR_SIGMA_DEG * h / 180.0
+    lum = cv2.GaussianBlur(meridian, (1, 0), sigmaX=0.0, sigmaY=sigma_rows)[h // 2 :]
+    # A row's pixel spans cos(elevation) of its width in arc. A circular convolution
+    # in bearing, done in frequency, wraps exactly at any width.
+    elevation = np.radians(_elevation_deg(np.arange(h // 2), h))
+    sigma_px = CIE_BLUR_SIGMA_DEG * w / 360.0 / np.cos(elevation)
+    k = np.fft.rfftfreq(w)
+    gain = np.exp(-2.0 * (math.pi * k[None, :] * sigma_px[:, None]) ** 2)
+    return np.fft.irfft(np.fft.rfft(lum, axis=1) * gain, n=w, axis=1)
+
+
 def cie_weight(
     radiance: np.ndarray,
-    photo: Photo,
+    blurred: np.ndarray,
     cie_type: int,
+    sun_bearing_deg: float,
     sun_elevation_deg: float,
     framed: np.ndarray,
 ) -> np.ndarray:
-    """What each pixel of `radiance`, (h, w, 3) of `photo` top row first, is multiplied
-    by to give the sky the large-scale light of CIE sky `cie_type`, its sun at
-    `sun_elevation_deg` and the photo's bearing: the type over the photo's luminance
-    blurred by CIE_BLUR_DEG. The clouds stay, and the sky above the horizon in `framed`,
-    (h, w), keeps its mean luminance; all of it, where `framed` holds none. Below the
-    horizon, the horizon's weight."""
+    """What each pixel of `radiance`, (h, w, 3) top row first, is multiplied by to give
+    its sky the light of CIE sky `cie_type`, with the sun where the bearing and
+    elevation put it.
+
+    The factor is the type over `blurred`, the photo's `blurred_luminance`, so the
+    clouds stay. It keeps the mean luminance of the sky above the horizon that
+    `framed`, (h // 2, w), marks, or of the whole sky if it marks none. Below the
+    horizon each pixel takes the horizon's factor.
+    """
     h, w = radiance.shape[:2]
-    sky = slice(0, h // 2)
-    lum = (radiance[sky] @ LUMINANCE).astype(np.float32)
-    # Floored, so a black patch takes a finite weight.
-    blurred = np.maximum(_wrapped_blur(lum, CIE_BLUR_DEG * w / 360.0), 1e-12)
-    toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
-    up = directions(h, w)[sky]
-    weight = (
-        skylight.relative_luminance(
-            cie_type,
-            np.arccos(up[..., 2]),
-            np.arccos(np.clip(up @ toward, -1.0, 1.0)),
-            np.radians(90.0 - sun_elevation_deg),
-        )
-        / blurred
-    )
-    # A pixel's solid angle goes as cos(elevation), a unit vector's reach across.
-    solid = np.hypot(up[..., 0], up[..., 1])
-    seen = framed[sky] if framed[sky].any() else np.ones_like(lum, bool)
+    lum = radiance[: h // 2] @ LUMINANCE
+    toward = _directions(np.array(sun_bearing_deg), np.array(sun_elevation_deg))
+    up = directions(h, w)[: h // 2]
+    weight = skylight.relative_luminance(
+        cie_type,
+        np.arccos(up[..., 2]),
+        np.arccos(np.clip(up @ toward, -1.0, 1.0)),
+        np.radians(90.0 - sun_elevation_deg),
+    ) / np.maximum(blurred, 1e-12)  # floored, so a black patch keeps a finite factor
+    solid = np.cos(np.radians(_elevation_deg(np.arange(h // 2), h)))[:, None]
+    seen = framed if framed.any() else np.ones(framed.shape, bool)
     weight *= (lum * solid)[seen].sum() / (lum * weight * solid)[seen].sum()
     return np.pad(weight, ((0, h - h // 2), (0, 0)), mode="edge")
 
