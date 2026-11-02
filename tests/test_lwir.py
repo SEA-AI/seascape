@@ -6,7 +6,7 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from seascape.physics import atmosphere, lwir
+from seascape.physics import aerosol, atmosphere, lwir
 
 # sigma = 2 pi^5 k^4 / (15 h^3 c^2), exactly.
 STEFAN_BOLTZMANN = (
@@ -206,13 +206,14 @@ def test_aerosol_adds_to_water_vapour_which_takes_most_of_the_path() -> None:
     assert clear / typical > 0.8
 
 
-# LOWTRAN 7, north_sea over 501.381 m: maritime aerosol (IHAZE 4) at 2 km, advection
-# fog (IHAZE 8) at 1 and 0.5 km.
+# LOWTRAN 7, north_sea over 501.381 m: maritime aerosol (IHAZE 4) at a VIS of 2 km,
+# advection fog (IHAZE 8) at 1 and 0.5 km.
 HAZE_2KM, FOG_1KM, FOG_500M = 6.648157e-01, 9.606802e-02, 1.140348e-02
 
 
 def test_under_a_kilometre_the_path_is_lowtrans_advection_fog() -> None:
-    depth = [lwir.path_optical_depth(501.381, v) for v in (2.0, 1.0, 0.5)]
+    vis_km = np.array([2.0, 1.0, 0.5])
+    depth = [lwir.path_optical_depth(501.381, v) for v in vis_km * lwir.MOR_PER_VIS]
     assert np.exp(-np.array(depth)) == pytest.approx(
         [HAZE_2KM, FOG_1KM, FOG_500M], rel=1e-6
     )
@@ -228,8 +229,8 @@ def test_fog_takes_lwir_about_as_fast_as_visible_light_and_haze_does_not() -> No
     clear = lwir.path_optical_depth(500.0, None)
 
     def ratio(visibility_km: float) -> float:
-        """The aerosol's LWIR depth over 500 m against Koschmieder's."""
-        eo = math.log(1 / 0.02) * 0.5 / visibility_km
+        """The aerosol's LWIR depth over 500 m against the visible's."""
+        eo = aerosol.extinction_per_m(visibility_km) * 500.0
         return float(lwir.path_optical_depth(500.0, visibility_km) - clear) / eo
 
     assert 0.8 < ratio(0.5) < 1.25

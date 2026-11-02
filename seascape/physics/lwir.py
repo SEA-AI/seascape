@@ -67,6 +67,11 @@ _HAZE_CSV = Path(__file__).parent / "data" / "lowtran_haze.csv"
 _CLOUD_CSV = Path(__file__).parent / "data" / "lowtran_cloud.csv"
 _CIRRUS_CSV = Path(__file__).parent / "data" / "lowtran_cirrus.csv"
 
+# A table's VIS keeps 2% contrast, 3.912 / extinction at 0.55 um (lowtran7.f, MARINE);
+# a visibility here is the WMO's meteorological optical range, which keeps 5% (WMO
+# No. 8, 2018). The same air's MOR is VIS ln 20 / ln 50.
+MOR_PER_VIS = math.log(20) / math.log(50)
+
 
 BAND_M = (8.0e-6, 14.0e-6)
 
@@ -578,7 +583,8 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
     columns = header(csv)[1:]
     # "vis_2km" is maritime haze and "fog_1km" advection fog, on one axis.
     km = [c.partition("_")[2].removesuffix("km") for c in columns]
-    inverse = np.array([1 / float(k) if k else 0.0 for k in km])  # "none" has no km
+    mor_km = [float(k) * MOR_PER_VIS if k else math.inf for k in km]  # "none" has no km
+    inverse = 1 / np.array(mor_km)
     order = np.argsort(inverse)
     names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
     raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=range(1, 2 + len(km)))
@@ -606,6 +612,9 @@ def path_optical_depth(
     about as fast as visible light. A visibility below the table's shortest is held at
     it. Short of the table it follows the power law of its first two rows: band depth
     grows as a power of the path, not linearly, while the strongest lines saturate.
+
+    Limitation: the table's thinnest fog is denser than the WMO's fog, so a fog just
+    under `aerosol.FOG_KM` takes its path from between the table's haze and fog.
     """
     ranges, inverse, depth = _depth_table(_PATH_CSV)[atmosphere]
     x = 0.0 if visibility_km is None else 1 / visibility_km

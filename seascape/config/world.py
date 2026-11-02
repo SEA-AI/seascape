@@ -135,11 +135,11 @@ class Sea(Model):
         return skin.skin_k(self.t_sea_k, rise, sun_up)
 
 
-# Judgement: 42 km, inside the open ocean's measured spread. OPAC's
+# Judgement: 32 km, inside the open ocean's measured spread. OPAC's
 # maritime aerosols at 550 nm and 80% humidity (Hess, Koepke & Schult, BAMS 79(5) 831,
 # 1998), plus sea-level Rayleigh's 0.012 km^-1 (the MODTRAN 2/3 report, eq. 26): clean,
-# 0.090 km^-1, is 38 km; tropical, 0.043 km^-1, is 71 km.
-VISIBILITY_KM = 42.0
+# 0.090 km^-1, is 29 km; tropical, 0.043 km^-1, is 54 km.
+VISIBILITY_KM = 32.0
 
 
 class Sky(Model):
@@ -175,7 +175,8 @@ class Sky(Model):
     visibility_km: float | None = Field(
         default=VISIBILITY_KM,
         gt=0.0,
-        description="Meteorological range at 550 nm; None is no aerosol. Under "
+        description="Meteorological optical range at 550 nm, a weather report's "
+        "visibility; None is no aerosol. Under "
         f"{aerosol.FOG_KM:g} km it is fog, in both bands.",
     )
     atmosphere: Atmosphere = Field(

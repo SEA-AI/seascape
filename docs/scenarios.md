@@ -89,7 +89,7 @@ sun_elevation_deg = { uniform = [2.0, 60.0] }
 hdri = { choice = ["belfast_sunset", "kloofendal_overcast"] }
 ```
 
-An object's `range_m` can instead be `{ optical_depth = [lo, hi] }`, drawn evenly: the haze between it and the camera, so the same hull sits as deep in it at any visibility. A ray keeps exp(-depth) of its light, with `sky.visibility_km` taken as Koschmieder's 2%.
+An object's `range_m` can instead be `{ optical_depth = [lo, hi] }`, drawn evenly: the haze between it and the camera, so the same hull sits as deep in it at any visibility. A ray keeps exp(-depth) of its light, with `sky.visibility_km` the meteorological optical range, over which a dark target keeps 5% of its contrast.
 
 A table set over a choice of tables goes into every option, so `--set sky.visibility_km=10` keeps the sky drawn and fixes only its visibility. [`scenarios/randomized.toml`](../scenarios/randomized.toml) is a fuller example.
 
