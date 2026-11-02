@@ -50,7 +50,9 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ### The camera itself
 
-An EO camera can carry a sensor, a lens and an ISP, and a png or jpg takes them; an exr carries the radiance alone. Without them the camera is ideal: no noise, no mosaic, a hard clip at white. Its lens still scatters `lens.veiling_glare` of the light across the frame, and more behind a smudged cover glass.
+An EO camera can model its sensor, lens and image processing. Leave them out and you get an ideal camera: no noise, no colour mosaic, and pixels that simply clip at white. Glare is the one lens effect that is always on: `lens.veiling_glare` is the share of the light that scatters across the frame. Raise it for a dirty cover glass.
+
+All of this shapes png and jpg output. An exr holds the raw radiance.
 
 ```toml
 [rigs.bow.cameras.eo]
