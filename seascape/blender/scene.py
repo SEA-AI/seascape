@@ -139,7 +139,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for m in scenario.mounts
         if m.camera.band == band
     )
-    set_output(scenario.outputs, band, max(sides), graded)
+    grey_world = any(
+        m.camera.processing.white_balance == "grey_world"
+        for m in scenario.mounts
+        if m.camera.band == band
+    )
+    set_output(scenario.outputs, band, max(sides), graded, grey_world)
     bpy.context.scene.world = add_world(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away

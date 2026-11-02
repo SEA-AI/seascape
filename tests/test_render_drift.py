@@ -966,7 +966,13 @@ class TestSensor:
     @classmethod
     def built(cls) -> None:
         png = SCENARIO.outputs.model_copy(update={"format": "png"})
-        graded = load(OPEN_SEA, ["rigs.bow.cameras.eo.sensor.full_well_e = 1e4"])
+        graded = load(
+            OPEN_SEA,
+            [
+                "rigs.bow.cameras.eo.sensor.full_well_e = 1e4",
+                'rigs.bow.cameras.eo.processing.white_balance = "grey_world"',
+            ],
+        )
         scene.build(
             graded.model_copy(update={"outputs": png, "sky": SCENARIO.sky}), "eo"
         )
@@ -1009,7 +1015,7 @@ class TestSensor:
                 math.cos(math.radians(1.8)),
             )
             tree.links.new(
-                scalar(tree, "MULTIPLY_ADD", overhead, sun, colour[0]),
+                blend.vector(tree, "MULTIPLY_ADD", overhead, (sun, sun, sun), colour),
                 background.inputs["Color"],
             )
         width, height = self.SIZE
@@ -1197,6 +1203,43 @@ class TestSensor:
         assert (r / g, b / g) == pytest.approx(
             (gain_r / gain_g, gain_b / gain_g), rel=0.01
         )
+
+    @pytest.mark.parametrize("hdr_ratio", [1.0, 16.0])
+    def test_grey_world_takes_a_tinted_sky_to_grey(self, hdr_ratio: float) -> None:
+        frame = self.through(
+            (1.0, 0.6, 0.3),
+            sensor={"full_well_e": 1e12, "hdr_ratio": hdr_ratio},
+            processing={"white_balance": "grey_world"},
+        )
+        r, g, b = frame[2:-2, 2:-2].reshape(-1, 3).mean(axis=0)
+        assert (r / g, b / g) == pytest.approx((1.0, 1.0), rel=0.01)
+
+    def test_grey_world_balances_to_the_sky_past_a_clipped_sun(self) -> None:
+        """The sun's disc saturates, so it is left out. Its blurred rim does not
+        saturate and still counts, so the sky comes out within 2 % of grey."""
+        frame = self.through(
+            (1.0, 0.6, 0.3),
+            sun=9.0,
+            sensor={"full_well_e": 1e12},
+            processing={"white_balance": "grey_world"},
+        )
+        height, width, _ = frame.shape
+        y, x = np.indices((height, width))
+        sky = np.hypot(x - (width - 1) / 2, y - (height - 1) / 2) > 20
+        r, g, b = frame[sky].mean(axis=0)
+        assert (r / g, b / g) == pytest.approx((1.0, 1.0), rel=0.02)
+
+    def test_grey_world_leaves_a_frame_saturated_everywhere_as_read(self) -> None:
+        """Red saturates across the sky, so no pixel counts and every gain is 1."""
+        clean, bright = {"full_well_e": 1e12}, {"exposure_ev": 3.0}
+        read = self.through((1.0, 0.6, 0.3), sensor=clean, processing=bright)
+        balanced = self.through(
+            (1.0, 0.6, 0.3),
+            sensor=clean,
+            processing={**bright, "white_balance": "grey_world"},
+        )
+        assert read[..., 0] == pytest.approx(1.0)
+        assert balanced == pytest.approx(read, abs=1e-3)
 
     def test_what_clipped_white_stays_white_under_any_balance(self) -> None:
         frame = self.through(
