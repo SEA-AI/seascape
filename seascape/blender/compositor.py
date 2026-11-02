@@ -176,7 +176,7 @@ def _camera(
     links.new(info.outputs["Resolution"], side.inputs["Vector"])
     longer_px = scalar(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
-    share = sensor._value(tree, "lens.blur_of_side", BLUR_OF_SIDE)
+    share = value(tree, "lens.blur_of_side", BLUR_OF_SIDE)
     size_px = scalar(tree, "MULTIPLY", longer_px, share)
     size = nodes.new("ShaderNodeCombineXYZ")
     links.new(size_px, size.inputs["X"])
@@ -271,15 +271,15 @@ def _diffraction(
         _convolve(tree, image, kernel),
         _convolve(tree, _ones_like(tree, image), kernel),
     )
-    return sensor._switch(tree, "lens.diffract", image, spread)
+    return switch(tree, "lens.diffract", image, spread)
 
 
 def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
     """Turn diffraction on for `camera` or off, building its kernel when it changes."""
     f_number = camera.lens.f_number
-    sensor._toggle(tree, "lens.diffract", f_number is not None)
+    toggle(tree, "lens.diffract", f_number is not None)
     # The Airy pattern is the lens's softness; the judgement blur stands in for it.
-    sensor._set(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
+    set_value(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
     node = tree.nodes["lens.psf"]
     if f_number is None:
         # A Switch evaluates both branches, so a kernel left behind is convolved.
