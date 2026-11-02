@@ -93,6 +93,9 @@ class Photo(Model):
     sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
     sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
     sun_floor: float | None = Field(default=None, gt=0.0)
+    # Measured by `diffuse_irradiance`, where no disc shows: a hidden sun's beam is
+    # scaled from it.
+    diffuse_irradiance: float | None = Field(default=None, gt=0.0)
     # Labelled by eye: no clear sky shows, so none can be fitted.
     overcast: bool = False
     # The genus over most of the sky, by eye (WMO Cloud Atlas); high cloud is cirrus.
@@ -104,6 +107,8 @@ class Photo(Model):
     def _a_disc_has_a_floor(self) -> "Photo":
         if (self.sun_elevation_deg is None) != (self.sun_floor is None):
             raise ValueError("sun_elevation_deg and sun_floor come together")
+        if (self.sun_elevation_deg is None) == (self.diffuse_irradiance is None):
+            raise ValueError("diffuse_irradiance is for a photo with no disc")
         return self
 
     @property
@@ -191,6 +196,16 @@ def sun(radiance: np.ndarray) -> Sun:
         math.degrees(math.asin(centre[2])),
         floor,
     )
+
+
+def diffuse_irradiance(radiance: np.ndarray) -> float:
+    """Irradiance on a horizontal surface from the sky above the horizon, in the image's
+    own units. `radiance`, (h, w, 3), top row first."""
+    h, w = radiance.shape[:2]
+    elevation = np.radians(_elevation_deg(np.arange(h // 2), h))
+    # An equirectangular pixel spans dω = cos(elevation) (π / h) (2π / w).
+    weight = np.sin(elevation) * np.cos(elevation) * (2.0 * math.pi**2 / (h * w))
+    return float(weight @ (radiance[: h // 2] @ LUMINANCE).sum(axis=1))
 
 
 def _nearness(

@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape.assets import Buoy, Debris, Hull, Turbine, manifest
+from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
 from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_objects
@@ -1875,6 +1875,41 @@ class TestPhotographedSky:
         assert haze.image == world.image
 
 
+HIDDEN_SUN = {
+    "hdri": "overcast_soil",
+    "sun_diffuse_fraction": 0.5,
+    "sun_elevation_deg": 30,
+}
+
+
+class TestHiddenSun:
+    """A white photo stands in for the download."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    @classmethod
+    def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
+        path = tmp_path_factory.mktemp("sky") / "white.hdr"
+        image = bpy.data.images.new("white", 64, 32, float_buffer=True)
+        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
+        image.filepath_raw = str(path)
+        image.file_format = "HDR"
+        image.save()
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("seascape.blender.sky.download", lambda *_: path)
+            scene.build(variant(sky=HIDDEN_SUN), "eo")
+
+    def test_its_beam_is_the_photo_s_diffuse_light_over_k_less_one(self) -> None:
+        diffuse = skies.library()["overcast_soil"].diffuse_irradiance
+        assert diffuse is not None
+        # (1 - k) / k is 1 and sin 30 deg is 1/2.
+        assert bpy.data.lights["sun"].energy == pytest.approx(2 * diffuse)
+
+    def test_it_shines_from_the_scenario_s_sun(self) -> None:
+        sky = variant(sky=HIDDEN_SUN).sky
+        towards = bpy.data.objects["sun"].matrix_world.to_3x3() @ Vector((0, 0, 1))
+        assert tuple(towards) == pytest.approx(sky.sun_vector, abs=1e-6)
+
+
 class TestPhotographedThermalSky:
     """A white photo, all cloud, stands in for the download."""
 
@@ -1935,6 +1970,12 @@ class TestPhotographedThermalSky:
     def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
         heat = surroundings(variant(sky={"hdri": "overcast_soil"}))
         assert heat.env.cloud_fraction == pytest.approx(1.0)
+
+    def test_a_hidden_sun_s_beam_reaches_the_hull_through_the_clouds(self) -> None:
+        env = surroundings(variant(sky=HIDDEN_SUN)).env
+        zone = thermal.ZONES["paint_hull"]
+        sunlit, shaded = (thermal.lit_temperature_k(zone, env, c, 0.0) for c in (1, 0))
+        assert sunlit > shaded
 
     def test_overhead_reads_a_cloud(self) -> None:
         image = bpy.data.images["cloudy_sky_radiance"]

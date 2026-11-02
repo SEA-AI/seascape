@@ -9,36 +9,19 @@ import math
 import bpy
 import numpy as np
 
-from seascape.blender.blend import combine, scalar, vector
+from seascape.blender.blend import (
+    combine,
+    scalar,
+    set_value,
+    switch,
+    toggle,
+    value,
+    vector,
+)
 from seascape.config import Camera
 from seascape.physics import colour
 
 type Socket = bpy.types.NodeSocket
-
-
-def _value(tree: bpy.types.NodeTree, name: str, value: float = 0.0) -> Socket:
-    node = tree.nodes.new("ShaderNodeValue")
-    node.name = name
-    node.outputs["Value"].default_value = value
-    return node.outputs["Value"]
-
-
-def _set(tree: bpy.types.NodeTree, name: str, value: float) -> None:
-    tree.nodes[name].outputs["Value"].default_value = value
-
-
-def _switch(tree: bpy.types.NodeTree, name: str, off: Socket, on: Socket) -> Socket:
-    """`on` or `off` for the whole frame, as `_toggle` sets it: a pick, where a blend
-    by 0 would turn an inf in the unpicked image into a nan."""
-    node = tree.nodes.new("CompositorNodeSwitch")
-    node.name = name
-    tree.links.new(off, node.inputs["Off"])
-    tree.links.new(on, node.inputs["On"])
-    return node.outputs["Image"]
-
-
-def _toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
-    tree.nodes[name].inputs["Switch"].default_value = on
 
 
 def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
@@ -239,16 +222,16 @@ def chain(
     )
     green = scalar(tree, "SUBTRACT", 1.0, scalar(tree, "ADD", red, blue))
     seeded = vector(
-        tree, "ADD", pixel, combine(tree, 0.0, 0.0, _value(tree, "sensor.seed"))
+        tree, "ADD", pixel, combine(tree, 0.0, 0.0, value(tree, "sensor.seed"))
     )
     frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
-    shot, well = _value(tree, "sensor.shot"), _value(tree, "sensor.well", 1.0)
-    dark, levels = _value(tree, "sensor.dark"), _value(tree, "sensor.levels", 4095.0)
-    ratio = _value(tree, "sensor.ratio", 1.0)
+    shot, well = value(tree, "sensor.shot"), value(tree, "sensor.well", 1.0)
+    dark, levels = value(tree, "sensor.dark"), value(tree, "sensor.levels", 4095.0)
+    ratio = value(tree, "sensor.ratio", 1.0)
     longs, merged = [], []
     for index, x in enumerate(_channels(tree, image)):
         # An average of n sites divides the variances by n.
-        sites = _value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
+        sites = value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
         shot_c = scalar(tree, "DIVIDE", shot, sites)
         dark_c = scalar(tree, "DIVIDE", dark, sites)
         noise = (seeded, shot_c, well, scalar(tree, "SQRT", dark_c), levels)
@@ -263,7 +246,7 @@ def chain(
         )
         longs.append(long)
         merged.append(_merge(tree, long, short, ratio, shot_c, dark_c, levels))
-    raw = _switch(tree, "sensor.hdr", combine(tree, *longs), combine(tree, *merged))
+    raw = switch(tree, "sensor.hdr", combine(tree, *longs), combine(tree, *merged))
     # A sensor at the output's pitch reads one colour a pixel: its sites, then a
     # bilinear demosaic, normalized (Knutsson & Westin 1993) so a border site
     # averages only the neighbours it has. A finer one, demosaiced and scaled down
@@ -271,15 +254,15 @@ def chain(
     masks = _rgb(tree, red, green, blue)
     sites = vector(tree, "MULTIPLY", masks, raw)
     demosaiced = vector(tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks))
-    demosaiced = _switch(tree, "sensor.mosaic", raw, demosaiced)
+    demosaiced = switch(tree, "sensor.mosaic", raw, demosaiced)
     gains = combine(
         tree,
-        _value(tree, "sensor.wb_r", 1.0),
-        _value(tree, "sensor.wb_g", 1.0),
-        _value(tree, "sensor.wb_b", 1.0),
+        value(tree, "sensor.wb_r", 1.0),
+        value(tree, "sensor.wb_g", 1.0),
+        value(tree, "sensor.wb_b", 1.0),
     )
     balanced = vector(tree, "MULTIPLY", demosaiced, gains)
-    balanced = _switch(
+    balanced = switch(
         tree, "sensor.tone", _clip(tree, balanced), _reinhard(tree, balanced, grey)
     )
     # Unsharp mask over a pixel's Gaussian.
@@ -292,12 +275,12 @@ def chain(
         tree,
         "ADD",
         balanced,
-        vector(tree, "SCALE", detail, _value(tree, "sensor.sharpen")),
+        vector(tree, "SCALE", detail, value(tree, "sensor.sharpen")),
     )
     return _clip(tree, sharpened)
 
 
-def _log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
+def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
     """`image`'s luminance, kept off 0, and its log-average (Reinhard et al. 2002)."""
     luminance = tree.nodes.new("CompositorNodeRGBToBW")
     tree.links.new(image, luminance.inputs["Image"])
@@ -313,11 +296,11 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     """Reinhard et al. 2002's global operator on luminance, L / (1 + L), with the
     log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
     a bright colour."""
-    lit, log_average = _log_average(tree, image)
+    lit, average = log_average(tree, image)
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     grey = scalar(tree, "MINIMUM", grey, 0.99)
     key = scalar(tree, "DIVIDE", grey, scalar(tree, "SUBTRACT", 1.0, grey))
-    scaled = scalar(tree, "MULTIPLY", lit, scalar(tree, "DIVIDE", key, log_average))
+    scaled = scalar(tree, "MULTIPLY", lit, scalar(tree, "DIVIDE", key, average))
     mapped = scalar(tree, "DIVIDE", scaled, scalar(tree, "ADD", scaled, 1.0))
     return vector(tree, "SCALE", image, scalar(tree, "DIVIDE", mapped, lit))
 
@@ -339,24 +322,24 @@ def respond(
     full_well_e = sensor.full_well_e or math.inf
     gain = 10 ** (sensor.gain_db / 20)
     # At gain g, full_well_e / g electrons fill the ADC.
-    _set(tree, "sensor.shot", gain / full_well_e)
+    set_value(tree, "sensor.shot", gain / full_well_e)
     # The well holds full_well_e: the ADC's white times the gain.
-    _set(tree, "sensor.well", gain)
-    _set(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
-    _set(tree, "sensor.levels", 2**sensor.adc_bits - 1)
-    _set(tree, "sensor.ratio", sensor.hdr_ratio)
-    for switch in ("sensor.hdr", "sensor.tone"):
-        _toggle(tree, switch, sensor.hdr_ratio > 1.0)
+    set_value(tree, "sensor.well", gain)
+    set_value(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
+    set_value(tree, "sensor.levels", 2**sensor.adc_bits - 1)
+    set_value(tree, "sensor.ratio", sensor.hdr_ratio)
+    for name in ("sensor.hdr", "sensor.tone"):
+        toggle(tree, name, sensor.hdr_ratio > 1.0)
     # Float32 holds integers exactly to 2^24.
-    _set(tree, "sensor.seed", float(noise.integers(2**24)))
+    set_value(tree, "sensor.seed", float(noise.integers(2**24)))
     gains = colour.white_balance_gains(camera.processing.white_balance_k)
     # dcraw's: the smallest gain is 1, so what clipped white stays white.
     for channel, gain in zip("rgb", gains, strict=True):
-        _set(tree, f"sensor.wb_{channel}", gain / min(gains))
-    _set(tree, "sensor.sharpen", camera.processing.sharpen)
+        set_value(tree, f"sensor.wb_{channel}", gain / min(gains))
+    set_value(tree, "sensor.sharpen", camera.processing.sharpen)
     # Sites of the sensor across an output pixel. Limitation: below 2 the sensor
     # mosaics at the output's pitch; a scale between would need the mosaic resampled.
     k = (sensor.width_px or camera.width_px) / camera.width_px
-    _toggle(tree, "sensor.mosaic", k < 2)
+    toggle(tree, "sensor.mosaic", k < 2)
     for channel, share in zip("rgb", (0.25, 0.5, 0.25), strict=True):
-        _set(tree, f"sensor.sites_{channel}", 1.0 if k < 2 else share * k * k)
+        set_value(tree, f"sensor.sites_{channel}", 1.0 if k < 2 else share * k * k)
