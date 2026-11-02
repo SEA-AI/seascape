@@ -62,6 +62,14 @@ class Lens(Model):
     vignetting: bool = Field(
         default=False, description="Natural falloff, cos^4 of the field angle."
     )
+    # After ISO 9358's veiling glare index. Judgement: the default, for a clean lens.
+    veiling_glare: float = Field(
+        default=0.02,
+        ge=0.0,
+        lt=1.0,
+        description="The share of the light the lens scatters across the frame. Only "
+        "an 8-bit EO frame takes it.",
+    )
 
 
 class Microbolometer(Model):
