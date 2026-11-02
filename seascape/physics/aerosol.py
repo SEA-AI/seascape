@@ -14,8 +14,7 @@ FloatArray = npt.NDArray[np.float64]
 
 FOG_KM = lwir.FOG_KM
 
-# LOWTRAN 7's shortest maritime haze: the VIS of HZ2K's 2 km profile (lowtran7.f,
-# AERPRF), as an MOR.
+# LOWTRAN 7's shortest maritime haze, HZ2K's 2 km VIS (lowtran7.f, AERPRF), as MOR.
 HAZE_KM = 2.0 * lwir.MOR_PER_VIS
 
 # Typical of water clouds (Kokhanovsky, Earth-Sci. Rev. 64 189, 2004, 3.1.4).

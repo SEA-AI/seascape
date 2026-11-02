@@ -589,8 +589,8 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
     inverse = 1 / np.array(mor_km)
     fogs = [i for i, c in enumerate(columns) if c.startswith("fog_")]
     if fogs:
-        # LOWTRAN scales fog's extinction linearly in 1 / VIS (AERPRF), so its
-        # thinnest fog column, less no aerosol, extends to the WMO's fog.
+        # LOWTRAN scales fog's extinction linearly in 1 / VIS (AERPRF), so the thinnest
+        # fog's excess over clear air extends to the WMO's fog.
         thinnest = min(fogs, key=lambda i: inverse[i])
         inverse = np.append(inverse, 1 / FOG_KM)
     order = np.argsort(inverse)
