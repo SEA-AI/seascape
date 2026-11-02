@@ -1016,6 +1016,33 @@
             }
           ]
         },
+        "veiling_glare": {
+          "title": "Veiling Glare",
+          "description": "The share of the light the lens scatters across the frame. Only an 8-bit EO frame takes it.",
+          "default": 0.02,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "f_number": {
           "title": "F Number",
           "description": "The lens's f-number, which blurs each colour by its diffraction pattern. It needs sensor.pitch_um. Only png and jpg output use it. An LWIR camera sets microbolometer.f_number instead.",

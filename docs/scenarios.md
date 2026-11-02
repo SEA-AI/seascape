@@ -50,7 +50,7 @@ Scenarios carry a `#:schema` line, so editors with a TOML language server give y
 
 ### The camera itself
 
-An EO camera can carry a sensor, a lens and an ISP. Without them it is ideal: no noise, no mosaic, a hard clip at white.
+An EO camera can model its sensor, lens and image processing. Leave them out and you get an ideal camera: no noise, no colour mosaic, pixels that clip at white. These effects show up in png and jpg output; an exr keeps the raw light values.
 
 ```toml
 [rigs.bow.cameras.eo]
