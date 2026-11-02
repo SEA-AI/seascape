@@ -26,8 +26,8 @@ MID_GREY = 10 / 78
 
 
 # A lens scatters in Harvey's form, (1 + (r / r0)^2)^(-g / 2) off the direct light
-# (Harvey 1976, the ABg model). Judgements, for a generic lens: r0 in half the image's
-# longer side, and g.
+# (Harvey 1976, the ABg model). Both r0, in half the image's longer side, and the
+# slope g are judgements for a generic lens.
 GLARE_SHOULDER, GLARE_SLOPE = 0.01, 3.0
 
 
