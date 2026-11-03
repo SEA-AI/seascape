@@ -28,4 +28,6 @@ flowchart LR
 | | A knob that disagrees between scores may be absorbing an asset mismatch. |
 | | A value outside physics means a missing feature: file it, don't keep it. |
 
-[`matching-a-photo.toml`](matching-a-photo.toml) is one such fit: a cliff camera, two merchant ships and a hidden sun under broken cloud.
+[`matching-a-photo.toml`](matching-a-photo.toml) is one such fit: a cliff camera, two merchant ships and a hidden sun under broken cloud. The photo is on the left, the render on the right.
+
+![A photo of two merchant ships in a sun glint, beside its seascape render](matching-a-photo.jpg)
