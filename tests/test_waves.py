@@ -277,23 +277,44 @@ def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
-def test_a_wind_wave_stands_for_its_share_of_the_spread() -> None:
-    """Its concentration is the mean cos 2(theta - toward) over its stratum of
-    1 + Delta cos 2 theta, which the closed form gives."""
-    delta, low, high, toward = 0.6, -0.4, 0.5, 0.3
+def test_a_heading_band_is_the_closed_form_of_its_integrals() -> None:
+    delta, low, high = 0.6, -0.4, 0.5
     theta = np.linspace(low, high, 20_001)
     weight = 1 + delta * np.cos(2 * theta)
-    mean = np.trapezoid(weight * np.cos(2 * (theta - toward)), theta) / np.trapezoid(
+    mean = np.trapezoid(weight * np.exp(2j * theta), theta) / np.trapezoid(
         weight, theta
     )
-    closed = waves.sea._concentration(
-        np.array([delta]), np.array([low]), np.array([high]), np.array([toward])
+    concentration, axis = waves.heading_band(
+        np.array([delta]), np.array([low]), np.array([high])
     )
-    assert closed[0] == pytest.approx(mean, rel=1e-6)
-    built = field(7.0)
-    assert all(0.0 < w.heading_concentration < 1.0 for w in built)
+    assert concentration[0] == pytest.approx(abs(mean), rel=1e-6)
+    assert axis[0] == pytest.approx(np.angle(mean) / 2, rel=1e-6)
+
+
+def test_a_wind_sea_s_heading_bands_make_up_its_spread() -> None:
+    """Over the downwind half, 1 + Delta cos 2 theta has E e^(2i theta) = Delta / 2."""
+    delta = 0.6
+    edges = waves.sea._downwind_rad(
+        np.full(waves.SPREAD_STRATA + 1, delta),
+        np.linspace(0.0, 1.0, waves.SPREAD_STRATA + 1),
+    )
+    concentration, axis = waves.heading_band(
+        np.full(waves.SPREAD_STRATA, delta), edges[:-1], edges[1:]
+    )
+    whole = np.mean(concentration * np.exp(2j * axis))
+    assert whole == pytest.approx(delta / 2, abs=1e-3)
+
+
+@pytest.mark.parametrize("wind_speed_mps", [1.0, 3.0, 7.0, 15.0])
+def test_each_wind_wave_stands_for_a_band_of_headings(wind_speed_mps: float) -> None:
+    for seed in range(5):
+        concentration = [
+            w.heading_concentration for w in field(wind_speed_mps, seed=seed)
+        ]
+        assert all(0.0 <= c <= 1.0 for c in concentration)
     swell = waves.swell(2.0, 10.0, 0.0, lambda p: p, np.random.default_rng(0))
     assert all(w.heading_concentration == 1.0 for w in swell)
+    assert all(w.band_offset_rad == 0.0 for w in swell)
 
 
 def test_a_wave_fades_as_a_box_pixel_passes_it() -> None:

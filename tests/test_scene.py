@@ -343,9 +343,25 @@ class TestEoBand:
                 (wave.k_rad_m / 2) ** 2, rel=1e-6
             )
 
+    def test_each_wave_fades_over_the_headings_it_stands_for(self) -> None:
+        for wave, inputs, lane in drawn(SCENARIO):
+            c = wave.heading_concentration
+            axis = wave.toward_rad + wave.band_offset_rad
+            assert tuple(
+                inputs[name].default_value[lane] for name in ("Tx", "Ty", "Band")
+            ) == pytest.approx(
+                (
+                    math.sqrt(c) * math.sin(axis),
+                    math.sqrt(c) * math.cos(axis),
+                    (1 - c) / 2,
+                ),
+                rel=1e-6,
+                abs=1e-7,
+            )
+
     def test_no_wind_wave_draws_a_line_along_a_grazing_view(self) -> None:
-        """Seen along its crests by a pixel 100 wavelengths long, a wave fades as the
-        headings it stands for do; one heading alone would stay whole."""
+        """Seen along its crests by a pixel 100 wavelengths long, a wind wave fades
+        below half."""
         wind = SCENARIO.wind_waves()
         for wave, inputs, lane in drawn(SCENARIO):
             if wave not in wind:
@@ -356,8 +372,7 @@ class TestEoBand:
                 inputs[name].default_value[lane] * axis
                 for name, axis in zip(("Tx", "Ty"), crest, strict=True)
             )
-            band = inputs.get("Band")
-            cos_sq = heading**2 + (0.0 if band is None else band.default_value[lane])
+            cos_sq = heading**2 + inputs["Band"].default_value[lane]
             footprint_m = 100 * wavelength_m * math.sqrt(cos_sq)
             assert waves.visibility(np.array(wavelength_m), footprint_m) < 0.5, wave
 

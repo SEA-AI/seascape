@@ -40,6 +40,7 @@ from seascape.physics.waves.foam import (
 )
 from seascape.physics.waves.sea import (
     SPREAD_STRATA,
+    heading_band,
     snap_error,
     spreading_delta,
     swell,
@@ -142,6 +143,7 @@ __all__ = [
     "gerstner_offset_m",
     "gerstner_rest_m",
     "gust_slope_variance",
+    "heading_band",
     "heave_m",
     "height_m",
     "mss_spread",

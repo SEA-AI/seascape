@@ -68,11 +68,12 @@ def _downwind_rad(delta: np.ndarray, u: np.ndarray) -> np.ndarray:
     return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
 
 
-def _concentration(
-    delta: np.ndarray, low_rad: np.ndarray, high_rad: np.ndarray, toward_rad: np.ndarray
-) -> np.ndarray:
-    """Mean cos 2(theta - toward) over 1 + Delta cos 2 theta between `low_rad` and
-    `high_rad`, all angles off downwind: the integrals in closed form."""
+def heading_band(
+    delta: np.ndarray, low_rad: np.ndarray, high_rad: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """The concentration and axis of the headings 1 + Delta cos 2 theta holds between
+    `low_rad` and `high_rad`, all angles off downwind: |E e^(2i theta)| and half its
+    argument, by the integrals in closed form."""
     a, b = low_rad, high_rad
     weight = b - a + delta / 2 * (np.sin(2 * b) - np.sin(2 * a))
     cos2 = (np.sin(2 * b) - np.sin(2 * a)) / 2 + delta * (
@@ -82,7 +83,7 @@ def _concentration(
         -(np.cos(2 * b) - np.cos(2 * a)) / 2
         - delta * (np.cos(4 * b) - np.cos(4 * a)) / 8
     )
-    return (cos2 * np.cos(2 * toward_rad) + sin2 * np.sin(2 * toward_rad)) / weight
+    return np.hypot(cos2, sin2) / weight, np.arctan2(sin2, cos2) / 2
 
 
 def _bins(
@@ -143,12 +144,10 @@ def wind_sea(
     share = rng.permuted(runs, axis=1).ravel()
     delta = spreading_delta(omega, wind_speed_mps, fetch_m)
     off = _downwind_rad(delta, (share + rng.uniform(size=len(omega))) / SPREAD_STRATA)
-    # Each wave stands for its share of the spread, the run's other waves the rest.
-    concentration = _concentration(
+    concentration, axis = heading_band(
         delta,
         _downwind_rad(delta, share / SPREAD_STRATA),
         _downwind_rad(delta, (share + 1) / SPREAD_STRATA),
-        off,
     )
     # Wind is named for where it blows from; waves run the other way.
     toward = math.radians(wind_from_deg + 180.0) + off
@@ -156,13 +155,14 @@ def wind_sea(
     # Limitation: a loop rounds each period to a whole fraction of its span, so
     # neighbouring waves can land on the same frequency again, more so in a short loop.
     field = tuple(
-        Wave(math.sqrt(2 * v), w, t, p, c)
-        for v, w, t, p, c in zip(
+        Wave(math.sqrt(2 * v), w, t, p, c, b)
+        for v, w, t, p, c, b in zip(
             variance.tolist(),
             _snapped(omega, snap).tolist(),
             toward.tolist(),
             phase.tolist(),
             concentration.tolist(),
+            (axis - off).tolist(),
             strict=True,
         )
     )
