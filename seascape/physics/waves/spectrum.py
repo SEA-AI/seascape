@@ -48,6 +48,9 @@ class Wave:
     omega_rad_s: float
     toward_rad: float  # clockwise from the ownship's bow
     phase_rad: float
+    # The headings the wave stands for, as `heading_band` gives them.
+    heading_concentration: float = 1.0
+    band_offset_rad: float = 0.0
 
     @property
     def k_rad_m(self) -> float:

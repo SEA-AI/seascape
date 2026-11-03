@@ -6,6 +6,7 @@ import pytest
 
 from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
+from seascape.physics.waves import sea
 
 
 def field(
@@ -275,6 +276,98 @@ def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
         for f in footprints
     ]
     assert rest == sorted(rest), "a coarser pixel leaves more"
+
+
+def test_a_heading_band_is_the_closed_form_of_its_integrals() -> None:
+    delta, low, high = 0.6, -0.4, 0.5
+    theta = np.linspace(low, high, 20_001)
+    weight = 1 + delta * np.cos(2 * theta)
+    mean = np.trapezoid(weight * np.exp(2j * theta), theta) / np.trapezoid(
+        weight, theta
+    )
+    concentration, axis = sea.heading_band(
+        np.array([delta]), np.array([low]), np.array([high])
+    )
+    assert concentration[0] == pytest.approx(abs(mean), rel=1e-6)
+    assert axis[0] == pytest.approx(np.angle(mean) / 2, rel=1e-6)
+
+
+# A judgement: a grazing pixel, 0.5 m across and a hundred times that along.
+GRAZING_ACROSS_M = 0.5
+GRAZING_ALONG_M = 100 * GRAZING_ACROSS_M
+# A judgement: crests this near the view's line count as running along it.
+ALONG_VIEW_RAD = math.radians(1.0)
+# A judgement: how far a draw of discrete waves may exceed a continuous spread.
+SHARP_EXCESS = 3.0
+
+
+def _faded_visibility(field: tuple[waves.Wave, ...], view_rad: float) -> np.ndarray:
+    """Each wave's visibility to the grazing pixel at the footprint the shader's fade
+    gives it."""
+    axes = [waves.fade_axis(w) for w in field]
+    tx = np.array([a.tx for a in axes])
+    ty = np.array([a.ty for a in axes])
+    band = np.array([a.band for a in axes])
+    cos_sq = (tx * math.sin(view_rad) + ty * math.cos(view_rad)) ** 2 + band
+    along_sq = GRAZING_ALONG_M**2 - GRAZING_ACROSS_M**2
+    footprint = np.sqrt(GRAZING_ACROSS_M**2 + along_sq * cos_sq)
+    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
+    return waves.visibility(wavelength, footprint)
+
+
+def _slope_variance(built: tuple[waves.Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
+    k = np.array([w.k_rad_m for w in built])
+    slope = (np.array([w.amplitude_m for w in built]) * k) ** 2 / 2
+    return slope, waves.visibility(2 * math.pi / k, GRAZING_ACROSS_M) ** 2 * slope
+
+
+def _sharp_along_view(built: tuple[waves.Wave, ...], view_rad: float) -> float:
+    """The slope variance a grazing pixel keeps in crests along its view, over what
+    a square pixel draws of the whole sea."""
+    slope, square = _slope_variance(built)
+    seen = _faded_visibility(built, view_rad)
+    toward = np.array([w.toward_rad for w in built])
+    crest_off = np.remainder(toward - view_rad, math.pi) - math.pi / 2
+    near = np.abs(crest_off) < ALONG_VIEW_RAD
+    return float((seen**2 * slope)[near].sum() / square.sum())
+
+
+def _continuous_sharp_along_view(
+    built: tuple[waves.Wave, ...], wind_speed_mps: float, view_rad: float
+) -> float:
+    """`_sharp_along_view` of `built`'s frequencies spread over Elfouhaily's
+    headings continuously, the wind from north."""
+    steps = 41
+    edges = np.linspace(-ALONG_VIEW_RAD, ALONG_VIEW_RAD, steps + 1)
+    downwind = math.pi
+    # Crests along the view run their waves square to it, folded downwind.
+    square_off = math.remainder(view_rad + math.pi / 2 - downwind, math.pi)
+    slope, square = _slope_variance(built)
+    omega = np.array([w.omega_rad_s for w in built])
+    delta = waves.spreading_delta(omega, wind_speed_mps, None)
+    kept = 0.0
+    for low, high in zip(edges[:-1].tolist(), edges[1:].tolist(), strict=True):
+        heading = downwind + square_off + (low + high) / 2
+        share = sea.spread_share(delta, square_off + low, square_off + high)
+        single = tuple(
+            waves.Wave(w.amplitude_m, w.omega_rad_s, heading, 0.0) for w in built
+        )
+        seen = _faded_visibility(single, view_rad)
+        kept += float(np.sum(slope * share * seen**2))
+    return kept / float(square.sum())
+
+
+@pytest.mark.parametrize("wind_speed_mps", [3.0, 5.0, 8.0, 12.0])
+def test_no_draw_keeps_a_grazing_view_s_crests_sharper_than_a_continuous_sea(
+    wind_speed_mps: float,
+) -> None:
+    for seed in range(10):
+        built = field(wind_speed_mps, seed=seed)
+        for view_rad in np.radians(np.arange(0.0, 91.0, 15.0)).tolist():
+            bound = SHARP_EXCESS * _continuous_sharp_along_view(
+                built, wind_speed_mps, view_rad
+            )
+            assert _sharp_along_view(built, view_rad) < bound, (seed, view_rad)
 
 
 def test_a_wave_fades_as_a_box_pixel_passes_it() -> None:

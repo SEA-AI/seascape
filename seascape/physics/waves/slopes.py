@@ -31,6 +31,7 @@ import math
 from collections.abc import Callable
 from dataclasses import replace
 from functools import cache
+from typing import NamedTuple
 
 import numpy as np
 
@@ -224,6 +225,25 @@ def _mss_spread_at(
     ) ** 2
     turned = np.cos(np.subtract.outer(angle[:, 0], angle[:, 1])) ** 2
     return math.sqrt(2 * float((turned * passed).mean()))
+
+
+class FadeAxis(NamedTuple):
+    """cos^2 to a view (e, n) is (tx e + ty n)^2 + band."""
+
+    tx: float
+    ty: float
+    band: float
+
+
+def fade_axis(wave: Wave) -> FadeAxis:
+    """cos^2 of a wave's angle to a view, its mean over the wave's `heading_band`."""
+    axis = wave.toward_rad + wave.band_offset_rad
+    focus = math.sqrt(wave.heading_concentration)
+    return FadeAxis(
+        focus * math.sin(axis),
+        focus * math.cos(axis),
+        (1 - wave.heading_concentration) / 2,
+    )
 
 
 def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:

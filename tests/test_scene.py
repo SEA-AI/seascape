@@ -349,6 +349,12 @@ class TestEoBand:
                 (wave.k_rad_m / 2) ** 2, rel=1e-6
             )
 
+    def test_each_wave_fades_over_the_headings_it_stands_for(self) -> None:
+        for wave, inputs, lane in drawn(SCENARIO):
+            assert tuple(
+                inputs[name].default_value[lane] for name in ("Tx", "Ty", "Band")
+            ) == pytest.approx(waves.fade_axis(wave), rel=1e-6, abs=1e-7)
+
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         field = SCENARIO.wave_field()
         assert len(field) == waves.WIND_WAVES

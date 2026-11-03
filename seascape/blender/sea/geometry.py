@@ -13,7 +13,7 @@ from seascape.blender.blend import (
 from seascape.blender.sea.pixel import _instance, _Pixel, _pixel
 from seascape.config import Scenario, Sea
 from seascape.physics.earth import earth_radius_m, horizon_m, sea_z_m
-from seascape.physics.waves import Wave, tallest
+from seascape.physics.waves import Wave, fade_axis, tallest
 
 # A judgement: the waves carrying this share of their own sea's height variance are
 # drawn as geometry, the rest as shading.
@@ -100,6 +100,7 @@ _FOOTPRINT = (("Along", "Vector"), ("Across Sq", "Float"), ("Stretch", "Float"))
 _FADE = (
     ("Tx", "Vector"),
     ("Ty", "Vector"),
+    ("Band", "Vector"),
     ("Half K Sq", "Vector"),
     ("Damped", "Vector"),
 )
@@ -115,6 +116,9 @@ def _fade(
     at y = footprint k / 2, held at 0 past pi; scaled by `Calm` in a `Damped` lane.
     And `Along`, (x, y), spread.
 
+    cos^2 is `fade_axis`'s. A judgement: the wave fades at the band's RMS footprint,
+    not by the band's mean visibility.
+
     Built alike in every group, so Cycles merges a triple's fade across them."""
     along = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(given["Along"], along.inputs["Vector"])
@@ -129,7 +133,7 @@ def _fade(
     footprint_sq = vector(
         group,
         "MULTIPLY_ADD",
-        vector(group, "MULTIPLY", heading, heading),
+        vector(group, "MULTIPLY_ADD", heading, heading, given["Band"]),
         _spread(group, given["Stretch"]),
         _spread(group, given["Across Sq"]),
     )
@@ -226,9 +230,11 @@ def _set_triple(
     split along its heading for the slopes. An empty lane has no amplitude, so whatever
     it fades adds 0."""
 
+    axes = {w: fade_axis(w) for w in triple if w is not None}
     sets = {
-        "Tx": _lanes(triple, lambda w: math.sin(w.toward_rad)),
-        "Ty": _lanes(triple, lambda w: math.cos(w.toward_rad)),
+        "Tx": _lanes(triple, lambda w: axes[w].tx),
+        "Ty": _lanes(triple, lambda w: axes[w].ty),
+        "Band": _lanes(triple, lambda w: axes[w].band),
         "Half K Sq": _lanes(triple, lambda w: (w.k_rad_m / 2) ** 2),
         "Damped": _lanes(triple, lambda w: float(w in damped)),
         "Kx": _lanes(triple, lambda w: w.k_east_rad_m),
