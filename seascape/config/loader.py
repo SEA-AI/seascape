@@ -171,7 +171,6 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             )
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
-        _draughts_fit(spec, i)
         for k in range(count):
             copy = _draw(spec, seed, f"{path}/{k}")
             if not isinstance(copy, dict):
@@ -278,6 +277,11 @@ def load(
     # the whole tree's draw gives it, so its values do not change.
     if "sky" in data:
         data["sky"] = _draw(data["sky"], seed, "draw/sky")
+    # Every list a drawn `objects` can be, so no seed decides what is checked.
+    for option in _outcomes(data.get("objects")):
+        if isinstance(option, list):
+            for i, spec in enumerate(option):
+                _draughts_fit(spec, i)
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))

@@ -1326,3 +1326,14 @@ def test_a_draught_choice_may_leave_it_unset(choice: list[float | None]) -> None
         for seed in range(6)
     }
     assert drawn == set(choice)
+
+
+def test_a_draught_in_a_drawn_object_list_is_refused_on_every_seed() -> None:
+    heavy = f"[{{ {ON_BULK}, draught_m = {{ uniform = [5.0, 11.0] }} }}]"
+    loaded = f"[{{ {ON_BULK} }}]"
+    for seed in range(3):
+        with pytest.raises(ValueError, match="draught_range_m"):
+            load(
+                BASELINE,
+                [f"seed = {seed}", f"objects = {{ choice = [{loaded}, {heavy}] }}"],
+            )
