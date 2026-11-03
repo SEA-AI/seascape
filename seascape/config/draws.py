@@ -130,17 +130,6 @@ class Choice(Model):
             return self.choice
         return [v for v, w in zip(self.choice, self.weights, strict=True) if w > 0]
 
-    def bounds(self) -> tuple[float, float]:
-        """The lowest and highest number it can draw, through any draw among its
-        values."""
-        spans = [
-            DRAWS[name].model_validate(value).bounds()
-            if (name := kind(value)) is not None
-            else (float(value), float(value))
-            for value in self.possible()
-        ]
-        return min(low for low, _ in spans), max(high for _, high in spans)
-
 
 class OpticalDepth(Model):
     """An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,

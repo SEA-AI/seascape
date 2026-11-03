@@ -1309,3 +1309,20 @@ def test_each_drawn_object_is_checked_with_its_own_asset() -> None:
     )
     for seed in range(3):
         load(BASELINE, [f"seed = {seed}", f"objects = {objects}"])
+
+
+@pytest.mark.parametrize("choice", [[None, 7.0], [None]])
+def test_a_draught_choice_may_leave_it_unset(choice: list[float | None]) -> None:
+    """None is the asset's own draught: it bounds nothing, and is no error. TOML has
+    no null, so only an override given as a table can hold it."""
+    spec = {
+        "asset": "bulk_carrier",
+        "range_m": 900.0,
+        "bearing_deg": 0.0,
+        "draught_m": {"choice": choice},
+    }
+    drawn = {
+        load(BASELINE, [{"seed": seed, "objects": [spec]}]).objects[0].draught_m
+        for seed in range(6)
+    }
+    assert drawn == set(choice)

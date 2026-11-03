@@ -198,13 +198,20 @@ def _outcomes(node: Any) -> list[Any]:
 
 
 def _draught_span_m(draught: Any) -> tuple[float, float] | None:
-    """The lightest and deepest a draught can be, drawn or not; None for what
-    validation will refuse anyway."""
-    if (name := kind(draught)) is not None:
-        return DRAWS[name].model_validate(draught).bounds()
-    if isinstance(draught, int | float) and not isinstance(draught, bool):
-        return draught, draught
-    return None
+    """The lightest and deepest a draught can be, through every value a choice can
+    draw. None, the asset's own draught, bounds nothing, nor does anything validation
+    refuses anyway; a draught of nothing else is None."""
+    spans = []
+    for value in _outcomes(draught):
+        if (name := kind(value)) is not None:
+            drawn = DRAWS[name].model_validate(value)
+            assert not isinstance(drawn, Choice)  # `_outcomes` opened every choice
+            spans.append(drawn.bounds())
+        elif isinstance(value, int | float) and not isinstance(value, bool):
+            spans.append((value, value))
+    if not spans:
+        return None
+    return min(low for low, _ in spans), max(high for _, high in spans)
 
 
 def _draughts_fit(spec: Any, i: int) -> None:
