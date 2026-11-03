@@ -97,6 +97,28 @@ def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     assert not found.truncated
 
 
+@pytest.mark.parametrize("corner", [(10, 20), (0, 0)])
+def test_a_segmentation_decodes_to_the_pixels_it_was_cut_from(
+    corner: tuple[int, int],
+) -> None:
+    """Two parts and a hole, with the mask starting on the first pixel or not."""
+    index = np.zeros((48, 64), dtype=int)
+    y, x = corner
+    index[y : y + 6, x : x + 8] = 1
+    index[y + 2 : y + 4, x + 3 : x + 5] = 0
+    index[y + 20 : y + 22, x + 30 : x + 31] = 1
+
+    (found,) = added(index, [target(1)]).annotations
+
+    height, width = found.segmentation.size
+    decoded = np.repeat(
+        np.arange(len(found.segmentation.counts)) % 2 == 1, found.segmentation.counts
+    )
+    assert (height, width) == (48, 64)
+    assert ((index == 1) == decoded.reshape(width, height).T).all()
+    assert found.area == decoded.sum()
+
+
 def test_a_box_on_the_frame_edge_is_truncated() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[40:, 60:] = 1

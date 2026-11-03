@@ -79,11 +79,21 @@ class Category(Model):
     supercategory: str
 
 
+class RunLengths(Model):
+    """COCO's uncompressed run-length encoding of a mask."""
+
+    size: tuple[int, int]  # height, width
+    # Alternating runs, background first, counted down each column.
+    counts: list[int]
+
+
 class Annotation(Model):
     id: int
     image_id: int
     category_id: int
     bbox: tuple[int, int, int, int]  # x, y, width, height
+    # RLE under iscrowd 0, which COCO otherwise gives to polygons.
+    segmentation: RunLengths
     area: int  # pixels the target covers
     iscrowd: int = 0
     name: str
@@ -197,6 +207,7 @@ class Labels(Model):
                     image_id=image.id,
                     category_id=self._category(target),
                     bbox=bbox,
+                    segmentation=run_lengths(index == target.pass_index),
                     area=len(xs),
                     name=target.name,
                     range_m=where["range_m"],
@@ -271,6 +282,14 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
     merged.info["scenarios"] = scenarios
     return merged
+
+
+def run_lengths(mask: np.ndarray) -> RunLengths:
+    column_major = mask.ravel(order="F")
+    # np.diff of bools is XOR: True at each flip.
+    flips = np.flatnonzero(np.diff(column_major)) + 1
+    runs = np.diff(flips, prepend=0, append=len(column_major)).tolist()
+    return RunLengths(size=mask.shape, counts=[0, *runs] if column_major[0] else runs)
 
 
 def present(index: np.ndarray, targets: Sequence[Target]) -> set[str]:

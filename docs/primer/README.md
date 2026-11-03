@@ -15,7 +15,7 @@ Training detectors on synthetic data is the obvious use, especially when real da
 - testing distance estimation against exact ranges
 - recreating tricky situations that are hard to stage at sea, like a collision course
 
-Every frame comes with `labels.json` (a COCO box per target, with its range and bearing, plus where the horizon falls) and `calibration.json` (the camera's intrinsics and pose). The boxes come from a render pass that writes each target's ID into its pixels, so every box is tight to the target's visible pixels. [Outputs](../outputs.md) has the details.
+Every frame comes with `labels.json` (a COCO box and mask per target, with its range and bearing, plus where the horizon falls) and `calibration.json` (the camera's intrinsics and pose). The boxes and masks come from a render pass that writes each target's ID into its pixels, so boxes and masks are tight to the target's visible pixels. [Outputs](../outputs.md) has the details.
 
 ## Limitations
 
@@ -113,4 +113,4 @@ And the earth curves away under it. Past the horizon a ship sinks hull-down:
   </picture>
 </p>
 
-That's it. From here: [Scenarios](../scenarios.md) to write your own, [Assets](../assets.md) for what you can put on the water, and [Contributing](../../CONTRIBUTING.md) plus [AGENTS.md](../../AGENTS.md) before you change anything. [`figures.py`](figures.py) and [`charts.py`](charts.py) redraw the renders and charts on this page.
+That's it. From here: [Scenarios](../scenarios.md) to write your own, [Assets](../assets.md) for what you can put on the water, and [AGENTS.md](../../AGENTS.md) before you change anything. [`figures.py`](figures.py) and [`charts.py`](charts.py) redraw the renders and charts on this page.

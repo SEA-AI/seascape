@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv sync --frozen --quiet",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
