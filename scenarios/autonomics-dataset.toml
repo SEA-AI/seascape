@@ -26,11 +26,10 @@ pitch_deg = { uniform = [-0.5, 0.5] }
 [outputs]
 bands = ["eo"]
 
-# The inherited options' order: Blender's sky, then the photos whose sun shows or has
-# set, then those whose sun is behind cloud. One sky in ten is Blender's, and each
-# photo is as likely. The sun anywhere, glare included.
+# The inherited options' order: Blender's sky, then a photographed one. The sun
+# anywhere, glare included.
 [sky]
-weights = [32, 189, 99]
+weights = [1, 9]
 sun_bearing_deg = { uniform = [0.0, 360.0] }
 # Judgement: clear enough to put the hulls of interest, held at their optical depth,
 # 3.5 to 10 NM off, most near 7. Lower visibility only brings them nearer.
