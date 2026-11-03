@@ -135,9 +135,9 @@ uvx --from import-linter lint-imports
 uv run pytest
 ```
 
-The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but pytest.
+The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but pytest. A new worktree needs `uv sync` before the `ty` hook can resolve imports; the `SessionStart` hook in `.claude/settings.json` runs it in Claude Code. Work that touches only the radiometry or the scenario config can `uv sync --no-group blender`, which skips the Blender wheel.
 
-The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
+The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, `-m render` runs only them, and `-n 0` runs in one process for `--pdb` or a print. Or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 
