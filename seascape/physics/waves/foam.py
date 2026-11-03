@@ -30,7 +30,7 @@ from statistics import NormalDist
 import numpy as np
 
 from seascape.physics.waves.slopes import lattice, slope_variance
-from seascape.physics.waves.spectrum import Wave
+from seascape.physics.waves.spectrum import Wave, columns
 from seascape.physics.waves.surface import phases, tallest
 from seascape.physics.waves.wind import (
     SLICK_DRIFT,
@@ -193,14 +193,8 @@ def _drifting_rad_s(
     field: tuple[Wave, ...], drift_mps: tuple[float, float]
 ) -> np.ndarray:
     """Each wave's phase rate seen from water drifting at `drift_mps`."""
-    return np.array(
-        [
-            w.k_east_rad_m * drift_mps[0]
-            + w.k_north_rad_m * drift_mps[1]
-            - w.omega_rad_s
-            for w in field
-        ]
-    )
+    _, _, kx, ky, omega, _ = columns(field)
+    return kx * drift_mps[0] + ky * drift_mps[1] - omega
 
 
 class _Crests:
@@ -212,12 +206,10 @@ class _Crests:
     ) -> None:
         x = grid.west_m + (np.arange(grid.columns) + 0.5) * grid.cell_m
         y = grid.south_m + (np.arange(grid.rows) + 0.5) * grid.cell_m
-        kx = np.array([w.k_east_rad_m for w in use])
-        ky = np.array([w.k_north_rad_m for w in use])
+        a, k, kx, ky, _, self.phase = columns(use)
         self.east = np.exp(1j * np.outer(x, kx)).astype(np.complex64)
         self.north = np.exp(1j * np.outer(y, ky)).astype(np.complex64)
-        self.ak = np.array([w.amplitude_m * w.k_rad_m for w in use])
-        self.phase = np.array([w.phase_rad for w in use])
+        self.ak = a * k
         self.turn = _drifting_rad_s(use, drift_mps)
 
     def at(self, t_s: float) -> np.ndarray:

@@ -14,6 +14,7 @@ roughness.
 
 import math
 from dataclasses import dataclass
+from operator import attrgetter
 
 import numpy as np
 
@@ -63,6 +64,21 @@ class Wave:
     @property
     def k_north_rad_m(self) -> float:
         return self.k_rad_m * math.cos(self.toward_rad)
+
+
+_PER_WAVE = attrgetter(
+    "amplitude_m",
+    "k_rad_m",
+    "k_east_rad_m",
+    "k_north_rad_m",
+    "omega_rad_s",
+    "phase_rad",
+)
+
+
+def columns(field: tuple[Wave, ...]) -> np.ndarray:
+    """Rows in `_PER_WAVE` order, a column per wave."""
+    return np.array([_PER_WAVE(w) for w in field]).reshape(-1, 6).T
 
 
 def roughness_m(wind_speed_mps: float) -> float:
