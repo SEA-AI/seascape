@@ -1,6 +1,6 @@
 """The README's hero: EO above LWIR under each sky, with labels.json drawn on.
 
-uv run python -m docs.hero docs/hero.jpg
+uv run --with supervision python -m docs.hero docs/hero.jpg
 """
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, font
+from docs.brand import FOG_WHITE, NIGHT_BLUE, font
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
@@ -57,6 +57,10 @@ def frame(
     img = Image.open(run / image["file_name"]).convert("RGB")
     box = (left, top, left + width, top + height)
     img = img.resize(size, Image.Resampling.LANCZOS, box=box)
+    if annotations:
+        from docs.outline import lit, masks
+
+        img = lit(img, masks(image, annotations, box, size))
     draw = ImageDraw.Draw(img)
 
     def at(x: float, y: float) -> tuple[float, float]:
@@ -64,16 +68,14 @@ def frame(
 
     draw.line([at(x, y) for x, y in image["horizon_px"]], fill=FOG_WHITE)
     for a in annotations:
-        x, y, w, h = a["bbox"]
-        (x0, y0), (x1, y1) = at(x, y), at(x + w, y + h)
-        draw.rectangle([x0, y0, x1, y1], outline=FOCUS_RED, width=2)
+        x0, y0 = at(*a["bbox"][:2])
         r = a["range_m"]
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
         # Off the right edge a label shifts left, off the top it drops below the edge.
         text_w = draw.textlength(text, font=font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
-        tag(draw, (x, max(4, y0 - 20)), text, FOCUS_RED, 15)
+        tag(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
     return captioned(img, caption)
 
 
