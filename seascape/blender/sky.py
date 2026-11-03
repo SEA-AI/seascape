@@ -99,7 +99,7 @@ def _add_hidden_sun(sky: Sky) -> None:
     # not given back as diffuse light, as LWIR gives it.
     light.energy = beam * sky.sun_transmittance
     sun = bpy.data.objects.new("sun", light)
-    # A new Sun is hidden from the camera; the beam is what shows through the cloud.
+    # Blender hides a new Sun from camera rays. Shown, it is the beam through the cloud.
     sun.visible_camera = True
     # A Sun shines down its -Z.
     sun.rotation_euler = Vector(sky.sun_vector).to_track_quat("Z", "Y").to_euler()

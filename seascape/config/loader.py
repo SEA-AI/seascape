@@ -190,7 +190,8 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
                 copy
                 | {"count": 1}
                 | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
-                | _draught_m(copy, seed, f"{path}/{k}/draught_m")
+                # Past the substream a drawn `draught_m` picked its value on.
+                | _draught_m(copy, seed, f"{path}/{k}/draught_m/loaded")
             )
     return out
 
@@ -229,7 +230,7 @@ def _draughts_fit(spec: Any, i: int) -> None:
         if not isinstance(entry, dict):
             continue
         span_m = _draught_span_m(entry.get("draught_m"))
-        laden = _is_loaded(entry.get("draught_m"))
+        laden = any(map(_is_loaded, _outcomes(entry.get("draught_m"))))
         if span_m is None and not laden:
             continue
         for named in _outcomes(entry.get("asset")):

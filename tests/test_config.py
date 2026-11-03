@@ -1343,14 +1343,23 @@ def test_a_load_draws_each_copy_within_its_own_asset_s_range() -> None:
         assert span_m[0] <= spec.draught_m <= span_m[1]
 
 
-def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed() -> None:
-    hulls = (
-        'objects = [{ asset = { choice = ["coaster", "lateral_mark"] }, '
-        "range_m = 900.0, bearing_deg = 0.0, draught_m = { loaded = [0.0, 1.0] } }]"
-    )
+@pytest.mark.parametrize(
+    "draught",
+    # None is the asset's own draught; TOML has no null, so these are tables.
+    [{"loaded": [0.0, 1.0]}, {"choice": [None, {"loaded": [0.0, 1.0]}]}],
+)
+def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed(
+    draught: dict,
+) -> None:
+    spec = {
+        "asset": {"choice": ["coaster", "lateral_mark"]},
+        "range_m": 900.0,
+        "bearing_deg": 0.0,
+        "draught_m": draught,
+    }
     for seed in range(3):
         with pytest.raises(ValueError, match="no draught_range_m"):
-            load(BASELINE, [f"seed = {seed}", hulls])
+            load(BASELINE, [{"seed": seed, "objects": [spec]}])
 
 
 def test_a_draught_in_a_drawn_object_list_is_refused_on_every_seed() -> None:
