@@ -1,5 +1,6 @@
 import math
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import bpy
@@ -174,6 +175,68 @@ def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.Node
     out = scalar(tree, "MAXIMUM", x, 0.0)
     out.node.use_clamp = True
     return out
+
+
+type Operand = Num | bpy.types.NodeSocket | float
+
+
+@dataclass(frozen=True, slots=True)
+class Num:
+    """A Math node's output; `a * b + c` makes the nodes in Python's evaluation order.
+    `madd` fuses Multiply Add and `op` takes any other operation."""
+
+    tree: bpy.types.NodeTree
+    socket: bpy.types.NodeSocket
+
+    def _raw(self, operand: Operand) -> bpy.types.NodeSocket | float:
+        if not isinstance(operand, Num):
+            return operand
+        # Linking across trees drops the link and leaves the input at its default.
+        if operand.tree is not self.tree:
+            raise ValueError("operands belong to different node trees")
+        return operand.socket
+
+    def __bool__(self) -> bool:
+        raise TypeError("a Num is a node's output, not a truth value")
+
+    def op(self, operation: str, *others: Operand) -> "Num":
+        return Num(
+            self.tree,
+            scalar(self.tree, operation, self.socket, *map(self._raw, others)),
+        )
+
+    def rop(self, operation: str, other: Operand) -> "Num":
+        """`other` OPERATION self."""
+        return Num(
+            self.tree, scalar(self.tree, operation, self._raw(other), self.socket)
+        )
+
+    def madd(self, factor: Operand, term: Operand) -> "Num":
+        return self.op("MULTIPLY_ADD", factor, term)
+
+    def __add__(self, other: Operand) -> "Num":
+        return self.op("ADD", other)
+
+    def __radd__(self, other: Operand) -> "Num":
+        return self.rop("ADD", other)
+
+    def __sub__(self, other: Operand) -> "Num":
+        return self.op("SUBTRACT", other)
+
+    def __rsub__(self, other: Operand) -> "Num":
+        return self.rop("SUBTRACT", other)
+
+    def __mul__(self, other: Operand) -> "Num":
+        return self.op("MULTIPLY", other)
+
+    def __rmul__(self, other: Operand) -> "Num":
+        return self.rop("MULTIPLY", other)
+
+    def __truediv__(self, other: Operand) -> "Num":
+        return self.op("DIVIDE", other)
+
+    def __rtruediv__(self, other: Operand) -> "Num":
+        return self.rop("DIVIDE", other)
 
 
 def value(
