@@ -1204,6 +1204,18 @@ class TestSensor:
             (gain_r / gain_g, gain_b / gain_g), rel=0.01
         )
 
+    def test_white_balance_keeps_a_grey_s_luminance(self) -> None:
+        clean = {"full_well_e": 1e12}
+        balanced, neutral = (
+            self.through(
+                (1.0, 1.0, 1.0), sensor=clean, processing={"white_balance_k": error_k}
+            )
+            for error_k in (-1500.0, 0.0)
+        )
+        assert balanced @ colour.LUMINANCE == pytest.approx(
+            neutral @ colour.LUMINANCE, rel=0.01
+        )
+
     @pytest.mark.parametrize("hdr_ratio", [1.0, 16.0])
     def test_grey_world_takes_a_tinted_sky_to_grey(self, hdr_ratio: float) -> None:
         frame = self.through(

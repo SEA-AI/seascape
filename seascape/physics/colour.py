@@ -17,6 +17,9 @@ XYZ_TO_SRGB = np.array(
     ]
 )
 
+# ITU-R BT.709-6 item 3.2: luminance from linear R, G, B in sRGB's primaries.
+LUMINANCE = (0.2126, 0.7152, 0.0722)
+
 # The dominant wavelength of each sRGB primary (IEC 61966-2-1) from D65: where the
 # line from D65 through the primary meets the spectral locus of the CIE 1931 2 degree
 # colour-matching functions (CIE 015:2018). Limitation: a channel spans a band, and a

@@ -35,6 +35,7 @@ from seascape.config import (
     ImageFormat,
     Microbolometer,
     Scenario,
+    Sensor,
     load,
     substream,
 )
@@ -150,6 +151,28 @@ def test_a_microbolometer_integrates_over_its_pixel(
     )
     respond(mount._replace(camera=camera), substream(0, "sensor"))
     assert bpy.context.scene.cycles.pixel_filter_type == kind
+
+
+def test_a_switch_set_off_is_muted() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    _compositor(0.0, True)
+    mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
+    respond(mount, substream(0, "sensor"))
+    nodes = bpy.context.scene.compositing_node_group.nodes
+    assert nodes["sensor.on"].mute
+    with_sensor = mount.camera.model_copy(update={"sensor": Sensor(full_well_e=1e4)})
+    respond(mount._replace(camera=with_sensor), substream(0, "sensor"))
+    assert not nodes["sensor.on"].mute
+    assert nodes["sensor.hdr"].mute
+
+
+def test_a_sensor_in_a_build_without_one_raises() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    _compositor(0.0)
+    mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
+    with_sensor = mount.camera.model_copy(update={"sensor": Sensor(full_well_e=1e4)})
+    with pytest.raises(ValueError, match="no sensor"):
+        respond(mount._replace(camera=with_sensor), substream(0, "sensor"))
 
 
 class TestFrame:

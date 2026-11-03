@@ -34,11 +34,10 @@ from pydantic import ConfigDict, Field, model_validator
 
 from seascape.assets import SHA256
 from seascape.model import Model
-from seascape.physics import lwir
+from seascape.physics import colour, lwir
 
 LIBRARY = Path(__file__).parent / "skies.toml"
-# ITU-R BT.709.
-LUMINANCE = np.array([0.2126, 0.7152, 0.0722], np.float32)
+LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
 # Judgements: the ring round the peak, and how much brighter than it the peak must be,
 # between an unclipped sun's contrast and that of a sun behind cloud or below the
 # horizon.
