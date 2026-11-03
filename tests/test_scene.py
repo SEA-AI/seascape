@@ -1948,6 +1948,9 @@ class TestHiddenSun:
         towards = bpy.data.objects["sun"].matrix_world.to_3x3() @ Vector((0, 0, 1))
         assert tuple(towards) == pytest.approx(sky.sun_vector, abs=1e-6)
 
+    def test_a_camera_sees_it(self) -> None:
+        assert bpy.data.objects["sun"].visible_camera
+
 
 class TestPhotographedThermalSky:
     """A white photo, all cloud, stands in for the download."""
