@@ -43,6 +43,21 @@ class Hulls:
     imported: dict[str, list[bpy.types.Object]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class Condition:
+    """How a hull is kept and run: one temperature for all of it or none, minutes
+    since its engines stopped, its paint's solar absorptance and its wear."""
+
+    t_k: float | None = None
+    engine_off_min: float = 0.0
+    paint_absorptance: float | None = None
+    wear: float = 0.0
+
+    @classmethod
+    def of(cls, spec: Object | Targets) -> "Condition":
+        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance, spec.wear)
+
+
 def heading_rad(anchor: bpy.types.Object) -> float:
     """Where a hull's bow points, clockwise from north: bow to +Y, as fitted."""
     bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
@@ -52,16 +67,14 @@ def heading_rad(anchor: bpy.types.Object) -> float:
 def _vessel(
     name: str,
     *,
-    t_k: float | None,
-    engine_off_min: float,
-    paint_absorptance: float | None,
-    wear: float,
+    condition: Condition,
     sky: Sky,
     heat: Heat | None,
     hulls: Hulls,
+    rise_m: float = 0.0,
 ) -> bpy.types.Object:
-    """A hull fitted and anchored at the origin under an empty. `heat` is the LWIR
-    build's, and None in EO."""
+    """A hull fitted and anchored at the origin under an empty, `rise_m` above its
+    asset's draught. `heat` is the LWIR build's, and None in EO."""
     if name in hulls.imported:
         parts = [_copy_tree(part, None) for part in hulls.imported[name]]
     else:
@@ -74,10 +87,13 @@ def _vessel(
                 dirty(parts)
 
     if heat is not None:
-        heat = heat.stopped(engine_off_min)
+        heat = heat.stopped(condition.engine_off_min)
+        t_k = condition.t_k
         uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, sky)
         worn_on = manifest()[name].material if name in hulls.worn else None
         for mesh in mesh_objects(parts):
+            # Where the skin finds the water. Set on every hull: a copy inherits it.
+            mesh["rise_m"] = rise_m
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
                 slot.link = "OBJECT"
@@ -85,26 +101,31 @@ def _vessel(
                 slot.material = uniform or zone_skin(
                     zone,
                     heat,
-                    paint_absorptance,
+                    condition.paint_absorptance,
                     wet=not mesh.get("rotor"),
                     wear_material=worn_on,
                     crevice=mesh.get(CREVICE),
                 )
 
     anchor = bpy.data.objects.new(name, None)
-    for size in ("beam_m", "length_m", "height_m"):
+    for size in ("beam_m", "length_m"):
         anchor[size] = parts[0][size]
-    anchor["engine_off_min"] = engine_off_min
-    anchor["wear"] = wear
+    anchor["height_m"] = parts[0]["height_m"] + rise_m
+    anchor["engine_off_min"] = condition.engine_off_min
+    anchor["wear"] = condition.wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
-    for obj in (anchor, attitude):
+    # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
+    draught = bpy.data.objects.new(f"{name}_draught", None)
+    for obj in (anchor, attitude, draught):
         bpy.context.collection.objects.link(obj)
     attitude.parent = anchor
+    draught.parent = attitude
     for part in parts:
-        part.parent = attitude
+        part.parent = draught
     place(anchor, 0.0, 0.0, 0.0)
     place(attitude, 0.0, 0.0, 0.0)
+    place(draught, 0.0, 0.0, rise_m)
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     attitude.rotation_mode = "YXZ"
     return anchor
@@ -128,10 +149,7 @@ def add_ownship(
     else:
         anchor = _vessel(
             ownship.asset,
-            t_k=ownship.t_k,
-            engine_off_min=0.0,
-            paint_absorptance=None,
-            wear=0.0,
+            condition=Condition(t_k=ownship.t_k),
             sky=sky,
             heat=heat,
             hulls=hulls,
@@ -281,10 +299,7 @@ def _targets(
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
         anchor = _vessel(
             asset,
-            t_k=spec.t_k,
-            engine_off_min=spec.engine_off_min,
-            paint_absorptance=spec.paint_absorptance,
-            wear=spec.wear,
+            condition=Condition.of(spec),
             sky=sky,
             heat=heat,
             hulls=hulls,
@@ -317,13 +332,11 @@ def _object(
     """`spec`'s hulls, each wake under way added to `trails`."""
     anchor = _vessel(
         spec.asset,
-        t_k=spec.t_k,
-        engine_off_min=spec.engine_off_min,
-        paint_absorptance=spec.paint_absorptance,
-        wear=spec.wear,
+        condition=Condition.of(spec),
         sky=sky,
         heat=heat,
         hulls=hulls,
+        rise_m=spec.rise_m,
     )
     orbit = spec.orbit
     if orbit is None:
@@ -372,10 +385,7 @@ def _turbine(
     rotors turn out of step."""
     anchor = _vessel(
         farm.asset,
-        t_k=None,
-        engine_off_min=0.0,
-        paint_absorptance=farm.paint_absorptance,
-        wear=farm.wear,
+        condition=Condition(paint_absorptance=farm.paint_absorptance, wear=farm.wear),
         sky=scenario.sky,
         heat=heat,
         hulls=hulls,
@@ -504,20 +514,18 @@ def add_vessels(
     trails: list[wakes.Wake],
 ) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
     """Every object and ring hull, then every turbine, by asset; each wake under way
-    added to `trails`."""
+    added to `trails`. Worn once all are built: a hull is copied from its asset's
+    first, which would carry that one's wear."""
     sky, outputs = scenario.sky, scenario.outputs
+    wearing: list[tuple[list[bpy.types.Object], float, str]] = []
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
     for i, spec in enumerate(scenario.objects):
         anchors = _object(spec, radius_m, sky, heat, hulls, outputs, trails)
-        _worn(anchors, spec.wear, substream(scenario.seed, f"wear/objects/{i}"))
+        wearing.append((anchors, spec.wear, f"wear/objects/{i}"))
         vessels[spec.asset] += anchors
     if (ring := scenario.targets) is not None:
         hulls_by = _targets(ring, radius_m, sky, heat, hulls, outputs, trails)
-        _worn(
-            list(chain(*hulls_by.values())),
-            ring.wear,
-            substream(scenario.seed, "wear/targets"),
-        )
+        wearing.append((list(chain(*hulls_by.values())), ring.wear, "wear/targets"))
         for asset, anchors in hulls_by.items():
             vessels[asset] += anchors
     turbines: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
@@ -527,8 +535,10 @@ def add_vessels(
             anchor = _turbine(
                 farm, range_m, bearing_deg, rng, scenario, radius_m, heat, hulls
             )
-            _worn([anchor], farm.wear, substream(scenario.seed, f"wear/farms/{f}/{k}"))
+            wearing.append(([anchor], farm.wear, f"wear/farms/{f}/{k}"))
             turbines[farm.asset].append(anchor)
+    for anchors, amount, stream in wearing:
+        _worn(anchors, amount, substream(scenario.seed, stream))
     return vessels, turbines
 
 
@@ -544,7 +554,8 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
 
     The waterline is z = 0 in the attitude's frame, which heaves, pitches and rolls
-    with the waves: `_fit` puts the keel a draught below it.
+    with the waves: `_fit` puts the keel the asset's draught below it, and `_vessel`
+    lifts it by `rise_m`.
     """
     # Limitation: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.

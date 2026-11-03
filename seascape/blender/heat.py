@@ -263,7 +263,11 @@ def _wetted(
     coords = tree.nodes.new("ShaderNodeTexCoord")
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
     link(coords.outputs["Object"], height.inputs["Vector"])
-    under = scalar(tree, "LESS_THAN", height.outputs["Z"], 0.0)
+    rise = tree.nodes.new("ShaderNodeAttribute")
+    rise.attribute_type = "OBJECT"
+    rise.attribute_name = "rise_m"
+    above_water_m = scalar(tree, "ADD", height.outputs["Z"], rise.outputs["Factor"])
+    under = scalar(tree, "LESS_THAN", above_water_m, 0.0)
     mix = tree.nodes.new("ShaderNodeMixShader")
     link(under, mix.inputs["Factor"])
     link(skin, mix.inputs["Shader"])

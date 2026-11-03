@@ -1209,3 +1209,131 @@ def test_a_weathered_asset_is_never_worn() -> None:
     scenario = base.model_copy(update={"objects": [weathered, painted]})
     assert manifest()["container"].weathered
     assert scenario.worn == {"cargo_ship"}
+
+
+def test_an_object_floats_at_its_asset_s_draught_unless_given_one() -> None:
+    loaded = 'objects = [{ asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
+    (asset,), (ballast,) = (
+        load(BASELINE, [loaded + extra + " }]"]).objects
+        for extra in ("", ", draught_m = 7.0")
+    )
+    assert asset.rise_m == 0.0
+    assert ballast.rise_m == pytest.approx(manifest()["bulk_carrier"].draught_m - 7.0)
+
+
+def test_a_drawn_draught_differs_per_copy_within_the_asset_s_range() -> None:
+    drawn = load(
+        BASELINE,
+        [
+            'objects = [{ asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0, '
+            "count = 4, draught_m = { uniform = [7.0, 11.0] } }]"
+        ],
+    )
+    draughts_m = [spec.draught_m for spec in drawn.objects]
+    assert len(set(draughts_m)) == 4
+    assert all(d is not None and 7.0 <= d <= 11.0 for d in draughts_m)
+
+
+@pytest.mark.parametrize(
+    ("asset", "draught_m", "match"),
+    [("bulk_carrier", 4.0, "outside"), ("lateral_mark", 1.0, "no draught_range_m")],
+)
+def test_a_draught_outside_the_asset_s_range_is_refused(
+    asset: str, draught_m: float, match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Object(asset=asset, range_m=500.0, bearing_deg=0.0, draught_m=draught_m)
+
+
+@pytest.mark.parametrize(
+    "draw",
+    ["{ uniform = [5.0, 11.0] }", "{ choice = [7.0, { uniform = [9.0, 12.0] }] }"],
+)
+def test_a_draught_draw_that_can_leave_the_range_is_refused_on_every_seed(
+    draw: str,
+) -> None:
+    """Whether a draw lands outside depends on the seed; whether it can does not."""
+    for seed in range(3):
+        with pytest.raises(ValueError, match="can be"):
+            load(
+                BASELINE,
+                [
+                    f"seed = {seed}",
+                    'objects = [{ asset = "bulk_carrier", range_m = 900.0, '
+                    f"bearing_deg = 0.0, draught_m = {draw} }}]",
+                ],
+            )
+
+
+def test_a_draught_choice_of_no_weight_is_never_drawn() -> None:
+    weighted = "{ choice = [7.0, 12.0], weights = [1, 0] }"
+    for seed in range(3):
+        loaded = load(
+            BASELINE,
+            [
+                f"seed = {seed}",
+                'objects = [{ asset = "bulk_carrier", range_m = 900.0, '
+                f"bearing_deg = 0.0, draught_m = {weighted} }}]",
+            ],
+        )
+        assert loaded.objects[0].draught_m == 7.0
+
+
+ON_BULK = 'asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
+
+
+@pytest.mark.parametrize(
+    "objects",
+    [
+        # A drawn object hides the draught.
+        f"[{{ choice = [{{ {ON_BULK} }}, {{ {ON_BULK}, draught_m = 4.0 }}] }}]",
+        # A drawn asset, one of them without a range.
+        '[{ asset = { choice = ["bulk_carrier", "lateral_mark"] }, range_m = 900.0, '
+        "bearing_deg = 0.0, draught_m = 7.0 }]",
+    ],
+)
+def test_a_draught_any_seed_could_refuse_is_refused_on_every_seed(
+    objects: str,
+) -> None:
+    for seed in range(3):
+        with pytest.raises(ValueError, match="draught_range_m"):
+            load(BASELINE, [f"seed = {seed}", f"objects = {objects}"])
+
+
+def test_each_drawn_object_is_checked_with_its_own_asset() -> None:
+    """A light draught fits the bulk carrier it sits on, whatever the other option."""
+    container = 'asset = "container", range_m = 900.0, bearing_deg = 0.0'
+    objects = (
+        f"[{{ choice = [{{ {ON_BULK}, draught_m = 7.0 }}, "
+        f"{{ {container}, draught_m = 0.2 }}] }}]"
+    )
+    for seed in range(3):
+        load(BASELINE, [f"seed = {seed}", f"objects = {objects}"])
+
+
+@pytest.mark.parametrize("choice", [[None, 7.0], [None]])
+def test_a_draught_choice_may_leave_it_unset(choice: list[float | None]) -> None:
+    """None is the asset's own draught: it bounds nothing, and is no error. TOML has
+    no null, so only an override given as a table can hold it."""
+    spec = {
+        "asset": "bulk_carrier",
+        "range_m": 900.0,
+        "bearing_deg": 0.0,
+        "draught_m": {"choice": choice},
+    }
+    drawn = {
+        load(BASELINE, [{"seed": seed, "objects": [spec]}]).objects[0].draught_m
+        for seed in range(6)
+    }
+    assert drawn == set(choice)
+
+
+def test_a_draught_in_a_drawn_object_list_is_refused_on_every_seed() -> None:
+    heavy = f"[{{ {ON_BULK}, draught_m = {{ uniform = [5.0, 11.0] }} }}]"
+    loaded = f"[{{ {ON_BULK} }}]"
+    for seed in range(3):
+        with pytest.raises(ValueError, match="draught_range_m"):
+            load(
+                BASELINE,
+                [f"seed = {seed}", f"objects = {{ choice = [{loaded}, {heavy}] }}"],
+            )
