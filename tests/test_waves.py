@@ -317,19 +317,6 @@ def test_each_wind_wave_stands_for_a_band_of_headings(wind_speed_mps: float) -> 
     assert all(w.band_offset_rad == 0.0 for w in swell)
 
 
-def test_a_square_pixel_leaves_each_view_axis_what_it_leaves_each_wind_axis() -> None:
-    built = field(7.0)
-    swell = waves.swell(2.0, 10.0, 0.0, lambda p: p, np.random.default_rng(0))
-    for footprint_m in (0.01, 0.3, 10.0):
-        per_wind_axis = waves.unresolved_slope_variances(
-            7.0, 0.0, built, swell, footprint_m
-        )
-        along, across = waves.unresolved_view_slope_variances(
-            7.0, 0.0, built, swell, footprint_m, footprint_m, 0.0
-        )
-        assert (float(along), float(across)) == pytest.approx(per_wind_axis)
-
-
 def test_a_wave_fades_as_a_box_pixel_passes_it() -> None:
     footprints = np.array([0.0, 0.5, 1.0, 1.5, 3.0])
     shown = waves.visibility(np.ones_like(footprints), footprints)

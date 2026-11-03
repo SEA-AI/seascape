@@ -18,12 +18,6 @@ from seascape.blender.blend import (
 
 # A judgement: the footprints a sea pixel spans.
 FOOTPRINT_RANGE_M = (1e-3, 1e4)
-# A judgement: the floor on the cosine a ray meets the sea at, which keeps a grazing
-# pixel finite; the longest it stretches along is its inverse.
-GRAZING_COSINE = 1e-3
-# A judgement: rows of a table against log along / across, enough that it bends
-# smoothly between them.
-ASPECT_SAMPLES = 32
 
 
 class _Pixel(NamedTuple):
@@ -57,7 +51,7 @@ def _pixel(
         percent="render.resolution_percentage",
     )
     # Grazing stretches the pixel by 1 / cos along the view; the floor keeps it finite.
-    cosine = scalar(tree, "MAXIMUM", scalar(tree, "ABSOLUTE", facing), GRAZING_COSINE)
+    cosine = scalar(tree, "MAXIMUM", scalar(tree, "ABSOLUTE", facing), 1e-3)
     tilt = vector(tree, "SCALE", geometry.outputs["Normal"])
     tree.links.new(facing, tilt.node.inputs["Scale"])
     level = vector(tree, "SUBTRACT", incoming, tilt)
@@ -89,57 +83,11 @@ def _instance(
 def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types.Image:
     """`value_at` baked against log footprint: one lookup, not a sum over the waves per
     sample."""
-    return curve_image(name, np.array([value_at(f) for f in footprints_m()]))
-
-
-def aspects() -> np.ndarray:
-    """The along / across of each row of a footprint-aspect table, from square to the
-    most stretched, both ends on a row."""
-    return GRAZING_COSINE ** -(np.arange(ASPECT_SAMPLES) / (ASPECT_SAMPLES - 1))
-
-
-def footprints_m() -> np.ndarray:
-    """The footprint at each texel of `_footprint_table`."""
     low, high = FOOTPRINT_RANGE_M
-    return low * (high / low) ** ((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
-
-
-def footprint_aspect_grid() -> tuple[np.ndarray, np.ndarray]:
-    """The across and along footprints of each texel of a table read at
-    `_footprint_aspect_coords`: across by column, along / across by row."""
-    across = footprints_m()[None, :]
-    return across, across * aspects()[:, None]
-
-
-def _footprint_aspect_coords(
-    tree: bpy.types.NodeTree, pixel: _Pixel
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """Where `pixel` reads a table baked on `footprint_aspect_grid`."""
-    low, high = FOOTPRINT_RANGE_M
-    decades = math.log10(high / low)
-    x = scalar(
-        tree,
-        "MULTIPLY_ADD",
-        scalar(tree, "LOGARITHM", pixel.across_m, 10.0),
-        1 / decades,
-        -math.log10(low) / decades,
+    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    return curve_image(
+        name, np.array([value_at(f) for f in low * (high / low) ** texel])
     )
-    # Rows sit on texel centres, the first at square and the last at the most
-    # stretched.
-    rows = ASPECT_SAMPLES - 1
-    y = scalar(
-        tree,
-        "MULTIPLY_ADD",
-        scalar(
-            tree,
-            "LOGARITHM",
-            scalar(tree, "DIVIDE", pixel.along_m, pixel.across_m),
-            10.0,
-        ),
-        rows / (-math.log10(GRAZING_COSINE) * ASPECT_SAMPLES),
-        0.5 / ASPECT_SAMPLES,
-    )
-    return x, y
 
 
 def _at_footprint(

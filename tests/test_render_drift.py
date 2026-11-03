@@ -362,19 +362,14 @@ def unresolved(
     scenario: Scenario, along_m: float, across_m: float, cos2: float
 ) -> tuple[float, float]:
     """The pixel's unresolved variance along and across a view at cos^2 `cos2` to the
-    wind, each twice its axis's: the views down and across the wind's, mixed by
-    `cos2` as the shader's tables are."""
+    wind, each twice its axis's."""
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     speed, axis = scenario.sea.wind_speed_mps, math.radians(scenario.sea.wind_from_deg)
-    (down_a, down_c), (cross_a, cross_c) = (
-        waves.unresolved_view_slope_variances(
-            speed, axis, wind, swell, across_m, along_m, axis + turn
-        )
-        for turn in (0.0, math.pi / 2)
-    )
+    up_a, cross_a = waves.unresolved_slope_variances(speed, axis, wind, swell, along_m)
+    up_c, cross_c = waves.unresolved_slope_variances(speed, axis, wind, swell, across_m)
     return (
-        2 * float(cross_a + (down_a - cross_a) * cos2),
-        2 * float(cross_c + (down_c - cross_c) * cos2),
+        2 * (up_a * cos2 + cross_a * (1 - cos2)),
+        2 * (up_c * (1 - cos2) + cross_c * cos2),
     )
 
 
@@ -599,9 +594,15 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     area = np.maximum(facing, 0.0) / facet[2] * (normal[2] / toward)[:, None]
     mirror = 2 * facing * facet - view[:, None, None]
     across_m = PROBE_HEIGHT_M / math.sin(d) * math.radians(PROBE_FOV_DEG) / PROBE_PX[0]
-    # The probe looks north: north is along its view, east across.
-    along, across = unresolved(scenario, across_m / math.sin(d), across_m, c2)
-    north, east = along / 2, across / 2
+    left = [
+        waves.unresolved_slope_variances(speed, wind_axis, wind, swell, f)
+        for f in (across_m, across_m / math.sin(d))
+    ]
+    # East takes the across footprint, north the along one.
+    east, north = (
+        up * w + cross * (1 - w)
+        for (up, cross), w in zip(left, (1 - c2, c2), strict=True)
+    )
     run = np.maximum(np.hypot(mirror[0], mirror[1]), 1e-12)
     sigma = np.sqrt(east * mirror[0] ** 2 + north * mirror[1] ** 2) / run
     a = np.tan(np.arcsin(np.clip(mirror[2], 1e-6, 1.0))) / (math.sqrt(2) * sigma)

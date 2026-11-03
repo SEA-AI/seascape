@@ -6,18 +6,10 @@ from collections.abc import Callable
 import bpy
 
 from seascape.blender.blend import (
-    curve_image,
-    lookup,
     scalar,
     vector,
 )
-from seascape.blender.sea.pixel import (
-    _at_footprint,
-    _footprint_aspect_coords,
-    _footprint_table,
-    _Pixel,
-    footprint_aspect_grid,
-)
+from seascape.blender.sea.pixel import _at_footprint, _footprint_table, _Pixel
 from seascape.blender.sea.wind import _gusty
 from seascape.config import Sea
 from seascape.physics.earth import GRAVITY_MS2
@@ -26,7 +18,7 @@ from seascape.physics.waves import (
     cox_munk_slick_variances,
     cox_munk_variances,
     mss_spread,
-    unresolved_view_slope_variances,
+    unresolved_slope_variances,
 )
 
 
@@ -190,66 +182,6 @@ def _box_kept(
     )
 
 
-# The views the unresolved tables are baked for, as quarter turns off the wind.
-_TABLED_VIEWS = (("downwind", 0.0), ("crosswind", math.pi / 2))
-
-
-def _tabled(
-    tree: bpy.types.NodeTree,
-    name: str,
-    sea: Sea,
-    field: tuple[Wave, ...],
-    swell: tuple[Wave, ...],
-    fit: Callable[[float], tuple[float, float]],
-    pixel: _Pixel,
-    cos2: bpy.types.NodeSocket,
-) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """`unresolved_view_slope_variances` along and across the pixel's view, each
-    twice its axis's: baked for a view down and across the wind against the pixel's
-    across footprint and along / across, and mixed by `cos2`, the view's cos^2 to
-    the wind."""
-    wind_axis = math.radians(sea.wind_from_deg)
-    x, y = _footprint_aspect_coords(tree, pixel)
-    across_m, along_m = footprint_aspect_grid()
-    read = {}
-    for view, turn in _TABLED_VIEWS:
-        variances = unresolved_view_slope_variances(
-            sea.wind_speed_mps,
-            wind_axis,
-            field,
-            swell,
-            across_m,
-            along_m,
-            wind_axis + turn,
-            fit,
-        )
-        for axis, variance in zip(("along", "across"), variances, strict=True):
-            table = f"{name}_{view}_{axis}"
-            read[view, axis] = lookup(tree, curve_image(table, variance), x, y)
-            read[view, axis].node.name = table
-    along, across = (
-        scalar(
-            tree,
-            "MULTIPLY",
-            scalar(
-                tree,
-                "MULTIPLY_ADD",
-                scalar(
-                    tree,
-                    "SUBTRACT",
-                    read["downwind", axis],
-                    read["crosswind", axis],
-                ),
-                cos2,
-                read["crosswind", axis],
-            ),
-            2.0,
-        )
-        for axis in ("along", "across")
-    )
-    return along, across
-
-
 def _unresolved(
     tree: bpy.types.NodeTree,
     sea: Sea,
@@ -264,10 +196,11 @@ def _unresolved(
     gusty sea's, and a slick's where `smooth` is 1. Each is twice its axis's, the total
     an isotropic sea of that slope would hold.
 
-    Limitation: between the views down and across the wind, the tables mix by cos^2 of
-    the angle and leave out the covariance, so a lobe 45 degrees off the wind stays
-    aligned with the view. Rotate the tangent if a glitter shows it.
+    Cox & Munk's axes are the wind's. Limitation: the view's take their variances by
+    cos^2 of the angle between and leave out the covariance, so a lobe 45 degrees off
+    the wind stays aligned with the view. Rotate the tangent if a glitter shows it.
     """
+    speed = sea.wind_speed_mps
     # From or toward, the axis is the same.
     wind_axis = math.radians(sea.wind_from_deg)
     facing = vector(
@@ -277,30 +210,46 @@ def _unresolved(
         (math.sin(wind_axis), math.cos(wind_axis), 0),
     )
     cos2 = scalar(tree, "MULTIPLY", facing, facing, name="sea_wind_facing")
-    unresolved = _tabled(
-        tree,
-        "sea_unresolved_variance",
-        sea,
-        wind,
-        swell,
-        cox_munk_variances,
-        pixel,
-        cos2,
-    )
+    footprints = (pixel.along_m, pixel.across_m)
+
+    def tabled(
+        name: str,
+        field: tuple[Wave, ...],
+        fit: Callable[[float], tuple[float, float]],
+    ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
+        axes = tuple(
+            _footprint_table(
+                f"{name}_{axis}",
+                lambda f, i=i: unresolved_slope_variances(
+                    speed, wind_axis, field, swell, f, fit
+                )[i],
+            )
+            for i, axis in enumerate(("upwind", "crosswind"))
+        )
+        out = []
+        for f, on_up in zip(
+            footprints, (cos2, scalar(tree, "SUBTRACT", 1.0, cos2)), strict=True
+        ):
+            up, cross = (
+                _at_footprint(tree, t, f, f"{name}_{axis}")
+                for t, axis in zip(axes, ("upwind", "crosswind"), strict=True)
+            )
+            mixed = scalar(
+                tree,
+                "MULTIPLY_ADD",
+                scalar(tree, "SUBTRACT", up, cross),
+                on_up,
+                cross,
+            )
+            out.append(scalar(tree, "MULTIPLY", mixed, 2.0))
+        return out[0], out[1]
+
+    unresolved = tabled("sea_unresolved_variance", wind, cox_munk_variances)
     if gust is not None:
         unresolved = _gusty(tree, sea, gust, unresolved)
     if smooth is None:
         return unresolved
-    slick = _tabled(
-        tree,
-        "sea_unresolved_slick_variance",
-        sea,
-        survivors,
-        swell,
-        cox_munk_slick_variances,
-        pixel,
-        cos2,
-    )
+    slick = tabled("sea_unresolved_slick_variance", survivors, cox_munk_slick_variances)
     along, across = (
         scalar(tree, "MULTIPLY_ADD", smooth, scalar(tree, "SUBTRACT", s, v), v)
         for s, v in zip(slick, unresolved, strict=True)

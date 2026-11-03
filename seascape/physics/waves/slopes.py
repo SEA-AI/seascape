@@ -256,62 +256,6 @@ def drawn_slope_variances(
     return float(np.sum(shown * along)), float(np.sum(shown * (1 - along)))
 
 
-def drawn_view_slope_variances(
-    field: tuple[Wave, ...],
-    across_m: np.ndarray | float,
-    along_m: np.ndarray | float,
-    view_rad: float,
-) -> tuple[np.ndarray, np.ndarray]:
-    """The slope variance a pixel `along_m` by `across_m` draws of `field`, along and
-    across a view toward `view_rad`. Each wave fades at the footprint the shader gives
-    it, sqrt(across^2 + (along^2 - across^2)(c cos^2 + (1 - c) / 2)), with c its
-    heading concentration and the angle to its band's axis."""
-    across = np.asarray(across_m, dtype=float)[..., None]
-    along = np.asarray(along_m, dtype=float)[..., None]
-    if not field:
-        zero = np.zeros(np.broadcast_shapes(across.shape, along.shape)[:-1])
-        return zero, zero
-    k = np.array([w.k_rad_m for w in field])
-    ak = np.array([w.amplitude_m for w in field]) * k
-    toward = np.array([w.toward_rad for w in field])
-    c = np.array([w.heading_concentration for w in field])
-    axis = toward + np.array([w.band_offset_rad for w in field])
-    band = c * np.cos(axis - view_rad) ** 2 + (1 - c) / 2
-    footprint = np.sqrt(across**2 + (along**2 - across**2) * band)
-    shown = (ak * visibility(2 * math.pi / k, footprint)) ** 2 / 2
-    on_view = np.cos(toward - view_rad) ** 2
-    return np.sum(shown * on_view, axis=-1), np.sum(shown * (1 - on_view), axis=-1)
-
-
-def unresolved_view_slope_variances(
-    wind_speed_mps: float,
-    downwind_rad: float,
-    wind: tuple[Wave, ...],
-    swell: tuple[Wave, ...],
-    across_m: np.ndarray | float,
-    along_m: np.ndarray | float,
-    view_rad: float,
-    fit: Callable[[float], tuple[float, float]] = cox_munk_variances,
-) -> tuple[np.ndarray, np.ndarray]:
-    """`unresolved_slope_variances` along and across a view toward `view_rad`, for a
-    pixel `along_m` by `across_m` that fades each wave as `drawn_view_slope_variances`
-    does: Cox & Munk's turned onto the view's axes."""
-    up, cross = fit(wind_speed_mps)
-    on_wind = math.cos(view_rad - downwind_rad) ** 2
-    totals = (
-        up * on_wind + cross * (1 - on_wind),
-        up * (1 - on_wind) + cross * on_wind,
-    )
-    drawn = drawn_view_slope_variances(wind, across_m, along_m, view_rad)
-    swell_all = drawn_slope_variances(swell, 0.0, view_rad)
-    swell_drawn = drawn_view_slope_variances(swell, across_m, along_m, view_rad)
-    along, across = (
-        np.maximum(total - d, 0.0) + a - s
-        for total, d, a, s in zip(totals, drawn, swell_all, swell_drawn, strict=True)
-    )
-    return along, across
-
-
 def slick_survivors(
     wind_speed_mps: float, wind: tuple[Wave, ...], axis_rad: float
 ) -> tuple[Wave, ...]:
