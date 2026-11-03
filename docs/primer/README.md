@@ -113,4 +113,4 @@ And the earth curves away under it. Past the horizon a ship sinks hull-down:
   </picture>
 </p>
 
-That's it. From here: [Scenarios](../scenarios.md) to write your own, [Assets](../assets.md) for what you can put on the water, and [Contributing](../../CONTRIBUTING.md) plus [AGENTS.md](../../AGENTS.md) before you change anything. [`figures.py`](figures.py) and [`charts.py`](charts.py) redraw the renders and charts on this page.
+That's it. From here: [Scenarios](../scenarios.md) to write your own, [Assets](../assets.md) for what you can put on the water, and [AGENTS.md](../../AGENTS.md) before you change anything. [`figures.py`](figures.py) and [`charts.py`](charts.py) redraw the renders and charts on this page.
