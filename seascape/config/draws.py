@@ -147,6 +147,22 @@ class OpticalDepth(Model):
         return self
 
 
+class Loaded(Model):
+    """An object's `draught_m` as how laden it is: 0 its asset's lightest draught, 1
+    its deepest, so one draw fits every asset a choice can make."""
+
+    loaded: tuple[
+        Annotated[float, Field(ge=0.0, le=1.0)], Annotated[float, Field(ge=0.0, le=1.0)]
+    ] = Field(description="The bounds, lower first, drawn evenly.")
+
+    @model_validator(mode="after")
+    def _lower_first(self) -> "Loaded":
+        lower, upper = self.loaded
+        if lower > upper:
+            raise ValueError(f"loaded bounds {self.loaded} are reversed")
+        return self
+
+
 DRAWS: dict[str, type[Uniform | LogUniform | Triangular | Integer | Choice]] = {
     "uniform": Uniform,
     "log_uniform": LogUniform,

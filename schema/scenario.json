@@ -1558,6 +1558,9 @@
             },
             {
               "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Loaded"
             }
           ]
         },
@@ -4093,6 +4096,36 @@
         "optical_depth"
       ],
       "title": "OpticalDepth",
+      "type": "object"
+    },
+    "Loaded": {
+      "additionalProperties": false,
+      "description": "An object's `draught_m` as how laden it is: 0 its asset's lightest draught, 1\nits deepest, so one draw fits every asset a choice can make.",
+      "properties": {
+        "loaded": {
+          "description": "The bounds, lower first, drawn evenly.",
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            }
+          ],
+          "title": "Loaded",
+          "type": "array"
+        }
+      },
+      "required": [
+        "loaded"
+      ],
+      "title": "Loaded",
       "type": "object"
     }
   },

@@ -127,6 +127,8 @@ An object floats at its asset's `draught_m` from `assets.toml`, usually loaded t
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ asset = "bulk_carrier", range_m = 3000.0, bearing_deg = 8.0, count = 3, draught_m = { uniform = [6.38, 11.0] } }]'
 ```
 
+`{ loaded = [lo, hi] }` draws how laden instead, 0 the asset's lightest and 1 its deepest, so one draw fits a choice of assets whose ranges do not overlap.
+
 The labels' height and waterline follow the hull. In LWIR the hull takes the water's temperature only below its new waterline.
 
 Limitation: a waterline stain stays at the asset's own waterline.
