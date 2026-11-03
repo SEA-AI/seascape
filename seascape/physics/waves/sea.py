@@ -68,6 +68,15 @@ def _downwind_rad(delta: np.ndarray, u: np.ndarray) -> np.ndarray:
     return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
 
 
+def spread_share(
+    delta: np.ndarray, low_rad: np.ndarray | float, high_rad: np.ndarray | float
+) -> np.ndarray:
+    """The share of 1 + Delta cos 2 theta over the downwind half that lies between
+    `low_rad` and `high_rad`, off downwind: its integral in closed form over pi."""
+    a, b = low_rad, high_rad
+    return (b - a + delta / 2 * (np.sin(2 * b) - np.sin(2 * a))) / math.pi
+
+
 def heading_band(
     delta: np.ndarray, low_rad: np.ndarray, high_rad: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -75,7 +84,7 @@ def heading_band(
     `low_rad` and `high_rad`, all angles off downwind: |E e^(2i theta)| and half its
     argument, by the integrals in closed form."""
     a, b = low_rad, high_rad
-    weight = b - a + delta / 2 * (np.sin(2 * b) - np.sin(2 * a))
+    weight = spread_share(delta, a, b) * math.pi
     cos2 = (np.sin(2 * b) - np.sin(2 * a)) / 2 + delta * (
         (b - a) / 2 + (np.sin(4 * b) - np.sin(4 * a)) / 8
     )

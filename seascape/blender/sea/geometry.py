@@ -13,7 +13,7 @@ from seascape.blender.blend import (
 from seascape.blender.sea.pixel import _instance, _Pixel, _pixel
 from seascape.config import Scenario, Sea
 from seascape.physics.earth import earth_radius_m, horizon_m, sea_z_m
-from seascape.physics.waves import Wave, tallest
+from seascape.physics.waves import Wave, fade_axis, tallest
 
 # A judgement: the waves carrying this share of their own sea's height variance are
 # drawn as geometry, the rest as shading.
@@ -222,13 +222,6 @@ def _lanes(triple: Triple, value: Callable[[Wave], float], pad: float = 0.0) -> 
     return tuple(pad if wave is None else value(wave) for wave in triple)
 
 
-def _band_axis(wave: Wave) -> tuple[float, float]:
-    """The axis of the wave's headings, east and north, scaled by sqrt c."""
-    axis = wave.toward_rad + wave.band_offset_rad
-    focus = math.sqrt(wave.heading_concentration)
-    return focus * math.sin(axis), focus * math.cos(axis)
-
-
 def _set_triple(
     inputs: bpy.types.NodeInputs,
     triple: Triple,
@@ -240,9 +233,9 @@ def _set_triple(
     it fades adds 0."""
 
     sets = {
-        "Tx": _lanes(triple, lambda w: _band_axis(w)[0]),
-        "Ty": _lanes(triple, lambda w: _band_axis(w)[1]),
-        "Band": _lanes(triple, lambda w: (1 - w.heading_concentration) / 2),
+        "Tx": _lanes(triple, lambda w: fade_axis(w)[0]),
+        "Ty": _lanes(triple, lambda w: fade_axis(w)[1]),
+        "Band": _lanes(triple, lambda w: fade_axis(w)[2]),
         "Half K Sq": _lanes(triple, lambda w: (w.k_rad_m / 2) ** 2),
         "Damped": _lanes(triple, lambda w: float(w in damped)),
         "Kx": _lanes(triple, lambda w: w.k_east_rad_m),

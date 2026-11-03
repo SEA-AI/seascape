@@ -226,6 +226,33 @@ def _mss_spread_at(
     return math.sqrt(2 * float((turned * passed).mean()))
 
 
+def fade_axis(wave: Wave) -> tuple[float, float, float]:
+    """The shader's fade takes cos^2 of the angle between a wave and a view (e, n) as
+    (tx e + ty n)^2 + band: c cos^2 to its band's axis plus (1 - c) / 2, the mean over
+    the headings it stands for, c its heading concentration."""
+    axis = wave.toward_rad + wave.band_offset_rad
+    focus = math.sqrt(wave.heading_concentration)
+    return (
+        focus * math.sin(axis),
+        focus * math.cos(axis),
+        (1 - wave.heading_concentration) / 2,
+    )
+
+
+def faded_visibility(
+    field: tuple[Wave, ...], across_m: float, along_m: float, view_rad: float
+) -> np.ndarray:
+    """`visibility` of each wave to a pixel `along_m` by `across_m` looking toward
+    `view_rad`, at the footprint the shader's fade gives it along the wave:
+    sqrt(across^2 + (along^2 - across^2) cos^2), cos^2 from `fade_axis`."""
+    terms = np.array([fade_axis(w) for w in field]).reshape(-1, 3)
+    heading = terms[:, 0] * math.sin(view_rad) + terms[:, 1] * math.cos(view_rad)
+    cos_sq = heading**2 + terms[:, 2]
+    footprint = np.sqrt(across_m**2 + (along_m**2 - across_m**2) * cos_sq)
+    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
+    return visibility(wavelength, footprint)
+
+
 def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     """The waves a pixel of `footprint_m` draws, each scaled by its visibility."""
     shown = visibility(np.array([2 * math.pi / w.k_rad_m for w in field]), footprint_m)
