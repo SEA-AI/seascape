@@ -1328,6 +1328,31 @@ def test_a_draught_choice_may_leave_it_unset(choice: list[float | None]) -> None
     assert drawn == set(choice)
 
 
+def test_a_load_draws_each_copy_within_its_own_asset_s_range() -> None:
+    """A coaster's range and a freighter's do not overlap; one load fits both."""
+    hulls = (
+        'objects = [{ asset = { choice = ["coaster", "short_sea_freighter"] }, '
+        "range_m = 900.0, bearing_deg = 0.0, count = 8, "
+        "draught_m = { loaded = [0.0, 1.0] } }]"
+    )
+    objects = load(BASELINE, [hulls]).objects
+    assert {spec.asset for spec in objects} == {"coaster", "short_sea_freighter"}
+    for spec in objects:
+        span_m = manifest()[spec.asset].draught_range_m
+        assert span_m is not None and spec.draught_m is not None
+        assert span_m[0] <= spec.draught_m <= span_m[1]
+
+
+def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed() -> None:
+    hulls = (
+        'objects = [{ asset = { choice = ["coaster", "lateral_mark"] }, '
+        "range_m = 900.0, bearing_deg = 0.0, draught_m = { loaded = [0.0, 1.0] } }]"
+    )
+    for seed in range(3):
+        with pytest.raises(ValueError, match="no draught_range_m"):
+            load(BASELINE, [f"seed = {seed}", hulls])
+
+
 def test_a_draught_in_a_drawn_object_list_is_refused_on_every_seed() -> None:
     heavy = f"[{{ {ON_BULK}, draught_m = {{ uniform = [5.0, 11.0] }} }}]"
     loaded = f"[{{ {ON_BULK} }}]"

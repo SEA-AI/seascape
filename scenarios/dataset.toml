@@ -17,10 +17,11 @@ ir = { preset = "boson_640_32deg", hfov_deg = 42.0 }
 eo = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 49.0, width_px = 1920, height_px = 1080 }
 ir = { preset = "boson_640_32deg", hfov_deg = 49.0 }
 
-# In the inherited options' order: Blender's sky, then a photographed one. The sun
-# anywhere, glare included.
+# In the inherited options' order: Blender's sky, then the photos whose sun shows or
+# has set, then those whose sun is behind cloud. One sky in ten is Blender's, and each
+# photo is as likely. The sun anywhere, glare included.
 [sky]
-weights = [1, 9]
+weights = [32, 189, 99]
 sun_bearing_deg = { uniform = [0.0, 360.0] }
 
 [[objects]]

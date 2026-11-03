@@ -24,7 +24,14 @@ from pathlib import Path
 from typing import Any
 
 from seascape import assets
-from seascape.config.draws import DRAWS, Choice, OpticalDepth, kind, substream
+from seascape.config.draws import (
+    DRAWS,
+    Choice,
+    Loaded,
+    OpticalDepth,
+    kind,
+    substream,
+)
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
@@ -183,6 +190,7 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
                 copy
                 | {"count": 1}
                 | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
+                | _draught_m(copy, seed, f"{path}/{k}/draught_m")
             )
     return out
 
@@ -221,15 +229,18 @@ def _draughts_fit(spec: Any, i: int) -> None:
         if not isinstance(entry, dict):
             continue
         span_m = _draught_span_m(entry.get("draught_m"))
-        if span_m is None:
+        laden = _is_loaded(entry.get("draught_m"))
+        if span_m is None and not laden:
             continue
-        low_m, high_m = span_m
         for named in _outcomes(entry.get("asset")):
             asset = assets.manifest().get(named) if isinstance(named, str) else None
             if asset is None:
                 continue  # validation names the asset
             if asset.draught_range_m is None:
                 raise ValueError(f"objects[{i}]: {named} has no draught_range_m")
+            if span_m is None:
+                continue  # a load fits any range
+            low_m, high_m = span_m
             lightest_m, deepest_m = asset.draught_range_m
             if low_m < lightest_m or high_m > deepest_m:
                 raise ValueError(
@@ -251,6 +262,23 @@ def _range_m(
     if not extinction_per_m:
         raise ValueError(f"objects[{i}]: optical_depth needs sky.visibility_km")
     return {"range_m": substream(seed, path).uniform(*bounds) / extinction_per_m}
+
+
+def _is_loaded(draught: Any) -> bool:
+    return isinstance(draught, dict) and "loaded" in draught
+
+
+def _draught_m(copy: dict[str, Any], seed: int, path: str) -> dict[str, Any]:
+    """The copy's draught by load, through the range of the asset it drew."""
+    if not _is_loaded(draught := copy.get("draught_m")):
+        return {}
+    named = copy.get("asset")
+    asset = assets.manifest().get(named) if isinstance(named, str) else None
+    if asset is None or asset.draught_range_m is None:
+        return {}  # validation names the asset; `_draughts_fit` refused no range
+    lightest_m, deepest_m = asset.draught_range_m
+    fraction = substream(seed, path).uniform(*Loaded.model_validate(draught).loaded)
+    return {"draught_m": lightest_m + fraction * (deepest_m - lightest_m)}
 
 
 def load(
@@ -326,5 +354,9 @@ def json_schema() -> dict[str, Any]:
     schema["$defs"]["OpticalDepth"] = OpticalDepth.model_json_schema()
     schema["$defs"]["Object"]["properties"]["range_m"]["anyOf"].append(
         {"$ref": "#/$defs/OpticalDepth"}
+    )
+    schema["$defs"]["Loaded"] = Loaded.model_json_schema()
+    schema["$defs"]["Object"]["properties"]["draught_m"]["anyOf"].append(
+        {"$ref": "#/$defs/Loaded"}
     )
     return schema

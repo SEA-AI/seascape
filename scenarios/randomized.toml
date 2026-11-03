@@ -26,6 +26,10 @@ roll_deg = { uniform = [-4.0, 4.0] }
 pitch_deg = { uniform = [-1.5, 1.5] }
 
 # Blender's sky or a photographed one. The sun sits behind the cameras, out of frame.
+# Weighted by the photos each option holds, so each photo is as likely.
+[sky]
+weights = [32, 21, 11]
+
 [[sky.choice]]
 sun_elevation_deg = { uniform = [2.0, 60.0] }
 # solar_gain_k's steady state, a E / (h + 4 eps sigma T^3), for a from light paint's
@@ -35,41 +39,54 @@ sun_bearing_deg = { uniform = [100.0, 260.0] }
 visibility_km = { uniform = [3.1, 32.2] }
 atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
 
+# Photos whose sun shows, or has set.
 [[sky.choice]]
 hdri = { choice = [
-    "aristea_wreck",
     "belfast_sunset",
-    "citrus_orchard",
     "citrus_orchard_road",
     "drackenstein_quarry",
     "evening_road_01",
-    "farm_field",
     "hilly_terrain_01",
     "industrial_sunset",
     "industrial_sunset_02",
     "kloofendal_28d_misty",
     "kloofendal_38d_partly_cloudy",
     "kloofendal_48d_partly_cloudy",
-    "kloofendal_misty_morning",
-    "kloofendal_overcast",
-    "kloppenheim_01",
     "kloppenheim_03",
     "kloppenheim_05",
-    "kloppenheim_06",
-    "mud_road",
-    "overcast_soil",
     "quarry_04",
     "qwantani_dusk_1",
     "qwantani_dusk_2",
     "rocky_ridge",
     "scythian_tombs",
-    "snow_field",
-    "snow_field_2",
     "sunflowers",
     "table_mountain_1",
     "table_mountain_2",
     "wasteland_clouds",
 ] }
+sun_bearing_deg = { uniform = [100.0, 260.0] }
+visibility_km = { uniform = [3.1, 32.2] }
+atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
+
+# Photos whose sun is behind cloud, given one.
+[[sky.choice]]
+hdri = { choice = [
+    "aristea_wreck",
+    "citrus_orchard",
+    "farm_field",
+    "kloofendal_misty_morning",
+    "kloofendal_overcast",
+    "kloppenheim_01",
+    "kloppenheim_06",
+    "mud_road",
+    "overcast_soil",
+    "snow_field",
+    "snow_field_2",
+] }
+sun_elevation_deg = { uniform = [2.0, 60.0] }
+# Judgement: clear to near overcast, 0.17 to 0.9 (Erbs, Klein & Duffie, Solar Energy
+# 28(4) 293, 1982).
+sun_diffuse_fraction = { uniform = [0.17, 0.9] }
 sun_bearing_deg = { uniform = [100.0, 260.0] }
 visibility_km = { uniform = [3.1, 32.2] }
 atmosphere = { choice = ["north_sea", "north_sea_winter", "north_sea_summer", "tropical", "subarctic_winter"] }
