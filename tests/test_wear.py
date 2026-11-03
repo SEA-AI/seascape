@@ -6,9 +6,9 @@ from seascape.assets import Material
 from seascape.blender import blend, wear
 from seascape.blender.heat import surroundings, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects
-from seascape.blender.vessels import Hulls, _vessel, _worn
-from seascape.config import load, substream
-from seascape.physics import thermal
+from seascape.blender.vessels import Condition, Hulls, _vessel, add_vessels
+from seascape.config import load
+from seascape.physics import earth, thermal
 from seascape.physics.thermal import ZONE_NAMES
 from tests.scenarios import BASELINE
 
@@ -142,22 +142,16 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
 
 def _zodiacs(hulls: Hulls, wears: tuple[float, ...]) -> list[bpy.types.Object]:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    anchors = [
+    return [
         _vessel(
             "zodiac",
-            t_k=None,
-            engine_off_min=0.0,
-            paint_absorptance=None,
+            condition=Condition(wear=amount),
             sky=load(BASELINE).sky,
             heat=None,
             hulls=hulls,
         )
-        for _ in wears
+        for amount in wears
     ]
-    # Worn once all are built, so no copy is made of a marked hull.
-    for anchor, amount in zip(anchors, wears, strict=True):
-        _worn([anchor], amount, substream(0, "wear/zodiacs"))
-    return anchors
 
 
 def _meshes(anchor: bpy.types.Object) -> list[bpy.types.Object]:
@@ -207,11 +201,19 @@ def test_a_worn_asset_lays_dirt_over_every_principled_material() -> None:
 
 
 def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> None:
+    """Built in the scenario's order: an unworn copy after worn ones starts clean."""
+    worn = (
+        '{ asset = "zodiac", range_m = 100.0, bearing_deg = 0.0, wear = 0.7, '
+        "count = 2 }"
+    )
+    clean = '{ asset = "zodiac", range_m = 200.0, bearing_deg = 0.0 }'
+    scenario = load(BASELINE, [f"objects = [{worn}, {clean}]"])
+    radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
+
     def parts() -> list[bpy.types.Object]:
-        anchors = _zodiacs(Hulls(frozenset({"zodiac"})), (0.7, 0.7, 0.0))
-        _worn(anchors[:2], 0.7, substream(3, "wear/objects/0"))
-        _worn(anchors[2:], 0.0, substream(3, "wear/objects/1"))
-        return [_meshes(a)[0] for a in anchors]
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        vessels, _ = add_vessels(scenario, radius_m, None, Hulls(scenario.worn), [])
+        return [_meshes(a)[0] for a in vessels["zodiac"]]
 
     first = parts()
     offsets = [p["wear_offset"] for p in first[:2]]
