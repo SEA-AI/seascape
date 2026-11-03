@@ -30,10 +30,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
-from seascape.assets import SHA256
-from seascape.model import Model
+from seascape.assets import File
 from seascape.physics import colour, lwir
 
 LIBRARY = Path(__file__).parent / "skies.toml"
@@ -80,15 +79,11 @@ BESIDE_DEG = 3.0
 CELLS_PER_SIGMA = 4
 
 
-class Photo(Model):
+class Photo(File):
     """One sky, and its sun as the image holds it: a bearing clockwise from +Y as
     Cycles maps the image unrotated, and an elevation and the disc's `Sun.floor` only
     where a disc shows."""
 
-    model_config = ConfigDict(frozen=True)
-
-    url: str
-    sha256: str = Field(pattern=SHA256)
     sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
     sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
     sun_floor: float | None = Field(default=None, gt=0.0)

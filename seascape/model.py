@@ -8,3 +8,9 @@ class Model(BaseModel):
     # inf_nan: tomllib parses `nan` and `inf`; a nan bearing renders a camera pointing
     # nowhere and reports no error.
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+
+class FrozenModel(Model):
+    """A `Model` that is hashable and cannot change once parsed."""
+
+    model_config = ConfigDict(frozen=True)

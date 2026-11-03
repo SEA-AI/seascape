@@ -14,9 +14,9 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Annotated, ClassVar, Literal
 
-from pydantic import ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import Field, TypeAdapter, field_validator, model_validator
 
-from seascape.model import Model
+from seascape.model import FrozenModel
 from seascape.physics.thermal import ZoneName
 
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
@@ -29,10 +29,9 @@ SHA256 = r"^[0-9a-f]{64}$"
 ISLAND_ID = r"^(0|[1-9][0-9]*)$"
 
 
-class File(Model):
-    """A file a mesh reads beside itself, such as a glTF's buffer or a texture."""
-
-    model_config = ConfigDict(frozen=True)
+class File(FrozenModel):
+    """A file fetched from `url` and checked against `sha256`: one a mesh reads beside
+    itself, such as a glTF's buffer or a texture, or a sky photo."""
 
     url: str
     sha256: str = Field(pattern=SHA256)
@@ -41,12 +40,10 @@ class File(Model):
 Range = Annotated[tuple[float, float], Field(description="Lowest and highest, 0-1.")]
 
 
-class Rule(Model):
+class Rule(FrozenModel):
     """A zone for the islands of one material whose means of its Principled BSDF
     inputs all fall in the given ranges. Scoped to a material, since a map one slot
     gets right another may not."""
-
-    model_config = ConfigDict(frozen=True)
 
     material: str
     zone: ZoneName
@@ -68,7 +65,7 @@ class Rule(Model):
         return {k: v for k in channels if (v := getattr(self, k)) is not None}
 
 
-class Zones(Model):
+class Zones(FrozenModel):
     """Each material's zone, and the islands that differ from their material's: those
     listed, then those the first matching rule names.
 
@@ -76,8 +73,6 @@ class Zones(Model):
     a UV where the material is textured, numbered by object name, then first face, as
     `zones.parts` imports them.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     materials: dict[str, ZoneName] = Field(min_length=1)
     # The import's island count and `Parts.island_digest`: an importer that adds,
@@ -117,9 +112,7 @@ class Zones(Model):
 Material = Literal["steel", "grp", "rubber", "wood", "polyethylene"]
 
 
-class _Mesh(Model):
-    model_config = ConfigDict(frozen=True)
-
+class _Mesh(FrozenModel):
     kind: str
     supercategory: ClassVar[str]
 
@@ -245,10 +238,8 @@ class Debris(_Mesh):
         return f"{self.length_m:.3g} m long"
 
 
-class Rotor(Model):
+class Rotor(FrozenModel):
     """A turbine's hub and blades, and the speed its controller turns them at."""
-
-    model_config = ConfigDict(frozen=True)
 
     # An empty at the hub whose +Y is the shaft, pointing upwind; hub and blades under
     # it. Unique across the manifest's files, so an import never renames it.
