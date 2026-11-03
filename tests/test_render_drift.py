@@ -30,6 +30,7 @@ from seascape.blender.sea.memory import _frames_folder
 from seascape.blender.sky import _sky_texture, haze
 from seascape.config import Band, Camera, Lens, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, optics, wakes, waves
+from tests.probes import probe, show_sea
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
 pytestmark = pytest.mark.render
@@ -186,11 +187,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     shown = tree.nodes.new("ShaderNodeVectorMath")
     shown.operation = "MULTIPLY_ADD"  # (v + 1) / 2, so the emission stays positive
     shown.inputs[2].default_value = (0.5, 0.5, 0.5)
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    show_sea(shown.outputs["Vector"])
     link = tree.links.new
-    link(shown.outputs["Vector"], emission.inputs["Color"])
-    link(emission.outputs["Emission"], output.inputs["Surface"])
 
     # A pixel fine enough to draw every wave, as far as its box passes it, and far
     # enough that every ray runs straight down to within a ripple's phase. Not
@@ -198,12 +196,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     height_m = 5000.0
     lens = bpy.data.cameras.new("probe")
     lens.angle_x, lens.clip_end = span_m / height_m, 2 * height_m
-    camera = bpy.data.objects.new("probe", lens)
+    probe(lens, at=(0.0, 0.0, height_m))
     sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, height_m)
-    sc.camera = camera
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01  # the pixel centre, as the numpy grid
     # The build's finest edge; a pixel this fine would dice to it anyway.
     water = bpy.data.objects["sea"]
@@ -262,23 +256,13 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     tree = bpy.data.materials["sea"].node_tree
     texture = tree.nodes[f"sea_foam_{grid.cell_m:g}m"]
     texture.interpolation = "Closest"
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
-    tree.links.new(
-        tree.nodes["whitecap_bubbles"].outputs["Value"], emission.inputs["Color"]
-    )
+    show_sea(tree.nodes["whitecap_bubbles"].outputs["Value"])
     # Flat: a pixel straight down then sees the water at rest under it.
-    tree.links.remove(output.inputs["Displacement"].links[0])
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    tree.links.remove(tree.nodes["Material Output"].inputs["Displacement"].links[0])
     px = 32
     row, column = grid.rows // 2, grid.columns // 2
-    camera = bpy.data.objects.new(
-        "probe", overhead(px * grid.cell_m, eo_pixel_rad(clip), px)
-    )
+    camera = probe(overhead(px * grid.cell_m, eo_pixel_rad(clip), px))
     sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    sc.camera = camera
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01  # the pixel centre, a cell's centre
     sc.view_settings.view_transform = "Standard"
     drift = sea.surface_drift(clip.sea, clip.outputs)
@@ -306,12 +290,7 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     height_m, span_m, px = 1500.0, 600.0, 32
     scene.build(_clear(variant(sky={"sun_elevation_deg": 90.0})), "eo")
     tree = bpy.data.materials["sea"].node_tree
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
-    tree.links.new(
-        tree.nodes["sea_roughness"].outputs["Value"], emission.inputs["Color"]
-    )
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    show_sea(tree.nodes["sea_roughness"].outputs["Value"])
     # Straight down, an orthographic ray has no horizontal to turn against the wind:
     # held at 45 degrees, where the wind's axes mix evenly.
     facing = tree.nodes["sea_wind_facing"]
@@ -322,13 +301,8 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     pixel_rad = eo_pixel_rad(SCENARIO)
     lens = overhead(span_m, pixel_rad, px)
     lens.clip_end = 2 * height_m  # the default far plane stops short of the sea
-    camera = bpy.data.objects.new("probe", lens)
+    probe(lens, at=(0.0, 0.0, height_m))
     sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, height_m)
-    camera.rotation_euler = (0.0, 0.0, 0.0)
-    sc.camera = camera
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01
     sc.view_settings.view_transform = "Standard"
     rendered = shoot((px, px), "roughness_probe")
@@ -405,8 +379,6 @@ def _met(
     tree.links.new(km.outputs["Value"], hit.inputs["X"])
     tree.links.new(facing.outputs["Value"], hit.inputs["Y"])
     tree.links.new(hit.outputs["Vector"], emission.inputs["Color"])
-    for link in list(emission.inputs["Strength"].links):
-        tree.links.remove(link)
     return shoot_rgb(px, "hit_probe")[:, :, :2]
 
 
@@ -419,19 +391,11 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     tree = bpy.data.materials["sea"].node_tree
     tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value = 0.0
     anisotropy = tree.nodes["sea_specular"].inputs["Anisotropy"].links[0].from_socket
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
-    tree.links.new(anisotropy, emission.inputs["Strength"])
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    emission = show_sea(anisotropy)
     lens = bpy.data.cameras.new("probe")
     lens.clip_end = 1e5
-    camera = bpy.data.objects.new("probe", lens)
+    camera = probe(lens, at=(0.0, 0.0, 10.0), pitch_deg=87.0)
     sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_euler = (math.radians(87.0), 0.0, 0.0)
-    sc.camera = camera
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01
     sc.view_settings.view_transform = "Standard"
     px = (32, 24)
@@ -484,11 +448,7 @@ def _glitter_off_changes(sun_elevation_deg: float, sun_bearing_deg: float) -> fl
     sc.world.update_tag()
     lens = bpy.data.cameras.new("probe")
     lens.clip_end, lens.angle_x = 1e5, math.radians(20.0)
-    camera = bpy.data.objects.new("probe", lens)
-    sc.collection.objects.link(camera)
-    sc.camera = camera
-    camera.location = (0.0, 0.0, 15.0)
-    camera.rotation_euler = (math.radians(78.0), 0.0, 0.0)
+    probe(lens, at=(0.0, 0.0, 15.0), pitch_deg=78.0)
     glittering = shoot((96, 64), "glitter_on")
     tree = bpy.data.materials["sea"].node_tree
     for link in list(tree.nodes["glitter_tilt"].outputs["Vector"].links):
@@ -622,11 +582,7 @@ def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float
         mixed.default_value = 0.0
     lens = bpy.data.cameras.new("probe")
     lens.clip_end, lens.angle_x = 1e5, math.radians(PROBE_FOV_DEG)
-    camera = bpy.data.objects.new("probe", lens)
-    sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    sc.camera = camera
-    camera.rotation_euler = (math.radians(90.0 - depression_deg), 0.0, 0.0)
+    camera = probe(lens, pitch_deg=90.0 - depression_deg)
     frames = []
     for i in range(32):
         camera.location = (97.0 * i, 59.0 * i, PROBE_HEIGHT_M)
@@ -657,19 +613,10 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     )
     scene.build(windy, "eo")
     tree = bpy.data.materials["sea"].node_tree
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = tree.nodes["Material Output"]
-    tree.links.new(tree.nodes["whitecaps"].outputs["Value"], emission.inputs["Color"])
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    show_sea(tree.nodes["whitecaps"].outputs["Value"])
     px = 400
-    lens = overhead(1500.0, eo_pixel_rad(windy), px)
-    camera = bpy.data.objects.new("probe", lens)
+    probe(overhead(1500.0, eo_pixel_rad(windy), px), at=(0.0, 0.0, 10.0))
     sc = bpy.context.scene
-    sc.collection.objects.link(camera)
-    camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_euler = (0.0, 0.0, 0.0)
-    sc.camera = camera
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01
     sc.view_settings.view_transform = "Standard"
     covered = float(np.mean(shoot((px, px), "whitecap_probe")))
@@ -685,22 +632,14 @@ def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     )
     scene.build(windy, "eo")
     tree = bpy.data.materials["sea"].node_tree
-    emission = tree.nodes.new("ShaderNodeEmission")
-    output = tree.nodes["Material Output"]
-    tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
     sc = bpy.context.scene
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01
     sc.view_settings.view_transform = "Standard"
     height_m, span_m, px = 10.0, 40.0, 64
 
     def read(footprint_m: float, name: str) -> np.ndarray:
-        lens = overhead(span_m, footprint_m / height_m, px)
-        camera = bpy.data.objects.new("probe", lens)
-        sc.collection.objects.link(camera)
-        camera.location = (0.0, 0.0, height_m)
-        sc.camera = camera
-        tree.links.new(tree.nodes[name].outputs["Value"], emission.inputs["Color"])
+        probe(overhead(span_m, footprint_m / height_m, px), at=(0.0, 0.0, height_m))
+        show_sea(tree.nodes[name].outputs["Value"])
         return shoot((px, px), f"{name}_{footprint_m:g}")
 
     def grey(footprint_m: float) -> np.ndarray:
@@ -771,13 +710,13 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     lens.angle, lens.clip_end = math.radians(0.2), 2 * far_m
     # A rig's near plane, which the haze ignores.
     lens.clip_start = hazy.rigs["bow"].near_clip_m
-    camera = bpy.data.objects.new("probe", lens)
-    sc.collection.objects.link(camera)
     elevation = math.radians(0.2)  # under the haze's top at every range
-    camera.location = (0.0, 0.0, hazy.rigs["bow"].height_m)
-    camera.rotation_euler = (math.pi / 2 + elevation, 0.0, 0.0)  # towards +Y
-    sc.camera = camera
-    sc.cycles.samples = 16
+    probe(  # towards +Y
+        lens,
+        at=(0.0, 0.0, hazy.rigs["bow"].height_m),
+        pitch_deg=90.0 + math.degrees(elevation),
+        samples=16,
+    )
     sky = shoot((16, 16), "haze_sky")
 
     black = _hazed_black()
@@ -870,13 +809,8 @@ class TestCamera:
         background = tree.nodes["Background"]
         tree.links.new(sky, background.inputs["Color"])
         background.inputs["Strength"].default_value = 1.0
-        camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
-        sc.collection.objects.link(camera)
-        camera.location = (0.0, 0.0, 10.0)
         # Straight up; +X is the frame's right.
-        camera.rotation_euler = (math.pi, 0.0, 0.0)
-        sc.camera = camera
-        sc.cycles.samples = 16
+        probe(at=(0.0, 0.0, 10.0), pitch_deg=180.0, samples=16)
         # The build put the camera in the compositor; an exr takes its output
         # undisplayed.
         return shoot(size, "camera")
@@ -964,13 +898,7 @@ class TestSensor:
         scene.build(
             graded.model_copy(update={"outputs": png, "sky": SCENARIO.sky}), "eo"
         )
-        sc = bpy.context.scene
-        camera = bpy.data.objects.new("probe", bpy.data.cameras.new("probe"))
-        sc.collection.objects.link(camera)
-        camera.location = (0.0, 0.0, 10.0)
-        camera.rotation_euler = (math.pi, 0.0, 0.0)
-        sc.camera = camera
-        sc.cycles.samples = 4
+        probe(at=(0.0, 0.0, 10.0), pitch_deg=180.0, samples=4)
 
     def through(
         self,
@@ -1532,7 +1460,6 @@ def _horizon(aerosol_density: float) -> np.ndarray:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
-    sc.cycles.samples = 1
     sc.cycles.filter_width = 0.01
     sc.world = bpy.data.worlds.new("sky")
     tree = sc.world.node_tree
@@ -1541,10 +1468,7 @@ def _horizon(aerosol_density: float) -> np.ndarray:
     tree.links.new(texture.outputs["Color"], tree.nodes["Background"].inputs["Color"])
     lens = bpy.data.cameras.new("probe")
     lens.angle = math.radians(0.05)
-    camera = bpy.data.objects.new("probe", lens)
-    sc.collection.objects.link(camera)
-    camera.rotation_euler = (math.pi / 2, 0.0, 0.0)  # level, towards +Y
-    sc.camera = camera
+    probe(lens, pitch_deg=90.0)  # level, towards +Y
     return shoot_rgb((5, 5), "horizon")[2, 2]
 
 

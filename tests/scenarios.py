@@ -4,10 +4,14 @@ Tests say what they change; how a scenario spells it lives here. Loader and CLI 
 write TOML, since the spelling is what they test.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import cv2
+import numpy as np
+import pytest
 from pydantic import BaseModel
 
 from seascape.config import Camera, Object, Scenario, load
@@ -17,6 +21,19 @@ BASELINE = SCENARIOS / "baseline.toml"
 OPEN_SEA = SCENARIOS / "open-sea.toml"
 DRIFTING = SCENARIOS / "drifting.toml"
 UNDERWAY = SCENARIOS / "underway.toml"
+
+
+@contextmanager
+def white_photo(
+    folder: Path, width: int = 64, height: int = 32
+) -> Generator[pytest.MonkeyPatch]:
+    """A white photo, written to `folder`, in place of every sky download. Yields the
+    patch, for a test's own."""
+    photo = folder / "white.hdr"
+    cv2.imwrite(str(photo), np.ones((height, width, 3), np.float32))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("seascape.blender.sky.download", lambda *_: photo)
+        yield patch
 
 
 def target(

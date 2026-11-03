@@ -11,6 +11,8 @@ from seascape.blender import faces
 from seascape.blender.meshes import _load, measured
 from seascape.physics.thermal import ZONE_NAMES
 
+pytestmark = pytest.mark.usefixtures("empty_blend")
+
 
 def test_every_asset_has_zones_from_the_vocabulary() -> None:
     vocabulary = set(ZONE_NAMES)
@@ -67,7 +69,6 @@ def test_an_island_id_reads_from_a_toml_key() -> None:
 def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
     """Two quads sharing an edge through duplicated vertices are one island; a third
     of another material on the same edge is its own, and so is a loose one."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     vertices = [
         (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),  # quad a
         (1, 0, 0), (2, 0, 0), (2, 1, 0), (1, 1, 0),  # quad b, its own copy of the edge
@@ -86,7 +87,6 @@ def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
 def _three_triangles(factor: float) -> faces.Parts:
     """Three loose triangles, the first and last over a metal texel, its metallic read
     through a Math node multiplying by `factor`, as glTF imports a metallic factor."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
     mesh = bpy.data.meshes.new("probe")
     mesh.from_pydata(
@@ -136,7 +136,6 @@ def test_a_rule_zones_the_islands_its_ranges_hold(
 
 def test_a_texture_whose_uvs_come_through_a_node_is_refused() -> None:
     """A UV Map or Mapping node moves what the shader samples; no reader follows it."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     material = bpy.data.materials.new("m")
     tree = material.node_tree
     shader = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED")
@@ -154,7 +153,6 @@ def test_a_texture_whose_uvs_come_through_a_node_is_refused() -> None:
 def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
     """The triangles and textures the manifest commits, the materials its zones name
     and the islands they number."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = manifest()[name]
     found = zones.parts(name)
     assert measured(name, found.objects) == (asset.triangles, asset.texture_px)
@@ -164,7 +162,6 @@ def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
 
 def test_a_cached_import_keeps_the_names_of_its_file(tmp_path) -> None:
     """A parse into a .blend already holding the file's names caches those names."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.mesh.primitive_plane_add()
     bpy.context.object.data.materials.append(bpy.data.materials.new("material"))
     path = tmp_path / "plane.glb"
@@ -192,7 +189,6 @@ def test_a_view_names_only_parts_and_shows_them_all() -> None:
     """The flat pass, unblended, decodes to part numbers and nothing between, past
     the 2048 where a half float stops counting whole numbers."""
     name = min(manifest(), key=lambda n: manifest()[n].triangles)
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     found = zones.parts(name)
     # Top digits 255, the largest a channel holds.
     high = 16_777_000
@@ -215,7 +211,6 @@ def test_the_worn_row_wears_only_an_asset_not_weathered(monkeypatch) -> None:
     )
     monkeypatch.setattr(zones, "VIEWS", zones.VIEWS[2:3])
     monkeypatch.setattr(zones, "TILE", (96, 72))
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     found = zones.parts(name, worn=True)
     camera = bpy.data.objects.new("zones", bpy.data.cameras.new("zones"))
     camera.data.type = "ORTHO"
@@ -238,6 +233,5 @@ def test_the_contact_sheet_leaves_a_weathered_asset_untagged(
     )
     monkeypatch.setattr(zones, "VIEWS", zones.VIEWS[2:3])
     monkeypatch.setattr(zones, "TILE", (96, 72))
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     zones.contact(name, tmp_path / "zones.png")
     assert not any("wear_position_m" in m.attributes for m in bpy.data.meshes)

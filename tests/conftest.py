@@ -39,6 +39,12 @@ def pytest_collection_modifyitems(
 
 
 @pytest.fixture
+def empty_blend() -> None:
+    """A scene with nothing in it."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+@pytest.fixture
 def skinned() -> bpy.types.Object:
     """A triangle skinned to one bone, posed 5 m above its rest at the origin."""
     rig = bpy.data.objects.new("rig", bpy.data.armatures.new("rig"))
