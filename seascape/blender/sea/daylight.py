@@ -17,12 +17,17 @@ import bpy
 
 from seascape.blender.blend import (
     SUN,
+    Num,
+    combine,
     drive,
+    mix_shader,
+    node,
     scalar,
+    separate,
     vector,
 )
 from seascape.blender.sea.foam import _Whitecaps
-from seascape.blender.sea.pixel import _Pixel
+from seascape.blender.sea.pixel import _Pixel, _redraw
 from seascape.blender.sea.wakes import _Wakes
 from seascape.config import Sea
 from seascape.physics.wakes import (
@@ -81,9 +86,8 @@ def _glinting(
                 e=f'["{SUN[0]}"]',
                 b=f'["{SUN[1]}"]',
             )
-    rising = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(toward.outputs["Vector"], rising.inputs["Vector"])
-    risen = scalar(tree, "GREATER_THAN", rising.outputs["Z"], 0.0, name="glint_risen")
+    _, _, up = separate(tree, toward.outputs["Vector"])
+    risen = scalar(tree, "GREATER_THAN", up, 0.0, name="glint_risen")
     # Incoming points at the camera: the mirroring facet faces the half-way vector.
     mirror = vector(
         tree,
@@ -91,23 +95,20 @@ def _glinting(
         vector(tree, "ADD", geometry.outputs["Incoming"], toward.outputs["Vector"]),
     )
     # 2 (1 - cos d) = d^2 - d^4 / 12.
-    off_sq = scalar(
+    off_sq = (1.0 - Num(tree, vector(tree, "DOT_PRODUCT", normal, mirror))) * 2.0
+    fade = node(
         tree,
-        "MULTIPLY",
-        scalar(tree, "SUBTRACT", 1.0, vector(tree, "DOT_PRODUCT", normal, mirror)),
-        2.0,
+        "ShaderNodeMapRange",
+        {
+            "Value": (off_sq / Num(tree, variance).op("MAXIMUM", 1e-12)).socket,
+            "From Min": GLINT_REACH[0],
+            "From Max": GLINT_REACH[1],
+            "To Min": 1.0,
+            "To Max": 0.0,
+        },
+        name="glint_reach",
+        interpolation_type="SMOOTHSTEP",
     )
-    fade = tree.nodes.new("ShaderNodeMapRange")
-    fade.name = "glint_reach"
-    fade.interpolation_type = "SMOOTHSTEP"
-    tree.links.new(
-        scalar(tree, "DIVIDE", off_sq, scalar(tree, "MAXIMUM", variance, 1e-12)),
-        fade.inputs["Value"],
-    )
-    fade.inputs["From Min"].default_value, fade.inputs["From Max"].default_value = (
-        GLINT_REACH
-    )
-    fade.inputs["To Min"].default_value, fade.inputs["To Max"].default_value = 1.0, 0.0
     return scalar(tree, "MULTIPLY", fade.outputs["Result"], risen)
 
 
@@ -131,79 +132,42 @@ def _glitter(
     grids by the local wind if glints should thin in the lulls.
     """
     cell_m2 = specular_cell_m2(wind)
-    link = tree.links.new
-    cells = scalar(
-        tree,
-        "DIVIDE",
-        scalar(tree, "MULTIPLY", pixel.along_m, pixel.across_m),
-        cell_m2,
-    )
-    widen = scalar(tree, "MULTIPLY_ADD", cells, 0.0, -1.0)
+    cells = Num(tree, pixel.along_m) * pixel.across_m / cell_m2
+    widen = cells.madd(0.0, -1.0)
     drive(
-        widen.node.inputs[1],
+        widen.socket.node.inputs[1],
         "default_value",
         "1 / samples",
         bpy.context.scene,
         samples="cycles.samples",
     )
-    lobe = scalar(
-        tree, "MULTIPLY", scalar(tree, "MAXIMUM", widen, 0.0), SUN_SLOPE_RADIUS**2
-    )
-    carried = scalar(
+    lobe = widen.op("MAXIMUM", 0.0) * SUN_SLOPE_RADIUS**2
+    carried = (Num(tree, unresolved) - lobe).op("MAXIMUM", 0.0) * glinting
+    carried.socket.node.name = "glitter_variance"
+    east, north, time_s = separate(tree, where)
+    scaled = vector(
         tree,
-        "MULTIPLY",
-        scalar(tree, "MAXIMUM", scalar(tree, "SUBTRACT", unresolved, lobe), 0.0),
-        glinting,
-        name="glitter_variance",
+        "SCALE",
+        combine(tree, east, north),
+        1 / math.sqrt(cell_m2),
+        name="glitter_cells",
     )
-    split = tree.nodes.new("ShaderNodeSeparateXYZ")
-    link(where, split.inputs["Vector"])
-    time_s = split.outputs["Z"]
-    flat = tree.nodes.new("ShaderNodeCombineXYZ")
-    link(split.outputs["X"], flat.inputs["X"])
-    link(split.outputs["Y"], flat.inputs["Y"])
-    scaled = vector(tree, "SCALE", flat.outputs["Vector"], name="glitter_cells")
-    scaled.node.inputs["Scale"].default_value = 1 / math.sqrt(cell_m2)
-    cell = vector(tree, "FLOOR", scaled)
     # Each cell twinkles at its own phase, or the whole sea would flip at once.
-    offset = tree.nodes.new("ShaderNodeTexWhiteNoise")
-    offset.noise_dimensions = "3D"
-    link(cell, offset.inputs["Vector"])
-    draw = scalar(
-        tree,
-        "FLOOR",
-        scalar(tree, "MULTIPLY_ADD", time_s, twinkle_hz(wind), offset.outputs["Value"]),
-        name="glitter_draw",
+    log_u, angle_u = _redraw(
+        tree, vector(tree, "FLOOR", scaled), time_s, twinkle_hz(wind), "glitter_draw"
     )
-    noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
-    noise.noise_dimensions = "4D"
-    link(cell, noise.inputs["Vector"])
-    link(draw, noise.inputs["W"])
-    uniform = tree.nodes.new("ShaderNodeSeparateXYZ")
-    link(noise.outputs["Color"], uniform.inputs["Vector"])
     # Box-Muller: a radius from one uniform, an angle from the other.
-    log_u = scalar(
+    sigma = (carried * 0.5).op("SQRT")
+    radius = (log_u * -2.0).op("SQRT") * sigma
+    angle = angle_u * (2 * math.pi)
+    tilt = node(
         tree,
-        "LOGARITHM",
-        scalar(tree, "MAXIMUM", uniform.outputs["X"], 1e-7),
-        math.e,
+        "ShaderNodeVectorRotate",
+        {"Vector": combine(tree, radius.socket), "Angle": angle.socket},
+        rotation_type="Z_AXIS",
+        name="glitter_tilt",
     )
-    sigma = scalar(tree, "SQRT", scalar(tree, "MULTIPLY", carried, 0.5))
-    radius = scalar(
-        tree,
-        "MULTIPLY",
-        scalar(tree, "SQRT", scalar(tree, "MULTIPLY", log_u, -2.0)),
-        sigma,
-    )
-    angle = scalar(tree, "MULTIPLY", uniform.outputs["Y"], 2 * math.pi)
-    east = tree.nodes.new("ShaderNodeCombineXYZ")
-    link(radius, east.inputs["X"])
-    tilt = tree.nodes.new("ShaderNodeVectorRotate")
-    tilt.rotation_type = "Z_AXIS"
-    tilt.name = "glitter_tilt"
-    link(east.outputs["Vector"], tilt.inputs["Vector"])
-    link(angle, tilt.inputs["Angle"])
-    return tilt.outputs["Vector"], carried
+    return tilt.outputs["Vector"], carried.socket
 
 
 def _lobe(
@@ -215,22 +179,13 @@ def _lobe(
     the two footprints, `along` the lobe's tangent. Per axis alpha = sqrt(2)
     sigma_axis = sqrt(variance); Blender's roughness is their geometric mean's square
     root."""
-    along = scalar(tree, "MAXIMUM", along, 1e-12)
-    across = scalar(tree, "MAXIMUM", across, 1e-12)
-    product = scalar(tree, "MULTIPLY", along, across)
-    roughness = scalar(
-        tree,
-        "MINIMUM",
-        scalar(tree, "POWER", product, 0.125),
-        1.0,
-        name="sea_roughness",
-    )
-    aspect = scalar(tree, "SQRT", scalar(tree, "DIVIDE", across, along))
+    along, across = (Num(tree, s).op("MAXIMUM", 1e-12) for s in (along, across))
+    roughness = (along * across).op("POWER", 0.125).op("MINIMUM", 1.0)
+    roughness.socket.node.name = "sea_roughness"
+    aspect = (across / along).op("SQRT")
     # Cycles' alpha_y / alpha_x = 1 - 0.9 a (kernel/svm/closure.h), so
     # a = (1 - aspect) / 0.9.
-    return roughness, scalar(
-        tree, "MULTIPLY", scalar(tree, "SUBTRACT", 1.0, aspect), 1 / 0.9
-    )
+    return roughness.socket, ((1.0 - aspect) * (1 / 0.9)).socket
 
 
 def _stretchable(
@@ -258,66 +213,72 @@ def _daylight(
     """
     roughness, anisotropy = _lobe(tree, *unresolved)
     link = tree.links.new
-    mirror = tree.nodes.new("ShaderNodeBsdfMetallic")
-    mirror.name = "sea_specular"
-    mirror.distribution = "BECKMANN"
-    mirror.fresnel_type = "PHYSICAL_CONDUCTOR"
-    mirror.inputs["IOR"].default_value = (SEAWATER_IOR,) * 3
-    mirror.inputs["Extinction"].default_value = (0.0, 0.0, 0.0)
-    link(normal, mirror.inputs["Normal"])
-    link(tangent, mirror.inputs["Tangent"])
-    link(roughness, mirror.inputs["Roughness"])
-    link(anisotropy, mirror.inputs["Anisotropy"])
-    fresnel = tree.nodes.new("ShaderNodeFresnel")
-    fresnel.inputs["IOR"].default_value = SEAWATER_IOR
-    link(normal, fresnel.inputs["Normal"])
-    through = scalar(tree, "SUBTRACT", 1.0, fresnel.outputs["Fac"])
+    mirror = node(
+        tree,
+        "ShaderNodeBsdfMetallic",
+        {
+            "IOR": (SEAWATER_IOR,) * 3,
+            "Extinction": (0.0, 0.0, 0.0),
+            "Normal": normal,
+            "Tangent": tangent,
+            "Roughness": roughness,
+            "Anisotropy": anisotropy,
+        },
+        name="sea_specular",
+        distribution="BECKMANN",
+        fresnel_type="PHYSICAL_CONDUCTOR",
+    )
+    fresnel = node(tree, "ShaderNodeFresnel", {"IOR": SEAWATER_IOR, "Normal": normal})
+    through = 1.0 - Num(tree, fresnel.outputs["Fac"])
     # A whitecap's bubbles brighten the water under all its foam, as a wake's do.
-    bubbles = scalar(tree, "MULTIPLY", whitecaps.bubbles, BUBBLE_GAIN)
+    bubbles = Num(tree, whitecaps.bubbles) * BUBBLE_GAIN
     if wake is not None:
-        bubbles = scalar(tree, "MAXIMUM", bubbles, wake.bubbles)
-    through = scalar(tree, "MULTIPLY", through, scalar(tree, "ADD", bubbles, 1.0))
-    body = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    link(normal, body.inputs["Normal"])
+        bubbles = bubbles.op("MAXIMUM", wake.bubbles)
+    through = through * (bubbles + 1.0)
     # Dimmed by Fresnel's 1 - F toward the viewer only.
     color = body_color(sea.chlorophyll_mg_m3, SEAWATER_IOR)
-    link(
-        vector(tree, "SCALE", color, through, name="sea_body_color"),
-        body.inputs["Color"],
+    body = node(
+        tree,
+        "ShaderNodeBsdfDiffuse",
+        {
+            "Normal": normal,
+            "Color": vector(
+                tree, "SCALE", color, through.socket, name="sea_body_color"
+            ),
+        },
     )
     water = tree.nodes.new("ShaderNodeAddShader")
     link(mirror.outputs["BSDF"], water.inputs[0])
     link(body.outputs["BSDF"], water.inputs[1])
-    foam = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    link(normal, foam.inputs["Normal"])
-    foam.inputs["Color"].default_value = (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)
+    foam = node(
+        tree,
+        "ShaderNodeBsdfDiffuse",
+        {"Normal": normal, "Color": (*(FRESH_FOAM_REFLECTANCE,) * 3, 1.0)},
+    )
     if whitecaps.albedo is not None:
         link(whitecaps.albedo, foam.inputs["Color"])
         # Foam is lumpy: its own normal, bumped by its density over the water's.
-        bump = tree.nodes.new("ShaderNodeBump")
-        bump.inputs["Strength"].default_value = FOAM_BUMP_STRENGTH
-        bump.inputs["Distance"].default_value = FOAM_BUMP_M
-        link(whitecaps.albedo, bump.inputs["Height"])
-        link(normal, bump.inputs["Normal"])
+        bump = node(
+            tree,
+            "ShaderNodeBump",
+            {
+                "Strength": FOAM_BUMP_STRENGTH,
+                "Distance": FOAM_BUMP_M,
+                "Height": whitecaps.albedo,
+                "Normal": normal,
+            },
+        )
         link(bump.outputs["Normal"], foam.inputs["Normal"])
-    mix = tree.nodes.new("ShaderNodeMixShader")
     cover = whitecaps.foam
     if wake is not None:
         # Wake and whitecap foam are one Diffuse, mixed at 1 - (1 - a)(1 - b): a second
         # Diffuse and Mix overflow Cycles' SVM stack. Mix clamps its factor to 1, the
         # product does not, so `cover` is clamped here.
-        unfoamed = scalar(
-            tree,
-            "MULTIPLY",
-            scalar(tree, "SUBTRACT", 1.0, scalar(tree, "MINIMUM", cover, 1.0)),
-            scalar(tree, "SUBTRACT", 1.0, wake.foam),
+        unfoamed = (1.0 - Num(tree, cover).op("MINIMUM", 1.0)) * (
+            1.0 - Num(tree, wake.foam)
         )
-        cover = scalar(tree, "SUBTRACT", 1.0, unfoamed)
-    link(cover, mix.inputs["Factor"])
-    # Mix Shader names both shader inputs "Shader", so they can only be indexed.
-    link(water.outputs["Shader"], mix.inputs[1])
-    link(foam.outputs["BSDF"], mix.inputs[2])
-    return mix.outputs["Shader"]
+        cover = (1.0 - unfoamed).socket
+    return mix_shader(tree, cover, water.outputs["Shader"], foam.outputs["BSDF"])
 
 
 def _widest(
@@ -330,14 +291,16 @@ def _widest(
     the footprints make it the view's; a steep view down a crosswind-heavy sea turns
     it."""
     across_dir = vector(tree, "CROSS_PRODUCT", pixel.along_dir, (0.0, 0.0, 1.0))
-    tangent = tree.nodes.new("ShaderNodeMix")
-    tangent.data_type = "VECTOR"
-    tree.links.new(
-        scalar(tree, "GREATER_THAN", unresolved[1], unresolved[0]),
-        tangent.inputs["Factor"],
+    tangent = node(
+        tree,
+        "ShaderNodeMix",
+        {
+            "Factor": scalar(tree, "GREATER_THAN", unresolved[1], unresolved[0]),
+            "A": pixel.along_dir,
+            "B": across_dir,
+        },
+        data_type="VECTOR",
     )
-    tree.links.new(pixel.along_dir, tangent.inputs["A"])
-    tree.links.new(across_dir, tangent.inputs["B"])
     return (
         scalar(tree, "MAXIMUM", *unresolved, name="sea_unresolved_wide"),
         scalar(tree, "MINIMUM", *unresolved, name="sea_unresolved_narrow"),

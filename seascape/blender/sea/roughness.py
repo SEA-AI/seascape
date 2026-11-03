@@ -6,10 +6,18 @@ from collections.abc import Callable
 import bpy
 
 from seascape.blender.blend import (
+    Num,
+    combine,
     scalar,
+    separate,
     vector,
 )
-from seascape.blender.sea.pixel import _at_footprint, _footprint_table, _Pixel
+from seascape.blender.sea.pixel import (
+    _at_footprint,
+    _footprint_table,
+    _Pixel,
+    _redraw,
+)
 from seascape.blender.sea.wind import _gusty
 from seascape.config import Sea
 from seascape.physics.earth import GRAVITY_MS2
@@ -42,144 +50,53 @@ def _grouped(
     """
     if sea.wind_speed_mps <= 0.0:
         return unresolved
-    link = tree.links.new
-    footprint = scalar(
-        tree, "SQRT", scalar(tree, "MULTIPLY", pixel.along_m, pixel.across_m)
-    )
+    along_m, across_m = Num(tree, pixel.along_m), Num(tree, pixel.across_m)
+    footprint = (along_m * across_m).op("SQRT")
     # Judgement: square cells, a power of two across, one to two to the footprint's
     # geometric mean, so few fall in a pixel and their spread stays narrow.
-    level = scalar(tree, "FLOOR", scalar(tree, "LOGARITHM", footprint, 2.0))
-    cell_m = scalar(tree, "POWER", 2.0, level, name="sea_group_cell")
+    level = footprint.op("LOGARITHM", 2.0).op("FLOOR")
+    cell_m = level.rop("POWER", 2.0)
+    cell_m.socket.node.name = "sea_group_cell"
     spread = _at_footprint(
         tree,
         _footprint_table(
             "sea_mss_spread",
             lambda f: mss_spread(sea.wind_speed_mps, sea.fetch_m, f),
         ),
-        footprint,
+        footprint.socket,
         "sea_mss_spread",
     )
-    kept = scalar(
+    kept = _box_kept(along_m / cell_m) * _box_kept(across_m / cell_m)
+    per_cell = Num(tree, spread) / kept.op("SQRT")
+    sigma_sq = per_cell.madd(per_cell, 1.0).op("LOGARITHM", math.e)
+    east, north, time_s = separate(tree, where)
+    cell = combine(
         tree,
-        "MULTIPLY",
-        _box_kept(tree, scalar(tree, "DIVIDE", pixel.along_m, cell_m)),
-        _box_kept(tree, scalar(tree, "DIVIDE", pixel.across_m, cell_m)),
+        *((Num(tree, axis) / cell_m).op("FLOOR").socket for axis in (east, north)),
+        level.socket,
     )
-    per_cell = scalar(tree, "DIVIDE", spread, scalar(tree, "SQRT", kept))
-    sigma_sq = scalar(
-        tree,
-        "LOGARITHM",
-        scalar(tree, "MULTIPLY_ADD", per_cell, per_cell, 1.0),
-        math.e,
-    )
-    split = tree.nodes.new("ShaderNodeSeparateXYZ")
-    link(where, split.inputs["Vector"])
-    cell = tree.nodes.new("ShaderNodeCombineXYZ")
-    for axis in "XY":
-        link(
-            scalar(tree, "FLOOR", scalar(tree, "DIVIDE", split.outputs[axis], cell_m)),
-            cell.inputs[axis],
-        )
-    link(level, cell.inputs["Z"])
-    offset = tree.nodes.new("ShaderNodeTexWhiteNoise")
-    offset.noise_dimensions = "3D"
-    link(cell.outputs["Vector"], offset.inputs["Vector"])
     # A cell L across leaves the waves up to L long, `waves.visibility`'s zero. Deep
     # water's group velocity is half sqrt(g lambda / 2 pi), so a group of them crosses
     # it at sqrt(g / (8 pi L)) per second. Read off the cell, every sample in it agrees.
-    rate = scalar(
-        tree,
-        "SQRT",
-        scalar(
-            tree,
-            "DIVIDE",
-            GRAVITY_MS2 / (8 * math.pi),
-            cell_m,
-        ),
-    )
-    draw = scalar(
-        tree,
-        "FLOOR",
-        scalar(
-            tree,
-            "MULTIPLY_ADD",
-            split.outputs["Z"],
-            rate,
-            offset.outputs["Value"],
-        ),
-        name="sea_group_draw",
-    )
-    noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
-    noise.noise_dimensions = "4D"
-    link(cell.outputs["Vector"], noise.inputs["Vector"])
-    link(draw, noise.inputs["W"])
-    uniform = tree.nodes.new("ShaderNodeSeparateXYZ")
-    link(noise.outputs["Color"], uniform.inputs["Vector"])
+    rate = (GRAVITY_MS2 / (8 * math.pi) / cell_m).op("SQRT")
+    log_u, angle_u = _redraw(tree, cell, time_s, rate.socket, "sea_group_draw")
     # Box-Muller.
-    normal = scalar(
-        tree,
-        "MULTIPLY",
-        scalar(
-            tree,
-            "SQRT",
-            scalar(
-                tree,
-                "MULTIPLY",
-                scalar(
-                    tree,
-                    "LOGARITHM",
-                    scalar(tree, "MAXIMUM", uniform.outputs["X"], 1e-7),
-                    math.e,
-                ),
-                -2.0,
-            ),
-        ),
-        scalar(
-            tree,
-            "COSINE",
-            scalar(tree, "MULTIPLY", uniform.outputs["Y"], 2 * math.pi),
-        ),
-    )
+    normal = (log_u * -2.0).op("SQRT") * (angle_u * (2 * math.pi)).op("COSINE")
     # Judgement: a lognormal, so the scale stays positive. exp(sigma z - sigma^2 / 2)
     # has mean 1.
-    scale = scalar(
-        tree,
-        "EXPONENT",
-        scalar(
-            tree,
-            "MULTIPLY_ADD",
-            normal,
-            scalar(tree, "SQRT", sigma_sq),
-            scalar(tree, "MULTIPLY", sigma_sq, -0.5),
-        ),
-        name="sea_group_scale",
-    )
-    along, across = unresolved
-    return scalar(tree, "MULTIPLY", along, scale), scalar(
-        tree, "MULTIPLY", across, scale
-    )
+    scale = normal.madd(sigma_sq.op("SQRT"), sigma_sq * -0.5).op("EXPONENT")
+    scale.socket.node.name = "sea_group_scale"
+    along, across = (Num(tree, v) * scale for v in unresolved)
+    return along.socket, across.socket
 
 
-def _box_kept(
-    tree: bpy.types.NodeTree, cells: bpy.types.NodeSocket
-) -> bpy.types.NodeSocket:
+def _box_kept(cells: Num) -> Num:
     """The share of a cell's variance a box `cells` cells long keeps, at a random
     offset on the grid: the mean over the box of the triangle 1 - |d|, which is
     (1 - 1 / 3m) / m from one cell up and 1 - m / 3 below."""
-    over = scalar(
-        tree,
-        "DIVIDE",
-        scalar(tree, "MULTIPLY_ADD", cells, 3.0, -1.0),
-        scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", cells, cells), 3.0),
-    )
-    under = scalar(tree, "MULTIPLY_ADD", cells, -1 / 3, 1.0)
-    return scalar(
-        tree,
-        "MULTIPLY_ADD",
-        scalar(tree, "GREATER_THAN", cells, 1.0),
-        scalar(tree, "SUBTRACT", over, under),
-        under,
-    )
+    over = cells.madd(3.0, -1.0) / (cells * cells * 3.0)
+    under = cells.madd(-1 / 3, 1.0)
+    return cells.op("GREATER_THAN", 1.0).madd(over - under, under)
 
 
 def _unresolved(
@@ -209,7 +126,7 @@ def _unresolved(
         pixel.along_dir,
         (math.sin(wind_axis), math.cos(wind_axis), 0),
     )
-    cos2 = scalar(tree, "MULTIPLY", facing, facing, name="sea_wind_facing")
+    cos2 = Num(tree, scalar(tree, "MULTIPLY", facing, facing, name="sea_wind_facing"))
     footprints = (pixel.along_m, pixel.across_m)
 
     def tabled(
@@ -227,21 +144,12 @@ def _unresolved(
             for i, axis in enumerate(("upwind", "crosswind"))
         )
         out = []
-        for f, on_up in zip(
-            footprints, (cos2, scalar(tree, "SUBTRACT", 1.0, cos2)), strict=True
-        ):
+        for f, on_up in zip(footprints, (cos2, 1.0 - cos2), strict=True):
             up, cross = (
-                _at_footprint(tree, t, f, f"{name}_{axis}")
+                Num(tree, _at_footprint(tree, t, f, f"{name}_{axis}"))
                 for t, axis in zip(axes, ("upwind", "crosswind"), strict=True)
             )
-            mixed = scalar(
-                tree,
-                "MULTIPLY_ADD",
-                scalar(tree, "SUBTRACT", up, cross),
-                on_up,
-                cross,
-            )
-            out.append(scalar(tree, "MULTIPLY", mixed, 2.0))
+            out.append(((up - cross).madd(on_up, cross) * 2.0).socket)
         return out[0], out[1]
 
     unresolved = tabled("sea_unresolved_variance", wind, cox_munk_variances)
@@ -251,7 +159,7 @@ def _unresolved(
         return unresolved
     slick = tabled("sea_unresolved_slick_variance", survivors, cox_munk_slick_variances)
     along, across = (
-        scalar(tree, "MULTIPLY_ADD", smooth, scalar(tree, "SUBTRACT", s, v), v)
+        Num(tree, smooth).madd(Num(tree, s) - v, v).socket
         for s, v in zip(slick, unresolved, strict=True)
     )
     return along, across

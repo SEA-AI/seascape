@@ -11,6 +11,7 @@ from seascape.blender.blend import (
     animate,
     curve_image,
     scalar,
+    value,
     vector,
 )
 from seascape.blender.sea.daylight import (
@@ -100,34 +101,23 @@ def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocke
     """Seconds since the first frame, modulo the span in a loop."""
     times_s = outputs.times_s
     if not outputs.loop:
-        clock = tree.nodes.new("ShaderNodeValue")
-        clock.name = "sea_time"
-        animate(clock.outputs["Value"], "default_value", times_s, lambda t: t)
-        return clock.outputs["Value"]
+        clock = value(tree, "sea_time")
+        animate(clock, "default_value", times_s, lambda t: t)
+        return clock
     # A keyed t jumps at the wrap; every omega is a multiple of 2 pi / span, so t modulo
     # the span is exact.
     span_s = outputs.span_s
-    turn = [tree.nodes.new("ShaderNodeValue") for _ in range(2)]
-    names, trigs = ("sea_cos", "sea_sin"), (math.cos, math.sin)
-    for node, name, trig in zip(turn, names, trigs, strict=True):
-        node.name = name
+    turn = []
+    for name, trig in (("sea_cos", math.cos), ("sea_sin", math.sin)):
+        turn.append(value(tree, name))
         animate(
-            node.outputs["Value"],
+            turn[-1],
             "default_value",
             times_s,
             lambda t, trig=trig: trig(2 * math.pi * t / span_s),
         )
-    angle = tree.nodes.new("ShaderNodeMath")
-    angle.operation = "ARCTAN2"
-    clock = tree.nodes.new("ShaderNodeMath")
-    clock.operation = "MULTIPLY"
-    clock.name = "sea_time"
-    clock.inputs["Value_001"].default_value = span_s / (2 * math.pi)
-    link = tree.links.new
-    link(turn[1].outputs["Value"], angle.inputs["Value"])
-    link(turn[0].outputs["Value"], angle.inputs["Value_001"])
-    link(angle.outputs["Value"], clock.inputs["Value"])
-    return clock.outputs["Value"]
+    angle = scalar(tree, "ARCTAN2", turn[1], turn[0])
+    return scalar(tree, "MULTIPLY", angle, span_s / (2 * math.pi), name="sea_time")
 
 
 def material(
