@@ -12,6 +12,7 @@ import numpy as np
 from seascape.blender.blend import (
     Num,
     combine,
+    feed,
     scalar,
     set_value,
     switch,
@@ -138,7 +139,7 @@ def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Num) -> tuple[Num, Num
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
         noise.noise_dimensions = "4D"
         tree.links.new(pixel, noise.inputs["Vector"])
-        tree.links.new((w + offset).socket, noise.inputs["W"])
+        feed(tree, noise.inputs["W"], w + offset)
         uniforms.append(Num(tree, noise.outputs["Value"]))
     # 1 - u is in (0, 1], and Blender's log of 0 is 0.
     radius = ((1.0 - uniforms[0]).op("LOGARITHM", math.e) * -2.0).op("SQRT")
@@ -270,7 +271,7 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
     r, g, b = (
         Num(tree, channel).op("LESS_THAN", ratio) for channel in _channels(tree, image)
     )
-    sampled = vector(tree, "SCALE", image, (r * g * b).socket)
+    sampled = vector(tree, "SCALE", image, (r * g * b))
     means = []
     # Levels counts a left-out pixel as 0. That scales all three means alike, so it
     # cancels in the gains.
@@ -298,7 +299,7 @@ def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket
     lit = Num(tree, luminance.outputs["Val"]).op("MAXIMUM", 1e-6)
     levels = tree.nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
-    tree.links.new(lit.op("LOGARITHM", math.e).socket, levels.inputs["Image"])
+    feed(tree, levels.inputs["Image"], lit.op("LOGARITHM", math.e))
     return lit.socket, scalar(tree, "EXPONENT", levels.outputs["Mean"])
 
 
@@ -312,7 +313,7 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     key = capped / (1.0 - capped)
     scaled = lit * (key / average)
     mapped = scaled / (scaled + 1.0)
-    return vector(tree, "SCALE", image, (mapped / lit).socket)
+    return vector(tree, "SCALE", image, (mapped / lit))
 
 
 def _clip(tree: bpy.types.NodeTree, image: Socket) -> Socket:

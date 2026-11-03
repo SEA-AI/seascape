@@ -147,7 +147,7 @@ def _camera(
     # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
     tangent = Num(tree, radius) * value(tree, "lens.vignette")
     falloff = tangent.madd(tangent, 1.0).op("POWER", -2.0)
-    image = vector(tree, "SCALE", image, falloff.socket)
+    image = vector(tree, "SCALE", image, falloff)
     image = _diffraction(tree, image)
     shoulder = Num(tree, radius) / GLARE_SHOULDER
     harvey = shoulder.madd(shoulder, 1.0).op("POWER", -GLARE_SLOPE / 2)
