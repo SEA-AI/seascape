@@ -12,12 +12,17 @@ from seascape.blender import sea
 from seascape.blender.blend import (
     CURVE_SAMPLES,
     SUN,
+    Num,
     clamped,
     curve_image,
     drive,
     lookup,
+    mix_shader,
+    node,
     pixels,
     scalar,
+    separate,
+    value,
     vector,
 )
 from seascape.config import (
@@ -66,19 +71,17 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     clear = _clear_eo(tree, sky, world, ray)
     # The sun's disc alone: the sky with it less the sky without.
     disc = vector(tree, "SUBTRACT", node.outputs["Color"], clear)
-    kept = tree.nodes.new("ShaderNodeValue")
-    kept.name = "fog_sun"
-    kept.outputs["Value"].default_value = sky.sun_transmittance
+    kept = value(tree, "fog_sun", sky.sun_transmittance)
     # aerosol.sun_transmittance, as the sun moves.
     drive(
-        kept.outputs["Value"],
+        kept,
         "default_value",
         f"exp(-{aerosol.fog_beam_depth(sky.visibility_km)!r} / max(sin(e), 1e-6))",
         world,
         e=f'["{SUN[0]}"]',
     )
     dome = _misted(tree, sky, clear, _clear_eo(tree, sky, world, _horizon(tree, ray)))
-    sun = vector(tree, "SCALE", disc, kept.outputs["Value"])
+    sun = vector(tree, "SCALE", disc, kept)
     tree.links.new(vector(tree, "ADD", dome, sun), background)
     return world
 
@@ -183,9 +186,7 @@ def _grey(
     brightness is the clear horizon's, which the haze fades every target into, so fog
     and sky meet without a seam.
     """
-    node = tree.nodes.new("ShaderNodeRGBToBW")
-    tree.links.new(colour, node.inputs["Color"])
-    return node.outputs["Val"]
+    return node(tree, "ShaderNodeRGBToBW", {"Color": colour}).outputs["Val"]
 
 
 def _photo(
@@ -222,31 +223,33 @@ def _turned(
 ) -> bpy.types.NodeSocket:
     """`image`, laid out as the photographed sky `name`, in `direction`, turned so the
     photo's sun sits at `sun_bearing_deg`."""
-    turn = tree.nodes.new("ShaderNodeMapping")
-    turn.inputs["Rotation"].default_value = (
-        0.0,
-        0.0,
-        _photo_turn_rad(name, sun_bearing_deg),
+    turn_rad = _photo_turn_rad(name, sun_bearing_deg)
+    turn = node(
+        tree,
+        "ShaderNodeMapping",
+        {"Rotation": (0.0, 0.0, turn_rad), "Vector": direction},
     )
-    tree.links.new(direction, turn.inputs["Vector"])
-    node = tree.nodes.new("ShaderNodeTexEnvironment")
-    node.image = image
-    tree.links.new(turn.outputs["Vector"], node.inputs["Vector"])
-    return node.outputs["Color"]
+    environment = node(
+        tree,
+        "ShaderNodeTexEnvironment",
+        {"Vector": turn.outputs["Vector"]},
+        image=image,
+    )
+    return environment.outputs["Color"]
 
 
 def _sky_texture(tree: bpy.types.NodeTree, sky: Sky) -> bpy.types.Node:
     assert sky.sun_elevation_deg is not None
-    node = tree.nodes.new("ShaderNodeTexSky")
-    # `turbidity` belongs to Preetham and Hosek-Wilkie and is silently ignored here.
-    node.sky_type = "MULTIPLE_SCATTERING"
-    node.sun_elevation = math.radians(sky.sun_elevation_deg)
-    # An azimuth, clockwise from +Y, though Blender calls it a rotation.
-    node.sun_rotation = math.radians(sky.sun_bearing_deg)
     # Its aerosol stays at Blender's default: more darkens its horizon, where maritime
     # aerosol, nearly non-absorbing and grey across the visible (Hess et al. 1998),
     # whitens it. `visibility_km` hazes what is in front of it.
-    return node
+    texture = tree.nodes.new("ShaderNodeTexSky")
+    # `turbidity` belongs to Preetham and Hosek-Wilkie and is silently ignored here.
+    texture.sky_type = "MULTIPLE_SCATTERING"
+    texture.sun_elevation = math.radians(sky.sun_elevation_deg)
+    # An azimuth, clockwise from +Y, though Blender calls it a rotation.
+    texture.sun_rotation = math.radians(sky.sun_bearing_deg)
+    return texture
 
 
 def add_haze(sky: Sky, band: Band, far_m: float) -> None:
@@ -264,7 +267,6 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
         group.interface.new_socket(
             "Shader", in_out=in_out, socket_type="NodeSocketShader"
         )
-    link = group.links.new
     geometry = group.nodes.new("ShaderNodeNewGeometry")
     # Incoming points back at the camera.
     ahead = vector(
@@ -272,20 +274,16 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
     )
     # Below the horizon the sky is the ground's, not the air's.
     horizon = vector(group, "MAXIMUM", ahead, (-1.0, -1.0, 0.0), name="haze_horizon")
-    airlight = group.nodes.new("ShaderNodeEmission")
-    airlight.name = "haze_airlight"
-    link(_sky_ahead(group, sky, band, horizon), airlight.inputs["Color"])
+    airlight = node(group, "ShaderNodeEmission", name="haze_airlight")
+    group.links.new(_sky_ahead(group, sky, band, horizon), airlight.inputs["Color"])
     depth = _optical_depth(group, sky, band, far_m)
-    kept = scalar(group, "EXPONENT", scalar(group, "MULTIPLY", depth, -1.0))
-    mix = group.nodes.new("ShaderNodeMixShader")
-    mix.name = "haze_mix"
-    link(scalar(group, "SUBTRACT", 1.0, kept), mix.inputs["Fac"])
-    link(group.nodes.new("NodeGroupInput").outputs["Shader"], mix.inputs[1])
-    link(airlight.outputs["Emission"], mix.inputs[2])
-    shader = mix.outputs["Shader"]
+    kept = (Num(group, depth) * -1.0).op("EXPONENT")
+    unlit = node(group, "NodeGroupInput").outputs["Shader"]
+    shader = mix_shader(group, (1.0 - kept).socket, unlit, airlight.outputs["Emission"])
+    shader.node.name = "haze_mix"
     if band == "ir":
         shader = _less_sky(group, sky, ahead, shader)
-    link(shader, group.nodes.new("NodeGroupOutput").inputs["Shader"])
+    node(group, "NodeGroupOutput", {"Shader": shader})
     for material in bpy.data.materials:
         haze(material)
 
@@ -304,11 +302,11 @@ def haze(material: bpy.types.Material) -> None:
     # Twice would haze it twice.
     if getattr(surface, "node_tree", None) == group:
         return
-    node = tree.nodes.new("ShaderNodeGroup")
-    node.name = "haze"
-    node.node_tree = group
-    tree.links.new(output.inputs["Surface"].links[0].from_socket, node.inputs["Shader"])
-    tree.links.new(node.outputs["Shader"], output.inputs["Surface"])
+    wrapper = node(tree, "ShaderNodeGroup", name="haze", node_tree=group)
+    tree.links.new(
+        output.inputs["Surface"].links[0].from_socket, wrapper.inputs["Shader"]
+    )
+    tree.links.new(wrapper.outputs["Shader"], output.inputs["Surface"])
     # The airlight emits, and in LWIR so does every surface. As a light, each sample
     # runs the whole shader for light the rays that hit it already bring back.
     material.cycles.emission_sampling = "NONE"
@@ -374,10 +372,8 @@ def _optical_depth(
 
     def at(range_m: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         # Blender's log of a negative number is 0, which is a range inside the table.
-        near = scalar(tree, "MAXIMUM", range_m, HAZE_NEAR_M)
-        texel = scalar(tree, "LOGARITHM", near, span)
-        texel = scalar(tree, "SUBTRACT", texel, math.log(HAZE_NEAR_M, span))
-        return lookup(tree, image, texel)
+        texel = Num(tree, range_m).op("MAXIMUM", HAZE_NEAR_M).op("LOGARITHM", span)
+        return lookup(tree, image, (texel - math.log(HAZE_NEAR_M, span)).socket)
 
     # at(0) reads the depth to HAZE_NEAR_M, not 0.
     behind = scalar(tree, "MULTIPLY", at(start), secondary)
@@ -480,13 +476,8 @@ def _cloudy_sky(
     # Linear shows the texel grid where a texel spans several pixels.
     share.node.interpolation = "Cubic"
     up = _sin_elevation(tree, direction)
-    return scalar(
-        tree,
-        "MULTIPLY_ADD",
-        share,
-        lookup(tree, _cloud_excess_image(sky), up),
-        lookup(tree, _sky_image(sky), up),
-    )
+    excess = lookup(tree, _cloud_excess_image(sky), up)
+    return Num(tree, share).madd(excess, lookup(tree, _sky_image(sky), up)).socket
 
 
 def _cloud_radiance(
@@ -556,14 +547,12 @@ def _thermal_sky(world: bpy.types.World, sky: Sky) -> bpy.types.World:
     photo's clouds. A rough glossy ray sees none of it (`_less_sky`)."""
     tree = world.node_tree
     tree.nodes.clear()
-    link = tree.links.new
     coord = tree.nodes.new("ShaderNodeTexCoord")
-    background = tree.nodes.new("ShaderNodeBackground")
-    output = tree.nodes.new("ShaderNodeOutputWorld")
-    link(background.outputs["Background"], output.inputs["Surface"])
     radiance = _ir_sky(tree, sky, coord.outputs["Generated"])
     shown = scalar(tree, "SUBTRACT", 1.0, _rough_glossy(tree))
-    link(vector(tree, "SCALE", radiance, shown), background.inputs["Color"])
+    scaled = vector(tree, "SCALE", radiance, shown)
+    background = node(tree, "ShaderNodeBackground", {"Color": scaled})
+    node(tree, "ShaderNodeOutputWorld", {"Surface": background.outputs["Background"]})
     # A light sample reads the world as no glossy ray, so it would add the sky the
     # sea's tables already hold.
     world.cycles.sampling_method = "NONE"
@@ -583,9 +572,8 @@ def _sin_elevation(
     tree: bpy.types.NodeTree, direction: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """A unit `direction`'s Z, held at 0 below the horizon."""
-    height = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(direction, height.inputs["Vector"])
-    return clamped(tree, height.outputs["Z"])
+    _, _, z = separate(tree, direction)
+    return clamped(tree, z)
 
 
 def _rough_glossy(tree: bpy.types.NodeTree) -> bpy.types.NodeSocket:
@@ -615,12 +603,12 @@ def _less_sky(
         _ir_sky(tree, sky, ahead),
         scalar(tree, "MULTIPLY", _rough_glossy(tree), -1.0),
     )
-    emission = tree.nodes.new("ShaderNodeEmission")
-    emission.name = "haze_less_sky"
-    tree.links.new(behind, emission.inputs["Color"])
-    add = tree.nodes.new("ShaderNodeAddShader")
-    tree.links.new(shader, add.inputs[0])
-    tree.links.new(emission.outputs["Emission"], add.inputs[1])
+    emission = node(tree, "ShaderNodeEmission", {"Color": behind}, name="haze_less_sky")
+    add = node(
+        tree,
+        "ShaderNodeAddShader",
+        {"Shader": shader, "Shader_001": emission.outputs["Emission"]},
+    )
     return add.outputs["Shader"]
 
 

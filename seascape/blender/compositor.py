@@ -7,9 +7,12 @@ import numpy as np
 
 from seascape.blender import sensor
 from seascape.blender.blend import (
+    Num,
     combine,
     curve_image,
+    node,
     scalar,
+    separate,
     set_value,
     switch,
     toggle,
@@ -119,7 +122,7 @@ def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
     image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
     if compensation_ev is not None:
         image = _camera(tree, image, compensation_ev, graded)
-    tree.links.new(image, tree.nodes.new("NodeGroupOutput").inputs["Image"])
+    node(tree, "NodeGroupOutput", {"Image": image})
 
 
 def _camera(
@@ -135,54 +138,37 @@ def _camera(
     Limitation: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
     """
-    nodes, links = tree.nodes, tree.links
-    coords, info = (
-        nodes.new(kind)
-        for kind in ("CompositorNodeImageCoordinates", "CompositorNodeImageInfo")
-    )
-    links.new(image, coords.inputs["Image"])
-    links.new(image, info.inputs["Image"])
+    coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})
+    info = node(tree, "CompositorNodeImageInfo", {"Image": image})
     # Uniform spans -1 to 1 along the longer side, so the kernel is a fixed share of
     # the frame at any resolution. Fog Glow and Bloom change shape with it.
     radius = vector(tree, "LENGTH", coords.outputs["Uniform"])
     # Natural vignetting: irradiance falls as cos^4 of the field angle, 1 / (1 +
     # tan^2)^2 (Kerr 2007). `lens.vignette` is the tangent at Uniform's 1, or 0.
-    tangent = scalar(tree, "MULTIPLY", radius, value(tree, "lens.vignette"))
-    falloff = scalar(
-        tree,
-        "POWER",
-        scalar(tree, "MULTIPLY_ADD", tangent, tangent, 1.0),
-        -2.0,
-    )
-    image = vector(tree, "SCALE", image, falloff)
+    tangent = Num(tree, radius) * value(tree, "lens.vignette")
+    falloff = tangent.madd(tangent, 1.0).op("POWER", -2.0)
+    image = vector(tree, "SCALE", image, falloff.socket)
     image = _diffraction(tree, image)
-    shoulder = scalar(tree, "DIVIDE", radius, GLARE_SHOULDER)
-    harvey = scalar(
+    shoulder = Num(tree, radius) / GLARE_SHOULDER
+    harvey = shoulder.madd(shoulder, 1.0).op("POWER", -GLARE_SLOPE / 2)
+    # Half the resolution: Harvey's glow is smooth, so only the sun's rim shows it. A
+    # lens scatters all the light, so the threshold is 0.
+    glare = node(
         tree,
-        "POWER",
-        scalar(tree, "MULTIPLY_ADD", shoulder, shoulder, 1.0),
-        -GLARE_SLOPE / 2,
+        "CompositorNodeGlare",
+        {"Type": "Kernel", "Quality": "Medium", "Threshold": 0.0, "Image": image},
+        name="lens.veiling_glare",
     )
-    glare = nodes.new("CompositorNodeGlare")
-    glare.name = "lens.veiling_glare"
-    glare.inputs["Type"].default_value = "Kernel"
-    # Half the resolution: Harvey's glow is smooth, so only the sun's rim shows it.
-    glare.inputs["Quality"].default_value = "Medium"
-    # A lens scatters all the light, not only what clips.
-    glare.inputs["Threshold"].default_value = 0.0
     kernel = next(s for s in glare.inputs if s.name == "Kernel" and s.type == "VALUE")
-    links.new(harvey, kernel)
-    links.new(image, glare.inputs["Image"])
-    side = nodes.new("ShaderNodeSeparateXYZ")
-    links.new(info.outputs["Resolution"], side.inputs["Vector"])
-    longer_px = scalar(tree, "MAXIMUM", side.outputs["X"], side.outputs["Y"])
+    tree.links.new(harvey.socket, kernel)
+    x_px, y_px, _ = separate(tree, info.outputs["Resolution"])
+    longer_px = scalar(tree, "MAXIMUM", x_px, y_px)
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
     share = value(tree, "lens.blur_of_side", BLUR_OF_SIDE)
     size_px = scalar(tree, "MULTIPLY", longer_px, share)
-    blur = nodes.new("CompositorNodeBlur")
-    blur.inputs["Type"].default_value = "Gaussian"
-    links.new(combine(tree, size_px, size_px), blur.inputs["Size"])
-    links.new(glare.outputs["Image"], blur.inputs["Image"])
+    blur = node(tree, "CompositorNodeBlur", {"Type": "Gaussian"})
+    tree.links.new(combine(tree, size_px, size_px), blur.inputs["Size"])
+    tree.links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
     _, average = sensor.log_average(tree, image)
     gain = scalar(
@@ -246,20 +232,19 @@ def _convolve(
     kernel: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     """`image` convolved with a colour `kernel`, each channel by its own."""
-    node = tree.nodes.new("CompositorNodeConvolve")
-    node.inputs["Kernel Data Type"].default_value = "Color"
-    tree.links.new(image, node.inputs["Image"])
-    rgb = next(s for s in node.inputs if s.name == "Kernel" and s.type == "RGBA")
+    convolve = node(
+        tree, "CompositorNodeConvolve", {"Kernel Data Type": "Color", "Image": image}
+    )
+    rgb = next(s for s in convolve.inputs if s.name == "Kernel" and s.type == "RGBA")
     tree.links.new(kernel, rgb)
-    return node.outputs["Image"]
+    return convolve.outputs["Image"]
 
 
 def _diffraction(
     tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """`image` through the kernel `respond` puts in `lens.psf`, or as it is."""
-    psf = tree.nodes.new("CompositorNodeImage")
-    psf.name = "lens.psf"
+    psf = node(tree, "CompositorNodeImage", name="lens.psf")
     kernel = psf.outputs["Image"]
     # Convolve reads black past the frame. Dividing by the convolved ones (Knutsson
     # & Westin 1993) keeps a border pixel at its level.
@@ -278,22 +263,22 @@ def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
     toggle(tree, "lens.diffract", f_number is not None)
     # The Airy pattern is the lens's softness; the judgement blur stands in for it.
     set_value(tree, "lens.blur_of_side", BLUR_OF_SIDE if f_number is None else 0.0)
-    node = tree.nodes["lens.psf"]
+    psf = tree.nodes["lens.psf"]
     if f_number is None:
-        if node.image is not None:
-            bpy.data.images.remove(node.image)
+        if psf.image is not None:
+            bpy.data.images.remove(psf.image)
         return
     assert camera.sensor.pitch_um is not None, "f_number needs sensor.pitch_um"
     sites_per_px = (camera.sensor.width_px or camera.width_px) / camera.width_px
     pitch_m = camera.sensor.pitch_um * 1e-6 * sites_per_px
-    built = (node.get("f_number"), node.get("pitch_m"))
-    if node.image is not None and built == (f_number, pitch_m):
+    built = (psf.get("f_number"), psf.get("pitch_m"))
+    if psf.image is not None and built == (f_number, pitch_m):
         return
-    if node.image is not None:
-        bpy.data.images.remove(node.image)
+    if psf.image is not None:
+        bpy.data.images.remove(psf.image)
     kernel = optics.airy_kernel(colour.SRGB_DOMINANT_M, f_number, pitch_m)
-    node.image = curve_image("lens.psf", kernel)
-    node["f_number"], node["pitch_m"] = f_number, pitch_m
+    psf.image = curve_image("lens.psf", kernel)
+    psf["f_number"], psf["pitch_m"] = f_number, pitch_m
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:

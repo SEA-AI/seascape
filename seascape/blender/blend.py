@@ -130,10 +130,10 @@ def combine(
     """Components left out read 0."""
     if len(xyz) > 3:
         raise ValueError(f"a Combine XYZ takes 3 components, not {len(xyz)}")
-    node = tree.nodes.new("ShaderNodeCombineXYZ")
+    made = tree.nodes.new("ShaderNodeCombineXYZ")
     for name, value in zip("XYZ", xyz, strict=False):
-        feed(tree, node.inputs[name], value)
-    return node.outputs["Vector"]
+        feed(tree, made.inputs[name], value)
+    return made.outputs["Vector"]
 
 
 def vector(
@@ -142,17 +142,17 @@ def vector(
     *inputs: bpy.types.NodeSocket | float | tuple[float, ...],
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
-    node = tree.nodes.new("ShaderNodeVectorMath")
-    node.operation = operation
+    made = tree.nodes.new("ShaderNodeVectorMath")
+    made.operation = operation
     if name:
-        node.name = name
-    sockets = list(node.inputs)
+        made.name = name
+    sockets = list(made.inputs)
     if operation == "SCALE":
-        sockets = [node.inputs["Vector"], node.inputs["Scale"]]
+        sockets = [made.inputs["Vector"], made.inputs["Scale"]]
     for socket, value in zip(sockets, inputs, strict=False):
         feed(tree, socket, value)
     single = operation in {"DOT_PRODUCT", "LENGTH", "DISTANCE"}
-    return node.outputs["Value" if single else "Vector"]
+    return made.outputs["Value" if single else "Vector"]
 
 
 def scalar(
@@ -162,13 +162,13 @@ def scalar(
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
     """A Math node. Unset inputs read 0.5."""
-    node = tree.nodes.new("ShaderNodeMath")
-    node.operation = operation
+    made = tree.nodes.new("ShaderNodeMath")
+    made.operation = operation
     if name:
-        node.name = name
-    for socket, value in zip(node.inputs, inputs, strict=False):
+        made.name = name
+    for socket, value in zip(made.inputs, inputs, strict=False):
         feed(tree, socket, value)
-    return node.outputs["Value"]
+    return made.outputs["Value"]
 
 
 def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
@@ -239,15 +239,53 @@ class Num:
         return self.rop("DIVIDE", other)
 
 
+def node(
+    tree: bpy.types.NodeTree,
+    kind: str,
+    inputs: dict[str, bpy.types.NodeSocket | float | tuple[float, ...]] | None = None,
+    **props: object,
+) -> bpy.types.Node:
+    """A node of `kind` with `props` set first, since a data type can change which
+    sockets exist, then `inputs` by name."""
+    made = tree.nodes.new(kind)
+    for key, setting in props.items():
+        setattr(made, key, setting)
+    for key, source in (inputs or {}).items():
+        feed(tree, made.inputs[key], source)
+    return made
+
+
+def mix_shader(
+    tree: bpy.types.NodeTree,
+    factor: bpy.types.NodeSocket | float,
+    first: bpy.types.NodeSocket,
+    second: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket:
+    """`first` where `factor` is 0, `second` where it is 1."""
+    mix = node(
+        tree,
+        "ShaderNodeMixShader",
+        {"Factor": factor, "Shader": first, "Shader_001": second},
+    )
+    return mix.outputs["Shader"]
+
+
+def separate(
+    tree: bpy.types.NodeTree, xyz: bpy.types.NodeSocket
+) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    split = node(tree, "ShaderNodeSeparateXYZ", {"Vector": xyz})
+    return split.outputs["X"], split.outputs["Y"], split.outputs["Z"]
+
+
 def value(
     tree: bpy.types.NodeTree, name: str, initial: float = 0.0
 ) -> bpy.types.NodeSocket:
     """A named Value node, which `set_value` changes after the build."""
-    node = tree.nodes.new("ShaderNodeValue")
-    node.name = name
-    assert node.name == name, f"{name} is taken"
-    node.outputs["Value"].default_value = initial
-    return node.outputs["Value"]
+    made = tree.nodes.new("ShaderNodeValue")
+    made.name = name
+    assert made.name == name, f"{name} is taken"
+    made.outputs["Value"].default_value = initial
+    return made.outputs["Value"]
 
 
 def set_value(tree: bpy.types.NodeTree, name: str, to: float) -> None:
@@ -262,20 +300,20 @@ def switch(
 ) -> bpy.types.NodeSocket:
     """`on` or `off` for the whole frame, as `toggle` sets it: a pick, where a blend
     by 0 would turn an inf in the unpicked image into a nan."""
-    node = tree.nodes.new("CompositorNodeSwitch")
-    node.name = name
-    assert node.name == name, f"{name} is taken"
-    tree.links.new(off, node.inputs["Off"])
-    tree.links.new(on, node.inputs["On"])
-    return node.outputs["Image"]
+    made = tree.nodes.new("CompositorNodeSwitch")
+    made.name = name
+    assert made.name == name, f"{name} is taken"
+    tree.links.new(off, made.inputs["Off"])
+    tree.links.new(on, made.inputs["On"])
+    return made.outputs["Image"]
 
 
 def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
     """The compositor evaluates both inputs of a Switch, so off mutes it: a muted
     Switch passes Off through and never evaluates On."""
-    node = tree.nodes[name]
-    node.inputs["Switch"].default_value = on
-    node.mute = not on
+    made = tree.nodes[name]
+    made.inputs["Switch"].default_value = on
+    made.mute = not on
 
 
 def pixels(image: bpy.types.Image) -> np.ndarray:

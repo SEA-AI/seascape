@@ -1,7 +1,7 @@
 import bpy
 import pytest
 
-from seascape.blender.blend import Num, value
+from seascape.blender.blend import Num, mix_shader, node, value
 
 
 def _tree() -> bpy.types.NodeTree:
@@ -53,3 +53,18 @@ def test_a_num_refuses_what_would_silently_go_wrong() -> None:
         _ = _num(_tree()) + _num(_tree())
     with pytest.raises(TypeError, match="truth value"):
         bool(_num(_tree()))
+
+
+def test_mix_shader_wires_its_factor_and_both_shaders() -> None:
+    tree = _tree()
+    mix = mix_shader(
+        tree,
+        value(tree, "f"),
+        *(node(tree, "ShaderNodeEmission").outputs[0] for _ in "ab"),
+    ).node
+
+    assert mix.inputs["Factor"].is_linked
+    assert (
+        mix.inputs["Shader"].links[0].from_node
+        != mix.inputs["Shader_001"].links[0].from_node
+    )

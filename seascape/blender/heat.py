@@ -10,9 +10,13 @@ import numpy as np
 from seascape.assets import Material
 from seascape.blender import wear
 from seascape.blender.blend import (
+    Num,
     curve_image,
     lookup,
+    mix_shader,
+    node,
     scalar,
+    separate,
     vector,
 )
 from seascape.blender.sky import cloud_fraction
@@ -38,8 +42,7 @@ def thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
     tree.nodes.clear()
     emissivity = thermal.ZONES["paint_hull"].emissivity
     skin = _reflecting(tree, _sunlit_emission(tree, t_k, sky), emissivity, None)
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    tree.links.new(skin, output.inputs["Surface"])
+    node(tree, "ShaderNodeOutputMaterial", {"Surface": skin})
     return material
 
 
@@ -53,27 +56,21 @@ def _sunlit_emission(
     and only the middle interpolates: no shader node can evaluate the Planck integral
     at the blended temperature.
     """
-    shaded = tree.nodes.new("ShaderNodeEmission")
-    shaded.inputs["Strength"].default_value = lwir.band_radiance(t_k)
+    shaded = node(tree, "ShaderNodeEmission", {"Strength": lwir.band_radiance(t_k)})
     elevation = sky.sun_elevation_deg
     if elevation is None or elevation <= 0:
         return shaded.outputs["Emission"]
-    sunlit = tree.nodes.new("ShaderNodeEmission")
     # The gain is linear in the beam a surface absorbs.
     gain_k = sky.solar_gain_k * sky.sun_transmittance
-    sunlit.inputs["Strength"].default_value = lwir.band_radiance(t_k + gain_k)
+    sunlit = node(
+        tree, "ShaderNodeEmission", {"Strength": lwir.band_radiance(t_k + gain_k)}
+    )
 
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = vector(tree, "DOT_PRODUCT", geometry.outputs["Normal"], sky.sun_vector)
     # Clamped, or a surface turned away from the sun would cool below shaded.
     lit = scalar(tree, "MAXIMUM", facing, 0.0)
-
-    grade = tree.nodes.new("ShaderNodeMixShader")
-    link = tree.links.new
-    link(lit, grade.inputs["Factor"])
-    link(shaded.outputs["Emission"], grade.inputs[1])
-    link(sunlit.outputs["Emission"], grade.inputs[2])
-    return grade.outputs["Shader"]
+    return mix_shader(tree, lit, shaded.outputs["Emission"], sunlit.outputs["Emission"])
 
 
 class Heat(NamedTuple):
@@ -153,56 +150,39 @@ def zone_skin(
     water = _water(tree, heat) if wet or wear_material is not None else None
     if wear_material is not None:
         assert water is not None
-        masks = tree.nodes.new("ShaderNodeGroup")
-        masks.node_tree = wear.masks(crevice)
+        masks = node(tree, "ShaderNodeGroup", node_tree=wear.masks(crevice))
         skin = _worn(masks, skin, clean, zone, heat, name, steel, water)
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
     if wet:
         assert water is not None
         skin = _wetted(tree, skin, water)
-    tree.links.new(skin, output.inputs["Surface"])
+    node(tree, "ShaderNodeOutputMaterial", {"Surface": skin})
     return material
 
 
 def _emission(
     tree: bpy.types.NodeTree, zone: thermal.Zone, heat: Heat, name: str
 ) -> bpy.types.NodeSocket:
-    link = tree.links.new
     sun_cos, up, table = thermal.temperature_table_k(zone, heat.env)
     image = curve_image(name, np.vectorize(lwir.band_radiance)(table))
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    normal = tree.nodes.new("ShaderNodeSeparateXYZ")
-    link(geometry.outputs["Normal"], normal.inputs["Vector"])
+    _, _, z = separate(tree, geometry.outputs["Normal"])
     # At texel centres: the lookup interpolates between them.
-    y = scalar(
-        tree,
-        "MULTIPLY_ADD",
-        scalar(tree, "MULTIPLY_ADD", normal.outputs["Z"], 0.5, 0.5),
-        (len(up) - 1) / len(up),
-        0.5 / len(up),
-    )
+    y = Num(tree, z).madd(0.5, 0.5).madd((len(up) - 1) / len(up), 0.5 / len(up))
     if heat.sun is None:
-        x = tree.nodes.new("ShaderNodeValue")
-        x.outputs["Value"].default_value = 0.5 / len(sun_cos)
-        at = x.outputs["Value"]
+        at = tree.nodes.new("ShaderNodeValue").outputs["Value"]
+        at.default_value = 0.5 / len(sun_cos)
     else:
         facing = vector(tree, "DOT_PRODUCT", geometry.outputs["Normal"], heat.sun)
-        lit = scalar(tree, "MAXIMUM", facing, 0.0)
-        at = scalar(
-            tree,
-            "MULTIPLY_ADD",
-            lit,
-            (len(sun_cos) - 1) / len(sun_cos),
-            0.5 / len(sun_cos),
-        )
-    emission = tree.nodes.new("ShaderNodeEmission")
-    link(lookup(tree, image, at, y), emission.inputs["Color"])
-    return emission.outputs["Emission"]
+        lit = Num(tree, scalar(tree, "MAXIMUM", facing, 0.0))
+        at = lit.madd((len(sun_cos) - 1) / len(sun_cos), 0.5 / len(sun_cos)).socket
+    color = lookup(tree, image, at, y.socket)
+    return node(tree, "ShaderNodeEmission", {"Color": color}).outputs["Emission"]
 
 
 def _water(tree: bpy.types.NodeTree, heat: Heat) -> bpy.types.NodeSocket:
-    water = tree.nodes.new("ShaderNodeEmission")
-    water.inputs["Strength"].default_value = lwir.band_radiance(heat.t_water_k)
+    water = node(
+        tree, "ShaderNodeEmission", {"Strength": lwir.band_radiance(heat.t_water_k)}
+    )
     return _reflecting(tree, water.outputs["Emission"], thermal.SEA_EMISSIVITY, None)
 
 
@@ -238,11 +218,7 @@ def _worn(
             layered = thermal.under(zone, layer)
             emission = _emission(tree, layered, heat, f"{name}_{layer}")
             covered = _reflecting(tree, emission, layered.emissivity, None)
-        mix = tree.nodes.new("ShaderNodeMixShader")
-        tree.links.new(masks.outputs[layer], mix.inputs["Factor"])
-        tree.links.new(skin, mix.inputs["Shader"])
-        tree.links.new(covered, mix.inputs["Shader_001"])
-        skin = mix.outputs["Shader"]
+        skin = mix_shader(tree, masks.outputs[layer], skin, covered)
     return skin
 
 
@@ -250,21 +226,15 @@ def _wetted(
     tree: bpy.types.NodeTree, skin: bpy.types.NodeSocket, water: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """`skin` above the waterline, the bulk water below it."""
-    link = tree.links.new
     # The fit puts the waterline at z = 0; the join keeps the hull's frame in metres.
     coords = tree.nodes.new("ShaderNodeTexCoord")
-    height = tree.nodes.new("ShaderNodeSeparateXYZ")
-    link(coords.outputs["Object"], height.inputs["Vector"])
-    rise = tree.nodes.new("ShaderNodeAttribute")
-    rise.attribute_type = "OBJECT"
-    rise.attribute_name = "rise_m"
-    above_water_m = scalar(tree, "ADD", height.outputs["Z"], rise.outputs["Factor"])
+    _, _, height_m = separate(tree, coords.outputs["Object"])
+    rise = node(
+        tree, "ShaderNodeAttribute", attribute_type="OBJECT", attribute_name="rise_m"
+    )
+    above_water_m = scalar(tree, "ADD", height_m, rise.outputs["Factor"])
     under = scalar(tree, "LESS_THAN", above_water_m, 0.0)
-    mix = tree.nodes.new("ShaderNodeMixShader")
-    link(under, mix.inputs["Factor"])
-    link(skin, mix.inputs["Shader"])
-    link(water, mix.inputs["Shader_001"])
-    return mix.outputs["Shader"]
+    return mix_shader(tree, under, skin, water)
 
 
 def _reflecting(
@@ -275,15 +245,14 @@ def _reflecting(
 ) -> bpy.types.NodeSocket:
     """`emission` weighted by `emissivity`, the rest a white reflection: the Mix Shader
     already weights it by 1 - eps, so a grey would absorb part of it twice."""
+    white = (1.0, 1.0, 1.0, 1.0)
     if zone_name in SPECULAR_ZONES:
-        scatter = tree.nodes.new("ShaderNodeBsdfGlossy")
-        scatter.distribution = "GGX"
-        scatter.inputs["Roughness"].default_value = 0.0
+        scatter = node(
+            tree,
+            "ShaderNodeBsdfGlossy",
+            {"Color": white, "Roughness": 0.0},
+            distribution="GGX",
+        )
     else:
-        scatter = tree.nodes.new("ShaderNodeBsdfDiffuse")
-    scatter.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-    mix = tree.nodes.new("ShaderNodeMixShader")
-    mix.inputs["Factor"].default_value = emissivity
-    tree.links.new(scatter.outputs["BSDF"], mix.inputs["Shader"])
-    tree.links.new(emission, mix.inputs["Shader_001"])
-    return mix.outputs["Shader"]
+        scatter = node(tree, "ShaderNodeBsdfDiffuse", {"Color": white})
+    return mix_shader(tree, emissivity, scatter.outputs["BSDF"], emission)
