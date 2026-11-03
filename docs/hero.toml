@@ -5,6 +5,21 @@ extends = "../scenarios/baseline.toml"
 [rigs.bow]
 pitch_deg = 4.0
 
+[rigs.bow.cameras.eo]
+preset = "basler_daa3840_ar0821"
+hfov_deg = 45.0
+width_px = 1920
+height_px = 1080
+processing.white_balance = "grey_world"
+lens.vignetting = true
+# Judgement: a machine-vision lens stopped down in daylight.
+lens.f_number = 4.0
+
+[rigs.bow.cameras.ir]
+preset = "boson_640_32deg"
+hfov_deg = 24.0
+agc = { preset = "day" }
+
 [sky]
 sun_bearing_deg = 150.0
 
@@ -13,6 +28,9 @@ preset = "multipurpose_freighter"
 range_m = 1200.0
 bearing_deg = 5.0
 heading_deg = 250.0
+wear = 0.5
+# In ballast.
+draught_m = 5.5
 
 [[objects]]
 asset = "lateral_mark"
@@ -23,3 +41,4 @@ bearing_deg = -6.0
 asset = "turbine_15mw_monopile"
 range_m = 4000.0
 bearing_deg = -3.5
+wear = 0.2
