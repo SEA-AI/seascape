@@ -14,7 +14,7 @@ def masks(
     box: tuple[float, float, float, float],
     size: tuple[int, int],
 ) -> np.ndarray:
-    """Each mask, cropped to `box` and resized to `size`."""
+    """Each mask, cropped to `box` and resized to `size`; a pixel it touches stays."""
     resolution = (image["width"], image["height"])
     return np.stack(
         [
@@ -24,9 +24,9 @@ def masks(
                         np.uint8
                     )
                     * 255
-                ).resize(size, Image.Resampling.BILINEAR, box=box)
+                ).resize(size, Image.Resampling.BOX, box=box)
             )
-            > 127
+            > 0
             for a in annotations
         ]
     )
@@ -34,6 +34,8 @@ def masks(
 
 def outlined(pic: np.ndarray, found: sv.Detections) -> np.ndarray:
     """`pic` with each target haloed, boxed and outlined."""
+    if not len(found):
+        return pic
     red = sv.Color.from_hex(FOCUS_RED)
     # `found` carries no class ids, which the default lookup needs.
     by_index = sv.ColorLookup.INDEX
