@@ -71,6 +71,7 @@ from tests.scenarios import (
     preset_target,
     target,
     variant,
+    white_photo,
 )
 
 SCENARIO = load(BASELINE)
@@ -175,17 +176,6 @@ def under_the_haze(material: bpy.types.Material) -> bpy.types.Node:
 def baked(name: str) -> np.ndarray:
     """The red channel of a lookup image, rows bottom first."""
     return np.squeeze(blend.pixels(bpy.data.images[name])[..., 0])
-
-
-def _white_photo(folder: Path, width: int, height: int) -> Path:
-    """A white photo, written for `sky.download` to return."""
-    path = folder / "white.hdr"
-    image = bpy.data.images.new("white", width, height, float_buffer=True)
-    image.pixels.foreach_set(np.ones(width * height * 4, np.float32))
-    image.filepath_raw = str(path)
-    image.file_format = "HDR"
-    image.save()
-    return path
 
 
 def _hazed_sky_m(
@@ -1834,8 +1824,20 @@ def _pixel_node() -> bpy.types.ShaderNode:
     )
 
 
-def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
-    scenario = load(OPEN_SEA)
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param(load(OPEN_SEA), id="open-sea"),
+        # A pixel under 1e-4 rad: a zero footprint leaves the sea a mirror.
+        pytest.param(
+            variant(
+                cameras={"eo": {"hfov_deg": 1.5, "width_px": 640, "height_px": 360}}
+            ),
+            id="long-lens",
+        ),
+    ],
+)
+def test_the_sea_draws_for_the_pixel_the_render_takes(scenario: Scenario) -> None:
     scene.build(scenario, "eo")
     mount = next(m for m in scenario.mounts if m.camera.band == "eo")
     pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
@@ -1849,15 +1851,6 @@ def test_the_sea_draws_for_the_pixel_the_render_takes() -> None:
     bpy.context.scene.render.resolution_percentage = 50
     bpy.context.view_layer.update()
     assert _pixel_node().inputs[1].default_value == pytest.approx(2 * pixel_rad)
-
-
-def test_a_long_lens_draws_for_its_own_pixel() -> None:
-    """A pixel under 1e-4 rad: a zero footprint leaves the sea a mirror."""
-    lens = {"hfov_deg": 1.5, "width_px": 640, "height_px": 360}
-    scene.build(variant(cameras={"eo": lens}), "eo")
-    bpy.context.view_layer.update()
-    pixel_rad = math.radians(1.5) / 640
-    assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
 
 
 def test_the_glitter_and_haze_drivers_run_without_python() -> None:
@@ -1882,9 +1875,7 @@ class TestPhotographedSky:
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
         """A tiny photo stands in for the download."""
-        path = _white_photo(tmp_path_factory.mktemp("sky"), 64, 32)
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setattr("seascape.blender.sky.download", lambda *_: path)
+        with white_photo(tmp_path_factory.mktemp("sky")):
             scene.build(variant(sky={"hdri": cls.SKY}), "eo")
 
     def _photos(self, tree: bpy.types.NodeTree) -> list[bpy.types.Node]:
@@ -1915,9 +1906,7 @@ class TestHiddenSun:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
-        path = _white_photo(tmp_path_factory.mktemp("sky"), 64, 32)
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setattr("seascape.blender.sky.download", lambda *_: path)
+        with white_photo(tmp_path_factory.mktemp("sky")):
             scene.build(variant(sky=HIDDEN_SUN), "eo")
 
     def test_its_beam_is_the_photo_s_diffuse_light_over_k_less_one(self) -> None:
@@ -1941,9 +1930,7 @@ class TestPhotographedThermalSky:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
-        path = _white_photo(tmp_path_factory.mktemp("sky"), 128, 64)
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setattr("seascape.blender.sky.download", lambda *_: path)
+        with white_photo(tmp_path_factory.mktemp("sky"), 128, 64) as patch:
             patch.setattr("seascape.blender.sky.THERMAL_SKY_PX", 64)
             scene.build(variant(sky={"hdri": "overcast_soil"}), "ir")
 
@@ -2335,10 +2322,8 @@ def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
 
 
 def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
-    path = _white_photo(tmp_path, 64, 32)
     sky = variant(sky={"hdri": "overcast_soil", **FOG}).sky
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("seascape.blender.sky.download", lambda *_: path)
+    with white_photo(tmp_path):
         scene.build(variant(sky={"hdri": "overcast_soil", **FOG}), "ir")
     top = baked("cloudy_sky_radiance")[-1]
     expected = _hazed_sky_m(sky, np.pi / 2, cloud=1.0)

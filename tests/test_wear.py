@@ -12,6 +12,8 @@ from seascape.physics import earth, thermal
 from seascape.physics.thermal import ZONE_NAMES
 from tests.scenarios import BASELINE
 
+pytestmark = pytest.mark.usefixtures("empty_blend")
+
 
 def _read(mesh: bpy.types.Mesh, name: str) -> np.ndarray:
     attribute = mesh.attributes[name]
@@ -27,7 +29,6 @@ def _normals(mesh: bpy.types.Mesh) -> np.ndarray:
 
 @pytest.fixture
 def box() -> tuple[bpy.types.Object, np.ndarray]:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     mesh = bpy.data.meshes.new("box")
     corners = [(x, y, z) for x in (-2, 2) for y in (-5, 5) for z in (-1, 2)]
     sides = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4)]
@@ -139,7 +140,6 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
 
 
 def _zodiacs(hulls: Hulls, wears: tuple[float, ...]) -> list[bpy.types.Object]:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     return [
         _vessel(
             "zodiac",
@@ -222,7 +222,6 @@ def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> 
 
 
 def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     material = bpy.data.materials.new("glass")
     nodes = material.node_tree.nodes
     clean = next(n for n in nodes if n.type == "BSDF_PRINCIPLED")
@@ -256,7 +255,6 @@ def test_the_atlas_lies_in_the_unit_square_and_leaves_the_uv_maps_alone(box) -> 
 
 
 def test_a_crevice_is_dark_out_in_the_open_and_bright_in_a_corner() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     mesh = bpy.data.meshes.new("corner")
     # A 4 m floor in two strips, the first against a 4 m wall.
     corners = [(x, y, 0) for y in (0, 0.3, 4) for x in (0, 4)]
@@ -279,7 +277,6 @@ def test_a_crevice_is_dark_out_in_the_open_and_bright_in_a_corner() -> None:
 
 
 def test_a_crevice_is_baked_once_per_fitted_size(monkeypatch) -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     import_asset("zodiac", "eo", worn=True)
     first = bpy.data.images["zodiac/crevice"].pixels[:]
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -319,7 +316,6 @@ def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
 def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
     material: Material, laid: list[str]
 ) -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     heat = surroundings(load(BASELINE))
     crevice = bpy.data.images.new("crevice", 16, 16)
     skin = zone_skin(
