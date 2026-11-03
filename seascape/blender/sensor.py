@@ -10,6 +10,7 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
+    Num,
     combine,
     scalar,
     set_value,
@@ -76,110 +77,60 @@ def _bilinear(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     )
 
 
-def _electrons(
-    tree: bpy.types.NodeTree, x: Socket, shot: Socket, well: Socket, noise: Socket
-) -> Socket:
+def _electrons(x: Num, shot: Num, well: Num, noise: Num) -> Num:
     """What a well collects of a mean `x`, with shot noise, up to `well`."""
-    lit = scalar(tree, "MINIMUM", scalar(tree, "MAXIMUM", x, 0.0), well)
-    spread = scalar(tree, "SQRT", scalar(tree, "MULTIPLY", lit, shot))
-    return scalar(tree, "MINIMUM", scalar(tree, "MULTIPLY_ADD", spread, noise, x), well)
+    lit = x.op("MAXIMUM", 0.0).op("MINIMUM", well)
+    spread = (lit * shot).op("SQRT")
+    return spread.madd(noise, x).op("MINIMUM", well)
 
 
 def _read(
     tree: bpy.types.NodeTree,
-    x: Socket,
-    w: Socket,
+    x: Num,
+    w: Num,
     seeded: Socket,
-    shot: Socket,
-    well: Socket,
-    dark: Socket,
-    levels: Socket,
-) -> Socket:
+    shot: Num,
+    well: Num,
+    dark: Num,
+    levels: Num,
+) -> Num:
     """One colour's read of a mean `x`, in units of white. Poissonian-Gaussian (Foi
     et al. 2008): shot noise of variance shot * x, then the well fills, then dark
     noise of standard deviation `dark`."""
     shot_noise, dark_noise = _gaussian(tree, seeded, w)
-    collected = _electrons(tree, x, shot, well, shot_noise)
-    noisy = scalar(tree, "MULTIPLY_ADD", dark, dark_noise, collected)
-    counts = scalar(tree, "ROUND", scalar(tree, "MULTIPLY", noisy, levels))
-    return scalar(
-        tree,
-        "MINIMUM",
-        scalar(tree, "MAXIMUM", scalar(tree, "DIVIDE", counts, levels), 0.0),
-        1.0,
-    )
+    noisy = dark.madd(dark_noise, _electrons(x, shot, well, shot_noise))
+    counts = (noisy * levels).op("ROUND")
+    return (counts / levels).op("MAXIMUM", 0.0).op("MINIMUM", 1.0)
 
 
-def _unsaturated(
-    tree: bpy.types.NodeTree, read: Socket, dark_variance: Socket
-) -> Socket:
+def _unsaturated(read: Num, dark_variance: Num) -> Num:
     """1 where `read` did not saturate, else 0: a read within three times a saturated
     read's spread of white, here at most the dark noise, counts as saturated."""
-    return scalar(
-        tree,
-        "LESS_THAN",
-        read,
-        scalar(tree, "MULTIPLY_ADD", scalar(tree, "SQRT", dark_variance), -3.0, 1.0),
-    )
+    return read.op("LESS_THAN", dark_variance.op("SQRT").madd(-3.0, 1.0))
 
 
 def _merge(
-    tree: bpy.types.NodeTree,
-    long: Socket,
-    short: Socket,
-    unsaturated: Socket,
-    ratio: Socket,
-    shot: Socket,
-    dark_variance: Socket,
-    levels: Socket,
-) -> Socket:
+    long: Num,
+    short: Num,
+    unsaturated: Num,
+    ratio: Num,
+    shot: Num,
+    dark_variance: Num,
+    levels: Num,
+) -> Num:
     """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
     its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
     a long read that saturated is left out. The ADC's rounding,
     (1 / levels)^2 / 12, keeps a noiseless read finite."""
-    rounding = scalar(
-        tree, "DIVIDE", 1.0 / 12, scalar(tree, "MULTIPLY", levels, levels)
-    )
-    floor = scalar(tree, "ADD", dark_variance, rounding)
-    long_weight = scalar(
-        tree,
-        "DIVIDE",
-        unsaturated,
-        scalar(tree, "MULTIPLY_ADD", long, shot, floor),
-    )
-    short_weight = scalar(
-        tree,
-        "DIVIDE",
-        1.0,
-        scalar(
-            tree,
-            "MULTIPLY",
-            scalar(tree, "MULTIPLY_ADD", short, shot, floor),
-            scalar(tree, "MULTIPLY", ratio, ratio),
-        ),
-    )
-    return scalar(
-        tree,
-        "DIVIDE",
-        scalar(
-            tree,
-            "MULTIPLY_ADD",
-            long_weight,
-            long,
-            scalar(
-                tree,
-                "MULTIPLY",
-                short_weight,
-                scalar(tree, "MULTIPLY", short, ratio),
-            ),
-        ),
-        scalar(tree, "ADD", long_weight, short_weight),
+    floor = dark_variance + (1.0 / 12) / (levels * levels)
+    long_weight = unsaturated / long.madd(shot, floor)
+    short_weight = 1.0 / (short.madd(shot, floor) * (ratio * ratio))
+    return long_weight.madd(long, short_weight * (short * ratio)) / (
+        long_weight + short_weight
     )
 
 
-def _gaussian(
-    tree: bpy.types.NodeTree, pixel: Socket, w: Socket
-) -> tuple[Socket, Socket]:
+def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Num) -> tuple[Num, Num]:
     """Two independent standard normals per pixel and `w`: Box & Muller 1958 from
     two uniforms."""
     uniforms = []
@@ -187,26 +138,12 @@ def _gaussian(
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
         noise.noise_dimensions = "4D"
         tree.links.new(pixel, noise.inputs["Vector"])
-        tree.links.new(scalar(tree, "ADD", w, offset), noise.inputs["W"])
-        uniforms.append(noise.outputs["Value"])
+        tree.links.new((w + offset).socket, noise.inputs["W"])
+        uniforms.append(Num(tree, noise.outputs["Value"]))
     # 1 - u is in (0, 1], and Blender's log of 0 is 0.
-    radius = scalar(
-        tree,
-        "SQRT",
-        scalar(
-            tree,
-            "MULTIPLY",
-            scalar(
-                tree, "LOGARITHM", scalar(tree, "SUBTRACT", 1.0, uniforms[0]), math.e
-            ),
-            -2.0,
-        ),
-    )
-    angle = scalar(tree, "MULTIPLY", uniforms[1], 2 * math.pi)
-    return (
-        scalar(tree, "MULTIPLY", radius, scalar(tree, "COSINE", angle)),
-        scalar(tree, "MULTIPLY", radius, scalar(tree, "SINE", angle)),
-    )
+    radius = ((1.0 - uniforms[0]).op("LOGARITHM", math.e) * -2.0).op("SQRT")
+    angle = uniforms[1] * (2 * math.pi)
+    return radius * angle.op("COSINE"), radius * angle.op("SINE")
 
 
 def chain(
@@ -221,70 +158,67 @@ def chain(
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
     # RGGB from the bottom-left pixel; no phase changes a statistic.
-    odd_x = scalar(tree, "FLOORED_MODULO", xy.outputs["X"], 2.0)
-    odd_y = scalar(tree, "FLOORED_MODULO", xy.outputs["Y"], 2.0)
-    blue = scalar(tree, "MULTIPLY", odd_x, odd_y)
-    red = scalar(
-        tree,
-        "MULTIPLY",
-        scalar(tree, "SUBTRACT", 1.0, odd_x),
-        scalar(tree, "SUBTRACT", 1.0, odd_y),
+    odd_x, odd_y = (
+        Num(tree, xy.outputs[axis]).op("FLOORED_MODULO", 2.0) for axis in "XY"
     )
-    green = scalar(tree, "SUBTRACT", 1.0, scalar(tree, "ADD", red, blue))
+    blue = odd_x * odd_y
+    red = (1.0 - odd_x) * (1.0 - odd_y)
+    green = 1.0 - (red + blue)
     seeded = vector(
         tree, "ADD", pixel, combine(tree, 0.0, 0.0, value(tree, "sensor.seed"))
     )
-    frame = tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"]
-    shot, well = value(tree, "sensor.shot"), value(tree, "sensor.well", 1.0)
-    dark, levels = value(tree, "sensor.dark"), value(tree, "sensor.levels", 4095.0)
-    ratio = value(tree, "sensor.ratio", 1.0)
+    frame = Num(tree, tree.nodes.new("CompositorNodeSceneTime").outputs["Frame"])
+    shot, well = (
+        Num(tree, value(tree, "sensor.shot")),
+        Num(tree, value(tree, "sensor.well", 1.0)),
+    )
+    dark, levels = (
+        Num(tree, value(tree, "sensor.dark")),
+        Num(tree, value(tree, "sensor.levels", 4095.0)),
+    )
+    ratio = Num(tree, value(tree, "sensor.ratio", 1.0))
     fixed = combine(
         tree,
         value(tree, "sensor.wb_r", 1.0),
         value(tree, "sensor.wb_g", 1.0),
         value(tree, "sensor.wb_b", 1.0),
     )
-    gains = switch(tree, "sensor.grey_world", fixed, _grey_world(tree, image, ratio))
+    gains = switch(
+        tree, "sensor.grey_world", fixed, _grey_world(tree, image, ratio.socket)
+    )
     # Auto-exposure metered the frame before the gains. Divide by the luminance the
     # gains give a grey, as a camera metering its output would. Without HDR, gains of
     # at least 1 keep clipped white white.
     luminance_gain = vector(tree, "DOT_PRODUCT", gains, colour.LUMINANCE)
     image = vector(tree, "SCALE", image, scalar(tree, "DIVIDE", 1.0, luminance_gain))
     longs, merged = [], []
-    for index, x in enumerate(_channels(tree, image)):
+    for index, x in enumerate(Num(tree, c) for c in _channels(tree, image)):
         # An average of n sites divides the variances by n.
-        sites = value(tree, f"sensor.sites_{'rgb'[index]}", 1.0)
-        shot_c = scalar(tree, "DIVIDE", shot, sites)
-        dark_c = scalar(tree, "DIVIDE", dark, sites)
-        noise = (seeded, shot_c, well, scalar(tree, "SQRT", dark_c), levels)
+        averaged = Num(tree, value(tree, f"sensor.sites_{'rgb'[index]}", 1.0))
+        shot_c, dark_c = shot / averaged, dark / averaged
+        noise = (seeded, shot_c, well, dark_c.op("SQRT"), levels)
         # Two normals per colour, exposure and frame: W at 8f + 2i + e and + 0.5.
-        w = scalar(tree, "MULTIPLY_ADD", frame, 8.0, 2.0 * index)
+        w = frame.madd(8.0, 2.0 * index)
         long = _read(tree, x, w, *noise)
-        short = _read(
-            tree,
-            scalar(tree, "DIVIDE", x, ratio),
-            scalar(tree, "ADD", w, 1.0),
-            *noise,
-        )
-        longs.append(long)
+        short = _read(tree, x / ratio, w + 1.0, *noise)
+        longs.append(long.socket)
         merged.append(
             _merge(
-                tree,
                 long=long,
                 short=short,
-                unsaturated=_unsaturated(tree, long, dark_c),
+                unsaturated=_unsaturated(long, dark_c),
                 ratio=ratio,
                 shot=shot_c,
                 dark_variance=dark_c,
                 levels=levels,
-            )
+            ).socket
         )
     raw = switch(tree, "sensor.hdr", combine(tree, *longs), combine(tree, *merged))
     # A sensor at the output's pitch reads one colour a pixel: its sites, then a
     # bilinear demosaic, normalized (Knutsson & Westin 1993) so a border site
     # averages only the neighbours it has. A finer one, demosaiced and scaled down
     # by the ISP, reads each colour averaged over its sites.
-    masks = _rgb(tree, red, green, blue)
+    masks = _rgb(tree, red.socket, green.socket, blue.socket)
     sites = vector(tree, "MULTIPLY", masks, raw)
     demosaiced = vector(tree, "DIVIDE", _bilinear(tree, sites), _bilinear(tree, masks))
     demosaiced = switch(tree, "sensor.mosaic", raw, demosaiced)
@@ -334,10 +268,9 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
     one the dimming takes below white is still left out.
     """
     r, g, b = (
-        scalar(tree, "LESS_THAN", channel, ratio) for channel in _channels(tree, image)
+        Num(tree, channel).op("LESS_THAN", ratio) for channel in _channels(tree, image)
     )
-    all_unsaturated = scalar(tree, "MULTIPLY", scalar(tree, "MULTIPLY", r, g), b)
-    sampled = vector(tree, "SCALE", image, all_unsaturated)
+    sampled = vector(tree, "SCALE", image, (r * g * b).socket)
     means = []
     # Levels counts a left-out pixel as 0. That scales all three means alike, so it
     # cancels in the gains.
@@ -347,16 +280,13 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
         tree.links.new(sampled, levels.inputs["Image"])
         # Blender's x / 0 is 0. With no unsaturated pixel every mean is this floor,
         # so every gain is 1.
-        means.append(scalar(tree, "MAXIMUM", levels.outputs["Mean"], 1e-6))
+        means.append(Num(tree, levels.outputs["Mean"]).op("MAXIMUM", 1e-6))
     mean_r, mean_g, mean_b = means
-    brightest = scalar(tree, "MAXIMUM", scalar(tree, "MAXIMUM", mean_r, mean_g), mean_b)
+    brightest = mean_r.op("MAXIMUM", mean_g).op("MAXIMUM", mean_b)
     largest = value(tree, "sensor.wb_largest", _largest_fixed_gain())
     return combine(
         tree,
-        *(
-            scalar(tree, "MINIMUM", scalar(tree, "DIVIDE", brightest, mean), largest)
-            for mean in means
-        ),
+        *((brightest / mean).op("MINIMUM", largest).socket for mean in means),
     )
 
 
@@ -365,24 +295,24 @@ def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket
     luminance = tree.nodes.new("CompositorNodeRGBToBW")
     tree.links.new(image, luminance.inputs["Image"])
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
-    lit = scalar(tree, "MAXIMUM", luminance.outputs["Val"], 1e-6)
+    lit = Num(tree, luminance.outputs["Val"]).op("MAXIMUM", 1e-6)
     levels = tree.nodes.new("CompositorNodeLevels")
     levels.inputs["Channel"].default_value = "Luminance"
-    tree.links.new(scalar(tree, "LOGARITHM", lit, math.e), levels.inputs["Image"])
-    return lit, scalar(tree, "EXPONENT", levels.outputs["Mean"])
+    tree.links.new(lit.op("LOGARITHM", math.e).socket, levels.inputs["Image"])
+    return lit.socket, scalar(tree, "EXPONENT", levels.outputs["Mean"])
 
 
 def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     """Reinhard et al. 2002's global operator on luminance, L / (1 + L), with the
     log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
     a bright colour."""
-    lit, average = log_average(tree, image)
+    lit, average = (Num(tree, s) for s in log_average(tree, image))
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
-    grey = scalar(tree, "MINIMUM", grey, 0.99)
-    key = scalar(tree, "DIVIDE", grey, scalar(tree, "SUBTRACT", 1.0, grey))
-    scaled = scalar(tree, "MULTIPLY", lit, scalar(tree, "DIVIDE", key, average))
-    mapped = scalar(tree, "DIVIDE", scaled, scalar(tree, "ADD", scaled, 1.0))
-    return vector(tree, "SCALE", image, scalar(tree, "DIVIDE", mapped, lit))
+    capped = Num(tree, grey).op("MINIMUM", 0.99)
+    key = capped / (1.0 - capped)
+    scaled = lit * (key / average)
+    mapped = scaled / (scaled + 1.0)
+    return vector(tree, "SCALE", image, (mapped / lit).socket)
 
 
 def _clip(tree: bpy.types.NodeTree, image: Socket) -> Socket:
