@@ -1254,7 +1254,7 @@ def test_a_draught_draw_that_can_leave_the_range_is_refused_on_every_seed(
 ) -> None:
     """Whether a draw lands outside depends on the seed; whether it can does not."""
     for seed in range(3):
-        with pytest.raises(ValueError, match="can draw"):
+        with pytest.raises(ValueError, match="can be"):
             load(
                 BASELINE,
                 [
@@ -1263,3 +1263,49 @@ def test_a_draught_draw_that_can_leave_the_range_is_refused_on_every_seed(
                     f"bearing_deg = 0.0, draught_m = {draw} }}]",
                 ],
             )
+
+
+def test_a_draught_choice_of_no_weight_is_never_drawn() -> None:
+    weighted = "{ choice = [7.0, 12.0], weights = [1, 0] }"
+    for seed in range(3):
+        loaded = load(
+            BASELINE,
+            [
+                f"seed = {seed}",
+                'objects = [{ asset = "bulk_carrier", range_m = 900.0, '
+                f"bearing_deg = 0.0, draught_m = {weighted} }}]",
+            ],
+        )
+        assert loaded.objects[0].draught_m == 7.0
+
+
+ON_BULK = 'asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
+
+
+@pytest.mark.parametrize(
+    "objects",
+    [
+        # A drawn object hides the draught.
+        f"[{{ choice = [{{ {ON_BULK} }}, {{ {ON_BULK}, draught_m = 4.0 }}] }}]",
+        # A drawn asset, one of them without a range.
+        '[{ asset = { choice = ["bulk_carrier", "lateral_mark"] }, range_m = 900.0, '
+        "bearing_deg = 0.0, draught_m = 7.0 }]",
+    ],
+)
+def test_a_draught_any_seed_could_refuse_is_refused_on_every_seed(
+    objects: str,
+) -> None:
+    for seed in range(3):
+        with pytest.raises(ValueError, match="draught_range_m"):
+            load(BASELINE, [f"seed = {seed}", f"objects = {objects}"])
+
+
+def test_each_drawn_object_is_checked_with_its_own_asset() -> None:
+    """A light draught fits the bulk carrier it sits on, whatever the other option."""
+    container = 'asset = "container", range_m = 900.0, bearing_deg = 0.0'
+    objects = (
+        f"[{{ choice = [{{ {ON_BULK}, draught_m = 7.0 }}, "
+        f"{{ {container}, draught_m = 0.2 }}] }}]"
+    )
+    for seed in range(3):
+        load(BASELINE, [f"seed = {seed}", f"objects = {objects}"])

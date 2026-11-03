@@ -124,6 +124,12 @@ class Choice(Model):
         p = np.array(self.weights) / sum(self.weights)
         return self.choice[rng.choice(len(self.choice), p=p)]
 
+    def possible(self) -> list[Any]:
+        """The values it can draw: those of no weight never come up."""
+        if self.weights is None:
+            return self.choice
+        return [v for v, w in zip(self.choice, self.weights, strict=True) if w > 0]
+
     def bounds(self) -> tuple[float, float]:
         """The lowest and highest number it can draw, through any draw among its
         values."""
@@ -131,7 +137,7 @@ class Choice(Model):
             DRAWS[name].model_validate(value).bounds()
             if (name := kind(value)) is not None
             else (float(value), float(value))
-            for value in self.choice
+            for value in self.possible()
         ]
         return min(low for low, _ in spans), max(high for _, high in spans)
 
