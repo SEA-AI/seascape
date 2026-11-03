@@ -7,11 +7,10 @@ least-squares slope of each wave along a box hull; roll is the same across it.
 """
 
 import math
-from collections.abc import Callable
 
 import numpy as np
 
-from seascape.physics.waves.spectrum import Wave
+from seascape.physics.waves.spectrum import Wave, columns
 
 
 def phases(
@@ -20,23 +19,20 @@ def phases(
     north_m: np.ndarray,
     t_s: float | np.ndarray,
 ) -> np.ndarray:
-    return np.array(
-        [
-            w.k_east_rad_m * east_m
-            + w.k_north_rad_m * north_m
-            - w.omega_rad_s * t_s
-            + w.phase_rad
-            for w in field
-        ]
-    )
+    _, _, kx, ky, omega, phase = columns(field)
+    ndim = np.broadcast(east_m, north_m, t_s).ndim
+
+    def col(of_wave: np.ndarray) -> np.ndarray:
+        return of_wave.reshape(-1, *[1] * ndim)
+
+    return col(kx) * east_m + col(ky) * north_m - col(omega) * t_s + col(phase)
 
 
 def height_m(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> np.ndarray:
-    amplitude = np.array([w.amplitude_m for w in field])
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
-    return np.tensordot(amplitude, np.cos(phase), axes=1)
+    return np.tensordot(columns(field)[0], np.cos(phase), axes=1)
 
 
 def slope(
@@ -44,9 +40,8 @@ def slope(
 ) -> tuple[np.ndarray, np.ndarray]:
     """d height / d east and d height / d north."""
     sine = np.sin(phases(field, np.asarray(east_m), np.asarray(north_m), t_s))
-    a_east = np.array([-w.amplitude_m * w.k_east_rad_m for w in field])
-    a_north = np.array([-w.amplitude_m * w.k_north_rad_m for w in field])
-    return np.tensordot(a_east, sine, axes=1), np.tensordot(a_north, sine, axes=1)
+    a, _, kx, ky, *_ = columns(field)
+    return np.tensordot(-a * kx, sine, axes=1), np.tensordot(-a * ky, sine, axes=1)
 
 
 def gerstner_offset_m(
@@ -57,15 +52,11 @@ def gerstner_offset_m(
     (Tessendorf, "Simulating ocean water", SIGGRAPH 2001 course, eq. 29, lambda 1)."""
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
-    along_east = np.array([-w.amplitude_m * w.k_east_rad_m / w.k_rad_m for w in field])
-    along_north = np.array(
-        [-w.amplitude_m * w.k_north_rad_m / w.k_rad_m for w in field]
-    )
-    amplitude = np.array([w.amplitude_m for w in field])
+    a, k, kx, ky, *_ = columns(field)
     return (
-        np.tensordot(along_east, sine, axes=1),
-        np.tensordot(along_north, sine, axes=1),
-        np.tensordot(amplitude, cosine, axes=1),
+        np.tensordot(-a * kx / k, sine, axes=1),
+        np.tensordot(-a * ky / k, sine, axes=1),
+        np.tensordot(a, cosine, axes=1),
     )
 
 
@@ -81,9 +72,8 @@ def gerstner_rest_m(
     crest folds."""
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
     rest_east, rest_north = (east, north) if guess is None else guess
-    k_east = np.array([w.k_east_rad_m for w in field])
-    k_north = np.array([w.k_north_rad_m for w in field])
-    along = np.array([w.amplitude_m / w.k_rad_m for w in field])
+    a, k, k_east, k_north, *_ = columns(field)
+    along = a / k
     for _ in range(50):
         phase = phases(field, rest_east, rest_north, t_s)
         sine, cosine = np.sin(phase), np.cos(phase)
@@ -113,17 +103,13 @@ def gerstner_normal(
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
 
-    def summed(of: Callable[[Wave], float], wave: np.ndarray) -> np.ndarray:
-        return np.tensordot(np.array([of(w) for w in field]), wave, axes=1)
-
+    a, k, kx, ky, *_ = columns(field)
     # d(offset)/d(rest): -a k_i k_j / k cos along, -a k_j sin up.
-    ee = 1 - summed(lambda w: w.amplitude_m * w.k_east_rad_m**2 / w.k_rad_m, cosine)
-    nn = 1 - summed(lambda w: w.amplitude_m * w.k_north_rad_m**2 / w.k_rad_m, cosine)
-    en = -summed(
-        lambda w: w.amplitude_m * w.k_east_rad_m * w.k_north_rad_m / w.k_rad_m, cosine
-    )
-    ue = -summed(lambda w: w.amplitude_m * w.k_east_rad_m, sine)
-    un = -summed(lambda w: w.amplitude_m * w.k_north_rad_m, sine)
+    ee = 1 - np.tensordot(a * kx**2 / k, cosine, axes=1)
+    nn = 1 - np.tensordot(a * ky**2 / k, cosine, axes=1)
+    en = -np.tensordot(a * kx * ky / k, cosine, axes=1)
+    ue = -np.tensordot(a * kx, sine, axes=1)
+    un = -np.tensordot(a * ky, sine, axes=1)
     # (ee, en, ue) x (en, nn, un)
     normal = np.array([en * un - ue * nn, ue * en - ee * un, ee * nn - en * en])
     normal /= np.linalg.norm(normal, axis=0)
@@ -219,14 +205,12 @@ def attitude(
     inertia."""
     if not field:
         return 0.0, 0.0
-    k_east = np.array([w.k_east_rad_m for w in field])
-    k_north = np.array([w.k_north_rad_m for w in field])
+    amplitude, _, k_east, k_north, *_ = columns(field)
     # Starboard of the heading is (cos, -sin).
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
     at = phases(field, np.array(rest_east_m), np.array(rest_north_m), t_s)
-    amplitude = np.array([w.amplitude_m for w in field])
     # 1, x, y are orthogonal over a hull centred at the rest position, so each wave's
     # slope separates.
     rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
@@ -251,14 +235,12 @@ def heave_m(
     steepness. The hull follows it at once: no inertia."""
     if not field:
         return 0.0
-    k_east = np.array([w.k_east_rad_m for w in field])
-    k_north = np.array([w.k_north_rad_m for w in field])
+    amplitude, _, k_east, k_north, *_ = columns(field)
     # Starboard of the heading is (cos, -sin).
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
     k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
     u, v = k_along * length_m / 2, k_across * beam_m / 2
     at = phases(field, np.array(rest_east_m), np.array(rest_north_m), t_s)
-    amplitude = np.array([w.amplitude_m for w in field])
     under = amplitude * np.cos(at) * np.sinc(u / math.pi) * np.sinc(v / math.pi)
     return float(under.sum())
 
@@ -274,7 +256,7 @@ def _lever(u: np.ndarray) -> np.ndarray:
 
 def tallest(field: tuple[Wave, ...], share: float) -> tuple[Wave, ...]:
     """The fewest waves carrying `share` of the height variance, in field order."""
-    variance = np.array([w.amplitude_m**2 for w in field])
+    variance = columns(field)[0] ** 2
     order = np.argsort(variance)[::-1]
     count = int(np.searchsorted(np.cumsum(variance[order]), share * variance.sum())) + 1
     kept = set(order[:count].tolist())

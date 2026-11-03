@@ -40,6 +40,7 @@ from seascape.physics.waves.spectrum import (
     CAPILLARY_PEAK_RAD_M,
     LOWEST_OF_PEAK,
     Wave,
+    columns,
     curvature_spectrum,
     peak_omega_rad_s,
     wind_at_m,
@@ -248,7 +249,7 @@ def fade_axis(wave: Wave) -> FadeAxis:
 
 def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     """The waves a pixel of `footprint_m` draws, each scaled by its visibility."""
-    shown = visibility(np.array([2 * math.pi / w.k_rad_m for w in field]), footprint_m)
+    shown = visibility(2 * math.pi / columns(field)[1], footprint_m)
     return tuple(
         replace(w, amplitude_m=w.amplitude_m * v)
         for w, v in zip(field, shown.tolist(), strict=True)
@@ -269,10 +270,9 @@ def drawn_slope_variances(
     building the waves."""
     if not field:
         return 0.0, 0.0
-    k = np.array([w.k_rad_m for w in field])
-    ak = np.array([w.amplitude_m for w in field]) * k
+    a, k, *_ = columns(field)
     along = np.cos(np.array([w.toward_rad for w in field]) - downwind_rad) ** 2
-    shown = (ak * visibility(2 * math.pi / k, footprint_m)) ** 2 / 2
+    shown = (a * k * visibility(2 * math.pi / k, footprint_m)) ** 2 / 2
     return float(np.sum(shown * along)), float(np.sum(shown * (1 - along)))
 
 
