@@ -1,6 +1,6 @@
 """The README's hero: EO above LWIR under each sky, with labels.json drawn on.
 
-uv run python -m docs.hero docs/hero.jpg
+uv run --with supervision python -m docs.hero docs/hero.jpg
 """
 
 import json
@@ -9,9 +9,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+import cv2
+import numpy as np
+import supervision as sv
 from PIL import Image, ImageDraw
 
-from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, font
+from docs.brand import FOG_WHITE, MASK_COLOURS, NIGHT_BLUE, font
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
@@ -43,6 +46,58 @@ def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
     return img
 
 
+def masks(
+    image: dict,
+    annotations: list[dict],
+    box: tuple[float, float, float, float],
+    size: tuple[int, int],
+) -> np.ndarray:
+    """Each mask, cropped to `box` and resized to `size`."""
+    resolution = (image["width"], image["height"])
+    return np.stack(
+        [
+            np.asarray(
+                Image.fromarray(
+                    sv.rle_to_mask(a["segmentation"]["counts"], resolution).astype(
+                        np.uint8
+                    )
+                    * 255
+                ).resize(size, Image.Resampling.BILINEAR, box=box)
+            )
+            > 127
+            for a in annotations
+        ]
+    )
+
+
+def outlined(pic: np.ndarray, found: sv.Detections) -> np.ndarray:
+    """`pic` with each target haloed, boxed and outlined, one colour per target."""
+    colours = sv.ColorPalette.from_hex(MASK_COLOURS)
+    by_index = sv.ColorLookup.INDEX
+    grown = sv.Detections(
+        xyxy=found.xyxy,
+        mask=np.stack(
+            [cv2.dilate(m.view(np.uint8), np.ones((3, 3))) > 0 for m in found.mask]
+        ),
+    )
+    pic = sv.HaloAnnotator(
+        color=colours, opacity=0.6, kernel_size=25, color_lookup=by_index
+    ).annotate(pic, found)
+    pic = sv.PolygonAnnotator(
+        color=colours, thickness=1, color_lookup=by_index
+    ).annotate(pic, grown)
+    return sv.BoxAnnotator(color=colours, thickness=1, color_lookup=by_index).annotate(
+        pic, found
+    )
+
+
+def lit(img: Image.Image, found: np.ndarray) -> Image.Image:
+    """`img` with the targets in `found` drawn on."""
+    detections = sv.Detections(xyxy=sv.mask_to_xyxy(found), mask=found)
+    pic = outlined(np.asarray(img)[..., ::-1].copy(), detections)
+    return Image.fromarray(pic[..., ::-1])
+
+
 def frame(
     run: Path,
     image: dict,
@@ -57,6 +112,8 @@ def frame(
     img = Image.open(run / image["file_name"]).convert("RGB")
     box = (left, top, left + width, top + height)
     img = img.resize(size, Image.Resampling.LANCZOS, box=box)
+    if annotations:
+        img = lit(img, masks(image, annotations, box, size))
     draw = ImageDraw.Draw(img)
 
     def at(x: float, y: float) -> tuple[float, float]:
@@ -64,16 +121,14 @@ def frame(
 
     draw.line([at(x, y) for x, y in image["horizon_px"]], fill=FOG_WHITE)
     for a in annotations:
-        x, y, w, h = a["bbox"]
-        (x0, y0), (x1, y1) = at(x, y), at(x + w, y + h)
-        draw.rectangle([x0, y0, x1, y1], outline=FOCUS_RED, width=2)
+        x0, y0 = at(*a["bbox"][:2])
         r = a["range_m"]
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
         # Off the right edge a label shifts left, off the top it drops below the edge.
         text_w = draw.textlength(text, font=font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
-        tag(draw, (x, max(4, y0 - 20)), text, FOCUS_RED, 15)
+        tag(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
     return captioned(img, caption)
 
 

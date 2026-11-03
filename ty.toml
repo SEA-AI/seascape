@@ -7,9 +7,9 @@ python-version = "3.13"
 [src]
 include = ["seascape", "tests", "docs"]
 
-# matplotlib draws the docs' charts and is run with `uv run --with`, not installed.
+# matplotlib and supervision are run with `uv run --with`, not installed.
 [[overrides]]
-include = ["docs/primer/charts.py"]
+include = ["docs/primer/charts.py", "docs/masks.py", "docs/hero.py"]
 
 [overrides.rules]
 unresolved-import = "ignore"
