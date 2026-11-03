@@ -21,6 +21,11 @@ normal frequency distribution in any number of variables", Biometrika 12(1/2) 13
 C_ac C_bd + C_ad C_bc, so the mean square slope over a footprint varies with
 2 sum_ab C_ab^2 averaged over pairs of its points.
 
+Glint: Cox & Munk 1954, their relation of the glitter's radiance to the slope that
+mirrors the sun, N = rho H p(z_x, z_y) / (4 cos(theta_v) cos^4(beta)), rho Fresnel's
+reflectance at the facet, H the sun's irradiance across its beam, beta the facet's tilt
+and theta_v the view's zenith angle.
+
 Slicks: Alpers & Huhnerfuss, "The damping of ocean waves by surface films: a new look
 at an old problem", JGR 94(C5) 6251, 1989 (doi:10.1029/JC094iC05p06251): on the long
 side of its Marangoni resonance, at centimetres, a film damps more the shorter the wave,
@@ -33,8 +38,10 @@ from dataclasses import replace
 from functools import cache
 
 import numpy as np
+import numpy.typing as npt
 
 from seascape.physics.earth import GRAVITY_MS2
+from seascape.physics.lwir import fresnel_emissivity
 from seascape.physics.waves.spectrum import (
     CAPILLARY_PEAK_RAD_M,
     LOWEST_OF_PEAK,
@@ -107,6 +114,35 @@ def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
     up_share, _ = _axis_shares(wind_speed_mps, AXES_SLICK)
     up = min(total * up_share, cox_munk_variances(wind_speed_mps)[0])
     return up, total - up
+
+
+def sun_glint_radiance(
+    view: npt.ArrayLike,
+    sun: npt.ArrayLike,
+    variances: tuple[float, float],
+    wind_from_rad: float,
+    irradiance: float,
+    ior: float,
+) -> np.ndarray:
+    """The mean radiance of the sun mirrored by a sea of Gaussian slopes, `variances`
+    upwind and crosswind, toward each unit `view` (..., 3) from a sun at unit `sun`:
+    east, north, up, each pointing away from the sea. Unshadowed, as Cox & Munk's
+    moderate angles are."""
+    view = np.asarray(view, dtype=np.float64)
+    half = view + np.asarray(sun, dtype=np.float64)
+    half /= np.linalg.norm(half, axis=-1, keepdims=True)
+    cos_beta = half[..., 2]
+    # The facet (-z_x, -z_y, 1) that faces the half-way vector.
+    z_east, z_north = -half[..., 0] / cos_beta, -half[..., 1] / cos_beta
+    upwind = z_east * math.sin(wind_from_rad) + z_north * math.cos(wind_from_rad)
+    crosswind = z_east * math.cos(wind_from_rad) - z_north * math.sin(wind_from_rad)
+    up, cross = variances
+    density = np.exp(-(upwind**2 / up + crosswind**2 / cross) / 2) / (
+        2 * math.pi * math.sqrt(up * cross)
+    )
+    incidence = np.arccos(np.clip(np.sum(view * half, axis=-1), -1.0, 1.0))
+    reflectance = 1 - fresnel_emissivity(incidence, ior, 0.0)
+    return reflectance * irradiance * density / (4 * view[..., 2] * cos_beta**4)
 
 
 @cache

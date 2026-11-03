@@ -656,6 +656,26 @@ def test_calm_water_does_not_glitter() -> None:
     assert waves.twinkle_hz(()) == 0.0
 
 
+def test_the_glint_of_an_overhead_sun_returns_what_the_sea_intercepts() -> None:
+    """Over the sky's hemisphere a high sun's glint integrates to the irradiance times
+    the reflectance near normal incidence: each facet intercepts the sun across its
+    horizontal area. Gently sloped, every facet mirrors within 1e-3 of normal."""
+    zenith = np.linspace(0.0, math.pi / 2, 2001)[1:-1]
+    azimuth = np.linspace(0.0, 2 * math.pi, 721)
+    theta, phi = np.meshgrid(zenith, azimuth, indexing="ij")
+    view = np.stack(
+        [np.sin(theta) * np.sin(phi), np.sin(theta) * np.cos(phi), np.cos(theta)], -1
+    )
+    glint = waves.sun_glint_radiance(
+        view, (0.0, 0.0, 1.0), (0.01, 0.005), 0.3, 1.0, 1.34
+    )
+
+    integrand = glint * np.cos(theta) * np.sin(theta)
+    returned = np.trapezoid(np.trapezoid(integrand, azimuth, axis=1), zenith)
+    normal = 1 - lwir.fresnel_emissivity(0.0, 1.34, 0.0)
+    assert returned == pytest.approx(normal, rel=1e-3)
+
+
 def test_the_spread_narrows_to_the_peak_and_widens_above_it() -> None:
     peak = waves.peak_omega_rad_s(7.0, None)
     delta = waves.spreading_delta(np.array([peak, 4 * peak]), 7.0, None)

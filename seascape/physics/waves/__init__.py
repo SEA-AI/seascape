@@ -16,6 +16,7 @@
 #   whitecaps       tall crests' a k cos(phase) > thresh Snyder & Kennedy 1983
 #   foam            youngest break, area exp(-age/3.85 s) Monahan 1971
 #   foam fade       e-fold where the life's mean is 0.22 Koepke 1984
+#   glint radiance  rho H p / (4 cos(theta_v) cos^4 b) Cox & Munk 1954
 #   glitter         one specular point per 1 / E|det H| Longuet-Higgins 1960
 #   groups          footprint's unresolved slope^2 varies Isserlis 1918
 #   gust            u / U, sigma 1 / ln(10 / z0)        DNV-RP-C205
@@ -61,6 +62,7 @@ from seascape.physics.waves.slopes import (
     slick_survivors,
     slope_variance,
     specular_cell_m2,
+    sun_glint_radiance,
     twinkle_hz,
     unresolved_slope_variances,
     visibility,
@@ -153,6 +155,7 @@ __all__ = [
     "snap_error",
     "specular_cell_m2",
     "spreading_delta",
+    "sun_glint_radiance",
     "swell",
     "tallest",
     "turbulence_intensity",
