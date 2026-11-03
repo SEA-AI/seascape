@@ -246,21 +246,6 @@ def fade_axis(wave: Wave) -> FadeAxis:
     )
 
 
-def faded_visibility(
-    field: tuple[Wave, ...], across_m: float, along_m: float, view_rad: float
-) -> np.ndarray:
-    """`visibility` of each wave to a pixel looking toward `view_rad`, at the
-    footprint the shader's fade gives it (Bruneton et al. 2010)."""
-    axes = [fade_axis(w) for w in field]
-    tx = np.array([a.tx for a in axes])
-    ty = np.array([a.ty for a in axes])
-    band = np.array([a.band for a in axes])
-    cos_sq = (tx * math.sin(view_rad) + ty * math.cos(view_rad)) ** 2 + band
-    footprint = np.sqrt(across_m**2 + (along_m**2 - across_m**2) * cos_sq)
-    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
-    return visibility(wavelength, footprint)
-
-
 def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     """The waves a pixel of `footprint_m` draws, each scaled by its visibility."""
     shown = visibility(np.array([2 * math.pi / w.k_rad_m for w in field]), footprint_m)

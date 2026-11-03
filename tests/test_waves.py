@@ -6,7 +6,7 @@ import pytest
 
 from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
-from seascape.physics.waves import sea, slopes
+from seascape.physics.waves import sea
 
 
 def field(
@@ -301,6 +301,20 @@ ALONG_VIEW_RAD = math.radians(1.0)
 SHARP_EXCESS = 3.0
 
 
+def _faded_visibility(field: tuple[waves.Wave, ...], view_rad: float) -> np.ndarray:
+    """Each wave's visibility to the grazing pixel at the footprint the shader's fade
+    gives it."""
+    axes = [waves.fade_axis(w) for w in field]
+    tx = np.array([a.tx for a in axes])
+    ty = np.array([a.ty for a in axes])
+    band = np.array([a.band for a in axes])
+    cos_sq = (tx * math.sin(view_rad) + ty * math.cos(view_rad)) ** 2 + band
+    along_sq = GRAZING_ALONG_M**2 - GRAZING_ACROSS_M**2
+    footprint = np.sqrt(GRAZING_ACROSS_M**2 + along_sq * cos_sq)
+    wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
+    return waves.visibility(wavelength, footprint)
+
+
 def _slope_variance(built: tuple[waves.Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
     k = np.array([w.k_rad_m for w in built])
     slope = (np.array([w.amplitude_m for w in built]) * k) ** 2 / 2
@@ -311,7 +325,7 @@ def _sharp_along_view(built: tuple[waves.Wave, ...], view_rad: float) -> float:
     """The slope variance a grazing pixel keeps in crests along its view, over what
     a square pixel draws of the whole sea."""
     slope, square = _slope_variance(built)
-    seen = slopes.faded_visibility(built, GRAZING_ACROSS_M, GRAZING_ALONG_M, view_rad)
+    seen = _faded_visibility(built, view_rad)
     toward = np.array([w.toward_rad for w in built])
     crest_off = np.remainder(toward - view_rad, math.pi) - math.pi / 2
     near = np.abs(crest_off) < ALONG_VIEW_RAD
@@ -338,9 +352,7 @@ def _continuous_sharp_along_view(
         single = tuple(
             waves.Wave(w.amplitude_m, w.omega_rad_s, heading, 0.0) for w in built
         )
-        seen = slopes.faded_visibility(
-            single, GRAZING_ACROSS_M, GRAZING_ALONG_M, view_rad
-        )
+        seen = _faded_visibility(single, view_rad)
         kept += float(np.sum(slope * share * seen**2))
     return kept / float(square.sum())
 
