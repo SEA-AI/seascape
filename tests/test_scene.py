@@ -58,6 +58,7 @@ from seascape.config import (
     Outputs,
     Rig,
     Scenario,
+    Sky,
     load,
     substream,
 )
@@ -73,6 +74,18 @@ from tests.scenarios import (
 )
 
 SCENARIO = load(BASELINE)
+# The manifest fields a fit does not read.
+ASSET: dict[str, Any] = {
+    "description": "x",
+    "category": "x",
+    "category_id": 1,
+    "url": "x",
+    "sha256": "0" * 64,
+    "triangles": 1,
+    "texture_px": (),
+    "licence": "x",
+    "attribution": "x",
+}
 # A lens of the test's own: no shipped preset is pinned.
 LENS: dict[str, Any] = {
     "band": "eo",
@@ -161,11 +174,39 @@ def under_the_haze(material: bpy.types.Material) -> bpy.types.Node:
 
 def baked(name: str) -> np.ndarray:
     """The red channel of a lookup image, rows bottom first."""
-    image = bpy.data.images[name]
-    width, height = image.size
-    pixels = np.empty(len(image.pixels), dtype=np.float32)
-    image.pixels.foreach_get(pixels)
-    return np.squeeze(pixels.reshape(height, width, 4)[..., 0])
+    return np.squeeze(blend.pixels(bpy.data.images[name])[..., 0])
+
+
+def _white_photo(folder: Path, width: int, height: int) -> Path:
+    """A white photo, written for `sky.download` to return."""
+    path = folder / "white.hdr"
+    image = bpy.data.images.new("white", width, height, float_buffer=True)
+    image.pixels.foreach_set(np.ones(width * height * 4, np.float32))
+    image.filepath_raw = str(path)
+    image.file_format = "HDR"
+    image.save()
+    return path
+
+
+def _hazed_sky_m(
+    sky: Sky, elevation: np.ndarray | float, cloud: float | None = None
+) -> np.ndarray:
+    """`lwir.sky_radiance`, or `lwir.cloudy_sky_radiance` under a `cloud` share, at
+    `elevation` through the aerosol."""
+    if cloud is None:
+        radiance = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
+    else:
+        radiance = lwir.cloudy_sky_radiance(
+            elevation, cloud, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+        )
+    return aerosol.sky_radiance(
+        radiance, elevation, sky.visibility_km, sky.t_air_k, sky.atmosphere
+    )
+
+
+def _texel_elevations() -> np.ndarray:
+    """The elevation at each texel centre of a table read by sin(elevation)."""
+    return np.arcsin((np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES)
 
 
 def _blocked(origin: Vector, target: Vector) -> bool:
@@ -179,22 +220,36 @@ def _blocked(origin: Vector, target: Vector) -> bool:
     return bool(hit)
 
 
+def _footprints_m(n: int) -> np.ndarray:
+    """The footprint at each texel centre of a table the shader reads by log
+    footprint."""
+    low, high = FOOTPRINT_RANGE_M
+    return low * (high / low) ** ((np.arange(n) + 0.5) / n)
+
+
 def counts() -> tuple[int, ...]:
     return tuple(
         len(block) for block in (bpy.data.objects, bpy.data.materials, bpy.data.images)
     )
 
 
-def shaded(
-    scenario: Scenario, kept: tuple[waves.Wave, ...] | None = None
-) -> list[waves.Wave]:
-    """The scenario's field, or the `kept` part of it, less the waves drawn as
-    geometry: what the normal draws."""
+def _normal_waves(
+    scenario: Scenario, kept: tuple[waves.Wave, ...] | None
+) -> tuple[tuple[waves.Wave, ...], tuple[waves.Wave, ...]]:
+    """The scenario's wind and swell, or the `kept` part of them, less the waves drawn
+    as geometry."""
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     if kept is not None:
         wind = tuple(w for w in wind if w in kept)
         swell = tuple(w for w in swell if w in kept)
-    _, (wind, swell) = sea.displaced((wind, swell))
+    return sea.displaced((wind, swell))[1]
+
+
+def shaded(
+    scenario: Scenario, kept: tuple[waves.Wave, ...] | None = None
+) -> list[waves.Wave]:
+    """What the normal draws of the scenario's field, or of the `kept` part of it."""
+    wind, swell = _normal_waves(scenario, kept)
     return [*wind, *swell]
 
 
@@ -205,11 +260,7 @@ def drawn(
     lane there, of the scenario's field or the `kept` part of it, less the waves drawn
     as geometry. Every other lane must be empty."""
     nodes = bpy.data.node_groups["sea_waves"].nodes
-    wind, swell = scenario.wind_waves(), scenario.swell_waves()
-    if kept is not None:
-        wind = tuple(w for w in wind if w in kept)
-        swell = tuple(w for w in swell if w in kept)
-    _, (wind, swell) = sea.displaced((wind, swell))
+    wind, swell = _normal_waves(scenario, kept)
     triples = _triples(wind) + _triples(swell)
     found = []
     for i, triple in enumerate(triples):
@@ -430,9 +481,7 @@ class TestEoBand:
         axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
         for i, axis in enumerate(("upwind", "crosswind")):
             table = baked(f"sea_unresolved_variance_{axis}")
-            low, high = FOOTPRINT_RANGE_M
-            texel = (np.arange(len(table)) + 0.5) / len(table)
-            footprints = low * (high / low) ** texel
+            footprints = _footprints_m(len(table))
             for t in (0, len(table) // 2, len(table) - 1):
                 expected = waves.unresolved_slope_variances(
                     speed, axis_rad, wind, swell, footprints[t]
@@ -475,29 +524,23 @@ class TestEoBand:
             abs=1e-9,
         )
 
-    def test_whitecap_foam_reads_the_sea_the_waves_are_drawn_on(self) -> None:
-        """Its memory and its lace both read the water's rest position, so neither
-        slides off the crests."""
+    def test_foam_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
+        """The foam's memory and lace, the glitter and the gusts all read the water's
+        rest position, so none slides off the crests."""
         tree = bpy.data.materials["sea"].node_tree
         memory = [n for n in tree.nodes if n.name.startswith("sea_foam_")]
         assert memory
         for socket in (
             *(n.inputs["Vector"] for n in memory),
             tree.nodes["whitecap_lace_axes"].inputs["X"],
+            tree.nodes["glitter_cells"].inputs["Vector"],
+            tree.nodes["gust_axes"].inputs["X"],
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
 
     @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice", "sea_gust"])
     def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
         assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
-
-    def test_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        for socket in (
-            nodes["glitter_cells"].inputs["Vector"],
-            nodes["gust_axes"].inputs["X"],
-        ):
-            assert "sea_rest" in upstream(socket), socket.node.name
 
     def test_the_lobe_keeps_its_mean_roughness(self) -> None:
         """The glitter carries the unresolved slope's spread in EO."""
@@ -655,20 +698,12 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     """180 is its own inverse: the shipped hull passes with a sign error or the
     length measured along the beam. Any other bow catches both."""
     asset = Hull(
+        **ASSET,
         kind="hull",
         material="steel",
-        description="x",
-        category="x",
-        category_id=1,
-        url="x",
-        sha256="0" * 64,
         length_m=200.0,
         draught_m=5.0,
         bow_deg=bow_deg,
-        triangles=1,
-        texture_px=(),
-        licence="x",
-        attribution="x",
     )
     long, beam = Vector(bow_corner), Vector((-bow_corner[1], bow_corner[0], 0)) / 5
     corners = [
@@ -690,19 +725,7 @@ def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
 
 def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None:
     debris = Debris(
-        kind="debris",
-        material="wood",
-        description="x",
-        category="x",
-        category_id=1,
-        url="x",
-        sha256="0" * 64,
-        length_m=6.0,
-        draught_m=1.5,
-        triangles=1,
-        texture_px=(),
-        licence="x",
-        attribution="x",
+        **ASSET, kind="debris", material="wood", length_m=6.0, draught_m=1.5
     )
     corners = [Vector((x, y, z)) for x in (0, 1) for y in (0, 3) for z in (0, 1)]
 
@@ -714,21 +737,7 @@ def test_debris_is_fitted_along_its_longest_side_where_it_was_authored() -> None
 
 
 def test_a_buoy_is_fitted_keel_to_top_where_it_was_authored() -> None:
-    buoy = Buoy(
-        kind="buoy",
-        material="steel",
-        description="x",
-        category="x",
-        category_id=1,
-        url="x",
-        sha256="0" * 64,
-        height_m=6.0,
-        draught_m=1.5,
-        triangles=1,
-        texture_px=(),
-        licence="x",
-        attribution="x",
-    )
+    buoy = Buoy(**ASSET, kind="buoy", material="steel", height_m=6.0, draught_m=1.5)
     corners = [Vector((x, y, z)) for x in (9, 11) for y in (0, 1) for z in (3, 6)]
 
     fitted = [_fit(corners, buoy) @ c for c in corners]
@@ -871,12 +880,9 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     assert tropical.sky.t_air_k == atmosphere.SURFACE_AIR_K["tropical"]
     scene.build(tropical, "ir")
     sky = tropical.sky
-    centres = (np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES
-    clear = lwir.sky_radiance(np.arcsin(centres), sky.t_air_k, "tropical")
-    expected = aerosol.sky_radiance(
-        clear, np.arcsin(centres), sky.visibility_km, sky.t_air_k, "tropical"
+    assert baked("sky_radiance") == pytest.approx(
+        _hazed_sky_m(sky, _texel_elevations()), rel=1e-5
     )
-    assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
     ranges = _haze_ranges_m(bpy.context.scene.camera.data.clip_end)
     depth = lwir.path_optical_depth(ranges, sky.visibility_km, "tropical")
     assert baked("haze_depth") == pytest.approx(depth, rel=1e-5)
@@ -1011,9 +1017,7 @@ class TestIrBand:
     def test_the_unresolved_slope_spreads_as_the_short_waves_groups(self) -> None:
         """The shader reads this by log footprint at texel centres."""
         table = baked("sea_mss_spread")
-        low, high = FOOTPRINT_RANGE_M
-        texel = (np.arange(len(table)) + 0.5) / len(table)
-        footprints = low * (high / low) ** texel
+        footprints = _footprints_m(len(table))
         speed, fetch = SCENARIO.sea.wind_speed_mps, SCENARIO.sea.fetch_m
         for t in (0, len(table) // 2, len(table) - 1):
             expected = waves.mss_spread(speed, fetch, footprints[t])
@@ -1025,14 +1029,7 @@ class TestIrBand:
     def test_the_baked_sky_runs_cold_towards_the_zenith(self) -> None:
         """The shader reads this by sin(elevation) at texel centres."""
         curve = baked("sky_radiance")
-
-        centres = (np.arange(len(curve)) + 0.5) / len(curve)
-        sky = SCENARIO.sky
-        elevation = np.arcsin(centres)
-        clear = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
-        expected = aerosol.sky_radiance(
-            clear, elevation, sky.visibility_km, sky.t_air_k, sky.atmosphere
-        )
+        expected = _hazed_sky_m(SCENARIO.sky, _texel_elevations())
         assert curve == pytest.approx(expected, rel=1e-5)
         ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
         assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"
@@ -1377,6 +1374,10 @@ class TestOwnshipMotion:
         )
 
 
+def _finest_m(scenario: Scenario, built: scene.Built) -> float:
+    return scene._finest_footprint_m(scenario, views(scenario, "eo", built.cameras))
+
+
 def _sea_node(name: str) -> bpy.types.ShaderNode:
     return bpy.data.materials["sea"].node_tree.nodes[name]
 
@@ -1451,9 +1452,7 @@ class TestSlicks:
         left = waves.slick_survivors(speed, self.SLICKS.wind_waves(), axis_rad)
         for i, axis in enumerate(("upwind", "crosswind")):
             table = baked(f"sea_unresolved_slick_variance_{axis}")
-            low, high = FOOTPRINT_RANGE_M
-            texel = (np.arange(len(table)) + 0.5) / len(table)
-            footprints = low * (high / low) ** texel
+            footprints = _footprints_m(len(table))
             for t in (0, len(table) // 2, len(table) - 1):
                 expected = waves.unresolved_slope_variances(
                     speed,
@@ -1545,14 +1544,14 @@ class TestSeaEvolves:
         pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
         crest_m = sum(w.amplitude_m for w in _tall(scenario))
         lowest = min(_ridden_m(scenario, t) for t in scenario.outputs.times_s)
-        assert scene._finest_footprint_m(
-            scenario, views(scenario, "eo", built.cameras)
-        ) == pytest.approx((mount.rig.height_m + lowest - crest_m) * pixel_rad)
+        assert _finest_m(scenario, built) == pytest.approx(
+            (mount.rig.height_m + lowest - crest_m) * pixel_rad
+        )
         # The shader's pixel, and so the finest one, scales with the render's size.
         bpy.context.scene.render.resolution_percentage = 50
-        assert scene._finest_footprint_m(
-            scenario, views(scenario, "eo", built.cameras)
-        ) == pytest.approx(2 * (mount.rig.height_m + lowest - crest_m) * pixel_rad)
+        assert _finest_m(scenario, built) == pytest.approx(
+            2 * (mount.rig.height_m + lowest - crest_m) * pixel_rad
+        )
 
     def test_the_finest_pixel_is_taken_at_the_lowest_heave(self) -> None:
         heave = {"amplitude_m": 2.0, "period_s": 4.0}
@@ -1566,9 +1565,7 @@ class TestSeaEvolves:
             + _ridden_m(scenario, t)
             for t in scenario.outputs.times_s
         )
-        assert scene._finest_footprint_m(
-            scenario, views(scenario, "eo", built.cameras)
-        ) == pytest.approx(
+        assert _finest_m(scenario, built) == pytest.approx(
             (mount.rig.height_m + lowest - crest_m) * pixel_rad, rel=1e-5
         )
 
@@ -1581,10 +1578,7 @@ class TestSeaEvolves:
         scene.build(scenario, "eo")
         assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
-        finest = scene._finest_footprint_m(
-            scenario, views(scenario, "eo", built.cameras)
-        )
-        resolved = waves.resolvable(field, finest)
+        resolved = waves.resolvable(field, _finest_m(scenario, built))
         kept = [w for w, _, _ in drawn(scenario, resolved)]
         assert kept == shaded(scenario, resolved) != shaded(scenario)
 
@@ -1825,8 +1819,7 @@ class TestWakes:
             "heading_deg": [90.0, 90.0],
             "speed_mps": 8.0,
         }
-        scenario = variant(targets=ring)
-        scene.build(scenario, "eo")
+        scene.build(variant(targets=ring), "eo")
         assert "sea_foam" in bpy.data.images
 
 
@@ -1889,12 +1882,7 @@ class TestPhotographedSky:
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
         """A tiny photo stands in for the download."""
-        path = tmp_path_factory.mktemp("sky") / "tiny.hdr"
-        image = bpy.data.images.new("tiny", 64, 32, float_buffer=True)
-        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
-        image.filepath_raw = str(path)
-        image.file_format = "HDR"
-        image.save()
+        path = _white_photo(tmp_path_factory.mktemp("sky"), 64, 32)
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("seascape.blender.sky.download", lambda *_: path)
             scene.build(variant(sky={"hdri": cls.SKY}), "eo")
@@ -1927,12 +1915,7 @@ class TestHiddenSun:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
-        path = tmp_path_factory.mktemp("sky") / "white.hdr"
-        image = bpy.data.images.new("white", 64, 32, float_buffer=True)
-        image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
-        image.filepath_raw = str(path)
-        image.file_format = "HDR"
-        image.save()
+        path = _white_photo(tmp_path_factory.mktemp("sky"), 64, 32)
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("seascape.blender.sky.download", lambda *_: path)
             scene.build(variant(sky=HIDDEN_SUN), "eo")
@@ -1958,12 +1941,7 @@ class TestPhotographedThermalSky:
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
-        path = tmp_path_factory.mktemp("sky") / "white.hdr"
-        image = bpy.data.images.new("white", 128, 64, float_buffer=True)
-        image.pixels.foreach_set(np.ones(128 * 64 * 4, np.float32))
-        image.filepath_raw = str(path)
-        image.file_format = "HDR"
-        image.save()
+        path = _white_photo(tmp_path_factory.mktemp("sky"), 128, 64)
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("seascape.blender.sky.download", lambda *_: path)
             patch.setattr("seascape.blender.sky.THERMAL_SKY_PX", 64)
@@ -1991,13 +1969,7 @@ class TestPhotographedThermalSky:
     def test_the_world_s_whole_cloud_is_lwir_s(self) -> None:
         top = baked("sky_radiance")[-1] + baked("cloud_excess")[-1]
         sky = variant(sky={"hdri": "overcast_soil"}).sky
-        elevation = np.arcsin((blend.CURVE_SAMPLES - 0.5) / blend.CURVE_SAMPLES)
-        cloud = lwir.cloudy_sky_radiance(
-            elevation, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
-        )
-        expected = aerosol.sky_radiance(
-            cloud, elevation, sky.visibility_km, sky.t_air_k, sky.atmosphere
-        )
+        expected = _hazed_sky_m(sky, _texel_elevations()[-1], cloud=1.0)
         assert top == pytest.approx(float(expected), rel=1e-5)
 
     def test_the_haze_takes_its_airlight_from_the_clouds(self) -> None:
@@ -2020,18 +1992,9 @@ class TestPhotographedThermalSky:
         assert sunlit > shaded
 
     def test_overhead_reads_a_cloud(self) -> None:
-        image = bpy.data.images["cloudy_sky_radiance"]
-        w, h = image.size
-        pixels = np.empty(w * h * 4, np.float32)
-        image.pixels.foreach_get(pixels)
-        top = pixels.reshape(h, w, 4)[-1, :, 0]
+        top = baked("cloudy_sky_radiance")[-1]
         sky = variant(sky={"hdri": "overcast_soil"}).sky
-        cloud = lwir.cloudy_sky_radiance(
-            np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
-        )
-        expected = aerosol.sky_radiance(
-            cloud, np.pi / 2, sky.visibility_km, sky.t_air_k, sky.atmosphere
-        )
+        expected = _hazed_sky_m(sky, np.pi / 2, cloud=1.0)
         assert top == pytest.approx(float(expected), rel=1e-3)
 
     def test_the_sea_reflects_the_clouds(self) -> None:
@@ -2063,10 +2026,7 @@ def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
     image = _cloud_image(
         atmosphere.T_SEA_K, sea.Clouds(elevation, radiance, 0.0), slope_max
     )
-    width, height = image.size
-    pixels = np.empty(width * height * 4, np.float32)
-    image.pixels.foreach_get(pixels)
-    table = pixels.reshape(height, width, 4)[..., 0]
+    table = blend.pixels(image)[..., 0]
     # The roughest tile, its last view row, a mirror row above the horizon.
     tile, view, k = (
         CLOUD_SLOPES - 1,
@@ -2114,18 +2074,31 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
     assert math.degrees(heading_rad(anchor)) % 360.0 == pytest.approx(210.0)
 
 
-def test_hulls_inside_each_other_are_refused() -> None:
-    yachts = variant(objects=[target("yacht", 900.0), target("yacht", 900.0)])
-
-    with pytest.raises(scene.OverlapError, match="yacht"):
-        scene.build(yachts, "eo")
-
-
-def test_a_buoy_has_a_footprint_too() -> None:
-    near = variant(objects=[target("yacht", 900.0), target("lateral_mark", 902.0)])
-
-    with pytest.raises(scene.OverlapError, match="lateral_mark"):
-        scene.build(near, "eo")
+@pytest.mark.parametrize(
+    ("overrides", "meeting"),
+    [
+        pytest.param(
+            {"objects": [target("yacht", 900.0), target("yacht", 900.0)]},
+            "yacht",
+            id="hulls",
+        ),
+        pytest.param(
+            {"objects": [target("yacht", 900.0), target("lateral_mark", 902.0)]},
+            "lateral_mark",
+            id="a buoy has a footprint too",
+        ),
+        pytest.param(
+            {"objects": [target("yacht", 30.0)], "ownship": {"asset": "cargo_ship"}},
+            "ownship",
+            id="target inside the ownship",
+        ),
+    ],
+)
+def test_hulls_inside_each_other_are_refused(
+    overrides: dict[str, Any], meeting: str
+) -> None:
+    with pytest.raises(scene.OverlapError, match=meeting):
+        scene.build(variant(**overrides), "eo")
 
 
 EAST_M, NORTH_M = 100.0, 1000.0
@@ -2257,13 +2230,6 @@ def test_a_looping_rotor_s_last_frame_is_one_step_short_of_a_whole_third() -> No
     assert seam == pytest.approx(2 * math.pi / (3 * third_s * fps))
 
 
-def test_a_target_inside_the_ownship_is_refused() -> None:
-    aboard = variant(objects=[target("yacht", 30.0)], ownship={"asset": "cargo_ship"})
-
-    with pytest.raises(scene.OverlapError, match="ownship"):
-        scene.build(aboard, "eo")
-
-
 def test_the_ownship_is_indexed_after_every_target() -> None:
     built = scene.build(
         variant(
@@ -2356,9 +2322,7 @@ def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
     fog_ = variant(sky=FOG)
     scene.build(fog_, "ir")
     sky = fog_.sky
-    elevation = np.arcsin((np.arange(blend.CURVE_SAMPLES) + 0.5) / blend.CURVE_SAMPLES)
-    clear = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
-    expected = aerosol.sky_radiance(clear, elevation, 0.5, sky.t_air_k, sky.atmosphere)
+    expected = _hazed_sky_m(sky, _texel_elevations())
     assert baked("sky_radiance") == pytest.approx(expected, rel=1e-5)
     assert _sky_round(sky, None)[1] == pytest.approx(expected)
     env = surroundings(fog_).env
@@ -2371,21 +2335,13 @@ def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
 
 
 def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
-    path = tmp_path / "white.hdr"
-    image = bpy.data.images.new("white", 64, 32, float_buffer=True)
-    image.pixels.foreach_set(np.ones(64 * 32 * 4, np.float32))
-    image.filepath_raw = str(path)
-    image.file_format = "HDR"
-    image.save()
+    path = _white_photo(tmp_path, 64, 32)
     sky = variant(sky={"hdri": "overcast_soil", **FOG}).sky
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr("seascape.blender.sky.download", lambda *_: path)
         scene.build(variant(sky={"hdri": "overcast_soil", **FOG}), "ir")
     top = baked("cloudy_sky_radiance")[-1]
-    cloud = lwir.cloudy_sky_radiance(
-        np.pi / 2, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
-    )
-    expected = aerosol.sky_radiance(cloud, np.pi / 2, 0.5, sky.t_air_k, sky.atmosphere)
+    expected = _hazed_sky_m(sky, np.pi / 2, cloud=1.0)
     assert top == pytest.approx(float(expected), rel=1e-3)
 
 

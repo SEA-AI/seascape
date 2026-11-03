@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from seascape.assets import Material
-from seascape.blender import blend, wear
+from seascape.blender import blend, faces, wear
 from seascape.blender.heat import surroundings, zone_skin
 from seascape.blender.meshes import import_asset, mesh_objects
 from seascape.blender.vessels import Condition, Hulls, _vessel, add_vessels
@@ -21,6 +21,10 @@ def _read(mesh: bpy.types.Mesh, name: str) -> np.ndarray:
     return out.reshape(-1, 3) if vector else out
 
 
+def _normals(mesh: bpy.types.Mesh) -> np.ndarray:
+    return faces.floats(mesh.polygons, "normal", 3 * len(mesh.polygons)).reshape(-1, 3)
+
+
 @pytest.fixture
 def box() -> tuple[bpy.types.Object, np.ndarray]:
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -32,9 +36,7 @@ def box() -> tuple[bpy.types.Object, np.ndarray]:
     bpy.context.scene.collection.objects.link(obj)
     obj.location = (10.0, 0.0, 0.0)
     obj.rotation_euler.z = np.pi / 2
-    normals = np.empty(3 * len(mesh.polygons))
-    mesh.polygons.foreach_get("normal", normals)
-    up = normals.reshape(-1, 3)[:, 2] > 0.5
+    up = _normals(mesh)[:, 2] > 0.5
     zone = np.where(up, ZONE_NAMES.index("deck"), ZONE_NAMES.index("paint_hull"))
     return obj, zone
 
@@ -55,9 +57,7 @@ def test_a_face_normal_turns_with_the_fit(box) -> None:
     wear.tag([obj], [zone], "steel")
     normal = _read(obj.data, "wear_normal")
     # The faces facing +y as authored face west once turned.
-    authored = np.empty(3 * len(zone))
-    obj.data.polygons.foreach_get("normal", authored)
-    facing = authored.reshape(-1, 3)[:, 1] > 0.5
+    facing = _normals(obj.data)[:, 1] > 0.5
     np.testing.assert_allclose(normal[facing], [[-1.0, 0.0, 0.0]], atol=1e-6)
 
 
@@ -69,10 +69,8 @@ def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
     wear.tag([obj], [zone], "steel")
     world = obj.data.copy()
     world.transform(obj.matrix_world)
-    rendered = np.empty(3 * len(zone))
-    world.polygons.foreach_get("normal", rendered)
     np.testing.assert_allclose(
-        _read(obj.data, "wear_normal"), rendered.reshape(-1, 3), atol=1e-6
+        _read(obj.data, "wear_normal"), _normals(world), atol=1e-6
     )
 
 

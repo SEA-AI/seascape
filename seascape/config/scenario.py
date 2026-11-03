@@ -136,9 +136,8 @@ class Scenario(Model):
     @property
     def images(self) -> int:
         """How many images a render writes."""
-        bands = self.outputs.bands
-        mounts = [m for m in self.mounts if m.camera.band in bands]
-        return len(mounts) * len(self.outputs.times_s)
+        rendered = sum(m.camera.band in self.outputs.bands for m in self.mounts)
+        return rendered * len(self.outputs.times_s)
 
     @property
     def worn(self) -> frozenset[str]:

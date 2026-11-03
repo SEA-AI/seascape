@@ -13,6 +13,7 @@ from seascape.blender.blend import (
     curve_image,
     lookup,
     scalar,
+    vector,
 )
 from seascape.blender.sky import cloud_fraction
 from seascape.config import (
@@ -63,19 +64,13 @@ def _sunlit_emission(
     sunlit.inputs["Strength"].default_value = lwir.band_radiance(t_k + gain_k)
 
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
-    facing = tree.nodes.new("ShaderNodeVectorMath")
-    facing.operation = "DOT_PRODUCT"
-    facing.inputs[1].default_value = sky.sun_vector
+    facing = vector(tree, "DOT_PRODUCT", geometry.outputs["Normal"], sky.sun_vector)
     # Clamped, or a surface turned away from the sun would cool below shaded.
-    lit = tree.nodes.new("ShaderNodeMath")
-    lit.operation = "MAXIMUM"
-    lit.inputs[1].default_value = 0.0
+    lit = scalar(tree, "MAXIMUM", facing, 0.0)
 
     grade = tree.nodes.new("ShaderNodeMixShader")
     link = tree.links.new
-    link(geometry.outputs["Normal"], facing.inputs[0])
-    link(facing.outputs["Value"], lit.inputs[0])
-    link(lit.outputs["Value"], grade.inputs["Factor"])
+    link(lit, grade.inputs["Factor"])
     link(shaded.outputs["Emission"], grade.inputs[1])
     link(sunlit.outputs["Emission"], grade.inputs[2])
     return grade.outputs["Shader"]
@@ -191,11 +186,8 @@ def _emission(
         x.outputs["Value"].default_value = 0.5 / len(sun_cos)
         at = x.outputs["Value"]
     else:
-        facing = tree.nodes.new("ShaderNodeVectorMath")
-        facing.operation = "DOT_PRODUCT"
-        facing.inputs["Vector_001"].default_value = heat.sun
-        link(geometry.outputs["Normal"], facing.inputs["Vector"])
-        lit = scalar(tree, "MAXIMUM", facing.outputs["Value"], 0.0)
+        facing = vector(tree, "DOT_PRODUCT", geometry.outputs["Normal"], heat.sun)
+        lit = scalar(tree, "MAXIMUM", facing, 0.0)
         at = scalar(
             tree,
             "MULTIPLY_ADD",

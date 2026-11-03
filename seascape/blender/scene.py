@@ -125,25 +125,21 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
 
     `cull` draws only the waves the scenario's own cameras resolve, at their own
     resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
-    if not any(mount.camera.band == band for mount in scenario.mounts):
+    mounts = [m for m in scenario.mounts if m.camera.band == band]
+    if not mounts:
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sea.forget_foam()
-    sides = [
-        max(m.camera.width_px, m.camera.height_px)
-        for m in scenario.mounts
-        if m.camera.band == band
-    ]
-    graded = any(
-        m.camera.sensor.full_well_e is not None
-        for m in scenario.mounts
-        if m.camera.band == band
+    outputs = scenario.outputs
+    set_output(
+        outputs,
+        band,
+        max(max(m.camera.width_px, m.camera.height_px) for m in mounts),
+        any(m.camera.sensor.full_well_e is not None for m in mounts),
     )
-    set_output(scenario.outputs, band, max(sides), graded)
     bpy.context.scene.world = add_world(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
-    outputs = scenario.outputs
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
     hulls = Hulls(scenario.worn)
@@ -188,7 +184,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
-    first = next(mount for mount in scenario.mounts if mount.camera.band == band)
+    first = mounts[0]
     sc = bpy.context.scene
     sc.camera = rigs.cameras[first.name]
     sc.render.resolution_x, sc.render.resolution_y = (

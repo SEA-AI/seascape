@@ -33,11 +33,9 @@ def pytest_collection_modifyitems(
     index, count = shard
     # Round robin in collection order: a test's parametrisations, which tend to cost
     # alike, land on different shards.
-    mine = [n % count == index - 1 for n in range(len(items))]
-    config.hook.pytest_deselected(
-        items=[i for i, m in zip(items, mine, strict=True) if not m]
-    )
-    items[:] = [i for i, m in zip(items, mine, strict=True) if m]
+    dropped = [i for n, i in enumerate(items) if n % count != index - 1]
+    config.hook.pytest_deselected(items=dropped)
+    items[:] = items[index - 1 :: count]
 
 
 @pytest.fixture

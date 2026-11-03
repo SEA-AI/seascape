@@ -14,8 +14,7 @@ from seascape import assets, cli, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
-
-BASELINE = Path(__file__).parents[1] / "scenarios" / "baseline.toml"
+from tests.scenarios import BASELINE, OPEN_SEA
 
 type Run = Callable[..., Result]
 
@@ -184,7 +183,7 @@ TINY = [
 
 def _meet(seed: int) -> bool:
     """Two yachts at one range meet when they draw one bearing."""
-    a, b = load(BASELINE.with_name("open-sea.toml"), [*TINY, f"seed = {seed}"]).objects
+    a, b = load(OPEN_SEA, [*TINY, f"seed = {seed}"]).objects
     return a.bearing_deg == b.bearing_deg
 
 
@@ -195,10 +194,7 @@ def test_variants_skip_a_seed_whose_hulls_meet_and_merge_the_rest(
     first = next(s for s in range(1000) if _meet(s) and not _meet(s + 1) + _meet(s + 2))
     sets = [x for line in [*TINY, f"seed = {first}"] for x in ("--set", line)]
 
-    result = run(
-        "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
-        *sets,
-    )  # fmt: skip
+    result = run("render", OPEN_SEA, "-o", tmp_path, "--variants", 2, *sets)
 
     assert result.exit_code == 0, result.output
     assert f"seed {first} skipped" in result.stderr
@@ -216,7 +212,7 @@ THREE += ["--set", f"objects = [{YACHT}, {YACHT}, {YACHT}]"]
 
 @pytest.mark.render
 def test_one_scene_whose_hulls_meet_is_an_error(run: Run, tmp_path: Path) -> None:
-    result = run("render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, *THREE)
+    result = run("render", OPEN_SEA, "-o", tmp_path, *THREE)
 
     assert result.exit_code == 1
     assert "inside each other" in result.stderr
@@ -228,10 +224,7 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
 ) -> None:
     monkeypatch.setattr(loader, "TRIES_PER_VARIANT", 1)
 
-    result = run(
-        "render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path, "--variants", 2,
-        *THREE,
-    )  # fmt: skip
+    result = run("render", OPEN_SEA, "-o", tmp_path, "--variants", 2, *THREE)
 
     assert result.exit_code == 1
     assert "0 of 2 variants in 2 seeds" in result.stderr
@@ -243,7 +236,7 @@ def test_a_folder_holding_an_earlier_run_is_refused_and_kept(
 ) -> None:
     (tmp_path / "kept.png").write_bytes(b"from an earlier run")
 
-    result = run("render", BASELINE.with_name("open-sea.toml"), "-o", tmp_path)
+    result = run("render", OPEN_SEA, "-o", tmp_path)
 
     assert result.exit_code == 1
     assert "is not empty" in result.stderr

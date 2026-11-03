@@ -133,6 +133,8 @@ def test_planck_rejects_impossible_temperatures(bad: float) -> None:
         lwir.optical_constants(bad)
     with pytest.raises(ValueError, match="positive"):
         lwir.emissivity_curve(t_sea_k=bad)
+    with pytest.raises(ValueError, match="positive"):
+        lwir.sky_radiance(0.0, bad)
 
 
 def test_band_holds_a_plausible_share_of_total_emission() -> None:
@@ -175,11 +177,6 @@ def test_sky_below_the_horizon_holds_at_ambient() -> None:
     assert float(lwir.sky_radiance(np.radians(-20.0))) == pytest.approx(
         float(lwir.sky_radiance(0.0))
     )
-
-
-def test_sky_rejects_impossible_air_temperatures() -> None:
-    with pytest.raises(ValueError, match="positive"):
-        lwir.sky_radiance(0.0, -1.0)
 
 
 def test_brightness_temperature_inverts_band_radiance() -> None:

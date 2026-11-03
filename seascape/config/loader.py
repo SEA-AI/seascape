@@ -332,8 +332,8 @@ def load_variants(
     """`count` scenarios from consecutive seeds, the file's own first."""
     overrides = list(overrides)
     first = load(path, overrides)
-    seeds = range(first.seed + 1, first.seed + count)
-    return [first, *(load(path, [*overrides, f"seed = {seed}"]) for seed in seeds)]
+    later = range(first.seed + 1, first.seed + count)
+    return [first, *(load(path, [*overrides, f"seed = {seed}"]) for seed in later)]
 
 
 def json_schema() -> dict[str, Any]:

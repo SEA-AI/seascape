@@ -56,10 +56,15 @@ _ENGINE_OFF = (
     "Minutes since its engines stopped; 0 is running. The engine room and exhaust "
     "cool toward the air. IR only, with zones."
 )
-_PAINT = (
-    "Solar absorptance of the paint on its hull, superstructure and funnel: white "
-    "low, black high. Unset, a mid grey. IR only, with zones."
-)
+PaintAbsorptance = Annotated[
+    float | None,
+    Field(
+        ge=thermal.PAINT_ABSORPTANCE[0],
+        le=thermal.PAINT_ABSORPTANCE[1],
+        description="Solar absorptance of the paint on its hull, superstructure and "
+        "funnel: white low, black high. Unset, a mid grey. IR only, with zones.",
+    ),
+]
 _WEAR = (
     "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 heavily "
     "weathered. In IR a hull given `t_k` is that one temperature and shows none. A "
@@ -113,12 +118,7 @@ class Object(Model):
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
-    paint_absorptance: float | None = Field(
-        default=None,
-        ge=thermal.PAINT_ABSORPTANCE[0],
-        le=thermal.PAINT_ABSORPTANCE[1],
-        description=_PAINT,
-    )
+    paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
     draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
     count: int = Field(
@@ -231,12 +231,7 @@ class Targets(Model):
     drift: Drift | None = Field(default=None, description=_DRIFT)
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
-    paint_absorptance: float | None = Field(
-        default=None,
-        ge=thermal.PAINT_ABSORPTANCE[0],
-        le=thermal.PAINT_ABSORPTANCE[1],
-        description=_PAINT,
-    )
+    paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
 
     def _spread(self, span: tuple[float, float], i: int) -> float:
@@ -280,12 +275,7 @@ class Farm(Model):
     staggered: bool = Field(
         default=False, description="Every other row shifted half a spacing along."
     )
-    paint_absorptance: float | None = Field(
-        default=None,
-        ge=thermal.PAINT_ABSORPTANCE[0],
-        le=thermal.PAINT_ABSORPTANCE[1],
-        description=_PAINT,
-    )
+    paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
 
     @property

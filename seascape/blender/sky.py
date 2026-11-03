@@ -12,6 +12,7 @@ from seascape.blender import sea
 from seascape.blender.blend import (
     CURVE_SAMPLES,
     SUN,
+    clamped,
     curve_image,
     drive,
     lookup,
@@ -265,24 +266,15 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
         )
     link = group.links.new
     geometry = group.nodes.new("ShaderNodeNewGeometry")
-    ahead = group.nodes.new("ShaderNodeVectorMath")
-    ahead.name = "haze_ahead"
-    ahead.operation = "SCALE"
-    link(geometry.outputs["Incoming"], ahead.inputs["Vector"])
     # Incoming points back at the camera.
-    ahead.inputs["Scale"].default_value = -1.0
-    horizon = group.nodes.new("ShaderNodeVectorMath")
-    horizon.name = "haze_horizon"
-    horizon.operation = "MAXIMUM"
-    link(ahead.outputs["Vector"], horizon.inputs[0])
+    ahead = vector(
+        group, "SCALE", geometry.outputs["Incoming"], -1.0, name="haze_ahead"
+    )
     # Below the horizon the sky is the ground's, not the air's.
-    horizon.inputs[1].default_value = (-1.0, -1.0, 0.0)
+    horizon = vector(group, "MAXIMUM", ahead, (-1.0, -1.0, 0.0), name="haze_horizon")
     airlight = group.nodes.new("ShaderNodeEmission")
     airlight.name = "haze_airlight"
-    link(
-        _sky_ahead(group, sky, band, horizon.outputs["Vector"]),
-        airlight.inputs["Color"],
-    )
+    link(_sky_ahead(group, sky, band, horizon), airlight.inputs["Color"])
     depth = _optical_depth(group, sky, band, far_m)
     kept = scalar(group, "EXPONENT", scalar(group, "MULTIPLY", depth, -1.0))
     mix = group.nodes.new("ShaderNodeMixShader")
@@ -292,7 +284,7 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
     link(airlight.outputs["Emission"], mix.inputs[2])
     shader = mix.outputs["Shader"]
     if band == "ir":
-        shader = _less_sky(group, sky, ahead.outputs["Vector"], shader)
+        shader = _less_sky(group, sky, ahead, shader)
     link(shader, group.nodes.new("NodeGroupOutput").inputs["Shader"])
     for material in bpy.data.materials:
         haze(material)
@@ -592,13 +584,8 @@ def _sin_elevation(
 ) -> bpy.types.NodeSocket:
     """A unit `direction`'s Z, held at 0 below the horizon."""
     height = tree.nodes.new("ShaderNodeSeparateXYZ")
-    above = tree.nodes.new("ShaderNodeMath")
-    above.operation = "MAXIMUM"
-    above.use_clamp = True
-    above.inputs["Value_001"].default_value = 0.0
     tree.links.new(direction, height.inputs["Vector"])
-    tree.links.new(height.outputs["Z"], above.inputs["Value"])
-    return above.outputs["Value"]
+    return clamped(tree, height.outputs["Z"])
 
 
 def _rough_glossy(tree: bpy.types.NodeTree) -> bpy.types.NodeSocket:

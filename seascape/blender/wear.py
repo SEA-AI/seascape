@@ -543,7 +543,7 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     its mirror (rust reads as copper), and mixing the one BSDF's inputs would need
     Metallic, Roughness and Coat mixed in every material."""
     t = material.node_tree
-    shader = next((n for n in t.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    shader = faces.bsdf(material)
     if shader is None:
         return
     group = _node(t, "ShaderNodeGroup", node_tree=masks(crevice))
