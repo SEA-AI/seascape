@@ -343,6 +343,24 @@ class TestEoBand:
                 (wave.k_rad_m / 2) ** 2, rel=1e-6
             )
 
+    def test_no_wind_wave_draws_a_line_along_a_grazing_view(self) -> None:
+        """Seen along its crests by a pixel 100 wavelengths long, a wave fades as the
+        headings it stands for do; one heading alone would stay whole."""
+        wind = SCENARIO.wind_waves()
+        for wave, inputs, lane in drawn(SCENARIO):
+            if wave not in wind:
+                continue
+            wavelength_m = 2 * math.pi / wave.k_rad_m
+            crest = (math.cos(wave.toward_rad), -math.sin(wave.toward_rad))
+            heading = sum(
+                inputs[name].default_value[lane] * axis
+                for name, axis in zip(("Tx", "Ty"), crest, strict=True)
+            )
+            band = inputs.get("Band")
+            cos_sq = heading**2 + (0.0 if band is None else band.default_value[lane])
+            footprint_m = 100 * wavelength_m * math.sqrt(cos_sq)
+            assert waves.visibility(np.array(wavelength_m), footprint_m) < 0.5, wave
+
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         field = SCENARIO.wave_field()
         assert len(field) == waves.WIND_WAVES

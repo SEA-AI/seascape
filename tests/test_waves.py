@@ -277,6 +277,25 @@ def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
     assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
+def test_a_wind_wave_stands_for_its_share_of_the_spread() -> None:
+    """Its concentration is the mean cos 2(theta - toward) over its stratum of
+    1 + Delta cos 2 theta, which the closed form gives."""
+    delta, low, high, toward = 0.6, -0.4, 0.5, 0.3
+    theta = np.linspace(low, high, 20_001)
+    weight = 1 + delta * np.cos(2 * theta)
+    mean = np.trapezoid(weight * np.cos(2 * (theta - toward)), theta) / np.trapezoid(
+        weight, theta
+    )
+    closed = waves.sea._concentration(
+        np.array([delta]), np.array([low]), np.array([high]), np.array([toward])
+    )
+    assert closed[0] == pytest.approx(mean, rel=1e-6)
+    built = field(7.0)
+    assert all(0.0 < w.heading_concentration < 1.0 for w in built)
+    swell = waves.swell(2.0, 10.0, 0.0, lambda p: p, np.random.default_rng(0))
+    assert all(w.heading_concentration == 1.0 for w in swell)
+
+
 def test_a_wave_fades_as_a_box_pixel_passes_it() -> None:
     footprints = np.array([0.0, 0.5, 1.0, 1.5, 3.0])
     shown = waves.visibility(np.ones_like(footprints), footprints)

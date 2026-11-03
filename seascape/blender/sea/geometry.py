@@ -100,6 +100,7 @@ _FOOTPRINT = (("Along", "Vector"), ("Across Sq", "Float"), ("Stretch", "Float"))
 _FADE = (
     ("Tx", "Vector"),
     ("Ty", "Vector"),
+    ("Band", "Vector"),
     ("Half K Sq", "Vector"),
     ("Damped", "Vector"),
 )
@@ -115,6 +116,11 @@ def _fade(
     at y = footprint k / 2, held at 0 past pi; scaled by `Calm` in a `Damped` lane.
     And `Along`, (x, y), spread.
 
+    cos^2 is the mean over the headings the wave stands for, c cos^2 + (1 - c) / 2
+    with c its `heading_concentration`: `Tx` and `Ty` carry sqrt c, `Band` the
+    rest. So a wave whose crests run along a grazing view fades as its neighbours
+    in heading do, and draws no line to the horizon.
+
     Built alike in every group, so Cycles merges a triple's fade across them."""
     along = group.nodes.new("ShaderNodeSeparateXYZ")
     group.links.new(given["Along"], along.inputs["Vector"])
@@ -129,7 +135,7 @@ def _fade(
     footprint_sq = vector(
         group,
         "MULTIPLY_ADD",
-        vector(group, "MULTIPLY", heading, heading),
+        vector(group, "MULTIPLY_ADD", heading, heading, given["Band"]),
         _spread(group, given["Stretch"]),
         _spread(group, given["Across Sq"]),
     )
@@ -216,6 +222,11 @@ def _lanes(triple: Triple, value: Callable[[Wave], float], pad: float = 0.0) -> 
     return tuple(pad if wave is None else value(wave) for wave in triple)
 
 
+def _focus(wave: Wave) -> float:
+    """sqrt c, so the fade's cos^2 takes c of the wave's own heading."""
+    return math.sqrt(max(wave.heading_concentration, 0.0))
+
+
 def _set_triple(
     inputs: bpy.types.NodeInputs,
     triple: Triple,
@@ -227,8 +238,9 @@ def _set_triple(
     it fades adds 0."""
 
     sets = {
-        "Tx": _lanes(triple, lambda w: math.sin(w.toward_rad)),
-        "Ty": _lanes(triple, lambda w: math.cos(w.toward_rad)),
+        "Tx": _lanes(triple, lambda w: _focus(w) * math.sin(w.toward_rad)),
+        "Ty": _lanes(triple, lambda w: _focus(w) * math.cos(w.toward_rad)),
+        "Band": _lanes(triple, lambda w: (1 - _focus(w) ** 2) / 2),
         "Half K Sq": _lanes(triple, lambda w: (w.k_rad_m / 2) ** 2),
         "Damped": _lanes(triple, lambda w: float(w in damped)),
         "Kx": _lanes(triple, lambda w: w.k_east_rad_m),
