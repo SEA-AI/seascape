@@ -8,7 +8,7 @@ import numpy as np
 
 from seascape.assets import Material
 from seascape.blender import faces
-from seascape.blender.blend import clamped, feed, scalar, vector
+from seascape.blender.blend import Num, clamped, feed, scalar, vector
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 # Occlusion is ray-traced and only the shape decides it, so each asset bakes its
@@ -204,9 +204,9 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     t.nodes.clear()
     occlusion = _node(t, "ShaderNodeAmbientOcclusion", only_local=True)
     occlusion.inputs["Distance"].default_value = CREVICE_M
-    crevice = _smooth(t, scalar(t, "SUBTRACT", 1.0, occlusion.outputs["AO"]), 0.05, 0.6)
+    crevice = _smooth(1.0 - Num(t, occlusion.outputs["AO"]), 0.05, 0.6)
     emission = _node(t, "ShaderNodeEmission")
-    feed(t, emission.inputs["Color"], crevice)
+    feed(t, emission.inputs["Color"], crevice.socket)
     t.links.new(
         emission.outputs["Emission"],
         _node(t, "ShaderNodeOutputMaterial").inputs["Surface"],
@@ -254,16 +254,13 @@ def _node(tree: bpy.types.NodeTree, kind: str, **props: object) -> bpy.types.Nod
     return node
 
 
-def _smooth(
-    tree: bpy.types.NodeTree,
-    x: bpy.types.NodeSocket | float,
-    low: bpy.types.NodeSocket | float,
-    high: bpy.types.NodeSocket | float,
-) -> bpy.types.NodeSocket:
-    node = _node(tree, "ShaderNodeMapRange", interpolation_type="SMOOTHSTEP")
+def _smooth(x: Num, low: Num | float, high: Num | float) -> Num:
+    node = _node(x.tree, "ShaderNodeMapRange", interpolation_type="SMOOTHSTEP")
     for name, value in (("Value", x), ("From Min", low), ("From Max", high)):
-        feed(tree, node.inputs[name], value)
-    return node.outputs["Result"]
+        feed(
+            x.tree, node.inputs[name], value.socket if isinstance(value, Num) else value
+        )
+    return Num(x.tree, node.outputs["Result"])
 
 
 def _attribute(
@@ -287,23 +284,23 @@ class _Masks:
         self.tree = t = tree
         self.crevice = crevice
         self.position = _attribute(t, "wear_position_m").outputs["Vector"]
-        self.x, self.y, self.z = _xyz(t, self.position)
+        self.x, self.y, self.z = (Num(t, s) for s in _xyz(t, self.position))
         normal = _attribute(t, "wear_normal").outputs["Vector"]
-        self.nx, self.ny, self.up = _xyz(t, normal)
+        self.nx, self.ny, self.up = (Num(t, s) for s in _xyz(t, normal))
         self.below, self.length, self.steel, stain = (
-            _attribute(t, name).outputs["Factor"]
+            Num(t, _attribute(t, name).outputs["Factor"])
             for name in ("wear_below_m", "wear_length_m", "wear_steel", "wear_stain")
         )
         self.amount, self.offset = (
-            _attribute(t, name, "OBJECT").outputs["Factor"]
+            Num(t, _attribute(t, name, "OBJECT").outputs["Factor"])
             for name in ("wear", "wear_offset")
         )
-        self.shell = scalar(t, "GREATER_THAN", stain, 0.0)  # what the sea wets
-        self.edge_m = scalar(t, "MAXIMUM", scalar(t, "ADD", self.z, self.below), 0.01)
+        self.shell = stain.op("GREATER_THAN", 0.0)  # what the sea wets
+        self.edge_m = (self.z + self.below).op("MAXIMUM", 0.01)
         # 0 at the waterline, 1 at the edge above.
-        self.height = scalar(t, "DIVIDE", self.z, self.edge_m)
-        bad = _smooth(t, self.noise(0.04, 21.0, 2.0), 0.3, 0.7)
-        self.region = scalar(t, "MULTIPLY_ADD", bad, 1.3, 0.2)
+        self.height = self.z / self.edge_m
+        bad = _smooth(self.noise(0.04, 21.0, 2.0), 0.3, 0.7)
+        self.region = bad.madd(1.3, 0.2)
 
     def noise(
         self,
@@ -311,108 +308,60 @@ class _Masks:
         offset: float,
         detail: float = 6.0,
         stretch: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> bpy.types.NodeSocket:
+    ) -> Num:
         """`stretch` scales the features per axis."""
         t = self.tree
         node = _node(t, "ShaderNodeTexNoise", noise_dimensions="4D")
         feed(t, node.inputs["Vector"], vector(t, "MULTIPLY", self.position, stretch))
         node.inputs["Scale"].default_value = per_m
         node.inputs["Detail"].default_value = detail
-        feed(t, node.inputs["W"], scalar(t, "ADD", self.offset, offset))
-        return node.outputs["Factor"]
+        feed(t, node.inputs["W"], (self.offset + offset).socket)
+        return Num(t, node.outputs["Factor"])
 
-    def cover(
-        self, field: bpy.types.NodeSocket, soft: float, boost: float = 0.0
-    ) -> bpy.types.NodeSocket:
-        t = self.tree
-        worse = scalar(t, "ADD", self.amount, boost)
-        threshold = scalar(t, "MULTIPLY_ADD", worse, -0.45, 0.72)
-        return _smooth(t, field, threshold, scalar(t, "ADD", threshold, soft))
+    def cover(self, field: Num, soft: float, boost: float = 0.0) -> Num:
+        threshold = (self.amount + boost).madd(-0.45, 0.72)
+        return _smooth(field, threshold, threshold + soft)
 
-    def grime(self) -> bpy.types.NodeSocket:
+    def grime(self) -> Num:
         t = self.tree
         uv = _attribute(t, UV).outputs["Vector"]
         texture = _node(t, "ShaderNodeTexImage", image=self.crevice)
         t.links.new(uv, texture.inputs["Vector"])
-        crevice = texture.outputs["Color"]  # grey: any channel
-        grime = scalar(t, "MULTIPLY", crevice, self.cover(self.noise(0.8, 1.0), 0.3))
-        pooled = scalar(t, "MULTIPLY", _smooth(t, self.up, 0.6, 0.95), 0.5)
-        pooled = scalar(t, "MULTIPLY", pooled, self.cover(self.noise(1.5, 4.0), 0.3))
-        return scalar(t, "MAXIMUM", grime, pooled)
+        crevice = Num(t, texture.outputs["Color"])  # grey: any channel
+        grime = crevice * self.cover(self.noise(0.8, 1.0), 0.3)
+        pooled = (
+            _smooth(self.up, 0.6, 0.95) * 0.5 * self.cover(self.noise(1.5, 4.0), 0.3)
+        )
+        return grime.op("MAXIMUM", pooled)
 
-    def streaks(self) -> bpy.types.NodeSocket:
+    def streaks(self) -> Num:
         """Along the edge is y on a side, x on a face looking fore or aft."""
         t = self.tree
-        side = scalar(
-            t,
-            "GREATER_THAN",
-            scalar(t, "ABSOLUTE", self.nx),
-            scalar(t, "ABSOLUTE", self.ny),
-        )
-        along = scalar(
-            t,
-            "ADD",
-            scalar(t, "MULTIPLY", side, self.y),
-            scalar(t, "MULTIPLY", scalar(t, "SUBTRACT", 1.0, side), self.x),
-        )
+        side = self.nx.op("ABSOLUTE").op("GREATER_THAN", self.ny.op("ABSOLUTE"))
+        along = side * self.y + (1.0 - side) * self.x
         # Judgement: a source every 1/30 of the length, 0.6-4 m apart.
-        spacing_m = scalar(t, "DIVIDE", self.length, 30.0)
-        spacing_m = scalar(t, "MINIMUM", scalar(t, "MAXIMUM", spacing_m, 0.6), 4.0)
+        spacing_m = (self.length / 30.0).op("MAXIMUM", 0.6).op("MINIMUM", 4.0)
         cells = _node(t, "ShaderNodeTexVoronoi", voronoi_dimensions="1D")
-        feed(
-            t,
-            cells.inputs["W"],
-            scalar(
-                t,
-                "ADD",
-                scalar(t, "DIVIDE", along, spacing_m),
-                scalar(t, "MULTIPLY", self.offset, 7.31),
-            ),
-        )
+        feed(t, cells.inputs["W"], (along / spacing_m + self.offset * 7.31).socket)
         draw = _node(t, "ShaderNodeSeparateColor")
         t.links.new(cells.outputs["Color"], draw.inputs["Color"])
-        run, width, live = (draw.outputs[k] for k in ("Red", "Green", "Blue"))
-        active = scalar(
-            t, "GREATER_THAN", live, scalar(t, "MULTIPLY_ADD", self.amount, -0.7, 0.85)
-        )
+        run, width, live = (Num(t, draw.outputs[k]) for k in ("Red", "Green", "Blue"))
+        active = live.op("GREATER_THAN", self.amount.madd(-0.7, 0.85))
         # Judgement: a streak runs a quarter to all of its edge's height above the
         # water, longer at higher wear, at most 8 m, so a turbine's tower does not
         # streak from its nacelle to the sea; it holds for the first half of its run.
-        run_m = scalar(
-            t, "MULTIPLY", scalar(t, "MULTIPLY_ADD", run, 0.75, 0.25), self.edge_m
-        )
-        run_m = scalar(
-            t, "MULTIPLY", run_m, scalar(t, "MULTIPLY_ADD", self.amount, 0.7, 0.3)
-        )
-        run_m = scalar(t, "MINIMUM", run_m, 8.0)
-        width = scalar(t, "MULTIPLY_ADD", width, 0.12, 0.03)  # of a cell
-        core = _smooth(
-            t, cells.outputs["Distance"], scalar(t, "MULTIPLY", width, 0.4), width
-        )
-        falling = _smooth(t, self.below, scalar(t, "MULTIPLY", run_m, 0.5), run_m)
-        wall = _smooth(t, scalar(t, "ABSOLUTE", self.up), 0.2, 0.5)
-        streak = scalar(
-            t,
-            "MULTIPLY",
-            scalar(t, "SUBTRACT", 1.0, core),
-            scalar(
-                t,
-                "MULTIPLY",
-                scalar(t, "SUBTRACT", 1.0, falling),
-                scalar(t, "SUBTRACT", 1.0, wall),
-            ),
-        )
-        broken = _smooth(t, self.noise(2.0, 17.0, 4.0), 0.25, 0.6)
-        runoff = _attribute(t, "wear_runoff").outputs["Factor"]
-        broken = scalar(t, "MULTIPLY", broken, runoff)
-        return scalar(
-            t,
-            "MULTIPLY",
-            scalar(t, "MULTIPLY", streak, active),
-            scalar(t, "MULTIPLY", broken, self.region),
-        )
+        run_m = run.madd(0.75, 0.25) * self.edge_m * self.amount.madd(0.7, 0.3)
+        run_m = run_m.op("MINIMUM", 8.0)
+        width = width.madd(0.12, 0.03)  # of a cell
+        core = _smooth(Num(t, cells.outputs["Distance"]), width * 0.4, width)
+        falling = _smooth(self.below, run_m * 0.5, run_m)
+        wall = _smooth(self.up.op("ABSOLUTE"), 0.2, 0.5)
+        streak = (1.0 - core) * ((1.0 - falling) * (1.0 - wall))
+        broken = _smooth(self.noise(2.0, 17.0, 4.0), 0.25, 0.6)
+        broken = broken * Num(t, _attribute(t, "wear_runoff").outputs["Factor"])
+        return streak * active * (broken * self.region)
 
-    def chips(self) -> bpy.types.NodeSocket:
+    def chips(self) -> Num:
         t = self.tree
         bevel = _node(t, "ShaderNodeBevel")
         # Judgement: coating fails within 8 cm of an edge.
@@ -421,61 +370,31 @@ class _Masks:
         facing = vector(
             t, "DOT_PRODUCT", bevel.outputs["Normal"], geometry.outputs["Normal"]
         )
-        edge = _smooth(t, scalar(t, "SUBTRACT", 1.0, facing), 0.01, 0.08)
-        chipped = scalar(t, "MULTIPLY", edge, self.cover(self.noise(3.0, 7.0), 0.15))
-        return scalar(t, "MULTIPLY", chipped, self.region)
+        edge = _smooth(1.0 - Num(t, facing), 0.01, 0.08)
+        return edge * self.cover(self.noise(3.0, 7.0), 0.15) * self.region
 
-    def stain(self) -> bpy.types.NodeSocket:
-        t = self.tree
-        bow = _smooth(t, scalar(t, "DIVIDE", self.y, self.length), 0.32, 0.45)
+    def stain(self) -> Num:
+        bow = _smooth(self.y / self.length, 0.32, 0.45)
         # Judgement: a waterline stain 0.8% of the length tall on GRP, a hand's width
         # on a yacht; 1.8% on steel, capped at a 1.2 m boot top; higher at the bow.
-        tall = scalar(t, "MULTIPLY_ADD", self.steel, 0.01, 0.008)
-        top_m = scalar(t, "MULTIPLY", self.length, tall)
-        top_m = scalar(
-            t,
-            "MULTIPLY",
-            scalar(t, "MINIMUM", top_m, 1.2),
-            scalar(t, "MULTIPLY_ADD", bow, 0.8, 1.0),
-        )
+        tall = self.steel.madd(0.01, 0.008)
+        top_m = (self.length * tall).op("MINIMUM", 1.2) * bow.madd(0.8, 1.0)
         patchy = self.noise(0.5, 5.0, 2.0)
-        top_m = scalar(
-            t, "MULTIPLY", top_m, scalar(t, "MULTIPLY_ADD", patchy, 0.8, 0.6)
-        )
+        top_m = top_m * patchy.madd(0.8, 0.6)
         # Judgement: it reaches 0.3 m under the still waterline.
-        band = scalar(
-            t,
-            "MULTIPLY",
-            _smooth(t, self.z, -0.3, 0.0),
-            scalar(
-                t,
-                "SUBTRACT",
-                1.0,
-                _smooth(t, self.z, scalar(t, "MULTIPLY", top_m, 0.5), top_m),
-            ),
-        )
-        return scalar(t, "MULTIPLY", band, self.cover(patchy, 0.3, 0.3))
+        band = _smooth(self.z, -0.3, 0.0) * (1.0 - _smooth(self.z, top_m * 0.5, top_m))
+        return band * self.cover(patchy, 0.3, 0.3)
 
-    def layers(self) -> tuple[bpy.types.NodeSocket, ...]:
-        t = self.tree
+    def layers(self) -> tuple[Num, ...]:
         streak = self.streaks()
-        not_steel = scalar(t, "SUBTRACT", 1.0, self.steel)
-        grime = scalar(
-            t, "MAXIMUM", self.grime(), scalar(t, "MULTIPLY", streak, not_steel)
-        )
-        washed = scalar(
-            t,
-            "MULTIPLY",
-            self.shell,
-            scalar(t, "SUBTRACT", 1.0, _smooth(t, self.height, 0.0, 0.5)),
-        )
-        grime = scalar(t, "MULTIPLY", grime, scalar(t, "SUBTRACT", 1.0, washed))
-        rust = scalar(
-            t, "MAXIMUM", self.chips(), scalar(t, "MULTIPLY", streak, self.steel)
-        )
+        not_steel = 1.0 - self.steel
+        grime = self.grime().op("MAXIMUM", streak * not_steel)
+        washed = self.shell * (1.0 - _smooth(self.height, 0.0, 0.5))
+        grime = grime * (1.0 - washed)
+        rust = self.chips().op("MAXIMUM", streak * self.steel)
         soot = self.cover(self.noise(0.5, 13.0), 0.4, 0.3)
-        sky = scalar(t, "MULTIPLY_ADD", _smooth(t, self.up, 0.0, 1.0), 0.5, 0.5)
-        return grime, rust, self.stain(), soot, scalar(t, "MULTIPLY", self.amount, sky)
+        sky = _smooth(self.up, 0.0, 1.0).madd(0.5, 0.5)
+        return grime, rust, self.stain(), soot, self.amount * sky
 
 
 def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
@@ -491,15 +410,10 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     g = _Masks(group, crevice)
     out = _node(group, "NodeGroupOutput")
     # An unworn copy shares its worn twin's import and materials: no cover at all.
-    worn = scalar(group, "GREATER_THAN", g.amount, 0.0)
+    worn = g.amount.op("GREATER_THAN", 0.0)
     for layer, mask in zip(LAYERS, g.layers(), strict=True):
-        weight = _attribute(group, f"wear_{layer}").outputs["Factor"]
-        weight = scalar(group, "MULTIPLY", weight, worn)
-        feed(
-            group,
-            out.inputs[layer],
-            clamped(group, scalar(group, "MULTIPLY", mask, weight)),
-        )
+        weight = Num(group, _attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
+        feed(group, out.inputs[layer], clamped(group, (mask * weight).socket))
     return group
 
 
@@ -547,17 +461,17 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     if shader is None:
         return
     group = _node(t, "ShaderNodeGroup", node_tree=masks(crevice))
-    cover = {layer: group.outputs[layer] for layer in LAYERS}
+    cover = {layer: Num(t, group.outputs[layer]) for layer in LAYERS}
 
     # Paint fades; metal does not.
     paint = scalar(t, "SUBTRACT", 1.0, 0.0)
     feed(t, paint.node.inputs[1], _source(shader.inputs["Metallic"]))
-    fade = scalar(t, "MULTIPLY", cover["fade"], paint)
+    fade = cover["fade"] * Num(t, paint)
     faded = _node(t, "ShaderNodeHueSaturation")
     feed(t, faded.inputs["Color"], _source(shader.inputs["Base Color"]))
     # Judgement: full fade halves saturation and lifts value 15%.
-    feed(t, faded.inputs["Saturation"], scalar(t, "MULTIPLY_ADD", fade, -0.5, 1.0))
-    feed(t, faded.inputs["Value"], scalar(t, "MULTIPLY_ADD", fade, 0.15, 1.0))
+    feed(t, faded.inputs["Saturation"], fade.madd(-0.5, 1.0).socket)
+    feed(t, faded.inputs["Value"], fade.madd(0.15, 1.0).socket)
     t.links.new(faded.outputs["Color"], shader.inputs["Base Color"])
 
     dirt = _node(t, "ShaderNodeBsdfPrincipled")
@@ -572,7 +486,7 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         ("soot", SOOT),
     ):
         mix = _node(t, "ShaderNodeMix", data_type="RGBA")
-        feed(t, mix.inputs["Factor"], cover[layer])
+        feed(t, mix.inputs["Factor"], cover[layer].socket)
         feed(t, mix.inputs["A"], layered)
         feed(t, mix.inputs["B"], albedo)
         layered = mix.outputs["Result"]
@@ -584,15 +498,14 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         if name != "Normal" or shader.inputs[name].is_linked:
             feed(t, dirt.inputs[name], _source(shader.inputs[name]))
 
-    total = scalar(
-        t,
-        "MAXIMUM",
-        scalar(t, "MAXIMUM", cover["grime"], cover["rust"]),
-        scalar(t, "MAXIMUM", cover["stain"], cover["soot"]),
+    total = (
+        cover["grime"]
+        .op("MAXIMUM", cover["rust"])
+        .op("MAXIMUM", cover["stain"].op("MAXIMUM", cover["soot"]))
     )
     consumers = [link.to_socket for link in shader.outputs["BSDF"].links]
     mix = _node(t, "ShaderNodeMixShader")
-    feed(t, mix.inputs["Factor"], total)
+    feed(t, mix.inputs["Factor"], total.socket)
     t.links.new(shader.outputs["BSDF"], mix.inputs["Shader"])
     t.links.new(dirt.outputs["BSDF"], mix.inputs["Shader_001"])
     for socket in consumers:
