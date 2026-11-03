@@ -11,7 +11,8 @@ import numpy as np
 import supervision as sv
 from PIL import Image
 
-from docs.hero import GAP_PX, SCENARIO, captioned, outlined, render
+from docs.hero import GAP_PX, SCENARIO, captioned, render
+from docs.outline import outlined
 from seascape.outputs import labels
 
 PANEL_PX = (640, 480)

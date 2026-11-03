@@ -9,7 +9,7 @@ include = ["seascape", "tests", "docs"]
 
 # matplotlib and supervision are run with `uv run --with`, not installed.
 [[overrides]]
-include = ["docs/primer/charts.py", "docs/masks.py", "docs/hero.py"]
+include = ["docs/primer/charts.py", "docs/masks.py", "docs/outline.py"]
 
 [overrides.rules]
 unresolved-import = "ignore"
