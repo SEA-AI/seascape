@@ -6,8 +6,11 @@ from collections.abc import Callable
 import bpy
 
 from seascape.blender.blend import (
+    combine,
+    node,
     place,
     scalar,
+    separate,
     vector,
 )
 from seascape.blender.sea.pixel import _instance, _Pixel, _pixel
@@ -82,10 +85,7 @@ def _spread(
 ) -> bpy.types.NodeSocket:
     """A scalar in every lane. Cycles merges identical nodes, so each spread runs once
     per sample however many groups make it."""
-    node = group.nodes.new("ShaderNodeCombineXYZ")
-    for lane in node.inputs:
-        group.links.new(value, lane)
-    return node.outputs["Vector"]
+    return combine(group, value, value, value)
 
 
 def _total(
@@ -120,9 +120,8 @@ def _fade(
     not by the band's mean visibility.
 
     Built alike in every group, so Cycles merges a triple's fade across them."""
-    along = group.nodes.new("ShaderNodeSeparateXYZ")
-    group.links.new(given["Along"], along.inputs["Vector"])
-    along_xy = (_spread(group, along.outputs["X"]), _spread(group, along.outputs["Y"]))
+    along_x, along_y, _ = separate(group, given["Along"])
+    along_xy = (_spread(group, along_x), _spread(group, along_y))
     heading = vector(
         group,
         "MULTIPLY_ADD",
@@ -181,9 +180,9 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
         ),
         _SUMS,
     )
-    position = group.nodes.new("ShaderNodeSeparateXYZ")
-    group.links.new(given["Position"], position.inputs["Vector"])
-    east, north, time_s = (_spread(group, position.outputs[a]) for a in "XYZ")
+    east, north, time_s = (
+        _spread(group, axis) for axis in separate(group, given["Position"])
+    )
     phase = vector(
         group,
         "MULTIPLY_ADD",
@@ -288,10 +287,10 @@ def _normal_group(
         if i == wind_triples - 1:
             group.links.new(_total(group, sums["Sum Z"]), out["Acceleration"])
     if sums is not None:
-        gradient = group.nodes.new("ShaderNodeCombineXYZ")
-        group.links.new(_total(group, sums["Sum X"]), gradient.inputs["X"])
-        group.links.new(_total(group, sums["Sum Y"]), gradient.inputs["Y"])
-        group.links.new(gradient.outputs["Vector"], out["Gradient"])
+        gradient = combine(
+            group, _total(group, sums["Sum X"]), _total(group, sums["Sum Y"])
+        )
+        group.links.new(gradient, out["Gradient"])
     return group
 
 
@@ -305,32 +304,30 @@ def _displacement(
     footprint is the pixel's."""
     camera = tree.nodes.new("ShaderNodeCameraData")
     # From the camera, in world space: the Geometry node's Incoming is unset here.
-    toward = tree.nodes.new("ShaderNodeVectorTransform")
-    toward.vector_type, toward.convert_from, toward.convert_to = (
-        "VECTOR",
-        "CAMERA",
-        "WORLD",
+    toward = node(
+        tree,
+        "ShaderNodeVectorTransform",
+        {"Vector": camera.outputs["View Vector"]},
+        vector_type="VECTOR",
+        convert_from="CAMERA",
+        convert_to="WORLD",
     )
-    tree.links.new(camera.outputs["View Vector"], toward.inputs["Vector"])
     pixel = _pixel(tree, toward.outputs["Vector"])
     sums = None
     for triple in _triples(tall):
-        node = _instance(tree, _wave_group(calm=False), pixel, None)
-        tree.links.new(position, node.inputs["Position"])
+        group_node = _instance(tree, _wave_group(calm=False), pixel, None)
+        tree.links.new(position, group_node.inputs["Position"])
         if sums is not None:
             for name, _ in _SUMS:
-                tree.links.new(sums[name], node.inputs[name])
-        _set_triple(node.inputs, triple, frozenset(), lambda w: w.amplitude_m)
-        sums = node.outputs
-    offset = tree.nodes.new("ShaderNodeCombineXYZ")
-    if sums is not None:
-        for axis, name, sign in (("X", "Sum X", -1.0), ("Y", "Sum Y", -1.0)):
-            tree.links.new(
-                scalar(tree, "MULTIPLY", _total(tree, sums[name]), sign),
-                offset.inputs[axis],
-            )
-        tree.links.new(_total(tree, sums["Sum Z"]), offset.inputs["Z"])
-    return offset.outputs["Vector"]
+                tree.links.new(sums[name], group_node.inputs[name])
+        _set_triple(group_node.inputs, triple, frozenset(), lambda w: w.amplitude_m)
+        sums = group_node.outputs
+    if sums is None:
+        return combine(tree)
+    x, y, z = (_total(tree, sums[name]) for name in ("Sum X", "Sum Y", "Sum Z"))
+    return combine(
+        tree, scalar(tree, "MULTIPLY", x, -1.0), scalar(tree, "MULTIPLY", y, -1.0), z
+    )
 
 
 def displaced(
@@ -359,12 +356,13 @@ def _displace(
 ) -> None:
     """Move `material`'s surface by `offset_m`, in the object's frame."""
     tree = material.node_tree
-    offset = tree.nodes.new("ShaderNodeVectorDisplacement")
-    offset.space = "OBJECT"
-    # Both default to a fraction: Midlevel 0.5 on some nodes, Scale 0.01 on all.
-    offset.inputs["Midlevel"].default_value = 0.0
-    offset.inputs["Scale"].default_value = 1.0
-    tree.links.new(offset_m, offset.inputs["Vector"])
+    # Midlevel and Scale default to a fraction: 0.5 on some nodes, 0.01 on all.
+    offset = node(
+        tree,
+        "ShaderNodeVectorDisplacement",
+        {"Midlevel": 0.0, "Scale": 1.0, "Vector": offset_m},
+        space="OBJECT",
+    )
     tree.links.new(offset.outputs["Displacement"], output.inputs["Displacement"])
     material.displacement_method = "DISPLACEMENT"
 
@@ -374,16 +372,11 @@ def _flat(
 ) -> bpy.types.NodeSocket:
     """(east, north, time) of the flat sea a point was displaced from: the UV map
     `water` writes, which displacement leaves where it was."""
-    uv = tree.nodes.new("ShaderNodeUVMap")
-    uv.uv_map = "UVMap"
-    flat = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(uv.outputs["UV"], flat.inputs["Vector"])
-    xyt = tree.nodes.new("ShaderNodeCombineXYZ")
-    xyt.name = "sea_rest"
-    tree.links.new(flat.outputs["X"], xyt.inputs["X"])
-    tree.links.new(flat.outputs["Y"], xyt.inputs["Y"])
-    tree.links.new(time_s, xyt.inputs["Z"])
-    return xyt.outputs["Vector"]
+    uv = node(tree, "ShaderNodeUVMap", uv_map="UVMap")
+    east, north, _ = separate(tree, uv.outputs["UV"])
+    xyt = combine(tree, east, north, time_s)
+    xyt.node.name = "sea_rest"
+    return xyt
 
 
 def _normal(

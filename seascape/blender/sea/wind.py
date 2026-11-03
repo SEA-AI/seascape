@@ -10,9 +10,13 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
+    Num,
     clamped,
+    combine,
     curve_image,
+    node,
     scalar,
+    separate,
     vector,
 )
 from seascape.config import Outputs, Sea
@@ -61,32 +65,31 @@ def _drifting(
     is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
     their squared weights so the variance holds.
     """
-    split = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(where, split.inputs["Vector"])
-    time_s = split.outputs["Z"]
-    flat = tree.nodes.new("ShaderNodeCombineXYZ")
-    tree.links.new(split.outputs["X"], flat.inputs["X"])
-    tree.links.new(split.outputs["Y"], flat.inputs["Y"])
-    here = tree.nodes.new("ShaderNodeCombineXYZ")
-    here.name = f"{name}_axes"
-    for axis, out in zip(axes, ("X", "Y"), strict=True):
-        along = vector(tree, "DOT_PRODUCT", flat.outputs["Vector"])
-        along.node.inputs["Vector_001"].default_value = (*axis, 0.0)
-        tree.links.new(along, here.inputs[out])
+    east, north, time_s = separate(tree, where)
+    flat = combine(tree, east, north)
+    here = combine(
+        tree,
+        *(vector(tree, "DOT_PRODUCT", flat, (*axis, 0.0)) for axis in axes),
+    )
+    here.node.name = f"{name}_axes"
     # The tile read at x - v t is the tile at x carried v t.
     carry = [-(velocity_mps[0] * e + velocity_mps[1] * n) for e, n in axes]
 
     def layer(carried_s: bpy.types.NodeSocket, shift: float) -> bpy.types.NodeSocket:
-        at = vector(tree, "MULTIPLY_ADD", name=f"{name}_carry")
-        at.node.inputs["Vector"].default_value = (*carry, 0.0)
-        tree.links.new(carried_s, at.node.inputs["Vector_001"])
-        at.node.inputs["Vector_002"].default_value = (shift, shift, 0.0)
-        texture = tree.nodes.new("ShaderNodeTexImage")
-        texture.image = tile
-        texture.extension = "REPEAT"
-        tree.links.new(
-            vector(tree, "ADD", here.outputs["Vector"], at),
-            texture.inputs["Vector"],
+        at = vector(
+            tree,
+            "MULTIPLY_ADD",
+            (*carry, 0.0),
+            carried_s,
+            (shift, shift, 0.0),
+            name=f"{name}_carry",
+        )
+        texture = node(
+            tree,
+            "ShaderNodeTexImage",
+            {"Vector": vector(tree, "ADD", here, at)},
+            image=tile,
+            extension="REPEAT",
         )
         return texture.outputs["Color"]
 
@@ -97,32 +100,15 @@ def _drifting(
     weighted = []
     # Half a tile apart, so the two layers are independent.
     for i, lag in enumerate((0.0, 0.5)):
-        cycle = scalar(
-            tree,
-            "FRACT",
-            scalar(tree, "MULTIPLY_ADD", time_s, 1 / span_s, lag),
-        )
-        weight = scalar(
-            tree,
-            "SUBTRACT",
-            1.0,
-            scalar(tree, "ABSOLUTE", scalar(tree, "MULTIPLY_ADD", cycle, 2.0, -1.0)),
-            name=f"{name}_weight_{i}",
-        )
-        carried_s = scalar(tree, "MULTIPLY", cycle, span_s, name=f"{name}_carried_{i}")
-        weighted.append((weight, layer(carried_s, start + lag)))
+        cycle = Num(tree, time_s).madd(1 / span_s, lag).op("FRACT")
+        weight = 1.0 - cycle.madd(2.0, -1.0).op("ABSOLUTE")
+        weight.socket.node.name = f"{name}_weight_{i}"
+        carried_s = cycle * span_s
+        carried_s.socket.node.name = f"{name}_carried_{i}"
+        weighted.append((weight, Num(tree, layer(carried_s.socket, start + lag))))
     (w0, n0), (w1, n1) = weighted
-    norm = scalar(
-        tree,
-        "SQRT",
-        scalar(tree, "MULTIPLY_ADD", w0, w0, scalar(tree, "MULTIPLY", w1, w1)),
-    )
-    return scalar(
-        tree,
-        "DIVIDE",
-        scalar(tree, "MULTIPLY_ADD", w0, n0, scalar(tree, "MULTIPLY", w1, n1)),
-        norm,
-    )
+    norm = w0.madd(w0, w1 * w1).op("SQRT")
+    return (w0.madd(n0, w1 * n1) / norm).socket
 
 
 def surface_drift(sea: Sea, outputs: Outputs) -> tuple[float, float]:

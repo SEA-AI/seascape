@@ -9,10 +9,13 @@ import numpy as np
 
 from seascape.blender.blend import (
     CURVE_SAMPLES,
+    Num,
     curve_image,
     drive,
     lookup,
+    node,
     scalar,
+    separate,
     vector,
 )
 
@@ -51,12 +54,10 @@ def _pixel(
         percent="render.resolution_percentage",
     )
     # Grazing stretches the pixel by 1 / cos along the view; the floor keeps it finite.
-    cosine = scalar(tree, "MAXIMUM", scalar(tree, "ABSOLUTE", facing), 1e-3)
-    tilt = vector(tree, "SCALE", geometry.outputs["Normal"])
-    tree.links.new(facing, tilt.node.inputs["Scale"])
-    level = vector(tree, "SUBTRACT", incoming, tilt)
-    along = vector(tree, "NORMALIZE", level)
-    return _Pixel(across, scalar(tree, "DIVIDE", across, cosine), along)
+    cosine = Num(tree, facing).op("ABSOLUTE").op("MAXIMUM", 1e-3)
+    tilt = vector(tree, "SCALE", geometry.outputs["Normal"], facing)
+    along = vector(tree, "NORMALIZE", vector(tree, "SUBTRACT", incoming, tilt))
+    return _Pixel(across, (Num(tree, across) / cosine).socket, along)
 
 
 def _instance(
@@ -67,17 +68,21 @@ def _instance(
 ) -> bpy.types.Node:
     """`group` fed the pixel's footprint. Cycles merges the identical nodes each call
     adds."""
-    link = tree.links.new
-    across_sq = scalar(tree, "MULTIPLY", pixel.across_m, pixel.across_m)
-    along_sq = scalar(tree, "MULTIPLY", pixel.along_m, pixel.along_m)
-    node = tree.nodes.new("ShaderNodeGroup")
-    node.node_tree = group
-    link(pixel.along_dir, node.inputs["Along"])
-    link(across_sq, node.inputs["Across Sq"])
-    link(scalar(tree, "SUBTRACT", along_sq, across_sq), node.inputs["Stretch"])
+    across_sq = Num(tree, pixel.across_m) * pixel.across_m
+    along_sq = Num(tree, pixel.along_m) * pixel.along_m
+    instance = node(
+        tree,
+        "ShaderNodeGroup",
+        {
+            "Along": pixel.along_dir,
+            "Across Sq": across_sq.socket,
+            "Stretch": (along_sq - across_sq).socket,
+        },
+        node_tree=group,
+    )
     if calm is not None:
-        link(calm, node.inputs["Calm"])
-    return node
+        tree.links.new(calm, instance.inputs["Calm"])
+    return instance
 
 
 def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types.Image:
@@ -98,13 +103,37 @@ def _at_footprint(
 ) -> bpy.types.NodeSocket:
     low, high = FOOTPRINT_RANGE_M
     decades = math.log10(high / low)
-    x = scalar(
-        tree,
-        "MULTIPLY_ADD",
-        scalar(tree, "LOGARITHM", footprint_m, 10.0),
-        1 / decades,
-        -math.log10(low) / decades,
+    x = (
+        Num(tree, footprint_m)
+        .op("LOGARITHM", 10.0)
+        .madd(1 / decades, -math.log10(low) / decades)
     )
-    value = lookup(tree, table, x)
+    value = lookup(tree, table, x.socket)
     value.node.name = name
     return value
+
+
+def _redraw(
+    tree: bpy.types.NodeTree,
+    cell: bpy.types.NodeSocket,
+    time_s: bpy.types.NodeSocket,
+    rate: bpy.types.NodeSocket | float,
+    name: str,
+) -> tuple[Num, Num]:
+    """White noise per `cell`, drawn again `rate` times a second at its own phase: ln
+    of its first uniform, floored off 1e-7, and its second. `name` is the draw's
+    node."""
+    offset = node(
+        tree, "ShaderNodeTexWhiteNoise", {"Vector": cell}, noise_dimensions="3D"
+    )
+    draw = Num(tree, time_s).madd(rate, offset.outputs["Value"]).op("FLOOR")
+    draw.socket.node.name = name
+    noise = node(
+        tree,
+        "ShaderNodeTexWhiteNoise",
+        {"Vector": cell, "W": draw.socket},
+        noise_dimensions="4D",
+    )
+    first, second, _ = separate(tree, noise.outputs["Color"])
+    ln_u = Num(tree, first).op("MAXIMUM", 1e-7).op("LOGARITHM", math.e)
+    return ln_u, Num(tree, second)

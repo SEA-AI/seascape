@@ -12,9 +12,12 @@ import numpy as np
 
 from seascape.blender.blend import (
     CURVE_SAMPLES,
+    Num,
     curve_image,
     lookup,
+    node,
     scalar,
+    separate,
     vector,
 )
 from seascape.blender.sea.daylight import _lobe, _stretchable, _widest
@@ -226,8 +229,7 @@ def _thermal(
     # Incoming points at the camera; REFLECT takes the ray.
     ray = vector(tree, "SCALE", geometry.outputs["Incoming"], -1.0)
     reflected = vector(tree, "REFLECT", ray, normal)
-    mirror = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(reflected, mirror.inputs["Vector"])
+    _, _, mirror_z = separate(tree, reflected)
     along = scalar(
         tree,
         "DIVIDE",
@@ -239,7 +241,7 @@ def _thermal(
     sky_seen = _tiled(
         tree,
         _reflection_image(sea.t_sea_k, sky, slope_max),
-        scalar(tree, "MULTIPLY_ADD", mirror.outputs["Z"], 0.5, 0.5),
+        scalar(tree, "MULTIPLY_ADD", mirror_z, 0.5, 0.5),
         scalar(tree, "SQRT", incidence),
         VIEW_ROWS,
         ((along, SLOPE_ROWS),),
@@ -252,9 +254,11 @@ def _thermal(
         ratio = _cloud_ratio(tree, sea, light.clouds, slope_max, reflected, tiles)
         sky_seen = scalar(tree, "MULTIPLY", sky_seen, ratio)
     sky_seen.node.name = "sea_reflection"
-    mean = scalar(tree, "MULTIPLY", scalar(tree, "ADD", *unresolved), 0.5)
-    fraction = scalar(tree, "DIVIDE", scalar(tree, "SQRT", mean), slope_max)
-    bare = lookup(tree, _emissivity_image(sea.t_sea_k, slope_max), incidence, fraction)
+    mean = (Num(tree, unresolved[0]) + unresolved[1]) * 0.5
+    fraction = mean.op("SQRT") / slope_max
+    bare = lookup(
+        tree, _emissivity_image(sea.t_sea_k, slope_max), incidence, fraction.socket
+    )
     excess = lookup(tree, _foam_emissivity_image(), incidence)
     emissivity = scalar(
         tree,
@@ -286,14 +290,19 @@ def _traced(
     pixel's, not each facet's own."""
     wide, narrow, tangent = _widest(tree, pixel, unresolved)
     roughness, anisotropy = _lobe(tree, wide, _stretchable(tree, wide, narrow))
-    lobe = tree.nodes.new("ShaderNodeBsdfGlossy")
-    lobe.name = "sea_traced"
-    lobe.distribution = "BECKMANN"
-    tree.links.new(normal, lobe.inputs["Normal"])
-    tree.links.new(tangent, lobe.inputs["Tangent"])
-    tree.links.new(roughness, lobe.inputs["Roughness"])
-    tree.links.new(anisotropy, lobe.inputs["Anisotropy"])
-    tree.links.new(scalar(tree, "SUBTRACT", 1.0, emissivity), lobe.inputs["Color"])
+    lobe = node(
+        tree,
+        "ShaderNodeBsdfGlossy",
+        {
+            "Normal": normal,
+            "Tangent": tangent,
+            "Roughness": roughness,
+            "Anisotropy": anisotropy,
+            "Color": scalar(tree, "SUBTRACT", 1.0, emissivity),
+        },
+        name="sea_traced",
+        distribution="BECKMANN",
+    )
     both = tree.nodes.new("ShaderNodeAddShader")
     tree.links.new(sky, both.inputs[0])
     tree.links.new(lobe.outputs["BSDF"], both.inputs[1])
@@ -310,28 +319,24 @@ def _cloud_ratio(
 ) -> bpy.types.NodeSocket:
     """`_cloud_image` at the bearing and elevation of `reflected`, its bearing turned
     as the world turns its photo, in `tiles`."""
-    turn = tree.nodes.new("ShaderNodeMapping")
-    turn.inputs["Rotation"].default_value = (0.0, 0.0, clouds.turn_rad)
-    tree.links.new(reflected, turn.inputs["Vector"])
-    split = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(turn.outputs["Vector"], split.inputs["Vector"])
+    turn = node(
+        tree,
+        "ShaderNodeMapping",
+        {"Rotation": (0.0, 0.0, clouds.turn_rad), "Vector": reflected},
+    )
+    x, y, z = separate(tree, turn.outputs["Vector"])
     # Blender's equirectangular u: 0.5 - atan2(y, x) / 2 pi.
     bearing = scalar(
         tree,
         "MULTIPLY_ADD",
-        scalar(tree, "ARCTAN2", split.outputs["Y"], split.outputs["X"]),
+        scalar(tree, "ARCTAN2", y, x),
         -1 / (2 * math.pi),
         0.5,
         name="sea_cloud_bearing",
     )
-    z = split.outputs["Z"]
-    root = scalar(
-        tree,
-        "MULTIPLY",
-        scalar(tree, "SIGN", z),
-        scalar(tree, "SQRT", scalar(tree, "ABSOLUTE", z)),
-    )
-    elevation = scalar(tree, "MULTIPLY_ADD", root, 0.5, 0.5)
+    up = Num(tree, z)
+    root = up.op("SIGN") * up.op("ABSOLUTE").op("SQRT")
+    elevation = root.madd(0.5, 0.5).socket
     ratio = _tiled(
         tree,
         _cloud_image(sea.t_sea_k, clouds, slope_max),
@@ -377,43 +382,31 @@ def _tiled(
     the last axis varies fastest. The image interpolates
     within a tile and lookups mix across tiles, so no tile bleeds into the next."""
     # Held to texel centres, as EXTEND holds the image's own edges.
-    texel = scalar(
-        tree,
-        "MINIMUM",
-        scalar(tree, "MAXIMUM", scalar(tree, "MULTIPLY", row, rows), 0.5),
-        rows - 0.5,
-    )
+    texel = (Num(tree, row) * rows).op("MAXIMUM", 0.5).op("MINIMUM", rows - 0.5)
     height = rows * math.prod(count for _, count in tiles)
     axes = []
     for coord, count in tiles:
-        at = scalar(
-            tree,
-            "MINIMUM",
-            scalar(
-                tree,
-                "MAXIMUM",
-                scalar(tree, "MULTIPLY_ADD", coord, count, -0.5),
-                0.0,
-            ),
-            count - 1.0,
+        at = (
+            Num(tree, coord)
+            .madd(count, -0.5)
+            .op("MAXIMUM", 0.0)
+            .op("MINIMUM", count - 1.0)
         )
-        lower = scalar(tree, "FLOOR", at)
-        upper = scalar(tree, "MINIMUM", scalar(tree, "ADD", lower, 1.0), count - 1.0)
-        axes.append((count, lower, upper, scalar(tree, "SUBTRACT", at, lower)))
+        lower = at.op("FLOOR")
+        upper = (lower + 1.0).op("MINIMUM", count - 1.0)
+        axes.append((count, lower.socket, upper.socket, (at - lower).socket))
 
-    def mixed(axis: int, tile: bpy.types.NodeSocket | float) -> bpy.types.NodeSocket:
+    def mixed(axis: int, tile: bpy.types.NodeSocket | float) -> Num:
         if axis == len(axes):
-            y = scalar(tree, "MULTIPLY_ADD", tile, rows, texel)
+            y = scalar(tree, "MULTIPLY_ADD", tile, rows, texel.socket)
             seen = lookup(tree, image, x, scalar(tree, "DIVIDE", y, height))
             seen.node.extension = extension
-            return seen
+            return Num(tree, seen)
         count, lower, upper, weight = axes[axis]
         lo, hi = (
             mixed(axis + 1, scalar(tree, "MULTIPLY_ADD", tile, count, t))
             for t in (lower, upper)
         )
-        return scalar(
-            tree, "MULTIPLY_ADD", weight, scalar(tree, "SUBTRACT", hi, lo), lo
-        )
+        return Num(tree, weight).madd(hi - lo, lo)
 
-    return mixed(0, 0.0)
+    return mixed(0, 0.0).socket
