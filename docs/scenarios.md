@@ -121,13 +121,15 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
 
 ## Draught
 
-Each asset floats at its own `draught_m` from `assets.toml`, usually a vessel loaded to its marks. An object can float lighter or deeper with its own `draught_m`. A ship in ballast rides several metres higher than loaded. A drifting container floats anywhere from almost dry to awash. The value must lie within the asset's `draught_range_m`. An asset without one, such as a moored buoy, floats only as built. A draw gives each copy its own:
+An object floats at its asset's `draught_m` from `assets.toml`, usually loaded to its marks. Its own `draught_m` floats it lighter or deeper, within the asset's `draught_range_m`: a ship in ballast rides several metres higher, and a drifting container floats anywhere from almost dry to awash. An asset without a range, such as a moored buoy, floats only as built. A draw gives each copy its own:
 
 ```bash
-uv run seascape render scenarios/baseline.toml --set 'objects = [{ asset = "bulk_carrier", range_m = 3000.0, bearing_deg = 8.0, count = 3, draught_m = { uniform = [5.68, 11.0] } }]'
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ asset = "bulk_carrier", range_m = 3000.0, bearing_deg = 8.0, count = 3, draught_m = { uniform = [6.38, 11.0] } }]'
 ```
 
-The hull pitches and rolls about its new waterline, and the labels' waterline goes with it. In LWIR the hull takes the water's temperature only below that line. A waterline stain stays where the asset's own waterline is.
+The labels' height and waterline follow the hull. In LWIR the hull takes the water's temperature only below its new waterline.
+
+Limitation: a waterline stain stays at the asset's own waterline.
 
 ## Hull temperature
 

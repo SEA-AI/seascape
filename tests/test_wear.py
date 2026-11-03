@@ -142,19 +142,22 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
 
 def _zodiacs(hulls: Hulls, wears: tuple[float, ...]) -> list[bpy.types.Object]:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    return [
+    anchors = [
         _vessel(
             "zodiac",
             t_k=None,
             engine_off_min=0.0,
             paint_absorptance=None,
-            wear=amount,
             sky=load(BASELINE).sky,
             heat=None,
             hulls=hulls,
         )
-        for amount in wears
+        for _ in wears
     ]
+    # Worn once all are built, so no copy is made of a marked hull.
+    for anchor, amount in zip(anchors, wears, strict=True):
+        _worn([anchor], amount, substream(0, "wear/zodiacs"))
+    return anchors
 
 
 def _meshes(anchor: bpy.types.Object) -> list[bpy.types.Object]:

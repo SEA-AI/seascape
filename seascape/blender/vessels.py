@@ -55,13 +55,13 @@ def _vessel(
     t_k: float | None,
     engine_off_min: float,
     paint_absorptance: float | None,
-    wear: float,
     sky: Sky,
     heat: Heat | None,
     hulls: Hulls,
+    rise_m: float = 0.0,
 ) -> bpy.types.Object:
-    """A hull fitted and anchored at the origin under an empty, at its asset's
-    draught. `heat` is the LWIR build's, and None in EO."""
+    """A hull fitted and anchored at the origin under an empty, `rise_m` above its
+    asset's draught. `heat` is the LWIR build's, and None in EO."""
     if name in hulls.imported:
         parts = [_copy_tree(part, None) for part in hulls.imported[name]]
     else:
@@ -78,8 +78,8 @@ def _vessel(
         uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, sky)
         worn_on = manifest()[name].material if name in hulls.worn else None
         for mesh in mesh_objects(parts):
-            # Level, whatever the hull it was copied from rides at.
-            mesh["rise_m"] = 0.0
+            # Where the skin finds the water. Set on every hull: a copy inherits it.
+            mesh["rise_m"] = rise_m
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
                 slot.link = "OBJECT"
@@ -94,13 +94,13 @@ def _vessel(
                 )
 
     anchor = bpy.data.objects.new(name, None)
-    for size in ("beam_m", "length_m", "height_m"):
+    for size in ("beam_m", "length_m"):
         anchor[size] = parts[0][size]
+    anchor["height_m"] = parts[0]["height_m"] + rise_m
     anchor["engine_off_min"] = engine_off_min
-    anchor["wear"] = wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
-    # `_raise` lifts the hull here, so it pitches and rolls about its own waterline.
+    # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
     draught = bpy.data.objects.new(f"{name}_draught", None)
     for obj in (anchor, attitude, draught):
         bpy.context.collection.objects.link(obj)
@@ -110,21 +110,10 @@ def _vessel(
         part.parent = draught
     place(anchor, 0.0, 0.0, 0.0)
     place(attitude, 0.0, 0.0, 0.0)
-    place(draught, 0.0, 0.0, 0.0)
+    place(draught, 0.0, 0.0, rise_m)
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     attitude.rotation_mode = "YXZ"
     return anchor
-
-
-def _raise(anchor: bpy.types.Object, rise_m: float) -> None:
-    """Float a level hull `rise_m` above its asset's draught, in the attitude's frame,
-    where the sea stays at z = 0."""
-    (attitude,) = anchor.children
-    (draught,) = attitude.children
-    draught.location.z = rise_m
-    for mesh in mesh_objects([anchor]):
-        mesh["rise_m"] = rise_m  # where the IR skin finds the water
-    anchor["height_m"] += rise_m
 
 
 def add_ownship(
@@ -148,7 +137,6 @@ def add_ownship(
             t_k=ownship.t_k,
             engine_off_min=0.0,
             paint_absorptance=None,
-            wear=0.0,
             sky=sky,
             heat=heat,
             hulls=hulls,
@@ -301,7 +289,6 @@ def _targets(
             t_k=spec.t_k,
             engine_off_min=spec.engine_off_min,
             paint_absorptance=spec.paint_absorptance,
-            wear=spec.wear,
             sky=sky,
             heat=heat,
             hulls=hulls,
@@ -337,12 +324,11 @@ def _object(
         t_k=spec.t_k,
         engine_off_min=spec.engine_off_min,
         paint_absorptance=spec.paint_absorptance,
-        wear=spec.wear,
         sky=sky,
         heat=heat,
         hulls=hulls,
+        rise_m=spec.rise_m,
     )
-    _raise(anchor, spec.rise_m)
     orbit = spec.orbit
     if orbit is None:
         _pose(
@@ -393,7 +379,6 @@ def _turbine(
         t_k=None,
         engine_off_min=0.0,
         paint_absorptance=farm.paint_absorptance,
-        wear=farm.wear,
         sky=scenario.sky,
         heat=heat,
         hulls=hulls,
@@ -553,8 +538,9 @@ def add_vessels(
 def _worn(
     anchors: list[bpy.types.Object], amount: float, rng: np.random.Generator
 ) -> None:
-    if amount > 0.0:
-        for anchor in anchors:
+    for anchor in anchors:
+        anchor["wear"] = amount
+        if amount > 0.0:
             mark(anchor, amount, rng)
 
 
@@ -562,8 +548,8 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
 
     The waterline is z = 0 in the attitude's frame, which heaves, pitches and rolls
-    with the waves: `_fit` puts the keel the asset's draught below it, and `_raise`
-    raises the hull by its rise.
+    with the waves: `_fit` puts the keel the asset's draught below it, and `_vessel`
+    lifts it by `rise_m`.
     """
     # Limitation: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.

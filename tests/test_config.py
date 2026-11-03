@@ -1215,10 +1215,10 @@ def test_an_object_floats_at_its_asset_s_draught_unless_given_one() -> None:
     loaded = 'objects = [{ asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
     (asset,), (ballast,) = (
         load(BASELINE, [loaded + extra + " }]"]).objects
-        for extra in ("", ", draught_m = 6.0")
+        for extra in ("", ", draught_m = 7.0")
     )
     assert asset.rise_m == 0.0
-    assert ballast.rise_m == pytest.approx(manifest()["bulk_carrier"].draught_m - 6.0)
+    assert ballast.rise_m == pytest.approx(manifest()["bulk_carrier"].draught_m - 7.0)
 
 
 def test_a_drawn_draught_differs_per_copy_within_the_asset_s_range() -> None:
@@ -1226,12 +1226,12 @@ def test_a_drawn_draught_differs_per_copy_within_the_asset_s_range() -> None:
         BASELINE,
         [
             'objects = [{ asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0, '
-            "count = 4, draught_m = { uniform = [6.0, 11.0] } }]"
+            "count = 4, draught_m = { uniform = [7.0, 11.0] } }]"
         ],
     )
     draughts_m = [spec.draught_m for spec in drawn.objects]
     assert len(set(draughts_m)) == 4
-    assert all(d is not None and 6.0 <= d <= 11.0 for d in draughts_m)
+    assert all(d is not None and 7.0 <= d <= 11.0 for d in draughts_m)
 
 
 @pytest.mark.parametrize(
@@ -1243,3 +1243,23 @@ def test_a_draught_outside_the_asset_s_range_is_refused(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         Object(asset=asset, range_m=500.0, bearing_deg=0.0, draught_m=draught_m)
+
+
+@pytest.mark.parametrize(
+    "draw",
+    ["{ uniform = [5.0, 11.0] }", "{ choice = [7.0, { uniform = [9.0, 12.0] }] }"],
+)
+def test_a_draught_draw_that_can_leave_the_range_is_refused_on_every_seed(
+    draw: str,
+) -> None:
+    """Whether a draw lands outside depends on the seed; whether it can does not."""
+    for seed in range(3):
+        with pytest.raises(ValueError, match="can draw"):
+            load(
+                BASELINE,
+                [
+                    f"seed = {seed}",
+                    'objects = [{ asset = "bulk_carrier", range_m = 900.0, '
+                    f"bearing_deg = 0.0, draught_m = {draw} }}]",
+                ],
+            )

@@ -134,8 +134,7 @@ class _Mesh(Model):
     files: dict[str, File] = Field(default_factory=dict)
     # Required: a default of zero floats the hull and looks almost right.
     draught_m: float = Field(ge=0.0)
-    # The lightest and deepest it plausibly floats, which an object's own `draught_m`
-    # must fall within. None where a mooring or foundation fixes it.
+    # Lightest and deepest, bounding an object's own `draught_m`. None: only as built.
     draught_range_m: tuple[float, float] | None = None
     # As `meshes.measure` reads them.
     triangles: int = Field(gt=0)

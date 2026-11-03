@@ -1534,7 +1534,7 @@
         },
         "draught_m": {
           "title": "Draught M",
-          "description": "How deep it floats, keel to waterline. Unset, the asset's own. It must fall within the asset's `draught_range_m`: a ship in ballast rides higher than loaded.",
+          "description": "How deep it floats, keel to waterline, within the asset's `draught_range_m`. Unset, the asset's own.",
           "default": null,
           "anyOf": [
             {

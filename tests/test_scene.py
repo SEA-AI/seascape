@@ -45,7 +45,6 @@ from seascape.blender.sea.wind import (
 from seascape.blender.sky import _haze_ranges_m, _sky_round, haze, sea_light
 from seascape.blender.vessels import (
     Hulls,
-    _raise,
     _vessel,
     heading_rad,
     waterline_m,
@@ -886,7 +885,6 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
         t_k=300.0,
         engine_off_min=0.0,
         paint_absorptance=None,
-        wear=0.0,
         sky=SCENARIO.sky,
         heat=heat,
         hulls=Hulls(),
@@ -911,7 +909,6 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
             t_k=None,
             engine_off_min=minutes,
             paint_absorptance=None,
-            wear=0.0,
             sky=SCENARIO.sky,
             heat=heat,
             hulls=hulls,
@@ -934,7 +931,6 @@ def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
         t_k=None,
         engine_off_min=0.0,
         paint_absorptance=None,
-        wear=0.0,
         sky=SCENARIO.sky,
         heat=None,
         hulls=Hulls(),
@@ -958,14 +954,13 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
             t_k=None,
             engine_off_min=0.0,
             paint_absorptance=None,
-            wear=0.0,
             sky=SCENARIO.sky,
             heat=None,
             hulls=hulls,
+            rise_m=rise_m,
         )
-        for _ in range(2)
+        for rise_m in (0.0, 5.0)
     )
-    _raise(raised, 5.0)
     bpy.context.view_layer.update()
     (attitude,) = raised.children
     into_attitude = attitude.matrix_world.inverted()

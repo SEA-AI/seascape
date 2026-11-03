@@ -66,8 +66,8 @@ _WEAR = (
     "`weathered` asset ignores it: its textures are its wear."
 )
 _DRAUGHT = (
-    "How deep it floats, keel to waterline. Unset, the asset's own. It must fall "
-    "within the asset's `draught_range_m`: a ship in ballast rides higher than loaded."
+    "How deep it floats, keel to waterline, within the asset's `draught_range_m`. "
+    "Unset, the asset's own."
 )
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."

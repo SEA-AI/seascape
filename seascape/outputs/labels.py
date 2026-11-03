@@ -93,7 +93,7 @@ class Annotation(Model):
     waterline_range_m: float
     bearing_deg: float  # true, clockwise from north
     heading_deg: float  # true, clockwise from north
-    # length, beam, height above the waterline, as built
+    # length, beam, height above the waterline, as floated
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
     engine_off_min: float = 0.0  # 0 is running

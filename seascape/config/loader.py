@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from seascape import assets
 from seascape.config.draws import DRAWS, Choice, OpticalDepth, kind, substream
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
@@ -170,6 +171,7 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             )
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
+        _draught_draw_fits(spec, i)
         for k in range(count):
             copy = _draw(spec, seed, f"{path}/{k}")
             if not isinstance(copy, dict):
@@ -184,6 +186,22 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
                 | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
             )
     return out
+
+
+def _draught_draw_fits(spec: dict[str, Any], i: int) -> None:
+    """Refuse a drawn draught that can leave its asset's range, whatever the seed:
+    each copy's own check catches it only when a draw lands outside."""
+    drawn, named = spec.get("draught_m"), spec.get("asset")
+    asset = assets.manifest().get(named) if isinstance(named, str) else None
+    if (name := kind(drawn)) is None or asset is None or not asset.draught_range_m:
+        return  # each copy checks a drawn asset, and one without a range
+    low_m, high_m = DRAWS[name].model_validate(drawn).bounds()
+    lightest_m, deepest_m = asset.draught_range_m
+    if low_m < lightest_m or high_m > deepest_m:
+        raise ValueError(
+            f"objects[{i}]: draught_m can draw {low_m}-{high_m}, outside "
+            f"{named}'s draught_range_m {asset.draught_range_m}"
+        )
 
 
 def _range_m(
