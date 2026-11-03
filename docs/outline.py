@@ -1,4 +1,4 @@
-"""Draws labels.json's masks on a frame; run through `uv run --with supervision`."""
+"""Draws labels.json's masks on a frame."""
 
 import cv2
 import numpy as np
