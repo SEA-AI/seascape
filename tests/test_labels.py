@@ -1,6 +1,7 @@
 """labels.json from an index map and a calibration, without a render."""
 
 import math
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import cv2
@@ -59,27 +60,38 @@ def target(
     )
 
 
-def test_an_annotation_records_when_the_engines_stopped() -> None:
-    index = np.zeros((48, 64), dtype=int)
-    index[10:13, 20:25] = 1
+def added(
+    index: np.ndarray | None = None,
+    targets: Sequence[labels.Target] = (),
+    *,
+    cam: CameraCalibration | None = None,
+    time_s: float = 0.0,
+    frame: np.ndarray = FLAT,
+    settings: Camera | None = None,
+    faint: Mapping[str, float] | None = None,
+) -> labels.Labels:
+    """One frame's labels; an empty index map unless given."""
     truth = labels.Labels()
-    stopped = target(1)._replace(engine_off_min=45.0)
-
-    truth.add(camera(), 0.0, index, FLAT, [stopped], RADIUS_M, faint={})
-
-    (found,) = truth.annotations
-    assert found.engine_off_min == 45.0
+    truth.add(
+        cam or camera(),
+        time_s,
+        np.zeros((48, 64), dtype=int) if index is None else index,
+        frame,
+        targets,
+        RADIUS_M,
+        settings,
+        faint=faint or {},
+    )
+    return truth
 
 
 def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
     """COCO's pixel i spans [i, i + 1), so an inclusive box grows by one."""
     index = np.zeros((48, 64), dtype=int)
     index[10:13, 20:25] = 1
-    truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M, faint={})
+    (found,) = added(index, [target(1)]).annotations
 
-    (found,) = truth.annotations
     assert found.bbox == (20, 10, 5, 3)
     assert found.area == 15
     assert not found.truncated
@@ -88,27 +100,15 @@ def test_a_box_covers_whole_pixels_from_its_top_left_corner() -> None:
 def test_a_box_on_the_frame_edge_is_truncated() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[40:, 60:] = 1
-    truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M, faint={})
-
-    assert truth.annotations[0].truncated
+    assert added(index, [target(1)]).annotations[0].truncated
 
 
 def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
-    truth = labels.Labels()
 
-    truth.add(
-        camera(),
-        0.0,
-        index,
-        FLAT,
-        [target(1), target(2, "buoy", 6)],
-        RADIUS_M,
-        faint={},
-    )
+    truth = added(index, [target(1), target(2, "buoy", 6)])
 
     assert [a.name for a in truth.annotations] == ["t1"]
     assert [c.name for c in truth.categories] == ["ship"]
@@ -117,9 +117,8 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
 def test_targets_of_one_category_share_it() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10], index[20, 20] = 1, 2
-    truth = labels.Labels()
 
-    truth.add(camera(), 0.0, index, FLAT, [target(1), target(2)], RADIUS_M, faint={})
+    truth = added(index, [target(1), target(2)])
 
     assert {a.category_id for a in truth.annotations} == {1}
     assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
@@ -128,69 +127,40 @@ def test_targets_of_one_category_share_it() -> None:
 def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10], index[20, 20] = 1, 2
-    truth = labels.Labels()
 
-    truth.add(
-        camera(),
-        0.0,
-        index,
-        FLAT,
-        [target(1, "buoy", 6), target(2)],
-        RADIUS_M,
-        faint={},
-    )
+    truth = added(index, [target(1, "buoy", 6), target(2)])
 
     assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
     assert [a.category_id for a in truth.annotations] == [6, 1]
 
 
-def test_an_image_carries_its_cameras_field_of_view() -> None:
-    truth = labels.Labels()
+def test_an_image_carries_its_cameras_field_of_view_and_its_time() -> None:
+    (image,) = added(cam=camera(hfov_deg=42.0), time_s=2.5).images
 
-    truth.add(
-        camera(hfov_deg=42.0),
-        0.0,
-        np.zeros((48, 64), dtype=int),
-        FLAT,
-        [],
-        RADIUS_M,
-        faint={},
-    )
-
-    assert truth.images[0].hfov_deg == pytest.approx(42.0)
+    assert image.hfov_deg == pytest.approx(42.0)
+    assert image.time_s == 2.5
 
 
-def test_an_annotation_carries_its_targets_heading_and_dimensions() -> None:
+def test_an_annotation_carries_its_targets_heading_dimensions_and_engine_stop() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
-    truth = labels.Labels()
+    stopped = target(1)._replace(engine_off_min=45.0)
 
-    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M, faint={})
+    (annotation,) = added(index, [stopped]).annotations
 
-    (annotation,) = truth.annotations
-    assert (annotation.heading_deg, annotation.dims_m) == (90.0, (20.0, 5.0, 4.0))
-
-
-def test_a_frame_carries_its_time() -> None:
-    truth = labels.Labels()
-
-    truth.add(
-        camera(), 2.5, np.zeros((48, 64), dtype=int), FLAT, [], RADIUS_M, faint={}
+    assert (annotation.heading_deg, annotation.dims_m, annotation.engine_off_min) == (
+        90.0,
+        (20.0, 5.0, 4.0),
+        45.0,
     )
-
-    assert truth.images[0].time_s == 2.5
 
 
 def test_ranges_run_from_the_camera_to_the_centre_and_the_nearest_waterline() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
-    truth = labels.Labels()
 
-    truth.add(
-        camera(at_m=(0.0, 0.0, 50.0)), 0.0, index, FLAT, [target(1)], RADIUS_M, faint={}
-    )
+    found = added(index, [target(1)]).annotations[0]
 
-    found = truth.annotations[0]
     assert (found.range_m, found.waterline_range_m, found.bearing_deg) == (
         pytest.approx(1000.0),
         pytest.approx(990.0),
@@ -461,22 +431,28 @@ def test_no_horizon_in_a_frame_that_looks_at_the_sea_only() -> None:
     assert labels.horizon_px(camera(pitch_deg=-60.0), RADIUS_M) == []
 
 
+def written(root: Path, names: dict[str, labels.Labels]) -> list[Path]:
+    """Each labels in a folder of its own under `root`."""
+    folders = [root / name for name in names]
+    for folder, truth in zip(folders, names.values(), strict=True):
+        folder.mkdir()
+        truth.write(folder)
+    return folders
+
+
 def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
     tmp_path,
 ) -> None:
-    folders = []
-    for seed, category in ((7, ("ship", 1)), (8, ("buoy", 6))):
-        index = np.zeros((48, 64), dtype=int)
-        index[10, 10] = 1
-        truth = labels.Labels(info={"scenario": {"seed": seed}, "version": "x"})
-        truth.add(
-            camera(), 0.0, index, FLAT, [target(1, *category)], RADIUS_M, faint={}
-        )
-        folders.append(tmp_path / str(seed))
-        folders[-1].mkdir()
-        truth.write(folders[-1])
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    parts = {
+        str(seed): added(index, [target(1, *category)])
+        for seed, category in ((7, ("ship", 1)), (8, ("buoy", 6)))
+    }
+    for seed, truth in parts.items():
+        truth.info = {"scenario": {"seed": int(seed)}, "version": "x"}
 
-    merged = labels.merge(tmp_path, folders)
+    merged = labels.merge(tmp_path, written(tmp_path, parts))
 
     assert [(i.id, i.file_name) for i in merged.images] == [
         (1, "7/C.png"),
@@ -494,18 +470,14 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
 
 
 def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
-    folders = []
-    for name in ("ship", "buoy"):
-        index = np.zeros((48, 64), dtype=int)
-        index[10, 10] = 1
-        truth = labels.Labels(info={"scenario": {}})
-        truth.add(camera(), 0.0, index, FLAT, [target(1, name, 1)], RADIUS_M, faint={})
-        folders.append(tmp_path / name)
-        folders[-1].mkdir()
-        truth.write(folders[-1])
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    parts = {name: added(index, [target(1, name, 1)]) for name in ("ship", "buoy")}
+    for truth in parts.values():
+        truth.info = {"scenario": {}}
 
     with pytest.raises(ValueError, match="category 1 is ship"):
-        labels.merge(tmp_path, folders)
+        labels.merge(tmp_path, written(tmp_path, parts))
 
 
 @pytest.mark.parametrize("graded", [True, False])
@@ -521,12 +493,8 @@ def test_an_8_bit_eo_image_carries_its_cameras_sensor_lens_and_processing(
         sensor=Sensor(full_well_e=10500.0, dark_noise_e=3.0),
         lens=Lens(vignetting=True),
     )
-    truth = labels.Labels()
     frame = FLAT.astype(np.uint8) if graded else FLAT
-    truth.add(
-        camera(), 0.0, np.zeros((48, 64), int), frame, [], RADIUS_M, settings, faint={}
-    )
-    (image,) = truth.images
+    (image,) = added(frame=frame, settings=settings).images
     expected = (settings.sensor, settings.lens, settings.processing)
     assert (image.sensor, image.lens, image.processing) == (
         expected if graded else (None, None, None)
@@ -534,26 +502,16 @@ def test_an_8_bit_eo_image_carries_its_cameras_sensor_lens_and_processing(
 
 
 def test_an_image_without_its_camera_carries_no_settings() -> None:
-    truth = labels.Labels()
-    truth.add(camera(), 0.0, np.zeros((48, 64), int), FLAT, [], RADIUS_M, faint={})
-    (image,) = truth.images
+    (image,) = added().images
     assert (image.sensor, image.lens, image.processing) == (None, None, None)
 
 
-def test_a_target_out_of_frame_is_dropped_with_where_it_was() -> None:
-    truth = labels.Labels()
+@pytest.mark.parametrize("faint", [{}, {"t1": 0.3}], ids=["plain", "faint"])
+def test_a_target_out_of_frame_is_dropped_with_where_it_was(
+    faint: dict[str, float],
+) -> None:
+    (gone,) = added(targets=[target(1)], faint=faint).dropped
 
-    truth.add(
-        camera(),
-        0.0,
-        np.zeros((48, 64), dtype=int),
-        FLAT,
-        [target(1)],
-        RADIUS_M,
-        faint={},
-    )
-
-    (gone,) = truth.dropped
     assert (gone.image_id, gone.name, gone.reason) == (1, "t1", "no_pixels")
     assert gone.range_m == pytest.approx(1000.0)
     assert gone.bearing_deg == pytest.approx(0.0)
@@ -571,27 +529,12 @@ def test_only_a_target_in_its_backgrounds_noise_is_faint(
 
 
 def test_a_faint_target_is_dropped_with_its_excess_and_box() -> None:
-    index = patch(4)
-    truth = labels.Labels()
-
-    truth.add(camera(), 0.0, index, FLAT, [target(1)], RADIUS_M, faint={"t1": 0.3})
+    truth = added(patch(4), [target(1)], faint={"t1": 0.3})
 
     assert not truth.annotations
     (gone,) = truth.dropped
     assert (gone.reason, gone.excess_de) == ("low_contrast", 0.3)
     assert (gone.bbox, gone.area) == ((20, 12, 4, 4), 16)
-
-
-def test_a_faint_target_out_of_frame_is_dropped_for_having_no_pixels() -> None:
-    truth = labels.Labels()
-
-    truth.add(
-        camera(), 0.0, np.zeros((48, 64), int), FLAT, [target(1)], RADIUS_M,
-        faint={"t1": 0.3},
-    )  # fmt: skip
-
-    (gone,) = truth.dropped
-    assert gone.reason == "no_pixels"
 
 
 @pytest.mark.parametrize(
@@ -610,23 +553,11 @@ def test_a_target_faint_in_one_camera_is_kept_when_another_sees_it(
 
 
 def test_a_merge_renumbers_the_dropped_images(tmp_path) -> None:
-    folders = []
-    for seed in (7, 8):
-        truth = labels.Labels(info={"scenario": {"seed": seed}})
-        truth.add(
-            camera(),
-            0.0,
-            np.zeros((48, 64), dtype=int),
-            FLAT,
-            [target(1)],
-            RADIUS_M,
-            faint={},
-        )
-        folders.append(tmp_path / str(seed))
-        folders[-1].mkdir()
-        truth.write(folders[-1])
+    parts = {str(seed): added(targets=[target(1)]) for seed in (7, 8)}
+    for truth in parts.values():
+        truth.info = {"scenario": {}}
 
-    merged = labels.merge(tmp_path, folders)
+    merged = labels.merge(tmp_path, written(tmp_path, parts))
 
     assert [d.image_id for d in merged.dropped] == [1, 2]
 
@@ -641,11 +572,7 @@ def test_a_camera_takes_the_agc_its_thermal_frames_recorded(tmp_path: Path) -> N
         band="ir", hfov_deg=24.0, width_px=64, height_px=48, agc=Agc(dde=1.2)
     )
     ir = camera().model_copy(update={"band": "ir"})
-    truth = labels.Labels()
-    frame = FLAT.astype(np.uint16)
-    index = np.zeros((48, 64), int)
-    truth.add(ir, 0.0, index, frame, [], RADIUS_M, settings, faint={})
-    truth.write(tmp_path)
+    added(cam=ir, frame=FLAT.astype(np.uint16), settings=settings).write(tmp_path)
     found = labels.agcs(tmp_path)
     assert found[ir.name] == Agc(dde=1.2)
     assert found["elsewhere"] == Agc()

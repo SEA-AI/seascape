@@ -52,12 +52,13 @@ def row_through(frame: np.ndarray, index: np.ndarray, p: int) -> dict:
     """Around target `p`: the crop, its row with the most flank, and that row's ΔE*ab
     from the background line, with which columns are ship and which flank."""
     mask, beside = index == p, labels.flanks(index, p)
-    behind = labels.background(labels.cielab(frame), mask, beside)
+    lab = labels.cielab(frame)
+    behind = labels.background(lab, mask, beside)
     if behind is None:
         raise ValueError(f"target {p} has no background to show")
     ys, xs = np.nonzero(mask | beside)
     crop = np.s_[ys.min() - 6 : ys.max() + 7, xs.min() : xs.max() + 1]
-    delta_e = np.linalg.norm(labels.cielab(frame) - behind, axis=2)[crop]
+    delta_e = np.linalg.norm(lab - behind, axis=2)[crop]
     row = int(np.argmax(beside[crop].sum(axis=1) * mask[crop].any(axis=1)))
     return {
         "rgb": frame[crop],

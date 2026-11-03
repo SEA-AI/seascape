@@ -38,7 +38,7 @@ resistance and thermal transmittance, Annex A.
 """
 
 import math
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Literal, assert_never, get_args
 
 import numpy as np
@@ -284,7 +284,6 @@ class Environment:
     # load (CIMAC Congress 2012, paper 7-1-016). Uptake metal, uninsulated, sits near
     # its gas. Limitation: a wet exhaust, as on most small craft, runs near the sea.
     t_exhaust_k: float = 503.15
-    _interiors: dict[Interior, float] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for name in (
@@ -295,16 +294,14 @@ class Environment:
         ):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} {getattr(self, name)} outside [0, 1]")
-        interiors: dict[Interior, float] = {
+
+    def interior_k(self, interior: Interior) -> float:
+        return {
             "none": self.t_air_k,
             "cabin": self.t_cabin_k,
             "engine_room": self.t_engine_room_k,
             "exhaust": self.t_exhaust_k,
-        }
-        object.__setattr__(self, "_interiors", interiors)
-
-    def interior_k(self, interior: Interior) -> float:
-        return self._interiors[interior]
+        }[interior]
 
     def stopped(self, off_s: float) -> "Environment":
         """The engine room and exhaust `off_s` after the engines stop, each cooling

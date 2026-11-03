@@ -191,10 +191,7 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     with tempfile.TemporaryDirectory() as tmp:
         for aim in VIEWS:
             _aim(found, aim.bearing_deg, aim.elevation_deg)
-            ids, grey, tex = (
-                Path(tmp) / f"{k}{s}"
-                for k, s in (("id", ".exr"), ("grey", ".png"), ("tex", ".png"))
-            )
+            ids, grey, tex = (Path(tmp) / n for n in ("id.exr", "grey.png", "tex.png"))
             _shoot(ids, "VERTEX", "FLAT", "OFF", exr=True)
             _shoot(grey, "SINGLE", "STUDIO", "FXAA", exr=False)
             _shoot(tex, "TEXTURE", "STUDIO", "FXAA", exr=False)

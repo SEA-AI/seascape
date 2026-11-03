@@ -7,6 +7,7 @@ import numpy as np
 
 from seascape.blender import sensor
 from seascape.blender.blend import (
+    combine,
     curve_image,
     scalar,
     set_value,
@@ -178,12 +179,9 @@ def _camera(
     # A share of the frame, not a pixel count, so it blurs alike at any resolution.
     share = value(tree, "lens.blur_of_side", BLUR_OF_SIDE)
     size_px = scalar(tree, "MULTIPLY", longer_px, share)
-    size = nodes.new("ShaderNodeCombineXYZ")
-    links.new(size_px, size.inputs["X"])
-    links.new(size_px, size.inputs["Y"])
     blur = nodes.new("CompositorNodeBlur")
     blur.inputs["Type"].default_value = "Gaussian"
-    links.new(size.outputs["Vector"], blur.inputs["Size"])
+    links.new(combine(tree, size_px, size_px), blur.inputs["Size"])
     links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
     _, average = sensor.log_average(tree, image)

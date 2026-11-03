@@ -60,10 +60,7 @@ def shoot_rgb(size: tuple[int, int], name: str) -> np.ndarray:
     sc.render.filepath = str(Path(bpy.app.tempdir) / name)
     bpy.ops.render.render(write_still=True)
 
-    image = bpy.data.images.load(sc.render.filepath + ".exr")
-    pixels = np.empty(len(image.pixels), dtype=np.float32)
-    image.pixels.foreach_get(pixels)
-    return pixels.reshape(size[1], size[0], 4)[::-1, :, :3]
+    return blend.read(Path(sc.render.filepath + ".exr"))[::-1, :, :3]
 
 
 def eo_pixel_rad(scenario: Scenario) -> float:
@@ -156,7 +153,6 @@ def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
     return frame[horizon + 30 : horizon + 80]
 
 
-@pytest.mark.render
 def test_waves_survive_a_sea_at_air_temperature() -> None:
     """A tilted facet reflects a different sky elevation, cold overhead to ambient at
     the horizon, so relief shows without `t_sea_k - t_air_k`.
@@ -175,7 +171,6 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
 LOOP = _clear(variant(outputs={"duration_s": 30.0, "fps": 1, "loop": True}))
 
 
-@pytest.mark.render
 @pytest.mark.parametrize(
     ("scenario", "frame"),
     # Past half-way, a loop's atan2 clock reads t - span.
@@ -252,7 +247,6 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     assert np.abs(facet - surface).max() < dice_m**2 * (1 / 8 + 1 / 6) * bent
 
 
-@pytest.mark.render
 def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     """Straight down on the undisplaced sea, at the clip's first and last frames:
     each pixel over a cell of the finest grid reads that cell of that frame, the
@@ -306,7 +300,6 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
         np.testing.assert_allclose(rendered, expected, atol=2e-3)
 
 
-@pytest.mark.render
 def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     """Top down from high enough that the footprint sits among the waves' fades, under
     a sun overhead, so every facet can glint."""
@@ -417,7 +410,6 @@ def _met(
     return shoot_rgb(px, "hit_probe")[:, :, :2]
 
 
-@pytest.mark.render
 def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     """The specular's Anisotropy, read back at a grazing view, against the footprints
     the pixel covers: 10 m up, looking 3 deg down, the sea from ~100 m to ~1 km. The
@@ -658,7 +650,6 @@ def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
     assert rendered == pytest.approx(expected, rel=0.06)
 
 
-@pytest.mark.render
 def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     # Nothing but sea in view: a lit hull would count as foam.
     windy = SCENARIO.model_copy(
@@ -685,7 +676,6 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     assert covered == pytest.approx(waves.whitecap_fraction(15.0), rel=0.2)
 
 
-@pytest.mark.render
 def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     """Straight down, a pixel half a wall across and one three walls across: the
     first draws the lattice, the second its mean, aged foam's grey, at fresh foam's
@@ -758,7 +748,6 @@ def _hazed_black() -> bpy.types.Material:
     return black
 
 
-@pytest.mark.render
 @pytest.mark.parametrize(
     ("band", "ranges_m"),
     [
@@ -819,7 +808,6 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
         assert share == pytest.approx(1 - math.exp(-depth), rel=0.01), range_m
 
 
-@pytest.mark.render
 def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
     """Light sampling and BSDF sampling estimate the same frame, unless a path one of
     them takes skips the haze."""
@@ -1031,15 +1019,7 @@ class TestSensor:
         rig = SCENARIO.rigs["bow"]
         mount = Mount("bow", rig, name.removeprefix("bow_"), settings)
         respond(mount, substream(seed, f"sensor/{name}"))
-        sc.render.image_settings.file_format = "OPEN_EXR"
-        sc.render.resolution_x, sc.render.resolution_y = self.SIZE
-        sc.render.filepath = str(Path(bpy.app.tempdir) / "sensor")
-        bpy.ops.render.render(write_still=True)
-        image = bpy.data.images.load(sc.render.filepath + ".exr")
-        pixels = np.empty(len(image.pixels), dtype=np.float32)
-        image.pixels.foreach_get(pixels)
-        bpy.data.images.remove(image)
-        return pixels.reshape(height, width, 4)[::-1, :, :3]
+        return shoot_rgb(self.SIZE, "sensor")
 
     def test_an_ideal_camera_in_a_sensor_s_tree_takes_the_ideal_frame(self) -> None:
         """No noise, no mosaic: the glare's border falloff is all that varies."""
@@ -1330,10 +1310,7 @@ def _rendered_at(width_px: int, percent: int) -> np.ndarray:
     sc.render.image_settings.file_format = "OPEN_EXR"
     sc.render.filepath = str(Path(bpy.app.tempdir) / f"half_{width_px}_{percent}")
     bpy.ops.render.render(write_still=True)
-    image = bpy.data.images.load(sc.render.filepath + ".exr")
-    pixels = np.empty(len(image.pixels), dtype=np.float32)
-    image.pixels.foreach_get(pixels)
-    return pixels.reshape(image.size[1], image.size[0], 4)[..., :3]
+    return blend.read(Path(sc.render.filepath + ".exr"))[..., :3]
 
 
 def test_a_render_at_half_resolution_is_a_build_at_half_width() -> None:
@@ -1500,12 +1477,7 @@ def test_fog_dims_a_photographed_sun_by_its_beam_and_mists_the_rest(
 @pytest.mark.parametrize("name", skies.library())
 def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
     photo = skies.library()[name]
-    image = bpy.data.images.load(str(download(name, photo.url, photo.sha256)))
-    w, h = image.size
-    pixels = np.empty(w * h * 4, np.float32)
-    image.pixels.foreach_get(pixels)
-    bpy.data.images.remove(image)
-    radiance = pixels.reshape(h, w, 4)[::-1, :, :3]
+    radiance = blend.read(download(name, photo.url, photo.sha256))[::-1, :, :3]
     sun = skies.sun(radiance)
     assert sun.bearing_deg == pytest.approx(photo.sun_bearing_deg, abs=0.06)
     if photo.sun_elevation_deg is None:
@@ -1573,15 +1545,7 @@ def _horizon(aerosol_density: float) -> np.ndarray:
     sc.collection.objects.link(camera)
     camera.rotation_euler = (math.pi / 2, 0.0, 0.0)  # level, towards +Y
     sc.camera = camera
-    sc.render.image_settings.file_format = "OPEN_EXR"
-    sc.render.resolution_x = sc.render.resolution_y = 5
-    sc.render.filepath = str(Path(bpy.app.tempdir) / "horizon")
-    bpy.ops.render.render(write_still=True)
-    image = bpy.data.images.load(sc.render.filepath + ".exr")
-    pixels = np.empty(len(image.pixels), dtype=np.float32)
-    image.pixels.foreach_get(pixels)
-    bpy.data.images.remove(image)
-    return pixels.reshape(5, 5, 4)[2, 2, :3]
+    return shoot_rgb((5, 5), "horizon")[2, 2]
 
 
 def test_blender_s_aerosol_darkens_its_horizon() -> None:

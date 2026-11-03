@@ -23,20 +23,13 @@ def frames(scenario: Scenario, into: Path, size: tuple[int, int] = (64, 36)) -> 
     return into
 
 
-def test_a_montage_carries_every_camera(rigs, tmp_path) -> None:
+def test_a_band_gets_its_own_row(rigs, tmp_path) -> None:
     into = frames(rigs, tmp_path)
 
     out = montage.compose(rigs, into)
 
     assert out == into / "montage.png"
-    assert Image.open(out).size[0] > 0
-
-
-def test_a_band_gets_its_own_row(rigs, tmp_path) -> None:
-    into = frames(rigs, tmp_path)
-
-    height = Image.open(montage.compose(rigs, into)).height
-
+    height = Image.open(out).height
     rows = len({mount.camera.band for mount in rigs.mounts})
     assert height == rows * (montage.TILE_H + montage.CAPTION_H) + montage.GUTTER
 
@@ -59,8 +52,3 @@ def test_a_missing_frame_names_itself(rigs, tmp_path) -> None:
 
     with pytest.raises(FileNotFoundError, match=absent.stem):
         montage.compose(rigs, into)
-
-
-def test_an_unrendered_scenario_is_an_error(rigs, tmp_path) -> None:
-    with pytest.raises(FileNotFoundError):
-        montage.compose(rigs, tmp_path)

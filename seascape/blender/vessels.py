@@ -538,16 +538,11 @@ def add_vessels(
             wearing.append(([anchor], farm.wear, f"wear/farms/{f}/{k}"))
             turbines[farm.asset].append(anchor)
     for anchors, amount, stream in wearing:
-        _worn(anchors, amount, substream(scenario.seed, stream))
+        if amount > 0.0:
+            rng = substream(scenario.seed, stream)
+            for anchor in anchors:
+                mark(anchor, amount, rng)
     return vessels, turbines
-
-
-def _worn(
-    anchors: list[bpy.types.Object], amount: float, rng: np.random.Generator
-) -> None:
-    if amount > 0.0:
-        for anchor in anchors:
-            mark(anchor, amount, rng)
 
 
 def waterline_m(anchor: bpy.types.Object) -> np.ndarray:

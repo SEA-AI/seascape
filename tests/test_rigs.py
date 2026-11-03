@@ -33,6 +33,20 @@ def built() -> scene.Built:
     return scene.build(SCENARIO, "eo")
 
 
+def first_rig_mounts() -> list[Mount]:
+    """The mounts of the first camera's band on its rig."""
+    first = SCENARIO.mounts[0]
+    return [
+        m
+        for m in SCENARIO.mounts
+        if m.rig_name == first.rig_name and m.camera.band == first.camera.band
+    ]
+
+
+def black_frame(mount: Mount) -> np.ndarray:
+    return np.zeros((mount.camera.height_px, mount.camera.width_px, 3), np.uint8)
+
+
 def targets() -> list[bpy.types.Object]:
     return [obj for obj in bpy.data.objects if obj.name.startswith("target_")]
 
@@ -202,15 +216,9 @@ def test_a_panorama_puts_each_principal_point_on_its_boresight(
 def test_a_panorama_lays_its_cameras_out_in_yaw_order(
     tmp_path: Path, built: scene.Built
 ) -> None:
-    first = SCENARIO.mounts[0]
-    mounts = [
-        m
-        for m in SCENARIO.mounts
-        if m.rig_name == first.rig_name and m.camera.band == first.camera.band
-    ][:3]
-    mounts.sort(key=lambda m: m.camera.yaw_deg)
+    mounts = sorted(first_rig_mounts()[:3], key=lambda m: m.camera.yaw_deg)
     for channel, mount in enumerate(mounts):
-        frame = np.zeros((mount.camera.height_px, mount.camera.width_px, 3), np.uint8)
+        frame = black_frame(mount)
         frame[..., channel] = 255
         cv2.imwrite(str(tmp_path / f"{mount.name}.png"), frame)
     Calibration(
@@ -238,12 +246,7 @@ def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> No
 def test_a_thermal_panorama_is_one_grey_per_temperature(
     tmp_path: Path, built: scene.Built
 ) -> None:
-    first = SCENARIO.mounts[0]
-    mounts = [
-        m
-        for m in SCENARIO.mounts
-        if m.rig_name == first.rig_name and m.camera.band == first.camera.band
-    ][:2]
+    mounts = first_rig_mounts()[:2]
     thermal, white = tmp_path / "thermal", tmp_path / "white"
     calibration = Calibration(
         cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
@@ -275,8 +278,7 @@ def test_the_width_is_capped_and_never_raised(
     tmp_path: Path, built: scene.Built
 ) -> None:
     mount = SCENARIO.mounts[0]
-    frame = np.zeros((mount.camera.height_px, mount.camera.width_px, 3), np.uint8)
-    cv2.imwrite(str(tmp_path / "frame.png"), frame)
+    cv2.imwrite(str(tmp_path / "frame.png"), black_frame(mount))
     camera = scene.calibrate(built, mount, "frame.png")
 
     native, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "rig")
@@ -294,13 +296,7 @@ def test_a_bearing_lands_where_the_stitch_put_it(
     """A dot right of each principal point, found in the stitch, against the column
     its ray's bearing maps to. Off centre, so a mirrored mapping finds no dot; on a
     pitched camera, so the mapping is held independent of elevation."""
-    first = SCENARIO.mounts[0]
-    mounts = [
-        m
-        for m in SCENARIO.mounts
-        if m.rig_name == first.rig_name and m.camera.band == first.camera.band
-    ]
-    cameras = [scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
+    cameras = [scene.calibrate(built, m, f"{m.name}.png") for m in first_rig_mounts()]
     for camera in cameras:
         frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)
         cx, cy = round(camera.K[0][2] + camera.width_px / 4), round(camera.K[1][2])
@@ -324,8 +320,7 @@ def test_the_ruler_ticks_under_the_image_where_column_says(
     tmp_path: Path, built: scene.Built
 ) -> None:
     mount = SCENARIO.mounts[0]
-    frame = np.zeros((mount.camera.height_px, mount.camera.width_px, 3), np.uint8)
-    cv2.imwrite(str(tmp_path / "frame.png"), frame)
+    cv2.imwrite(str(tmp_path / "frame.png"), black_frame(mount))
     camera = scene.calibrate(built, mount, "frame.png")
     image, layout = panorama.stitch(tmp_path, [camera], "cylindrical", "rig", 1000)
     # The labelled bearing nearest the camera's axis, so it is in frame.

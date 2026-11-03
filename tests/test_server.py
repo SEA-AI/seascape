@@ -20,9 +20,7 @@ from pydantic import ValidationError
 
 from seascape import server
 from seascape.config import load_variants
-from tests.scenarios import SCENARIOS
-
-BASELINE = SCENARIOS / "baseline.toml"
+from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS
 
 
 def _state(renders: Path, **limits: Any) -> server.State:
@@ -124,7 +122,7 @@ def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: server.State) 
 
 
 def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
-    scenes = load_variants(SCENARIOS / "open-sea.toml", count=2)
+    scenes = load_variants(OPEN_SEA, count=2)
     first = scenes[0].seed
     # `render` skipped first + 1, whose hulls met.
     for seed in (first, first + 2):
@@ -132,7 +130,7 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     (tmp_path / "labels.json").touch()
     job = server.Job(tmp_path, "open-sea", scenes)
     assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
-    assert [s.seed for s in server._written(job, SCENARIOS / "open-sea.toml", [])] == [
+    assert [s.seed for s in server._written(job, OPEN_SEA, [])] == [
         first,
         first + 2,
     ]
@@ -188,7 +186,7 @@ def test_a_hung_gpu_probe_still_serves(
 def test_jobs_lists_a_finished_job_whose_archive_is_gone(
     tmp_path: Path, state: server.State
 ) -> None:
-    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    scenes = load_variants(OPEN_SEA)
     state.jobs["gone"] = server.Job(tmp_path / "gone", "open-sea", scenes, state="done")
     (listed,) = _call(state, "jobs").structured_content["jobs"]
     assert listed["status"] == "done"
@@ -213,7 +211,7 @@ def test_a_limit_that_is_not_a_positive_number_names_its_field(
 
 
 def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
-    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    scenes = load_variants(OPEN_SEA)
     job = server.Job(tmp_path, "open-sea", scenes, state="finishing")
     assert not job.waiting
 
@@ -385,7 +383,7 @@ def test_a_waiting_result_reports_progress(
 
 
 def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: server.State) -> None:
-    scenes = load_variants(SCENARIOS / "open-sea.toml")
+    scenes = load_variants(OPEN_SEA)
 
     async def forget() -> list[str]:
         done = asyncio.create_task(asyncio.sleep(0))

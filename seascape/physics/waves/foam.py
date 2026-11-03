@@ -140,10 +140,6 @@ def whitecap_fraction(wind_speed_mps: float) -> float:
     return min(WHITECAP_COEFFICIENT * wind_speed_mps**WHITECAP_EXPONENT, 1.0)
 
 
-def breakers(wind: tuple[Wave, ...]) -> tuple[Wave, ...]:
-    return tallest(wind, BREAKING_HEIGHT_SHARE) if wind else ()
-
-
 def _normal_cdf(z: np.ndarray) -> np.ndarray:
     """The standard normal CDF, within 1.5e-7: erf by Abramowitz & Stegun, Handbook of
     Mathematical Functions, 7.1.26."""
@@ -165,14 +161,11 @@ def _laid(z: np.ndarray) -> np.ndarray:
     return out
 
 
-def _memory_edge_g(wind: tuple[Wave, ...]) -> float:
-    """`foam_edge_g`, never 0, which a memory divides by."""
-    return max(foam_edge_g(wind), 1e-9)
-
-
 def foam_edge_g(wind: tuple[Wave, ...]) -> float:
-    """The spread in g over which a crest goes from whole to broken foam."""
-    return WHITECAP_EDGE * math.sqrt(slope_variance(breakers(wind)))
+    """The spread in g over which a crest goes from whole to broken foam, never 0,
+    which a memory divides by."""
+    breakers = tallest(wind, BREAKING_HEIGHT_SHARE)
+    return max(WHITECAP_EDGE * math.sqrt(slope_variance(breakers)), 1e-9)
 
 
 @dataclass(frozen=True)
@@ -266,7 +259,7 @@ def foam_memory(
     """
     use = _resolved(wind, grid.cell_m)
     crests = _Crests(use, grid, drift_mps)
-    edge = _memory_edge_g(wind)
+    edge = foam_edge_g(wind)
     times = _memory_times(start_s, step_s, frames)
     cover = np.zeros((grid.rows, grid.columns), np.float32)
     last = times[0]
@@ -354,7 +347,7 @@ def foam_memory_thresholds_g(
         out[:] = math.inf
     elif inside.any():
         accelerations, gaps = _reference_accelerations(use, drift_mps, step_s)
-        edge = _memory_edge_g(wind)
+        edge = foam_edge_g(wind)
         decays = np.exp(-gaps / WHITECAP_AREA_EFOLD_S)
         steps = len(gaps)
 

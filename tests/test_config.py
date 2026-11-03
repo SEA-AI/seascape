@@ -408,13 +408,6 @@ def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
     assert len(sways) == 20
 
 
-def test_a_draw_replaces_the_table_it_meets() -> None:
-    load(
-        BASELINE,
-        ['sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'],
-    )
-
-
 def test_a_table_over_a_choice_of_tables_goes_into_every_option() -> None:
     skies = 'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'
     for seed in range(8):
@@ -598,17 +591,6 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
     with pytest.raises(ValidationError, match=match):
         load(SCENARIOS / name, overrides)
-
-
-def test_an_orbit_sets_the_course_itself() -> None:
-    with pytest.raises(ValidationError, match=r"drop \['heading_deg'\]"):
-        Object(
-            asset="yacht",
-            range_m=200.0,
-            bearing_deg=0.0,
-            heading_deg=0.0,
-            orbit=Orbit(period_s=60.0),
-        )
 
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:
@@ -980,14 +962,21 @@ def test_a_heading_turns_from_what_heading_from_names(heading_from, course) -> N
     assert spec.course_deg == course
 
 
-def test_an_orbit_refuses_a_heading_from() -> None:
-    with pytest.raises(ValidationError, match="heading_from"):
+@pytest.mark.parametrize(
+    ("steering", "match"),
+    [
+        ({"heading_deg": 0.0}, r"drop \['heading_deg'\]"),
+        ({"heading_from": "line_of_sight"}, "heading_from"),
+    ],
+)
+def test_an_orbit_sets_the_course_itself(steering: dict[str, Any], match: str) -> None:
+    with pytest.raises(ValidationError, match=match):
         Object(
             asset="yacht",
             range_m=200.0,
             bearing_deg=0.0,
-            heading_from="line_of_sight",
-            orbit=Orbit(period_s=80.0),
+            orbit=Orbit(period_s=60.0),
+            **steering,
         )
 
 
@@ -1055,31 +1044,24 @@ def test_a_camera_is_ideal_unless_told_otherwise(baseline) -> None:
 
 
 @pytest.mark.parametrize(
-    "line",
+    ("line", "match"),
     [
-        "rigs.bow.cameras.ir.sensor.full_well_e = 10000.0",
-        "rigs.bow.cameras.ir.processing.sharpen = 1.0",
-        "rigs.bow.cameras.ir.lens.f_number = 1.0",
+        ("ir.sensor.full_well_e = 10000.0", "an ir camera"),
+        ("ir.processing.sharpen = 1.0", "an ir camera"),
+        ("ir.lens.f_number = 1.0", "an ir camera"),
+        ("eo.microbolometer.netd_k = 0.05", "an eo camera"),
+        ("ir.microbolometer.f_number = 1.0", "pitch_um"),
+        ("eo.lens.f_number = 5.6", "pitch_um"),
+        ("eo.sensor.dark_noise_e = 3.0", "full_well_e"),
+        ("eo.processing.sharpen = 1.0", "need a sensor"),
+        ("eo.sensor = { full_well_e = 1e4, width_px = 1000 }", "narrower"),
     ],
 )
-def test_an_ir_camera_takes_no_eo_parts(line: str) -> None:
-    with pytest.raises(ValidationError, match="an ir camera"):
-        load(BASELINE, [line])
-
-
-def test_an_eo_camera_takes_no_microbolometer() -> None:
-    with pytest.raises(ValidationError, match="an eo camera"):
-        load(BASELINE, ["rigs.bow.cameras.eo.microbolometer.netd_k = 0.05"])
-
-
-def test_f_number_and_pitch_go_together() -> None:
-    with pytest.raises(ValidationError, match="pitch_um"):
-        load(BASELINE, ["rigs.bow.cameras.ir.microbolometer.f_number = 1.0"])
-
-
-def test_an_eo_f_number_needs_the_sensor_s_pitch() -> None:
-    with pytest.raises(ValidationError, match="pitch_um"):
-        load(BASELINE, ["rigs.bow.cameras.eo.lens.f_number = 5.6"])
+def test_a_camera_refuses_a_setting_its_band_or_sensor_cannot_take(
+    line: str, match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        load(BASELINE, [f"rigs.bow.cameras.{line}"])
 
 
 def test_a_boson_preset_extends_another() -> None:
@@ -1090,11 +1072,6 @@ def test_a_boson_preset_extends_another() -> None:
     )
     assert (camera.width_px, camera.hfov_deg) == (320, 34.0)
     assert camera.microbolometer.pitch_um == 12.0
-
-
-def test_sensor_noise_needs_a_full_well() -> None:
-    with pytest.raises(ValidationError, match="full_well_e"):
-        load(BASELINE, ["rigs.bow.cameras.eo.sensor.dark_noise_e = 3.0"])
 
 
 GRADE = (
@@ -1174,19 +1151,6 @@ def test_a_shared_draw_is_apart_from_a_camera_named_like_it() -> None:
         ]
     }
     assert len(together) > 2
-
-
-def test_white_balance_and_sharpening_need_a_sensor() -> None:
-    with pytest.raises(ValidationError, match="need a sensor"):
-        load(BASELINE, ["rigs.bow.cameras.eo.processing.sharpen = 1.0"])
-
-
-def test_a_sensor_is_no_narrower_than_its_image() -> None:
-    with pytest.raises(ValidationError, match="narrower"):
-        load(
-            BASELINE,
-            ["rigs.bow.cameras.eo.sensor = { full_well_e = 1e4, width_px = 1000 }"],
-        )
 
 
 def test_paint_stays_within_white_and_black() -> None:
@@ -1290,6 +1254,9 @@ ON_BULK = 'asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
         # A drawn asset, one of them without a range.
         '[{ asset = { choice = ["bulk_carrier", "lateral_mark"] }, range_m = 900.0, '
         "bearing_deg = 0.0, draught_m = 7.0 }]",
+        # A drawn list, one of them with a draught that can leave the range.
+        f"{{ choice = [[{{ {ON_BULK} }}], "
+        f"[{{ {ON_BULK}, draught_m = {{ uniform = [5.0, 11.0] }} }}]] }}",
     ],
 )
 def test_a_draught_any_seed_could_refuse_is_refused_on_every_seed(
@@ -1360,14 +1327,3 @@ def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed(
     for seed in range(3):
         with pytest.raises(ValueError, match="no draught_range_m"):
             load(BASELINE, [{"seed": seed, "objects": [spec]}])
-
-
-def test_a_draught_in_a_drawn_object_list_is_refused_on_every_seed() -> None:
-    heavy = f"[{{ {ON_BULK}, draught_m = {{ uniform = [5.0, 11.0] }} }}]"
-    loaded = f"[{{ {ON_BULK} }}]"
-    for seed in range(3):
-        with pytest.raises(ValueError, match="draught_range_m"):
-            load(
-                BASELINE,
-                [f"seed = {seed}", f"objects = {{ choice = [{loaded}, {heavy}] }}"],
-            )
