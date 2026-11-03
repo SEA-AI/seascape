@@ -119,6 +119,18 @@ uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain
   <sub>The library, highest sun first, each sun circled where <code>seascape.assets.skies</code> measures it (<a href="skies.py"><code>docs/skies.py</code></a>).</sub>
 </p>
 
+## Draught
+
+An object floats at its asset's `draught_m` from `assets.toml`, usually loaded to its marks. Its own `draught_m` floats it lighter or deeper, within the asset's `draught_range_m`: a ship in ballast rides several metres higher, and a drifting container floats anywhere from almost dry to awash. An asset without a range, such as a moored buoy, floats only as built. A draw gives each copy its own:
+
+```bash
+uv run seascape render scenarios/baseline.toml --set 'objects = [{ asset = "bulk_carrier", range_m = 3000.0, bearing_deg = 8.0, count = 3, draught_m = { uniform = [6.38, 11.0] } }]'
+```
+
+The labels' height and waterline follow the hull. In LWIR the hull takes the water's temperature only below its new waterline.
+
+Limitation: a waterline stain stays at the asset's own waterline.
+
 ## Hull temperature
 
 In LWIR each face of a hull takes its zone from `assets.toml` (painted hull, deck, glass, bare metal and the rest) and the temperature that zone settles at under the scenario's sun, clouds, air, sea and wind. A face turned from the sun takes only the sky's diffuse light; no part of a hull shades another. A hull given `t_k` is that one temperature instead, warmed by `sky.solar_gain_k` where the sun falls:

@@ -268,6 +268,10 @@ sha256 = "20de84b0404a6e414543caeb7fc988fe12ef92c4b4b15bd5a94afcacfa628f2e"
 # list, smtshipping.com/fleet.
 length_m = 138.0
 draught_m = 8.06
+# Light: 0.65 of the draught above, the mean ballast-voyage draught of general cargo
+# ships in AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A
+# mean, so the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [5.24, 8.06]
 bow_deg = 90.0
 triangles = 73448
 texture_px = [1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024]
@@ -323,6 +327,10 @@ sha256 = "01d45a6c0840da5664c94bff4ad325a41ab9b5abfd50e280420da2e438d5a218"
 # 32.2 m across.
 length_m = 184.0
 draught_m = 11.0
+# Light: 0.58 of the draught above, the mean ballast-voyage draught of bulk carriers in
+# AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A mean, so
+# the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [6.38, 11.0]
 bow_deg = 180.0
 triangles = 1627998
 texture_px = [1024]
@@ -472,6 +480,10 @@ sha256 = "021333ff336f774fb752f31039860d472e5468281ab98c3b6ca4618272ec7a33"
 # 62.4 m overall. No published draught: 3.55 m, where the mesh's bottom paint ends.
 length_m = 62.4
 draught_m = 3.55
+# Light: 0.65 of the draught above, the mean ballast-voyage draught of general cargo
+# ships in AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A
+# mean, so the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [2.31, 3.55]
 bow_deg = 180.0
 triangles = 821196
 texture_px = [
@@ -608,6 +620,10 @@ sha256 = "7eaaffea5e75661349c242e1c378c14ce090259576c7f406e01d655d832cb274"
 # This length makes the mesh 12.8 m across.
 length_m = 89.75
 draught_m = 5.48
+# Light: 0.65 of the draught above, the mean ballast-voyage draught of general cargo
+# ships in AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A
+# mean, so the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [3.56, 5.48]
 bow_deg = 180.0
 triangles = 322533
 texture_px = [
@@ -754,6 +770,10 @@ sha256 = "138d9fcb2547cfcd089e4e21d7d14ebabe4389139b9dab9eff570d9ce7db7edc"
 # that ratio gives this length 7.48 m, to the keel, below which the mesh hangs nothing.
 length_m = 122.6
 draught_m = 7.48
+# Light: 0.65 of the draught above, the mean ballast-voyage draught of general cargo
+# ships in AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A
+# mean, so the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [4.86, 7.48]
 bow_deg = 180.0
 triangles = 336146
 texture_px = [
@@ -857,6 +877,10 @@ sha256 = "9965c51d3b9fa99703b03afd9395f14a7288360d4c3350084ce9acf2f8e9d794"
 # 32.5 m across, against her registered 32.26 m.
 length_m = 199.95
 draught_m = 13.3
+# Light: 0.58 of the draught above, the mean ballast-voyage draught of bulk carriers in
+# AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A mean, so
+# the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [7.71, 13.3]
 bow_deg = 90.0
 triangles = 21417
 texture_px = [1024, 512, 512]
@@ -916,6 +940,11 @@ sha256 = "398c71f4545cfd0421b0505e27128160e8c266c0b255988b11b1e9a74dfc6e38"
 # mesh's bottom paint ends.
 length_m = 241.8
 draught_m = 9.7
+# Light: 0.82 of the draught above, the mean voyage draught of container ships, which
+# seldom sail in ballast, in AIS (Olmer et al. 2017, ICCT, via Gupta et al.,
+# arXiv:2202.01000, Table 3). A mean, so the lightest real draught sits a little below
+# it. Deep: the draught above.
+draught_range_m = [7.95, 9.7]
 bow_deg = 90.0
 triangles = 188676
 texture_px = [4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096]
@@ -950,6 +979,10 @@ sha256 = "cbc6ad1ea548f7c52bff82c38efcf9f599ad32476030daef0c5fee99363609bb"
 # draught: 13.8 m, where the mesh's bottom paint ends.
 length_m = 303.3
 draught_m = 13.8
+# Light: 0.60 of the draught above, the mean ballast-voyage draught of oil tankers in
+# AIS (Olmer et al. 2017, ICCT, via Gupta et al., arXiv:2202.01000, Table 3). A mean, so
+# the lightest real draught sits a little below it. Deep: the draught above.
+draught_range_m = [8.28, 13.8]
 bow_deg = 180.0
 triangles = 1008321
 texture_px = [
@@ -1764,6 +1797,9 @@ sha256 = "63133e2cd4c8c9d08114ef158284403ba4fad802b7f1162f73a8323b509a1b53"
 # Innovation Center, from the USDA Wood Handbook): 545 / 1025 of its 0.29 m under.
 length_m = 3.05
 draught_m = 0.15
+# Light: air-dry, as above. Deep: waterlogged to seawater's density, all 0.29 m
+# under.
+draught_range_m = [0.15, 0.29]
 triangles = 101802
 texture_px = [2048, 2048, 2048]
 licence = "CC0-1.0"
@@ -1802,6 +1838,8 @@ sha256 = "773e6df578ff331e4404bb390355efb5c7720bd7d8064e407bbc7478521a5a9c"
 # weighs up to 0.11 m above its lowest point.
 length_m = 1.2
 draught_m = 0.11
+# Light: dry, as above. Deep: waterlogged, awash, all 144 mm under.
+draught_range_m = [0.11, 0.144]
 triangles = 15736
 texture_px = [1024, 1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"
@@ -1826,6 +1864,10 @@ sha256 = "6363ea3e10f072000a58834f5d84196c3bf5c7c78ac2fabcc8caac2b419a39e4"
 # (arXiv:1111.0750) immerse theirs 70%, a typical loading; this mesh is 2.46 m tall.
 length_m = 6.058
 draught_m = 1.72
+# Light: its 2,200 kg tare (Wikipedia, "Intermodal container") over its 6.058 x
+# 2.438 m footprint (ISO 668) sinks it 0.15 m. Deep: flooded, awash, all 2.46 m
+# under.
+draught_range_m = [0.15, 2.46]
 triangles = 190810
 texture_px = [1024, 1024, 1024, 1024]
 licence = "CC-BY-4.0"

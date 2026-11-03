@@ -25,6 +25,10 @@ class Uniform(Model):
     def draw(self, rng: np.random.Generator) -> float:
         return float(rng.uniform(*self.uniform))
 
+    def bounds(self) -> tuple[float, float]:
+        """The lowest and highest value it can draw."""
+        return min(self.uniform), max(self.uniform)
+
 
 class LogUniform(Model):
     """A float drawn evenly in its logarithm between two bounds: as often between 0.1
@@ -47,6 +51,10 @@ class LogUniform(Model):
             np.clip(np.exp(rng.uniform(*np.log(self.log_uniform))), *self.log_uniform)
         )
 
+    def bounds(self) -> tuple[float, float]:
+        """The lowest and highest value it can draw."""
+        return self.log_uniform
+
 
 class Triangular(Model):
     """A float drawn from a triangular density peaking at the mode, a bound or not."""
@@ -67,6 +75,10 @@ class Triangular(Model):
     def draw(self, rng: np.random.Generator) -> float:
         return float(rng.triangular(*self.triangular))
 
+    def bounds(self) -> tuple[float, float]:
+        """The lowest and highest value it can draw."""
+        return self.triangular[0], self.triangular[2]
+
 
 class Integer(Model):
     """A whole number drawn evenly between two bounds."""
@@ -75,6 +87,10 @@ class Integer(Model):
 
     def draw(self, rng: np.random.Generator) -> int:
         return int(rng.integers(*self.integer, endpoint=True))
+
+    def bounds(self) -> tuple[float, float]:
+        """The lowest and highest value it can draw."""
+        return min(self.integer), max(self.integer)
 
 
 class Choice(Model):
@@ -107,6 +123,12 @@ class Choice(Model):
             return self.choice[rng.integers(len(self.choice))]
         p = np.array(self.weights) / sum(self.weights)
         return self.choice[rng.choice(len(self.choice), p=p)]
+
+    def possible(self) -> list[Any]:
+        """The values it can draw: those of no weight never come up."""
+        if self.weights is None:
+            return self.choice
+        return [v for v, w in zip(self.choice, self.weights, strict=True) if w > 0]
 
 
 class OpticalDepth(Model):

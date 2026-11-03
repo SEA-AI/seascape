@@ -821,10 +821,11 @@ def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
 
 
 @pytest.mark.render
-def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
+@pytest.mark.parametrize("rise_m", [0.0, 2.0])
+def test_a_zone_renders_at_its_heat_balance(tmp_path: Path, rise_m: float) -> None:
     """Under a uniform sky, each plate reads eps B(T) + (1 - eps) B(sky), T as
     `thermal` gives it for that normal and that sunlight; below the waterline, the
-    water's."""
+    water's. A hull raised `rise_m` meets the water that far down its own frame."""
     sky_k = 270.0
     sc = _radiance_scene(sky_k, 96, 64)
 
@@ -842,13 +843,14 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
     plates = {
         "lit": ((-6.0, 0.0, 2.0), (0.0, 0.0, 1.0)),
         "tilted": ((6.0, 0.0, 2.0), tilted),
-        "wetted": ((0.0, 8.0, -1.0), (0.0, 0.0, 1.0)),
+        "low": ((0.0, 8.0, -1.0), (0.0, 0.0, 1.0)),
     }
     corners = [c for centre, n in plates.values() for c in _plate(centre, n, 4.0)]
     mesh = bpy.data.meshes.new("hull")
     quads = [tuple(range(4 * i, 4 * i + 4)) for i in range(len(plates))]
     mesh.from_pydata(corners, [], quads)
     hull = bpy.data.objects.new("hull", mesh)
+    hull["rise_m"] = rise_m
     sc.collection.objects.link(hull)
     hull.data.materials.append(zone_skin("paint_hull", heat))
 
@@ -870,7 +872,7 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path) -> None:
         assert 0.1 < u < 0.9 and 0.1 < v < 0.9, name
         seen = radiance[int(v * 64), int(u * 96)]
         n = np.array(normal) / np.linalg.norm(normal)
-        if name == "wetted":
+        if centre[2] + rise_m < 0.0:
             emissivity, expected = thermal.SEA_EMISSIVITY, heat.t_water_k
         else:
             emissivity = zone.emissivity

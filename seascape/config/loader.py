@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from seascape import assets
 from seascape.config.draws import DRAWS, Choice, OpticalDepth, kind, substream
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
@@ -186,6 +187,57 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     return out
 
 
+def _outcomes(node: Any) -> list[Any]:
+    """Every value a field can take: through a choice, each option it can draw;
+    anything else as it stands."""
+    if kind(node) != "choice":
+        return [node]
+    options = Choice.model_validate(node).possible()
+    return [value for option in options for value in _outcomes(option)]
+
+
+def _draught_span_m(draught: Any) -> tuple[float, float] | None:
+    """The lightest and deepest a draught can be, through every value a choice can
+    draw. None, the asset's own draught, bounds nothing, nor does anything validation
+    refuses anyway; a draught of nothing else is None."""
+    spans = []
+    for value in _outcomes(draught):
+        if (name := kind(value)) is not None:
+            drawn = DRAWS[name].model_validate(value)
+            assert not isinstance(drawn, Choice)  # `_outcomes` opened every choice
+            spans.append(drawn.bounds())
+        elif isinstance(value, int | float) and not isinstance(value, bool):
+            spans.append((value, value))
+    if not spans:
+        return None
+    return min(low for low, _ in spans), max(high for _, high in spans)
+
+
+def _draughts_fit(spec: Any, i: int) -> None:
+    """Refuse a draught that can leave its asset's range, whatever the seed, for
+    every object a choice can make and every asset that object can be. Each copy
+    checks only what its seed drew."""
+    for entry in _outcomes(spec):
+        if not isinstance(entry, dict):
+            continue
+        span_m = _draught_span_m(entry.get("draught_m"))
+        if span_m is None:
+            continue
+        low_m, high_m = span_m
+        for named in _outcomes(entry.get("asset")):
+            asset = assets.manifest().get(named) if isinstance(named, str) else None
+            if asset is None:
+                continue  # validation names the asset
+            if asset.draught_range_m is None:
+                raise ValueError(f"objects[{i}]: {named} has no draught_range_m")
+            lightest_m, deepest_m = asset.draught_range_m
+            if low_m < lightest_m or high_m > deepest_m:
+                raise ValueError(
+                    f"objects[{i}]: draught_m can be {low_m}-{high_m}, outside "
+                    f"{named}'s draught_range_m {asset.draught_range_m}"
+                )
+
+
 def _range_m(
     copy: dict[str, Any], seed: int, path: str, sky: Any, i: int
 ) -> dict[str, Any]:
@@ -225,6 +277,11 @@ def load(
     # the whole tree's draw gives it, so its values do not change.
     if "sky" in data:
         data["sky"] = _draw(data["sky"], seed, "draw/sky")
+    # Every list a drawn `objects` can be, so no seed decides what is checked.
+    for option in _outcomes(data.get("objects")):
+        if isinstance(option, list):
+            for i, spec in enumerate(option):
+                _draughts_fit(spec, i)
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
