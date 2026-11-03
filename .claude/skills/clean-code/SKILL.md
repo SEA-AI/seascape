@@ -1,6 +1,6 @@
 ---
 name: clean-code
-description: Write, review or refactor seascape code so a stranger reads it once and changes it safely. Judgment for naming, structure, types, errors, comments, tests and change size, grounded in outside practice rather than local habit. Use before writing a module or function, when a diff feels clumsy, when reviewing your own diff before a commit, or when deciding whether an existing pattern deserves to be copied.
+description: Write, review or refactor seascape code so the next change is cheap and safe. Judgment for naming, structure, types, errors, comments, tests and change size, grounded in outside practice rather than local habit. Use before writing a module, when a diff feels clumsy, before a commit, or when deciding whether an existing pattern deserves to be copied.
 ---
 
 # Clean code

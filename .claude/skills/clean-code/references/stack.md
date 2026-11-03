@@ -164,13 +164,8 @@ Pick the container by what the data is:
 - **Commit:** Conventional Commits type, imperative subject, the body says why. Tidying
   and behaviour change are separate commits. Fix an adjacent mess only if it is tiny and
   in the lines you touch; otherwise open an issue.
-- **Written by an LLM, disliked by reviewers:** long docstrings on trivial code, comments
-  that narrate, `try` around code that cannot fail, `isinstance` guards on typed input,
-  options and base classes with one user, and commit text that lists changed files.
 
 ## Sources
-
-Fetched and read by the research pass unless noted.
 
 - Ousterhout, *A Philosophy of Software Design*; Beck, *Tidy First?* (read from
   secondary sources)
@@ -199,7 +194,3 @@ Fetched and read by the research pass unless noted.
 - Conventional Commits: https://www.conventionalcommits.org/en/v1.0.0/
 - Beams, commit messages: https://cbea.ms/git-commit/
 - Ruff configs of pandas, fastapi, pydantic and httpx, read from each `pyproject.toml`
-
-Not read directly, so lower confidence: Bernhardt, Norvig and Rhodes on patterns,
-*Architecture Patterns with Python*, Parnas (1972), the Cycles seed manual page,
-OpenCV's own tutorials (403), and Elm's error-message essay.
