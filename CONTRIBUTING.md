@@ -4,6 +4,8 @@
 
 Only touching the radiometry or the scenario config? `uv sync --no-group blender` skips the Blender wheel, hundreds of MB. Those parts are plain NumPy and run without it.
 
+A new worktree needs `uv sync` before the `ty` pre-commit hook can resolve imports. The Claude Code `SessionStart` hook in `.claude/settings.json` runs it for you.
+
 Install the hooks once, before your first commit:
 
 ```bash

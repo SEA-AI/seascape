@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv sync --quiet || true"
+            "command": "uv sync --frozen --quiet",
+            "timeout": 600
           }
         ]
       }
