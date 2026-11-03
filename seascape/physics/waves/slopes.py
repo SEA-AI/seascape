@@ -31,6 +31,7 @@ import math
 from collections.abc import Callable
 from dataclasses import replace
 from functools import cache
+from typing import NamedTuple
 
 import numpy as np
 
@@ -226,13 +227,19 @@ def _mss_spread_at(
     return math.sqrt(2 * float((turned * passed).mean()))
 
 
-def fade_axis(wave: Wave) -> tuple[float, float, float]:
-    """The shader's fade takes cos^2 of the angle between a wave and a view (e, n) as
-    (tx e + ty n)^2 + band: c cos^2 to its band's axis plus (1 - c) / 2, the mean over
-    the headings it stands for, c its heading concentration."""
+class FadeAxis(NamedTuple):
+    """cos^2 to a view (e, n) is (tx e + ty n)^2 + band."""
+
+    tx: float
+    ty: float
+    band: float
+
+
+def fade_axis(wave: Wave) -> FadeAxis:
+    """cos^2 of a wave's angle to a view, its mean over the wave's `heading_band`."""
     axis = wave.toward_rad + wave.band_offset_rad
     focus = math.sqrt(wave.heading_concentration)
-    return (
+    return FadeAxis(
         focus * math.sin(axis),
         focus * math.cos(axis),
         (1 - wave.heading_concentration) / 2,
@@ -242,12 +249,13 @@ def fade_axis(wave: Wave) -> tuple[float, float, float]:
 def faded_visibility(
     field: tuple[Wave, ...], across_m: float, along_m: float, view_rad: float
 ) -> np.ndarray:
-    """`visibility` of each wave to a pixel `along_m` by `across_m` looking toward
-    `view_rad`, at the footprint the shader's fade gives it along the wave:
-    sqrt(across^2 + (along^2 - across^2) cos^2), cos^2 from `fade_axis`."""
-    terms = np.array([fade_axis(w) for w in field]).reshape(-1, 3)
-    heading = terms[:, 0] * math.sin(view_rad) + terms[:, 1] * math.cos(view_rad)
-    cos_sq = heading**2 + terms[:, 2]
+    """`visibility` of each wave to a pixel looking toward `view_rad`, at the
+    footprint the shader's fade gives it (Bruneton et al. 2010)."""
+    axes = [fade_axis(w) for w in field]
+    tx = np.array([a.tx for a in axes])
+    ty = np.array([a.ty for a in axes])
+    band = np.array([a.band for a in axes])
+    cos_sq = (tx * math.sin(view_rad) + ty * math.cos(view_rad)) ** 2 + band
     footprint = np.sqrt(across_m**2 + (along_m**2 - across_m**2) * cos_sq)
     wavelength = np.array([2 * math.pi / w.k_rad_m for w in field])
     return visibility(wavelength, footprint)

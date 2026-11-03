@@ -48,8 +48,7 @@ class Wave:
     omega_rad_s: float
     toward_rad: float  # clockwise from the ownship's bow
     phase_rad: float
-    # The headings the wave stands for: |E e^(2i theta)| over them, 1 for its own
-    # heading alone and 0 for headings spread evenly; and their axis off `toward_rad`.
+    # The headings the wave stands for, as `heading_band` gives them.
     heading_concentration: float = 1.0
     band_offset_rad: float = 0.0
 

@@ -116,10 +116,8 @@ def _fade(
     at y = footprint k / 2, held at 0 past pi; scaled by `Calm` in a `Damped` lane.
     And `Along`, (x, y), spread.
 
-    cos^2 is its mean over the headings the wave stands for, c cos^2 + (1 - c) / 2
-    about their axis, with c its `heading_concentration`: `Tx` and `Ty` carry sqrt c
-    along the axis, `Band` the rest. A judgement: the wave fades as at the band's
-    RMS footprint, not by the band's mean visibility.
+    cos^2 is `fade_axis`'s. A judgement: the wave fades at the band's RMS footprint,
+    not by the band's mean visibility.
 
     Built alike in every group, so Cycles merges a triple's fade across them."""
     along = group.nodes.new("ShaderNodeSeparateXYZ")
@@ -232,10 +230,11 @@ def _set_triple(
     split along its heading for the slopes. An empty lane has no amplitude, so whatever
     it fades adds 0."""
 
+    axes = {w: fade_axis(w) for w in triple if w is not None}
     sets = {
-        "Tx": _lanes(triple, lambda w: fade_axis(w)[0]),
-        "Ty": _lanes(triple, lambda w: fade_axis(w)[1]),
-        "Band": _lanes(triple, lambda w: fade_axis(w)[2]),
+        "Tx": _lanes(triple, lambda w: axes[w].tx),
+        "Ty": _lanes(triple, lambda w: axes[w].ty),
+        "Band": _lanes(triple, lambda w: axes[w].band),
         "Half K Sq": _lanes(triple, lambda w: (w.k_rad_m / 2) ** 2),
         "Damped": _lanes(triple, lambda w: float(w in damped)),
         "Kx": _lanes(triple, lambda w: w.k_east_rad_m),

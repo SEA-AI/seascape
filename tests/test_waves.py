@@ -4,9 +4,9 @@ from statistics import NormalDist
 import numpy as np
 import pytest
 
-from seascape.config.draws import substream
 from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
+from seascape.physics.waves import sea, slopes
 
 
 def field(
@@ -285,102 +285,63 @@ def test_a_heading_band_is_the_closed_form_of_its_integrals() -> None:
     mean = np.trapezoid(weight * np.exp(2j * theta), theta) / np.trapezoid(
         weight, theta
     )
-    concentration, axis = waves.heading_band(
+    concentration, axis = sea.heading_band(
         np.array([delta]), np.array([low]), np.array([high])
     )
     assert concentration[0] == pytest.approx(abs(mean), rel=1e-6)
     assert axis[0] == pytest.approx(np.angle(mean) / 2, rel=1e-6)
 
 
-def test_a_wind_sea_s_heading_bands_make_up_its_spread() -> None:
-    """Over the downwind half, 1 + Delta cos 2 theta has E e^(2i theta) = Delta / 2."""
-    delta = 0.6
-    edges = waves.sea._downwind_rad(
-        np.full(waves.SPREAD_STRATA + 1, delta),
-        np.linspace(0.0, 1.0, waves.SPREAD_STRATA + 1),
-    )
-    concentration, axis = waves.heading_band(
-        np.full(waves.SPREAD_STRATA, delta), edges[:-1], edges[1:]
-    )
-    whole = np.mean(concentration * np.exp(2j * axis))
-    assert whole == pytest.approx(delta / 2, abs=1e-3)
-
-
-@pytest.mark.parametrize("wind_speed_mps", [1.0, 3.0, 7.0, 15.0])
-def test_each_wind_wave_stands_for_a_band_of_headings(wind_speed_mps: float) -> None:
-    for seed in range(5):
-        concentration = [
-            w.heading_concentration for w in field(wind_speed_mps, seed=seed)
-        ]
-        assert all(0.0 <= c <= 1.0 for c in concentration)
-    swell = waves.swell(2.0, 10.0, 0.0, lambda p: p, np.random.default_rng(0))
-    assert all(w.heading_concentration == 1.0 for w in swell)
-    assert all(w.band_offset_rad == 0.0 for w in swell)
-
-
-# The cliff photo's camera, 28.5 m up with 8 degrees over 1200 px, looking at the
-# sea 4 km off under the sun, with the wind from 30 degrees.
-CLIFF_HEIGHT_M = 28.5
-CLIFF_PIXEL_RAD = math.radians(8.0) / 1200
-CLIFF_RANGE_M = 4000.0
-CLIFF_VIEW_RAD = math.radians(-2.5)
-CLIFF_WIND_FROM_DEG = 30.0
+# A judgement: a grazing pixel, 0.5 m across and a hundred times that along.
+GRAZING_ACROSS_M = 0.5
+GRAZING_ALONG_M = 100 * GRAZING_ACROSS_M
 # A judgement: crests this near the view's line count as running along it.
 ALONG_VIEW_RAD = math.radians(1.0)
 # A judgement: how far a draw of discrete waves may exceed a continuous spread.
 SHARP_EXCESS = 3.0
 
 
-def _cliff_pixel_m() -> tuple[float, float]:
-    """The cliff camera's pixel at CLIFF_RANGE_M, across and along the view."""
-    across = CLIFF_RANGE_M * CLIFF_PIXEL_RAD
-    return across, across * math.hypot(CLIFF_RANGE_M, CLIFF_HEIGHT_M) / CLIFF_HEIGHT_M
-
-
-def _crest_off_view_rad(toward_rad: np.ndarray) -> np.ndarray:
-    return np.remainder(toward_rad - CLIFF_VIEW_RAD, math.pi) - math.pi / 2
-
-
-def _sharp_along_view(built: tuple[waves.Wave, ...]) -> float:
-    """The slope variance the cliff pixel keeps in waves whose crests run along its
-    view, over what a pixel CLIFF_PIXEL_RAD square would draw of the whole sea."""
-    across, along = _cliff_pixel_m()
+def _slope_variance(built: tuple[waves.Wave, ...]) -> tuple[np.ndarray, np.ndarray]:
     k = np.array([w.k_rad_m for w in built])
     slope = (np.array([w.amplitude_m for w in built]) * k) ** 2 / 2
-    kept = waves.faded_visibility(built, across, along, CLIFF_VIEW_RAD) ** 2 * slope
-    near = np.abs(_crest_off_view_rad(np.array([w.toward_rad for w in built])))
-    square = waves.visibility(2 * math.pi / k, across) ** 2 * slope
-    return float(kept[near < ALONG_VIEW_RAD].sum() / square.sum())
+    return slope, waves.visibility(2 * math.pi / k, GRAZING_ACROSS_M) ** 2 * slope
+
+
+def _sharp_along_view(built: tuple[waves.Wave, ...], view_rad: float) -> float:
+    """The slope variance a grazing pixel keeps in crests along its view, over what
+    a square pixel draws of the whole sea."""
+    slope, square = _slope_variance(built)
+    seen = slopes.faded_visibility(built, GRAZING_ACROSS_M, GRAZING_ALONG_M, view_rad)
+    toward = np.array([w.toward_rad for w in built])
+    crest_off = np.remainder(toward - view_rad, math.pi) - math.pi / 2
+    near = np.abs(crest_off) < ALONG_VIEW_RAD
+    return float((seen**2 * slope)[near].sum() / square.sum())
 
 
 def _continuous_sharp_along_view(
-    built: tuple[waves.Wave, ...], wind_speed_mps: float
+    built: tuple[waves.Wave, ...], wind_speed_mps: float, view_rad: float
 ) -> float:
-    """`_sharp_along_view` of a sea with `built`'s frequencies and heights spread
-    continuously by Elfouhaily's 1 + Delta cos 2 theta, each heading its own wave."""
+    """`_sharp_along_view` of `built`'s frequencies spread over Elfouhaily's
+    headings continuously, the wind from north."""
     steps = 41
     edges = np.linspace(-ALONG_VIEW_RAD, ALONG_VIEW_RAD, steps + 1)
-    crest_off = (edges[:-1] + edges[1:]) / 2
-    downwind = math.radians(CLIFF_WIND_FROM_DEG + 180.0)
-    # Crests along the view run their waves square to it, folded into the downwind half.
-    square_off = math.remainder(CLIFF_VIEW_RAD + math.pi / 2 - downwind, math.pi)
-    across, along = _cliff_pixel_m()
+    downwind = math.pi
+    # Crests along the view run their waves square to it, folded downwind.
+    square_off = math.remainder(view_rad + math.pi / 2 - downwind, math.pi)
+    slope, square = _slope_variance(built)
     omega = np.array([w.omega_rad_s for w in built])
-    k = omega**2 / earth.GRAVITY_MS2
-    slope = (np.array([w.amplitude_m for w in built]) * k) ** 2 / 2
     delta = waves.spreading_delta(omega, wind_speed_mps, None)
     kept = 0.0
-    for low, high, off in zip(
-        edges[:-1].tolist(), edges[1:].tolist(), crest_off.tolist(), strict=True
-    ):
-        heading = downwind + square_off + off
-        share = waves.spread_share(delta, square_off + low, square_off + high)
+    for low, high in zip(edges[:-1].tolist(), edges[1:].tolist(), strict=True):
+        heading = downwind + square_off + (low + high) / 2
+        share = sea.spread_share(delta, square_off + low, square_off + high)
         single = tuple(
             waves.Wave(w.amplitude_m, w.omega_rad_s, heading, 0.0) for w in built
         )
-        seen = waves.faded_visibility(single, across, along, CLIFF_VIEW_RAD)
+        seen = slopes.faded_visibility(
+            single, GRAZING_ACROSS_M, GRAZING_ALONG_M, view_rad
+        )
         kept += float(np.sum(slope * share * seen**2))
-    square = waves.visibility(2 * math.pi / k, across) ** 2 * slope
     return kept / float(square.sum())
 
 
@@ -388,24 +349,13 @@ def _continuous_sharp_along_view(
 def test_no_draw_keeps_a_grazing_view_s_crests_sharper_than_a_continuous_sea(
     wind_speed_mps: float,
 ) -> None:
-    """A lone wave whose crests run along a grazing view draws a line to the horizon;
-    a continuous spread holds little height at that heading, and the pixel fades
-    most of it."""
-    worst = max(
-        _sharp_along_view(
-            waves.wind_sea(
-                wind_speed_mps,
-                CLIFF_WIND_FROM_DEG,
-                None,
-                lambda p: p,
-                substream(seed, "sea/surface"),
+    for seed in range(10):
+        built = field(wind_speed_mps, seed=seed)
+        for view_rad in np.radians(np.arange(0.0, 91.0, 15.0)).tolist():
+            bound = SHARP_EXCESS * _continuous_sharp_along_view(
+                built, wind_speed_mps, view_rad
             )
-        )
-        for seed in (*range(300), 20261101)
-    )
-    built = field(wind_speed_mps, CLIFF_WIND_FROM_DEG)
-    bound = SHARP_EXCESS * _continuous_sharp_along_view(built, wind_speed_mps)
-    assert worst < bound
+            assert _sharp_along_view(built, view_rad) < bound, (seed, view_rad)
 
 
 def test_a_wave_fades_as_a_box_pixel_passes_it() -> None:

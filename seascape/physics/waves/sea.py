@@ -57,22 +57,31 @@ def spreading_delta(
     return np.tanh(SPREAD_A0 + SPREAD_AP * (c / c_p) ** 2.5 + a_m * (c_m / c) ** 2.5)
 
 
-def _downwind_rad(delta: np.ndarray, u: np.ndarray) -> np.ndarray:
-    """Angles off downwind, 1 + Delta cos 2 theta by inverse CDF, one per Delta.
+# Angles off downwind the spread's CDF is tabled at.
+_DOWNWIND_RAD = np.linspace(-math.pi / 2, math.pi / 2, 361)
+
+
+def _spread_cdf(delta: np.ndarray) -> np.ndarray:
+    """1 + Delta cos 2 theta's CDF over the downwind half, a row per Delta.
 
     Elfouhaily's form is centrosymmetric, a frozen surface's: folded into the downwind
     half, the waves run with the wind and the slopes keep its statistics."""
-    theta = np.linspace(-math.pi / 2, math.pi / 2, 361)
+    theta = _DOWNWIND_RAD
     cdf = theta + math.pi / 2 + delta[:, None] / 2 * np.sin(2 * theta)[None, :]
-    cdf /= cdf[:, -1:]
-    return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
+    return cdf / cdf[:, -1:]
+
+
+def _downwind_rad(cdf: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Angles off downwind by inverse CDF, one per row of `cdf`."""
+    return np.array(
+        [np.interp(ui, c, _DOWNWIND_RAD) for ui, c in zip(u, cdf, strict=True)]
+    )
 
 
 def spread_share(
     delta: np.ndarray, low_rad: np.ndarray | float, high_rad: np.ndarray | float
 ) -> np.ndarray:
-    """The share of 1 + Delta cos 2 theta over the downwind half that lies between
-    `low_rad` and `high_rad`, off downwind: its integral in closed form over pi."""
+    """The share of Elfouhaily's spread (eq. 49) between two angles off downwind."""
     a, b = low_rad, high_rad
     return (b - a + delta / 2 * (np.sin(2 * b) - np.sin(2 * a))) / math.pi
 
@@ -80,9 +89,8 @@ def spread_share(
 def heading_band(
     delta: np.ndarray, low_rad: np.ndarray, high_rad: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """The concentration and axis of the headings 1 + Delta cos 2 theta holds between
-    `low_rad` and `high_rad`, all angles off downwind: |E e^(2i theta)| and half its
-    argument, by the integrals in closed form."""
+    """|E e^(2i theta)| and half its argument over Elfouhaily's spread (eq. 49)
+    between two angles off downwind."""
     a, b = low_rad, high_rad
     weight = spread_share(delta, a, b) * math.pi
     cos2 = (np.sin(2 * b) - np.sin(2 * a)) / 2 + delta * (
@@ -152,11 +160,12 @@ def wind_sea(
     runs = np.tile(np.arange(SPREAD_STRATA), (len(variance) // SPREAD_STRATA, 1))
     share = rng.permuted(runs, axis=1).ravel()
     delta = spreading_delta(omega, wind_speed_mps, fetch_m)
-    off = _downwind_rad(delta, (share + rng.uniform(size=len(omega))) / SPREAD_STRATA)
+    cdf = _spread_cdf(delta)
+    off = _downwind_rad(cdf, (share + rng.uniform(size=len(omega))) / SPREAD_STRATA)
     concentration, axis = heading_band(
         delta,
-        _downwind_rad(delta, share / SPREAD_STRATA),
-        _downwind_rad(delta, (share + 1) / SPREAD_STRATA),
+        _downwind_rad(cdf, share / SPREAD_STRATA),
+        _downwind_rad(cdf, (share + 1) / SPREAD_STRATA),
     )
     # Wind is named for where it blows from; waves run the other way.
     toward = math.radians(wind_from_deg + 180.0) + off
