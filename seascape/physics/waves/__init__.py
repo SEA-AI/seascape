@@ -56,6 +56,7 @@ from seascape.physics.waves.slopes import (
     cox_munk_slope,
     cox_munk_variances,
     drawn_slope_variances,
+    drawn_view_slope_variances,
     filtered,
     mss_spread,
     resolvable,
@@ -64,6 +65,7 @@ from seascape.physics.waves.slopes import (
     specular_cell_m2,
     twinkle_hz,
     unresolved_slope_variances,
+    unresolved_view_slope_variances,
     visibility,
 )
 from seascape.physics.waves.spectrum import (
@@ -131,6 +133,7 @@ __all__ = [
     "cox_munk_variances",
     "curvature_spectrum",
     "drawn_slope_variances",
+    "drawn_view_slope_variances",
     "filtered",
     "foam_drift_mps",
     "foam_lattice_field",
@@ -160,6 +163,7 @@ __all__ = [
     "turbulence_intensity",
     "twinkle_hz",
     "unresolved_slope_variances",
+    "unresolved_view_slope_variances",
     "visibility",
     "von_karman_field",
     "whitecap_fraction",

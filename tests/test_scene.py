@@ -22,7 +22,7 @@ from seascape.blender.rigs import boresight_deg, views
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
 from seascape.blender.sea.geometry import _triples
-from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M
+from seascape.blender.sea.pixel import FOOTPRINT_RANGE_M, footprint_aspect_grid
 from seascape.blender.sea.radiance import (
     CLOUD_BEARINGS,
     CLOUD_MIRRORS,
@@ -160,6 +160,30 @@ def baked(name: str) -> np.ndarray:
     pixels = np.empty(len(image.pixels), dtype=np.float32)
     image.pixels.foreach_get(pixels)
     return np.squeeze(pixels.reshape(height, width, 4)[..., 0])
+
+
+def _lanes_drawn(
+    view: tuple[float, float], across_m: float, along_m: float
+) -> tuple[float, float]:
+    """The slope variance the built sea's normal lanes draw, along and across `view`,
+    a unit (east, north), for a pixel `along_m` by `across_m`: `_fade` worked by hand
+    from each lane's inputs."""
+    along_sum = across_sum = 0.0
+    for _, inputs, lane in drawn(SCENARIO):
+        value = {
+            name: inputs[name].default_value[lane]
+            for name in ("Tx", "Ty", "Band", "Half K Sq", "Slope X", "Slope Y")
+        }
+        heading = value["Tx"] * view[0] + value["Ty"] * view[1]
+        cos_sq = heading**2 + value["Band"]
+        footprint_sq = across_m**2 + (along_m**2 - across_m**2) * cos_sq
+        y = math.sqrt(footprint_sq * value["Half K Sq"])
+        seen = math.sin(min(y, math.pi)) / y if y > 0.0 else 1.0
+        on_view = value["Slope X"] * view[0] + value["Slope Y"] * view[1]
+        off_view = value["Slope X"] * view[1] - value["Slope Y"] * view[0]
+        along_sum += (seen * on_view) ** 2 / 2
+        across_sum += (seen * off_view) ** 2 / 2
+    return along_sum, across_sum
 
 
 def _blocked(origin: Vector, target: Vector) -> bool:
@@ -449,24 +473,50 @@ class TestEoBand:
         wind, swell = SCENARIO.wind_waves(), SCENARIO.swell_waves()
         speed = SCENARIO.sea.wind_speed_mps
         axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
-        for i, axis in enumerate(("upwind", "crosswind")):
-            table = baked(f"sea_unresolved_variance_{axis}")
-            low, high = FOOTPRINT_RANGE_M
-            texel = (np.arange(len(table)) + 0.5) / len(table)
-            footprints = low * (high / low) ** texel
-            for t in (0, len(table) // 2, len(table) - 1):
-                expected = waves.unresolved_slope_variances(
-                    speed, axis_rad, wind, swell, footprints[t]
-                )[i]
-                assert table[t] == pytest.approx(expected, rel=1e-5), axis
+        across_m, along_m = footprint_aspect_grid()
+        for view, turn in (("downwind", 0.0), ("crosswind", math.pi / 2)):
+            expected = waves.unresolved_view_slope_variances(
+                speed, axis_rad, wind, swell, across_m, along_m, axis_rad + turn
+            )
+            for axis, variance in zip(("along", "across"), expected, strict=True):
+                table = baked(f"sea_unresolved_variance_{view}_{axis}")
+                assert table == pytest.approx(variance, rel=1e-5), (view, axis)
+
+    def test_what_a_pixel_draws_and_leaves_adds_up_to_the_sea_s_slope(self) -> None:
+        """The waves as the shader's lanes fade them, plus the table, per axis of a
+        view down the wind: Cox & Munk's and the swell's, to float32, for a square
+        pixel and the most stretched."""
+        speed = SCENARIO.sea.wind_speed_mps
+        axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
+        wind, swell = SCENARIO.wind_waves(), SCENARIO.swell_waves()
+        tall, _ = sea.displaced((wind, swell))
+        up, cross = waves.cox_munk_variances(speed)
+        swell_along, swell_across = waves.drawn_slope_variances(swell, 0.0, axis_rad)
+        across_m, along_m = footprint_aspect_grid()
+        tables = [
+            baked(f"sea_unresolved_variance_downwind_{axis}")
+            for axis in ("along", "across")
+        ]
+        view = (math.sin(axis_rad), math.cos(axis_rad))
+        for row in (0, along_m.shape[0] - 1):
+            for column in range(0, across_m.shape[1], 16):
+                across, along = across_m[0, column], along_m[row, column]
+                drawn = np.add(
+                    _lanes_drawn(view, across, along),
+                    waves.drawn_view_slope_variances(tall, across, along, axis_rad),
+                )
+                left = [table[row, column] for table in tables]
+                assert np.add(drawn, left) == pytest.approx(
+                    (up + swell_along, cross + swell_across), rel=1e-4
+                ), (row, column)
 
     def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
         roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
         assert {
             "gust",
             "sea_gust_variance",
-            "sea_unresolved_variance_upwind",
-            "sea_unresolved_variance_crosswind",
+            "sea_unresolved_variance_downwind_along",
+            "sea_unresolved_variance_crosswind_across",
         } <= upstream(roughness.inputs["Roughness"])
         speed = SCENARIO.sea.wind_speed_mps
         tree = bpy.data.materials["sea"].node_tree
@@ -1131,8 +1181,8 @@ class TestIrBand:
             )
             lookup = table.inputs["Vector"].links[0].from_node
             assert {
-                "sea_unresolved_variance_upwind",
-                "sea_unresolved_variance_crosswind",
+                "sea_unresolved_variance_downwind_along",
+                "sea_unresolved_variance_crosswind_along",
                 "sea_gust_variance",
             } <= upstream(lookup.inputs["Y"]), name
 
@@ -1443,23 +1493,28 @@ class TestSlicks:
         speed = self.SLICKS.sea.wind_speed_mps
         axis_rad = math.radians(self.SLICKS.sea.wind_from_deg)
         left = waves.slick_survivors(speed, self.SLICKS.wind_waves(), axis_rad)
-        for i, axis in enumerate(("upwind", "crosswind")):
-            table = baked(f"sea_unresolved_slick_variance_{axis}")
-            low, high = FOOTPRINT_RANGE_M
-            texel = (np.arange(len(table)) + 0.5) / len(table)
-            footprints = low * (high / low) ** texel
-            for t in (0, len(table) // 2, len(table) - 1):
-                expected = waves.unresolved_slope_variances(
-                    speed,
-                    axis_rad,
-                    left,
-                    self.SLICKS.swell_waves(),
-                    footprints[t],
-                    waves.cox_munk_slick_variances,
-                )[i]
-                assert table[t] == pytest.approx(expected, rel=1e-5, abs=1e-9), axis
+        across_m, along_m = footprint_aspect_grid()
+        for view, turn in (("downwind", 0.0), ("crosswind", math.pi / 2)):
+            expected = waves.unresolved_view_slope_variances(
+                speed,
+                axis_rad,
+                left,
+                self.SLICKS.swell_waves(),
+                across_m,
+                along_m,
+                axis_rad + turn,
+                waves.cox_munk_slick_variances,
+            )
+            for axis, variance in zip(("along", "across"), expected, strict=True):
+                table = baked(f"sea_unresolved_slick_variance_{view}_{axis}")
+                assert table == pytest.approx(variance, rel=1e-5, abs=1e-9), (
+                    view,
+                    axis,
+                )
         roughness = _sea_node("sea_specular").inputs["Roughness"]
-        assert {"slick", "sea_unresolved_slick_variance_upwind"} <= upstream(roughness)
+        assert {"slick", "sea_unresolved_slick_variance_downwind_along"} <= upstream(
+            roughness
+        )
 
 
 class TestIrSkin:
