@@ -1589,3 +1589,168 @@ def test_blender_s_aerosol_darkens_its_horizon() -> None:
     what is in front of it."""
     clear, hazy = _horizon(1.0), _horizon(6.0)
     assert hazy.sum() < 0.8 * clear.sum()
+
+
+# Rows down the sun's vertical: 80 deg reaches from the glint's centre to past the
+# view zenith Cox & Munk photographed, and 16 columns keep a strip either side of it.
+GLINT_PX, GLINT_FOV_DEG = (16, 64), 80.0
+# Cox & Munk's photographs reach about 60 deg from the zenith.
+GLINT_MAX_VIEW_ZENITH_DEG = 60.0
+# The lobe leaves out the slopes' covariance, so takes the wind's axes only where the
+# view runs along or across the wind: down the sun's vertical, with the wind on it or
+# across it.
+GLINT_AZIMUTH_DEG = 10.0
+# A judgement: frames far enough apart to see unrelated waves, enough to average.
+GLINT_FRAMES, GLINT_SPACING_M = 24, (397.0, 259.0)
+# Two-sided, a normal deviate past three standard errors is 0.27 % likely.
+GLINT_STANDARD_ERRORS = 3.0
+# Wider than the Sky Texture's 0.545 deg sun, so the frame holds its whole disc.
+SUN_PROBE_FOV_DEG, SUN_PROBE_PX = 2.0, 64
+
+
+def _sun_disc(on: bool) -> None:
+    tree = bpy.context.scene.world.node_tree
+    sky = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeTexSky")
+    sky.sun_disc = on
+
+
+def _sun_only(size: tuple[int, int], name: str) -> np.ndarray:
+    """The frame's light from the sun's disc alone: with it less without it, each at
+    the same sampling seed, so the sky's noise cancels."""
+    _sun_disc(True)
+    lit = shoot_rgb(size, f"{name}_sun")
+    _sun_disc(False)
+    unlit = shoot_rgb(size, f"{name}_sky")
+    return (lit - unlit).mean(axis=2)
+
+
+def _pixel_views(camera: bpy.types.Object, size: tuple[int, int]) -> np.ndarray:
+    """Each pixel's unit vector from the sea back to `camera`, top row first."""
+    sc = bpy.context.scene
+    sc.render.resolution_x, sc.render.resolution_y = size
+    bpy.context.view_layer.update()
+    corners = [camera.matrix_world @ c for c in camera.data.view_frame(scene=sc)]
+    top_right, bottom_right, bottom_left, top_left = (np.array(c) for c in corners)
+    down = (np.arange(size[1]) + 0.5)[:, None, None] / size[1]
+    across = (np.arange(size[0]) + 0.5)[None, :, None] / size[0]
+    left = top_left + down * (bottom_left - top_left)
+    right = top_right + down * (bottom_right - top_right)
+    ray = left + across * (right - left) - np.array(camera.matrix_world.translation)
+    return -ray / np.linalg.norm(ray, axis=-1, keepdims=True)
+
+
+def _sun_irradiance(sun: np.ndarray, height_m: float) -> float:
+    """The disc's radiance integrated over the solid angle of each pixel of a narrow
+    frame centred on it: the irradiance across the beam, in the render's units."""
+    lens = bpy.data.cameras.new("sun_probe")
+    lens.angle_x = math.radians(SUN_PROBE_FOV_DEG)
+    camera = bpy.data.objects.new("sun_probe", lens)
+    sc = bpy.context.scene
+    sc.collection.objects.link(camera)
+    # Above the waves; a camera looks down its -Z.
+    camera.location = (0.0, 0.0, height_m)
+    camera.rotation_euler = Vector(sun).to_track_quat("-Z", "Y").to_euler()
+    sc.camera = camera
+    size = (SUN_PROBE_PX, SUN_PROBE_PX)
+    radiance = _sun_only(size, "sun_probe")
+    # A pixel's solid angle is its area on the unit-distance plane times cos^3 of its
+    # angle off the axis.
+    half = math.tan(math.radians(SUN_PROBE_FOV_DEG) / 2)
+    centres = ((np.arange(SUN_PROBE_PX) + 0.5) / SUN_PROBE_PX * 2 - 1) * half
+    x, y = np.meshgrid(centres, centres)
+    solid_angle = (2 * half / SUN_PROBE_PX) ** 2 / (1 + x**2 + y**2) ** 1.5
+    return float(np.sum(radiance * solid_angle))
+
+
+@pytest.mark.parametrize(
+    ("wind_speed_mps", "wind_from_deg", "sun_elevation_deg", "height_m"),
+    [
+        pytest.param(3.0, 0.0, 60.0, 600.0, id="light-upwind"),
+        pytest.param(12.0, 90.0, 60.0, 600.0, id="strong-crosswind"),
+        pytest.param(7.0, 0.0, 45.0, 600.0, id="low-sun-upwind"),
+        pytest.param(7.0, 90.0, 80.0, 600.0, id="high-sun-crosswind"),
+        # A judgement: from 600 m a pixel leaves every short wave to the lobe; from
+        # 100 m it draws some as normals and the glitter carries others.
+        pytest.param(7.0, 0.0, 60.0, 100.0, id="low-camera-upwind"),
+    ],
+)
+def test_the_sun_glint_follows_cox_and_munk_s_slopes(
+    wind_speed_mps: float,
+    wind_from_deg: float,
+    sun_elevation_deg: float,
+    height_m: float,
+) -> None:
+    """The sun's glint down its vertical, averaged over frames of unrelated waves,
+    against Cox & Munk's Gaussian slopes: its brightness, its peak and its width."""
+    sky = {"sun_elevation_deg": sun_elevation_deg, "sun_bearing_deg": 0.0}
+    sea_state = {"wind_speed_mps": wind_speed_mps, "wind_from_deg": wind_from_deg}
+    scenario = _clear(variant(sky=sky, sea=sea_state))
+    scene.build(scenario, "eo")
+    tree = bpy.data.materials["sea"].node_tree
+    # The glint alone: no body lit by the sun, no whitecap foam.
+    tree.nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
+    for link in list(tree.nodes["whitecap_foam"].outputs["Value"].links):
+        mixed = link.to_socket
+        tree.links.remove(link)
+        mixed.default_value = 0.0
+    elevation = math.radians(sun_elevation_deg)
+    sun = np.array([0.0, math.cos(elevation), math.sin(elevation)])
+    sc = bpy.context.scene
+    sc.cycles.samples = 4
+    irradiance = _sun_irradiance(sun, height_m)
+
+    lens = bpy.data.cameras.new("probe")
+    lens.clip_end, lens.sensor_fit = 1e5, "VERTICAL"
+    lens.angle_y = math.radians(GLINT_FOV_DEG)
+    camera = bpy.data.objects.new("probe", lens)
+    sc.collection.objects.link(camera)
+    sc.camera = camera
+    # Pointed at the glint's centre, a sun's zenith angle from the nadir.
+    camera.rotation_euler = (math.pi / 2 - elevation, 0.0, 0.0)
+    frames = []
+    for i in range(GLINT_FRAMES):
+        sc.cycles.seed = i
+        camera.location = (GLINT_SPACING_M[0] * i, GLINT_SPACING_M[1] * i, height_m)
+        frames.append(_sun_only(GLINT_PX, f"glint_{i}"))
+    view = _pixel_views(camera, GLINT_PX)
+    expected = waves.sun_glint_radiance(
+        view,
+        sun,
+        waves.cox_munk_variances(wind_speed_mps),
+        math.radians(wind_from_deg),
+        irradiance,
+        SEAWATER_IOR,
+    )
+
+    azimuth = np.arctan2(-view[..., 0], -view[..., 1])
+    kept = (view[..., 2] > math.cos(math.radians(GLINT_MAX_VIEW_ZENITH_DEG))) & (
+        np.abs(np.sin(azimuth)) < math.sin(math.radians(GLINT_AZIMUTH_DEG))
+    )
+    peak = kept & (expected > expected[kept].max() / 2)
+    rendered = np.array(frames)
+    ratios = np.column_stack(
+        [
+            np.sum(rendered * kept, axis=(1, 2)) / np.sum(expected * kept),
+            np.sum(rendered * peak, axis=(1, 2)) / np.sum(expected * peak),
+            _rms_along(rendered, sun, view, kept)
+            / _rms_along(expected, sun, view, kept),
+        ]
+    )
+    mean = ratios.mean(axis=0)
+    standard_error = ratios.std(axis=0, ddof=1) / math.sqrt(GLINT_FRAMES)
+    assert np.all(np.abs(mean - 1) < GLINT_STANDARD_ERRORS * standard_error), (
+        f"brightness, peak, width over Cox & Munk's: {mean} +- {standard_error}"
+    )
+
+
+def _rms_along(
+    radiance: np.ndarray, sun: np.ndarray, view: np.ndarray, kept: np.ndarray
+) -> np.ndarray:
+    """The RMS slope along the sun's vertical of the facets that glint, weighted by
+    `radiance` over `kept` pixels."""
+    half = view + sun
+    along = half[..., 1] / half[..., 2]
+    weight = radiance * kept
+    return np.sqrt(
+        np.sum(weight * along**2, axis=(-2, -1)) / np.sum(weight, axis=(-2, -1))
+    )
