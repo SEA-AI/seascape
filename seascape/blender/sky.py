@@ -279,7 +279,7 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
     depth = _optical_depth(group, sky, band, far_m)
     kept = (Num(group, depth) * -1.0).op("EXPONENT")
     unlit = node(group, "NodeGroupInput").outputs["Shader"]
-    shader = mix_shader(group, (1.0 - kept).socket, unlit, airlight.outputs["Emission"])
+    shader = mix_shader(group, (1.0 - kept), unlit, airlight.outputs["Emission"])
     shader.node.name = "haze_mix"
     if band == "ir":
         shader = _less_sky(group, sky, ahead, shader)
@@ -373,7 +373,7 @@ def _optical_depth(
     def at(range_m: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         # Blender's log of a negative number is 0, which is a range inside the table.
         texel = Num(tree, range_m).op("MAXIMUM", HAZE_NEAR_M).op("LOGARITHM", span)
-        return lookup(tree, image, (texel - math.log(HAZE_NEAR_M, span)).socket)
+        return lookup(tree, image, (texel - math.log(HAZE_NEAR_M, span)))
 
     # at(0) reads the depth to HAZE_NEAR_M, not 0.
     behind = scalar(tree, "MULTIPLY", at(start), secondary)

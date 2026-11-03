@@ -66,9 +66,9 @@ def _orbit_path(
         along=(angle * wake.orbit_m).socket,
         # Clockwise, starboard is in towards the centre.
         across=(wake.orbit_m - Num(tree, radius)).socket,
-        d_along=combine(tree, (cos_b * -1.0).socket, sin_b.socket),
-        d_across=combine(tree, (sin_b * -1.0).socket, (cos_b * -1.0).socket),
-        fixed=combine(tree, (bearing * (-round_m / (2 * math.pi))).socket, radius),
+        d_along=combine(tree, cos_b * -1.0, sin_b),
+        d_across=combine(tree, sin_b * -1.0, cos_b * -1.0),
+        fixed=combine(tree, bearing * (-round_m / (2 * math.pi)), radius),
     )
 
 
@@ -99,7 +99,7 @@ def _line_path(
         across=starboard(de, dn).socket,
         d_along=combine(tree, -sin_h, -cos_h),
         d_across=combine(tree, cos_h, -sin_h),
-        fixed=combine(tree, ahead(east, north).socket, starboard(east, north).socket),
+        fixed=combine(tree, ahead(east, north), starboard(east, north)),
     )
 
 
@@ -170,7 +170,7 @@ def _wakes(
                 tree,
                 "SCALE",
                 _kelvin(tree, wake, root, path, footprint_m),
-                lasting.socket,
+                lasting,
             )
             tilt = arm if tilt is None else vector(tree, "ADD", tilt, arm)
     assert isinstance(band, Num) and isinstance(foam, Num)
@@ -225,10 +225,10 @@ def _kelvin(
     direction = vector(
         tree,
         "ADD",
-        vector(tree, "SCALE", path.d_along, cos_t.socket),
-        vector(tree, "SCALE", path.d_across, (sin_t * sign).socket),
+        vector(tree, "SCALE", path.d_along, cos_t),
+        vector(tree, "SCALE", path.d_across, sin_t * sign),
     )
-    return vector(tree, "SCALE", direction, slope.socket)
+    return vector(tree, "SCALE", direction, slope)
 
 
 def _patchy(
@@ -254,7 +254,7 @@ def _patchy(
         image=noise,
         extension="REPEAT",
     )
-    threshold = lookup(tree, ppf, cover.socket)
+    threshold = lookup(tree, ppf, cover)
     # A judgement: edges half the tile's sigma wide.
     edge = (Num(tree, texture.outputs["Color"]) - threshold).madd(2.0, 0.5)
     edge.socket.node.use_clamp = True

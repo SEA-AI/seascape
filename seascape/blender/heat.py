@@ -174,8 +174,8 @@ def _emission(
     else:
         facing = vector(tree, "DOT_PRODUCT", geometry.outputs["Normal"], heat.sun)
         lit = Num(tree, scalar(tree, "MAXIMUM", facing, 0.0))
-        at = lit.madd((len(sun_cos) - 1) / len(sun_cos), 0.5 / len(sun_cos)).socket
-    color = lookup(tree, image, at, y.socket)
+        at = lit.madd((len(sun_cos) - 1) / len(sun_cos), 0.5 / len(sun_cos))
+    color = lookup(tree, image, at, y)
     return node(tree, "ShaderNodeEmission", {"Color": color}).outputs["Emission"]
 
 

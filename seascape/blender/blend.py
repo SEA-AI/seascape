@@ -6,6 +6,8 @@ from pathlib import Path
 import bpy
 import numpy as np
 
+type Operand = Num | bpy.types.NodeSocket | float
+
 # A judgement.
 CURVE_SAMPLES = 256
 
@@ -98,35 +100,34 @@ def curve_image(
 def lookup(
     tree: bpy.types.NodeTree,
     image: bpy.types.Image,
-    x: bpy.types.NodeSocket,
-    y: bpy.types.NodeSocket | None = None,
+    x: Operand,
+    y: Operand | None = None,
 ) -> bpy.types.NodeSocket:
     """`image` sampled at (x, y) in [0, 1], held at its edge outside."""
-    coords = tree.nodes.new("ShaderNodeCombineXYZ")
-    texture = tree.nodes.new("ShaderNodeTexImage")
-    texture.image = image
-    texture.extension = "EXTEND"
-    tree.links.new(x, coords.inputs["X"])
-    if y is not None:
-        tree.links.new(y, coords.inputs["Y"])
-    tree.links.new(coords.outputs["Vector"], texture.inputs["Vector"])
+    texture = node(
+        tree,
+        "ShaderNodeTexImage",
+        {"Vector": combine(tree, x, 0.0 if y is None else y)},
+        image=image,
+        extension="EXTEND",
+    )
     return texture.outputs["Color"]
 
 
 def feed(
     tree: bpy.types.NodeTree,
     socket: bpy.types.NodeSocket,
-    value: bpy.types.NodeSocket | float | tuple[float, ...],
+    value: Operand | tuple[float, ...],
 ) -> None:
+    if isinstance(value, Num):
+        value = value.socket
     if isinstance(value, bpy.types.NodeSocket):
         tree.links.new(value, socket)
     else:
         socket.default_value = value
 
 
-def combine(
-    tree: bpy.types.NodeTree, *xyz: bpy.types.NodeSocket | float
-) -> bpy.types.NodeSocket:
+def combine(tree: bpy.types.NodeTree, *xyz: Operand) -> bpy.types.NodeSocket:
     """Components left out read 0."""
     if len(xyz) > 3:
         raise ValueError(f"a Combine XYZ takes 3 components, not {len(xyz)}")
@@ -139,7 +140,7 @@ def combine(
 def vector(
     tree: bpy.types.NodeTree,
     operation: str,
-    *inputs: bpy.types.NodeSocket | float | tuple[float, ...],
+    *inputs: Operand | tuple[float, ...],
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
     made = tree.nodes.new("ShaderNodeVectorMath")
@@ -158,7 +159,7 @@ def vector(
 def scalar(
     tree: bpy.types.NodeTree,
     operation: str,
-    *inputs: float | bpy.types.NodeSocket,
+    *inputs: Operand,
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
     """A Math node. Unset inputs read 0.5."""
@@ -171,13 +172,10 @@ def scalar(
     return made.outputs["Value"]
 
 
-def clamped(tree: bpy.types.NodeTree, x: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
+def clamped(tree: bpy.types.NodeTree, x: Operand) -> bpy.types.NodeSocket:
     out = scalar(tree, "MAXIMUM", x, 0.0)
     out.node.use_clamp = True
     return out
-
-
-type Operand = Num | bpy.types.NodeSocket | float
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,7 +240,7 @@ class Num:
 def node(
     tree: bpy.types.NodeTree,
     kind: str,
-    inputs: dict[str, bpy.types.NodeSocket | float | tuple[float, ...]] | None = None,
+    inputs: dict[str, Operand | tuple[float, ...]] | None = None,
     **props: object,
 ) -> bpy.types.Node:
     """A node of `kind` with `props` set first, since a data type can change which
