@@ -154,7 +154,7 @@ def test_a_microbolometer_integrates_over_its_pixel(
     bolometer: dict[str, float], kind: str
 ) -> None:
     scenario = load(OPEN_SEA)
-    mount = next(m for m in scenario.mounts if m.camera.band == "ir")
+    mount = scenario.band_mounts("ir")[0]
     camera = mount.camera.model_copy(
         update={"microbolometer": Microbolometer(**bolometer)}
     )
@@ -165,7 +165,7 @@ def test_a_microbolometer_integrates_over_its_pixel(
 @pytest.mark.usefixtures("empty_blend")
 def test_a_switch_set_off_is_muted() -> None:
     _compositor(0.0, True)
-    mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
+    mount = load(OPEN_SEA).band_mounts("eo")[0]
     respond(mount, substream(0, "sensor"))
     nodes = bpy.context.scene.compositing_node_group.nodes
     assert nodes["sensor.on"].mute
@@ -178,7 +178,7 @@ def test_a_switch_set_off_is_muted() -> None:
 @pytest.mark.usefixtures("empty_blend")
 def test_a_sensor_in_a_build_without_one_raises() -> None:
     _compositor(0.0)
-    mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
+    mount = load(OPEN_SEA).band_mounts("eo")[0]
     with_sensor = mount.camera.model_copy(update={"sensor": Sensor(full_well_e=1e4)})
     with pytest.raises(ValueError, match="no sensor"):
         respond(mount._replace(camera=with_sensor), substream(0, "sensor"))
@@ -257,7 +257,7 @@ class TestIrAsPng:
 
     def test_the_active_camera_sets_the_resolution(self, sc: bpy.types.Scene) -> None:
         """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
-        ir = next(m.camera for m in load(OPEN_SEA).mounts if m.camera.band == "ir")
+        ir = load(OPEN_SEA).band_mounts("ir")[0].camera
         assert (ir.width_px, ir.height_px) != (1920, 1080)
 
         assert (sc.render.resolution_x, sc.render.resolution_y) == (
@@ -322,7 +322,7 @@ def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=writes_nothing))
     monkeypatch.chdir(tmp_path)
     scenario = variant(outputs={"bands": ["eo"]})
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    mount = scenario.band_mounts("eo")[0]
 
     with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
         render.render(scenario, Path("out"))
@@ -601,7 +601,7 @@ def test_the_wakes_a_build_lays_fit_cycles_svm_stack(
     """The wake a built hull leaves, not one handed to the material."""
     scenario = _heaviest_drawn_sea(objects=[target("coaster", 500.0, **hull)])
     built = scene.build(scenario, "eo")
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    mount = scenario.band_mounts("eo")[0]
     sc = bpy.context.scene
     sc.camera = built.cameras[mount.name]
     sc.cycles.samples = 1

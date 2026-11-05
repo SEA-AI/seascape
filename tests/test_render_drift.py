@@ -65,7 +65,7 @@ def shoot_rgb(size: tuple[int, int], name: str) -> np.ndarray:
 
 
 def eo_pixel_rad(scenario: Scenario) -> float:
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    mount = scenario.band_mounts("eo")[0]
     return math.radians(mount.camera.hfov_deg) / mount.camera.width_px
 
 
@@ -80,7 +80,7 @@ def overhead(span_m: float, pixel_rad: float, px: int) -> bpy.types.Camera:
 
 
 def _camera(built: scene.Built, scenario: Scenario, band: Band) -> bpy.types.Object:
-    return built.cameras[next(m.name for m in scenario.mounts if m.camera.band == band)]
+    return built.cameras[scenario.band_mounts(band)[0].name]
 
 
 def radiance(band: Band, size: tuple[int, int]) -> np.ndarray:
@@ -112,7 +112,7 @@ def _sky_runs_from_cold_overhead_to_ambient_at_the_horizon(frame: np.ndarray) ->
     assert just_above == pytest.approx(ambient, rel=0.02)
     # The top five rows' centre, on a level camera whose horizon is the middle row.
     height, width = frame.shape
-    ir = next(m for m in SCENARIO.mounts if m.camera.band == "ir")
+    ir = SCENARIO.band_mounts("ir")[0]
     half = math.tan(math.radians(ir.camera.hfov_deg) / 2) * height / width
     top = math.atan(half * (1 - 5 / height))
     sky = SCENARIO.sky
@@ -1271,7 +1271,7 @@ def test_each_camera_draws_for_its_own_pixel() -> None:
     built = scene.build(pair, "eo")
     sc = bpy.context.scene
     sc.cycles.samples = 16
-    fine, coarse = (built.cameras[m.name] for m in pair.mounts if m.camera.band == "eo")
+    fine, coarse = (built.cameras[m.name] for m in pair.band_mounts("eo"))
     sc.camera = fine
     shoot((640, 360), "fine")
     sc.camera = coarse

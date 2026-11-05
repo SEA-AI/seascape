@@ -303,7 +303,7 @@ class TestEoBand:
         self, built: scene.Built
     ) -> None:
         tall = variant(BASELINE, cameras={"eo": {"width_px": 512, "height_px": 640}})
-        mount = next(m for m in tall.mounts if m.camera.band == "eo")
+        mount = tall.band_mounts("eo")[0]
         back = built.cameras[mount.name].matrix_world.to_3x3().inverted()
         rays = memory._rays(
             tall, [v for v in views(tall, "eo", built.cameras) if v.mount == mount]
@@ -804,8 +804,7 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() 
     scene.build(scenario, "eo")
     centre, off_axis = (
         (boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
-        for m in scenario.mounts
-        if m.camera.band == "eo"
+        for m in scenario.band_mounts("eo")
     )
 
     assert centre[0][0] == pytest.approx(centre[1], abs=1e-4)
@@ -1498,7 +1497,7 @@ class TestSeaEvolves:
         """Over the crest the tall waves can raise, from the water the rig rides."""
         scenario = load(OPEN_SEA)
         built = scene.build(scenario, "eo")
-        (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
+        (mount,) = scenario.band_mounts("eo")
         pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
         crest_m = sum(w.amplitude_m for w in _tall(scenario))
         lowest = min(_ridden_m(scenario, t) for t in scenario.outputs.times_s)
@@ -1515,7 +1514,7 @@ class TestSeaEvolves:
         heave = {"amplitude_m": 2.0, "period_s": 4.0}
         scenario = variant(ownship={"heave": heave}, outputs={"duration_s": 4.0})
         built = scene.build(scenario, "eo")
-        (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
+        (mount,) = scenario.band_mounts("eo")
         pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
         crest_m = sum(w.amplitude_m for w in _tall(scenario))
         lowest = min(
@@ -1802,7 +1801,7 @@ def _pixel_node() -> bpy.types.ShaderNode:
 )
 def test_the_sea_draws_for_the_pixel_the_render_takes(scenario: Scenario) -> None:
     scene.build(scenario, "eo")
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    mount = scenario.band_mounts("eo")[0]
     pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
     driver = next(
         c.driver

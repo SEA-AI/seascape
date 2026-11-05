@@ -187,7 +187,7 @@ def test_in_its_rig_a_camera_points_exactly_as_asked(
 
 
 def test_a_calibration_records_its_camera_s_pitch(built: scene.Built) -> None:
-    mount = next(m for m in SCENARIO.mounts if m.camera.band == "ir")
+    mount = SCENARIO.band_mounts("ir")[0]
     sensor = Microbolometer(pitch_um=17.0, f_number=1.0)
     pitched = mount._replace(
         camera=mount.camera.model_copy(update={"microbolometer": sensor})
