@@ -54,7 +54,7 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
         if sky.fog_weight:
             colour = _fogged_photo(tree, sky, ray, sky.sun_transmittance)
         else:
-            colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, ray)
+            colour = _photo(tree, sky, ray)
         tree.links.new(colour, background)
         if sky.sun_diffuse_fraction is not None:
             _add_hidden_sun(sky)
@@ -119,8 +119,8 @@ def _fogged_photo(
     """The photo in `direction` misted, its sun's disc keeping `sun_kept` of itself. A
     sun behind cloud greys with it."""
     assert sky.hdri is not None
-    colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, direction)
-    horizon = _photo(tree, sky.hdri, sky.sun_bearing_deg, _horizon(tree, direction))
+    colour = _photo(tree, sky, direction)
+    horizon = _photo(tree, sky, _horizon(tree, direction))
     misted = _misted(tree, sky, colour, horizon)
     # The mist keeps 1 - fog_weight of the disc.
     extra = sun_kept - (1.0 - sky.fog_weight)
@@ -190,14 +190,11 @@ def _grey(
 
 
 def _photo(
-    tree: bpy.types.NodeTree,
-    name: str,
-    sun_bearing_deg: float,
-    direction: bpy.types.NodeSocket,
+    tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """The photographed sky `name` in `direction`, turned so its sun sits at
-    `sun_bearing_deg`."""
-    return _turned(tree, _photo_image(name), name, sun_bearing_deg, direction)
+    """`sky`'s photo in `direction`, turned so its sun sits at `sun_bearing_deg`."""
+    assert sky.hdri is not None
+    return _turned(tree, _photo_image(sky.hdri), sky.photo_turn_rad, direction)
 
 
 def _photo_image(name: str) -> bpy.types.Image:
@@ -207,23 +204,13 @@ def _photo_image(name: str) -> bpy.types.Image:
     )
 
 
-def _photo_turn_rad(name: str, sun_bearing_deg: float) -> float:
-    """How far to turn the photographed sky `name` to put its sun at
-    `sun_bearing_deg`. Turning a lookup by d carries the image's sun clockwise by d: no
-    negation."""
-    return math.radians(sun_bearing_deg - skies.library()[name].sun_bearing_deg)
-
-
 def _turned(
     tree: bpy.types.NodeTree,
     image: bpy.types.Image,
-    name: str,
-    sun_bearing_deg: float,
+    turn_rad: float,
     direction: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`image`, laid out as the photographed sky `name`, in `direction`, turned so the
-    photo's sun sits at `sun_bearing_deg`."""
-    turn_rad = _photo_turn_rad(name, sun_bearing_deg)
+    """`image`, laid out as a photographed sky, in `direction`, turned by `turn_rad`."""
     turn = node(
         tree,
         "ShaderNodeMapping",
@@ -324,7 +311,7 @@ def _sky_ahead(
 
     def clear(toward: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
         if sky.hdri is not None:
-            return _photo(tree, sky.hdri, sky.sun_bearing_deg, toward)
+            return _photo(tree, sky, toward)
         colour = _clear_eo(tree, sky, bpy.context.scene.world, toward)
         colour.node.name = "haze_sky"
         return colour
@@ -469,9 +456,8 @@ def _cloudy_sky(
 ) -> bpy.types.NodeSocket:
     """The photo's sky in `direction`: radiance is affine in the cloud share, so the
     clear sky plus the share of what a whole cloud adds."""
-    assert sky.hdri is not None
     share_image, _ = _cloud_images(sky)
-    share = _turned(tree, share_image, sky.hdri, sky.sun_bearing_deg, direction)
+    share = _turned(tree, share_image, sky.photo_turn_rad, direction)
     # Linear shows the texel grid where a texel spans several pixels.
     share.node.interpolation = "Cubic"
     up = _sin_elevation(tree, direction)
@@ -527,9 +513,7 @@ def _clouds(sky: Sky) -> sea.Clouds | None:
     # Bottom row first, as `_cloud_images` lays it out.
     elevation = np.radians(texels(h) * 180.0 - 90.0)
     radiance = rgba[..., 0].astype(np.float64)
-    return sea.Clouds(
-        elevation, radiance, _photo_turn_rad(sky.hdri, sky.sun_bearing_deg)
-    )
+    return sea.Clouds(elevation, radiance, sky.photo_turn_rad)
 
 
 def _sky_round(sky: Sky, clouds: sea.Clouds | None) -> sea.SkyCurve:
