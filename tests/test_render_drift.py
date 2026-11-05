@@ -1420,12 +1420,12 @@ def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) ->
     assert measure(path) == first
 
 
+@pytest.mark.usefixtures("empty_blend")
 @pytest.mark.parametrize(
     "name", [n for n, a in manifest().items() if isinstance(a, Buoy)]
 )
 def test_a_buoy_floats_on_its_float(name: str) -> None:
     """The water meets the float: the mesh is near its widest at the waterline."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     parts = import_asset(name, "eo")
     bpy.context.view_layer.update()
     points = [

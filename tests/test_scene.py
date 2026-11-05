@@ -878,9 +878,9 @@ def test_the_ir_sky_and_air_follow_the_chosen_atmosphere() -> None:
     assert baked("haze_depth") == pytest.approx(depth, rel=1e-5)
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = SCENARIO.objects[0].asset
     hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
     anchor = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
@@ -893,8 +893,8 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     )
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
     asset = SCENARIO.objects[0].asset
     skins = []
@@ -912,9 +912,9 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     assert "thermal_paint_hull" in running & stopped
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     anchor = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
     bpy.context.view_layer.update()
     level = waterline_m(anchor)
@@ -924,10 +924,10 @@ def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     assert waterline_m(anchor) == pytest.approx(level, abs=1e-4)
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     """The keel rises by the asset's draught minus the object's, and the labels'
     height and waterline go with it."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     hulls = Hulls(SCENARIO.sky, None)
     level, raised = (
         _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)
@@ -953,8 +953,8 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     assert abs(raised_length_m - length_m) > 1.0, "the waterline stayed where it was"
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_paint_repaints_only_the_painted_zones() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     heat = surroundings(SCENARIO)
     white = zone_skin("paint_hull", heat, 0.14)
     black = zone_skin("paint_hull", heat, 0.97)
@@ -2302,7 +2302,7 @@ def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
     assert top == pytest.approx(float(expected), rel=1e-3)
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_the_hull_finds_the_photo_s_clouds_before_the_world_is_built() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     heat = surroundings(variant(sky={"hdri": "overcast_soil"}))
     assert heat.env.cloud_fraction == pytest.approx(1.0)

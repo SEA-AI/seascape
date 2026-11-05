@@ -162,8 +162,8 @@ def test_a_microbolometer_integrates_over_its_pixel(
     assert bpy.context.scene.cycles.pixel_filter_type == kind
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_switch_set_off_is_muted() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     _compositor(0.0, True)
     mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
     respond(mount, substream(0, "sensor"))
@@ -175,8 +175,8 @@ def test_a_switch_set_off_is_muted() -> None:
     assert nodes["sensor.hdr"].mute
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_sensor_in_a_build_without_one_raises() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     _compositor(0.0)
     mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
     with_sensor = mount.camera.model_copy(update={"sensor": Sensor(full_well_e=1e4)})
@@ -220,12 +220,12 @@ class TestSettings:
         """A format added to the Literal alone renders as whatever was set last."""
         assert set(FORMATS) == set(get_args(ImageFormat.__value__))
 
+    @pytest.mark.usefixtures("empty_blend")
     @pytest.mark.parametrize("fmt", get_args(ImageFormat.__value__))
     def test_the_extension_matches_the_name_render_files_under(
         self, fmt: ImageFormat
     ) -> None:
         """`render` composes its return paths from the format, not from Blender."""
-        bpy.ops.wm.read_factory_settings(use_empty=True)
         settings = bpy.context.scene.render
         settings.image_settings.file_format = FORMATS[fmt][0]
 
