@@ -49,11 +49,11 @@ def _grouped(
     too if its sea reads too even.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         sea: The wind and fetch the spread is taken at; no wind keeps the mean.
         where: The flat sea's (east, north, time) the cells are drawn at.
         pixel: The footprint the cells are sized to.
-        unresolved: The variances along and across the view.
+        unresolved: The slope variances along and across the view, dimensionless.
     """
     if sea.wind_speed_mps <= 0.0:
         return unresolved
@@ -103,7 +103,8 @@ def _box_kept(cells: Num) -> Num:
     up and 1 - m / 3 below.
 
     Args:
-        cells: The box's length m, in cells."""
+        cells: The box's length over a cell's side, m; under 1 the box fits in a
+            cell."""
     over = cells.madd(3.0, -1.0) / (cells * cells * 3.0)
     under = cells.madd(-1 / 3, 1.0)
     return cells.op("GREATER_THAN", 1.0).madd(over - under, under)
@@ -128,7 +129,7 @@ def _unresolved(
     the wind stays aligned with the view. Rotate the tangent if a glitter shows it.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         sea: The wind the variances are fitted at.
         wind: The wind sea's shaded waves.
         swell: The swell's shaded waves.

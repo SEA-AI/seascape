@@ -15,9 +15,10 @@ def pupil_mtf(
     (Goodman, Introduction to Fourier Optics, 2005, sec. 6.3). Inputs broadcast.
 
     Args:
-        freq_per_m: Spatial frequency in the image plane.
+        freq_per_m: Spatial frequency in the image plane, cycles per metre.
         wavelength_m: The light's wavelength, lambda.
-        f_number: The lens's f-number, N."""
+        f_number: Focal length over aperture diameter, N; a higher one cuts off
+            lower."""
     x = np.minimum(np.asarray(freq_per_m) * np.asarray(wavelength_m) * f_number, 1.0)
     return 2 / math.pi * (np.arccos(x) - x * np.sqrt(1.0 - x * x))
 
@@ -30,8 +31,9 @@ def airy_kernel(
 
     Args:
         wavelengths_m: One channel's wavelength each.
-        f_number: The lens's f-number.
-        pitch_m: The pixel grid's pitch."""
+        f_number: Focal length over aperture diameter, N; the Airy disc grows with
+            it.
+        pitch_m: Centre-to-centre distance between pixels."""
     # Four Airy discs each side at the longest wavelength; a disc is 2.44 lambda N
     # across (Goodman 2005).
     radius_px = math.ceil(4 * 2.44 * max(wavelengths_m) * f_number / pitch_m)

@@ -74,7 +74,7 @@ def column(layout: Layout, bearing_deg: float) -> float | None:
 
     Args:
         layout: Where the panorama sits in its projection.
-        bearing_deg: The ray's bearing in the panorama's frame."""
+        bearing_deg: Clockwise from the frame's +Y, north in the world frame."""
     b = math.radians(bearing_deg) - layout.axis
     if layout.kind == "plane" and math.cos(b) <= 0.0:
         return None
@@ -96,7 +96,7 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
     """A panorama over a strip of bearing ticks, in degrees of its frame.
 
     Args:
-        image: The panorama.
+        image: The panorama, 8-bit BGR as `stitch` makes it.
         layout: Where it sits in its projection.
         true: Label 000-359, as a chart writes true bearings; else signed about the
             frame's axis."""
@@ -151,8 +151,10 @@ def stitch(
     Args:
         folder: The render, its frames and its agc settings.
         cameras: The cameras to stitch; thermal ones need one agc.
-        projection: A key of `PROJECTIONS`.
-        frame: The extrinsics whose bearings the panorama is laid out in.
+        projection: A key of `PROJECTIONS`; rectilinear cannot show a ray 90 deg or
+            more off its axis.
+        frame: The calibration frame whose bearings lay the panorama out; world's
+            are true.
         max_width: The widest the panorama may be, in pixels; None keeps native
             resolution, the largest fx: pixels per radian on axis, where every
             projection here runs at one unit per radian."""

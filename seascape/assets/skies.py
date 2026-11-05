@@ -262,7 +262,7 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     rim.
 
     Args:
-        radiance: The photo's pixels, (h, w, 3), top row first.
+        radiance: The photo's linear RGB, (h, w, 3), top row first.
         photo: Its sun places the aureole; an overcast one is cloud throughout."""
     h, w = radiance.shape[:2]
     out = np.zeros((h, w), np.float32)
@@ -432,7 +432,7 @@ def _filled(share: np.ndarray, hole: np.ndarray) -> np.ndarray:
     2001). OpenCV's Telea overshoots on float images.
 
     Args:
-        share: Cloud share, float.
+        share: Cloud share, (h, w) float32, a type OpenCV's inpaint takes.
         hole: True where the share is replaced."""
     return cv2.inpaint(
         share,

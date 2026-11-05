@@ -133,14 +133,15 @@ def _wakes(
     tight turn bends; sum the arms from past poses if a turn reads wrong.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         wakes: One per hull.
         where: (east, north, time) the wakes are read at.
-        footprint_m: The pixel's footprint, which fades the arms it cannot resolve.
-        noise: The unit Gaussian tile the stern foam is patched by.
-        ppf: The unit normal's quantiles.
-        sea_slope_variance: The sea's own; a hull's arms are drawn only where they
-            stand out from it."""
+        footprint_m: The pixel's longer side, which fades the arms it cannot resolve.
+        noise: Von Karman noise, zero mean and unit variance, that patches the foam.
+        ppf: The unit normal's 1 - p quantile, tabulated in p: a unit Gaussian tops
+            ppf(p) over p of its area.
+        sea_slope_variance: The sea's total, both axes summed; a hull's arms are
+            drawn only where they stand out from it."""
     band: Num | float = 0.0
     foam: Num | float = 0.0
     bubbles: Num | float = 0.0
@@ -201,11 +202,12 @@ def _kelvin(
     g / U^2 (along cos(theta) + side sin(theta)) / cos(theta)^2 (DLMF 36.13).
 
     Args:
-        tree: Where the nodes go.
-        wake: The hull's wake.
-        root: 1 for the divergent wave, -1 for the transverse.
+        tree: The sea material's shader tree.
+        wake: The hull's speed U, which sets the wavenumber scale g / U^2, and size.
+        root: The stationary-phase root: 1 the divergent wave, -1 the transverse.
         path: The point's place along and across the hull's path.
-        footprint_m: The pixel's footprint, which fades what it cannot resolve."""
+        footprint_m: The pixel's longer side f; a wave of wavenumber k keeps
+            sin(k f / 2) / (k f / 2) of its slope, a box average's response."""
     along = Num(tree, path.along)
     side = Num(tree, path.across).op("ABSOLUTE")
     edge = math.tan(KELVIN_HALF_ANGLE_RAD)
@@ -256,11 +258,11 @@ def _patchy(
     patches whose mean is the cover, laid along the path.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         cover: The share of the sea the foam covers.
         fixed: The point's place in the path's frame, which the patches are laid on.
-        noise: The unit Gaussian tile.
-        ppf: The unit normal's quantiles."""
+        noise: Von Karman noise, zero mean and unit variance.
+        ppf: The unit normal's 1 - p quantile, tabulated in p."""
     stretch = vector(
         tree,
         "MULTIPLY",

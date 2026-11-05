@@ -159,9 +159,10 @@ def fresnel_emissivity(
     Inputs broadcast, so angle and wavelength can be evaluated as a grid.
 
     Args:
-        theta_rad: Incidence off the normal.
-        n: Real part of the complex refractive index.
-        k: Imaginary part, the extinction coefficient."""
+        theta_rad: Angle between the ray and the surface normal; pi / 2 is grazing.
+        n: Real part of the complex refractive index, which sets the phase speed.
+        k: Imaginary part, the extinction coefficient, which damps the wave inside
+            the water. A scalar-IOR Fresnel, Blender's, drops it."""
     n_c = np.asarray(n, dtype=np.float64) + 1j * np.asarray(k, dtype=np.float64)
     theta = np.asarray(theta_rad, dtype=np.float64)
     cos_i = np.cos(theta)
@@ -190,7 +191,7 @@ def emissivity_curve(
 
     Args:
         t_sea_k: Sea temperature, which sets the optical constants and Planck weight.
-        slope_sigma: RMS slope per axis the renderer does *not* resolve; at 0 this is
+        slope_sigma: RMS slope per axis the renderer does not resolve; at 0 this is
             flat-surface Fresnel. Only the unresolved slope belongs here: slope the
             wave normals carry is applied per pixel by the shader, and integrating it
             again would count it twice."""
@@ -253,7 +254,8 @@ def _facets(slope_sigma: float) -> FloatArray:
     the sigma.
 
     Args:
-        slope_sigma: RMS slope per axis."""
+        slope_sigma: RMS slope per axis: Cox & Munk's total over sqrt(2) on an
+            isotropic sea."""
     side = math.isqrt(FACET_SAMPLES)
     quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(side) + 0.5) / side)
     quantiles /= quantiles.std()
@@ -413,7 +415,8 @@ def sky_radiance(
     Args:
         elev_rad: Elevation above the horizon.
         t_air_k: Surface air temperature; unset, the atmosphere's own.
-        atmosphere: The LOWTRAN profile whose sky this is."""
+        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
+            at Helgoland."""
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     return _over_horizon(_SKY_CSV, elev_rad, atmosphere) * band_radiance(t_air_k)
@@ -480,8 +483,9 @@ def cloud_height_m(
         elev_rad: Elevation of the line of sight.
         bottom_rad: Elevation at which the cloud's bottom shows. At or under the
             horizon it is out of sight, and the answer is the base.
-        cloud_base_m: Height of the cloud base.
-        depth_m: The cloud's depth, the most the answer can be."""
+        cloud_base_m: Height of the cloud base above the sea, which puts a cloud of
+            a given bottom elevation that far off.
+        depth_m: The cloud's thickness, base to top, which caps the answer."""
     elev = np.asarray(elev_rad, dtype=np.float64)
     bottom = np.asarray(bottom_rad, dtype=np.float64)
     seen = bottom > 0.0
@@ -506,9 +510,11 @@ def cloudy_sky_radiance(
     Args:
         elev_rad: Elevation above the horizon.
         cloud: Fraction of the sky the cloud covers, 0 to 1.
-        cloud_base_m: Height of the cloud base.
+        cloud_base_m: Height of the cloud base above the sea, where surface air
+            lifted at the dry lapse rate condenses (Wallace & Hobbs 2006).
         t_air_k: Surface air temperature; unset, the atmosphere's own.
-        atmosphere: The LOWTRAN profile whose sky this is.
+        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
+            at Helgoland.
         height_m: Where the line of sight meets the cloud, over its base."""
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
@@ -532,9 +538,11 @@ def cloud_window_deficit_w_m2(
     sin e cos e over elevation e.
 
     Args:
-        cloud_base_m: Height of the overcast's base.
+        cloud_base_m: Height of the overcast's base above the sea, which sets its
+            temperature through the dry lapse rate.
         t_air_k: Surface air temperature.
-        atmosphere: The LOWTRAN profile whose sky this is."""
+        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
+            at Helgoland."""
     edges = np.linspace(0.0, math.pi / 2, 91)
     elev = (edges[:-1] + edges[1:]) / 2
     deficit = band_radiance(t_air_k) - cloudy_sky_radiance(
@@ -612,9 +620,11 @@ def haze_depth(
 
     Args:
         elev_rad: Elevation of the line of sight.
-        visibility_km: None is no aerosol. Under the table's shortest visibility the
-            depth holds.
-        atmosphere: The LOWTRAN profile whose haze this is."""
+        visibility_km: Meteorological optical range, over which a dark target keeps
+            5% of its contrast (WMO No. 8, 2018); None is no aerosol. Under the
+            table's shortest the depth holds.
+        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
+            at Helgoland."""
     elev, inverse, depth = _depth_table(_HAZE_CSV)[atmosphere]
     x = 0.0 if visibility_km is None else min(1 / visibility_km, inverse[-1])
     column = np.array([np.interp(x, inverse, row) for row in depth])

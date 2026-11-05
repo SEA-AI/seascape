@@ -52,9 +52,10 @@ def _write_thermal(
     Args:
         exr: The float render, radiance in its first channel.
         fmt: The format written; a png holds counts, any other the tone-mapped frame.
-        tone: The camera's AGC, which maps all but a png.
+        tone: The camera's automatic gain control, kelvin to 8-bit grey; a png skips
+            it.
         camera: Whose lens and focal plane the frame goes through.
-        noise: The sensor's noise stream."""
+        noise: Draws the focal plane's temporal noise, its NETD."""
     # cv2 writes the top row first
     radiance = blend.read(exr)[::-1, :, 0].astype(np.float64)
     t_k = microbolometer.seen(radiance, camera, noise)

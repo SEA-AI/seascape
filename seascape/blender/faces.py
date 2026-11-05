@@ -225,8 +225,8 @@ def _input(
     Args:
         mesh: Whose faces are read.
         name: The material; empty or one without a Principled BSDF reads 0.
-        socket: The Principled BSDF input.
-        faces: The faces' indices.
+        socket: The Principled BSDF input's name, such as Metallic.
+        faces: Indices of the mesh's faces that use the material.
         images: Pixels already read, by image name; filled as images are read."""
     shader = bsdf(bpy.data.materials.get(name)) if name else None
     if shader is None:

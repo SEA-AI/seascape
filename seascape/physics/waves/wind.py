@@ -72,7 +72,7 @@ def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
     the same pattern, exactly symmetric about 0.
 
     Args:
-        tile: The pattern to keep."""
+        tile: Any field; only the order of its values survives."""
     ranked = np.empty(tile.size, tile.dtype)
     ranked[np.argsort(tile, axis=None)] = _gaussian_quantiles(tile.size)
     return ranked.reshape(tile.shape)
@@ -99,8 +99,9 @@ def von_karman_field(
     Args:
         rng: Draws the white noise the spectrum shapes.
         cells: The tile's side, in cells.
-        spacing_m: A cell's side.
-        length_m: The spectrum's integral scale."""
+        spacing_m: A cell's side; the tile repeats every cells times spacing_m.
+        length_m: The integral scale, the autocorrelation's integral over lag: how far
+            the field stays alike."""
     k0_rad_m = math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * length_m)
     k = 2 * math.pi * np.fft.fftfreq(cells, spacing_m)
     k_sq = k[:, None] ** 2 + k[None, :] ** 2

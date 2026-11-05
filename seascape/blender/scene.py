@@ -139,8 +139,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with a scenario.
 
     Args:
-        scenario: What to build.
-        band: The band whose cameras the scene is built for.
+        scenario: The sea, sky, hulls and rigs to build, and the times to render.
+        band: `eo` for visible light, `ir` for 8-14 um thermal; only that band's
+            cameras are built, and some rig must carry one.
         cull: Draw only the waves the scenario's own cameras resolve, at their own
             resolution: a camera zoomed, enlarged or added later loses its finest
             ripples."""

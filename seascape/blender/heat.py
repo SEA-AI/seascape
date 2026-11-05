@@ -119,13 +119,17 @@ def zone_skin(
     as deep as one that had sat for hours.
 
     Args:
-        zone_name: The zone whose skin this is.
+        zone_name: A thermal zone, which sets the skin's emissivity, solar
+            absorptance and the interior behind it.
         heat: The environment the balance is struck in, and the bulk water's
             temperature.
-        paint_absorptance: Repaints the zones of `thermal.PAINTED`.
+        paint_absorptance: Solar absorptance of the paint, 0 to 1, on the zones of
+            `thermal.PAINTED`; rounded to 0.01, so near hulls share a skin.
         wet: Below the waterline, the bulk water's; False for a part that never meets
             it.
-        wear_material: The hull's, which mixes in the wear layers.
+        wear_material: What the hull is built of, which mixes in the wear layers. On
+            steel a layer changes only emissivity: the plate spreads its heat
+            (Incropera & DeWitt section 3.6).
         crevice: The asset's crevice mask; required with `wear_material`."""
     zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"
@@ -251,9 +255,10 @@ def _reflecting(
     Shader already weights it by 1 - eps, so a grey would absorb part of it twice.
 
     Args:
-        tree: Where the nodes go.
-        emission: What the surface emits.
-        emissivity: The emission's weight.
+        tree: The hull skin's node tree.
+        emission: The surface's radiance as a blackbody would emit it.
+        emissivity: Fraction of that the surface emits, 0 to 1; by Kirchhoff the
+            rest is what it reflects.
         zone_name: A zone of `SPECULAR_ZONES` reflects as a sharp mirror; any other,
             or None, scatters."""
     white = (1.0, 1.0, 1.0, 1.0)

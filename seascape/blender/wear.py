@@ -209,7 +209,7 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     Args:
         joined: Every mesh of the asset as one, in metres, with the atlas `unwrap`
             wrote.
-        name: The image's, and the bake material's."""
+        name: Names the baked image and the bake's throwaway material."""
     mesh = joined.data
     n_loops = len(mesh.loops)
     uv = faces.floats(mesh.attributes[UV].data, "vector", 3 * n_loops).reshape(-1, 3)

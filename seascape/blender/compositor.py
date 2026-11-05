@@ -82,7 +82,8 @@ def set_output(
     Args:
         outputs: The samples, format and exposure compensation to render with.
         band: The band rendered; ir always writes exr.
-        largest_px: The longest side of any of the band's cameras.
+        largest_px: The longest side of any of the band's cameras, in pixels; the tile
+            size, so a frame renders in one tile.
         graded: Whether any of the band's cameras has a sensor."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
@@ -121,8 +122,8 @@ def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
     """The render as a camera takes it.
 
     Args:
-        compensation_ev: Exposure over auto-exposure; None passes the render as
-            rendered.
+        compensation_ev: Stops over auto-exposure, each doubling the light; None
+            passes the render as rendered.
         graded: Pass the frame through a sensor."""
     tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
     tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
@@ -147,9 +148,10 @@ def _camera(
     constant if a sequence flickers.
 
     Args:
-        tree: Where the nodes go.
-        image: The rendered frame.
-        compensation_ev: Exposure over auto-exposure.
+        tree: The compositor's tree.
+        image: The render's linear radiance, as it reaches the lens.
+        compensation_ev: Stops over auto-exposure, which puts the frame's log-average
+            at mid-grey (Reinhard et al. 2002).
         with_sensor: Add the sensor and ISP after auto-exposure.
     """
     coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})
@@ -206,8 +208,8 @@ def _tone(
     gives sRGB-encoded values, so the Standard view writes the curve's own.
 
     Args:
-        tree: Where the nodes go.
-        image: The exposed frame."""
+        tree: The compositor's tree.
+        image: The exposed frame, linear, white at 1."""
     nodes, links = tree.nodes, tree.links
     encode, decode = (nodes.new("CompositorNodeConvertColorSpace") for _ in range(2))
     encode.to_color_space = decode.from_color_space = "sRGB"
@@ -243,7 +245,7 @@ def _ones_like(
     alone has none.
 
     Args:
-        tree: Where the nodes go.
+        tree: The compositor's tree.
         image: The frame whose size the ones take."""
     return vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
 
@@ -308,8 +310,8 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
     without a compositor takes only the filter.
 
     Args:
-        mount: Whose camera to take.
-        noise: Seeds the sensor noise."""
+        mount: The camera whose lens, sensor and processing the compositor takes.
+        noise: The stream the sensor's noise is seeded from."""
     # A microbolometer integrates over its pixel: Cycles' box filter, a pixel wide.
     cycles = bpy.context.scene.cycles
     props = cycles.bl_rna.properties

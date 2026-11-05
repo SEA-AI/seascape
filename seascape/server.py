@@ -195,7 +195,7 @@ def _tried(
     past the image limit.
 
     Args:
-        path: The scenario file.
+        path: The scenario's TOML file.
         lines: TOML overrides merged over it.
         variants: How many scenes to return; the image and byte totals take the
             largest this many of the seeds tried.

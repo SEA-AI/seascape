@@ -223,10 +223,11 @@ def _thermal(
     The sky alone: `_traced` adds the hulls.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's node tree.
         sea: Its bulk temperature sets the tables' optical constants.
-        normal: The wave normal the pixel draws.
-        unresolved: Unresolved slope variances along and across the view.
+        normal: The wave normal the pixel draws, in world space.
+        unresolved: Variances of the slope finer than the pixel draws, along and
+            across the view.
         slope_max: Total RMS slope the tables span.
         light: The sky, and any clouds, the sea reflects.
         skin: Band radiance the sea emits. The tables keep the bulk's optical
@@ -297,13 +298,13 @@ def _traced(
     besides: hulls, and waves that hide the sky.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's node tree.
         sky: The sea's emission and the sky it reflects, as `_thermal` draws them.
         emissivity: The pixel's, not each facet's own; the lobe is weighted 1 minus it.
         normal: The wave normal the lobe leans about.
         pixel: The footprint whose axes orient the lobe.
-        unresolved: Unresolved slope variances along and across the view, which
-            shape the lobe."""
+        unresolved: Variances of the slope finer than the pixel draws, along and
+            across the view, which shape the lobe."""
     wide, narrow, tangent = _widest(tree, pixel, unresolved)
     roughness, anisotropy = _lobe(tree, wide, _stretchable(tree, wide, narrow))
     lobe = node(
@@ -337,11 +338,11 @@ def _cloud_ratio(
     the world turns its photo.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's node tree.
         sea: Its bulk temperature sets the table's reflectance.
-        clouds: The sky by bearing.
+        clouds: The photo's sky radiance by elevation and bearing, and its turn.
         slope_max: Total RMS slope the table spans.
-        reflected: The ray's mirror direction.
+        reflected: The view ray mirrored in the wave normal, in world space.
         tiles: (coordinate, count) per tile axis, as `_tiled` takes them."""
     turn = node(
         tree,
@@ -405,14 +406,15 @@ def _tiled(
     across tiles, so no tile bleeds into the next.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's node tree.
         image: The table, its tiles stacked up the rows.
         x: Position along a row, in [0, 1].
         row: Position up a tile, in [0, 1].
         rows: Rows per tile.
         tiles: (coordinate, count) per axis, each picking a tile along it, coordinate
             in [0, 1]; the last axis varies fastest.
-        extension: The image's extension along a row."""
+        extension: Blender's image extension along a row: EXTEND holds the edge
+            texel, REPEAT wraps, as a bearing does round the horizon."""
     # Held to texel centres, as EXTEND holds the image's own edges.
     texel = (Num(tree, row) * rows).op("MAXIMUM", 0.5).op("MINIMUM", rows - 0.5)
     height = rows * math.prod(count for _, count in tiles)

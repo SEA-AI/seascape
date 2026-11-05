@@ -74,10 +74,11 @@ def _vessel(
     """A hull fitted and anchored at the origin under an empty.
 
     Args:
-        name: The asset.
+        name: The asset, a key of `assets.toml`.
         condition: How the hull is kept and run; in LWIR, what its skins radiate.
         hulls: Where an asset already imported is copied from.
-        rise_m: Height above the asset's draught."""
+        rise_m: Lift above the asset's draught; the LWIR skin's waterline follows
+            it."""
     heat = hulls.heat
     if name in hulls.imported:
         parts = [_copy_tree(part, None) for part in hulls.imported[name]]

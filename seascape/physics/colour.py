@@ -92,6 +92,7 @@ def tone_curve(tone: Tone, encoded: np.ndarray = TONE_IN) -> np.ndarray:
     """A camera's encoded output. EMoR's is linear between its knots.
 
     Args:
-        tone: The camera's curve: BT.709's OETF or EMoR's mean.
-        encoded: The sRGB-encoded inputs."""
+        tone: BT.709's OETF, HDTV's, or EMoR's mean of measured camera curves
+            (Grossberg & Nayar 2004).
+        encoded: Inputs as sRGB encodes them, 0 to 1, decoded to linear light first."""
     return _CURVES[tone](srgb_decode(encoded))

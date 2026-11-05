@@ -92,7 +92,8 @@ def warm_layer(
     Args:
         solar_w_m2: Net solar at the surface, averaged over the hours.
         cooling_w_m2: Net cooling at the interface, averaged over the hours.
-        stress_m2_s2: The air's u*^2, averaged over the hours.
+        stress_m2_s2: The air's friction velocity squared, u*^2 = stress / density,
+            averaged over the hours.
         hours: Time since the warm layer formed.
         t_sea_k: The sea's, which sets its thermal expansion and the air's density."""
     alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_MS2
@@ -158,6 +159,6 @@ def skin_k(t_sea_k: float, warm_layer_k: float, sun_up: bool) -> float:
     Args:
         t_sea_k: The bulk sea's temperature.
         warm_layer_k: The warm layer's rise, as `warm_layer` gives it.
-        sun_up: Whether the sun thins the cool skin."""
+        sun_up: Takes Fairall et al.'s noon cool skin; false, their night one."""
     cool = COOL_SKIN_DAY_K if sun_up else COOL_SKIN_NIGHT_K
     return t_sea_k + warm_layer_k - cool

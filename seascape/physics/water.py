@@ -23,8 +23,9 @@ def body_color(chl_mg_m3: float, ior: float) -> tuple[float, float, float]:
     incidence. Clipped at 0, where the colour is outside sRGB.
 
     Args:
-        chl_mg_m3: The water's chlorophyll concentration.
-        ior: The surface's refractive index, n."""
+        chl_mg_m3: Chlorophyll in the water, which turns it from clear blue to green.
+        ior: Seawater's refractive index, n, which sets the Fresnel loss on the way
+            out."""
     log_chl = np.log(_CHL_MG_M3)
     rgb = [np.interp(np.log(chl_mg_m3), log_chl, channel) for channel in _RGB]
     t = 1 - ((ior - 1) / (ior + 1)) ** 2

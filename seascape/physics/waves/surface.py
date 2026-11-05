@@ -53,10 +53,11 @@ def gerstner_offset_m(
     water", SIGGRAPH 2001 course, eq. 29, lambda 1).
 
     Args:
-        field: The waves the surface sums.
-        east_m: The water's rest position east.
-        north_m: The water's rest position north.
-        t_s: The instant the surface is taken at."""
+        field: Gerstner waves, whose offsets add.
+        east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
+            round a circle about there.
+        north_m: The same, north.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
     a, k, kx, ky, *_ = columns(field)
@@ -78,10 +79,10 @@ def gerstner_rest_m(
     nanometre. It converges while no crest folds.
 
     Args:
-        field: The waves the surface sums.
-        east_m: The point east.
-        north_m: The point north.
-        t_s: The instant the surface is taken at.
+        field: Gerstner waves, whose offsets add.
+        east_m: The point on the displaced surface, east.
+        north_m: The same, north.
+        t_s: Time; each wave's phase advances at its angular frequency.
         guess: The rest position (east, north) to start from; the point itself if
             None."""
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
@@ -115,10 +116,11 @@ def gerstner_normal(
     of the surface's derivatives along east and north at rest.
 
     Args:
-        field: The waves the surface sums.
-        east_m: The water's rest position east.
-        north_m: The water's rest position north.
-        t_s: The instant the surface is taken at."""
+        field: Gerstner waves, whose offsets add.
+        east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
+            round a circle about there.
+        north_m: The same, north.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
 
@@ -148,10 +150,10 @@ def gerstner_hit(
     the shortest step where that is less; then halved to a micrometre.
 
     Args:
-        field: The waves the surface sums.
+        field: Gerstner waves, whose offsets add.
         origin_m: Where the rays start, 3 x n: east, north, up.
         direction: The rays' unit directions, 3 x n: east, north, up.
-        t_s: The instant the surface is taken at.
+        t_s: Time; each wave's phase advances at its angular frequency.
         step_m: The shortest step along the sea. A crest thinner than it is
             missed."""
     origin, direction = np.asarray(origin_m, float), np.asarray(direction, float)
@@ -234,9 +236,10 @@ def attitude(
     follows it at once: no inertia.
 
     Args:
-        field: The waves the surface sums.
-        hull: The waterplane the plane is fitted over.
-        t_s: The instant the surface is taken at."""
+        field: Gerstner waves, whose offsets add.
+        hull: The rectangle the plane is fitted over; a wave much shorter than it
+            averages out.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     if not field:
         return 0.0, 0.0
     rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
@@ -261,9 +264,10 @@ def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     inertia.
 
     Args:
-        field: The waves the surface sums.
-        hull: The waterplane the height is averaged over.
-        t_s: The instant the surface is taken at."""
+        field: Gerstner waves, whose offsets add.
+        hull: The rectangle the height is averaged over; a wave much shorter than
+            it averages out.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     if not field:
         return 0.0
     rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull

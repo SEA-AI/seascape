@@ -93,7 +93,8 @@ def _smooth_field(
     Args:
         rng: Where the noise comes from.
         cells: The tile's side, in texels.
-        sigma_texels: The Gaussian's width."""
+        sigma_texels: The blur's standard deviation; the field's autocorrelation is a
+            Gaussian sqrt(2) wider, the kernel convolved with itself."""
     k = 2 * np.pi * np.fft.fftfreq(cells)
     blur = np.exp(-(k[:, None] ** 2 + k[None, :] ** 2) * sigma_texels**2 / 2)
     field = np.fft.ifft2(np.fft.fft2(rng.standard_normal((cells, cells))) * blur).real
@@ -144,7 +145,8 @@ def foam_lattice_field(
         cells: The tile's side, in texels.
         tile_m: The tile's side; each bubble size is rounded to divide it.
         cell_sizes_m: Bubble sizes, one Voronoi field of walls each.
-        opening_length_m: The openings' integral scale."""
+        opening_length_m: The openings' integral scale, the length the field's
+            autocorrelation integrates to."""
     walls = np.minimum.reduce(
         [_cell_walls(rng, cells, round(tile_m / size_m)) for size_m in cell_sizes_m]
     )
@@ -249,7 +251,7 @@ def _memory_times(start_s: float, step_s: float, frames: int) -> list[float]:
 
     Args:
         start_s: The first frame's time.
-        step_s: Between frames, and between the fine steps before them.
+        step_s: The frame interval, which the fine steps before the frames keep too.
         frames: How many frames from start_s."""
     fine = math.ceil(FOAM_FINE_WARM_S / step_s)
     early = start_s - FOAM_WARM_EFOLDS * WHITECAP_AREA_EFOLD_S
@@ -274,11 +276,11 @@ def foam_memory(
     Monahan's area e-fold.
 
     Args:
-        wind: The wind sea's waves.
+        wind: The wind sea's waves; their breakers' slope variance sets the edge.
         drift_mps: (east, north): the surface's drift, which the grid moves with.
         grid: Where foam is remembered.
         start_s: The first frame's time; frame i is at start_s + i step_s.
-        step_s: Between frames.
+        step_s: The frame interval, 1 / fps.
         frames: How many frames to yield.
         threshold_g: The downward acceleration at which a crest lays half cover."""
     use = _resolved(wind, grid.cell_m)
@@ -306,9 +308,9 @@ def _reference_accelerations(
     step.
 
     Args:
-        use: The waves that break.
+        use: The wind waves a memory's grid draws.
         drift_mps: (east, north): the surface's drift, which each point moves with.
-        step_s: Between a memory's frames."""
+        step_s: The memory's frame interval, which sets its fine steps."""
     longest_m = max(2 * math.pi / w.k_rad_m for w in use)
     slowest_s = max(2 * math.pi / w.omega_rad_s for w in use)
     x, y, t = (SAMPLE_SPAN * lattice(FOAM_REFERENCE_SAMPLES)).T
@@ -375,10 +377,10 @@ def foam_memory_thresholds_g(
     foam over `FOAM_REFERENCE_STEPS` from a start of its own.
 
     Args:
-        wind: The wind sea's waves.
+        wind: The wind sea's waves; their breakers' slope variance sets the edge.
         drift_mps: (east, north): the surface's drift, which each point moves with.
         cell_m: The memory grid's cell, which sets the waves it draws.
-        step_s: Between the memory's frames.
+        step_s: The memory's frame interval, 1 / fps.
         fractions: The covers wanted; 0 or less gives inf, 1 or more -inf."""
     wanted = np.array(fractions, dtype=float)
     inside = (wanted > 0.0) & (wanted < 1.0)

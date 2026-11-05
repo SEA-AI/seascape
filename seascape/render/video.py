@@ -32,8 +32,9 @@ def encode(
 
     Args:
         run: The render's folder, with its labels.json.
-        quality: A Blender `constant_rate_factor` preset.
-        advance: Runs after each camera's video."""
+        quality: Blender's preset for x264's constant rate factor; `PERC_LOSSLESS`
+            is perceptually lossless.
+        advance: Called after each camera's video is written, to report progress."""
     run = run.resolve()
     settings = agcs(run)
     written = []

@@ -82,7 +82,7 @@ def _remembered(
     aged foam gathered by the windrows, the lace above its quantile covering that share.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         surface: The point shaded, and the drift the memory moves with.
         footprint_m: The pixel's shorter side; a grid is read where it spans under a
             cell.
@@ -210,12 +210,12 @@ def _latticed(
     texture's density about fresh foam's.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         laced: The share of the pixel the foam covers.
         bright: The foam's share of fresh foam's brightness, and so of the area the
             lattice holds.
         texture: The lattice, its density and the pixel's longer side.
-        threshold: The lattice's quantile at bright."""
+        threshold: The lattice's 1 - bright quantile, above which bright of it lies."""
     held = (Num(tree, texture.lattice) - threshold).madd(LATTICE_SHARPNESS, 0.5)
     held.socket.node.use_clamp = True
     # A pixel longer than the lattice's walls draws their mean: from one wall's width,
@@ -292,12 +292,13 @@ def _foam_texture(
     lattice twice more.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         surface: Where the texture lies and drifts.
-        tile: The lace's unit Gaussian tile.
-        rng: Where the lattice comes from.
+        tile: Von Karman noise, zero mean and unit variance, the lace is read from.
+        rng: Draws the lattice's bubbles and openings.
         pixel_m: The pixel's longer side, which fades the lattice.
-        ppf: The unit normal's quantiles."""
+        ppf: The unit normal's 1 - p quantile, tabulated in p: a unit Gaussian tops
+            ppf(p) over p of its area."""
     lattice = curve_image(
         "sea_foam_lattice",
         _unit(
@@ -329,9 +330,9 @@ def _foam_lace(
     with a lattice, rescaled to one.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         surface: Where the lace lies and drifts.
-        tile: A unit Gaussian tile, streaked along the wind.
+        tile: Von Karman noise, zero mean and unit variance, read stretched downwind.
         ragged: A unit Gaussian lattice that frays the lace."""
     east, north = _downwind(surface.sea)
     per_m = 1 / FOAM_TILE_M
@@ -359,9 +360,9 @@ def _foam_lattice(
     """Aged foam's lattice, a unit Gaussian drifting with the surface.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         surface: Where the lattice lies and drifts.
-        tile: The lattice's unit Gaussian tile.
+        tile: `foam_lattice_field`'s walls and openings, ranked onto a unit Gaussian.
         start: The offset, in tiles; reads a quarter tile apart are independent."""
     east, north = _downwind(surface.sea)
     layers = []

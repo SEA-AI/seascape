@@ -132,10 +132,11 @@ def _glitter(
     grids by the local wind if glints should thin in the lulls.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea's material.
         wind: The wind waves, which size the cells and set their twinkle.
-        where: (east, north, time) the shader reads at.
-        pixel: The footprint, which sets n.
+        where: (east m, north m, time s) the shader reads at.
+        pixel: The footprint along and across, m; over a cell's area, their product
+            is n.
         unresolved: The slope variance the lobe would take without the tilts.
         glinting: 1 where a facet can mirror the sun, as `_glinting` gives it; the
             tilts carry variance only there."""
@@ -188,9 +189,9 @@ def _lobe(
     roughness is their geometric mean's square root.
 
     Args:
-        tree: Where the nodes go.
-        along: The variance along the lobe's tangent.
-        across: The variance across it."""
+        tree: The sea's material.
+        along: Slope variance along the lobe's tangent; its root is that axis's alpha.
+        across: Slope variance across the tangent."""
     along, across = (Num(tree, s).op("MAXIMUM", 1e-12) for s in (along, across))
     roughness = (along * across).op("POWER", 0.125).op("MINIMUM", 1.0)
     roughness.socket.node.name = "sea_roughness"
@@ -207,8 +208,8 @@ def _stretchable(
     1 in alpha, 100 in variance.
 
     Args:
-        tree: Where the nodes go.
-        wide: The lobe's wider variance.
+        tree: The sea's material.
+        wide: The lobe's wider slope variance, which bounds the narrower.
         narrow: The variance to hold to a hundredth of the wider."""
     return scalar(tree, "MAXIMUM", narrow, scalar(tree, "MULTIPLY", wide, 0.01))
 

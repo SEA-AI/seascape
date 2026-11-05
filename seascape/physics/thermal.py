@@ -232,7 +232,7 @@ def under(zone: Zone, layer: WearLayer) -> Zone:
     """A zone under a wear layer; the interior stays.
 
     Args:
-        zone: The surface worn.
+        zone: The emissivity and solar absorptance the layer changes.
         layer: Grime raises absorptance and a bare metal's emissivity; rust and soot
             replace the surface."""
     match layer:
@@ -370,8 +370,9 @@ def sky_longwave_w_m2(
 
     Args:
         t_air_k: Surface air temperature.
-        cloud_fraction: The sky's share under cloud.
-        cloud_base_m: Height of the cloud's base.
+        cloud_fraction: The sky's share under cloud, 0 to 1.
+        cloud_base_m: Height of the cloud's base; a higher base is colder, so the
+            8-14 um window loses more.
         fog_cover: The sky's share under fog, a blackbody at the air hiding the
             cloud.
         atmosphere: The LOWTRAN profile whose sky this is."""
@@ -449,10 +450,10 @@ def lit_temperature_k(
     diffuse share stays clear-sky's under cloud, where it rises.
 
     Args:
-        zone: The facets' surface and interior.
+        zone: The facets' absorptance, emissivity, conductance and interior.
         env: The air, sea and sun they balance against.
         sun_cos: max(0, n . s) where sunlit, 0 in shadow.
-        normal_up: The normal's vertical component."""
+        normal_up: The normal's vertical component: 1 sees only sky, -1 only sea."""
     sun_cos = np.asarray(sun_cos, dtype=np.float64)
     up = np.asarray(normal_up, dtype=np.float64)
     t_interior = env.interior_k(zone.interior)

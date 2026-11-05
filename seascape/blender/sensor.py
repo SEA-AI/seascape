@@ -101,14 +101,19 @@ def _read(
     al. 2008): shot noise of variance shot * x, then the well fills, then dark noise.
 
     Args:
-        tree: Where the nodes go.
+        tree: The compositor tree the sensor is built in.
         x: The mean light, in units of white.
-        w: The White Noise W that picks this read's two normals.
-        seeded: The pixel's coordinates, offset by the seed.
-        shot: Shot noise's variance per unit of x.
-        well: The full well, in units of white.
-        dark: Dark noise's standard deviation.
-        levels: The ADC's counts in white."""
+        w: White Noise's fourth coordinate; a read at its own w draws noise
+            independent of every other.
+        seeded: The pixel's coordinates shifted by the seed, so a new seed draws new
+            noise.
+        shot: 1 over the electrons that fill the ADC: Poisson noise's variance per
+            unit of x.
+        well: The most charge a site holds, in units of white: the gain, since the
+            ADC fills at the well over the gain.
+        dark: Dark noise's standard deviation in units of white, the same at any
+            light.
+        levels: The ADC's count at white, 2^bits - 1."""
     shot_noise, dark_noise = _gaussian(tree, seeded, w)
     noisy = dark.madd(dark_noise, _electrons(x, shot, well, shot_noise))
     counts = (noisy * levels).op("ROUND")
@@ -151,9 +156,9 @@ def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Num) -> tuple[Num, Num
     """Two independent standard normals: Box & Muller 1958 from two uniforms.
 
     Args:
-        tree: Where the nodes go.
-        pixel: The noise's position; each pixel draws its own.
-        w: The White Noise W; each value draws its own."""
+        tree: The compositor tree the sensor is built in.
+        pixel: The White Noise position; each pixel draws its own.
+        w: White Noise's fourth coordinate; each value draws its own."""
     uniforms = []
     for offset in (0.0, 0.5):
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
@@ -176,9 +181,10 @@ def chain(
     """An image as the sensor reads it out, in units of its white.
 
     Args:
-        tree: Where the nodes go.
+        tree: The compositor tree the sensor is built in.
         image: The light on the sensor, in units of its white.
-        pixel: The image's integer pixel coordinates.
+        pixel: The image's integer pixel coordinates, which set the Bayer colour
+            and seed the noise.
         grey: Where auto-exposure put the log-average, which HDR's tone map keeps."""
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
@@ -294,7 +300,7 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
     one the dimming takes below white is still left out.
 
     Args:
-        tree: Where the nodes go.
+        tree: The compositor tree the sensor is built in.
         image: The light on the sensor, in units of its white.
         ratio: Where the last read saturates, in whites. Only pixels below it in
             every colour count."""
@@ -337,9 +343,10 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     Tonemap compresses each channel, which bleaches a bright colour.
 
     Args:
-        tree: Where the nodes go.
+        tree: The compositor tree the sensor is built in.
         image: The linear image to tone.
-        grey: Where the log-average lands."""
+        grey: The output the log-average maps to: Reinhard's key a solves
+            a / (1 + a) = grey."""
     lit, average = (Num(tree, s) for s in log_average(tree, image))
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     capped = Num(tree, grey).op("MINIMUM", 0.99)

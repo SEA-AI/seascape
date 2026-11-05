@@ -231,7 +231,7 @@ def _set_triple(
     whatever it fades adds 0.
 
     Args:
-        inputs: A wave group's inputs.
+        inputs: A wave group node's inputs, set as constants.
         triple: The waves, one a lane; None leaves a lane empty.
         damped: The waves a slick calms.
         lift: What each wave adds up its lane: its amplitude for the surface, its
@@ -306,7 +306,7 @@ def _displacement(
     subdivision dices at about a pixel, so the micropolygon's footprint is the pixel's.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         tall: The waves drawn as geometry.
         position: The flat sea's (east, north, time) the offset is taken at."""
     camera = tree.nodes.new("ShaderNodeCameraData")
@@ -398,7 +398,7 @@ def _normal(
     """The normal of what the pixel resolves.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         wind: The wind sea's shaded waves.
         swell: The swell's shaded waves.
         position: The flat sea's (east, north, time) the normal is taken at.

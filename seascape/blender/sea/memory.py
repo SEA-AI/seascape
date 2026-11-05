@@ -79,7 +79,7 @@ def _box(
 
     Args:
         rays: (origin, unit direction, the camera's pixel in rad), as `_rays` gives.
-        cell_m: The lattice the box snaps to.
+        cell_m: The grid's cell; the box's edges snap to its multiples.
         shrink: Each ray reaches out to where its camera's pixel spans 2 * shrink
             cells; 0 keeps only the origins."""
     xs, ys = [], []

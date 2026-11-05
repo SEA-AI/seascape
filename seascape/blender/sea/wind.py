@@ -76,9 +76,9 @@ def _drifting(
     their squared weights so the variance holds.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea's material.
         surface: Where and when the shader reads, and whether the clip loops.
-        tile: The image laid.
+        tile: The image laid, read with repeat so it tiles the sea.
         axes: The tile's two axes, each (east, north) in tiles per metre.
         velocity_mps: (east, north) the tile is carried at.
         start: Offset along both axes, in tiles.
@@ -189,7 +189,7 @@ def _langmuir_rows(
     Give the slicks their own spectrum if the rows read wrong.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea's material.
         surface: Whose wind spaces and carries the rows.
         rng: Draws the windrows first, as every reader reads them first."""
     speed = surface.sea.wind_speed_mps
@@ -227,7 +227,7 @@ def _looked_up_sigma(tile: np.ndarray) -> float:
     form in the neighbours' covariance.
 
     Args:
-        tile: Texel values, (rows, columns)."""
+        tile: Texel values, (rows, columns), wrapped at its edges as repeat reads it."""
     neighbours = np.stack(
         [np.roll(tile, (-dy, -dx), (0, 1)).ravel() for dy in (0, 1) for dx in (0, 1)]
     )
@@ -300,10 +300,10 @@ def _gathered(
     from Beaufort 7's streaks to 8's; none below force 7.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea's material.
         sea: Whose wind sets s.
         footprint_m: A pixel's footprint on the sea; rows too fine for it fade.
-        rows: The row fields that pull."""
+        rows: The windrows and the finer rows, each with its spacing."""
     share = _streaking(sea)
     if share == 0.0:
         return ()
@@ -336,7 +336,7 @@ def _gusty(
     distant gusts shimmer.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea's material.
         sea: Whose mean wind sets the variance a gust adds.
         gust: The wind over its mean, less one, as `_gust` gives it.
         unresolved: The unresolved slope variances along and across the wind, at the

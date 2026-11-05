@@ -163,8 +163,8 @@ def visibility(wavelength_m: np.ndarray, footprint_m: np.ndarray | float) -> np.
     Held at 0 past its first zero, as the shader's.
 
     Args:
-        wavelength_m: The waves' wavelengths.
-        footprint_m: The pixel's footprint on the sea."""
+        wavelength_m: Crest to crest, 2 pi / k.
+        footprint_m: The pixel's extent on the sea across the wave's crests."""
     x = np.asarray(footprint_m) / np.asarray(wavelength_m)
     return np.where(x < 1.0, np.sinc(x), 0.0)
 
@@ -179,7 +179,7 @@ def mss_spread(
     The short waves are taken as isotropic, as for the glitter.
 
     Args:
-        wind_speed_mps: The wind the short waves grow in.
+        wind_speed_mps: The wind at 10 m, U10, which the short waves grow in.
         fetch_m: The distance the wind has blown over; None for a fully developed sea.
         footprint_m: The footprint's geometric mean; it is `SPREAD_ASPECT` times as
             long as it is wide."""
@@ -284,7 +284,7 @@ def drawn_slope_variances(
     Args:
         field: The waves drawn.
         footprint_m: The pixel's length on the sea; 0 draws every wave whole.
-        downwind_rad: The axis the variance is split along."""
+        downwind_rad: The wind's axis, a bearing; from or toward is the same axis."""
     if not field:
         return 0.0, 0.0
     a, k, *_ = columns(field)
@@ -301,9 +301,10 @@ def slick_survivors(
     shortest first.
 
     Args:
-        wind_speed_mps: The wind Cox & Munk's slick fit is taken at.
+        wind_speed_mps: The wind at 10 m, taken to the height Cox & Munk measured at.
         wind: The wind sea a slick damps.
-        axis_rad: The direction the wind's variance lies along."""
+        axis_rad: The wind's axis, a bearing; Cox & Munk's upwind variance lies along
+            it."""
     budget = np.array(cox_munk_slick_variances(wind_speed_mps))
     left: list[Wave] = []
     # Wave by wave, so the cut can leave its last run of the spread one-sided.
@@ -329,10 +330,10 @@ def unresolved_slope_variances(
     missing long waves.
 
     Args:
-        wind_speed_mps: The wind the total is fitted at.
-        downwind_rad: The axis the variance is split along.
+        wind_speed_mps: The wind at 10 m the total is fitted at.
+        downwind_rad: The wind's axis, a bearing; from or toward is the same axis.
         wind: The wind sea's drawn waves.
-        swell: The swell's waves.
+        swell: The swell's waves, whose undrawn part adds to the total.
         footprint_m: The pixel's length on the sea.
         fit: The total slope variance, upwind and crosswind, at a wind speed; Cox &
             Munk's clean sea by default."""

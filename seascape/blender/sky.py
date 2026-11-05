@@ -120,9 +120,9 @@ def _fogged_photo(
     greys with it.
 
     Args:
-        tree: Where the nodes go.
+        tree: The world, or the haze group.
         sky: Whose photo, fog and sun.
-        direction: The ray to look up.
+        direction: The ray, in world axes: X east, Y north, Z up.
         sun_kept: The share of the sun's disc the mist keeps; 0 drops it."""
     colour = _photo(tree, sky, direction)
     horizon = _photo(tree, sky, _horizon(tree, direction))
@@ -190,8 +190,8 @@ def _grey(
     and sky meet without a seam.
 
     Args:
-        tree: Where the nodes go.
-        colour: The clear sky at the horizon ahead."""
+        tree: The world, or the haze group.
+        colour: The clear sky's RGB at the horizon ahead; its luminance is the grey."""
     return node(tree, "ShaderNodeRGBToBW", {"Color": colour}).outputs["Val"]
 
 
@@ -465,9 +465,9 @@ def _cloudy_sky(
     clear sky plus the share of what a whole cloud adds.
 
     Args:
-        tree: Where the nodes go.
+        tree: The IR world, or the haze group.
         sky: Its photo gives the cloud share.
-        direction: The ray to look up."""
+        direction: The ray, a unit vector in world axes: X east, Y north, Z up."""
     share_image, _ = _cloud_images(sky)
     share = _turned(tree, share_image, sky.photo_turn_rad, direction)
     # Linear shows the texel grid where a texel spans several pixels.
@@ -510,7 +510,7 @@ def _bake_cloud_excess(
 
     Args:
         sky: Whose clear sky and haze.
-        genus: The photo's cloud genus.
+        genus: The photo's cloud genus; cirrus has its own radiance and no height.
         rows_rad: Elevation of each row of the cloud image.
         height_m: How far over its base a whole cloud is at each of those rows."""
     elevation = _curve_elevation()
@@ -598,7 +598,7 @@ def _less_sky(
     Outside the haze, as the world's sky is.
 
     Args:
-        tree: Where the nodes go.
+        tree: The haze group.
         sky: The sky the sea's tables hold.
         ahead: The ray's direction, away from the camera.
         shader: The surface to take the sky off."""

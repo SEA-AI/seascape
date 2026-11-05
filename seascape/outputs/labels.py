@@ -145,10 +145,12 @@ class Labels(Model):
         Args:
             camera: The calibration the frame was taken with.
             time_s: When the frame was taken.
-            index: The object-index pass, (height, width), top row first.
+            index: Each pixel's object pass index, 0 for none, (height, width), top
+                row first.
             frame: The image as written, top row first.
-            targets: The targets to label.
-            radius_m: The sea's radius of curvature, for the horizon.
+            targets: The targets to box, each found in `index` by its pass index.
+            radius_m: The earth's radius as refraction bends a ray, R / (1 - k), so
+                the horizon line falls where a camera sees it.
             settings: The scenario's camera, whose sensor, lens and processing an EO
                 image carries, and lens, microbolometer and AGC an LWIR one.
             faint: The targets to drop, by name, each with its excess ΔE*ab."""
@@ -367,7 +369,7 @@ def flank_px(span_px: int) -> int:
     pixels number about the same, and never under FLANK_PX.
 
     Args:
-        span_px: The row's width from the target's first pixel to its last."""
+        span_px: The target's first pixel on the row to its last, gaps included."""
     return max(FLANK_PX, -(-span_px // 2))
 
 
@@ -463,7 +465,7 @@ def agcs(folder: Path) -> dict[str, Agc]:
     refused.
 
     Args:
-        folder: A render's output, holding its labels."""
+        folder: One seed's render output, whose labels record each frame's AGC."""
     found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():

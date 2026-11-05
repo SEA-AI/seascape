@@ -36,7 +36,7 @@ def _pixel(
     resolution, Resolution % included.
 
     Args:
-        tree: Where the nodes go.
+        tree: The sea material's shader tree.
         incoming: Stands in for the Geometry node's Incoming, which a displacement
             shader lacks; None takes the Geometry node's."""
     camera = tree.nodes.new("ShaderNodeCameraData")
@@ -74,9 +74,10 @@ def _instance(
     call adds.
 
     Args:
-        tree: Where the node goes.
-        group: The node group instanced.
-        pixel: The footprint fed in.
+        tree: The sea material's shader tree.
+        group: A wave group, whose Along, Across Sq and Stretch inputs take the
+            footprint.
+        pixel: The footprint, fed as the across side squared and along^2 - across^2.
         calm: Feeds the group's Calm input, which scales the damped waves; None for no
             slick."""
     across_sq = Num(tree, pixel.across_m) * pixel.across_m
@@ -101,8 +102,9 @@ def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types
     over the waves per sample.
 
     Args:
-        name: The image's name.
-        value_at: The value at a footprint, in metres."""
+        name: The table image's name in `bpy.data`.
+        value_at: Its value at a footprint in metres, sampled log-spaced across
+            `FOOTPRINT_RANGE_M`."""
     low, high = FOOTPRINT_RANGE_M
     return curve_image(
         name, np.array([value_at(f) for f in low * (high / low) ** texels()])
@@ -138,9 +140,9 @@ def _redraw(
     floored off 1e-7, and its second.
 
     Args:
-        tree: Where the nodes go.
-        cell: The cell the noise is drawn for.
-        time_s: The time it is drawn at.
+        tree: The sea material's shader tree.
+        cell: Integer cell coordinates; every point in a cell draws the same noise.
+        time_s: The sea's time, in seconds.
         rate: Draws per second, in Hz.
         name: Names the node that counts the draws."""
     offset = node(

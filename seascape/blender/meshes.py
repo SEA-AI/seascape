@@ -334,11 +334,11 @@ def _crevice(
     and cached beside the parse.
 
     Args:
-        name: The asset.
+        name: The asset, a key of `assets.toml`, which names the mask image.
         objects: Its meshes, already fitted.
         scale: The fit's scale, which the bake keys on: the crevice distance is in
             metres.
-        parse: The cached parse the mask is cached beside."""
+        parse: The asset's parse, cached as a .blend, which names the mask's file."""
     crevice = f"{parse.name}.crevice-{scale:.6g}.{wear.CREVICE_FORMAT}.png"
     path = parse.with_name(crevice)
     if path.exists():
