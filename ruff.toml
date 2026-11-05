@@ -17,6 +17,7 @@ select = [
     "C90",  # mccabe
     "PL",  # pylint
     "TID",  # flake8-tidy-imports
+    "D417",  # an `Args:` section lists every parameter
 ]
 ignore = [
     "PLR2004",  # a literal sits beside the source it cites
@@ -27,6 +28,9 @@ ignore = [
 "seascape/cli.py" = ["PLC0415"]
 # Imported where used, so `docs.hero` loads without supervision.
 "docs/hero.py" = ["PLC0415"]
+
+[lint.pydocstyle]
+convention = "google"
 
 [lint.pylint]
 max-args = 8

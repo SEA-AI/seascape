@@ -117,9 +117,13 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
 
 
 def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
-    """The finest pixel any camera `seen` lays on the sea in any frame: its height over
-    the sea below it, which the curved sea's crests come no nearer than, times the
-    angle of a pixel."""
+    """The finest pixel any camera lays on the sea in any frame: its height over the
+    sea below it, which the curved sea's crests come no nearer than, times the angle
+    of a pixel.
+
+    Args:
+        scenario: Whose waves and Earth curve the sea.
+        seen: Every camera's pose in every frame."""
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     tall, _ = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     crest_m = sum(w.amplitude_m for w in tall)
@@ -132,10 +136,14 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
-    """Replace the current Blender session's contents with `scenario` in one band.
+    """Replace the current Blender session's contents with a scenario.
 
-    `cull` draws only the waves the scenario's own cameras resolve, at their own
-    resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
+    Args:
+        scenario: What to build.
+        band: The band whose cameras the scene is built for.
+        cull: Draw only the waves the scenario's own cameras resolve, at their own
+            resolution: a camera zoomed, enlarged or added later loses its finest
+            ripples."""
     mounts = scenario.band_mounts(band)
     if not mounts:
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
