@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from itertools import chain
 
 import bpy
+import numpy as np
 from mathutils import Matrix
 
 from seascape.blender import sea
@@ -73,6 +74,16 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     )
 
 
+def look_through(
+    cameras: dict[str, bpy.types.Object], mount: Mount, rng: np.random.Generator
+) -> None:
+    sc = bpy.context.scene
+    sc.camera = cameras[mount.name]
+    sc.render.resolution_x = mount.camera.width_px
+    sc.render.resolution_y = mount.camera.height_px
+    respond(mount, rng)
+
+
 def _rows(m: Matrix) -> Matrix4:
     x, y, z, w = map(tuple, m)
     return x, y, z, w
@@ -125,7 +136,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
 
     `cull` draws only the waves the scenario's own cameras resolve, at their own
     resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
-    mounts = [m for m in scenario.mounts if m.camera.band == band]
+    mounts = scenario.band_mounts(band)
     if not mounts:
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -142,15 +153,13 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
-    hulls = Hulls(scenario.worn)
-    tall, _ = sea.displaced((wind, swell))
     heat = surroundings(scenario) if band == "ir" else None
-    vessel = add_ownship(
-        scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
-    )
+    hulls = Hulls(scenario.sky, heat, scenario.worn)
+    tall, _ = sea.displaced((wind, swell))
+    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall)
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     trails: list[wakes.Wake] = []
-    vessels, turbines = add_vessels(scenario, radius_m, heat, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
@@ -185,16 +194,11 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
     first = mounts[0]
-    sc = bpy.context.scene
-    sc.camera = rigs.cameras[first.name]
-    sc.render.resolution_x, sc.render.resolution_y = (
-        first.camera.width_px,
-        first.camera.height_px,
-    )
-    respond(first, substream(scenario.seed, f"sensor/{first.name}"))
+    look_through(rigs.cameras, first, substream(scenario.seed, f"sensor/{first.name}"))
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
+    sc = bpy.context.scene
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0

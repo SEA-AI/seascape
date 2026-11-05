@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from seascape.outputs import labels
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 
 COLUMNS = [
     "counter",
@@ -51,9 +51,6 @@ COLUMNS = [
 
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
-
-# The recording's camera frame, +X right, +Y forward, +Z up, as OpenCV's axes.
-_BODY_TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
@@ -115,7 +112,7 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
-    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ _BODY_TO_CV)
+    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw

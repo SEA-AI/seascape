@@ -610,9 +610,8 @@ def test_a_foam_memory_covers_none_of_the_sea_or_all_of_it() -> None:
 def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected):
     wave = waves.Wave(0.5, 0.2, math.radians(toward_deg), 1.0)  # 1.5 km long
     east, north, t_s = 30.0, -40.0, 3.0
-    pitch, roll = waves.attitude(
-        (wave,), east, north, math.radians(heading_deg), 20.0, 5.0, t_s
-    )
+    hull = waves.Waterplane(east, north, math.radians(heading_deg), 20.0, 5.0)
+    pitch, roll = waves.attitude((wave,), hull, t_s)
     d_east, d_north = waves.slope((wave,), np.array(east), np.array(north), t_s)
     heading = math.radians(heading_deg)
     rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
@@ -630,7 +629,8 @@ def test_a_hull_floats_at_the_mean_of_the_water_under_it(length_m: float) -> Non
         1e-3, math.sqrt(earth.GRAVITY_MS2 * 2 * math.pi / 60.0), math.radians(30.0), 0.7
     )
     east, north, t_s = 12.0, -7.0, 2.5
-    heave = waves.heave_m((wave,), east, north, math.radians(30.0), length_m, 0.0, t_s)
+    hull = waves.Waterplane(east, north, math.radians(30.0), length_m)
+    heave = waves.heave_m((wave,), hull, t_s)
     phase = wave.k_east_rad_m * east + wave.k_north_rad_m * north
     phase -= wave.omega_rad_s * t_s - wave.phase_rad
     mean = np.sinc(wave.k_rad_m * length_m / 2 / math.pi)
@@ -641,7 +641,7 @@ def test_a_point_floats_on_the_gerstner_surface() -> None:
     tall = _tall(14.0)
     rest = waves.gerstner_rest_m(tall, np.array(30.0), np.array(-40.0), 3.0)
     water = waves.gerstner_offset_m(tall, *rest, 3.0)[2]
-    heave = waves.heave_m(tall, *map(float, rest), 1.0, 0.0, 0.0, 3.0)
+    heave = waves.heave_m(tall, waves.Waterplane(*map(float, rest), 1.0), 3.0)
     assert heave == pytest.approx(water)
 
 
@@ -653,17 +653,20 @@ def test_a_hull_pitches_with_the_water_under_it() -> None:
     hull = np.zeros(()), np.array(-wave.amplitude_m)
     rest = waves.gerstner_rest_m((wave,), *hull, 0.0)
     assert np.allclose(rest, 0.0)
-    pitch, _ = waves.attitude((wave,), *map(float, rest), 0.0, 0.0, 0.0, 0.0)
+    pitch, _ = waves.attitude((wave,), waves.Waterplane(*map(float, rest)), 0.0)
     assert pitch == pytest.approx(math.atan(-0.2))
 
 
 def test_calm_water_holds_a_hull_level() -> None:
-    assert waves.attitude((), 0.0, 0.0, 0.0, 20.0, 5.0, 0.0) == (0.0, 0.0)
+    hull = waves.Waterplane(0.0, 0.0, 0.0, 20.0, 5.0)
+    assert waves.attitude((), hull, 0.0) == (0.0, 0.0)
 
 
 def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     ripple = waves.Wave(0.05, math.sqrt(earth.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
-    pitch, roll = waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0)
+    pitch, roll = waves.attitude(
+        (ripple,), waves.Waterplane(3.0, 4.0, 0.0, 20.0, 5.0), 1.0
+    )
     own_slope = ripple.amplitude_m * ripple.k_rad_m
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
 
@@ -686,9 +689,8 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
     _, rise_along, rise_across = np.linalg.lstsq(
         plane, waves.height_m(sea, x, y, t), rcond=None
     )[0]
-    pitch, roll = waves.attitude(
-        sea, float(rest_east), float(rest_north), heading, length, beam, t
-    )
+    hull = waves.Waterplane(float(rest_east), float(rest_north), heading, length, beam)
+    pitch, roll = waves.attitude(sea, hull, t)
     assert (pitch, roll) == pytest.approx(
         (math.atan(rise_along), math.atan(rise_across)), abs=1e-5
     )

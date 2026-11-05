@@ -725,6 +725,11 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
         _ = sky.sun_vector
 
 
+def test_a_sky_texture_has_no_photo() -> None:
+    with pytest.raises(ValueError, match="no photo"):
+        _ = Sky().photo
+
+
 def test_a_hidden_sun_sits_where_the_scenario_puts_it() -> None:
     sky = Sky.model_validate(
         {"hdri": "overcast_soil", "sun_diffuse_fraction": 0.7, "sun_elevation_deg": 20}

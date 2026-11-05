@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from seascape.outputs import recording
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
 from seascape.physics import earth
 
@@ -49,7 +49,7 @@ RADIUS_M = earth.earth_radius_m(0.13)
 
 def make_run(into: Path, camera_yaw_deg: float) -> Path:
     """Stand-ins for a render: one camera in a pod on a rolling hull."""
-    body_to_cv = pose(recording._BODY_TO_CV)
+    body_to_cv = pose(TO_CV)
     camera_to_pod = pose(
         rotation(0, CAMERA_PITCH_DEG, camera_yaw_deg), (0.1, 0, 0)
     ) @ np.linalg.inv(body_to_cv)

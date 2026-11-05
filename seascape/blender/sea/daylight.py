@@ -203,7 +203,7 @@ def _daylight(
     tangent: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
     whitecaps: _Whitecaps,
-    wake: _Wakes | None = None,
+    wake: _Wakes | None,
 ) -> bpy.types.NodeSocket:
     """Water reflecting at seawater's IOR over its body's colour, white where its crests
     break and where a hull leaves foam.

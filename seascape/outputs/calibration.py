@@ -5,6 +5,7 @@ Imports no Blender, so a consumer reads it without the bpy wheel.
 
 from pathlib import Path
 
+import numpy as np
 from pydantic import ConfigDict, Field
 
 from seascape.model import Model
@@ -15,6 +16,9 @@ type Row3 = tuple[float, float, float]
 type Row4 = tuple[float, float, float, float]
 type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
+
+# A +X right, +Y ahead, +Z up frame's axes as OpenCV's: +X right, +Y down, +Z ahead.
+TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
 def write_json(model: Model, path: Path) -> Path:

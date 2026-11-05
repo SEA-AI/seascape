@@ -216,8 +216,8 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
     return group
 
 
-def _lanes(triple: Triple, value: Callable[[Wave], float], pad: float = 0.0) -> tuple:
-    return tuple(pad if wave is None else value(wave) for wave in triple)
+def _lanes(triple: Triple, value: Callable[[Wave], float]) -> tuple:
+    return tuple(0.0 if wave is None else value(wave) for wave in triple)
 
 
 def _set_triple(
@@ -376,8 +376,8 @@ def _normal(
     swell: tuple[Wave, ...],
     position: bpy.types.NodeSocket,
     pixel: _Pixel,
-    calm: bpy.types.NodeSocket | None = None,
-    damped: frozenset[Wave] = frozenset(),
+    calm: bpy.types.NodeSocket | None,
+    damped: frozenset[Wave],
 ) -> bpy.types.NodeSocket:
     """The normal of what the pixel resolves at `position`; `calm` scales the `damped`
     waves."""

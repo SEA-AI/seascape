@@ -16,7 +16,7 @@ import numpy as np
 
 from seascape.config import Agc
 from seascape.outputs import agc
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import agcs
 from seascape.outputs.montage import INK, MATTE
 
@@ -29,9 +29,6 @@ PROJECTIONS = {
 
 TICK_DEG = 10
 LABEL_DEG = 30
-
-# The stitcher's frame is +X right, +Y down, +Z ahead.
-_TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
 def rotation(camera: CameraCalibration, frame: str) -> np.ndarray:
@@ -52,7 +49,7 @@ def pose(
     turn = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
     return (
         np.array(camera.K, np.float32),
-        np.array(_TO_CV @ turn @ rotation(camera, frame), np.float32),
+        np.array(TO_CV @ turn @ rotation(camera, frame), np.float32),
     )
 
 

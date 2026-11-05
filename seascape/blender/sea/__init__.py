@@ -66,6 +66,7 @@ from seascape.blender.sea.wind import (
     _gust,
     _langmuir_rows,
     _slick,
+    _Surface,
     _unit,
     surface_drift,
 )
@@ -93,9 +94,6 @@ class Seen(NamedTuple):
 
     finest_footprint_m: float = 0.0
     foam_grids: tuple[FoamGrid, ...] = ()
-
-
-UNSEEN = Seen()
 
 
 def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocket:
@@ -129,7 +127,7 @@ def material(
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
     wakes: tuple[Wake, ...],
     light: Light,
-    seen: Seen = UNSEEN,
+    seen: Seen,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
     `rngs` draw its gusts, its windrows and its foam, whose whitecaps are remembered on
@@ -151,7 +149,8 @@ def material(
     )
     tall, shaded = displaced(drawn)
     position = _flat(tree, time_s)
-    rows = _langmuir_rows(tree, sea, position, outputs, slick_rng)
+    surface = _Surface(sea, position, outputs)
+    rows = _langmuir_rows(tree, surface, slick_rng)
     gust_max, gust, slick, tile = 0.0, None, None, None
     if speed > 0.0:
         tile = _unit(
@@ -159,7 +158,7 @@ def material(
         )
         # A crossfade reaches sqrt(2) of the tile's peak at most.
         gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
-        gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
+        gust = _gust(tree, surface, curve_image("sea_gust", tile))
         slick = _slick(tree, sea, rows)
     # Made where foam shows: an image nothing reads is not saved. Whitecaps and wakes
     # threshold the tile by the unit normal's quantiles.
@@ -202,15 +201,11 @@ def material(
     whitecaps = (
         _remembered(
             tree,
-            sea,
-            outputs,
-            position,
+            surface,
             pixel.across_m,
             _foam_texture(
                 tree,
-                sea,
-                position,
-                outputs,
+                surface,
                 foam(),
                 # Its own stream, so the lace's draws stay as they were.
                 foam_rng.spawn(1)[0],
@@ -280,7 +275,6 @@ def material(
 
 __all__ = [
     "FOAM_SEAM_CELLS",
-    "UNSEEN",
     "Clouds",
     "Light",
     "Seen",
