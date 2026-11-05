@@ -97,6 +97,11 @@ def curve_image(
     return image
 
 
+def texels(count: int = CURVE_SAMPLES) -> np.ndarray:
+    """Where `lookup` reads each of `count` texels across [0, 1] at its own value."""
+    return (np.arange(count) + 0.5) / count
+
+
 def lookup(
     tree: bpy.types.NodeTree,
     image: bpy.types.Image,

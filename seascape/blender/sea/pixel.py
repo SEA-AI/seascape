@@ -8,7 +8,6 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
-    CURVE_SAMPLES,
     Num,
     curve_image,
     drive,
@@ -16,6 +15,7 @@ from seascape.blender.blend import (
     node,
     scalar,
     separate,
+    texels,
     vector,
 )
 
@@ -89,9 +89,8 @@ def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types
     """`value_at` baked against log footprint: one lookup, not a sum over the waves per
     sample."""
     low, high = FOOTPRINT_RANGE_M
-    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     return curve_image(
-        name, np.array([value_at(f) for f in low * (high / low) ** texel])
+        name, np.array([value_at(f) for f in low * (high / low) ** texels()])
     )
 
 

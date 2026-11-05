@@ -10,7 +10,6 @@ from mathutils import Vector
 from seascape.assets import download, skies
 from seascape.blender import sea
 from seascape.blender.blend import (
-    CURVE_SAMPLES,
     SUN,
     Num,
     clamped,
@@ -22,6 +21,7 @@ from seascape.blender.blend import (
     pixels,
     scalar,
     separate,
+    texels,
     value,
     vector,
 )
@@ -336,8 +336,7 @@ def _sky_ahead(
 
 def _haze_ranges_m(far_m: float) -> np.ndarray:
     """Texel centres of the LWIR depth table, log-spaced out to the far plane."""
-    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    return HAZE_NEAR_M * (far_m / HAZE_NEAR_M) ** texel
+    return HAZE_NEAR_M * (far_m / HAZE_NEAR_M) ** texels()
 
 
 def _optical_depth(
@@ -397,7 +396,7 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
 
 def _curve_elevation() -> np.ndarray:
     """The elevation at each texel centre of a curve baked against sin(elevation)."""
-    return np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
+    return np.arcsin(texels())
 
 
 def _table_sky(sky: Sky, elevation: np.ndarray) -> np.ndarray:
@@ -440,7 +439,7 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     f = max(1, w // THERMAL_SKY_PX)
     cloud = cv2.resize(share, (w // f, h // f), interpolation=cv2.INTER_AREA)
     rows = cloud.shape[0]
-    elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
+    elevation = np.radians(texels(rows) * 180.0 - 90.0)
     # One height a row keeps cloud a function of elevation, as the world draws it:
     # radiance is close to linear over a cloud's few kelvin.
     genus = photo_sky.cloud_genus
@@ -526,7 +525,7 @@ def _clouds(sky: Sky) -> sea.Clouds | None:
     rgba = pixels(image)
     h = rgba.shape[0]
     # Bottom row first, as `_cloud_images` lays it out.
-    elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
+    elevation = np.radians(texels(h) * 180.0 - 90.0)
     radiance = rgba[..., 0].astype(np.float64)
     return sea.Clouds(
         elevation, radiance, _photo_turn_rad(sky.hdri, sky.sun_bearing_deg)
