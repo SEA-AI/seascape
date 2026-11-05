@@ -9,6 +9,7 @@ from pydantic import (
 )
 
 from seascape.model import Model
+from seascape.physics import fisheye
 from seascape.physics.colour import Tone
 
 type Band = Literal["eo", "ir"]
@@ -80,6 +81,11 @@ class Lens(Model):
         description="The lens's f-number, which blurs each colour by its diffraction "
         "pattern. It needs sensor.pitch_um. Only png and jpg output use it. An LWIR "
         "camera sets microbolometer.f_number instead.",
+    )
+    fisheye: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="OpenCV's fisheye k1..k4, all 0 for an equidistant lens. Unset, "
+        "a pinhole. hfov_deg is then the field angle across the image width.",
     )
 
 
@@ -276,7 +282,22 @@ class Camera(Model):
             raise ValueError("lens.f_number needs a sensor.pitch_um")
         if self.sensor.full_well_e is None and isp != Processing():
             raise ValueError("white balance and sharpening need a sensor.full_well_e")
+        if (k := self.lens.fisheye) is not None:
+            # Limitation: the falloff is the pinhole's cos^4 of tan(theta) = r / f.
+            if self.lens.vignetting:
+                raise ValueError("lens.vignetting needs a pinhole camera")
+            fisheye.polynomial(
+                k, self.fisheye_focal_px, self.width_px, self.height_px, 1.0
+            )
         return self
+
+    @property
+    def fisheye_focal_px(self) -> float:
+        """A fisheye's `fx`, the scale of its distorted angle in pixels."""
+        assert self.lens.fisheye is not None
+        return fisheye.focal_px(
+            math.radians(self.hfov_deg), self.width_px, self.lens.fisheye
+        )
 
 
 class Rig(Model):

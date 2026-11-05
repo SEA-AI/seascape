@@ -14,7 +14,7 @@ from seascape.blender.rigs import View
 from seascape.blender.sea.foam import FOAM_SEAM_CELLS
 from seascape.blender.sea.wind import surface_drift
 from seascape.config import Outputs, Scenario, Sea
-from seascape.physics import earth, waves
+from seascape.physics import earth, fisheye, waves
 from seascape.physics.waves import (
     FoamGrid,
     Wave,
@@ -51,25 +51,29 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
     rays = []
     for view in seen:
         turn = view.matrix.to_3x3()
-        camera = view.mount.camera
-        # Not `view_frame`: it takes the scene's aspect, which the build sets last.
-        across = math.tan(view.angle_x_rad / 2)
-        up = across * camera.height_px / camera.width_px
-        corners = [
-            Vector((x * across, y * up, -1.0))
-            for x, y in ((1, 1), (1, -1), (-1, -1), (-1, 1))
-        ]
         # Water at x is on the grid at x - v t.
         origin = view.matrix.translation - Vector(
             (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
         )
-        for a in np.linspace(0.0, 1.0, FOAM_RAYS):
-            for b in np.linspace(0.0, 1.0, FOAM_RAYS):
-                toward = (corners[2].lerp(corners[1], a)).lerp(
-                    corners[3].lerp(corners[0], a), b
-                )
-                rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
+        for toward in _frame(view):
+            rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
     return rays
+
+
+def _frame(view: View) -> list[Vector]:
+    """Directions across the camera's frame, `FOAM_RAYS` a side, in its own frame."""
+    camera = view.mount.camera
+    steps = np.linspace(-1.0, 1.0, FOAM_RAYS)
+    if camera.lens.fisheye is not None:
+        x, y = np.meshgrid(steps * camera.width_px / 2, steps * camera.height_px / 2)
+        rays = fisheye.direction(
+            x.ravel(), y.ravel(), camera.lens.fisheye, camera.fisheye_focal_px
+        )
+        return [Vector(d) for d in rays]
+    # Not `view_frame`: it takes the scene's aspect, which the build sets last.
+    across = math.tan(view.angle_x_rad / 2)
+    up = across * camera.height_px / camera.width_px
+    return [Vector((x * across, y * up, -1.0)) for x in steps for y in steps]
 
 
 def _box(

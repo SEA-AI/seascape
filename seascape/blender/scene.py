@@ -54,7 +54,10 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     vessel = built.vessel.matrix_world
     rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
-    f = (width / 2) / math.tan(camera.data.angle_x / 2)
+    if mount.camera.lens.fisheye is None:
+        f = (width / 2) / math.tan(camera.data.angle_x / 2)
+    else:
+        f = mount.camera.fisheye_focal_px
     return CameraCalibration(
         name=mount.name,
         band=mount.camera.band,
@@ -67,6 +70,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         # Blender's frame spans pixel edges, so its centre is half a pixel past
         # OpenCV's.
         K=((f, 0.0, (width - 1) / 2), (0.0, f, (height - 1) / 2), (0.0, 0.0, 1.0)),
+        distortion=mount.camera.lens.fisheye,
         extrinsics={
             "world": _rows(world),
             "vessel": _rows(vessel.inverted() @ world),
