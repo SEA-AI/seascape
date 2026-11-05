@@ -823,9 +823,6 @@ def test_a_log_uniform_draw_refuses_bounds_it_cannot_draw_between(
         LogUniform(log_uniform=bounds)
 
 
-SHIP = 'objects = [{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }]'
-
-
 def test_count_makes_copies_each_drawn_anew() -> None:
     drawn = (
         'objects = [{ asset = "yacht", count = 3, '

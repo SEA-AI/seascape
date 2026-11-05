@@ -158,11 +158,7 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
     """A tilted facet reflects a different sky elevation, cold overhead to ambient at
     the horizon, so relief shows without `t_sea_k - t_air_k`.
     """
-    isothermal = SCENARIO.model_copy(
-        update={
-            "sea": SCENARIO.sea.model_copy(update={"t_sea_k": SCENARIO.sky.t_air_k})
-        }
-    )
+    isothermal = _clear(variant(sea={"t_sea_k": SCENARIO.sky.t_air_k}))
 
     rippled, flat = sea_of(isothermal, True), sea_of(isothermal, False)
 
@@ -264,7 +260,6 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     camera = probe(overhead(px * grid.cell_m, eo_pixel_rad(clip), px))
     sc = bpy.context.scene
     sc.cycles.filter_width = 0.01  # the pixel centre, a cell's centre
-    sc.view_settings.view_transform = "Standard"
     drift = sea.surface_drift(clip.sea, clip.outputs)
     assert drift != (0.0, 0.0)
     first = Path(bpy.path.abspath(texture.image.filepath))
@@ -304,7 +299,6 @@ def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     probe(lens, at=(0.0, 0.0, height_m))
     sc = bpy.context.scene
     sc.cycles.filter_width = 0.01
-    sc.view_settings.view_transform = "Standard"
     rendered = shoot((px, px), "roughness_probe")
 
     centres = (np.arange(px) + 0.5) * span_m / px - span_m / 2
@@ -397,7 +391,6 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     camera = probe(lens, at=(0.0, 0.0, 10.0), pitch_deg=87.0)
     sc = bpy.context.scene
     sc.cycles.filter_width = 0.01
-    sc.view_settings.view_transform = "Standard"
     px = (32, 24)
     rendered = shoot(px, "anisotropy_probe")
     met = _met(tree, emission, px)
@@ -608,9 +601,7 @@ def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
 
 def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     # Nothing but sea in view: a lit hull would count as foam.
-    windy = SCENARIO.model_copy(
-        update={"sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0})}
-    )
+    windy = _clear(variant(sea={"wind_speed_mps": 15.0}))
     scene.build(windy, "eo")
     tree = bpy.data.materials["sea"].node_tree
     show_sea(tree.nodes["whitecaps"].outputs["Value"])
@@ -618,7 +609,6 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
     probe(overhead(1500.0, eo_pixel_rad(windy), px), at=(0.0, 0.0, 10.0))
     sc = bpy.context.scene
     sc.cycles.filter_width = 0.01
-    sc.view_settings.view_transform = "Standard"
     covered = float(np.mean(shoot((px, px), "whitecap_probe")))
     assert covered == pytest.approx(waves.whitecap_fraction(15.0), rel=0.2)
 
@@ -627,14 +617,11 @@ def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     """Straight down, a pixel half a wall across and one three walls across: the
     first draws the lattice, the second its mean, aged foam's grey, at fresh foam's
     albedo."""
-    windy = SCENARIO.model_copy(
-        update={"sea": SCENARIO.sea.model_copy(update={"wind_speed_mps": 15.0})}
-    )
+    windy = _clear(variant(sea={"wind_speed_mps": 15.0}))
     scene.build(windy, "eo")
     tree = bpy.data.materials["sea"].node_tree
     sc = bpy.context.scene
     sc.cycles.filter_width = 0.01
-    sc.view_settings.view_transform = "Standard"
     height_m, span_m, px = 10.0, 40.0, 64
 
     def read(footprint_m: float, name: str) -> np.ndarray:
