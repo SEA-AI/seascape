@@ -67,7 +67,8 @@ def test_fetch_downloads_once(one: Path) -> None:
     assert assets.fetch("ship") == first
 
 
-def test_fetch_replaces_a_cache_that_misses_the_digest(one: Path) -> None:
+@pytest.mark.usefixtures("one")
+def test_fetch_replaces_a_cache_that_misses_the_digest() -> None:
     assets.fetch("ship").write_bytes(b"an older mesh")
     assert assets.fetch("ship").read_bytes() == BODY
 
@@ -89,10 +90,11 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     assert not list(assets.CACHE.glob("*.part"))
 
 
+@pytest.mark.usefixtures("one")
 def test_a_download_cut_off_mid_write_leaves_no_part(
-    one: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def cut_off(source: object, out: BinaryIO) -> None:
+    def cut_off(_source: object, out: BinaryIO) -> None:
         out.write(BODY[:1])
         raise OSError("connection reset")
 

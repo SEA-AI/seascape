@@ -25,10 +25,11 @@ COARE_K = 302.15
 
 
 @pytest.mark.parametrize(
-    ("wind", "cooling", "stress", "depth", "trapped", "rise"), TABLE_3
+    ("cooling", "stress", "depth", "trapped", "rise"),
+    [row[1:] for row in TABLE_3],
+    ids=[f"{row[0]:g} m/s" for row in TABLE_3],
 )
 def test_the_warm_layer_reproduces_fairall_s_clear_day(
-    wind: float,
     cooling: float,
     stress: float,
     depth: float,

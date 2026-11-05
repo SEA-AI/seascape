@@ -137,13 +137,13 @@ def upstream(socket: bpy.types.NodeSocket) -> set[str]:
 
 
 _MATH = {
-    "ADD": lambda a, b, c: a + b,
-    "SUBTRACT": lambda a, b, c: a - b,
-    "MULTIPLY": lambda a, b, c: a * b,
+    "ADD": lambda a, b, *_: a + b,
+    "SUBTRACT": lambda a, b, *_: a - b,
+    "MULTIPLY": lambda a, b, *_: a * b,
     "MULTIPLY_ADD": lambda a, b, c: a * b + c,
-    "FRACT": lambda a, b, c: a - math.floor(a),
-    "ABSOLUTE": lambda a, b, c: abs(a),
-    "ARCTAN2": lambda a, b, c: math.atan2(a, b),
+    "FRACT": lambda a, *_: a - math.floor(a),
+    "ABSOLUTE": lambda a, *_: abs(a),
+    "ARCTAN2": lambda a, b, *_: math.atan2(a, b),
 }
 
 
@@ -1277,7 +1277,7 @@ class TestAnimate:
             assert empty.matrix_world.translation.x == pytest.approx(x)
 
     def test_a_still_is_set_and_not_keyed(self, empty) -> None:
-        blend.animate(empty, "location", [0.0], lambda t: (1.0, 2.0, 3.0))
+        blend.animate(empty, "location", [0.0], lambda _t: (1.0, 2.0, 3.0))
         assert tuple(empty.location) == (1.0, 2.0, 3.0)
         assert empty.animation_data is None
 

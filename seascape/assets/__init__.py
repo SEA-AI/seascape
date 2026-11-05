@@ -12,7 +12,7 @@ from abc import abstractmethod
 from collections import Counter
 from functools import cache
 from pathlib import Path, PurePosixPath
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Literal, override
 
 from pydantic import Field, TypeAdapter, field_validator, model_validator
 
@@ -282,6 +282,7 @@ class Turbine(_Mesh):
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.height_m / size[2]
 
+    @override
     def centre(
         self, low: tuple[float, float, float], high: tuple[float, float, float]
     ) -> tuple[float, float]:

@@ -219,7 +219,7 @@ def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
 def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
     state: server.State, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def render(*args: str) -> None:  # Blender's frames, without Blender
+    async def render(*_args: str) -> None:  # Blender's frames, without Blender
         (job,) = state.jobs.values()
         for scene in job.scenes:
             folder = job.folder / str(scene.seed)  # as `render --variants` names it
@@ -364,7 +364,9 @@ def test_a_waiting_result_reports_progress(
     reported: list[tuple[float, float | None]] = []
 
     async def progress(
-        progress: float, total: float | None, message: str | None
+        progress: float,
+        total: float | None,
+        message: str | None,  # noqa: ARG001  # `ProgressFnT` names it
     ) -> None:
         reported.append((progress, total))
 
