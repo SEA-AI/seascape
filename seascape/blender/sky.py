@@ -87,10 +87,9 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
 
 
 def _add_hidden_sun(sky: Sky) -> None:
-    assert sky.hdri is not None
     assert sky.sun_diffuse_fraction is not None
     assert sky.sun_elevation_deg is not None
-    diffuse = skies.library()[sky.hdri].diffuse_irradiance
+    diffuse = sky.photo.diffuse_irradiance
     assert diffuse is not None
     beam = solar.beam_normal(
         diffuse, sky.sun_diffuse_fraction, math.radians(sky.sun_elevation_deg)
@@ -118,13 +117,12 @@ def _fogged_photo(
 ) -> bpy.types.NodeSocket:
     """The photo in `direction` misted, its sun's disc keeping `sun_kept` of itself. A
     sun behind cloud greys with it."""
-    assert sky.hdri is not None
     colour = _photo(tree, sky, direction)
     horizon = _photo(tree, sky, _horizon(tree, direction))
     misted = _misted(tree, sky, colour, horizon)
     # The mist keeps 1 - fog_weight of the disc.
     extra = sun_kept - (1.0 - sky.fog_weight)
-    floor = skies.library()[sky.hdri].sun_floor
+    floor = sky.photo.sun_floor
     if floor is None or not extra:
         return misted
     unit = vector(tree, "NORMALIZE", direction)
@@ -418,8 +416,7 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     rgba = pixels(photo)
     bpy.data.images.remove(photo)
     # Bottom row first, as Blender stores an image; `skies` reads top row first.
-    photo_sky = skies.library()[sky.hdri]
-    share = skies.cloud(rgba[::-1, :, :3], photo_sky)[::-1]
+    share = skies.cloud(rgba[::-1, :, :3], sky.photo)[::-1]
     # Judgement: steps of 1/255 of a whole cloud, for a quarter of a float image.
     share_image = curve_image("cloud_share", share, float_buffer=False)
     h, w = share.shape
@@ -429,7 +426,7 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     elevation = np.radians(texels(rows) * 180.0 - 90.0)
     # One height a row keeps cloud a function of elevation, as the world draws it:
     # radiance is close to linear over a cloud's few kelvin.
-    genus = photo_sky.cloud_genus
+    genus = sky.photo.cloud_genus
     height = np.zeros(rows)
     if genus != "cirrus":
         _, top = lwir.CLOUD_LAYER_M[genus]

@@ -303,13 +303,16 @@ class Sky(Model):
         )
 
     @property
+    def photo(self) -> skies.Photo:
+        if self.hdri is None:
+            raise ValueError("a Sky Texture has no photo")
+        return skies.library()[self.hdri]
+
+    @property
     def photo_turn_rad(self) -> float:
         """How far to turn the photo to put its sun at `sun_bearing_deg`. Turning a
         lookup by d carries the image's sun clockwise by d: no negation."""
-        if self.hdri is None:
-            raise ValueError("a Sky Texture has no photo to turn")
-        photo = skies.library()[self.hdri]
-        return math.radians(self.sun_bearing_deg - photo.sun_bearing_deg)
+        return math.radians(self.sun_bearing_deg - self.photo.sun_bearing_deg)
 
     @property
     def sun_up(self) -> bool:
