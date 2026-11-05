@@ -303,13 +303,13 @@ def _sky_ahead(
     """The band's sky in `direction`."""
     if band == "ir":
         return _ir_sky(tree, sky, direction)
-    if sky.hdri is not None and sky.fog_weight:
-        # The Sky Texture's airlight has no disc either.
-        return _fogged_photo(tree, sky, direction, 0.0)
+    if sky.hdri is not None:
+        if sky.fog_weight:
+            # The Sky Texture's airlight has no disc either.
+            return _fogged_photo(tree, sky, direction, 0.0)
+        return _photo(tree, sky, direction)
 
     def clear(toward: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        if sky.hdri is not None:
-            return _photo(tree, sky, toward)
         colour = _clear_eo(tree, sky, bpy.context.scene.world, toward)
         colour.node.name = "haze_sky"
         return colour
