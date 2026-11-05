@@ -47,25 +47,38 @@ LOOKUP_SHARES = 8
 FINE_ROWS_TEXEL_M = 0.5
 
 
+class _Surface(NamedTuple):
+    """The sea's surface as the shader reads it: at `where`, (east, north, time), on
+    the clock `outputs` keeps, under `sea`'s wind."""
+
+    sea: Sea
+    where: bpy.types.NodeSocket
+    outputs: Outputs
+
+    @property
+    def drift(self) -> tuple[float, float]:
+        return surface_drift(self.sea, self.outputs)
+
+
 def _drifting(
     tree: bpy.types.NodeTree,
-    where: bpy.types.NodeSocket,
-    outputs: Outputs,
+    surface: _Surface,
     tile: bpy.types.Image,
     axes: tuple[tuple[float, float], tuple[float, float]],
     velocity_mps: tuple[float, float],
     start: float,
     name: str,
 ) -> bpy.types.NodeSocket:
-    """`tile` laid on the sea along `axes`, each an (east, north) tile axis in tiles
-    per metre, offset `start` tiles, frozen and carried at `velocity_mps`, (east,
-    north); read at `where`, (east, north, time).
+    """`tile` laid on the `surface` along `axes`, each an (east, north) tile axis in
+    tiles per metre, offset `start` tiles, frozen and carried at `velocity_mps`, (east,
+    north).
 
     A loop crossfades two layers, each carried for one span and back while its weight
     is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
     their squared weights so the variance holds.
     """
-    east, north, time_s = separate(tree, where)
+    outputs = surface.outputs
+    east, north, time_s = separate(tree, surface.where)
     flat = combine(tree, east, north)
     here = combine(
         tree,
@@ -127,21 +140,15 @@ def _downwind(sea: Sea) -> tuple[float, float]:
 
 
 def _gust(
-    tree: bpy.types.NodeTree,
-    sea: Sea,
-    where: bpy.types.NodeSocket,
-    outputs: Outputs,
-    tile: bpy.types.Image,
+    tree: bpy.types.NodeTree, surface: _Surface, tile: bpy.types.Image
 ) -> bpy.types.NodeSocket:
-    """The wind over its mean, less one, carried downwind at the mean wind; read at
-    `where`, (east, north, time)."""
+    """The wind over its mean, less one, carried downwind at the mean wind."""
     per_m = 1 / GUST_TILE_M
-    east, north = _downwind(sea)
-    speed = sea.wind_speed_mps
+    east, north = _downwind(surface.sea)
+    speed = surface.sea.wind_speed_mps
     unit = _drifting(
         tree,
-        where,
-        outputs,
+        surface,
         tile,
         ((per_m, 0.0), (0.0, per_m)),
         (speed * east, speed * north),
@@ -165,11 +172,7 @@ class _Rows(NamedTuple):
 
 
 def _langmuir_rows(
-    tree: bpy.types.NodeTree,
-    sea: Sea,
-    where: bpy.types.NodeSocket,
-    outputs: Outputs,
-    rng: np.random.Generator,
+    tree: bpy.types.NodeTree, surface: _Surface, rng: np.random.Generator
 ) -> _Rows:
     """Langmuir circulation's convergence, which gathers slicks and aged foam alike:
     the windrows and the finer rows between them, each Gaussian at unit sigma as
@@ -181,14 +184,15 @@ def _langmuir_rows(
     there are rows at every wind, where below the cutoff real slicks lie in patches.
     Give the slicks their own spectrum if the rows read wrong.
     """
-    spacing_m = WINDROW_SPACING_S * max(sea.wind_speed_mps, WINDROW_MIN_WIND_MPS)
+    speed = surface.sea.wind_speed_mps
+    spacing_m = WINDROW_SPACING_S * max(speed, WINDROW_MIN_WIND_MPS)
     fine_tile_m = GUST_CELLS * FINE_ROWS_TEXEL_M
 
     def windrows() -> bpy.types.NodeSocket:
         tile = _unit(
             gaussian_ranks(von_karman_field(rng, GUST_CELLS, GUST_SPACING_M, spacing_m))
         )
-        return _rows(tree, sea, where, outputs, tile, GUST_TILE_M, "windrows")
+        return _rows(tree, surface, tile, GUST_TILE_M, "windrows")
 
     def fine() -> bpy.types.NodeSocket:
         tile = _unit(
@@ -198,7 +202,7 @@ def _langmuir_rows(
                 )
             )
         )
-        return _rows(tree, sea, where, outputs, tile, fine_tile_m, "fine_rows")
+        return _rows(tree, surface, tile, fine_tile_m, "fine_rows")
 
     return _Rows(
         _RowRead(cache(windrows), spacing_m),
@@ -232,25 +236,22 @@ def _unit(tile: np.ndarray) -> np.ndarray:
 
 def _rows(
     tree: bpy.types.NodeTree,
-    sea: Sea,
-    where: bpy.types.NodeSocket,
-    outputs: Outputs,
+    surface: _Surface,
     tile: np.ndarray,
     tile_m: float,
     name: str,
 ) -> bpy.types.NodeSocket:
-    """`tile`, `tile_m` a side, stretched along the wind and drifting with the surface;
-    read at `where`, (east, north, time)."""
-    east, north = _downwind(sea)
+    """`tile`, `tile_m` a side, stretched along the wind and drifting with the
+    `surface`."""
+    east, north = _downwind(surface.sea)
     across = 1 / tile_m
     along = across / WINDROW_ASPECT
     return _drifting(
         tree,
-        where,
-        outputs,
+        surface,
         curve_image(f"sea_{name}", tile),
         ((north * across, -east * across), (east * along, north * along)),
-        surface_drift(sea, outputs),
+        surface.drift,
         0.0,
         name,
     )
