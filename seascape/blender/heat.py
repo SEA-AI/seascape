@@ -29,7 +29,7 @@ from seascape.physics import aerosol, lwir, thermal
 # Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
 # fabric and wood scatter it. Limitation: dull stainless, as thermal takes it, is
 # rougher than a mirror.
-SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
+SPECULAR_ZONES: frozenset[thermal.ZoneName] = frozenset({"glass", "bare_metal"})
 
 
 def thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
