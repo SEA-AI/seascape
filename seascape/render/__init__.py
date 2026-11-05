@@ -156,12 +156,8 @@ def _render_still(path: Path, what: str) -> None:
         )
 
 
-def _nothing() -> None:
-    pass
-
-
 def render(
-    scenario: Scenario, into: Path, advance: Callable[[], None] = _nothing
+    scenario: Scenario, into: Path, advance: Callable[[], None] = lambda: None
 ) -> list[Path]:
     """Write one image per camera and frame into `into`, their calibration and their
     labels. A sequence puts each camera's frames in a folder of its own. `advance` runs

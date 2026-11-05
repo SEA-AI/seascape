@@ -417,20 +417,16 @@ def balance_temperature_k(
     return 0.5 * (low + high)
 
 
-def facet_temperature_k(
-    zone: Zone,
-    env: Environment,
-    normal_elev_rad: npt.ArrayLike,
-    sun_azimuth_rad: npt.ArrayLike,
-    sunlit: npt.ArrayLike = True,
+def lit_temperature_k(
+    zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
 ) -> FloatArray:
-    """Temperature of facets of `zone` whose outward normals stand at `normal_elev_rad`
-    above the horizon and `sun_azimuth_rad` round from the sun's bearing.
+    """Temperature of facets of `zone` by `sun_cos`, max(0, n . s) where sunlit and 0 in
+    shadow, and `normal_up`, the normal's vertical component.
 
-    Absorbed: alpha times the direct beam by max(0, n . s) where `sunlit`, and the
-    isotropic diffuse share over the sky the facet sees; eps times the longwave from
-    sky and sea, split by view factors (1 +- sin elev) / 2. Lost: eps sigma T^4,
-    convection to the air and conduction to the interior.
+    Absorbed: alpha times the direct beam by `sun_cos`, and the isotropic diffuse share
+    over the sky the facet sees; eps times the longwave from sky and sea, split by view
+    factors (1 +- `normal_up`) / 2. Lost: eps sigma T^4, convection to the air and
+    conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
     much weaker on average. With `sun_diffuse_fraction`, the beam is instead what that
@@ -441,23 +437,6 @@ def facet_temperature_k(
     Limitation: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.
     """
-    elev = np.asarray(normal_elev_rad, dtype=np.float64)
-    azimuth = np.asarray(sun_azimuth_rad, dtype=np.float64)
-    sun_elev = env.sun_elevation_rad or 0.0
-    cos_incidence = np.cos(elev) * math.cos(sun_elev) * np.cos(azimuth) + np.sin(
-        elev
-    ) * math.sin(sun_elev)
-    lit = np.asarray(sunlit, dtype=bool)
-    return lit_temperature_k(
-        zone, env, np.maximum(cos_incidence, 0.0) * lit, np.sin(elev)
-    )
-
-
-def lit_temperature_k(
-    zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
-) -> FloatArray:
-    """`facet_temperature_k` by the two numbers it depends on: `sun_cos`, max(0, n . s)
-    where sunlit and 0 in shadow, and `normal_up`, the normal's vertical component."""
     sun_cos = np.asarray(sun_cos, dtype=np.float64)
     up = np.asarray(normal_up, dtype=np.float64)
     t_interior = env.interior_k(zone.interior)

@@ -271,9 +271,7 @@ def _thermal(
     radiance = scalar(
         tree, "MULTIPLY_ADD", emissivity, emitted, sky_seen, name="sea_radiance"
     )
-    emission = tree.nodes.new("ShaderNodeEmission")
-    emission.inputs["Strength"].default_value = 1.0
-    tree.links.new(radiance, emission.inputs["Color"])
+    emission = node(tree, "ShaderNodeEmission", {"Color": radiance})
     return emission.outputs["Emission"], emissivity
 
 
