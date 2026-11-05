@@ -1187,8 +1187,7 @@ class TestIrBand:
         """The shader reads the excess by cos(theta) at texel centres, scaled by the
         whitecaps' cover."""
         table = baked("sea_foam_emissivity")
-        mu = (np.arange(len(table)) + 0.5) / len(table)
-        excess = lwir.foam_emissivity_excess(np.arccos(mu))
+        excess = lwir.foam_emissivity_excess(np.arccos(blend.texels(len(table))))
         assert table == pytest.approx(excess, abs=1e-6)
         feeding = upstream(_sea_node("sea_emissivity").inputs[0])
         assert any(name.startswith("sea_foam_") for name in feeding), "the grids' foam"

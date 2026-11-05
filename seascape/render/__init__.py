@@ -198,7 +198,8 @@ def render(
                 targets = _targets(built)
                 shot = []
                 for mount in mounts:
-                    scene.look_through(built.cameras, mount, scenario.seed)
+                    rng = substream(scenario.seed, f"sensor/{mount.name}")
+                    scene.look_through(built.cameras, mount, rng)
                     name = f"{mount.name}/{frame:04d}" if sequence else mount.name
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."

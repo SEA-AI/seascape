@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from itertools import chain
 
 import bpy
+import numpy as np
 from mathutils import Matrix
 
 from seascape.blender import sea
@@ -73,13 +74,14 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     )
 
 
-def look_through(cameras: dict[str, bpy.types.Object], mount: Mount, seed: int) -> None:
-    """Make `mount` the scene's camera: its object, its resolution, its sensor."""
+def look_through(
+    cameras: dict[str, bpy.types.Object], mount: Mount, rng: np.random.Generator
+) -> None:
     sc = bpy.context.scene
     sc.camera = cameras[mount.name]
     sc.render.resolution_x = mount.camera.width_px
     sc.render.resolution_y = mount.camera.height_px
-    respond(mount, substream(seed, f"sensor/{mount.name}"))
+    respond(mount, rng)
 
 
 def _rows(m: Matrix) -> Matrix4:
@@ -191,7 +193,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
-    look_through(rigs.cameras, mounts[0], scenario.seed)
+    first = mounts[0]
+    look_through(rigs.cameras, first, substream(scenario.seed, f"sensor/{first.name}"))
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.

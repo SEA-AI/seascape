@@ -538,9 +538,14 @@ def _cloud_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray, FloatA
     # Each base's path and transmittance by name; usecols puts elevation first.
     path_at = [1 + columns.index(f"path_{b}") for b in bases]
     trans_at = [1 + columns.index(f"trans_{b}") for b in bases]
-    base = np.array([float(b.removesuffix("m")) for b in bases])
+    base = _frozen(np.array([float(b.removesuffix("m")) for b in bases]))
     return {
-        name: (base, rows[:, 0], rows[:, path_at].T, rows[:, trans_at].T)
+        name: (
+            base,
+            rows[:, 0],
+            _frozen(rows[:, path_at].T),
+            _frozen(rows[:, trans_at].T),
+        )
         for name, rows in _by_profile(_CLOUD_CSV).items()
     }
 
@@ -550,7 +555,7 @@ def _by_profile(csv: Path) -> dict[str, FloatArray]:
     names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
     cols = range(1, 1 + len(header(csv)))
     raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=cols)
-    return {str(name): raw[names == name] for name in np.unique(names)}
+    return {str(name): _frozen(raw[names == name]) for name in np.unique(names)}
 
 
 def _under_base(
@@ -605,9 +610,7 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
             drops = (depth[:, thinnest] - clear) * inverse[-1] / inverse[thinnest]
             depth = np.column_stack([depth, clear + drops])
         depth = depth[:, order]
-        rows.setflags(write=False)
-        depth.setflags(write=False)
-        tables[str(name)] = (rows[:, 0], inverse[order], depth)
+        tables[name] = (rows[:, 0], _frozen(inverse[order]), _frozen(depth))
     return tables
 
 

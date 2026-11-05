@@ -98,7 +98,7 @@ def curve_image(
 
 
 def texels(count: int = CURVE_SAMPLES) -> np.ndarray:
-    """Where `lookup` reads each of `count` texels across [0, 1] at its own value."""
+    """The centres of `count` texels across [0, 1], where `lookup` reads them."""
     return (np.arange(count) + 0.5) / count
 
 
