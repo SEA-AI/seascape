@@ -327,7 +327,7 @@ def _foam_lattice(
     tree: bpy.types.NodeTree,
     surface: _Surface,
     tile: bpy.types.Image,
-    start: float = 0.0,
+    start: float,
 ) -> bpy.types.NodeSocket:
     """Aged foam's lattice, a unit Gaussian drifting with the `surface`, offset
     `start` tiles."""

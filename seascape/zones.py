@@ -664,7 +664,7 @@ def _atlas(rgb: np.ndarray, cover: np.ndarray, texels: np.ndarray) -> Image.Imag
 
 
 def sheets(
-    name: str, into: Path, kind: Kind | None = None, material: str | None = None
+    name: str, into: Path, kind: Kind | None, material: str | None
 ) -> list[Path]:
     """Write the sheets for labelling `name`'s parts, and their records, into `into`.
 

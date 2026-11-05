@@ -376,8 +376,8 @@ def _normal(
     swell: tuple[Wave, ...],
     position: bpy.types.NodeSocket,
     pixel: _Pixel,
-    calm: bpy.types.NodeSocket | None = None,
-    damped: frozenset[Wave] = frozenset(),
+    calm: bpy.types.NodeSocket | None,
+    damped: frozenset[Wave],
 ) -> bpy.types.NodeSocket:
     """The normal of what the pixel resolves at `position`; `calm` scales the `damped`
     waves."""
