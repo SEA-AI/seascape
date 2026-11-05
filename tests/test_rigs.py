@@ -14,6 +14,7 @@ from mathutils import Matrix, Vector
 
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
+from seascape.blender.meshes import mesh_objects
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.vessels import waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
@@ -106,10 +107,7 @@ def test_hulls_of_one_asset_share_its_meshes(built: scene.Built) -> None:
     """Clones share datablocks; copied meshes show only when a build runs out of RAM."""
     assert SCENARIO.targets is not None
     for asset, anchors in built.targets.items():
-        meshes = {
-            frozenset(p.data.name for p in a.children_recursive if p.type == "MESH")
-            for a in anchors
-        }
+        meshes = {frozenset(p.data.name for p in mesh_objects([a])) for a in anchors}
 
         assert len(meshes) == 1, asset
     assert len(targets()) == SCENARIO.targets.count

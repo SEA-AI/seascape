@@ -147,25 +147,23 @@ def _zodiacs(worn: frozenset[str], wears: tuple[float, ...]) -> list[bpy.types.O
     ]
 
 
-def _meshes(anchor: bpy.types.Object) -> list[bpy.types.Object]:
-    return [o for o in anchor.children_recursive if o.type == "MESH"]
-
-
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
     clean, worn = _zodiacs(frozenset({"zodiac"}), (0.0, 0.6))
     assert (clean["wear"], worn["wear"]) == (0.0, 0.6)
     for anchor in (clean, worn):
-        assert all("wear_position_m" in o.data.attributes for o in _meshes(anchor))
-        assert all(o.name.startswith("zodiac/") for o in _meshes(anchor))
+        meshes = mesh_objects([anchor])
+        assert all("wear_position_m" in o.data.attributes for o in meshes)
+        assert all(o.name.startswith("zodiac/") for o in meshes)
 
 
 def test_a_clean_build_is_not_tagged() -> None:
     (clean,) = _zodiacs(frozenset(), (0.0,))
-    assert not any("wear_position_m" in o.data.attributes for o in _meshes(clean))
+    meshes = mesh_objects([clean])
+    assert not any("wear_position_m" in o.data.attributes for o in meshes)
 
 
 def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
-    slots = [s for o in _meshes(anchor) for s in o.material_slots]
+    slots = [s for o in mesh_objects([anchor]) for s in o.material_slots]
     return {s.material for s in slots} - {None}
 
 
@@ -208,7 +206,7 @@ def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> 
         vessels, _ = add_vessels(
             scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), []
         )
-        return [_meshes(a)[0] for a in vessels["zodiac"]]
+        return [mesh_objects([a])[0] for a in vessels["zodiac"]]
 
     first = parts()
     offsets = [p["wear_offset"] for p in first[:2]]

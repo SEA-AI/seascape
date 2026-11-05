@@ -368,8 +368,7 @@ class TestEoBand:
             into_hull = attitude.matrix_world.inverted()
             corners = [
                 into_hull @ part.matrix_world @ Vector(corner)
-                for part in anchor.children_recursive
-                if part.type == "MESH"
+                for part in mesh_objects([anchor])
                 for corner in part.bound_box
             ]
             axes = list(zip(*corners, strict=True))
@@ -884,7 +883,7 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     asset = SCENARIO.objects[0].asset
     hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
     anchor = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
-    hull = next(p for p in anchor.children_recursive if p.type == "MESH")
+    hull = mesh_objects([anchor])[0]
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
     emission = next(iter(skins)).node_tree.nodes["Emission"]
@@ -903,7 +902,7 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
             asset, condition=Condition(engine_off_min=minutes), hulls=hulls
         )
         assert anchor["engine_off_min"] == minutes
-        hull = next(p for p in anchor.children_recursive if p.type == "MESH")
+        hull = mesh_objects([anchor])[0]
         skins.append({s.material.name for s in hull.material_slots})
     running, stopped = skins
     machinery = {n for n in running if n.startswith("thermal_exhaust")}
@@ -938,8 +937,7 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     into_attitude = attitude.matrix_world.inverted()
     keel_m = min(
         (into_attitude @ part.matrix_world @ Vector(corner)).z
-        for part in raised.children_recursive
-        if part.type == "MESH"
+        for part in mesh_objects([raised])
         for corner in part.bound_box
     )
     assert keel_m == pytest.approx(5.0 - manifest()["bulk_carrier"].draught_m, abs=1e-3)
@@ -2199,7 +2197,7 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
     )
 
     (anchor,) = built.targets["yacht"]
-    hull = [p for p in built.vessel.children_recursive if p.type == "MESH"]
+    hull = mesh_objects([built.vessel])
     assert hull, "the ownship has no mesh: nothing below ran"
     assert {p.pass_index for p in hull} == {anchor.pass_index + 1}
 
