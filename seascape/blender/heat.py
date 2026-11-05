@@ -194,7 +194,7 @@ def _worn(
     water: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     tree = masks.id_data
-    for layer in ("grime", "rust", "stain", "soot"):  # as EO lays them
+    for layer in wear.COVERS:
         if layer == "stain":
             # Judgement: the stain is the splash zone, kept wet at the bulk water's
             # temperature.

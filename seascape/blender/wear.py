@@ -44,6 +44,8 @@ class Weights(NamedTuple):
 
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
+# What covers the surface, bottom up, in both bands; `fade` only tints the paint.
+COVERS = ("grime", "rust", "stain", "soot")
 
 # Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
 # one; cloth sags and flexes, so water runs off it without leaving a streak.
@@ -488,11 +490,9 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         if name != "Normal" or shader.inputs[name].is_linked:
             feed(t, dirt.inputs[name], _source(shader.inputs[name]))
 
-    total = (
-        cover["grime"]
-        .op("MAXIMUM", cover["rust"])
-        .op("MAXIMUM", cover["stain"].op("MAXIMUM", cover["soot"]))
-    )
+    total = cover["grime"]
+    for layer in COVERS[1:]:
+        total = total.op("MAXIMUM", cover[layer])
     consumers = [link.to_socket for link in shader.outputs["BSDF"].links]
     mixed = mix_shader(t, total, shader.outputs["BSDF"], dirt.outputs["BSDF"])
     for socket in consumers:
