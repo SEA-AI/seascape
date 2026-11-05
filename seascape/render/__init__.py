@@ -47,8 +47,14 @@ def _write_thermal(
     camera: Camera,
     noise: np.random.Generator,
 ) -> None:
-    """Rewrite a float LWIR render as `fmt` beside it, as `camera` reads it, and delete
-    the exr."""
+    """Rewrite a float LWIR render beside it as a camera reads it, and delete the exr.
+
+    Args:
+        exr: The float render, radiance in its first channel.
+        fmt: The format written; a png holds counts, any other the tone-mapped frame.
+        tone: The camera's AGC, which maps all but a png.
+        camera: Whose lens and focal plane the frame goes through.
+        noise: The sensor's noise stream."""
     # cv2 writes the top row first
     radiance = blend.read(exr)[::-1, :, 0].astype(np.float64)
     t_k = microbolometer.seen(radiance, camera, noise)
@@ -63,12 +69,13 @@ def _write_thermal(
 
 
 def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
-    """Write each render's object-index pass to `folder`, as float EXR named
-    `<file_name>index.exr`.
+    """Write each render's object-index pass as float EXR named `<file_name>index.exr`.
 
     Cycles takes it on the ray through the pixel centre, where calibration.json puts
     the pixel, whatever the pixel filter.
-    """
+
+    Args:
+        folder: Where the passes are written."""
     bpy.context.view_layer.use_pass_object_index = True
     # The build's tree: a new one would drop what it does to the picture.
     tree = bpy.context.scene.compositing_node_group
@@ -159,9 +166,13 @@ def _render_still(path: Path, what: str) -> None:
 def render(
     scenario: Scenario, into: Path, advance: Callable[[], None] = lambda: None
 ) -> list[Path]:
-    """Write one image per camera and frame into `into`, their calibration and their
-    labels. A sequence puts each camera's frames in a folder of its own. `advance` runs
-    after each image."""
+    """Write one image per camera and frame, their calibration and their labels. A
+    sequence puts each camera's frames in a folder of its own.
+
+    Args:
+        scenario: What to render.
+        into: Where the images and their truth go; made if missing.
+        advance: Runs after each image."""
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
     into.mkdir(parents=True, exist_ok=True)

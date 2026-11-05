@@ -89,6 +89,9 @@ _CURVES: dict[Tone, Callable[[np.ndarray], np.ndarray]] = {
 
 
 def tone_curve(tone: Tone, encoded: np.ndarray = TONE_IN) -> np.ndarray:
-    """A camera's encoded output at the sRGB-encoded inputs `encoded`. EMoR's is
-    linear between its knots."""
+    """A camera's encoded output. EMoR's is linear between its knots.
+
+    Args:
+        tone: The camera's curve: BT.709's OETF or EMoR's mean.
+        encoded: The sRGB-encoded inputs."""
     return _CURVES[tone](srgb_decode(encoded))

@@ -190,9 +190,16 @@ def _bytes(scene: Scenario) -> float:
 def _tried(
     path: Path, lines: list[str], variants: int, settings: Settings
 ) -> tuple[list[Scenario], float]:
-    """The first `variants` scenes, and the most any `variants` of the seeds `render`
-    may try write. Refuses any of those seeds past a clip or camera limit, and the
-    largest `variants` of them past the image limit."""
+    """The first scenes, and the most bytes the seeds `render` may try can write.
+    Refuses any of those seeds past a clip or camera limit, and the largest of them
+    past the image limit.
+
+    Args:
+        path: The scenario file.
+        lines: TOML overrides merged over it.
+        variants: How many scenes to return; the image and byte totals take the
+            largest this many of the seeds tried.
+        settings: The server's limits."""
     first = load(path, lines)
     scenes: list[Scenario] = []
     images, sizes = [], []

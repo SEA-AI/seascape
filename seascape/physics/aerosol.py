@@ -26,8 +26,11 @@ DEPTH_M = 200.0
 
 
 def extinction_per_m(visibility_km: float | None) -> float:
-    """Koschmieder's law at the meteorological optical range: over `visibility_km` a
-    dark target keeps 5% of its contrast against the horizon sky (WMO No. 8, 2018)."""
+    """Koschmieder's law at the meteorological optical range (WMO No. 8, 2018).
+
+    Args:
+        visibility_km: The range over which a dark target keeps 5% of its contrast
+            against the horizon sky; None is no aerosol."""
     if visibility_km is None:
         return 0.0
     return math.log(20) / (visibility_km * 1000)
@@ -64,8 +67,13 @@ def depth(
     visibility_km: float | None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """The aerosol's LWIR optical depth looking up at `elev_rad`: haze and fog blended
-    by `fog_weight`."""
+    """The aerosol's LWIR optical depth looking up: haze and fog blended by
+    `fog_weight`.
+
+    Args:
+        elev_rad: Elevation of the line of sight.
+        visibility_km: Meteorological optical range; None is no aerosol.
+        atmosphere: The LOWTRAN profile whose aerosol this is."""
     weight = fog_weight(visibility_km)
     if weight == 1.0:
         assert visibility_km is not None
@@ -93,8 +101,15 @@ def sky_radiance(
     t_air_k: float,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """`radiance`, an LWIR sky, seen up through the aerosol: it passes `transmittance`
-    of the sky and emits the rest as a blackbody at air temperature (Kirchhoff)."""
+    """An LWIR sky seen up through the aerosol: it passes `transmittance` of the sky
+    and emits the rest as a blackbody at air temperature (Kirchhoff).
+
+    Args:
+        radiance: The sky behind the aerosol.
+        elev_rad: Elevation of the line of sight.
+        visibility_km: Meteorological optical range; None is no aerosol.
+        t_air_k: Air temperature, at which the aerosol emits.
+        atmosphere: The LOWTRAN profile whose aerosol this is."""
     passed = transmittance(elev_rad, visibility_km, atmosphere)
     return passed * np.asarray(radiance) + (1.0 - passed) * lwir.band_radiance(t_air_k)
 

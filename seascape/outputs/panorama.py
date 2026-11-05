@@ -65,13 +65,16 @@ class Layout(NamedTuple):
 
 
 def column(layout: Layout, bearing_deg: float) -> float | None:
-    """The column a ray at `bearing_deg` lands in, at any elevation, or None where
-    the projection cannot show it.
+    """The column a ray at a bearing lands in, at any elevation, or None where the
+    projection cannot show it.
 
     A camera with K = I looks along its rotation's third column, so a turn about the
     stitcher's vertical aims it at the bearing, and the warper projects it exactly
     as it projected the frames.
-    """
+
+    Args:
+        layout: Where the panorama sits in its projection.
+        bearing_deg: The ray's bearing in the panorama's frame."""
     b = math.radians(bearing_deg) - layout.axis
     if layout.kind == "plane" and math.cos(b) <= 0.0:
         return None
@@ -90,8 +93,13 @@ def _warper(kind: str, scale: float) -> cv2.PyRotationWarper:
 
 
 def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
-    """`image` over a strip of bearing ticks, in degrees of its frame: 000-359 when
-    `true`, as a chart writes true bearings, else signed about the frame's axis."""
+    """A panorama over a strip of bearing ticks, in degrees of its frame.
+
+    Args:
+        image: The panorama.
+        layout: Where it sits in its projection.
+        true: Label 000-359, as a chart writes true bearings; else signed about the
+            frame's axis."""
     w = image.shape[1]
     size = max(1.0, w / 2000)
     strip = np.full((round(36 * size), w, 3), MATTE, np.uint8)
@@ -138,9 +146,16 @@ def stitch(
     frame: str,
     max_width: int | None = None,
 ) -> tuple[np.ndarray, Layout]:
-    """At native resolution unless that is wider than `max_width`. Native is the
-    largest fx: pixels per radian on axis, where every projection here runs at one
-    unit per radian."""
+    """One panorama of the cameras' frames, and where it sits in its projection.
+
+    Args:
+        folder: The render, its frames and its agc settings.
+        cameras: The cameras to stitch; thermal ones need one agc.
+        projection: A key of `PROJECTIONS`.
+        frame: The extrinsics whose bearings the panorama is laid out in.
+        max_width: The widest the panorama may be, in pixels; None keeps native
+            resolution, the largest fx: pixels per radian on axis, where every
+            projection here runs at one unit per radian."""
     if max_width is not None and max_width < 1:
         raise ValueError(f"max width is {max_width}: it must be a pixel or more")
     if missing := [c.name for c in cameras if frame not in c.extrinsics]:

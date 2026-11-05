@@ -58,8 +58,12 @@ def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None
 
 @contextmanager
 def _blender_log(path: Path) -> Generator[None]:
-    """Blender logs to `sys.stdout` from Python and to file descriptor 1 from C, where
-    either would tear the progress bar and mix into stdout; both go to `path`."""
+    """Send Blender's log to a file. Blender logs to `sys.stdout` from Python and to
+    file descriptor 1 from C, where either would tear the progress bar and mix into
+    stdout.
+
+    Args:
+        path: The log, appended to; its folder is made if missing."""
     path.parent.mkdir(parents=True, exist_ok=True)
     sys.stdout.flush()
     stdout = os.dup(1)

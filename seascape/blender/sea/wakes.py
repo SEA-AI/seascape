@@ -127,11 +127,20 @@ def _wakes(
     sea_slope_variance: float,
 ) -> _Wakes:
     """Every hull's turbulent band, stern foam and Kelvin arms: the strongest band and
-    foam, and the arms summed, read at `where`, (east, north, time).
+    foam, and the arms summed.
 
     Limitation: the arms are Kelvin's straight-path pattern laid along the path, which a
     tight turn bends; sum the arms from past poses if a turn reads wrong.
-    """
+
+    Args:
+        tree: Where the nodes go.
+        wakes: One per hull.
+        where: (east, north, time) the wakes are read at.
+        footprint_m: The pixel's footprint, which fades the arms it cannot resolve.
+        noise: The unit Gaussian tile the stern foam is patched by.
+        ppf: The unit normal's quantiles.
+        sea_slope_variance: The sea's own; a hull's arms are drawn only where they
+            stand out from it."""
     band: Num | float = 0.0
     foam: Num | float = 0.0
     bubbles: Num | float = 0.0
@@ -185,13 +194,18 @@ def _kelvin(
     path: _Path,
     footprint_m: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """One of Kelvin's two waves, divergent at `root` 1, transverse at -1, as
-    -grad(height), (east, north).
+    """One of Kelvin's two waves as -grad(height), (east, north).
 
     Stationary phase: at tan(psi) = side / along, the wave's direction theta solves
     tan(psi) (1 + 2 t^2) = t, t = tan(theta), and its phase is
     g / U^2 (along cos(theta) + side sin(theta)) / cos(theta)^2 (DLMF 36.13).
-    """
+
+    Args:
+        tree: Where the nodes go.
+        wake: The hull's wake.
+        root: 1 for the divergent wave, -1 for the transverse.
+        path: The point's place along and across the hull's path.
+        footprint_m: The pixel's footprint, which fades what it cannot resolve."""
     along = Num(tree, path.along)
     side = Num(tree, path.across).op("ABSOLUTE")
     edge = math.tan(KELVIN_HALF_ANGLE_RAD)
@@ -238,9 +252,15 @@ def _patchy(
     noise: bpy.types.Image,
     ppf: bpy.types.Image,
 ) -> Num:
-    """`cover` as white where the unit Gaussian `noise` tops its own `cover` fraction,
-    `ppf` its quantiles: patches whose mean is the cover, laid along the path at
-    `fixed`."""
+    """A cover as white where a unit Gaussian tops its own fraction of that cover:
+    patches whose mean is the cover, laid along the path.
+
+    Args:
+        tree: Where the nodes go.
+        cover: The share of the sea the foam covers.
+        fixed: The point's place in the path's frame, which the patches are laid on.
+        noise: The unit Gaussian tile.
+        ppf: The unit normal's quantiles."""
     stretch = vector(
         tree,
         "MULTIPLY",

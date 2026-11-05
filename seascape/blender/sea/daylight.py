@@ -120,8 +120,8 @@ def _glitter(
     unresolved: bpy.types.NodeSocket,
     glinting: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """A Gaussian tilt per cell of one specular point at `where`, (east, north, time),
-    re-drawn as it twinkles, and the slope variance the tilts carry out of the lobe.
+    """A Gaussian tilt per cell of one specular point, re-drawn as it twinkles, and the
+    slope variance the tilts carry out of the lobe.
 
     A pixel's s samples of its n cells count glints as n cells do if each cell's lobe
     catches the sun n / s times as often: variance r^2 (n / s - 1) about a sun of slope
@@ -130,7 +130,15 @@ def _glitter(
     Limitation: the cells keep the mean wind's size through a gust, as a size that
     varied over the sea would re-cut the grid as the gust moves; crossfade two fixed
     grids by the local wind if glints should thin in the lulls.
-    """
+
+    Args:
+        tree: Where the nodes go.
+        wind: The wind waves, which size the cells and set their twinkle.
+        where: (east, north, time) the shader reads at.
+        pixel: The footprint, which sets n.
+        unresolved: The slope variance the lobe would take without the tilts.
+        glinting: 1 where a facet can mirror the sun, as `_glinting` gives it; the
+            tilts carry variance only there."""
     cell_m2 = specular_cell_m2(wind)
     cells = Num(tree, pixel.along_m) * pixel.across_m / cell_m2
     widen = cells.madd(0.0, -1.0)
@@ -176,9 +184,13 @@ def _lobe(
     across: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """Beckmann roughness and Cycles anisotropy for the unresolved slope variance at
-    the two footprints, `along` the lobe's tangent. Per axis alpha = sqrt(2)
-    sigma_axis = sqrt(variance); Blender's roughness is their geometric mean's square
-    root."""
+    the two footprints. Per axis alpha = sqrt(2) sigma_axis = sqrt(variance); Blender's
+    roughness is their geometric mean's square root.
+
+    Args:
+        tree: Where the nodes go.
+        along: The variance along the lobe's tangent.
+        across: The variance across it."""
     along, across = (Num(tree, s).op("MAXIMUM", 1e-12) for s in (along, across))
     roughness = (along * across).op("POWER", 0.125).op("MINIMUM", 1.0)
     roughness.socket.node.name = "sea_roughness"
@@ -191,8 +203,13 @@ def _lobe(
 def _stretchable(
     tree: bpy.types.NodeTree, wide: bpy.types.NodeSocket, narrow: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """`narrow`, no narrower than Cycles stretches a lobe: 10 to 1 in alpha, 100 in
-    variance."""
+    """A lobe's narrower slope variance, no narrower than Cycles stretches a lobe: 10 to
+    1 in alpha, 100 in variance.
+
+    Args:
+        tree: Where the nodes go.
+        wide: The lobe's wider variance.
+        narrow: The variance to hold to a hundredth of the wider."""
     return scalar(tree, "MAXIMUM", narrow, scalar(tree, "MULTIPLY", wide, 0.01))
 
 

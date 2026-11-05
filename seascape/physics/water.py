@@ -19,8 +19,12 @@ _CHL_MG_M3, *_RGB = np.loadtxt(_CURVE_CSV, delimiter=",", comments="#", unpack=T
 
 def body_color(chl_mg_m3: float, ior: float) -> tuple[float, float, float]:
     """The body's diffuse colour in linear sRGB: R(0-) under daylight, times t / n^2
-    out through a surface of index `ior` (Lee, Carder & Arnone 2002), t from Fresnel
-    at normal incidence. Clipped at 0, where the colour is outside sRGB."""
+    out through the surface (Lee, Carder & Arnone 2002), t from Fresnel at normal
+    incidence. Clipped at 0, where the colour is outside sRGB.
+
+    Args:
+        chl_mg_m3: The water's chlorophyll concentration.
+        ior: The surface's refractive index, n."""
     log_chl = np.log(_CHL_MG_M3)
     rgb = [np.interp(np.log(chl_mg_m3), log_chl, channel) for channel in _RGB]
     t = 1 - ((ior - 1) / (ior + 1)) ** 2

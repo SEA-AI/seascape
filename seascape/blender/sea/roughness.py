@@ -37,9 +37,9 @@ def _grouped(
     pixel: _Pixel,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """`unresolved` scaled per cell by a lognormal of mean 1, so a pixel's footprint
-    holds `mss_spread` of its mean square slope as the short waves' groups do; at
-    `where`, (east, north, time). Rough footprints read warm at grazing views.
+    """Unresolved slope variances scaled per cell by a lognormal of mean 1, so a
+    pixel's footprint holds `mss_spread` of its mean square slope as the short waves'
+    groups do. Rough footprints read warm at grazing views.
 
     A grazing footprint spans several cells along and part of one across. Each cell is
     redrawn when a group of the waves a footprint its own size fades crosses it, at
@@ -47,6 +47,13 @@ def _grouped(
 
     Limitation: EO keeps the mean, as the glitter carries its own spread. Scale its lobe
     too if its sea reads too even.
+
+    Args:
+        tree: Where the nodes go.
+        sea: The wind and fetch the spread is taken at; no wind keeps the mean.
+        where: The flat sea's (east, north, time) the cells are drawn at.
+        pixel: The footprint the cells are sized to.
+        unresolved: The variances along and across the view.
     """
     if sea.wind_speed_mps <= 0.0:
         return unresolved
@@ -91,9 +98,12 @@ def _grouped(
 
 
 def _box_kept(cells: Num) -> Num:
-    """The share of a cell's variance a box `cells` cells long keeps, at a random
-    offset on the grid: the mean over the box of the triangle 1 - |d|, which is
-    (1 - 1 / 3m) / m from one cell up and 1 - m / 3 below."""
+    """The share of a cell's variance a box keeps, at a random offset on the grid: the
+    mean over the box of the triangle 1 - |d|, which is (1 - 1 / 3m) / m from one cell
+    up and 1 - m / 3 below.
+
+    Args:
+        cells: The box's length m, in cells."""
     over = cells.madd(3.0, -1.0) / (cells * cells * 3.0)
     under = cells.madd(-1 / 3, 1.0)
     return cells.op("GREATER_THAN", 1.0).madd(over - under, under)
@@ -110,12 +120,23 @@ def _unresolved(
     smooth: bpy.types.NodeSocket | None,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """The slope variance each pixel does not draw, along and across its view: the
-    gusty sea's, and a slick's where `smooth` is 1. Each is twice its axis's, the total
+    gusty sea's, and a slick's where it is smooth. Each is twice its axis's, the total
     an isotropic sea of that slope would hold.
 
     Cox & Munk's axes are the wind's. Limitation: the view's take their variances by
     cos^2 of the angle between and leave out the covariance, so a lobe 45 degrees off
     the wind stays aligned with the view. Rotate the tangent if a glitter shows it.
+
+    Args:
+        tree: Where the nodes go.
+        sea: The wind the variances are fitted at.
+        wind: The wind sea's shaded waves.
+        swell: The swell's shaded waves.
+        survivors: The wind sea's waves a slick leaves.
+        pixel: The footprint and view direction.
+        gust: The wind over its mean, less one; None for a steady wind.
+        smooth: Where the variance is a slick's, under a slick or in a wake, 1 at
+            full; None for neither.
     """
     speed = sea.wind_speed_mps
     # From or toward, the axis is the same.

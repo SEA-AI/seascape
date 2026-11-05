@@ -66,8 +66,11 @@ class Light(NamedTuple):
 
 
 def _row_sigmas(slope_max: float, rows: int = SLOPE_ROWS) -> np.ndarray:
-    """Per-axis unresolved RMS slope up a table's rows, to the total `slope_max`, at
-    texel centres."""
+    """Per-axis unresolved RMS slope up a table's rows, at texel centres.
+
+    Args:
+        slope_max: Total RMS slope the rows run up to.
+        rows: How many rows the table has."""
     return texels(rows) * slope_max / math.sqrt(2)
 
 
@@ -202,9 +205,6 @@ def _thermal(
     foam: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """The sea's emission plus the 1 - eps(theta) of sky it reflects, and eps(theta).
-    It emits `skin`, a band radiance; the tables keep the bulk's optical constants,
-    which a skin a few kelvin off barely moves. `foam`, the share of the pixel under
-    foam, raises eps by that share of foam's excess.
 
     Complements, so the two very nearly cancel and the sea holds close to ambient at
     every angle. The reflection is a lookup in the wave normal's mirror direction, not
@@ -221,7 +221,18 @@ def _thermal(
     vanishes at the grazing views the sea is seen at.
 
     The sky alone: `_traced` adds the hulls.
-    """
+
+    Args:
+        tree: Where the nodes go.
+        sea: Its bulk temperature sets the tables' optical constants.
+        normal: The wave normal the pixel draws.
+        unresolved: Unresolved slope variances along and across the view.
+        slope_max: Total RMS slope the tables span.
+        light: The sky, and any clouds, the sea reflects.
+        skin: Band radiance the sea emits. The tables keep the bulk's optical
+            constants, which a skin a few kelvin off barely moves.
+        foam: Share of the pixel under foam; raises eps by that share of foam's
+            excess."""
     sky = light.sky
     assert sky is not None
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
@@ -283,8 +294,16 @@ def _traced(
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
 ) -> bpy.types.NodeSocket:
     """The sea reflecting the sky, plus what a lobe of its unresolved slopes meets
-    besides: hulls, and waves that hide the sky. Weighted 1 - `emissivity`, the
-    pixel's, not each facet's own."""
+    besides: hulls, and waves that hide the sky.
+
+    Args:
+        tree: Where the nodes go.
+        sky: The sea's emission and the sky it reflects, as `_thermal` draws them.
+        emissivity: The pixel's, not each facet's own; the lobe is weighted 1 minus it.
+        normal: The wave normal the lobe leans about.
+        pixel: The footprint whose axes orient the lobe.
+        unresolved: Unresolved slope variances along and across the view, which
+            shape the lobe."""
     wide, narrow, tangent = _widest(tree, pixel, unresolved)
     roughness, anisotropy = _lobe(tree, wide, _stretchable(tree, wide, narrow))
     lobe = node(
@@ -314,8 +333,16 @@ def _cloud_ratio(
     reflected: bpy.types.NodeSocket,
     tiles: tuple[tuple[bpy.types.NodeSocket, int], ...],
 ) -> bpy.types.NodeSocket:
-    """`_cloud_image` at the bearing and elevation of `reflected`, its bearing turned
-    as the world turns its photo, in `tiles`."""
+    """`_cloud_image` at the reflection's bearing and elevation, its bearing turned as
+    the world turns its photo.
+
+    Args:
+        tree: Where the nodes go.
+        sea: Its bulk temperature sets the table's reflectance.
+        clouds: The sky by bearing.
+        slope_max: Total RMS slope the table spans.
+        reflected: The ray's mirror direction.
+        tiles: (coordinate, count) per tile axis, as `_tiled` takes them."""
     turn = node(
         tree,
         "ShaderNodeMapping",
@@ -374,10 +401,18 @@ def _tiled(
     tiles: tuple[tuple[bpy.types.NodeSocket, int], ...],
     extension: str = "EXTEND",
 ) -> bpy.types.NodeSocket:
-    """A tiled table at (x, row), both in [0, 1], `rows` rows per tile. Each
-    (coordinate, count) in `tiles` picks a tile along one axis, coordinate in [0, 1];
-    the last axis varies fastest. The image interpolates
-    within a tile and lookups mix across tiles, so no tile bleeds into the next."""
+    """A lookup in a tiled table. The image interpolates within a tile and lookups mix
+    across tiles, so no tile bleeds into the next.
+
+    Args:
+        tree: Where the nodes go.
+        image: The table, its tiles stacked up the rows.
+        x: Position along a row, in [0, 1].
+        row: Position up a tile, in [0, 1].
+        rows: Rows per tile.
+        tiles: (coordinate, count) per axis, each picking a tile along it, coordinate
+            in [0, 1]; the last axis varies fastest.
+        extension: The image's extension along a row."""
     # Held to texel centres, as EXTEND holds the image's own edges.
     texel = (Num(tree, row) * rows).op("MAXIMUM", 0.5).op("MINIMUM", rows - 0.5)
     height = rows * math.prod(count for _, count in tiles)

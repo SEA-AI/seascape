@@ -25,12 +25,16 @@ NETD_BACKGROUND_K = 303.15
 def diffraction_mtf(
     freq_per_m: npt.ArrayLike, f_number: float, t_k: float
 ) -> FloatArray:
-    """A circular aperture's MTF at `freq_per_m` in the image plane, over the band.
+    """A circular aperture's MTF over the band.
 
     Each wavelength's is `optics.pupil_mtf`; the band weights them by the radiance a
-    blackbody at `t_k` puts at each, as a flat detector sees it (Boreman, Modulation
-    Transfer Function in Optical and Electro-Optical Systems, 2001).
-    """
+    blackbody puts at each, as a flat detector sees it (Boreman, Modulation Transfer
+    Function in Optical and Electro-Optical Systems, 2001).
+
+    Args:
+        freq_per_m: Spatial frequencies in the image plane.
+        f_number: Focal length over aperture diameter.
+        t_k: The blackbody whose radiance weights the wavelengths."""
     freq = np.asarray(freq_per_m, dtype=np.float64)
     mono = optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
     weight = lwir.planck(_BAND_LAM, t_k)

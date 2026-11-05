@@ -78,9 +78,17 @@ def _remembered(
     memory: list[tuple[FoamGrid, bpy.types.Image]],
     pulls: tuple[bpy.types.NodeSocket, ...],
 ) -> "_Whitecaps":
-    """The whitecaps read off the finest foam memory that holds the `surface`'s
-    point, aged foam gathered by the windrows, the lace above its quantile covering
-    that share."""
+    """The whitecaps read off the finest foam memory that holds the surface's point,
+    aged foam gathered by the windrows, the lace above its quantile covering that share.
+
+    Args:
+        tree: Where the nodes go.
+        surface: The point shaded, and the drift the memory moves with.
+        footprint_m: The pixel's shorter side; a grid is read where it spans under a
+            cell.
+        textures: The lace, the lattice and the quantiles that threshold them.
+        memory: Each foam grid and the image sequence remembered on it.
+        pulls: Unit Gaussians the windrows gather aged foam by; empty for none."""
     ppf = textures.ppf
     lace = textures.lace
     east, north, time_s = separate(tree, surface.where)
@@ -197,10 +205,17 @@ def _latticed(
     texture: "_FoamTexture",
     threshold: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """Foam over the `laced` area at `bright` of fresh foam's brightness, drawn as
-    fresh foam's white over `bright` of that area, the lattice above `threshold`, its
-    quantile, not a grey film: the same mean; and its albedo, varying with the
-    texture's density about fresh foam's."""
+    """Foam over the laced area, drawn as fresh foam's white over the lattice above
+    its quantile, not a grey film: the same mean; and its albedo, varying with the
+    texture's density about fresh foam's.
+
+    Args:
+        tree: Where the nodes go.
+        laced: The share of the pixel the foam covers.
+        bright: The foam's share of fresh foam's brightness, and so of the area the
+            lattice holds.
+        texture: The lattice, its density and the pixel's longer side.
+        threshold: The lattice's quantile at bright."""
     held = (Num(tree, texture.lattice) - threshold).madd(LATTICE_SHARPNESS, 0.5)
     held.socket.node.use_clamp = True
     # A pixel longer than the lattice's walls draws their mean: from one wall's width,
@@ -273,8 +288,16 @@ def _foam_texture(
     pixel_m: bpy.types.NodeSocket,
     ppf: bpy.types.Image,
 ) -> _FoamTexture:
-    """Whitecap foam's texture on the `surface`: the lace off `tile`, frayed by a
-    lattice from `rng`, and that lattice twice more, for a pixel `pixel_m` long."""
+    """Whitecap foam's texture on the surface: the lace, frayed by a lattice, and that
+    lattice twice more.
+
+    Args:
+        tree: Where the nodes go.
+        surface: Where the texture lies and drifts.
+        tile: The lace's unit Gaussian tile.
+        rng: Where the lattice comes from.
+        pixel_m: The pixel's longer side, which fades the lattice.
+        ppf: The unit normal's quantiles."""
     lattice = curve_image(
         "sea_foam_lattice",
         _unit(
@@ -302,8 +325,14 @@ def _foam_lace(
     tile: bpy.types.Image,
     ragged: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """Whitecap foam's lace, a unit Gaussian drifting with the `surface`: a read of
-    the unit `tile` summed with the `ragged` lattice, rescaled to one."""
+    """Whitecap foam's lace, a unit Gaussian drifting with the surface: a tile summed
+    with a lattice, rescaled to one.
+
+    Args:
+        tree: Where the nodes go.
+        surface: Where the lace lies and drifts.
+        tile: A unit Gaussian tile, streaked along the wind.
+        ragged: A unit Gaussian lattice that frays the lace."""
     east, north = _downwind(surface.sea)
     per_m = 1 / FOAM_TILE_M
     along = per_m / FOAM_STREAK
@@ -327,8 +356,13 @@ def _foam_lattice(
     tile: bpy.types.Image,
     start: float,
 ) -> bpy.types.NodeSocket:
-    """Aged foam's lattice, a unit Gaussian drifting with the `surface`, offset
-    `start` tiles."""
+    """Aged foam's lattice, a unit Gaussian drifting with the surface.
+
+    Args:
+        tree: Where the nodes go.
+        surface: Where the lattice lies and drifts.
+        tile: The lattice's unit Gaussian tile.
+        start: The offset, in tiles; reads a quarter tile apart are independent."""
     east, north = _downwind(surface.sea)
     layers = []
     # From force 7 the lattice is blown into streaks along the wind.

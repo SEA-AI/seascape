@@ -23,8 +23,12 @@ from seascape.physics import thermal
 def _joined(
     parts: list[bpy.types.Object], frame: Matrix | None = None
 ) -> bpy.types.Object:
-    """Every mesh under `parts` as one object at `frame`, its vertices in metres about
-    it; the default, the fitted origin, puts the waterline at z = 0."""
+    """Every mesh under the parts as one object, its vertices in metres about its frame.
+
+    Args:
+        parts: Roots whose meshes, children included, are joined; the rest is removed.
+        frame: Where the joined object sits. The default, the fitted origin, puts the
+            waterline at z = 0."""
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
@@ -113,12 +117,14 @@ def _unslotted(joined: list[bpy.types.Object]) -> None:
 def box_corners(
     objects: Iterable[bpy.types.Object], into: Matrix | None = None
 ) -> list[Vector]:
-    """Corners of the axis-aligned box around the vertices of the meshes in
-    `objects`, in the frame `into` maps world space to (default: world).
+    """Corners of the axis-aligned box around the vertices of the meshes.
 
     Vertices, not `bound_box`: a part turned off its parent's axes carries its own box
     turned with it, which can be far wider than the part.
-    """
+
+    Args:
+        objects: Measured, their posed and modified vertices; all but meshes ignored.
+        into: Maps world space to the box's frame; unset, the box is in world."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
     points = []
     for obj in objects:
@@ -324,9 +330,15 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
 def _crevice(
     name: str, objects: list[bpy.types.Object], scale: float, parse: Path
 ) -> None:
-    """Gives each of `objects` `name`'s crevice mask, baked once per parse and fitted
-    size and cached beside the parse; the size matters because the crevice distance
-    is in metres."""
+    """Give each object its asset's crevice mask, baked once per parse and fitted size
+    and cached beside the parse.
+
+    Args:
+        name: The asset.
+        objects: Its meshes, already fitted.
+        scale: The fit's scale, which the bake keys on: the crevice distance is in
+            metres.
+        parse: The cached parse the mask is cached beside."""
     crevice = f"{parse.name}.crevice-{scale:.6g}.{wear.CREVICE_FORMAT}.png"
     path = parse.with_name(crevice)
     if path.exists():

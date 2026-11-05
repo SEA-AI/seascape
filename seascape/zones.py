@@ -211,8 +211,13 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
 
 
 def parts(name: str, worn: bool = False) -> Parts:
-    """Import `name` as an EO build fits it into the current file, with islands
-    numbered by object name, then first face."""
+    """Import an asset as an EO build fits it into the current file, with islands
+    numbered by object name, then first face.
+
+    Args:
+        name: The asset's name in assets.toml.
+        worn: Tag the asset's faces for wear, as a build does an asset
+            `Scenario.worn` names."""
     roots = import_asset(name, "eo", worn=worn)
     bpy.context.view_layer.update()
     return faces.found(mesh_objects(roots))
@@ -666,11 +671,15 @@ def _atlas(rgb: np.ndarray, cover: np.ndarray, texels: np.ndarray) -> Image.Imag
 def sheets(
     name: str, into: Path, kind: Kind | None, material: str | None
 ) -> list[Path]:
-    """Write the sheets for labelling `name`'s parts, and their records, into `into`.
+    """Write the sheets for labelling an asset's parts, and their records.
 
-    Slots by default, islands for an asset of one material. Islands of `material`
-    alone, if given, with the rest grey.
-    """
+    Args:
+        name: The asset's name in assets.toml.
+        into: The folder the sheets go in, made if missing.
+        kind: Label slots or islands; None picks slots, or islands for an asset of
+            one material.
+        material: Show this material's islands alone, the rest grey; it picks
+            islands, so not with slots."""
     if kind == "slots" and material is not None:
         raise ValueError("a material picks islands, not slots")
     asset = manifest()[name]
@@ -782,8 +791,11 @@ SHOWN_WEAR = 0.8
 
 
 def _worn_tiles(found: Parts, weathered: bool) -> list[tuple[Image.Image, str]]:
-    """`found` from `parts(name, worn=not weathered)`, rendered under a white sky.
-    A weathered asset's wear is its textures', so it takes none of ours."""
+    """An asset's parts, worn, rendered under a white sky.
+
+    Args:
+        found: The parts, from `parts(name, worn=not weathered)`.
+        weathered: The asset's wear is its textures', so it takes none of ours."""
     if not weathered:
         wear.dirty(found.objects)
         for obj in found.objects:
