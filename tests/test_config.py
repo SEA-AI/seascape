@@ -1068,6 +1068,27 @@ def test_a_boson_preset_extends_another() -> None:
     assert camera.microbolometer.pitch_um == 12.0
 
 
+@pytest.mark.parametrize(
+    ("rig", "model", "cameras"),
+    [
+        ("sentry", "Sentry", {"t_w", "t_n", "eo_w", "eo_n"}),
+        ("watchkeeper", "Watchkeeper", {"eo", "ir_l", "ir_r"}),
+    ],
+)
+def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> None:
+    line = f'rigs = {{ bow = {{ preset = "{rig}", height_m = 10.0 }} }}'
+    loaded = load(BASELINE, [line]).rigs["bow"]
+    assert (loaded.model, set(loaded.cameras)) == (model, cameras)
+
+
+def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:
+    line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
+    rig = load(BASELINE, [line]).rigs["bow"]
+    left, right = rig.cameras["ir_l"], rig.cameras["ir_r"]
+    assert left.yaw_deg == -right.yaw_deg != 0.0
+    assert rig.cameras["eo"].lens.fisheye is not None
+
+
 GRADE = (
     "sensor = { full_well_e = { uniform = [7000.0, 32000.0] } }, "
     "processing = { white_balance_k = { uniform = [-1500.0, 1500.0] } }"
