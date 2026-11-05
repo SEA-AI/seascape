@@ -30,6 +30,7 @@ from seascape.config import (
     Sky,
 )
 from seascape.physics import aerosol, lwir, solar
+from seascape.physics.colour import LUMINANCE
 
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
@@ -128,9 +129,7 @@ def _fogged_photo(
     unit = vector(tree, "NORMALIZE", direction)
     toward = vector(tree, "DOT_PRODUCT", unit, sky.sun_vector)
     near = scalar(tree, "GREATER_THAN", toward, math.cos(math.radians(skies.DISC_DEG)))
-    luminance = vector(
-        tree, "DOT_PRODUCT", colour, tuple(float(c) for c in skies.LUMINANCE)
-    )
+    luminance = vector(tree, "DOT_PRODUCT", colour, LUMINANCE)
     bright = scalar(tree, "GREATER_THAN", luminance, floor)
     disc = scalar(tree, "MULTIPLY", near, bright, name="photo_disc")
     sun = vector(tree, "SCALE", colour, scalar(tree, "MULTIPLY", disc, extra))
