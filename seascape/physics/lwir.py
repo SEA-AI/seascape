@@ -539,16 +539,18 @@ def _cloud_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray, FloatA
     path_at = [1 + columns.index(f"path_{b}") for b in bases]
     trans_at = [1 + columns.index(f"trans_{b}") for b in bases]
     base = np.array([float(b.removesuffix("m")) for b in bases])
-    names = np.loadtxt(_CLOUD_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(
-        _CLOUD_CSV, delimiter=",", comments="#", usecols=range(1, 2 + len(columns))
-    )
-    raw.setflags(write=False)
-    tables = {}
-    for name in np.unique(names):
-        rows = raw[names == name]
-        tables[str(name)] = (base, rows[:, 0], rows[:, path_at].T, rows[:, trans_at].T)
-    return tables
+    return {
+        name: (base, rows[:, 0], rows[:, path_at].T, rows[:, trans_at].T)
+        for name, rows in _by_profile(_CLOUD_CSV).items()
+    }
+
+
+def _by_profile(csv: Path) -> dict[str, FloatArray]:
+    """Each profile's rows of a LOWTRAN table, past the column that names it."""
+    names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
+    cols = range(1, 1 + len(header(csv)))
+    raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=cols)
+    return {str(name): raw[names == name] for name in np.unique(names)}
 
 
 def _under_base(
@@ -594,11 +596,8 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
         thinnest = min(fogs, key=lambda i: inverse[i])
         inverse = np.append(inverse, 1 / FOG_KM)
     order = np.argsort(inverse)
-    names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=range(1, 2 + len(km)))
     tables = {}
-    for name in np.unique(names):
-        rows = raw[names == name]
+    for name, rows in _by_profile(csv).items():
         # An opaque cell is as deep as a float goes.
         depth = -np.log(np.maximum(rows[:, 1:], np.finfo(np.float64).tiny))
         if fogs:
