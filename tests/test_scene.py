@@ -173,6 +173,10 @@ def under_the_haze(material: bpy.types.Material) -> bpy.types.Node:
     return haze.inputs["Shader"].links[0].from_node
 
 
+def _sea_node(name: str) -> bpy.types.ShaderNode:
+    return bpy.data.materials["sea"].node_tree.nodes[name]
+
+
 def baked(name: str) -> np.ndarray:
     """The red channel of a lookup image, rows bottom first."""
     return np.squeeze(blend.pixels(bpy.data.images[name])[..., 0])
@@ -463,8 +467,7 @@ class TestEoBand:
         assert not mast, "and leave what stands above it"
 
     def test_the_glitter_spreads_over_the_slope_each_pixel_leaves_out(self) -> None:
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        assert nodes["sea_specular"].inputs["Roughness"].is_linked
+        assert _sea_node("sea_specular").inputs["Roughness"].is_linked
         wind, swell = SCENARIO.wind_waves(), SCENARIO.swell_waves()
         speed = SCENARIO.sea.wind_speed_mps
         axis_rad = math.radians(SCENARIO.sea.wind_from_deg)
@@ -478,7 +481,7 @@ class TestEoBand:
                 assert table[t] == pytest.approx(expected, rel=1e-5), axis
 
     def test_a_gust_adds_cox_and_munk_s_variance_at_the_local_wind(self) -> None:
-        roughness = bpy.data.materials["sea"].node_tree.nodes["sea_specular"]
+        roughness = _sea_node("sea_specular")
         assert {
             "gust",
             "sea_gust_variance",
@@ -486,8 +489,7 @@ class TestEoBand:
             "sea_unresolved_variance_crosswind",
         } <= upstream(roughness.inputs["Roughness"])
         speed = SCENARIO.sea.wind_speed_mps
-        tree = bpy.data.materials["sea"].node_tree
-        per_gust = tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value
+        per_gust = _sea_node("sea_gust_variance").inputs["Value_001"].default_value
         assert per_gust == pytest.approx(waves.gust_slope_variance(speed), rel=1e-5)
         tile = baked("sea_gust")
         seeded = waves.von_karman_field(
@@ -499,7 +501,7 @@ class TestEoBand:
         assert tile == pytest.approx(seeded / _looked_up_sigma(seeded), abs=1e-5)
 
     def test_the_gusts_are_carried_downwind_at_the_mean_wind(self) -> None:
-        carry = bpy.data.materials["sea"].node_tree.nodes["gust_carry"]
+        carry = _sea_node("gust_carry")
         per_m = 1 / GUST_TILE_M
         downwind = math.radians(SCENARIO.sea.wind_from_deg + 180.0)
         speed = SCENARIO.sea.wind_speed_mps
@@ -1037,8 +1039,7 @@ class TestIrBand:
 
     def test_the_sea_reflects_what_it_does_not_emit(self) -> None:
         """Emission alone goes dark toward grazing, where emissivity falls to zero."""
-        tree = bpy.data.materials["sea"].node_tree
-        radiance = tree.nodes["sea_radiance"]
+        radiance = _sea_node("sea_radiance")
         assert radiance.operation == "MULTIPLY_ADD"
         assert "sea_reflection" in upstream(radiance.inputs[2])
         emission = radiance.outputs["Value"].links[0].to_node
@@ -1110,8 +1111,7 @@ class TestIrBand:
         mirror = np.arcsin(_mirror_columns())
         view = np.arcsin(_view_rows())
         sky = _sky_round(SCENARIO.sky, None)
-        tree = bpy.data.materials["sea"].node_tree
-        slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
+        slope_max = _sea_node("sea_slope_along").inputs[1].default_value
         sigmas = _row_sigmas(slope_max)
         roughest = table[(SLOPE_ROWS - 1) * VIEW_ROWS]  # its grazing view
         grazing = (mirror >= 0) & (mirror < math.radians(5.0))
@@ -1131,8 +1131,7 @@ class TestIrBand:
         """Bilinear within a tile, as the image interpolates."""
         table = baked("sea_reflection")
         sky = _sky_round(SCENARIO.sky, None)
-        tree = bpy.data.materials["sea"].node_tree
-        slope_max = tree.nodes["sea_slope_along"].inputs[1].default_value
+        slope_max = _sea_node("sea_slope_along").inputs[1].default_value
         sigmas = _row_sigmas(slope_max)
         rows, cols = VIEW_ROWS, MIRROR_SAMPLES
         rng = np.random.default_rng(0)
@@ -1191,8 +1190,7 @@ class TestIrBand:
         mu = (np.arange(len(table)) + 0.5) / len(table)
         excess = lwir.foam_emissivity_excess(np.arccos(mu))
         assert table == pytest.approx(excess, abs=1e-6)
-        nodes = bpy.data.materials["sea"].node_tree.nodes
-        feeding = upstream(nodes["sea_emissivity"].inputs[0])
+        feeding = upstream(_sea_node("sea_emissivity").inputs[0])
         assert any(name.startswith("sea_foam_") for name in feeding), "the grids' foam"
 
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
@@ -1341,10 +1339,6 @@ class TestOwnshipMotion:
 
 def _finest_m(scenario: Scenario, built: scene.Built) -> float:
     return scene._finest_footprint_m(scenario, views(scenario, "eo", built.cameras))
-
-
-def _sea_node(name: str) -> bpy.types.ShaderNode:
-    return bpy.data.materials["sea"].node_tree.nodes[name]
 
 
 class TestSlicks:
