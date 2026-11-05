@@ -26,10 +26,28 @@ def painted(absorptance: float) -> thermal.Zone:
     return dataclasses.replace(thermal.ZONES["paint_hull"], absorptance=absorptance)
 
 
+def facet_temperature_k(
+    zone: thermal.Zone,
+    env: thermal.Environment,
+    normal_elev_rad: float,
+    sun_azimuth_rad: float,
+    sunlit: bool = True,
+) -> np.ndarray:
+    """A facet whose normal stands `normal_elev_rad` up and `sun_azimuth_rad` round
+    from the sun's bearing."""
+    sun_elev = env.sun_elevation_rad or 0.0
+    cos_incidence = math.cos(normal_elev_rad) * math.cos(sun_elev) * math.cos(
+        sun_azimuth_rad
+    ) + math.sin(normal_elev_rad) * math.sin(sun_elev)
+    return thermal.lit_temperature_k(
+        zone, env, max(cos_incidence, 0.0) * sunlit, math.sin(normal_elev_rad)
+    )
+
+
 def facing_sun_k(zone: thermal.Zone, wind_m_s: float) -> float:
     """A facet turned square to the sun."""
     env = environment(wind_m_s, SUN_ELEVATION_RAD)
-    return float(thermal.facet_temperature_k(zone, env, SUN_ELEVATION_RAD, 0.0))
+    return float(facet_temperature_k(zone, env, SUN_ELEVATION_RAD, 0.0))
 
 
 def test_radiative_equilibrium() -> None:
@@ -42,7 +60,7 @@ def test_radiative_equilibrium() -> None:
 
 def test_a_facet_that_does_not_radiate_stays_at_air_temperature() -> None:
     zone = thermal.Zone(0.0, (0.0, 0.0), 0.0, "none", 0.0)
-    t = thermal.facet_temperature_k(zone, environment(5.0, None), 0.3, 0.0)
+    t = facet_temperature_k(zone, environment(5.0, None), 0.3, 0.0)
     assert float(t) == pytest.approx(T_AIR_K)
 
 
@@ -86,14 +104,12 @@ def test_a_high_cloud_base_cools_a_deck_and_not_the_fog_under_it() -> None:
     env = environment(5.0, None)
     low = dataclasses.replace(env, cloud_fraction=1.0)
     high = dataclasses.replace(low, cloud_base_m=2400.0)
-    deck = thermal.facet_temperature_k(zone, high, math.pi / 2, 0.0)
-    assert float(deck) < float(thermal.facet_temperature_k(zone, low, math.pi / 2, 0.0))
+    deck = facet_temperature_k(zone, high, math.pi / 2, 0.0)
+    assert float(deck) < float(facet_temperature_k(zone, low, math.pi / 2, 0.0))
     fog = dataclasses.replace(high, fog_cover=1.0, beam_transmittance=0.0)
     clear_fog = dataclasses.replace(fog, cloud_fraction=0.0)
-    assert float(thermal.facet_temperature_k(zone, fog, math.pi / 2, 0.0)) == (
-        pytest.approx(
-            float(thermal.facet_temperature_k(zone, clear_fog, math.pi / 2, 0.0))
-        )
+    assert float(facet_temperature_k(zone, fog, math.pi / 2, 0.0)) == (
+        pytest.approx(float(facet_temperature_k(zone, clear_fog, math.pi / 2, 0.0)))
     )
 
 
@@ -109,9 +125,7 @@ def test_clear_night_deck_runs_below_the_air() -> None:
     convection of 6-20 W m^-2 K^-1 that is 3-8 K of cooling."""
     deck = thermal.ZONES["deck"]
     for wind_m_s in (0.0, 3.0):
-        t = thermal.facet_temperature_k(
-            deck, environment(wind_m_s, None), 0.5 * math.pi, 0.0
-        )
+        t = facet_temperature_k(deck, environment(wind_m_s, None), 0.5 * math.pi, 0.0)
         assert -9.0 < float(t) - T_AIR_K < -2.0
 
 
@@ -119,7 +133,7 @@ def test_no_heated_interior_puts_a_hull_side_between_air_and_sea_at_night() -> N
     """Thompson et al. 1998: at night a well-insulated hull sits between air and sea.
     A vertical side sees half sky, half sea."""
     env = thermal.Environment(T_AIR_K, T_AIR_K + 4.0, 5.0, None)
-    t = float(thermal.facet_temperature_k(thermal.ZONES["paint_hull"], env, 0.0, 0.0))
+    t = float(facet_temperature_k(thermal.ZONES["paint_hull"], env, 0.0, 0.0))
     assert T_AIR_K - 2.0 < t < T_AIR_K + 4.0
 
 
@@ -137,8 +151,8 @@ def test_wind_pulls_a_sunlit_facet_towards_the_air() -> None:
 def test_shadow_and_a_turned_back_take_only_diffuse_sun() -> None:
     zone = thermal.ZONES["paint_hull"]
     env = environment(5.0, SUN_ELEVATION_RAD)
-    shadowed = thermal.facet_temperature_k(zone, env, 0.0, 0.0, sunlit=False)
-    turned = thermal.facet_temperature_k(zone, env, 0.0, math.pi)
+    shadowed = facet_temperature_k(zone, env, 0.0, 0.0, sunlit=False)
+    turned = facet_temperature_k(zone, env, 0.0, math.pi)
     assert float(shadowed) == pytest.approx(float(turned))
 
 
@@ -146,10 +160,10 @@ def test_overcast_takes_the_beam_and_leaves_the_diffuse() -> None:
     zone = thermal.ZONES["paint_hull"]
     env = environment(5.0, SUN_ELEVATION_RAD)
     overcast = dataclasses.replace(env, cloud_fraction=1.0)
-    facing = thermal.facet_temperature_k(zone, overcast, 0.0, 0.0)
-    turned = thermal.facet_temperature_k(zone, overcast, 0.0, math.pi)
+    facing = facet_temperature_k(zone, overcast, 0.0, 0.0)
+    turned = facet_temperature_k(zone, overcast, 0.0, math.pi)
     assert float(facing) == pytest.approx(float(turned))
-    clear = thermal.facet_temperature_k(zone, env, 0.0, 0.0)
+    clear = facet_temperature_k(zone, env, 0.0, 0.0)
     assert float(facing) < float(clear)
 
 
@@ -167,7 +181,7 @@ def test_fog_that_scatters_the_whole_beam_keeps_a_deck_as_warm_as_clear_sky() ->
 
 def test_exhaust_metal_holds_its_uptake_temperature() -> None:
     env = environment(10.0, SUN_ELEVATION_RAD)
-    t = thermal.facet_temperature_k(thermal.ZONES["exhaust"], env, 0.0, 0.0)
+    t = facet_temperature_k(thermal.ZONES["exhaust"], env, 0.0, 0.0)
     assert float(t) == env.t_exhaust_k
 
 
@@ -206,7 +220,7 @@ def test_table_matches_the_facets() -> None:
     assert np.all(np.diff(table, axis=1) > 0)
     # A facet facing the sun's bearing, tipped up by elevation e: n . s = cos(e - sun).
     elev = math.asin(up[4])
-    probe = thermal.facet_temperature_k(zone, env, elev, 0.0)
+    probe = facet_temperature_k(zone, env, elev, 0.0)
     expected = np.interp(math.cos(elev - SUN_ELEVATION_RAD), sun_cos, table[4])
     assert float(probe) == pytest.approx(expected, abs=0.05)
 
