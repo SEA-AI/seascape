@@ -437,13 +437,16 @@ def test_a_sun_s_strength_is_irradiance_in_the_world_s_radiance(
     assert blend.read(tmp_path / "frame.exr")[..., :3] == pytest.approx(1.0, rel=1e-3)
 
 
+UNSEEN = sea.Seen()
+
+
 def _svm_errors(
     capfd: pytest.CaptureFixture[str],
     scenario: Scenario,
     trails: tuple[Wake, ...],
     band: Band,
     pad: int = 0,
-    seen: sea.Seen = sea.UNSEEN,
+    seen: sea.Seen = UNSEEN,
 ) -> list[str]:
     """The SVM lines in Cycles' log after rendering `sea.water` alone.
 

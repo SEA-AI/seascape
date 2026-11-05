@@ -96,9 +96,6 @@ class Seen(NamedTuple):
     foam_grids: tuple[FoamGrid, ...] = ()
 
 
-UNSEEN = Seen()
-
-
 def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocket:
     """Seconds since the first frame, modulo the span in a loop."""
     times_s = outputs.times_s
@@ -130,7 +127,7 @@ def material(
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
     wakes: tuple[Wake, ...],
     light: Light,
-    seen: Seen = UNSEEN,
+    seen: Seen,
 ) -> bpy.types.Material:
     """Each pixel draws the waves it resolves and takes the rest as roughness;
     `rngs` draw its gusts, its windrows and its foam, whose whitecaps are remembered on
@@ -278,7 +275,6 @@ def material(
 
 __all__ = [
     "FOAM_SEAM_CELLS",
-    "UNSEEN",
     "Clouds",
     "Light",
     "Seen",
