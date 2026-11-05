@@ -882,14 +882,8 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     asset = SCENARIO.objects[0].asset
-    heat = surroundings(SCENARIO)
-    anchor = _vessel(
-        asset,
-        condition=Condition(t_k=300.0),
-        sky=SCENARIO.sky,
-        heat=heat,
-        hulls=Hulls(),
-    )
+    hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
+    anchor = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
     hull = next(p for p in anchor.children_recursive if p.type == "MESH")
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
@@ -901,16 +895,12 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
 
 def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    heat, hulls = surroundings(SCENARIO), Hulls()
+    hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
     asset = SCENARIO.objects[0].asset
     skins = []
     for minutes in (0.0, 30.0):
         anchor = _vessel(
-            asset,
-            condition=Condition(engine_off_min=minutes),
-            sky=SCENARIO.sky,
-            heat=heat,
-            hulls=hulls,
+            asset, condition=Condition(engine_off_min=minutes), hulls=hulls
         )
         assert anchor["engine_off_min"] == minutes
         hull = next(p for p in anchor.children_recursive if p.type == "MESH")
@@ -925,13 +915,7 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    anchor = _vessel(
-        "zodiac",
-        condition=Condition(),
-        sky=SCENARIO.sky,
-        heat=None,
-        hulls=Hulls(),
-    )
+    anchor = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
     bpy.context.view_layer.update()
     level = waterline_m(anchor)
     (attitude,) = anchor.children
@@ -944,16 +928,9 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     """The keel rises by the asset's draught minus the object's, and the labels'
     height and waterline go with it."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    hulls = Hulls()
+    hulls = Hulls(SCENARIO.sky, None)
     level, raised = (
-        _vessel(
-            "bulk_carrier",
-            condition=Condition(),
-            sky=SCENARIO.sky,
-            heat=None,
-            hulls=hulls,
-            rise_m=rise_m,
-        )
+        _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)
         for rise_m in (0.0, 5.0)
     )
     bpy.context.view_layer.update()

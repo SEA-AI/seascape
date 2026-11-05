@@ -139,15 +139,10 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
     )
 
 
-def _zodiacs(hulls: Hulls, wears: tuple[float, ...]) -> list[bpy.types.Object]:
+def _zodiacs(worn: frozenset[str], wears: tuple[float, ...]) -> list[bpy.types.Object]:
+    hulls = Hulls(load(BASELINE).sky, None, worn)
     return [
-        _vessel(
-            "zodiac",
-            condition=Condition(wear=amount),
-            sky=load(BASELINE).sky,
-            heat=None,
-            hulls=hulls,
-        )
+        _vessel("zodiac", condition=Condition(wear=amount), hulls=hulls)
         for amount in wears
     ]
 
@@ -157,7 +152,7 @@ def _meshes(anchor: bpy.types.Object) -> list[bpy.types.Object]:
 
 
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
-    clean, worn = _zodiacs(Hulls(frozenset({"zodiac"})), (0.0, 0.6))
+    clean, worn = _zodiacs(frozenset({"zodiac"}), (0.0, 0.6))
     assert (clean["wear"], worn["wear"]) == (0.0, 0.6)
     for anchor in (clean, worn):
         assert all("wear_position_m" in o.data.attributes for o in _meshes(anchor))
@@ -165,7 +160,7 @@ def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
 
 
 def test_a_clean_build_is_not_tagged() -> None:
-    (clean,) = _zodiacs(Hulls(), (0.0,))
+    (clean,) = _zodiacs(frozenset(), (0.0,))
     assert not any("wear_position_m" in o.data.attributes for o in _meshes(clean))
 
 
@@ -175,7 +170,7 @@ def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
 
 
 def test_a_clean_build_keeps_its_import_graph() -> None:
-    (clean,) = _zodiacs(Hulls(), (0.0,))
+    (clean,) = _zodiacs(frozenset(), (0.0,))
     assert not any(g.name.startswith("wear_masks") for g in bpy.data.node_groups)
     built = {m.name.split("/", 1)[1]: len(m.node_tree.nodes) for m in _materials(clean)}
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -186,7 +181,7 @@ def test_a_clean_build_keeps_its_import_graph() -> None:
 
 
 def test_a_worn_asset_lays_dirt_over_every_principled_material() -> None:
-    (worn,) = _zodiacs(Hulls(frozenset({"zodiac"})), (0.5,))
+    (worn,) = _zodiacs(frozenset({"zodiac"}), (0.5,))
     for material in _materials(worn):
         nodes = material.node_tree.nodes
         if not any(n.type == "BSDF_PRINCIPLED" for n in nodes):
@@ -210,7 +205,9 @@ def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> 
 
     def parts() -> list[bpy.types.Object]:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        vessels, _ = add_vessels(scenario, radius_m, None, Hulls(scenario.worn), [])
+        vessels, _ = add_vessels(
+            scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), []
+        )
         return [_meshes(a)[0] for a in vessels["zodiac"]]
 
     first = parts()

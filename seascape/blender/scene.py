@@ -142,15 +142,13 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
-    hulls = Hulls(scenario.worn)
-    tall, _ = sea.displaced((wind, swell))
     heat = surroundings(scenario) if band == "ir" else None
-    vessel = add_ownship(
-        scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
-    )
+    hulls = Hulls(scenario.sky, heat, scenario.worn)
+    tall, _ = sea.displaced((wind, swell))
+    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall)
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     trails: list[wakes.Wake] = []
-    vessels, turbines = add_vessels(scenario, radius_m, heat, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():

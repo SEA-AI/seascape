@@ -36,9 +36,13 @@ from seascape.physics import earth, wakes, waves
 
 @dataclass
 class Hulls:
-    """Each asset's first import, copied for the rest of the build: the FBX importer
-    slows with every material already in the file. An asset in `worn` is tagged."""
+    """How a build makes its hulls: under `sky`, with its `heat` in LWIR and None in
+    EO. Each asset's first import is copied for the rest of the build: the FBX
+    importer slows with every material already in the file. An asset in `worn` is
+    tagged."""
 
+    sky: Sky
+    heat: Heat | None
     worn: frozenset[str] = frozenset()
     imported: dict[str, list[bpy.types.Object]] = field(default_factory=dict)
 
@@ -65,16 +69,11 @@ def heading_rad(anchor: bpy.types.Object) -> float:
 
 
 def _vessel(
-    name: str,
-    *,
-    condition: Condition,
-    sky: Sky,
-    heat: Heat | None,
-    hulls: Hulls,
-    rise_m: float = 0.0,
+    name: str, *, condition: Condition, hulls: Hulls, rise_m: float = 0.0
 ) -> bpy.types.Object:
     """A hull fitted and anchored at the origin under an empty, `rise_m` above its
-    asset's draught. `heat` is the LWIR build's, and None in EO."""
+    asset's draught."""
+    heat = hulls.heat
     if name in hulls.imported:
         parts = [_copy_tree(part, None) for part in hulls.imported[name]]
     else:
@@ -89,7 +88,7 @@ def _vessel(
     if heat is not None:
         heat = heat.stopped(condition.engine_off_min)
         t_k = condition.t_k
-        uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, sky)
+        uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, hulls.sky)
         worn_on = manifest()[name].material if name in hulls.worn else None
         for mesh in mesh_objects(parts):
             # Where the skin finds the water. Set on every hull: a copy inherits it.
@@ -133,8 +132,6 @@ def _vessel(
 
 def add_ownship(
     ownship: Ownship,
-    sky: Sky,
-    heat: Heat | None,
     rigs: bpy.types.Object,
     hulls: Hulls,
     outputs: Outputs,
@@ -148,11 +145,7 @@ def add_ownship(
         place(anchor, 0.0, 0.0, 0.0)
     else:
         anchor = _vessel(
-            ownship.asset,
-            condition=Condition(t_k=ownship.t_k),
-            sky=sky,
-            heat=heat,
-            hulls=hulls,
+            ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
         )
     anchor.name = "ownship"
     rigs.parent = anchor
@@ -288,8 +281,6 @@ def _copy_tree(
 def _targets(
     spec: Targets,
     radius_m: float,
-    sky: Sky,
-    heat: Heat | None,
     hulls: Hulls,
     outputs: Outputs,
     trails: list[wakes.Wake],
@@ -297,13 +288,7 @@ def _targets(
     """The ring's hulls, by asset."""
     anchors: dict[str, list[bpy.types.Object]] = {}
     for i, (asset, bearing_deg, heading_deg) in enumerate(spec.poses()):
-        anchor = _vessel(
-            asset,
-            condition=Condition.of(spec),
-            sky=sky,
-            heat=heat,
-            hulls=hulls,
-        )
+        anchor = _vessel(asset, condition=Condition.of(spec), hulls=hulls)
         anchor.name = f"target_{i}"
         _pose(
             anchor,
@@ -323,20 +308,13 @@ def _targets(
 def _object(
     spec: Object,
     radius_m: float,
-    sky: Sky,
-    heat: Heat | None,
     hulls: Hulls,
     outputs: Outputs,
     trails: list[wakes.Wake],
 ) -> list[bpy.types.Object]:
     """`spec`'s hulls, each wake under way added to `trails`."""
     anchor = _vessel(
-        spec.asset,
-        condition=Condition.of(spec),
-        sky=sky,
-        heat=heat,
-        hulls=hulls,
-        rise_m=spec.rise_m,
+        spec.asset, condition=Condition.of(spec), hulls=hulls, rise_m=spec.rise_m
     )
     orbit = spec.orbit
     if orbit is None:
@@ -378,7 +356,6 @@ def _turbine(
     rng: np.random.Generator,
     scenario: Scenario,
     radius_m: float,
-    heat: Heat | None,
     hulls: Hulls,
 ) -> bpy.types.Object:
     """A turbine facing the wind, its rotor starting at an angle of its own so a farm's
@@ -386,8 +363,6 @@ def _turbine(
     anchor = _vessel(
         farm.asset,
         condition=Condition(paint_absorptance=farm.paint_absorptance, wear=farm.wear),
-        sky=scenario.sky,
-        heat=heat,
         hulls=hulls,
     )
     outputs = scenario.outputs
@@ -509,22 +484,21 @@ def overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, st
 def add_vessels(
     scenario: Scenario,
     radius_m: float,
-    heat: Heat | None,
     hulls: Hulls,
     trails: list[wakes.Wake],
 ) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
     """Every object and ring hull, then every turbine, by asset; each wake under way
     added to `trails`. Worn once all are built: a hull is copied from its asset's
     first, which would carry that one's wear."""
-    sky, outputs = scenario.sky, scenario.outputs
+    outputs = scenario.outputs
     wearing: list[tuple[list[bpy.types.Object], float, str]] = []
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
     for i, spec in enumerate(scenario.objects):
-        anchors = _object(spec, radius_m, sky, heat, hulls, outputs, trails)
+        anchors = _object(spec, radius_m, hulls, outputs, trails)
         wearing.append((anchors, spec.wear, f"wear/objects/{i}"))
         vessels[spec.asset] += anchors
     if (ring := scenario.targets) is not None:
-        hulls_by = _targets(ring, radius_m, sky, heat, hulls, outputs, trails)
+        hulls_by = _targets(ring, radius_m, hulls, outputs, trails)
         wearing.append((list(chain(*hulls_by.values())), ring.wear, "wear/targets"))
         for asset, anchors in hulls_by.items():
             vessels[asset] += anchors
@@ -533,7 +507,7 @@ def add_vessels(
         for k, (range_m, bearing_deg) in enumerate(farm.positions()):
             rng = substream(scenario.seed, f"farms/{f}/{k}/rotor")
             anchor = _turbine(
-                farm, range_m, bearing_deg, rng, scenario, radius_m, heat, hulls
+                farm, range_m, bearing_deg, rng, scenario, radius_m, hulls
             )
             wearing.append(([anchor], farm.wear, f"wear/farms/{f}/{k}"))
             turbines[farm.asset].append(anchor)
