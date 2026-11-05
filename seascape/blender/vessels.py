@@ -11,6 +11,7 @@ import numpy as np
 from mathutils import Vector
 
 from seascape.assets import manifest
+from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
     place,
@@ -532,10 +533,8 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     crossings = []
     for part in mesh_objects([anchor]):
         mesh = part.data
-        local = np.empty(3 * len(mesh.vertices), dtype=np.float32)
-        mesh.vertices.foreach_get("co", local)
-        ends = np.empty(2 * len(mesh.edges), dtype=np.int32)
-        mesh.edges.foreach_get("vertices", ends)
+        local = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices))
+        ends = faces.ints(mesh.edges, "vertices", 2 * len(mesh.edges))
         m = to_hull @ np.array(part.matrix_world)
         hull = local.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
         a, b = hull[ends.reshape(-1, 2)].transpose(1, 0, 2)

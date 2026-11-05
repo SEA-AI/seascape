@@ -127,8 +127,7 @@ def box_corners(
         # Evaluated, so an armature's pose and the modifiers move the vertices.
         evaluated = obj.evaluated_get(depsgraph)
         mesh = evaluated.to_mesh()
-        co = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
-        mesh.vertices.foreach_get("co", co)
+        co = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices))
         evaluated.to_mesh_clear()
         if not co.size:
             continue
