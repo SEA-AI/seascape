@@ -81,10 +81,12 @@ class Heat(NamedTuple):
     sun: tuple[float, float, float] | None
 
     def stopped(self, minutes: float) -> "Heat":
+        """The same, `minutes` after the engines stopped."""
         return self._replace(env=self.env.stopped(minutes * 60.0))
 
 
 def surroundings(scenario: Scenario) -> Heat:
+    """What the scenario's hulls exchange heat with: air, sea, sun and sky."""
     sky = scenario.sky
     elevation = sky.sun_elevation_deg
     env = thermal.Environment(

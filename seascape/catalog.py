@@ -83,6 +83,7 @@ def shot(
 
 
 def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
+    """Write a sheet of every asset in the manifest, shot in `scenario`, to `out`."""
     entries = assets.manifest()
     rows = math.ceil(len(entries) / COLUMNS)
     page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
@@ -103,6 +104,7 @@ def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
 
 
 def measure(path: Path) -> str:
+    """The manifest lines for the mesh at `path`."""
     triangles, texture_px = meshes.measure(path)
     lines = [
         f'sha256 = "{assets.digest(path)}"',

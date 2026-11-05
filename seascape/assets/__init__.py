@@ -61,6 +61,7 @@ class Rule(FrozenModel):
 
     @property
     def ranges(self) -> dict[str, tuple[float, float]]:
+        """Each input's range, for those the rule bounds."""
         channels = ("metallic", "roughness", "alpha")
         return {k: v for k in channels if (v := getattr(self, k)) is not None}
 
@@ -151,7 +152,8 @@ class _Mesh(FrozenModel):
 
     @property
     @abstractmethod
-    def size(self) -> str: ...
+    def size(self) -> str:
+        """How big it is, in words."""
 
     @property
     def textures(self) -> str:
@@ -198,10 +200,12 @@ class Hull(_Mesh):
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.length_m / size[1]
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.length_m:.3g} m long"
 
@@ -214,10 +218,12 @@ class Buoy(_Mesh):
     height_m: float = Field(gt=0.0)
     bow_deg: ClassVar[float] = 0.0
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.height_m / size[2]
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.height_m:.3g} m tall"
 
@@ -230,10 +236,12 @@ class Debris(_Mesh):
     length_m: float = Field(gt=0.0)
     bow_deg: ClassVar[float] = 0.0
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.length_m / max(size[0], size[1])
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.length_m:.3g} m long"
 
@@ -279,6 +287,7 @@ class Turbine(_Mesh):
     bow_deg: float = 0.0
     rotor: Rotor
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.height_m / size[2]
 
@@ -291,6 +300,7 @@ class Turbine(_Mesh):
         return 0.0, 0.0
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.rotor.diameter_m:.3g} m rotor"
 
@@ -300,12 +310,14 @@ type Asset = Annotated[Hull | Buoy | Debris | Turbine, Field(discriminator="kind
 
 @cache
 def manifest() -> dict[str, Asset]:
+    """Every mesh in the manifest, by name."""
     with MANIFEST.open("rb") as handle:
         body = tomllib.load(handle)
     return TypeAdapter(dict[str, Asset]).validate_python(body)
 
 
 def digest(path: Path) -> str:
+    """`path`'s SHA-256, as the manifest records it."""
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
@@ -334,6 +346,7 @@ def local(name: str) -> Path:
 
 
 def cache_path(name: str, url: str) -> Path:
+    """Where the cache keeps `name`, with the suffix its download carries."""
     return CACHE / f"{name}{PurePosixPath(url).suffix}"
 
 

@@ -21,6 +21,7 @@ INK = (232, 232, 232)
 
 
 def font(size: int = 16) -> FreeTypeFont | ImageFont.ImageFont:
+    """Pillow's default font at `size` pixels."""
     return ImageFont.load_default(size=size)
 
 

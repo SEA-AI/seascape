@@ -55,6 +55,7 @@ class Condition:
 
     @classmethod
     def of(cls, spec: Object | Targets) -> "Condition":
+        """The condition an object or a ring of targets asks for."""
         return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance, spec.wear)
 
 

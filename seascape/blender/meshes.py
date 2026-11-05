@@ -165,6 +165,7 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
 
 
 def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
+    """The meshes in `parts` and their descendants."""
     return [
         obj
         for part in parts

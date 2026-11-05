@@ -49,6 +49,7 @@ class WarmLayer(Model):
     )
 
     def rise_k(self, wind_speed_mps: float, t_sea_k: float) -> float:
+        """The warm layer's peak warming over the bulk."""
         cooling = self.cooling_w_m2
         if cooling is None:
             cooling = skin.clear_day_cooling_w_m2(wind_speed_mps)
@@ -125,6 +126,7 @@ class Sea(Model):
 
     @property
     def fetch_m(self) -> float | None:
+        """The fetch; None for the open ocean."""
         return None if self.fetch_km is None else self.fetch_km * 1e3
 
     def t_skin_k(self, sun_up: bool) -> float:
@@ -287,10 +289,12 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
+        """The haze's extinction at the visibility."""
         return aerosol.extinction_per_m(self.visibility_km)
 
     @property
     def fog_weight(self) -> float:
+        """`aerosol.fog_weight` at the visibility."""
         return aerosol.fog_weight(self.visibility_km)
 
     @property

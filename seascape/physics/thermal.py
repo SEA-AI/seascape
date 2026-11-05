@@ -296,6 +296,7 @@ class Environment:
                 raise ValueError(f"{name} {getattr(self, name)} outside [0, 1]")
 
     def interior_k(self, interior: Interior) -> float:
+        """The temperature behind a face backed by `interior`."""
         return {
             "none": self.t_air_k,
             "cabin": self.t_cabin_k,

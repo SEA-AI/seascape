@@ -34,13 +34,13 @@ LABEL_DEG = 30
 _TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
-def rotation(camera: CameraCalibration, frame: str) -> np.ndarray:
+def _rotation(camera: CameraCalibration, frame: str) -> np.ndarray:
     return np.array(camera.extrinsics[frame])[:3, :3]
 
 
 def axis(cameras: list[CameraCalibration], frame: str) -> float:
     """Bearing of the summed optical axes, which cannot wrap as a mean of angles can."""
-    x, y, _ = np.sum([rotation(camera, frame)[:, 2] for camera in cameras], axis=0)
+    x, y, _ = np.sum([_rotation(camera, frame)[:, 2] for camera in cameras], axis=0)
     return float(np.arctan2(x, y))
 
 
@@ -52,7 +52,7 @@ def pose(
     turn = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
     return (
         np.array(camera.K, np.float32),
-        np.array(_TO_CV @ turn @ rotation(camera, frame), np.float32),
+        np.array(_TO_CV @ turn @ _rotation(camera, frame), np.float32),
     )
 
 

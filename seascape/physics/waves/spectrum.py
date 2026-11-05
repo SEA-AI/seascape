@@ -55,14 +55,17 @@ class Wave:
 
     @property
     def k_rad_m(self) -> float:
+        """The wavenumber deep-water dispersion gives omega."""
         return self.omega_rad_s**2 / GRAVITY_MS2
 
     @property
     def k_east_rad_m(self) -> float:
+        """The wavenumber's east component."""
         return self.k_rad_m * math.sin(self.toward_rad)
 
     @property
     def k_north_rad_m(self) -> float:
+        """The wavenumber's north component."""
         return self.k_rad_m * math.cos(self.toward_rad)
 
 
@@ -117,6 +120,7 @@ def inverse_wave_age(wind_speed_mps: float, fetch_m: float | None) -> float:
 
 
 def peak_omega_rad_s(wind_speed_mps: float, fetch_m: float | None) -> float:
+    """The spectrum's peak angular frequency at this wind and fetch."""
     return GRAVITY_MS2 * inverse_wave_age(wind_speed_mps, fetch_m) / wind_speed_mps
 
 

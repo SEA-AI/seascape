@@ -24,6 +24,7 @@ class _RigObjects(NamedTuple):
 
 
 def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
+    """The scenario's rigs and cameras under one root, each seeing to `far_m`."""
     root = bpy.data.objects.new("rigs", None)
     bpy.context.collection.objects.link(root)
     place(root, 0.0, 0.0, 0.0)

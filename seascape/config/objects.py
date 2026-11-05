@@ -280,6 +280,7 @@ class Farm(Model):
 
     @property
     def turbine(self) -> assets.Turbine:
+        """The manifest's entry for `asset`."""
         turbine = assets.manifest()[self.asset]
         assert isinstance(turbine, assets.Turbine)  # TurbineName checked it
         return turbine

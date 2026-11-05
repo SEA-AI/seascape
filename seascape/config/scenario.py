@@ -81,6 +81,7 @@ class Outputs(Model):
 
     @property
     def times_s(self) -> list[float]:
+        """Each frame's time, from 0; one frame for a still."""
         return [f / self.fps for f in range(max(1, round(self.duration_s * self.fps)))]
 
     @property
@@ -127,6 +128,7 @@ class Scenario(Model):
 
     @property
     def mounts(self) -> list[Mount]:
+        """Every camera, with the rig carrying it."""
         return [
             Mount(rig_name, rig, camera_name, camera)
             for rig_name, rig in self.rigs.items()
@@ -152,6 +154,7 @@ class Scenario(Model):
         )
 
     def wind_waves(self) -> tuple[waves.Wave, ...]:
+        """The wind sea's waves, from the scenario's wind and fetch."""
         sea = self.sea
         return waves.wind_sea(
             sea.wind_speed_mps,
@@ -162,6 +165,7 @@ class Scenario(Model):
         )
 
     def swell_waves(self) -> tuple[waves.Wave, ...]:
+        """The swell's waves; none without a swell."""
         swell = self.sea.swell
         if swell is None:
             return ()
@@ -174,6 +178,7 @@ class Scenario(Model):
         )
 
     def wave_field(self) -> tuple[waves.Wave, ...]:
+        """Every wave on the sea, wind sea then swell."""
         return self.wind_waves() + self.swell_waves()
 
     @model_validator(mode="after")
