@@ -1899,12 +1899,14 @@ class TestHiddenSun:
 class TestPhotographedThermalSky:
     """A white photo, all cloud, stands in for the download."""
 
+    CLOUDY = variant(sky={"hdri": "overcast_soil"})
+
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
     def built(cls, tmp_path_factory: pytest.TempPathFactory) -> None:
         with white_photo(tmp_path_factory.mktemp("sky"), 128, 64) as patch:
             patch.setattr("seascape.blender.sky.THERMAL_SKY_PX", 64)
-            scene.build(variant(sky={"hdri": "overcast_soil"}), "ir")
+            scene.build(cls.CLOUDY, "ir")
 
     def test_the_world_adds_the_photo_s_share_of_a_whole_cloud_to_the_clear_sky(
         self,
@@ -1927,8 +1929,7 @@ class TestPhotographedThermalSky:
 
     def test_the_world_s_whole_cloud_is_lwir_s(self) -> None:
         top = baked("sky_radiance")[-1] + baked("cloud_excess")[-1]
-        sky = variant(sky={"hdri": "overcast_soil"}).sky
-        expected = _hazed_sky_m(sky, _texel_elevations()[-1], cloud=1.0)
+        expected = _hazed_sky_m(self.CLOUDY.sky, _texel_elevations()[-1], cloud=1.0)
         assert top == pytest.approx(float(expected), rel=1e-5)
 
     def test_the_haze_takes_its_airlight_from_the_clouds(self) -> None:
@@ -1941,7 +1942,7 @@ class TestPhotographedThermalSky:
         )
 
     def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
-        heat = surroundings(variant(sky={"hdri": "overcast_soil"}))
+        heat = surroundings(self.CLOUDY)
         assert heat.env.cloud_fraction == pytest.approx(1.0)
 
     def test_a_hidden_sun_s_beam_reaches_the_hull_through_the_clouds(self) -> None:
@@ -1952,15 +1953,14 @@ class TestPhotographedThermalSky:
 
     def test_overhead_reads_a_cloud(self) -> None:
         top = baked("cloudy_sky_radiance")[-1]
-        sky = variant(sky={"hdri": "overcast_soil"}).sky
-        expected = _hazed_sky_m(sky, np.pi / 2, cloud=1.0)
+        expected = _hazed_sky_m(self.CLOUDY.sky, np.pi / 2, cloud=1.0)
         assert top == pytest.approx(float(expected), rel=1e-3)
 
     def test_the_sea_reflects_the_clouds(self) -> None:
         """A sea under overcast reflecting a clear sky would read cold."""
         table = baked("sea_reflection")
         mirror = np.arcsin(_mirror_columns())
-        sky = variant(sky={"hdri": "overcast_soil"}).sky
+        sky = self.CLOUDY.sky
         # Off the horizon, where a clear sky runs cold.
         high = mirror[mirror > math.radians(30.0)]
         clear = lwir.sky_radiance(high, sky.t_air_k, sky.atmosphere)
