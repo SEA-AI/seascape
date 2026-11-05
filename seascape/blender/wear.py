@@ -293,20 +293,13 @@ class _Masks:
         bad = _smooth(self.noise(0.04, 21.0, 2.0), 0.3, 0.7)
         self.region = bad.madd(1.3, 0.2)
 
-    def noise(
-        self,
-        per_m: float,
-        offset: float,
-        detail: float = 6.0,
-        stretch: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> Num:
-        """`stretch` scales the features per axis."""
+    def noise(self, per_m: float, offset: float, detail: float = 6.0) -> Num:
         t = self.tree
         made = node(
             t,
             "ShaderNodeTexNoise",
             {
-                "Vector": vector(t, "MULTIPLY", self.position, stretch),
+                "Vector": self.position,
                 "Scale": per_m,
                 "Detail": detail,
                 "W": self.offset + offset,
