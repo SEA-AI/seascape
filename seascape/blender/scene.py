@@ -134,7 +134,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
 
     `cull` draws only the waves the scenario's own cameras resolve, at their own
     resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
-    mounts = [m for m in scenario.mounts if m.camera.band == band]
+    mounts = scenario.band_mounts(band)
     if not mounts:
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)

@@ -175,7 +175,7 @@ def render(
         passes = Path(tmp)
         for band in outputs.bands:
             # The default bands can name one no rig has a camera for.
-            mounts = [m for m in scenario.mounts if m.camera.band == band]
+            mounts = scenario.band_mounts(band)
             if not mounts:
                 continue
             thermal = band == "ir" and outputs.format != "exr"

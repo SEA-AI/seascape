@@ -90,9 +90,7 @@ def views(
     found = []
     for frame, t_s in enumerate(scenario.outputs.times_s):
         sc.frame_set(frame)
-        for mount in scenario.mounts:
-            if mount.camera.band != band:
-                continue
+        for mount in scenario.band_mounts(band):
             data = cameras[mount.name].data
             found.append(
                 View(
