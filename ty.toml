@@ -12,4 +12,4 @@ include = ["seascape", "tests", "docs"]
 include = ["docs/primer/charts.py", "docs/masks.py", "docs/outline.py"]
 
 [overrides.rules]
-unresolved-import = "ignore"
+import-not-found = "ignore"
