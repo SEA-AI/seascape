@@ -241,8 +241,7 @@ def _rows(
     tile_m: float,
     name: str,
 ) -> bpy.types.NodeSocket:
-    """`tile`, `tile_m` a side, stretched along the wind and drifting with the
-    `surface`."""
+    """`tile`, `tile_m` a side, stretched along the wind and drifting with `surface`."""
     east, north = _downwind(surface.sea)
     across = 1 / tile_m
     along = across / WINDROW_ASPECT

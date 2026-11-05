@@ -79,7 +79,7 @@ def _remembered(
     pulls: tuple[bpy.types.NodeSocket, ...],
 ) -> "_Whitecaps":
     """The whitecaps read off the finest foam memory that holds the `surface`'s
-    point, aged foam `gathered` by the windrows, the lace above its quantile covering
+    point, aged foam gathered by the windrows, the lace above its quantile covering
     that share."""
     ppf = textures.ppf
     lace = textures.lace
@@ -274,8 +274,7 @@ def _foam_texture(
     ppf: bpy.types.Image,
 ) -> _FoamTexture:
     """Whitecap foam's texture on the `surface`: the lace off `tile`, frayed by a
-    lattice drawn from `rng`, and that lattice twice more, for a pixel `pixel_m`
-    long."""
+    lattice from `rng`, and that lattice twice more, for a pixel `pixel_m` long."""
     lattice = curve_image(
         "sea_foam_lattice",
         _unit(

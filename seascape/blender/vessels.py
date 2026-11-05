@@ -37,10 +37,9 @@ from seascape.physics import earth, wakes, waves
 
 @dataclass
 class Hulls:
-    """How a build makes its hulls: under `sky`, with its `heat` in LWIR and None in
-    EO. Each asset's first import is copied for the rest of the build: the FBX
-    importer slows with every material already in the file. An asset in `worn` is
-    tagged."""
+    """Each asset's first import, copied for the rest of the build: the FBX importer
+    slows with every material already in the file. `heat` is the LWIR build's, None
+    in EO. An asset in `worn` is tagged."""
 
     sky: Sky
     heat: Heat | None

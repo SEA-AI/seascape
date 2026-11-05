@@ -112,7 +112,6 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
-    # The recording's camera frame is +X right, +Y forward, +Z up.
     roll, pitch, yaw = attitude_deg(rig[:3, :3] @ TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
