@@ -86,7 +86,7 @@ def _vessel(
                 dirty(parts)
 
     if heat is not None:
-        heat = heat.stopped(condition.engine_off_min)
+        heat = heat._replace(env=heat.env.stopped(condition.engine_off_min * 60.0))
         t_k = condition.t_k
         uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, hulls.sky)
         worn_on = manifest()[name].material if name in hulls.worn else None

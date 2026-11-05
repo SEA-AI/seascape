@@ -80,9 +80,6 @@ class Heat(NamedTuple):
     t_water_k: float
     sun: tuple[float, float, float] | None
 
-    def stopped(self, minutes: float) -> "Heat":
-        return self._replace(env=self.env.stopped(minutes * 60.0))
-
 
 def surroundings(scenario: Scenario) -> Heat:
     sky = scenario.sky
