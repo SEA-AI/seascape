@@ -44,6 +44,8 @@ class Weights(NamedTuple):
 
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
+# What covers the surface, bottom up; `fade` only tints the paint.
+COVERS = ("grime", "rust", "stain", "soot")
 
 # Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
 # one; cloth sags and flexes, so water runs off it without leaving a streak.
@@ -293,20 +295,13 @@ class _Masks:
         bad = _smooth(self.noise(0.04, 21.0, 2.0), 0.3, 0.7)
         self.region = bad.madd(1.3, 0.2)
 
-    def noise(
-        self,
-        per_m: float,
-        offset: float,
-        detail: float = 6.0,
-        stretch: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> Num:
-        """`stretch` scales the features per axis."""
+    def noise(self, per_m: float, offset: float, detail: float = 6.0) -> Num:
         t = self.tree
         made = node(
             t,
             "ShaderNodeTexNoise",
             {
-                "Vector": vector(t, "MULTIPLY", self.position, stretch),
+                "Vector": self.position,
                 "Scale": per_m,
                 "Detail": detail,
                 "W": self.offset + offset,
@@ -478,10 +473,8 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     stain.inputs["A"].default_value = STAIN
     stain.inputs["B"].default_value = STAIN_STEEL
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
-    for layer, albedo in (
-        ("rust", RUST),
-        ("stain", stain.outputs["Result"]),
-        ("soot", SOOT),
+    for layer, albedo in zip(
+        COVERS[1:], (RUST, stain.outputs["Result"], SOOT), strict=True
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")
         feed(t, mix.inputs["Factor"], cover[layer])
@@ -496,11 +489,9 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         if name != "Normal" or shader.inputs[name].is_linked:
             feed(t, dirt.inputs[name], _source(shader.inputs[name]))
 
-    total = (
-        cover["grime"]
-        .op("MAXIMUM", cover["rust"])
-        .op("MAXIMUM", cover["stain"].op("MAXIMUM", cover["soot"]))
-    )
+    total = cover["grime"]
+    for layer in COVERS[1:]:
+        total = total.op("MAXIMUM", cover[layer])
     consumers = [link.to_socket for link in shader.outputs["BSDF"].links]
     mixed = mix_shader(t, total, shader.outputs["BSDF"], dirt.outputs["BSDF"])
     for socket in consumers:

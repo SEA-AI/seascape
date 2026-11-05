@@ -29,7 +29,7 @@ from seascape.physics import aerosol, lwir, thermal
 # Judgement: glass and bare metal mirror the sky they do not emit; paint, rubber,
 # fabric and wood scatter it. Limitation: dull stainless, as thermal takes it, is
 # rougher than a mirror.
-SPECULAR_ZONES = frozenset({"glass", "bare_metal"})
+SPECULAR_ZONES: frozenset[thermal.ZoneName] = frozenset({"glass", "bare_metal"})
 
 
 def thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
@@ -79,10 +79,6 @@ class Heat(NamedTuple):
     env: thermal.Environment
     t_water_k: float
     sun: tuple[float, float, float] | None
-
-    def stopped(self, minutes: float) -> "Heat":
-        """The same, `minutes` after the engines stopped."""
-        return self._replace(env=self.env.stopped(minutes * 60.0))
 
 
 def surroundings(scenario: Scenario) -> Heat:
@@ -199,7 +195,7 @@ def _worn(
     water: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
     tree = masks.id_data
-    for layer in ("grime", "rust", "stain", "soot"):  # as EO lays them
+    for layer in wear.COVERS:
         if layer == "stain":
             # Judgement: the stain is the splash zone, kept wet at the bulk water's
             # temperature.

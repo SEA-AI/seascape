@@ -10,7 +10,6 @@ from mathutils import Vector
 from seascape.assets import download, skies
 from seascape.blender import sea
 from seascape.blender.blend import (
-    CURVE_SAMPLES,
     SUN,
     Num,
     clamped,
@@ -22,6 +21,7 @@ from seascape.blender.blend import (
     pixels,
     scalar,
     separate,
+    texels,
     value,
     vector,
 )
@@ -30,6 +30,7 @@ from seascape.config import (
     Sky,
 )
 from seascape.physics import aerosol, lwir, solar
+from seascape.physics.colour import LUMINANCE
 
 # Judgement: nearer than a lens is to anything it sees.
 HAZE_NEAR_M = 0.1
@@ -55,7 +56,7 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
         if sky.fog_weight:
             colour = _fogged_photo(tree, sky, ray, sky.sun_transmittance)
         else:
-            colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, ray)
+            colour = _photo(tree, sky, ray)
         tree.links.new(colour, background)
         if sky.sun_diffuse_fraction is not None:
             _add_hidden_sun(sky)
@@ -88,10 +89,9 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
 
 
 def _add_hidden_sun(sky: Sky) -> None:
-    assert sky.hdri is not None
     assert sky.sun_diffuse_fraction is not None
     assert sky.sun_elevation_deg is not None
-    diffuse = skies.library()[sky.hdri].diffuse_irradiance
+    diffuse = sky.photo.diffuse_irradiance
     assert diffuse is not None
     beam = solar.beam_normal(
         diffuse, sky.sun_diffuse_fraction, math.radians(sky.sun_elevation_deg)
@@ -119,21 +119,18 @@ def _fogged_photo(
 ) -> bpy.types.NodeSocket:
     """The photo in `direction` misted, its sun's disc keeping `sun_kept` of itself. A
     sun behind cloud greys with it."""
-    assert sky.hdri is not None
-    colour = _photo(tree, sky.hdri, sky.sun_bearing_deg, direction)
-    horizon = _photo(tree, sky.hdri, sky.sun_bearing_deg, _horizon(tree, direction))
+    colour = _photo(tree, sky, direction)
+    horizon = _photo(tree, sky, _horizon(tree, direction))
     misted = _misted(tree, sky, colour, horizon)
     # The mist keeps 1 - fog_weight of the disc.
     extra = sun_kept - (1.0 - sky.fog_weight)
-    floor = skies.library()[sky.hdri].sun_floor
+    floor = sky.photo.sun_floor
     if floor is None or not extra:
         return misted
     unit = vector(tree, "NORMALIZE", direction)
     toward = vector(tree, "DOT_PRODUCT", unit, sky.sun_vector)
     near = scalar(tree, "GREATER_THAN", toward, math.cos(math.radians(skies.DISC_DEG)))
-    luminance = vector(
-        tree, "DOT_PRODUCT", colour, tuple(float(c) for c in skies.LUMINANCE)
-    )
+    luminance = vector(tree, "DOT_PRODUCT", colour, LUMINANCE)
     bright = scalar(tree, "GREATER_THAN", luminance, floor)
     disc = scalar(tree, "MULTIPLY", near, bright, name="photo_disc")
     sun = vector(tree, "SCALE", colour, scalar(tree, "MULTIPLY", disc, extra))
@@ -191,40 +188,27 @@ def _grey(
 
 
 def _photo(
-    tree: bpy.types.NodeTree,
-    name: str,
-    sun_bearing_deg: float,
-    direction: bpy.types.NodeSocket,
+    tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """The photographed sky `name` in `direction`, turned so its sun sits at
-    `sun_bearing_deg`."""
-    return _turned(tree, _photo_image(name), name, sun_bearing_deg, direction)
+    """`sky`'s photo in `direction`, its sun turned to `sky.sun_bearing_deg`."""
+    return _turned(tree, _photo_image(sky), sky.photo_turn_rad, direction)
 
 
-def _photo_image(name: str) -> bpy.types.Image:
-    photo = skies.library()[name]
+def _photo_image(sky: Sky) -> bpy.types.Image:
+    photo = sky.photo
+    assert sky.hdri is not None
     return bpy.data.images.load(
-        str(download(name, photo.url, photo.sha256)), check_existing=True
+        str(download(sky.hdri, photo.url, photo.sha256)), check_existing=True
     )
-
-
-def _photo_turn_rad(name: str, sun_bearing_deg: float) -> float:
-    """How far to turn the photographed sky `name` to put its sun at
-    `sun_bearing_deg`. Turning a lookup by d carries the image's sun clockwise by d: no
-    negation."""
-    return math.radians(sun_bearing_deg - skies.library()[name].sun_bearing_deg)
 
 
 def _turned(
     tree: bpy.types.NodeTree,
     image: bpy.types.Image,
-    name: str,
-    sun_bearing_deg: float,
+    turn_rad: float,
     direction: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`image`, laid out as the photographed sky `name`, in `direction`, turned so the
-    photo's sun sits at `sun_bearing_deg`."""
-    turn_rad = _photo_turn_rad(name, sun_bearing_deg)
+    """`image`, laid out as a photographed sky, in `direction`, turned by `turn_rad`."""
     turn = node(
         tree,
         "ShaderNodeMapping",
@@ -319,13 +303,13 @@ def _sky_ahead(
     """The band's sky in `direction`."""
     if band == "ir":
         return _ir_sky(tree, sky, direction)
-    if sky.hdri is not None and sky.fog_weight:
-        # The Sky Texture's airlight has no disc either.
-        return _fogged_photo(tree, sky, direction, 0.0)
+    if sky.hdri is not None:
+        if sky.fog_weight:
+            # The Sky Texture's airlight has no disc either.
+            return _fogged_photo(tree, sky, direction, 0.0)
+        return _photo(tree, sky, direction)
 
     def clear(toward: bpy.types.NodeSocket) -> bpy.types.NodeSocket:
-        if sky.hdri is not None:
-            return _photo(tree, sky.hdri, sky.sun_bearing_deg, toward)
         colour = _clear_eo(tree, sky, bpy.context.scene.world, toward)
         colour.node.name = "haze_sky"
         return colour
@@ -337,8 +321,7 @@ def _sky_ahead(
 
 def _haze_ranges_m(far_m: float) -> np.ndarray:
     """Texel centres of the LWIR depth table, log-spaced out to the far plane."""
-    texel = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
-    return HAZE_NEAR_M * (far_m / HAZE_NEAR_M) ** texel
+    return HAZE_NEAR_M * (far_m / HAZE_NEAR_M) ** texels()
 
 
 def _optical_depth(
@@ -398,7 +381,7 @@ def _sky_image(sky: Sky) -> bpy.types.Image:
 
 def _curve_elevation() -> np.ndarray:
     """The elevation at each texel centre of a curve baked against sin(elevation)."""
-    return np.arcsin((np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES)
+    return np.arcsin(texels())
 
 
 def _table_sky(sky: Sky, elevation: np.ndarray) -> np.ndarray:
@@ -425,26 +408,24 @@ def cloud_fraction(sky: Sky) -> float:
 def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     """The photo's cloud share at its own resolution, and `lwir.cloudy_sky_radiance`
     under it at THERMAL_SKY_PX, both laid out as the photo."""
-    assert sky.hdri is not None
     # An earlier call baked them.
     if (baked := bpy.data.images.get("cloudy_sky_radiance")) is not None:
         return bpy.data.images["cloud_share"], baked
-    photo = _photo_image(sky.hdri)
+    photo = _photo_image(sky)
     rgba = pixels(photo)
     bpy.data.images.remove(photo)
     # Bottom row first, as Blender stores an image; `skies` reads top row first.
-    photo_sky = skies.library()[sky.hdri]
-    share = skies.cloud(rgba[::-1, :, :3], photo_sky)[::-1]
+    share = skies.cloud(rgba[::-1, :, :3], sky.photo)[::-1]
     # Judgement: steps of 1/255 of a whole cloud, for a quarter of a float image.
     share_image = curve_image("cloud_share", share, float_buffer=False)
     h, w = share.shape
     f = max(1, w // THERMAL_SKY_PX)
     cloud = cv2.resize(share, (w // f, h // f), interpolation=cv2.INTER_AREA)
     rows = cloud.shape[0]
-    elevation = np.radians((np.arange(rows) + 0.5) / rows * 180.0 - 90.0)
+    elevation = np.radians(texels(rows) * 180.0 - 90.0)
     # One height a row keeps cloud a function of elevation, as the world draws it:
     # radiance is close to linear over a cloud's few kelvin.
-    genus = photo_sky.cloud_genus
+    genus = sky.photo.cloud_genus
     height = np.zeros(rows)
     if genus != "cirrus":
         _, top = lwir.CLOUD_LAYER_M[genus]
@@ -471,9 +452,8 @@ def _cloudy_sky(
 ) -> bpy.types.NodeSocket:
     """The photo's sky in `direction`: radiance is affine in the cloud share, so the
     clear sky plus the share of what a whole cloud adds."""
-    assert sky.hdri is not None
     share_image, _ = _cloud_images(sky)
-    share = _turned(tree, share_image, sky.hdri, sky.sun_bearing_deg, direction)
+    share = _turned(tree, share_image, sky.photo_turn_rad, direction)
     # Linear shows the texel grid where a texel spans several pixels.
     share.node.interpolation = "Cubic"
     up = _sin_elevation(tree, direction)
@@ -527,11 +507,9 @@ def _clouds(sky: Sky) -> sea.Clouds | None:
     rgba = pixels(image)
     h = rgba.shape[0]
     # Bottom row first, as `_cloud_images` lays it out.
-    elevation = np.radians((np.arange(h) + 0.5) / h * 180.0 - 90.0)
+    elevation = np.radians(texels(h) * 180.0 - 90.0)
     radiance = rgba[..., 0].astype(np.float64)
-    return sea.Clouds(
-        elevation, radiance, _photo_turn_rad(sky.hdri, sky.sun_bearing_deg)
-    )
+    return sea.Clouds(elevation, radiance, sky.photo_turn_rad)
 
 
 def _sky_round(sky: Sky, clouds: sea.Clouds | None) -> sea.SkyCurve:

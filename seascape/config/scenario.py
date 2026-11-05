@@ -135,6 +135,10 @@ class Scenario(Model):
             for camera_name, camera in rig.cameras.items()
         ]
 
+    def band_mounts(self, band: Band) -> list[Mount]:
+        """The cameras that see in `band`."""
+        return [m for m in self.mounts if m.camera.band == band]
+
     @property
     def images(self) -> int:
         """How many images a render writes."""

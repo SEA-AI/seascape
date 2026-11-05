@@ -11,13 +11,13 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
-    CURVE_SAMPLES,
     Num,
     curve_image,
     lookup,
     node,
     scalar,
     separate,
+    texels,
     vector,
 )
 from seascape.blender.sea.daylight import _lobe, _stretchable, _widest
@@ -68,7 +68,7 @@ class Light(NamedTuple):
 def _row_sigmas(slope_max: float, rows: int = SLOPE_ROWS) -> np.ndarray:
     """Per-axis unresolved RMS slope up a table's rows, to the total `slope_max`, at
     texel centres."""
-    return (np.arange(rows) + 0.5) / rows * slope_max / math.sqrt(2)
+    return texels(rows) * slope_max / math.sqrt(2)
 
 
 def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
@@ -78,7 +78,7 @@ def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
     The curve is sampled uniformly in angle; the shader's dot product is uniform in its
     cosine, so it is resampled here rather than corrected in nodes.
     """
-    mu = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    mu = texels()
     rows = []
     for sigma in _row_sigmas(slope_max):
         theta, eps = lwir.emissivity_curve(t_sea_k=t_sea_k, slope_sigma=sigma)
@@ -88,9 +88,8 @@ def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
 
 def _foam_emissivity_image() -> bpy.types.Image:
     """`lwir.foam_emissivity_excess` against cos(theta) at texel centres."""
-    mu = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     return curve_image(
-        "sea_foam_emissivity", lwir.foam_emissivity_excess(np.arccos(mu))
+        "sea_foam_emissivity", lwir.foam_emissivity_excess(np.arccos(texels()))
     )
 
 
@@ -98,13 +97,13 @@ def _view_rows(rows: int = VIEW_ROWS) -> np.ndarray:
     """|cos| of the view off the wave normal up a tile's rows, at texel centres: even
     in its square root, so the rows crowd toward grazing, where the reflection turns
     fastest."""
-    return ((np.arange(rows) + 0.5) / rows) ** 2
+    return texels(rows) ** 2
 
 
 def _mirror_columns() -> np.ndarray:
     """sin(mirror elevation) along a row, at texel centres: down to -1, as a wave
     tilted away steeply mirrors the sea."""
-    return (np.arange(MIRROR_SAMPLES) + 0.5) / MIRROR_SAMPLES * 2.0 - 1.0
+    return texels(MIRROR_SAMPLES) * 2.0 - 1.0
 
 
 def _reflection_image(
@@ -162,7 +161,7 @@ def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.
     photo's bearings. Rows run up sin(mirror elevation), -1 to 1, evenly in its signed
     square root; tiles of view off the wave normal, as `_view_rows`, nest in tiles of
     unresolved slope."""
-    root = (np.arange(CLOUD_MIRRORS) + 0.5) / CLOUD_MIRRORS * 2.0 - 1.0
+    root = texels(CLOUD_MIRRORS) * 2.0 - 1.0
     mirror = np.arcsin(np.sign(root) * root**2)
     edges = np.linspace(0, clouds.radiance.shape[1], CLOUD_BEARINGS + 1).astype(int)
     widths = np.diff(edges)

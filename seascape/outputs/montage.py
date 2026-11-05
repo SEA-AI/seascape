@@ -57,9 +57,7 @@ def compose(scenario: Scenario, into: Path) -> Path:
     rows: list[list[Image.Image]] = []
     for band in scenario.outputs.bands:
         tiles = []
-        for mount in scenario.mounts:
-            if mount.camera.band != band:
-                continue
+        for mount in scenario.band_mounts(band):
             # An exr is radiance; making it a picture is the render's job.
             frame = into / f"{mount.name}.{scenario.outputs.format}"
             if scenario.outputs.format == "exr" or not frame.exists():
