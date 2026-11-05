@@ -1299,7 +1299,7 @@ def _ridden_m(scenario: Scenario, t_s: float) -> float:
     """How high a hull-less ownship rides the water under it."""
     tall = _tall(scenario)
     rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
-    return waves.heave_m(tall, *map(float, rest), 0.0, 0.0, 0.0, t_s)
+    return waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
 
 
 class TestOwnshipMotion:
@@ -1712,18 +1712,13 @@ class TestDrifting:
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
-            rest_east, rest_north = map(float, rest)
-            pitch, roll = waves.attitude(
-                scenario.wave_field(), rest_east, rest_north, heading, length, beam, t_s
-            )
+            hull = waves.Waterplane(*map(float, rest), heading, length, beam)
+            pitch, roll = waves.attitude(scenario.wave_field(), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
                 (pitch, -roll), abs=1e-5
             )
             assert attitude.location.z == pytest.approx(
-                waves.heave_m(
-                    _tall(scenario), rest_east, rest_north, heading, length, beam, t_s
-                ),
-                abs=1e-5,
+                waves.heave_m(_tall(scenario), hull, t_s), abs=1e-5
             )
 
 

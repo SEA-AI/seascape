@@ -182,9 +182,8 @@ def add_ownship(
             rest = map(
                 float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
             )
-            return scripted(t_s) + waves.heave_m(
-                tall, *rest, 0.0, length_m, beam_m, t_s
-            )
+            hull = waves.Waterplane(*rest, 0.0, length_m, beam_m)
+            return scripted(t_s) + waves.heave_m(tall, hull, t_s)
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
@@ -450,12 +449,11 @@ def ride(
                     tall, np.array(east), np.array(north), t_s
                 )
             ]
-            pitch, roll = waves.attitude(field, *rest, heading, length_m, beam_m, t_s)
+            hull = waves.Waterplane(*rest, heading, length_m, beam_m)
+            pitch, roll = waves.attitude(field, hull, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
-            attitude.location.z = waves.heave_m(
-                tall, *rest, heading, length_m, beam_m, t_s
-            )
+            attitude.location.z = waves.heave_m(tall, hull, t_s)
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
                 attitude.keyframe_insert("rotation_euler", index=1, frame=frame)

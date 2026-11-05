@@ -76,6 +76,7 @@ from seascape.physics.waves.spectrum import (
     wind_at_m,
 )
 from seascape.physics.waves.surface import (
+    Waterplane,
     attitude,
     gerstner_hit,
     gerstner_normal,
@@ -123,6 +124,7 @@ __all__ = [
     "WINDROW_SPACING_S",
     "WIND_WAVES",
     "FoamGrid",
+    "Waterplane",
     "Wave",
     "attitude",
     "cox_munk_slick_slope",

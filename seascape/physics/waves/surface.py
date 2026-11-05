@@ -7,6 +7,7 @@ least-squares slope of each wave along a box hull; roll is the same across it.
 """
 
 import math
+from typing import NamedTuple
 
 import numpy as np
 
@@ -190,21 +191,26 @@ def gerstner_hit(
     return rest_east, rest_north, met
 
 
+class Waterplane(NamedTuple):
+    """A hull's waterplane, centred where the water under it was at rest, `length_m`
+    along `heading_rad` and `beam_m` across; a point by default."""
+
+    rest_east_m: float
+    rest_north_m: float
+    heading_rad: float = 0.0
+    length_m: float = 0.0
+    beam_m: float = 0.0
+
+
 def attitude(
-    field: tuple[Wave, ...],
-    rest_east_m: float,
-    rest_north_m: float,
-    heading_rad: float,
-    length_m: float,
-    beam_m: float,
-    t_s: float,
+    field: tuple[Wave, ...], hull: Waterplane, t_s: float
 ) -> tuple[float, float]:
     """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull:
-    each wave's least-squares slope at its phase where the water under the centre was
-    at rest, (`rest_east_m`, `rest_north_m`). The hull follows it at once: no
-    inertia."""
+    each wave's least-squares slope at its phase at the `hull`'s rest. The hull
+    follows it at once: no inertia."""
     if not field:
         return 0.0, 0.0
+    rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
     amplitude, _, k_east, k_north, *_ = columns(field)
     # Starboard of the heading is (cos, -sin).
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
@@ -218,23 +224,15 @@ def attitude(
     return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
 
 
-def heave_m(
-    field: tuple[Wave, ...],
-    rest_east_m: float,
-    rest_north_m: float,
-    heading_rad: float,
-    length_m: float,
-    beam_m: float,
-    t_s: float,
-) -> float:
-    """Mean height of `field`'s Gerstner surface over a hull's waterplane, where a
+def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
+    """Mean height of `field`'s Gerstner surface over a `hull`'s waterplane, where a
     wall-sided hull floats (Archimedes): each wave's mean over the rectangle, as
-    `attitude`'s, at its phase where the water under the centre was at rest,
-    (`rest_east_m`, `rest_north_m`). Exact
-    for a point; under a hull, it misses the Gerstner surface's second order in
-    steepness. The hull follows it at once: no inertia."""
+    `attitude`'s, at its phase at the hull's rest. Exact for a point; under a hull, it
+    misses the Gerstner surface's second order in steepness. The hull follows it at
+    once: no inertia."""
     if not field:
         return 0.0
+    rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
     amplitude, _, k_east, k_north, *_ = columns(field)
     # Starboard of the heading is (cos, -sin).
     k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
