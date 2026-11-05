@@ -189,15 +189,15 @@ def _grey(
 def _photo(
     tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """`sky`'s photo in `direction`, turned so its sun sits at `sun_bearing_deg`."""
+    """`sky`'s photo in `direction`, its sun turned to `sky.sun_bearing_deg`."""
+    return _turned(tree, _photo_image(sky), sky.photo_turn_rad, direction)
+
+
+def _photo_image(sky: Sky) -> bpy.types.Image:
+    photo = sky.photo
     assert sky.hdri is not None
-    return _turned(tree, _photo_image(sky.hdri), sky.photo_turn_rad, direction)
-
-
-def _photo_image(name: str) -> bpy.types.Image:
-    photo = skies.library()[name]
     return bpy.data.images.load(
-        str(download(name, photo.url, photo.sha256)), check_existing=True
+        str(download(sky.hdri, photo.url, photo.sha256)), check_existing=True
     )
 
 
@@ -407,11 +407,10 @@ def cloud_fraction(sky: Sky) -> float:
 def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     """The photo's cloud share at its own resolution, and `lwir.cloudy_sky_radiance`
     under it at THERMAL_SKY_PX, both laid out as the photo."""
-    assert sky.hdri is not None
     # An earlier call baked them.
     if (baked := bpy.data.images.get("cloudy_sky_radiance")) is not None:
         return bpy.data.images["cloud_share"], baked
-    photo = _photo_image(sky.hdri)
+    photo = _photo_image(sky)
     rgba = pixels(photo)
     bpy.data.images.remove(photo)
     # Bottom row first, as Blender stores an image; `skies` reads top row first.
