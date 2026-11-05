@@ -14,10 +14,6 @@ from seascape.outputs import agc
 from seascape.outputs.labels import FILENAME, Image, Labels, agcs
 
 
-def _nothing() -> None:
-    pass
-
-
 def cameras(run: Path) -> dict[str, list[Image]]:
     """Each camera's frames in a render, in time order."""
     images = Labels.model_validate_json((run / FILENAME).read_text()).images
@@ -28,7 +24,9 @@ def cameras(run: Path) -> dict[str, list[Image]]:
 
 
 def encode(
-    run: Path, quality: str = "PERC_LOSSLESS", advance: Callable[[], None] = _nothing
+    run: Path,
+    quality: str = "PERC_LOSSLESS",
+    advance: Callable[[], None] = lambda: None,
 ) -> list[Path]:
     """`quality` is a Blender `constant_rate_factor` preset. `advance` runs after each
     camera's video."""
