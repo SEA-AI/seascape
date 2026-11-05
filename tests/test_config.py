@@ -1111,6 +1111,16 @@ def test_a_preset_keeps_its_sensor_under_a_block_that_draws_the_rest() -> None:
     assert 0.0 <= sensor.gain_db <= 12.0
 
 
+def test_the_ecam50_cunx_preset_scales_its_sensor_down_to_a_smaller_image() -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "econ_ecam50_cunx", hfov_deg = 40.6, '
+        "width_px = 1280, height_px = 960 }"
+    )
+    camera = load(BASELINE, [line]).rigs["bow"].cameras["eo"]
+    assert (camera.sensor.full_well_e, camera.sensor.width_px) == (10765.0, 2592)
+    assert camera.sensor.pitch_um == 2.2
+
+
 def test_a_rigs_cameras_share_a_draw_through_nested_picks() -> None:
     eo = f'preset = "eo_4k_49deg", {GRADE}'
     cameras = f"{{ a = {{ {eo} }}, b = {{ {eo}, yaw_deg = 40.0 }} }}"
