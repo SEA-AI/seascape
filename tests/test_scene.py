@@ -2294,11 +2294,11 @@ def test_in_fog_the_ir_sky_glows_through_it_and_the_hull_s_sun_dims() -> None:
 
 
 def test_in_fog_a_photographed_ir_sky_glows_through_it(tmp_path: Path) -> None:
-    sky = variant(sky={"hdri": "overcast_soil", **FOG}).sky
+    fogged = variant(sky={"hdri": "overcast_soil", **FOG})
     with white_photo(tmp_path):
-        scene.build(variant(sky={"hdri": "overcast_soil", **FOG}), "ir")
+        scene.build(fogged, "ir")
     top = baked("cloudy_sky_radiance")[-1]
-    expected = _hazed_sky_m(sky, np.pi / 2, cloud=1.0)
+    expected = _hazed_sky_m(fogged.sky, np.pi / 2, cloud=1.0)
     assert top == pytest.approx(float(expected), rel=1e-3)
 
 
