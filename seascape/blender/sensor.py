@@ -13,6 +13,7 @@ from seascape.blender.blend import (
     Num,
     combine,
     feed,
+    node,
     scalar,
     set_value,
     switch,
@@ -40,16 +41,15 @@ def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
 
 
 def _rgb(tree: bpy.types.NodeTree, r: Socket, g: Socket, b: Socket) -> Socket:
-    node = tree.nodes.new("CompositorNodeCombineColor")
-    for socket, channel in zip(("Red", "Green", "Blue"), (r, g, b), strict=True):
-        tree.links.new(channel, node.inputs[socket])
-    return node.outputs["Image"]
+    combined = node(
+        tree, "CompositorNodeCombineColor", {"Red": r, "Green": g, "Blue": b}
+    )
+    return combined.outputs["Image"]
 
 
 def _channels(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, ...]:
-    node = tree.nodes.new("CompositorNodeSeparateColor")
-    tree.links.new(image, node.inputs["Image"])
-    return node.outputs["Red"], node.outputs["Green"], node.outputs["Blue"]
+    split = node(tree, "CompositorNodeSeparateColor", {"Image": image})
+    return split.outputs["Red"], split.outputs["Green"], split.outputs["Blue"]
 
 
 def _bilinear(tree: bpy.types.NodeTree, image: Socket) -> Socket:
@@ -293,8 +293,7 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
 
 def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
     """`image`'s luminance, kept off 0, and its log-average (Reinhard et al. 2002)."""
-    luminance = tree.nodes.new("CompositorNodeRGBToBW")
-    tree.links.new(image, luminance.inputs["Image"])
+    luminance = node(tree, "CompositorNodeRGBToBW", {"Image": image})
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
     lit = Num(tree, luminance.outputs["Val"]).op("MAXIMUM", 1e-6)
     levels = tree.nodes.new("CompositorNodeLevels")

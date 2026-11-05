@@ -214,12 +214,8 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     occlusion = node(t, "ShaderNodeAmbientOcclusion", only_local=True)
     occlusion.inputs["Distance"].default_value = CREVICE_M
     crevice = _smooth(1.0 - Num(t, occlusion.outputs["AO"]), 0.05, 0.6)
-    emission = node(t, "ShaderNodeEmission")
-    feed(t, emission.inputs["Color"], crevice)
-    t.links.new(
-        emission.outputs["Emission"],
-        node(t, "ShaderNodeOutputMaterial").inputs["Surface"],
-    )
+    emission = node(t, "ShaderNodeEmission", {"Color": crevice})
+    node(t, "ShaderNodeOutputMaterial", {"Surface": emission.outputs["Emission"]})
     t.nodes.active = node(t, "ShaderNodeTexImage", image=image)
     mesh.materials.clear()
     mesh.materials.append(material)

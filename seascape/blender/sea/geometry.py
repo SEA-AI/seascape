@@ -7,6 +7,7 @@ import bpy
 
 from seascape.blender.blend import (
     combine,
+    feed,
     node,
     place,
     scalar,
@@ -248,19 +249,6 @@ def _set_triple(
         inputs[name].default_value = value
 
 
-def _feed(
-    group: bpy.types.NodeTree,
-    given: bpy.types.NodeOutputs,
-    node: bpy.types.Node,
-    calmed: bool,
-) -> None:
-    """The footprint and, where `calmed`, the calm of a group around a triple."""
-    for name, _ in _FOOTPRINT:
-        group.links.new(given[name], node.inputs[name])
-    if calmed:
-        group.links.new(given["Calm"], node.inputs["Calm"])
-
-
 def _normal_group(
     triples: list[Triple], wind_triples: int, damped: frozenset[Wave]
 ) -> bpy.types.NodeTree:
@@ -278,7 +266,10 @@ def _normal_group(
         node.node_tree = _wave_group(calmed)
         node.name = f"waves_{i}"
         group.links.new(given["Position"], node.inputs["Position"])
-        _feed(group, given, node, calmed)
+        for name, _ in _FOOTPRINT:
+            feed(group, node.inputs[name], given[name])
+        if calmed:
+            feed(group, node.inputs["Calm"], given["Calm"])
         if sums is not None:
             for name, _ in _SUMS:
                 group.links.new(sums[name], node.inputs[name])

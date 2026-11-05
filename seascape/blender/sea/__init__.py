@@ -10,6 +10,7 @@ import numpy as np
 from seascape.blender.blend import (
     animate,
     curve_image,
+    node,
     scalar,
     value,
     vector,
@@ -272,8 +273,7 @@ def material(
             pixel,
             unresolved,
         )
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    tree.links.new(surface, output.inputs["Surface"])
+    output = node(tree, "ShaderNodeOutputMaterial", {"Surface": surface})
     _displace(material, output, _displacement(tree, tall, position))
     return material
 
