@@ -4,10 +4,7 @@ import math
 from typing import Annotated, Any
 
 import numpy as np
-from pydantic import (
-    Field,
-    model_validator,
-)
+from pydantic import AfterValidator, Field, model_validator
 
 from seascape.model import Model
 
@@ -15,6 +12,17 @@ from seascape.model import Model
 def substream(seed: int, name: str) -> np.random.Generator:
     """A named substream, so adding a component cannot perturb an existing one."""
     return np.random.default_rng([seed, *name.encode()])
+
+
+def _lower_first(bounds: tuple[float, float]) -> tuple[float, float]:
+    if bounds[0] > bounds[1]:
+        raise ValueError(f"bounds {bounds} are reversed")
+    return bounds
+
+
+_Positive = Annotated[float, Field(gt=0.0)]
+_Share = Annotated[float, Field(ge=0.0, le=1.0)]
+_Ordered = AfterValidator(_lower_first)
 
 
 class Uniform(Model):
@@ -34,16 +42,9 @@ class LogUniform(Model):
     """A float drawn evenly in its logarithm between two bounds: as often between 0.1
     and 1 as between 1 and 10."""
 
-    log_uniform: tuple[
-        Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
-    ] = Field(description="The bounds, lower first.")
-
-    @model_validator(mode="after")
-    def _lower_first(self) -> "LogUniform":
-        lower, upper = self.log_uniform
-        if lower > upper:
-            raise ValueError(f"log_uniform bounds {self.log_uniform} are reversed")
-        return self
+    log_uniform: Annotated[tuple[_Positive, _Positive], _Ordered] = Field(
+        description="The bounds, lower first."
+    )
 
     def draw(self, rng: np.random.Generator) -> float:
         # exp(log(x)) can land an ulp below x.
@@ -135,32 +136,18 @@ class OpticalDepth(Model):
     """An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,
     with a dark target keeping 5% of its contrast over `sky.visibility_km`."""
 
-    optical_depth: tuple[
-        Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
-    ] = Field(description="The bounds, lower first, drawn evenly.")
-
-    @model_validator(mode="after")
-    def _lower_first(self) -> "OpticalDepth":
-        lower, upper = self.optical_depth
-        if lower > upper:
-            raise ValueError(f"optical_depth bounds {self.optical_depth} are reversed")
-        return self
+    optical_depth: Annotated[tuple[_Positive, _Positive], _Ordered] = Field(
+        description="The bounds, lower first, drawn evenly."
+    )
 
 
 class Loaded(Model):
     """An object's `draught_m` as how laden it is: 0 its asset's lightest draught, 1
     its deepest, so one draw fits every asset a choice can make."""
 
-    loaded: tuple[
-        Annotated[float, Field(ge=0.0, le=1.0)], Annotated[float, Field(ge=0.0, le=1.0)]
-    ] = Field(description="The bounds, lower first, drawn evenly.")
-
-    @model_validator(mode="after")
-    def _lower_first(self) -> "Loaded":
-        lower, upper = self.loaded
-        if lower > upper:
-            raise ValueError(f"loaded bounds {self.loaded} are reversed")
-        return self
+    loaded: Annotated[tuple[_Share, _Share], _Ordered] = Field(
+        description="The bounds, lower first, drawn evenly."
+    )
 
 
 DRAWS: dict[str, type[Uniform | LogUniform | Triangular | Integer | Choice]] = {
