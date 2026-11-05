@@ -73,6 +73,15 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     )
 
 
+def look_through(cameras: dict[str, bpy.types.Object], mount: Mount, seed: int) -> None:
+    """Make `mount` the scene's camera: its object, its resolution, its sensor."""
+    sc = bpy.context.scene
+    sc.camera = cameras[mount.name]
+    sc.render.resolution_x = mount.camera.width_px
+    sc.render.resolution_y = mount.camera.height_px
+    respond(mount, substream(seed, f"sensor/{mount.name}"))
+
+
 def _rows(m: Matrix) -> Matrix4:
     x, y, z, w = map(tuple, m)
     return x, y, z, w
@@ -182,17 +191,11 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         for part in [anchor, *anchor.children_recursive]:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
-    first = mounts[0]
-    sc = bpy.context.scene
-    sc.camera = rigs.cameras[first.name]
-    sc.render.resolution_x, sc.render.resolution_y = (
-        first.camera.width_px,
-        first.camera.height_px,
-    )
-    respond(first, substream(scenario.seed, f"sensor/{first.name}"))
+    look_through(rigs.cameras, mounts[0], scenario.seed)
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
+    sc = bpy.context.scene
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0

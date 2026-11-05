@@ -22,7 +22,7 @@ import numpy as np
 
 from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
-from seascape.blender.compositor import JPEG_QUALITY, respond
+from seascape.blender.compositor import JPEG_QUALITY
 from seascape.blender.vessels import heading_rad, waterline_m
 from seascape.config import Camera, ImageFormat, Scenario, substream
 from seascape.outputs import agc, labels, microbolometer
@@ -198,15 +198,10 @@ def render(
                 targets = _targets(built)
                 shot = []
                 for mount in mounts:
-                    sc.camera = built.cameras[mount.name]
-                    sc.render.resolution_x, sc.render.resolution_y = (
-                        mount.camera.width_px,
-                        mount.camera.height_px,
-                    )
+                    scene.look_through(built.cameras, mount, scenario.seed)
                     name = f"{mount.name}/{frame:04d}" if sequence else mount.name
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
-                    respond(mount, substream(scenario.seed, f"sensor/{mount.name}"))
                     rendered = into / f"{name}.{'exr' if thermal else outputs.format}"
                     _render_still(rendered, f"frame {frame} of camera {mount.name}")
                     if thermal:
