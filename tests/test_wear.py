@@ -284,6 +284,7 @@ def test_a_crevice_is_baked_once_per_fitted_size(monkeypatch) -> None:
 
 def test_every_lwir_layer_is_one_the_masks_cover() -> None:
     assert set(thermal.WEAR_LAYERS) | {"stain"} <= set(wear.LAYERS)
+    assert tuple(layer for layer in wear.LAYERS if layer != "fade") == wear.COVERS
 
 
 def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:

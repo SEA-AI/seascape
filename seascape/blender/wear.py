@@ -44,7 +44,7 @@ class Weights(NamedTuple):
 
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
-# What covers the surface, bottom up, in both bands; `fade` only tints the paint.
+# What covers the surface, bottom up; `fade` only tints the paint.
 COVERS = ("grime", "rust", "stain", "soot")
 
 # Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
@@ -472,10 +472,8 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     stain.inputs["A"].default_value = STAIN
     stain.inputs["B"].default_value = STAIN_STEEL
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
-    for layer, albedo in (
-        ("rust", RUST),
-        ("stain", stain.outputs["Result"]),
-        ("soot", SOOT),
+    for layer, albedo in zip(
+        COVERS[1:], (RUST, stain.outputs["Result"], SOOT), strict=True
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")
         feed(t, mix.inputs["Factor"], cover[layer])
