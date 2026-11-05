@@ -420,14 +420,13 @@ def balance_temperature_k(
 def lit_temperature_k(
     zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
 ) -> FloatArray:
-    """Temperature of facets of `zone` by the two numbers they depend on: `sun_cos`,
-    max(0, n . s) where sunlit and 0 in shadow, and `normal_up`, the normal's vertical
-    component.
+    """Temperature of facets of `zone` by `sun_cos`, max(0, n . s) where sunlit and 0 in
+    shadow, and `normal_up`, the normal's vertical component.
 
     Absorbed: alpha times the direct beam by `sun_cos`, and the isotropic diffuse share
     over the sky the facet sees; eps times the longwave from sky and sea, split by view
-    factors (1 +- `normal_up`) / 2. Lost: eps sigma T^4,
-    convection to the air and conduction to the interior.
+    factors (1 +- `normal_up`) / 2. Lost: eps sigma T^4, convection to the air and
+    conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
     much weaker on average. With `sun_diffuse_fraction`, the beam is instead what that

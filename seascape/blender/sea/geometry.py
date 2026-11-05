@@ -262,19 +262,19 @@ def _normal_group(
     sums = None
     for i, triple in enumerate(triples):
         calmed = not damped.isdisjoint(triple)
-        node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _wave_group(calmed)
-        node.name = f"waves_{i}"
-        group.links.new(given["Position"], node.inputs["Position"])
+        waves = group.nodes.new("ShaderNodeGroup")
+        waves.node_tree = _wave_group(calmed)
+        waves.name = f"waves_{i}"
+        feed(group, waves.inputs["Position"], given["Position"])
         for name, _ in _FOOTPRINT:
-            feed(group, node.inputs[name], given[name])
+            feed(group, waves.inputs[name], given[name])
         if calmed:
-            feed(group, node.inputs["Calm"], given["Calm"])
+            feed(group, waves.inputs["Calm"], given["Calm"])
         if sums is not None:
             for name, _ in _SUMS:
-                group.links.new(sums[name], node.inputs[name])
-        _set_triple(node.inputs, triple, damped, lambda w: w.amplitude_m * w.k_rad_m)
-        sums = node.outputs
+                feed(group, waves.inputs[name], sums[name])
+        _set_triple(waves.inputs, triple, damped, lambda w: w.amplitude_m * w.k_rad_m)
+        sums = waves.outputs
         if i == wind_triples - 1:
             group.links.new(_total(group, sums["Sum Z"]), out["Acceleration"])
     if sums is not None:

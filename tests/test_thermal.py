@@ -33,8 +33,7 @@ def facet_temperature_k(
     sun_azimuth_rad: float,
     sunlit: bool = True,
 ) -> np.ndarray:
-    """A facet whose normal stands `normal_elev_rad` up and `sun_azimuth_rad` round
-    from the sun's bearing."""
+    """Normal `normal_elev_rad` up, `sun_azimuth_rad` from the sun's bearing."""
     sun_elev = env.sun_elevation_rad or 0.0
     cos_incidence = math.cos(normal_elev_rad) * math.cos(sun_elev) * math.cos(
         sun_azimuth_rad

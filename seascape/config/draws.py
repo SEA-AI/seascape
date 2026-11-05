@@ -14,7 +14,7 @@ def substream(seed: int, name: str) -> np.random.Generator:
     return np.random.default_rng([seed, *name.encode()])
 
 
-def _lower_first(bounds: tuple[float, float]) -> tuple[float, float]:
+def _require_ordered(bounds: tuple[float, float]) -> tuple[float, float]:
     if bounds[0] > bounds[1]:
         raise ValueError(f"bounds {bounds} are reversed")
     return bounds
@@ -22,7 +22,7 @@ def _lower_first(bounds: tuple[float, float]) -> tuple[float, float]:
 
 _Positive = Annotated[float, Field(gt=0.0)]
 _Share = Annotated[float, Field(ge=0.0, le=1.0)]
-_Ordered = AfterValidator(_lower_first)
+_Ordered = AfterValidator(_require_ordered)
 
 
 class Uniform(Model):

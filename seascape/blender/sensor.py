@@ -28,16 +28,18 @@ type Socket = bpy.types.NodeSocket
 
 
 def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
-    node = tree.nodes.new("CompositorNodeTranslate")
-    node.inputs["X"].default_value, node.inputs["Y"].default_value = x, y
-    node.inputs["Interpolation"].default_value = "Nearest"
+    shift = tree.nodes.new("CompositorNodeTranslate")
+    shift.inputs["X"].default_value, shift.inputs["Y"].default_value = x, y
+    shift.inputs["Interpolation"].default_value = "Nearest"
     # Repeat would move the image's domain, and the frame with it, by the shift.
-    node.inputs["Extension X"].default_value = "Extend"
-    node.inputs["Extension Y"].default_value = "Extend"
-    tree.links.new(image, node.inputs["Image"])
+    shift.inputs["Extension X"].default_value = "Extend"
+    shift.inputs["Extension Y"].default_value = "Extend"
+    tree.links.new(image, shift.inputs["Image"])
     # An operation takes its first input's domain: the image's own, not the shifted
     # one, whose first row or column would otherwise copy its neighbour.
-    return vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), node.outputs["Image"])
+    return vector(
+        tree, "ADD", vector(tree, "SCALE", image, 0.0), shift.outputs["Image"]
+    )
 
 
 def _rgb(tree: bpy.types.NodeTree, r: Socket, g: Socket, b: Socket) -> Socket:
