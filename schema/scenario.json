@@ -542,6 +542,170 @@
       "title": "Camera",
       "type": "object"
     },
+    "Crop": {
+      "additionalProperties": false,
+      "description": "A camera's frames less rows and columns at their edges.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is a part of each frame.",
+          "anyOf": [
+            {
+              "const": "crop",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "camera": {
+          "description": "The rig's camera it records.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "left_px": {
+          "title": "Left Px",
+          "description": "Columns cut at the left.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "right_px": {
+          "title": "Right Px",
+          "description": "Columns cut at the right.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "top_px": {
+          "title": "Top Px",
+          "description": "Rows cut at the top.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "bottom_px": {
+          "title": "Bottom Px",
+          "description": "Rows cut at the bottom.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "camera"
+      ],
+      "title": "Crop",
+      "type": "object"
+    },
     "Drift": {
       "additionalProperties": false,
       "description": "A hull at single anchor fishtails: across its heading once a period, along it\ntwice. Starts at its pose; the heading holds.",
@@ -977,6 +1141,66 @@
         "period_s"
       ],
       "title": "Heave",
+      "type": "object"
+    },
+    "Identity": {
+      "additionalProperties": false,
+      "description": "A camera's frames as they are.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is the camera's frames.",
+          "anyOf": [
+            {
+              "const": "identity",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "camera": {
+          "description": "The rig's camera it records.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "camera"
+      ],
+      "title": "Identity",
       "type": "object"
     },
     "ImageFormat": {
@@ -2517,6 +2741,36 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "videos": {
+          "title": "Videos",
+          "description": "What it records, by name, each from one camera, which then goes unlabelled. Unset, it records each camera whole. An exr ignores it.",
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/Video"
+              },
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              },
+              "type": "object"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
@@ -3880,6 +4134,23 @@
         "emor"
       ],
       "type": "string"
+    },
+    "Video": {
+      "discriminator": {
+        "mapping": {
+          "crop": "#/$defs/Crop",
+          "identity": "#/$defs/Identity"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Identity"
+        },
+        {
+          "$ref": "#/$defs/Crop"
+        }
+      ]
     },
     "WarmLayer": {
       "additionalProperties": false,

@@ -82,7 +82,7 @@ def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
 
 
 # Tables of named entries: an entry's preset is one of its table's, never of its name.
-_KEYED = {"rigs", "cameras"}
+_KEYED = {"rigs", "cameras", "videos"}
 
 
 def _expand(

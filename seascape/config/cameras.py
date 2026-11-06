@@ -300,6 +300,27 @@ class Camera(Model):
         )
 
 
+class Identity(Model):
+    """A camera's frames as they are."""
+
+    kind: Literal["identity"] = Field(description="The video is the camera's frames.")
+    camera: Name = Field(description="The rig's camera it records.")
+
+
+class Crop(Model):
+    """A camera's frames less rows and columns at their edges."""
+
+    kind: Literal["crop"] = Field(description="The video is a part of each frame.")
+    camera: Name = Field(description="The rig's camera it records.")
+    left_px: int = Field(default=0, ge=0, description="Columns cut at the left.")
+    right_px: int = Field(default=0, ge=0, description="Columns cut at the right.")
+    top_px: int = Field(default=0, ge=0, description="Rows cut at the top.")
+    bottom_px: int = Field(default=0, ge=0, description="Rows cut at the bottom.")
+
+
+type Video = Annotated[Identity | Crop, Field(discriminator="kind")]
+
+
 class Rig(Model):
     """One installed product: the frame its cameras sit in, at one mount point.
 
@@ -335,6 +356,37 @@ class Rig(Model):
     cameras: dict[Name, Camera] = Field(
         min_length=1, description="Its cameras, by name."
     )
+    videos: dict[Name, Video] = Field(
+        default_factory=dict,
+        description="What it records, by name, each from one camera, which then goes "
+        "unlabelled. Unset, it records each camera whole. An exr ignores it.",
+    )
+
+    @model_validator(mode="after")
+    def _each_video_records_a_camera(self) -> "Rig":
+        # A frame is written under its video's name, beside its camera's own.
+        if clash := sorted(self.videos.keys() & self.cameras.keys()):
+            raise ValueError(f"videos {clash} are named as cameras")
+        sources = [video.camera for video in self.videos.values()]
+        if missing := sorted(set(sources) - self.cameras.keys()):
+            raise ValueError(f"videos record no camera {missing}")
+        # One render per camera, so it takes the one crop.
+        if twice := sorted({s for s in sources if sources.count(s) > 1}):
+            raise ValueError(f"cameras {twice} are in more than one video")
+        # A recording holds the videos alone.
+        if self.videos and (idle := sorted(self.cameras.keys() - set(sources))):
+            raise ValueError(f"cameras {idle} are in no video, so are not recorded")
+        for name, video in self.videos.items():
+            camera = self.cameras[video.camera]
+            # Its focal plane's vignetting and noise are the whole sensor's.
+            if isinstance(video, Crop) and camera.band == "ir":
+                raise ValueError(f"video {name} crops ir camera {video.camera}")
+            if isinstance(video, Crop) and (
+                video.left_px + video.right_px >= camera.width_px
+                or video.top_px + video.bottom_px >= camera.height_px
+            ):
+                raise ValueError(f"video {name} crops all of {video.camera}")
+        return self
 
 
 class Mount(NamedTuple):

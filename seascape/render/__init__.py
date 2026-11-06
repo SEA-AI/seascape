@@ -8,6 +8,7 @@ centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 
 import math
 import os
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -22,9 +23,17 @@ import numpy as np
 
 from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
+from seascape.blender.blend import node
 from seascape.blender.compositor import INDEX_ROLL, JPEG_QUALITY, unroll
 from seascape.blender.vessels import heading_rad, waterline_m
-from seascape.config import Camera, ImageFormat, Scenario, substream
+from seascape.config import (
+    Camera,
+    Crop,
+    ImageFormat,
+    Mount,
+    Scenario,
+    substream,
+)
 from seascape.outputs import agc, labels, microbolometer
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import earth
@@ -83,6 +92,7 @@ def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
     tree = bpy.context.scene.compositing_node_group
     layers = next(n for n in tree.nodes if n.bl_idname == "CompositorNodeRLayers")
     output = tree.nodes.new("CompositorNodeOutputFile")
+    output.name = "index.output"
     output.directory = str(folder)
     output.format.media_type = "IMAGE"
     output.format.file_format = "OPEN_EXR"
@@ -92,6 +102,52 @@ def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
         unroll(tree, layers.outputs["Object Index"], INDEX_ROLL), output.inputs["index"]
     )
     return output
+
+
+def _video_output(folder: Path) -> None:
+    """Write each render's frame, as the scene writes it but cut by a Crop node, named
+    `<file_name>video.<format>`; `_cut` sets the crop.
+
+    Args:
+        folder: Where the frames are written.
+    """
+    tree = bpy.context.scene.compositing_node_group
+    frame = next(n for n in tree.nodes if n.bl_idname == "NodeGroupOutput")
+    picture = frame.inputs["Image"].links[0].from_socket
+    crop = node(tree, "CompositorNodeCrop", {"Image": picture})
+    # The render's own output pads a cropped frame back to the render's size.
+    output = tree.nodes.new("CompositorNodeOutputFile")
+    output.name = "video.output"
+    output.directory = str(folder)
+    output.format.media_type = "IMAGE"
+    settings = bpy.context.scene.render.image_settings
+    output.format.file_format = settings.file_format
+    output.format.color_depth = settings.color_depth
+    output.format.quality = settings.quality
+    output.file_output_items.new("RGBA", "video")
+    tree.links.new(crop.outputs["Image"], output.inputs["video"])
+
+
+def _cut(name: str, width_px: int, height_px: int, crop: Crop | None) -> None:
+    """Name the next render's cropped frame, and cut it to `crop`; None writes none.
+
+    Args:
+        name: The camera's name, which the file takes.
+        width_px: Before the crop.
+        height_px: Before the crop.
+        crop: What the camera's video keeps of its frame.
+    """
+    output = bpy.context.scene.compositing_node_group.nodes["video.output"]
+    output.file_name = f"{name}."
+    output.mute = crop is None
+    if crop is None:
+        return
+    sockets = output.inputs["video"].links[0].from_node.inputs
+    sockets["X"].default_value = crop.left_px
+    # Blender's rows count up from the bottom.
+    sockets["Y"].default_value = crop.bottom_px
+    sockets["Width"].default_value = width_px - crop.left_px - crop.right_px
+    sockets["Height"].default_value = height_px - crop.top_px - crop.bottom_px
 
 
 def _targets(built: scene.Built) -> list[labels.Target]:
@@ -114,9 +170,12 @@ def _targets(built: scene.Built) -> list[labels.Target]:
 
 
 def _write_truth(
-    into: Path, cameras: list[CameraCalibration], truth: labels.Labels
+    into: Path,
+    cameras: list[CameraCalibration],
+    raw: list[CameraCalibration],
+    truth: labels.Labels,
 ) -> list[Path]:
-    return [Calibration(cameras=cameras).write(into), truth.write(into)]
+    return [Calibration(cameras=cameras, raw=raw).write(into), truth.write(into)]
 
 
 def _commit() -> str | None:
@@ -167,6 +226,85 @@ def _render_still(path: Path, what: str) -> None:
         )
 
 
+type Shot = tuple[Mount, CameraCalibration, np.ndarray, np.ndarray]
+
+
+def _shoot(
+    built: scene.Built,
+    mount: Mount,
+    rng: np.random.Generator,
+    frame: int | None,
+    fmt: ImageFormat,
+    thermal: tuple[agc.Agc, np.random.Generator] | None,
+    into: Path,
+    passes: Path,
+) -> tuple[Shot, CameraCalibration | None, list[Path]]:
+    """Render one camera's frame, and cut from it the frame its rig records.
+
+    Args:
+        built: The scene, at the frame's time.
+        mount: The camera to render through.
+        rng: Draws its sensor's noise.
+        frame: The frame's number in a sequence; None for a still.
+        fmt: The format written.
+        thermal: The AGC and NETD noise an ir frame is written through; None keeps
+            the render.
+        into: The render's folder.
+        passes: Where the compositor writes the index pass and the cropped frame.
+
+    Returns:
+        The labelled frame as its mount, calibration, object index and image; the
+        camera as rendered, if a video records it; and the files written.
+    """
+
+    def stem(camera: str) -> str:
+        return camera if frame is None else f"{camera}/{frame:04d}"
+
+    scene.look_through(built.cameras, mount, rng)
+    # An exr is the radiance the cameras saw, before any recorder.
+    videos = mount.rig.videos if fmt != "exr" else {}
+    video = next(
+        (
+            (f"{mount.rig_name}_{name}", recorded)
+            for name, recorded in videos.items()
+            if recorded.camera == mount.camera_name
+        ),
+        None,
+    )
+    crop = video[1] if video and isinstance(video[1], Crop) else None
+    width, height = mount.camera.width_px, mount.camera.height_px
+    tree = bpy.context.scene.compositing_node_group
+    tree.nodes["index.output"].file_name = f"{mount.name}."
+    _cut(mount.name, width, height, crop)
+    bpy.context.scene.render.filepath = str(into / stem(mount.name))
+    ext = "exr" if thermal else fmt
+    rendered = into / f"{stem(mount.name)}.{ext}"
+    _render_still(rendered, f"camera {mount.name}'s frame")
+    source = camera = scene.calibrate(built, mount, f"{stem(mount.name)}.{fmt}")
+    index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
+    written = []
+    if video is not None:
+        out = video[0]
+        camera = camera.model_copy(update={"name": out})
+        if crop is not None:
+            # The camera's own frame stays, unlabelled.
+            written.append(rendered)
+            rendered = into / f"{stem(out)}.{ext}"
+            rendered.parent.mkdir(exist_ok=True)
+            # The passes' temporary folder can sit on another filesystem.
+            shutil.move(passes / f"{mount.name}.video.{ext}", rendered)
+            image = f"{stem(out)}.{fmt}"
+            camera = camera.model_copy(update={"image": image}).cropped(crop)
+            rows = slice(crop.top_px, height - crop.bottom_px)
+            index = index[rows, crop.left_px : width - crop.right_px]
+    if thermal:
+        tone, noise = thermal
+        _write_thermal(rendered, fmt, tone, mount.camera, noise)
+    written.append(into / camera.image)
+    taken = (mount, camera, np.rint(index).astype(int), _frame(into / camera.image))
+    return taken, source if video else None, written
+
+
 def render(
     scenario: Scenario, into: Path, advance: Callable[[], None] = lambda: None
 ) -> list[Path]:
@@ -187,6 +325,7 @@ def render(
     sequence = len(outputs.times_s) > 1
     written: list[Path] = []
     cameras: list[CameraCalibration] = []
+    raw: list[CameraCalibration] = []
     truth = labels.Labels()
     with tempfile.TemporaryDirectory() as tmp:
         passes = Path(tmp)
@@ -202,7 +341,8 @@ def render(
             sea.remember_foam()
             # After a build: the first one picks the device.
             truth.info = truth.info or _info(scenario)
-            index_output = _index_output(passes)
+            _index_output(passes)
+            _video_output(passes)
             sc = bpy.context.scene
             tones = {m.name: agc.Agc(m.camera.agc, 1 / outputs.fps) for m in mounts}
             noises = {
@@ -215,35 +355,21 @@ def render(
                 targets = _targets(built)
                 shot = []
                 for mount in mounts:
-                    rng = substream(scenario.seed, f"sensor/{mount.name}")
-                    scene.look_through(built.cameras, mount, rng)
-                    name = f"{mount.name}/{frame:04d}" if sequence else mount.name
-                    sc.render.filepath = str(into / name)
-                    index_output.file_name = f"{mount.name}."
-                    rendered = into / f"{name}.{'exr' if thermal else outputs.format}"
-                    _render_still(rendered, f"frame {frame} of camera {mount.name}")
-                    if thermal:
-                        _write_thermal(
-                            rendered,
-                            outputs.format,
-                            tones[mount.name],
-                            mount.camera,
-                            noises[mount.name],
-                        )
-                    file_name = f"{name}.{outputs.format}"
-                    written.append(into / file_name)
-                    advance()
-                    camera = scene.calibrate(built, mount, file_name)
-                    cameras.append(camera)
-                    index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
-                    shot.append(
-                        (
-                            mount,
-                            camera,
-                            np.rint(index).astype(int),
-                            _frame(into / file_name),
-                        )
+                    taken, source, files = _shoot(
+                        built,
+                        mount,
+                        substream(scenario.seed, f"sensor/{mount.name}"),
+                        frame if sequence else None,
+                        outputs.format,
+                        (tones[mount.name], noises[mount.name]) if thermal else None,
+                        into,
+                        passes,
                     )
+                    shot.append(taken)
+                    cameras.append(taken[1])
+                    raw += [source] if source else []
+                    written += files
+                    advance()
                 faints = [labels.faint(i, f, targets) for _, _, i, f in shot]
                 if outputs.keep_if_any_sees:
                     presents = [labels.present(i, targets) for _, _, i, _ in shot]
@@ -262,9 +388,9 @@ def render(
                         faint=low,
                     )
                 # Every frame, so a render that dies keeps what it wrote.
-                _write_truth(into, cameras, truth)
+                _write_truth(into, cameras, raw, truth)
     if not written:
         raise ValueError(
             f"no rig has a camera in any of {outputs.bands}: nothing to render"
         )
-    return written + _write_truth(into, cameras, truth)
+    return written + _write_truth(into, cameras, raw, truth)

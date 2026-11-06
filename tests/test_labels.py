@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape.config import Agc, Camera, Lens, Sensor
+from seascape.config import Agc, Camera, Crop, Lens, Sensor
 from seascape.outputs import labels
 from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import earth, fisheye
@@ -486,6 +486,15 @@ def test_a_fisheyes_field_of_view_is_the_angle_across_its_width() -> None:
         132.93
     )
     assert camera(3840, 2160, 49.0).hfov_deg == pytest.approx(49.0)
+
+
+@pytest.mark.parametrize(("hfov_deg", "distortion"), [(49.0, None), (132.93, FISHEYE)])
+def test_a_crop_to_one_side_sees_half_the_field(
+    hfov_deg: float, distortion: tuple[float, float, float, float] | None
+) -> None:
+    right = Crop(kind="crop", camera="eo", left_px=1920)
+    cut = camera(3840, 2160, hfov_deg, distortion=distortion).cropped(right)
+    assert cut.hfov_deg == pytest.approx(hfov_deg / 2)
 
 
 def test_no_horizon_in_a_frame_that_looks_at_the_sea_only() -> None:

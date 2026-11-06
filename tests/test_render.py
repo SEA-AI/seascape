@@ -325,7 +325,7 @@ def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
     scenario = variant(outputs={"bands": ["eo"]})
     mount = scenario.band_mounts("eo")[0]
 
-    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
+    with pytest.raises(RuntimeError, match=f"camera {mount.name}'s frame"):
         render.render(scenario, Path("out"))
 
     assert Path(handed[0]).is_absolute()
@@ -710,6 +710,43 @@ def test_a_fisheye_draws_each_hull_where_its_lens_puts_it(tmp_path: Path) -> Non
     frame = cv2.imread(str(tmp_path / truth.images[0].file_name))
     assert frame is not None
     assert frame[:60].mean() > frame[-60:].mean(), "the sky is above the sea"
+
+
+@pytest.mark.render
+def test_a_crop_records_the_cameras_frame_less_its_edges(tmp_path: Path) -> None:
+    """Uneven edges, so a crop measured from the wrong side or flipped shows."""
+    crop = {"left_px": 24, "right_px": 8, "top_px": 6, "bottom_px": 10}
+    scenario = variant(
+        rig={
+            "videos": {
+                "cut": {"kind": "crop", "camera": "eo"} | crop,
+                "thermal": {"kind": "identity", "camera": "ir"},
+            }
+        },
+        cameras={"eo": {"width_px": 160, "height_px": 90}},
+        objects=[target("yacht", 300.0, -9.0)],
+        outputs={"bands": ["eo"], "format": "png", "samples": {"eo": 2}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    whole = cv2.imread(str(tmp_path / "bow_eo.png"))
+    cut = cv2.imread(str(tmp_path / "bow_cut.png"))
+    assert whole is not None and cut is not None
+    # Blender dithers each 8-bit save on its own.
+    assert np.abs(cut - whole[6:-10, 24:-8].astype(int)).max() <= 2
+    (camera,) = Calibration.read(tmp_path).cameras
+    (source,) = Calibration.read(tmp_path).raw
+    assert (camera.name, camera.width_px, camera.height_px) == ("bow_cut", 128, 74)
+    assert np.subtract(source.K, camera.K)[:2, 2] == pytest.approx((24.0, 6.0))
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (found,) = truth.annotations
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
+    left, top, width, height = found.bbox
+    assert left - 0.5 <= u <= left + width + 0.5
+    assert top - 0.5 <= v <= top + height + 0.5
 
 
 @pytest.mark.render
