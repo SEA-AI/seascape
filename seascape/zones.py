@@ -25,6 +25,7 @@ from seascape.blender import blend, faces, wear
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import box_corners, import_asset, mesh_objects
 from seascape.outputs.montage import INK, MATTE, font
+from seascape.physics import earth
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 
@@ -137,15 +138,7 @@ def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
 def _aim(found: Parts, bearing_deg: float, elevation_deg: float) -> None:
     corners = np.array([tuple(c) for c in box_corners(found.objects)])
     centre = Vector(tuple((corners.min(axis=0) + corners.max(axis=0)) / 2))
-    bearing, elevation = math.radians(bearing_deg), math.radians(elevation_deg)
-    # A direction, not a rotation: no negation.
-    toward = Vector(
-        (
-            math.sin(bearing) * math.cos(elevation),
-            math.cos(bearing) * math.cos(elevation),
-            math.sin(elevation),
-        )
-    )
+    toward = Vector(earth.direction(bearing_deg, elevation_deg))
     camera = bpy.context.scene.camera
     camera.rotation_mode = "QUATERNION"
     camera.rotation_quaternion = (-toward).to_track_quat("-Z", "Y")

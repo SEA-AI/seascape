@@ -12,7 +12,7 @@ from pydantic import (
 
 from seascape.assets import skies
 from seascape.model import Model
-from seascape.physics import aerosol, lwir, skin
+from seascape.physics import aerosol, earth, lwir, skin
 from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
 
@@ -332,10 +332,5 @@ class Sky(Model):
         """Unit vector towards the sun: a direction, so its bearing is not negated."""
         if self.sun_elevation_deg is None:
             raise ValueError("a photographed sun without a disc has no direction")
-        elevation = math.radians(self.sun_elevation_deg)
-        bearing = math.radians(self.sun_bearing_deg)
-        return (
-            math.cos(elevation) * math.sin(bearing),
-            math.cos(elevation) * math.cos(bearing),
-            math.sin(elevation),
-        )
+        east, north, up = earth.direction(self.sun_bearing_deg, self.sun_elevation_deg)
+        return float(east), float(north), float(up)

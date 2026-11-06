@@ -33,7 +33,7 @@ import numpy as np
 from pydantic import Field, model_validator
 
 from seascape.assets import File
-from seascape.physics import colour, lwir
+from seascape.physics import colour, earth, lwir
 
 LIBRARY = Path(__file__).parent / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
@@ -138,13 +138,6 @@ def _elevation_deg(rows: np.ndarray, h: int) -> np.ndarray:
     return 90.0 - (rows + 0.5) / h * 180.0
 
 
-def _directions(bearing_deg: np.ndarray, elevation_deg: np.ndarray) -> np.ndarray:
-    b, e = np.radians(bearing_deg), np.radians(elevation_deg)
-    return np.stack(
-        np.broadcast_arrays(np.cos(e) * np.sin(b), np.cos(e) * np.cos(b), np.sin(e)), -1
-    )
-
-
 def _glow_deg(lum: np.ndarray) -> float:
     """The bearing of the brightest patch, a few degrees wide, above the horizon."""
     rows, cols = GLOW_CELLS
@@ -171,8 +164,8 @@ def sun(radiance: np.ndarray) -> Sun:
     rows = np.arange(h)[band]
     bearings = _bearing_deg((np.arange(w) + 0.5) / w)
     elevations = _elevation_deg(rows, h)
-    seen = _directions(bearings[None, :], elevations[:, None])
-    peak = _directions(bearings[col], _elevation_deg(np.array(row), h))
+    seen = earth.direction(bearings[None, :], elevations[:, None])
+    peak = earth.direction(bearings[col], _elevation_deg(np.array(row), h))
     angle = np.degrees(np.arccos(np.clip(seen @ peak, -1.0, 1.0)))
     near = lum[band]
     ring = np.median(near[(angle > RING_DEG[0]) & (angle < RING_DEG[1])])
@@ -283,8 +276,10 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     disc = photo.sun_elevation_deg is not None
     # A judgement: with no disc, the glow's bearing at the horizon.
     sun_elevation_deg = photo.sun_elevation_deg if disc else 0.0
-    toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
-    cos_sun = _directions(bearing, elevation) @ toward
+    toward = earth.direction(
+        np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg)
+    )
+    cos_sun = earth.direction(bearing, elevation) @ toward
     aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
     # Cloud only greys the sky, so the clear sky is blueness's upper envelope: a gap
     # anywhere in a square holds it up. A square's noise lifts the fit by the top of
