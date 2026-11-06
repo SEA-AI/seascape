@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import bpy
+import cv2
 import numpy as np
 from mathutils import Vector
 
@@ -160,30 +161,17 @@ def foam_grids(
 
 
 def _write_frames(
-    folder: Path,
-    grid: FoamGrid,
-    frames: Iterator[tuple[np.ndarray, np.ndarray]],
+    folder: Path, frames: Iterator[tuple[np.ndarray, np.ndarray]]
 ) -> None:
-    """Each frame's (cover, breaking) as an EXR in `folder`."""
+    """Each frame's (cover, breaking) as a 16-bit PNG in `folder`."""
     folder.mkdir(parents=True)
-    image = bpy.data.images.new(
-        "sea_foam_frame", grid.columns, grid.rows, float_buffer=True
-    )
-    image.colorspace_settings.name = "Non-Color"
-    # `Image.save` writes 32-bit floats uncompressed; a scene's output settings write
-    # half floats, which keep cover to a part in 2048, zipped.
-    frames_scene = bpy.data.scenes.new("sea_foam_frames")
-    settings = frames_scene.render.image_settings
-    settings.file_format, settings.color_mode = "OPEN_EXR", "RGB"
-    settings.color_depth, settings.exr_codec = "16", "ZIP"
-    rgba = np.zeros((grid.rows, grid.columns, 4), np.float32)
-    rgba[..., 3] = 1.0
     for i, (cover, breaking) in enumerate(frames):
-        rgba[..., 0], rgba[..., 1] = cover, breaking
-        image.pixels.foreach_set(rgba.ravel())
-        image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
-    bpy.data.scenes.remove(frames_scene)
-    bpy.data.images.remove(image)
+        # 16 bits hold a fraction to a part in 65535, finer than a half float's 2048.
+        # cv2 takes BGR and writes the top row first; Blender's rows run bottom up.
+        counts = np.rint(np.dstack([np.zeros_like(cover), breaking, cover]) * 65535)
+        cv2.imwrite(
+            str(folder / f"foam_{i + 1:04d}.png"), counts.astype(np.uint16)[::-1]
+        )
 
 
 # The foam memories the last build asked for and has not simulated: a build that never
@@ -271,7 +259,7 @@ def foam_frames(
             f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
         )
         sequence.source = "SEQUENCE"
-        sequence.filepath = str(folder / "foam_0001.exr")
+        sequence.filepath = str(folder / "foam_0001.png")
         sequence.colorspace_settings.name = "Non-Color"
         out.append((grid, sequence))
     return out
@@ -291,6 +279,5 @@ def _simulate(
     times = outputs.times_s
     _write_frames(
         folder,
-        grid,
         foam_memory(wind, drift, grid, times[0], step, len(times), float(threshold)),
     )

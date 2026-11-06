@@ -249,7 +249,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     water having drifted since.
     """
     clip = _clear(variant(OPEN_SEA, outputs={"duration_s": 1.0, "fps": 4}))
-    stale = _frames_folder() / "0.25m" / "foam_0001.exr"
+    stale = _frames_folder() / "0.25m" / "foam_0001.png"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.touch()
     built = scene.build(clip, "eo")
@@ -280,7 +280,11 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
             10.0,
         )
         rendered = shoot((px, px), f"memory_probe_{frame}")
-        stored = blend.read(first.with_name(f"foam_{frame + 1:04d}.exr"))[..., 0]
+        file = bpy.data.images.load(str(first.with_name(f"foam_{frame + 1:04d}.png")))
+        # A png loads as sRGB, which would decode the stored fractions.
+        file.colorspace_settings.name = "Non-Color"
+        stored = blend.pixels(file)[..., 0]
+        bpy.data.images.remove(file)
         expected = stored[row : row + px, column : column + px][::-1]
         assert expected.max() > 0.0
         np.testing.assert_allclose(rendered, expected, atol=2e-3)
