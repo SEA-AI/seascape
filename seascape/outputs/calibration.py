@@ -3,12 +3,14 @@
 Imports no Blender, so a consumer reads it without the bpy wheel.
 """
 
+import math
 from pathlib import Path
 
 import numpy as np
 from pydantic import ConfigDict, Field
 
 from seascape.model import Model
+from seascape.physics import fisheye
 
 FILENAME = "calibration.json"
 
@@ -34,7 +36,7 @@ class _Record(Model):
 
 
 class CameraCalibration(_Record):
-    """A pinhole with no distortion, in OpenCV's conventions.
+    """A pinhole, or with `distortion` a fisheye, in OpenCV's conventions.
 
     Camera frame: +X right, +Y down, +Z along the optical axis. Pixel centres sit at
     integer coordinates.
@@ -51,6 +53,11 @@ class CameraCalibration(_Record):
     width_px: int = Field(gt=0)
     height_px: int = Field(gt=0)
     K: Matrix3
+    distortion: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="OpenCV's fisheye k1..k4, with K's fx the scale of the distorted "
+        "angle. Unset, a pinhole.",
+    )
     extrinsics: dict[str, Matrix4] = Field(
         min_length=1,
         description=(
@@ -59,6 +66,15 @@ class CameraCalibration(_Record):
             "the hull) and rig (the product, +Y along its axis)"
         ),
     )
+
+    @property
+    def hfov_deg(self) -> float:
+        """The field angle across the image width."""
+        half, fx = self.width_px / 2, self.K[0][0]
+        if self.distortion is None:
+            return math.degrees(2 * math.atan(half / fx))
+        reach = np.array([half])
+        return math.degrees(2 * fisheye.theta(reach, self.distortion, fx)[0])
 
 
 class Calibration(_Record):

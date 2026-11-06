@@ -15,6 +15,7 @@ from seascape.config import (
     Mount,
     Scenario,
 )
+from seascape.physics import fisheye
 
 
 class _RigObjects(NamedTuple):
@@ -52,7 +53,19 @@ def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
         # AUTO fits the field of view to whichever image dimension is larger, so a
         # portrait sensor would silently reinterpret hfov as a vertical angle.
         data.sensor_fit = "HORIZONTAL"
-        data.angle_x = math.radians(mount.camera.hfov_deg)
+        width, height = mount.camera.width_px, mount.camera.height_px
+        if (k := mount.camera.lens.fisheye) is None:
+            data.angle_x = math.radians(mount.camera.hfov_deg)
+        else:
+            fx = mount.camera.fisheye_focal_px
+            data.type, data.panorama_type = "PANO", "FISHEYE_LENS_POLYNOMIAL"
+            # The sensor fit is horizontal, so the width spans the frame.
+            pitch_mm = data.sensor_width / width
+            for i, c in enumerate(fisheye.polynomial(k, fx, width, height, pitch_mm)):
+                setattr(data, f"fisheye_polynomial_k{i}", c)
+            # What the sea's shader and the cull read as a pixel: the one at the
+            # centre, which sees the least. Past it a fisheye's pixel sees more.
+            data.angle_x = width / fx
         data.clip_start = mount.rig.near_clip_m
         # The default 1000 m renders a target past it as sky, and the clip boundary
         # reads as the horizon. Nothing warns.

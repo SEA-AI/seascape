@@ -45,6 +45,8 @@ def pose(
     camera: CameraCalibration, frame: str, bearing: float
 ) -> tuple[np.ndarray, np.ndarray]:
     """K and R as the stitcher takes them, turned so `bearing` is straight ahead."""
+    if camera.distortion is not None:
+        raise ValueError(f"{camera.name}: a panorama stitches pinhole cameras")
     c, s = np.cos(bearing), np.sin(bearing)
     turn = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
     return (

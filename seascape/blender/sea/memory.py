@@ -14,7 +14,7 @@ from seascape.blender.rigs import View
 from seascape.blender.sea.foam import FOAM_SEAM_CELLS
 from seascape.blender.sea.wind import surface_drift
 from seascape.config import Outputs, Scenario, Sea
-from seascape.physics import earth, waves
+from seascape.physics import earth, fisheye, waves
 from seascape.physics.waves import (
     FoamGrid,
     Wave,
@@ -51,24 +51,25 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
     rays = []
     for view in seen:
         turn = view.matrix.to_3x3()
-        camera = view.mount.camera
-        # Not `view_frame`: it takes the scene's aspect, which the build sets last.
-        across = math.tan(view.angle_x_rad / 2)
-        up = across * camera.height_px / camera.width_px
-        corners = [
-            Vector((x * across, y * up, -1.0))
-            for x, y in ((1, 1), (1, -1), (-1, -1), (-1, 1))
-        ]
         # Water at x is on the grid at x - v t.
         origin = view.matrix.translation - Vector(
             (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
         )
-        for a in np.linspace(0.0, 1.0, FOAM_RAYS):
-            for b in np.linspace(0.0, 1.0, FOAM_RAYS):
-                toward = (corners[2].lerp(corners[1], a)).lerp(
-                    corners[3].lerp(corners[0], a), b
-                )
-                rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
+        camera = view.mount.camera
+        steps = np.linspace(-1.0, 1.0, FOAM_RAYS)
+        if camera.lens.fisheye is None:
+            # Not `view_frame`: it takes the scene's aspect, which the build sets last.
+            across = math.tan(view.angle_x_rad / 2)
+            up = across * camera.height_px / camera.width_px
+            frame = [Vector((x * across, y * up, -1.0)) for x in steps for y in steps]
+        else:
+            x, y = np.meshgrid(
+                steps * camera.width_px / 2, steps * camera.height_px / 2
+            )
+            k, fx = camera.lens.fisheye, camera.fisheye_focal_px
+            frame = [Vector(d) for d in fisheye.direction(x.ravel(), y.ravel(), k, fx)]
+        for toward in frame:
+            rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
     return rays
 
 

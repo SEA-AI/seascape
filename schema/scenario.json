@@ -1071,6 +1071,50 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "fisheye": {
+          "title": "Fisheye",
+          "description": "OpenCV's fisheye k1..k4, all 0 for an equidistant lens. Unset, a pinhole. hfov_deg is then the field angle across the image width.",
+          "default": null,
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Lens",

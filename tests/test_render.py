@@ -673,6 +673,46 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
 
 
 @pytest.mark.render
+def test_a_fisheye_draws_each_hull_where_its_lens_puts_it(tmp_path: Path) -> None:
+    """Both axes: Cycles' polynomial lens draws the scene half a turn about the optical
+    axis, and the build turns the image and its index pass back.
+    """
+    k = (-0.0793, -0.0461, 0.0331, -0.0065)
+    scenario = variant(
+        cameras={
+            "eo": {
+                "hfov_deg": 132.93,
+                "width_px": 640,
+                "height_px": 360,
+                "lens": {"fisheye": list(k)},
+            }
+        },
+        objects=[target("yacht", 300.0, -40.0), target("yacht", 300.0, 35.0)],
+        outputs={"bands": ["eo"], "samples": {"eo": 2}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (camera,) = Calibration.read(tmp_path).cameras
+    assert len(truth.annotations) == 2
+    for found in truth.annotations:
+        centre = bpy.data.objects[found.name].matrix_world.translation
+        seen = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+        zero = np.zeros(3)
+        image, _ = cv2.fisheye.projectPoints(
+            seen[None, None, :3], zero, zero, np.array(camera.K), np.array(k)
+        )
+        u, v = image.ravel() + 0.5  # COCO pixels
+        left, top, width, height = found.bbox
+        assert left - 0.5 <= u <= left + width + 0.5, found.name
+        assert top - 0.5 <= v <= top + height + 0.5, found.name
+    frame = cv2.imread(str(tmp_path / truth.images[0].file_name))
+    assert frame is not None
+    assert frame[:60].mean() > frame[-60:].mean(), "the sky is above the sea"
+
+
+@pytest.mark.render
 def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> None:
     """Fast enough that the ship crosses pixels between frames."""
     scenario = variant(

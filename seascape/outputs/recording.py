@@ -125,7 +125,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
         "position": _unit([float(v) * 1000.0 for v in rig[:3, 3]], "mm"),
         "focal_length": _unit(fx * pixel_mm, "mm"),
         "barrel_distortion": _unit(None, "1"),
-        "distortion_model": "pinhole",
+        "distortion_model": "pinhole" if camera.distortion is None else "fisheye",
         "roll": _unit(roll, "deg"),
         "pitch": _unit(pitch, "deg"),
         "yaw": _unit(yaw, "deg"),
@@ -139,7 +139,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
         "center_y": _unit(cy, "1"),
         "focal_length_x": _unit(fx, "1"),
         "focal_length_y": _unit(fy, "1"),
-        "fisheye_distortion": _unit([0.0] * 4, "1"),
+        "fisheye_distortion": _unit(list(camera.distortion or [0.0] * 4), "1"),
     }
 
 

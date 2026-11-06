@@ -22,7 +22,7 @@ import numpy as np
 
 from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
-from seascape.blender.compositor import JPEG_QUALITY
+from seascape.blender.compositor import INDEX_ROLL, JPEG_QUALITY, unroll
 from seascape.blender.vessels import heading_rad, waterline_m
 from seascape.config import Camera, ImageFormat, Scenario, substream
 from seascape.outputs import agc, labels, microbolometer
@@ -88,7 +88,9 @@ def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
     output.format.file_format = "OPEN_EXR"
     output.format.color_depth = "32"
     output.file_output_items.new("FLOAT", "index")
-    tree.links.new(layers.outputs["Object Index"], output.inputs["index"])
+    tree.links.new(
+        unroll(tree, layers.outputs["Object Index"], INDEX_ROLL), output.inputs["index"]
+    )
     return output
 
 

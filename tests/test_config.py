@@ -1129,6 +1129,31 @@ def test_the_evidir_alpha_preset_needs_its_lens_f_number() -> None:
         load(BASELINE, [line])
 
 
+def test_a_camera_takes_a_fisheye_lens() -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "basler_daa3840_ar0821", hfov_deg = 132.93, '
+        "lens = { fisheye = [-0.0793, -0.0461, 0.0331, -0.0065] } }"
+    )
+    lens = load(BASELINE, [line]).rigs["bow"].cameras["eo"].lens
+    assert lens.fisheye == (-0.0793, -0.0461, 0.0331, -0.0065)
+
+
+@pytest.mark.parametrize(
+    ("lens", "match"),
+    [
+        ("{ fisheye = [0.0, 0.0, 0.0, 0.0], vignetting = true }", "pinhole"),
+        ("{ fisheye = [-1.0, 0.0, 0.0, 0.0] }", "misses the fisheye model"),
+    ],
+)
+def test_a_fisheye_refuses_what_it_cannot_draw(lens: str, match: str) -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "basler_daa3840_ar0821", '
+        f"hfov_deg = 130.0, lens = {lens} }}"
+    )
+    with pytest.raises(ValidationError, match=match):
+        load(BASELINE, [line])
+
+
 def test_a_rigs_cameras_share_a_draw_through_nested_picks() -> None:
     eo = f'preset = "eo_4k_49deg", {GRADE}'
     cameras = f"{{ a = {{ {eo} }}, b = {{ {eo}, yaw_deg = 40.0 }} }}"
