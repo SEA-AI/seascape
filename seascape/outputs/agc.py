@@ -125,6 +125,7 @@ class Agc:
         self._curve: np.ndarray | None = None
 
     def __call__(self, t_k: np.ndarray) -> np.ndarray:
+        """The next frame, `t_k`, in 8-bit grey."""
         frame = _layers(t_k, self._setting)
         curve = _transfer([frame], self._setting)
         if self._curve is not None:

@@ -93,7 +93,7 @@ def warm_layer(
     alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_MS2
     heat = WATER_DENSITY_KG_M3 * WATER_HEAT_J_KG_K
     # The same stress either side of the interface.
-    stress_water = stress_m2_s2 * air_density_kg_m3(t_sea_k) / WATER_DENSITY_KG_M3
+    stress_water = stress_m2_s2 * _air_density_kg_m3(t_sea_k) / WATER_DENSITY_KG_M3
     seconds = hours * 3600.0
     # Equation 21 with its integrals as means times t. A deeper layer traps more sun
     # and so asks for less depth: one depth balances, bisected on a log scale between
@@ -135,14 +135,14 @@ def clear_day_cooling_w_m2(wind_speed_mps: float) -> float:
     )
 
 
-def air_density_kg_m3(t_k: float) -> float:
+def _air_density_kg_m3(t_k: float) -> float:
     return SEA_LEVEL_PA / (DRY_AIR_J_KG_K * t_k)
 
 
 def stress_m2_s2(wind_speed_mps: float, t_k: float) -> float:
     """The air's u*^2 from the 10 m wind, as Fairall et al. estimated it, no less than
     COARE 3.6's floor."""
-    floor = MIN_STRESS_N_M2 / air_density_kg_m3(t_k)
+    floor = MIN_STRESS_N_M2 / _air_density_kg_m3(t_k)
     return max(DRAG_COEFFICIENT * wind_speed_mps**2, floor)
 
 

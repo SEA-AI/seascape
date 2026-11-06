@@ -107,12 +107,14 @@ class Photo(File):
 
     @property
     def sun(self) -> str:
+        """The sun's elevation, in words."""
         elevation = self.sun_elevation_deg
         return "no disc" if elevation is None else f"{elevation:.1f} deg"
 
 
 @cache
 def library() -> dict[str, Photo]:
+    """Every sky photo in the library, by name."""
     with LIBRARY.open("rb") as handle:
         return {name: Photo(**body) for name, body in tomllib.load(handle).items()}
 

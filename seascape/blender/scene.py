@@ -77,6 +77,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
 def look_through(
     cameras: dict[str, bpy.types.Object], mount: Mount, rng: np.random.Generator
 ) -> None:
+    """Render through `mount`'s camera at its size, its sensor noise from `rng`."""
     sc = bpy.context.scene
     sc.camera = cameras[mount.name]
     sc.render.resolution_x = mount.camera.width_px

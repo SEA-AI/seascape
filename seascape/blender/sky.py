@@ -43,6 +43,7 @@ SUN_DIAMETER_DEG = 32.0 / 60.0
 
 
 def add_world(sky: Sky, band: Band) -> bpy.types.World:
+    """The world `band` sees."""
     world = bpy.data.worlds.new("sky")
     # Nonzero, EEVEE turns world light above it into a sun a mirror cannot see.
     world.sun_threshold = 0.0
@@ -591,6 +592,7 @@ def _less_sky(
 
 
 def sea_light(sky: Sky, band: Band) -> sea.Light:
+    """The sky and sun as the sea's shader reflects them in `band`."""
     if band == "ir":
         clouds = _clouds(sky)
         return sea.Light(sky=_sky_round(sky, clouds), sun_up=sky.sun_up, clouds=clouds)
