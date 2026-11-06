@@ -26,6 +26,7 @@ from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import box_corners, import_asset, mesh_objects
 from seascape.outputs.montage import INK, MATTE, font
 from seascape.physics import earth
+from seascape.physics.colour import srgb_encode
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 
@@ -457,14 +458,6 @@ def _hex(rgb: np.ndarray) -> str:
     return "#" + "".join(f"{round(255 * float(c)):02x}" for c in np.clip(rgb, 0, 1))
 
 
-def _srgb(linear: np.ndarray) -> np.ndarray:
-    """IEC 61966-2-1's transfer function."""
-    linear = np.clip(linear, 0, 1)
-    return np.where(
-        linear <= 0.0031308, 12.92 * linear, 1.055 * linear ** (1 / 2.4) - 0.055
-    )
-
-
 def _channel_stats(values: np.ndarray) -> dict[str, float]:
     return {
         "mean": round(float(values.mean()), 3),
@@ -484,13 +477,13 @@ def _input(
     bsdf = faces.bsdf(material)
     if bsdf is None:
         if socket == "Base Color" and material is not None:
-            return {"colour": _hex(_srgb(np.array(material.diffuse_color[:3])))}
+            return {"colour": _hex(srgb_encode(np.array(material.diffuse_color[:3])))}
         return {}
     source = faces.source(bsdf.inputs[socket])
     if source is None:
         value = bsdf.inputs[socket].default_value
         if socket == "Base Color":
-            return {"colour": _hex(_srgb(np.array(value[:3])))}
+            return {"colour": _hex(srgb_encode(np.array(value[:3])))}
         return {"value": round(float(value), 3)}
     image = source.image
     texels = _texels(image)
@@ -503,7 +496,7 @@ def _input(
         # Texels as stored: an sRGB image's are already display values.
         mean = picked[:, :3].mean(axis=0)
         is_linear = image.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}
-        out["colour"] = _hex(_srgb(mean) if is_linear else mean)
+        out["colour"] = _hex(srgb_encode(mean) if is_linear else mean)
     else:
         out |= _channel_stats(picked[:, source.channel or 0] * source.scale)
     return out
@@ -601,7 +594,7 @@ def _island_records(
             continue
         rgb = _texels(source)[..., :3]
         if source.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}:
-            rgb = _srgb(rgb)
+            rgb = srgb_encode(rgb)
         # Each island's triangles, in island order: a later one paints over.
         mine = (island_material == name)[all_island]
         uv, island = all_uv[mine], all_island[mine]

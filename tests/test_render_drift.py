@@ -786,9 +786,7 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
 
 def srgb_counts(linear: np.ndarray) -> np.ndarray:
     """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
-    x = np.clip(linear, 0.0, 1.0)
-    encoded = np.where(x <= 0.0031308, 12.92 * x, 1.055 * x ** (1 / 2.4) - 0.055)
-    return np.round(255 * encoded)
+    return np.round(255 * colour.srgb_encode(linear))
 
 
 class TestCamera:

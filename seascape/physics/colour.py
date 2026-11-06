@@ -68,6 +68,16 @@ def srgb_decode(encoded: np.ndarray) -> np.ndarray:
     )
 
 
+def srgb_encode(linear: np.ndarray) -> np.ndarray:
+    """IEC 61966-2-1's sRGB transfer function: linear value, clipped to [0, 1], to
+    encoded.
+    """
+    linear = np.clip(linear, 0.0, 1.0)
+    return np.where(
+        linear <= 0.0031308, 12.92 * linear, 1.055 * linear ** (1 / 2.4) - 0.055
+    )
+
+
 # Grossberg & Nayar 2004's EMoR mean response f0, the mean of the 201 curves of DoRF
 # (Columbia CAVE, emor.txt), at the irradiances `srgb_decode(TONE_IN)`.
 EMOR_F0 = np.array([
