@@ -2381,7 +2381,7 @@
     },
     "Processing": {
       "additionalProperties": false,
-      "description": "The camera's ISP. White balance and sharpening need a sensor; exposure and\ntone do not.",
+      "description": "The camera's ISP. All but exposure_ev and tone need a sensor.",
       "properties": {
         "exposure_ev": {
           "title": "Exposure Ev",
@@ -2392,6 +2392,36 @@
               "maximum": 126.0,
               "minimum": -126.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "exposure_target": {
+          "title": "Exposure Target",
+          "description": "The mean, before tone, that auto-exposure brings the sensor's output to, clipped or, with HDR, tone-mapped. Unset, it puts the frame's log-average at ISO 12232's mid-grey.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"

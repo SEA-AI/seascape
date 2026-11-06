@@ -171,8 +171,7 @@ def _camera(
     Args:
         tree: The compositor's tree.
         image: The render's linear radiance, as it reaches the lens.
-        compensation_ev: Stops over auto-exposure, which puts the frame's log-average
-            at `MID_GREY`.
+        compensation_ev: Stops over auto-exposure.
         with_sensor: Add the sensor and ISP after auto-exposure.
     """
     coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})
@@ -207,17 +206,25 @@ def _camera(
     tree.links.new(combine(tree, size_px, size_px), blur.inputs["Size"])
     tree.links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
-    _, average = sensor.log_average(tree, image)
+    lit, average = sensor.log_average(tree, image)
     gain = scalar(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, average, name="exposure"
     )
+    target = value(tree, "exposure.target")
+    if with_sensor:
+        # Without HDR, a camera with a target meters its clipped output.
+        metered = sensor.clipped_gain(tree, lit, gain, target)
+        gain = switch(
+            tree, "exposure.clipped", gain, (metered * 2**compensation_ev).socket
+        )
     processing = value(tree, "processing.gain", 1.0)
     gain = scalar(tree, "MULTIPLY", gain, processing)
     exposed = vector(tree, "SCALE", image, gain)
     if with_sensor:
         # A camera without a full well shares the tree, and takes the ideal frame.
-        grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
-        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
+        over = scalar(tree, "MULTIPLY", processing, 2**compensation_ev)
+        grey = scalar(tree, "MULTIPLY", over, MID_GREY)
+        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey, target, over)
         exposed = switch(tree, "sensor.on", exposed, read)
     return _tone(tree, exposed)
 

@@ -191,9 +191,7 @@ class Agc(Model):
 
 
 class Processing(Model):
-    """The camera's ISP. White balance and sharpening need a sensor; exposure and
-    tone do not.
-    """
+    """The camera's ISP. All but exposure_ev and tone need a sensor."""
 
     # 2^±126 stays a normal float32 (IEEE 754), as the compositor computes.
     exposure_ev: float = Field(
@@ -202,6 +200,14 @@ class Processing(Model):
         le=126.0,
         description="Stops over auto-exposure, on top of "
         "outputs.exposure_compensation_ev.",
+    )
+    exposure_target: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="The mean, before tone, that auto-exposure brings the "
+        "sensor's output to, clipped or, with HDR, tone-mapped. Unset, it puts the "
+        "frame's log-average at ISO 12232's mid-grey.",
     )
     white_balance: Literal["fixed", "grey_world"] = Field(
         default="fixed",
@@ -281,7 +287,9 @@ class Camera(Model):
         if self.lens.f_number is not None and self.sensor.pitch_um is None:
             raise ValueError("lens.f_number needs a sensor.pitch_um")
         if self.sensor.full_well_e is None and isp != Processing():
-            raise ValueError("white balance and sharpening need a sensor.full_well_e")
+            raise ValueError(
+                "processing but exposure_ev and tone need a sensor.full_well_e"
+            )
         if (k := self.lens.fisheye) is not None:
             # Limitation: the falloff is the pinhole's cos^4 of tan(theta) = r / f.
             if self.lens.vignetting:
