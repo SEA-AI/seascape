@@ -1,0 +1,17 @@
+# e-con Systems e-CAM50_CUNX, onsemi AR0521 colour sensor: the sensor only. The block
+# that mounts it supplies hfov_deg.
+# https://www.e-consystems.com/nvidia-cameras/jetson-nx-cameras/5mp-mipi-camera-board.asp
+band = "eo"
+width_px = 2592
+height_px = 1944
+
+[sensor]
+# Neither onsemi nor e-con publishes them. Measured on the same AR0521 in FLIR's
+# Dragonfly S DR-U3-50Y2C EMVA 1288 report: 12-bit, ISP off, pixel 2.2 um. Its gain is
+# taken as 0 dB.
+# https://softwareservices.flir.com/DR-U3-50Y2/latest/EMVA/EMVA.html
+full_well_e = 10765.0
+dark_noise_e = 3.21
+adc_bits = 12
+width_px = 2592
+pitch_um = 2.2
