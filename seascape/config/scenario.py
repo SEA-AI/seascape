@@ -182,10 +182,6 @@ class Scenario(Model):
             substream(self.seed, "sea/swell"),
         )
 
-    def wave_field(self) -> tuple[waves.Wave, ...]:
-        """Every wave on the sea, wind sea then swell."""
-        return self.wind_waves() + self.swell_waves()
-
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":
         """A camera's name joins its rig's, so rig `a_b` with camera `c` and rig `a`

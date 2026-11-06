@@ -15,6 +15,7 @@ import pytest
 from pydantic import BaseModel
 
 from seascape.config import Camera, Object, Scenario, load
+from seascape.physics import waves
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
@@ -129,3 +130,15 @@ def two_rigs(**sections: Any) -> Scenario:
         },
         **sections,
     )
+
+
+def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
+    """Every wave on the sea, wind sea then swell."""
+    return scenario.wind_waves() + scenario.swell_waves()
+
+
+def load_variants(path: Path, count: int = 1) -> list[Scenario]:
+    """`count` scenarios from consecutive seeds, the file's own first."""
+    first = load(path)
+    later = range(first.seed + 1, first.seed + count)
+    return [first, *(load(path, [f"seed = {seed}"]) for seed in later)]

@@ -71,6 +71,7 @@ from tests.scenarios import (
     preset_target,
     target,
     variant,
+    wave_field,
     white_photo,
 )
 
@@ -405,7 +406,7 @@ class TestEoBand:
             ) == pytest.approx(waves.fade_axis(wave), rel=1e-6, abs=1e-7)
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
-        field = SCENARIO.wave_field()
+        field = wave_field(SCENARIO)
         assert len(field) == waves.WIND_WAVES
         carried = drawn(SCENARIO)
         tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
@@ -1502,8 +1503,8 @@ class TestSeaEvolves:
 
     def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
         swell = variant(BASELINE, sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
-        wind = SCENARIO.wave_field()
-        assert swell.wave_field()[: len(wind)] == wind
+        wind = wave_field(SCENARIO)
+        assert wave_field(swell)[: len(wind)] == wind
 
     def test_the_sea_draws_a_swell_in_triples_of_its_own(self) -> None:
         swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
@@ -1548,7 +1549,7 @@ class TestSeaEvolves:
     ) -> None:
         """Probes and a hand-moved camera need every wave in a default build."""
         scenario = variant(rig={"height_m": 100.0})
-        field = scenario.wave_field()
+        field = wave_field(scenario)
         scene.build(scenario, "eo")
         assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
@@ -1585,7 +1586,7 @@ class TestLoop:
 
     def test_every_wave_in_a_loop_turns_a_whole_number_of_times(self) -> None:
         span_s = self.LOOP.outputs.span_s
-        for wave in self.LOOP.wave_field():
+        for wave in wave_field(self.LOOP):
             turns = wave.omega_rad_s * span_s / (2 * math.pi)
             assert turns == pytest.approx(round(turns), abs=1e-9)
 
@@ -1715,12 +1716,12 @@ class TestDrifting:
             )
             t_s = scenario.outputs.times_s[frame]
             # Only the tall waves move the water the hull sits on.
-            assert len(_tall(scenario)) < len(scenario.wave_field())
+            assert len(_tall(scenario)) < len(wave_field(scenario))
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
             hull = waves.Waterplane(*map(float, rest), heading, length, beam)
-            pitch, roll = waves.attitude(scenario.wave_field(), hull, t_s)
+            pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
                 (pitch, -roll), abs=1e-5
             )

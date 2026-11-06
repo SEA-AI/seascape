@@ -19,7 +19,6 @@ from seascape.config.loader import (
     PRESETS,
     json_schema,
     load,
-    load_variants,
     seeds,
 )
 from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
@@ -53,7 +52,6 @@ __all__ = [
     "WarmLayer",
     "json_schema",
     "load",
-    "load_variants",
     "seeds",
     "substream",
 ]
