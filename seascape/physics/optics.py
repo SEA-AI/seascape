@@ -24,6 +24,13 @@ def pupil_mtf(
     return 2 / math.pi * (np.arccos(x) - x * np.sqrt(1.0 - x * x))
 
 
+def airy_reach_px(wavelength_m: float, f_number: float, pitch_m: float) -> int:
+    """Four Airy discs, 2.44 lambda N each to the first dark ring (Goodman 2005), in
+    pixels.
+    """
+    return math.ceil(4 * 2.44 * wavelength_m * f_number / pitch_m)
+
+
 def airy_kernel(
     wavelengths_m: tuple[float, ...], f_number: float, pitch_m: float
 ) -> FloatArray:
@@ -36,9 +43,7 @@ def airy_kernel(
             it.
         pitch_m: Centre-to-centre distance between pixels.
     """
-    # Four Airy discs each side at the longest wavelength; a disc is 2.44 lambda N
-    # across (Goodman 2005).
-    radius_px = math.ceil(4 * 2.44 * max(wavelengths_m) * f_number / pitch_m)
+    radius_px = airy_reach_px(max(wavelengths_m), f_number, pitch_m)
     # Twice the kernel's width, so the spread past it wraps onto nothing kept.
     grid_px = 4 * radius_px + 2
     # Finer than a pixel, so the OTF is never cut short of the shortest wavelength's
