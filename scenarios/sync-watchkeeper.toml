@@ -1,0 +1,7 @@
+#:schema ../schema/scenario.json
+
+extends = "sync.toml"
+
+[rigs.mast]
+preset = "watchkeeper"
+height_m = 1.6

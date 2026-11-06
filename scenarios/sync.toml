@@ -1,0 +1,31 @@
+#:schema ../schema/scenario.json
+
+# The sea, sky and clip every `seascape sync` scene shares; `sync-<product>.toml`
+# extends it and replaces the rig.
+seed = 20261106
+
+# A stand-in, so this file validates and renders alone.
+[rigs.mast]
+height_m = 1.6
+cameras.eo = { preset = "eo_4k_49deg" }
+cameras.ir = { preset = "ir_vga_24deg" }
+
+# Its waves' rocking and a yaw swing give every IMU axis a signal.
+[ownship]
+asset = "container"
+yaw = { amplitude_deg = 2.0, period_s = 10.0 }
+
+[sea]
+wind_speed_mps = 12.0
+fetch_km = 20.0
+wind_from_deg = 300.0
+
+[sky]
+hdri = "industrial_sunset"
+sun_bearing_deg = 150.0
+
+[outputs]
+fps = 30
+duration_s = 30.0
+format = "png"
+samples = { eo = 8, ir = 8 }
