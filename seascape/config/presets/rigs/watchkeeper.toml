@@ -5,10 +5,9 @@ model = "Watchkeeper"
 
 [cameras.eo]
 preset = "basler_daa3840_ar0821"
-# The lens's nominal field. k follows the mean image radius of two calibrated units'
-# fisheye models, which differ by up to 33 px at the image's side.
+# An ideal equidistant fisheye, r = f theta, at the design field of 136 x 76.5 deg.
 hfov_deg = 136.0
-lens = { fisheye = [-0.0830, -0.0386, 0.0277, -0.0052] }
+lens = { fisheye = [0.0, 0.0, 0.0, 0.0] }
 processing = { white_balance = "grey_world" }
 # The AR0821's eHDR (datasheet) at Basler HDR Beyond's default ratio.
 sensor = { hdr_ratio = 16.0 }
