@@ -262,13 +262,18 @@ class Labels(Model):
         """Write to `folder`; the file written."""
         return write_json(self, folder / FILENAME)
 
+    @classmethod
+    def read(cls, folder: Path) -> "Labels":
+        """The labels in `folder`."""
+        return cls.model_validate_json((folder / FILENAME).read_text())
+
 
 def merge(root: Path, folders: Sequence[Path]) -> Labels:
     """The labels in `folders` as one set for `root`."""
     merged = Labels()
     scenarios: dict[str, Any] = {}
     for folder in folders:
-        part = Labels.model_validate_json((folder / FILENAME).read_text())
+        part = Labels.read(folder)
         prefix = folder.relative_to(root).as_posix()
         merged.info = merged.info or part.info
         scenarios[prefix] = part.info["scenario"]

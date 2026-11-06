@@ -12,7 +12,7 @@ from seascape import assets, render
 from seascape.blender import meshes
 from seascape.config import Band, Scenario, load
 from seascape.outputs import montage
-from seascape.outputs.labels import FILENAME, Labels
+from seascape.outputs.labels import Labels
 
 TILE = (480, 270)
 COLUMNS = 4
@@ -72,7 +72,7 @@ def shot(
     alone["ownship"] |= {"asset": None}
     built = Scenario.model_validate(alone)
     frame = Image.open(render.render(built, into)[0]).convert("RGB")
-    labelled = Labels.model_validate_json((into / FILENAME).read_text())
+    labelled = Labels.read(into)
     (label,) = labelled.annotations
     x, y, w, h = label.bbox
     left = min(max(x + w // 2 - TILE[0] // 2, 0), TILE[0])
