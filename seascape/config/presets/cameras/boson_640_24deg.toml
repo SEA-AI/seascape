@@ -1,8 +1,9 @@
 # Teledyne FLIR Boson 640 with its 18 mm, 24 deg lens.
 # https://www.oem.flir.com/products/boson/
 extends = "boson_640_32deg.toml"
-hfov_deg = 24.0
+# The 20640A024 lens (Boson datasheet 102-2013-40 Rev 340, table 11): 24.3 x 19.5 deg.
+hfov_deg = 24.3
 
 [microbolometer]
-# The 20640A024 lens (Boson datasheet 102-2013-40 Rev 340, table 11): 24.3 x 19.5 deg.
+# Same table.
 f_number = 1.04
