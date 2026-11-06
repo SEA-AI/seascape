@@ -30,6 +30,7 @@ from seascape.blender.sea.memory import _frames_folder
 from seascape.blender.sky import _sky_texture, haze
 from seascape.config import Band, Camera, Lens, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, optics, wakes, waves
+from tests import gerstner
 from tests.probes import probe, show_sea
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
@@ -223,8 +224,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     # The rest of the waves tilt the facet where its water was at rest.
     tall, shaded = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     t_s = scenario.outputs.times_s[frame]
-    seen = waves.filtered(shaded[0] + shaded[1], span_m / px)
-    slope = waves.slope(seen, *rest, t_s)
+    seen = gerstner.filtered(shaded[0] + shaded[1], span_m / px)
+    slope = gerstner.slope(seen, *rest, t_s)
     tilted = facet - np.array([slope[0], slope[1], np.zeros_like(slope[0])])
     tilted /= np.linalg.norm(tilted, axis=0)
     assert np.abs(normal - tilted).max() < 2e-3
@@ -238,7 +239,7 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     curved = sum(w.amplitude_m * w.k_rad_m**2 for w in tall)
     assert np.abs(rest - at_rest).max() < dice_m**2 / 8 * curved
     bent = sum(w.amplitude_m * w.k_rad_m**3 for w in tall)
-    surface = np.array(waves.gerstner_normal(tall, *at_rest, t_s))
+    surface = np.array(gerstner.gerstner_normal(tall, *at_rest, t_s))
     assert np.abs(facet - surface).max() < dice_m**2 * (1 / 8 + 1 / 6) * bent
 
 
@@ -524,15 +525,15 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     )
     view = np.array([0.0, -math.cos(d), math.sin(d)])  # toward the camera
     ahead = np.repeat(-view[:, None], rays, axis=1)
-    rest = waves.gerstner_hit(tall, origin, ahead, 0.0, 0.25)[:2]
+    rest = gerstner.gerstner_hit(tall, origin, ahead, 0.0, 0.25)[:2]
     moved = np.array(waves.gerstner_offset_m(tall, *rest, 0.0))
-    normal = np.array(waves.gerstner_normal(tall, *rest, 0.0))
+    normal = np.array(gerstner.gerstner_normal(tall, *rest, 0.0))
     toward = view @ normal
     bounced = 2 * toward * normal - view[:, None]
     hit = np.array([*rest, np.zeros(rays)]) + moved + 1e-3 * normal
-    *beyond, blocked = waves.gerstner_hit(tall, hit, bounced, 0.0, 0.25)
+    *beyond, blocked = gerstner.gerstner_hit(tall, hit, bounced, 0.0, 0.25)
     met = np.abs(
-        np.sum(bounced * np.array(waves.gerstner_normal(tall, *beyond, 0.0)), 0)
+        np.sum(bounced * np.array(gerstner.gerstner_normal(tall, *beyond, 0.0)), 0)
     )
     sky = np.where(
         blocked,

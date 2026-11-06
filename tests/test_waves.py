@@ -7,6 +7,7 @@ import pytest
 from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
 from seascape.physics.waves import sea
+from tests import gerstner
 
 
 def field(
@@ -226,8 +227,8 @@ def test_a_crest_travels_at_its_phase_speed() -> None:
     speed_ms = wave.omega_rad_s / wave.k_rad_m
     east, north = math.sin(wave.toward_rad), math.cos(wave.toward_rad)
     t_s = 2.5
-    before = waves.height_m((wave,), np.array([3.0]), np.array([4.0]), 0.0)
-    after = waves.height_m(
+    before = gerstner.height_m((wave,), np.array([3.0]), np.array([4.0]), 0.0)
+    after = gerstner.height_m(
         (wave,),
         np.array([3.0 + speed_ms * t_s * east]),
         np.array([4.0 + speed_ms * t_s * north]),
@@ -246,8 +247,8 @@ def test_a_snapped_field_repeats_after_the_loop() -> None:
         np.random.default_rng(0),
     )
     east, north = np.meshgrid(np.linspace(-50, 50, 9), np.linspace(-50, 50, 9))
-    assert waves.height_m(snapped, east, north, span_s) == pytest.approx(
-        waves.height_m(snapped, east, north, 0.0), abs=1e-9
+    assert gerstner.height_m(snapped, east, north, span_s) == pytest.approx(
+        gerstner.height_m(snapped, east, north, 0.0), abs=1e-9
     )
 
 
@@ -386,7 +387,7 @@ def test_the_drawn_slope_variance_is_the_filtered_field_s(
     sea = field(wind_speed_mps) + swell
     for footprint_m in np.geomspace(1e-3, 1e4, 50):
         assert sum(waves.drawn_slope_variances(sea, footprint_m, 0.0)) == pytest.approx(
-            waves.slope_variance(waves.filtered(sea, footprint_m)), rel=1e-12
+            waves.slope_variance(gerstner.filtered(sea, footprint_m)), rel=1e-12
         )
 
 
@@ -424,12 +425,12 @@ def test_calm_air_builds_no_waves_and_nothing_they_drive() -> None:
 def test_the_slope_is_the_height_s_gradient() -> None:
     built = field(7.0)
     east, north, step = np.array([12.0]), np.array([-7.0]), 1e-5
-    d_east, d_north = waves.slope(built, east, north, 1.3)
-    ahead = waves.height_m(built, east + step, north, 1.3)
-    behind = waves.height_m(built, east - step, north, 1.3)
+    d_east, d_north = gerstner.slope(built, east, north, 1.3)
+    ahead = gerstner.height_m(built, east + step, north, 1.3)
+    behind = gerstner.height_m(built, east - step, north, 1.3)
     assert d_east == pytest.approx((ahead - behind) / (2 * step), rel=1e-4)
-    ahead = waves.height_m(built, east, north + step, 1.3)
-    behind = waves.height_m(built, east, north - step, 1.3)
+    ahead = gerstner.height_m(built, east, north + step, 1.3)
+    behind = gerstner.height_m(built, east, north - step, 1.3)
     assert d_north == pytest.approx((ahead - behind) / (2 * step), rel=1e-4)
 
 
@@ -457,7 +458,7 @@ def test_a_gerstner_normal_is_square_to_its_surface() -> None:
         moved = waves.gerstner_offset_m(tall, e, n, 0.7)
         return np.array([e + moved[0], n + moved[1], moved[2]])
 
-    normal = np.array(waves.gerstner_normal(tall, east, north, 0.7))
+    normal = np.array(gerstner.gerstner_normal(tall, east, north, 0.7))
     along_east = surface(east + step, north) - surface(east - step, north)
     along_north = surface(east, north + step) - surface(east, north - step)
     for tangent in (along_east, along_north):
@@ -469,8 +470,8 @@ def test_a_gerstner_normal_is_square_to_its_surface() -> None:
 def test_a_low_gerstner_wave_tilts_as_the_linear_one() -> None:
     low = (waves.Wave(1e-4, 1.2, math.radians(30.0), 0.4),)
     east, north = np.array([5.0]), np.array([-2.0])
-    d_east, d_north = waves.slope(low, east, north, 0.3)
-    normal = waves.gerstner_normal(low, east, north, 0.3)
+    d_east, d_north = gerstner.slope(low, east, north, 0.3)
+    normal = gerstner.gerstner_normal(low, east, north, 0.3)
     linear = np.array([-d_east, -d_north, np.ones(1)])
     linear /= np.linalg.norm(linear, axis=0)
     np.testing.assert_allclose(np.array(normal), linear, atol=1e-8)
@@ -500,7 +501,7 @@ def test_a_ray_meets_the_water_where_it_first_dips_under(elevation_deg: float) -
             np.full(rays, math.sin(e)),
         ]
     )
-    *rest, met = waves.gerstner_hit(tall, origin, toward, 1.7, 0.1)
+    *rest, met = gerstner.gerstner_hit(tall, origin, toward, 1.7, 0.1)
     # Every ray down meets the water; some up clear the crests.
     assert met.all() if elevation_deg < 0 else 0 < met.mean() < 1
     point = np.array([*rest, np.zeros(rays)]) + np.array(
@@ -614,7 +615,7 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
     east, north, t_s = 30.0, -40.0, 3.0
     hull = waves.Waterplane(east, north, math.radians(heading_deg), 20.0, 5.0)
     pitch, roll = waves.attitude((wave,), hull, t_s)
-    d_east, d_north = waves.slope((wave,), np.array(east), np.array(north), t_s)
+    d_east, d_north = gerstner.slope((wave,), np.array(east), np.array(north), t_s)
     heading = math.radians(heading_deg)
     rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
     rise_starboard = d_east * math.cos(heading) - d_north * math.sin(heading)
@@ -684,7 +685,7 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
     y = rest_north + along * math.cos(heading) - across * math.sin(heading)
     plane = np.column_stack([np.ones_like(along), along, across])
     _, rise_along, rise_across = np.linalg.lstsq(
-        plane, waves.height_m(sea, x, y, t), rcond=None
+        plane, gerstner.height_m(sea, x, y, t), rcond=None
     )[0]
     hull = waves.Waterplane(float(rest_east), float(rest_north), heading, length, beam)
     pitch, roll = waves.attitude(sea, hull, t)

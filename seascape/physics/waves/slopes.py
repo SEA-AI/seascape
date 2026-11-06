@@ -29,7 +29,6 @@ so a slick takes the shortest waves first.
 
 import math
 from collections.abc import Callable
-from dataclasses import replace
 from functools import cache
 from typing import NamedTuple
 
@@ -260,15 +259,6 @@ def fade_axis(wave: Wave) -> FadeAxis:
         focus * math.sin(axis),
         focus * math.cos(axis),
         (1 - wave.heading_concentration) / 2,
-    )
-
-
-def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
-    """The waves a pixel of `footprint_m` draws, each scaled by its visibility."""
-    shown = visibility(2 * math.pi / columns(field)[1], footprint_m)
-    return tuple(
-        replace(w, amplitude_m=w.amplitude_m * v)
-        for w, v in zip(field, shown.tolist(), strict=True)
     )
 
 
