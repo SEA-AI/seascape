@@ -18,6 +18,10 @@ An audit edits nothing: it lists what should not exist and what replaces it. Fix
 - **Reinvention.** Ask of every hand-written helper: does Blender (node, render setting, operator), the standard library, numpy, cv2, Pillow or pydantic do this?
 - **Constants.** A number with no source beside it, or one that repeats a value a preset, Blender or another module already holds.
 - **Dead and test-only code.** Grep for callers in `seascape/`, `tests/` and `docs/`. A function only tests call belongs in `tests/`.
+- **Double guards.** A check Python, pydantic or the library already makes with a clear error.
+- **Single-caller wrappers.** A helper with one caller is another place to look; inline it.
+- **Said twice.** A comment that restates its line, or a fact written in two files.
+- **Tests of wiring.** A test that fails when something moves but not when the number is wrong, or that compares one test helper with another.
 
 ## Method
 

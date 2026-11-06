@@ -256,6 +256,7 @@ class Rotor(FrozenModel):
     node: str = Field(min_length=1)
     diameter_m: float = Field(gt=0.0)
     hub_height_m: float = Field(gt=0.0)  # above the waterline
+    blades: int = Field(gt=0)
     tip_speed_ratio: float = Field(gt=0.0)
     min_rpm: float = Field(ge=0.0)
     rated_rpm: float = Field(gt=0.0)
@@ -276,6 +277,15 @@ class Rotor(FrozenModel):
             return 0.0
         tracking = 60.0 * self.tip_speed_ratio * hub_mps / (math.pi * self.diameter_m)
         return min(max(tracking, self.min_rpm), self.rated_rpm)
+
+    @property
+    def symmetry_rad(self) -> float:
+        """The turn that carries each blade onto the next one's place."""
+        return 2.0 * math.pi / self.blades
+
+    def symmetry_period_s(self, rpm: float) -> float:
+        """How long a turn of `symmetry_rad` takes at `rpm`."""
+        return 60.0 / (self.blades * rpm)
 
 
 class Turbine(_Mesh):

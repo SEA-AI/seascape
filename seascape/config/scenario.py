@@ -234,9 +234,9 @@ class Scenario(Model):
             for spec in self.objects
             if spec.orbit is not None
         ]
-        # Three blades look the same every third of a turn.
+        # The blades look the same every `symmetry_rad`.
         periods += [
-            (f"{farm.asset} rotor", 20.0 / rpm)
+            (f"{farm.asset} rotor", farm.turbine.rotor.symmetry_period_s(rpm))
             for farm in self.farms
             if (rpm := farm.rpm(self.sea)) > 0.0
         ]
