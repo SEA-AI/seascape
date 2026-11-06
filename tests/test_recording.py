@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seascape.config import Crop, Undistortion, Video
+from seascape.config import Crop, Stitch, Undistortion, Video
 from seascape.outputs import recording
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -239,6 +239,29 @@ def test_a_video_is_recorded_with_its_camera_as_rendered(
     (source,) = entry["camera_sources"]
     assert (source["name"], source["device_name"]) == ("EO", "RGB")
     assert source["center_x"] == sensor["center_x"]["value"]
+
+
+def test_a_stitch_is_recorded_with_both_its_cameras(run: Path) -> None:
+    left = Calibration.read(run).cameras
+    right = [camera.model_copy(update={"name": "IR"}) for camera in left]
+    stitched = [camera.model_copy(update={"name": "port_T1"}) for camera in left]
+    Calibration(cameras=stitched, raw=left + right).write(run)
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    video = Stitch(kind="horizontal_stitching", cameras=("EO", "IR"))
+    truth.info["scenario"]["rigs"]["port"]["videos"] = {"T1": video.model_dump()}
+    truth.write(run)
+    (run / "EO.mp4").rename(run / "port_T1.mp4")
+
+    recording.export(run)
+
+    (folder,) = run.glob("recordings/port/*")
+    sensors = json.loads((folder / "POWER_Const/pod_sensors.json").read_text())
+    assert set(sensors["cameras"]) == {"EO", "IR"}
+    serialized = json.loads((folder / "serialized_parameters.json").read_text())
+    (entry,) = serialized["cameras"]
+    assert entry["transformation_type"] == "horizontal_stitching"
+    devices = [(s["name"], s["device_name"]) for s in entry["camera_sources"]]
+    assert devices == [("EO", "EO"), ("IR", "IR")]
 
 
 def test_a_missing_video_writes_nothing(run: Path) -> None:

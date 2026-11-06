@@ -32,9 +32,11 @@ from seascape.config import (
     ImageFormat,
     Mount,
     Scenario,
+    Stitch,
+    sources,
     substream,
 )
-from seascape.outputs import agc, labels, microbolometer
+from seascape.outputs import agc, labels, microbolometer, stitch
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import earth
 
@@ -229,6 +231,55 @@ def _render_still(path: Path, what: str) -> None:
 type Shot = tuple[Mount, CameraCalibration, np.ndarray, np.ndarray]
 
 
+def _stem(camera: str, frame: int | None) -> str:
+    return camera if frame is None else f"{camera}/{frame:04d}"
+
+
+def _stitch(
+    shots: list[Shot], into: Path, frame: int | None, fmt: ImageFormat
+) -> tuple[list[Shot], list[Path]]:
+    """`shots` with each stitch's two frames replaced by the one stitched from them.
+
+    Args:
+        shots: One frame's shots, its cameras as written.
+        into: The render's folder.
+        frame: The frame's number in a sequence; None for a still.
+        fmt: The format written; an exr records no videos.
+    """
+    if fmt == "exr":
+        return shots, []
+    by_camera = {(s[0].rig_name, s[0].camera_name): s for s in shots}
+    rigs = {m.rig_name: m.rig for m, *_ in shots}
+    written = []
+    for rig_name, rig in rigs.items():
+        for name, video in rig.videos.items():
+            # Its cameras share a band, so another band's frame has neither.
+            if not isinstance(video, Stitch) or (
+                (rig_name, video.cameras[0]) not in by_camera
+            ):
+                continue
+            pair = [by_camera.pop((rig_name, c)) for c in video.cameras]
+            (mount, left, *_), (_, right, *_) = pair
+            out = f"{rig_name}_{name}"
+            camera = stitch.fused(left, right, out, f"{_stem(out, frame)}.{fmt}")
+            image, index = stitch.stitch(
+                (pair[0][3], pair[1][3]),
+                (pair[0][2], pair[1][2]),
+                (left, right),
+                camera,
+            )
+            path = into / camera.image
+            path.parent.mkdir(exist_ok=True)
+            params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY] if fmt == "jpg" else []
+            # cv2 writes BGR.
+            bgr = image if image.ndim == 2 else image[..., ::-1]
+            if not cv2.imwrite(str(path), bgr, params):
+                raise OSError(f"cannot write {path}")
+            by_camera[(rig_name, name)] = (mount, camera, index, _frame(path))
+            written.append(path)
+    return list(by_camera.values()), written
+
+
 def _shoot(
     built: scene.Built,
     mount: Mount,
@@ -256,10 +307,6 @@ def _shoot(
         The labelled frame as its mount, calibration, object index and image; the
         camera as rendered, if a video records it; and the files written.
     """
-
-    def stem(camera: str) -> str:
-        return camera if frame is None else f"{camera}/{frame:04d}"
-
     scene.look_through(built.cameras, mount, rng)
     # An exr is the radiance the cameras saw, before any recorder.
     videos = mount.rig.videos if fmt != "exr" else {}
@@ -267,7 +314,7 @@ def _shoot(
         (
             (f"{mount.rig_name}_{name}", recorded)
             for name, recorded in videos.items()
-            if recorded.camera == mount.camera_name
+            if mount.camera_name in sources(recorded)
         ),
         None,
     )
@@ -276,27 +323,28 @@ def _shoot(
     tree = bpy.context.scene.compositing_node_group
     tree.nodes["index.output"].file_name = f"{mount.name}."
     _cut(mount.name, width, height, crop)
-    bpy.context.scene.render.filepath = str(into / stem(mount.name))
+    bpy.context.scene.render.filepath = str(into / _stem(mount.name, frame))
     ext = "exr" if thermal else fmt
-    rendered = into / f"{stem(mount.name)}.{ext}"
+    rendered = into / f"{_stem(mount.name, frame)}.{ext}"
     _render_still(rendered, f"camera {mount.name}'s frame")
-    camera = scene.calibrate(built, mount, f"{stem(mount.name)}.{fmt}")
+    camera = scene.calibrate(built, mount, f"{_stem(mount.name, frame)}.{fmt}")
     # An undistortion renders its pinhole; the camera recorded is the rig's.
     own = mount._replace(camera=mount.rig.cameras[mount.camera_name])
     source = scene.calibrate(built, own, camera.image)
     index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
     written = []
-    if video is not None:
+    # A stitch's cameras keep their names; `_stitch` names what it makes of them.
+    if video is not None and not isinstance(video[1], Stitch):
         out = video[0]
         camera = camera.model_copy(update={"name": out})
         if crop is not None:
             # The camera's own frame stays, unlabelled.
             written.append(rendered)
-            rendered = into / f"{stem(out)}.{ext}"
+            rendered = into / f"{_stem(out, frame)}.{ext}"
             rendered.parent.mkdir(exist_ok=True)
             # The passes' temporary folder can sit on another filesystem.
             shutil.move(passes / f"{mount.name}.video.{ext}", rendered)
-            image = f"{stem(out)}.{fmt}"
+            image = f"{_stem(out, frame)}.{fmt}"
             camera = camera.model_copy(update={"image": image}).cropped(crop)
             rows = slice(crop.top_px, height - crop.bottom_px)
             index = index[rows, crop.left_px : width - crop.right_px]
@@ -369,10 +417,14 @@ def render(
                         passes,
                     )
                     shot.append(taken)
-                    cameras.append(taken[1])
                     raw += [source] if source else []
                     written += files
                     advance()
+                shot, files = _stitch(
+                    shot, into, frame if sequence else None, outputs.format
+                )
+                written += files
+                cameras += [camera for _, camera, _, _ in shot]
                 faints = [labels.faint(i, f, targets) for _, _, i, f in shot]
                 if outputs.keep_if_any_sees:
                     presents = [labels.present(i, targets) for _, _, i, _ in shot]

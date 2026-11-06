@@ -2744,7 +2744,7 @@
         },
         "videos": {
           "title": "Videos",
-          "description": "What it records, by name, each from one camera, which then goes unlabelled. Unset, it records each camera whole. An exr ignores it.",
+          "description": "What it records, by name, each from one camera or a stitch's two, which then go unlabelled. Unset, it records each camera whole. An exr ignores it.",
           "anyOf": [
             {
               "additionalProperties": {
@@ -3579,6 +3579,77 @@
       "title": "Sky",
       "type": "object"
     },
+    "Stitch": {
+      "additionalProperties": false,
+      "description": "Two cameras' frames side by side, as the pinhole between them sees them.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is two pinholes' frames stitched into one.",
+          "anyOf": [
+            {
+              "const": "horizontal_stitching",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "cameras": {
+          "title": "Cameras",
+          "description": "The rig's cameras it records, left then right: pinholes of one band and size.",
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/Name"
+                },
+                {
+                  "$ref": "#/$defs/Name"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "cameras"
+      ],
+      "title": "Stitch",
+      "type": "object"
+    },
     "Swell": {
       "additionalProperties": false,
       "description": "Waves from a distant storm, whatever the local wind.",
@@ -4305,6 +4376,7 @@
       "discriminator": {
         "mapping": {
           "crop": "#/$defs/Crop",
+          "horizontal_stitching": "#/$defs/Stitch",
           "identity": "#/$defs/Identity",
           "undistortion": "#/$defs/Undistortion"
         },
@@ -4319,6 +4391,9 @@
         },
         {
           "$ref": "#/$defs/Undistortion"
+        },
+        {
+          "$ref": "#/$defs/Stitch"
         }
       ]
     },

@@ -373,7 +373,26 @@ class Undistortion(Model):
         )
 
 
-type Video = Annotated[Identity | Crop | Undistortion, Field(discriminator="kind")]
+class Stitch(Model):
+    """Two cameras' frames side by side, as the pinhole between them sees them."""
+
+    kind: Literal["horizontal_stitching"] = Field(
+        description="The video is two pinholes' frames stitched into one."
+    )
+    cameras: tuple[Name, Name] = Field(
+        description="The rig's cameras it records, left then right: pinholes of one "
+        "band and size."
+    )
+
+
+type Video = Annotated[
+    Identity | Crop | Undistortion | Stitch, Field(discriminator="kind")
+]
+
+
+def sources(video: Video) -> tuple[Name, ...]:
+    """The rig's cameras `video` records."""
+    return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
 class Rig(Model):
@@ -413,8 +432,9 @@ class Rig(Model):
     )
     videos: dict[Name, Video] = Field(
         default_factory=dict,
-        description="What it records, by name, each from one camera, which then goes "
-        "unlabelled. Unset, it records each camera whole. An exr ignores it.",
+        description="What it records, by name, each from one camera or a stitch's "
+        "two, which then go unlabelled. Unset, it records each camera whole. An exr "
+        "ignores it.",
     )
 
     @model_validator(mode="after")
@@ -422,16 +442,22 @@ class Rig(Model):
         # A frame is written under its video's name, beside its camera's own.
         if clash := sorted(self.videos.keys() & self.cameras.keys()):
             raise ValueError(f"videos {clash} are named as cameras")
-        sources = [video.camera for video in self.videos.values()]
-        if missing := sorted(set(sources) - self.cameras.keys()):
+        recorded = [c for video in self.videos.values() for c in sources(video)]
+        if missing := sorted(set(recorded) - self.cameras.keys()):
             raise ValueError(f"videos record no camera {missing}")
         # One render per camera, so it takes the one crop.
-        if twice := sorted({s for s in sources if sources.count(s) > 1}):
+        if twice := sorted({c for c in recorded if recorded.count(c) > 1}):
             raise ValueError(f"cameras {twice} are in more than one video")
         # A recording holds the videos alone.
-        if self.videos and (idle := sorted(self.cameras.keys() - set(sources))):
+        if self.videos and (idle := sorted(self.cameras.keys() - set(recorded))):
             raise ValueError(f"cameras {idle} are in no video, so are not recorded")
         for name, video in self.videos.items():
+            if isinstance(video, Stitch):
+                left, right = (self.cameras[c] for c in video.cameras)
+                shape = [(c.band, c.width_px, c.height_px) for c in (left, right)]
+                if shape[0] != shape[1] or left.lens.fisheye or right.lens.fisheye:
+                    raise ValueError(f"video {name} stitches unlike or fisheye cameras")
+                continue
             camera = self.cameras[video.camera]
             # Its focal plane's vignetting and noise are the whole sensor's.
             if isinstance(video, Crop) and camera.band == "ir":

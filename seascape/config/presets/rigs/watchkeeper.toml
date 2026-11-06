@@ -19,3 +19,7 @@ yaw_deg = -11.4
 [cameras.ir_r]
 preset = "boson_640_24deg"
 yaw_deg = 11.4
+
+[videos]
+RGB1 = { kind = "undistortion", camera = "eo", hfov_deg = 130.0, vfov_deg = 65.5, downscale = 2 }
+T1 = { kind = "horizontal_stitching", cameras = ["ir_l", "ir_r"] }

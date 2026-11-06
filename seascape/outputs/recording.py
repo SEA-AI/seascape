@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
-from seascape.config import Crop, Undistortion, Video
+from seascape.config import Crop, Undistortion, Video, sources
 from seascape.outputs import labels
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 
@@ -186,14 +186,14 @@ def _camera_parameters(cameras: dict[str, CameraCalibration]) -> dict:
 
 def _parameters(
     videos: dict[str, CameraCalibration],
-    sources: dict[str, CameraCalibration],
+    raw: dict[str, CameraCalibration],
     settings: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """`serialized_parameters.json`'s cameras: each video and its camera.
+    """`serialized_parameters.json`'s cameras: each video and its cameras.
 
     Args:
         videos: Each video's first frame, by its name in the recording.
-        sources: Each rendered camera's first frame, by its name in the recording.
+        raw: Each rendered camera's first frame, by its name in the recording.
         settings: The rig's videos as the scenario set them, by name.
     """
 
@@ -214,9 +214,12 @@ def _parameters(
         if isinstance(video, Undistortion):
             fov = {"value": [video.hfov_deg, video.vfov_deg], "unit": "degrees"}
             transform = {"downscale": video.downscale, "out-fov": fov}
-        source = values(sources[video.camera])
+        names = sources(video)
+        # One camera takes its video's name; a stitch's keep their own.
+        devices = [name] if len(names) == 1 else names
+        cameras = [values(raw[c]) for c in names]
         # The recorder gives a video its camera's lens and pixel, not its own.
-        lens = {k: source[k] for k in ("focal_length", "pixel_size")}
+        lens = {k: cameras[0][k] for k in ("focal_length", "pixel_size")}
         entries.append(
             {"name": name}
             | values(camera)
@@ -225,7 +228,8 @@ def _parameters(
                 "transformation_type": video.kind,
                 "transformation_parameters": transform,
                 "camera_sources": [
-                    {"name": video.camera, "device_name": name} | source
+                    {"name": c, "device_name": device} | fields
+                    for c, device, fields in zip(names, devices, cameras, strict=True)
                 ],
             }
         )
