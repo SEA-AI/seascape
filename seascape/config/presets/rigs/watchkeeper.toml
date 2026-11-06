@@ -5,10 +5,10 @@ model = "Watchkeeper"
 
 [cameras.eo]
 preset = "basler_daa3840_ar0821"
-# k is fitted to the mean image radius of two calibrated units' fisheye models, which
-# differ by up to 33 px at the image's side; the field is that mean's, rounded.
-hfov_deg = 133.0
-lens = { fisheye = [-0.0793, -0.0461, 0.0331, -0.0065] }
+# The lens's nominal field. k follows the mean image radius of two calibrated units'
+# fisheye models, which differ by up to 33 px at the image's side.
+hfov_deg = 136.0
+lens = { fisheye = [-0.0830, -0.0386, 0.0277, -0.0052] }
 
 [cameras.ir_l]
 preset = "boson_640_24deg"
