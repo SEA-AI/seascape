@@ -446,6 +446,11 @@ def test_the_schema_never_offers_a_drawn_seed() -> None:
     assert "$ref" not in str(json_schema()["properties"]["seed"])
 
 
+def test_a_negative_seed_is_rejected_without_the_loader() -> None:
+    with pytest.raises(ValidationError, match="seed"):
+        Scenario.model_validate({"seed": -1})
+
+
 def test_the_seed_is_never_drawn() -> None:
     with pytest.raises(ValueError, match="seed cannot be drawn"):
         load(BASELINE, ["seed = { choice = [1, 2] }"])

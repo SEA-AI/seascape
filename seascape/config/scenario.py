@@ -110,7 +110,7 @@ LOOP_SNAP_TOLERANCE = 0.05
 class Scenario(Model):
     """One scene: the rigs, the world around them, and what a render writes."""
 
-    seed: int = Field(default=0, description="Seeds every random draw.")
+    seed: int = Field(default=0, ge=0, description="Seeds every random draw.")
     rigs: dict[Name, Rig] = Field(
         min_length=1, description="The products on the ownship, by name."
     )
