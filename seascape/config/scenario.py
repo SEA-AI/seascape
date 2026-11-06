@@ -1,6 +1,7 @@
 """A whole scenario, and what its render writes."""
 
 import warnings
+from collections import Counter
 from typing import Literal
 
 from pydantic import (
@@ -108,6 +109,20 @@ class Outputs(Model):
 LOOP_SNAP_TOLERANCE = 0.05
 
 
+class Sync(Model):
+    """A steady container for each camera, which only that camera sees, with the
+    marker of the camera's index in `Scenario.mounts` on its roof, at the centre of
+    the built camera's image. A camera that looks level or up, or whose marker there
+    would be wider than `MARKER_M`, sees a `MARKER_M` one on its bearing instead.
+    """
+
+    marker_px: float = Field(
+        gt=0.0,
+        description="How wide each camera sees its marker; sets how far away the "
+        "container stands and how large the marker is.",
+    )
+
+
 class Scenario(Model):
     """One scene: the rigs, the world around them, and what a render writes."""
 
@@ -126,6 +141,9 @@ class Scenario(Model):
         default_factory=list, description="Wind turbines, in rows or alone."
     )
     outputs: Outputs = Field(default_factory=Outputs)
+    sync: Sync | None = Field(
+        default=None, description="Each camera watches a marker of its own."
+    )
 
     @property
     def mounts(self) -> list[Mount]:
@@ -192,6 +210,18 @@ class Scenario(Model):
         names = [mount.name for mount in self.mounts]
         if len(set(names)) != len(names):
             raise ValueError(f"two cameras share a name: {sorted(names)}")
+        return self
+
+    @model_validator(mode="after")
+    def _each_marker_once(self) -> "Scenario":
+        ids = [spec.aruco_id for spec in self.objects if spec.aruco_id is not None]
+        if self.sync is not None:
+            ids += range(len(self.mounts))
+        if repeated := sorted(i for i, n in Counter(ids).items() if n > 1):
+            raise ValueError(
+                f"ArUco ids {repeated} stand on more than one object; `sync` takes "
+                "each camera's index in `mounts`"
+            )
         return self
 
     @model_validator(mode="after")

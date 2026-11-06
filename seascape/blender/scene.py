@@ -12,22 +12,19 @@ from mathutils import Matrix
 from seascape.blender import sea
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
-from seascape.blender.rigs import View, add_rigs, views
+from seascape.blender.rigs import View, add_rigs, boresight_deg, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
     Hulls,
     OverlapError,
+    Sight,
     add_ownship,
+    add_sync,
     add_vessels,
     overlaps,
     ride,
 )
-from seascape.config import (
-    Band,
-    Mount,
-    Scenario,
-    substream,
-)
+from seascape.config import Band, Camera, Mount, Scenario, substream
 from seascape.outputs.calibration import CameraCalibration, Matrix4
 from seascape.physics import earth, wakes
 
@@ -82,9 +79,16 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
 def look_through(
     cameras: dict[str, bpy.types.Object], mount: Mount, rng: np.random.Generator
 ) -> None:
-    """Render through `mount`'s camera at its size, its sensor noise from `rng`."""
+    """Render through `mount`'s camera at its size, its sensor noise from `rng`, with
+    only the objects given to it, or to no camera.
+    """
     sc = bpy.context.scene
     sc.camera = cameras[mount.name]
+    for anchor in bpy.data.objects:
+        if (camera := anchor.get("camera")) is not None:
+            # A parent's hide_render leaves its children drawn.
+            for part in [anchor, *anchor.children_recursive]:
+                part.hide_render = camera != mount.name
     sc.render.resolution_x = mount.camera.width_px
     sc.render.resolution_y = mount.camera.height_px
     respond(mount, rng)
@@ -144,6 +148,42 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
+def _centre_pixel_rad(camera: Camera) -> float:
+    """The angle a pixel at the image's centre spans."""
+    half_rad = math.radians(camera.hfov_deg) / 2
+    if camera.lens.fisheye is not None:
+        # r = f theta near the axis, whatever k1..k4.
+        return 2 * half_rad / camera.width_px
+    return 2 * math.tan(half_rad) / camera.width_px
+
+
+def _sights(
+    scenario: Scenario, band: Band, cameras: dict[str, bpy.types.Object]
+) -> list[Sight]:
+    """`band`'s cameras as `Scenario.sync` places their markers."""
+    if scenario.sync is None:
+        return []
+    bpy.context.view_layer.update()
+    found = []
+    for aruco_id, mount in enumerate(scenario.mounts):
+        if mount.camera.band != band:
+            continue
+        camera = cameras[mount.name]
+        bearing_deg, elevation_deg = boresight_deg(camera)
+        eye = camera.matrix_world.translation
+        found.append(
+            Sight(
+                mount.name,
+                aruco_id,
+                (eye.x, eye.y, eye.z),
+                bearing_deg,
+                elevation_deg,
+                scenario.sync.marker_px * _centre_pixel_rad(mount.camera),
+            )
+        )
+    return found
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with a scenario.
 
@@ -172,6 +212,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
+    # Before the ownship carries the rigs: each camera stands as on a level hull.
+    sights = _sights(scenario, band, rigs.cameras)
     heat = surroundings(scenario) if band == "ir" else None
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
@@ -179,6 +221,10 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
+    if sights:
+        vessels.setdefault("container", []).extend(
+            add_sync(sights, radius_m, hulls, outputs)
+        )
     targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():

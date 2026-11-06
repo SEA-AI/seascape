@@ -20,7 +20,7 @@ from seascape.blender.blend import (
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
-from seascape.blender.markers import add_marker
+from seascape.blender.markers import add_marker, on_ray
 from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
 from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
@@ -517,6 +517,62 @@ def overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, st
             if apart_m.length < radius_m[a.name] + radius_m[b.name]:
                 found.add((a.name, b.name))
     return sorted(found)
+
+
+@dataclass(frozen=True)
+class Sight:
+    """A camera as `sync` places its marker: where it stands and looks, on a level
+    hull, and the angle its marker spans.
+    """
+
+    camera: str
+    aruco_id: int
+    eye_m: tuple[float, float, float]
+    bearing_deg: float
+    elevation_deg: float
+    marker_rad: float
+
+
+def add_sync(
+    sights: Sequence[Sight], radius_m: float, hulls: Hulls, outputs: Outputs
+) -> list[bpy.types.Object]:
+    """A steady container for each sight, seen by its camera alone, broadside to it,
+    with the sight's marker on its roof centred in the camera's image.
+    """
+    anchors = []
+    for sight in sights:
+        anchor = _vessel("container", condition=Condition(), hulls=hulls)
+        anchor["steady"] = True
+        anchor["camera"] = sight.camera
+        east_m, north_m, up_m = sight.eye_m
+        out_m, side_m = on_ray(
+            up_m,
+            math.radians(sight.elevation_deg),
+            anchor["height_m"],
+            sight.marker_rad,
+        )
+        bearing = math.radians(sight.bearing_deg)
+        east_m += out_m * math.sin(bearing)
+        north_m += out_m * math.cos(bearing)
+        add_marker(
+            anchor,
+            sight.aruco_id,
+            90.0,
+            None if hulls.heat is None else hulls.sky,
+            side_m,
+        )
+        _pose(
+            anchor,
+            math.hypot(east_m, north_m),
+            math.degrees(math.atan2(east_m, north_m)),
+            sight.bearing_deg + 90.0,
+            0.0,
+            None,
+            radius_m,
+            outputs,
+        )
+        anchors.append(anchor)
+    return anchors
 
 
 def add_vessels(

@@ -7,10 +7,8 @@ import cv2
 import numpy as np
 
 from seascape.blender.heat import thermal_skin
-from seascape.config import ARUCO_DICTIONARY, Sky
+from seascape.config import ARUCO_DICTIONARY, MARKER_M, Sky
 
-# Judgement: as large as a container's roof carries.
-SIZE_M = 2.0
 _ARUCO = cv2.aruco.getPredefinedDictionary(ARUCO_DICTIONARY)
 BITS = _ARUCO.markerSize
 # OpenCV finds a marker by its dark border against a light margin.
@@ -31,11 +29,41 @@ def _paint(name: str, grey: float) -> bpy.types.Material:
     return material
 
 
+def on_ray(
+    eye_m: float, elevation_rad: float, roof_m: float, marker_rad: float
+) -> tuple[float, float]:
+    """How far out, horizontally, a hull stands so the marker on its roof is centred
+    on a ray and spans `marker_rad` there, and the marker's side; at most `MARKER_M`,
+    then on the ray's bearing only.
+
+    Args:
+        eye_m: The ray's start, over the sea.
+        elevation_rad: The ray's, up from the horizontal.
+        roof_m: The hull's roof, over the sea.
+        marker_rad: The angle the marker's side spans, its border in.
+    """
+    widest_m = MARKER_M * math.cos(elevation_rad) / marker_rad
+    # Out r, the ray stands eye_m + r tan(elevation) over the sea, and the marker's
+    # centre STAND_M plus half its margined side over the roof.
+    half = (BITS + 2 + 2 * QUIET) / (BITS + 2) * marker_rad / 2
+    fall = half / math.cos(elevation_rad) - math.tan(elevation_rad)
+    out_m = (
+        widest_m if fall <= 0.0 else min(widest_m, (eye_m - roof_m - STAND_M) / fall)
+    )
+    if out_m <= 0.0:
+        raise ValueError(
+            f"an eye {eye_m:.2f} m over the sea is below a marker on a {roof_m:.2f} m "
+            "roof: raise the rig"
+        )
+    return out_m, marker_rad * out_m / math.cos(elevation_rad)
+
+
 def add_marker(
     anchor: bpy.types.Object,
     aruco_id: int,
     toward_deg: float,
     sky: Sky | None,
+    side_m: float = MARKER_M,
 ) -> bpy.types.Object:
     """An upright panel over the middle of the hull, riding its attitude. Call before
     `sky.haze` runs.
@@ -45,8 +73,9 @@ def add_marker(
         aruco_id: Which of `ARUCO_DICTIONARY`'s markers.
         toward_deg: Where the panel faces, clockwise from the hull's bow.
         sky: The air the LWIR modules straddle; None for EO paint.
+        side_m: The marker's side, its border in.
     """
-    module_m = SIZE_M / (BITS + 2)
+    module_m = side_m / (BITS + 2)
     image = np.pad(
         cv2.aruco.generateImageMarker(_ARUCO, aruco_id, BITS + 2),
         QUIET,

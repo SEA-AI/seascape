@@ -85,6 +85,9 @@ _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
 ARUCO_DICTIONARY = cv2.aruco.DICT_4X4_50
+# Judgement: as large as a container's roof carries. The side of an `aruco_id` marker,
+# its border in, and of the largest `sync` stands.
+MARKER_M = 2.0
 
 
 class Drift(Model):

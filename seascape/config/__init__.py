@@ -26,17 +26,19 @@ from seascape.config.loader import (
 )
 from seascape.config.objects import (
     ARUCO_DICTIONARY,
+    MARKER_M,
     Drift,
     Farm,
     Object,
     Ownship,
     Targets,
 )
-from seascape.config.scenario import ImageFormat, Outputs, Scenario
+from seascape.config.scenario import ImageFormat, Outputs, Scenario, Sync
 from seascape.config.world import Sea, Sky, WarmLayer
 
 __all__ = [
     "ARUCO_DICTIONARY",
+    "MARKER_M",
     "PRESETS",
     "Agc",
     "Band",
@@ -59,6 +61,7 @@ __all__ = [
     "Sensor",
     "Sky",
     "Stitch",
+    "Sync",
     "Targets",
     "Undistortion",
     "Video",

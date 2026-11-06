@@ -4027,6 +4027,42 @@
       "title": "Swing",
       "type": "object"
     },
+    "Sync": {
+      "additionalProperties": false,
+      "description": "A steady container for each camera, which only that camera sees, with the\nmarker of the camera's index in `Scenario.mounts` on its roof, at the centre of\nthe built camera's image. A camera that looks level or up, or whose marker there\nwould be wider than `MARKER_M`, sees a `MARKER_M` one on its bearing instead.",
+      "properties": {
+        "marker_px": {
+          "title": "Marker Px",
+          "description": "How wide each camera sees its marker; sets how far away the container stands and how large the marker is.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "marker_px"
+      ],
+      "title": "Sync",
+      "type": "object"
+    },
     "Targets": {
       "additionalProperties": false,
       "description": "A ring of vessels at one range, spread over a span of bearings.\n\nPlaced in the world, so nothing guarantees a camera sees one.",
@@ -5108,6 +5144,33 @@
       "anyOf": [
         {
           "$ref": "#/$defs/Outputs"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
+          "$ref": "#/$defs/Integer"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
+    },
+    "sync": {
+      "description": "Each camera watches a marker of its own.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Sync"
+        },
+        {
+          "type": "null"
         },
         {
           "$ref": "#/$defs/Uniform"

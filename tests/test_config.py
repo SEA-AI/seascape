@@ -639,6 +639,25 @@ def test_a_marker_on_a_moving_object_is_an_error(moves: dict[str, Any]) -> None:
         Object(asset="container", range_m=50.0, bearing_deg=0.0, aruco_id=1, **moves)
 
 
+_MARKED = (
+    '[[objects]]\nasset = "container"\nrange_m = 70.0\nbearing_deg = 0.0\n'
+    "aruco_id = {}\n"
+)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "[sync]\nmarker_px = 60.0\n\n" + _MARKED.format(0),
+        _MARKED.format(3) + _MARKED.format(3),
+    ],
+    ids=["sync-takes-it", "two-objects"],
+)
+def test_a_marker_id_on_two_objects_is_an_error(tmp_path: Path, body: str) -> None:
+    with pytest.raises(ValidationError, match="stand on more than one object"):
+        load(variant(tmp_path, body))
+
+
 def test_a_loop_too_short_for_its_waves_says_so() -> None:
     with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
         load(SCENARIOS / "drifting.toml", ["sea.wind_speed_mps = 20"])
