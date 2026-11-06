@@ -1102,6 +1102,17 @@ def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> 
     assert (loaded.model, set(loaded.cameras)) == (model, cameras)
 
 
+def test_a_side_pod_turns_its_thermal_inboard() -> None:
+    def rig(preset: str) -> Rig:
+        line = f'rigs = {{ bow = {{ preset = "{preset}", height_m = 10.0 }} }}'
+        return load(BASELINE, [line]).rigs["bow"]
+
+    port, starboard = rig("port"), rig("starboard")
+    assert rig("pod").cameras["ir"].yaw_deg == 0.0
+    assert port.cameras["ir"].yaw_deg == -starboard.cameras["ir"].yaw_deg
+    assert port.cameras["ir"].yaw_deg * port.yaw_deg < 0.0
+
+
 def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
     line = 'rigs = { bow = { preset = "sentry", height_m = 10.0 } }'
     rig = load(BASELINE, [line]).rigs["bow"]

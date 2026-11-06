@@ -7,5 +7,7 @@ yaw_deg = -60.0
 offset_x_m = -14.5
 offset_y_m = -61.5
 
-# Inboard, so the pair straddles the bow.
-cameras.ir.yaw_deg = 50.0
+# Inboard, square to the side window, as the prototype assembly ("Anschütz Milestone
+# 1", Onshape) mounts it; the Anschütz POD Product Requirements Specification v1.0,
+# 3.2, says 48.5.
+cameras.ir.yaw_deg = 47.5
