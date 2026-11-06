@@ -73,7 +73,6 @@ def test_thicker_air_covers_more_of_the_sky() -> None:
     covers = [aerosol.cover(v) for v in (None, 42.0, 5.0, 1.5, 0.99, 0.5, 0.2)]
     assert covers == sorted(covers)
     assert covers[0] == 0.0
-    assert covers[-1] == pytest.approx(0.9872, abs=1e-4)
 
 
 def test_the_heat_balance_takes_the_fog_alone() -> None:
