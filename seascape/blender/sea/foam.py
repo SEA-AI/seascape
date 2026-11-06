@@ -158,7 +158,7 @@ def _remembered(
     if pulls:
         # Each pull s g is clipped to [-a, a]: g is Gaussian, so 1 + clamp(s g) averages
         # 1 and Monahan's cover holds; (1 + a)^2 under 1 / cover keeps it under full.
-        # The floor keeps INVERSE_SQRT, which reads 0 at 0, off an empty cell.
+        # Numerics: the floor keeps INVERSE_SQRT, which reads 0 at 0, off an empty cell.
         headroom = (cover.op("MAXIMUM", 1e-6).op("INVERSE_SQRT") - 1.0).op(
             "MINIMUM", 1.0
         )

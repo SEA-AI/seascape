@@ -45,6 +45,8 @@ from seascape.physics.waves.spectrum import (
     wind_at_m,
 )
 
+# Cox & Munk 1954's fits of mean square slope against wind speed at 12.5 m, intercept
+# then per m/s: clean sea (eq. 13), then slick.
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 SLICK_VARIANCE_INTERCEPT = 0.008

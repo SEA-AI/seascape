@@ -324,6 +324,7 @@ def load(
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
+# Judgement: enough redraws that a variant whose hulls meet rarely runs out of seeds.
 # Seeds `render --variants` tries per variant before it gives up on hulls that meet.
 TRIES_PER_VARIANT = 10
 

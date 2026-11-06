@@ -98,6 +98,7 @@ def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
             label += f"  {textures}" if band == "eo" else ""
             draw.rectangle((x, y, x + TILE[0], y + 22), fill="black")
             draw.text((x + 6, y + 3), label, fill="white", font=font)
+    # Judgement: a contact sheet to look at, so a smaller file over fidelity.
     page.save(out, quality=85)
 
 

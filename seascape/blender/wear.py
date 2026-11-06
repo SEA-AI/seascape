@@ -235,6 +235,8 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     sc.render.engine = "CYCLES"
     # Judgement: 16 samples of the node's 16 rays; a few grey levels of noise.
     sc.cycles.samples = 16
+    # Numerics: texels each island is extended by, so a bilinear read at its edge stays
+    # on baked texels.
     try:
         with bpy.context.temp_override(
             active_object=joined, selected_objects=[joined], object=joined

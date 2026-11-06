@@ -40,7 +40,7 @@ OFFSCREEN_DICING = 128.0
 # knob. A cell's sagitta, width^2 / 8R, is far under a pixel at the horizon.
 SEA_CELLS = 128
 
-# Margin on the horizon, or the grid's own edge becomes the horizon.
+# Judgement: a margin on the horizon, or the grid's own edge becomes the horizon.
 SEA_MARGIN = 1.5
 
 

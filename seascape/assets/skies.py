@@ -15,10 +15,11 @@ bluer than cloud in (B - R) / (B + R) of camera counts, and cloud is grey, B = R
 clear sky's own blueness falls toward the horizon and the sun, so a cloud is told from
 it by its departure from a clear sky fitted to the photo, as Aebi et al. ("Cloud
 fraction determined by thermal infrared and visible all-sky cameras", Atmos. Meas.
-Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit their clear sky to the pixels
-near it and refit; the clear-sky library of Ghonima et al. (Atmos. Meas. Tech. 5 2881,
-2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith and angle from the sun. An
-overcast photo has no clear sky to fit; `skies.toml` marks which.
+Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit theirs to the pixels that are
+not cloud, against zenith angle, and refit; the clear-sky library of Ghonima et al.
+(Atmos. Meas. Tech. 5 2881, 2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith
+and angle from the sun. An overcast photo has no clear sky to fit; `skies.toml` marks
+which.
 """
 
 import math
@@ -37,45 +38,62 @@ from seascape.physics import colour, earth, lwir
 
 LIBRARY = Path(__file__).parent / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
-# Judgements: the ring round the peak, and how much brighter than it the peak must be,
-# between an unclipped sun's contrast and that of a sun behind cloud or below the
-# horizon.
+# Judgement: the peak must outshine the median of the ring round it by this factor. An
+# unclipped disc clears it; a sun behind cloud or below the horizon does not. The ring
+# starts past DISC_DEG and ends inside AUREOLE_DEG, so it holds neither disc nor glare.
 DISC_CONTRAST = 100.0
 RING_DEG = (2.0, 5.0)
-# Judgements: how far from the peak the disc reaches, and its floor as a fraction of
-# the peak.
+# Judgement: DISC_DEG reaches past the sun's semi-diameter (module docstring) for the
+# glare a lens adds. DISC_FLOOR sits above the ring, which a disc keeps under
+# 1 / DISC_CONTRAST of its peak, and keeps the disc's dimmer edge.
 DISC_DEG = 1.0
 DISC_FLOOR = 0.1
-# A judgement round the disc's RMS radius: a star is one pixel, a glow degrees wide.
+# Judgement: brackets the sun's own RMS radius (module docstring), from a star's one
+# pixel to a glow degrees wide.
 DISC_RMS_DEG = (0.1, 0.6)
-# The grid a glow is found on, and its blur in cells: a judgement, a few degrees.
+# Judgement: cells finer than a glow, blurred over a few of them, so a patch of sky
+# outweighs one bright pixel.
 GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgement: how far under the fitted clear sky a blueness may fall and refit as clear.
+# Judgement: in (B - R) / (B + R) units. Aebi et al. (2018, Sect. 2.1.1) refit
+# with 1.2 K of brightness temperature, another quantity, so no value carries over.
 CLEAR_BAND = 0.03
-# Judgement: a clear blueness under this is too grey to show a cloud by colour.
+# Judgement: under this blueness a clear sky is too grey for colour to rank cloud, so a
+# share divides by this and not by a blueness near 0.
 GREY_CLEAR = 0.05
+# Aebi et al. (2018, Sect. 2.1.1): the clear-sky fit is repeated up to 10 times. Also
+# bounds the darkness refit.
 FIT_PASSES = 10
 # The bluest pixel of each FIT_STRIDE square is fitted: the clear sky is smooth.
+# Judgement: 4 px, a sixteenth of the pixels.
 FIT_STRIDE = 4
-# A judgement: powers of the horizon's nearness and the sun's. The steepest halve 5 deg
-# above the horizon and 24 deg from the sun.
+# Judgement: powers of the horizon's nearness and the sun's. Ghonima et al. (2012,
+# Sect. 3.2.1) index their clear sky by the same two angles, as its red-blue ratio
+# rises toward both; the powers are not theirs. The steepest halve 5 deg above the
+# horizon and 24 deg from the sun.
 HORIZON_POWERS = (0, 1, 2, 4, 8)
 SUN_POWERS = (0, 1, 2, 4, 8, 16)
-# Judgements: the aureole round a disc, as white as cloud, and how far round each of its
-# pixels it is filled from.
+# Judgement: the aureole round a disc, as white as cloud, and how far round each of its
+# pixels it is filled from. Ghonima et al. (Sect. 4.1) lower the thick-cloud threshold
+# out to 35 deg from the sun, where a clear sky saturates; this takes only the white
+# core.
 AUREOLE_DEG = 8.0
 INPAINT_RADIUS_DEG = 0.5
-# Judgement: a pixel under this share by colour is clear sky to judge darkness against.
+# Judgement: halfway up the share's 0 to 1, so a pixel is clear sky to judge darkness
+# against when colour reads it more clear than cloud.
 CLEAR_SHARE = 0.5
-# Judgements: the luminance, as a fraction of the clear sky's beside it, where a pixel
-# starts to read as shaded cloud and where it reads as all cloud.
+# Judgement: the luminance, as a fraction of the clear sky's beside it, where a pixel
+# starts to read as shaded cloud and where it reads as all cloud. The first sits near
+# enough 1 for a shaded base to show and far enough under it for the clear sky's own
+# gradient not to.
 DARK = (0.9, 0.6)
-# Judgement: the Gaussian sigma of "beside".
+# Judgement: the Gaussian sigma of "beside", wide enough to reach clear sky past a
+# cloud's edge and narrow enough that the clear sky's gradient across it stays small.
 BESIDE_DEG = 3.0
-# The clear sky beside a pixel is solved on a grid of this many cells to a sigma.
+# Judgement: cells a quarter of a sigma wide. A cell's own spread is 1 / sqrt(12) of its
+# width, which adds under 1% to sigma.
 CELLS_PER_SIGMA = 4
 
 

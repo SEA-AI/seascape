@@ -27,6 +27,7 @@ class Samples(Model):
     and drop the band left out.
     """
 
+    # Judgement: a trade between an EO frame's grain and its render time.
     eo: int = Field(default=16, gt=0, description="Per pixel, for EO frames.")
     # Where the open sea's grain, adaptive sampling off, falls below a Boson's NETD of
     # 50 mK (datasheet 102-2013-40 Rev 340, table 13).

@@ -28,6 +28,7 @@ from seascape.config import (
 )
 from seascape.physics import colour, optics
 
+# Judgement: a frame is a product, not a preview, so quality over file size.
 JPEG_QUALITY = 95
 # The Switches that turn a fisheye's image and object-index pass back.
 ROLL = "lens.roll"

@@ -160,5 +160,6 @@ def _redraw(
         noise_dimensions="4D",
     )
     first, second, _ = separate(tree, noise.outputs["Color"])
+    # Numerics: ln 0 is -inf.
     ln_u = Num(tree, first).op("MAXIMUM", 1e-7).op("LOGARITHM", math.e)
     return ln_u, Num(tree, second)
