@@ -170,7 +170,8 @@ def render(
     sequence puts each camera's frames in a folder of its own.
 
     Args:
-        scenario: Built culled to its own cameras at their resolution.
+        scenario: What to render; each band is built culled to its own cameras at
+            their resolution.
         into: Where the images and their truth go; made if missing.
         advance: Runs after each image."""
     # Blender resolves a relative render.filepath against the .blend, not the shell.

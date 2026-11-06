@@ -282,7 +282,8 @@ def drawn_slope_variances(
     `slope_variance(filtered(field, footprint_m))` without building the waves.
 
     Args:
-        field: The waves, each scaled by its visibility at the footprint.
+        field: The waves whole; each is scaled here by its visibility at the
+            footprint.
         footprint_m: The pixel's length on the sea; 0 draws every wave whole.
         downwind_rad: The wind's axis, a bearing; from or toward is the same axis."""
     if not field:

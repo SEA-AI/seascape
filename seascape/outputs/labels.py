@@ -161,8 +161,9 @@ class Labels(Model):
             targets: The targets to box, each found in `index` by its pass index.
             radius_m: The earth's radius as refraction bends a ray, R / (1 - k), so
                 the horizon line falls where a camera sees it.
-            settings: The scenario's camera, whose sensor, lens and processing an EO
-                image carries, and lens, microbolometer and AGC an LWIR one.
+            settings: The scenario's camera, or None. A uint8 EO frame records its
+                sensor, lens and processing; an integer LWIR one, its lens,
+                microbolometer and AGC. Any other frame records none of them.
             faint: The targets to drop, by name, each with its excess ΔE*ab."""
         # Only an 8-bit EO frame went through the camera's chain, and only an integer
         # LWIR one (png, jpg) through the microbolometer and the AGC that tones it.

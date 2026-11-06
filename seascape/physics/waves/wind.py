@@ -72,7 +72,7 @@ def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
     the same pattern, exactly symmetric about 0.
 
     Args:
-        tile: Any field; only the order of its values survives."""
+        tile: A float field; only the order of its values survives."""
     ranked = np.empty(tile.size, tile.dtype)
     ranked[np.argsort(tile, axis=None)] = _gaussian_quantiles(tile.size)
     return ranked.reshape(tile.shape)
