@@ -14,6 +14,7 @@ from seascape.assets import manifest
 from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
+    empty,
     place,
     sine,
     yaw,
@@ -115,24 +116,17 @@ def _vessel(
                     crevice=mesh.get(CREVICE),
                 )
 
-    anchor = bpy.data.objects.new(name, None)
+    anchor = empty(name)
     for size in ("beam_m", "length_m"):
         anchor[size] = parts[0][size]
     anchor["height_m"] = parts[0]["height_m"] + rise_m
     anchor["engine_off_min"] = condition.engine_off_min
     # Pitch and roll go here, so the anchor keeps the pose labels read.
-    attitude = bpy.data.objects.new(f"{name}_attitude", None)
+    attitude = empty(f"{name}_attitude", anchor)
     # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
-    draught = bpy.data.objects.new(f"{name}_draught", None)
-    for obj in (anchor, attitude, draught):
-        bpy.context.collection.objects.link(obj)
-    attitude.parent = anchor
-    draught.parent = attitude
+    draught = empty(f"{name}_draught", attitude, (0.0, 0.0, rise_m))
     for part in parts:
         part.parent = draught
-    place(anchor, 0.0, 0.0, 0.0)
-    place(attitude, 0.0, 0.0, 0.0)
-    place(draught, 0.0, 0.0, rise_m)
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     attitude.rotation_mode = "YXZ"
     return anchor
@@ -155,9 +149,7 @@ def add_ownship(
         tall: The waves that are geometry, which it heaves on as well as its script.
     """
     if ownship.asset is None:
-        anchor = bpy.data.objects.new("ownship", None)
-        bpy.context.collection.objects.link(anchor)
-        place(anchor, 0.0, 0.0, 0.0)
+        anchor = empty("ownship")
     else:
         anchor = _vessel(
             ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
