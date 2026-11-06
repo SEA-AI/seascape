@@ -1,5 +1,6 @@
 # The design geometry: four cameras on one boresight. The calibrated tilts of a unit
-# (under 1 deg) and the lens offsets (under 150 mm) are left out.
+# (under 1 deg) and the lens offsets (under 150 mm) are left out. The colour cameras
+# balance white continuously, as they ship.
 model = "Sentry"
 
 [cameras.t_w]
@@ -13,9 +14,11 @@ preset = "econ_ecam50_cunx"
 hfov_deg = 40.5
 width_px = 1280
 height_px = 960
+processing = { white_balance = "grey_world" }
 
 [cameras.eo_n]
 preset = "econ_ecam50_cunx"
 hfov_deg = 9.3
 width_px = 1280
 height_px = 960
+processing = { white_balance = "grey_world" }
