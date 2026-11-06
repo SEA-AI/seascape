@@ -10,6 +10,8 @@ preset = "basler_daa3840_ar0821"
 hfov_deg = 136.0
 lens = { fisheye = [-0.0830, -0.0386, 0.0277, -0.0052] }
 processing = { white_balance = "grey_world" }
+# The AR0821's eHDR (datasheet) at Basler HDR Beyond's default ratio.
+sensor = { hdr_ratio = 16.0 }
 
 [cameras.ir_l]
 preset = "boson_640_24deg"
