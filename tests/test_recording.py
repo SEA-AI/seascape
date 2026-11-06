@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seascape.config import Crop
+from seascape.config import Crop, Undistortion, Video
 from seascape.outputs import recording
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -178,16 +178,47 @@ def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
     )
 
 
-def test_a_cropped_video_is_recorded_with_its_camera_as_rendered(run: Path) -> None:
-    crop = Crop(kind="crop", camera="EO", left_px=40, right_px=40)
+@pytest.mark.parametrize(
+    ("video", "transform", "cut_px"),
+    [
+        (
+            Crop(kind="crop", camera="EO", left_px=40, right_px=40),
+            {"pixel_sacrifice": [40, 40, 0, 0]},
+            40,
+        ),
+        (
+            Undistortion(
+                kind="undistortion",
+                camera="EO",
+                hfov_deg=130.0,
+                vfov_deg=65.5,
+                downscale=2,
+            ),
+            {"downscale": 2, "out-fov": {"value": [130.0, 65.5], "unit": "degrees"}},
+            0,
+        ),
+    ],
+)
+def test_a_video_is_recorded_with_its_camera_as_rendered(
+    run: Path, video: Video, transform: dict, cut_px: int
+) -> None:
     calibration = Calibration.read(run)
-    cut = [
-        camera.model_copy(update={"name": "port_RGB"}).cropped(crop)
-        for camera in calibration.cameras
+    recorded = [
+        camera.model_copy(update={"name": "port_RGB"}) for camera in calibration.cameras
     ]
-    Calibration(cameras=cut, raw=calibration.cameras).write(run)
+    if isinstance(video, Crop):
+        recorded = [camera.cropped(video) for camera in recorded]
+    if isinstance(video, Undistortion):
+        # A wider pinhole than the camera it dewarps.
+        recorded = [
+            camera.model_copy(
+                update={"K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0])))}
+            )
+            for camera in recorded
+        ]
+    Calibration(cameras=recorded, raw=calibration.cameras).write(run)
     truth = Labels.model_validate_json((run / "labels.json").read_text())
-    truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": crop.model_dump()}
+    truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video.model_dump()}
     truth.write(run)
     (run / "EO.mp4").rename(run / "port_RGB.mp4")
 
@@ -199,11 +230,13 @@ def test_a_cropped_video_is_recorded_with_its_camera_as_rendered(run: Path) -> N
     (sensor,) = sensors["cameras"].values()
     assert sensor["resolution"]["value"] == [WIDTH, HEIGHT]
     serialized = json.loads((folder / "serialized_parameters.json").read_text())
-    (video,) = serialized["cameras"]
-    assert video["resolution"] == [WIDTH - 80, HEIGHT]
-    assert video["center_x"] == pytest.approx((WIDTH - 1) / 2 - 40)
-    assert video["transformation_parameters"] == {"pixel_sacrifice": [40, 40, 0, 0]}
-    (source,) = video["camera_sources"]
+    (entry,) = serialized["cameras"]
+    assert entry["resolution"] == [WIDTH - 2 * cut_px, HEIGHT]
+    assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2 - cut_px)
+    assert entry["transformation_type"] == video.kind
+    assert entry["transformation_parameters"] == transform
+    assert entry["focal_length"] == sensor["focal_length"]["value"]
+    (source,) = entry["camera_sources"]
     assert (source["name"], source["device_name"]) == ("EO", "RGB")
     assert source["center_x"] == sensor["center_x"]["value"]
 

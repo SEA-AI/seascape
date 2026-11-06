@@ -280,7 +280,10 @@ def _shoot(
     ext = "exr" if thermal else fmt
     rendered = into / f"{stem(mount.name)}.{ext}"
     _render_still(rendered, f"camera {mount.name}'s frame")
-    source = camera = scene.calibrate(built, mount, f"{stem(mount.name)}.{fmt}")
+    camera = scene.calibrate(built, mount, f"{stem(mount.name)}.{fmt}")
+    # An undistortion renders its pinhole; the camera recorded is the rig's.
+    own = mount._replace(camera=mount.rig.cameras[mount.camera_name])
+    source = scene.calibrate(built, own, camera.image)
     index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
     written = []
     if video is not None:

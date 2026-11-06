@@ -330,7 +330,50 @@ class Crop(Model):
     bottom_px: int = Field(default=0, ge=0, description="Rows cut at the bottom.")
 
 
-type Video = Annotated[Identity | Crop, Field(discriminator="kind")]
+class Undistortion(Model):
+    """A fisheye's frames as the pinhole its recorder dewarps them to."""
+
+    kind: Literal["undistortion"] = Field(
+        description="The video is what a pinhole in the camera's place sees."
+    )
+    camera: Name = Field(description="The rig's camera it records.")
+    hfov_deg: float = Field(
+        gt=0.0, lt=180.0, description="The pinhole's, edge to edge."
+    )
+    vfov_deg: float = Field(
+        gt=0.0, lt=180.0, description="The pinhole's; with hfov_deg, its frame's shape."
+    )
+    downscale: int = Field(
+        default=1, ge=1, description="The camera's rows per video row."
+    )
+    method: Literal["render"] = Field(
+        default="render",
+        description="render: Blender draws the pinhole, so no dewarp resamples it.",
+    )
+
+    def pinhole(self, camera: Camera) -> Camera:
+        """The pinhole rendered in `camera`'s place, sized as the recorder's
+        `Camera.undistort` sizes it: square pixels, rows over `downscale`, each side
+        rounded down to even.
+        """
+        ratio = math.tan(math.radians(self.hfov_deg) / 2) / math.tan(
+            math.radians(self.vfov_deg) / 2
+        )
+        width = int(int(camera.height_px * ratio) / self.downscale)
+        height = int(camera.height_px / self.downscale)
+        lens = camera.lens.model_dump() | {"fisheye": None}
+        return Camera.model_validate(
+            camera.model_dump()
+            | {
+                "hfov_deg": self.hfov_deg,
+                "width_px": width - width % 2,
+                "height_px": height - height % 2,
+                "lens": lens,
+            }
+        )
+
+
+type Video = Annotated[Identity | Crop | Undistortion, Field(discriminator="kind")]
 
 
 class Rig(Model):
@@ -399,6 +442,15 @@ class Rig(Model):
             ):
                 raise ValueError(f"video {name} crops all of {video.camera}")
         return self
+
+    @property
+    def rendered(self) -> dict[Name, Camera]:
+        """Its cameras, an undistortion's as its pinhole."""
+        cameras = dict(self.cameras)
+        for video in self.videos.values():
+            if isinstance(video, Undistortion):
+                cameras[video.camera] = video.pinhole(cameras[video.camera])
+        return cameras
 
 
 class Mount(NamedTuple):

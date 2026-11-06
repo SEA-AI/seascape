@@ -4135,11 +4135,178 @@
       ],
       "type": "string"
     },
+    "Undistortion": {
+      "additionalProperties": false,
+      "description": "A fisheye's frames as the pinhole its recorder dewarps them to.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is what a pinhole in the camera's place sees.",
+          "anyOf": [
+            {
+              "const": "undistortion",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "camera": {
+          "description": "The rig's camera it records.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "hfov_deg": {
+          "title": "Hfov Deg",
+          "description": "The pinhole's, edge to edge.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 180.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "vfov_deg": {
+          "title": "Vfov Deg",
+          "description": "The pinhole's; with hfov_deg, its frame's shape.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 180.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "downscale": {
+          "title": "Downscale",
+          "description": "The camera's rows per video row.",
+          "default": 1,
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "method": {
+          "title": "Method",
+          "description": "render: Blender draws the pinhole, so no dewarp resamples it.",
+          "default": "render",
+          "anyOf": [
+            {
+              "const": "render",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "camera",
+        "hfov_deg",
+        "vfov_deg"
+      ],
+      "title": "Undistortion",
+      "type": "object"
+    },
     "Video": {
       "discriminator": {
         "mapping": {
           "crop": "#/$defs/Crop",
-          "identity": "#/$defs/Identity"
+          "identity": "#/$defs/Identity",
+          "undistortion": "#/$defs/Undistortion"
         },
         "propertyName": "kind"
       },
@@ -4149,6 +4316,9 @@
         },
         {
           "$ref": "#/$defs/Crop"
+        },
+        {
+          "$ref": "#/$defs/Undistortion"
         }
       ]
     },

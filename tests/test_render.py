@@ -750,6 +750,50 @@ def test_a_crop_records_the_cameras_frame_less_its_edges(tmp_path: Path) -> None
 
 
 @pytest.mark.render
+def test_an_undistortion_renders_its_pinhole_and_records_the_fisheye(
+    tmp_path: Path,
+) -> None:
+    undistortion = {"hfov_deg": 130.0, "vfov_deg": 65.5, "downscale": 2}
+    scenario = variant(
+        rig={
+            "videos": {
+                "RGB1": {"kind": "undistortion", "camera": "eo"} | undistortion,
+                "T1": {"kind": "identity", "camera": "ir"},
+            }
+        },
+        cameras={
+            "eo": {
+                "hfov_deg": 136.0,
+                "width_px": 640,
+                "height_px": 360,
+                "lens": {"fisheye": [0.0, 0.0, 0.0, 0.0]},
+            }
+        },
+        objects=[target("yacht", 300.0, -9.0)],
+        outputs={"bands": ["eo"], "samples": {"eo": 2}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    (camera,) = Calibration.read(tmp_path).cameras
+    (source,) = Calibration.read(tmp_path).raw
+    frame = cv2.imread(str(tmp_path / camera.image))
+    assert frame is not None and frame.shape[:2] == (180, 600)
+    assert (camera.name, camera.distortion) == ("bow_RGB1", None)
+    assert camera.hfov_deg == pytest.approx(130.0)
+    assert (source.width_px, source.height_px) == (640, 360)
+    assert source.distortion == (0.0, 0.0, 0.0, 0.0)
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (found,) = truth.annotations
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
+    left, top, width, height = found.bbox
+    assert left - 0.5 <= u <= left + width + 0.5
+    assert top - 0.5 <= v <= top + height + 0.5
+
+
+@pytest.mark.render
 def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> None:
     """Fast enough that the ship crosses pixels between frames."""
     scenario = variant(

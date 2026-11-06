@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
-from seascape.config import Crop, Video
+from seascape.config import Crop, Undistortion, Video
 from seascape.outputs import labels
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 
@@ -206,20 +206,26 @@ def _parameters(
     entries = []
     for name, camera in videos.items():
         video = _VIDEO.validate_python(settings[name])
-        cut = None
+        transform = None
         if isinstance(video, Crop):
             # The recorder's order.
             sides = [video.left_px, video.right_px, video.top_px, video.bottom_px]
-            cut = {"pixel_sacrifice": sides}
-        source = sources[video.camera]
+            transform = {"pixel_sacrifice": sides}
+        if isinstance(video, Undistortion):
+            fov = {"value": [video.hfov_deg, video.vfov_deg], "unit": "degrees"}
+            transform = {"downscale": video.downscale, "out-fov": fov}
+        source = values(sources[video.camera])
+        # The recorder gives a video its camera's lens and pixel, not its own.
+        lens = {k: source[k] for k in ("focal_length", "pixel_size")}
         entries.append(
             {"name": name}
             | values(camera)
+            | lens
             | {
                 "transformation_type": video.kind,
-                "transformation_parameters": cut,
+                "transformation_parameters": transform,
                 "camera_sources": [
-                    {"name": video.camera, "device_name": name} | values(source)
+                    {"name": video.camera, "device_name": name} | source
                 ],
             }
         )
