@@ -23,8 +23,13 @@ from seascape.physics import thermal
 def _joined(
     parts: list[bpy.types.Object], frame: Matrix | None = None
 ) -> bpy.types.Object:
-    """Every mesh under `parts` as one object at `frame`, its vertices in metres about
-    it; the default, the fitted origin, puts the waterline at z = 0."""
+    """Every mesh under the parts as one object, its vertices in metres about its frame.
+
+    Args:
+        parts: Roots whose meshes, children included, are joined; the rest is removed.
+        frame: Where the joined object sits. The default, the fitted origin, puts the
+            waterline at z = 0.
+    """
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
@@ -98,7 +103,8 @@ def _zone_slots(found: faces.Parts, per_face: list[np.ndarray]) -> None:
 
 def _unslotted(joined: list[bpy.types.Object]) -> None:
     """Record each joined object's zone per slot in its `["zones"]` and empty the
-    slots; each copy fills them with its own skin."""
+    slots; each copy fills them with its own skin.
+    """
     placeholders = set()
     for obj in joined:
         mesh = obj.data
@@ -113,11 +119,14 @@ def _unslotted(joined: list[bpy.types.Object]) -> None:
 def box_corners(
     objects: Iterable[bpy.types.Object], into: Matrix | None = None
 ) -> list[Vector]:
-    """Corners of the axis-aligned box around the vertices of the meshes in
-    `objects`, in the frame `into` maps world space to (default: world).
+    """Corners of the axis-aligned box around the vertices of the meshes.
 
     Vertices, not `bound_box`: a part turned off its parent's axes carries its own box
     turned with it, which can be far wider than the part.
+
+    Args:
+        objects: Measured, their posed and modified vertices; all but meshes ignored.
+        into: Maps world space to the box's frame; unset, the box is in world.
     """
     depsgraph = bpy.context.evaluated_depsgraph_get()
     points = []
@@ -127,8 +136,7 @@ def box_corners(
         # Evaluated, so an armature's pose and the modifiers move the vertices.
         evaluated = obj.evaluated_get(depsgraph)
         mesh = evaluated.to_mesh()
-        co = np.empty(len(mesh.vertices) * 3, dtype=np.float32)
-        mesh.vertices.foreach_get("co", co)
+        co = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices))
         evaluated.to_mesh_clear()
         if not co.size:
             continue
@@ -165,6 +173,7 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
 
 
 def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
+    """The meshes in `parts` and their descendants."""
     return [
         obj
         for part in parts
@@ -187,7 +196,8 @@ def _cached(path: Path) -> Path:
 
 def _load(path: Path) -> set[bpy.types.Object]:
     """Import a mesh file; returns what it added. Caches the parse, unwrapped for wear,
-    as a .blend beside the file and appends from it on later calls."""
+    as a .blend beside the file and appends from it on later calls.
+    """
     imported = _cached(path)
     if imported.exists():
         try:
@@ -325,9 +335,16 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
 def _crevice(
     name: str, objects: list[bpy.types.Object], scale: float, parse: Path
 ) -> None:
-    """Gives each of `objects` `name`'s crevice mask, baked once per parse and fitted
-    size and cached beside the parse; the size matters because the crevice distance
-    is in metres."""
+    """Give each object its asset's crevice mask, baked once per parse and fitted size
+    and cached beside the parse.
+
+    Args:
+        name: The asset, a key of `assets.toml`, which names the mask image.
+        objects: Its meshes, already fitted.
+        scale: The fit's scale, which the bake keys on: the crevice distance is in
+            metres.
+        parse: The asset's parse, cached as a .blend, which names the mask's file.
+    """
     crevice = f"{parse.name}.crevice-{scale:.6g}.{wear.CREVICE_FORMAT}.png"
     path = parse.with_name(crevice)
     if path.exists():
@@ -366,7 +383,8 @@ def _crevice(
 
 def prefix_names(name: str, parts: list[bpy.types.Object]) -> None:
     """Prefix with the asset name, so a later import keeps the names its zones key
-    on."""
+    on.
+    """
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     for material in {s.material for o in everything for s in o.material_slots}:
         if material is not None:

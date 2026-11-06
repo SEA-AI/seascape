@@ -29,6 +29,8 @@ from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 
 class Aim(NamedTuple):
+    """Where a view looks from."""
+
     name: str
     # Bearing from the asset's centre, bow 0, starboard 90.
     bearing_deg: float
@@ -99,7 +101,8 @@ def _setup() -> None:
 
 def _textures() -> None:
     """Workbench's texture mode draws a material's active image node, or its viewport
-    colour: point both at the base colour."""
+    colour: point both at the base colour.
+    """
     for material in bpy.data.materials:
         bsdf = faces.bsdf(material)
         if bsdf is None:
@@ -113,7 +116,8 @@ def _textures() -> None:
 
 def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
     """Each face's value as a corner colour: its base-`DIGIT` digits in red, green and
-    blue, each exact in Workbench's half floats."""
+    blue, each exact in Workbench's half floats.
+    """
     for obj, value in zip(found.objects, per_face, strict=True):
         mesh = obj.data
         total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))
@@ -172,6 +176,8 @@ def _shoot(path: Path, color_type: str, light: str, aa: str, exr: bool) -> None:
 
 @dataclass
 class View:
+    """One view's renders."""
+
     name: str
     part: np.ndarray  # (h, w) the painted value, -1 where nothing is
     grey: np.ndarray  # (h, w) studio-lit shape, 0 to 1
@@ -211,8 +217,14 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
 
 
 def parts(name: str, worn: bool = False) -> Parts:
-    """Import `name` as an EO build fits it into the current file, with islands
-    numbered by object name, then first face."""
+    """Import an asset as an EO build fits it into the current file, with islands
+    numbered by object name, then first face.
+
+    Args:
+        name: The asset's name in assets.toml.
+        worn: Tag the asset's faces for wear, as a build does an asset
+            `Scenario.worn` names.
+    """
     roots = import_asset(name, "eo", worn=worn)
     bpy.context.view_layer.update()
     return faces.found(mesh_objects(roots))
@@ -372,7 +384,7 @@ def overview(
     return _grid(tiles, title)
 
 
-def legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Image:
+def _legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Image:
     rows = math.ceil(len(names) / 3)
     line = 20
     image = Image.new("RGB", (TILE[0] * COLUMNS, 8 + rows * line), MATTE)
@@ -474,7 +486,8 @@ def _input(
     triangles: list[tuple[int, np.ndarray]],
 ) -> dict[str, Any]:
     """A BSDF input as the shader reads it: its value, or the texels the material's
-    faces cover."""
+    faces cover.
+    """
     bsdf = faces.bsdf(material)
     if bsdf is None:
         if socket == "Base Color" and material is not None:
@@ -571,7 +584,8 @@ def _island_records(
     found: Parts,
 ) -> tuple[list[dict[str, Any]], dict[str, Image.Image]]:
     """Each island's record, its colour the mean texel at its triangles' centres, and
-    each base colour atlas with every island drawn on it."""
+    each base colour atlas with every island drawn on it.
+    """
     n = len(found.islands)
     heights = _heights(found, found.face_island, n)
     triangles = _triangle_counts(found, found.face_island, n)
@@ -664,12 +678,17 @@ def _atlas(rgb: np.ndarray, cover: np.ndarray, texels: np.ndarray) -> Image.Imag
 
 
 def sheets(
-    name: str, into: Path, kind: Kind | None = None, material: str | None = None
+    name: str, into: Path, kind: Kind | None, material: str | None
 ) -> list[Path]:
-    """Write the sheets for labelling `name`'s parts, and their records, into `into`.
+    """Write the sheets for labelling an asset's parts, and their records.
 
-    Slots by default, islands for an asset of one material. Islands of `material`
-    alone, if given, with the rest grey.
+    Args:
+        name: The asset's name in assets.toml.
+        into: The folder the sheets go in, made if missing.
+        kind: Label slots or islands; None picks slots, or islands for an asset of
+            one material.
+        material: Show this material's islands alone, the rest grey; it picks
+            islands, so not with slots.
     """
     if kind == "slots" and material is not None:
         raise ValueError("a material picks islands, not slots")
@@ -715,7 +734,7 @@ def sheets(
         ],
     )
     if kind == "slots":
-        sheet = _stack(sheet, legend(colours, labels, names))
+        sheet = _stack(sheet, _legend(colours, labels, names))
     sheet.save(path := into / "overview.png")
     written.append(path)
     for texture, atlas in atlases.items():
@@ -782,8 +801,12 @@ SHOWN_WEAR = 0.8
 
 
 def _worn_tiles(found: Parts, weathered: bool) -> list[tuple[Image.Image, str]]:
-    """`found` from `parts(name, worn=not weathered)`, rendered under a white sky.
-    A weathered asset's wear is its textures', so it takes none of ours."""
+    """An asset's parts, worn, rendered under a white sky.
+
+    Args:
+        found: The parts, from `parts(name, worn=not weathered)`.
+        weathered: The asset's wear is its textures', so it takes none of ours.
+    """
     if not weathered:
         wear.dirty(found.objects)
         for obj in found.objects:
@@ -837,7 +860,7 @@ def contact(name: str, out: Path) -> Path:
     )
     sheet = _stack(
         sheet,
-        legend(colours[present], shares, [vocabulary[z] for z in present]),
+        _legend(colours[present], shares, [vocabulary[z] for z in present]),
         _grid(
             _worn_tiles(found, asset.weathered),
             [f"worn {SHOWN_WEAR}, as a build lays it"],

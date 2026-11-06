@@ -64,7 +64,8 @@ def test_a_face_normal_turns_with_the_fit(box) -> None:
 
 def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
     """Blender takes a face's normal from its winding in world space, which a mirror
-    reverses."""
+    reverses.
+    """
     obj, zone = box
     obj.scale.x = -1.0
     wear.tag([obj], [zone], "steel")
@@ -139,43 +140,36 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
     )
 
 
-def _zodiacs(hulls: Hulls, wears: tuple[float, ...]) -> list[bpy.types.Object]:
+def _zodiacs(worn: frozenset[str], wears: tuple[float, ...]) -> list[bpy.types.Object]:
+    hulls = Hulls(load(BASELINE).sky, None, worn)
     return [
-        _vessel(
-            "zodiac",
-            condition=Condition(wear=amount),
-            sky=load(BASELINE).sky,
-            heat=None,
-            hulls=hulls,
-        )
+        _vessel("zodiac", condition=Condition(wear=amount), hulls=hulls)
         for amount in wears
     ]
 
 
-def _meshes(anchor: bpy.types.Object) -> list[bpy.types.Object]:
-    return [o for o in anchor.children_recursive if o.type == "MESH"]
-
-
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
-    clean, worn = _zodiacs(Hulls(frozenset({"zodiac"})), (0.0, 0.6))
+    clean, worn = _zodiacs(frozenset({"zodiac"}), (0.0, 0.6))
     assert (clean["wear"], worn["wear"]) == (0.0, 0.6)
     for anchor in (clean, worn):
-        assert all("wear_position_m" in o.data.attributes for o in _meshes(anchor))
-        assert all(o.name.startswith("zodiac/") for o in _meshes(anchor))
+        meshes = mesh_objects([anchor])
+        assert all("wear_position_m" in o.data.attributes for o in meshes)
+        assert all(o.name.startswith("zodiac/") for o in meshes)
 
 
 def test_a_clean_build_is_not_tagged() -> None:
-    (clean,) = _zodiacs(Hulls(), (0.0,))
-    assert not any("wear_position_m" in o.data.attributes for o in _meshes(clean))
+    (clean,) = _zodiacs(frozenset(), (0.0,))
+    meshes = mesh_objects([clean])
+    assert not any("wear_position_m" in o.data.attributes for o in meshes)
 
 
 def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
-    slots = [s for o in _meshes(anchor) for s in o.material_slots]
+    slots = [s for o in mesh_objects([anchor]) for s in o.material_slots]
     return {s.material for s in slots} - {None}
 
 
 def test_a_clean_build_keeps_its_import_graph() -> None:
-    (clean,) = _zodiacs(Hulls(), (0.0,))
+    (clean,) = _zodiacs(frozenset(), (0.0,))
     assert not any(g.name.startswith("wear_masks") for g in bpy.data.node_groups)
     built = {m.name.split("/", 1)[1]: len(m.node_tree.nodes) for m in _materials(clean)}
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -186,7 +180,7 @@ def test_a_clean_build_keeps_its_import_graph() -> None:
 
 
 def test_a_worn_asset_lays_dirt_over_every_principled_material() -> None:
-    (worn,) = _zodiacs(Hulls(frozenset({"zodiac"})), (0.5,))
+    (worn,) = _zodiacs(frozenset({"zodiac"}), (0.5,))
     for material in _materials(worn):
         nodes = material.node_tree.nodes
         if not any(n.type == "BSDF_PRINCIPLED" for n in nodes):
@@ -210,8 +204,10 @@ def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> 
 
     def parts() -> list[bpy.types.Object]:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        vessels, _ = add_vessels(scenario, radius_m, None, Hulls(scenario.worn), [])
-        return [_meshes(a)[0] for a in vessels["zodiac"]]
+        vessels, _ = add_vessels(
+            scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), []
+        )
+        return [mesh_objects([a])[0] for a in vessels["zodiac"]]
 
     first = parts()
     offsets = [p["wear_offset"] for p in first[:2]]
@@ -289,11 +285,13 @@ def test_a_crevice_is_baked_once_per_fitted_size(monkeypatch) -> None:
 
 def test_every_lwir_layer_is_one_the_masks_cover() -> None:
     assert set(thermal.WEAR_LAYERS) | {"stain"} <= set(wear.LAYERS)
+    assert tuple(layer for layer in wear.LAYERS if layer != "fade") == wear.COVERS
 
 
 def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
     """From the output back to the clean skin: each wear mix's layer and the emissivity
-    of what it lays over."""
+    of what it lays over.
+    """
     out = next(n for n in material.node_tree.nodes if n.type == "OUTPUT_MATERIAL")
     node = out.inputs["Surface"].links[0].from_node
     chain = []

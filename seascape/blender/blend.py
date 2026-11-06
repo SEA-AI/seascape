@@ -1,3 +1,5 @@
+"""Small builders over Blender's data."""
+
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -35,7 +37,8 @@ def animate(
     index: int = -1,
 ) -> None:
     """A key per frame, not an extrapolated curve: on the curved sea a hull follows
-    neither a line nor a sine."""
+    neither a line nor a sine.
+    """
     for frame, t in enumerate(times_s):
         if index < 0:
             setattr(owner, data_path, value_at(t))
@@ -46,6 +49,7 @@ def animate(
 
 
 def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
+    """A sine of time in seconds."""
     return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
 
 
@@ -80,9 +84,14 @@ def drive(
 def curve_image(
     name: str, values: np.ndarray, float_buffer: bool = True
 ) -> bpy.types.Image:
-    """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
-    or rows bottom first, grey or RGB on a last axis. Without `float_buffer`, 8 bits
-    of values in [0, 1]."""
+    """A lookup the shader samples with a Combine XYZ into an Image Texture.
+
+    Args:
+        name: What `bpy.data.images` holds it under.
+        values: One row, or rows bottom first, grey or RGB on a last axis.
+        float_buffer: 32-bit floats, packed as EXR; without it, an 8-bit PNG of
+            values in [0, 1].
+    """
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
     height, width = table.shape[:2]
     image = bpy.data.images.new(
@@ -95,6 +104,11 @@ def curve_image(
     image.file_format = "OPEN_EXR" if float_buffer else "PNG"
     image.pack()
     return image
+
+
+def texels(count: int = CURVE_SAMPLES) -> np.ndarray:
+    """The centres of `count` texels across [0, 1], where `lookup` reads them."""
+    return (np.arange(count) + 0.5) / count
 
 
 def lookup(
@@ -119,6 +133,7 @@ def feed(
     socket: bpy.types.NodeSocket,
     value: Operand | tuple[float, ...],
 ) -> None:
+    """`value` into `socket`: linked if it is a socket or a `Num`, else set."""
     if isinstance(value, Num):
         value = value.socket
     if isinstance(value, bpy.types.NodeSocket):
@@ -143,6 +158,7 @@ def vector(
     *inputs: Operand | tuple[float, ...],
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
+    """The output of a new Vector Math node doing `operation` on `inputs`."""
     made = tree.nodes.new("ShaderNodeVectorMath")
     made.operation = operation
     if name:
@@ -173,6 +189,7 @@ def scalar(
 
 
 def clamped(tree: bpy.types.NodeTree, x: Operand) -> bpy.types.NodeSocket:
+    """`x`, no less than 0 and no more than 1."""
     out = scalar(tree, "MAXIMUM", x, 0.0)
     out.node.use_clamp = True
     return out
@@ -181,7 +198,8 @@ def clamped(tree: bpy.types.NodeTree, x: Operand) -> bpy.types.NodeSocket:
 @dataclass(frozen=True, slots=True)
 class Num:
     """A Math node's output; `a * b + c` makes the nodes in Python's evaluation order.
-    `madd` fuses Multiply Add and `op` takes any other operation."""
+    `madd` fuses Multiply Add and `op` takes any other operation.
+    """
 
     tree: bpy.types.NodeTree
     socket: bpy.types.NodeSocket
@@ -198,6 +216,7 @@ class Num:
         raise TypeError("a Num is a node's output, not a truth value")
 
     def op(self, operation: str, *others: Operand) -> "Num":
+        """A node doing `operation` on self and `others`, in that order."""
         return Num(
             self.tree,
             scalar(self.tree, operation, self.socket, *map(self._raw, others)),
@@ -210,6 +229,7 @@ class Num:
         )
 
     def madd(self, factor: Operand, term: Operand) -> "Num":
+        """This number * `factor` + `term`, in one Multiply Add node."""
         return self.op("MULTIPLY_ADD", factor, term)
 
     def __add__(self, other: Operand) -> "Num":
@@ -243,8 +263,15 @@ def node(
     inputs: dict[str, Operand | tuple[float, ...]] | None = None,
     **props: object,
 ) -> bpy.types.Node:
-    """A node of `kind` with `props` set first, since a data type can change which
-    sockets exist, then `inputs` by name."""
+    """A node with its properties set first, since a data type can change which
+    sockets exist, then its inputs.
+
+    Args:
+        tree: Any node tree; `kind` must be one of its type's nodes.
+        kind: Blender's node type, such as `ShaderNodeMath`.
+        inputs: A value or socket for each input, by socket name.
+        **props: Attributes set on the node before its inputs.
+    """
     made = tree.nodes.new(kind)
     for key, setting in props.items():
         setattr(made, key, setting)
@@ -271,6 +298,7 @@ def mix_shader(
 def separate(
     tree: bpy.types.NodeTree, xyz: bpy.types.NodeSocket
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """The X, Y and Z of a vector socket."""
     split = node(tree, "ShaderNodeSeparateXYZ", {"Vector": xyz})
     return split.outputs["X"], split.outputs["Y"], split.outputs["Z"]
 
@@ -287,6 +315,7 @@ def value(
 
 
 def set_value(tree: bpy.types.NodeTree, name: str, to: float) -> None:
+    """Set the Value node `name`, which `value` made."""
     tree.nodes[name].outputs["Value"].default_value = to
 
 
@@ -296,8 +325,15 @@ def switch(
     off: bpy.types.NodeSocket,
     on: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`on` or `off` for the whole frame, as `toggle` sets it: a pick, where a blend
-    by 0 would turn an inf in the unpicked image into a nan."""
+    """One image or the other for the whole frame, as `toggle` sets it: a pick, where a
+    blend by 0 would turn an inf in the unpicked image into a nan.
+
+    Args:
+        tree: The compositor.
+        name: What `toggle` finds the node by; must be free.
+        off: Passed while off; a muted Switch evaluates only this.
+        on: Passed while on, and evaluated only then.
+    """
     made = tree.nodes.new("CompositorNodeSwitch")
     made.name = name
     assert made.name == name, f"{name} is taken"
@@ -308,7 +344,8 @@ def switch(
 
 def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
     """The compositor evaluates both inputs of a Switch, so off mutes it: a muted
-    Switch passes Off through and never evaluates On."""
+    Switch passes Off through and never evaluates On.
+    """
     made = tree.nodes[name]
     made.inputs["Switch"].default_value = on
     made.mute = not on

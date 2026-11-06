@@ -68,7 +68,8 @@ def test_an_island_id_reads_from_a_toml_key() -> None:
 
 def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
     """Two quads sharing an edge through duplicated vertices are one island; a third
-    of another material on the same edge is its own, and so is a loose one."""
+    of another material on the same edge is its own, and so is a loose one.
+    """
     vertices = [
         (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),  # quad a
         (1, 0, 0), (2, 0, 0), (2, 1, 0), (1, 1, 0),  # quad b, its own copy of the edge
@@ -86,7 +87,8 @@ def test_islands_split_at_materials_and_gaps_not_at_split_vertices() -> None:
 
 def _three_triangles(factor: float) -> faces.Parts:
     """Three loose triangles, the first and last over a metal texel, its metallic read
-    through a Math node multiplying by `factor`, as glTF imports a metallic factor."""
+    through a Math node multiplying by `factor`, as glTF imports a metallic factor.
+    """
     vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
     mesh = bpy.data.meshes.new("probe")
     mesh.from_pydata(
@@ -124,7 +126,8 @@ def test_a_rule_zones_the_islands_its_ranges_hold(
     factor: float, expected: list[str]
 ) -> None:
     """A rule reads metallic as the shader does, factor applied; the listed island
-    still wins."""
+    still wins.
+    """
     zones_ = Zones.model_validate(
         {"materials": {"m": "deck"}, **NUMBERED, "islands": {"2": "glass"}}
         | {"rules": [{"material": "m", "metallic": [0.5, 1.0], "zone": "bare_metal"}]}
@@ -152,7 +155,8 @@ def test_a_texture_whose_uvs_come_through_a_node_is_refused() -> None:
 @pytest.mark.parametrize("name", manifest())
 def test_the_import_is_the_mesh_its_zones_were_given_on(name: str) -> None:
     """The triangles and textures the manifest commits, the materials its zones name
-    and the islands they number."""
+    and the islands they number.
+    """
     asset = manifest()[name]
     found = zones.parts(name)
     assert measured(name, found.objects) == (asset.triangles, asset.texture_px)
@@ -187,7 +191,8 @@ def test_a_cached_import_keeps_the_names_of_its_file(tmp_path) -> None:
 @pytest.mark.render
 def test_a_view_names_only_parts_and_shows_them_all() -> None:
     """The flat pass, unblended, decodes to part numbers and nothing between, past
-    the 2048 where a half float stops counting whole numbers."""
+    the 2048 where a half float stops counting whole numbers.
+    """
     name = min(manifest(), key=lambda n: manifest()[n].triangles)
     found = zones.parts(name)
     # Top digits 255, the largest a channel holds.

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from itertools import chain
 
 import bpy
+import numpy as np
 from mathutils import Matrix
 
 from seascape.blender import sea
@@ -37,7 +38,8 @@ _BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 @dataclass(frozen=True)
 class Built:
     """What `build` made, by role, valid until the next build. A name in `bpy.data`
-    belongs to whoever took it first, and an imported asset can carry any name."""
+    belongs to whoever took it first, and an imported asset can carry any name.
+    """
 
     vessel: bpy.types.Object
     rigs: dict[str, bpy.types.Object]
@@ -73,6 +75,17 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     )
 
 
+def look_through(
+    cameras: dict[str, bpy.types.Object], mount: Mount, rng: np.random.Generator
+) -> None:
+    """Render through `mount`'s camera at its size, its sensor noise from `rng`."""
+    sc = bpy.context.scene
+    sc.camera = cameras[mount.name]
+    sc.render.resolution_x = mount.camera.width_px
+    sc.render.resolution_y = mount.camera.height_px
+    respond(mount, rng)
+
+
 def _rows(m: Matrix) -> Matrix4:
     x, y, z, w = map(tuple, m)
     return x, y, z, w
@@ -80,7 +93,8 @@ def _rows(m: Matrix) -> Matrix4:
 
 def _viewport(near_m: float, far_m: float) -> None:
     """Blender's view clip defaults to 0.01-1000 m, which cuts a sea reaching tens
-    of km."""
+    of km.
+    """
     for screen in bpy.data.screens:
         for area in screen.areas:
             if area.type != "VIEW_3D":
@@ -92,7 +106,8 @@ def _viewport(near_m: float, far_m: float) -> None:
 
 def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
     """Past the camera's horizon plus the tallest hull's own, every hull is below the
-    horizon."""
+    horizon.
+    """
     # Stored at import, blade up: measured now, a rotor's top follows its spin.
     tops_m = [anchor["height_m"] for anchor in anchors]
     if not tops_m:
@@ -106,9 +121,14 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
 
 
 def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
-    """The finest pixel any camera `seen` lays on the sea in any frame: its height over
-    the sea below it, which the curved sea's crests come no nearer than, times the
-    angle of a pixel."""
+    """The finest pixel any camera lays on the sea in any frame: its height over the
+    sea below it, which the curved sea's crests come no nearer than, times the angle
+    of a pixel.
+
+    Args:
+        scenario: Its crests and refraction set how near the sea comes.
+        seen: Every camera's pose in every frame.
+    """
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     tall, _ = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     crest_m = sum(w.amplitude_m for w in tall)
@@ -121,11 +141,17 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
-    """Replace the current Blender session's contents with `scenario` in one band.
+    """Replace the current Blender session's contents with a scenario.
 
-    `cull` draws only the waves the scenario's own cameras resolve, at their own
-    resolution: a camera zoomed, enlarged or added later loses its finest ripples."""
-    mounts = [m for m in scenario.mounts if m.camera.band == band]
+    Args:
+        scenario: The scene to build, and the times it is keyed at.
+        band: `eo` for visible light, `ir` for 8-14 um thermal; only that band's
+            cameras are built, and some rig must carry one.
+        cull: Draw only the waves the scenario's own cameras resolve, at their own
+            resolution: a camera zoomed, enlarged or added later loses its finest
+            ripples.
+    """
+    mounts = scenario.band_mounts(band)
     if not mounts:
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -142,15 +168,13 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
-    hulls = Hulls(scenario.worn)
-    tall, _ = sea.displaced((wind, swell))
     heat = surroundings(scenario) if band == "ir" else None
-    vessel = add_ownship(
-        scenario.ownship, scenario.sky, heat, rigs.root, hulls, outputs, tall
-    )
+    hulls = Hulls(scenario.sky, heat, scenario.worn)
+    tall, _ = sea.displaced((wind, swell))
+    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall)
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     trails: list[wakes.Wake] = []
-    vessels, turbines = add_vessels(scenario, radius_m, heat, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
@@ -185,16 +209,11 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
     first = mounts[0]
-    sc = bpy.context.scene
-    sc.camera = rigs.cameras[first.name]
-    sc.render.resolution_x, sc.render.resolution_y = (
-        first.camera.width_px,
-        first.camera.height_px,
-    )
-    respond(first, substream(scenario.seed, f"sensor/{first.name}"))
+    look_through(rigs.cameras, first, substream(scenario.seed, f"sensor/{first.name}"))
     _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
+    sc = bpy.context.scene
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0

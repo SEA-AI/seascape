@@ -154,7 +154,7 @@ def test_a_microbolometer_integrates_over_its_pixel(
     bolometer: dict[str, float], kind: str
 ) -> None:
     scenario = load(OPEN_SEA)
-    mount = next(m for m in scenario.mounts if m.camera.band == "ir")
+    mount = scenario.band_mounts("ir")[0]
     camera = mount.camera.model_copy(
         update={"microbolometer": Microbolometer(**bolometer)}
     )
@@ -162,10 +162,10 @@ def test_a_microbolometer_integrates_over_its_pixel(
     assert bpy.context.scene.cycles.pixel_filter_type == kind
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_switch_set_off_is_muted() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     _compositor(0.0, True)
-    mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
+    mount = load(OPEN_SEA).band_mounts("eo")[0]
     respond(mount, substream(0, "sensor"))
     nodes = bpy.context.scene.compositing_node_group.nodes
     assert nodes["sensor.on"].mute
@@ -175,10 +175,10 @@ def test_a_switch_set_off_is_muted() -> None:
     assert nodes["sensor.hdr"].mute
 
 
+@pytest.mark.usefixtures("empty_blend")
 def test_a_sensor_in_a_build_without_one_raises() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
     _compositor(0.0)
-    mount = next(m for m in load(OPEN_SEA).mounts if m.camera.band == "eo")
+    mount = load(OPEN_SEA).band_mounts("eo")[0]
     with_sensor = mount.camera.model_copy(update={"sensor": Sensor(full_well_e=1e4)})
     with pytest.raises(ValueError, match="no sensor"):
         respond(mount._replace(camera=with_sensor), substream(0, "sensor"))
@@ -220,12 +220,12 @@ class TestSettings:
         """A format added to the Literal alone renders as whatever was set last."""
         assert set(FORMATS) == set(get_args(ImageFormat.__value__))
 
+    @pytest.mark.usefixtures("empty_blend")
     @pytest.mark.parametrize("fmt", get_args(ImageFormat.__value__))
     def test_the_extension_matches_the_name_render_files_under(
         self, fmt: ImageFormat
     ) -> None:
         """`render` composes its return paths from the format, not from Blender."""
-        bpy.ops.wm.read_factory_settings(use_empty=True)
         settings = bpy.context.scene.render
         settings.image_settings.file_format = FORMATS[fmt][0]
 
@@ -257,7 +257,7 @@ class TestIrAsPng:
 
     def test_the_active_camera_sets_the_resolution(self, sc: bpy.types.Scene) -> None:
         """Factory 1920x1080 otherwise; a camera of that size would pass regardless."""
-        ir = next(m.camera for m in load(OPEN_SEA).mounts if m.camera.band == "ir")
+        ir = load(OPEN_SEA).band_mounts("ir")[0].camera
         assert (ir.width_px, ir.height_px) != (1920, 1080)
 
         assert (sc.render.resolution_x, sc.render.resolution_y) == (
@@ -298,7 +298,8 @@ class TestEachBand:
         self, sc: bpy.types.Scene, band: Band
     ) -> None:
         """Opened on the rig's first camera, an IR build could render through EO optics
-        against IR materials, with nothing to say so."""
+        against IR materials, with nothing to say so.
+        """
         assert sc.camera.name == f"bow_{band}"
 
 
@@ -322,7 +323,7 @@ def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
     monkeypatch.setattr(bpy.ops, "render", SimpleNamespace(render=writes_nothing))
     monkeypatch.chdir(tmp_path)
     scenario = variant(outputs={"bands": ["eo"]})
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    mount = scenario.band_mounts("eo")[0]
 
     with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
         render.render(scenario, Path("out"))
@@ -361,7 +362,8 @@ def _plane_seen_from_above(
     ortho_scale: float,
 ) -> bpy.types.Object:
     """A factory scene in Cycles: a plane on z = 0, looked straight down on by an
-    orthographic camera."""
+    orthographic camera.
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
@@ -388,7 +390,8 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     tmp_path: Path, edge_m: float, columns: int
 ) -> None:
     """A plane's edge just either side of a column of centres: a sample anywhere
-    else in the pixel filter would put it in a different column from row to row."""
+    else in the pixel filter would put it in a different column from row to row.
+    """
     corners = [(-10, -10, 0), (edge_m, -10, 0), (edge_m, 74, 0), (-10, 74, 0)]
     plane = _plane_seen_from_above(corners, (8, 64), (4.0, 32.0, 10.0), 8.0)
     plane.pass_index = 1
@@ -437,13 +440,16 @@ def test_a_sun_s_strength_is_irradiance_in_the_world_s_radiance(
     assert blend.read(tmp_path / "frame.exr")[..., :3] == pytest.approx(1.0, rel=1e-3)
 
 
+UNSEEN = sea.Seen()
+
+
 def _svm_errors(
     capfd: pytest.CaptureFixture[str],
     scenario: Scenario,
     trails: tuple[Wake, ...],
     band: Band,
     pad: int = 0,
-    seen: sea.Seen = sea.UNSEEN,
+    seen: sea.Seen = UNSEEN,
 ) -> list[str]:
     """The SVM lines in Cycles' log after rendering `sea.water` alone.
 
@@ -507,7 +513,8 @@ def _render_svm_errors(capfd: pytest.CaptureFixture[str]) -> list[str]:
 
 def _heaviest_drawn_sea(*, strongest: bool = False, **sections: Any) -> Scenario:
     """The `randomized.toml` draw that builds the largest sea shader: at its lightest
-    wind, which draws the most waves, or its strongest, whose foam gathers in rows."""
+    wind, which draws the most waves, or its strongest, whose foam gathers in rows.
+    """
     with (SCENARIOS / "randomized.toml").open("rb") as file:
         drawn = tomllib.load(file)["sea"]
     lightest, strongest_mps = drawn["wind_speed_mps"]["uniform"]
@@ -570,7 +577,8 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     band: Band,
 ) -> None:
     """Remembered on every grid level a camera can need and gathered into windrows.
-    The stack is the shader's, whatever its frames hold, so none are simulated."""
+    The stack is the shader's, whatever its frames hold, so none are simulated.
+    """
     monkeypatch.setattr(memory, "_simulate", lambda *_: None)
     grids = tuple(
         waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
@@ -598,7 +606,7 @@ def test_the_wakes_a_build_lays_fit_cycles_svm_stack(
     """The wake a built hull leaves, not one handed to the material."""
     scenario = _heaviest_drawn_sea(objects=[target("coaster", 500.0, **hull)])
     built = scene.build(scenario, "eo")
-    mount = next(m for m in scenario.mounts if m.camera.band == "eo")
+    mount = scenario.band_mounts("eo")[0]
     sc = bpy.context.scene
     sc.camera = built.cameras[mount.name]
     sc.cycles.samples = 1
@@ -764,7 +772,8 @@ def test_no_image_outgrows_what_the_server_reserves_for_it(
     tmp_path: Path, fmt: ImageFormat
 ) -> None:
     """At 1 sample, the noisiest, which a jpg compresses worst. Smaller than the
-    baseline's frames: a pixel holds more of the scene and compresses no better."""
+    baseline's frames: a pixel holds more of the scene and compresses no better.
+    """
     scenario = variant(
         BASELINE,
         cameras={
@@ -800,7 +809,8 @@ def _plate(
 
 def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
     """An empty Cycles scene that writes radiance to a float EXR, under a sky of one
-    brightness temperature."""
+    brightness temperature.
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
@@ -825,7 +835,8 @@ def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
 def test_a_zone_renders_at_its_heat_balance(tmp_path: Path, rise_m: float) -> None:
     """Under a uniform sky, each plate reads eps B(T) + (1 - eps) B(sky), T as
     `thermal` gives it for that normal and that sunlight; below the waterline, the
-    water's. A hull raised `rise_m` meets the water that far down its own frame."""
+    water's. A hull raised `rise_m` meets the water that far down its own frame.
+    """
     sky_k = 270.0
     sc = _radiance_scene(sky_k, 96, 64)
 
@@ -887,7 +898,8 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path, rise_m: float) -> No
 @pytest.mark.render
 def test_a_hull_warms_the_calm_sea_below_it(tmp_path: Path) -> None:
     """The sea's lobe meets the hull, warmer than the low sky it hides. Hidden from
-    glossy rays, the hull leaves the sea as its tables have it."""
+    glossy rays, the hull leaves the sea as its tables have it.
+    """
     scenario = variant(
         rig={"height_m": 15.0, "pitch_deg": -2.0},
         cameras={"ir": {"hfov_deg": 4.0, "width_px": 96, "height_px": 64}},

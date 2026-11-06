@@ -7,6 +7,7 @@ import bpy
 
 from seascape.blender.blend import (
     combine,
+    feed,
     node,
     place,
     scalar,
@@ -69,7 +70,8 @@ def _group(
     outputs: tuple[tuple[str, str], ...],
 ) -> tuple[bpy.types.NodeTree, bpy.types.NodeOutputs, bpy.types.NodeInputs]:
     """A node group with these (name, socket kind) inputs and outputs; its Group Input's
-    outputs and Group Output's inputs."""
+    outputs and Group Output's inputs.
+    """
     group = bpy.data.node_groups.new(name, "ShaderNodeTree")
     for sockets, in_out in ((inputs, "INPUT"), (outputs, "OUTPUT")):
         for socket, kind in sockets:
@@ -84,7 +86,8 @@ def _spread(
     group: bpy.types.NodeTree, value: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """A scalar in every lane. Cycles merges identical nodes, so each spread runs once
-    per sample however many groups make it."""
+    per sample however many groups make it.
+    """
     return combine(group, value, value, value)
 
 
@@ -119,7 +122,8 @@ def _fade(
     cos^2 is `fade_axis`'s. A judgement: the wave fades at the band's RMS footprint,
     not by the band's mean visibility.
 
-    Built alike in every group, so Cycles merges a triple's fade across them."""
+    Built alike in every group, so Cycles merges a triple's fade across them.
+    """
     along_x, along_y, _ = separate(group, given["Along"])
     along_xy = (_spread(group, along_x), _spread(group, along_y))
     heading = vector(
@@ -159,7 +163,8 @@ def _fade(
 def _wave_group(calm: bool) -> bpy.types.NodeTree:
     """Three waves, each as far as `_fade` says the pixel resolves it. Each adds its
     slope sin(phase) to `Sum X` and `Sum Y` and `Lift` cos(phase) to `Sum Z`, per lane:
-    a downward acceleration in g when `Lift` is a k, a height when it is a."""
+    a downward acceleration in g when `Lift` is a k, a height when it is a.
+    """
     name = "waves_calm" if calm else "waves"
     if name in bpy.data.node_groups:
         return bpy.data.node_groups[name]
@@ -215,8 +220,8 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
     return group
 
 
-def _lanes(triple: Triple, value: Callable[[Wave], float], pad: float = 0.0) -> tuple:
-    return tuple(pad if wave is None else value(wave) for wave in triple)
+def _lanes(triple: Triple, value: Callable[[Wave], float]) -> tuple:
+    return tuple(0.0 if wave is None else value(wave) for wave in triple)
 
 
 def _set_triple(
@@ -225,10 +230,17 @@ def _set_triple(
     damped: frozenset[Wave],
     lift: Callable[[Wave], float],
 ) -> None:
-    """The inputs of `_fade`, the phases that place `triple`, and each wave's `lift`,
-    split along its heading for the slopes. An empty lane has no amplitude, so whatever
-    it fades adds 0."""
+    """Set the inputs of `_fade`, the phases that place three waves, and each wave's
+    lift, split along its heading for the slopes. An empty lane has no amplitude, so
+    whatever it fades adds 0.
 
+    Args:
+        inputs: A wave group node's inputs, set as constants.
+        triple: The waves, one a lane; None leaves a lane empty.
+        damped: The waves a slick calms.
+        lift: What each wave adds up its lane: its amplitude for the surface, its
+            slope for the normal.
+    """
     axes = {w: fade_axis(w) for w in triple if w is not None}
     sets = {
         "Tx": _lanes(triple, lambda w: axes[w].tx),
@@ -248,24 +260,17 @@ def _set_triple(
         inputs[name].default_value = value
 
 
-def _feed(
-    group: bpy.types.NodeTree,
-    given: bpy.types.NodeOutputs,
-    node: bpy.types.Node,
-    calmed: bool,
-) -> None:
-    """The footprint and, where `calmed`, the calm of a group around a triple."""
-    for name, _ in _FOOTPRINT:
-        group.links.new(given[name], node.inputs[name])
-    if calmed:
-        group.links.new(given["Calm"], node.inputs["Calm"])
-
-
 def _normal_group(
     triples: list[Triple], wind_triples: int, damped: frozenset[Wave]
 ) -> bpy.types.NodeTree:
-    """The slope the pixel draws at `Position`, and the downward acceleration in g of
-    the first `wind_triples`. A group, as each node in a tree slows every edit to it."""
+    """The slope the pixel draws at `Position`, and the wind sea's downward
+    acceleration in g. A group, as each node in a tree slows every edit to it.
+
+    Args:
+        triples: The waves, three a group, the wind sea's first.
+        wind_triples: How many of the triples are the wind sea's.
+        damped: The waves `Calm` scales.
+    """
     group, given, out = _group(
         "sea_waves",
         (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
@@ -274,16 +279,19 @@ def _normal_group(
     sums = None
     for i, triple in enumerate(triples):
         calmed = not damped.isdisjoint(triple)
-        node = group.nodes.new("ShaderNodeGroup")
-        node.node_tree = _wave_group(calmed)
-        node.name = f"waves_{i}"
-        group.links.new(given["Position"], node.inputs["Position"])
-        _feed(group, given, node, calmed)
+        waves = group.nodes.new("ShaderNodeGroup")
+        waves.node_tree = _wave_group(calmed)
+        waves.name = f"waves_{i}"
+        feed(group, waves.inputs["Position"], given["Position"])
+        for name, _ in _FOOTPRINT:
+            feed(group, waves.inputs[name], given[name])
+        if calmed:
+            feed(group, waves.inputs["Calm"], given["Calm"])
         if sums is not None:
             for name, _ in _SUMS:
-                group.links.new(sums[name], node.inputs[name])
-        _set_triple(node.inputs, triple, damped, lambda w: w.amplitude_m * w.k_rad_m)
-        sums = node.outputs
+                feed(group, waves.inputs[name], sums[name])
+        _set_triple(waves.inputs, triple, damped, lambda w: w.amplitude_m * w.k_rad_m)
+        sums = waves.outputs
         if i == wind_triples - 1:
             group.links.new(_total(group, sums["Sum Z"]), out["Acceleration"])
     if sums is not None:
@@ -297,11 +305,16 @@ def _normal_group(
 def _displacement(
     tree: bpy.types.NodeTree, tall: tuple[Wave, ...], position: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """The offset of `tall`'s Gerstner surface from the flat sea at `position`, each
-    wave faded by the footprint of the micropolygon there: up a cos(phase), and
-    -k_hat a sin(phase) along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with
-    lambda = 1). Adaptive subdivision dices at about a pixel, so the micropolygon's
-    footprint is the pixel's."""
+    """The offset of a Gerstner surface from the flat sea, each wave faded by the
+    footprint of the micropolygon there: up a cos(phase), and -k_hat a sin(phase)
+    along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with lambda = 1). Adaptive
+    subdivision dices at about a pixel, so the micropolygon's footprint is the pixel's.
+
+    Args:
+        tree: The sea material's shader tree.
+        tall: The waves drawn as geometry.
+        position: The flat sea's (east, north, time) the offset is taken at.
+    """
     camera = tree.nodes.new("ShaderNodeCameraData")
     # From the camera, in world space: the Geometry node's Incoming is unset here.
     toward = node(
@@ -335,7 +348,8 @@ def displaced(
 ) -> tuple[tuple[Wave, ...], tuple[tuple[Wave, ...], tuple[Wave, ...]]]:
     """(the waves drawn as geometry, each sea's waves drawn as shading): the tallest
     of each sea on its own, or a swell's height would decide which wind waves count,
-    down to `DISPLACED_MIN_M`."""
+    down to `DISPLACED_MIN_M`.
+    """
     tall = tuple(
         w
         for field in drawn
@@ -371,7 +385,8 @@ def _flat(
     tree: bpy.types.NodeTree, time_s: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
     """(east, north, time) of the flat sea a point was displaced from: the UV map
-    `water` writes, which displacement leaves where it was."""
+    `water` writes, which displacement leaves where it was.
+    """
     uv = node(tree, "ShaderNodeUVMap", uv_map="UVMap")
     east, north, _ = separate(tree, uv.outputs["UV"])
     xyt = combine(tree, east, north, time_s)
@@ -385,11 +400,20 @@ def _normal(
     swell: tuple[Wave, ...],
     position: bpy.types.NodeSocket,
     pixel: _Pixel,
-    calm: bpy.types.NodeSocket | None = None,
-    damped: frozenset[Wave] = frozenset(),
+    calm: bpy.types.NodeSocket | None,
+    damped: frozenset[Wave],
 ) -> bpy.types.NodeSocket:
-    """The normal of what the pixel resolves at `position`; `calm` scales the `damped`
-    waves."""
+    """The normal of what the pixel resolves.
+
+    Args:
+        tree: The sea material's shader tree.
+        wind: The wind sea's shaded waves.
+        swell: The swell's shaded waves.
+        position: The flat sea's (east, north, time) the normal is taken at.
+        pixel: The footprint the waves fade by.
+        calm: Scales the damped waves; None for no slick.
+        damped: The waves a slick calms.
+    """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     # Each sea in triples of its own, so the wind's acceleration ends with its last.
     triples = _triples(wind) + _triples(swell)

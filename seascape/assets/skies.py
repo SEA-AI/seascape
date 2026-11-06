@@ -82,7 +82,8 @@ CELLS_PER_SIGMA = 4
 class Photo(File):
     """One sky, and its sun as the image holds it: a bearing clockwise from +Y as
     Cycles maps the image unrotated, and an elevation and the disc's `Sun.floor` only
-    where a disc shows."""
+    where a disc shows.
+    """
 
     sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
     sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
@@ -107,12 +108,14 @@ class Photo(File):
 
     @property
     def sun(self) -> str:
+        """The sun's elevation, in words."""
         elevation = self.sun_elevation_deg
         return "no disc" if elevation is None else f"{elevation:.1f} deg"
 
 
 @cache
 def library() -> dict[str, Photo]:
+    """Every sky photo in the library, by name."""
     with LIBRARY.open("rb") as handle:
         return {name: Photo(**body) for name, body in tomllib.load(handle).items()}
 
@@ -194,7 +197,11 @@ def sun(radiance: np.ndarray) -> Sun:
 
 def diffuse_irradiance(radiance: np.ndarray) -> float:
     """Irradiance on a horizontal surface from the sky above the horizon, in the image's
-    own units. `radiance`, (h, w, 3), top row first."""
+    own units.
+
+    Args:
+        radiance: Equirectangular sky, (h, w, 3), top row first.
+    """
     h, w = radiance.shape[:2]
     elevation = np.radians(_elevation_deg(np.arange(h // 2), h))
     # An equirectangular pixel spans dω = cos(elevation) (π / h) (2π / w).
@@ -246,9 +253,8 @@ def _bluest(blueness: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
-    """How much of each pixel of `radiance`, (h, w, 3) of `photo` top row first, is
-    cloud: 0 as blue as the photo's clear sky there, 1 as grey as B = R, and none below
-    the horizon.
+    """How much of each pixel is cloud: 0 as blue as the photo's clear sky there, 1 as
+    grey as B = R, and none below the horizon.
 
     A pixel as blue as the clear sky but darker than the clear sky beside it is a
     shaded cloud base, lit by the blue sky: DARK ramps it in, added to the colour's.
@@ -258,6 +264,10 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     in an overcast photo reads cloud, haze darker than the clear sky beside it reads
     cloud, and a shaded base much wider than BESIDE_DEG reads cloud only at its
     rim.
+
+    Args:
+        radiance: The photo's linear RGB, (h, w, 3), top row first.
+        photo: Its sun places the aureole; an overcast one is cloud throughout.
     """
     h, w = radiance.shape[:2]
     out = np.zeros((h, w), np.float32)
@@ -303,8 +313,12 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
 
 def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
     """The elevation where the run of cloud (share at least CLEAR_SHARE) over each
-    pixel of `share` ends down its column, (h, w) top row first as `cloud` gives it.
-    NaN where the pixel is clear or its run reaches the horizon."""
+    pixel ends down its column. NaN where the pixel is clear or its run reaches the
+    horizon.
+
+    Args:
+        share: Cloud share, (h, w) top row first, as `cloud` gives it.
+    """
     h = share.shape[0]
     rows = np.arange(h // 2, dtype=np.int32)[:, None]
     clear = share[: h // 2] < CLEAR_SHARE
@@ -319,9 +333,14 @@ def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
 def cloud_height_m(
     share: np.ndarray, cloud_base_m: float, depth_m: float
 ) -> np.ndarray:
-    """How far over its base the cloud in each row of `share`, top row first, is:
-    `lwir.cloud_height_m` averaged by share over the cloud whose bottom shows, and the
-    base where none does."""
+    """How far over its base the cloud in each row is: `lwir.cloud_height_m` averaged
+    by share over the cloud whose bottom shows, and the base where none does.
+
+    Args:
+        share: Cloud share, (h, w) top row first, as `cloud` gives it.
+        cloud_base_m: Height of the cloud base over the sea.
+        depth_m: How far over its base a cloud reaches at most.
+    """
     h = share.shape[0]
     bottom = cloud_bottom_deg(share)
     seen = ~np.isnan(bottom)
@@ -336,8 +355,13 @@ def cloud_height_m(
 
 
 def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
-    """How much darker each pixel of `radiance` is than the clear sky beside it, 0 to
-    1 over DARK, judged against the pixels `share` takes for clear."""
+    """How much darker each pixel is than the clear sky beside it, 0 to 1 over DARK.
+
+    Args:
+        radiance: The sky above the horizon, (h, w, 3), top row first.
+        share: Cloud share by colour; what lies under CLEAR_SHARE is the clear sky
+            judged against.
+    """
     log_lum = np.log(np.maximum(radiance @ LUMINANCE, 1e-9)).astype(
         np.float32, copy=False
     )
@@ -379,7 +403,8 @@ def _pull_push(weight: np.ndarray, value: np.ndarray, sigma: float) -> np.ndarra
     """Normalized convolution (Knutsson & Westin, "Normalized and differential
     convolution", CVPR 1993) at doubling scales, each finer one trusted as far as it
     holds a weight of one cell, the rest pushed from the coarser (Gortler et al.,
-    "The Lumigraph", SIGGRAPH 1996)."""
+    "The Lumigraph", SIGGRAPH 1996).
+    """
     h, w = weight.shape
     # Doublings until a sigma spans the strip's circumference.
     levels = max(0, math.ceil(math.log2(w / (2.0 * math.pi * sigma)))) + 1
@@ -411,9 +436,14 @@ def _wrapped_blur(a: np.ndarray, sigma: float) -> np.ndarray:
 
 
 def _filled(share: np.ndarray, hole: np.ndarray) -> np.ndarray:
-    """`share` with `hole` carried in from round it (Bertalmio, Bertozzi & Sapiro,
-    "Navier-Stokes, fluid dynamics, and image and video inpainting", CVPR 2001).
-    OpenCV's Telea overshoots on float images."""
+    """A cloud share with a hole carried in from round it (Bertalmio, Bertozzi &
+    Sapiro, "Navier-Stokes, fluid dynamics, and image and video inpainting", CVPR
+    2001). OpenCV's Telea overshoots on float images.
+
+    Args:
+        share: Cloud share, (h, w) float32, a type OpenCV's inpaint takes.
+        hole: True where the share is replaced.
+    """
     return cv2.inpaint(
         share,
         hole.astype(np.uint8),

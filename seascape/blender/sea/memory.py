@@ -41,7 +41,12 @@ FOAM_MAX_CELLS = 1024
 
 def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, float]]:
     """(origin, unit direction, the camera's pixel in rad) of rays across each camera's
-    frame `seen`, on the foam memory's drifting grid."""
+    frame, on the foam memory's drifting grid.
+
+    Args:
+        scenario: Whose sea sets the grid's drift.
+        seen: Every camera's pose in every frame.
+    """
     drift = surface_drift(scenario.sea, scenario.outputs)
     rays = []
     for view in seen:
@@ -70,9 +75,15 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
 def _box(
     rays: list[tuple[Vector, Vector, float]], cell_m: float, shrink: float
 ) -> tuple[float, float, float, float]:
-    """(west, south, width, height) on the lattice of `cell_m` round where the rays meet
-    the sea, or pass over it, out to where their camera's pixel spans `2 * shrink`
-    cells, plus the grid's fading edge."""
+    """(west, south, width, height) round where the rays meet the sea, or pass over
+    it, plus the grid's fading edge.
+
+    Args:
+        rays: (origin, unit direction, the camera's pixel in rad), as `_rays` gives.
+        cell_m: The grid's cell; the box's edges snap to its multiples.
+        shrink: Each ray reaches out to where its camera's pixel spans 2 * shrink
+            cells; 0 keeps only the origins.
+    """
     xs, ys = [], []
     for origin, ray, pixel_rad in rays:
         flat = Vector((ray.x, ray.y))
@@ -92,7 +103,8 @@ def _foam_box(
     rays: list[tuple[Vector, Vector, float]], cell_m: float
 ) -> tuple[float, float, float, float, float] | None:
     """`_box` at the largest shrink up to 1 that holds `FOAM_MAX_CELLS` a side, and the
-    shrink; None if the cameras stand too far apart for even their origins to fit."""
+    shrink; None if the cameras stand too far apart for even their origins to fit.
+    """
     most_m = FOAM_MAX_CELLS * cell_m
     least_m = max(_box(rays, cell_m, 0.0)[2:])
     if least_m >= most_m:
@@ -110,11 +122,18 @@ def _foam_box(
 def foam_grids(
     scenario: Scenario, seen: list[View], wind: tuple[waves.Wave, ...]
 ) -> tuple[waves.FoamGrid, ...]:
-    """Grids over every stretch of sea the cameras `seen` see in any frame, each on a
+    """Grids over every stretch of sea the cameras see in any frame, each on a
     lattice of its own cells, so a cell remembers the same foam whatever else is in
     view. The finest has `FOAM_NEAR_CELL_M` cells, out to where a camera's pixel spans
     one; each next is `FOAM_LEVEL_RATIO` coarser, out to the horizon or to cells too
-    coarse for any breaker. A grid too wide to hold reaches less far."""
+    coarse for any breaker. A grid too wide to hold reaches less far.
+
+    Args:
+        scenario: Whose sea and cameras the grids cover.
+        seen: Every camera's pose in every frame.
+        wind: The wind waves that break; none gives no grids. The longest, up to
+            `FOAM_LONGEST_BREAKER_M`, bounds the coarsest cell.
+    """
     if not wind:
         return ()
     rays = _rays(scenario, seen)
@@ -173,13 +192,15 @@ _PENDING: list[Callable[[], None]] = []
 
 def _frames_folder() -> Path:
     """Where a build writes its foam memory: Blender's session temporary folder, which
-    it deletes on exit."""
+    it deletes on exit.
+    """
     return Path(bpy.app.tempdir) / "sea_foam"
 
 
 def forget_foam() -> None:
     """Drop the last build's foam memory, pending or written: every build starts here,
-    with foam or without."""
+    with foam or without.
+    """
     _PENDING.clear()
     shutil.rmtree(_frames_folder(), ignore_errors=True)
 
@@ -194,7 +215,8 @@ def _foam_sequences() -> list[bpy.types.Image]:
 
 def remember_foam(*_: object) -> None:
     """Simulate every foam memory the last build left pending, and point their image
-    sequences at the frames: on `render_pre`, and by `keep_foam`."""
+    sequences at the frames: on `render_pre`, and by `keep_foam`.
+    """
     while _PENDING:
         _PENDING.pop()()
     for image in _foam_sequences():
@@ -202,8 +224,12 @@ def remember_foam(*_: object) -> None:
 
 
 def keep_foam(blend: Path) -> None:
-    """Simulate the foam memory and move its frames beside `blend`, where a `.blend`
-    about to be saved there finds them, as Blender keeps a simulation's bake."""
+    """Simulate the foam memory and move its frames beside a `.blend` about to be
+    saved, where it finds them, as Blender keeps a simulation's bake.
+
+    Args:
+        blend: Where the `.blend` will be saved; the frames go in `<name>.foam/`.
+    """
     remember_foam()
     # A rebuild without foam leaves no frames of the last one beside it.
     beside = blend.with_suffix(".foam")
@@ -228,7 +254,8 @@ def foam_frames(
     simulated before the first render, breaking at Monahan's cover for the mean wind.
 
     No gust moves the threshold: whitecaps break off the drawn waves, which grow too
-    slowly to follow a gust (Plant 1982); `wind._gusty` holds them at the mean wind."""
+    slowly to follow a gust (Plant 1982); `wind._gusty` holds them at the mean wind.
+    """
     drift = surface_drift(sea, outputs)
     fraction = whitecap_fraction(sea.wind_speed_mps)
     if remember_foam not in bpy.app.handlers.render_pre:

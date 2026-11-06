@@ -121,9 +121,12 @@ def _table() -> tuple[FloatArray, FloatArray, FloatArray]:
 def optical_constants(
     t_k: float = T_SEA_K,
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Wavelength (m), n, k across the band at `t_k`, ascending in wavelength.
+    """Wavelength (m), n, k of liquid water across the band (no salinity correction),
+    ascending in wavelength.
 
-    Linearly interpolated between the table's steps and clamped outside its span.
+    Args:
+        t_k: Water temperature, interpolated linearly between the table's steps and
+            clamped outside its span.
     """
     grid, temperatures, nk = _table()
     t = float(np.clip(_checked_kelvin(t_k), temperatures[0], temperatures[-1]))
@@ -152,10 +155,16 @@ def planck(lam_m: npt.ArrayLike, t_k: float) -> FloatArray:
 def fresnel_emissivity(
     theta_rad: npt.ArrayLike, n: npt.ArrayLike, k: npt.ArrayLike
 ) -> FloatArray:
-    """Unpolarised emissivity 1-R at incidence `theta_rad` from vacuum.
+    """Unpolarised emissivity 1-R at incidence from vacuum.
 
     numpy's complex sqrt takes the correct branch, so grazing needs no special case.
     Inputs broadcast, so angle and wavelength can be evaluated as a grid.
+
+    Args:
+        theta_rad: Angle between the ray and the surface normal; pi / 2 is grazing.
+        n: Real part of the complex refractive index, which sets the phase speed.
+        k: Imaginary part, the extinction coefficient, which damps the wave inside
+            the water. A scalar-IOR Fresnel, Blender's, drops it.
     """
     n_c = np.asarray(n, dtype=np.float64) + 1j * np.asarray(k, dtype=np.float64)
     theta = np.asarray(theta_rad, dtype=np.float64)
@@ -176,16 +185,19 @@ def emissivity_curve(
 ) -> tuple[FloatArray, FloatArray]:
     """Planck-weighted, band-integrated emissivity against viewing zenith (rad).
 
-    `slope_sigma` is the RMS slope per axis the renderer does *not* resolve; at 0 this
-    is flat-surface Fresnel. Above 0 it averages Fresnel over facets with Gaussian
-    slopes, weighted by the area each presents to the viewer,
-    which is the Masuda 1988 construction. Only the unresolved slope belongs here:
-    slope the wave normals carry is applied per pixel by the shader, and integrating it
-    again would count it twice.
+    A rough sea averages Fresnel over facets with Gaussian slopes, weighted by the area
+    each presents to the viewer, which is the Masuda 1988 construction.
 
     Shadowing between facets and reflections from one facet to another are not
     included; both raise emissivity further at grazing, so this is a lower bound there.
     Wu & Smith put the multiple-reflection term at 0.02-0.03 around 73 deg.
+
+    Args:
+        t_sea_k: Sea temperature, which sets the optical constants and Planck weight.
+        slope_sigma: RMS slope per axis the renderer does not resolve; at 0 this is
+            flat-surface Fresnel. Only the unresolved slope belongs here: slope the
+            wave normals carry is applied per pixel by the shader, and integrating it
+            again would count it twice.
     """
     theta, table = _flat_curve(t_sea_k)
     if slope_sigma <= 0.0:
@@ -239,11 +251,15 @@ def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
 
 @functools.lru_cache(maxsize=64)
 def _facets(slope_sigma: float) -> FloatArray:
-    """Unit normals of facets whose slopes are Gaussian, `slope_sigma` per axis.
+    """Unit normals of facets whose slopes are Gaussian.
 
     On a grid of the normal's quantiles: a random draw's error would be a bias every
     pixel shares. The grid's midpoints stop short of the tails, so it is rescaled to
     the sigma.
+
+    Args:
+        slope_sigma: RMS slope per axis: Cox & Munk's total over sqrt(2) on an
+            isotropic sea.
     """
     side = math.isqrt(FACET_SAMPLES)
     quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(side) + 0.5) / side)
@@ -260,7 +276,8 @@ def _seen_area(cos_i: FloatArray, normal: FloatArray) -> FloatArray:
 
 class Sky:
     """A sky to reflect off a rough sea: `radiance` at the ascending
-    `elevation_rad`, with trailing axes, one sky per column."""
+    `elevation_rad`, with trailing axes, one sky per column.
+    """
 
     def __init__(self, elevation_rad: npt.ArrayLike, radiance: npt.ArrayLike) -> None:
         self.elevation = np.asarray(elevation_rad, dtype=np.float64)
@@ -280,8 +297,8 @@ class Sky:
         slope_sigma: float = 0.0,
         view_rad: npt.ArrayLike | None = None,
     ) -> FloatArray:
-        """The sky a rough sea reflects, against the elevation of the viewer's mirror
-        direction; the result carries the sky's trailing axes after the mirror's.
+        """The sky a rough sea reflects; the result carries the sky's trailing axes
+        after the mirror's.
 
         Masuda 1988's facet average, applied to the reflected sky: each facet reflects
         the sky in its own mirror direction, weighted by the area it presents to the
@@ -291,10 +308,16 @@ class Sky:
         view's incidence. A reflection below the horizon reads the sky's lowest
         elevation, as the world does.
 
-        The facets lean about a wave the pixel draws: `view_rad` is the view's
-        elevation off that wave's plane, `mirror_rad` its mirror's off the horizon.
-        They differ by the wave's tilt along the view, which turns every facet's
-        reflection with it. Unset, the wave is level and the two are one.
+        The facets lean about a wave the pixel draws. The view's elevation off that
+        wave's plane and its mirror's off the horizon differ by the wave's tilt along
+        the view, which turns every facet's reflection with it.
+
+        Args:
+            mirror_rad: Elevation of the viewer's mirror direction off the horizon.
+            t_sea_k: Sea temperature, which sets each facet's reflectance.
+            slope_sigma: RMS slope per axis of the facets; at 0 the sea is a mirror.
+            view_rad: The view's elevation off the drawn wave's plane. Unset, the wave
+                is level and this is `mirror_rad`.
         """
         mirror = np.asarray(mirror_rad, dtype=np.float64)
         trailing = self.radiance.shape[1:]
@@ -351,7 +374,7 @@ _BAND_LAM = np.linspace(*BAND_M, 512)
 def band_radiance(t_k: float) -> float:
     """Blackbody radiance integrated over the band, W m^-2 sr^-1.
 
-    On its own grid: the seawater table's ends land inside the band and integrate low.
+    On its own grid: the water table's ends land inside the band and integrate low.
     """
     return float(np.trapezoid(planck(_BAND_LAM, t_k), _BAND_LAM))
 
@@ -391,11 +414,15 @@ def sky_radiance(
     t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """Downwelling in-band sky radiance at an elevation above the horizon, under air at
-    `t_air_k`, or the atmosphere's own.
+    """Downwelling in-band sky radiance.
 
     Below the horizon the curve holds at ambient, which is what a ray that misses the
     sea should see.
+
+    Args:
+        elev_rad: Elevation above the horizon.
+        t_air_k: Surface air temperature; unset, the atmosphere's own.
+        atmosphere: The model atmosphere whose tables are read.
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
@@ -453,13 +480,19 @@ def cloud_height_m(
     cloud_base_m: float,
     depth_m: float,
 ) -> FloatArray:
-    """How far over its base a line of sight at `elev_rad` meets a cloud whose bottom
-    shows at `bottom_rad`: on the side it turns to the camera, as far off as its base
-    under that bottom, and no further than its `depth_m`. A bottom at or under the
-    horizon is out of sight: the base.
+    """How far over its base a line of sight meets a cloud: on the side it turns to
+    the camera, as far off as its base under its bottom.
 
     On a flat Earth: the curve matters only near the horizon, where the air in front
     hides the cloud.
+
+    Args:
+        elev_rad: Elevation of the line of sight.
+        bottom_rad: Elevation at which the cloud's bottom shows. At or under the
+            horizon it is out of sight, and the answer is the base.
+        cloud_base_m: Height of the cloud base above the sea, which puts a cloud of
+            a given bottom elevation that far off.
+        depth_m: The cloud's thickness, base to top, which caps the answer.
     """
     elev = np.asarray(elev_rad, dtype=np.float64)
     bottom = np.asarray(bottom_rad, dtype=np.float64)
@@ -476,12 +509,20 @@ def cloudy_sky_radiance(
     atmosphere: Atmosphere = ATMOSPHERE,
     height_m: npt.ArrayLike = 0.0,
 ) -> FloatArray:
-    """`sky_radiance` with a `cloud` fraction, 0 to 1, a blackbody at the air
-    `height_m` over the cloud base: air lifted dry to the base, and the standard lapse
-    over it.
+    """`sky_radiance` partly under a cloud that is a blackbody at the air round it: air
+    lifted dry to the base, and the standard lapse over it.
 
     The cloud hides the air over its base; the air under it, LOWTRAN's path to the base,
     emits and transmits in front of the base and the side alike.
+
+    Args:
+        elev_rad: Elevation above the horizon.
+        cloud: Fraction of the sky the cloud covers, 0 to 1.
+        cloud_base_m: Height of the cloud base above the sea, where surface air
+            lifted at the dry lapse rate condenses (Wallace & Hobbs 2006).
+        t_air_k: Surface air temperature; unset, the atmosphere's own.
+        atmosphere: The model atmosphere whose tables are read.
+        height_m: Where the line of sight meets the cloud, over its base.
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
@@ -500,9 +541,16 @@ def cloudy_sky_radiance(
 def cloud_window_deficit_w_m2(
     cloud_base_m: float, t_air_k: float, atmosphere: Atmosphere = ATMOSPHERE
 ) -> float:
-    """What an overcast at `cloud_base_m` leaves short of a blackbody at the air in a
-    horizontal surface's in-band irradiance: 2 pi times the integral of the radiance
-    deficit times sin e cos e over elevation e."""
+    """What an overcast leaves short of a blackbody at the air in a horizontal
+    surface's in-band irradiance: 2 pi times the integral of the radiance deficit times
+    sin e cos e over elevation e.
+
+    Args:
+        cloud_base_m: Height of the overcast's base above the sea, which sets its
+            temperature through the dry lapse rate.
+        t_air_k: Surface air temperature.
+        atmosphere: The model atmosphere whose tables are read.
+    """
     edges = np.linspace(0.0, math.pi / 2, 91)
     elev = (edges[:-1] + edges[1:]) / 2
     deficit = band_radiance(t_air_k) - cloudy_sky_radiance(
@@ -529,7 +577,8 @@ def cirrus_sky_radiance(
 @functools.lru_cache(maxsize=1)
 def _cloud_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray, FloatArray]]:
     """Per profile: (base m ascending, elevation deg, path, transmittance), the last two
-    shaped (base, elevation)."""
+    shaped (base, elevation).
+    """
     columns = header(_CLOUD_CSV)[1:]
     bases = sorted(
         (c.removeprefix("path_") for c in columns if c.startswith("path_")),
@@ -538,24 +587,32 @@ def _cloud_table() -> dict[str, tuple[FloatArray, FloatArray, FloatArray, FloatA
     # Each base's path and transmittance by name; usecols puts elevation first.
     path_at = [1 + columns.index(f"path_{b}") for b in bases]
     trans_at = [1 + columns.index(f"trans_{b}") for b in bases]
-    base = np.array([float(b.removesuffix("m")) for b in bases])
-    names = np.loadtxt(_CLOUD_CSV, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(
-        _CLOUD_CSV, delimiter=",", comments="#", usecols=range(1, 2 + len(columns))
-    )
-    raw.setflags(write=False)
-    tables = {}
-    for name in np.unique(names):
-        rows = raw[names == name]
-        tables[str(name)] = (base, rows[:, 0], rows[:, path_at].T, rows[:, trans_at].T)
-    return tables
+    base = _frozen(np.array([float(b.removesuffix("m")) for b in bases]))
+    return {
+        name: (
+            base,
+            rows[:, 0],
+            _frozen(rows[:, path_at].T),
+            _frozen(rows[:, trans_at].T),
+        )
+        for name, rows in _by_profile(_CLOUD_CSV).items()
+    }
+
+
+def _by_profile(csv: Path) -> dict[str, FloatArray]:
+    """Each profile's rows of a LOWTRAN table, past the column that names it."""
+    names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
+    cols = range(1, 1 + len(header(csv)))
+    raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=cols)
+    return {str(name): _frozen(raw[names == name]) for name in np.unique(names)}
 
 
 def _under_base(
     elev_rad: FloatArray, cloud_base_m: float, atmosphere: Atmosphere
 ) -> tuple[FloatArray, FloatArray]:
     """The air under a cloud base: its band radiance over the horizon's, and its
-    transmittance, at each elevation."""
+    transmittance, at each elevation.
+    """
     base, elev, path, trans = _cloud_table()[atmosphere]
     at = np.radians(elev)
     path_at = [np.interp(cloud_base_m, base, column) for column in path.T]
@@ -568,9 +625,15 @@ def haze_depth(
     visibility_km: float | None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """The maritime haze's optical depth looking up at `elev_rad`, linear in
-    1 / visibility, which is how LOWTRAN scales it. Under the table's shortest
-    visibility it holds."""
+    """The maritime haze's optical depth looking up, linear in 1 / visibility, which is
+    how LOWTRAN scales it.
+
+    Args:
+        elev_rad: Elevation of the line of sight.
+        visibility_km: Meteorological optical range; None is no aerosol. Under the
+            table's shortest the depth holds.
+        atmosphere: The model atmosphere whose tables are read.
+    """
     elev, inverse, depth = _depth_table(_HAZE_CSV)[atmosphere]
     x = 0.0 if visibility_km is None else min(1 / visibility_km, inverse[-1])
     column = np.array([np.interp(x, inverse, row) for row in depth])
@@ -581,7 +644,8 @@ def haze_depth(
 def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArray]]:
     """Per profile of a LOWTRAN transmittance table: (its first column, 1 / visibility
     km with 0 for no aerosol, optical depth), the optical depth shaped (rows,
-    visibility) and the visibilities ascending."""
+    visibility) and the visibilities ascending.
+    """
     columns = header(csv)[1:]
     # "vis_2km" is maritime haze and "fog_1km" advection fog, on one axis.
     km = [c.partition("_")[2].removesuffix("km") for c in columns]
@@ -594,11 +658,8 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
         thinnest = min(fogs, key=lambda i: inverse[i])
         inverse = np.append(inverse, 1 / FOG_KM)
     order = np.argsort(inverse)
-    names = np.loadtxt(csv, delimiter=",", comments="#", usecols=0, dtype=str)
-    raw = np.loadtxt(csv, delimiter=",", comments="#", usecols=range(1, 2 + len(km)))
     tables = {}
-    for name in np.unique(names):
-        rows = raw[names == name]
+    for name, rows in _by_profile(csv).items():
         # An opaque cell is as deep as a float goes.
         depth = -np.log(np.maximum(rows[:, 1:], np.finfo(np.float64).tiny))
         if fogs:
@@ -606,9 +667,7 @@ def _depth_table(csv: Path) -> dict[str, tuple[FloatArray, FloatArray, FloatArra
             drops = (depth[:, thinnest] - clear) * inverse[-1] / inverse[thinnest]
             depth = np.column_stack([depth, clear + drops])
         depth = depth[:, order]
-        rows.setflags(write=False)
-        depth.setflags(write=False)
-        tables[str(name)] = (rows[:, 0], inverse[order], depth)
+        tables[name] = (rows[:, 0], _frozen(inverse[order]), _frozen(depth))
     return tables
 
 

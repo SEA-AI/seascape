@@ -24,6 +24,7 @@ class _RigObjects(NamedTuple):
 
 
 def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
+    """The scenario's rigs and cameras under one root, each seeing to `far_m`."""
     root = bpy.data.objects.new("rigs", None)
     bpy.context.collection.objects.link(root)
     place(root, 0.0, 0.0, 0.0)
@@ -90,9 +91,7 @@ def views(
     found = []
     for frame, t_s in enumerate(scenario.outputs.times_s):
         sc.frame_set(frame)
-        for mount in scenario.mounts:
-            if mount.camera.band != band:
-                continue
+        for mount in scenario.band_mounts(band):
             data = cameras[mount.name].data
             found.append(
                 View(

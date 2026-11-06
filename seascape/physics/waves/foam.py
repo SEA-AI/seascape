@@ -87,8 +87,15 @@ WHITECAP_EXPONENT = 3.41
 def _smooth_field(
     rng: np.random.Generator, cells: int, sigma_texels: float
 ) -> np.ndarray:
-    """A periodic tile, (cells, cells), of white noise blurred by a Gaussian
-    `sigma_texels` wide, zero mean and unit variance."""
+    """A periodic tile, (cells, cells), of white noise blurred by a Gaussian, zero mean
+    and unit variance.
+
+    Args:
+        rng: Where the noise comes from.
+        cells: The tile's side, in texels.
+        sigma_texels: The blur's standard deviation; the field's autocorrelation is a
+            Gaussian sqrt(2) wider, the kernel convolved with itself.
+    """
     k = 2 * np.pi * np.fft.fftfreq(cells)
     blur = np.exp(-(k[:, None] ** 2 + k[None, :] ** 2) * sigma_texels**2 / 2)
     field = np.fft.ifft2(np.fft.fft2(rng.standard_normal((cells, cells))) * blur).real
@@ -98,7 +105,13 @@ def _smooth_field(
 
 def _cell_walls(rng: np.random.Generator, cells: int, period: int) -> np.ndarray:
     """A periodic tile, (cells, cells), of each texel's distance, in cells, from the
-    wall between its two nearest of `period`^2 random points: 0 on a wall."""
+    wall between its two nearest random points: 0 on a wall.
+
+    Args:
+        rng: Where the points and the walls' warp come from.
+        cells: The tile's side, in texels.
+        period: Points per side of the tile, period^2 in all.
+    """
     points = rng.uniform(0.0, 1.0, (period, period, 2))
     at = (np.arange(cells) + 0.5) * period / cells
     x, y = np.meshgrid(at, at, indexing="xy")
@@ -125,9 +138,18 @@ def foam_lattice_field(
     opening_length_m: float,
 ) -> np.ndarray:
     """A periodic tile of aged foam's lattice, ranked onto a unit Gaussian: highest on
-    the walls between bubbles, one Voronoi field per entry of `cell_sizes_m`, lowest in
-    ragged openings of von Karman's spectrum at `opening_length_m`. A rising threshold
-    thins the walls and widens the openings, and what is left stays a network."""
+    the walls between bubbles, lowest in ragged openings of von Karman's spectrum. A
+    rising threshold thins the walls and widens the openings, and what is left stays a
+    network.
+
+    Args:
+        rng: Where the bubbles and openings come from.
+        cells: The tile's side, in texels.
+        tile_m: The tile's side; each bubble size is rounded to divide it.
+        cell_sizes_m: Bubble sizes, one Voronoi field of walls each.
+        opening_length_m: The openings' integral scale, the length the field's
+            autocorrelation integrates to.
+    """
     walls = np.minimum.reduce(
         [_cell_walls(rng, cells, round(tile_m / size_m)) for size_m in cell_sizes_m]
     )
@@ -137,12 +159,14 @@ def foam_lattice_field(
 
 
 def whitecap_fraction(wind_speed_mps: float) -> float:
+    """The sea's whitecap cover, 0 to 1, at a 10 m wind."""
     return min(WHITECAP_COEFFICIENT * wind_speed_mps**WHITECAP_EXPONENT, 1.0)
 
 
 def _normal_cdf(z: np.ndarray) -> np.ndarray:
     """The standard normal CDF, within 1.5e-7: erf by Abramowitz & Stegun, Handbook of
-    Mathematical Functions, 7.1.26."""
+    Mathematical Functions, 7.1.26.
+    """
     x = np.abs(z) / math.sqrt(2)
     t = 1 / (1 + 0.3275911 * x)
     poly = t * (
@@ -163,7 +187,8 @@ def _laid(z: np.ndarray) -> np.ndarray:
 
 def foam_edge_g(wind: tuple[Wave, ...]) -> float:
     """The spread in g over which a crest goes from whole to broken foam, never 0,
-    which a memory divides by."""
+    which a memory divides by.
+    """
     breakers = tallest(wind, BREAKING_HEIGHT_SHARE)
     return max(WHITECAP_EDGE * math.sqrt(slope_variance(breakers)), 1e-9)
 
@@ -180,9 +205,13 @@ class FoamGrid:
 
 
 def _resolved(wind: tuple[Wave, ...], cell_m: float) -> tuple[Wave, ...]:
-    """The waves a grid of `cell_m` draws: breakers are shorter than the sea's peak
-    (Gemmrich et al. 2008), so every one long enough. A judgement: the edge a crest
-    breaks over, `foam_edge_g`, is the same on every grid; no source gives its spread.
+    """The waves a grid draws: breakers are shorter than the sea's peak (Gemmrich et al.
+    2008), so every one long enough. A judgement: the edge a crest breaks over,
+    `foam_edge_g`, is the same on every grid; no source gives its spread.
+
+    Args:
+        wind: The wind sea's waves.
+        cell_m: The grid's cell; a wave needs `FOAM_CELLS_PER_WAVE` of them.
     """
     return tuple(
         w for w in wind if 2 * math.pi / w.k_rad_m >= FOAM_CELLS_PER_WAVE * cell_m
@@ -199,7 +228,8 @@ def _drifting_rad_s(
 
 class _Crests:
     """The downward acceleration of `use`, in g, on a grid that drifts with the
-    surface: the water at grid point x is at x + v t."""
+    surface: the water at grid point x is at x + v t.
+    """
 
     def __init__(
         self, use: tuple[Wave, ...], grid: FoamGrid, drift_mps: tuple[float, float]
@@ -225,8 +255,13 @@ def foam_drift_mps(wind_speed_mps: float, downwind_rad: float) -> tuple[float, f
 
 
 def _memory_times(start_s: float, step_s: float, frames: int) -> list[float]:
-    """When a memory steps: coarse until its last fine seconds, then every `step_s`,
-    its frames from `start_s`."""
+    """When a memory steps: coarse until its last fine seconds, then at its frame rate.
+
+    Args:
+        start_s: The first frame's time.
+        step_s: The frame interval, which the fine steps before the frames keep too.
+        frames: How many frames from start_s.
+    """
     fine = math.ceil(FOAM_FINE_WARM_S / step_s)
     early = start_s - FOAM_WARM_EFOLDS * WHITECAP_AREA_EFOLD_S
     return [
@@ -244,10 +279,19 @@ def foam_memory(
     frames: int,
     threshold_g: float,
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-    """Per frame at start_s + i step_s, (rows, columns): the share of each cell foam
-    covers and the share breaking now, on `grid` drifting at `drift_mps`. A crest the
-    grid draws lays foam by the normal CDF of its acceleration over `threshold_g`, in
-    units of the edge, and the foam fades at Monahan's area e-fold.
+    """Per frame, (rows, columns): the share of each cell foam covers and the share
+    breaking now. A crest the grid draws lays foam by the normal CDF of its
+    acceleration over the threshold, in units of the edge, and the foam fades at
+    Monahan's area e-fold.
+
+    Args:
+        wind: The wind sea's waves; their breakers' slope variance sets the edge.
+        drift_mps: (east, north): the surface's drift, which the grid moves with.
+        grid: Where foam is remembered.
+        start_s: The first frame's time; frame i is at start_s + i step_s.
+        step_s: The frame interval, 1 / fps.
+        frames: How many frames to yield.
+        threshold_g: The downward acceleration at which a crest lays half cover.
     """
     use = _resolved(wind, grid.cell_m)
     crests = _Crests(use, grid, drift_mps)
@@ -269,9 +313,15 @@ def foam_memory(
 def _reference_accelerations(
     use: tuple[Wave, ...], drift_mps: tuple[float, float], step_s: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`use`'s downward acceleration, (steps, points), at points spread `SAMPLE_SPAN`
-    longest waves across, each drifting at `drift_mps` from a start of its own; and the
-    seconds before each step."""
+    """The waves' downward acceleration, (steps, points), at points spread `SAMPLE_SPAN`
+    longest waves across, each from a start of its own; and the seconds before each
+    step.
+
+    Args:
+        use: The wind waves a memory's grid draws.
+        drift_mps: (east, north): the surface's drift, which each point moves with.
+        step_s: The memory's frame interval, which sets its fine steps.
+    """
     longest_m = max(2 * math.pi / w.k_rad_m for w in use)
     slowest_s = max(2 * math.pi / w.omega_rad_s for w in use)
     x, y, t = (SAMPLE_SPAN * lattice(FOAM_REFERENCE_SAMPLES)).T
@@ -291,9 +341,16 @@ def _reference_accelerations(
 def _closed_in(
     covers: Callable[[np.ndarray], np.ndarray], wanted: np.ndarray, lo: float, hi: float
 ) -> np.ndarray:
-    """The thresholds between `lo` and `hi` at which `covers` gives `wanted`. Halved
-    first; then, where the cover at both ends is known, closed in on by the line
-    through log cover at its ends, which falls near straight with the threshold."""
+    """The thresholds at which each cover is reached. Halved first; then, where the
+    cover at both ends is known, closed in on by the line through log cover at its
+    ends, which falls near straight with the threshold.
+
+    Args:
+        covers: The cover each of an array of thresholds gives, falling as it rises.
+        wanted: The covers to reach, each in (0, 1).
+        lo: A threshold whose cover is above every wanted one.
+        hi: A threshold whose cover is below every wanted one.
+    """
     target = np.log(wanted)
     low, high = np.full(len(wanted), lo), np.full(len(wanted), hi)
     low_cover = np.full(len(wanted), np.nan)
@@ -327,10 +384,17 @@ def foam_memory_thresholds_g(
     step_s: float,
     fractions: tuple[float, ...],
 ) -> np.ndarray:
-    """The breaking thresholds at which a foam memory at `cell_m` covers each of
-    `fractions` of the sea: over points spread `SAMPLE_SPAN` longest waves across, each
-    drifting at `drift_mps` and remembering its own foam over `FOAM_REFERENCE_STEPS`
-    from a start of its own."""
+    """The breaking thresholds at which a foam memory covers each fraction of the sea:
+    over points spread `SAMPLE_SPAN` longest waves across, each remembering its own
+    foam over `FOAM_REFERENCE_STEPS` from a start of its own.
+
+    Args:
+        wind: The wind sea's waves; their breakers' slope variance sets the edge.
+        drift_mps: (east, north): the surface's drift, which each point moves with.
+        cell_m: The memory grid's cell, which sets the waves it draws.
+        step_s: The memory's frame interval, 1 / fps.
+        fractions: The covers wanted; 0 or less gives inf, 1 or more -inf.
+    """
     wanted = np.array(fractions, dtype=float)
     inside = (wanted > 0.0) & (wanted < 1.0)
     out = np.where(wanted <= 0.0, math.inf, -math.inf)

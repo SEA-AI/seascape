@@ -61,7 +61,8 @@ def baseline() -> Scenario:
 
 def presets(into: Path) -> Path:
     """Camera and rig presets of the test's own, a rig extending another, and a
-    scenario mounting it twice. Returns the rig preset."""
+    scenario mounting it twice. Returns the rig preset.
+    """
     (into / "eo.toml").write_text(
         'band = "eo"\nhfov_deg = 30.0\nwidth_px = 64\nheight_px = 36\n'
     )
@@ -139,7 +140,8 @@ def test_an_installation_takes_its_model_and_height_from_its_presets(twin) -> No
 
 def test_samples_covers_every_band() -> None:
     """`compositor.set_output` reads this with `getattr(samples, band)`, so a band added
-    to the Literal without a field here fails mid-build rather than in validation."""
+    to the Literal without a field here fails mid-build rather than in validation.
+    """
     assert set(Samples.model_fields) == set(get_args(Band.__value__))
 
 
@@ -725,6 +727,11 @@ def test_an_hdri_without_a_disc_warms_no_sunlit_side() -> None:
         _ = sky.sun_vector
 
 
+def test_a_sky_texture_has_no_photo() -> None:
+    with pytest.raises(ValueError, match="no photo"):
+        _ = Sky().photo
+
+
 def test_a_hidden_sun_sits_where_the_scenario_puts_it() -> None:
     sky = Sky.model_validate(
         {"hdri": "overcast_soil", "sun_diffuse_fraction": 0.7, "sun_elevation_deg": 20}
@@ -823,9 +830,6 @@ def test_a_log_uniform_draw_refuses_bounds_it_cannot_draw_between(
         LogUniform(log_uniform=bounds)
 
 
-SHIP = 'objects = [{ asset = "yacht", range_m = 900.0, bearing_deg = 0.0 }]'
-
-
 def test_count_makes_copies_each_drawn_anew() -> None:
     drawn = (
         'objects = [{ asset = "yacht", count = 3, '
@@ -912,7 +916,7 @@ def test_a_reversed_optical_depth_is_refused() -> None:
         load(BASELINE, [optical_depth_ship("[2.0, 1.0]")])
 
 
-def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
+def test_a_loaded_scenario_reloads_as_the_same_scene() -> None:
     """Labels carry this dump, and readers rebuild the scene from it."""
     drawn = (
         'objects = [{ asset = "yacht", count = { integer = [2, 4] }, '
@@ -1281,7 +1285,8 @@ def test_each_drawn_object_is_checked_with_its_own_asset() -> None:
 @pytest.mark.parametrize("choice", [[None, 7.0], [None]])
 def test_a_draught_choice_may_leave_it_unset(choice: list[float | None]) -> None:
     """None is the asset's own draught: it bounds nothing, and is no error. TOML has
-    no null, so only an override given as a table can hold it."""
+    no null, so only an override given as a table can hold it.
+    """
     spec = {
         "asset": "bulk_carrier",
         "range_m": 900.0,

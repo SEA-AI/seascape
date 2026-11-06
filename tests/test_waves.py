@@ -303,7 +303,8 @@ SHARP_EXCESS = 3.0
 
 def _faded_visibility(field: tuple[waves.Wave, ...], view_rad: float) -> np.ndarray:
     """Each wave's visibility to the grazing pixel at the footprint the shader's fade
-    gives it."""
+    gives it.
+    """
     axes = [waves.fade_axis(w) for w in field]
     tx = np.array([a.tx for a in axes])
     ty = np.array([a.ty for a in axes])
@@ -323,7 +324,8 @@ def _slope_variance(built: tuple[waves.Wave, ...]) -> tuple[np.ndarray, np.ndarr
 
 def _sharp_along_view(built: tuple[waves.Wave, ...], view_rad: float) -> float:
     """The slope variance a grazing pixel keeps in crests along its view, over what
-    a square pixel draws of the whole sea."""
+    a square pixel draws of the whole sea.
+    """
     slope, square = _slope_variance(built)
     seen = _faded_visibility(built, view_rad)
     toward = np.array([w.toward_rad for w in built])
@@ -336,7 +338,8 @@ def _continuous_sharp_along_view(
     built: tuple[waves.Wave, ...], wind_speed_mps: float, view_rad: float
 ) -> float:
     """`_sharp_along_view` of `built`'s frequencies spread over Elfouhaily's
-    headings continuously, the wind from north."""
+    headings continuously, the wind from north.
+    """
     steps = 41
     edges = np.linspace(-ALONG_VIEW_RAD, ALONG_VIEW_RAD, steps + 1)
     downwind = math.pi
@@ -469,7 +472,8 @@ def test_a_low_gerstner_wave_tilts_as_the_linear_one() -> None:
 @pytest.mark.parametrize("elevation_deg", [-3.0, -40.0, 4.0])
 def test_a_ray_meets_the_water_where_it_first_dips_under(elevation_deg: float) -> None:
     """Down at a grazing and a steep angle from 6 m, and up from just over the water,
-    past crests."""
+    past crests.
+    """
     tall = _tall(14.0)
     rays = 100
     rng = np.random.default_rng(3)
@@ -525,7 +529,8 @@ def test_a_foam_memory_covers_what_monahan_measured(
     wind_speed_mps: float, cell_m: float
 ) -> None:
     """Off the points its threshold was set on: three stretches of sea 200 cells and
-    10 s across."""
+    10 s across.
+    """
     wind = field(wind_speed_mps, 300.0)
     drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
     step = 1 / 12
@@ -571,7 +576,8 @@ def test_calm_air_breaks_nothing() -> None:
 def test_remembered_whitecaps_average_koepke_s_reflectance() -> None:
     """Fresh foam's reflectance while its crest breaks, thin foam's share of it after;
     averaged over the foam, on the finest grid a camera reads, Koepke's 0.22, which he
-    gives to half."""
+    gives to half.
+    """
     wind_speed_mps = 13.0
     wind = field(wind_speed_mps, 300.0)
     drift = waves.foam_drift_mps(wind_speed_mps, math.radians(120.0))
@@ -610,9 +616,8 @@ def test_a_foam_memory_covers_none_of_the_sea_or_all_of_it() -> None:
 def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected):
     wave = waves.Wave(0.5, 0.2, math.radians(toward_deg), 1.0)  # 1.5 km long
     east, north, t_s = 30.0, -40.0, 3.0
-    pitch, roll = waves.attitude(
-        (wave,), east, north, math.radians(heading_deg), 20.0, 5.0, t_s
-    )
+    hull = waves.Waterplane(east, north, math.radians(heading_deg), 20.0, 5.0)
+    pitch, roll = waves.attitude((wave,), hull, t_s)
     d_east, d_north = waves.slope((wave,), np.array(east), np.array(north), t_s)
     heading = math.radians(heading_deg)
     rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
@@ -630,7 +635,8 @@ def test_a_hull_floats_at_the_mean_of_the_water_under_it(length_m: float) -> Non
         1e-3, math.sqrt(earth.GRAVITY_MS2 * 2 * math.pi / 60.0), math.radians(30.0), 0.7
     )
     east, north, t_s = 12.0, -7.0, 2.5
-    heave = waves.heave_m((wave,), east, north, math.radians(30.0), length_m, 0.0, t_s)
+    hull = waves.Waterplane(east, north, math.radians(30.0), length_m)
+    heave = waves.heave_m((wave,), hull, t_s)
     phase = wave.k_east_rad_m * east + wave.k_north_rad_m * north
     phase -= wave.omega_rad_s * t_s - wave.phase_rad
     mean = np.sinc(wave.k_rad_m * length_m / 2 / math.pi)
@@ -641,7 +647,7 @@ def test_a_point_floats_on_the_gerstner_surface() -> None:
     tall = _tall(14.0)
     rest = waves.gerstner_rest_m(tall, np.array(30.0), np.array(-40.0), 3.0)
     water = waves.gerstner_offset_m(tall, *rest, 3.0)[2]
-    heave = waves.heave_m(tall, *map(float, rest), 1.0, 0.0, 0.0, 3.0)
+    heave = waves.heave_m(tall, waves.Waterplane(*map(float, rest), 1.0), 3.0)
     assert heave == pytest.approx(water)
 
 
@@ -653,17 +659,20 @@ def test_a_hull_pitches_with_the_water_under_it() -> None:
     hull = np.zeros(()), np.array(-wave.amplitude_m)
     rest = waves.gerstner_rest_m((wave,), *hull, 0.0)
     assert np.allclose(rest, 0.0)
-    pitch, _ = waves.attitude((wave,), *map(float, rest), 0.0, 0.0, 0.0, 0.0)
+    pitch, _ = waves.attitude((wave,), waves.Waterplane(*map(float, rest)), 0.0)
     assert pitch == pytest.approx(math.atan(-0.2))
 
 
 def test_calm_water_holds_a_hull_level() -> None:
-    assert waves.attitude((), 0.0, 0.0, 0.0, 20.0, 5.0, 0.0) == (0.0, 0.0)
+    hull = waves.Waterplane(0.0, 0.0, 0.0, 20.0, 5.0)
+    assert waves.attitude((), hull, 0.0) == (0.0, 0.0)
 
 
 def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     ripple = waves.Wave(0.05, math.sqrt(earth.GRAVITY_MS2 * 2 * math.pi), 0.3, 1.0)
-    pitch, roll = waves.attitude((ripple,), 3.0, 4.0, 0.0, 20.0, 5.0, 1.0)
+    pitch, roll = waves.attitude(
+        (ripple,), waves.Waterplane(3.0, 4.0, 0.0, 20.0, 5.0), 1.0
+    )
     own_slope = ripple.amplitude_m * ripple.k_rad_m
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
 
@@ -686,9 +695,8 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
     _, rise_along, rise_across = np.linalg.lstsq(
         plane, waves.height_m(sea, x, y, t), rcond=None
     )[0]
-    pitch, roll = waves.attitude(
-        sea, float(rest_east), float(rest_north), heading, length, beam, t
-    )
+    hull = waves.Waterplane(float(rest_east), float(rest_north), heading, length, beam)
+    pitch, roll = waves.attitude(sea, hull, t)
     assert (pitch, roll) == pytest.approx(
         (math.atan(rise_along), math.atan(rise_across)), abs=1e-5
     )
@@ -837,7 +845,8 @@ def test_a_tile_ranked_onto_a_gaussian_keeps_its_pattern_and_loses_its_skew() ->
 @pytest.mark.parametrize("share", [0.1, 0.36, 0.7])
 def test_a_foam_lattice_above_its_quantile_covers_that_share(share: float) -> None:
     """The shader keeps `share` of aged foam's area by thresholding the lattice at its
-    1 - share quantile; ranked onto a Gaussian, that is exact."""
+    1 - share quantile; ranked onto a Gaussian, that is exact.
+    """
     tile = waves.foam_lattice_field(np.random.default_rng(0), 128, 4.0, (0.5,), 0.6)
     threshold = NormalDist().inv_cdf(1 - share)
     assert (tile > threshold).mean() == pytest.approx(share, abs=1 / tile.size)
@@ -845,7 +854,8 @@ def test_a_foam_lattice_above_its_quantile_covers_that_share(share: float) -> No
 
 def test_thinning_foam_keeps_to_its_cell_walls() -> None:
     """The texels left at the lowest share lie nearer a wall than the tile's average:
-    aged foam stays a network as it thins."""
+    aged foam stays a network as it thins.
+    """
     tile = waves.foam_lattice_field(np.random.default_rng(0), 128, 4.0, (0.5,), 0.6)
     walls = waves.foam._cell_walls(np.random.default_rng(0), 128, 8)
     kept = tile > np.quantile(tile, 0.85)
@@ -855,7 +865,8 @@ def test_thinning_foam_keeps_to_its_cell_walls() -> None:
 def test_the_footprint_s_slope_spread_is_a_gaussian_sea_s() -> None:
     """Isserlis's spread against a Gaussian sea laid on a grid, whose footprints'
     mean |s|^2 is taken over its cells; the mean is the slope spectrum's integral,
-    which reaches past the grid's cells."""
+    which reaches past the grid's cells.
+    """
     speed, footprint_m, cells, cell_m = 7.0, 0.1, 1024, 0.01
     along = footprint_m * math.sqrt(waves.SPREAD_ASPECT)
     across = footprint_m / math.sqrt(waves.SPREAD_ASPECT)

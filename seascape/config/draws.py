@@ -4,10 +4,7 @@ import math
 from typing import Annotated, Any
 
 import numpy as np
-from pydantic import (
-    Field,
-    model_validator,
-)
+from pydantic import AfterValidator, Field, model_validator
 
 from seascape.model import Model
 
@@ -17,12 +14,24 @@ def substream(seed: int, name: str) -> np.random.Generator:
     return np.random.default_rng([seed, *name.encode()])
 
 
+def _require_ordered(bounds: tuple[float, float]) -> tuple[float, float]:
+    if bounds[0] > bounds[1]:
+        raise ValueError(f"bounds {bounds} are reversed")
+    return bounds
+
+
+_Positive = Annotated[float, Field(gt=0.0)]
+_Share = Annotated[float, Field(ge=0.0, le=1.0)]
+_Ordered = AfterValidator(_require_ordered)
+
+
 class Uniform(Model):
     """A float drawn evenly between two bounds."""
 
     uniform: tuple[float, float] = Field(description="The bounds.")
 
     def draw(self, rng: np.random.Generator) -> float:
+        """One value, from `rng`."""
         return float(rng.uniform(*self.uniform))
 
     def bounds(self) -> tuple[float, float]:
@@ -32,20 +41,15 @@ class Uniform(Model):
 
 class LogUniform(Model):
     """A float drawn evenly in its logarithm between two bounds: as often between 0.1
-    and 1 as between 1 and 10."""
+    and 1 as between 1 and 10.
+    """
 
-    log_uniform: tuple[
-        Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
-    ] = Field(description="The bounds, lower first.")
-
-    @model_validator(mode="after")
-    def _lower_first(self) -> "LogUniform":
-        lower, upper = self.log_uniform
-        if lower > upper:
-            raise ValueError(f"log_uniform bounds {self.log_uniform} are reversed")
-        return self
+    log_uniform: Annotated[tuple[_Positive, _Positive], _Ordered] = Field(
+        description="The bounds, lower first."
+    )
 
     def draw(self, rng: np.random.Generator) -> float:
+        """One value, from `rng`."""
         # exp(log(x)) can land an ulp below x.
         return float(
             np.clip(np.exp(rng.uniform(*np.log(self.log_uniform))), *self.log_uniform)
@@ -73,6 +77,7 @@ class Triangular(Model):
         return self
 
     def draw(self, rng: np.random.Generator) -> float:
+        """One value, from `rng`."""
         return float(rng.triangular(*self.triangular))
 
     def bounds(self) -> tuple[float, float]:
@@ -86,6 +91,7 @@ class Integer(Model):
     integer: tuple[int, int] = Field(description="The bounds, both included.")
 
     def draw(self, rng: np.random.Generator) -> int:
+        """One value, from `rng`."""
         return int(rng.integers(*self.integer, endpoint=True))
 
     def bounds(self) -> tuple[float, float]:
@@ -119,6 +125,7 @@ class Choice(Model):
         return self
 
     def draw(self, rng: np.random.Generator) -> Any:
+        """One value, from `rng`."""
         if self.weights is None:
             return self.choice[rng.integers(len(self.choice))]
         p = np.array(self.weights) / sum(self.weights)
@@ -133,34 +140,22 @@ class Choice(Model):
 
 class OpticalDepth(Model):
     """An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,
-    with a dark target keeping 5% of its contrast over `sky.visibility_km`."""
+    with a dark target keeping 5% of its contrast over `sky.visibility_km`.
+    """
 
-    optical_depth: tuple[
-        Annotated[float, Field(gt=0.0)], Annotated[float, Field(gt=0.0)]
-    ] = Field(description="The bounds, lower first, drawn evenly.")
-
-    @model_validator(mode="after")
-    def _lower_first(self) -> "OpticalDepth":
-        lower, upper = self.optical_depth
-        if lower > upper:
-            raise ValueError(f"optical_depth bounds {self.optical_depth} are reversed")
-        return self
+    optical_depth: Annotated[tuple[_Positive, _Positive], _Ordered] = Field(
+        description="The bounds, lower first, drawn evenly."
+    )
 
 
 class Loaded(Model):
     """An object's `draught_m` as how laden it is: 0 its asset's lightest draught, 1
-    its deepest, so one draw fits every asset a choice can make."""
+    its deepest, so one draw fits every asset a choice can make.
+    """
 
-    loaded: tuple[
-        Annotated[float, Field(ge=0.0, le=1.0)], Annotated[float, Field(ge=0.0, le=1.0)]
-    ] = Field(description="The bounds, lower first, drawn evenly.")
-
-    @model_validator(mode="after")
-    def _lower_first(self) -> "Loaded":
-        lower, upper = self.loaded
-        if lower > upper:
-            raise ValueError(f"loaded bounds {self.loaded} are reversed")
-        return self
+    loaded: Annotated[tuple[_Share, _Share], _Ordered] = Field(
+        description="The bounds, lower first, drawn evenly."
+    )
 
 
 DRAWS: dict[str, type[Uniform | LogUniform | Triangular | Integer | Choice]] = {

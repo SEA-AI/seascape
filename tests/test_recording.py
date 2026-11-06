@@ -9,14 +9,15 @@ import numpy as np
 import pytest
 
 from seascape.outputs import recording
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
 from seascape.physics import earth
 
 
 def rotation(roll_deg: float, pitch_deg: float, yaw_deg: float) -> np.ndarray:
     """Body to frame: yaw clockwise about +Z, then pitch bow up, then roll starboard
-    down."""
+    down.
+    """
     r, p, y = np.radians([roll_deg, pitch_deg, -yaw_deg])
     about_z = np.array(
         [[np.cos(y), -np.sin(y), 0], [np.sin(y), np.cos(y), 0], [0, 0, 1]]
@@ -49,7 +50,7 @@ RADIUS_M = earth.earth_radius_m(0.13)
 
 def make_run(into: Path, camera_yaw_deg: float) -> Path:
     """Stand-ins for a render: one camera in a pod on a rolling hull."""
-    body_to_cv = pose(recording._BODY_TO_CV)
+    body_to_cv = pose(TO_CV)
     camera_to_pod = pose(
         rotation(0, CAMERA_PITCH_DEG, camera_yaw_deg), (0.1, 0, 0)
     ) @ np.linalg.inv(body_to_cv)
@@ -206,7 +207,8 @@ def _core_imu_horizon(
 ) -> np.ndarray:
     """Core-Backend's IMU horizon, ported: the CSV's roll and pitch with its yaw
     zeroed, turned by the camera's rpy, and projected. Core leaves out the horizon's
-    `dip`, which reads as the camera pitched up by it."""
+    `dip`, which reads as the camera pitched up by it.
+    """
     imu = _core_rotation(
         math.radians(float(row["roll"])), math.radians(float(row["pitch"])), 0.0
     )
@@ -224,7 +226,8 @@ def _core_imu_horizon(
 
 def test_core_draws_the_imu_horizon_on_the_rendered_one(tmp_path: Path) -> None:
     """Boresight only: Core turns the IMU by the camera in the order that holds for a
-    small angle, and a camera yawed in its pod is not one."""
+    small angle, and a camera yawed in its pod is not one.
+    """
     run = make_run(tmp_path, camera_yaw_deg=0.0)
     recording.export(run)
     (folder,) = run.glob("recordings/port/*")

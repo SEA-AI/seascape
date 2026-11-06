@@ -1,5 +1,6 @@
 """Two rigs of several cameras: where each sits and points, and the panoramas stitched
-from them. One global Blender session, so it is built once."""
+from them. One global Blender session, so it is built once.
+"""
 
 import json
 import math
@@ -14,6 +15,7 @@ from mathutils import Matrix, Vector
 
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
+from seascape.blender.meshes import mesh_objects
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.vessels import waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
@@ -74,7 +76,7 @@ def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
     tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
     t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
     rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
-    ridden = waves.heave_m(tall, *map(float, rest), 0.0, 0.0, 0.0, t_s)
+    ridden = waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
 
     assert tuple(anchor.location) == pytest.approx((0.0, 0.0, ridden))
 
@@ -106,10 +108,7 @@ def test_hulls_of_one_asset_share_its_meshes(built: scene.Built) -> None:
     """Clones share datablocks; copied meshes show only when a build runs out of RAM."""
     assert SCENARIO.targets is not None
     for asset, anchors in built.targets.items():
-        meshes = {
-            frozenset(p.data.name for p in a.children_recursive if p.type == "MESH")
-            for a in anchors
-        }
+        meshes = {frozenset(p.data.name for p in mesh_objects([a])) for a in anchors}
 
         assert len(meshes) == 1, asset
     assert len(targets()) == SCENARIO.targets.count
@@ -189,7 +188,7 @@ def test_in_its_rig_a_camera_points_exactly_as_asked(
 
 
 def test_a_calibration_records_its_camera_s_pitch(built: scene.Built) -> None:
-    mount = next(m for m in SCENARIO.mounts if m.camera.band == "ir")
+    mount = SCENARIO.band_mounts("ir")[0]
     sensor = Microbolometer(pitch_um=17.0, f_number=1.0)
     pitched = mount._replace(
         camera=mount.camera.model_copy(update={"microbolometer": sensor})
@@ -295,7 +294,8 @@ def test_a_bearing_lands_where_the_stitch_put_it(
 ) -> None:
     """A dot right of each principal point, found in the stitch, against the column
     its ray's bearing maps to. Off centre, so a mirrored mapping finds no dot; on a
-    pitched camera, so the mapping is held independent of elevation."""
+    pitched camera, so the mapping is held independent of elevation.
+    """
     cameras = [scene.calibrate(built, m, f"{m.name}.png") for m in first_rig_mounts()]
     for camera in cameras:
         frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)

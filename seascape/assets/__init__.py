@@ -12,7 +12,7 @@ from abc import abstractmethod
 from collections import Counter
 from functools import cache
 from pathlib import Path, PurePosixPath
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Literal, override
 
 from pydantic import Field, TypeAdapter, field_validator, model_validator
 
@@ -31,7 +31,8 @@ ISLAND_ID = r"^(0|[1-9][0-9]*)$"
 
 class File(FrozenModel):
     """A file fetched from `url` and checked against `sha256`: one a mesh reads beside
-    itself, such as a glTF's buffer or a texture, or a sky photo."""
+    itself, such as a glTF's buffer or a texture, or a sky photo.
+    """
 
     url: str
     sha256: str = Field(pattern=SHA256)
@@ -43,7 +44,8 @@ Range = Annotated[tuple[float, float], Field(description="Lowest and highest, 0-
 class Rule(FrozenModel):
     """A zone for the islands of one material whose means of its Principled BSDF
     inputs all fall in the given ranges. Scoped to a material, since a map one slot
-    gets right another may not."""
+    gets right another may not.
+    """
 
     material: str
     zone: ZoneName
@@ -61,6 +63,7 @@ class Rule(FrozenModel):
 
     @property
     def ranges(self) -> dict[str, tuple[float, float]]:
+        """Each input's range, for those the rule bounds."""
         channels = ("metallic", "roughness", "alpha")
         return {k: v for k in channels if (v := getattr(self, k)) is not None}
 
@@ -151,7 +154,8 @@ class _Mesh(FrozenModel):
 
     @property
     @abstractmethod
-    def size(self) -> str: ...
+    def size(self) -> str:
+        """How big it is, in words."""
 
     @property
     def textures(self) -> str:
@@ -198,10 +202,12 @@ class Hull(_Mesh):
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.length_m / size[1]
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.length_m:.3g} m long"
 
@@ -214,10 +220,12 @@ class Buoy(_Mesh):
     height_m: float = Field(gt=0.0)
     bow_deg: ClassVar[float] = 0.0
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.height_m / size[2]
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.height_m:.3g} m tall"
 
@@ -230,10 +238,12 @@ class Debris(_Mesh):
     length_m: float = Field(gt=0.0)
     bow_deg: ClassVar[float] = 0.0
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.length_m / max(size[0], size[1])
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.length_m:.3g} m long"
 
@@ -260,7 +270,8 @@ class Rotor(FrozenModel):
 
     def rpm(self, hub_mps: float) -> float:
         """At the hub's wind: parked outside cut-in and cut-out, else the speed that
-        holds the tip-speed ratio, between minimum and rated."""
+        holds the tip-speed ratio, between minimum and rated.
+        """
         if not self.cut_in_mps <= hub_mps <= self.cut_out_mps:
             return 0.0
         tracking = 60.0 * self.tip_speed_ratio * hub_mps / (math.pi * self.diameter_m)
@@ -279,9 +290,11 @@ class Turbine(_Mesh):
     bow_deg: float = 0.0
     rotor: Rotor
 
+    @override
     def scale(self, size: tuple[float, float, float]) -> float:
         return self.height_m / size[2]
 
+    @override
     def centre(
         self, low: tuple[float, float, float], high: tuple[float, float, float]
     ) -> tuple[float, float]:
@@ -290,6 +303,7 @@ class Turbine(_Mesh):
         return 0.0, 0.0
 
     @property
+    @override
     def size(self) -> str:
         return f"{self.rotor.diameter_m:.3g} m rotor"
 
@@ -299,12 +313,14 @@ type Asset = Annotated[Hull | Buoy | Debris | Turbine, Field(discriminator="kind
 
 @cache
 def manifest() -> dict[str, Asset]:
+    """Every mesh in the manifest, by name."""
     with MANIFEST.open("rb") as handle:
         body = tomllib.load(handle)
     return TypeAdapter(dict[str, Asset]).validate_python(body)
 
 
 def digest(path: Path) -> str:
+    """`path`'s SHA-256, as the manifest records it."""
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
@@ -333,6 +349,7 @@ def local(name: str) -> Path:
 
 
 def cache_path(name: str, url: str) -> Path:
+    """Where the cache keeps `name`, with the suffix its download carries."""
     return CACHE / f"{name}{PurePosixPath(url).suffix}"
 
 

@@ -13,6 +13,7 @@ from seascape.blender.blend import (
     Num,
     combine,
     feed,
+    node,
     scalar,
     set_value,
     switch,
@@ -27,34 +28,36 @@ type Socket = bpy.types.NodeSocket
 
 
 def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
-    node = tree.nodes.new("CompositorNodeTranslate")
-    node.inputs["X"].default_value, node.inputs["Y"].default_value = x, y
-    node.inputs["Interpolation"].default_value = "Nearest"
+    shift = tree.nodes.new("CompositorNodeTranslate")
+    shift.inputs["X"].default_value, shift.inputs["Y"].default_value = x, y
+    shift.inputs["Interpolation"].default_value = "Nearest"
     # Repeat would move the image's domain, and the frame with it, by the shift.
-    node.inputs["Extension X"].default_value = "Extend"
-    node.inputs["Extension Y"].default_value = "Extend"
-    tree.links.new(image, node.inputs["Image"])
+    shift.inputs["Extension X"].default_value = "Extend"
+    shift.inputs["Extension Y"].default_value = "Extend"
+    tree.links.new(image, shift.inputs["Image"])
     # An operation takes its first input's domain: the image's own, not the shifted
     # one, whose first row or column would otherwise copy its neighbour.
-    return vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), node.outputs["Image"])
+    return vector(
+        tree, "ADD", vector(tree, "SCALE", image, 0.0), shift.outputs["Image"]
+    )
 
 
 def _rgb(tree: bpy.types.NodeTree, r: Socket, g: Socket, b: Socket) -> Socket:
-    node = tree.nodes.new("CompositorNodeCombineColor")
-    for socket, channel in zip(("Red", "Green", "Blue"), (r, g, b), strict=True):
-        tree.links.new(channel, node.inputs[socket])
-    return node.outputs["Image"]
+    combined = node(
+        tree, "CompositorNodeCombineColor", {"Red": r, "Green": g, "Blue": b}
+    )
+    return combined.outputs["Image"]
 
 
 def _channels(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, ...]:
-    node = tree.nodes.new("CompositorNodeSeparateColor")
-    tree.links.new(image, node.inputs["Image"])
-    return node.outputs["Red"], node.outputs["Green"], node.outputs["Blue"]
+    split = node(tree, "CompositorNodeSeparateColor", {"Image": image})
+    return split.outputs["Red"], split.outputs["Green"], split.outputs["Blue"]
 
 
 def _bilinear(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     """Bilinear interpolation's kernels with the centre at 1: red and blue through
-    [1 2 1] / 2 across and down, green through its four neighbours at a quarter."""
+    [1 2 1] / 2 across and down, green through its four neighbours at a quarter.
+    """
     across = vector(tree, "ADD", _shift(tree, image, 1, 0), _shift(tree, image, -1, 0))
     rows = vector(tree, "MULTIPLY_ADD", across, (0.5, 0.5, 0.5), image)
     filled = vector(
@@ -95,9 +98,24 @@ def _read(
     dark: Num,
     levels: Num,
 ) -> Num:
-    """One colour's read of a mean `x`, in units of white. Poissonian-Gaussian (Foi
-    et al. 2008): shot noise of variance shot * x, then the well fills, then dark
-    noise of standard deviation `dark`."""
+    """One colour's read of a mean, in units of white. Poissonian-Gaussian (Foi et
+    al. 2008): shot noise of variance shot * x, then the well fills, then dark noise.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        x: The mean light, in units of white.
+        w: White Noise's fourth coordinate; a read at its own w draws noise
+            independent of every other.
+        seeded: The pixel's coordinates shifted by the seed, so a new seed draws new
+            noise.
+        shot: 1 over the electrons that fill the ADC: Poisson noise's variance per
+            unit of x.
+        well: The most charge a site holds, in units of white: the gain, since the
+            ADC fills at the well over the gain.
+        dark: Dark noise's standard deviation in units of white, the same at any
+            light.
+        levels: The ADC's count at white, 2^bits - 1.
+    """
     shot_noise, dark_noise = _gaussian(tree, seeded, w)
     noisy = dark.madd(dark_noise, _electrons(x, shot, well, shot_noise))
     counts = (noisy * levels).op("ROUND")
@@ -105,8 +123,14 @@ def _read(
 
 
 def _unsaturated(read: Num, dark_variance: Num) -> Num:
-    """1 where `read` did not saturate, else 0: a read within three times a saturated
-    read's spread of white, here at most the dark noise, counts as saturated."""
+    """1 where a read did not saturate, else 0.
+
+    Args:
+        read: The read, in units of white.
+        dark_variance: Dark noise's variance. A read within three of its standard
+            deviations of white counts as saturated: a saturated read spreads no
+            more than the dark noise.
+    """
     return read.op("LESS_THAN", dark_variance.op("SQRT").madd(-3.0, 1.0))
 
 
@@ -122,7 +146,8 @@ def _merge(
     """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
     its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
     a long read that saturated is left out. The ADC's rounding,
-    (1 / levels)^2 / 12, keeps a noiseless read finite."""
+    (1 / levels)^2 / 12, keeps a noiseless read finite.
+    """
     floor = dark_variance + (1.0 / 12) / (levels * levels)
     long_weight = unsaturated / long.madd(shot, floor)
     short_weight = 1.0 / (short.madd(shot, floor) * (ratio * ratio))
@@ -132,8 +157,13 @@ def _merge(
 
 
 def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Num) -> tuple[Num, Num]:
-    """Two independent standard normals per pixel and `w`: Box & Muller 1958 from
-    two uniforms."""
+    """Two independent standard normals: Box & Muller 1958 from two uniforms.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        pixel: The White Noise position; each pixel draws its own.
+        w: White Noise's fourth coordinate; each value draws its own.
+    """
     uniforms = []
     for offset in (0.0, 0.5):
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
@@ -153,9 +183,15 @@ def chain(
     pixel: Socket,
     grey: Socket,
 ) -> Socket:
-    """`image` as the sensor reads it out, in units of its white; `pixel` is the
-    image's integer pixel coordinates, and `grey` where auto-exposure put the
-    log-average, which HDR's tone map keeps."""
+    """An image as the sensor reads it out, in units of its white.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        image: The light on the sensor, in units of its white.
+        pixel: The image's integer pixel coordinates, which set the Bayer colour
+            and seed the noise.
+        grey: Where auto-exposure put the log-average, which HDR's tone map keeps.
+    """
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
     # RGGB from the bottom-left pixel; no phase changes a statistic.
@@ -243,8 +279,12 @@ def chain(
 
 
 def _fixed_gains(error_k: float) -> tuple[float, ...]:
-    """The fixed balance's gains for `error_k`. dcraw's: the smallest gain is 1, so
-    what clipped white stays white."""
+    """The fixed balance's gains. dcraw's: the smallest gain is 1, so what clipped
+    white stays white.
+
+    Args:
+        error_k: How far above D65 the camera guesses D65 light to be.
+    """
     gains = colour.white_balance_gains(error_k)
     return tuple(gain / min(gains) for gain in gains)
 
@@ -259,14 +299,18 @@ def _largest_fixed_gain() -> float:
 
 
 def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socket:
-    """Gains that make the mean of `image` grey (Buchsbaum 1980). It counts only
-    pixels below `ratio` whites in every colour, where the last read saturates. The
-    smallest gain is 1, as in the fixed balance. Each gain is at most the largest the
-    fixed balance gives.
+    """Gains that make an image's mean grey (Buchsbaum 1980). The smallest gain is 1,
+    as in the fixed balance. Each gain is at most the largest the fixed balance gives.
 
     Limitation: it judges a pixel by the light before noise and before the frame is
     dimmed by the gains' luminance. So noise never takes a pixel across white, and
     one the dimming takes below white is still left out.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        image: The light on the sensor, in units of its white.
+        ratio: Where the last read saturates, in whites. Only pixels below it in
+            every colour count.
     """
     r, g, b = (
         Num(tree, channel).op("LESS_THAN", ratio) for channel in _channels(tree, image)
@@ -293,8 +337,7 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
 
 def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket]:
     """`image`'s luminance, kept off 0, and its log-average (Reinhard et al. 2002)."""
-    luminance = tree.nodes.new("CompositorNodeRGBToBW")
-    tree.links.new(image, luminance.inputs["Image"])
+    luminance = node(tree, "CompositorNodeRGBToBW", {"Image": image})
     # Blender's log of 0 is 0, which would count black as a luminance of 1.
     lit = Num(tree, luminance.outputs["Val"]).op("MAXIMUM", 1e-6)
     levels = tree.nodes.new("CompositorNodeLevels")
@@ -304,9 +347,15 @@ def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket
 
 
 def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
-    """Reinhard et al. 2002's global operator on luminance, L / (1 + L), with the
-    log-average at `grey`: Blender's Tonemap compresses each channel, which bleaches
-    a bright colour."""
+    """Reinhard et al. 2002's global operator on luminance, L / (1 + L): Blender's
+    Tonemap compresses each channel, which bleaches a bright colour.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        image: The linear image to tone.
+        grey: The output the log-average maps to: Reinhard's key a solves
+            a / (1 + a) = grey.
+    """
     lit, average = (Num(tree, s) for s in log_average(tree, image))
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     capped = Num(tree, grey).op("MINIMUM", 0.99)

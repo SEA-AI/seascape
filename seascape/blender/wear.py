@@ -1,5 +1,6 @@
 """Wear attributes written at import, in the fitted hull frame: metres, bow +Y,
-waterline z = 0."""
+waterline z = 0.
+"""
 
 from typing import NamedTuple
 
@@ -44,6 +45,8 @@ class Weights(NamedTuple):
 
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
+# What covers the surface, bottom up; `fade` only tints the paint.
+COVERS = ("grime", "rust", "stain", "soot")
 
 # Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
 # one; cloth sags and flexes, so water runs off it without leaving a streak.
@@ -73,7 +76,8 @@ def weights(material: Material) -> np.ndarray:
 
 def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     """Each point's depth below the highest point of its zone over the same patch of
-    plan: for a hull side the sheer, for a house wall its roof edge."""
+    plan: for a hull side the sheer, for a house wall its roof edge.
+    """
     # shortcut: a plan grid, not a walk up the surface; a tier stepped back by less
     # than a patch reads its upper tier's edge.
     length_m = float(np.ptp(position_m[:, :2], axis=0).max())
@@ -155,9 +159,13 @@ def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> 
 
 
 def unwrap(objects: list[bpy.types.Object]) -> None:
-    """One atlas over every mesh in `objects`, written as the corner attribute UV;
-    their own UV maps stay as they were. A shared mesh is split first, so each object
-    has texels of its own."""
+    """One atlas over every mesh, written as the corner attribute UV; their own UV maps
+    stay as they were. A shared mesh is split first, so each object has texels of its
+    own.
+
+    Args:
+        objects: What to lay out; those that are not meshes with faces are skipped.
+    """
     meshes = [o for o in objects if o.type == "MESH" and o.data.polygons]
     if not meshes:
         return
@@ -199,8 +207,13 @@ def unwrap(objects: list[bpy.types.Object]) -> None:
 
 
 def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
-    """The crevice mask over `joined`, every mesh of one asset in metres, into an
-    image sized to TEXEL_M on its atlas."""
+    """The crevice mask over an asset, into an image sized to TEXEL_M on its atlas.
+
+    Args:
+        joined: Every mesh of the asset as one, in metres, with the atlas `unwrap`
+            wrote.
+        name: Names the baked image and the bake's throwaway material.
+    """
     mesh = joined.data
     n_loops = len(mesh.loops)
     uv = faces.floats(mesh.attributes[UV].data, "vector", 3 * n_loops).reshape(-1, 3)
@@ -214,12 +227,8 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     occlusion = node(t, "ShaderNodeAmbientOcclusion", only_local=True)
     occlusion.inputs["Distance"].default_value = CREVICE_M
     crevice = _smooth(1.0 - Num(t, occlusion.outputs["AO"]), 0.05, 0.6)
-    emission = node(t, "ShaderNodeEmission")
-    feed(t, emission.inputs["Color"], crevice)
-    t.links.new(
-        emission.outputs["Emission"],
-        node(t, "ShaderNodeOutputMaterial").inputs["Surface"],
-    )
+    emission = node(t, "ShaderNodeEmission", {"Color": crevice})
+    node(t, "ShaderNodeOutputMaterial", {"Surface": emission.outputs["Emission"]})
     t.nodes.active = node(t, "ShaderNodeTexImage", image=image)
     mesh.materials.clear()
     mesh.materials.append(material)
@@ -297,20 +306,13 @@ class _Masks:
         bad = _smooth(self.noise(0.04, 21.0, 2.0), 0.3, 0.7)
         self.region = bad.madd(1.3, 0.2)
 
-    def noise(
-        self,
-        per_m: float,
-        offset: float,
-        detail: float = 6.0,
-        stretch: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> Num:
-        """`stretch` scales the features per axis."""
+    def noise(self, per_m: float, offset: float, detail: float = 6.0) -> Num:
         t = self.tree
         made = node(
             t,
             "ShaderNodeTexNoise",
             {
-                "Vector": vector(t, "MULTIPLY", self.position, stretch),
+                "Vector": self.position,
                 "Scale": per_m,
                 "Detail": detail,
                 "W": self.offset + offset,
@@ -420,7 +422,8 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
 
 def mark(anchor: bpy.types.Object, amount: float, rng: np.random.Generator) -> None:
     """Give a hull's meshes their wear and a noise offset of their own, so copies of
-    one asset wear apart."""
+    one asset wear apart.
+    """
     offset = float(rng.uniform(0.0, 1000.0))
     for part in anchor.children_recursive:
         if part.type == "MESH":
@@ -437,6 +440,7 @@ SOOT = (0.015, 0.014, 0.013, 1.0)
 
 
 def dirty(parts: list[bpy.types.Object]) -> None:
+    """Dirty every material of `parts` by their asset's baked crevices."""
     meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
     crevice = meshes[0][CREVICE]
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:
@@ -456,7 +460,8 @@ def _source(
 def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     """A second dielectric BSDF, not a tinted one: tinting a metallic surface colours
     its mirror (rust reads as copper), and mixing the one BSDF's inputs would need
-    Metallic, Roughness and Coat mixed in every material."""
+    Metallic, Roughness and Coat mixed in every material.
+    """
     t = material.node_tree
     shader = faces.bsdf(material)
     if shader is None:
@@ -481,10 +486,8 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     stain.inputs["A"].default_value = STAIN
     stain.inputs["B"].default_value = STAIN_STEEL
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
-    for layer, albedo in (
-        ("rust", RUST),
-        ("stain", stain.outputs["Result"]),
-        ("soot", SOOT),
+    for layer, albedo in zip(
+        COVERS[1:], (RUST, stain.outputs["Result"], SOOT), strict=True
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")
         feed(t, mix.inputs["Factor"], cover[layer])
@@ -499,11 +502,9 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         if name != "Normal" or shader.inputs[name].is_linked:
             feed(t, dirt.inputs[name], _source(shader.inputs[name]))
 
-    total = (
-        cover["grime"]
-        .op("MAXIMUM", cover["rust"])
-        .op("MAXIMUM", cover["stain"].op("MAXIMUM", cover["soot"]))
-    )
+    total = cover["grime"]
+    for layer in COVERS[1:]:
+        total = total.op("MAXIMUM", cover[layer])
     consumers = [link.to_socket for link in shader.outputs["BSDF"].links]
     mixed = mix_shader(t, total, shader.outputs["BSDF"], dirt.outputs["BSDF"])
     for socket in consumers:

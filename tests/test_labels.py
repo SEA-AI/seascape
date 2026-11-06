@@ -301,7 +301,8 @@ def test_a_wide_targets_flanks_reach_half_its_width() -> None:
 
 def test_no_pixel_within_the_gap_is_a_flank() -> None:
     """A hull with a mast: the mast's rows reach past the gap beside the mast, but not
-    into the gap above the hull."""
+    into the gap above the hull.
+    """
     index = np.zeros((48, 64), dtype=int)
     index[15:20, 20:40] = 1
     index[8:15, 28:32] = 1
@@ -318,7 +319,8 @@ def test_no_pixel_within_the_gap_is_a_flank() -> None:
 
 def test_a_target_near_the_left_edge_keeps_the_flank_it_has() -> None:
     """Its left flank would reach past column 0: it is cut there, not lost or
-    wrapped round to the right edge."""
+    wrapped round to the right edge.
+    """
     index = square(left=10)
 
     beside = labels.flanks(index, 1)
@@ -334,7 +336,8 @@ def test_each_row_is_judged_against_its_own_background(
     swapped: bool, seen: bool
 ) -> None:
     """Across the horizon a target the colour of its row's sky or sea is unseen, though
-    it differs from its surroundings as a whole."""
+    it differs from its surroundings as a whole.
+    """
     index = square()
     sky, sea = (60, 200) if swapped else (200, 60)
     frame = np.full(index.shape, 200, np.uint8)
@@ -416,7 +419,8 @@ def test_a_row_with_no_flank_takes_the_nearest_rows_background(
 
 def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
     """The horizon another way: the circle where rays from C touch the paraboloid,
-    (x - cx)^2 + (y - cy)^2 = 2R cz + cx^2 + cy^2, projected. COCO pixels, by u."""
+    (x - cx)^2 + (y - cy)^2 = 2R cz + cx^2 + cy^2, projected. COCO pixels, by u.
+    """
     pose = np.array(cam.extrinsics["world"])
     rotation, centre = pose[:3, :3], pose[:3, 3]
     cx, cy, cz = centre

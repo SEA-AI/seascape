@@ -22,7 +22,7 @@ import numpy as np
 
 from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
-from seascape.blender.compositor import JPEG_QUALITY, respond
+from seascape.blender.compositor import JPEG_QUALITY
 from seascape.blender.vessels import heading_rad, waterline_m
 from seascape.config import Camera, ImageFormat, Scenario, substream
 from seascape.outputs import agc, labels, microbolometer
@@ -47,8 +47,15 @@ def _write_thermal(
     camera: Camera,
     noise: np.random.Generator,
 ) -> None:
-    """Rewrite a float LWIR render as `fmt` beside it, as `camera` reads it, and delete
-    the exr."""
+    """Rewrite a float LWIR render beside it as a camera reads it, and delete the exr.
+
+    Args:
+        exr: The float render, radiance in its first channel.
+        fmt: The format written; a png holds counts, any other the tone-mapped frame.
+        tone: The camera's automatic gain control, kelvin to 8-bit grey.
+        camera: Whose lens and focal plane the frame goes through.
+        noise: Draws the focal plane's temporal noise, its NETD.
+    """
     # cv2 writes the top row first
     radiance = blend.read(exr)[::-1, :, 0].astype(np.float64)
     t_k = microbolometer.seen(radiance, camera, noise)
@@ -63,11 +70,13 @@ def _write_thermal(
 
 
 def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
-    """Write each render's object-index pass to `folder`, as float EXR named
-    `<file_name>index.exr`.
+    """Write each render's object-index pass as float EXR named `<file_name>index.exr`.
 
     Cycles takes it on the ray through the pixel centre, where calibration.json puts
     the pixel, whatever the pixel filter.
+
+    Args:
+        folder: Where the passes are written.
     """
     bpy.context.view_layer.use_pass_object_index = True
     # The build's tree: a new one would drop what it does to the picture.
@@ -156,16 +165,18 @@ def _render_still(path: Path, what: str) -> None:
         )
 
 
-def _nothing() -> None:
-    pass
-
-
 def render(
-    scenario: Scenario, into: Path, advance: Callable[[], None] = _nothing
+    scenario: Scenario, into: Path, advance: Callable[[], None] = lambda: None
 ) -> list[Path]:
-    """Write one image per camera and frame into `into`, their calibration and their
-    labels. A sequence puts each camera's frames in a folder of its own. `advance` runs
-    after each image."""
+    """Write one image per camera and frame, their calibration and their labels. A
+    sequence puts each camera's frames in a folder of its own.
+
+    Args:
+        scenario: What to render; each band is built culled to its own cameras at
+            their resolution.
+        into: Where the images and their truth go; made if missing.
+        advance: Runs after each image.
+    """
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
     into.mkdir(parents=True, exist_ok=True)
@@ -179,7 +190,7 @@ def render(
         passes = Path(tmp)
         for band in outputs.bands:
             # The default bands can name one no rig has a camera for.
-            mounts = [m for m in scenario.mounts if m.camera.band == band]
+            mounts = scenario.band_mounts(band)
             if not mounts:
                 continue
             thermal = band == "ir" and outputs.format != "exr"
@@ -202,15 +213,11 @@ def render(
                 targets = _targets(built)
                 shot = []
                 for mount in mounts:
-                    sc.camera = built.cameras[mount.name]
-                    sc.render.resolution_x, sc.render.resolution_y = (
-                        mount.camera.width_px,
-                        mount.camera.height_px,
-                    )
+                    rng = substream(scenario.seed, f"sensor/{mount.name}")
+                    scene.look_through(built.cameras, mount, rng)
                     name = f"{mount.name}/{frame:04d}" if sequence else mount.name
                     sc.render.filepath = str(into / name)
                     index_output.file_name = f"{mount.name}."
-                    respond(mount, substream(scenario.seed, f"sensor/{mount.name}"))
                     rendered = into / f"{name}.{'exr' if thermal else outputs.format}"
                     _render_still(rendered, f"frame {frame} of camera {mount.name}")
                     if thermal:

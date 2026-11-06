@@ -17,16 +17,26 @@ select = [
     "C90",  # mccabe
     "PL",  # pylint
     "TID",  # flake8-tidy-imports
+    "ARG",  # flake8-unused-arguments
+    "D",  # pydocstyle, under the Google convention
 ]
 ignore = [
+    "D105",  # a magic method's name is its documentation
+    "D107",  # `__init__` is documented on the class
+    "D205",  # a summary may wrap over lines
     "PLR2004",  # a literal sits beside the source it cites
 ]
 
 [lint.per-file-ignores]
+# Tests and figure scripts are read, not called.
+"{tests,docs}/**" = ["D1"]
 # Imported where used, so `schema` and a failed validation skip loading bpy.
 "seascape/cli.py" = ["PLC0415"]
 # Imported where used, so `docs.hero` loads without supervision.
 "docs/hero.py" = ["PLC0415"]
+
+[lint.pydocstyle]
+convention = "google"
 
 [lint.pylint]
 max-args = 8

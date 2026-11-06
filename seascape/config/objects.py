@@ -81,7 +81,8 @@ _DRIFT = "A figure-eight about its pose."
 
 class Drift(Model):
     """A hull at single anchor fishtails: across its heading once a period, along it
-    twice. Starts at its pose; the heading holds."""
+    twice. Starts at its pose; the heading holds.
+    """
 
     sway_m: float = Field(ge=0.0, description="Peak, across the heading.")
     surge_m: float = Field(ge=0.0, description="Peak, along the heading.")
@@ -190,7 +191,8 @@ class Heave(Model):
 
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
-    waterline. Without an asset it is the attitude alone."""
+    waterline. Without an asset it is the attitude alone.
+    """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)
     t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
@@ -253,7 +255,8 @@ class Targets(Model):
 
 class Farm(Model):
     """Turbines in rows of equal length, each to starboard of the last along
-    `row_bearing_deg`. One row of one is a lone turbine."""
+    `row_bearing_deg`. One row of one is a lone turbine.
+    """
 
     asset: TurbineName = Field(description=f"{_ASSET} A turbine.")
     range_m: float = Field(gt=0.0, description="To the first turbine of the first row.")
@@ -280,6 +283,7 @@ class Farm(Model):
 
     @property
     def turbine(self) -> assets.Turbine:
+        """The manifest's entry for `asset`."""
         turbine = assets.manifest()[self.asset]
         assert isinstance(turbine, assets.Turbine)  # TurbineName checked it
         return turbine

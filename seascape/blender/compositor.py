@@ -78,8 +78,13 @@ def set_output(
     outputs: Outputs, band: Band, largest_px: int, graded: bool = False
 ) -> None:
     """Render and display settings, in the .blend, so F12 renders what `render` does.
-    `largest_px` is the longest side of any of the band's cameras, and `graded` whether
-    any has a sensor."""
+
+    Args:
+        outputs: The samples, format and exposure compensation to render with.
+        band: The band rendered; ir always writes exr.
+        largest_px: The longest side of any of the band's cameras, in pixels.
+        graded: Whether any of the band's cameras has a sensor.
+    """
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
     sc.render.engine = "CYCLES"
@@ -114,8 +119,13 @@ def set_output(
 
 
 def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
-    """The render as a camera takes it, `compensation_ev` over auto-exposure, through
-    a sensor if `graded`; as rendered for None."""
+    """The render as a camera takes it.
+
+    Args:
+        compensation_ev: Stops over auto-exposure, each doubling the light; None
+            passes the render as rendered.
+        graded: Pass the frame through a sensor.
+    """
     tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
     tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     bpy.context.scene.compositing_node_group = tree
@@ -131,12 +141,19 @@ def _camera(
     compensation_ev: float,
     with_sensor: bool = False,
 ) -> bpy.types.NodeSocket:
-    """A lens's falloff, diffraction, glare and blur, then auto-exposure, and with
-    `with_sensor` the sensor and ISP, then the ISP's tone curve. Without a sensor the
-    Standard view clips at white, as a sensor does. `respond` sets the camera.
+    """A lens's falloff, diffraction, glare and blur, then auto-exposure, then the
+    ISP's tone curve. Without a sensor the Standard view clips at white, as a sensor
+    does. `respond` sets the camera.
 
     Limitation: each frame meters itself; a real camera's exposure lags, so add a time
     constant if a sequence flickers.
+
+    Args:
+        tree: The compositor's tree.
+        image: The render's linear radiance, as it reaches the lens.
+        compensation_ev: Stops over auto-exposure, which puts the frame's log-average
+            at `MID_GREY`.
+        with_sensor: Add the sensor and ISP after auto-exposure.
     """
     coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})
     info = node(tree, "CompositorNodeImageInfo", {"Image": image})
@@ -188,8 +205,13 @@ def _camera(
 def _tone(
     tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """`image` through the curve `respond` gives "processing.tone", which takes and
-    gives sRGB-encoded values, so the Standard view writes the curve's own."""
+    """A frame through the curve `respond` gives "processing.tone", which takes and
+    gives sRGB-encoded values, so the Standard view writes the curve's own.
+
+    Args:
+        tree: The compositor's tree.
+        image: The exposed frame, linear, white at 1.
+    """
     nodes, links = tree.nodes, tree.links
     encode, decode = (nodes.new("CompositorNodeConvertColorSpace") for _ in range(2))
     encode.to_color_space = decode.from_color_space = "sRGB"
@@ -221,8 +243,13 @@ def _set_curve(node: bpy.types.Node, y: np.ndarray) -> None:
 def _ones_like(
     tree: bpy.types.NodeTree, image: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """A frame of ones the size of `image`: an operation takes its first input's
-    domain, and a colour alone has none."""
+    """A frame of ones: an operation takes its first input's domain, and a colour
+    alone has none.
+
+    Args:
+        tree: The compositor's tree.
+        image: The frame whose size the ones take.
+    """
     return vector(tree, "ADD", vector(tree, "SCALE", image, 0.0), (1.0, 1.0, 1.0))
 
 
@@ -282,8 +309,13 @@ def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
 
 
 def respond(mount: Mount, noise: np.random.Generator) -> None:
-    """Set Cycles' pixel filter and the compositor's camera to `mount`'s, its sensor
-    noise seeded from `noise`; a build without a compositor takes only the filter."""
+    """Set Cycles' pixel filter and the compositor's camera to a mount's; a build
+    without a compositor takes only the filter.
+
+    Args:
+        mount: The camera whose lens, sensor and processing the compositor takes.
+        noise: The stream the sensor's noise is seeded from.
+    """
     # A microbolometer integrates over its pixel: Cycles' box filter, a pixel wide.
     cycles = bpy.context.scene.cycles
     props = cycles.bl_rna.properties

@@ -65,7 +65,8 @@ SEEN_SLOPE_VARIANCE = 0.01
 @dataclass(frozen=True)
 class Wake:
     """A hull under way: along `heading_rad` from `start_m` (east, north), or round the
-    origin at `orbit_m`, clockwise from `start_bearing_rad`, `count` hulls a lap."""
+    origin at `orbit_m`, clockwise from `start_bearing_rad`, `count` hulls a lap.
+    """
 
     speed_mps: float
     length_m: float
@@ -79,12 +80,14 @@ class Wake:
 
     @property
     def froude(self) -> float:
+        """The length Froude number, U / sqrt(g L)."""
         return self.speed_mps / math.sqrt(GRAVITY_MS2 * self.length_m)
 
     @property
     def height_scale_m(self) -> float:
         """Kriebel & Seelig's H at y = L, held at its hump-Froude value past it: a
-        judgement, as Macfarlane's heights fall there."""
+        judgement, as Macfarlane's heights fall there.
+        """
         froude = min(self.froude, HUMP_FROUDE)
         speed_mps = froude * math.sqrt(GRAVITY_MS2 * self.length_m)
         beta = 1 + 8 * math.tanh(0.45 * (1 / ENTRANCE_PER_LENGTH - 2)) ** 3
@@ -94,7 +97,8 @@ class Wake:
     @property
     def steepest_arm(self) -> float:
         """The divergent wave's slope where it is tallest: on the cusp, half a beam
-        out, a judgement."""
+        out, a judgement.
+        """
         k_rad_m = GRAVITY_MS2 / self.speed_mps**2 / (2 / 3)
         side = self.beam_m / 2 / self.length_m
         amplitude_m = self.height_scale_m / 2 * side ** (-1 / 3)

@@ -1,3 +1,5 @@
+"""Shared pydantic bases."""
+
 from pydantic import BaseModel, ConfigDict
 
 

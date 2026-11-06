@@ -29,7 +29,8 @@ class Swell(Model):
 
 class WarmLayer(Model):
     """The sun's heat trapped near the surface on a calm day, Fairall et al.'s warm
-    layer. Each value is a mean since it formed; unset, their clear COARE day's."""
+    layer. Each value is a mean since it formed; unset, their clear COARE day's.
+    """
 
     hours: float = Field(
         default=skin.CLEAR_DAY_HOURS,
@@ -49,6 +50,7 @@ class WarmLayer(Model):
     )
 
     def rise_k(self, wind_speed_mps: float, t_sea_k: float) -> float:
+        """The warm layer's peak warming over the bulk."""
         cooling = self.cooling_w_m2
         if cooling is None:
             cooling = skin.clear_day_cooling_w_m2(wind_speed_mps)
@@ -125,11 +127,13 @@ class Sea(Model):
 
     @property
     def fetch_m(self) -> float | None:
+        """The fetch; None for the open ocean."""
         return None if self.fetch_km is None else self.fetch_km * 1e3
 
     def t_skin_k(self, sun_up: bool) -> float:
         """What the camera sees: the bulk under a cool skin, warmed by its warm layer
-        if it has one."""
+        if it has one.
+        """
         warm = self.warm_layer
         rise = 0.0 if warm is None else warm.rise_k(self.wind_speed_mps, self.t_sea_k)
         return skin.skin_k(self.t_sea_k, rise, sun_up)
@@ -287,10 +291,12 @@ class Sky(Model):
 
     @property
     def extinction_per_m(self) -> float:
+        """The haze's extinction at the visibility."""
         return aerosol.extinction_per_m(self.visibility_km)
 
     @property
     def fog_weight(self) -> float:
+        """`aerosol.fog_weight` at the visibility."""
         return aerosol.fog_weight(self.visibility_km)
 
     @property
@@ -301,6 +307,20 @@ class Sky(Model):
         return aerosol.sun_transmittance(
             math.radians(self.sun_elevation_deg), self.visibility_km
         )
+
+    @property
+    def photo(self) -> skies.Photo:
+        """The library's entry for `hdri`."""
+        if self.hdri is None:
+            raise ValueError("a Sky Texture has no photo")
+        return skies.library()[self.hdri]
+
+    @property
+    def photo_turn_rad(self) -> float:
+        """How far to turn the photo to put its sun at `sun_bearing_deg`. Turning a
+        lookup by d carries the image's sun clockwise by d: no negation.
+        """
+        return math.radians(self.sun_bearing_deg - self.photo.sun_bearing_deg)
 
     @property
     def sun_up(self) -> bool:

@@ -81,6 +81,7 @@ class Outputs(Model):
 
     @property
     def times_s(self) -> list[float]:
+        """Each frame's time, from 0; one frame for a still."""
         return [f / self.fps for f in range(max(1, round(self.duration_s * self.fps)))]
 
     @property
@@ -127,11 +128,16 @@ class Scenario(Model):
 
     @property
     def mounts(self) -> list[Mount]:
+        """Every camera, with the rig carrying it."""
         return [
             Mount(rig_name, rig, camera_name, camera)
             for rig_name, rig in self.rigs.items()
             for camera_name, camera in rig.cameras.items()
         ]
+
+    def band_mounts(self, band: Band) -> list[Mount]:
+        """The cameras that see in `band`."""
+        return [m for m in self.mounts if m.camera.band == band]
 
     @property
     def images(self) -> int:
@@ -142,7 +148,8 @@ class Scenario(Model):
     @property
     def worn(self) -> frozenset[str]:
         """The assets an object, the ring or a farm wears, less the weathered ones,
-        whose textures are their wear."""
+        whose textures are their wear.
+        """
         wearing = [(o.asset, o.wear) for o in self.objects]
         wearing += [(f.asset, f.wear) for f in self.farms]
         if (ring := self.targets) is not None:
@@ -152,6 +159,7 @@ class Scenario(Model):
         )
 
     def wind_waves(self) -> tuple[waves.Wave, ...]:
+        """The wind sea's waves, from the scenario's wind and fetch."""
         sea = self.sea
         return waves.wind_sea(
             sea.wind_speed_mps,
@@ -162,6 +170,7 @@ class Scenario(Model):
         )
 
     def swell_waves(self) -> tuple[waves.Wave, ...]:
+        """The swell's waves; none without a swell."""
         swell = self.sea.swell
         if swell is None:
             return ()
@@ -174,12 +183,14 @@ class Scenario(Model):
         )
 
     def wave_field(self) -> tuple[waves.Wave, ...]:
+        """Every wave on the sea, wind sea then swell."""
         return self.wind_waves() + self.swell_waves()
 
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":
         """A camera's name joins its rig's, so rig `a_b` with camera `c` and rig `a`
-        with camera `b_c` would write one file."""
+        with camera `b_c` would write one file.
+        """
         names = [mount.name for mount in self.mounts]
         if len(set(names)) != len(names):
             raise ValueError(f"two cameras share a name: {sorted(names)}")

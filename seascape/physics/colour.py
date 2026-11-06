@@ -29,7 +29,8 @@ SRGB_DOMINANT_M = (611.3e-9, 549.1e-9, 464.3e-9)
 
 def planck_xy(t_k: float) -> tuple[float, float]:
     """The Planckian locus in CIE 1931 xy, from 1667 to 25000 K: Kim et al.'s cubic
-    spline (US 7,024,034)."""
+    spline (US 7,024,034).
+    """
     if not 1667.0 <= t_k <= 25000.0:
         raise ValueError(f"{t_k} K is outside the cubic's 1667-25000 K")
     u = 1e3 / t_k
@@ -53,7 +54,8 @@ def _srgb(t_k: float) -> np.ndarray:
 
 def white_balance_gains(error_k: float) -> tuple[float, float, float]:
     """The R, G, B gains of a camera that takes D65 light for `D65_K + error_k`: it
-    divides out the light it guessed, relative to D65, with green fixed at 1."""
+    divides out the light it guessed, relative to D65, with green fixed at 1.
+    """
     gains = _srgb(D65_K) / _srgb(D65_K + error_k)
     r, _, b = gains / gains[1]
     return float(r), 1.0, float(b)
@@ -89,6 +91,11 @@ _CURVES: dict[Tone, Callable[[np.ndarray], np.ndarray]] = {
 
 
 def tone_curve(tone: Tone, encoded: np.ndarray = TONE_IN) -> np.ndarray:
-    """A camera's encoded output at the sRGB-encoded inputs `encoded`. EMoR's is
-    linear between its knots."""
+    """A camera's encoded output. EMoR's is linear between its knots.
+
+    Args:
+        tone: bt709, BT.709's OETF; or emor, EMoR's mean of measured camera curves
+            (Grossberg & Nayar 2004).
+        encoded: Inputs as sRGB encodes them, 0 to 1, decoded to linear light first.
+    """
     return _CURVES[tone](srgb_decode(encoded))

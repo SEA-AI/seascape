@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 
 from seascape.outputs import labels
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 
 COLUMNS = [
     "counter",
@@ -52,13 +52,11 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 
-# The recording's camera frame, +X right, +Y forward, +Z up, as OpenCV's axes.
-_BODY_TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
-
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
-    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180)."""
+    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180).
+    """
     x, y, z = body_to_frame[:3, :3].T
     roll = math.atan2(-x[2], z[2])
     pitch = math.asin(max(-1.0, min(1.0, y[2])))
@@ -115,7 +113,7 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
-    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ _BODY_TO_CV)
+    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw
@@ -189,7 +187,8 @@ def _write_json(path: Path, data: Any) -> None:
 
 def export(run: Path) -> list[Path]:
     """One recording folder per rig, under `run/recordings/<rig>/`, named for its
-    model."""
+    model.
+    """
     truth = labels.Labels.model_validate_json((run / labels.FILENAME).read_text())
     if "scenario" not in truth.info or "date_created" not in truth.info:
         raise ValueError(f"{run / labels.FILENAME}: no scenario or date in its info")

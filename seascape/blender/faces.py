@@ -20,6 +20,8 @@ from seascape.physics.thermal import ZONE_NAMES
 
 @dataclass(frozen=True)
 class Island:
+    """One island, as `Zones` defines it, and the faces it spans from `first_face`."""
+
     id: int
     object: str
     material: str
@@ -45,12 +47,14 @@ class Parts:
 
 
 def ints(collection: Any, attribute: str, n: int) -> np.ndarray:
+    """An integer attribute of every item in `collection`, by `foreach_get`."""
     out = np.empty(n, dtype=np.int64)
     collection.foreach_get(attribute, out)
     return out
 
 
 def floats(collection: Any, attribute: str, n: int) -> np.ndarray:
+    """A float attribute of every item in `collection`, by `foreach_get`."""
     out = np.empty(n, dtype=np.float64)
     collection.foreach_get(attribute, out)
     return out
@@ -58,7 +62,8 @@ def floats(collection: Any, attribute: str, n: int) -> np.ndarray:
 
 def uv(mesh: bpy.types.Mesh) -> np.ndarray:
     """Each loop's UV, (loops, 2), from the layer an image node with no Vector link
-    reads: the one marked for render, not the one active for editing."""
+    reads: the one marked for render, not the one active for editing.
+    """
     layer = next(u for u in mesh.uv_layers if u.active_render)
     return floats(layer.data, "uv", 2 * len(mesh.loops)).reshape(-1, 2)
 
@@ -81,11 +86,16 @@ def _face_components(
     mesh: bpy.types.Mesh, material: np.ndarray, textured: np.ndarray
 ) -> np.ndarray:
     """Per face, a label shared by the faces of its material that touch it: at a
-    vertex, and where the material is `textured`, at a UV too, so that an atlas splits
+    vertex, and where the material is textured, at a UV too, so that an atlas splits
     where its texture does.
 
     By position, not vertex index: glTF splits a vertex at every UV and normal seam, so
     Blender's own linked and loose parts stop at each one.
+
+    Args:
+        mesh: Whose faces are labelled.
+        material: Per face, its index into the import's materials.
+        textured: Per material, whether its base colour reads an image.
     """
     n_faces, n_loops = len(mesh.polygons), len(mesh.loops)
     co = floats(mesh.vertices, "co", 3 * len(mesh.vertices)).reshape(-1, 3)
@@ -190,7 +200,8 @@ CHANNELS = {"metallic": "Metallic", "roughness": "Roughness", "alpha": "Alpha"}
 
 def island_means(parts: Parts, socket: str) -> np.ndarray:
     """Each island's mean of a Principled BSDF input over its faces, read at each
-    face's mean UV."""
+    face's mean UV.
+    """
     total = np.zeros(len(parts.islands))
     count = np.zeros(len(parts.islands))
     images: dict[str, np.ndarray] = {}  # objects share an atlas: read it once
@@ -214,8 +225,17 @@ def _input(
     faces: np.ndarray,
     images: dict[str, np.ndarray],
 ) -> np.ndarray:
-    """`name`'s `socket` at each of `faces`: the nearest texel to the face's mean UV,
-    red where the link is colour, times the factors on its way; or its flat value."""
+    """A material's Principled BSDF input at each face: the nearest texel to the
+    face's mean UV, red where the link is colour, times the factors on its way; or its
+    flat value.
+
+    Args:
+        mesh: Whose faces are read.
+        name: The material; empty or one without a Principled BSDF reads 0.
+        socket: The Principled BSDF input's name, such as Metallic.
+        faces: Indices of the mesh's faces that use the material.
+        images: Pixels already read, by image name; filled as images are read.
+    """
     shader = bsdf(bpy.data.materials.get(name)) if name else None
     if shader is None:
         return np.zeros(len(faces))
@@ -238,6 +258,7 @@ def _input(
 
 
 def bsdf(material: bpy.types.Material) -> Any:
+    """The material's Principled BSDF; None without one."""
     if material is None or material.node_tree is None:
         return None
     return next(
@@ -246,6 +267,8 @@ def bsdf(material: bpy.types.Material) -> Any:
 
 
 class Source(NamedTuple):
+    """An image a shader reads, which channel, and the factor applied to it."""
+
     image: bpy.types.Image
     channel: int | None  # None for colour
     node: Any
@@ -253,9 +276,13 @@ class Source(NamedTuple):
 
 
 def source(socket: Any) -> Source | None:
-    """The first image upstream of `socket`, following each node's first linked input
-    but not into groups, and the factors a Math node multiplies it by on the way: glTF
-    imports a metallic or roughness factor as one."""
+    """The first image upstream, following each node's first linked input but not into
+    groups, and the factors a Math node multiplies it by on the way: glTF imports a
+    metallic or roughness factor as one.
+
+    Args:
+        socket: Where the search starts; None comes back when nothing is linked.
+    """
     if not socket.is_linked:
         return None
     link = socket.links[0]
@@ -293,7 +320,8 @@ def texture(name: str) -> bpy.types.Image | None:
 
 def check(name: str, found: Parts, zones: Zones) -> None:
     """Refuse zones that name a material the import lacks, leave one of its materials
-    out, or number its islands differently."""
+    out, or number its islands differently.
+    """
     if missing := sorted(set(zones.materials) - set(found.materials)):
         raise ValueError(f"{name}: no material {missing} in the import")
     if unzoned := sorted(set(found.materials) - set(zones.materials)):

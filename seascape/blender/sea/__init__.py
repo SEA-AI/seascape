@@ -10,6 +10,7 @@ import numpy as np
 from seascape.blender.blend import (
     animate,
     curve_image,
+    node,
     scalar,
     value,
     vector,
@@ -65,6 +66,7 @@ from seascape.blender.sea.wind import (
     _gust,
     _langmuir_rows,
     _slick,
+    _Surface,
     _unit,
     surface_drift,
 )
@@ -88,13 +90,11 @@ from seascape.physics.waves import (
 
 class Seen(NamedTuple):
     """What the cameras see of the sea: their finest footprint, and the grids their
-    whitecaps are remembered on."""
+    whitecaps are remembered on.
+    """
 
     finest_footprint_m: float = 0.0
     foam_grids: tuple[FoamGrid, ...] = ()
-
-
-UNSEEN = Seen()
 
 
 def _sea_time(tree: bpy.types.NodeTree, outputs: Outputs) -> bpy.types.NodeSocket:
@@ -128,15 +128,25 @@ def material(
     rngs: tuple[np.random.Generator, np.random.Generator, np.random.Generator],
     wakes: tuple[Wake, ...],
     light: Light,
-    seen: Seen = UNSEEN,
+    seen: Seen,
 ) -> bpy.types.Material:
-    """Each pixel draws the waves it resolves and takes the rest as roughness;
-    `rngs` draw its gusts, its windrows and its foam, whose whitecaps are remembered on
-    the grids its cameras see. With a sky the sea is ir and reflects it; without, eo,
-    glittering towards the light's sun if it has one.
+    """Each pixel draws the waves it resolves and takes the rest as roughness.
 
     No node draws a wave a pixel of the cameras' finest footprint cannot resolve; the
-    tables and statistics still describe the whole sea."""
+    tables and statistics still describe the whole sea.
+
+    Args:
+        sea: The wind and the water's state.
+        wind: The wind sea's waves.
+        swell: The swell's waves.
+        outputs: The frames, whose times the sea's own time follows.
+        rngs: Draw the gusts, the windrows and the foam, in that order.
+        wakes: One per hull under way; an orbit's hulls share one.
+        light: With a sky the sea is ir and reflects it; without, eo, glittering
+            towards the light's sun if it has one.
+        seen: The cameras' finest footprint, and the grids whitecaps are remembered
+            on.
+    """
     gust_rng, slick_rng, foam_rng = rngs
     material = bpy.data.materials.new("sea")
     tree = material.node_tree
@@ -150,7 +160,8 @@ def material(
     )
     tall, shaded = displaced(drawn)
     position = _flat(tree, time_s)
-    rows = _langmuir_rows(tree, sea, position, outputs, slick_rng)
+    surface = _Surface(sea, position, outputs)
+    rows = _langmuir_rows(tree, surface, slick_rng)
     gust_max, gust, slick, tile = 0.0, None, None, None
     if speed > 0.0:
         tile = _unit(
@@ -158,7 +169,7 @@ def material(
         )
         # A crossfade reaches sqrt(2) of the tile's peak at most.
         gust_max = math.sqrt(2) * np.abs(tile).max() * turbulence_intensity(speed)
-        gust = _gust(tree, sea, position, outputs, curve_image("sea_gust", tile))
+        gust = _gust(tree, surface, curve_image("sea_gust", tile))
         slick = _slick(tree, sea, rows)
     # Made where foam shows: an image nothing reads is not saved. Whitecaps and wakes
     # threshold the tile by the unit normal's quantiles.
@@ -201,15 +212,11 @@ def material(
     whitecaps = (
         _remembered(
             tree,
-            sea,
-            outputs,
-            position,
+            surface,
             pixel.across_m,
             _foam_texture(
                 tree,
-                sea,
-                position,
-                outputs,
+                surface,
                 foam(),
                 # Its own stream, so the lace's draws stay as they were.
                 foam_rng.spawn(1)[0],
@@ -272,15 +279,13 @@ def material(
             pixel,
             unresolved,
         )
-    output = tree.nodes.new("ShaderNodeOutputMaterial")
-    tree.links.new(surface, output.inputs["Surface"])
+    output = node(tree, "ShaderNodeOutputMaterial", {"Surface": surface})
     _displace(material, output, _displacement(tree, tall, position))
     return material
 
 
 __all__ = [
     "FOAM_SEAM_CELLS",
-    "UNSEEN",
     "Clouds",
     "Light",
     "Seen",

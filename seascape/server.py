@@ -100,6 +100,8 @@ BYTES_PER_PX: dict[tuple[Band, ImageFormat], float] = {
 
 @dataclass
 class Job:
+    """One `render` call and how far it got."""
+
     folder: Path
     scenario: str
     scenes: list[Scenario]
@@ -119,7 +121,8 @@ class Job:
     @property
     def folders(self) -> list[Path]:
         """One per variant: `render` names each by its seed, skipping a seed whose
-        hulls meet."""
+        hulls meet.
+        """
         if len(self.scenes) == 1:
             return [self.folder]
         seeds = sorted(int(p.name) for p in self.folder.iterdir() if p.name.isdigit())
@@ -127,6 +130,7 @@ class Job:
 
     @property
     def total(self) -> int:
+        """How many images the job writes."""
         return sum(scene.images for scene in self.scenes)
 
     @property
@@ -138,6 +142,7 @@ class Job:
 
     @property
     def waiting(self) -> bool:
+        """Whether the job is queued or running."""
         return self.state in ("queued", "running")
 
 
@@ -151,6 +156,7 @@ class State:
     gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def scenarios(self) -> dict[str, Path]:
+        """The scenarios a job can name, by file stem."""
         return {p.stem: p for p in sorted(self.settings.scenarios.glob("*.toml"))}
 
 
@@ -190,9 +196,17 @@ def _bytes(scene: Scenario) -> float:
 def _tried(
     path: Path, lines: list[str], variants: int, settings: Settings
 ) -> tuple[list[Scenario], float]:
-    """The first `variants` scenes, and the most any `variants` of the seeds `render`
-    may try write. Refuses any of those seeds past a clip or camera limit, and the
-    largest `variants` of them past the image limit."""
+    """The first scenes, and the most bytes the seeds `render` may try can write.
+    Refuses any of those seeds past a clip or camera limit, and the largest of them
+    past the image limit.
+
+    Args:
+        path: The scenario's TOML file.
+        lines: TOML overrides merged over it.
+        variants: How many scenes to return; the image and byte totals take the
+            largest this many of the seeds tried.
+        settings: The server's limits.
+    """
     first = load(path, lines)
     scenes: list[Scenario] = []
     images, sizes = [], []
@@ -235,7 +249,8 @@ def _prune(state: State) -> None:
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
     """The scenarios `render` starts from, the meshes and skies a scenario can name,
     and the scenario's JSON schema. Any field can be a draw instead of a value:
-    `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed."""
+    `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed.
+    """
     return {
         "scenarios": {n: p.read_text() for n, p in _state(ctx).scenarios().items()},
         "meshes": {
@@ -376,7 +391,8 @@ def _finish(job: Job) -> None:
 async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, or its
     error, or every file as a URL with a preview of each of the first `PREVIEWS`
-    stills."""
+    stills.
+    """
     state = _state(ctx)
     found = state.jobs.get(job)
     if found is None or found.task is None:
@@ -460,6 +476,7 @@ def jobs(ctx: Context[State, Any]) -> dict[str, Any]:
 
 
 def mcp(state: State) -> MCPServer:
+    """The MCP server, its tools sharing `state`."""
     state.renders.mkdir(parents=True, exist_ok=True)
 
     # The in-memory client enters the lifespan per connection; jobs outlive one.

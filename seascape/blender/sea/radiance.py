@@ -11,13 +11,13 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
-    CURVE_SAMPLES,
     Num,
     curve_image,
     lookup,
     node,
     scalar,
     separate,
+    texels,
     vector,
 )
 from seascape.blender.sea.daylight import _lobe, _stretchable, _widest
@@ -47,7 +47,8 @@ type SkyCurve = tuple[np.ndarray, np.ndarray]
 
 class Clouds(NamedTuple):
     """The ir sky by bearing: radiance at the ascending `elevation` (rad), in columns
-    laid out as the world's photo, which the world turns by `turn_rad`."""
+    laid out as the world's photo, which the world turns by `turn_rad`.
+    """
 
     elevation: np.ndarray
     radiance: np.ndarray
@@ -57,7 +58,8 @@ class Clouds(NamedTuple):
 class Light(NamedTuple):
     """The ir sky round the horizon, or the unit vector an eo sea glints towards. A sky
     makes the sea ir, its cool skin thinner with the sun up; with `clouds`, the sea
-    reflects that sky at each bearing."""
+    reflects that sky at each bearing.
+    """
 
     sky: SkyCurve | None = None
     sun: tuple[float, float, float] | None = None
@@ -66,9 +68,13 @@ class Light(NamedTuple):
 
 
 def _row_sigmas(slope_max: float, rows: int = SLOPE_ROWS) -> np.ndarray:
-    """Per-axis unresolved RMS slope up a table's rows, to the total `slope_max`, at
-    texel centres."""
-    return (np.arange(rows) + 0.5) / rows * slope_max / math.sqrt(2)
+    """Per-axis unresolved RMS slope up a table's rows, at texel centres.
+
+    Args:
+        slope_max: Total RMS slope the rows run up to.
+        rows: How many rows the table has.
+    """
+    return texels(rows) * slope_max / math.sqrt(2)
 
 
 def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
@@ -78,7 +84,7 @@ def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
     The curve is sampled uniformly in angle; the shader's dot product is uniform in its
     cosine, so it is resampled here rather than corrected in nodes.
     """
-    mu = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
+    mu = texels()
     rows = []
     for sigma in _row_sigmas(slope_max):
         theta, eps = lwir.emissivity_curve(t_sea_k=t_sea_k, slope_sigma=sigma)
@@ -88,23 +94,24 @@ def _emissivity_image(t_sea_k: float, slope_max: float) -> bpy.types.Image:
 
 def _foam_emissivity_image() -> bpy.types.Image:
     """`lwir.foam_emissivity_excess` against cos(theta) at texel centres."""
-    mu = (np.arange(CURVE_SAMPLES) + 0.5) / CURVE_SAMPLES
     return curve_image(
-        "sea_foam_emissivity", lwir.foam_emissivity_excess(np.arccos(mu))
+        "sea_foam_emissivity", lwir.foam_emissivity_excess(np.arccos(texels()))
     )
 
 
 def _view_rows(rows: int = VIEW_ROWS) -> np.ndarray:
     """|cos| of the view off the wave normal up a tile's rows, at texel centres: even
     in its square root, so the rows crowd toward grazing, where the reflection turns
-    fastest."""
-    return ((np.arange(rows) + 0.5) / rows) ** 2
+    fastest.
+    """
+    return texels(rows) ** 2
 
 
 def _mirror_columns() -> np.ndarray:
     """sin(mirror elevation) along a row, at texel centres: down to -1, as a wave
-    tilted away steeply mirrors the sea."""
-    return (np.arange(MIRROR_SAMPLES) + 0.5) / MIRROR_SAMPLES * 2.0 - 1.0
+    tilted away steeply mirrors the sea.
+    """
+    return texels(MIRROR_SAMPLES) * 2.0 - 1.0
 
 
 def _reflection_image(
@@ -113,7 +120,8 @@ def _reflection_image(
     """`lwir.Sky.reflected` baked against sin(mirror elevation) along a row
     (`_mirror_columns`), the view off the wave normal up a tile's rows
     (`_view_rows`), and the unresolved RMS slope from tile to tile, all at texel
-    centres."""
+    centres.
+    """
     elevation, radiance = (np.ascontiguousarray(a, np.float64).tobytes() for a in sky)
     return curve_image(
         "sea_reflection", _reflection_table(t_sea_k, elevation, radiance, slope_max)
@@ -161,8 +169,9 @@ def _cloud_image(t_sea_k: float, clouds: Clouds, slope_max: float) -> bpy.types.
     the horizon, which the shader multiplies into the reflection. Columns span the
     photo's bearings. Rows run up sin(mirror elevation), -1 to 1, evenly in its signed
     square root; tiles of view off the wave normal, as `_view_rows`, nest in tiles of
-    unresolved slope."""
-    root = (np.arange(CLOUD_MIRRORS) + 0.5) / CLOUD_MIRRORS * 2.0 - 1.0
+    unresolved slope.
+    """
+    root = texels(CLOUD_MIRRORS) * 2.0 - 1.0
     mirror = np.arcsin(np.sign(root) * root**2)
     edges = np.linspace(0, clouds.radiance.shape[1], CLOUD_BEARINGS + 1).astype(int)
     widths = np.diff(edges)
@@ -186,7 +195,8 @@ def _incidence(
 ) -> bpy.types.NodeSocket:
     """|cos(theta)| between the wave normal and the viewing ray: against the wave
     normal, not the plane's, or a flat sea's emissivity lands on water visibly not
-    flat."""
+    flat.
+    """
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = vector(tree, "DOT_PRODUCT", geometry.outputs["Incoming"], normal)
     return scalar(tree, "ABSOLUTE", facing)
@@ -203,9 +213,6 @@ def _thermal(
     foam: bpy.types.NodeSocket,
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
     """The sea's emission plus the 1 - eps(theta) of sky it reflects, and eps(theta).
-    It emits `skin`, a band radiance; the tables keep the bulk's optical constants,
-    which a skin a few kelvin off barely moves. `foam`, the share of the pixel under
-    foam, raises eps by that share of foam's excess.
 
     Complements, so the two very nearly cancel and the sea holds close to ambient at
     every angle. The reflection is a lookup in the wave normal's mirror direction, not
@@ -222,6 +229,19 @@ def _thermal(
     vanishes at the grazing views the sea is seen at.
 
     The sky alone: `_traced` adds the hulls.
+
+    Args:
+        tree: The sea material's node tree.
+        sea: Its bulk temperature sets the tables' optical constants.
+        normal: The wave normal the pixel draws, in world space.
+        unresolved: Variances of the slope finer than the pixel draws, along and
+            across the view, each twice its axis's, as `_unresolved` gives them.
+        slope_max: Total RMS slope the tables span.
+        light: The sky, and any clouds, the sea reflects.
+        skin: Band radiance the sea emits. The tables keep the bulk's optical
+            constants, which a skin a few kelvin off barely moves.
+        foam: Share of the pixel under foam; raises eps by that share of foam's
+            excess.
     """
     sky = light.sky
     assert sky is not None
@@ -271,9 +291,7 @@ def _thermal(
     radiance = scalar(
         tree, "MULTIPLY_ADD", emissivity, emitted, sky_seen, name="sea_radiance"
     )
-    emission = tree.nodes.new("ShaderNodeEmission")
-    emission.inputs["Strength"].default_value = 1.0
-    tree.links.new(radiance, emission.inputs["Color"])
+    emission = node(tree, "ShaderNodeEmission", {"Color": radiance})
     return emission.outputs["Emission"], emissivity
 
 
@@ -286,8 +304,18 @@ def _traced(
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
 ) -> bpy.types.NodeSocket:
     """The sea reflecting the sky, plus what a lobe of its unresolved slopes meets
-    besides: hulls, and waves that hide the sky. Weighted 1 - `emissivity`, the
-    pixel's, not each facet's own."""
+    besides: hulls, and waves that hide the sky.
+
+    Args:
+        tree: The sea material's node tree.
+        sky: The sea's emission and the sky it reflects, as `_thermal` draws them.
+        emissivity: The pixel's, not each facet's own; the lobe is weighted 1 minus it.
+        normal: The wave normal the lobe leans about.
+        pixel: The footprint whose axes orient the lobe.
+        unresolved: Variances of the slope finer than the pixel draws, along and
+            across the view, each twice its axis's, as `_unresolved` gives them,
+            which shape the lobe.
+    """
     wide, narrow, tangent = _widest(tree, pixel, unresolved)
     roughness, anisotropy = _lobe(tree, wide, _stretchable(tree, wide, narrow))
     lobe = node(
@@ -317,8 +345,17 @@ def _cloud_ratio(
     reflected: bpy.types.NodeSocket,
     tiles: tuple[tuple[bpy.types.NodeSocket, int], ...],
 ) -> bpy.types.NodeSocket:
-    """`_cloud_image` at the bearing and elevation of `reflected`, its bearing turned
-    as the world turns its photo, in `tiles`."""
+    """`_cloud_image` at the reflection's bearing and elevation, its bearing turned as
+    the world turns its photo.
+
+    Args:
+        tree: The sea material's node tree.
+        sea: Its bulk temperature sets the table's reflectance.
+        clouds: The photo's sky radiance by elevation and bearing, and its turn.
+        slope_max: Total RMS slope the table spans.
+        reflected: The view ray mirrored in the wave normal, in world space.
+        tiles: (coordinate, count) per tile axis, as `_tiled` takes them.
+    """
     turn = node(
         tree,
         "ShaderNodeMapping",
@@ -358,7 +395,8 @@ def _skin_radiance(
     a warm layer lifts the skin above the bulk (Nylund et al. 2021, Ocean Sci. 17 1285).
 
     Limitation: the wake mixes down to the bulk only; colder water it raises from below
-    the bulk is not modelled."""
+    the bulk is not modelled.
+    """
     skin = lwir.band_radiance(sea.t_skin_k(sun_up))
     if wake is None:
         return skin
@@ -377,10 +415,20 @@ def _tiled(
     tiles: tuple[tuple[bpy.types.NodeSocket, int], ...],
     extension: str = "EXTEND",
 ) -> bpy.types.NodeSocket:
-    """A tiled table at (x, row), both in [0, 1], `rows` rows per tile. Each
-    (coordinate, count) in `tiles` picks a tile along one axis, coordinate in [0, 1];
-    the last axis varies fastest. The image interpolates
-    within a tile and lookups mix across tiles, so no tile bleeds into the next."""
+    """A lookup in a tiled table. The image interpolates within a tile and lookups mix
+    across tiles, so no tile bleeds into the next.
+
+    Args:
+        tree: The sea material's node tree.
+        image: The table, its tiles stacked up the rows.
+        x: Position along a row, in [0, 1].
+        row: Position up a tile, in [0, 1].
+        rows: Rows per tile.
+        tiles: (coordinate, count) per axis, each picking a tile along it, coordinate
+            in [0, 1]; the last axis varies fastest.
+        extension: Blender's image extension along a row: EXTEND holds the edge
+            texel, REPEAT wraps, as a bearing does round the horizon.
+    """
     # Held to texel centres, as EXTEND holds the image's own edges.
     texel = (Num(tree, row) * rows).op("MAXIMUM", 0.5).op("MINIMUM", rows - 0.5)
     height = rows * math.prod(count for _, count in tiles)

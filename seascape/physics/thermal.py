@@ -229,8 +229,13 @@ WEAR_LAYERS: tuple[WearLayer, ...] = get_args(WearLayer.__value__)
 
 
 def under(zone: Zone, layer: WearLayer) -> Zone:
-    """`zone` under `layer`: grime raises absorptance and a bare metal's
-    emissivity, rust and soot replace the surface; the interior stays."""
+    """A zone under a wear layer; the interior stays.
+
+    Args:
+        zone: The emissivity and solar absorptance the layer changes.
+        layer: Grime raises absorptance and a bare metal's emissivity; rust and soot
+            replace the surface.
+    """
     match layer:
         case "grime":
             emissivity = max(zone.emissivity, GRIME_EMISSIVITY)
@@ -258,7 +263,8 @@ PAINTED: frozenset[ZoneName] = frozenset(
 @dataclass(frozen=True)
 class Environment:
     """The air, sea and sun a facet balances against. Wind is the air's speed past
-    the facet."""
+    the facet.
+    """
 
     t_air_k: float
     t_sea_k: float
@@ -296,6 +302,7 @@ class Environment:
                 raise ValueError(f"{name} {getattr(self, name)} outside [0, 1]")
 
     def interior_k(self, interior: Interior) -> float:
+        """The temperature behind a face backed by `interior`."""
         return {
             "none": self.t_air_k,
             "cabin": self.t_cabin_k,
@@ -304,13 +311,16 @@ class Environment:
         }[interior]
 
     def stopped(self, off_s: float) -> "Environment":
-        """The engine room and exhaust `off_s` after the engines stop, each cooling
-        toward the air as a steel wall: lumped capacitance (Incropera & DeWitt 5.2),
+        """The engine room and exhaust after the engines stop, each cooling toward the
+        air as a steel wall: lumped capacitance (Incropera & DeWitt 5.2),
         tau = rho c_p d / h, h the wind's convection and the wall's radiation.
 
         Limitation: radiation linearised at the air, so a hot uptake's first minutes
         cool a little slowly; and the engine's own mass keeps a closed engine room warm
         longer than its walls.
+
+        Args:
+            off_s: Time since the engines stopped, at least 0.
         """
         if off_s < 0.0:
             raise ValueError(f"off_s {off_s} is before the engines stopped")
@@ -332,7 +342,8 @@ class Environment:
 
 def air_mass(elevation_rad: npt.ArrayLike) -> FloatArray:
     """Kasten & Young 1989: relative optical air mass at a sun elevation, finite at the
-    horizon where 1 / sin is not."""
+    horizon where 1 / sin is not.
+    """
     elevation = np.asarray(elevation_rad, dtype=np.float64)
     elevation_deg = np.degrees(elevation)
     return 1.0 / (np.sin(elevation) + 0.50572 * (elevation_deg + 6.07995) ** -1.6364)
@@ -359,9 +370,17 @@ def sky_longwave_w_m2(
     less what the 8-14 um window loses to a colder base: only the window sees past the
     lowest air (Kimball, Idso & Aase, Water Resour. Res. 18(4) 931, 1982). Judgement:
     mixed linearly with the clear sky, as in Crawford & Duchon, J. Appl. Meteor. 38(4)
-    474, 1999, unchecked. Fog covers `fog_cover` as a blackbody at the air, hiding the
-    cloud. Past about 312 K, extrapolated, Swinbank's clear sky outshines an overcast at
-    2400 m.
+    474, 1999, unchecked. Past about 312 K, extrapolated, Swinbank's clear sky
+    outshines an overcast at 2400 m.
+
+    Args:
+        t_air_k: Surface air temperature.
+        cloud_fraction: The sky's share under cloud, 0 to 1.
+        cloud_base_m: Height of the cloud's base; a higher base is colder, so the
+            8-14 um window loses more.
+        fog_cover: The sky's share under fog, a blackbody at the air hiding the
+            cloud.
+        atmosphere: The LOWTRAN profile whose sky this is.
     """
     air = STEFAN_BOLTZMANN_W_M2K4 * t_air_k**4
     clear = _SWINBANK_W_M2K6 * t_air_k**6
@@ -417,20 +436,15 @@ def balance_temperature_k(
     return 0.5 * (low + high)
 
 
-def facet_temperature_k(
-    zone: Zone,
-    env: Environment,
-    normal_elev_rad: npt.ArrayLike,
-    sun_azimuth_rad: npt.ArrayLike,
-    sunlit: npt.ArrayLike = True,
+def lit_temperature_k(
+    zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
 ) -> FloatArray:
-    """Temperature of facets of `zone` whose outward normals stand at `normal_elev_rad`
-    above the horizon and `sun_azimuth_rad` round from the sun's bearing.
+    """Temperature of a zone's facets, sunlit or shaded.
 
-    Absorbed: alpha times the direct beam by max(0, n . s) where `sunlit`, and the
-    isotropic diffuse share over the sky the facet sees; eps times the longwave from
-    sky and sea, split by view factors (1 +- sin elev) / 2. Lost: eps sigma T^4,
-    convection to the air and conduction to the interior.
+    Absorbed: alpha times the direct beam by sun_cos, and the isotropic diffuse share
+    over the sky the facet sees; eps times the longwave from sky and sea, split by view
+    factors (1 +- normal_up) / 2. Lost: eps sigma T^4, convection to the air and
+    conduction to the interior.
 
     Cloud takes the beam a `cloud_fraction` share of the time, so the beam is that
     much weaker on average. With `sun_diffuse_fraction`, the beam is instead what that
@@ -440,24 +454,13 @@ def facet_temperature_k(
 
     Limitation: no sun off the sea, no light from the vessel's own structure, and the
     diffuse share stays clear-sky's under cloud, where it rises.
+
+    Args:
+        zone: The facets' absorptance, emissivity, conductance and interior.
+        env: The air, sea and sun they balance against.
+        sun_cos: max(0, n . s) where sunlit, 0 in shadow.
+        normal_up: The normal's vertical component: 1 sees only sky, -1 only sea.
     """
-    elev = np.asarray(normal_elev_rad, dtype=np.float64)
-    azimuth = np.asarray(sun_azimuth_rad, dtype=np.float64)
-    sun_elev = env.sun_elevation_rad or 0.0
-    cos_incidence = np.cos(elev) * math.cos(sun_elev) * np.cos(azimuth) + np.sin(
-        elev
-    ) * math.sin(sun_elev)
-    lit = np.asarray(sunlit, dtype=bool)
-    return lit_temperature_k(
-        zone, env, np.maximum(cos_incidence, 0.0) * lit, np.sin(elev)
-    )
-
-
-def lit_temperature_k(
-    zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
-) -> FloatArray:
-    """`facet_temperature_k` by the two numbers it depends on: `sun_cos`, max(0, n . s)
-    where sunlit and 0 in shadow, and `normal_up`, the normal's vertical component."""
     sun_cos = np.asarray(sun_cos, dtype=np.float64)
     up = np.asarray(normal_up, dtype=np.float64)
     t_interior = env.interior_k(zone.interior)

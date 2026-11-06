@@ -56,6 +56,8 @@ class Target(NamedTuple):
 
 
 class Image(Model):
+    """A COCO image, with the camera and instant that took it."""
+
     id: int
     file_name: str
     width: int
@@ -74,6 +76,8 @@ class Image(Model):
 
 
 class Category(Model):
+    """A COCO category."""
+
     id: int
     name: str
     supercategory: str
@@ -88,6 +92,8 @@ class RunLengths(Model):
 
 
 class Annotation(Model):
+    """A COCO annotation: one target in one image."""
+
     id: int
     image_id: int
     category_id: int
@@ -110,6 +116,8 @@ class Annotation(Model):
 
 
 class Dropped(Model):
+    """A target of the scenario that an image carries no annotation for, and why."""
+
     image_id: int
     name: str
     range_m: float
@@ -122,6 +130,8 @@ class Dropped(Model):
 
 
 class Labels(Model):
+    """A COCO dataset, with the targets it drops."""
+
     info: dict[str, Any] = Field(default_factory=dict)
     images: list[Image] = Field(default_factory=list)
     annotations: list[Annotation] = Field(default_factory=list)
@@ -140,11 +150,22 @@ class Labels(Model):
         *,
         faint: Mapping[str, float],
     ) -> None:
-        """One frame: `index` is its object-index pass, (height, width), and `frame`
-        the image as written, both top row first. `settings` is the scenario's camera,
-        whose sensor, lens and processing an EO image carries, and lens,
-        microbolometer and AGC an LWIR one. A target in `faint`, by name, is dropped
-        with its excess ΔE*ab."""
+        """Label one frame.
+
+        Args:
+            camera: The calibration the frame was taken with.
+            time_s: When the frame was taken.
+            index: Each pixel's object pass index, 0 for none, (height, width), top
+                row first.
+            frame: The image as written, top row first.
+            targets: The targets to box, each found in `index` by its pass index.
+            radius_m: The earth's radius as refraction bends a ray, R / (1 - k), so
+                the horizon line falls where a camera sees it.
+            settings: The scenario's camera, or None. A uint8 EO frame records its
+                sensor, lens and processing; an integer LWIR one, its lens,
+                microbolometer and AGC. Any other frame records none of them.
+            faint: The targets to drop, by name, each with its excess ΔE*ab.
+        """
         # Only an 8-bit EO frame went through the camera's chain, and only an integer
         # LWIR one (png, jpg) through the microbolometer and the AGC that tones it.
         grade = (
@@ -207,7 +228,7 @@ class Labels(Model):
                     image_id=image.id,
                     category_id=self._category(target),
                     bbox=bbox,
-                    segmentation=run_lengths(index == target.pass_index),
+                    segmentation=_run_lengths(index == target.pass_index),
                     area=len(xs),
                     name=target.name,
                     range_m=where["range_m"],
@@ -237,6 +258,7 @@ class Labels(Model):
         return target.category_id
 
     def write(self, folder: Path) -> Path:
+        """Write to `folder`; the file written."""
         return write_json(self, folder / FILENAME)
 
 
@@ -284,7 +306,7 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
-def run_lengths(mask: np.ndarray) -> RunLengths:
+def _run_lengths(mask: np.ndarray) -> RunLengths:
     column_major = mask.ravel(order="F")
     # np.diff of bools is XOR: True at each flip.
     flips = np.flatnonzero(np.diff(column_major)) + 1
@@ -293,6 +315,7 @@ def run_lengths(mask: np.ndarray) -> RunLengths:
 
 
 def present(index: np.ndarray, targets: Sequence[Target]) -> set[str]:
+    """The targets with a pixel in the pass index image `index`."""
     return {t.name for t in targets if (index == t.pass_index).any()}
 
 
@@ -310,7 +333,8 @@ def faint(
     index: np.ndarray, frame: np.ndarray, targets: Sequence[Target]
 ) -> dict[str, float]:
     """The excess ΔE*ab of each target in an 8-bit frame that falls short of
-    MIN_EXCESS_DE. A deeper frame never went through a camera, so nothing is faint."""
+    MIN_EXCESS_DE. A deeper frame never went through a camera, so nothing is faint.
+    """
     if frame.dtype != np.uint8:
         return {}
     low = {}
@@ -331,7 +355,8 @@ def faint(
 def excess_de(index: np.ndarray, frame: np.ndarray, pass_index: int) -> float | None:
     """The target's mean ΔE*ab from its background, less its flanks' mean from the
     same background; None if no row of the target has a flank. A local target-to-
-    clutter contrast (Schmieder & Weathersby 1983)."""
+    clutter contrast (Schmieder & Weathersby 1983).
+    """
     lab = cielab(frame)
     mask = index == pass_index
     beside = flanks(index, pass_index)
@@ -356,14 +381,19 @@ def cielab(frame: np.ndarray) -> np.ndarray:
 
 
 def flank_px(span_px: int) -> int:
-    """Each flank's width beside a row `span_px` wide: half the span, so flank and
-    target pixels number about the same, and never under FLANK_PX."""
+    """Each flank's width beside a row of target: half the span, so flank and target
+    pixels number about the same, and never under FLANK_PX.
+
+    Args:
+        span_px: The target's first pixel on the row to its last, gaps included.
+    """
     return max(FLANK_PX, -(-span_px // 2))
 
 
 def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
     """The pixels beside the target on each of its rows, past FLANK_GAP_PX of it in any
-    direction, that no object, the ownship included, covers."""
+    direction, that no object, the ownship included, covers.
+    """
     mask = index == pass_index
     beside = np.zeros_like(mask)
     for y in np.flatnonzero(mask.any(axis=1)):
@@ -379,8 +409,14 @@ def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
 def background(
     lab: np.ndarray, mask: np.ndarray, beside: np.ndarray
 ) -> np.ndarray | None:
-    """At the pixels of `mask` and its flanks, each row's `_line`, or the nearest
-    row's that has a flank; NaN elsewhere. None if no row has a flank."""
+    """At a target's pixels and its flanks, each row's `_line`, or the nearest row's
+    that has a flank; NaN elsewhere. None if no row has a flank.
+
+    Args:
+        lab: The frame in L*a*b*.
+        mask: The target's pixels.
+        beside: The target's flanks.
+    """
     rows = np.flatnonzero(mask.any(axis=1))
     lines = {y: _line(lab[y], mask[y], beside[y]) for y in rows if beside[y].any()}
     if not lines:
@@ -443,9 +479,13 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
 
 
 def agcs(folder: Path) -> dict[str, Agc]:
-    """Each camera's AGC, by name, as its thermal frames in `folder` record it, the
-    default for a camera with none, or for every camera in a folder without labels.
-    A merged set is refused."""
+    """Each camera's AGC, by name, as its thermal frames record it, the default for a
+    camera with none, or for every camera in a folder without labels. A merged set is
+    refused.
+
+    Args:
+        folder: One seed's render output, whose labels record each frame's AGC.
+    """
     found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():

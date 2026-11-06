@@ -62,8 +62,11 @@ def thermal_expansion_per_k(t_k: float) -> float:
 
 
 def solar_trapped(depth_m: float) -> float:
-    """Fairall et al.'s equation 26: the fraction of the net solar a layer `depth_m`
-    deep keeps."""
+    """Fairall et al.'s equation 26: the fraction of the net solar a layer keeps.
+
+    Args:
+        depth_m: How far down from the surface the layer reaches.
+    """
     passed = sum(
         f * g * (1.0 - math.exp(-depth_m / g))
         for f, g in zip(_SOLOVIEV_FRACTIONS, _SOLOVIEV_LENGTHS_M, strict=True)
@@ -81,19 +84,25 @@ def warm_layer(
     """Peak warming of the surface over the mixed layer, K, and the warm layer's depth,
     m, from Fairall et al.'s equations 21 and 25: the warm layer keeps the heat and
     momentum put in since it formed, to the depth where its bulk Richardson number is
-    critical.
-
-    `solar_w_m2` is the net solar at the surface, `cooling_w_m2` the net cooling at the
-    interface and `stress_m2_s2` the air's u*^2, each averaged over the `hours`. No
-    warming where the trapped sun cannot outweigh the cooling at any depth.
+    critical. No warming where the trapped sun cannot outweigh the cooling at any
+    depth.
 
     The air's density is taken at the sea's temperature: 10 K off is 3.5 % of the
     stress.
+
+    Args:
+        solar_w_m2: Net solar at the surface, averaged over the hours.
+        cooling_w_m2: Net cooling at the interface, averaged over the hours.
+        stress_m2_s2: The air's friction velocity squared, u*^2 = stress / density,
+            averaged over the hours.
+        hours: Time since the warm layer formed.
+        t_sea_k: Sea temperature, which sets its thermal expansion and the air's
+            density.
     """
     alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_MS2
     heat = WATER_DENSITY_KG_M3 * WATER_HEAT_J_KG_K
     # The same stress either side of the interface.
-    stress_water = stress_m2_s2 * air_density_kg_m3(t_sea_k) / WATER_DENSITY_KG_M3
+    stress_water = stress_m2_s2 * _air_density_kg_m3(t_sea_k) / WATER_DENSITY_KG_M3
     seconds = hours * 3600.0
     # Equation 21 with its integrals as means times t. A deeper layer traps more sun
     # and so asks for less depth: one depth balances, bisected on a log scale between
@@ -135,19 +144,26 @@ def clear_day_cooling_w_m2(wind_speed_mps: float) -> float:
     )
 
 
-def air_density_kg_m3(t_k: float) -> float:
+def _air_density_kg_m3(t_k: float) -> float:
     return SEA_LEVEL_PA / (DRY_AIR_J_KG_K * t_k)
 
 
 def stress_m2_s2(wind_speed_mps: float, t_k: float) -> float:
     """The air's u*^2 from the 10 m wind, as Fairall et al. estimated it, no less than
-    COARE 3.6's floor."""
-    floor = MIN_STRESS_N_M2 / air_density_kg_m3(t_k)
+    COARE 3.6's floor.
+    """
+    floor = MIN_STRESS_N_M2 / _air_density_kg_m3(t_k)
     return max(DRAG_COEFFICIENT * wind_speed_mps**2, floor)
 
 
 def skin_k(t_sea_k: float, warm_layer_k: float, sun_up: bool) -> float:
-    """The radiating skin over a bulk at `t_sea_k`: its warm layer's rise, less the cool
-    skin, which the sun thins."""
+    """The radiating skin's temperature: the bulk's, plus its warm layer's rise, less
+    the cool skin, which the sun thins.
+
+    Args:
+        t_sea_k: The bulk sea's temperature.
+        warm_layer_k: The warm layer's rise, as `warm_layer` gives it.
+        sun_up: Takes Fairall et al.'s noon cool skin; false, their night one.
+    """
     cool = COOL_SKIN_DAY_K if sun_up else COOL_SKIN_NIGHT_K
     return t_sea_k + warm_layer_k - cool
