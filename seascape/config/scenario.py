@@ -129,11 +129,12 @@ class Scenario(Model):
 
     @property
     def mounts(self) -> list[Mount]:
-        """Every camera, with the rig carrying it."""
+        """Every camera as rendered, with its rig; an exr renders the rig's own."""
+        exr = self.outputs.format == "exr"
         return [
             Mount(rig_name, rig, camera_name, camera)
             for rig_name, rig in self.rigs.items()
-            for camera_name, camera in rig.cameras.items()
+            for camera_name, camera in (rig.cameras if exr else rig.rendered).items()
         ]
 
     def band_mounts(self, band: Band) -> list[Mount]:

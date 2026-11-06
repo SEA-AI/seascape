@@ -12,6 +12,7 @@ from seascape.config.cameras import (
     Processing,
     Rig,
     Sensor,
+    Undistortion,
     Video,
 )
 from seascape.config.draws import substream
@@ -48,6 +49,7 @@ __all__ = [
     "Sensor",
     "Sky",
     "Targets",
+    "Undistortion",
     "Video",
     "WarmLayer",
     "json_schema",
