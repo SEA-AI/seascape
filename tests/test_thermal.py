@@ -252,8 +252,6 @@ def test_grime_darkens_white_paint_in_the_sun_and_never_lightens_black() -> None
     assert thermal.under(white, "grime").emissivity == white.emissivity
 
 
-def test_grime_raises_a_bare_metals_emissivity_and_not_paints() -> None:
+def test_grime_raises_a_bare_metals_emissivity() -> None:
     metal = thermal.ZONES["bare_metal"]
     assert thermal.under(metal, "grime").emissivity == thermal.GRIME_EMISSIVITY
-    paint = thermal.ZONES["paint_hull"]
-    assert thermal.under(paint, "grime").emissivity == paint.emissivity

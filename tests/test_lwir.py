@@ -24,20 +24,13 @@ def eps_at(curve: tuple[np.ndarray, np.ndarray], deg: float) -> float:
     return float(np.interp(np.radians(deg), angles, eps))
 
 
-def test_normal_incidence_emissivity_is_about_0_99(curve) -> None:
-    """0.98-0.99 is the standard handbook emissivity for water in this band."""
-    assert 0.98 <= eps_at(curve, 0.0) <= 0.995
-
-
-def test_emissivity_falls_with_angle(curve) -> None:
-    """Fresnel reflectance rises monotonically with incidence for an absorbing
-    medium, so emissivity has to fall. A wobble means the complex sqrt took a wrong
-    branch or the band integration picked up a sign error.
+def test_emissivity_is_0_99_at_normal_incidence_and_falls_with_angle(curve) -> None:
+    """0.98-0.99 is the standard handbook emissivity for water in this band. Fresnel
+    reflectance rises with incidence for an absorbing medium, so emissivity falls; a
+    wobble means a wrong complex-sqrt branch or a band-integration sign error.
     """
+    assert 0.98 <= eps_at(curve, 0.0) <= 0.995
     assert eps_at(curve, 60.0) > eps_at(curve, 80.0) > eps_at(curve, 89.0)
-
-
-def test_grazing_emissivity_collapses(curve) -> None:
     assert eps_at(curve, 89.0) < 0.6
 
 
@@ -364,39 +357,9 @@ def test_a_rough_sea_seen_grazing_reflects_sky_from_above_its_mirror() -> None:
         lwir.Sky(elev, sky).reflected(mirror, slope_sigma=s) for s in (0.05, 0.15)
     )
     assert rough < smooth < flat
-
-
-@pytest.mark.parametrize("mirror_deg", [0.2, 1.0, 3.0, 10.0])
-def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
-    mirror_deg: float,
-) -> None:
-    """The shader takes eps B + (1 - eps) S of facet means; each facet emits and
-    reflects in its own proportion.
-    """
-    t_sea_k, sigma = atmosphere.T_SEA_K, 0.1
-    elev = np.radians(np.linspace(0.0, 90.0, 181))
-    sky = lwir.sky_radiance(elev)
-    mirror = math.radians(mirror_deg)
-    reflected = lwir.Sky(elev, sky).reflected(
-        mirror, t_sea_k=t_sea_k, slope_sigma=sigma
-    )
-    theta, eps = lwir.emissivity_curve(t_sea_k=t_sea_k, slope_sigma=sigma)
-    mean_eps = np.interp(math.pi / 2 - mirror, theta, eps)
-    hot = lwir.band_radiance(t_sea_k)
-
-    normal = lwir._facets(sigma)
-    view = np.array([math.cos(mirror), 0.0, math.sin(mirror)])
-    cos_i = normal @ view
-    area = lwir._seen_area(cos_i, normal)
-    flat_theta, flat = lwir.emissivity_curve(t_sea_k=t_sea_k)
-    own = np.interp(np.arccos(np.clip(cos_i, -1.0, 1.0)), flat_theta, flat)
-    up = np.arcsin(np.clip(2 * cos_i * normal[:, 2] - view[2], -1.0, 1.0))
-    each = own * hot + (1 - own) * np.interp(up, elev, sky)
-    exact = (area * each).sum() / area.sum()
-
-    shaded = mean_eps * hot + (1 - mean_eps) * reflected
-    assert lwir.brightness_temperature(shaded) == pytest.approx(
-        lwir.brightness_temperature(exact), abs=0.006
+    # Unset, the view is the mirror's elevation.
+    assert rough == pytest.approx(
+        lwir.Sky(elev, sky).reflected(mirror, slope_sigma=0.15, view_rad=mirror)
     )
 
 
@@ -438,8 +401,11 @@ def _shaded(depression: float, tilt: float, sigma: float) -> float:
     )
 
 
-@pytest.mark.parametrize(("depression_deg", "tilt_deg"), [(9, -8), (6, -4), (3, 4)])
-def test_a_tilted_wave_turns_every_facet_s_reflection_with_it(
+@pytest.mark.parametrize(
+    ("depression_deg", "tilt_deg"),
+    [(0.2, 0), (1, 0), (3, 0), (10, 0), (9, -8), (6, -4), (3, 4)],
+)
+def test_the_shader_s_facet_means_are_the_facets_own_sum_at_any_wave_tilt(
     depression_deg: float, tilt_deg: float
 ) -> None:
     depression, tilt, sigma = math.radians(depression_deg), math.radians(tilt_deg), 0.1
@@ -447,7 +413,7 @@ def test_a_tilted_wave_turns_every_facet_s_reflection_with_it(
         _shaded(depression, tilt, sigma)
     ) == pytest.approx(
         lwir.brightness_temperature(_tilted_facet_sum(depression, tilt, sigma)),
-        abs=0.01,
+        abs=0.006,
     )
 
 

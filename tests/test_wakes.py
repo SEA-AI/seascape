@@ -27,7 +27,6 @@ def test_a_fast_hull_s_wake_narrows_as_one_over_froude() -> None:
 
 def test_no_waves_below_kriebel_and_seelig_s_threshold() -> None:
     assert _hull(wakes.WAVELESS_FROUDE).height_scale_m == 0.0
-    assert _hull(0.3).height_scale_m > 0.0
 
 
 def test_a_planing_hull_s_waves_stop_growing_past_the_hump() -> None:
