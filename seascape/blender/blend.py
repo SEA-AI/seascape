@@ -1,3 +1,5 @@
+"""Small builders over Blender's data."""
+
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -46,6 +48,7 @@ def animate(
 
 
 def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
+    """A sine of time in seconds."""
     return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
 
 
@@ -128,6 +131,7 @@ def feed(
     socket: bpy.types.NodeSocket,
     value: Operand | tuple[float, ...],
 ) -> None:
+    """`value` into `socket`: linked if it is a socket or a `Num`, else set."""
     if isinstance(value, Num):
         value = value.socket
     if isinstance(value, bpy.types.NodeSocket):
@@ -152,6 +156,7 @@ def vector(
     *inputs: Operand | tuple[float, ...],
     name: str | None = None,
 ) -> bpy.types.NodeSocket:
+    """The output of a new Vector Math node doing `operation` on `inputs`."""
     made = tree.nodes.new("ShaderNodeVectorMath")
     made.operation = operation
     if name:
@@ -182,6 +187,7 @@ def scalar(
 
 
 def clamped(tree: bpy.types.NodeTree, x: Operand) -> bpy.types.NodeSocket:
+    """`x`, no less than 0 and no more than 1."""
     out = scalar(tree, "MAXIMUM", x, 0.0)
     out.node.use_clamp = True
     return out
@@ -207,6 +213,7 @@ class Num:
         raise TypeError("a Num is a node's output, not a truth value")
 
     def op(self, operation: str, *others: Operand) -> "Num":
+        """A node doing `operation` on self and `others`, in that order."""
         return Num(
             self.tree,
             scalar(self.tree, operation, self.socket, *map(self._raw, others)),
@@ -219,6 +226,7 @@ class Num:
         )
 
     def madd(self, factor: Operand, term: Operand) -> "Num":
+        """self * `factor` + `term`, in one Multiply Add node."""
         return self.op("MULTIPLY_ADD", factor, term)
 
     def __add__(self, other: Operand) -> "Num":
@@ -286,6 +294,7 @@ def mix_shader(
 def separate(
     tree: bpy.types.NodeTree, xyz: bpy.types.NodeSocket
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket, bpy.types.NodeSocket]:
+    """The X, Y and Z of a vector socket."""
     split = node(tree, "ShaderNodeSeparateXYZ", {"Vector": xyz})
     return split.outputs["X"], split.outputs["Y"], split.outputs["Z"]
 
@@ -302,6 +311,7 @@ def value(
 
 
 def set_value(tree: bpy.types.NodeTree, name: str, to: float) -> None:
+    """Set the Value node `name`, which `value` made."""
     tree.nodes[name].outputs["Value"].default_value = to
 
 

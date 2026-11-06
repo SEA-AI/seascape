@@ -31,6 +31,7 @@ class Uniform(Model):
     uniform: tuple[float, float] = Field(description="The bounds.")
 
     def draw(self, rng: np.random.Generator) -> float:
+        """One value, from `rng`."""
         return float(rng.uniform(*self.uniform))
 
     def bounds(self) -> tuple[float, float]:
@@ -47,6 +48,7 @@ class LogUniform(Model):
     )
 
     def draw(self, rng: np.random.Generator) -> float:
+        """One value, from `rng`."""
         # exp(log(x)) can land an ulp below x.
         return float(
             np.clip(np.exp(rng.uniform(*np.log(self.log_uniform))), *self.log_uniform)
@@ -74,6 +76,7 @@ class Triangular(Model):
         return self
 
     def draw(self, rng: np.random.Generator) -> float:
+        """One value, from `rng`."""
         return float(rng.triangular(*self.triangular))
 
     def bounds(self) -> tuple[float, float]:
@@ -87,6 +90,7 @@ class Integer(Model):
     integer: tuple[int, int] = Field(description="The bounds, both included.")
 
     def draw(self, rng: np.random.Generator) -> int:
+        """One value, from `rng`."""
         return int(rng.integers(*self.integer, endpoint=True))
 
     def bounds(self) -> tuple[float, float]:
@@ -120,6 +124,7 @@ class Choice(Model):
         return self
 
     def draw(self, rng: np.random.Generator) -> Any:
+        """One value, from `rng`."""
         if self.weights is None:
             return self.choice[rng.integers(len(self.choice))]
         p = np.array(self.weights) / sum(self.weights)

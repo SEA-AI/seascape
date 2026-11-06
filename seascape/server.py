@@ -100,6 +100,8 @@ BYTES_PER_PX: dict[tuple[Band, ImageFormat], float] = {
 
 @dataclass
 class Job:
+    """One `render` call and how far it got."""
+
     folder: Path
     scenario: str
     scenes: list[Scenario]
@@ -127,6 +129,7 @@ class Job:
 
     @property
     def total(self) -> int:
+        """How many images the job writes."""
         return sum(scene.images for scene in self.scenes)
 
     @property
@@ -138,6 +141,7 @@ class Job:
 
     @property
     def waiting(self) -> bool:
+        """Whether the job is queued or running."""
         return self.state in ("queued", "running")
 
 
@@ -151,6 +155,7 @@ class State:
     gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def scenarios(self) -> dict[str, Path]:
+        """The scenarios a job can name, by file stem."""
         return {p.stem: p for p in sorted(self.settings.scenarios.glob("*.toml"))}
 
 
@@ -467,6 +472,7 @@ def jobs(ctx: Context[State, Any]) -> dict[str, Any]:
 
 
 def mcp(state: State) -> MCPServer:
+    """The MCP server, its tools sharing `state`."""
     state.renders.mkdir(parents=True, exist_ok=True)
 
     # The in-memory client enters the lifespan per connection; jobs outlive one.

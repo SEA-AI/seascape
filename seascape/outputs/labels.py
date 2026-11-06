@@ -56,6 +56,8 @@ class Target(NamedTuple):
 
 
 class Image(Model):
+    """A COCO image, with the camera and instant that took it."""
+
     id: int
     file_name: str
     width: int
@@ -74,6 +76,8 @@ class Image(Model):
 
 
 class Category(Model):
+    """A COCO category."""
+
     id: int
     name: str
     supercategory: str
@@ -88,6 +92,8 @@ class RunLengths(Model):
 
 
 class Annotation(Model):
+    """A COCO annotation: one target in one image."""
+
     id: int
     image_id: int
     category_id: int
@@ -110,6 +116,8 @@ class Annotation(Model):
 
 
 class Dropped(Model):
+    """A target of the scenario that an image carries no annotation for, and why."""
+
     image_id: int
     name: str
     range_m: float
@@ -122,6 +130,8 @@ class Dropped(Model):
 
 
 class Labels(Model):
+    """A COCO dataset, with the targets it drops."""
+
     info: dict[str, Any] = Field(default_factory=dict)
     images: list[Image] = Field(default_factory=list)
     annotations: list[Annotation] = Field(default_factory=list)
@@ -216,7 +226,7 @@ class Labels(Model):
                     image_id=image.id,
                     category_id=self._category(target),
                     bbox=bbox,
-                    segmentation=run_lengths(index == target.pass_index),
+                    segmentation=_run_lengths(index == target.pass_index),
                     area=len(xs),
                     name=target.name,
                     range_m=where["range_m"],
@@ -246,6 +256,7 @@ class Labels(Model):
         return target.category_id
 
     def write(self, folder: Path) -> Path:
+        """Write to `folder`; the file written."""
         return write_json(self, folder / FILENAME)
 
 
@@ -293,7 +304,7 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
-def run_lengths(mask: np.ndarray) -> RunLengths:
+def _run_lengths(mask: np.ndarray) -> RunLengths:
     column_major = mask.ravel(order="F")
     # np.diff of bools is XOR: True at each flip.
     flips = np.flatnonzero(np.diff(column_major)) + 1
@@ -302,6 +313,7 @@ def run_lengths(mask: np.ndarray) -> RunLengths:
 
 
 def present(index: np.ndarray, targets: Sequence[Target]) -> set[str]:
+    """The targets with a pixel in the pass index image `index`."""
     return {t.name for t in targets if (index == t.pass_index).any()}
 
 

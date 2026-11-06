@@ -62,11 +62,15 @@ class CameraCalibration(_Record):
 
 
 class Calibration(_Record):
+    """Every camera of a render, as `FILENAME` in its folder."""
+
     cameras: list[CameraCalibration] = Field(min_length=1)
 
     def write(self, folder: Path) -> Path:
+        """Write to `folder`; the file written."""
         return write_json(self, folder / FILENAME)
 
     @classmethod
     def read(cls, folder: Path) -> "Calibration":
+        """The calibration in `folder`."""
         return cls.model_validate_json((folder / FILENAME).read_text())

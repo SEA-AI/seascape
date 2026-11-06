@@ -321,7 +321,7 @@ def list_() -> None:
     click.echo("\nMeshes go in a scenario's `asset`, skies in `sky.hdri`.")
 
 
-def _names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+def _names(_ctx: click.Context, _param: click.Parameter, incomplete: str) -> list[str]:
     return [
         n for n in [*assets.manifest(), *skies.library()] if n.startswith(incomplete)
     ]

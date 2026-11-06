@@ -20,6 +20,7 @@ def phases(
     north_m: np.ndarray,
     t_s: float | np.ndarray,
 ) -> np.ndarray:
+    """Each wave's phase at each point and time, waves on the first axis."""
     _, _, kx, ky, omega, phase = columns(field)
     ndim = np.broadcast(east_m, north_m, t_s).ndim
 
@@ -32,6 +33,7 @@ def phases(
 def height_m(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> np.ndarray:
+    """The surface's height at each point."""
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     return np.tensordot(columns(field)[0], np.cos(phase), axes=1)
 

@@ -156,6 +156,7 @@ def foam_lattice_field(
 
 
 def whitecap_fraction(wind_speed_mps: float) -> float:
+    """The sea's whitecap cover, 0 to 1, at a 10 m wind."""
     return min(WHITECAP_COEFFICIENT * wind_speed_mps**WHITECAP_EXPONENT, 1.0)
 
 

@@ -435,6 +435,7 @@ SOOT = (0.015, 0.014, 0.013, 1.0)
 
 
 def dirty(parts: list[bpy.types.Object]) -> None:
+    """Dirty every material of `parts` by their asset's baked crevices."""
     meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
     crevice = meshes[0][CREVICE]
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:

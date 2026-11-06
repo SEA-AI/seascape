@@ -314,6 +314,8 @@ class Rig(Model):
 
 
 class Mount(NamedTuple):
+    """A camera and the rig carrying it."""
+
     rig_name: str
     rig: Rig
     camera_name: str
@@ -321,6 +323,7 @@ class Mount(NamedTuple):
 
     @property
     def name(self) -> str:
+        """The camera's name, unique in the scenario."""
         return f"{self.rig_name}_{self.camera_name}"
 
     @property

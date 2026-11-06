@@ -82,6 +82,7 @@ class Heat(NamedTuple):
 
 
 def surroundings(scenario: Scenario) -> Heat:
+    """What the scenario's hulls exchange heat with: air, sea, sun and sky."""
     sky = scenario.sky
     elevation = sky.sun_elevation_deg
     env = thermal.Environment(

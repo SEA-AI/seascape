@@ -29,6 +29,8 @@ from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 
 class Aim(NamedTuple):
+    """Where a view looks from."""
+
     name: str
     # Bearing from the asset's centre, bow 0, starboard 90.
     bearing_deg: float
@@ -172,6 +174,8 @@ def _shoot(path: Path, color_type: str, light: str, aa: str, exr: bool) -> None:
 
 @dataclass
 class View:
+    """One view's renders."""
+
     name: str
     part: np.ndarray  # (h, w) the painted value, -1 where nothing is
     grey: np.ndarray  # (h, w) studio-lit shape, 0 to 1
@@ -377,7 +381,7 @@ def overview(
     return _grid(tiles, title)
 
 
-def legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Image:
+def _legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Image:
     rows = math.ceil(len(names) / 3)
     line = 20
     image = Image.new("RGB", (TILE[0] * COLUMNS, 8 + rows * line), MATTE)
@@ -724,7 +728,7 @@ def sheets(
         ],
     )
     if kind == "slots":
-        sheet = _stack(sheet, legend(colours, labels, names))
+        sheet = _stack(sheet, _legend(colours, labels, names))
     sheet.save(path := into / "overview.png")
     written.append(path)
     for texture, atlas in atlases.items():
@@ -849,7 +853,7 @@ def contact(name: str, out: Path) -> Path:
     )
     sheet = _stack(
         sheet,
-        legend(colours[present], shares, [vocabulary[z] for z in present]),
+        _legend(colours[present], shares, [vocabulary[z] for z in present]),
         _grid(
             _worn_tiles(found, asset.weathered),
             [f"worn {SHOWN_WEAR}, as a build lays it"],

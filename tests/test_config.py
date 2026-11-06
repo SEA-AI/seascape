@@ -914,7 +914,7 @@ def test_a_reversed_optical_depth_is_refused() -> None:
         load(BASELINE, [optical_depth_ship("[2.0, 1.0]")])
 
 
-def test_a_loaded_scenario_reloads_as_the_same_scene(tmp_path) -> None:
+def test_a_loaded_scenario_reloads_as_the_same_scene() -> None:
     """Labels carry this dump, and readers rebuild the scene from it."""
     drawn = (
         'objects = [{ asset = "yacht", count = { integer = [2, 4] }, '

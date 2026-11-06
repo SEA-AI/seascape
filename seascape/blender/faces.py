@@ -20,6 +20,8 @@ from seascape.physics.thermal import ZONE_NAMES
 
 @dataclass(frozen=True)
 class Island:
+    """One island, as `Zones` defines it, and the faces it spans from `first_face`."""
+
     id: int
     object: str
     material: str
@@ -45,12 +47,14 @@ class Parts:
 
 
 def ints(collection: Any, attribute: str, n: int) -> np.ndarray:
+    """An integer attribute of every item in `collection`, by `foreach_get`."""
     out = np.empty(n, dtype=np.int64)
     collection.foreach_get(attribute, out)
     return out
 
 
 def floats(collection: Any, attribute: str, n: int) -> np.ndarray:
+    """A float attribute of every item in `collection`, by `foreach_get`."""
     out = np.empty(n, dtype=np.float64)
     collection.foreach_get(attribute, out)
     return out
@@ -250,6 +254,7 @@ def _input(
 
 
 def bsdf(material: bpy.types.Material) -> Any:
+    """The material's Principled BSDF; None without one."""
     if material is None or material.node_tree is None:
         return None
     return next(
@@ -258,6 +263,8 @@ def bsdf(material: bpy.types.Material) -> Any:
 
 
 class Source(NamedTuple):
+    """An image a shader reads, which channel, and the factor applied to it."""
+
     image: bpy.types.Image
     channel: int | None  # None for colour
     node: Any

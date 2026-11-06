@@ -79,6 +79,7 @@ class Wake:
 
     @property
     def froude(self) -> float:
+        """The length Froude number, U / sqrt(g L)."""
         return self.speed_mps / math.sqrt(GRAVITY_MS2 * self.length_m)
 
     @property
