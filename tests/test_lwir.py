@@ -24,13 +24,10 @@ def eps_at(curve: tuple[np.ndarray, np.ndarray], deg: float) -> float:
     return float(np.interp(np.radians(deg), angles, eps))
 
 
-def test_emissivity_is_about_0_99_at_normal_incidence_and_falls_to_grazing(
-    curve,
-) -> None:
+def test_emissivity_is_0_99_at_normal_incidence_and_falls_with_angle(curve) -> None:
     """0.98-0.99 is the standard handbook emissivity for water in this band. Fresnel
-    reflectance rises monotonically with incidence for an absorbing medium, so
-    emissivity has to fall. A wobble means the complex sqrt took a wrong branch or the
-    band integration picked up a sign error.
+    reflectance rises with incidence for an absorbing medium, so emissivity falls; a
+    wobble means a wrong complex-sqrt branch or a band-integration sign error.
     """
     assert 0.98 <= eps_at(curve, 0.0) <= 0.995
     assert eps_at(curve, 60.0) > eps_at(curve, 80.0) > eps_at(curve, 89.0)
@@ -360,6 +357,10 @@ def test_a_rough_sea_seen_grazing_reflects_sky_from_above_its_mirror() -> None:
         lwir.Sky(elev, sky).reflected(mirror, slope_sigma=s) for s in (0.05, 0.15)
     )
     assert rough < smooth < flat
+    # Unset, the view is the mirror's elevation.
+    assert rough == pytest.approx(
+        lwir.Sky(elev, sky).reflected(mirror, slope_sigma=0.15, view_rad=mirror)
+    )
 
 
 def _tilted_facet_sum(depression: float, tilt: float, sigma: float) -> float:
@@ -404,7 +405,7 @@ def _shaded(depression: float, tilt: float, sigma: float) -> float:
     ("depression_deg", "tilt_deg"),
     [(0.2, 0), (1, 0), (3, 0), (10, 0), (9, -8), (6, -4), (3, 4)],
 )
-def test_a_tilted_wave_turns_every_facet_s_reflection_with_it(
+def test_the_shader_s_facet_means_are_the_facets_own_sum_at_any_wave_tilt(
     depression_deg: float, tilt_deg: float
 ) -> None:
     depression, tilt, sigma = math.radians(depression_deg), math.radians(tilt_deg), 0.1

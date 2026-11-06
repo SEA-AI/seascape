@@ -404,13 +404,13 @@ def test_a_wave_no_pixel_resolves_is_gone_at_every_coarser_one(
     assert all(2 * math.pi / w.k_rad_m > footprint_m for w in kept)
 
 
-def test_calm_air_builds_no_waves_so_nothing_breaks_tilts_or_glitters() -> None:
+def test_calm_air_builds_no_waves_and_nothing_they_drive() -> None:
     assert field(0.0) == ()
     assert sum(
         waves.unresolved_slope_variances(0.0, 0.0, (), (), 1.0)
     ) == pytest.approx(waves.cox_munk_slope(0.0) ** 2)
     assert waves.whitecap_fraction(0.0) == 0.0
-    # A breath of wind builds no waves but has a whitecap fraction.
+    # Whitecap cover at a breath of wind, over no waves.
     fraction = waves.whitecap_fraction(0.5)
     assert waves.foam_memory_thresholds_g(
         (), (0.0, 0.0), 0.25, 1 / 12, (fraction,)
