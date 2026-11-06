@@ -51,18 +51,17 @@ class Hulls:
 @dataclass(frozen=True)
 class Condition:
     """How a hull is kept and run: one temperature for all of it or none, minutes
-    since its engines stopped, its paint's solar absorptance and its wear.
+    since its engines stopped and its paint's solar absorptance.
     """
 
     t_k: float | None = None
     engine_off_min: float = 0.0
     paint_absorptance: float | None = None
-    wear: float = 0.0
 
     @classmethod
     def of(cls, spec: Object | Targets) -> "Condition":
         """The condition an object or a ring of targets asks for."""
-        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance, spec.wear)
+        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance)
 
 
 def heading_rad(anchor: bpy.types.Object) -> float:
@@ -121,7 +120,6 @@ def _vessel(
         anchor[size] = parts[0][size]
     anchor["height_m"] = parts[0]["height_m"] + rise_m
     anchor["engine_off_min"] = condition.engine_off_min
-    anchor["wear"] = condition.wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
     attitude = bpy.data.objects.new(f"{name}_attitude", None)
     # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
@@ -379,7 +377,7 @@ def _turbine(
     """
     anchor = _vessel(
         farm.asset,
-        condition=Condition(paint_absorptance=farm.paint_absorptance, wear=farm.wear),
+        condition=Condition(paint_absorptance=farm.paint_absorptance),
         hulls=hulls,
     )
     outputs = scenario.outputs

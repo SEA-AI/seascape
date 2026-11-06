@@ -140,25 +140,20 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
     )
 
 
-def _zodiacs(worn: frozenset[str], wears: tuple[float, ...]) -> list[bpy.types.Object]:
+def _zodiacs(worn: frozenset[str], count: int = 1) -> list[bpy.types.Object]:
     hulls = Hulls(load(BASELINE).sky, None, worn)
-    return [
-        _vessel("zodiac", condition=Condition(wear=amount), hulls=hulls)
-        for amount in wears
-    ]
+    return [_vessel("zodiac", condition=Condition(), hulls=hulls) for _ in range(count)]
 
 
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
-    clean, worn = _zodiacs(frozenset({"zodiac"}), (0.0, 0.6))
-    assert (clean["wear"], worn["wear"]) == (0.0, 0.6)
-    for anchor in (clean, worn):
+    for anchor in _zodiacs(frozenset({"zodiac"}), 2):
         meshes = mesh_objects([anchor])
         assert all("wear_position_m" in o.data.attributes for o in meshes)
         assert all(o.name.startswith("zodiac/") for o in meshes)
 
 
 def test_a_clean_build_is_not_tagged() -> None:
-    (clean,) = _zodiacs(frozenset(), (0.0,))
+    (clean,) = _zodiacs(frozenset())
     meshes = mesh_objects([clean])
     assert not any("wear_position_m" in o.data.attributes for o in meshes)
 
@@ -169,7 +164,7 @@ def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
 
 
 def test_a_clean_build_keeps_its_import_graph() -> None:
-    (clean,) = _zodiacs(frozenset(), (0.0,))
+    (clean,) = _zodiacs(frozenset())
     assert not any(g.name.startswith("wear_masks") for g in bpy.data.node_groups)
     built = {m.name.split("/", 1)[1]: len(m.node_tree.nodes) for m in _materials(clean)}
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -180,7 +175,7 @@ def test_a_clean_build_keeps_its_import_graph() -> None:
 
 
 def test_a_worn_asset_lays_dirt_over_every_principled_material() -> None:
-    (worn,) = _zodiacs(frozenset({"zodiac"}), (0.5,))
+    (worn,) = _zodiacs(frozenset({"zodiac"}))
     for material in _materials(worn):
         nodes = material.node_tree.nodes
         if not any(n.type == "BSDF_PRINCIPLED" for n in nodes):
