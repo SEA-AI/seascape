@@ -7,3 +7,5 @@ hfov_deg = 24.3
 [microbolometer]
 # Same table.
 f_number = 1.04
+# Table 13's 50 mK scaled by (f/#)^2 / tau: 1.04 and 90 % (table 11).
+netd_k = 0.060

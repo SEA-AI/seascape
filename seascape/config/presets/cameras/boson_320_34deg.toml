@@ -9,3 +9,5 @@ height_px = 256
 [microbolometer]
 # Same table.
 f_number = 1.01
+# Table 13's 50 mK scaled by (f/#)^2 / tau: 1.01 and 94 % (table 11).
+netd_k = 0.054
