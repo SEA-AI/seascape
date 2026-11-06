@@ -17,6 +17,7 @@ from seascape.config import (
     Band,
     Camera,
     Crop,
+    Drift,
     Farm,
     Lens,
     Microbolometer,
@@ -621,6 +622,21 @@ def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
 def test_ownship_keys_that_cannot_be_keyed_are_an_error(ownship, match) -> None:
     with pytest.raises(ValidationError, match=match):
         Ownship.model_validate(ownship)
+
+
+@pytest.mark.parametrize(
+    "moves",
+    [
+        {"orbit": Orbit(period_s=60.0)},
+        {"speed_mps": 2.0},
+        {"drift": Drift(sway_m=1.0, surge_m=0.5, period_s=60.0)},
+    ],
+    ids=["orbit", "speed", "drift"],
+)
+def test_a_marker_on_a_moving_object_is_an_error(moves: dict[str, Any]) -> None:
+    (name,) = moves
+    with pytest.raises(ValidationError, match=f"drop aruco_id or {name}"):
+        Object(asset="container", range_m=50.0, bearing_deg=0.0, aruco_id=1, **moves)
 
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:

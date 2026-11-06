@@ -4,6 +4,7 @@ import math
 from itertools import pairwise
 from typing import Annotated, Literal
 
+import cv2
 import numpy as np
 from pydantic import (
     AfterValidator,
@@ -83,6 +84,7 @@ _DRAUGHT = (
 _RANGE = "Horizontal, from the ownship's origin."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
+ARUCO_DICTIONARY = cv2.aruco.DICT_4X4_50
 
 
 class Drift(Model):
@@ -126,6 +128,13 @@ class Object(Model):
     steady: bool = Field(
         default=False,
         description="The waves neither heave nor tilt it.",
+    )
+    aruco_id: int | None = Field(
+        default=None,
+        ge=0,
+        lt=50,
+        description="A 4x4 ArUco marker of this id on its roof, facing the ownship "
+        "from where it is put.",
     )
     t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
@@ -181,6 +190,24 @@ class Object(Model):
         if self.orbit is not None and steered:
             raise ValueError(
                 f"{self.asset} orbits, which sets its course: drop {sorted(steered)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _a_marker_stays_put(self) -> "Object":
+        moving = [
+            name
+            for name, moves in (
+                ("orbit", self.orbit is not None),
+                ("speed_mps", self.speed_mps > 0.0),
+                ("drift", self.drift is not None),
+            )
+            if moves
+        ]
+        if self.aruco_id is not None and moving:
+            raise ValueError(
+                f"{self.asset} moves, and its marker faces the ownship only from "
+                f"where it is put: drop aruco_id or {' and '.join(moving)}"
             )
         return self
 

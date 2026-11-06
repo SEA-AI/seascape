@@ -20,6 +20,7 @@ from seascape.blender.blend import (
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
+from seascape.blender.markers import add_marker
 from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
 from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
@@ -335,6 +336,13 @@ def _object(
         spec.asset, condition=Condition.of(spec), hulls=hulls, rise_m=spec.rise_m
     )
     anchor["steady"] = spec.steady
+    if spec.aruco_id is not None:
+        add_marker(
+            anchor,
+            spec.aruco_id,
+            spec.bearing_deg + 180.0 - spec.course_deg,
+            None if hulls.heat is None else hulls.sky,
+        )
     orbit = spec.orbit
     if orbit is None:
         _pose(
