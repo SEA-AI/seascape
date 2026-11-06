@@ -73,11 +73,15 @@ def _spread_cdf(delta: np.ndarray) -> np.ndarray:
     return cdf / cdf[:, -1:]
 
 
-def _downwind_rad(cdf: np.ndarray, u: np.ndarray) -> np.ndarray:
-    """Angles off downwind by inverse CDF, one per row of `cdf`."""
-    return np.array(
-        [np.interp(ui, c, _DOWNWIND_RAD) for ui, c in zip(u, cdf, strict=True)]
-    )
+def _inverse_cdf(cdf: np.ndarray, angle_rad: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Each row of `cdf` inverted at its own `u`: the angle where the CDF reaches it.
+
+    Args:
+        cdf: One CDF per row, tabulated at `angle_rad` and rising to 1.
+        angle_rad: The angles the CDFs are tabulated at.
+        u: The probability to invert in each row.
+    """
+    return np.array([np.interp(ui, c, angle_rad) for ui, c in zip(u, cdf, strict=True)])
 
 
 def spread_share(
@@ -138,7 +142,7 @@ def _off_mean_rad(s: np.ndarray, u: np.ndarray) -> np.ndarray:
     theta = np.linspace(-math.pi, math.pi, 721)
     cdf = np.cumsum(np.cos(theta / 2)[None, :] ** (2 * s[:, None]), axis=1)
     cdf /= cdf[:, -1:]
-    return np.array([np.interp(ui, c, theta) for ui, c in zip(u, cdf, strict=True)])
+    return _inverse_cdf(cdf, theta, u)
 
 
 def wind_sea(
@@ -166,11 +170,13 @@ def wind_sea(
     share = rng.permuted(runs, axis=1).ravel()
     delta = spreading_delta(omega, wind_speed_mps, fetch_m)
     cdf = _spread_cdf(delta)
-    off = _downwind_rad(cdf, (share + rng.uniform(size=len(omega))) / SPREAD_STRATA)
+    off = _inverse_cdf(
+        cdf, _DOWNWIND_RAD, (share + rng.uniform(size=len(omega))) / SPREAD_STRATA
+    )
     concentration, axis = heading_band(
         delta,
-        _downwind_rad(cdf, share / SPREAD_STRATA),
-        _downwind_rad(cdf, (share + 1) / SPREAD_STRATA),
+        _inverse_cdf(cdf, _DOWNWIND_RAD, share / SPREAD_STRATA),
+        _inverse_cdf(cdf, _DOWNWIND_RAD, (share + 1) / SPREAD_STRATA),
     )
     # Wind is named for where it blows from; waves run the other way.
     toward = math.radians(wind_from_deg + 180.0) + off

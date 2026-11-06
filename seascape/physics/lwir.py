@@ -44,7 +44,6 @@ that fail silently:
 import functools
 import math
 from pathlib import Path
-from statistics import NormalDist
 from typing import Literal
 
 import numpy as np
@@ -57,6 +56,7 @@ from seascape.physics.atmosphere import (
     Atmosphere,
     header,
 )
+from seascape.physics.waves import gaussian_quantiles
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -261,8 +261,8 @@ def _facets(slope_sigma: float) -> FloatArray:
             isotropic sea.
     """
     side = math.isqrt(FACET_SAMPLES)
-    quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(side) + 0.5) / side)
-    quantiles /= quantiles.std()
+    quantiles = gaussian_quantiles(side)
+    quantiles = quantiles / quantiles.std()
     east, north = np.meshgrid(slope_sigma * quantiles, slope_sigma * quantiles)
     normal = np.stack([-east.ravel(), -north.ravel(), np.ones(side**2)], axis=-1)
     return _frozen(normal / np.linalg.norm(normal, axis=-1, keepdims=True))

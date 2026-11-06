@@ -1,7 +1,6 @@
 """Whitecaps: their lace and lattice, shaded from the foam memory."""
 
 import math
-from statistics import NormalDist
 from typing import NamedTuple
 
 import bpy
@@ -34,6 +33,7 @@ from seascape.physics.waves import (
     WHITECAP_EFFECTIVE_REFLECTANCE,
     FoamGrid,
     foam_lattice_field,
+    gaussian_quantiles,
     whitecap_fraction,
 )
 
@@ -269,7 +269,7 @@ def _bare(tree: bpy.types.NodeTree) -> _Whitecaps:
 
 def _quantiles() -> np.ndarray:
     """The unit normal's 1 - p quantile, sampled in p."""
-    return np.vectorize(NormalDist().inv_cdf)(1 - texels())
+    return -gaussian_quantiles(len(texels()))
 
 
 class _FoamTexture(NamedTuple):
