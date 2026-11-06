@@ -12,6 +12,7 @@ from seascape import assets, render
 from seascape.blender import meshes
 from seascape.config import Band, Scenario, load
 from seascape.outputs import montage
+from seascape.outputs.labels import FILENAME, Labels
 
 TILE = (480, 270)
 COLUMNS = 4
@@ -52,19 +53,15 @@ def shot(
             }
         },
     }
-    at = f'asset = "{name}", range_m = {range_m}, bearing_deg = 0.0'
+    at = {"asset": name, "range_m": range_m, "bearing_deg": 0.0}
     if isinstance(mesh, assets.Turbine):
         # It faces the wind, so the wind turns it.
-        placed = [f"farms = [{{ {at} }}]", f"sea.wind_from_deg = {HEADING_DEG}"]
+        placed = {"farms": [at], "sea": {"wind_from_deg": HEADING_DEG}}
     else:
-        placed = [f"objects = [{{ {at}, heading_deg = {HEADING_DEG} }}]"]
+        placed = {"objects": [at | {"heading_deg": HEADING_DEG}]}
     built = load(
         scenario,
-        [
-            *placed,
-            f'outputs.bands = ["{band}"]',
-            "outputs.duration_s = 0.0",
-        ],
+        [placed, {"outputs": {"bands": [band], "duration_s": 0.0}}],
     )
     # The mesh alone, through one camera: TOML cannot set the ring or the ownship's
     # hull to none, and the scenario's rigs merge with any it is given.
@@ -75,8 +72,9 @@ def shot(
     alone["ownship"] |= {"asset": None}
     built = Scenario.model_validate(alone)
     frame = Image.open(render.render(built, into)[0]).convert("RGB")
-    (label,) = json.loads((into / "labels.json").read_text())["annotations"]
-    x, y, w, h = label["bbox"]
+    labelled = Labels.model_validate_json((into / FILENAME).read_text())
+    (label,) = labelled.annotations
+    x, y, w, h = label.bbox
     left = min(max(x + w // 2 - TILE[0] // 2, 0), TILE[0])
     top = min(max(y + h // 2 - TILE[1] // 2, 0), TILE[1])
     return frame.crop((left, top, left + TILE[0], top + TILE[1]))
