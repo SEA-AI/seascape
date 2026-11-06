@@ -4,5 +4,7 @@ extends = "boson_640_32deg.toml"
 hfov_deg = 8.0
 
 [microbolometer]
-# The 20640A008 lens (Boson datasheet 102-2013-40, table 13).
+# The 20640A008 lens (Boson datasheet 102-2013-40 Rev 340, table 11).
 f_number = 1.01
+# Table 13's 50 mK scaled by (f/#)^2 / tau: 1.01 and 89 % (table 11).
+netd_k = 0.057

@@ -1,20 +1,37 @@
+# The design geometry: three colour cameras on custom 42 deg lenses, 40 deg apart,
+# and a thermal camera on a custom 24 deg lens. The colour cameras balance white
+# continuously, as they ship, and take the AR0821's eHDR (datasheet) at Basler HDR
+# Beyond's default ratio.
 model = "Pod"
 
 [cameras.eo_p]
-preset = "eo_4k_49deg"
+preset = "basler_daa3840_ar0821"
+hfov_deg = 42.0
 yaw_deg = -40.0
 pitch_deg = -10.0
+processing = { white_balance = "grey_world" }
+sensor = { hdr_ratio = 16.0 }
 
 [cameras.eo_c]
-preset = "eo_4k_49deg"
+preset = "basler_daa3840_ar0821"
+hfov_deg = 42.0
 yaw_deg = 0.0
 pitch_deg = -10.0
+processing = { white_balance = "grey_world" }
+sensor = { hdr_ratio = 16.0 }
 
 [cameras.eo_s]
-preset = "eo_4k_49deg"
+preset = "basler_daa3840_ar0821"
+hfov_deg = 42.0
 yaw_deg = 40.0
 pitch_deg = -10.0
+processing = { white_balance = "grey_world" }
+sensor = { hdr_ratio = 16.0 }
 
 [cameras.ir]
-preset = "ir_vga_24deg"
+preset = "jenoptik_evidir_alpha_640"
+# About 18 mm; every listed lens from 6.2 to 50 mm is f/1.0 (EVIDIR alpha GigE
+# datasheet, 02/2026).
+hfov_deg = 24.0
+microbolometer = { f_number = 1.0 }
 pitch_deg = -6.0
