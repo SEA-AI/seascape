@@ -171,8 +171,7 @@ def _camera(
     Args:
         tree: The compositor's tree.
         image: The render's linear radiance, as it reaches the lens.
-        compensation_ev: Stops over auto-exposure, which puts the frame's log-average
-            at `MID_GREY`.
+        compensation_ev: Stops over auto-exposure.
         with_sensor: Add the sensor and ISP after auto-exposure.
     """
     coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})

@@ -27,8 +27,7 @@ from seascape.physics import colour
 
 type Socket = bpy.types.NodeSocket
 
-# Judgement: Newton's steps a meter takes from auto-exposure's start; a test pins the
-# mean they reach.
+# Judgement: Newton's steps a meter takes from auto-exposure's start.
 METER_STEPS = 3
 
 
@@ -373,8 +372,7 @@ def _reinhard(
         image: The linear image to tone.
         grey: The output the log-average maps to: Reinhard's key a solves
             a / (1 + a) = grey.
-        target: The mean output the key is solved for instead, if the camera has
-            one.
+        target: The mean output to solve the key for instead, if set.
         over: The gain over auto-exposure, which scales a solved key.
     """
     lit, average = (Num(tree, s) for s in log_average(tree, image))
@@ -409,8 +407,8 @@ def _solve(
     target: Num,
 ) -> Num:
     """The x at which the frame's mean of `curve` is `target`, by Newton's steps from
-    `start`. A meter's mean rises with x and bends down, so each step past the first
-    lands below the root and climbs towards it; halving bounds the first.
+    `start`. A meter's mean rises with x and bends down, so each step lands below
+    the root, then climbs; halving bounds the first drop.
 
     Args:
         tree: The compositor tree the sensor is built in.
