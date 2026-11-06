@@ -292,6 +292,18 @@ class Camera(Model):
         return self
 
     @property
+    def pitch_um(self) -> float | None:
+        """An image pixel's pitch where the camera sets one: a microbolometer's, or a
+        sensor's times the sites each image pixel averages.
+        """
+        if self.band == "ir":
+            return self.microbolometer.pitch_um
+        if self.sensor.pitch_um is None:
+            return None
+        sites_per_px = (self.sensor.width_px or self.width_px) / self.width_px
+        return self.sensor.pitch_um * sites_per_px
+
+    @property
     def fisheye_focal_px(self) -> float:
         """A fisheye's `fx`, the scale of its distorted angle in pixels."""
         assert self.lens.fisheye is not None

@@ -19,6 +19,7 @@ from seascape.config import (
     Crop,
     Farm,
     Lens,
+    Microbolometer,
     Object,
     Outputs,
     Processing,
@@ -1062,6 +1063,20 @@ def test_a_camera_refuses_a_setting_its_band_or_sensor_cannot_take(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         load(BASELINE, [f"rigs.bow.cameras.{line}"])
+
+
+def test_an_image_pixel_s_pitch_is_the_sensor_s_times_the_sites_it_averages() -> None:
+    sensor = Sensor(full_well_e=1e4, pitch_um=2.0, width_px=16)
+    eo = EO.model_copy(update={"sensor": sensor})
+    assert eo.pitch_um == 4.0
+    ir = Camera(
+        band="ir",
+        hfov_deg=45.0,
+        width_px=8,
+        height_px=8,
+        microbolometer=Microbolometer(pitch_um=12.0, f_number=1.0),
+    )
+    assert (EO.pitch_um, ir.pitch_um) == (None, 12.0)
 
 
 def test_a_boson_preset_extends_another() -> None:
