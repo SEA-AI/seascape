@@ -29,7 +29,6 @@ so a slick takes the shortest waves first.
 
 import math
 from collections.abc import Callable
-from dataclasses import replace
 from functools import cache
 from typing import NamedTuple
 
@@ -46,6 +45,8 @@ from seascape.physics.waves.spectrum import (
     wind_at_m,
 )
 
+# Cox & Munk 1954's fits of mean square slope against wind speed at 12.5 m, intercept
+# then per m/s: clean sea (eq. 13), then slick.
 SLOPE_VARIANCE_INTERCEPT = 0.003
 SLOPE_VARIANCE_PER_MPS = 0.00512
 SLICK_VARIANCE_INTERCEPT = 0.008
@@ -263,15 +264,6 @@ def fade_axis(wave: Wave) -> FadeAxis:
     )
 
 
-def filtered(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
-    """The waves a pixel of `footprint_m` draws, each scaled by its visibility."""
-    shown = visibility(2 * math.pi / columns(field)[1], footprint_m)
-    return tuple(
-        replace(w, amplitude_m=w.amplitude_m * v)
-        for w, v in zip(field, shown.tolist(), strict=True)
-    )
-
-
 def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     """The waves a pixel can draw: the rest are gone, a footprint a wavelength or
     wider.
@@ -287,7 +279,7 @@ def drawn_slope_variances(
     field: tuple[Wave, ...], footprint_m: float, downwind_rad: float
 ) -> tuple[float, float]:
     """The slope variance a pixel draws of a wave field, along and across the wind:
-    `slope_variance(filtered(field, footprint_m))` without building the waves.
+    the waves' own variance, each scaled by its visibility, without building them.
 
     Args:
         field: The waves whole; each is scaled here by its visibility at the

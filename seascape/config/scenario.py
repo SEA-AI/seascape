@@ -27,6 +27,7 @@ class Samples(Model):
     and drop the band left out.
     """
 
+    # Judgement: a trade between an EO frame's grain and its render time.
     eo: int = Field(default=16, gt=0, description="Per pixel, for EO frames.")
     # Where the open sea's grain, adaptive sampling off, falls below a Boson's NETD of
     # 50 mK (datasheet 102-2013-40 Rev 340, table 13).
@@ -110,7 +111,7 @@ LOOP_SNAP_TOLERANCE = 0.05
 class Scenario(Model):
     """One scene: the rigs, the world around them, and what a render writes."""
 
-    seed: int = Field(default=0, description="Seeds every random draw.")
+    seed: int = Field(default=0, ge=0, description="Seeds every random draw.")
     rigs: dict[Name, Rig] = Field(
         min_length=1, description="The products on the ownship, by name."
     )
@@ -182,10 +183,6 @@ class Scenario(Model):
             substream(self.seed, "sea/swell"),
         )
 
-    def wave_field(self) -> tuple[waves.Wave, ...]:
-        """Every wave on the sea, wind sea then swell."""
-        return self.wind_waves() + self.swell_waves()
-
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":
         """A camera's name joins its rig's, so rig `a_b` with camera `c` and rig `a`
@@ -238,9 +235,9 @@ class Scenario(Model):
             for spec in self.objects
             if spec.orbit is not None
         ]
-        # Three blades look the same every third of a turn.
+        # The blades look the same every `symmetry_rad`.
         periods += [
-            (f"{farm.asset} rotor", 20.0 / rpm)
+            (f"{farm.asset} rotor", farm.turbine.rotor.symmetry_period_s(rpm))
             for farm in self.farms
             if (rpm := farm.rpm(self.sea)) > 0.0
         ]

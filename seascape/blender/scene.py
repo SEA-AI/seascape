@@ -64,7 +64,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         image=image,
         rig=mount.rig_name,
         model=mount.rig.model,
-        pitch_um=mount.camera.microbolometer.pitch_um,
+        pitch_um=mount.camera.pitch_um,
         width_px=width,
         height_px=height,
         # Blender's frame spans pixel edges, so its centre is half a pixel past

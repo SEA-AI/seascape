@@ -24,6 +24,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from seascape import atomic
 from seascape.assets import CACHE
 from seascape.outputs import labels
 
@@ -76,10 +77,8 @@ def reference(name: str) -> Path:
             check=True,
             timeout=60,
         ).stdout
-        # Renamed into place, so an interrupted write never takes the cache name.
-        partial = path.with_suffix(".part")
-        partial.write_bytes(raw)
-        partial.replace(path)
+        with atomic.replacing(path) as partial:
+            partial.write_bytes(raw)
     return path
 
 

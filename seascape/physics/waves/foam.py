@@ -60,20 +60,25 @@ BREAKING_HEIGHT_SHARE = 0.999
 # set over.
 SAMPLE_SPAN = 64.0
 # The least cover the sea draws, and how far under the threshold a crest lays it.
+# Judgement: a thousandth of a crest's foam does not show.
 FOAM_VISIBLE_COVER = 1e-3
 FOAM_VISIBLE_Z = NormalDist().inv_cdf(FOAM_VISIBLE_COVER)
 # A judgement: a grid draws a wave four of its cells long; under two it aliases.
 FOAM_CELLS_PER_WAVE = 4
 # A foam memory starts this many area e-folds early, so its start has faded to 1 %.
+# Judgement: 1 % of fresh foam is too faint to matter.
 FOAM_WARM_EFOLDS = math.log(100)
 # Numerics: before its last seconds a memory steps coarser, which misses brief crests
 # whose foam has since faded.
 FOAM_FINE_WARM_S = 6.0
 FOAM_COARSE_STEP_S = 0.25
 # The steps each point remembers when a memory's threshold is set.
+# Judgement: a count that averages over many crests' lives; more costs time.
 FOAM_REFERENCE_STEPS = 120
 # Steps closing in on a threshold: halvings first, then interpolation on log cover,
 # until its cover is within 2 %.
+# Numerics: the iterations cap the search and the halvings bracket before it
+# interpolates. Judgement: the tolerance, in log cover, is a 2 % error in cover.
 FOAM_REFERENCE_ITERATIONS = 12
 FOAM_REFERENCE_HALVINGS = 4
 FOAM_REFERENCE_TOLERANCE = 0.02
@@ -190,6 +195,7 @@ def foam_edge_g(wind: tuple[Wave, ...]) -> float:
     which a memory divides by.
     """
     breakers = tallest(wind, BREAKING_HEIGHT_SHARE)
+    # Numerics: keeps a division by the edge finite for a sea without slope.
     return max(WHITECAP_EDGE * math.sqrt(slope_variance(breakers)), 1e-9)
 
 
@@ -359,6 +365,8 @@ def _closed_in(
         mid = (low + high) / 2
         if step >= FOAM_REFERENCE_HALVINGS:
             ends = np.log(low_cover), np.log(high_cover)
+            # Numerics: the interpolation never lands within a tenth of an end, which
+            # keeps the bracket from stalling on a nearly flat cover.
             share = np.clip(
                 (ends[0] - target) / np.maximum(ends[0] - ends[1], 1e-9), 0.1, 0.9
             )

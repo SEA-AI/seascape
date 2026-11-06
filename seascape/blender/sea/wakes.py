@@ -213,6 +213,7 @@ def _kelvin(
     along = Num(tree, path.along)
     side = Num(tree, path.across).op("ABSOLUTE")
     edge = math.tan(KELVIN_HALF_ANGLE_RAD)
+    # Numerics: the floors keep the divisions by along and by tan_psi finite.
     tan_psi = side / along.op("MAXIMUM", 1e-3)
     inside = tan_psi.op("LESS_THAN", edge)
     tan_psi = tan_psi.op("MINIMUM", edge).op("MAXIMUM", 1e-4)

@@ -28,6 +28,7 @@ from seascape.config import (
 )
 from seascape.physics import colour, optics
 
+# Judgement: a frame is a product, not a preview, so quality over file size.
 JPEG_QUALITY = 95
 # The Switches that turn a fisheye's image and object-index pass back.
 ROLL = "lens.roll"
@@ -314,9 +315,8 @@ def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
         if psf.image is not None:
             bpy.data.images.remove(psf.image)
         return
-    assert camera.sensor.pitch_um is not None, "f_number needs sensor.pitch_um"
-    sites_per_px = (camera.sensor.width_px or camera.width_px) / camera.width_px
-    pitch_m = camera.sensor.pitch_um * 1e-6 * sites_per_px
+    assert camera.pitch_um is not None, "f_number needs sensor.pitch_um"
+    pitch_m = camera.pitch_um * 1e-6
     built = (psf.get("f_number"), psf.get("pitch_m"))
     if psf.image is not None and built == (f_number, pitch_m):
         return

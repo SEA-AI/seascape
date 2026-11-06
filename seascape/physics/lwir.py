@@ -44,7 +44,6 @@ that fail silently:
 import functools
 import math
 from pathlib import Path
-from statistics import NormalDist
 from typing import Literal
 
 import numpy as np
@@ -57,6 +56,7 @@ from seascape.physics.atmosphere import (
     Atmosphere,
     header,
 )
+from seascape.physics.waves import gaussian_quantiles
 
 type FloatArray = npt.NDArray[np.float64]
 
@@ -75,6 +75,8 @@ MOR_PER_VIS = math.log(20) / math.log(50)
 FOG_KM = 1.0
 
 
+# Judgement: the thermal window the `data/lowtran_*.csv` tables are summed over, so the
+# tables and the curves integrate one band.
 BAND_M = (8.0e-6, 14.0e-6)
 
 # SI defining constants, exact since the 2019 redefinition.
@@ -175,6 +177,8 @@ def fresnel_emissivity(
     return 1.0 - 0.5 * (np.abs(r_s) ** 2 + np.abs(r_p) ** 2)
 
 
+# Numerics: incidence angles across 0 to 90 degrees, which the lookup curves
+# interpolate between.
 CURVE_ANGLES = 91
 # Judgement; a square, as `_facets` lays it on a grid.
 FACET_SAMPLES = 4096
@@ -245,8 +249,7 @@ def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
     """
     theta = np.minimum(np.asarray(theta_rad, dtype=np.float64), FOAM_MEASURED_RAD)
     x = 1.0 / np.cos(theta) - 1.0
-    a, b, c = FOAM_EXCESS
-    return (a * x + b) * x + c
+    return np.polyval(FOAM_EXCESS, x)
 
 
 @functools.lru_cache(maxsize=64)
@@ -262,8 +265,8 @@ def _facets(slope_sigma: float) -> FloatArray:
             isotropic sea.
     """
     side = math.isqrt(FACET_SAMPLES)
-    quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(side) + 0.5) / side)
-    quantiles /= quantiles.std()
+    quantiles = gaussian_quantiles(side)
+    quantiles = quantiles / quantiles.std()
     east, north = np.meshgrid(slope_sigma * quantiles, slope_sigma * quantiles)
     normal = np.stack([-east.ravel(), -north.ravel(), np.ones(side**2)], axis=-1)
     return _frozen(normal / np.linalg.norm(normal, axis=-1, keepdims=True))
@@ -368,6 +371,7 @@ class Sky:
 _SIN_GRID = np.linspace(-1.0, 1.0, 8193)
 
 
+# Numerics: wavelength samples of the trapezoid sum over the band.
 _BAND_LAM = np.linspace(*BAND_M, 512)
 
 
@@ -382,6 +386,7 @@ def band_radiance(t_k: float) -> float:
 # np.interp clamps past the ends: a hull hotter than the grid reads as its top. The top
 # clears a running uptake, `thermal.Environment.t_exhaust_k`. The bottom is 0 K, which
 # emits nothing, so no radiance reads warmer than it is.
+# Numerics: the nodes `brightness_temperature` interpolates band radiance on.
 _TB_GRID = np.linspace(0.0, 650.0, 3329)
 # Through band_radiance, so the two stay inverses. Near 0 K, exp overflows to a radiance
 # of 0; those nodes go, as np.interp needs rising radiances.
@@ -551,6 +556,7 @@ def cloud_window_deficit_w_m2(
         t_air_k: Surface air temperature.
         atmosphere: The model atmosphere whose tables are read.
     """
+    # Numerics: equal elevation bins over 0 to 90 degrees, for the quadrature below.
     edges = np.linspace(0.0, math.pi / 2, 91)
     elev = (edges[:-1] + edges[1:]) / 2
     deficit = band_radiance(t_air_k) - cloudy_sky_radiance(

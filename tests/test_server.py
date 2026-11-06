@@ -19,8 +19,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from seascape import server
-from seascape.config import load_variants
-from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS
+from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
 
 def _state(renders: Path, **limits: Any) -> server.State:

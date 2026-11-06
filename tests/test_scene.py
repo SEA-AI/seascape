@@ -71,6 +71,7 @@ from tests.scenarios import (
     preset_target,
     target,
     variant,
+    wave_field,
     white_photo,
 )
 
@@ -405,7 +406,7 @@ class TestEoBand:
             ) == pytest.approx(waves.fade_axis(wave), rel=1e-6, abs=1e-7)
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
-        field = SCENARIO.wave_field()
+        field = wave_field(SCENARIO)
         assert len(field) == waves.WIND_WAVES
         carried = drawn(SCENARIO)
         tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
@@ -1502,8 +1503,8 @@ class TestSeaEvolves:
 
     def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
         swell = variant(BASELINE, sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
-        wind = SCENARIO.wave_field()
-        assert swell.wave_field()[: len(wind)] == wind
+        wind = wave_field(SCENARIO)
+        assert wave_field(swell)[: len(wind)] == wind
 
     def test_the_sea_draws_a_swell_in_triples_of_its_own(self) -> None:
         swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
@@ -1548,7 +1549,7 @@ class TestSeaEvolves:
     ) -> None:
         """Probes and a hand-moved camera need every wave in a default build."""
         scenario = variant(rig={"height_m": 100.0})
-        field = scenario.wave_field()
+        field = wave_field(scenario)
         scene.build(scenario, "eo")
         assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
@@ -1585,7 +1586,7 @@ class TestLoop:
 
     def test_every_wave_in_a_loop_turns_a_whole_number_of_times(self) -> None:
         span_s = self.LOOP.outputs.span_s
-        for wave in self.LOOP.wave_field():
+        for wave in wave_field(self.LOOP):
             turns = wave.omega_rad_s * span_s / (2 * math.pi)
             assert turns == pytest.approx(round(turns), abs=1e-9)
 
@@ -1715,12 +1716,12 @@ class TestDrifting:
             )
             t_s = scenario.outputs.times_s[frame]
             # Only the tall waves move the water the hull sits on.
-            assert len(_tall(scenario)) < len(scenario.wave_field())
+            assert len(_tall(scenario)) < len(wave_field(scenario))
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
             hull = waves.Waterplane(*map(float, rest), heading, length, beam)
-            pitch, roll = waves.attitude(scenario.wave_field(), hull, t_s)
+            pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
                 (pitch, -roll), abs=1e-5
             )
@@ -2177,14 +2178,18 @@ def test_a_rotor_turns_at_its_wind_s_speed_from_an_angle_of_its_own() -> None:
     assert math.remainder(turned, 2 * math.pi) == pytest.approx(
         rpm * math.pi / 30 / fps
     )
-    assert math.remainder(starts[0] - starts[1], 2 * math.pi / 3) != pytest.approx(0)
+    symmetry_rad = clip.farms[0].turbine.rotor.symmetry_rad
+    assert math.remainder(starts[0] - starts[1], symmetry_rad) != pytest.approx(0)
 
 
-def test_a_looping_rotor_s_last_frame_is_one_step_short_of_a_whole_third() -> None:
+def test_a_looping_rotor_s_last_frame_is_one_step_short_of_its_symmetry_turn() -> None:
     fps = 4
     farm = {"asset": "turbine_15mw_monopile", "range_m": 2000.0, "bearing_deg": 0.0}
     clip = variant(farms=[farm], outputs={"duration_s": 4.0, "fps": fps, "loop": True})
-    third_s = clip.outputs.period_s(20.0 / clip.farms[0].rpm(clip.sea))
+    rotor = clip.farms[0].turbine.rotor
+    symmetry_s = clip.outputs.period_s(
+        rotor.symmetry_period_s(clip.farms[0].rpm(clip.sea))
+    )
 
     built = scene.build(clip, "eo")
 
@@ -2193,8 +2198,8 @@ def test_a_looping_rotor_s_last_frame_is_one_step_short_of_a_whole_third() -> No
     sc.frame_set(0)
     start = _rotor_angle(anchor)
     sc.frame_set(sc.frame_end)
-    seam = math.remainder(start - _rotor_angle(anchor), 2 * math.pi / 3)
-    assert seam == pytest.approx(2 * math.pi / (3 * third_s * fps))
+    seam = math.remainder(start - _rotor_angle(anchor), rotor.symmetry_rad)
+    assert seam == pytest.approx(rotor.symmetry_rad / (symmetry_s * fps))
 
 
 def test_the_ownship_is_indexed_after_every_target() -> None:

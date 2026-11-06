@@ -3,6 +3,7 @@
 import math
 from typing import Annotated, Literal
 
+import numpy as np
 from pydantic import (
     AfterValidator,
     Field,
@@ -56,6 +57,10 @@ _ENGINE_OFF = (
     "Minutes since its engines stopped; 0 is running. The engine room and exhaust "
     "cool toward the air. IR only, with zones."
 )
+# Judgement: from an arctic night to an exhaust casing in sun.
+HullTemperatureK = Annotated[
+    float | None, Field(ge=250.0, le=400.0, description=_T_HULL)
+]
 PaintAbsorptance = Annotated[
     float | None,
     Field(
@@ -117,7 +122,7 @@ class Object(Model):
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
-    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
@@ -195,7 +200,7 @@ class Ownship(Model):
     """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)
-    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: HullTemperatureK = None
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
     )
@@ -231,24 +236,18 @@ class Targets(Model):
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
-    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
 
-    def _spread(self, span: tuple[float, float], i: int) -> float:
-        low, high = span
-        return low + (high - low) * i / max(self.count - 1, 1)
-
     def poses(self) -> list[tuple[str, float, float]]:
         """Asset, bearing_deg and heading_deg per target."""
         names = [self.asset] if isinstance(self.asset, str) else self.asset
+        bearings = np.linspace(*self.bearing_deg, self.count)
+        headings = np.linspace(*self.heading_deg, self.count)
         return [
-            (
-                names[i % len(names)],
-                self._spread(self.bearing_deg, i),
-                self._spread(self.heading_deg, i),
-            )
+            (names[i % len(names)], float(bearings[i]), float(headings[i]))
             for i in range(self.count)
         ]
 

@@ -30,6 +30,7 @@ from seascape.blender.sea.memory import _frames_folder
 from seascape.blender.sky import _sky_texture, haze
 from seascape.config import Band, Camera, Lens, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, optics, wakes, waves
+from tests import gerstner
 from tests.probes import probe, show_sea
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
@@ -223,8 +224,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     # The rest of the waves tilt the facet where its water was at rest.
     tall, shaded = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     t_s = scenario.outputs.times_s[frame]
-    seen = waves.filtered(shaded[0] + shaded[1], span_m / px)
-    slope = waves.slope(seen, *rest, t_s)
+    seen = gerstner.filtered(shaded[0] + shaded[1], span_m / px)
+    slope = gerstner.slope(seen, *rest, t_s)
     tilted = facet - np.array([slope[0], slope[1], np.zeros_like(slope[0])])
     tilted /= np.linalg.norm(tilted, axis=0)
     assert np.abs(normal - tilted).max() < 2e-3
@@ -238,7 +239,7 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     curved = sum(w.amplitude_m * w.k_rad_m**2 for w in tall)
     assert np.abs(rest - at_rest).max() < dice_m**2 / 8 * curved
     bent = sum(w.amplitude_m * w.k_rad_m**3 for w in tall)
-    surface = np.array(waves.gerstner_normal(tall, *at_rest, t_s))
+    surface = np.array(gerstner.normal(tall, *at_rest, t_s))
     assert np.abs(facet - surface).max() < dice_m**2 * (1 / 8 + 1 / 6) * bent
 
 
@@ -248,7 +249,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     water having drifted since.
     """
     clip = _clear(variant(OPEN_SEA, outputs={"duration_s": 1.0, "fps": 4}))
-    stale = _frames_folder() / "0.25m" / "foam_0001.exr"
+    stale = _frames_folder() / "0.25m" / "foam_0001.png"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.touch()
     built = scene.build(clip, "eo")
@@ -279,7 +280,11 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
             10.0,
         )
         rendered = shoot((px, px), f"memory_probe_{frame}")
-        stored = blend.read(first.with_name(f"foam_{frame + 1:04d}.exr"))[..., 0]
+        file = bpy.data.images.load(str(first.with_name(f"foam_{frame + 1:04d}.png")))
+        # A png loads as sRGB, which would decode the stored fractions.
+        file.colorspace_settings.name = "Non-Color"
+        stored = blend.pixels(file)[..., 0]
+        bpy.data.images.remove(file)
         expected = stored[row : row + px, column : column + px][::-1]
         assert expected.max() > 0.0
         np.testing.assert_allclose(rendered, expected, atol=2e-3)
@@ -524,16 +529,14 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     )
     view = np.array([0.0, -math.cos(d), math.sin(d)])  # toward the camera
     ahead = np.repeat(-view[:, None], rays, axis=1)
-    rest = waves.gerstner_hit(tall, origin, ahead, 0.0, 0.25)[:2]
+    rest = gerstner.hit(tall, origin, ahead, 0.0, 0.25)[:2]
     moved = np.array(waves.gerstner_offset_m(tall, *rest, 0.0))
-    normal = np.array(waves.gerstner_normal(tall, *rest, 0.0))
+    normal = np.array(gerstner.normal(tall, *rest, 0.0))
     toward = view @ normal
     bounced = 2 * toward * normal - view[:, None]
     hit = np.array([*rest, np.zeros(rays)]) + moved + 1e-3 * normal
-    *beyond, blocked = waves.gerstner_hit(tall, hit, bounced, 0.0, 0.25)
-    met = np.abs(
-        np.sum(bounced * np.array(waves.gerstner_normal(tall, *beyond, 0.0)), 0)
-    )
+    *beyond, blocked = gerstner.hit(tall, hit, bounced, 0.0, 0.25)
+    met = np.abs(np.sum(bounced * np.array(gerstner.normal(tall, *beyond, 0.0)), 0))
     sky = np.where(
         blocked,
         1 - lwir.fresnel_emissivity(np.arccos(np.clip(met, 0, 1)), SEAWATER_IOR, 0.0),
@@ -784,10 +787,8 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
 
 
 def srgb_counts(linear: np.ndarray) -> np.ndarray:
-    """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
-    x = np.clip(linear, 0.0, 1.0)
-    encoded = np.where(x <= 0.0031308, 12.92 * x, 1.055 * x ** (1 / 2.4) - 0.055)
-    return np.round(255 * encoded)
+    """What the Standard view writes to 8 bits."""
+    return np.round(255 * colour.srgb_encode(linear))
 
 
 class TestCamera:

@@ -75,6 +75,7 @@ def add_world(sky: Sky, band: Band) -> bpy.types.World:
     disc = vector(tree, "SUBTRACT", node.outputs["Color"], clear)
     kept = value(tree, "fog_sun", sky.sun_transmittance)
     # aerosol.sun_transmittance, as the sun moves.
+    # Numerics: the floor keeps the beam depth finite with the sun on the horizon.
     drive(
         kept,
         "default_value",

@@ -384,6 +384,7 @@ def _finish(job: Job) -> None:
         if len(scene.outputs.times_s) == 1 and scene.outputs.format != "exr":
             with Picture.open(montage.compose(scene, folder)) as picture:
                 picture.thumbnail((PREVIEW_PX, PREVIEW_PX))
+                # Judgement: a preview, so a smaller file over fidelity.
                 picture.convert("RGB").save(folder / "preview.jpg", quality=85)
     shutil.make_archive(str(job.folder), "zip", job.folder)
 

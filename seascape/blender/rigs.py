@@ -7,7 +7,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from seascape.blender.blend import (
-    place,
+    empty,
     yaw,
 )
 from seascape.config import (
@@ -26,9 +26,7 @@ class _RigObjects(NamedTuple):
 
 def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
     """The scenario's rigs and cameras under one root, each seeing to `far_m`."""
-    root = bpy.data.objects.new("rigs", None)
-    bpy.context.collection.objects.link(root)
-    place(root, 0.0, 0.0, 0.0)
+    root = empty("rigs")
 
     rigs: dict[str, bpy.types.Object] = {}
     for name, rig in scenario.rigs.items():
@@ -38,14 +36,13 @@ def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
                 f"{name}: near clip {rig.near_clip_m} m is past the far plane at "
                 f"{far_m:.0f} m"
             )
-        empty = bpy.data.objects.new(f"rig_{name}", None)
-        bpy.context.collection.objects.link(empty)
-        empty.parent = root
-        place(empty, rig.offset_x_m, rig.offset_y_m, rig.height_m)
+        rig_root = empty(
+            f"rig_{name}", root, (rig.offset_x_m, rig.offset_y_m, rig.height_m)
+        )
         # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the rig's own transverse
         # axis, so a pitched rig rolls the horizon of its off-axis cameras.
-        empty.rotation_euler = (math.radians(rig.pitch_deg), 0.0, yaw(rig.yaw_deg))
-        rigs[name] = empty
+        rig_root.rotation_euler = (math.radians(rig.pitch_deg), 0.0, yaw(rig.yaw_deg))
+        rigs[name] = rig_root
 
     cameras: dict[str, bpy.types.Object] = {}
     for mount in scenario.mounts:

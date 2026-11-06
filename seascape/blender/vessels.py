@@ -14,6 +14,7 @@ from seascape.assets import manifest
 from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
+    empty,
     place,
     sine,
     yaw,
@@ -51,18 +52,17 @@ class Hulls:
 @dataclass(frozen=True)
 class Condition:
     """How a hull is kept and run: one temperature for all of it or none, minutes
-    since its engines stopped, its paint's solar absorptance and its wear.
+    since its engines stopped and its paint's solar absorptance.
     """
 
     t_k: float | None = None
     engine_off_min: float = 0.0
     paint_absorptance: float | None = None
-    wear: float = 0.0
 
     @classmethod
     def of(cls, spec: Object | Targets) -> "Condition":
         """The condition an object or a ring of targets asks for."""
-        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance, spec.wear)
+        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance)
 
 
 def heading_rad(anchor: bpy.types.Object) -> float:
@@ -116,25 +116,17 @@ def _vessel(
                     crevice=mesh.get(CREVICE),
                 )
 
-    anchor = bpy.data.objects.new(name, None)
+    anchor = empty(name)
     for size in ("beam_m", "length_m"):
         anchor[size] = parts[0][size]
     anchor["height_m"] = parts[0]["height_m"] + rise_m
     anchor["engine_off_min"] = condition.engine_off_min
-    anchor["wear"] = condition.wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
-    attitude = bpy.data.objects.new(f"{name}_attitude", None)
+    attitude = empty(f"{name}_attitude", anchor)
     # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
-    draught = bpy.data.objects.new(f"{name}_draught", None)
-    for obj in (anchor, attitude, draught):
-        bpy.context.collection.objects.link(obj)
-    attitude.parent = anchor
-    draught.parent = attitude
+    draught = empty(f"{name}_draught", attitude, (0.0, 0.0, rise_m))
     for part in parts:
         part.parent = draught
-    place(anchor, 0.0, 0.0, 0.0)
-    place(attitude, 0.0, 0.0, 0.0)
-    place(draught, 0.0, 0.0, rise_m)
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     attitude.rotation_mode = "YXZ"
     return anchor
@@ -157,9 +149,7 @@ def add_ownship(
         tall: The waves that are geometry, which it heaves on as well as its script.
     """
     if ownship.asset is None:
-        anchor = bpy.data.objects.new("ownship", None)
-        bpy.context.collection.objects.link(anchor)
-        place(anchor, 0.0, 0.0, 0.0)
+        anchor = empty("ownship")
     else:
         anchor = _vessel(
             ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
@@ -379,7 +369,7 @@ def _turbine(
     """
     anchor = _vessel(
         farm.asset,
-        condition=Condition(paint_absorptance=farm.paint_absorptance, wear=farm.wear),
+        condition=Condition(paint_absorptance=farm.paint_absorptance),
         hulls=hulls,
     )
     outputs = scenario.outputs
@@ -394,8 +384,9 @@ def _turbine(
         outputs,
     )
     rpm = farm.rpm(scenario.sea)
-    # A loop closes on a third of a turn.
-    third_s = outputs.period_s(20.0 / rpm) if rpm else math.inf
+    spec = farm.turbine.rotor
+    # A loop closes on a turn of `symmetry_rad`.
+    symmetry_s = outputs.period_s(spec.symmetry_period_s(rpm)) if rpm else math.inf
     start = rng.uniform(0.0, 2.0 * math.pi)
     (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
     rest = rotor["rest_rad"]
@@ -406,7 +397,7 @@ def _turbine(
         rotor,
         "rotation_euler",
         outputs.times_s,
-        lambda t: rest - start - 2.0 * math.pi / 3.0 * t / third_s,
+        lambda t: rest - start - spec.symmetry_rad * t / symmetry_s,
         index=1,
     )
     return anchor

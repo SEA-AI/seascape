@@ -358,6 +358,7 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
     """
     lit, average = (Num(tree, s) for s in log_average(tree, image))
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
+    # Judgement: a cap just under 1, which leaves the grey near its target.
     capped = Num(tree, grey).op("MINIMUM", 0.99)
     key = capped / (1.0 - capped)
     scaled = lit * (key / average)

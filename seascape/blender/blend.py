@@ -29,6 +29,19 @@ def place(obj: bpy.types.Object, east_m: float, north_m: float, up_m: float) -> 
     obj.location = (east_m, north_m, up_m)
 
 
+def empty(
+    name: str,
+    parent: bpy.types.Object | None = None,
+    location_m: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> bpy.types.Object:
+    """An empty in the active collection, placed under `parent`."""
+    obj = bpy.data.objects.new(name, None)
+    bpy.context.collection.objects.link(obj)
+    obj.parent = parent
+    place(obj, *location_m)
+    return obj
+
+
 def animate(
     owner: bpy.types.bpy_struct,
     data_path: str,

@@ -324,6 +324,7 @@ def load(
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
+# Judgement: enough redraws that a variant whose hulls meet rarely runs out of seeds.
 # Seeds `render --variants` tries per variant before it gives up on hulls that meet.
 TRIES_PER_VARIANT = 10
 
@@ -333,13 +334,6 @@ def seeds(first: int, variants: int) -> range:
     replaced.
     """
     return range(first, first + (1 if variants == 1 else TRIES_PER_VARIANT * variants))
-
-
-def load_variants(path: str | Path, count: int = 1) -> list[Scenario]:
-    """`count` scenarios from consecutive seeds, the file's own first."""
-    first = load(path)
-    later = range(first.seed + 1, first.seed + count)
-    return [first, *(load(path, [f"seed = {seed}"]) for seed in later)]
 
 
 def json_schema() -> dict[str, Any]:

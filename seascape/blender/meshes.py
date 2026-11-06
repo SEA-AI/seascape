@@ -9,6 +9,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+from seascape import atomic
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
 from seascape.blender import faces, wear
 from seascape.blender.blend import (
@@ -227,15 +228,14 @@ def _load(path: Path) -> set[bpy.types.Object]:
                     held[datablock] = name
         objects = _parse(path)
         wear.unwrap(list(objects))
-        # A killed write must not leave a truncated file under the cache name.
-        part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
-        try:
+        # A read-only or full cache is only slower.
+        with (
+            contextlib.suppress(OSError, RuntimeError),
+            atomic.replacing(imported) as part,
+        ):
             bpy.data.libraries.write(
                 str(part), objects, path_remap="ABSOLUTE", compress=False
             )
-            part.replace(imported)
-        except (OSError, RuntimeError):  # a read-only or full cache is only slower
-            part.unlink(missing_ok=True)
     finally:
         for datablock, name in held.items():
             datablock.rename(name, mode="ALWAYS")
@@ -364,15 +364,12 @@ def _crevice(
             mesh = joined.data
             bpy.data.objects.remove(joined)
             bpy.data.meshes.remove(mesh)
-        # A killed write must not leave a truncated file under the cache name.
-        part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part.png")
-        image.filepath_raw, image.file_format = str(part), "PNG"
-        try:
-            image.save()
-            part.replace(path)
+        # A read-only or full cache only rebakes.
+        with contextlib.suppress(OSError, RuntimeError):
+            with atomic.replacing(path) as part:
+                image.filepath_raw, image.file_format = str(part), "PNG"
+                image.save()
             image.filepath_raw = str(path)
-        except (OSError, RuntimeError):  # a read-only or full cache only rebakes
-            part.unlink(missing_ok=True)
     image.name = f"{name}/crevice"
     # Unpacked, a saved .blend would point into the cache.
     if not image.packed_file:

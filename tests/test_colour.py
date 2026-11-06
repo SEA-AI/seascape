@@ -42,3 +42,8 @@ def test_bt709_crushes_the_shadows_that_srgb_lifts() -> None:
     curve = colour.tone_curve("bt709")
     assert (curve[0], curve[-1]) == pytest.approx((0.0, 1.0), abs=1e-3)
     assert (curve[1:-1] < colour.TONE_IN[1:-1]).all()
+
+
+def test_srgb_encode_inverts_srgb_decode() -> None:
+    linear = np.linspace(0.0, 1.0, 101)
+    np.testing.assert_allclose(colour.srgb_decode(colour.srgb_encode(linear)), linear)

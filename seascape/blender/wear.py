@@ -5,6 +5,7 @@ waterline z = 0.
 from typing import NamedTuple
 
 import bpy
+import cv2
 import numpy as np
 
 from seascape.assets import Material
@@ -84,19 +85,14 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     # Judgement: patches 1/200 of the length, no less than 10 cm, each reaching its
     # eight neighbours, so a side flared out by a patch still finds its sheer.
     patch = np.floor(position_m[:, :2] / max(length_m / 200.0, 0.1)).astype(np.int64)
-    # An empty border, so np.roll never wraps a patch into the plan.
-    patch -= patch.min(axis=0) - 1
-    rows, cols = patch.max(axis=0) + 2
+    patch -= patch.min(axis=0)
+    rows, cols = patch.max(axis=0) + 1
     cell = (zone * rows + patch[:, 0]) * cols + patch[:, 1]
-    order = np.argsort(cell, kind="stable")
-    first = np.flatnonzero(np.diff(cell[order], prepend=-1))
     top = np.full((zone.max() + 1) * rows * cols, -np.inf)
-    top[cell[order][first]] = np.maximum.reduceat(position_m[order, 2], first)
-    top = top.reshape(-1, rows, cols)
-    reach = top.copy()
-    for di in (-1, 0, 1):
-        for dj in (-1, 0, 1):
-            np.maximum(reach, np.roll(top, (di, dj), axis=(1, 2)), out=reach)
+    np.maximum.at(top, cell, position_m[:, 2])
+    reach = np.stack(
+        [cv2.dilate(z, np.ones((3, 3), np.uint8)) for z in top.reshape(-1, rows, cols)]
+    )
     return reach.ravel()[cell] - position_m[:, 2]
 
 
@@ -239,6 +235,8 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     sc.render.engine = "CYCLES"
     # Judgement: 16 samples of the node's 16 rays; a few grey levels of noise.
     sc.cycles.samples = 16
+    # Numerics: texels each island is extended by, so a bilinear read at its edge stays
+    # on baked texels.
     try:
         with bpy.context.temp_override(
             active_object=joined, selected_objects=[joined], object=joined

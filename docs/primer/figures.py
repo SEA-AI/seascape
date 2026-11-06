@@ -4,7 +4,6 @@ uv run python -m docs.primer.figures            # every figure
 uv run python -m docs.primer.figures wind haze  # some
 """
 
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -15,6 +14,7 @@ from PIL import Image
 from docs.hero import SKIES, captioned, render
 from seascape.config import load
 from seascape.outputs.calibration import Calibration
+from seascape.outputs.labels import Labels
 from seascape.physics import earth
 
 HERE = Path(__file__).parent
@@ -108,8 +108,8 @@ FIGURES: dict[str, tuple[list[str], list[tuple[str, list[str]]]]] = {
 
 def frame(overrides: list[str], out: Path, caption: str) -> Image.Image:
     render(PRIMER, overrides, out)
-    (image,) = json.loads((out / "labels.json").read_text())["images"]
-    return captioned(Image.open(out / image["file_name"]).convert("RGB"), caption, 18)
+    (image,) = Labels.read(out).images
+    return captioned(Image.open(out / image.file_name).convert("RGB"), caption, 18)
 
 
 def crops() -> None:
