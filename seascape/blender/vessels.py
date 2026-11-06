@@ -146,7 +146,7 @@ def add_ownship(
         rigs: Parented to the ownship; their offsets are in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
-        tall: The waves that are geometry, which it heaves on as well as its script.
+        tall: The waves that are geometry, which heave it unless `ownship.steady`.
     """
     if ownship.asset is None:
         anchor = empty("ownship")
@@ -174,12 +174,24 @@ def add_ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
+    for key in ownship.keys:
+        anchor.rotation_euler = (
+            math.radians(ownship.pitch_deg + key.pitch_deg),
+            math.radians(ownship.roll_deg + key.roll_deg),
+            0.0,
+        )
+        # Factory keys: Bezier, clamped handles.
+        for index in (0, 1):
+            anchor.keyframe_insert(
+                "rotation_euler", index=index, frame=key.t_s * outputs.fps
+            )
     scripted = sine(anchor.location.z, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
         scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
-    if heave is not None or tall:
+    riding = () if ownship.steady else tall
+    if heave is not None or riding:
         # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
         length_m, beam_m = (
             (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
@@ -187,10 +199,10 @@ def add_ownship(
 
         def value_at(t_s: float) -> float:
             rest = map(
-                float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+                float, waves.gerstner_rest_m(riding, np.zeros(()), np.zeros(()), t_s)
             )
             hull = waves.Waterplane(*rest, 0.0, length_m, beam_m)
-            return scripted(t_s) + waves.heave_m(tall, hull, t_s)
+            return scripted(t_s) + waves.heave_m(riding, hull, t_s)
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
@@ -322,6 +334,7 @@ def _object(
     anchor = _vessel(
         spec.asset, condition=Condition.of(spec), hulls=hulls, rise_m=spec.rise_m
     )
+    anchor["steady"] = spec.steady
     orbit = spec.orbit
     if orbit is None:
         _pose(
@@ -450,6 +463,8 @@ def ride(
     sc = bpy.context.scene
     hulls = []
     for anchor in anchors:
+        if anchor.get("steady"):
+            continue
         (attitude,) = anchor.children
         hulls.append((anchor, attitude, anchor["length_m"], anchor["beam_m"]))
     keyed = len(outputs.times_s) > 1

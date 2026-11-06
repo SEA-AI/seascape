@@ -22,6 +22,7 @@ from seascape.config import (
     Microbolometer,
     Object,
     Outputs,
+    Ownship,
     Processing,
     Rig,
     Scenario,
@@ -585,11 +586,41 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
             ["outputs.loop = true", "outputs.duration_s = 2"],
             "turbine_15mw_monopile rotor's 2.6",
         ),
+        (
+            "open-sea.toml",
+            [
+                "outputs.loop = true",
+                "outputs.duration_s = 10",
+                "ownship.keys = [{ t_s = 0.0, roll_deg = 1.0, pitch_deg = 0.0 }]",
+            ],
+            "ownship.keys do not repeat",
+        ),
     ],
 )
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
     with pytest.raises(ValidationError, match=match):
         load(SCENARIOS / name, overrides)
+
+
+@pytest.mark.parametrize(
+    ("ownship", "match"),
+    [
+        (
+            {
+                "keys": [{"t_s": 0.0, "roll_deg": 1.0, "pitch_deg": 0.0}],
+                "roll": {"amplitude_deg": 2.0, "period_s": 5.0},
+            },
+            "drop roll and pitch",
+        ),
+        (
+            {"keys": [{"t_s": t, "roll_deg": 0.0, "pitch_deg": 0.0} for t in (1, 1)]},
+            "must increase",
+        ),
+    ],
+)
+def test_ownship_keys_that_cannot_be_keyed_are_an_error(ownship, match) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Ownship.model_validate(ownship)
 
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:

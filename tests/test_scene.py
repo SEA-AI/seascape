@@ -1353,6 +1353,61 @@ class TestOwnshipMotion:
         )
 
 
+class TestSteadyKeys:
+    KEYS = ((0.0, 0.0, 0.0), (0.5, 4.0, -2.0), (1.5, -3.0, 1.0))
+    STEADY = variant(
+        outputs={"duration_s": 2.0},
+        ownship={
+            "roll_deg": 1.0,
+            "keys": [{"t_s": t, "roll_deg": r, "pitch_deg": p} for t, r, p in KEYS],
+            "steady": True,
+        },
+        objects=[
+            {"asset": "yacht", "range_m": 300.0, "bearing_deg": 0.0, "steady": True}
+        ],
+    )
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def built(cls) -> scene.Built:
+        return scene.build(cls.STEADY)
+
+    def _each_frame(self, obj: bpy.types.Object, read: Any) -> np.ndarray:
+        values = []
+        for frame in range(len(self.STEADY.outputs.times_s)):
+            bpy.context.scene.frame_set(frame)
+            values.append(read(obj))
+        return np.array(values)
+
+    def _pitch_roll_deg(self, obj: bpy.types.Object) -> np.ndarray:
+        """(frames, 2): the YXZ euler's first two angles, pitch then roll."""
+        return np.degrees(
+            self._each_frame(obj, lambda o: o.matrix_world.to_euler("YXZ")[:2])
+        )
+
+    def test_the_ownship_passes_through_every_key_and_never_past_one(
+        self, built: scene.Built
+    ) -> None:
+        pitch_roll = self._pitch_roll_deg(built.vessel)
+        keyed = np.array([(p, 1.0 + r) for _, r, p in self.KEYS])
+        for (t_s, _, _), key in zip(self.KEYS, keyed, strict=True):
+            assert pitch_roll[round(t_s * self.STEADY.outputs.fps)] == pytest.approx(
+                key, abs=1e-4
+            )
+        assert (pitch_roll >= keyed.min(axis=0) - 1e-4).all()
+        assert (pitch_roll <= keyed.max(axis=0) + 1e-4).all()
+
+    def test_a_steady_ownship_keeps_its_height(self, built: scene.Built) -> None:
+        heights_m = self._each_frame(built.vessel, lambda o: o.location.z)
+        assert (heights_m == 0.0).all()
+
+    def test_a_steady_object_holds_its_pose(self, built: scene.Built) -> None:
+        ((anchor,),) = built.targets.values()
+        (attitude,) = anchor.children
+        local = self._each_frame(attitude, lambda o: o.matrix_local.copy())
+        assert (local == np.eye(4)).all()
+
+
 def _finest_m(scenario: Scenario, built: scene.Built) -> float:
     return scene._finest_footprint_m(scenario, views(scenario, "eo", built.cameras))
 

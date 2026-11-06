@@ -217,6 +217,11 @@ class Scenario(Model):
             return self
         if self.outputs.duration_s == 0.0:
             raise ValueError("a loop needs outputs.duration_s > 0")
+        if self.ownship.keys:
+            raise ValueError(
+                "ownship.keys do not repeat, so a loop cannot close: give the "
+                "ownship a roll and pitch instead"
+            )
         for spec in (*self.objects, self.targets):
             if spec is not None and spec.speed_mps > 0.0:
                 raise ValueError(

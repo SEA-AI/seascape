@@ -1,6 +1,7 @@
 """The ownship and what is around it."""
 
 import math
+from itertools import pairwise
 from typing import Annotated, Literal
 
 import numpy as np
@@ -122,6 +123,10 @@ class Object(Model):
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
+    steady: bool = Field(
+        default=False,
+        description="The waves neither heave nor tilt it.",
+    )
     t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
@@ -194,6 +199,16 @@ class Heave(Model):
     period_s: float = Field(gt=0.0, description="One full cycle.")
 
 
+class AttitudeKey(Model):
+    """The attitude at one time, about the ownship's `roll_deg` and `pitch_deg`."""
+
+    t_s: float = Field(ge=0.0, description="From the first frame.")
+    roll_deg: float = Field(
+        gt=-90.0, lt=90.0, description="Positive is starboard down."
+    )
+    pitch_deg: float = Field(gt=-90.0, lt=90.0, description="Positive is bow up.")
+
+
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the attitude alone.
@@ -211,7 +226,25 @@ class Ownship(Model):
     # matters.
     roll: Swing | None = Field(default=None, description="About roll_deg.")
     pitch: Swing | None = Field(default=None, description="About pitch_deg.")
+    keys: list[AttitudeKey] = Field(
+        default_factory=list,
+        description="In place of `roll` and `pitch`, joined by Blender's clamped "
+        "Bezier, which never overshoots a key and holds the first and last.",
+    )
     heave: Heave | None = Field(default=None, description="About the waterline.")
+    steady: bool = Field(
+        default=False,
+        description="The waves do not heave it; `heave` still does.",
+    )
+
+    @model_validator(mode="after")
+    def _keys_or_swings(self) -> "Ownship":
+        if self.keys and (self.roll is not None or self.pitch is not None):
+            raise ValueError("ownship.keys set roll and pitch: drop roll and pitch")
+        times = [key.t_s for key in self.keys]
+        if any(later <= earlier for earlier, later in pairwise(times)):
+            raise ValueError(f"ownship.keys' t_s must increase: {times}")
+        return self
 
 
 class Targets(Model):

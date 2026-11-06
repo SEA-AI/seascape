@@ -259,6 +259,96 @@
       ],
       "type": "string"
     },
+    "AttitudeKey": {
+      "additionalProperties": false,
+      "description": "The attitude at one time, about the ownship's `roll_deg` and `pitch_deg`.",
+      "properties": {
+        "t_s": {
+          "title": "T S",
+          "description": "From the first frame.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "roll_deg": {
+          "title": "Roll Deg",
+          "description": "Positive is starboard down.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "pitch_deg": {
+          "title": "Pitch Deg",
+          "description": "Positive is bow up.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 90.0,
+              "exclusiveMinimum": -90.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "t_s",
+        "roll_deg",
+        "pitch_deg"
+      ],
+      "title": "AttitudeKey",
+      "type": "object"
+    },
     "Band": {
       "enum": [
         "eo",
@@ -1687,6 +1777,31 @@
             }
           ]
         },
+        "steady": {
+          "title": "Steady",
+          "description": "The waves neither heave nor tilt it.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "t_k": {
           "title": "T K",
           "description": "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, each zone settles at its own heat balance. IR only.",
@@ -2348,6 +2463,33 @@
             }
           ]
         },
+        "keys": {
+          "title": "Keys",
+          "description": "In place of `roll` and `pitch`, joined by Blender's clamped Bezier, which never overshoots a key and holds the first and last.",
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/AttitudeKey"
+              },
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "heave": {
           "description": "About the waterline.",
           "default": null,
@@ -2357,6 +2499,31 @@
             },
             {
               "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "steady": {
+          "title": "Steady",
+          "description": "The waves do not heave it; `heave` still does.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
             },
             {
               "$ref": "#/$defs/Uniform"
