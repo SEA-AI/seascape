@@ -137,9 +137,8 @@ def _sea_texture_fades_with_range(frame: np.ndarray) -> None:
 
 
 def sea_of(scenario: Scenario) -> tuple[np.ndarray, np.ndarray]:
-    """The near sea of an ir frame, then the same frame with the wave relief flattened:
-    the shaded waves and the displaced ones, whose tilt the Geometry node's normal
-    holds.
+    """The near sea of an ir frame, then the same with the wave relief flattened: the
+    shaded waves and the displaced ones, whose tilt the Geometry node's normal holds.
     """
     built = scene.build(scenario, "ir")
     sc = bpy.context.scene
@@ -570,9 +569,6 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
 
 
 def _white_sky_over_the_sea(scenario: Scenario) -> None:
-    """Builds `scenario` with the sea's reflection of a white sky alone: no body, no
-    whitecap foam.
-    """
     scene.build(scenario, "eo")
     world = bpy.context.scene.world.node_tree
     background = world.nodes["Background"]
@@ -581,6 +577,7 @@ def _white_sky_over_the_sea(scenario: Scenario) -> None:
     background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     tree = bpy.data.materials["sea"].node_tree
     tree.nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
+    # The sea's reflection alone: no whitecap foam.
     for link in list(tree.nodes["whitecap_foam"].outputs["Value"].links):
         mixed = link.to_socket
         tree.links.remove(link)
