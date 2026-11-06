@@ -298,7 +298,8 @@ class TestEachBand:
         self, sc: bpy.types.Scene, band: Band
     ) -> None:
         """Opened on the rig's first camera, an IR build could render through EO optics
-        against IR materials, with nothing to say so."""
+        against IR materials, with nothing to say so.
+        """
         assert sc.camera.name == f"bow_{band}"
 
 
@@ -361,7 +362,8 @@ def _plane_seen_from_above(
     ortho_scale: float,
 ) -> bpy.types.Object:
     """A factory scene in Cycles: a plane on z = 0, looked straight down on by an
-    orthographic camera."""
+    orthographic camera.
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
@@ -388,7 +390,8 @@ def test_the_object_index_pass_samples_the_pixel_centre(
     tmp_path: Path, edge_m: float, columns: int
 ) -> None:
     """A plane's edge just either side of a column of centres: a sample anywhere
-    else in the pixel filter would put it in a different column from row to row."""
+    else in the pixel filter would put it in a different column from row to row.
+    """
     corners = [(-10, -10, 0), (edge_m, -10, 0), (edge_m, 74, 0), (-10, 74, 0)]
     plane = _plane_seen_from_above(corners, (8, 64), (4.0, 32.0, 10.0), 8.0)
     plane.pass_index = 1
@@ -510,7 +513,8 @@ def _render_svm_errors(capfd: pytest.CaptureFixture[str]) -> list[str]:
 
 def _heaviest_drawn_sea(*, strongest: bool = False, **sections: Any) -> Scenario:
     """The `randomized.toml` draw that builds the largest sea shader: at its lightest
-    wind, which draws the most waves, or its strongest, whose foam gathers in rows."""
+    wind, which draws the most waves, or its strongest, whose foam gathers in rows.
+    """
     with (SCENARIOS / "randomized.toml").open("rb") as file:
         drawn = tomllib.load(file)["sea"]
     lightest, strongest_mps = drawn["wind_speed_mps"]["uniform"]
@@ -573,7 +577,8 @@ def test_the_heaviest_drawn_whitecaps_fit_cycles_svm_stack(
     band: Band,
 ) -> None:
     """Remembered on every grid level a camera can need and gathered into windrows.
-    The stack is the shader's, whatever its frames hold, so none are simulated."""
+    The stack is the shader's, whatever its frames hold, so none are simulated.
+    """
     monkeypatch.setattr(memory, "_simulate", lambda *_: None)
     grids = tuple(
         waves.FoamGrid(-8 * cell_m, 0.0, cell_m, 16, 16) for cell_m in (0.25, 1.0, 4.0)
@@ -767,7 +772,8 @@ def test_no_image_outgrows_what_the_server_reserves_for_it(
     tmp_path: Path, fmt: ImageFormat
 ) -> None:
     """At 1 sample, the noisiest, which a jpg compresses worst. Smaller than the
-    baseline's frames: a pixel holds more of the scene and compresses no better."""
+    baseline's frames: a pixel holds more of the scene and compresses no better.
+    """
     scenario = variant(
         BASELINE,
         cameras={
@@ -803,7 +809,8 @@ def _plate(
 
 def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
     """An empty Cycles scene that writes radiance to a float EXR, under a sky of one
-    brightness temperature."""
+    brightness temperature.
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
@@ -828,7 +835,8 @@ def _radiance_scene(sky_k: float, width: int, height: int) -> bpy.types.Scene:
 def test_a_zone_renders_at_its_heat_balance(tmp_path: Path, rise_m: float) -> None:
     """Under a uniform sky, each plate reads eps B(T) + (1 - eps) B(sky), T as
     `thermal` gives it for that normal and that sunlight; below the waterline, the
-    water's. A hull raised `rise_m` meets the water that far down its own frame."""
+    water's. A hull raised `rise_m` meets the water that far down its own frame.
+    """
     sky_k = 270.0
     sc = _radiance_scene(sky_k, 96, 64)
 
@@ -890,7 +898,8 @@ def test_a_zone_renders_at_its_heat_balance(tmp_path: Path, rise_m: float) -> No
 @pytest.mark.render
 def test_a_hull_warms_the_calm_sea_below_it(tmp_path: Path) -> None:
     """The sea's lobe meets the hull, warmer than the low sky it hides. Hidden from
-    glossy rays, the hull leaves the sea as its tables have it."""
+    glossy rays, the hull leaves the sea as its tables have it.
+    """
     scenario = variant(
         rig={"height_m": 15.0, "pitch_deg": -2.0},
         cameras={"ir": {"hfov_deg": 4.0, "width_px": 96, "height_px": 64}},

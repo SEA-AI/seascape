@@ -13,7 +13,8 @@ W, H = 2048, 1024
 
 def _sky(bearing_deg: float, elevation_deg: float, radius_deg: float, peak: float):
     """A sky of 1 with a bright spot at the bearing and elevation, as `skies` maps
-    pixels to directions."""
+    pixels to directions.
+    """
     u = (np.arange(W) + 0.5) / W
     rows = np.arange(H)
     b = np.radians((360.0 * u - 90.0) % 360.0)[None, :]
@@ -160,7 +161,8 @@ def test_a_row_s_cloud_height_is_its_share_weighted_side() -> None:
 
 def test_the_clear_sky_beside_a_pixel_ignores_the_grid_s_margin() -> None:
     """A strip no whole number of cells across is padded to one; the pad weighs
-    nothing, so a sky of one value reads that value everywhere."""
+    nothing, so a sky of one value reads that value everywhere.
+    """
     weight = np.random.default_rng(0).random((37, 101), np.float32)
     value = np.full_like(weight, 2.0)
     assert np.allclose(skies._beside(weight, value, 12.0), 2.0, atol=1e-5)

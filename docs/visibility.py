@@ -23,7 +23,8 @@ PAD_PX, LEFT_PX, WIDTH_PX, THUMB_PX = 24, 620, 1000, (300, 150)
 
 def shots(out: Path) -> tuple[np.ndarray, np.ndarray, list[int]]:
     """As `seascape render` renders it: the EO frame and its object-index pass, top
-    row first, and the targets' pass indices, nearest first."""
+    row first, and the targets' pass indices, nearest first.
+    """
     scenario = load(SCENARIO)
     (mount,) = (m for m in scenario.mounts if m.camera.band == "eo")
     built = scene.build(scenario, "eo", cull=True)
@@ -50,7 +51,8 @@ def excess(frame: np.ndarray, index: np.ndarray, p: int) -> float:
 
 def row_through(frame: np.ndarray, index: np.ndarray, p: int) -> dict:
     """Around target `p`: the crop, its row with the most flank, and that row's ΔE*ab
-    from the background line, with which columns are ship and which flank."""
+    from the background line, with which columns are ship and which flank.
+    """
     mask, beside = index == p, labels.flanks(index, p)
     lab = labels.cielab(frame)
     behind = labels.background(lab, mask, beside)
@@ -90,7 +92,8 @@ def zoomed(r: dict) -> tuple[Image.Image, float]:
 
 def chart(r: dict, scale: float, height: int) -> Image.Image:
     """Each column of the row as a bar of its ΔE*ab, under its own pixel, with the
-    ship's and the flanks' means as lines."""
+    ship's and the flanks' means as lines.
+    """
     img = Image.new("RGB", (LEFT_PX, height), "white")
     draw = ImageDraw.Draw(img)
     base = height - 24

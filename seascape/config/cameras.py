@@ -20,7 +20,8 @@ type Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]+$")]
 
 class Sensor(Model):
     """What a pixel does with the light that reaches it, in EMVA 1288's terms. Without
-    a full well the camera is ideal."""
+    a full well the camera is ideal.
+    """
 
     full_well_e: float | None = Field(
         default=None, gt=0.0, description="Saturation capacity."
@@ -106,7 +107,8 @@ class Agc(Model):
     """FLIR's AGC: one equalisation, with or without its information-based mode, and
     a share of linear ramp. Defaults are a Boson+'s factory settings, Product
     Datasheet 102-2013-45 Rev 100 §6.8; the presets in `presets/agc` are FLIR's for its
-    Boson-based M364C LR."""
+    Boson-based M364C LR.
+    """
 
     # §6.8.1, AGC Mode.
     information_based: bool = Field(
@@ -184,7 +186,8 @@ class Agc(Model):
 
 class Processing(Model):
     """The camera's ISP. White balance and sharpening need a sensor; exposure and
-    tone do not."""
+    tone do not.
+    """
 
     # 2^±126 stays a normal float32 (IEEE 754), as the compositor computes.
     exposure_ev: float = Field(
@@ -330,5 +333,6 @@ class Mount(NamedTuple):
     def nominal_bearing_deg(self) -> float:
         """Not the achieved boresight: the rig's pitch sits between the two yaws, so
         an off-axis camera points elsewhere. `rigs.boresight_deg` measures the
-        built camera."""
+        built camera.
+        """
         return self.rig.yaw_deg + self.camera.yaw_deg

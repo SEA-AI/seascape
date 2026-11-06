@@ -75,7 +75,8 @@ def test_several_skies_reflect_as_each_alone() -> None:
 
 def test_table_reproduces_downing_williams_at_their_own_temperature() -> None:
     """Downing & Williams measured at 300 K, so the table must return what they
-    printed."""
+    printed.
+    """
     lam, n, k = lwir.optical_constants(300.0)
     j = int(np.argmin(np.abs(lam - 10e-6)))
     assert n[j] == pytest.approx(1.214, abs=1e-3)
@@ -92,7 +93,8 @@ def test_stefan_boltzmann_matches_its_published_value() -> None:
 
 def test_the_shipped_grid_is_unbroken() -> None:
     """A regenerated file with a different span or step changes the physics in
-    silence."""
+    silence.
+    """
     wavenumbers, temperatures, _ = lwir._table()
     assert np.array_equal(wavenumbers, np.arange(700.0, 1261.0, 20.0))
     assert np.array_equal(temperatures, np.arange(271.0, 312.0, 4.0))
@@ -100,7 +102,8 @@ def test_the_shipped_grid_is_unbroken() -> None:
 
 def test_optical_constants_vary_smoothly() -> None:
     """A slipped decimal in the file or a transposed column in the reader moves a
-    value off the midpoint of its neighbours; real data stays within a few percent."""
+    value off the midpoint of its neighbours; real data stays within a few percent.
+    """
     _, n, k = lwir.optical_constants()
     for values in (n, k):
         midpoint_of_neighbours = (values[:-2] + values[2:]) / 2
@@ -139,7 +142,8 @@ def test_planck_rejects_impossible_temperatures(bad: float) -> None:
 
 def test_band_holds_a_plausible_share_of_total_emission() -> None:
     """Catches a unit error in Planck; wide enough to survive a change of integration
-    scheme."""
+    scheme.
+    """
     total = STEFAN_BOLTZMANN * 288.0**4 / np.pi
     assert 0.35 <= lwir.band_radiance(288.0) / total <= 0.50
 
@@ -152,7 +156,8 @@ def test_sky_meets_ambient_at_the_horizon() -> None:
 
 def test_sky_cools_toward_the_zenith() -> None:
     """Catches a curve that dips in the middle: a bad interpolation or an
-    out-of-order table."""
+    out-of-order table.
+    """
     radiance = lwir.sky_radiance(np.radians([0.0, 5.0, 20.0, 45.0, 90.0]))
     assert np.all(np.diff(radiance) < 0.0)
 
@@ -181,7 +186,8 @@ def test_sky_below_the_horizon_holds_at_ambient() -> None:
 
 def test_brightness_temperature_inverts_band_radiance() -> None:
     """Off the lookup grid, where interpolation error would show, from a sky far
-    colder than any atmosphere's to a running uptake."""
+    colder than any atmosphere's to a running uptake.
+    """
     t_k = np.array([150.31, 250.05, 288.13, 311.37, 503.21])
     radiance = [lwir.band_radiance(t) for t in t_k]
     assert lwir.brightness_temperature(radiance) == pytest.approx(t_k, abs=0.01)
@@ -321,7 +327,8 @@ def test_no_cloud_is_the_clear_sky() -> None:
 @pytest.mark.parametrize("theta_deg", [0.0, 30.0, 60.0])
 def test_the_facets_show_the_view_the_mean_surface_s_area(theta_deg: float) -> None:
     """No facet of the grid faces away from these views, so the seen areas sum to the
-    mean surface foreshortened by the view."""
+    mean surface foreshortened by the view.
+    """
     normal = lwir._facets(0.15)
     theta = math.radians(theta_deg)
     view = np.array([math.sin(theta), 0.0, math.cos(theta)])
@@ -364,7 +371,8 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
     mirror_deg: float,
 ) -> None:
     """The shader takes eps B + (1 - eps) S of facet means; each facet emits and
-    reflects in its own proportion."""
+    reflects in its own proportion.
+    """
     t_sea_k, sigma = atmosphere.T_SEA_K, 0.1
     elev = np.radians(np.linspace(0.0, 90.0, 181))
     sky = lwir.sky_radiance(elev)
@@ -394,7 +402,8 @@ def test_mean_emissivity_and_reflected_sky_add_up_to_the_facets_own_sum(
 
 def _tilted_facet_sum(depression: float, tilt: float, sigma: float) -> float:
     """Each facet of a wave tilted by `tilt` toward the eye, seen `depression` below
-    the horizon, emitting and reflecting the sky in its own direction."""
+    the horizon, emitting and reflecting the sky in its own direction.
+    """
     t_sea_k = atmosphere.T_SEA_K
     elev = np.radians(np.linspace(-90.0, 90.0, 721))
     sky = lwir.sky_radiance(elev)
@@ -415,7 +424,7 @@ def _tilted_facet_sum(depression: float, tilt: float, sigma: float) -> float:
 
 
 def _shaded(depression: float, tilt: float, sigma: float) -> float:
-    """eps B + (1 - eps) S of facet means, as the shader takes them."""
+    """The shader's eps B + (1 - eps) S of facet means."""
     elev = np.radians(np.linspace(0.0, 90.0, 361))
     view = depression + tilt  # off the wave's plane
     mirror = depression + 2 * tilt  # off the horizon

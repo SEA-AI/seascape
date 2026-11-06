@@ -33,7 +33,7 @@ SPECULAR_ZONES: frozenset[thermal.ZoneName] = frozenset({"glass", "bare_metal"})
 
 
 def thermal_skin(name: str, t_k: float, sky: Sky) -> bpy.types.Material:
-    """eps of a painted hull emitted, the remaining 1 - eps reflected from the sky.
+    """A painted hull: eps of it emitted, the remaining 1 - eps reflected from the sky.
 
     Diffuse: flat marine paint is near-Lambertian in this band.
     """
@@ -129,7 +129,8 @@ def zone_skin(
         wet: Below the waterline, the bulk water's; False for a part that never meets
             it.
         wear_material: What the hull is built of, which mixes in the wear layers.
-        crevice: The asset's crevice mask; required with `wear_material`."""
+        crevice: The asset's crevice mask; required with `wear_material`.
+    """
     zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"
     if paint_absorptance is not None and zone_name in thermal.PAINTED:
@@ -259,7 +260,8 @@ def _reflecting(
         emissivity: Fraction of that the surface emits, 0 to 1; by Kirchhoff the
             rest is what it reflects.
         zone_name: A zone of `SPECULAR_ZONES` reflects as a sharp mirror; any other,
-            or None, scatters."""
+            or None, scatters.
+    """
     white = (1.0, 1.0, 1.0, 1.0)
     if zone_name in SPECULAR_ZONES:
         scatter = node(

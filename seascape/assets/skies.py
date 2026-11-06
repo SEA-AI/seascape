@@ -82,7 +82,8 @@ CELLS_PER_SIGMA = 4
 class Photo(File):
     """One sky, and its sun as the image holds it: a bearing clockwise from +Y as
     Cycles maps the image unrotated, and an elevation and the disc's `Sun.floor` only
-    where a disc shows."""
+    where a disc shows.
+    """
 
     sun_bearing_deg: float = Field(ge=0.0, lt=360.0)
     sun_elevation_deg: float | None = Field(default=None, gt=-90.0, le=90.0)
@@ -199,7 +200,8 @@ def diffuse_irradiance(radiance: np.ndarray) -> float:
     own units.
 
     Args:
-        radiance: Equirectangular sky, (h, w, 3), top row first."""
+        radiance: Equirectangular sky, (h, w, 3), top row first.
+    """
     h, w = radiance.shape[:2]
     elevation = np.radians(_elevation_deg(np.arange(h // 2), h))
     # An equirectangular pixel spans dω = cos(elevation) (π / h) (2π / w).
@@ -265,7 +267,8 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
 
     Args:
         radiance: The photo's linear RGB, (h, w, 3), top row first.
-        photo: Its sun places the aureole; an overcast one is cloud throughout."""
+        photo: Its sun places the aureole; an overcast one is cloud throughout.
+    """
     h, w = radiance.shape[:2]
     out = np.zeros((h, w), np.float32)
     sky = slice(0, h // 2)
@@ -314,7 +317,8 @@ def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
     horizon.
 
     Args:
-        share: Cloud share, (h, w) top row first, as `cloud` gives it."""
+        share: Cloud share, (h, w) top row first, as `cloud` gives it.
+    """
     h = share.shape[0]
     rows = np.arange(h // 2, dtype=np.int32)[:, None]
     clear = share[: h // 2] < CLEAR_SHARE
@@ -335,7 +339,8 @@ def cloud_height_m(
     Args:
         share: Cloud share, (h, w) top row first, as `cloud` gives it.
         cloud_base_m: Height of the cloud base over the sea.
-        depth_m: How far over its base a cloud reaches at most."""
+        depth_m: How far over its base a cloud reaches at most.
+    """
     h = share.shape[0]
     bottom = cloud_bottom_deg(share)
     seen = ~np.isnan(bottom)
@@ -355,7 +360,8 @@ def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
     Args:
         radiance: The sky above the horizon, (h, w, 3), top row first.
         share: Cloud share by colour; what lies under CLEAR_SHARE is the clear sky
-            judged against."""
+            judged against.
+    """
     log_lum = np.log(np.maximum(radiance @ LUMINANCE, 1e-9)).astype(
         np.float32, copy=False
     )
@@ -397,7 +403,8 @@ def _pull_push(weight: np.ndarray, value: np.ndarray, sigma: float) -> np.ndarra
     """Normalized convolution (Knutsson & Westin, "Normalized and differential
     convolution", CVPR 1993) at doubling scales, each finer one trusted as far as it
     holds a weight of one cell, the rest pushed from the coarser (Gortler et al.,
-    "The Lumigraph", SIGGRAPH 1996)."""
+    "The Lumigraph", SIGGRAPH 1996).
+    """
     h, w = weight.shape
     # Doublings until a sigma spans the strip's circumference.
     levels = max(0, math.ceil(math.log2(w / (2.0 * math.pi * sigma)))) + 1
@@ -435,7 +442,8 @@ def _filled(share: np.ndarray, hole: np.ndarray) -> np.ndarray:
 
     Args:
         share: Cloud share, (h, w) float32, a type OpenCV's inpaint takes.
-        hole: True where the share is replaced."""
+        hole: True where the share is replaced.
+    """
     return cv2.inpaint(
         share,
         hole.astype(np.uint8),

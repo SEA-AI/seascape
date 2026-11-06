@@ -33,7 +33,8 @@ def encode(
     Args:
         run: The render's folder, with its labels.json.
         quality: A Blender `constant_rate_factor` preset.
-        advance: Runs after each camera's video."""
+        advance: Runs after each camera's video.
+    """
     run = run.resolve()
     settings = agcs(run)
     written = []
@@ -45,7 +46,8 @@ def encode(
 
 def _toned(paths: list[Path], setting: Agc, step_s: float, into: Path) -> list[Path]:
     """8-bit copies of 16-bit thermal frames, which the sequencer shows as flat grey;
-    any other frame as it is."""
+    any other frame as it is.
+    """
     if agc.kelvin(paths[0]) is None:
         return paths
     tone, toned = agc.Agc(setting, step_s), []

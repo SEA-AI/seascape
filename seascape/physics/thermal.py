@@ -234,7 +234,8 @@ def under(zone: Zone, layer: WearLayer) -> Zone:
     Args:
         zone: The emissivity and solar absorptance the layer changes.
         layer: Grime raises absorptance and a bare metal's emissivity; rust and soot
-            replace the surface."""
+            replace the surface.
+    """
     match layer:
         case "grime":
             emissivity = max(zone.emissivity, GRIME_EMISSIVITY)
@@ -262,7 +263,8 @@ PAINTED: frozenset[ZoneName] = frozenset(
 @dataclass(frozen=True)
 class Environment:
     """The air, sea and sun a facet balances against. Wind is the air's speed past
-    the facet."""
+    the facet.
+    """
 
     t_air_k: float
     t_sea_k: float
@@ -318,7 +320,8 @@ class Environment:
         longer than its walls.
 
         Args:
-            off_s: Time since the engines stopped, at least 0."""
+            off_s: Time since the engines stopped, at least 0.
+        """
         if off_s < 0.0:
             raise ValueError(f"off_s {off_s} is before the engines stopped")
         eps = ZONES["exhaust"].emissivity
@@ -339,7 +342,8 @@ class Environment:
 
 def air_mass(elevation_rad: npt.ArrayLike) -> FloatArray:
     """Kasten & Young 1989: relative optical air mass at a sun elevation, finite at the
-    horizon where 1 / sin is not."""
+    horizon where 1 / sin is not.
+    """
     elevation = np.asarray(elevation_rad, dtype=np.float64)
     elevation_deg = np.degrees(elevation)
     return 1.0 / (np.sin(elevation) + 0.50572 * (elevation_deg + 6.07995) ** -1.6364)
@@ -376,7 +380,8 @@ def sky_longwave_w_m2(
             8-14 um window loses more.
         fog_cover: The sky's share under fog, a blackbody at the air hiding the
             cloud.
-        atmosphere: The LOWTRAN profile whose sky this is."""
+        atmosphere: The LOWTRAN profile whose sky this is.
+    """
     air = STEFAN_BOLTZMANN_W_M2K4 * t_air_k**4
     clear = _SWINBANK_W_M2K6 * t_air_k**6
     cloud = air - cloud_window_deficit_w_m2(cloud_base_m, t_air_k, atmosphere)
@@ -454,7 +459,8 @@ def lit_temperature_k(
         zone: The facets' absorptance, emissivity, conductance and interior.
         env: The air, sea and sun they balance against.
         sun_cos: max(0, n . s) where sunlit, 0 in shadow.
-        normal_up: The normal's vertical component: 1 sees only sky, -1 only sea."""
+        normal_up: The normal's vertical component: 1 sees only sky, -1 only sea.
+    """
     sun_cos = np.asarray(sun_cos, dtype=np.float64)
     up = np.asarray(normal_up, dtype=np.float64)
     t_interior = env.interior_k(zone.interior)

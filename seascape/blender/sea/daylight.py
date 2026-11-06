@@ -139,7 +139,8 @@ def _glitter(
             is n.
         unresolved: The slope variance the lobe would take without the tilts.
         glinting: 1 where a facet can mirror the sun, as `_glinting` gives it; the
-            tilts carry variance only there."""
+            tilts carry variance only there.
+    """
     cell_m2 = specular_cell_m2(wind)
     cells = Num(tree, pixel.along_m) * pixel.across_m / cell_m2
     widen = cells.madd(0.0, -1.0)
@@ -191,7 +192,8 @@ def _lobe(
     Args:
         tree: The sea material's shader tree.
         along: Slope variance along the lobe's tangent; its root is that axis's alpha.
-        across: Slope variance across the tangent."""
+        across: Slope variance across the tangent.
+    """
     along, across = (Num(tree, s).op("MAXIMUM", 1e-12) for s in (along, across))
     roughness = (along * across).op("POWER", 0.125).op("MINIMUM", 1.0)
     roughness.socket.node.name = "sea_roughness"
@@ -210,7 +212,8 @@ def _stretchable(
     Args:
         tree: The sea material's shader tree.
         wide: The lobe's wider slope variance, which bounds the narrower.
-        narrow: The variance to hold to a hundredth of the wider."""
+        narrow: The variance to hold to a hundredth of the wider.
+    """
     return scalar(tree, "MAXIMUM", narrow, scalar(tree, "MULTIPLY", wide, 0.01))
 
 
@@ -307,7 +310,8 @@ def _widest(
     """The wider and narrower of the unresolved variances, and the horizontal along
     the wider: Cycles' Metallic BSDF stretches a lobe along its tangent only. Grazing,
     the footprints make it the view's; a steep view down a crosswind-heavy sea turns
-    it."""
+    it.
+    """
     across_dir = vector(tree, "CROSS_PRODUCT", pixel.along_dir, (0.0, 0.0, 1.0))
     tangent = node(
         tree,

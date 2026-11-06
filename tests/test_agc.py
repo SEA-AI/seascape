@@ -61,7 +61,8 @@ def test_ace_below_1_darkens() -> None:
 
 def test_a_hot_exhaust_leaves_the_scene_its_contrast() -> None:
     """A sea and hull 10 K apart, and a hundredth of the frame at 230 C: linear gives
-    the scene a few greys, equalisation most of them."""
+    the scene a few greys, equalisation most of them.
+    """
     rng = np.random.default_rng(0)
     scene = rng.uniform(283.0, 293.0, (99, 100))
     t_k = np.vstack([scene, np.full((1, 100), 503.15)])
@@ -78,7 +79,8 @@ def textured() -> np.ndarray:
 
 def test_detail_takes_greys_from_a_smooth_background() -> None:
     """A textured target among the sea's own temperatures: information-based gives
-    it more greys than plateau does, and the smooth sea fewer."""
+    it more greys than plateau does, and the smooth sea fewer.
+    """
     t_k = textured()
     target, sea = np.s_[124:132, 124:132], np.s_[:100]
     plateau = agc.Agc(Agc(information_based=False))(t_k)
@@ -89,7 +91,8 @@ def test_detail_takes_greys_from_a_smooth_background() -> None:
 
 def test_the_headroom_keeps_the_background_off_the_ends() -> None:
     """A smooth ramp has no detail: information-based, it spans the curve squeezed
-    inside the headroom."""
+    inside the headroom.
+    """
     t_k = np.linspace(280.0, 300.0, 256)[:, None] * np.ones((1, 8))
     grey = agc.Agc(Agc(detail_headroom=40))(t_k).astype(int)
     assert (grey.min(), grey.max()) == pytest.approx((40, 215), abs=1)
@@ -107,7 +110,8 @@ def test_dde_gains_the_detail() -> None:
 @shipped
 def test_noise_on_a_uniform_frame_gains_at_most_the_cap(setting: Agc) -> None:
     """A linear stretch would spread 50 mK of noise across all 256 greys. Noise is
-    detail, so DDE above 1 gains it past the cap."""
+    detail, so DDE above 1 gains it past the cap.
+    """
     t_k = np.random.default_rng(0).normal(290.0, 0.05, (64, 64))
     grey = agc.Agc(setting)(t_k)
     dde = max(setting.dde, 1.0) if setting.information_based else 1.0
@@ -142,7 +146,8 @@ def test_without_a_step_each_frame_takes_its_own_curve(setting: Agc) -> None:
 @shipped
 def test_the_curve_follows_a_step_change_over_the_time_constant(setting: Agc) -> None:
     """A hot target entering must not flash the background: after one time constant
-    the curve has moved 1 - 1/e of the way, and after many it has arrived."""
+    the curve has moved 1 - 1/e of the way, and after many it has arrived.
+    """
     before, after = column(280.0, 290.0), column(280.0, 287.0, 300.0)
     tone = agc.Agc(setting, setting.tau_s / 10)
     tone(before)

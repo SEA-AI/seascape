@@ -16,7 +16,8 @@ Rules:
    replaced whole.
 
 Any field can instead be a draw, a table named for one of `draws.DRAWS` such as
-`{ uniform = [lo, hi] }`, resolved after both forms of reuse and before validation."""
+`{ uniform = [lo, hi] }`, resolved after both forms of reuse and before validation.
+"""
 
 import tomllib
 from collections.abc import Iterable, Mapping
@@ -54,7 +55,8 @@ def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
 
 def _merge_value(base: Any, over: Any) -> Any:
     """Two tables merge, and a table over a choice of tables merges into each option;
-    anything else, a draw or a table naming a preset included, replaces outright."""
+    anything else, a draw or a table naming a preset included, replaces outright.
+    """
     if not _is_table(over) or "preset" in over:
         return over
     if _is_table(base):
@@ -134,7 +136,8 @@ _SHARED = {"sensor", "lens", "processing"}
 
 def _per_rig(path: str) -> str:
     """A rig's cameras share one sensor, lens and ISP setting: their draws skip the
-    camera's name and every pick above it, under a name `Name` refuses a camera."""
+    camera's name and every pick above it, under a name `Name` refuses a camera.
+    """
     parts = path.split("/")
     for i, part in enumerate(parts):
         head = [p for p in parts[:i] if p != "choice"]
@@ -150,7 +153,8 @@ def _per_rig(path: str) -> str:
 
 def _draw(node: Any, seed: int, path: str) -> Any:
     """Replace every draw in the tree by a value from a substream named for where it
-    sits, `draw/sky/visibility_km`."""
+    sits, `draw/sky/visibility_km`.
+    """
     if isinstance(node, list):
         return [_draw(item, seed, f"{path}/{i}") for i, item in enumerate(node)]
     if not isinstance(node, dict):
@@ -198,7 +202,8 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
 
 def _outcomes(node: Any) -> list[Any]:
     """Every value a field can take: through a choice, each option it can draw;
-    anything else as it stands."""
+    anything else as it stands.
+    """
     if kind(node) != "choice":
         return [node]
     options = Choice.model_validate(node).possible()
@@ -208,7 +213,8 @@ def _outcomes(node: Any) -> list[Any]:
 def _draught_span_m(draught: Any) -> tuple[float, float] | None:
     """The lightest and deepest a draught can be, through every value a choice can
     draw. None, the asset's own draught, bounds nothing, nor does anything validation
-    refuses anyway; a draught of nothing else is None."""
+    refuses anyway; a draught of nothing else is None.
+    """
     spans = []
     for value in _outcomes(draught):
         if (name := kind(value)) is not None:
@@ -225,7 +231,8 @@ def _draught_span_m(draught: Any) -> tuple[float, float] | None:
 def _draughts_fit(spec: Any, i: int) -> None:
     """Refuse a draught that can leave its asset's range, whatever the seed, for
     every object a choice can make and every asset that object can be. Each copy
-    checks only what its seed drew."""
+    checks only what its seed drew.
+    """
     for entry in _outcomes(spec):
         if not isinstance(entry, dict):
             continue
@@ -254,7 +261,8 @@ def _range_m(
     copy: dict[str, Any], seed: int, path: str, sky: Any, i: int
 ) -> dict[str, Any]:
     """The copy's range by optical depth, in metres through the drawn sky's haze.
-    Drawn here so an earlier entry's count leaves it be."""
+    Drawn here so an earlier entry's count leaves it be.
+    """
     depth = copy.get("range_m")
     if not (isinstance(depth, dict) and "optical_depth" in depth):
         return {}
@@ -322,7 +330,8 @@ TRIES_PER_VARIANT = 10
 
 def seeds(first: int, variants: int) -> range:
     """Every seed `render --variants` may try, in order; a lone variant is never
-    replaced."""
+    replaced.
+    """
     return range(first, first + (1 if variants == 1 else TRIES_PER_VARIANT * variants))
 
 

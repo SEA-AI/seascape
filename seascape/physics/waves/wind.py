@@ -61,7 +61,8 @@ def turbulence_intensity(wind_speed_mps: float) -> float:
 
 def gust_slope_variance(wind_speed_mps: float) -> float:
     """What a gust adds to Cox & Munk's slope variance, per unit u / U. Cox & Munk is
-    linear in the wind but for z0's drift, so this is the gust's whole effect."""
+    linear in the wind but for z0's drift, so this is the gust's whole effect.
+    """
     step = 1e-4
     up, down = (cox_munk_slope(wind_speed_mps * (1 + s)) ** 2 for s in (step, -step))
     return (up - down) / (2 * step)
@@ -72,7 +73,8 @@ def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
     the same pattern, exactly symmetric about 0.
 
     Args:
-        tile: A float field; only the order of its values survives."""
+        tile: A float field; only the order of its values survives.
+    """
     ranked = np.empty(tile.size, tile.dtype)
     ranked[np.argsort(tile, axis=None)] = _gaussian_quantiles(tile.size)
     return ranked.reshape(tile.shape)
@@ -84,7 +86,8 @@ def _gaussian_quantiles(count: int) -> np.ndarray:
     the cache hands every caller the same array.
 
     Args:
-        count: How many equal shares, one quantile each."""
+        count: How many equal shares, one quantile each.
+    """
     quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(count) + 0.5) / count)
     quantiles.setflags(write=False)
     return quantiles
@@ -101,7 +104,8 @@ def von_karman_field(
         cells: The tile's side, in cells.
         spacing_m: A cell's side; the tile repeats every cells times spacing_m.
         length_m: The integral scale, the autocorrelation's integral over lag: how far
-            the field stays alike."""
+            the field stays alike.
+    """
     k0_rad_m = math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * length_m)
     k = 2 * math.pi * np.fft.fftfreq(cells, spacing_m)
     k_sq = k[:, None] ** 2 + k[None, :] ** 2

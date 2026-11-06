@@ -55,7 +55,8 @@ PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
-    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180)."""
+    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180).
+    """
     x, y, z = body_to_frame[:3, :3].T
     roll = math.atan2(-x[2], z[2])
     pitch = math.asin(max(-1.0, min(1.0, y[2])))
@@ -186,7 +187,8 @@ def _write_json(path: Path, data: Any) -> None:
 
 def export(run: Path) -> list[Path]:
     """One recording folder per rig, under `run/recordings/<rig>/`, named for its
-    model."""
+    model.
+    """
     truth = labels.Labels.model_validate_json((run / labels.FILENAME).read_text())
     if "scenario" not in truth.info or "date_created" not in truth.info:
         raise ValueError(f"{run / labels.FILENAME}: no scenario or date in its info")

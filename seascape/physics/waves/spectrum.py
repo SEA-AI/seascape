@@ -43,7 +43,8 @@ LOWEST_OF_PEAK = 0.7
 @dataclass(frozen=True)
 class Wave:
     """Height a cos(k . x - omega t + phase). k follows from omega, so a loop snapping
-    omega cannot break dispersion."""
+    omega cannot break dispersion.
+    """
 
     amplitude_m: float
     omega_rad_s: float
@@ -86,7 +87,8 @@ def columns(field: tuple[Wave, ...]) -> np.ndarray:
 
 def roughness_m(wind_speed_mps: float) -> float:
     """Charnock's z0 = A u*^2 / g, with u* = kappa U10 / ln(10 / z0), to a fixed
-    point."""
+    point.
+    """
     z0_m = 1e-4
     for _ in range(50):
         friction_mps = VON_KARMAN * wind_speed_mps / math.log(10.0 / z0_m)
@@ -126,7 +128,8 @@ def peak_omega_rad_s(wind_speed_mps: float, fetch_m: float | None) -> float:
 
 def phase_speed_mps(k_rad_m: np.ndarray) -> np.ndarray:
     """Gravity-capillary phase speed in deep water, the capillary peak at Elfouhaily's
-    k_m."""
+    k_m.
+    """
     return np.sqrt(GRAVITY_MS2 / k_rad_m * (1 + (k_rad_m / CAPILLARY_PEAK_RAD_M) ** 2))
 
 

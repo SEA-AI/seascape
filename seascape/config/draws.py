@@ -41,7 +41,8 @@ class Uniform(Model):
 
 class LogUniform(Model):
     """A float drawn evenly in its logarithm between two bounds: as often between 0.1
-    and 1 as between 1 and 10."""
+    and 1 as between 1 and 10.
+    """
 
     log_uniform: Annotated[tuple[_Positive, _Positive], _Ordered] = Field(
         description="The bounds, lower first."
@@ -139,7 +140,8 @@ class Choice(Model):
 
 class OpticalDepth(Model):
     """An object's `range_m` as optical depth: a ray keeps exp(-depth) of its light,
-    with a dark target keeping 5% of its contrast over `sky.visibility_km`."""
+    with a dark target keeping 5% of its contrast over `sky.visibility_km`.
+    """
 
     optical_depth: Annotated[tuple[_Positive, _Positive], _Ordered] = Field(
         description="The bounds, lower first, drawn evenly."
@@ -148,7 +150,8 @@ class OpticalDepth(Model):
 
 class Loaded(Model):
     """An object's `draught_m` as how laden it is: 0 its asset's lightest draught, 1
-    its deepest, so one draw fits every asset a choice can make."""
+    its deepest, so one draw fits every asset a choice can make.
+    """
 
     loaded: Annotated[tuple[_Share, _Share], _Ordered] = Field(
         description="The bounds, lower first, drawn evenly."

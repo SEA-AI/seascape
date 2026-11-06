@@ -65,7 +65,8 @@ def solar_trapped(depth_m: float) -> float:
     """Fairall et al.'s equation 26: the fraction of the net solar a layer keeps.
 
     Args:
-        depth_m: How far down from the surface the layer reaches."""
+        depth_m: How far down from the surface the layer reaches.
+    """
     passed = sum(
         f * g * (1.0 - math.exp(-depth_m / g))
         for f, g in zip(_SOLOVIEV_FRACTIONS, _SOLOVIEV_LENGTHS_M, strict=True)
@@ -96,7 +97,8 @@ def warm_layer(
             averaged over the hours.
         hours: Time since the warm layer formed.
         t_sea_k: Sea temperature, which sets its thermal expansion and the air's
-            density."""
+            density.
+    """
     alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_MS2
     heat = WATER_DENSITY_KG_M3 * WATER_HEAT_J_KG_K
     # The same stress either side of the interface.
@@ -148,7 +150,8 @@ def _air_density_kg_m3(t_k: float) -> float:
 
 def stress_m2_s2(wind_speed_mps: float, t_k: float) -> float:
     """The air's u*^2 from the 10 m wind, as Fairall et al. estimated it, no less than
-    COARE 3.6's floor."""
+    COARE 3.6's floor.
+    """
     floor = MIN_STRESS_N_M2 / _air_density_kg_m3(t_k)
     return max(DRAG_COEFFICIENT * wind_speed_mps**2, floor)
 
@@ -160,6 +163,7 @@ def skin_k(t_sea_k: float, warm_layer_k: float, sun_up: bool) -> float:
     Args:
         t_sea_k: The bulk sea's temperature.
         warm_layer_k: The warm layer's rise, as `warm_layer` gives it.
-        sun_up: Takes Fairall et al.'s noon cool skin; false, their night one."""
+        sun_up: Takes Fairall et al.'s noon cool skin; false, their night one.
+    """
     cool = COOL_SKIN_DAY_K if sun_up else COOL_SKIN_NIGHT_K
     return t_sea_k + warm_layer_k - cool

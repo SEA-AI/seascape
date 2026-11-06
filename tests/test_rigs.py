@@ -1,5 +1,6 @@
 """Two rigs of several cameras: where each sits and points, and the panoramas stitched
-from them. One global Blender session, so it is built once."""
+from them. One global Blender session, so it is built once.
+"""
 
 import json
 import math
@@ -293,7 +294,8 @@ def test_a_bearing_lands_where_the_stitch_put_it(
 ) -> None:
     """A dot right of each principal point, found in the stitch, against the column
     its ray's bearing maps to. Off centre, so a mirrored mapping finds no dot; on a
-    pitched camera, so the mapping is held independent of elevation."""
+    pitched camera, so the mapping is held independent of elevation.
+    """
     cameras = [scene.calibrate(built, m, f"{m.name}.png") for m in first_rig_mounts()]
     for camera in cameras:
         frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)

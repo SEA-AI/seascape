@@ -101,7 +101,8 @@ def _setup() -> None:
 
 def _textures() -> None:
     """Workbench's texture mode draws a material's active image node, or its viewport
-    colour: point both at the base colour."""
+    colour: point both at the base colour.
+    """
     for material in bpy.data.materials:
         bsdf = faces.bsdf(material)
         if bsdf is None:
@@ -115,7 +116,8 @@ def _textures() -> None:
 
 def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
     """Each face's value as a corner colour: its base-`DIGIT` digits in red, green and
-    blue, each exact in Workbench's half floats."""
+    blue, each exact in Workbench's half floats.
+    """
     for obj, value in zip(found.objects, per_face, strict=True):
         mesh = obj.data
         total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))
@@ -221,7 +223,8 @@ def parts(name: str, worn: bool = False) -> Parts:
     Args:
         name: The asset's name in assets.toml.
         worn: Tag the asset's faces for wear, as a build does an asset
-            `Scenario.worn` names."""
+            `Scenario.worn` names.
+    """
     roots = import_asset(name, "eo", worn=worn)
     bpy.context.view_layer.update()
     return faces.found(mesh_objects(roots))
@@ -483,7 +486,8 @@ def _input(
     triangles: list[tuple[int, np.ndarray]],
 ) -> dict[str, Any]:
     """A BSDF input as the shader reads it: its value, or the texels the material's
-    faces cover."""
+    faces cover.
+    """
     bsdf = faces.bsdf(material)
     if bsdf is None:
         if socket == "Base Color" and material is not None:
@@ -580,7 +584,8 @@ def _island_records(
     found: Parts,
 ) -> tuple[list[dict[str, Any]], dict[str, Image.Image]]:
     """Each island's record, its colour the mean texel at its triangles' centres, and
-    each base colour atlas with every island drawn on it."""
+    each base colour atlas with every island drawn on it.
+    """
     n = len(found.islands)
     heights = _heights(found, found.face_island, n)
     triangles = _triangle_counts(found, found.face_island, n)
@@ -683,7 +688,8 @@ def sheets(
         kind: Label slots or islands; None picks slots, or islands for an asset of
             one material.
         material: Show this material's islands alone, the rest grey; it picks
-            islands, so not with slots."""
+            islands, so not with slots.
+    """
     if kind == "slots" and material is not None:
         raise ValueError("a material picks islands, not slots")
     asset = manifest()[name]
@@ -799,7 +805,8 @@ def _worn_tiles(found: Parts, weathered: bool) -> list[tuple[Image.Image, str]]:
 
     Args:
         found: The parts, from `parts(name, worn=not weathered)`.
-        weathered: The asset's wear is its textures', so it takes none of ours."""
+        weathered: The asset's wear is its textures', so it takes none of ours.
+    """
     if not weathered:
         wear.dirty(found.objects)
         for obj in found.objects:

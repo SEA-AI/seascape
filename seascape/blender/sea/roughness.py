@@ -53,7 +53,8 @@ def _grouped(
         sea: The wind and fetch the spread is taken at; no wind keeps the mean.
         where: The flat sea's (east, north, time) the cells are drawn at.
         pixel: The footprint the cells are sized to.
-        unresolved: The slope variances along and across the view."""
+        unresolved: The slope variances along and across the view.
+    """
     if sea.wind_speed_mps <= 0.0:
         return unresolved
     along_m, across_m = Num(tree, pixel.along_m), Num(tree, pixel.across_m)
@@ -102,7 +103,8 @@ def _box_kept(cells: Num) -> Num:
     up and 1 - m / 3 below.
 
     Args:
-        cells: m, the box's length in cells (a ratio); under 1 it fits in one."""
+        cells: m, the box's length in cells (a ratio); under 1 it fits in one.
+    """
     over = cells.madd(3.0, -1.0) / (cells * cells * 3.0)
     under = cells.madd(-1 / 3, 1.0)
     return cells.op("GREATER_THAN", 1.0).madd(over - under, under)
@@ -135,7 +137,8 @@ def _unresolved(
         pixel: The footprint and view direction.
         gust: The wind over its mean, less one; None for a steady wind.
         smooth: Where the variance is a slick's, under a slick or in a wake, 1 at
-            full; None for neither."""
+            full; None for neither.
+    """
     speed = sea.wind_speed_mps
     # From or toward, the axis is the same.
     wind_axis = math.radians(sea.wind_from_deg)

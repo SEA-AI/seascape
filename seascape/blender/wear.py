@@ -1,5 +1,6 @@
 """Wear attributes written at import, in the fitted hull frame: metres, bow +Y,
-waterline z = 0."""
+waterline z = 0.
+"""
 
 from typing import NamedTuple
 
@@ -75,7 +76,8 @@ def weights(material: Material) -> np.ndarray:
 
 def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     """Each point's depth below the highest point of its zone over the same patch of
-    plan: for a hull side the sheer, for a house wall its roof edge."""
+    plan: for a hull side the sheer, for a house wall its roof edge.
+    """
     # shortcut: a plan grid, not a walk up the surface; a tier stepped back by less
     # than a patch reads its upper tier's edge.
     length_m = float(np.ptp(position_m[:, :2], axis=0).max())
@@ -162,7 +164,8 @@ def unwrap(objects: list[bpy.types.Object]) -> None:
     own.
 
     Args:
-        objects: What to lay out; those that are not meshes with faces are skipped."""
+        objects: What to lay out; those that are not meshes with faces are skipped.
+    """
     meshes = [o for o in objects if o.type == "MESH" and o.data.polygons]
     if not meshes:
         return
@@ -209,7 +212,8 @@ def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
     Args:
         joined: Every mesh of the asset as one, in metres, with the atlas `unwrap`
             wrote.
-        name: Names the baked image and the bake's throwaway material."""
+        name: Names the baked image and the bake's throwaway material.
+    """
     mesh = joined.data
     n_loops = len(mesh.loops)
     uv = faces.floats(mesh.attributes[UV].data, "vector", 3 * n_loops).reshape(-1, 3)
@@ -418,7 +422,8 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
 
 def mark(anchor: bpy.types.Object, amount: float, rng: np.random.Generator) -> None:
     """Give a hull's meshes their wear and a noise offset of their own, so copies of
-    one asset wear apart."""
+    one asset wear apart.
+    """
     offset = float(rng.uniform(0.0, 1000.0))
     for part in anchor.children_recursive:
         if part.type == "MESH":
@@ -455,7 +460,8 @@ def _source(
 def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     """A second dielectric BSDF, not a tinted one: tinting a metallic surface colours
     its mirror (rust reads as copper), and mixing the one BSDF's inputs would need
-    Metallic, Roughness and Coat mixed in every material."""
+    Metallic, Roughness and Coat mixed in every material.
+    """
     t = material.node_tree
     shader = faces.bsdf(material)
     if shader is None:

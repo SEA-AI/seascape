@@ -31,7 +31,8 @@ ISLAND_ID = r"^(0|[1-9][0-9]*)$"
 
 class File(FrozenModel):
     """A file fetched from `url` and checked against `sha256`: one a mesh reads beside
-    itself, such as a glTF's buffer or a texture, or a sky photo."""
+    itself, such as a glTF's buffer or a texture, or a sky photo.
+    """
 
     url: str
     sha256: str = Field(pattern=SHA256)
@@ -43,7 +44,8 @@ Range = Annotated[tuple[float, float], Field(description="Lowest and highest, 0-
 class Rule(FrozenModel):
     """A zone for the islands of one material whose means of its Principled BSDF
     inputs all fall in the given ranges. Scoped to a material, since a map one slot
-    gets right another may not."""
+    gets right another may not.
+    """
 
     material: str
     zone: ZoneName
@@ -268,7 +270,8 @@ class Rotor(FrozenModel):
 
     def rpm(self, hub_mps: float) -> float:
         """At the hub's wind: parked outside cut-in and cut-out, else the speed that
-        holds the tip-speed ratio, between minimum and rated."""
+        holds the tip-speed ratio, between minimum and rated.
+        """
         if not self.cut_in_mps <= hub_mps <= self.cut_out_mps:
             return 0.0
         tracking = 60.0 * self.tip_speed_ratio * hub_mps / (math.pi * self.diameter_m)

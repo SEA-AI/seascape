@@ -76,7 +76,8 @@ def cox_munk_slope(wind_speed_mps: float) -> float:
 
 def cox_munk_slick_slope(wind_speed_mps: float) -> float:
     """Total RMS slope under a slick: Cox & Munk's slick fit, capped at the clean one,
-    as a slick never roughens the sea."""
+    as a slick never roughens the sea.
+    """
     wind = wind_at_m(wind_speed_mps, COX_MUNK_WIND_HEIGHT_M)
     slick = SLICK_VARIANCE_INTERCEPT + SLICK_VARIANCE_PER_MPS * wind
     return min(math.sqrt(slick), cox_munk_slope(wind_speed_mps))
@@ -104,7 +105,8 @@ def cox_munk_variances(wind_speed_mps: float) -> tuple[float, float]:
 def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
     """Upwind and crosswind slope variance under a slick: the slick total split as its
     axes' fits, upwind capped at the clean sea's, as a film only damps; the clean
-    split turns isotropic in light wind, the slick's does not."""
+    split turns isotropic in light wind, the slick's does not.
+    """
     total = cox_munk_slick_slope(wind_speed_mps) ** 2
     up_share, _ = _axis_shares(wind_speed_mps, AXES_SLICK)
     up = min(total * up_share, cox_munk_variances(wind_speed_mps)[0])
@@ -115,7 +117,8 @@ def cox_munk_slick_variances(wind_speed_mps: float) -> tuple[float, float]:
 def lattice(count: int) -> np.ndarray:
     """(x, y, t) in [0, 1)^3 by Roberts' additive recurrence on the root of
     x^4 = x + 1 (Roberts 2018, "The unreasonable effectiveness of quasirandom
-    sequences"): evenly spread, without a generator."""
+    sequences"): evenly spread, without a generator.
+    """
     root = 1.0
     for _ in range(64):
         root = (1 + root) ** (1 / 4)
@@ -146,7 +149,8 @@ def specular_cell_m2(wind: tuple[Wave, ...]) -> float:
 
 def twinkle_hz(wind: tuple[Wave, ...]) -> float:
     """A judgement: specular points live as long as the curvature that makes them, so
-    they are re-drawn at its mean frequency, weighted by each wave's share of m4."""
+    they are re-drawn at its mean frequency, weighted by each wave's share of m4.
+    """
     m4 = curvature_variance(wind)
     if m4 <= 0.0:
         return 0.0
@@ -164,7 +168,8 @@ def visibility(wavelength_m: np.ndarray, footprint_m: np.ndarray | float) -> np.
 
     Args:
         wavelength_m: Crest to crest, 2 pi / k.
-        footprint_m: The pixel's extent on the sea across the wave's crests."""
+        footprint_m: The pixel's extent on the sea across the wave's crests.
+    """
     x = np.asarray(footprint_m) / np.asarray(wavelength_m)
     return np.where(x < 1.0, np.sinc(x), 0.0)
 
@@ -182,7 +187,8 @@ def mss_spread(
         wind_speed_mps: The wind at 10 m, U10, which the short waves grow in.
         fetch_m: The distance the wind has blown over; None for a fully developed sea.
         footprint_m: The footprint's geometric mean; it is `SPREAD_ASPECT` times as
-            long as it is wide."""
+            long as it is wide.
+    """
     spreads = _mss_spreads(wind_speed_mps, fetch_m)
     at = math.log(footprint_m)
     return float(np.interp(at, np.log(SPREAD_FOOTPRINTS_M), spreads))
@@ -201,7 +207,8 @@ def _mss_spread_at(
     """Isserlis's spread over a footprint, as `mss_spread`: the relative variance of
     its mean |s|^2 is 2 E[cos^2(theta_1 - theta_2) |H(k_1 - k_2)|^2], k_1 and k_2 drawn
     independently from the slope spectrum the pixel leaves, H the footprint's box
-    transfer function."""
+    transfer function.
+    """
     if wind_speed_mps <= 0.0:
         return 0.0
     along = footprint_m * math.sqrt(SPREAD_ASPECT)
@@ -271,7 +278,8 @@ def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
 
     Args:
         field: Waves of any length.
-        footprint_m: The finest footprint any pixel has."""
+        footprint_m: The finest footprint any pixel has.
+    """
     return tuple(w for w in field if 2 * math.pi / w.k_rad_m > footprint_m)
 
 
@@ -285,7 +293,8 @@ def drawn_slope_variances(
         field: The waves whole; each is scaled here by its visibility at the
             footprint.
         footprint_m: The pixel's length on the sea; 0 draws every wave whole.
-        downwind_rad: The wind's axis, a bearing; from or toward is the same axis."""
+        downwind_rad: The wind's axis, a bearing; from or toward is the same axis.
+    """
     if not field:
         return 0.0, 0.0
     a, k, *_ = columns(field)
@@ -305,7 +314,8 @@ def slick_survivors(
         wind_speed_mps: The wind at 10 m, taken to the height Cox & Munk measured at.
         wind: The wind sea a slick damps.
         axis_rad: The wind's axis, a bearing; Cox & Munk's upwind variance lies along
-            it."""
+            it.
+    """
     budget = np.array(cox_munk_slick_variances(wind_speed_mps))
     left: list[Wave] = []
     # Wave by wave, so the cut can leave its last run of the spread one-sided.
@@ -337,7 +347,8 @@ def unresolved_slope_variances(
         swell: The swell's waves, whose undrawn part adds to the total.
         footprint_m: The pixel's length on the sea.
         fit: Upwind and crosswind slope variance at a wind speed, each axis's own;
-            Cox & Munk's clean sea by default."""
+            Cox & Munk's clean sea by default.
+    """
     drawn = drawn_slope_variances(wind, footprint_m, downwind_rad)
     swell_all = drawn_slope_variances(swell, 0.0, downwind_rad)
     swell_drawn = drawn_slope_variances(swell, footprint_m, downwind_rad)

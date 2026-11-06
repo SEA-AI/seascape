@@ -38,7 +38,8 @@ _BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 @dataclass(frozen=True)
 class Built:
     """What `build` made, by role, valid until the next build. A name in `bpy.data`
-    belongs to whoever took it first, and an imported asset can carry any name."""
+    belongs to whoever took it first, and an imported asset can carry any name.
+    """
 
     vessel: bpy.types.Object
     rigs: dict[str, bpy.types.Object]
@@ -92,7 +93,8 @@ def _rows(m: Matrix) -> Matrix4:
 
 def _viewport(near_m: float, far_m: float) -> None:
     """Blender's view clip defaults to 0.01-1000 m, which cuts a sea reaching tens
-    of km."""
+    of km.
+    """
     for screen in bpy.data.screens:
         for area in screen.areas:
             if area.type != "VIEW_3D":
@@ -104,7 +106,8 @@ def _viewport(near_m: float, far_m: float) -> None:
 
 def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
     """Past the camera's horizon plus the tallest hull's own, every hull is below the
-    horizon."""
+    horizon.
+    """
     # Stored at import, blade up: measured now, a rotor's top follows its spin.
     tops_m = [anchor["height_m"] for anchor in anchors]
     if not tops_m:
@@ -124,7 +127,8 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
 
     Args:
         scenario: Its crests and refraction set how near the sea comes.
-        seen: Every camera's pose in every frame."""
+        seen: Every camera's pose in every frame.
+    """
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     tall, _ = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     crest_m = sum(w.amplitude_m for w in tall)
@@ -145,7 +149,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
             cameras are built, and some rig must carry one.
         cull: Draw only the waves the scenario's own cameras resolve, at their own
             resolution: a camera zoomed, enlarged or added later loses its finest
-            ripples."""
+            ripples.
+    """
     mounts = scenario.band_mounts(band)
     if not mounts:
         raise ValueError(f"no rig has an {band} camera to build an {band} scene for")

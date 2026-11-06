@@ -28,7 +28,8 @@ def white_photo(
     folder: Path, width: int = 64, height: int = 32
 ) -> Generator[pytest.MonkeyPatch]:
     """A white photo, written to `folder`, in place of every sky download. Yields the
-    patch, for a test's own."""
+    patch, for a test's own.
+    """
     photo = folder / "white.hdr"
     cv2.imwrite(str(photo), np.ones((height, width, 3), np.float32))
     with pytest.MonkeyPatch.context() as patch:
@@ -51,7 +52,8 @@ def preset_target(
 
 def _plain(value: Any) -> Any:
     """Models as the tables they were given as: an unset default stays unset, so a
-    validator that reads which fields were set reads the same."""
+    validator that reads which fields were set reads the same.
+    """
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json", exclude_unset=True)
     if isinstance(value, list):
@@ -71,7 +73,8 @@ def variant(
 ) -> Scenario:
     """`base` with these sections overridden, as `--set` would. `rig` and `cameras`
     apply to its only rig. A `Camera` sets every field of the camera it names; a dict,
-    only its own."""
+    only its own.
+    """
     table = _plain(sections)
     if rig is not None or cameras is not None:
         rigs = list(load(base).rigs)
@@ -92,7 +95,8 @@ def variant(
 
 def two_rigs(**sections: Any) -> Scenario:
     """Two rigs of several cameras on a hull-less ownship, rolled and pitched, with
-    yachts ahead. Optics are the test's own, so no shipped preset is pinned."""
+    yachts ahead. Optics are the test's own, so no shipped preset is pinned.
+    """
     eo = {"band": "eo", "hfov_deg": 49.0, "width_px": 3840, "height_px": 2160}
     ir = {"band": "ir", "hfov_deg": 24.0, "width_px": 640, "height_px": 480}
     down = {"pitch_deg": -10.0}

@@ -38,7 +38,8 @@ pytestmark = pytest.mark.render
 
 def _clear(scenario: Scenario) -> Scenario:
     """The probes read the sea's shader: haze would add its airlight to every one, and
-    an 8-bit format the camera's glare, blur and exposure."""
+    an 8-bit format the camera's glare, blur and exposure.
+    """
     sky = scenario.sky.model_copy(update={"visibility_km": None})
     outputs = scenario.outputs.model_copy(update={"format": "exr"})
     return scenario.model_copy(update={"sky": sky, "outputs": outputs})
@@ -72,7 +73,8 @@ def eo_pixel_rad(scenario: Scenario) -> float:
 def overhead(span_m: float, pixel_rad: float, px: int) -> bpy.types.Camera:
     """An orthographic lens `span_m` across and `px` wide whose pixel the sea reads as
     `pixel_rad`: the sea takes its pixel from the camera's angle, which an orthographic
-    projection otherwise ignores."""
+    projection otherwise ignores.
+    """
     lens = bpy.data.cameras.new("probe")
     lens.type, lens.ortho_scale = "ORTHO", span_m
     lens.angle_x = pixel_rad * px
@@ -136,7 +138,8 @@ def _sea_texture_fades_with_range(frame: np.ndarray) -> None:
 
 def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
     """The near sea of an ir frame, optionally with the wave relief flattened: the
-    shaded waves and the displaced ones, whose tilt the Geometry node's normal holds."""
+    shaded waves and the displaced ones, whose tilt the Geometry node's normal holds.
+    """
     built = scene.build(scenario, "ir")
     if not waves:
         tree = bpy.data.materials["sea"].node_tree
@@ -240,7 +243,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
 def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     """Straight down on the undisplaced sea, at the clip's first and last frames:
     each pixel over a cell of the finest grid reads that cell of that frame, the
-    water having drifted since."""
+    water having drifted since.
+    """
     clip = _clear(variant(OPEN_SEA, outputs={"duration_s": 1.0, "fps": 4}))
     stale = _frames_folder() / "0.25m" / "foam_0001.exr"
     stale.parent.mkdir(parents=True, exist_ok=True)
@@ -281,7 +285,8 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
 
 def test_a_pixel_takes_as_roughness_the_slope_it_does_not_draw() -> None:
     """Top down from high enough that the footprint sits among the waves' fades, under
-    a sun overhead, so every facet can glint."""
+    a sun overhead, so every facet can glint.
+    """
     height_m, span_m, px = 1500.0, 600.0, 32
     scene.build(_clear(variant(sky={"sun_elevation_deg": 90.0})), "eo")
     tree = bpy.data.materials["sea"].node_tree
@@ -323,7 +328,8 @@ def unresolved(
     scenario: Scenario, along_m: float, across_m: float, cos2: float
 ) -> tuple[float, float]:
     """The pixel's unresolved variance along and across a view at cos^2 `cos2` to the
-    wind, each twice its axis's."""
+    wind, each twice its axis's.
+    """
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     speed, axis = scenario.sea.wind_speed_mps, math.radians(scenario.sea.wind_from_deg)
     up_a, cross_a = waves.unresolved_slope_variances(speed, axis, wind, swell, along_m)
@@ -345,7 +351,8 @@ def lobe(
 ) -> tuple[float, float]:
     """The unresolved variance left to the lobe, wider axis first, once the glitter
     takes its share of the narrower, where the sun can glint; all of it where it
-    cannot."""
+    cannot.
+    """
     wide, narrow = max(along, across), min(along, across)
     cells = along_m * across_m / waves.specular_cell_m2(wind)
     widen = max(cells / samples - 1, 0.0) * SUN_SLOPE_RADIUS**2
@@ -358,7 +365,8 @@ def _met(
     tree: bpy.types.NodeTree, emission: bpy.types.Node, px: tuple[int, int]
 ) -> np.ndarray:
     """Where each pixel's ray met the waves, rendered through `emission`: its depth in
-    km, and the cosine it met them at."""
+    km, and the cosine it met them at.
+    """
     camera = tree.nodes.new("ShaderNodeCameraData")
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     facing = tree.nodes.new("ShaderNodeVectorMath")
@@ -380,7 +388,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
     """The specular's Anisotropy, read back at a grazing view, against the footprints
     the pixel covers: 10 m up, looking 3 deg down, the sea from ~100 m to ~1 km. The
     sun has set and the gusts are stilled: the lobe holds the footprints' variance
-    alone."""
+    alone.
+    """
     scene.build(_clear(variant(sky={"sun_elevation_deg": -5.0})), "eo")
     tree = bpy.data.materials["sea"].node_tree
     tree.nodes["sea_gust_variance"].inputs["Value_001"].default_value = 0.0
@@ -432,7 +441,8 @@ def test_a_grazing_pixel_stretches_its_lobe_along_the_view() -> None:
 
 def _glitter_off_changes(sun_elevation_deg: float, sun_bearing_deg: float) -> float:
     """How much of a frame the glitter's tilt moves, built with the sun ahead and then
-    given the sun through the world, as a scene's sun is set after its build."""
+    given the sun through the world, as a scene's sun is set after its build.
+    """
     ahead = {"sun_elevation_deg": 12.0, "sun_bearing_deg": 0.0}
     scene.build(_clear(variant(sky=ahead)), "eo")
     sc = bpy.context.scene
@@ -559,7 +569,8 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
 def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float:
     """The sea's reflection alone of a white sky, looking down at `depression_deg`. A
     steep frame sees a few metres of sea tilted by the long wave under it; frames a
-    long wave apart average to the sea's."""
+    long wave apart average to the sea's.
+    """
     scene.build(scenario, "eo")
     world = bpy.context.scene.world.node_tree
     background = world.nodes["Background"]
@@ -589,7 +600,8 @@ def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
     wind_from_deg: float, depression_deg: float
 ) -> None:
     """The lobe's distribution sets how much sky the sea returns near the horizon,
-    looking upwind and across the wind."""
+    looking upwind and across the wind.
+    """
     scenario = _clear(variant(sea={"wind_from_deg": wind_from_deg}))
     expected = _sea_reflectance(scenario, depression_deg)
 
@@ -616,7 +628,8 @@ def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
 def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
     """Straight down, a pixel half a wall across and one three walls across: the
     first draws the lattice, the second its mean, aged foam's grey, at fresh foam's
-    albedo."""
+    albedo.
+    """
     windy = _clear(variant(sea={"wind_speed_mps": 15.0}))
     scene.build(windy, "eo")
     tree = bpy.data.materials["sea"].node_tree
@@ -645,7 +658,8 @@ def test_a_pixel_wider_than_the_foam_lattice_s_walls_draws_their_mean() -> None:
 
 def test_the_sky_draws_its_sun_where_the_sun_vector_points() -> None:
     """The hull's heating takes the sun from that vector and the sky draws it from the
-    bearing; a sign between them mirrors the disc and its glitter east to west."""
+    bearing; a sign between them mirrors the disc and its glitter east to west.
+    """
     scene.build(SCENARIO, "eo")
     sc = bpy.context.scene
     camera = sc.camera
@@ -685,7 +699,8 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     band: Band, ranges_m: tuple[float, ...]
 ) -> None:
     """Looking just above the horizon, so without the card the ray reaches the sky.
-    One build and one sky per band, a card per range."""
+    One build and one sky per band, a card per range.
+    """
     hazy = load(OPEN_SEA)
     hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
     assert hazy.sky.extinction_per_m > 0, "clear air would pass this vacuously"
@@ -736,7 +751,8 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
 
 def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
     """Light sampling and BSDF sampling estimate the same frame, unless a path one of
-    them takes skips the haze."""
+    them takes skips the haze.
+    """
     # The hull stays: its emission is light the two samplings must agree on.
     hazy = load(BASELINE)
     hazy = hazy.model_copy(update={"outputs": SCENARIO.outputs})
@@ -778,7 +794,8 @@ class TestCamera:
         size: tuple[int, int] = (96, 54),
     ) -> np.ndarray:
         """A camera looking straight up at a sky of `left` and `right` halves, with a
-        disc of `sun` overhead; what the camera makes of it, before the display."""
+        disc of `sun` overhead; what the camera makes of it, before the display.
+        """
         sc = bpy.context.scene
         tree = sc.world.node_tree
         generated = tree.nodes.new("ShaderNodeTexCoord").outputs["Generated"]
@@ -809,7 +826,8 @@ class TestCamera:
 
     def test_auto_exposure_meters_the_log_average(self) -> None:
         """Halves of 1 and 4 average 2 in log and 2.5 in linear, so a linear meter reads
-        each half 20% darker."""
+        each half 20% darker.
+        """
         frame = self.through_the_camera(1.0, 4.0)
         width = frame.shape[1]
         left, right = (
@@ -820,7 +838,8 @@ class TestCamera:
 
     def test_the_camera_takes_the_same_picture_at_any_resolution(self) -> None:
         """The frame at twice the width, averaged back down, within a few counts almost
-        everywhere. Below a few hundred pixels the glare's core falls inside one."""
+        everywhere. Below a few hundred pixels the glare's core falls inside one.
+        """
         small = self.through_the_camera(1.0, 1.0, sun=1e4, size=(384, 216))
         large = self.through_the_camera(1.0, 1.0, sun=1e4, size=(768, 432))
         shrunk = large.reshape(216, 2, 384, 2).mean(axis=(1, 3))
@@ -830,7 +849,8 @@ class TestCamera:
     @pytest.mark.parametrize("share", [0.05, Lens().veiling_glare])
     def test_the_glare_scatters_its_share_in_harvey_s_form(self, share: float) -> None:
         """A sun of about a pixel on black sky: the light beyond a few pixels of it is
-        the glare's share of the kernel's weight there."""
+        the glare's share of the kernel's weight there.
+        """
         # Half-resolution glare blurs the first few pixels round the sun.
         width, height, beyond_px = 384, 216, 12
         rig = SCENARIO.rigs["bow"]
@@ -898,7 +918,8 @@ class TestSensor:
     ) -> np.ndarray:
         """The frame, RGB top row first, of a sky of `colour`, with `sun` added in a
         disc overhead if given, through a camera the size of the probe's with
-        `camera`'s settings."""
+        `camera`'s settings.
+        """
         sc = bpy.context.scene
         sc.frame_set(frame)
         background = sc.world.node_tree.nodes["Background"]
@@ -968,7 +989,8 @@ class TestSensor:
 
     def test_a_sensor_twice_as_fine_reads_each_colour_over_its_sites(self) -> None:
         """Scaled down 2x, a pixel averages one red, two green and one blue site:
-        green's noise falls by sqrt(2), and no demosaic spreads it to neighbours."""
+        green's noise falls by sqrt(2), and no demosaic spreads it to neighbours.
+        """
         full_well_e, dark_e = 400.0, 4.0
         width, _ = self.SIZE
         frame = self.through(
@@ -1013,7 +1035,8 @@ class TestSensor:
 
     def test_the_lens_spreads_each_colour_by_its_airy_pattern(self) -> None:
         """A disc on a flat sky through f/11 is the sharp frame convolved with each
-        colour's kernel, normalized at the border."""
+        colour's kernel, normalized at the border.
+        """
         width, _ = self.SIZE
         f_number, pitch_um = 11.0, 2.1
         # Twice as fine: no mosaic, so the sensor reads each colour where it falls.
@@ -1034,7 +1057,8 @@ class TestSensor:
 
     def test_no_exposure_turns_a_frame_into_nans(self) -> None:
         """At the largest gain the ideal frame stays a number, and a sensor reads
-        white."""
+        white.
+        """
         brightest = {"exposure_ev": 126.0}
         ideal = self.through((1.0, 1.0, 1.0), processing=brightest)
         read = self.through(
@@ -1123,7 +1147,8 @@ class TestSensor:
 
     def test_grey_world_balances_to_the_sky_past_a_clipped_sun(self) -> None:
         """The sun's disc saturates, so it is left out. Its blurred rim does not
-        saturate and still counts, so the sky comes out within 2 % of grey."""
+        saturate and still counts, so the sky comes out within 2 % of grey.
+        """
         frame = self.through(
             (1.0, 0.6, 0.3),
             sun=9.0,
@@ -1211,7 +1236,8 @@ def _rig(*widths_px: int) -> Scenario:
 
 def _same(rendered: np.ndarray, expected: np.ndarray) -> bool:
     """One frame, as far as Cycles on the GPU repeats itself: a few pixels move by
-    float noise between identical renders."""
+    float noise between identical renders.
+    """
     # A judgement: far above that noise, far below a sea drawn for another pixel.
     return float(np.abs(rendered - expected).mean() / expected.mean()) < 1e-4
 
@@ -1461,6 +1487,7 @@ def _horizon(aerosol_density: float) -> np.ndarray:
 
 def test_blender_s_aerosol_darkens_its_horizon() -> None:
     """Why the sky keeps Blender's default aerosol and `visibility_km` hazes only
-    what is in front of it."""
+    what is in front of it.
+    """
     clear, hazy = _horizon(1.0), _horizon(6.0)
     assert hazy.sum() < 0.8 * clear.sum()

@@ -18,14 +18,12 @@ select = [
     "PL",  # pylint
     "TID",  # flake8-tidy-imports
     "ARG",  # flake8-unused-arguments
-    "D100",  # undocumented public module
-    "D101",  # undocumented public class
-    "D102",  # undocumented public method
-    "D103",  # undocumented public function
-    "D104",  # undocumented public package
-    "D417",  # an `Args:` section lists every parameter
+    "D",  # pydocstyle, under the Google convention
 ]
 ignore = [
+    "D105",  # a magic method's name is its documentation
+    "D107",  # `__init__` is documented on the class
+    "D205",  # a summary may wrap over lines
     "PLR2004",  # a literal sits beside the source it cites
 ]
 

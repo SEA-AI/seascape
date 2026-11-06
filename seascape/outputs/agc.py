@@ -74,7 +74,8 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
     """Each count's slope is the blend of its clipped histogram share and the linear
     ramp, scaled up until the curve fills 0-255 but never steeper than the max gain.
     A curve that cannot fill the range, as a bland frame's cannot, is centred on it.
-    ACE bends the result."""
+    ACE bends the result.
+    """
     low = int(c.min())
     hist = np.bincount(c - low, weights=weights)
     hist = np.minimum(hist, setting.plateau * weights.sum())
@@ -100,7 +101,8 @@ def _plateau(c: np.ndarray, weights: np.ndarray, setting: Setting) -> np.ndarray
 
 def _grey(frame: Layers, curve: np.ndarray, setting: Setting) -> np.ndarray:
     """The background takes the curve, squeezed inside the detail headroom; detail
-    goes on top at the curve's slope there, times DDE."""
+    goes on top at the curve's slope there, times DDE.
+    """
     low, high = frame
     at = np.clip(np.rint(low), 0, COUNTS - 1).astype(np.int64)
     if high is None:

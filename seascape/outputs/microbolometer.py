@@ -34,7 +34,8 @@ def diffraction_mtf(
     Args:
         freq_per_m: Spatial frequencies in the image plane, in cycles per metre.
         f_number: Focal length over aperture diameter; a higher one diffracts more.
-        t_k: The temperature whose Planck spectrum weights the wavelengths."""
+        t_k: The temperature whose Planck spectrum weights the wavelengths.
+    """
     freq = np.asarray(freq_per_m, dtype=np.float64)
     mono = optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
     weight = lwir.planck(_BAND_LAM, t_k)

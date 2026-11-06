@@ -114,14 +114,16 @@ def test_a_high_cloud_base_cools_a_deck_and_not_the_fog_under_it() -> None:
 
 def test_grey_paint_in_sun_at_twenty_knots_is_about_ten_kelvin_over_air() -> None:
     """Thompson et al. 1998: past 10 degrees of sun, a frigate's surfaces at 20 kn run
-    in excess of +10 C."""
+    in excess of +10 C.
+    """
     rise = facing_sun_k(painted(thermal.GREY_PAINT_ABSORPTANCE), TWENTY_KNOTS_M_S)
     assert 5.0 < rise - T_AIR_K < 15.0
 
 
 def test_clear_night_deck_runs_below_the_air() -> None:
     """Swinbank's sky is ~85 W m^-2 short of the air's blackbody at 288 K; against
-    convection of 6-20 W m^-2 K^-1 that is 3-8 K of cooling."""
+    convection of 6-20 W m^-2 K^-1 that is 3-8 K of cooling.
+    """
     deck = thermal.ZONES["deck"]
     for wind_m_s in (0.0, 3.0):
         t = facet_temperature_k(deck, environment(wind_m_s, None), 0.5 * math.pi, 0.0)
@@ -130,7 +132,8 @@ def test_clear_night_deck_runs_below_the_air() -> None:
 
 def test_no_heated_interior_puts_a_hull_side_between_air_and_sea_at_night() -> None:
     """Thompson et al. 1998: at night a well-insulated hull sits between air and sea.
-    A vertical side sees half sky, half sea."""
+    A vertical side sees half sky, half sea.
+    """
     env = thermal.Environment(T_AIR_K, T_AIR_K + 4.0, 5.0, None)
     t = float(facet_temperature_k(thermal.ZONES["paint_hull"], env, 0.0, 0.0))
     assert T_AIR_K - 2.0 < t < T_AIR_K + 4.0
