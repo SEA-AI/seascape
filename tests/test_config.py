@@ -1064,7 +1064,7 @@ def test_a_boson_preset_extends_another() -> None:
         .rigs["bow"]
         .cameras["ir"]
     )
-    assert (camera.width_px, camera.hfov_deg) == (320, 34.0)
+    assert (camera.width_px, camera.hfov_deg) == (320, 34.1)
     assert camera.microbolometer.pitch_um == 12.0
 
 
