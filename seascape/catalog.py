@@ -42,8 +42,6 @@ def shot(
         # A tenth of the range up, aimed at the waterline.
         "height_m": 0.1 * range_m,
         "pitch_deg": -math.degrees(math.atan(0.1)),
-        # The default clips the water in front of a camera this low.
-        "near_clip_m": 0.01 * size_m,
         "cameras": {
             band: {
                 "band": band,

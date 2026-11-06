@@ -24,18 +24,12 @@ class _RigObjects(NamedTuple):
     cameras: dict[str, bpy.types.Object]
 
 
-def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
-    """The scenario's rigs and cameras under one root, each seeing to `far_m`."""
+def add_rigs(scenario: Scenario) -> _RigObjects:
+    """The scenario's rigs and cameras under one root."""
     root = empty("rigs")
 
     rigs: dict[str, bpy.types.Object] = {}
     for name, rig in scenario.rigs.items():
-        # Blender takes an inverted frustum without complaint and renders nothing.
-        if rig.near_clip_m >= far_m:
-            raise ValueError(
-                f"{name}: near clip {rig.near_clip_m} m is past the far plane at "
-                f"{far_m:.0f} m"
-            )
         rig_root = empty(
             f"rig_{name}", root, (rig.offset_x_m, rig.offset_y_m, rig.height_m)
         )
@@ -63,10 +57,6 @@ def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
             # What the sea's shader and the cull read as a pixel: the one at the
             # centre, which sees the least. Past it a fisheye's pixel sees more.
             data.angle_x = width / fx
-        data.clip_start = mount.rig.near_clip_m
-        # The default 1000 m renders a target past it as sky, and the clip boundary
-        # reads as the horizon. Nothing warns.
-        data.clip_end = far_m
         camera = bpy.data.objects.new(data.name, data)
         bpy.context.collection.objects.link(camera)
         camera.parent = rigs[mount.rig_name]
