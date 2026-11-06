@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from pydantic import ConfigDict, Field
 
+from seascape.config import Crop
 from seascape.model import Model
 from seascape.physics import fisheye
 
@@ -70,17 +71,38 @@ class CameraCalibration(_Record):
     @property
     def hfov_deg(self) -> float:
         """The field angle across the image width."""
-        half, fx = self.width_px / 2, self.K[0][0]
+        (fx, _, cx), _, _ = self.K
+        # A crop can put the principal point off centre.
+        reach = np.array([cx + 0.5, self.width_px - 0.5 - cx])
         if self.distortion is None:
-            return math.degrees(2 * math.atan(half / fx))
-        reach = np.array([half])
-        return math.degrees(2 * fisheye.theta(reach, self.distortion, fx)[0])
+            return math.degrees(np.arctan(reach / fx).sum())
+        angles = fisheye.theta(reach, self.distortion, fx)
+        return math.degrees(angles.sum())
+
+    def cropped(self, crop: Crop) -> "CameraCalibration":
+        """The camera that sees what `crop` leaves of this one's frame."""
+        (fx, _, cx), (_, fy, cy), _ = self.K
+        return self.model_copy(
+            update={
+                "width_px": self.width_px - crop.left_px - crop.right_px,
+                "height_px": self.height_px - crop.top_px - crop.bottom_px,
+                "K": (
+                    (fx, 0.0, cx - crop.left_px),
+                    (0.0, fy, cy - crop.top_px),
+                    (0.0, 0.0, 1.0),
+                ),
+            }
+        )
 
 
 class Calibration(_Record):
     """Every camera of a render, as `FILENAME` in its folder."""
 
     cameras: list[CameraCalibration] = Field(min_length=1)
+    raw: list[CameraCalibration] = Field(
+        default_factory=list,
+        description="The cameras a rig's videos were made from, as they rendered.",
+    )
 
     def write(self, folder: Path) -> Path:
         """Write to `folder`; the file written."""

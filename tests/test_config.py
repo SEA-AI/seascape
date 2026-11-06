@@ -16,6 +16,7 @@ from seascape.config import (
     PRESETS,
     Band,
     Camera,
+    Crop,
     Farm,
     Lens,
     Object,
@@ -1079,6 +1080,50 @@ def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> 
     line = f'rigs = {{ bow = {{ preset = "{rig}", height_m = 10.0 }} }}'
     loaded = load(BASELINE, [line]).rigs["bow"]
     assert (loaded.model, set(loaded.cameras)) == (model, cameras)
+
+
+def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
+    line = 'rigs = { bow = { preset = "sentry", height_m = 10.0 } }'
+    rig = load(BASELINE, [line]).rigs["bow"]
+    for name in ("RGBwFoV", "RGBnFoV"):
+        crop = rig.videos[name]
+        assert isinstance(crop, Crop)
+        width = rig.cameras[crop.camera].width_px - crop.left_px - crop.right_px
+        assert width == 1200
+    assert {video.kind for video in rig.videos.values()} == {"identity", "crop"}
+
+
+@pytest.mark.parametrize(
+    ("videos", "match"),
+    [
+        ('{ eo = { kind = "identity", camera = "ir" } }', "named as cameras"),
+        ('{ v = { kind = "identity", camera = "eo" } }', r"\['ir'\] are in no video"),
+        (
+            '{ a = { kind = "identity", camera = "eo" }, '
+            'b = { kind = "identity", camera = "eo" }, '
+            'c = { kind = "identity", camera = "ir" } }',
+            "more than one video",
+        ),
+        (
+            '{ a = { kind = "identity", camera = "eo" }, '
+            'b = { kind = "identity", camera = "lens" } }',
+            r"no camera \['lens'\]",
+        ),
+        (
+            '{ a = { kind = "crop", camera = "eo", left_px = 100000 }, '
+            'b = { kind = "identity", camera = "ir" } }',
+            "crops all of eo",
+        ),
+        (
+            '{ a = { kind = "identity", camera = "eo" }, '
+            'b = { kind = "crop", camera = "ir", left_px = 2 } }',
+            "crops ir camera ir",
+        ),
+    ],
+)
+def test_a_rig_refuses_a_video_it_cannot_record(videos: str, match: str) -> None:
+    with pytest.raises(ValidationError, match=match):
+        load(BASELINE, [f"rigs.bow.videos = {videos}"])
 
 
 def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:

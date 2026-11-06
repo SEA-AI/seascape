@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from pydantic import TypeAdapter
 
+from seascape.config import Crop, Video
 from seascape.outputs import labels
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 
@@ -51,6 +53,7 @@ COLUMNS = [
 
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
+_VIDEO = TypeAdapter(Video)
 
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
@@ -143,7 +146,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     }
 
 
-def _pod_sensors(cameras: list[CameraCalibration], created: datetime) -> dict:
+def _sensors(cameras: dict[str, CameraCalibration], created: datetime) -> dict:
     """The simulated IMU sits exactly on the rig's axes, so its corrections are 0."""
     zero = {"value": 0.0, "unit": "deg"}
     return {
@@ -168,12 +171,12 @@ def _pod_sensors(cameras: list[CameraCalibration], created: datetime) -> dict:
                 ("yaw", "pitch", "roll", "yaw_err", "pitch_err", "roll_err"), zero
             ),
         },
-        "cameras": {camera.name: _sensor(camera) for camera in cameras},
+        "cameras": {name: _sensor(camera) for name, camera in cameras.items()},
     }
 
 
-def _camera_parameters(cameras: list[CameraCalibration]) -> dict:
-    sensors = {camera.name: _sensor(camera) for camera in cameras}
+def _camera_parameters(cameras: dict[str, CameraCalibration]) -> dict:
+    sensors = {name: _sensor(camera) for name, camera in cameras.items()}
     return {
         name: {k: sensor[k]["value"] for k in ("roll", "pitch", "yaw")}
         | {"barrel": 0.0}
@@ -181,8 +184,86 @@ def _camera_parameters(cameras: list[CameraCalibration]) -> dict:
     }
 
 
+def _parameters(
+    videos: dict[str, CameraCalibration],
+    sources: dict[str, CameraCalibration],
+    settings: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """`serialized_parameters.json`'s cameras: each video and its camera.
+
+    Args:
+        videos: Each video's first frame, by its name in the recording.
+        sources: Each rendered camera's first frame, by its name in the recording.
+        settings: The rig's videos as the scenario set them, by name.
+    """
+
+    def values(camera: CameraCalibration) -> dict[str, Any]:
+        return {
+            k: v["value"] if isinstance(v, dict) else v
+            for k, v in _sensor(camera).items()
+        }
+
+    entries = []
+    for name, camera in videos.items():
+        video = _VIDEO.validate_python(settings[name])
+        cut = None
+        if isinstance(video, Crop):
+            # The recorder's order.
+            sides = [video.left_px, video.right_px, video.top_px, video.bottom_px]
+            cut = {"pixel_sacrifice": sides}
+        source = sources[video.camera]
+        entries.append(
+            {"name": name}
+            | values(camera)
+            | {
+                "transformation_type": video.kind,
+                "transformation_parameters": cut,
+                "camera_sources": [
+                    {"name": video.camera, "device_name": name} | values(source)
+                ],
+            }
+        )
+    return entries
+
+
 def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=4) + "\n")
+
+
+def _write_settings(
+    into: Path,
+    model: str,
+    rig: dict[str, Any],
+    firsts: dict[str, CameraCalibration],
+    raw: dict[str, CameraCalibration] | None,
+    created: datetime,
+) -> list[Path]:
+    """A recording's settings and calibration, beside its videos.
+
+    Args:
+        into: The recording's folder.
+        model: The product, which names its sensors file.
+        rig: The rig as the scenario set it.
+        firsts: Each video's first frame, by its name in the recording.
+        raw: Each camera the videos were made from, by its name in the recording;
+            None when the rig has no videos.
+        created: When the render was made, the calibration's date.
+    """
+    settings = into / "user_settings.json"
+    _write_json(
+        settings,
+        {"boat_setup": {"mounting_height": rig["height_m"], "mast_to_bow_length": 0.0}},
+    )
+    parameters = into / "POWER_Const" / "camera_parameters.json"
+    _write_json(parameters, _camera_parameters(firsts))
+    sensors = into / "POWER_Const" / f"{model.lower()}_sensors.json"
+    _write_json(sensors, _sensors(raw or firsts, created))
+    if raw is None:
+        return [settings, parameters, sensors]
+    serialized = into / "serialized_parameters.json"
+    entries = _parameters(firsts, raw, rig["videos"])
+    _write_json(serialized, {"product_name": model, "cameras": entries})
+    return [settings, parameters, sensors, serialized]
 
 
 def export(run: Path) -> list[Path]:
@@ -199,11 +280,15 @@ def export(run: Path) -> list[Path]:
     ts = created.strftime("%Y_%m_%d_%H_%M_%S")
     time_s = {image.file_name: image.time_s for image in truth.images}
 
+    calibration = Calibration.read(run)
     frames: dict[str, dict[str, list[CameraCalibration]]] = {}
     models: dict[str, str | None] = {}
-    for camera in Calibration.read(run).cameras:
+    for camera in calibration.cameras:
         frames.setdefault(camera.rig, {}).setdefault(camera.name, []).append(camera)
         models[camera.rig] = camera.model
+    raw: dict[str, dict[str, CameraCalibration]] = {}
+    for camera in calibration.raw:
+        raw.setdefault(camera.rig, {}).setdefault(_short(camera), camera)
 
     # Checked before anything is written, so a bad run leaves no half folder.
     if unnamed := sorted(rig for rig, model in models.items() if model is None):
@@ -220,11 +305,13 @@ def export(run: Path) -> list[Path]:
     written = []
     for rig, cameras in frames.items():
         model = models[rig]
+        assert model is not None  # refused above
         into = run / "recordings" / rig / f"{model}_recordings_{ts}"
         (into / "POWER_Const").mkdir(parents=True, exist_ok=True)
         for name, shots in cameras.items():
             shots.sort(key=lambda shot: time_s[shot.image])
-            video = into / f"{model}_{name}_record_{ts}.mp4"
+            short = _short(shots[0])
+            video = into / f"{model}_{short}_record_{ts}.mp4"
             video.unlink(missing_ok=True)
             # A hard link keeps the render's own layout valid without a copy; a
             # filesystem without them gets the copy.
@@ -232,26 +319,19 @@ def export(run: Path) -> list[Path]:
                 os.link(run / f"{name}.mp4", video)
             except OSError:
                 shutil.copy2(run / f"{name}.mp4", video)
-            table = into / f"{model}_{name}_metadata_{ts}.csv"
+            table = into / f"{model}_{short}_metadata_{ts}.csv"
             with table.open("w", newline="") as f:
                 writer = csv.DictWriter(f, COLUMNS, lineterminator="\n")
                 writer.writeheader()
                 writer.writerows(_row(s, i, scenario) for i, s in enumerate(shots))
             written += [video, table]
-        firsts = [shots[0] for shots in cameras.values()]
-        settings = into / "user_settings.json"
-        _write_json(
-            settings,
-            {
-                "boat_setup": {
-                    "mounting_height": scenario["rigs"][rig]["height_m"],
-                    "mast_to_bow_length": 0.0,
-                }
-            },
+        firsts = {_short(shots[0]): shots[0] for shots in cameras.values()}
+        written += _write_settings(
+            into, model, scenario["rigs"][rig], firsts, raw.get(rig), created
         )
-        parameters = into / "POWER_Const" / "camera_parameters.json"
-        _write_json(parameters, _camera_parameters(firsts))
-        sensors = into / "POWER_Const" / "pod_sensors.json"
-        _write_json(sensors, _pod_sensors(firsts, created))
-        written += [settings, parameters, sensors]
     return written
+
+
+def _short(camera: CameraCalibration) -> str:
+    """A camera's name in its rig's recording, which is the rig's alone."""
+    return camera.name.removeprefix(f"{camera.rig}_")
