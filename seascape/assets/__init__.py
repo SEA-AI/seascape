@@ -7,7 +7,6 @@ import re
 import shutil
 import tomllib
 import urllib.request
-import uuid
 from abc import abstractmethod
 from collections import Counter
 from functools import cache
@@ -16,6 +15,7 @@ from typing import Annotated, ClassVar, Literal, override
 
 from pydantic import Field, TypeAdapter, field_validator, model_validator
 
+from seascape import atomic
 from seascape.model import FrozenModel
 from seascape.physics.thermal import ZoneName
 
@@ -375,10 +375,7 @@ def _get(path: Path, url: str, sha256: str) -> Path:
         return path
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    # A killed or corrupt transfer must never take the cache name, and concurrent
-    # callers must not share a scratch file.
-    part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
-    try:
+    with atomic.replacing(path) as part:
         # The default socket timeout is None, so a server that stops sending hangs
         # the build forever.
         with (
@@ -388,7 +385,4 @@ def _get(path: Path, url: str, sha256: str) -> Path:
             shutil.copyfileobj(response, out)
         if (got := digest(part)) != sha256:
             raise ValueError(f"{url}: sha256 {got}, manifest says {sha256}")
-        part.replace(path)
-    finally:
-        part.unlink(missing_ok=True)
     return path

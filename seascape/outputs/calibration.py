@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 from pydantic import ConfigDict, Field
 
+from seascape import atomic
 from seascape.config import Crop
 from seascape.model import Model
 from seascape.physics import fisheye
@@ -26,9 +27,9 @@ TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 def write_json(model: Model, path: Path) -> Path:
     """`model` as JSON at `path`, whole or not at all: a reader never sees half."""
-    partial = path.with_name(f"{path.name}.partial")
-    partial.write_text(model.model_dump_json(indent=2) + "\n")
-    return partial.replace(path)
+    with atomic.replacing(path) as partial:
+        partial.write_text(model.model_dump_json(indent=2) + "\n")
+    return path
 
 
 class _Record(Model):
