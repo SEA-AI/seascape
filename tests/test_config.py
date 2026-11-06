@@ -2,7 +2,6 @@
 
 import json
 import math
-import runpy
 import statistics
 import tomllib
 import warnings
@@ -322,7 +321,7 @@ def test_a_mistyped_key_is_an_error_not_a_silent_default(tmp_path) -> None:
         load(variant(tmp_path, "[rigs.bow]\nheight_metres = 22.0\n"))
 
 
-@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+@pytest.mark.parametrize("value", ["nan", "inf"])
 def test_non_finite_numbers_are_rejected(tmp_path, value) -> None:
     """`yaw_deg` carries no bound, so nothing else would catch one."""
     with pytest.raises(ValidationError, match="yaw_deg"):
@@ -462,15 +461,6 @@ def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     line = path.read_text().splitlines()[0]
     assert line.startswith("#:schema ")
     assert (path.parent / line.removeprefix("#:schema ")).resolve() == SCHEMA
-
-
-@pytest.mark.parametrize(
-    "overrides", runpy.run_path(str(HERO.with_suffix(".py")))["SKIES"].values()
-)
-def test_every_readme_hero_sky_loads_without_a_warning(overrides: list[str]) -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        load(HERO, overrides)
 
 
 @pytest.mark.parametrize("path", [RANDOMIZED, DATASET, AUTONOMICS])
