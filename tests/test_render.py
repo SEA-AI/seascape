@@ -794,6 +794,46 @@ def test_an_undistortion_renders_its_pinhole_and_records_the_fisheye(
 
 
 @pytest.mark.render
+def test_a_stitch_labels_one_frame_of_both_cameras(tmp_path: Path) -> None:
+    ir = load(OPEN_SEA).rigs["bow"].cameras["ir"]
+    small = {"width_px": 80, "height_px": 64}
+    scenario = variant(
+        rig={
+            "videos": {
+                "E": {"kind": "identity", "camera": "eo"},
+                "T1": {"kind": "horizontal_stitching", "cameras": ["ir", "ir_r"]},
+            }
+        },
+        cameras={
+            "eo": {"width_px": 96, "height_px": 54},
+            "ir": small | {"yaw_deg": -11.4},
+            "ir_r": ir.model_copy(update=small | {"yaw_deg": 11.4}),
+        },
+        objects=[target("yacht", 300.0, 0.0)],
+        # eo too: its frames have no stitch to make.
+        outputs={"bands": ["eo", "ir"], "samples": {"eo": 1, "ir": 4}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    calibration = Calibration.read(tmp_path)
+    (camera,) = (c for c in calibration.cameras if c.band == "ir")
+    assert camera.name == "bow_T1"
+    assert {c.name for c in calibration.raw} == {"bow_eo", "bow_ir", "bow_ir_r"}
+    frame = cv2.imread(str(tmp_path / camera.image), cv2.IMREAD_UNCHANGED)
+    assert frame is not None and frame.shape == (camera.height_px, camera.width_px)
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (image,) = (i for i in truth.images if i.camera == "bow_T1")
+    (found,) = (a for a in truth.annotations if a.image_id == image.id)
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
+    left, top, width, height = found.bbox
+    assert left - 0.5 <= u <= left + width + 0.5
+    assert top - 0.5 <= v <= top + height + 0.5
+
+
+@pytest.mark.render
 def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> None:
     """Fast enough that the ship crosses pixels between frames."""
     scenario = variant(

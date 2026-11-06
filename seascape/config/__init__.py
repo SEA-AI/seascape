@@ -12,8 +12,10 @@ from seascape.config.cameras import (
     Processing,
     Rig,
     Sensor,
+    Stitch,
     Undistortion,
     Video,
+    sources,
 )
 from seascape.config.draws import substream
 from seascape.config.loader import (
@@ -48,6 +50,7 @@ __all__ = [
     "Sea",
     "Sensor",
     "Sky",
+    "Stitch",
     "Targets",
     "Undistortion",
     "Video",
@@ -55,5 +58,6 @@ __all__ = [
     "json_schema",
     "load",
     "seeds",
+    "sources",
     "substream",
 ]

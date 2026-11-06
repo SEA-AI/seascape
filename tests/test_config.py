@@ -1114,16 +1114,7 @@ def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
 
 
 def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
-    rgb1 = (
-        'RGB1 = { kind = "undistortion", camera = "eo", hfov_deg = 130.0, '
-        "vfov_deg = 65.5, downscale = 2 }"
-    )
-    lines = [
-        'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }',
-        f"rigs.bow.videos = {{ {rgb1}, "
-        'L = { kind = "identity", camera = "ir_l" }, '
-        'R = { kind = "identity", camera = "ir_r" } }',
-    ]
+    lines = ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
     scenario = load(BASELINE, lines)
     (eo,) = (m.camera for m in scenario.mounts if m.camera_name == "eo")
     # A recorded Watchkeeper's RGB1.
@@ -1160,6 +1151,10 @@ def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
             '{ a = { kind = "identity", camera = "eo" }, '
             'b = { kind = "crop", camera = "ir", left_px = 2 } }',
             "crops ir camera ir",
+        ),
+        (
+            '{ v = { kind = "horizontal_stitching", cameras = ["eo", "ir"] } }',
+            "stitches unlike",
         ),
     ],
 )
