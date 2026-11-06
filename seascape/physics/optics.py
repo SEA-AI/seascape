@@ -25,8 +25,8 @@ def pupil_mtf(
 
 
 def airy_reach_px(wavelength_m: float, f_number: float, pitch_m: float) -> int:
-    """Four Airy discs, 2.44 lambda N each to the first dark ring (Goodman 2005), in
-    pixels.
+    """Four Airy-disc diameters, 2.44 lambda N each (Goodman 2005), in pixels: pass the
+    longest wavelength a kernel must hold.
     """
     return math.ceil(4 * 2.44 * wavelength_m * f_number / pitch_m)
 

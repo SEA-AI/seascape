@@ -69,9 +69,7 @@ def srgb_decode(encoded: np.ndarray) -> np.ndarray:
 
 
 def srgb_encode(linear: np.ndarray) -> np.ndarray:
-    """IEC 61966-2-1's sRGB transfer function: linear value, clipped to [0, 1], to
-    encoded.
-    """
+    """IEC 61966-2-1's sRGB transfer function: linear value to encoded."""
     linear = np.clip(linear, 0.0, 1.0)
     return np.where(
         linear <= 0.0031308, 12.92 * linear, 1.055 * linear ** (1 / 2.4) - 0.055

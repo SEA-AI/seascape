@@ -329,7 +329,7 @@ class Sky(Model):
 
     @property
     def sun_vector(self) -> tuple[float, float, float]:
-        """Unit vector towards the sun: a direction, so its bearing is not negated."""
+        """Unit (east, north, up) vector towards the sun."""
         if self.sun_elevation_deg is None:
             raise ValueError("a photographed sun without a disc has no direction")
         east, north, up = earth.direction(self.sun_bearing_deg, self.sun_elevation_deg)

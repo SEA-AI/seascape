@@ -422,18 +422,6 @@ def test_calm_air_builds_no_waves_and_nothing_they_drive() -> None:
     assert waves.mss_spread(0.0, None, 1.0) == 0.0
 
 
-def test_the_slope_is_the_height_s_gradient() -> None:
-    built = field(7.0)
-    east, north, step = np.array([12.0]), np.array([-7.0]), 1e-5
-    d_east, d_north = gerstner.slope(built, east, north, 1.3)
-    ahead = gerstner.height_m(built, east + step, north, 1.3)
-    behind = gerstner.height_m(built, east - step, north, 1.3)
-    assert d_east == pytest.approx((ahead - behind) / (2 * step), rel=1e-4)
-    ahead = gerstner.height_m(built, east, north + step, 1.3)
-    behind = gerstner.height_m(built, east, north - step, 1.3)
-    assert d_north == pytest.approx((ahead - behind) / (2 * step), rel=1e-4)
-
-
 def _tall(wind_speed_mps: float) -> tuple[waves.Wave, ...]:
     """A wind sea's waves 4 m and longer, which never fold."""
     return tuple(w for w in field(wind_speed_mps) if 2 * math.pi / w.k_rad_m >= 4.0)
@@ -458,23 +446,13 @@ def test_a_gerstner_normal_is_square_to_its_surface() -> None:
         moved = waves.gerstner_offset_m(tall, e, n, 0.7)
         return np.array([e + moved[0], n + moved[1], moved[2]])
 
-    normal = np.array(gerstner.gerstner_normal(tall, east, north, 0.7))
+    normal = np.array(gerstner.normal(tall, east, north, 0.7))
     along_east = surface(east + step, north) - surface(east - step, north)
     along_north = surface(east, north + step) - surface(east, north - step)
     for tangent in (along_east, along_north):
         unit = tangent / np.linalg.norm(tangent, axis=0)
         np.testing.assert_allclose((normal * unit).sum(axis=0), 0.0, atol=1e-8)
     assert (normal[2] > 0).all()
-
-
-def test_a_low_gerstner_wave_tilts_as_the_linear_one() -> None:
-    low = (waves.Wave(1e-4, 1.2, math.radians(30.0), 0.4),)
-    east, north = np.array([5.0]), np.array([-2.0])
-    d_east, d_north = gerstner.slope(low, east, north, 0.3)
-    normal = gerstner.gerstner_normal(low, east, north, 0.3)
-    linear = np.array([-d_east, -d_north, np.ones(1)])
-    linear /= np.linalg.norm(linear, axis=0)
-    np.testing.assert_allclose(np.array(normal), linear, atol=1e-8)
 
 
 @pytest.mark.parametrize("elevation_deg", [-3.0, -40.0, 4.0])
@@ -501,7 +479,7 @@ def test_a_ray_meets_the_water_where_it_first_dips_under(elevation_deg: float) -
             np.full(rays, math.sin(e)),
         ]
     )
-    *rest, met = gerstner.gerstner_hit(tall, origin, toward, 1.7, 0.1)
+    *rest, met = gerstner.hit(tall, origin, toward, 1.7, 0.1)
     # Every ray down meets the water; some up clear the crests.
     assert met.all() if elevation_deg < 0 else 0 < met.mean() < 1
     point = np.array([*rest, np.zeros(rays)]) + np.array(

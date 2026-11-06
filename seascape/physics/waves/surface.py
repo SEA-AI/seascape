@@ -86,7 +86,7 @@ def gerstner_rest_m(
             < 1e-9
         ):
             break
-        # d(rest + offset)/d(rest), as the surface normal's.
+        # d(rest + offset)/d(rest).
         ee = 1 - np.tensordot(along * k_east**2, cosine, 1)
         nn = 1 - np.tensordot(along * k_north**2, cosine, 1)
         en = -np.tensordot(along * k_east * k_north, cosine, 1)

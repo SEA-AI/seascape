@@ -118,7 +118,9 @@ def lattice(count: int) -> np.ndarray:
     x^4 = x + 1 (Roberts 2018, "The unreasonable effectiveness of quasirandom
     sequences"): evenly spread, without a generator.
     """
-    root = np.roots([1, 0, 0, -1, -1]).real.max()
+    root = 1.0
+    for _ in range(64):
+        root = (1 + root) ** (1 / 4)
     step = root ** -np.arange(1, 4)
     return np.mod(0.5 + np.outer(np.arange(1, count + 1), step), 1.0)
 
@@ -275,7 +277,7 @@ def drawn_slope_variances(
     field: tuple[Wave, ...], footprint_m: float, downwind_rad: float
 ) -> tuple[float, float]:
     """The slope variance a pixel draws of a wave field, along and across the wind:
-    `slope_variance(filtered(field, footprint_m))` without building the waves.
+    the waves' own variance, each scaled by its visibility, without building them.
 
     Args:
         field: The waves whole; each is scaled here by its visibility at the

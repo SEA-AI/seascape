@@ -90,7 +90,6 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
     cell = (zone * rows + patch[:, 0]) * cols + patch[:, 1]
     top = np.full((zone.max() + 1) * rows * cols, -np.inf)
     np.maximum.at(top, cell, position_m[:, 2])
-    # A dilation takes the maximum over the 3 x 3 patches round each one.
     reach = np.stack(
         [cv2.dilate(z, np.ones((3, 3), np.uint8)) for z in top.reshape(-1, rows, cols)]
     )

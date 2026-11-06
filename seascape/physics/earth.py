@@ -1,10 +1,9 @@
-"""The earth under the sea: its pull, its curve to the horizon, and a bearing's
-direction.
-"""
+"""The earth under the sea: its pull, its horizon, and where a bearing points."""
 
 import math
 
 import numpy as np
+import numpy.typing as npt
 
 # Standard gravity is 9.80665 (3rd CGPM, 1901); the wave models quote 9.81.
 GRAVITY_MS2 = 9.81
@@ -34,9 +33,7 @@ def horizon_m(height_m: float, refraction_k: float) -> float:
     return math.sqrt(2.0 * earth_radius_m(refraction_k) * height_m)
 
 
-def direction(
-    bearing_deg: np.ndarray | float, elevation_deg: np.ndarray | float
-) -> np.ndarray:
+def direction(bearing_deg: npt.ArrayLike, elevation_deg: npt.ArrayLike) -> np.ndarray:
     """Unit (east, north, up) towards a compass bearing and elevation, on the last
     axis. A direction, so the bearing is not negated.
     """

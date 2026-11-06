@@ -1,6 +1,4 @@
-"""Reference surfaces the shader's waves are checked against: height and slope as plain
-sums, the Gerstner normal at rest, and a ray marched onto the surface.
-"""
+"""Reference surfaces the shader's waves are checked against."""
 
 import math
 from dataclasses import replace
@@ -34,7 +32,7 @@ def slope(
     return np.tensordot(-a * kx, sine, axes=1), np.tensordot(-a * ky, sine, axes=1)
 
 
-def gerstner_normal(
+def normal(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The unit normal of a Gerstner surface at the water at rest: the cross product
@@ -63,7 +61,7 @@ def gerstner_normal(
     return normal[0], normal[1], normal[2]
 
 
-def gerstner_hit(
+def hit(
     field: tuple[Wave, ...],
     origin_m: np.ndarray,
     direction: np.ndarray,

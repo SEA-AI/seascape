@@ -239,7 +239,7 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     curved = sum(w.amplitude_m * w.k_rad_m**2 for w in tall)
     assert np.abs(rest - at_rest).max() < dice_m**2 / 8 * curved
     bent = sum(w.amplitude_m * w.k_rad_m**3 for w in tall)
-    surface = np.array(gerstner.gerstner_normal(tall, *at_rest, t_s))
+    surface = np.array(gerstner.normal(tall, *at_rest, t_s))
     assert np.abs(facet - surface).max() < dice_m**2 * (1 / 8 + 1 / 6) * bent
 
 
@@ -525,16 +525,14 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     )
     view = np.array([0.0, -math.cos(d), math.sin(d)])  # toward the camera
     ahead = np.repeat(-view[:, None], rays, axis=1)
-    rest = gerstner.gerstner_hit(tall, origin, ahead, 0.0, 0.25)[:2]
+    rest = gerstner.hit(tall, origin, ahead, 0.0, 0.25)[:2]
     moved = np.array(waves.gerstner_offset_m(tall, *rest, 0.0))
-    normal = np.array(gerstner.gerstner_normal(tall, *rest, 0.0))
+    normal = np.array(gerstner.normal(tall, *rest, 0.0))
     toward = view @ normal
     bounced = 2 * toward * normal - view[:, None]
     hit = np.array([*rest, np.zeros(rays)]) + moved + 1e-3 * normal
-    *beyond, blocked = gerstner.gerstner_hit(tall, hit, bounced, 0.0, 0.25)
-    met = np.abs(
-        np.sum(bounced * np.array(gerstner.gerstner_normal(tall, *beyond, 0.0)), 0)
-    )
+    *beyond, blocked = gerstner.hit(tall, hit, bounced, 0.0, 0.25)
+    met = np.abs(np.sum(bounced * np.array(gerstner.normal(tall, *beyond, 0.0)), 0))
     sky = np.where(
         blocked,
         1 - lwir.fresnel_emissivity(np.arccos(np.clip(met, 0, 1)), SEAWATER_IOR, 0.0),
@@ -785,7 +783,7 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
 
 
 def srgb_counts(linear: np.ndarray) -> np.ndarray:
-    """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
+    """What the Standard view writes to 8 bits."""
     return np.round(255 * colour.srgb_encode(linear))
 
 
