@@ -675,7 +675,8 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
 @pytest.mark.render
 def test_a_fisheye_draws_each_hull_where_its_lens_puts_it(tmp_path: Path) -> None:
     """Both axes: Cycles' polynomial lens draws the scene half a turn about the optical
-    axis, and the build turns the image and its index pass back."""
+    axis, and the build turns the image and its index pass back.
+    """
     k = (-0.0793, -0.0461, 0.0331, -0.0065)
     scenario = variant(
         cameras={

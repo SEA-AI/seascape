@@ -485,7 +485,8 @@ def _fisheye_horizon(
     camera: CameraCalibration, radius_m: float
 ) -> list[tuple[float, float]]:
     """`horizon_px` for a fisheye, whose rays are not linear down a column: each column
-    is walked a row at a time, and the graze is where b^2 - 4 a c changes sign."""
+    is walked a row at a time, and the graze is where b^2 - 4 a c changes sign.
+    """
     pose = np.array(camera.extrinsics["world"])
     rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
     assert camera.distortion is not None

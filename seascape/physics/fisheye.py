@@ -22,7 +22,13 @@ FIT_TOLERANCE_PX = 1.0
 
 
 def radius_px(theta: np.ndarray, k: K, fx: float) -> np.ndarray:
-    """Image radius, in pixels, of the field angle `theta` in radians."""
+    """Image radius, in pixels, of a field angle.
+
+    Args:
+        theta: Angle from the optical axis, in radians.
+        k: OpenCV's k1..k4, all 0 for an equidistant lens.
+        fx: Image radius per radian of the distorted angle, in pixels.
+    """
     return (
         fx
         * theta
@@ -31,14 +37,28 @@ def radius_px(theta: np.ndarray, k: K, fx: float) -> np.ndarray:
 
 
 def focal_px(hfov_rad: float, width_px: int, k: K) -> float:
-    """The `fx` that puts the field angle `hfov_rad / 2` at the image's left and right
-    edges."""
+    """The `fx` that puts half the field angle at the image's left and right edges.
+
+    Args:
+        hfov_rad: Field angle across the image width, edge to edge.
+        width_px: Image width; its edges sit half of it from the principal point.
+        k: OpenCV's k1..k4, all 0 for an equidistant lens.
+    """
     return width_px / 2 / float(radius_px(np.array(hfov_rad / 2), k, 1.0))
 
 
 def theta(radius: np.ndarray, k: K, fx: float, reach_px: float) -> np.ndarray:
-    """Field angle, in radians, of image radii up to `reach_px`; the lens must put each
-    radius at one angle, so the model rising out to `reach_px` is checked."""
+    """Field angle, in radians, of image radii.
+
+    A lens puts each radius at one angle, so this raises if the model stops rising
+    short of `reach_px`.
+
+    Args:
+        radius: Distances from the principal point, in pixels.
+        k: OpenCV's k1..k4, all 0 for an equidistant lens.
+        fx: Image radius per radian of the distorted angle, in pixels.
+        reach_px: The farthest radius the caller needs, such as the frame's corner.
+    """
     angles = np.linspace(0.0, math.pi, ANGLES)
     radii = radius_px(angles, k, fx)
     falling = np.flatnonzero(np.diff(radii) <= 0.0)
@@ -52,8 +72,15 @@ def theta(radius: np.ndarray, k: K, fx: float, reach_px: float) -> np.ndarray:
 
 
 def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray:
-    """Unit rays, (..., 3), through pixels `x_px` right and `y_px` up of the principal
-    point, in a camera that looks down -Z with +X right and +Y up, as Blender's does."""
+    """Unit rays, (..., 3), in a camera that looks down -Z with +X right and +Y up, as
+    Blender's does.
+
+    Args:
+        x_px: Pixels right of the principal point.
+        y_px: Pixels up from the principal point, against the image's rows.
+        k: OpenCV's k1..k4, all 0 for an equidistant lens.
+        fx: Image radius per radian of the distorted angle, in pixels.
+    """
     radius = np.hypot(x_px, y_px)
     angle = theta(radius, k, fx, float(radius.max()))
     safe = np.where(radius > 0.0, radius, 1.0)
@@ -64,9 +91,19 @@ def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray
 def polynomial(
     k: K, fx: float, width_px: int, height_px: int, pitch_mm: float
 ) -> tuple[float, float, float, float, float]:
-    """Blender's `fisheye_polynomial_k0..k4` for a frame of `pitch_mm` pixels: the field
-    angle in radians as a polynomial of the sensor radius in mm, fitted out to the
-    frame's corner."""
+    """Blender's `fisheye_polynomial_k0..k4`: the field angle in radians as a
+    polynomial of the sensor radius in mm.
+
+    Raises if the fourth degree misses the model by more than `FIT_TOLERANCE_PX`.
+
+    Args:
+        k: OpenCV's k1..k4, all 0 for an equidistant lens.
+        fx: Image radius per radian of the distorted angle, in pixels.
+        width_px: Image width; with the height, the corner the fit reaches.
+        height_px: Image height.
+        pitch_mm: A pixel's width on the sensor. Only the scale of the coefficients
+            depends on it, not the angle a pixel sees.
+    """
     reach = math.hypot(width_px, height_px) / 2
     radius = np.linspace(0.0, reach, RADII)
     angle = theta(radius, k, fx, reach)

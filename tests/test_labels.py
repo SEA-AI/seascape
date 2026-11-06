@@ -27,7 +27,8 @@ def camera(
     distortion: fisheye.K | None = None,
 ) -> CameraCalibration:
     """Facing north, then pitched about its x and rolled about its z; a fisheye with
-    `distortion`."""
+    `distortion`.
+    """
     if distortion is None:
         f = width / 2 / math.tan(math.radians(hfov_deg) / 2)
     else:

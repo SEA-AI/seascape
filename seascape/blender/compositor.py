@@ -124,9 +124,14 @@ def set_output(
 def unroll(
     tree: bpy.types.NodeTree, image: bpy.types.NodeSocket, name: str
 ) -> bpy.types.NodeSocket:
-    """`image` as Cycles' polynomial fisheye draws it, turned back: the projection puts
-    the scene half a turn about the optical axis. `respond` switches `name` on for a
-    fisheye camera."""
+    """An image as Cycles' polynomial fisheye draws it, turned back: the projection puts
+    the scene half a turn about the optical axis.
+
+    Args:
+        tree: The compositor tree to add the turn to.
+        image: The rendered pass, such as the image or the object index.
+        name: The Switch's name, which `respond` turns on for a fisheye camera.
+    """
     flip = node(tree, "CompositorNodeFlip", {"Image": image})
     flip.inputs["Flip X"].default_value = flip.inputs["Flip Y"].default_value = True
     return switch(tree, name, image, flip.outputs["Image"])
