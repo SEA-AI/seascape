@@ -1,6 +1,6 @@
 # e-con Systems e-CAM50_CUNX, onsemi AR0521 colour sensor: the sensor only. The block
 # that mounts it supplies hfov_deg.
-# https://www.e-consystems.com/nvidia-cameras/jetson-orin-nx-cameras/5mp-ar0521-color-camera.asp
+# https://www.e-consystems.com/nvidia-cameras/jetson-nx-cameras/5mp-mipi-camera-board.asp
 band = "eo"
 width_px = 2592
 height_px = 1944
