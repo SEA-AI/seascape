@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from seascape.config import Crop, Stitch, Undistortion, Video
-from seascape.outputs import recording
+from seascape.outputs import recording, sync
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
 from seascape.physics import earth
@@ -280,15 +280,6 @@ def test_a_rig_without_a_model_writes_nothing(run: Path) -> None:
     assert not (run / "recordings").exists()
 
 
-def _core_rotation(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    """Core-Backend's `rotation_matrix(..., roll_axis="x")`: Rz @ Ry @ Rx, radians."""
-    c, s = np.cos([roll, pitch, yaw]), np.sin([roll, pitch, yaw])
-    about_x = np.array([[1, 0, 0], [0, c[0], -s[0]], [0, s[0], c[0]]])
-    about_y = np.array([[c[1], 0, s[1]], [0, 1, 0], [-s[1], 0, c[1]]])
-    about_z = np.array([[c[2], -s[2], 0], [s[2], c[2], 0], [0, 0, 1]])
-    return about_z @ about_y @ about_x
-
-
 def _core_imu_horizon(
     row: dict, sensor: dict, x: np.ndarray, dip: float = 0.0
 ) -> np.ndarray:
@@ -296,10 +287,10 @@ def _core_imu_horizon(
     zeroed, turned by the camera's rpy, and projected. Core leaves out the horizon's
     `dip`, which reads as the camera pitched up by it.
     """
-    imu = _core_rotation(
+    imu = sync.imu_rotation(
         math.radians(float(row["roll"])), math.radians(float(row["pitch"])), 0.0
     )
-    camera = _core_rotation(
+    camera = sync.imu_rotation(
         *np.radians([sensor[k]["value"] for k in ("roll", "pitch", "yaw")])
     )
     m = camera @ imu

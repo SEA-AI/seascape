@@ -1,5 +1,6 @@
 """Command line entry point."""
 
+import dataclasses
 import json
 import math
 import os
@@ -14,7 +15,7 @@ import click
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, json_schema, load, seeds
-from seascape.outputs import labels, montage, panorama, recording
+from seascape.outputs import labels, montage, panorama, recording, sync
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -237,6 +238,35 @@ def recording_(folder: Path) -> None:
     """Lay each rig's videos out as a recording, after video."""
     for path in recording.export(folder):
         click.echo(path)
+
+
+@main.command("sync")
+@click.argument("folder", type=_FOLDER)
+@click.option(
+    "--max-lag-ms",
+    type=click.FloatRange(min=0.0),
+    default=33.0,
+    show_default=True,
+    help="The largest lag that passes.",
+)
+@click.option(
+    "--window-s",
+    type=click.FloatRange(min=0.0, min_open=True),
+    default=1.0,
+    show_default=True,
+    help="The largest lag searched, either way.",
+)
+def sync_(folder: Path, max_lag_ms: float, window_s: float) -> None:
+    """How far a recording's videos lag their IMU rows and each other, read off the
+    ArUco marker each one watches. Exits 1 past the limits.
+    """
+    report = sync.check(folder, window_s)
+    failures = report.failures(max_lag_ms)
+    click.echo(
+        json.dumps(dataclasses.asdict(report) | {"failures": failures}, indent=2)
+    )
+    if failures:
+        raise click.exceptions.Exit(1)
 
 
 @main.command()
