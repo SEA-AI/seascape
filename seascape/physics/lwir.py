@@ -245,8 +245,7 @@ def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
     """
     theta = np.minimum(np.asarray(theta_rad, dtype=np.float64), FOAM_MEASURED_RAD)
     x = 1.0 / np.cos(theta) - 1.0
-    a, b, c = FOAM_EXCESS
-    return (a * x + b) * x + c
+    return np.polyval(FOAM_EXCESS, x)
 
 
 @functools.lru_cache(maxsize=64)

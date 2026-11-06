@@ -118,9 +118,7 @@ def lattice(count: int) -> np.ndarray:
     x^4 = x + 1 (Roberts 2018, "The unreasonable effectiveness of quasirandom
     sequences"): evenly spread, without a generator.
     """
-    root = 1.0
-    for _ in range(64):
-        root = (1 + root) ** (1 / 4)
+    root = np.roots([1, 0, 0, -1, -1]).real.max()
     step = root ** -np.arange(1, 4)
     return np.mod(0.5 + np.outer(np.arange(1, count + 1), step), 1.0)
 
