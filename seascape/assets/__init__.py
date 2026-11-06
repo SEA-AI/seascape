@@ -284,7 +284,7 @@ class Rotor(FrozenModel):
         return 2.0 * math.pi / self.blades
 
     def symmetry_period_s(self, rpm: float) -> float:
-        """How long a turn of `symmetry_rad` takes at `rpm`."""
+        """Seconds per `symmetry_rad` at `rpm`."""
         return 60.0 / (self.blades * rpm)
 
 

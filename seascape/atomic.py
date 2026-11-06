@@ -13,9 +13,6 @@ def replacing(path: Path) -> Generator[Path]:
     A killed or failed write never leaves a truncated file under `path`, and
     concurrent writers do not share a scratch file. The scratch file keeps `path`'s
     suffix for writers that choose a format by it.
-
-    Args:
-        path: The file to replace.
     """
     part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part{path.suffix}")
     try:

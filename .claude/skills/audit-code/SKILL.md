@@ -18,7 +18,7 @@ An audit edits nothing: it lists what should not exist and what replaces it. Fix
 - **Reinvention.** Ask of every hand-written helper: does Blender (node, render setting, operator), the standard library, numpy, cv2, Pillow or pydantic do this?
 - **Constants.** A number with no source beside it, or one that repeats a value a preset, Blender or another module already holds.
 - **Dead and test-only code.** A function only tests call belongs in `tests/`.
-- **Smells.** Double guards, pass-through wrappers, comments that restate, tests of wiring: `clean-code`'s "Smells, as questions".
+- **Smells.** `clean-code`'s "Smells, as questions".
 
 ## Method
 
@@ -31,7 +31,7 @@ An audit edits nothing: it lists what should not exist and what replaces it. Fix
 
 - No concrete case, no finding: name the call that does the same job.
 - Before calling code unused, grep `seascape/`, `tests/`, `docs/`, the TOML files and string references. A static finder misses dynamic use.
-- A replacement: run old and new on random inputs and compare, or render both and compare pixels. A render with a fixed seed is bit-reproducible in EO; IR is not, so compare a run against itself first. Say "unverified" where you did not.
+- A replacement: run old and new on random inputs and compare, or render both and compare pixels. Compare a render against itself first to find its noise floor. Say "unverified" where you did not.
 - A constant: find its source or label it a judgement; never fit it to a render.
 - Outputs that are committed, such as doc images: regenerate and diff them. Skip a change that would alter them.
 

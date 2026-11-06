@@ -384,11 +384,9 @@ def _turbine(
         outputs,
     )
     rpm = farm.rpm(scenario.sea)
-    rotor_spec = farm.turbine.rotor
+    spec = farm.turbine.rotor
     # A loop closes on a turn of `symmetry_rad`.
-    symmetry_s = (
-        outputs.period_s(rotor_spec.symmetry_period_s(rpm)) if rpm else math.inf
-    )
+    symmetry_s = outputs.period_s(spec.symmetry_period_s(rpm)) if rpm else math.inf
     start = rng.uniform(0.0, 2.0 * math.pi)
     (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
     rest = rotor["rest_rad"]
@@ -399,7 +397,7 @@ def _turbine(
         rotor,
         "rotation_euler",
         outputs.times_s,
-        lambda t: rest - start - rotor_spec.symmetry_rad * t / symmetry_s,
+        lambda t: rest - start - spec.symmetry_rad * t / symmetry_s,
         index=1,
     )
     return anchor

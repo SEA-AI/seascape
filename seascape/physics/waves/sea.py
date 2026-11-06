@@ -77,9 +77,9 @@ def _inverse_cdf(cdf: np.ndarray, angle_rad: np.ndarray, u: np.ndarray) -> np.nd
     """Each row of `cdf` inverted at its own `u`: the angle where the CDF reaches it.
 
     Args:
-        cdf: One CDF per row, tabulated at `angle_rad` and rising to 1.
-        angle_rad: The angles the CDFs are tabulated at.
-        u: The probability to invert in each row.
+        cdf: One CDF per row over `angle_rad`, rising to 1.
+        angle_rad: Ascending angles of the CDF columns.
+        u: Probability per row, in [0, 1].
     """
     return np.array([np.interp(ui, c, angle_rad) for ui, c in zip(u, cdf, strict=True)])
 

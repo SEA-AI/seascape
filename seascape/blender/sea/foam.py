@@ -7,6 +7,7 @@ import bpy
 import numpy as np
 
 from seascape.blender.blend import (
+    CURVE_SAMPLES,
     Num,
     clamped,
     combine,
@@ -15,7 +16,6 @@ from seascape.blender.blend import (
     node,
     scalar,
     separate,
-    texels,
 )
 from seascape.blender.sea.wind import (
     _downwind,
@@ -269,7 +269,7 @@ def _bare(tree: bpy.types.NodeTree) -> _Whitecaps:
 
 def _quantiles() -> np.ndarray:
     """The unit normal's 1 - p quantile, sampled in p."""
-    return -gaussian_quantiles(len(texels()))
+    return -gaussian_quantiles(CURVE_SAMPLES)
 
 
 class _FoamTexture(NamedTuple):
