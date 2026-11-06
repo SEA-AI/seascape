@@ -7,7 +7,6 @@ from functools import partial
 from pathlib import Path
 
 import bpy
-import cv2
 import numpy as np
 from mathutils import Vector
 
@@ -161,21 +160,30 @@ def foam_grids(
 
 
 def _write_frames(
-    folder: Path, frames: Iterator[tuple[np.ndarray, np.ndarray]]
+    folder: Path,
+    grid: FoamGrid,
+    frames: Iterator[tuple[np.ndarray, np.ndarray]],
 ) -> None:
     """Each frame's (cover, breaking) as an EXR in `folder`."""
     folder.mkdir(parents=True)
-    # Half floats keep cover to a part in 2048, zipped.
-    params = [
-        cv2.IMWRITE_EXR_TYPE,
-        cv2.IMWRITE_EXR_TYPE_HALF,
-        cv2.IMWRITE_EXR_COMPRESSION,
-        cv2.IMWRITE_EXR_COMPRESSION_ZIP,
-    ]
+    image = bpy.data.images.new(
+        "sea_foam_frame", grid.columns, grid.rows, float_buffer=True
+    )
+    image.colorspace_settings.name = "Non-Color"
+    # `Image.save` writes 32-bit floats uncompressed; a scene's output settings write
+    # half floats, which keep cover to a part in 2048, zipped.
+    frames_scene = bpy.data.scenes.new("sea_foam_frames")
+    settings = frames_scene.render.image_settings
+    settings.file_format, settings.color_mode = "OPEN_EXR", "RGB"
+    settings.color_depth, settings.exr_codec = "16", "ZIP"
+    rgba = np.zeros((grid.rows, grid.columns, 4), np.float32)
+    rgba[..., 3] = 1.0
     for i, (cover, breaking) in enumerate(frames):
-        # cv2 takes BGR and writes the top row first; Blender's rows run bottom up.
-        bgr = np.dstack([np.zeros_like(cover), breaking, cover])[::-1]
-        cv2.imwrite(str(folder / f"foam_{i + 1:04d}.exr"), bgr, params)
+        rgba[..., 0], rgba[..., 1] = cover, breaking
+        image.pixels.foreach_set(rgba.ravel())
+        image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
+    bpy.data.scenes.remove(frames_scene)
+    bpy.data.images.remove(image)
 
 
 # The foam memories the last build asked for and has not simulated: a build that never
@@ -283,5 +291,6 @@ def _simulate(
     times = outputs.times_s
     _write_frames(
         folder,
+        grid,
         foam_memory(wind, drift, grid, times[0], step, len(times), float(threshold)),
     )
