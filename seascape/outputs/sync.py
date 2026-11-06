@@ -6,7 +6,6 @@ Each video's turn over _BASELINE_FRAMES is matched to its IMU rows' at each tria
 under one fitted orthogonal map, so no mounting, axis or sign convention enters.
 """
 
-import csv
 import math
 from collections import Counter
 from collections.abc import Generator, Sequence
@@ -26,8 +25,6 @@ from seascape.config import ARUCO_DICTIONARY
 _BASELINE_FRAMES = 8
 # Judgement: fewer pairs of turns fit noise.
 _MIN_PAIRS = 3 * _BASELINE_FRAMES
-# Judgement: under a millisecond at 30 fps.
-_FINE_STEP_FRAMES = 0.02
 # Judgements.
 _MIN_PEAK = 0.8
 _MIN_FOUND = 0.95
@@ -226,11 +223,10 @@ def _kabsch(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 def imu_rotation(roll_rad: float, pitch_rad: float, yaw_rad: float) -> np.ndarray:
     """Core-Backend's `rotation_matrix(..., roll_axis="x")`: Rz @ Ry @ Rx."""
-    c = np.cos([roll_rad, pitch_rad, yaw_rad])
-    s = np.sin([roll_rad, pitch_rad, yaw_rad])
-    about_x = np.array([[1, 0, 0], [0, c[0], -s[0]], [0, s[0], c[0]]])
-    about_y = np.array([[c[1], 0, s[1]], [0, 1, 0], [-s[1], 0, c[1]]])
-    about_z = np.array([[c[2], -s[2], 0], [s[2], c[2], 0], [0, 0, 1]])
+    about_x, about_y, about_z = (
+        cv2.Rodrigues(np.array(axis, float))[0]
+        for axis in ([roll_rad, 0, 0], [0, pitch_rad, 0], [0, 0, yaw_rad])
+    )
     return about_z @ about_y @ about_x
 
 
@@ -292,8 +288,9 @@ def _later(turns: np.ndarray, frames: float, n: int) -> np.ndarray:
 
 
 def _lag(a: np.ndarray, b: np.ndarray, window_frames: int, fps: float) -> Lag | None:
-    """How far b's turns trail a's: whole frames within +-window_frames, then within
-    a frame in _FINE_STEP_FRAMES. None where no trial lag overlaps enough turns.
+    """How far b's turns trail a's: whole frames within +-window_frames, then to a
+    fraction of a frame by the parabola through the best and its two neighbours.
+    None where no trial lag overlaps enough turns.
     """
 
     def score(frames: float) -> float:
@@ -303,8 +300,9 @@ def _lag(a: np.ndarray, b: np.ndarray, window_frames: int, fps: float) -> Lag | 
     if min(len(a), len(b)) < _MIN_PAIRS:
         return None
     coarse = max(range(-window_frames, window_frames + 1), key=score)
-    steps = np.arange(-1.0, 1.0 + _FINE_STEP_FRAMES / 2, _FINE_STEP_FRAMES)
-    best = max((coarse + float(step) for step in steps), key=score)
+    left, mid, right = (score(coarse + step) for step in (-1, 0, 1))
+    curve = left - 2 * mid + right
+    best = coarse + (0.5 * (left - right) / curve if curve < 0 else 0.0)
     peak = _correlation(a, _later(b, best, len(a)))
     if peak is None:
         return None
@@ -318,13 +316,8 @@ def _lag(a: np.ndarray, b: np.ndarray, window_frames: int, fps: float) -> Lag | 
 
 def _rows_deg(path: Path) -> np.ndarray:
     """Roll, pitch and yaw per row, (n, 3)."""
-    columns = ("roll", "pitch", "yaw")
-    with path.open() as f:
-        reader = csv.DictReader(f)
-        if missing := [c for c in columns if c not in (reader.fieldnames or ())]:
-            raise ValueError(f"{path}: no {', '.join(missing)} column")
-        rows = [[float(row[c]) for c in columns] for row in reader]
-    return np.array(rows).reshape(-1, len(columns))
+    rows = np.atleast_1d(np.genfromtxt(path, delimiter=",", names=True))
+    return np.column_stack([rows[c] for c in ("roll", "pitch", "yaw")])
 
 
 def check(folder: Path, window_s: float) -> Report:

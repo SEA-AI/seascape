@@ -239,14 +239,14 @@ def test_a_bad_parameters_file_is_named(
         sync.check(folder, 1.0)
 
 
-def test_rows_without_an_attitude_column_are_named(
+def test_rows_without_an_attitude_column_fail(
     in_step_folder: Path, tmp_path: Path
 ) -> None:
     folder = tmp_path / "r"
     shutil.copytree(in_step_folder, folder)
     (rows,) = folder.glob("*_A_metadata_*.csv")
     rows.write_text("counter,roll,pitch\n0,0,0\n")
-    with pytest.raises(ValueError, match=r"_A_metadata_.*no yaw column"):
+    with pytest.raises(ValueError, match="no field of name yaw"):
         sync.check(folder, 1.0)
 
 
