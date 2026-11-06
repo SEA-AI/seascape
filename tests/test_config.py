@@ -1120,6 +1120,15 @@ def test_the_ecam50_cunx_preset_scales_its_sensor_down_to_a_smaller_image() -> N
     assert (camera.sensor.width_px or 0) >= 2 * camera.width_px
 
 
+def test_the_evidir_alpha_preset_needs_its_lens_f_number() -> None:
+    line = (
+        'rigs.bow.cameras.ir = { preset = "jenoptik_evidir_alpha_640", '
+        "hfov_deg = 32.0 }"
+    )
+    with pytest.raises(ValidationError, match="go together"):
+        load(BASELINE, [line])
+
+
 def test_a_rigs_cameras_share_a_draw_through_nested_picks() -> None:
     eo = f'preset = "eo_4k_49deg", {GRADE}'
     cameras = f"{{ a = {{ {eo} }}, b = {{ {eo}, yaw_deg = 40.0 }} }}"
