@@ -1,39 +1,52 @@
-"""A fisheye lens in OpenCV's model: image radius as a polynomial of the field angle.
+"""A fisheye lens in OpenCV's model (`cv2.fisheye`), and the polynomial Blender takes.
 
 With theta the angle from the optical axis, theta_d = theta (1 + k1 theta^2 +
 k2 theta^4 + k3 theta^6 + k4 theta^8) and the image radius is fx theta_d
 (https://docs.opencv.org/4.x/db/d58/group__calib3d__fisheye.html). All k are zero for
 an equidistant lens. Blender's polynomial camera takes the inverse, the angle as a
 polynomial of the sensor radius.
+
+Limitation: OpenCV takes a ray as its point on the plane one unit ahead, so a lens
+sees under 90 deg off its axis.
 """
 
 import math
 
+import cv2
 import numpy as np
 
 type K = tuple[float, float, float, float]
 
-# Numerics: angles the inverse is tabulated at, and radii the Blender polynomial is
-# fitted at.
-ANGLES = 20001
+# Radii the Blender polynomial is fitted at.
 RADII = 512
 # The Blender polynomial may miss the model by this many pixels.
 FIT_TOLERANCE_PX = 1.0
+
+
+def _matrix(fx: float) -> np.ndarray:
+    return np.diag([fx, fx, 1.0])
+
+
+def _ahead(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray:
+    """Each pixel's ray as its point on the plane one unit ahead, (..., 2)."""
+    pixels = np.stack([x_px, y_px], axis=-1).astype(np.float64)
+    plane = cv2.fisheye.undistortPoints(
+        pixels.reshape(-1, 1, 2), _matrix(fx), np.array(k)
+    )
+    return plane.reshape(pixels.shape)
 
 
 def radius_px(theta: np.ndarray, k: K, fx: float) -> np.ndarray:
     """Image radius, in pixels, of a field angle.
 
     Args:
-        theta: Angle from the optical axis, in radians.
+        theta: Angle from the optical axis, in radians, under 90 deg.
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
     """
-    return (
-        fx
-        * theta
-        * (1 + k[0] * theta**2 + k[1] * theta**4 + k[2] * theta**6 + k[3] * theta**8)
-    )
+    ahead = np.stack([np.tan(theta), np.zeros_like(theta)], axis=-1)
+    image = cv2.fisheye.distortPoints(ahead.reshape(-1, 1, 2), _matrix(fx), np.array(k))
+    return image[..., 0].reshape(np.shape(theta))
 
 
 def focal_px(hfov_rad: float, width_px: int, k: K) -> float:
@@ -47,28 +60,17 @@ def focal_px(hfov_rad: float, width_px: int, k: K) -> float:
     return width_px / 2 / float(radius_px(np.array(hfov_rad / 2), k, 1.0))
 
 
-def theta(radius: np.ndarray, k: K, fx: float, reach_px: float) -> np.ndarray:
+def theta(radius: np.ndarray, k: K, fx: float) -> np.ndarray:
     """Field angle, in radians, of image radii.
-
-    A lens puts each radius at one angle, so this raises if the model stops rising
-    short of `reach_px`.
 
     Args:
         radius: Distances from the principal point, in pixels.
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
-        reach_px: The farthest radius the caller needs, such as the frame's corner.
     """
-    angles = np.linspace(0.0, math.pi, ANGLES)
-    radii = radius_px(angles, k, fx)
-    falling = np.flatnonzero(np.diff(radii) <= 0.0)
-    top = int(falling[0]) if falling.size else ANGLES - 1
-    if radii[top] < reach_px:
-        raise ValueError(
-            f"the fisheye model stops rising at {math.degrees(angles[top]):.1f} deg, "
-            f"short of the image radius {reach_px:.0f} px"
-        )
-    return np.interp(radius, radii[: top + 1], angles[: top + 1])
+    return np.arctan(
+        np.linalg.norm(_ahead(radius, np.zeros_like(radius), k, fx), axis=-1)
+    )
 
 
 def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray:
@@ -81,11 +83,10 @@ def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
     """
-    radius = np.hypot(x_px, y_px)
-    angle = theta(radius, k, fx, float(radius.max()))
-    safe = np.where(radius > 0.0, radius, 1.0)
-    along = np.where(radius > 0.0, np.sin(angle) / safe, 0.0)
-    return np.stack([x_px * along, y_px * along, -np.cos(angle)], axis=-1)
+    ahead = _ahead(x_px, y_px, k, fx)
+    # The model is radial, so a ray keeps the pixel's side of each axis.
+    rays = np.concatenate([ahead, -np.ones_like(ahead[..., :1])], axis=-1)
+    return rays / np.linalg.norm(rays, axis=-1, keepdims=True)
 
 
 def polynomial(
@@ -94,7 +95,8 @@ def polynomial(
     """Blender's `fisheye_polynomial_k0..k4`: the field angle in radians as a
     polynomial of the sensor radius in mm.
 
-    Raises if the fourth degree misses the model by more than `FIT_TOLERANCE_PX`.
+    Raises if the fourth degree misses the model by more than `FIT_TOLERANCE_PX` out
+    to the frame's corner.
 
     Args:
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
@@ -104,17 +106,15 @@ def polynomial(
         pitch_mm: A pixel's width on the sensor. Only the scale of the coefficients
             depends on it, not the angle a pixel sees.
     """
-    reach = math.hypot(width_px, height_px) / 2
-    radius = np.linspace(0.0, reach, RADII)
-    angle = theta(radius, k, fx, reach)
+    radius = np.linspace(0.0, math.hypot(width_px, height_px) / 2, RADII)
     series = np.polynomial.polynomial
-    coefficients = series.polyfit(radius * pitch_mm, angle, 4)
-    # The angle's error as the pixels it moves a ray by, where the lens is flattest.
-    slope = np.gradient(radius, angle)
-    miss = np.abs(series.polyval(radius * pitch_mm, coefficients) - angle) * slope
-    if miss.max() > FIT_TOLERANCE_PX:
+    coefficients = series.polyfit(radius * pitch_mm, theta(radius, k, fx), 4)
+    fitted = series.polyval(radius * pitch_mm, coefficients)
+    # A lens that folds or reaches 90 deg short of the corner misses here too.
+    miss = np.abs(radius_px(fitted, k, fx) - radius).max()
+    if miss > FIT_TOLERANCE_PX:
         raise ValueError(
             f"Blender's fourth-degree polynomial misses the fisheye model by "
-            f"{miss.max():.2f} px"
+            f"{miss:.2f} px within the frame"
         )
     return tuple(float(c) for c in coefficients)  # ty: ignore[invalid-return-type]

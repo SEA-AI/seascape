@@ -74,7 +74,7 @@ class CameraCalibration(_Record):
         if self.distortion is None:
             return math.degrees(2 * math.atan(half / fx))
         reach = np.array([half])
-        return math.degrees(2 * fisheye.theta(reach, self.distortion, fx, half)[0])
+        return math.degrees(2 * fisheye.theta(reach, self.distortion, fx)[0])
 
 
 class Calibration(_Record):

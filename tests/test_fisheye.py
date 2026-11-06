@@ -26,9 +26,7 @@ def test_the_focal_length_puts_half_the_field_at_the_image_edge() -> None:
 def test_the_angle_of_a_radius_undoes_the_radius_of_an_angle() -> None:
     theta = np.linspace(0.0, 1.2, 25)
     radius = fisheye.radius_px(theta, K, 1900.0)
-    assert fisheye.theta(radius, K, 1900.0, radius.max()) == pytest.approx(
-        theta, abs=1e-6
-    )
+    assert fisheye.theta(radius, K, 1900.0) == pytest.approx(theta, abs=1e-6)
 
 
 def test_a_pixel_off_the_axis_looks_that_far_off_it() -> None:
@@ -52,6 +50,6 @@ def test_blenders_polynomial_follows_the_model_within_a_pixel(
     assert fisheye.radius_px(theta, K, fx) == pytest.approx(radius, abs=1.0)
 
 
-def test_a_lens_that_stops_rising_short_of_the_frame_is_refused() -> None:
-    with pytest.raises(ValueError, match="stops rising"):
+def test_a_lens_that_folds_short_of_the_frame_is_refused() -> None:
+    with pytest.raises(ValueError, match="misses the fisheye model"):
         fisheye.polynomial((-1.0, 0.0, 0.0, 0.0), 1000.0, 3840, 2160, 0.002)

@@ -1142,7 +1142,7 @@ def test_a_camera_takes_a_fisheye_lens() -> None:
     ("lens", "match"),
     [
         ("{ fisheye = [0.0, 0.0, 0.0, 0.0], vignetting = true }", "pinhole"),
-        ("{ fisheye = [-1.0, 0.0, 0.0, 0.0] }", "stops rising"),
+        ("{ fisheye = [-1.0, 0.0, 0.0, 0.0] }", "misses the fisheye model"),
     ],
 )
 def test_a_fisheye_refuses_what_it_cannot_draw(lens: str, match: str) -> None:

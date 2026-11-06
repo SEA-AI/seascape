@@ -18,10 +18,6 @@ from seascape.config import (
 )
 from seascape.physics import fisheye
 
-# A pixel's width on the sensor for the fisheye polynomial, which is fitted at it. The
-# angle a pixel sees does not depend on it.
-PIXEL_MM = 0.002
-
 
 class _RigObjects(NamedTuple):
     root: bpy.types.Object
@@ -35,9 +31,10 @@ def _fisheye(data: bpy.types.Camera, camera: Camera) -> None:
     k, fx = camera.lens.fisheye, camera.fisheye_focal_px
     data.type = "PANO"
     data.panorama_type = "FISHEYE_LENS_POLYNOMIAL"
-    data.sensor_width = camera.width_px * PIXEL_MM
+    # The sensor fit is horizontal, so the width spans the frame.
+    pitch_mm = data.sensor_width / camera.width_px
     for i, c in enumerate(
-        fisheye.polynomial(k, fx, camera.width_px, camera.height_px, PIXEL_MM)
+        fisheye.polynomial(k, fx, camera.width_px, camera.height_px, pitch_mm)
     ):
         setattr(data, f"fisheye_polynomial_k{i}", c)
     # What the sea's shader and the cull read as a pixel: the one at the centre, which
