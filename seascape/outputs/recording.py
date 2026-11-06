@@ -214,15 +214,18 @@ def _parameters(
         if isinstance(video, Undistortion):
             fov = {"value": [video.hfov_deg, video.vfov_deg], "unit": "degrees"}
             transform = {"downscale": video.downscale, "out-fov": fov}
-        source = sources[video.camera]
+        source = values(sources[video.camera])
+        # The recorder gives a video its camera's lens and pixel, not its own.
+        lens = {k: source[k] for k in ("focal_length", "pixel_size")}
         entries.append(
             {"name": name}
             | values(camera)
+            | lens
             | {
                 "transformation_type": video.kind,
                 "transformation_parameters": transform,
                 "camera_sources": [
-                    {"name": video.camera, "device_name": name} | values(source)
+                    {"name": video.camera, "device_name": name} | source
                 ],
             }
         )

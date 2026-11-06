@@ -208,6 +208,14 @@ def test_a_video_is_recorded_with_its_camera_as_rendered(
     ]
     if isinstance(video, Crop):
         recorded = [camera.cropped(video) for camera in recorded]
+    if isinstance(video, Undistortion):
+        # A wider pinhole than the camera it dewarps.
+        recorded = [
+            camera.model_copy(
+                update={"K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0])))}
+            )
+            for camera in recorded
+        ]
     Calibration(cameras=recorded, raw=calibration.cameras).write(run)
     truth = Labels.model_validate_json((run / "labels.json").read_text())
     truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video.model_dump()}
@@ -227,6 +235,7 @@ def test_a_video_is_recorded_with_its_camera_as_rendered(
     assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2 - cut_px)
     assert entry["transformation_type"] == video.kind
     assert entry["transformation_parameters"] == transform
+    assert entry["focal_length"] == sensor["focal_length"]["value"]
     (source,) = entry["camera_sources"]
     assert (source["name"], source["device_name"]) == ("EO", "RGB")
     assert source["center_x"] == sensor["center_x"]["value"]
