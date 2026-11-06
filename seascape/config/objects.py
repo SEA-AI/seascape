@@ -196,7 +196,7 @@ class Heave(Model):
 
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
-    waterline. Without an asset it is the attitude alone.
+    waterline. A hull also rides the sea under it, as a target does.
     """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)
@@ -207,10 +207,12 @@ class Ownship(Model):
     pitch_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is bow up."
     )
-    # Limitation: one sine per axis, a sum over a wave spectrum when irregular motion
-    # matters.
     roll: Swing | None = Field(default=None, description="About roll_deg.")
     pitch: Swing | None = Field(default=None, description="About pitch_deg.")
+    # Limitation: the sea turns no hull, so its yaw is this sine alone.
+    yaw: Swing | None = Field(
+        default=None, description="Positive turns the bow to starboard."
+    )
     heave: Heave | None = Field(default=None, description="About the waterline.")
 
 

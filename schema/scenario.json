@@ -2147,7 +2147,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.",
+      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. A hull also rides the sea under it, as a target does.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2323,6 +2323,33 @@
         },
         "pitch": {
           "description": "About pitch_deg.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Swing"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "yaw": {
+          "description": "Positive turns the bow to starboard.",
           "default": null,
           "anyOf": [
             {

@@ -139,23 +139,25 @@ def add_ownship(
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rigs.
+    """At the origin, bow to +Y, carrying the rigs. A hull rides the sea as a target
+    does, once `ride` keys it.
 
     Args:
         ownship: Its hull, attitude and scripted motion.
         rigs: Parented to the ownship; their offsets are in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
-        tall: The waves that are geometry, which it heaves on as well as its script.
+        tall: The waves that are geometry, which a bare rig heaves on.
     """
     if ownship.asset is None:
         anchor = empty("ownship")
+        rigs.parent = anchor
     else:
         anchor = _vessel(
             ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
         )
+        (rigs.parent,) = anchor.children
     anchor.name = "ownship"
-    rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     anchor.rotation_mode = "YXZ"
     anchor.rotation_euler = (
@@ -174,23 +176,26 @@ def add_ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
+    if (swing := ownship.yaw) is not None:
+        heading_at = sine(0.0, swing.amplitude_deg, outputs.period_s(swing.period_s))
+        animate(
+            anchor, "rotation_euler", outputs.times_s, lambda t: yaw(heading_at(t)), 2
+        )
     scripted = sine(anchor.location.z, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
         scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
-    if heave is not None or tall:
-        # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
-        length_m, beam_m = (
-            (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
-        )
+    # A bare rig is a point: it heaves, but would tilt with every ripple.
+    bare = () if ownship.asset else tall
+    if heave is not None or bare:
 
         def value_at(t_s: float) -> float:
             rest = map(
-                float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+                float, waves.gerstner_rest_m(bare, np.zeros(()), np.zeros(()), t_s)
             )
-            hull = waves.Waterplane(*rest, 0.0, length_m, beam_m)
-            return scripted(t_s) + waves.heave_m(tall, hull, t_s)
+            point = waves.Waterplane(*rest, 0.0, 0.0, 0.0)
+            return scripted(t_s) + waves.heave_m(bare, point, t_s)
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
