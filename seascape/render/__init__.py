@@ -54,7 +54,8 @@ def _write_thermal(
         fmt: The format written; a png holds counts, any other the tone-mapped frame.
         tone: The camera's automatic gain control, kelvin to 8-bit grey.
         camera: Whose lens and focal plane the frame goes through.
-        noise: Draws the focal plane's temporal noise, its NETD."""
+        noise: Draws the focal plane's temporal noise, its NETD.
+    """
     # cv2 writes the top row first
     radiance = blend.read(exr)[::-1, :, 0].astype(np.float64)
     t_k = microbolometer.seen(radiance, camera, noise)
@@ -75,7 +76,8 @@ def _index_output(folder: Path) -> bpy.types.CompositorNodeOutputFile:
     the pixel, whatever the pixel filter.
 
     Args:
-        folder: Where the passes are written."""
+        folder: Where the passes are written.
+    """
     bpy.context.view_layer.use_pass_object_index = True
     # The build's tree: a new one would drop what it does to the picture.
     tree = bpy.context.scene.compositing_node_group
@@ -173,7 +175,8 @@ def render(
         scenario: What to render; each band is built culled to its own cameras at
             their resolution.
         into: Where the images and their truth go; made if missing.
-        advance: Runs after each image."""
+        advance: Runs after each image.
+    """
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
     into.mkdir(parents=True, exist_ok=True)

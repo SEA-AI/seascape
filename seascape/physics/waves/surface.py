@@ -41,7 +41,7 @@ def height_m(
 def slope(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """d height / d east and d height / d north."""
+    """The sea's slope: d height / d east and d height / d north."""
     sine = np.sin(phases(field, np.asarray(east_m), np.asarray(north_m), t_s))
     a, _, kx, ky, *_ = columns(field)
     return np.tensordot(-a * kx, sine, axes=1), np.tensordot(-a * ky, sine, axes=1)
@@ -59,7 +59,8 @@ def gerstner_offset_m(
         east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
             round a circle about there.
         north_m: The same, north.
-        t_s: Time; each wave's phase advances at its angular frequency."""
+        t_s: Time; each wave's phase advances at its angular frequency.
+    """
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
     a, k, kx, ky, *_ = columns(field)
@@ -86,7 +87,8 @@ def gerstner_rest_m(
         north_m: The same, north.
         t_s: Time; each wave's phase advances at its angular frequency.
         guess: The rest position (east, north) to start from; the point itself if
-            None."""
+            None.
+    """
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
     rest_east, rest_north = (east, north) if guess is None else guess
     a, k, k_east, k_north, *_ = columns(field)
@@ -122,7 +124,8 @@ def gerstner_normal(
         east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
             round a circle about there.
         north_m: The same, north.
-        t_s: Time; each wave's phase advances at its angular frequency."""
+        t_s: Time; each wave's phase advances at its angular frequency.
+    """
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
 
@@ -157,7 +160,8 @@ def gerstner_hit(
         direction: The rays' unit directions, 3 x n: east, north, up.
         t_s: Time; each wave's phase advances at its angular frequency.
         step_m: The shortest step along the sea. A crest thinner than it is
-            missed."""
+            missed.
+    """
     origin, direction = np.asarray(origin_m, float), np.asarray(direction, float)
     crest = sum(w.amplitude_m for w in field)
     # The surface's slope is the offset's over its stretch, 1 - sum(a k) at least. A
@@ -221,7 +225,8 @@ def gerstner_hit(
 
 class Waterplane(NamedTuple):
     """A hull's waterplane, centred where the water under it was at rest, `length_m`
-    along `heading_rad` and `beam_m` across; a point by default."""
+    along `heading_rad` and `beam_m` across; a point by default.
+    """
 
     rest_east_m: float
     rest_north_m: float
@@ -241,7 +246,8 @@ def attitude(
         field: Gerstner waves, whose offsets add.
         hull: The rectangle the plane is fitted over; a wave much shorter than it
             averages out.
-        t_s: Time; each wave's phase advances at its angular frequency."""
+        t_s: Time; each wave's phase advances at its angular frequency.
+    """
     if not field:
         return 0.0, 0.0
     rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
@@ -269,7 +275,8 @@ def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
         field: Gerstner waves, whose offsets add.
         hull: The rectangle the height is averaged over; a wave much shorter than
             it averages out.
-        t_s: Time; each wave's phase advances at its angular frequency."""
+        t_s: Time; each wave's phase advances at its angular frequency.
+    """
     if not field:
         return 0.0
     rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull

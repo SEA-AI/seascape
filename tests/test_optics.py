@@ -9,7 +9,8 @@ from seascape.physics import optics
 
 def test_a_fine_pixel_takes_the_airy_peak_over_its_area() -> None:
     """A unit point's Airy peak is pi / (4 lambda^2 N^2) (Born & Wolf, Principles of
-    Optics, sec. 8.5.2); a pixel far finer than the disc takes it times its area."""
+    Optics, sec. 8.5.2); a pixel far finer than the disc takes it times its area.
+    """
     wavelengths_m, f_number, pitch_m = (650e-9, 450e-9), 8.0, 0.5e-6
     kernel = optics.airy_kernel(wavelengths_m, f_number, pitch_m)
     centre = kernel.shape[0] // 2

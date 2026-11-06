@@ -37,7 +37,8 @@ def animate(
     index: int = -1,
 ) -> None:
     """A key per frame, not an extrapolated curve: on the curved sea a hull follows
-    neither a line nor a sine."""
+    neither a line nor a sine.
+    """
     for frame, t in enumerate(times_s):
         if index < 0:
             setattr(owner, data_path, value_at(t))
@@ -89,7 +90,8 @@ def curve_image(
         name: What `bpy.data.images` holds it under.
         values: One row, or rows bottom first, grey or RGB on a last axis.
         float_buffer: 32-bit floats, packed as EXR; without it, an 8-bit PNG of
-            values in [0, 1]."""
+            values in [0, 1].
+    """
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
     height, width = table.shape[:2]
     image = bpy.data.images.new(
@@ -196,7 +198,8 @@ def clamped(tree: bpy.types.NodeTree, x: Operand) -> bpy.types.NodeSocket:
 @dataclass(frozen=True, slots=True)
 class Num:
     """A Math node's output; `a * b + c` makes the nodes in Python's evaluation order.
-    `madd` fuses Multiply Add and `op` takes any other operation."""
+    `madd` fuses Multiply Add and `op` takes any other operation.
+    """
 
     tree: bpy.types.NodeTree
     socket: bpy.types.NodeSocket
@@ -226,7 +229,7 @@ class Num:
         )
 
     def madd(self, factor: Operand, term: Operand) -> "Num":
-        """self * `factor` + `term`, in one Multiply Add node."""
+        """This number * `factor` + `term`, in one Multiply Add node."""
         return self.op("MULTIPLY_ADD", factor, term)
 
     def __add__(self, other: Operand) -> "Num":
@@ -267,7 +270,8 @@ def node(
         tree: Any node tree; `kind` must be one of its type's nodes.
         kind: Blender's node type, such as `ShaderNodeMath`.
         inputs: A value or socket for each input, by socket name.
-        **props: Attributes set on the node before its inputs."""
+        **props: Attributes set on the node before its inputs.
+    """
     made = tree.nodes.new(kind)
     for key, setting in props.items():
         setattr(made, key, setting)
@@ -328,7 +332,8 @@ def switch(
         tree: The compositor.
         name: What `toggle` finds the node by; must be free.
         off: Passed while off; a muted Switch evaluates only this.
-        on: Passed while on, and evaluated only then."""
+        on: Passed while on, and evaluated only then.
+    """
     made = tree.nodes.new("CompositorNodeSwitch")
     made.name = name
     assert made.name == name, f"{name} is taken"
@@ -339,7 +344,8 @@ def switch(
 
 def toggle(tree: bpy.types.NodeTree, name: str, on: bool) -> None:
     """The compositor evaluates both inputs of a Switch, so off mutes it: a muted
-    Switch passes Off through and never evaluates On."""
+    Switch passes Off through and never evaluates On.
+    """
     made = tree.nodes[name]
     made.inputs["Switch"].default_value = on
     made.mute = not on

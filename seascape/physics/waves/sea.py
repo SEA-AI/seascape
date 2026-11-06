@@ -48,7 +48,8 @@ def spreading_delta(
     omega_rad_s: np.ndarray, wind_speed_mps: float, fetch_m: float | None
 ) -> np.ndarray:
     """Elfouhaily's Delta(k), eq. 57: the cos 2 theta share of the spread, 1 at the
-    peak and least between it and the capillaries."""
+    peak and least between it and the capillaries.
+    """
     k = omega_rad_s**2 / GRAVITY_MS2
     c_m = CAPILLARY_SPEED_MPS
     c = phase_speed_mps(k)
@@ -65,7 +66,8 @@ def _spread_cdf(delta: np.ndarray) -> np.ndarray:
     """1 + Delta cos 2 theta's CDF over the downwind half, a row per Delta.
 
     Elfouhaily's form is centrosymmetric, a frozen surface's: folded into the downwind
-    half, the waves run with the wind and the slopes keep its statistics."""
+    half, the waves run with the wind and the slopes keep its statistics.
+    """
     theta = _DOWNWIND_RAD
     cdf = theta + math.pi / 2 + delta[:, None] / 2 * np.sin(2 * theta)[None, :]
     return cdf / cdf[:, -1:]
@@ -90,7 +92,8 @@ def heading_band(
     delta: np.ndarray, low_rad: np.ndarray, high_rad: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """|E e^(2i theta)| and half its argument over Elfouhaily's spread (eq. 49)
-    between two angles off downwind."""
+    between two angles off downwind.
+    """
     a, b = low_rad, high_rad
     weight = spread_share(delta, a, b) * math.pi
     cos2 = (np.sin(2 * b) - np.sin(2 * a)) / 2 + delta * (
@@ -107,7 +110,8 @@ def _bins(
     wind_speed_mps: float, fetch_m: float | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Frequency bins log-spaced from the longest wave to the shortest, one per wave:
-    their edges, their centres, and the height variance each carries."""
+    their edges, their centres, and the height variance each carries.
+    """
     if wind_speed_mps <= 0.0:
         return np.empty(0), np.empty(0), np.empty(0)
     peak = peak_omega_rad_s(wind_speed_mps, fetch_m)
@@ -148,7 +152,8 @@ def wind_sea(
 
     Where it carries more slope than Cox & Munk measured, as below the 3-21 m/s it was
     fitted over, the whole sea is scaled to their variance on the axis it overshoots
-    most, as Elfouhaily tied their short waves to it."""
+    most, as Elfouhaily tied their short waves to it.
+    """
     edges, _, variance = _bins(wind_speed_mps, fetch_m)
     if not len(variance):
         return ()
@@ -215,7 +220,8 @@ def snap_error(
     wind_speed_mps: float, fetch_m: float | None, snap: Callable[[float], float]
 ) -> float:
     """Relative frequency error a loop's snapping costs, weighted by height variance,
-    at the bins' centres: the drawn frequencies lie within them."""
+    at the bins' centres: the drawn frequencies lie within them.
+    """
     _, omega, variance = _bins(wind_speed_mps, fetch_m)
     if not len(variance):
         return 0.0

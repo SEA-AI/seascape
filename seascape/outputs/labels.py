@@ -164,7 +164,8 @@ class Labels(Model):
             settings: The scenario's camera, or None. A uint8 EO frame records its
                 sensor, lens and processing; an integer LWIR one, its lens,
                 microbolometer and AGC. Any other frame records none of them.
-            faint: The targets to drop, by name, each with its excess ΔE*ab."""
+            faint: The targets to drop, by name, each with its excess ΔE*ab.
+        """
         # Only an 8-bit EO frame went through the camera's chain, and only an integer
         # LWIR one (png, jpg) through the microbolometer and the AGC that tones it.
         grade = (
@@ -332,7 +333,8 @@ def faint(
     index: np.ndarray, frame: np.ndarray, targets: Sequence[Target]
 ) -> dict[str, float]:
     """The excess ΔE*ab of each target in an 8-bit frame that falls short of
-    MIN_EXCESS_DE. A deeper frame never went through a camera, so nothing is faint."""
+    MIN_EXCESS_DE. A deeper frame never went through a camera, so nothing is faint.
+    """
     if frame.dtype != np.uint8:
         return {}
     low = {}
@@ -353,7 +355,8 @@ def faint(
 def excess_de(index: np.ndarray, frame: np.ndarray, pass_index: int) -> float | None:
     """The target's mean ΔE*ab from its background, less its flanks' mean from the
     same background; None if no row of the target has a flank. A local target-to-
-    clutter contrast (Schmieder & Weathersby 1983)."""
+    clutter contrast (Schmieder & Weathersby 1983).
+    """
     lab = cielab(frame)
     mask = index == pass_index
     beside = flanks(index, pass_index)
@@ -382,13 +385,15 @@ def flank_px(span_px: int) -> int:
     pixels number about the same, and never under FLANK_PX.
 
     Args:
-        span_px: The target's first pixel on the row to its last, gaps included."""
+        span_px: The target's first pixel on the row to its last, gaps included.
+    """
     return max(FLANK_PX, -(-span_px // 2))
 
 
 def flanks(index: np.ndarray, pass_index: int) -> np.ndarray:
     """The pixels beside the target on each of its rows, past FLANK_GAP_PX of it in any
-    direction, that no object, the ownship included, covers."""
+    direction, that no object, the ownship included, covers.
+    """
     mask = index == pass_index
     beside = np.zeros_like(mask)
     for y in np.flatnonzero(mask.any(axis=1)):
@@ -410,7 +415,8 @@ def background(
     Args:
         lab: The frame in L*a*b*.
         mask: The target's pixels.
-        beside: The target's flanks."""
+        beside: The target's flanks.
+    """
     rows = np.flatnonzero(mask.any(axis=1))
     lines = {y: _line(lab[y], mask[y], beside[y]) for y in rows if beside[y].any()}
     if not lines:
@@ -478,7 +484,8 @@ def agcs(folder: Path) -> dict[str, Agc]:
     refused.
 
     Args:
-        folder: One seed's render output, whose labels record each frame's AGC."""
+        folder: One seed's render output, whose labels record each frame's AGC.
+    """
     found: dict[str, Agc] = defaultdict(Agc)
     path = folder / FILENAME
     if not path.exists():

@@ -74,7 +74,8 @@ def column(layout: Layout, bearing_deg: float) -> float | None:
 
     Args:
         layout: Where the panorama sits in its projection.
-        bearing_deg: Clockwise from the frame's +Y, north in the world frame."""
+        bearing_deg: Clockwise from the frame's +Y, north in the world frame.
+    """
     b = math.radians(bearing_deg) - layout.axis
     if layout.kind == "plane" and math.cos(b) <= 0.0:
         return None
@@ -99,7 +100,8 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
         image: The panorama, 8-bit BGR as `stitch` makes it.
         layout: Where it sits in its projection.
         true: Label 000-359, as a chart writes true bearings; else signed about the
-            frame's axis."""
+            frame's axis.
+    """
     w = image.shape[1]
     size = max(1.0, w / 2000)
     strip = np.full((round(36 * size), w, 3), MATTE, np.uint8)
@@ -128,7 +130,8 @@ def _curve(
     folder: Path, cameras: list[CameraCalibration], temps: list[np.ndarray | None]
 ) -> tuple[np.ndarray, Agc] | None:
     """One transfer curve for every thermal frame, so a temperature is one grey on both
-    sides of a seam."""
+    sides of a seam.
+    """
     known = [t_k for t_k in temps if t_k is not None]
     if not known:
         return None
@@ -157,7 +160,8 @@ def stitch(
             are true.
         max_width: The widest the panorama may be, in pixels; None keeps native
             resolution, the largest fx: pixels per radian on axis, where every
-            projection here runs at one unit per radian."""
+            projection here runs at one unit per radian.
+    """
     if max_width is not None and max_width < 1:
         raise ValueError(f"max width is {max_width}: it must be a pixel or more")
     if missing := [c.name for c in cameras if frame not in c.extrinsics]:
@@ -230,7 +234,8 @@ def stitch(
 
 def _faces_ahead(k: np.ndarray, r: np.ndarray, size: tuple[int, int]) -> bool:
     """Whether a whole frame lies less than 90 deg off the stitcher's +Z. Depth is
-    linear across the frame, so the corners decide."""
+    linear across the frame, so the corners decide.
+    """
     w, h = size
     corners = np.array([[0, 0, 1], [w - 1, 0, 1], [0, h - 1, 1], [w - 1, h - 1, 1]])
     _, _, z = r @ np.linalg.inv(k) @ corners.T
@@ -241,7 +246,8 @@ def _shrink(
     image: np.ndarray, k: np.ndarray, factor: float
 ) -> tuple[np.ndarray, np.ndarray]:
     """Area-average a frame down before warping: the warper samples it bilinearly,
-    which aliases anything finer than the output grid."""
+    which aliases anything finer than the output grid.
+    """
     if factor >= 1.0:
         return image, k
     h, w = image.shape[:2]

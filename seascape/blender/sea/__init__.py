@@ -90,7 +90,8 @@ from seascape.physics.waves import (
 
 class Seen(NamedTuple):
     """What the cameras see of the sea: their finest footprint, and the grids their
-    whitecaps are remembered on."""
+    whitecaps are remembered on.
+    """
 
     finest_footprint_m: float = 0.0
     foam_grids: tuple[FoamGrid, ...] = ()
@@ -144,7 +145,8 @@ def material(
         light: With a sky the sea is ir and reflects it; without, eo, glittering
             towards the light's sun if it has one.
         seen: The cameras' finest footprint, and the grids whitecaps are remembered
-            on."""
+            on.
+    """
     gust_rng, slick_rng, foam_rng = rngs
     material = bpy.data.materials.new("sea")
     tree = material.node_tree

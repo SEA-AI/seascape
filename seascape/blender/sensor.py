@@ -56,7 +56,8 @@ def _channels(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, ...]:
 
 def _bilinear(tree: bpy.types.NodeTree, image: Socket) -> Socket:
     """Bilinear interpolation's kernels with the centre at 1: red and blue through
-    [1 2 1] / 2 across and down, green through its four neighbours at a quarter."""
+    [1 2 1] / 2 across and down, green through its four neighbours at a quarter.
+    """
     across = vector(tree, "ADD", _shift(tree, image, 1, 0), _shift(tree, image, -1, 0))
     rows = vector(tree, "MULTIPLY_ADD", across, (0.5, 0.5, 0.5), image)
     filled = vector(
@@ -113,7 +114,8 @@ def _read(
             ADC fills at the well over the gain.
         dark: Dark noise's standard deviation in units of white, the same at any
             light.
-        levels: The ADC's count at white, 2^bits - 1."""
+        levels: The ADC's count at white, 2^bits - 1.
+    """
     shot_noise, dark_noise = _gaussian(tree, seeded, w)
     noisy = dark.madd(dark_noise, _electrons(x, shot, well, shot_noise))
     counts = (noisy * levels).op("ROUND")
@@ -127,7 +129,8 @@ def _unsaturated(read: Num, dark_variance: Num) -> Num:
         read: The read, in units of white.
         dark_variance: Dark noise's variance. A read within three of its standard
             deviations of white counts as saturated: a saturated read spreads no
-            more than the dark noise."""
+            more than the dark noise.
+    """
     return read.op("LESS_THAN", dark_variance.op("SQRT").madd(-3.0, 1.0))
 
 
@@ -143,7 +146,8 @@ def _merge(
     """Granados et al. 2010: each exposure's estimate z / t weighted by the inverse of
     its variance, which the noise model gives at the read, with t = 1 and 1 / ratio;
     a long read that saturated is left out. The ADC's rounding,
-    (1 / levels)^2 / 12, keeps a noiseless read finite."""
+    (1 / levels)^2 / 12, keeps a noiseless read finite.
+    """
     floor = dark_variance + (1.0 / 12) / (levels * levels)
     long_weight = unsaturated / long.madd(shot, floor)
     short_weight = 1.0 / (short.madd(shot, floor) * (ratio * ratio))
@@ -158,7 +162,8 @@ def _gaussian(tree: bpy.types.NodeTree, pixel: Socket, w: Num) -> tuple[Num, Num
     Args:
         tree: The compositor tree the sensor is built in.
         pixel: The White Noise position; each pixel draws its own.
-        w: White Noise's fourth coordinate; each value draws its own."""
+        w: White Noise's fourth coordinate; each value draws its own.
+    """
     uniforms = []
     for offset in (0.0, 0.5):
         noise = tree.nodes.new("ShaderNodeTexWhiteNoise")
@@ -185,7 +190,8 @@ def chain(
         image: The light on the sensor, in units of its white.
         pixel: The image's integer pixel coordinates, which set the Bayer colour
             and seed the noise.
-        grey: Where auto-exposure put the log-average, which HDR's tone map keeps."""
+        grey: Where auto-exposure put the log-average, which HDR's tone map keeps.
+    """
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
     # RGGB from the bottom-left pixel; no phase changes a statistic.
@@ -277,7 +283,8 @@ def _fixed_gains(error_k: float) -> tuple[float, ...]:
     white stays white.
 
     Args:
-        error_k: How far above D65 the camera guesses D65 light to be."""
+        error_k: How far above D65 the camera guesses D65 light to be.
+    """
     gains = colour.white_balance_gains(error_k)
     return tuple(gain / min(gains) for gain in gains)
 
@@ -303,7 +310,8 @@ def _grey_world(tree: bpy.types.NodeTree, image: Socket, ratio: Socket) -> Socke
         tree: The compositor tree the sensor is built in.
         image: The light on the sensor, in units of its white.
         ratio: Where the last read saturates, in whites. Only pixels below it in
-            every colour count."""
+            every colour count.
+    """
     r, g, b = (
         Num(tree, channel).op("LESS_THAN", ratio) for channel in _channels(tree, image)
     )
@@ -346,7 +354,8 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
         tree: The compositor tree the sensor is built in.
         image: The linear image to tone.
         grey: The output the log-average maps to: Reinhard's key a solves
-            a / (1 + a) = grey."""
+            a / (1 + a) = grey.
+    """
     lit, average = (Num(tree, s) for s in log_average(tree, image))
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     capped = Num(tree, grey).op("MINIMUM", 0.99)

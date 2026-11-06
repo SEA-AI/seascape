@@ -89,7 +89,8 @@ def _remembered(
         textures: The lace, the lattice and the quantiles that threshold them.
         memory: Each foam grid and the image sequence remembered on it.
         pulls: Each row field's pull s g, as `_gathered` gives it; empty below
-            force 7."""
+            force 7.
+    """
     ppf = textures.ppf
     lace = textures.lace
     east, north, time_s = separate(tree, surface.where)
@@ -216,7 +217,8 @@ def _latticed(
         bright: The foam's share of fresh foam's brightness, and so of the area the
             lattice holds.
         texture: The lattice, its density and the pixel's longer side.
-        threshold: The lattice's 1 - bright quantile, above which bright of it lies."""
+        threshold: The lattice's 1 - bright quantile, above which bright of it lies.
+    """
     held = (Num(tree, texture.lattice) - threshold).madd(LATTICE_SHARPNESS, 0.5)
     held.socket.node.use_clamp = True
     # A pixel longer than the lattice's walls draws their mean: from one wall's width,
@@ -247,7 +249,8 @@ def _latticed(
 
 class _Whitecaps(NamedTuple):
     """The share of the pixel foam covers; that as a share of fresh foam's brightness;
-    the share bubbles lie under; and the foam's albedo, None with no whitecaps."""
+    the share bubbles lie under; and the foam's albedo, None with no whitecaps.
+    """
 
     area: bpy.types.NodeSocket
     foam: bpy.types.NodeSocket
@@ -272,7 +275,8 @@ def _quantiles() -> np.ndarray:
 class _FoamTexture(NamedTuple):
     """Unit Gaussians drifting with the surface: whitecaps' outline, aged foam's
     lattice, and its density; the pixel's longer side, which fades the lattice; and the
-    unit normal's quantiles, which threshold them."""
+    unit normal's quantiles, which threshold them.
+    """
 
     lace: bpy.types.NodeSocket
     lattice: bpy.types.NodeSocket
@@ -299,7 +303,8 @@ def _foam_texture(
         rng: Draws the lattice's bubbles and openings.
         pixel_m: The pixel's longer side, which fades the lattice.
         ppf: The unit normal's 1 - p quantile, tabulated in p: a unit Gaussian tops
-            ppf(p) over p of its area."""
+            ppf(p) over p of its area.
+    """
     lattice = curve_image(
         "sea_foam_lattice",
         _unit(
@@ -334,7 +339,8 @@ def _foam_lace(
         tree: The sea material's shader tree.
         surface: Where the lace lies and drifts.
         tile: Von Karman noise, zero mean and unit variance, read stretched downwind.
-        ragged: A unit Gaussian lattice that frays the lace."""
+        ragged: A unit Gaussian lattice that frays the lace.
+    """
     east, north = _downwind(surface.sea)
     per_m = 1 / FOAM_TILE_M
     along = per_m / FOAM_STREAK
@@ -364,7 +370,8 @@ def _foam_lattice(
         tree: The sea material's shader tree.
         surface: Where the lattice lies and drifts.
         tile: `foam_lattice_field`'s walls and openings, ranked onto a unit Gaussian.
-        start: The offset, in tiles."""
+        start: The offset, in tiles.
+    """
     east, north = _downwind(surface.sea)
     layers = []
     # From force 7 the lattice is blown into streaks along the wind.

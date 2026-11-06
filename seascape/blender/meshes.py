@@ -28,7 +28,8 @@ def _joined(
     Args:
         parts: Roots whose meshes, children included, are joined; the rest is removed.
         frame: Where the joined object sits. The default, the fitted origin, puts the
-            waterline at z = 0."""
+            waterline at z = 0.
+    """
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     meshes = [o for o in everything if o.type == "MESH"]
     others = [o for o in everything if o.type != "MESH"]
@@ -102,7 +103,8 @@ def _zone_slots(found: faces.Parts, per_face: list[np.ndarray]) -> None:
 
 def _unslotted(joined: list[bpy.types.Object]) -> None:
     """Record each joined object's zone per slot in its `["zones"]` and empty the
-    slots; each copy fills them with its own skin."""
+    slots; each copy fills them with its own skin.
+    """
     placeholders = set()
     for obj in joined:
         mesh = obj.data
@@ -124,7 +126,8 @@ def box_corners(
 
     Args:
         objects: Measured, their posed and modified vertices; all but meshes ignored.
-        into: Maps world space to the box's frame; unset, the box is in world."""
+        into: Maps world space to the box's frame; unset, the box is in world.
+    """
     depsgraph = bpy.context.evaluated_depsgraph_get()
     points = []
     for obj in objects:
@@ -193,7 +196,8 @@ def _cached(path: Path) -> Path:
 
 def _load(path: Path) -> set[bpy.types.Object]:
     """Import a mesh file; returns what it added. Caches the parse, unwrapped for wear,
-    as a .blend beside the file and appends from it on later calls."""
+    as a .blend beside the file and appends from it on later calls.
+    """
     imported = _cached(path)
     if imported.exists():
         try:
@@ -339,7 +343,8 @@ def _crevice(
         objects: Its meshes, already fitted.
         scale: The fit's scale, which the bake keys on: the crevice distance is in
             metres.
-        parse: The asset's parse, cached as a .blend, which names the mask's file."""
+        parse: The asset's parse, cached as a .blend, which names the mask's file.
+    """
     crevice = f"{parse.name}.crevice-{scale:.6g}.{wear.CREVICE_FORMAT}.png"
     path = parse.with_name(crevice)
     if path.exists():
@@ -378,7 +383,8 @@ def _crevice(
 
 def prefix_names(name: str, parts: list[bpy.types.Object]) -> None:
     """Prefix with the asset name, so a later import keeps the names its zones key
-    on."""
+    on.
+    """
     everything = [o for part in parts for o in [part, *part.children_recursive]]
     for material in {s.material for o in everything for s in o.material_slots}:
         if material is not None:

@@ -64,7 +64,8 @@ def test_a_face_normal_turns_with_the_fit(box) -> None:
 
 def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
     """Blender takes a face's normal from its winding in world space, which a mirror
-    reverses."""
+    reverses.
+    """
     obj, zone = box
     obj.scale.x = -1.0
     wear.tag([obj], [zone], "steel")
@@ -289,7 +290,8 @@ def test_every_lwir_layer_is_one_the_masks_cover() -> None:
 
 def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
     """From the output back to the clean skin: each wear mix's layer and the emissivity
-    of what it lays over."""
+    of what it lays over.
+    """
     out = next(n for n in material.node_tree.nodes if n.type == "OUTPUT_MATERIAL")
     node = out.inputs["Surface"].links[0].from_node
     chain = []

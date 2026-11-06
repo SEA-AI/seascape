@@ -61,7 +61,8 @@ def baseline() -> Scenario:
 
 def presets(into: Path) -> Path:
     """Camera and rig presets of the test's own, a rig extending another, and a
-    scenario mounting it twice. Returns the rig preset."""
+    scenario mounting it twice. Returns the rig preset.
+    """
     (into / "eo.toml").write_text(
         'band = "eo"\nhfov_deg = 30.0\nwidth_px = 64\nheight_px = 36\n'
     )
@@ -139,7 +140,8 @@ def test_an_installation_takes_its_model_and_height_from_its_presets(twin) -> No
 
 def test_samples_covers_every_band() -> None:
     """`compositor.set_output` reads this with `getattr(samples, band)`, so a band added
-    to the Literal without a field here fails mid-build rather than in validation."""
+    to the Literal without a field here fails mid-build rather than in validation.
+    """
     assert set(Samples.model_fields) == set(get_args(Band.__value__))
 
 
@@ -1283,7 +1285,8 @@ def test_each_drawn_object_is_checked_with_its_own_asset() -> None:
 @pytest.mark.parametrize("choice", [[None, 7.0], [None]])
 def test_a_draught_choice_may_leave_it_unset(choice: list[float | None]) -> None:
     """None is the asset's own draught: it bounds nothing, and is no error. TOML has
-    no null, so only an override given as a table can hold it."""
+    no null, so only an override given as a table can hold it.
+    """
     spec = {
         "asset": "bulk_carrier",
         "range_m": 900.0,

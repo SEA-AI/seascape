@@ -29,7 +29,8 @@ class Swell(Model):
 
 class WarmLayer(Model):
     """The sun's heat trapped near the surface on a calm day, Fairall et al.'s warm
-    layer. Each value is a mean since it formed; unset, their clear COARE day's."""
+    layer. Each value is a mean since it formed; unset, their clear COARE day's.
+    """
 
     hours: float = Field(
         default=skin.CLEAR_DAY_HOURS,
@@ -131,7 +132,8 @@ class Sea(Model):
 
     def t_skin_k(self, sun_up: bool) -> float:
         """What the camera sees: the bulk under a cool skin, warmed by its warm layer
-        if it has one."""
+        if it has one.
+        """
         warm = self.warm_layer
         rise = 0.0 if warm is None else warm.rise_k(self.wind_speed_mps, self.t_sea_k)
         return skin.skin_k(self.t_sea_k, rise, sun_up)
@@ -316,7 +318,8 @@ class Sky(Model):
     @property
     def photo_turn_rad(self) -> float:
         """How far to turn the photo to put its sun at `sun_bearing_deg`. Turning a
-        lookup by d carries the image's sun clockwise by d: no negation."""
+        lookup by d carries the image's sun clockwise by d: no negation.
+        """
         return math.radians(self.sun_bearing_deg - self.photo.sun_bearing_deg)
 
     @property

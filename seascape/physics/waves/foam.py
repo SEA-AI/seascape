@@ -94,7 +94,8 @@ def _smooth_field(
         rng: Where the noise comes from.
         cells: The tile's side, in texels.
         sigma_texels: The blur's standard deviation; the field's autocorrelation is a
-            Gaussian sqrt(2) wider, the kernel convolved with itself."""
+            Gaussian sqrt(2) wider, the kernel convolved with itself.
+    """
     k = 2 * np.pi * np.fft.fftfreq(cells)
     blur = np.exp(-(k[:, None] ** 2 + k[None, :] ** 2) * sigma_texels**2 / 2)
     field = np.fft.ifft2(np.fft.fft2(rng.standard_normal((cells, cells))) * blur).real
@@ -109,7 +110,8 @@ def _cell_walls(rng: np.random.Generator, cells: int, period: int) -> np.ndarray
     Args:
         rng: Where the points and the walls' warp come from.
         cells: The tile's side, in texels.
-        period: Points per side of the tile, period^2 in all."""
+        period: Points per side of the tile, period^2 in all.
+    """
     points = rng.uniform(0.0, 1.0, (period, period, 2))
     at = (np.arange(cells) + 0.5) * period / cells
     x, y = np.meshgrid(at, at, indexing="xy")
@@ -146,7 +148,8 @@ def foam_lattice_field(
         tile_m: The tile's side; each bubble size is rounded to divide it.
         cell_sizes_m: Bubble sizes, one Voronoi field of walls each.
         opening_length_m: The openings' integral scale, the length the field's
-            autocorrelation integrates to."""
+            autocorrelation integrates to.
+    """
     walls = np.minimum.reduce(
         [_cell_walls(rng, cells, round(tile_m / size_m)) for size_m in cell_sizes_m]
     )
@@ -162,7 +165,8 @@ def whitecap_fraction(wind_speed_mps: float) -> float:
 
 def _normal_cdf(z: np.ndarray) -> np.ndarray:
     """The standard normal CDF, within 1.5e-7: erf by Abramowitz & Stegun, Handbook of
-    Mathematical Functions, 7.1.26."""
+    Mathematical Functions, 7.1.26.
+    """
     x = np.abs(z) / math.sqrt(2)
     t = 1 / (1 + 0.3275911 * x)
     poly = t * (
@@ -183,7 +187,8 @@ def _laid(z: np.ndarray) -> np.ndarray:
 
 def foam_edge_g(wind: tuple[Wave, ...]) -> float:
     """The spread in g over which a crest goes from whole to broken foam, never 0,
-    which a memory divides by."""
+    which a memory divides by.
+    """
     breakers = tallest(wind, BREAKING_HEIGHT_SHARE)
     return max(WHITECAP_EDGE * math.sqrt(slope_variance(breakers)), 1e-9)
 
@@ -206,7 +211,8 @@ def _resolved(wind: tuple[Wave, ...], cell_m: float) -> tuple[Wave, ...]:
 
     Args:
         wind: The wind sea's waves.
-        cell_m: The grid's cell; a wave needs `FOAM_CELLS_PER_WAVE` of them."""
+        cell_m: The grid's cell; a wave needs `FOAM_CELLS_PER_WAVE` of them.
+    """
     return tuple(
         w for w in wind if 2 * math.pi / w.k_rad_m >= FOAM_CELLS_PER_WAVE * cell_m
     )
@@ -222,7 +228,8 @@ def _drifting_rad_s(
 
 class _Crests:
     """The downward acceleration of `use`, in g, on a grid that drifts with the
-    surface: the water at grid point x is at x + v t."""
+    surface: the water at grid point x is at x + v t.
+    """
 
     def __init__(
         self, use: tuple[Wave, ...], grid: FoamGrid, drift_mps: tuple[float, float]
@@ -253,7 +260,8 @@ def _memory_times(start_s: float, step_s: float, frames: int) -> list[float]:
     Args:
         start_s: The first frame's time.
         step_s: The frame interval, which the fine steps before the frames keep too.
-        frames: How many frames from start_s."""
+        frames: How many frames from start_s.
+    """
     fine = math.ceil(FOAM_FINE_WARM_S / step_s)
     early = start_s - FOAM_WARM_EFOLDS * WHITECAP_AREA_EFOLD_S
     return [
@@ -283,7 +291,8 @@ def foam_memory(
         start_s: The first frame's time; frame i is at start_s + i step_s.
         step_s: The frame interval, 1 / fps.
         frames: How many frames to yield.
-        threshold_g: The downward acceleration at which a crest lays half cover."""
+        threshold_g: The downward acceleration at which a crest lays half cover.
+    """
     use = _resolved(wind, grid.cell_m)
     crests = _Crests(use, grid, drift_mps)
     edge = foam_edge_g(wind)
@@ -311,7 +320,8 @@ def _reference_accelerations(
     Args:
         use: The wind waves a memory's grid draws.
         drift_mps: (east, north): the surface's drift, which each point moves with.
-        step_s: The memory's frame interval, which sets its fine steps."""
+        step_s: The memory's frame interval, which sets its fine steps.
+    """
     longest_m = max(2 * math.pi / w.k_rad_m for w in use)
     slowest_s = max(2 * math.pi / w.omega_rad_s for w in use)
     x, y, t = (SAMPLE_SPAN * lattice(FOAM_REFERENCE_SAMPLES)).T
@@ -339,7 +349,8 @@ def _closed_in(
         covers: The cover each of an array of thresholds gives, falling as it rises.
         wanted: The covers to reach, each in (0, 1).
         lo: A threshold whose cover is above every wanted one.
-        hi: A threshold whose cover is below every wanted one."""
+        hi: A threshold whose cover is below every wanted one.
+    """
     target = np.log(wanted)
     low, high = np.full(len(wanted), lo), np.full(len(wanted), hi)
     low_cover = np.full(len(wanted), np.nan)
@@ -382,7 +393,8 @@ def foam_memory_thresholds_g(
         drift_mps: (east, north): the surface's drift, which each point moves with.
         cell_m: The memory grid's cell, which sets the waves it draws.
         step_s: The memory's frame interval, 1 / fps.
-        fractions: The covers wanted; 0 or less gives inf, 1 or more -inf."""
+        fractions: The covers wanted; 0 or less gives inf, 1 or more -inf.
+    """
     wanted = np.array(fractions, dtype=float)
     inside = (wanted > 0.0) & (wanted < 1.0)
     out = np.where(wanted <= 0.0, math.inf, -math.inf)

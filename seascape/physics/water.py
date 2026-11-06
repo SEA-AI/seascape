@@ -25,7 +25,8 @@ def body_color(chl_mg_m3: float, ior: float) -> tuple[float, float, float]:
     Args:
         chl_mg_m3: Chlorophyll in the water, which turns it from clear blue to green.
         ior: Seawater's refractive index, n, which sets the Fresnel loss on the way
-            out."""
+            out.
+    """
     log_chl = np.log(_CHL_MG_M3)
     rgb = [np.interp(np.log(chl_mg_m3), log_chl, channel) for channel in _RGB]
     t = 1 - ((ior - 1) / (ior + 1)) ** 2

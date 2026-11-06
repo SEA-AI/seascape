@@ -78,7 +78,8 @@ def test_the_colours_pass_through_in_time_order(tmp_path) -> None:
 
 def test_a_16_bit_thermal_frame_is_toned_not_flattened(tmp_path) -> None:
     """The sequencer would show centikelvin as one flat grey. Each half is flat, so
-    the AGC's detail headroom bounds it."""
+    the AGC's detail headroom bounds it.
+    """
     folder = run(tmp_path, GREYS[:3], [0.0, 0.1, 0.2])
     t_k = np.repeat([280.0, 300.0], [18, 18])[:, None] * np.ones(64)
     for path in (folder / "port").glob("*.png"):

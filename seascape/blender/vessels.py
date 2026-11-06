@@ -39,7 +39,8 @@ from seascape.physics import earth, wakes, waves
 class Hulls:
     """Each asset's first import, copied for the rest of the build: the FBX importer
     slows with every material already in the file. `heat` is the LWIR build's, None
-    in EO. An asset in `worn` is tagged."""
+    in EO. An asset in `worn` is tagged.
+    """
 
     sky: Sky
     heat: Heat | None
@@ -50,7 +51,8 @@ class Hulls:
 @dataclass(frozen=True)
 class Condition:
     """How a hull is kept and run: one temperature for all of it or none, minutes
-    since its engines stopped, its paint's solar absorptance and its wear."""
+    since its engines stopped, its paint's solar absorptance and its wear.
+    """
 
     t_k: float | None = None
     engine_off_min: float = 0.0
@@ -79,7 +81,8 @@ def _vessel(
         condition: How the hull is kept and run; in LWIR, what its skins radiate.
         hulls: Where an asset already imported is copied from.
         rise_m: Lift above the asset's draught; the LWIR skin's waterline follows
-            it."""
+            it.
+    """
     heat = hulls.heat
     if name in hulls.imported:
         parts = [_copy_tree(part, None) for part in hulls.imported[name]]
@@ -151,7 +154,8 @@ def add_ownship(
         rigs: Parented to the ownship; their offsets are in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
-        tall: The waves that are geometry, which it heaves on as well as its script."""
+        tall: The waves that are geometry, which it heaves on as well as its script.
+    """
     if ownship.asset is None:
         anchor = bpy.data.objects.new("ownship", None)
         bpy.context.collection.objects.link(anchor)
@@ -371,7 +375,8 @@ def _turbine(
     hulls: Hulls,
 ) -> bpy.types.Object:
     """A turbine facing the wind, its rotor starting at an angle of its own so a farm's
-    rotors turn out of step."""
+    rotors turn out of step.
+    """
     anchor = _vessel(
         farm.asset,
         condition=Condition(paint_absorptance=farm.paint_absorptance, wear=farm.wear),
@@ -449,7 +454,8 @@ def ride(
         field: Every wave, which the pitch and roll follow.
         tall: The waves that are geometry, which alone heave the hull: the rest are
             shading, which a heaving hull would break its waterline on.
-        outputs: The times keyed, one per frame."""
+        outputs: The times keyed, one per frame.
+    """
     sc = bpy.context.scene
     hulls = []
     for anchor in anchors:
@@ -485,7 +491,8 @@ class OverlapError(ValueError):
 
 def overlaps(anchors: list[bpy.types.Object], frames: int) -> list[tuple[str, str]]:
     """Pairs of hulls whose footprints meet in any frame: each a circle of half its
-    larger horizontal extent about its anchor, where the frame has moved it."""
+    larger horizontal extent about its anchor, where the frame has moved it.
+    """
     radius_m = {a.name: max(a["length_m"], a["beam_m"]) / 2 for a in anchors}
     sc = bpy.context.scene
     found = set()
@@ -514,7 +521,8 @@ def add_vessels(
         radius_m: Earth's effective radius, which drops a distant hull to the curved
             sea.
         hulls: Where an asset already imported is copied from.
-        trails: Each wake under way is added to it."""
+        trails: Each wake under way is added to it.
+    """
     outputs = scenario.outputs
     wearing: list[tuple[list[bpy.types.Object], float, str]] = []
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)

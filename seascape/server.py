@@ -121,7 +121,8 @@ class Job:
     @property
     def folders(self) -> list[Path]:
         """One per variant: `render` names each by its seed, skipping a seed whose
-        hulls meet."""
+        hulls meet.
+        """
         if len(self.scenes) == 1:
             return [self.folder]
         seeds = sorted(int(p.name) for p in self.folder.iterdir() if p.name.isdigit())
@@ -204,7 +205,8 @@ def _tried(
         lines: TOML overrides merged over it.
         variants: How many scenes to return; the image and byte totals take the
             largest this many of the seeds tried.
-        settings: The server's limits."""
+        settings: The server's limits.
+    """
     first = load(path, lines)
     scenes: list[Scenario] = []
     images, sizes = [], []
@@ -247,7 +249,8 @@ def _prune(state: State) -> None:
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
     """The scenarios `render` starts from, the meshes and skies a scenario can name,
     and the scenario's JSON schema. Any field can be a draw instead of a value:
-    `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed."""
+    `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed.
+    """
     return {
         "scenarios": {n: p.read_text() for n, p in _state(ctx).scenarios().items()},
         "meshes": {
@@ -388,7 +391,8 @@ def _finish(job: Job) -> None:
 async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, or its
     error, or every file as a URL with a preview of each of the first `PREVIEWS`
-    stills."""
+    stills.
+    """
     state = _state(ctx)
     found = state.jobs.get(job)
     if found is None or found.task is None:

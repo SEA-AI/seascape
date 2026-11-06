@@ -1,6 +1,7 @@
 """The aerosol overhead that the sky and the sun shine through: maritime haze, and
 in fog a layer of drops at the surface. In LWIR from LOWTRAN's tables,
-in the visible by Koschmieder."""
+in the visible by Koschmieder.
+"""
 
 import math
 
@@ -30,7 +31,8 @@ def extinction_per_m(visibility_km: float | None) -> float:
 
     Args:
         visibility_km: The range over which a dark target keeps 5% of its contrast
-            against the horizon sky; None is no aerosol."""
+            against the horizon sky; None is no aerosol.
+    """
     if visibility_km is None:
         return 0.0
     return math.log(20) / (visibility_km * 1000)
@@ -38,7 +40,8 @@ def extinction_per_m(visibility_km: float | None) -> float:
 
 def fog_weight(visibility_km: float | None) -> float:
     """How far the air is fog: 0 for haze at `HAZE_KM` and over, 1 at `FOG_KM` and
-    under, linear in 1 / visibility between, as LOWTRAN scales aerosol."""
+    under, linear in 1 / visibility between, as LOWTRAN scales aerosol.
+    """
     if visibility_km is None:
         return 0.0
     mist = (1 / visibility_km - 1 / HAZE_KM) / (1 / FOG_KM - 1 / HAZE_KM)
@@ -55,7 +58,8 @@ def _fog_depth(
     elev_rad: npt.ArrayLike, visibility_km: float, atmosphere: Atmosphere
 ) -> FloatArray:
     """The fog drops' LWIR depth along the slant path: the path table's less the same
-    path's without aerosol. The sky already holds the gases."""
+    path's without aerosol. The sky already holds the gases.
+    """
     path = _slant_m(elev_rad)
     return lwir.path_optical_depth(
         path, visibility_km, atmosphere
@@ -73,7 +77,8 @@ def depth(
     Args:
         elev_rad: Elevation of the line of sight.
         visibility_km: Meteorological optical range; None is no aerosol.
-        atmosphere: The model atmosphere whose tables are read."""
+        atmosphere: The model atmosphere whose tables are read.
+    """
     weight = fog_weight(visibility_km)
     if weight == 1.0:
         assert visibility_km is not None
@@ -109,7 +114,8 @@ def sky_radiance(
         elev_rad: Elevation of the line of sight.
         visibility_km: Meteorological optical range; None is no aerosol.
         t_air_k: Air temperature, at which the aerosol emits.
-        atmosphere: The model atmosphere whose tables are read."""
+        atmosphere: The model atmosphere whose tables are read.
+    """
     passed = transmittance(elev_rad, visibility_km, atmosphere)
     return passed * np.asarray(radiance) + (1.0 - passed) * lwir.band_radiance(t_air_k)
 
@@ -117,7 +123,8 @@ def sky_radiance(
 def cover(visibility_km: float | None, atmosphere: Atmosphere = ATMOSPHERE) -> float:
     """The aerosol's LWIR emissivity as a horizontal surface sees the sky: the cloud
     fraction it amounts to. Each elevation weighs its projected solid angle,
-    sin e cos e de, which is uniform in sin^2 e."""
+    sin e cos e de, which is uniform in sin^2 e.
+    """
     # Judgement: midpoints of a smooth integrand.
     n = 1000
     up = np.sqrt((np.arange(n) + 0.5) / n)
@@ -128,7 +135,8 @@ def fog_cover(
     visibility_km: float | None, atmosphere: Atmosphere = ATMOSPHERE
 ) -> float:
     """`cover` of the fog alone, blended in by `fog_weight`. Haze's longwave is already
-    in the clear sky, Swinbank's."""
+    in the clear sky, Swinbank's.
+    """
     weight = fog_weight(visibility_km)
     if weight == 0.0:
         return 0.0
@@ -138,7 +146,8 @@ def fog_cover(
 
 def fog_beam_depth(visibility_km: float | None) -> float:
     """The fog's optical depth overhead in the visible, blended in by `fog_weight`.
-    Haze's is already in the clear-sky beam, Meinel's and the Sky Texture's."""
+    Haze's is already in the clear-sky beam, Meinel's and the Sky Texture's.
+    """
     weight = fog_weight(visibility_km)
     if weight == 0.0:
         return 0.0
@@ -149,7 +158,8 @@ def fog_beam_depth(visibility_km: float | None) -> float:
 def sun_transmittance(elev_rad: float, visibility_km: float | None) -> float:
     """What the fog leaves of the sun's direct beam along the slant path. Drops far
     larger than the wavelength extinguish it alike across the sun's band, Mie's
-    efficiency near 2 (van de Hulst 1957)."""
+    efficiency near 2 (van de Hulst 1957).
+    """
     depth = fog_beam_depth(visibility_km)
     if depth == 0.0:
         return 1.0
@@ -166,6 +176,7 @@ def diffuse_transmittance(visibility_km: float | None) -> float:
 
     Limitation: 15.20b takes the light as diffuse. A collimated sun moves the split
     between reflected and passed with its angle, most for a low sun, which this does
-    not follow."""
+    not follow.
+    """
     tau = fog_beam_depth(visibility_km)
     return 2.0 / (2.0 + (1.0 - ASYMMETRY) * tau)

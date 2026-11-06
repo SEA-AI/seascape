@@ -49,7 +49,8 @@ FINE_ROWS_TEXEL_M = 0.5
 
 class _Surface(NamedTuple):
     """The sea's surface as the shader reads it: at `where`, (east, north, time), on
-    the clock `outputs` keeps, under `sea`'s wind."""
+    the clock `outputs` keeps, under `sea`'s wind.
+    """
 
     sea: Sea
     where: bpy.types.NodeSocket
@@ -82,7 +83,8 @@ def _drifting(
         axes: The tile's two axes, each (east, north) in tiles per metre.
         velocity_mps: (east, north) the tile is carried at.
         start: Offset along both axes, in tiles.
-        name: Prefix of the nodes' names."""
+        name: Prefix of the nodes' names.
+    """
     outputs = surface.outputs
     east, north, time_s = separate(tree, surface.where)
     flat = combine(tree, east, north)
@@ -132,7 +134,8 @@ def _drifting(
 
 def surface_drift(sea: Sea, outputs: Outputs) -> tuple[float, float]:
     """(east, north) m/s the surface drifts at, carrying foam and windrows alike; a
-    loop's holds still, as the foam memory's drift would jump at its seam."""
+    loop's holds still, as the foam memory's drift would jump at its seam.
+    """
     if outputs.loop:
         return 0.0, 0.0
     east, north = _downwind(sea)
@@ -166,7 +169,8 @@ def _gust(
 
 class _RowRead(NamedTuple):
     """A row field's unit Gaussian convergence, made when first read, as an image
-    nothing reads is not saved; and the rows' spacing."""
+    nothing reads is not saved; and the rows' spacing.
+    """
 
     read: Callable[[], bpy.types.NodeSocket]
     spacing_m: float
@@ -191,7 +195,8 @@ def _langmuir_rows(
     Args:
         tree: The sea material's shader tree.
         surface: Whose wind spaces and carries the rows.
-        rng: Draws the windrows first, as every reader reads them first."""
+        rng: Draws the windrows first, as every reader reads them first.
+    """
     speed = surface.sea.wind_speed_mps
     spacing_m = WINDROW_SPACING_S * max(speed, WINDROW_MIN_WIND_MPS)
     fine_tile_m = GUST_CELLS * FINE_ROWS_TEXEL_M
@@ -227,7 +232,8 @@ def _looked_up_sigma(tile: np.ndarray) -> float:
     form in the neighbours' covariance.
 
     Args:
-        tile: Texel values, (rows, columns), wrapped at its edges as repeat reads it."""
+        tile: Texel values, (rows, columns), wrapped at its edges as repeat reads it.
+    """
     neighbours = np.stack(
         [np.roll(tile, (-dy, -dx), (0, 1)).ravel() for dy in (0, 1) for dx in (0, 1)]
     )
@@ -303,7 +309,8 @@ def _gathered(
         tree: The sea material's shader tree.
         sea: Whose wind sets s.
         footprint_m: A pixel's footprint on the sea; rows too fine for it fade.
-        rows: The windrows and the finer rows, each with its spacing."""
+        rows: The windrows and the finer rows, each with its spacing.
+    """
     share = _streaking(sea)
     if share == 0.0:
         return ()
@@ -340,7 +347,8 @@ def _gusty(
         sea: Whose mean wind sets the variance a gust adds.
         gust: The wind over its mean, less one, as `_gust` gives it.
         unresolved: The unresolved slope variances along and across the view, each
-            twice its axis's, at the mean wind."""
+            twice its axis's, at the mean wind.
+    """
     offset = scalar(
         tree,
         "MULTIPLY",

@@ -37,7 +37,7 @@ def test_a_planing_hull_s_waves_stop_growing_past_the_hump() -> None:
 
 
 def test_kriebel_and_seelig_s_height() -> None:
-    """beta at L / Le = 3, against their eq. at F = 0.3, y = L."""
+    """The beta at L / Le = 3, against their eq. at F = 0.3, y = L."""
     hull = _hull(0.3, length_m=100.0)
     beta = 1 + 8 * math.tanh(0.45) ** 3
     expected = beta * hull.speed_mps**2 / 9.81 * 0.2**2

@@ -148,7 +148,8 @@ class Scenario(Model):
     @property
     def worn(self) -> frozenset[str]:
         """The assets an object, the ring or a farm wears, less the weathered ones,
-        whose textures are their wear."""
+        whose textures are their wear.
+        """
         wearing = [(o.asset, o.wear) for o in self.objects]
         wearing += [(f.asset, f.wear) for f in self.farms]
         if (ring := self.targets) is not None:
@@ -188,7 +189,8 @@ class Scenario(Model):
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":
         """A camera's name joins its rig's, so rig `a_b` with camera `c` and rig `a`
-        with camera `b_c` would write one file."""
+        with camera `b_c` would write one file.
+        """
         names = [mount.name for mount in self.mounts]
         if len(set(names)) != len(names):
             raise ValueError(f"two cameras share a name: {sorted(names)}")

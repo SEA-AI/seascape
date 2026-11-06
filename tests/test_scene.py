@@ -149,7 +149,8 @@ _MATH = {
 
 def _evaluated(socket: bpy.types.NodeSocket) -> float:
     """A chain of Value and Math nodes, and the vectors they pass through, evaluated
-    as Blender does."""
+    as Blender does.
+    """
     node = socket.node
     if node.bl_idname == "ShaderNodeValue":
         return socket.default_value
@@ -186,7 +187,8 @@ def _hazed_sky_m(
     sky: Sky, elevation: np.ndarray | float, cloud: float | None = None
 ) -> np.ndarray:
     """`lwir.sky_radiance`, or `lwir.cloudy_sky_radiance` under a `cloud` share, at
-    `elevation` through the aerosol."""
+    `elevation` through the aerosol.
+    """
     if cloud is None:
         radiance = lwir.sky_radiance(elevation, sky.t_air_k, sky.atmosphere)
     else:
@@ -216,7 +218,8 @@ def _blocked(origin: Vector, target: Vector) -> bool:
 
 def _footprints_m(n: int) -> np.ndarray:
     """The footprint at each texel centre of a table the shader reads by log
-    footprint."""
+    footprint.
+    """
     low, high = FOOTPRINT_RANGE_M
     return low * (high / low) ** ((np.arange(n) + 0.5) / n)
 
@@ -231,7 +234,8 @@ def _normal_waves(
     scenario: Scenario, kept: tuple[waves.Wave, ...] | None
 ) -> tuple[tuple[waves.Wave, ...], tuple[waves.Wave, ...]]:
     """The scenario's wind and swell, or the `kept` part of them, less the waves drawn
-    as geometry."""
+    as geometry.
+    """
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     if kept is not None:
         wind = tuple(w for w in wind if w in kept)
@@ -252,7 +256,8 @@ def drawn(
 ) -> list[tuple[waves.Wave, bpy.types.NodeInputs, int]]:
     """Each wave of the built sea's normal, the inputs of the node drawing it, and its
     lane there, of the scenario's field or the `kept` part of it, less the waves drawn
-    as geometry. Every other lane must be empty."""
+    as geometry. Every other lane must be empty.
+    """
     nodes = bpy.data.node_groups["sea_waves"].nodes
     wind, swell = _normal_waves(scenario, kept)
     triples = _triples(wind) + _triples(swell)
@@ -440,7 +445,8 @@ class TestEoBand:
 
     def test_a_hull_floats_on_the_sea_and_not_on_the_tangent_plane(self) -> None:
         """Hulls left at z = 0 fly with range and bearing still right, so nothing else
-        catches it."""
+        catches it.
+        """
         radius = earth.earth_radius_m(SCENARIO.sea.refraction_k)
 
         for spec in SCENARIO.objects:
@@ -517,7 +523,8 @@ class TestEoBand:
 
     def test_foam_glitter_and_gusts_read_the_sea_the_waves_are_drawn_on(self) -> None:
         """The foam's memory and lace, the glitter and the gusts all read the water's
-        rest position, so none slides off the crests."""
+        rest position, so none slides off the crests.
+        """
         tree = bpy.data.materials["sea"].node_tree
         memory = [n for n in tree.nodes if n.name.startswith("sea_foam_")]
         assert memory
@@ -563,7 +570,8 @@ class TestEoBand:
 
     def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
         """Incoming points back at the camera; unflipped, the haze would take the sky
-        behind it."""
+        behind it.
+        """
         nodes = bpy.data.node_groups["haze"].nodes
         ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
         assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
@@ -613,7 +621,8 @@ def test_a_saved_build_reopens_with_its_lookup_tables(
     band: Band, tmp_path: Path
 ) -> None:
     """`seascape build` saves a .blend for Blender to open; an unpacked table would
-    reopen as its fill colour."""
+    reopen as its fill colour.
+    """
     scene.build(load(OPEN_SEA), band)
     tables = [
         image
@@ -645,7 +654,8 @@ def test_an_image_inside_a_node_group_is_counted() -> None:
 
 def test_a_turned_part_is_measured_by_its_vertices() -> None:
     """A diagonal rod turned onto x has no y extent; its `bound_box`, turned with it,
-    does."""
+    does.
+    """
     mesh = bpy.data.meshes.new("rod")
     mesh.from_pydata([(-1, -1, 0), (1, 1, 0), (1, 1, 0.01)], [], [(0, 1, 2)])
     rod = bpy.data.objects.new("rod", mesh)
@@ -687,7 +697,8 @@ def test_a_skinned_part_joins_in_its_pose(skinned: bpy.types.Object) -> None:
 )
 def test_a_hull_is_fitted_along_its_own_bow_axis(bow_deg, bow_corner) -> None:
     """180 is its own inverse: the shipped hull passes with a sign error or the
-    length measured along the beam. Any other bow catches both."""
+    length measured along the beam. Any other bow catches both.
+    """
     asset = Hull(
         **ASSET,
         kind="hull",
@@ -793,7 +804,8 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to() -> None:
 def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() -> None:
     """The rig is yawed off the bow, so its pitch sits between two yaws and
     moves the off-axis lens off both its bearing and its own pitch. The centre camera
-    holds to microdegrees, not zero: matrix_world is float32."""
+    holds to microdegrees, not zero: matrix_world is float32.
+    """
     scenario = variant(
         rig={"pitch_deg": -5.0, "yaw_deg": -60.0},
         cameras={
@@ -927,7 +939,8 @@ def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
 @pytest.mark.usefixtures("empty_blend")
 def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     """The keel rises by the asset's draught minus the object's, and the labels'
-    height and waterline go with it."""
+    height and waterline go with it.
+    """
     hulls = Hulls(SCENARIO.sky, None)
     level, raised = (
         _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)
@@ -1003,7 +1016,8 @@ class TestIrBand:
 
     def test_a_zone_emits_its_emissivity_and_reflects_the_rest(self) -> None:
         """A pure emitter renders a hull one flat value whichever way it is turned;
-        glass and bare metal mirror the sky, paint scatters it."""
+        glass and bare metal mirror the sky, paint scatters it.
+        """
         zoned = {m.name.removeprefix("thermal_") for m in bpy.data.materials}
         assert {"paint_hull", "glass"} <= zoned, (
             "the freighter's labels reach the build"
@@ -1030,7 +1044,8 @@ class TestIrBand:
 
     def test_a_zone_s_table_is_its_heat_balance(self) -> None:
         """The lookup image holds the zone's band radiance over
-        `thermal.temperature_table_k`."""
+        `thermal.temperature_table_k`.
+        """
         env = surroundings(SCENARIO).env
         _, _, table = thermal.temperature_table_k(thermal.ZONES["paint_hull"], env)
         expected = np.vectorize(lwir.band_radiance)(table)
@@ -1184,7 +1199,8 @@ class TestIrBand:
 
     def test_foam_raises_the_emissivity_by_its_cover(self) -> None:
         """The shader reads the excess by cos(theta) at texel centres, scaled by the
-        whitecaps' cover."""
+        whitecaps' cover.
+        """
         table = baked("sea_foam_emissivity")
         excess = lwir.foam_emissivity_excess(np.arccos(blend.texels(len(table))))
         assert table == pytest.approx(excess, abs=1e-6)
@@ -1194,7 +1210,8 @@ class TestIrBand:
     def test_the_baked_emissivity_matches_the_curve(self) -> None:
         """The shader reads this by cos(theta) at texel centres; the curve is sampled by
         theta. Rows run up the unresolved RMS slope, to twice Cox & Munk's wider axis,
-        as a pixel takes it along the view, in the strongest gust."""
+        as a pixel takes it along the view, in the strongest gust.
+        """
         table = baked("sea_emissivity")
         rows, width = table.shape
         mu = (np.arange(width) + 0.5) / width
@@ -1965,7 +1982,8 @@ class TestPhotographedThermalSky:
 
 def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:
     """The baked share at a texel centre is `lwir.Sky.reflected` of the bearing's sky
-    over the round sky's."""
+    over the round sky's.
+    """
     elevation = np.radians(np.arange(-89.0, 90.0, 2.0))
     clear = lwir.sky_radiance(elevation)
     half = CLOUD_BEARINGS // 2
@@ -2210,7 +2228,8 @@ def test_the_shortest_breaker_a_foam_grid_draws_cannot_follow_a_gust(
     speed: float,
 ) -> None:
     """Why whitecaps break at the mean wind: Plant 1982's growth, 0.04 (u* / c)^2
-    omega, takes longer than a gust, its integral scale over the wind, lasts."""
+    omega, takes longer than a gust, its integral scale over the wind, lasts.
+    """
     shortest_m = waves.FOAM_CELLS_PER_WAVE * memory.FOAM_NEAR_CELL_M
     k = 2 * math.pi / shortest_m
     omega = math.sqrt(earth.GRAVITY_MS2 * k)

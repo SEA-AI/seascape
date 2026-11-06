@@ -141,7 +141,8 @@ def _wakes(
         ppf: The unit normal's 1 - p quantile, tabulated in p: a unit Gaussian tops
             ppf(p) over p of its area.
         sea_slope_variance: The sea's total, both axes summed; a hull's arms are
-            drawn only where they stand out from it."""
+            drawn only where they stand out from it.
+    """
     band: Num | float = 0.0
     foam: Num | float = 0.0
     bubbles: Num | float = 0.0
@@ -207,7 +208,8 @@ def _kelvin(
         root: The stationary-phase root: 1 the divergent wave, -1 the transverse.
         path: The point's place along and across the hull's path.
         footprint_m: The pixel's longer side f; a wave of wavenumber k keeps
-            sin(k f / 2) / (k f / 2) of its slope, a box average's response."""
+            sin(k f / 2) / (k f / 2) of its slope, a box average's response.
+    """
     along = Num(tree, path.along)
     side = Num(tree, path.across).op("ABSOLUTE")
     edge = math.tan(KELVIN_HALF_ANGLE_RAD)
@@ -262,7 +264,8 @@ def _patchy(
         cover: The share of the sea the foam covers.
         fixed: The point's place in the path's frame, which the patches are laid on.
         noise: Von Karman noise, zero mean and unit variance.
-        ppf: The unit normal's 1 - p quantile, tabulated in p."""
+        ppf: The unit normal's 1 - p quantile, tabulated in p.
+    """
     stretch = vector(
         tree,
         "MULTIPLY",
@@ -289,7 +292,8 @@ def _smoothed(
     wake: _Wakes | None,
 ) -> bpy.types.NodeSocket | None:
     """Where the unresolved roughness is a slick's: under a slick, and in a turbulent
-    wake, whose short waves stay damped (Milgram et al. 1993)."""
+    wake, whose short waves stay damped (Milgram et al. 1993).
+    """
     if wake is None:
         return slick
     if slick is None:

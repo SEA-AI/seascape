@@ -127,7 +127,8 @@ def test_measure_prints_only_the_manifest_lines(
     run: Run, tmp_path: Path, capfd: pytest.CaptureFixture
 ) -> None:
     """Blender's importer logs to file descriptor 1, which Click's runner cannot see
-    and the toml must not carry."""
+    and the toml must not carry.
+    """
     bpy.ops.mesh.primitive_cube_add()
     cube = tmp_path / "cube.glb"
     bpy.ops.export_scene.gltf(filepath=str(cube))

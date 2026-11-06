@@ -63,7 +63,8 @@ def _blender_log(path: Path) -> Generator[None]:
     stdout.
 
     Args:
-        path: The log, appended to; its folder is made if missing."""
+        path: The log, appended to; its folder is made if missing.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     sys.stdout.flush()
     stdout = os.dup(1)
@@ -126,7 +127,8 @@ def render(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
 ) -> None:
     """Write one image per camera and frame, and their labels. With --variants, a seed
-    whose hulls meet is skipped for the next, and the labels merge into one file."""
+    whose hulls meet is skipped for the next, and the labels merge into one file.
+    """
     built = load(scenario, list(overrides))
     into = output or scenario.with_suffix("")
     # An earlier run's frames would pass for this one's.

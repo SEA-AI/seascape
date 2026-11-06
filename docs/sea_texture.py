@@ -102,7 +102,8 @@ def last_sky_row(frame: np.ndarray) -> int:
 
 def products(texture: np.ndarray, lag: int, axis: int) -> np.ndarray:
     """Per row, the mean product of zero-mean `texture` with itself `lag` px along
-    `axis`."""
+    `axis`.
+    """
     n = texture.shape[axis]
     a = texture.take(range(n - lag), axis=axis)
     b = texture.take(range(lag, n), axis=axis)
@@ -113,7 +114,8 @@ def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
     """The std, skew, lx and gx/gy of the high-passed `sea` less `sky`, nan where
     nothing is left. Noise independent of the scene adds its covariance at every lag
     and its third cumulant, so the sky's are subtracted; the sky is taken as smooth
-    under the high pass, and its noise as the sea's."""
+    under the high pass, and its noise as the sea's.
+    """
     sea, sky = sea - sea.mean(), sky - sky.mean()
 
     def c(lag: int, axis: int) -> float:
@@ -138,7 +140,8 @@ def structure(sea: np.ndarray, sky: np.ndarray) -> dict[str, float]:
 
 def measure(frame: np.ndarray) -> dict[str, float]:
     """The module docstring's numbers for `frame`, leaving out rows whose high pass
-    reaches the horizon or the frame's edge."""
+    reaches the horizon or the frame's edge.
+    """
     horizon = last_sky_row(frame)
     reach = BOX_PX // 2
     bottom = frame.shape[0] - reach
@@ -178,7 +181,8 @@ def histogram_entropy(crop: np.ndarray) -> float:
 
 def glcm_entropy(crop: np.ndarray) -> float:
     """Entropy of an 8-bit crop's grey-level co-occurrence matrix, averaged over
-    `GLCM_OFFSETS`, in nats as scikit-image's graycoprops reports it."""
+    `GLCM_OFFSETS`, in nats as scikit-image's graycoprops reports it.
+    """
     h, w = crop.shape
     entropies = []
     for dy, dx in GLCM_OFFSETS:
@@ -208,7 +212,8 @@ def target_metrics(
 ) -> dict[str, float]:
     """An 8-bit frame's statistics inside a COCO box. An entropy is nan on a crop
     under `MIN_CROP_PX`. Gradients are taken over the frame, so the box's edge sees
-    its true neighbours; `magnitude` is the frame's `sobel_magnitude`, if taken."""
+    its true neighbours; `magnitude` is the frame's `sobel_magnitude`, if taken.
+    """
     if magnitude is None:
         magnitude = sobel_magnitude(image)
     x, y, w, h = box
