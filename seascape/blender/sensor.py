@@ -5,6 +5,7 @@ nodes that `respond` sets before its render.
 """
 
 import math
+from collections.abc import Callable
 
 import bpy
 import numpy as np
@@ -25,6 +26,10 @@ from seascape.config import Camera, Processing
 from seascape.physics import colour
 
 type Socket = bpy.types.NodeSocket
+
+# Judgement: Newton's steps a meter takes from auto-exposure's start; a test pins the
+# mean they reach.
+METER_STEPS = 3
 
 
 def _shift(tree: bpy.types.NodeTree, image: Socket, x: int, y: int) -> Socket:
@@ -182,6 +187,8 @@ def chain(
     image: Socket,
     pixel: Socket,
     grey: Socket,
+    target: Socket,
+    over: Socket,
 ) -> Socket:
     """An image as the sensor reads it out, in units of its white.
 
@@ -191,6 +198,8 @@ def chain(
         pixel: The image's integer pixel coordinates, which set the Bayer colour
             and seed the noise.
         grey: Where auto-exposure put the log-average, which HDR's tone map keeps.
+        target: The mean HDR's tone map brings its output to, if the camera has one.
+        over: The gain over auto-exposure.
     """
     xy = tree.nodes.new("ShaderNodeSeparateXYZ")
     tree.links.new(pixel, xy.inputs["Vector"])
@@ -261,7 +270,10 @@ def chain(
     demosaiced = switch(tree, "sensor.mosaic", raw, demosaiced)
     balanced = vector(tree, "MULTIPLY", demosaiced, gains)
     balanced = switch(
-        tree, "sensor.tone", _clip(tree, balanced), _reinhard(tree, balanced, grey)
+        tree,
+        "sensor.tone",
+        _clip(tree, balanced),
+        _reinhard(tree, balanced, grey, target, over),
     )
     # Unsharp mask over a pixel's Gaussian.
     blur = tree.nodes.new("CompositorNodeBlur")
@@ -346,7 +358,13 @@ def log_average(tree: bpy.types.NodeTree, image: Socket) -> tuple[Socket, Socket
     return lit.socket, scalar(tree, "EXPONENT", levels.outputs["Mean"])
 
 
-def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
+def _reinhard(
+    tree: bpy.types.NodeTree,
+    image: Socket,
+    grey: Socket,
+    target: Socket,
+    over: Socket,
+) -> Socket:
     """Reinhard et al. 2002's global operator on luminance, L / (1 + L): Blender's
     Tonemap compresses each channel, which bleaches a bright colour.
 
@@ -355,15 +373,77 @@ def _reinhard(tree: bpy.types.NodeTree, image: Socket, grey: Socket) -> Socket:
         image: The linear image to tone.
         grey: The output the log-average maps to: Reinhard's key a solves
             a / (1 + a) = grey.
+        target: The mean output the key is solved for instead, if the camera has
+            one.
+        over: The gain over auto-exposure, which scales a solved key.
     """
     lit, average = (Num(tree, s) for s in log_average(tree, image))
     # The key a, with a / (1 + a) = grey, is infinite at a grey of 1, so cap it.
     # Judgement: a cap just under 1, which leaves the grey near its target.
     capped = Num(tree, grey).op("MINIMUM", 0.99)
     key = capped / (1.0 - capped)
-    scaled = lit * (key / average)
+    relative = lit / average
+
+    def toned(a: Num) -> tuple[Num, Num]:
+        scaled = relative * a
+        return scaled / (scaled + 1.0), relative / ((scaled + 1.0) * (scaled + 1.0))
+
+    solved = _solve(tree, toned, key, Num(tree, target)) * over
+    key = Num(tree, switch(tree, "exposure.toned", key.socket, solved.socket))
+    scaled = relative * key
     mapped = scaled / (scaled + 1.0)
     return vector(tree, "SCALE", image, (mapped / lit))
+
+
+def _mean(tree: bpy.types.NodeTree, image: Num) -> Num:
+    levels = tree.nodes.new("CompositorNodeLevels")
+    levels.inputs["Channel"].default_value = "Luminance"
+    feed(tree, levels.inputs["Image"], image)
+    return Num(tree, levels.outputs["Mean"])
+
+
+def _solve(
+    tree: bpy.types.NodeTree,
+    curve: Callable[[Num], tuple[Num, Num]],
+    start: Num,
+    target: Num,
+) -> Num:
+    """The x at which the frame's mean of `curve` is `target`, by Newton's steps from
+    `start`. A meter's mean rises with x and bends down, so each step past the first
+    lands below the root and climbs towards it; halving bounds the first.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        curve: Each pixel's output at x, and its derivative in x.
+        start: Where the steps begin.
+        target: The mean to reach.
+    """
+    x = start
+    for _ in range(METER_STEPS):
+        output, slope = curve(x)
+        step = (_mean(tree, output) - target) / _mean(tree, slope)
+        x = (x - step).op("MAXIMUM", x * 0.5)
+    return x
+
+
+def clipped_gain(
+    tree: bpy.types.NodeTree, lit: Socket, start: Socket, target: Socket
+) -> Num:
+    """The gain that brings the mean of `lit`, clipped at white, to `target`.
+
+    Args:
+        tree: The compositor tree the sensor is built in.
+        lit: The frame's luminance, before auto-exposure.
+        start: The gain the steps begin from.
+        target: The mean to reach.
+    """
+    luminance = Num(tree, lit)
+
+    def clipped(gain: Num) -> tuple[Num, Num]:
+        exposed = luminance * gain
+        return exposed.op("MINIMUM", 1.0), luminance * exposed.op("LESS_THAN", 1.0)
+
+    return _solve(tree, clipped, Num(tree, start), Num(tree, target))
 
 
 def _clip(tree: bpy.types.NodeTree, image: Socket) -> Socket:
@@ -389,8 +469,13 @@ def respond(
     set_value(tree, "sensor.dark", (gain * sensor.dark_noise_e / full_well_e) ** 2)
     set_value(tree, "sensor.levels", 2**sensor.adc_bits - 1)
     set_value(tree, "sensor.ratio", sensor.hdr_ratio)
+    hdr = sensor.hdr_ratio > 1.0
     for name in ("sensor.hdr", "sensor.tone"):
-        toggle(tree, name, sensor.hdr_ratio > 1.0)
+        toggle(tree, name, hdr)
+    target = camera.processing.exposure_target
+    set_value(tree, "exposure.target", target or 0.0)
+    toggle(tree, "exposure.clipped", target is not None and not hdr)
+    toggle(tree, "exposure.toned", target is not None and hdr)
     # Float32 holds integers exactly to 2^24.
     set_value(tree, "sensor.seed", float(noise.integers(2**24)))
     toggle(tree, "sensor.grey_world", camera.processing.white_balance == "grey_world")

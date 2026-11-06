@@ -1113,6 +1113,19 @@ class TestSensor:
         )
         assert np.median(frame) == pytest.approx(2 * MID_GREY, rel=0.1)
 
+    @pytest.mark.parametrize("hdr_ratio", [1.0, 16.0])
+    def test_an_exposure_target_is_the_mean_of_the_output(
+        self, hdr_ratio: float
+    ) -> None:
+        """Past a clipped or tone-mapped sun, where the log-average's grey misses it."""
+        frame = self.through(
+            (1.0, 1.0, 1.0),
+            sun=9.0,
+            sensor={"full_well_e": 1e12, "hdr_ratio": hdr_ratio},
+            processing={"exposure_target": 0.22},
+        )
+        assert (frame @ colour.LUMINANCE).mean() == pytest.approx(0.22, rel=0.01)
+
     def test_noise_is_drawn_apart_per_camera_scenario_and_frame(self) -> None:
         noisy = {"full_well_e": 400.0, "dark_noise_e": 4.0}
         grey = (1.0, 1.0, 1.0)

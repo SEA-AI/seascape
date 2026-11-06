@@ -17,3 +17,9 @@ adc_bits = 12
 width_px = 3840
 # AR0821 datasheet.
 pitch_um = 2.1
+
+[processing]
+# AutoTargetBrightness: the mean grey Exposure Auto aims at, before gamma (Basler,
+# Exposure Auto (dart E)). 0.22 is its default, read with gst-inspect-1.0 pylonsrc
+# off a Watchkeeper's daA3840-30mci.
+exposure_target = 0.22
