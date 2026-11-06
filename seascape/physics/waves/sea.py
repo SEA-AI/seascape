@@ -9,7 +9,7 @@ Structures", 2nd ed., World Scientific 2000, section 2.3.
 """
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 
 import numpy as np
@@ -201,6 +201,11 @@ def wind_sea(
     return tuple(replace(w, amplitude_m=w.amplitude_m * math.sqrt(held)) for w in field)
 
 
+def significant_height_m(field: Sequence[Wave]) -> float:
+    """Hs = 4 sqrt(m0), m0 = sum a^2 / 2 (Holthuijsen 2007)."""
+    return 4.0 * math.sqrt(sum(w.amplitude_m**2 for w in field) / 2.0)
+
+
 def swell(
     height_m: float,
     period_s: float,
@@ -208,7 +213,7 @@ def swell(
     snap: Callable[[float], float],
     rng: np.random.Generator,
 ) -> tuple[Wave, ...]:
-    """One period, its height split over directions: Hs = 4 sqrt(sum a^2 / 2)."""
+    """One period, its height split over directions."""
     omega = 2 * math.pi / snap(period_s)
     spread = np.full(SWELL_HEADINGS, SWELL_S_MAX)
     toward = math.radians(from_deg + 180.0) + _off_mean_rad(
