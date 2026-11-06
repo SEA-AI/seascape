@@ -41,7 +41,7 @@ from seascape.config import (
 )
 from seascape.outputs import agc, labels
 from seascape.outputs.calibration import Calibration
-from seascape.physics import fisheye, lwir, thermal, waves
+from seascape.physics import lwir, thermal, waves
 from seascape.physics.wakes import Wake
 from tests.probes import probe
 from tests.scenarios import (
@@ -698,11 +698,12 @@ def test_a_fisheye_draws_each_hull_where_its_lens_puts_it(tmp_path: Path) -> Non
     assert len(truth.annotations) == 2
     for found in truth.annotations:
         centre = bpy.data.objects[found.name].matrix_world.translation
-        x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
-        across = math.hypot(x, y)
-        r = fisheye.radius_px(np.array(math.atan2(across, z)), k, camera.K[0][0])
-        u = camera.K[0][2] + r * x / across + 0.5  # COCO pixels
-        v = camera.K[1][2] + r * y / across + 0.5
+        seen = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+        zero = np.zeros(3)
+        image, _ = cv2.fisheye.projectPoints(
+            seen[None, None, :3], zero, zero, np.array(camera.K), np.array(k)
+        )
+        u, v = image.ravel() + 0.5  # COCO pixels
         left, top, width, height = found.bbox
         assert left - 0.5 <= u <= left + width + 0.5, found.name
         assert top - 0.5 <= v <= top + height + 0.5, found.name

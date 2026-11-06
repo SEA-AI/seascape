@@ -17,23 +17,8 @@ import numpy as np
 
 type K = tuple[float, float, float, float]
 
-# Radii the Blender polynomial is fitted at.
-RADII = 512
 # The Blender polynomial may miss the model by this many pixels.
 FIT_TOLERANCE_PX = 1.0
-
-
-def _matrix(fx: float) -> np.ndarray:
-    return np.diag([fx, fx, 1.0])
-
-
-def _ahead(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray:
-    """Each pixel's ray as its point on the plane one unit ahead, (..., 2)."""
-    pixels = np.stack([x_px, y_px], axis=-1).astype(np.float64)
-    plane = cv2.fisheye.undistortPoints(
-        pixels.reshape(-1, 1, 2), _matrix(fx), np.array(k)
-    )
-    return plane.reshape(pixels.shape)
 
 
 def radius_px(theta: np.ndarray, k: K, fx: float) -> np.ndarray:
@@ -45,7 +30,8 @@ def radius_px(theta: np.ndarray, k: K, fx: float) -> np.ndarray:
         fx: Image radius per radian of the distorted angle, in pixels.
     """
     ahead = np.stack([np.tan(theta), np.zeros_like(theta)], axis=-1)
-    image = cv2.fisheye.distortPoints(ahead.reshape(-1, 1, 2), _matrix(fx), np.array(k))
+    matrix = np.diag([fx, fx, 1.0])
+    image = cv2.fisheye.distortPoints(ahead.reshape(-1, 1, 2), matrix, np.array(k))
     return image[..., 0].reshape(np.shape(theta))
 
 
@@ -68,9 +54,7 @@ def theta(radius: np.ndarray, k: K, fx: float) -> np.ndarray:
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
     """
-    return np.arctan(
-        np.linalg.norm(_ahead(radius, np.zeros_like(radius), k, fx), axis=-1)
-    )
+    return np.arccos(-direction(radius, np.zeros_like(radius), k, fx)[..., 2])
 
 
 def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray:
@@ -83,9 +67,14 @@ def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
     """
-    ahead = _ahead(x_px, y_px, k, fx)
-    # The model is radial, so a ray keeps the pixel's side of each axis.
-    rays = np.concatenate([ahead, -np.ones_like(ahead[..., :1])], axis=-1)
+    pixels = np.stack([x_px, y_px], axis=-1).astype(np.float64)
+    matrix = np.diag([fx, fx, 1.0])
+    # Each ray's point on the plane one unit ahead. The model is radial, so it keeps
+    # the pixel's side of each axis.
+    ahead = cv2.fisheye.undistortPoints(pixels.reshape(-1, 1, 2), matrix, np.array(k))
+    rays = np.concatenate(
+        [ahead.reshape(pixels.shape), -np.ones_like(pixels[..., :1])], axis=-1
+    )
     return rays / np.linalg.norm(rays, axis=-1, keepdims=True)
 
 
@@ -106,7 +95,7 @@ def polynomial(
         pitch_mm: A pixel's width on the sensor. Only the scale of the coefficients
             depends on it, not the angle a pixel sees.
     """
-    radius = np.linspace(0.0, math.hypot(width_px, height_px) / 2, RADII)
+    radius = np.linspace(0.0, math.hypot(width_px, height_px) / 2, 512)
     series = np.polynomial.polynomial
     coefficients = series.polyfit(radius * pitch_mm, theta(radius, k, fx), 4)
     fitted = series.polyval(radius * pitch_mm, coefficients)

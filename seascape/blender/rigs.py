@@ -12,7 +12,6 @@ from seascape.blender.blend import (
 )
 from seascape.config import (
     Band,
-    Camera,
     Mount,
     Scenario,
 )
@@ -23,23 +22,6 @@ class _RigObjects(NamedTuple):
     root: bpy.types.Object
     rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
-
-
-def _fisheye(data: bpy.types.Camera, camera: Camera) -> None:
-    """Cycles' polynomial lens, fitted to `camera`'s fisheye."""
-    assert camera.lens.fisheye is not None
-    k, fx = camera.lens.fisheye, camera.fisheye_focal_px
-    data.type = "PANO"
-    data.panorama_type = "FISHEYE_LENS_POLYNOMIAL"
-    # The sensor fit is horizontal, so the width spans the frame.
-    pitch_mm = data.sensor_width / camera.width_px
-    for i, c in enumerate(
-        fisheye.polynomial(k, fx, camera.width_px, camera.height_px, pitch_mm)
-    ):
-        setattr(data, f"fisheye_polynomial_k{i}", c)
-    # What the sea's shader and the cull read as a pixel: the one at the centre, which
-    # sees the least. Past it a fisheye's pixel sees more.
-    data.angle_x = camera.width_px / fx
 
 
 def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
@@ -71,10 +53,19 @@ def add_rigs(scenario: Scenario, far_m: float) -> _RigObjects:
         # AUTO fits the field of view to whichever image dimension is larger, so a
         # portrait sensor would silently reinterpret hfov as a vertical angle.
         data.sensor_fit = "HORIZONTAL"
-        if mount.camera.lens.fisheye is None:
+        width, height = mount.camera.width_px, mount.camera.height_px
+        if (k := mount.camera.lens.fisheye) is None:
             data.angle_x = math.radians(mount.camera.hfov_deg)
         else:
-            _fisheye(data, mount.camera)
+            fx = mount.camera.fisheye_focal_px
+            data.type, data.panorama_type = "PANO", "FISHEYE_LENS_POLYNOMIAL"
+            # The sensor fit is horizontal, so the width spans the frame.
+            pitch_mm = data.sensor_width / width
+            for i, c in enumerate(fisheye.polynomial(k, fx, width, height, pitch_mm)):
+                setattr(data, f"fisheye_polynomial_k{i}", c)
+            # What the sea's shader and the cull read as a pixel: the one at the
+            # centre, which sees the least. Past it a fisheye's pixel sees more.
+            data.angle_x = width / fx
         data.clip_start = mount.rig.near_clip_m
         # The default 1000 m renders a target past it as sky, and the clip boundary
         # reads as the horizon. Nothing warns.

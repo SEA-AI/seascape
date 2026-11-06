@@ -15,6 +15,7 @@ from seascape.physics import earth, fisheye
 
 RADIUS_M = earth.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
+ZERO = np.zeros(3)
 
 
 def camera(
@@ -441,12 +442,10 @@ def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
     if cam.distortion is None:
         u, v, _ = np.array(cam.K) @ ahead / ahead[2]
     else:
-        across = np.hypot(ahead[0], ahead[1])
-        scale = fisheye.radius_px(
-            np.arctan2(across, ahead[2]), cam.distortion, cam.K[0][0]
-        )
-        u = cam.K[0][2] + scale * ahead[0] / across
-        v = cam.K[1][2] + scale * ahead[1] / across
+        points = ahead.T.reshape(-1, 1, 3)
+        k = np.array(cam.distortion)
+        image, _ = cv2.fisheye.projectPoints(points, ZERO, ZERO, np.array(cam.K), k)
+        u, v = image.reshape(-1, 2).T
     order = np.argsort(u)
     return np.stack([u[order], v[order]], axis=1) + 0.5
 

@@ -55,25 +55,22 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
         origin = view.matrix.translation - Vector(
             (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
         )
-        for toward in _frame(view):
+        camera = view.mount.camera
+        steps = np.linspace(-1.0, 1.0, FOAM_RAYS)
+        if camera.lens.fisheye is None:
+            # Not `view_frame`: it takes the scene's aspect, which the build sets last.
+            across = math.tan(view.angle_x_rad / 2)
+            up = across * camera.height_px / camera.width_px
+            frame = [Vector((x * across, y * up, -1.0)) for x in steps for y in steps]
+        else:
+            x, y = np.meshgrid(
+                steps * camera.width_px / 2, steps * camera.height_px / 2
+            )
+            k, fx = camera.lens.fisheye, camera.fisheye_focal_px
+            frame = [Vector(d) for d in fisheye.direction(x.ravel(), y.ravel(), k, fx)]
+        for toward in frame:
             rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
     return rays
-
-
-def _frame(view: View) -> list[Vector]:
-    """Directions across the camera's frame, `FOAM_RAYS` a side, in its own frame."""
-    camera = view.mount.camera
-    steps = np.linspace(-1.0, 1.0, FOAM_RAYS)
-    if camera.lens.fisheye is not None:
-        x, y = np.meshgrid(steps * camera.width_px / 2, steps * camera.height_px / 2)
-        rays = fisheye.direction(
-            x.ravel(), y.ravel(), camera.lens.fisheye, camera.fisheye_focal_px
-        )
-        return [Vector(d) for d in rays]
-    # Not `view_frame`: it takes the scene's aspect, which the build sets last.
-    across = math.tan(view.angle_x_rad / 2)
-    up = across * camera.height_px / camera.width_px
-    return [Vector((x * across, y * up, -1.0)) for x in steps for y in steps]
 
 
 def _box(
