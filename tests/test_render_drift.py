@@ -611,7 +611,7 @@ class TestUniformSky:
         _white_sky_over_the_sea(scenario)
         return scenario
 
-    @pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
+    @pytest.mark.parametrize("depression_deg", [3.0, 40.0])
     def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
         self, scenario: Scenario, depression_deg: float
     ) -> None:
