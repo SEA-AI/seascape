@@ -136,25 +136,28 @@ def _sea_texture_fades_with_range(frame: np.ndarray) -> None:
     )
 
 
-def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
-    """The near sea of an ir frame, optionally with the wave relief flattened: the
-    shaded waves and the displaced ones, whose tilt the Geometry node's normal holds.
+def sea_of(scenario: Scenario) -> tuple[np.ndarray, np.ndarray]:
+    """The near sea of an ir frame, then the same frame with the wave relief flattened:
+    the shaded waves and the displaced ones, whose tilt the Geometry node's normal
+    holds.
     """
     built = scene.build(scenario, "ir")
-    if not waves:
-        tree = bpy.data.materials["sea"].node_tree
-        output = next(
-            n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial"
-        )
-        for link in output.inputs["Displacement"].links:
-            tree.links.remove(link)
-        flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
-        tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
     sc = bpy.context.scene
     sc.camera = _camera(built, scenario, "ir")
-    frame = shoot((320, 256), "isothermal")
-    horizon = frame.shape[0] // 2
-    return frame[horizon + 30 : horizon + 80]
+
+    def near_sea(name: str) -> np.ndarray:
+        frame = shoot((320, 256), name)
+        horizon = frame.shape[0] // 2
+        return frame[horizon + 30 : horizon + 80]
+
+    rippled = near_sea("isothermal")
+    tree = bpy.data.materials["sea"].node_tree
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    for link in output.inputs["Displacement"].links:
+        tree.links.remove(link)
+    flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
+    tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
+    return rippled, near_sea("isothermal_flat")
 
 
 def test_waves_survive_a_sea_at_air_temperature() -> None:
@@ -163,7 +166,7 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
     """
     isothermal = _clear(variant(sea={"t_sea_k": SCENARIO.sky.t_air_k}))
 
-    rippled, flat = sea_of(isothermal, True), sea_of(isothermal, False)
+    rippled, flat = sea_of(isothermal)
 
     assert texture(rippled) > 2.5 * texture(flat)
 
@@ -566,10 +569,9 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     return float(np.sum(area * _mirrored(facing) * lit * sky[:, None]) / np.sum(area))
 
 
-def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float:
-    """The sea's reflection alone of a white sky, looking down at `depression_deg`. A
-    steep frame sees a few metres of sea tilted by the long wave under it; frames a
-    long wave apart average to the sea's.
+def _white_sky_over_the_sea(scenario: Scenario) -> None:
+    """Builds `scenario` with the sea's reflection of a white sky alone: no body, no
+    whitecap foam.
     """
     scene.build(scenario, "eo")
     world = bpy.context.scene.world.node_tree
@@ -579,11 +581,17 @@ def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float
     background.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     tree = bpy.data.materials["sea"].node_tree
     tree.nodes["sea_body_color"].inputs["Vector"].default_value = (0, 0, 0)
-    # The sea's reflection alone: no whitecap foam.
     for link in list(tree.nodes["whitecap_foam"].outputs["Value"].links):
         mixed = link.to_socket
         tree.links.remove(link)
         mixed.default_value = 0.0
+
+
+def _uniform_sky_reflectance(depression_deg: float) -> float:
+    """The built sea's reflection of a white sky, looking down at `depression_deg`. A
+    steep frame sees a few metres of sea tilted by the long wave under it; frames a
+    long wave apart average to the sea's.
+    """
     lens = bpy.data.cameras.new("probe")
     lens.clip_end, lens.angle_x = 1e5, math.radians(PROBE_FOV_DEG)
     camera = probe(lens, pitch_deg=90.0 - depression_deg)
@@ -594,21 +602,28 @@ def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float
     return float(np.mean(frames))
 
 
-@pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
-@pytest.mark.parametrize("wind_from_deg", [0.0, 90.0])
-def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
-    wind_from_deg: float, depression_deg: float
-) -> None:
+class TestUniformSky:
     """The lobe's distribution sets how much sky the sea returns near the horizon,
     looking upwind and across the wind.
     """
-    scenario = _clear(variant(sea={"wind_from_deg": wind_from_deg}))
-    expected = _sea_reflectance(scenario, depression_deg)
 
-    rendered = _uniform_sky_reflectance(scenario, depression_deg)
+    @pytest.fixture(scope="class", params=[0.0, 90.0], ids=lambda deg: f"wind{deg:g}")
+    @classmethod
+    def scenario(cls, request: pytest.FixtureRequest) -> Scenario:
+        scenario = _clear(variant(sea={"wind_from_deg": request.param}))
+        _white_sky_over_the_sea(scenario)
+        return scenario
 
-    # A judgement.
-    assert rendered == pytest.approx(expected, rel=0.06)
+    @pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
+    def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
+        self, scenario: Scenario, depression_deg: float
+    ) -> None:
+        expected = _sea_reflectance(scenario, depression_deg)
+
+        rendered = _uniform_sky_reflectance(depression_deg)
+
+        # A judgement.
+        assert rendered == pytest.approx(expected, rel=0.06)
 
 
 def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
