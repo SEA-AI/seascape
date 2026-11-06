@@ -134,7 +134,7 @@ def _wakes(
 
     Args:
         tree: The sea material's shader tree.
-        wakes: One per hull.
+        wakes: One per hull under way; an orbit's hulls share one.
         where: (east, north, time) the wakes are read at.
         footprint_m: The pixel's longer side, which fades the arms it cannot resolve.
         noise: Von Karman noise, zero mean and unit variance, that patches the foam.
@@ -203,7 +203,7 @@ def _kelvin(
 
     Args:
         tree: The sea material's shader tree.
-        wake: The hull's speed U, which sets the wavenumber scale g / U^2, and size.
+        wake: The hull's speed U, which sets the wavenumber scale g / U^2, and its size.
         root: The stationary-phase root: 1 the divergent wave, -1 the transverse.
         path: The point's place along and across the hull's path.
         footprint_m: The pixel's longer side f; a wave of wavenumber k keeps

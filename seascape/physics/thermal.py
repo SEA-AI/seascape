@@ -433,7 +433,7 @@ def balance_temperature_k(
 def lit_temperature_k(
     zone: Zone, env: Environment, sun_cos: npt.ArrayLike, normal_up: npt.ArrayLike
 ) -> FloatArray:
-    """Temperature of a zone's facets in the sun.
+    """Temperature of a zone's facets, sunlit or shaded.
 
     Absorbed: alpha times the direct beam by sun_cos, and the isotropic diffuse share
     over the sky the facet sees; eps times the longwave from sky and sea, split by view

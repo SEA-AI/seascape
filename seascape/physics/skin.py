@@ -95,7 +95,8 @@ def warm_layer(
         stress_m2_s2: The air's friction velocity squared, u*^2 = stress / density,
             averaged over the hours.
         hours: Time since the warm layer formed.
-        t_sea_k: The sea's, which sets its thermal expansion and the air's density."""
+        t_sea_k: Sea temperature, which sets its thermal expansion and the air's
+            density."""
     alpha_g = thermal_expansion_per_k(t_sea_k) * GRAVITY_MS2
     heat = WATER_DENSITY_KG_M3 * WATER_HEAT_J_KG_K
     # The same stress either side of the interface.

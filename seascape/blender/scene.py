@@ -122,7 +122,7 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     of a pixel.
 
     Args:
-        scenario: Whose waves and Earth curve the sea.
+        scenario: Its crests and refraction set how near the sea comes.
         seen: Every camera's pose in every frame."""
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     tall, _ = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
@@ -139,7 +139,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with a scenario.
 
     Args:
-        scenario: The sea, sky, hulls and rigs to build, and the times to render.
+        scenario: The scene to build, and the times it is keyed at.
         band: `eo` for visible light, `ir` for 8-14 um thermal; only that band's
             cameras are built, and some rig must carry one.
         cull: Draw only the waves the scenario's own cameras resolve, at their own

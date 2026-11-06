@@ -75,9 +75,8 @@ def _instance(
 
     Args:
         tree: The sea material's shader tree.
-        group: A wave group, whose Along, Across Sq and Stretch inputs take the
-            footprint.
-        pixel: The footprint, fed as the across side squared and along^2 - across^2.
+        group: A wave group with footprint inputs.
+        pixel: The footprint the group fades its waves by.
         calm: Feeds the group's Calm input, which scales the damped waves; None for no
             slick."""
     across_sq = Num(tree, pixel.across_m) * pixel.across_m
@@ -142,8 +141,8 @@ def _redraw(
     Args:
         tree: The sea material's shader tree.
         cell: Integer cell coordinates; every point in a cell draws the same noise.
-        time_s: The sea's time, in seconds.
-        rate: Draws per second, in Hz.
+        time_s: The sea's time.
+        rate: Draws per second.
         name: Names the node that counts the draws."""
     offset = node(
         tree, "ShaderNodeTexWhiteNoise", {"Vector": cell}, noise_dimensions="3D"

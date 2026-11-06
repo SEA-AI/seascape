@@ -123,13 +123,11 @@ def zone_skin(
             absorptance and the interior behind it.
         heat: The environment the balance is struck in, and the bulk water's
             temperature.
-        paint_absorptance: Solar absorptance of the paint, 0 to 1, on the zones of
-            `thermal.PAINTED`; rounded to 0.01, so near hulls share a skin.
+        paint_absorptance: Solar absorptance of the paint on
+            `thermal.PAINTED`, 0 to 1.
         wet: Below the waterline, the bulk water's; False for a part that never meets
             it.
-        wear_material: What the hull is built of, which mixes in the wear layers. On
-            steel a layer changes only emissivity: the plate spreads its heat
-            (Incropera & DeWitt section 3.6).
+        wear_material: What the hull is built of, which mixes in the wear layers.
         crevice: The asset's crevice mask; required with `wear_material`."""
     zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"

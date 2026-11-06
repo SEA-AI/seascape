@@ -82,8 +82,7 @@ def set_output(
     Args:
         outputs: The samples, format and exposure compensation to render with.
         band: The band rendered; ir always writes exr.
-        largest_px: The longest side of any of the band's cameras, in pixels; the tile
-            size, so a frame renders in one tile.
+        largest_px: The longest side of any of the band's cameras, in pixels.
         graded: Whether any of the band's cameras has a sensor."""
     sc = bpy.context.scene
     # Not EEVEE: it darkens rough reflections at grazing view.
@@ -151,9 +150,8 @@ def _camera(
         tree: The compositor's tree.
         image: The render's linear radiance, as it reaches the lens.
         compensation_ev: Stops over auto-exposure, which puts the frame's log-average
-            at mid-grey (Reinhard et al. 2002).
-        with_sensor: Add the sensor and ISP after auto-exposure.
-    """
+            at `MID_GREY`.
+        with_sensor: Add the sensor and ISP after auto-exposure."""
     coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})
     info = node(tree, "CompositorNodeImageInfo", {"Image": image})
     # Uniform spans -1 to 1 along the longer side, so the kernel is a fixed share of

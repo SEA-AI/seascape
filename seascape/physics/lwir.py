@@ -121,7 +121,8 @@ def _table() -> tuple[FloatArray, FloatArray, FloatArray]:
 def optical_constants(
     t_k: float = T_SEA_K,
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Wavelength (m), n, k of seawater across the band, ascending in wavelength.
+    """Wavelength (m), n, k of liquid water across the band (no salinity correction),
+    ascending in wavelength.
 
     Args:
         t_k: Water temperature, interpolated linearly between the table's steps and
@@ -367,7 +368,7 @@ _BAND_LAM = np.linspace(*BAND_M, 512)
 def band_radiance(t_k: float) -> float:
     """Blackbody radiance integrated over the band, W m^-2 sr^-1.
 
-    On its own grid: the seawater table's ends land inside the band and integrate low.
+    On its own grid: the water table's ends land inside the band and integrate low.
     """
     return float(np.trapezoid(planck(_BAND_LAM, t_k), _BAND_LAM))
 
@@ -415,8 +416,7 @@ def sky_radiance(
     Args:
         elev_rad: Elevation above the horizon.
         t_air_k: Surface air temperature; unset, the atmosphere's own.
-        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
-            at Helgoland."""
+        atmosphere: The model atmosphere whose tables are read."""
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     return _over_horizon(_SKY_CSV, elev_rad, atmosphere) * band_radiance(t_air_k)
@@ -513,8 +513,7 @@ def cloudy_sky_radiance(
         cloud_base_m: Height of the cloud base above the sea, where surface air
             lifted at the dry lapse rate condenses (Wallace & Hobbs 2006).
         t_air_k: Surface air temperature; unset, the atmosphere's own.
-        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
-            at Helgoland.
+        atmosphere: The model atmosphere whose tables are read.
         height_m: Where the line of sight meets the cloud, over its base."""
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
@@ -541,8 +540,7 @@ def cloud_window_deficit_w_m2(
         cloud_base_m: Height of the overcast's base above the sea, which sets its
             temperature through the dry lapse rate.
         t_air_k: Surface air temperature.
-        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
-            at Helgoland."""
+        atmosphere: The model atmosphere whose tables are read."""
     edges = np.linspace(0.0, math.pi / 2, 91)
     elev = (edges[:-1] + edges[1:]) / 2
     deficit = band_radiance(t_air_k) - cloudy_sky_radiance(
@@ -620,11 +618,9 @@ def haze_depth(
 
     Args:
         elev_rad: Elevation of the line of sight.
-        visibility_km: Meteorological optical range, over which a dark target keeps
-            5% of its contrast (WMO No. 8, 2018); None is no aerosol. Under the
+        visibility_km: Meteorological optical range; None is no aerosol. Under the
             table's shortest the depth holds.
-        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
-            at Helgoland."""
+        atmosphere: The model atmosphere whose tables are read."""
     elev, inverse, depth = _depth_table(_HAZE_CSV)[atmosphere]
     x = 0.0 if visibility_km is None else min(1 / visibility_km, inverse[-1])
     column = np.array([np.interp(x, inverse, row) for row in depth])

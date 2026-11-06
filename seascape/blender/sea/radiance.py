@@ -227,7 +227,7 @@ def _thermal(
         sea: Its bulk temperature sets the tables' optical constants.
         normal: The wave normal the pixel draws, in world space.
         unresolved: Variances of the slope finer than the pixel draws, along and
-            across the view.
+            across the view, each twice its axis's, as `_unresolved` gives them.
         slope_max: Total RMS slope the tables span.
         light: The sky, and any clouds, the sea reflects.
         skin: Band radiance the sea emits. The tables keep the bulk's optical
@@ -304,7 +304,8 @@ def _traced(
         normal: The wave normal the lobe leans about.
         pixel: The footprint whose axes orient the lobe.
         unresolved: Variances of the slope finer than the pixel draws, along and
-            across the view, which shape the lobe."""
+            across the view, each twice its axis's, as `_unresolved` gives them,
+            which shape the lobe."""
     wide, narrow, tangent = _widest(tree, pixel, unresolved)
     roughness, anisotropy = _lobe(tree, wide, _stretchable(tree, wide, narrow))
     lobe = node(

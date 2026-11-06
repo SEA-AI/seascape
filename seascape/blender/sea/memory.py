@@ -128,8 +128,8 @@ def foam_grids(
     Args:
         scenario: Whose sea and cameras the grids cover.
         seen: Every camera's pose in every frame.
-        wind: The wind waves that break; none gives no grids. The longest sets the
-            coarsest cell."""
+        wind: The wind waves that break; none gives no grids. The longest, up to
+            `FOAM_LONGEST_BREAKER_M`, bounds the coarsest cell."""
     if not wind:
         return ()
     rays = _rays(scenario, seen)

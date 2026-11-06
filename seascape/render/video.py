@@ -28,13 +28,12 @@ def encode(
     quality: str = "PERC_LOSSLESS",
     advance: Callable[[], None] = lambda: None,
 ) -> list[Path]:
-    """Write each camera's video beside the render's frames; returns their paths.
+    """Write each camera's video, `<camera>.mp4`, into the run's folder.
 
     Args:
         run: The render's folder, with its labels.json.
-        quality: Blender's preset for x264's constant rate factor; `PERC_LOSSLESS`
-            is perceptually lossless.
-        advance: Called after each camera's video is written, to report progress."""
+        quality: A Blender `constant_rate_factor` preset.
+        advance: Runs after each camera's video."""
     run = run.resolve()
     settings = agcs(run)
     written = []

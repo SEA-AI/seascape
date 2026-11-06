@@ -52,8 +52,7 @@ def _write_thermal(
     Args:
         exr: The float render, radiance in its first channel.
         fmt: The format written; a png holds counts, any other the tone-mapped frame.
-        tone: The camera's automatic gain control, kelvin to 8-bit grey; a png skips
-            it.
+        tone: The camera's automatic gain control, kelvin to 8-bit grey.
         camera: Whose lens and focal plane the frame goes through.
         noise: Draws the focal plane's temporal noise, its NETD."""
     # cv2 writes the top row first
@@ -171,7 +170,7 @@ def render(
     sequence puts each camera's frames in a folder of its own.
 
     Args:
-        scenario: What to render.
+        scenario: Built culled to its own cameras at their resolution.
         into: Where the images and their truth go; made if missing.
         advance: Runs after each image."""
     # Blender resolves a relative render.filepath against the .blend, not the shell.

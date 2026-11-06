@@ -140,7 +140,7 @@ class Labels(Model):
         *,
         faint: Mapping[str, float],
     ) -> None:
-        """One frame.
+        """Label one frame.
 
         Args:
             camera: The calibration the frame was taken with.

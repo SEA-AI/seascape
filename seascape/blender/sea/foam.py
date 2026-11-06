@@ -88,7 +88,8 @@ def _remembered(
             cell.
         textures: The lace, the lattice and the quantiles that threshold them.
         memory: Each foam grid and the image sequence remembered on it.
-        pulls: Unit Gaussians the windrows gather aged foam by; empty for none."""
+        pulls: Each row field's pull s g, as `_gathered` gives it; empty below
+            force 7."""
     ppf = textures.ppf
     lace = textures.lace
     east, north, time_s = separate(tree, surface.where)
@@ -363,7 +364,7 @@ def _foam_lattice(
         tree: The sea material's shader tree.
         surface: Where the lattice lies and drifts.
         tile: `foam_lattice_field`'s walls and openings, ranked onto a unit Gaussian.
-        start: The offset, in tiles; reads a quarter tile apart are independent."""
+        start: The offset, in tiles."""
     east, north = _downwind(surface.sea)
     layers = []
     # From force 7 the lattice is blown into streaks along the wind.

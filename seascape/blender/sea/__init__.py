@@ -140,7 +140,7 @@ def material(
         swell: The swell's waves.
         outputs: The frames, whose times the sea's own time follows.
         rngs: Draw the gusts, the windrows and the foam, in that order.
-        wakes: One per hull.
+        wakes: One per hull under way; an orbit's hulls share one.
         light: With a sky the sea is ir and reflects it; without, eo, glittering
             towards the light's sun if it has one.
         seen: The cameras' finest footprint, and the grids whitecaps are remembered

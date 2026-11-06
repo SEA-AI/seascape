@@ -270,7 +270,7 @@ def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
     wider.
 
     Args:
-        field: The waves to keep from.
+        field: Waves of any length.
         footprint_m: The finest footprint any pixel has."""
     return tuple(w for w in field if 2 * math.pi / w.k_rad_m > footprint_m)
 
@@ -282,7 +282,7 @@ def drawn_slope_variances(
     `slope_variance(filtered(field, footprint_m))` without building the waves.
 
     Args:
-        field: The waves drawn.
+        field: The waves, each scaled by its visibility at the footprint.
         footprint_m: The pixel's length on the sea; 0 draws every wave whole.
         downwind_rad: The wind's axis, a bearing; from or toward is the same axis."""
     if not field:
@@ -332,11 +332,11 @@ def unresolved_slope_variances(
     Args:
         wind_speed_mps: The wind at 10 m the total is fitted at.
         downwind_rad: The wind's axis, a bearing; from or toward is the same axis.
-        wind: The wind sea's drawn waves.
+        wind: The wind sea's waves; those the footprint resolves are subtracted.
         swell: The swell's waves, whose undrawn part adds to the total.
         footprint_m: The pixel's length on the sea.
-        fit: The total slope variance, upwind and crosswind, at a wind speed; Cox &
-            Munk's clean sea by default."""
+        fit: Upwind and crosswind slope variance at a wind speed, each axis's own;
+            Cox & Munk's clean sea by default."""
     drawn = drawn_slope_variances(wind, footprint_m, downwind_rad)
     swell_all = drawn_slope_variances(swell, 0.0, downwind_rad)
     swell_drawn = drawn_slope_variances(swell, footprint_m, downwind_rad)

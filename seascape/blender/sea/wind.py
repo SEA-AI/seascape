@@ -76,7 +76,7 @@ def _drifting(
     their squared weights so the variance holds.
 
     Args:
-        tree: The sea's material.
+        tree: The sea material's shader tree.
         surface: Where and when the shader reads, and whether the clip loops.
         tile: The image laid, read with repeat so it tiles the sea.
         axes: The tile's two axes, each (east, north) in tiles per metre.
@@ -189,7 +189,7 @@ def _langmuir_rows(
     Give the slicks their own spectrum if the rows read wrong.
 
     Args:
-        tree: The sea's material.
+        tree: The sea material's shader tree.
         surface: Whose wind spaces and carries the rows.
         rng: Draws the windrows first, as every reader reads them first."""
     speed = surface.sea.wind_speed_mps
@@ -300,7 +300,7 @@ def _gathered(
     from Beaufort 7's streaks to 8's; none below force 7.
 
     Args:
-        tree: The sea's material.
+        tree: The sea material's shader tree.
         sea: Whose wind sets s.
         footprint_m: A pixel's footprint on the sea; rows too fine for it fade.
         rows: The windrows and the finer rows, each with its spacing."""
@@ -336,11 +336,11 @@ def _gusty(
     distant gusts shimmer.
 
     Args:
-        tree: The sea's material.
+        tree: The sea material's shader tree.
         sea: Whose mean wind sets the variance a gust adds.
         gust: The wind over its mean, less one, as `_gust` gives it.
-        unresolved: The unresolved slope variances along and across the wind, at the
-            mean wind."""
+        unresolved: The unresolved slope variances along and across the view, each
+            twice its axis's, at the mean wind."""
     offset = scalar(
         tree,
         "MULTIPLY",

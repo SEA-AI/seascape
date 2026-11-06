@@ -123,7 +123,8 @@ def _fogged_photo(
         tree: The world, or the haze group.
         sky: Whose photo, fog and sun.
         direction: The ray, in world axes: X east, Y north, Z up.
-        sun_kept: The share of the sun's disc the mist keeps; 0 drops it."""
+        sun_kept: The share of the sun's disc the result keeps, whatever the mist
+            would; 0 drops it."""
     colour = _photo(tree, sky, direction)
     horizon = _photo(tree, sky, _horizon(tree, direction))
     misted = _misted(tree, sky, colour, horizon)
@@ -509,7 +510,8 @@ def _bake_cloud_excess(
     """Bake `_cloud_excess_image` as `_sky_image` is.
 
     Args:
-        sky: Whose clear sky and haze.
+        sky: Its air temperature, atmosphere and cloud base set the cloud's radiance;
+            its visibility sets the haze.
         genus: The photo's cloud genus; cirrus has its own radiance and no height.
         rows_rad: Elevation of each row of the cloud image.
         height_m: How far over its base a whole cloud is at each of those rows."""

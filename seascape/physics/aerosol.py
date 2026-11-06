@@ -73,8 +73,7 @@ def depth(
     Args:
         elev_rad: Elevation of the line of sight.
         visibility_km: Meteorological optical range; None is no aerosol.
-        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
-            at Helgoland."""
+        atmosphere: The model atmosphere whose tables are read."""
     weight = fog_weight(visibility_km)
     if weight == 1.0:
         assert visibility_km is not None
@@ -110,8 +109,7 @@ def sky_radiance(
         elev_rad: Elevation of the line of sight.
         visibility_km: Meteorological optical range; None is no aerosol.
         t_air_k: Air temperature, at which the aerosol emits.
-        atmosphere: A LOWTRAN 7 model atmosphere (AFGL-TR-86-0110) or one measured
-            at Helgoland."""
+        atmosphere: The model atmosphere whose tables are read."""
     passed = transmittance(elev_rad, visibility_km, atmosphere)
     return passed * np.asarray(radiance) + (1.0 - passed) * lwir.band_radiance(t_air_k)
 
