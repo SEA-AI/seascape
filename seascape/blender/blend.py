@@ -83,9 +83,13 @@ def drive(
 def curve_image(
     name: str, values: np.ndarray, float_buffer: bool = True
 ) -> bpy.types.Image:
-    """A lookup the shader samples with a Combine XYZ into an Image Texture: one row,
-    or rows bottom first, grey or RGB on a last axis. Without `float_buffer`, 8 bits
-    of values in [0, 1]."""
+    """A lookup the shader samples with a Combine XYZ into an Image Texture.
+
+    Args:
+        name: What `bpy.data.images` holds it under.
+        values: One row, or rows bottom first, grey or RGB on a last axis.
+        float_buffer: 32-bit floats, packed as EXR; without it, an 8-bit PNG of
+            values in [0, 1]."""
     table = np.atleast_2d(np.asarray(values, dtype=np.float32))
     height, width = table.shape[:2]
     image = bpy.data.images.new(
@@ -256,8 +260,14 @@ def node(
     inputs: dict[str, Operand | tuple[float, ...]] | None = None,
     **props: object,
 ) -> bpy.types.Node:
-    """A node of `kind` with `props` set first, since a data type can change which
-    sockets exist, then `inputs` by name."""
+    """A node with its properties set first, since a data type can change which
+    sockets exist, then its inputs.
+
+    Args:
+        tree: Any node tree; `kind` must be one of its type's nodes.
+        kind: Blender's node type, such as `ShaderNodeMath`.
+        inputs: A value or socket for each input, by socket name.
+        **props: Attributes set on the node before its inputs."""
     made = tree.nodes.new(kind)
     for key, setting in props.items():
         setattr(made, key, setting)
@@ -311,8 +321,14 @@ def switch(
     off: bpy.types.NodeSocket,
     on: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`on` or `off` for the whole frame, as `toggle` sets it: a pick, where a blend
-    by 0 would turn an inf in the unpicked image into a nan."""
+    """One image or the other for the whole frame, as `toggle` sets it: a pick, where a
+    blend by 0 would turn an inf in the unpicked image into a nan.
+
+    Args:
+        tree: The compositor.
+        name: What `toggle` finds the node by; must be free.
+        off: Passed while off; a muted Switch evaluates only this.
+        on: Passed while on, and evaluated only then."""
     made = tree.nodes.new("CompositorNodeSwitch")
     made.name = name
     assert made.name == name, f"{name} is taken"

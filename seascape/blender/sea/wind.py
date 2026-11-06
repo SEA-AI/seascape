@@ -69,14 +69,20 @@ def _drifting(
     start: float,
     name: str,
 ) -> bpy.types.NodeSocket:
-    """`tile` laid on the `surface` along `axes`, each an (east, north) tile axis in
-    tiles per metre, offset `start` tiles, frozen and carried at `velocity_mps`, (east,
-    north).
+    """A tile laid on the surface, frozen and carried.
 
     A loop crossfades two layers, each carried for one span and back while its weight
     is 0 (Vlachos, "Water flow in Portal 2", SIGGRAPH 2010 course), over the root of
     their squared weights so the variance holds.
-    """
+
+    Args:
+        tree: The sea material's shader tree.
+        surface: Where and when the shader reads, and whether the clip loops.
+        tile: The image laid, read with repeat so it tiles the sea.
+        axes: The tile's two axes, each (east, north) in tiles per metre.
+        velocity_mps: (east, north) the tile is carried at.
+        start: Offset along both axes, in tiles.
+        name: Prefix of the nodes' names."""
     outputs = surface.outputs
     east, north, time_s = separate(tree, surface.where)
     flat = combine(tree, east, north)
@@ -176,14 +182,16 @@ def _langmuir_rows(
 ) -> _Rows:
     """Langmuir circulation's convergence, which gathers slicks and aged foam alike:
     the windrows and the finer rows between them, each Gaussian at unit sigma as
-    Cycles reads it, so a
-    symmetric clip keeps its mean and a quantile its share. `rng` draws the windrows
-    first, as every reader reads them first.
+    Cycles reads it, so a symmetric clip keeps its mean and a quantile its share.
 
     Limitation: the integral scale stands for the windrow spacing, a judgement, and
     there are rows at every wind, where below the cutoff real slicks lie in patches.
     Give the slicks their own spectrum if the rows read wrong.
-    """
+
+    Args:
+        tree: The sea material's shader tree.
+        surface: Whose wind spaces and carries the rows.
+        rng: Draws the windrows first, as every reader reads them first."""
     speed = surface.sea.wind_speed_mps
     spacing_m = WINDROW_SPACING_S * max(speed, WINDROW_MIN_WIND_MPS)
     fine_tile_m = GUST_CELLS * FINE_ROWS_TEXEL_M
@@ -211,12 +219,15 @@ def _langmuir_rows(
 
 
 def _looked_up_sigma(tile: np.ndarray) -> float:
-    """`tile`'s spread as Cycles' linear lookup with repeat reads it, between texels as
+    """A tile's spread as Cycles' linear lookup with repeat reads it, between texels as
     on them: interpolation averages neighbours, so it is under the texels' own.
 
     A lookup a share along a texel blends the same four neighbours, with the same
     weights, wherever it reads: its variance over the tile is those weights' quadratic
-    form in the neighbours' covariance."""
+    form in the neighbours' covariance.
+
+    Args:
+        tile: Texel values, (rows, columns), wrapped at its edges as repeat reads it."""
     neighbours = np.stack(
         [np.roll(tile, (-dy, -dx), (0, 1)).ravel() for dy in (0, 1) for dx in (0, 1)]
     )
@@ -285,8 +296,14 @@ def _gathered(
     footprint_m: bpy.types.NodeSocket,
     rows: _Rows,
 ) -> tuple[bpy.types.NodeSocket, ...]:
-    """How hard each of `rows` pulls aged foam into its convergence g: s g, s rising
-    from Beaufort 7's streaks to 8's; none below force 7."""
+    """How hard each row field pulls aged foam into its convergence g: s g, s rising
+    from Beaufort 7's streaks to 8's; none below force 7.
+
+    Args:
+        tree: The sea material's shader tree.
+        sea: Whose wind sets s.
+        footprint_m: A pixel's footprint on the sea; rows too fine for it fade.
+        rows: The windrows and the finer rows, each with its spacing."""
     share = _streaking(sea)
     if share == 0.0:
         return ()
@@ -309,7 +326,7 @@ def _gusty(
     gust: bpy.types.NodeSocket,
     unresolved: tuple[bpy.types.NodeSocket, bpy.types.NodeSocket],
 ) -> tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]:
-    """`unresolved` with Cox & Munk's variance at the local wind for the mean's.
+    """Slope variances with Cox & Munk's at the local wind for the mean's.
 
     Limitation: drawn waves and swell hold the mean wind, as waves long enough to draw
     grow too slowly to follow a gust (Plant 1982); a close camera that draws its
@@ -317,7 +334,13 @@ def _gusty(
     that shows. The tile is not filtered to the footprint either: past the pixel the
     samples average it, until too few fall in one; filter it to the footprint if
     distant gusts shimmer.
-    """
+
+    Args:
+        tree: The sea material's shader tree.
+        sea: Whose mean wind sets the variance a gust adds.
+        gust: The wind over its mean, less one, as `_gust` gives it.
+        unresolved: The unresolved slope variances along and across the view, each
+            twice its axis's, at the mean wind."""
     offset = scalar(
         tree,
         "MULTIPLY",

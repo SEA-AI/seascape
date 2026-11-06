@@ -117,8 +117,15 @@ def _fogged_photo(
     direction: bpy.types.NodeSocket,
     sun_kept: float,
 ) -> bpy.types.NodeSocket:
-    """The photo in `direction` misted, its sun's disc keeping `sun_kept` of itself. A
-    sun behind cloud greys with it."""
+    """The photo misted, its sun's disc keeping some of itself. A sun behind cloud
+    greys with it.
+
+    Args:
+        tree: The world, or the haze group.
+        sky: Whose photo, fog and sun.
+        direction: The ray, in world axes: X east, Y north, Z up.
+        sun_kept: The share of the sun's disc the result keeps, whatever the mist
+            would; 0 drops it."""
     colour = _photo(tree, sky, direction)
     horizon = _photo(tree, sky, _horizon(tree, direction))
     misted = _misted(tree, sky, colour, horizon)
@@ -178,12 +185,15 @@ def _misted(
 def _grey(
     tree: bpy.types.NodeTree, colour: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """Fog's sky, from the clear sky's `colour` at the horizon ahead.
+    """Fog's sky, from the clear sky at the horizon ahead.
 
     Judgement: fog drops scatter the visible without colour and many times over. Its
     brightness is the clear horizon's, which the haze fades every target into, so fog
     and sky meet without a seam.
-    """
+
+    Args:
+        tree: The world, or the haze group.
+        colour: The clear sky's RGB at the horizon ahead; its luminance is the grey."""
     return node(tree, "ShaderNodeRGBToBW", {"Color": colour}).outputs["Val"]
 
 
@@ -274,8 +284,11 @@ def add_haze(sky: Sky, band: Band, far_m: float) -> None:
 
 
 def haze(material: bpy.types.Material) -> None:
-    """Put the build's haze between `material`'s surface and its output. `build` does
-    it for every material it makes; one made after is seen through clear air."""
+    """Put the build's haze between a material's surface and its output. `build` does
+    it for every material it makes; one made after is seen through clear air.
+
+    Args:
+        material: Hazed once; a second call changes nothing."""
     group = bpy.data.node_groups.get("haze")
     tree = material.node_tree
     if group is None or tree is None:
@@ -450,8 +463,13 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
 def _cloudy_sky(
     tree: bpy.types.NodeTree, sky: Sky, direction: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """The photo's sky in `direction`: radiance is affine in the cloud share, so the
-    clear sky plus the share of what a whole cloud adds."""
+    """The photo's sky along a ray: radiance is affine in the cloud share, so the
+    clear sky plus the share of what a whole cloud adds.
+
+    Args:
+        tree: The IR world, or the haze group.
+        sky: Its photo gives the cloud share.
+        direction: The ray, a unit vector in world axes: X east, Y north, Z up."""
     share_image, _ = _cloud_images(sky)
     share = _turned(tree, share_image, sky.photo_turn_rad, direction)
     # Linear shows the texel grid where a texel spans several pixels.
@@ -490,8 +508,14 @@ def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
 def _bake_cloud_excess(
     sky: Sky, genus: lwir.CloudGenus, rows_rad: np.ndarray, height_m: np.ndarray
 ) -> None:
-    """`_cloud_excess_image`, a whole cloud `height_m` over its base at `rows_rad`,
-    baked as `_sky_image` is."""
+    """Bake `_cloud_excess_image` as `_sky_image` is.
+
+    Args:
+        sky: Its air temperature, atmosphere and cloud base set the cloud's radiance;
+            its visibility sets the haze.
+        genus: The photo's cloud genus; cirrus has its own radiance and no height.
+        rows_rad: Elevation of each row of the cloud image.
+        height_m: How far over its base a whole cloud is at each of those rows."""
     elevation = _curve_elevation()
     height = np.interp(elevation, rows_rad, height_m)
     whole = _cloud_radiance(sky, genus, elevation, 1.0, height_m=height)
@@ -569,13 +593,18 @@ def _less_sky(
     ahead: bpy.types.NodeSocket,
     shader: bpy.types.NodeSocket,
 ) -> bpy.types.NodeSocket:
-    """`shader`, less the sky a rough glossy ray would have met `ahead` of it.
+    """A shader less the sky a rough glossy ray would have met ahead of it.
 
     The sea's tables integrate the sky exactly, and sampling it through the lobe is
     what leaves the sea grainy. So the world shows a rough glossy ray nothing, and what
     the ray meets instead returns only its difference from that sky: a control variate.
     Outside the haze, as the world's sky is.
-    """
+
+    Args:
+        tree: The haze group.
+        sky: The sky the sea's tables hold.
+        ahead: The ray's direction, away from the camera.
+        shader: The surface to take the sky off."""
     behind = vector(
         tree,
         "SCALE",

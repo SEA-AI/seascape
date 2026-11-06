@@ -72,8 +72,14 @@ def heading_rad(anchor: bpy.types.Object) -> float:
 def _vessel(
     name: str, *, condition: Condition, hulls: Hulls, rise_m: float = 0.0
 ) -> bpy.types.Object:
-    """A hull fitted and anchored at the origin under an empty, `rise_m` above its
-    asset's draught."""
+    """A hull fitted and anchored at the origin under an empty.
+
+    Args:
+        name: The asset, a key of `assets.toml`.
+        condition: How the hull is kept and run; in LWIR, what its skins radiate.
+        hulls: Where an asset already imported is copied from.
+        rise_m: Lift above the asset's draught; the LWIR skin's waterline follows
+            it."""
     heat = hulls.heat
     if name in hulls.imported:
         parts = [_copy_tree(part, None) for part in hulls.imported[name]]
@@ -138,8 +144,14 @@ def add_ownship(
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rigs: their offsets are in this frame.
-    It heaves on the `tall` waves, which are geometry, and its script."""
+    """At the origin, bow to +Y, carrying the rigs.
+
+    Args:
+        ownship: Its hull, attitude and scripted motion.
+        rigs: Parented to the ownship; their offsets are in its frame.
+        hulls: Where an asset already imported is copied from.
+        outputs: The times keyed and the periods they loop on.
+        tall: The waves that are geometry, which it heaves on as well as its script."""
     if ownship.asset is None:
         anchor = bpy.data.objects.new("ownship", None)
         bpy.context.collection.objects.link(anchor)
@@ -430,8 +442,14 @@ def ride(
     outputs: Outputs,
 ) -> None:
     """Key each hull's pitch and roll to the sea under its keyed pose, and its heave
-    to the `tall` waves, which are geometry: the rest are shading, which a heaving
-    hull would break its waterline on."""
+    to the waves that are geometry.
+
+    Args:
+        anchors: The hulls, each over its attitude empty.
+        field: Every wave, which the pitch and roll follow.
+        tall: The waves that are geometry, which alone heave the hull: the rest are
+            shading, which a heaving hull would break its waterline on.
+        outputs: The times keyed, one per frame."""
     sc = bpy.context.scene
     hulls = []
     for anchor in anchors:
@@ -486,9 +504,17 @@ def add_vessels(
     hulls: Hulls,
     trails: list[wakes.Wake],
 ) -> tuple[dict[str, list[bpy.types.Object]], dict[str, list[bpy.types.Object]]]:
-    """Every object and ring hull, then every turbine, by asset; each wake under way
-    added to `trails`. Worn once all are built: a hull is copied from its asset's
-    first, which would carry that one's wear."""
+    """Every object and ring hull, then every turbine, by asset.
+
+    Worn once all are built: a hull is copied from its asset's first, which would carry
+    that one's wear.
+
+    Args:
+        scenario: Its objects, target ring and farms.
+        radius_m: Earth's effective radius, which drops a distant hull to the curved
+            sea.
+        hulls: Where an asset already imported is copied from.
+        trails: Each wake under way is added to it."""
     outputs = scenario.outputs
     wearing: list[tuple[list[bpy.types.Object], float, str]] = []
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)

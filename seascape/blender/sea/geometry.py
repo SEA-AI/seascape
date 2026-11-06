@@ -226,9 +226,16 @@ def _set_triple(
     damped: frozenset[Wave],
     lift: Callable[[Wave], float],
 ) -> None:
-    """The inputs of `_fade`, the phases that place `triple`, and each wave's `lift`,
-    split along its heading for the slopes. An empty lane has no amplitude, so whatever
-    it fades adds 0."""
+    """Set the inputs of `_fade`, the phases that place three waves, and each wave's
+    lift, split along its heading for the slopes. An empty lane has no amplitude, so
+    whatever it fades adds 0.
+
+    Args:
+        inputs: A wave group node's inputs, set as constants.
+        triple: The waves, one a lane; None leaves a lane empty.
+        damped: The waves a slick calms.
+        lift: What each wave adds up its lane: its amplitude for the surface, its
+            slope for the normal."""
 
     axes = {w: fade_axis(w) for w in triple if w is not None}
     sets = {
@@ -252,8 +259,13 @@ def _set_triple(
 def _normal_group(
     triples: list[Triple], wind_triples: int, damped: frozenset[Wave]
 ) -> bpy.types.NodeTree:
-    """The slope the pixel draws at `Position`, and the downward acceleration in g of
-    the first `wind_triples`. A group, as each node in a tree slows every edit to it."""
+    """The slope the pixel draws at `Position`, and the wind sea's downward
+    acceleration in g. A group, as each node in a tree slows every edit to it.
+
+    Args:
+        triples: The waves, three a group, the wind sea's first.
+        wind_triples: How many of the triples are the wind sea's.
+        damped: The waves `Calm` scales."""
     group, given, out = _group(
         "sea_waves",
         (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
@@ -288,11 +300,15 @@ def _normal_group(
 def _displacement(
     tree: bpy.types.NodeTree, tall: tuple[Wave, ...], position: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
-    """The offset of `tall`'s Gerstner surface from the flat sea at `position`, each
-    wave faded by the footprint of the micropolygon there: up a cos(phase), and
-    -k_hat a sin(phase) along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with
-    lambda = 1). Adaptive subdivision dices at about a pixel, so the micropolygon's
-    footprint is the pixel's."""
+    """The offset of a Gerstner surface from the flat sea, each wave faded by the
+    footprint of the micropolygon there: up a cos(phase), and -k_hat a sin(phase)
+    along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with lambda = 1). Adaptive
+    subdivision dices at about a pixel, so the micropolygon's footprint is the pixel's.
+
+    Args:
+        tree: The sea material's shader tree.
+        tall: The waves drawn as geometry.
+        position: The flat sea's (east, north, time) the offset is taken at."""
     camera = tree.nodes.new("ShaderNodeCameraData")
     # From the camera, in world space: the Geometry node's Incoming is unset here.
     toward = node(
@@ -379,8 +395,16 @@ def _normal(
     calm: bpy.types.NodeSocket | None,
     damped: frozenset[Wave],
 ) -> bpy.types.NodeSocket:
-    """The normal of what the pixel resolves at `position`; `calm` scales the `damped`
-    waves."""
+    """The normal of what the pixel resolves.
+
+    Args:
+        tree: The sea material's shader tree.
+        wind: The wind sea's shaded waves.
+        swell: The swell's shaded waves.
+        position: The flat sea's (east, north, time) the normal is taken at.
+        pixel: The footprint the waves fade by.
+        calm: Scales the damped waves; None for no slick.
+        damped: The waves a slick calms."""
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     # Each sea in triples of its own, so the wind's acceleration ends with its last.
     triples = _triples(wind) + _triples(swell)

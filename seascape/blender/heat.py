@@ -114,13 +114,22 @@ def zone_skin(
 ) -> bpy.types.Material:
     """A zone's eps emitted at its heat balance and 1 - eps reflected, shared by every
     hull: each face looks up its temperature by max(0, n . s) and the normal's z.
-    Below the waterline, the bulk water's, unless the part never meets it.
-    `paint_absorptance` repaints the zones of `thermal.PAINTED`. `wear_material`, the
-    hull's, mixes in the wear layers.
 
     No face shades another: a shadow on a hull is narrower than a pixel at the ranges
     a camera finds it, and the balance is steady, so a shadow would be as sharp and
-    as deep as one that had sat for hours."""
+    as deep as one that had sat for hours.
+
+    Args:
+        zone_name: A thermal zone, which sets the skin's emissivity, solar
+            absorptance and the interior behind it.
+        heat: The environment the balance is struck in, and the bulk water's
+            temperature.
+        paint_absorptance: Solar absorptance of the paint on
+            `thermal.PAINTED`, 0 to 1.
+        wet: Below the waterline, the bulk water's; False for a part that never meets
+            it.
+        wear_material: What the hull is built of, which mixes in the wear layers.
+        crevice: The asset's crevice mask; required with `wear_material`."""
     zone = thermal.ZONES[zone_name]
     name = f"thermal_{zone_name}"
     if paint_absorptance is not None and zone_name in thermal.PAINTED:
@@ -241,8 +250,16 @@ def _reflecting(
     emissivity: float,
     zone_name: str | None,
 ) -> bpy.types.NodeSocket:
-    """`emission` weighted by `emissivity`, the rest a white reflection: the Mix Shader
-    already weights it by 1 - eps, so a grey would absorb part of it twice."""
+    """An emission weighted by its emissivity, the rest a white reflection: the Mix
+    Shader already weights it by 1 - eps, so a grey would absorb part of it twice.
+
+    Args:
+        tree: The hull skin's node tree.
+        emission: The surface's radiance as a blackbody would emit it.
+        emissivity: Fraction of that the surface emits, 0 to 1; by Kirchhoff the
+            rest is what it reflects.
+        zone_name: A zone of `SPECULAR_ZONES` reflects as a sharp mirror; any other,
+            or None, scatters."""
     white = (1.0, 1.0, 1.0, 1.0)
     if zone_name in SPECULAR_ZONES:
         scatter = node(

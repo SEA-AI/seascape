@@ -33,8 +33,12 @@ def _pixel(
     tree: bpy.types.NodeTree, incoming: bpy.types.NodeSocket | None = None
 ) -> _Pixel:
     """The footprint of a pixel of the scene's perspective camera at the render's
-    resolution, Resolution % included. `incoming` stands in for the Geometry node's,
-    which a displacement shader lacks."""
+    resolution, Resolution % included.
+
+    Args:
+        tree: The sea material's shader tree.
+        incoming: Stands in for the Geometry node's Incoming, which a displacement
+            shader lacks; None takes the Geometry node's."""
     camera = tree.nodes.new("ShaderNodeCameraData")
     geometry = tree.nodes.new("ShaderNodeNewGeometry")
     if incoming is None:
@@ -66,8 +70,15 @@ def _instance(
     pixel: _Pixel,
     calm: bpy.types.NodeSocket | None,
 ) -> bpy.types.Node:
-    """`group` fed the pixel's footprint. Cycles merges the identical nodes each call
-    adds."""
+    """A group node fed the pixel's footprint. Cycles merges the identical nodes each
+    call adds.
+
+    Args:
+        tree: The sea material's shader tree.
+        group: A wave group with footprint inputs.
+        pixel: The footprint the group fades its waves by.
+        calm: Feeds the group's Calm input, which scales the damped waves; None for no
+            slick."""
     across_sq = Num(tree, pixel.across_m) * pixel.across_m
     along_sq = Num(tree, pixel.along_m) * pixel.along_m
     instance = node(
@@ -86,8 +97,13 @@ def _instance(
 
 
 def _footprint_table(name: str, value_at: Callable[[float], float]) -> bpy.types.Image:
-    """`value_at` baked against log footprint: one lookup, not a sum over the waves per
-    sample."""
+    """A function of the footprint baked against log footprint: one lookup, not a sum
+    over the waves per sample.
+
+    Args:
+        name: The table image's name in `bpy.data`.
+        value_at: Its value at a footprint in metres, sampled log-spaced across
+            `FOOTPRINT_RANGE_M`."""
     low, high = FOOTPRINT_RANGE_M
     return curve_image(
         name, np.array([value_at(f) for f in low * (high / low) ** texels()])
@@ -119,9 +135,15 @@ def _redraw(
     rate: bpy.types.NodeSocket | float,
     name: str,
 ) -> tuple[Num, Num]:
-    """White noise per `cell`, drawn again `rate` times a second at its own phase: ln
-    of its first uniform, floored off 1e-7, and its second. `name` is the draw's
-    node."""
+    """White noise per cell, drawn again at its own phase: ln of its first uniform,
+    floored off 1e-7, and its second.
+
+    Args:
+        tree: The sea material's shader tree.
+        cell: Integer cell coordinates; every point in a cell draws the same noise.
+        time_s: The sea's time.
+        rate: Draws per second.
+        name: Names the node that counts the draws."""
     offset = node(
         tree, "ShaderNodeTexWhiteNoise", {"Vector": cell}, noise_dimensions="3D"
     )

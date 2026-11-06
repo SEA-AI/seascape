@@ -68,8 +68,11 @@ def gust_slope_variance(wind_speed_mps: float) -> float:
 
 
 def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
-    """`tile` with its values replaced, rank for rank, by a unit Gaussian's quantiles:
-    the same pattern, exactly symmetric about 0."""
+    """A tile with its values replaced, rank for rank, by a unit Gaussian's quantiles:
+    the same pattern, exactly symmetric about 0.
+
+    Args:
+        tile: A float field; only the order of its values survives."""
     ranked = np.empty(tile.size, tile.dtype)
     ranked[np.argsort(tile, axis=None)] = _gaussian_quantiles(tile.size)
     return ranked.reshape(tile.shape)
@@ -77,8 +80,11 @@ def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
 
 @cache
 def _gaussian_quantiles(count: int) -> np.ndarray:
-    """A unit Gaussian's quantiles at the centres of `count` equal shares, ascending.
-    Frozen: the cache hands every caller the same array."""
+    """A unit Gaussian's quantiles at the centres of equal shares, ascending. Frozen:
+    the cache hands every caller the same array.
+
+    Args:
+        count: How many equal shares, one quantile each."""
     quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(count) + 0.5) / count)
     quantiles.setflags(write=False)
     return quantiles
@@ -87,8 +93,15 @@ def _gaussian_quantiles(count: int) -> np.ndarray:
 def von_karman_field(
     rng: np.random.Generator, cells: int, spacing_m: float, length_m: float
 ) -> np.ndarray:
-    """A periodic tile, (cells, cells), of von Karman's spectrum at integral scale
-    `length_m`, zero mean and unit variance."""
+    """A periodic tile, (cells, cells), of von Karman's spectrum, zero mean and unit
+    variance.
+
+    Args:
+        rng: Draws the white noise the spectrum shapes.
+        cells: The tile's side, in cells.
+        spacing_m: A cell's side; the tile repeats every cells times spacing_m.
+        length_m: The integral scale, the autocorrelation's integral over lag: how far
+            the field stays alike."""
     k0_rad_m = math.sqrt(math.pi) * math.gamma(5 / 6) / (math.gamma(1 / 3) * length_m)
     k = 2 * math.pi * np.fft.fftfreq(cells, spacing_m)
     k_sq = k[:, None] ** 2 + k[None, :] ** 2

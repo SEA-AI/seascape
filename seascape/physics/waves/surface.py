@@ -50,9 +50,16 @@ def slope(
 def gerstner_offset_m(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(east, north, up) that `field`'s Gerstner surface moves the water at rest at
-    (`east_m`, `north_m`): up a cos(phase), and -k_hat a sin(phase) along the sea
-    (Tessendorf, "Simulating ocean water", SIGGRAPH 2001 course, eq. 29, lambda 1)."""
+    """(east, north, up) that a Gerstner surface moves the water at rest: up a
+    cos(phase), and -k_hat a sin(phase) along the sea (Tessendorf, "Simulating ocean
+    water", SIGGRAPH 2001 course, eq. 29, lambda 1).
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
+            round a circle about there.
+        north_m: The same, north.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
     a, k, kx, ky, *_ = columns(field)
@@ -70,9 +77,16 @@ def gerstner_rest_m(
     t_s: float,
     guess: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Where the water now over (`east_m`, `north_m`) was at rest, by Newton's method
-    from `guess`, or from that point itself, to a nanometre. It converges while no
-    crest folds."""
+    """Where the water now over a point was at rest, by Newton's method to a
+    nanometre. It converges while no crest folds.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        east_m: The point on the displaced surface, east.
+        north_m: The same, north.
+        t_s: Time; each wave's phase advances at its angular frequency.
+        guess: The rest position (east, north) to start from; the point itself if
+            None."""
     east, north = np.asarray(east_m, float), np.asarray(north_m, float)
     rest_east, rest_north = (east, north) if guess is None else guess
     a, k, k_east, k_north, *_ = columns(field)
@@ -100,9 +114,15 @@ def gerstner_rest_m(
 def gerstner_normal(
     field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The unit normal of `field`'s Gerstner surface at the water at rest at
-    (`east_m`, `north_m`): the cross product of the surface's derivatives along east
-    and north at rest."""
+    """The unit normal of a Gerstner surface at the water at rest: the cross product
+    of the surface's derivatives along east and north at rest.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
+            round a circle about there.
+        north_m: The same, north.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
     sine, cosine = np.sin(phase), np.cos(phase)
 
@@ -126,12 +146,18 @@ def gerstner_hit(
     t_s: float,
     step_m: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Where rays from `origin_m` along unit `direction` (both 3 x n, east, north,
-    up) first meet `field`'s Gerstner surface: the water's rest there, and whether
+    """Where rays first meet a Gerstner surface: the water's rest there, and whether
     they meet it at all before rising clear of the crests. Marched along the sea by
     the ray's height over the water, over the steepest the surface can rise, or by
-    `step_m` where that is less; then halved to a micrometre. A crest thinner than
-    `step_m` is missed."""
+    the shortest step where that is less; then halved to a micrometre.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        origin_m: Where the rays start, 3 x n: east, north, up.
+        direction: The rays' unit directions, 3 x n: east, north, up.
+        t_s: Time; each wave's phase advances at its angular frequency.
+        step_m: The shortest step along the sea. A crest thinner than it is
+            missed."""
     origin, direction = np.asarray(origin_m, float), np.asarray(direction, float)
     crest = sum(w.amplitude_m for w in field)
     # The surface's slope is the offset's over its stretch, 1 - sum(a k) at least. A
@@ -208,8 +234,14 @@ def attitude(
     field: tuple[Wave, ...], hull: Waterplane, t_s: float
 ) -> tuple[float, float]:
     """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull:
-    each wave's least-squares slope at its phase at the `hull`'s rest. The hull
-    follows it at once: no inertia."""
+    each wave's least-squares slope at its phase at the hull's rest. The hull
+    follows it at once: no inertia.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        hull: The rectangle the plane is fitted over; a wave much shorter than it
+            averages out.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     if not field:
         return 0.0, 0.0
     rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
@@ -227,11 +259,17 @@ def attitude(
 
 
 def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
-    """Mean height of `field`'s Gerstner surface over a `hull`'s waterplane, where a
-    wall-sided hull floats (Archimedes): each wave's mean over the rectangle, as
-    `attitude`'s, at its phase at the hull's rest. Exact for a point; under a hull, it
-    misses the Gerstner surface's second order in steepness. The hull follows it at
-    once: no inertia."""
+    """Mean height of a Gerstner surface over a hull's waterplane, where a wall-sided
+    hull floats (Archimedes): each wave's mean over the rectangle, as `attitude`'s,
+    at its phase at the hull's rest. Exact for a point; under a hull, it misses the
+    Gerstner surface's second order in steepness. The hull follows it at once: no
+    inertia.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        hull: The rectangle the height is averaged over; a wave much shorter than
+            it averages out.
+        t_s: Time; each wave's phase advances at its angular frequency."""
     if not field:
         return 0.0
     rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull

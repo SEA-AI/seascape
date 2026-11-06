@@ -121,10 +121,12 @@ def _table() -> tuple[FloatArray, FloatArray, FloatArray]:
 def optical_constants(
     t_k: float = T_SEA_K,
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Wavelength (m), n, k across the band at `t_k`, ascending in wavelength.
+    """Wavelength (m), n, k of liquid water across the band (no salinity correction),
+    ascending in wavelength.
 
-    Linearly interpolated between the table's steps and clamped outside its span.
-    """
+    Args:
+        t_k: Water temperature, interpolated linearly between the table's steps and
+            clamped outside its span."""
     grid, temperatures, nk = _table()
     t = float(np.clip(_checked_kelvin(t_k), temperatures[0], temperatures[-1]))
     n, k = (
@@ -152,11 +154,16 @@ def planck(lam_m: npt.ArrayLike, t_k: float) -> FloatArray:
 def fresnel_emissivity(
     theta_rad: npt.ArrayLike, n: npt.ArrayLike, k: npt.ArrayLike
 ) -> FloatArray:
-    """Unpolarised emissivity 1-R at incidence `theta_rad` from vacuum.
+    """Unpolarised emissivity 1-R at incidence from vacuum.
 
     numpy's complex sqrt takes the correct branch, so grazing needs no special case.
     Inputs broadcast, so angle and wavelength can be evaluated as a grid.
-    """
+
+    Args:
+        theta_rad: Angle between the ray and the surface normal; pi / 2 is grazing.
+        n: Real part of the complex refractive index, which sets the phase speed.
+        k: Imaginary part, the extinction coefficient, which damps the wave inside
+            the water. A scalar-IOR Fresnel, Blender's, drops it."""
     n_c = np.asarray(n, dtype=np.float64) + 1j * np.asarray(k, dtype=np.float64)
     theta = np.asarray(theta_rad, dtype=np.float64)
     cos_i = np.cos(theta)
@@ -176,17 +183,19 @@ def emissivity_curve(
 ) -> tuple[FloatArray, FloatArray]:
     """Planck-weighted, band-integrated emissivity against viewing zenith (rad).
 
-    `slope_sigma` is the RMS slope per axis the renderer does *not* resolve; at 0 this
-    is flat-surface Fresnel. Above 0 it averages Fresnel over facets with Gaussian
-    slopes, weighted by the area each presents to the viewer,
-    which is the Masuda 1988 construction. Only the unresolved slope belongs here:
-    slope the wave normals carry is applied per pixel by the shader, and integrating it
-    again would count it twice.
+    A rough sea averages Fresnel over facets with Gaussian slopes, weighted by the area
+    each presents to the viewer, which is the Masuda 1988 construction.
 
     Shadowing between facets and reflections from one facet to another are not
     included; both raise emissivity further at grazing, so this is a lower bound there.
     Wu & Smith put the multiple-reflection term at 0.02-0.03 around 73 deg.
-    """
+
+    Args:
+        t_sea_k: Sea temperature, which sets the optical constants and Planck weight.
+        slope_sigma: RMS slope per axis the renderer does not resolve; at 0 this is
+            flat-surface Fresnel. Only the unresolved slope belongs here: slope the
+            wave normals carry is applied per pixel by the shader, and integrating it
+            again would count it twice."""
     theta, table = _flat_curve(t_sea_k)
     if slope_sigma <= 0.0:
         return theta.copy(), table.copy()
@@ -239,12 +248,15 @@ def foam_emissivity_excess(theta_rad: npt.ArrayLike) -> FloatArray:
 
 @functools.lru_cache(maxsize=64)
 def _facets(slope_sigma: float) -> FloatArray:
-    """Unit normals of facets whose slopes are Gaussian, `slope_sigma` per axis.
+    """Unit normals of facets whose slopes are Gaussian.
 
     On a grid of the normal's quantiles: a random draw's error would be a bias every
     pixel shares. The grid's midpoints stop short of the tails, so it is rescaled to
     the sigma.
-    """
+
+    Args:
+        slope_sigma: RMS slope per axis: Cox & Munk's total over sqrt(2) on an
+            isotropic sea."""
     side = math.isqrt(FACET_SAMPLES)
     quantiles = np.vectorize(NormalDist().inv_cdf)((np.arange(side) + 0.5) / side)
     quantiles /= quantiles.std()
@@ -280,8 +292,8 @@ class Sky:
         slope_sigma: float = 0.0,
         view_rad: npt.ArrayLike | None = None,
     ) -> FloatArray:
-        """The sky a rough sea reflects, against the elevation of the viewer's mirror
-        direction; the result carries the sky's trailing axes after the mirror's.
+        """The sky a rough sea reflects; the result carries the sky's trailing axes
+        after the mirror's.
 
         Masuda 1988's facet average, applied to the reflected sky: each facet reflects
         the sky in its own mirror direction, weighted by the area it presents to the
@@ -291,11 +303,16 @@ class Sky:
         view's incidence. A reflection below the horizon reads the sky's lowest
         elevation, as the world does.
 
-        The facets lean about a wave the pixel draws: `view_rad` is the view's
-        elevation off that wave's plane, `mirror_rad` its mirror's off the horizon.
-        They differ by the wave's tilt along the view, which turns every facet's
-        reflection with it. Unset, the wave is level and the two are one.
-        """
+        The facets lean about a wave the pixel draws. The view's elevation off that
+        wave's plane and its mirror's off the horizon differ by the wave's tilt along
+        the view, which turns every facet's reflection with it.
+
+        Args:
+            mirror_rad: Elevation of the viewer's mirror direction off the horizon.
+            t_sea_k: Sea temperature, which sets each facet's reflectance.
+            slope_sigma: RMS slope per axis of the facets; at 0 the sea is a mirror.
+            view_rad: The view's elevation off the drawn wave's plane. Unset, the wave
+                is level and this is `mirror_rad`."""
         mirror = np.asarray(mirror_rad, dtype=np.float64)
         trailing = self.radiance.shape[1:]
         if slope_sigma <= 0.0:
@@ -351,7 +368,7 @@ _BAND_LAM = np.linspace(*BAND_M, 512)
 def band_radiance(t_k: float) -> float:
     """Blackbody radiance integrated over the band, W m^-2 sr^-1.
 
-    On its own grid: the seawater table's ends land inside the band and integrate low.
+    On its own grid: the water table's ends land inside the band and integrate low.
     """
     return float(np.trapezoid(planck(_BAND_LAM, t_k), _BAND_LAM))
 
@@ -391,12 +408,15 @@ def sky_radiance(
     t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """Downwelling in-band sky radiance at an elevation above the horizon, under air at
-    `t_air_k`, or the atmosphere's own.
+    """Downwelling in-band sky radiance.
 
     Below the horizon the curve holds at ambient, which is what a ray that misses the
     sea should see.
-    """
+
+    Args:
+        elev_rad: Elevation above the horizon.
+        t_air_k: Surface air temperature; unset, the atmosphere's own.
+        atmosphere: The model atmosphere whose tables are read."""
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     return _over_horizon(_SKY_CSV, elev_rad, atmosphere) * band_radiance(t_air_k)
@@ -453,14 +473,19 @@ def cloud_height_m(
     cloud_base_m: float,
     depth_m: float,
 ) -> FloatArray:
-    """How far over its base a line of sight at `elev_rad` meets a cloud whose bottom
-    shows at `bottom_rad`: on the side it turns to the camera, as far off as its base
-    under that bottom, and no further than its `depth_m`. A bottom at or under the
-    horizon is out of sight: the base.
+    """How far over its base a line of sight meets a cloud: on the side it turns to
+    the camera, as far off as its base under its bottom.
 
     On a flat Earth: the curve matters only near the horizon, where the air in front
     hides the cloud.
-    """
+
+    Args:
+        elev_rad: Elevation of the line of sight.
+        bottom_rad: Elevation at which the cloud's bottom shows. At or under the
+            horizon it is out of sight, and the answer is the base.
+        cloud_base_m: Height of the cloud base above the sea, which puts a cloud of
+            a given bottom elevation that far off.
+        depth_m: The cloud's thickness, base to top, which caps the answer."""
     elev = np.asarray(elev_rad, dtype=np.float64)
     bottom = np.asarray(bottom_rad, dtype=np.float64)
     seen = bottom > 0.0
@@ -476,13 +501,20 @@ def cloudy_sky_radiance(
     atmosphere: Atmosphere = ATMOSPHERE,
     height_m: npt.ArrayLike = 0.0,
 ) -> FloatArray:
-    """`sky_radiance` with a `cloud` fraction, 0 to 1, a blackbody at the air
-    `height_m` over the cloud base: air lifted dry to the base, and the standard lapse
-    over it.
+    """`sky_radiance` partly under a cloud that is a blackbody at the air round it: air
+    lifted dry to the base, and the standard lapse over it.
 
     The cloud hides the air over its base; the air under it, LOWTRAN's path to the base,
     emits and transmits in front of the base and the side alike.
-    """
+
+    Args:
+        elev_rad: Elevation above the horizon.
+        cloud: Fraction of the sky the cloud covers, 0 to 1.
+        cloud_base_m: Height of the cloud base above the sea, where surface air
+            lifted at the dry lapse rate condenses (Wallace & Hobbs 2006).
+        t_air_k: Surface air temperature; unset, the atmosphere's own.
+        atmosphere: The model atmosphere whose tables are read.
+        height_m: Where the line of sight meets the cloud, over its base."""
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     elev = np.asarray(elev_rad, dtype=np.float64)
@@ -500,9 +532,15 @@ def cloudy_sky_radiance(
 def cloud_window_deficit_w_m2(
     cloud_base_m: float, t_air_k: float, atmosphere: Atmosphere = ATMOSPHERE
 ) -> float:
-    """What an overcast at `cloud_base_m` leaves short of a blackbody at the air in a
-    horizontal surface's in-band irradiance: 2 pi times the integral of the radiance
-    deficit times sin e cos e over elevation e."""
+    """What an overcast leaves short of a blackbody at the air in a horizontal
+    surface's in-band irradiance: 2 pi times the integral of the radiance deficit times
+    sin e cos e over elevation e.
+
+    Args:
+        cloud_base_m: Height of the overcast's base above the sea, which sets its
+            temperature through the dry lapse rate.
+        t_air_k: Surface air temperature.
+        atmosphere: The model atmosphere whose tables are read."""
     edges = np.linspace(0.0, math.pi / 2, 91)
     elev = (edges[:-1] + edges[1:]) / 2
     deficit = band_radiance(t_air_k) - cloudy_sky_radiance(
@@ -575,9 +613,14 @@ def haze_depth(
     visibility_km: float | None,
     atmosphere: Atmosphere = ATMOSPHERE,
 ) -> FloatArray:
-    """The maritime haze's optical depth looking up at `elev_rad`, linear in
-    1 / visibility, which is how LOWTRAN scales it. Under the table's shortest
-    visibility it holds."""
+    """The maritime haze's optical depth looking up, linear in 1 / visibility, which is
+    how LOWTRAN scales it.
+
+    Args:
+        elev_rad: Elevation of the line of sight.
+        visibility_km: Meteorological optical range; None is no aerosol. Under the
+            table's shortest the depth holds.
+        atmosphere: The model atmosphere whose tables are read."""
     elev, inverse, depth = _depth_table(_HAZE_CSV)[atmosphere]
     x = 0.0 if visibility_km is None else min(1 / visibility_km, inverse[-1])
     column = np.array([np.interp(x, inverse, row) for row in depth])

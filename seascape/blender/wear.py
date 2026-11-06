@@ -157,9 +157,12 @@ def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> 
 
 
 def unwrap(objects: list[bpy.types.Object]) -> None:
-    """One atlas over every mesh in `objects`, written as the corner attribute UV;
-    their own UV maps stay as they were. A shared mesh is split first, so each object
-    has texels of its own."""
+    """One atlas over every mesh, written as the corner attribute UV; their own UV maps
+    stay as they were. A shared mesh is split first, so each object has texels of its
+    own.
+
+    Args:
+        objects: What to lay out; those that are not meshes with faces are skipped."""
     meshes = [o for o in objects if o.type == "MESH" and o.data.polygons]
     if not meshes:
         return
@@ -201,8 +204,12 @@ def unwrap(objects: list[bpy.types.Object]) -> None:
 
 
 def bake_crevice(joined: bpy.types.Object, name: str) -> bpy.types.Image:
-    """The crevice mask over `joined`, every mesh of one asset in metres, into an
-    image sized to TEXEL_M on its atlas."""
+    """The crevice mask over an asset, into an image sized to TEXEL_M on its atlas.
+
+    Args:
+        joined: Every mesh of the asset as one, in metres, with the atlas `unwrap`
+            wrote.
+        name: Names the baked image and the bake's throwaway material."""
     mesh = joined.data
     n_loops = len(mesh.loops)
     uv = faces.floats(mesh.attributes[UV].data, "vector", 3 * n_loops).reshape(-1, 3)
