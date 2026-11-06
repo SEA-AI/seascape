@@ -188,6 +188,7 @@ class Sky(Model):
         "sky and air. EO ignores it. subarctic_winter's horizon partly sees space, so "
         "its horizon sky reads warmer than LOWTRAN's.",
     )
+    # Judgement: from an arctic night to a desert noon.
     t_air_k: float = Field(
         default=SURFACE_AIR_K[ATMOSPHERE],
         ge=250.0,
