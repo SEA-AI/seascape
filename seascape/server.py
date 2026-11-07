@@ -28,11 +28,12 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from PIL import Image as Picture
 from pydantic import (
-    AnyHttpUrl,
+    AnyUrl,
     Field,
     PositiveFloat,
     PositiveInt,
     SecretStr,
+    UrlConstraints,
     field_validator,
     model_validator,
 )
@@ -86,8 +87,10 @@ class Settings(BaseSettings):
     max_queued: PositiveInt = 20
     # The path is the credential: an MCP client may send no header.
     mcp_secret: SecretStr | None = None
-    # A tunnel's public URL; its host is allowed.
-    public_url: AnyHttpUrl | None = None
+    # The secret travels in the path, in the clear over http.
+    public_url: Annotated[AnyUrl, UrlConstraints(allowed_schemes=["https"])] | None = (
+        None
+    )
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
@@ -100,9 +103,6 @@ class Settings(BaseSettings):
     def _secret_guards_the_path(self) -> "Settings":
         if self.public_url and not self.mcp_secret:
             raise ValueError("SEASCAPE_PUBLIC_URL needs SEASCAPE_MCP_SECRET")
-        # The secret travels in the path, in the clear over http.
-        if self.public_url and self.public_url.scheme != "https":
-            raise ValueError("SEASCAPE_PUBLIC_URL must be https")
         # It becomes a route path, where `/` and `{}` mean something else.
         if self.mcp_secret and not re.fullmatch(
             r"[\w-]+", self.mcp_secret.get_secret_value()

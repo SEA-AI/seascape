@@ -43,12 +43,14 @@ services:
     restart: unless-stopped
 
 configs:
-  # Only Anthropic's outbound ranges reach the connector URL, so a leaked one is
-  # useless elsewhere: https://platform.claude.com/docs/en/api/ip-addresses
+  # Anthropic's outbound ranges: https://platform.claude.com/docs/en/api/ip-addresses
+  # Only the MCP path: a person opens the render links from their own address.
   ngrok-policy:
     content: |
       on_http_request:
-        - actions:
+        - expressions:
+            - req.url.path.startsWith('/mcp/')
+          actions:
             - type: restrict-ips
               config:
                 enforce: true

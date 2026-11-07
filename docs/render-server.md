@@ -57,7 +57,7 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 | `SEASCAPE_MAX_RUN_S` | how long a job runs before it fails |
 | `SEASCAPE_MAX_QUEUED` | how many jobs wait or run at once |
 | `SEASCAPE_MCP_SECRET` | moves MCP from `/mcp` to `/mcp/<secret>`, and turns the server's access log off |
-| `SEASCAPE_PUBLIC_URL` | a tunnel's public URL, whose host MCP then answers; Compose sets it from `NGROK_URL` |
+| `SEASCAPE_PUBLIC_URL` | a tunnel's public URL, whose host MCP then answers; needs `SEASCAPE_MCP_SECRET` and `https://`; Compose sets it from `NGROK_URL` |
 
 ```bash
 echo "SEASCAPE_MAX_DURATION_S=120" >> .env
@@ -77,7 +77,7 @@ echo "SEASCAPE_MCP_SECRET=$(python3 -c 'import secrets; print(secrets.token_urls
 docker compose --profile ngrok up -d
 ```
 
-Then add a custom connector at `https://<dev domain>/mcp/<secret>` with **No sign-in**. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
+Then add a custom connector at `https://<dev domain>/mcp/<secret>` with **No sign-in**.
 
 > [!WARNING]
-> The URL is the only credential: anyone who has it can queue renders. Render links under `/renders` need no secret, only their random job ID. Share the URL as a password; rotate the secret if it leaks. ngrok's Traffic Inspector records request paths, so the secret shows in your ngrok dashboard: limit who can open it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses), so the URL is useless elsewhere and answers 403 from any other address. Clients on the network need the same path, on the server's own address.
+> The URL is the only credential: anyone with it can queue renders. Rotate the secret if it leaks. `/renders` links need no secret, only their random job ID. ngrok's Traffic Inspector records paths, so the secret shows in your ngrok dashboard: limit who opens it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp/`; other addresses get 403. Clients on the network use `/mcp/<secret>` on the server's own address.
