@@ -430,11 +430,6 @@ class Rig(Model):
     offset_y_m: float = Field(
         default=0.0, description="From midships, positive forward."
     )
-    # Depth precision goes as far / near, so larger is better. The bound is a lens's
-    # clearance from its own structure.
-    near_clip_m: float = Field(
-        default=5.0, gt=0.0, description="Anything nearer a camera is not rendered."
-    )
     cameras: dict[Name, Camera] = Field(
         min_length=1, description="Its cameras, by name."
     )
