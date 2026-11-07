@@ -94,7 +94,8 @@ def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
     sees its bearing, or starts its own.
     """
     laid: list[list[Mount]] = []
-    for mount in sorted(mounts, key=lambda m: m.camera.hfov_deg, reverse=True):
+    # Ties go by name, which is unique, so the input's order never shows.
+    for mount in sorted(mounts, key=lambda m: (-m.camera.hfov_deg, m.name)):
         seen_by = [
             column
             for column in laid

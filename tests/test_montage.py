@@ -63,10 +63,20 @@ def test_frames_either_side_of_astern_sit_together() -> None:
     assert abs(laid.index(["stern_eo"]) - laid.index(["stern_ir"])) == 1
 
 
-def test_the_widest_cameras_set_the_columns_whatever_the_order() -> None:
-    ir = mount("bow", "ir", 22.0, 24.0)
-
-    assert names([ir, *reversed(AHEAD)]) == names([*AHEAD, ir])
+@pytest.mark.parametrize(
+    "cameras",
+    [
+        [*AHEAD, mount("bow", "ir", 22.0, 24.0)],
+        # Equally wide and in each other's view: either could head the column.
+        [
+            mount("a", "eo", 0.0, 49.0),
+            mount("b", "eo", 20.0, 49.0),
+            mount("c", "ir", 40.0, 24.0),
+        ],
+    ],
+)
+def test_the_columns_ignore_the_order_cameras_come_in(cameras) -> None:
+    assert names(cameras[::-1]) == names(cameras)
 
 
 @pytest.fixture
