@@ -40,6 +40,7 @@ from seascape.physics.waves.foam import (
 )
 from seascape.physics.waves.sea import (
     SPREAD_STRATA,
+    significant_height_m,
     snap_error,
     spreading_delta,
     swell,
@@ -144,6 +145,7 @@ __all__ = [
     "mss_spread",
     "peak_omega_rad_s",
     "resolvable",
+    "significant_height_m",
     "slick_survivors",
     "slope_variance",
     "snap_error",
