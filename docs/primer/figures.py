@@ -13,6 +13,7 @@ from PIL import Image
 
 from docs.hero import SKIES, captioned, render
 from seascape.config import load
+from seascape.outputs import canvas
 from seascape.outputs.calibration import Calibration
 from seascape.outputs.labels import Labels
 from seascape.physics import earth
@@ -122,16 +123,19 @@ def crops() -> None:
     pose = np.array(camera.extrinsics["world"])
     ahead = pose[:2, 2] / np.hypot(*pose[:2, 2])
     (w, h), size = CROP_PX, (CROP_PX[0] * CROP_SCALE, CROP_PX[1] * CROP_SCALE)
-    sheet = Image.new("RGB", (size[0], 2 * size[1] + GAP_PX), "white")
-    for i, (d_m, caption) in enumerate(((100.0, "100 m away"), (1000.0, "1 km away"))):
+    panels = []
+    for d_m, caption in ((100.0, "100 m away"), (1000.0, "1 km away")):
         east_m, north_m = pose[:2, 3] + d_m * ahead
         sea = np.array([east_m, north_m, earth.sea_z_m(east_m, north_m, radius_m)])
         u, v, z = np.array(camera.K) @ pose[:3, :3].T @ (sea - pose[:3, 3])
         left, top = round(u / z - w / 2), round(v / z - h / 2)
         panel = full.crop((left, top, left + w, top + h))
-        panel = captioned(panel.resize(size, Image.Resampling.NEAREST), caption, 18)
-        sheet.paste(panel, (0, i * (size[1] + GAP_PX)))
-    sheet.save(HERE / "crops.jpg", quality=90)
+        panels.append(
+            captioned(panel.resize(size, Image.Resampling.NEAREST), caption, 18)
+        )
+    canvas.above(panels, gap_px=GAP_PX, matte="white").save(
+        HERE / "crops.jpg", quality=90
+    )
 
 
 def figure(name: str) -> None:
@@ -141,13 +145,9 @@ def figure(name: str) -> None:
             frame(shared + sets, Path(tmp) / str(i), caption)
             for i, (caption, sets) in enumerate(panels)
         ]
-    width = sum(f.width for f in frames) + GAP_PX * (len(frames) - 1)
-    sheet = Image.new("RGB", (width, frames[0].height), "white")
-    x = 0
-    for f in frames:
-        sheet.paste(f, (x, 0))
-        x += f.width + GAP_PX
-    sheet.save(HERE / f"{name}.jpg", quality=85)
+    canvas.beside(frames, gap_px=GAP_PX, matte="white").save(
+        HERE / f"{name}.jpg", quality=85
+    )
 
 
 if __name__ == "__main__":

@@ -15,10 +15,9 @@ import cv2
 import numpy as np
 
 from seascape.config import Agc
-from seascape.outputs import agc
+from seascape.outputs import agc, canvas
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import agcs
-from seascape.outputs.montage import INK, MATTE
 
 # CLI name to cv2.PyRotationWarper type.
 PROJECTIONS = {
@@ -106,7 +105,7 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
     """
     w = image.shape[1]
     size = max(1.0, w / 2000)
-    strip = np.full((round(36 * size), w, 3), MATTE, np.uint8)
+    strip = np.full((round(36 * size), w, 3), canvas.MATTE, np.uint8)
     tick = round(8 * size)
     font, scale = cv2.FONT_HERSHEY_SIMPLEX, 0.5 * size
     line = max(1, round(size))
@@ -116,7 +115,7 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
             continue
         x = round(x)
         labelled = bearing % LABEL_DEG == 0
-        cv2.line(strip, (x, 0), (x, tick * (2 if labelled else 1)), INK, line)
+        cv2.line(strip, (x, 0), (x, tick * (2 if labelled else 1)), canvas.INK, line)
         if labelled:
             if true:
                 text = f"{bearing % 360:03d}"
@@ -124,7 +123,7 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
                 text = f"{bearing:+d}" if bearing else "0"
             (tw, th), _ = cv2.getTextSize(text, font, scale, line)
             origin = (x - tw // 2, 2 * tick + th + round(4 * size))
-            cv2.putText(strip, text, origin, font, scale, INK, line, cv2.LINE_AA)
+            cv2.putText(strip, text, origin, font, scale, canvas.INK, line, cv2.LINE_AA)
     return np.vstack([image, strip])
 
 
