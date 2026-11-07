@@ -2,7 +2,7 @@ services:
   seascape:
     image: ghcr.io/sea-ai/seascape:latest
     ports: ["${SEASCAPE_PORT:-8765}:8765"]
-    # Unset, each keeps the default in seascape/server.py.
+    # Unset or empty, each keeps its default.
     environment:
       - SEASCAPE_ALLOWED_HOSTS
       - SEASCAPE_PUBLIC_URL=${NGROK_URL:-}
@@ -25,6 +25,7 @@ services:
   ngrok:
     image: ngrok/ngrok:3
     profiles: [ngrok]
+    depends_on: [seascape]
     # Compose reads a required variable for every service, selected or not, so the
     # check is here: plain `docker compose up` never starts this service.
     entrypoint:

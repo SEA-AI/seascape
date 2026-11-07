@@ -257,10 +257,16 @@ def schema() -> None:
     help="The folder of scenarios clients render.",
 )
 def serve(host: str, port: int, scenarios: Path) -> None:
-    """Render for MCP clients at http://HOST:PORT/mcp; SEASCAPE_* sets the limits."""
+    """Render for MCP clients at http://HOST:PORT/mcp[/SECRET]; SEASCAPE_* sets up."""
+    from pydantic import ValidationError
+
     from seascape import server
 
-    server.serve(server.State(server.Settings(scenarios=scenarios)), host, port)
+    try:
+        settings = server.Settings(scenarios=scenarios)
+    except ValidationError as error:
+        raise click.UsageError(str(error)) from error
+    server.serve(server.State(settings), host, port)
 
 
 @main.group("assets")
