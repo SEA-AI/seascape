@@ -4,29 +4,22 @@ No Blender: this reads the images `render` already wrote. Captions sit under eac
 frame, never on it: in an exr they would corrupt radiance.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
-from seascape.config import Band, Mount, Scenario
-from seascape.outputs import agc
+from seascape.config import Mount, Scenario
+from seascape.outputs import agc, canvas
 
 TILE_H = 260
 CAPTION_H = 26
 GUTTER = 4
 FAN_R = 10
 
-MATTE = (24, 24, 24)
-INK = (232, 232, 232)
 SHADE = (88, 88, 88)
 LIT = (255, 200, 60)
-
-
-def font(size: int = 16) -> FreeTypeFont | ImageFont.ImageFont:
-    """Pillow's default font at `size` pixels."""
-    return ImageFont.load_default(size=size)
 
 
 def _wrapped(deg: float) -> float:
@@ -65,7 +58,7 @@ def _tile(
     ).convert("RGB")
     frame = ImageOps.scale(frame, TILE_H / frame.height, Image.Resampling.LANCZOS)
 
-    tile = ImageOps.expand(frame, border=(0, 0, 0, CAPTION_H), fill=MATTE)
+    tile = ImageOps.expand(frame, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
     _fan(draw, GUTTER + FAN_R, middle, mounts, mount)
@@ -73,7 +66,7 @@ def _tile(
     caption = f"{mount.name}  {bearing:+.0f}°  {mount.camera.hfov_deg:.0f}° wide"
     text_px = draw.textlength(caption, font=typeface)
     x = max((tile.width - text_px) / 2, 2 * (GUTTER + FAN_R))
-    draw.text((x, middle), caption, font=typeface, fill=INK, anchor="lm")
+    draw.text((x, middle), caption, font=typeface, fill=canvas.INK, anchor="lm")
     return tile
 
 
@@ -115,42 +108,13 @@ def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
     return [sorted(column, key=rightward) for column in laid]
 
 
-def _beside(images: Sequence[Image.Image]) -> Image.Image:
-    """`images` left to right, GUTTER apart, tops aligned."""
-    width = sum(image.width for image in images) + GUTTER * max(len(images) - 1, 0)
-    height = max((image.height for image in images), default=0)
-    out = Image.new("RGB", (width, height), MATTE)
-    x = 0
-    for image in images:
-        out.paste(image, (x, 0))
-        x += image.width + GUTTER
-    return out
-
-
-def _stacked(
-    column: Sequence[Mount], bands: Sequence[Band], tiles: Mapping[str, Image.Image]
-) -> Image.Image:
-    """A row per band of `column`'s tiles, side by side and centred."""
-    cells = [
-        _beside([tiles[m.name] for m in column if m.camera.band == band])
-        for band in bands
-    ]
-    row_h = TILE_H + CAPTION_H + GUTTER
-    out = Image.new(
-        "RGB", (max(c.width for c in cells), row_h * len(cells) - GUTTER), MATTE
-    )
-    for r, cell in enumerate(cells):
-        out.paste(cell, ((out.width - cell.width) // 2, r * row_h))
-    return out
-
-
 def compose(scenario: Scenario, into: Path) -> Path:
     """Write `montage.png` in `into`: a row per band, a column per bearing."""
     bands = [band for band in scenario.outputs.bands if scenario.band_mounts(band)]
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
     mounts = [m for band in bands for m in scenario.band_mounts(band)]
-    typeface = font()
+    typeface = canvas.font()
     tiles: dict[str, Image.Image] = {}
     for mount in mounts:
         # An exr is radiance; making it a picture is the render's job.
@@ -159,6 +123,13 @@ def compose(scenario: Scenario, into: Path) -> Path:
             raise FileNotFoundError(f"{frame}: render it, as png or jpg")
         tiles[mount.name] = _tile(frame, typeface, mount, mounts)
 
+    def cell(column: list[Mount], band: str) -> Image.Image:
+        return canvas.beside(
+            [tiles[m.name] for m in column if m.camera.band == band], gap_px=GUTTER
+        )
+
+    laid = columns(mounts)
+    cells = [[cell(column, band) for column in laid] for band in bands]
     out = into / "montage.png"
-    _beside([_stacked(column, bands, tiles) for column in columns(mounts)]).save(out)
+    canvas.table(cells, gap_px=GUTTER).save(out)
     return out

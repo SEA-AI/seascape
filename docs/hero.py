@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from docs.brand import FOG_WHITE, NIGHT_BLUE, font
-from seascape.outputs import labels
+from seascape.outputs import canvas, labels
 from seascape.outputs.calibration import Calibration
 
 SCENARIO = Path(__file__).with_name("hero.toml")
@@ -115,14 +115,8 @@ def main(hero: Path) -> None:
             run = Path(tmp) / name
             render(SCENARIO, overrides, run)
             columns.append(column(run))
-    w, h = columns[0][0].size
-    sheet = Image.new(
-        "RGB", (len(columns) * (w + GAP_PX) - GAP_PX, 2 * h + GAP_PX), "white"
-    )
-    for i, pair in enumerate(columns):
-        for j, img in enumerate(pair):
-            sheet.paste(img, (i * (w + GAP_PX), j * (h + GAP_PX)))
-    sheet.save(hero, quality=85)
+    rows = list(zip(*columns, strict=True))
+    canvas.table(rows, gap_px=GAP_PX, matte="white").save(hero, quality=85)
 
 
 if __name__ == "__main__":

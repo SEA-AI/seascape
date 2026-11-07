@@ -18,13 +18,13 @@ import bpy
 import cv2
 import numpy as np
 from mathutils import Vector
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from seascape.assets import manifest
 from seascape.blender import blend, faces, wear
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import box_corners, import_asset, mesh_objects
-from seascape.outputs.montage import INK, MATTE, font
+from seascape.outputs import canvas
 from seascape.physics import earth
 from seascape.physics.colour import srgb_encode
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
@@ -249,7 +249,7 @@ def _lit(part: np.ndarray, grey: np.ndarray, colours: np.ndarray) -> np.ndarray:
     """`colours` (h, w, 3) shaded by a view's grey, on the matte where no part is."""
     shade = 0.35 + 0.65 * grey[..., None]
     image = np.clip(colours * shade, 0, 255).astype(np.uint8)
-    image[part < 0] = MATTE
+    image[part < 0] = canvas.MATTE
     return image
 
 
@@ -267,7 +267,7 @@ def _mark(
     edge: tuple[int, ...],
     taken: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
-    typeface = font(15)
+    typeface = canvas.font(15)
     left, top, right, bottom = draw.textbbox((0, 0), text, font=typeface)
     w, h = right - left + 8, bottom - top + 6
     box = (xy[0] - w / 2, xy[1] - h / 2, xy[0] + w / 2, xy[1] + h / 2)
@@ -279,25 +279,29 @@ def _mark(
             return
         taken.append(box)
     draw.rectangle(box, fill=(0, 0, 0), outline=tuple(edge), width=2)
-    draw.text((box[0] + 4 - left, box[1] + 3 - top), text, font=typeface, fill=INK)
+    draw.text(
+        (box[0] + 4 - left, box[1] + 3 - top), text, font=typeface, fill=canvas.INK
+    )
 
 
 def _grid(tiles: list[tuple[Image.Image, str]], title: list[str]) -> Image.Image:
-    rows = max(1, math.ceil(len(tiles) / COLUMNS))
-    sheet = Image.new(
-        "RGB",
-        (TILE[0] * COLUMNS, TITLE_H + rows * (TILE[1] + CAPTION_H)),
-        MATTE,
-    )
-    draw = ImageDraw.Draw(sheet)
+    head = Image.new("RGB", (TILE[0] * COLUMNS, TITLE_H), canvas.MATTE)
+    draw = ImageDraw.Draw(head)
     for k, line in enumerate(title[:2]):
-        draw.text((8, 4 + 22 * k), line, font=font(18 if k == 0 else 14), fill=INK)
-    for k, (tile, caption) in enumerate(tiles):
-        x = (k % COLUMNS) * TILE[0]
-        y = TITLE_H + (k // COLUMNS) * (TILE[1] + CAPTION_H)
-        sheet.paste(tile, (x, y))
-        draw.text((x + 6, y + TILE[1] + 3), caption, font=font(14), fill=INK)
-    return sheet
+        draw.text(
+            (8, 4 + 22 * k),
+            line,
+            font=canvas.font(18 if k == 0 else 14),
+            fill=canvas.INK,
+        )
+    cells = []
+    for tile, caption in tiles:
+        cell = ImageOps.expand(tile, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
+        ImageDraw.Draw(cell).text(
+            (6, TILE[1] + 3), caption, font=canvas.font(14), fill=canvas.INK
+        )
+        cells.append(cell)
+    return canvas.above([head, canvas.grid(cells, COLUMNS)])
 
 
 def _crop(mask: np.ndarray) -> tuple[int, int, int, int]:
@@ -381,25 +385,16 @@ def overview(
 def _legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Image:
     rows = math.ceil(len(names) / 3)
     line = 20
-    image = Image.new("RGB", (TILE[0] * COLUMNS, 8 + rows * line), MATTE)
+    image = Image.new("RGB", (TILE[0] * COLUMNS, 8 + rows * line), canvas.MATTE)
     draw = ImageDraw.Draw(image)
     width = TILE[0] * COLUMNS // 3
     for k, (label, name) in enumerate(zip(labels, names, strict=True)):
         x, y = (k // rows) * width + 8, 4 + (k % rows) * line
         draw.rectangle((x, y + 2, x + 14, y + 16), fill=tuple(colours[k]))
-        draw.text((x + 20, y), f"{label}  {name}"[:52], font=font(14), fill=INK)
+        draw.text(
+            (x + 20, y), f"{label}  {name}"[:52], font=canvas.font(14), fill=canvas.INK
+        )
     return image
-
-
-def _stack(*images: Image.Image) -> Image.Image:
-    sheet = Image.new(
-        "RGB", (max(i.width for i in images), sum(i.height for i in images)), MATTE
-    )
-    y = 0
-    for image in images:
-        sheet.paste(image, (0, y))
-        y += image.height
-    return sheet
 
 
 # By image name, for one `sheets` run: Base Color, Alpha and Metallic share atlases.
@@ -720,7 +715,7 @@ def sheets(
         ],
     )
     if kind == "slots":
-        sheet = _stack(sheet, _legend(colours, labels, names))
+        sheet = canvas.above([sheet, _legend(colours, labels, names)])
     sheet.save(path := into / "overview.png")
     written.append(path)
     for texture, atlas in atlases.items():
@@ -844,13 +839,15 @@ def contact(name: str, out: Path) -> Path:
     sheet = overview(
         views, colours, vocabulary, [head, f"share of triangles below; {numbering}"]
     )
-    sheet = _stack(
-        sheet,
-        _legend(colours[present], shares, [vocabulary[z] for z in present]),
-        _grid(
-            _worn_tiles(found, asset.weathered),
-            [f"worn {SHOWN_WEAR}, as a build lays it"],
-        ),
+    sheet = canvas.above(
+        [
+            sheet,
+            _legend(colours[present], shares, [vocabulary[z] for z in present]),
+            _grid(
+                _worn_tiles(found, asset.weathered),
+                [f"worn {SHOWN_WEAR}, as a build lays it"],
+            ),
+        ]
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out)
