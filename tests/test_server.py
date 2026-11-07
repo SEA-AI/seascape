@@ -55,6 +55,26 @@ def _call(state: server.State, tool: str, **arguments: Any) -> Any:
     return asyncio.run(call())
 
 
+def test_only_the_tools_that_change_state_ask_a_client_for_approval(
+    tmp_path: Path,
+) -> None:
+    async def listed() -> dict[str, bool]:
+        async with Client(server.mcp(_state(tmp_path))) as client:
+            tools = (await client.list_tools()).tools
+            return {
+                t.name: bool(t.annotations and t.annotations.read_only_hint)
+                for t in tools
+            }
+
+    assert asyncio.run(listed()) == {
+        "catalog": True,
+        "jobs": True,
+        "render_result": True,
+        "render": False,
+        "cancel": False,
+    }
+
+
 @pytest.mark.parametrize(
     "line",
     [
