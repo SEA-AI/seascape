@@ -608,7 +608,7 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     refused = asyncio.run(burst())
     assert refused.count(True) == 3
     assert len(loads) == 2
-    assert state.loads == 0
+    assert len(state.jobs) == 2
 
 
 def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
@@ -630,11 +630,11 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
             await asyncio.to_thread(started.wait, 5)
             call.cancel()
             await asyncio.gather(call, return_exceptions=True)
-            during = state.loads
+            during = len(state.jobs)
             release.set()
-            while state.loads:
+            while state.jobs:
                 await asyncio.sleep(0.01)
-        return during, state.loads
+        return during, len(state.jobs)
 
     assert asyncio.run(attempt()) == (1, 0)
 

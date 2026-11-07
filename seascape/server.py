@@ -210,7 +210,6 @@ class State:
     loading: asyncio.Semaphore = field(
         default_factory=lambda: asyncio.Semaphore(LOADING)
     )
-    loads: int = 0  # `render` calls that wait for or run a load
 
     def scenarios(self) -> dict[str, Path]:
         """The scenarios a job can name, by file stem."""
@@ -343,16 +342,14 @@ async def _prune(state: State) -> None:
             del state.jobs[name]
 
 
-def _waiting(state: State) -> int:
-    """Jobs that wait or run."""
-    return sum(j.waiting for j in state.jobs.values())
-
-
-def _refuse_if_full(state: State) -> None:
-    """Refuse one more past `max_queued`, counting the calls still loading."""
-    queued, most = _waiting(state) + state.loads, state.settings.max_queued
-    if queued >= most:
-        raise ToolError(f"{queued} jobs queued; the server takes at most {most}")
+def _ahead(state: State) -> int:
+    """How many jobs wait or run; refuses one more past `max_queued`."""
+    ahead = sum(j.waiting for j in state.jobs.values())
+    if ahead >= state.settings.max_queued:
+        raise ToolError(
+            f"{ahead} jobs queued; the server takes at most {state.settings.max_queued}"
+        )
+    return ahead
 
 
 async def _load(
@@ -363,11 +360,13 @@ async def _load(
         return await asyncio.to_thread(_tried, path, lines, variants, state.settings)
 
 
-def _release(state: State, task: asyncio.Task[Any]) -> None:
-    """Give back a place in the queue; read the outcome, which no caller will."""
-    state.loads -= 1
-    if not task.cancelled():
-        task.exception()
+def _drop(state: State, name: str, loading: asyncio.Task[Any]) -> None:
+    """Forget a job that never started, once its load ends; read the outcome, which
+    no caller will when it went away.
+    """
+    state.jobs.pop(name, None)
+    if not loading.cancelled():
+        loading.exception()
 
 
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
@@ -415,13 +414,16 @@ async def render(
     state.renders.mkdir(parents=True, exist_ok=True)
     await _prune(state)
     # Refuse before loading, which is the cost.
-    _refuse_if_full(state)
-    # A queue place until this call is a job or fails, or its thread ends.
-    state.loads += 1
+    ahead = _ahead(state)
+    name = uuid.uuid4().hex
+    # Queued while it loads, so a burst fills the queue before any call pays for a
+    # load.
+    job = Job(state.renders / name, scenario, [])
+    state.jobs[name] = job
     loading = asyncio.create_task(_load(state, path, lines, variants))
     try:
         try:
-            scenes, worst_bytes = await asyncio.shield(loading)
+            job.scenes, job.worst_bytes = await asyncio.shield(loading)
         # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
         except ValueError as error:
             raise ToolError(str(error)) from error
@@ -429,13 +431,12 @@ async def render(
             raise ToolError(
                 f"{type(error).__name__}: a file the scenario names could not be read"
             ) from error
-        ahead = _waiting(state)
-        name = uuid.uuid4().hex
-        job = Job(state.renders / name, scenario, scenes, worst_bytes=worst_bytes)
         # A running job's images count twice, as written and as still to come; a
         # finishing one still writes its zip.
         writing = [
-            j for j in state.jobs.values() if j.waiting or j.state == "finishing"
+            j
+            for j in state.jobs.values()
+            if j is not job and (j.waiting or j.state == "finishing")
         ]
         free = shutil.disk_usage(state.renders).free - sum(
             j.size_bytes for j in writing
@@ -446,15 +447,13 @@ async def render(
                 f"{free_gb:.0f} GB free after the jobs queued; this job needs "
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
-        state.jobs[name] = job
         job.task = asyncio.create_task(_run(state, job, path, lines, variants))
         return {"job": name, "images": job.total, "jobs_ahead": ahead}
     finally:
-        # The job counts in `waiting` from here.
-        if loading.done():
-            state.loads -= 1
-        else:
-            loading.add_done_callback(partial(_release, state))
+        # Refused, failed or abandoned. The load thread cannot be stopped, so the
+        # place is kept until it ends.
+        if job.task is None:
+            loading.add_done_callback(partial(_drop, state, name))
 
 
 async def _seascape(*args: str) -> None:
@@ -520,11 +519,7 @@ async def _run(
         ran_out = limit is not None and limit.expired()
         job.error = f"ran past {max_run_s:g} s" if ran_out else f"TimeoutError: {error}"
     except Exception as error:  # whatever it was, the client polling is told
-        # A failed render was logged with its stderr already.
-        log.error(
-            "job %s failed: %s", job.folder.name, error,
-            exc_info=not isinstance(error, RuntimeError),
-        )  # fmt: skip
+        log.exception("job %s failed", job.folder.name)
         job.state, job.error = "failed", f"{type(error).__name__}: {error}"
 
 
