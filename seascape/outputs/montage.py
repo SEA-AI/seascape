@@ -4,7 +4,7 @@ No Blender: this reads the images `render` already wrote. Captions sit under eac
 frame, never on it: in an exr they would corrupt radiance.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -89,30 +89,31 @@ def _cut_deg(bearings_deg: Sequence[float]) -> float:
     return start + gap / 2
 
 
-def _columns(mounts: Sequence[Mount]) -> list[list[Mount]]:
+def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
     """`mounts` in columns, left to right by bearing, each column's in bearing order.
 
-    The cameras listed first set the columns.
+    The widest cameras set the columns; each other joins the one whose first camera
+    sees its bearing, or starts its own.
     """
-    columns: list[list[Mount]] = []
-    for mount in mounts:
+    laid: list[list[Mount]] = []
+    for mount in sorted(mounts, key=lambda m: m.camera.hfov_deg, reverse=True):
         seen_by = [
             column
-            for column in columns
+            for column in laid
             if _apart_deg(mount, column[0]) <= column[0].camera.hfov_deg / 2
         ]
         if seen_by:
             min(seen_by, key=lambda column: _apart_deg(mount, column[0])).append(mount)
         else:
-            columns.append([mount])
+            laid.append([mount])
 
-    cut_deg = _cut_deg([column[0].nominal_bearing_deg for column in columns])
+    cut_deg = _cut_deg([column[0].nominal_bearing_deg for column in laid])
 
     def rightward(mount: Mount) -> float:
         return (mount.nominal_bearing_deg - cut_deg) % 360.0
 
-    columns.sort(key=lambda column: rightward(column[0]))
-    return [sorted(column, key=rightward) for column in columns]
+    laid.sort(key=lambda column: rightward(column[0]))
+    return [sorted(column, key=rightward) for column in laid]
 
 
 def _beside(images: Sequence[Image.Image]) -> Image.Image:
@@ -149,12 +150,7 @@ def compose(scenario: Scenario, into: Path) -> Path:
     bands = [band for band in scenario.outputs.bands if scenario.band_mounts(band)]
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
-    # The widest cameras set the columns.
-    mounts = sorted(
-        (m for band in bands for m in scenario.band_mounts(band)),
-        key=lambda m: m.camera.hfov_deg,
-        reverse=True,
-    )
+    mounts = [m for band in bands for m in scenario.band_mounts(band)]
     typeface = font()
     tiles: dict[str, Image.Image] = {}
     for mount in mounts:
@@ -165,5 +161,5 @@ def compose(scenario: Scenario, into: Path) -> Path:
         tiles[mount.name] = _tile(frame, typeface, mount, mounts)
 
     out = into / "montage.png"
-    _beside([_stacked(column, bands, tiles) for column in _columns(mounts)]).save(out)
+    _beside([_stacked(column, bands, tiles) for column in columns(mounts)]).save(out)
     return out

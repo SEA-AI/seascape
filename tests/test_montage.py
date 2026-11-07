@@ -1,17 +1,72 @@
 """Laying rendered frames out for review."""
 
 import colorsys
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from seascape.config import Scenario
+from seascape.config import Camera, Mount, Rig, Scenario
 from seascape.outputs import montage
 from tests.scenarios import two_rigs
 
 type Rgb = tuple[int, int, int]
+
+
+def mount(rig: str, camera: str, bearing_deg: float, hfov_deg: float) -> Mount:
+    """`camera` alone on `rig`, looking along `bearing_deg`."""
+    optics = Camera.model_validate(
+        {
+            "band": "eo",
+            "hfov_deg": hfov_deg,
+            "width_px": 640,
+            "height_px": 480,
+            "yaw_deg": bearing_deg,
+        }
+    )
+    carrier = Rig.model_validate({"height_m": 5.0, "cameras": {camera: optics}})
+    return Mount(rig, carrier, camera, optics)
+
+
+def names(mounts: Sequence[Mount]) -> list[list[str]]:
+    return [[m.name for m in column] for column in montage.columns(mounts)]
+
+
+AHEAD = [
+    mount("bow", "eo_p", -40.0, 49.0),
+    mount("bow", "eo", 0.0, 49.0),
+    mount("bow", "eo_s", 40.0, 49.0),
+]
+
+
+def test_a_frame_joins_the_column_nearest_its_bearing() -> None:
+    """At 22°, both eo and eo_s see it; eo_s is nearer."""
+    ir = mount("bow", "ir", 22.0, 24.0)
+
+    assert names([*AHEAD, ir]) == [["bow_eo_p"], ["bow_eo"], ["bow_ir", "bow_eo_s"]]
+
+
+def test_a_frame_no_column_sees_takes_its_own() -> None:
+    """Abeam to port, the stern thermal sees what no colour camera does."""
+    ir = mount("stern", "ir", -90.0, 24.0)
+
+    assert ["stern_ir"] in names([*AHEAD, ir])
+
+
+def test_frames_either_side_of_astern_sit_together() -> None:
+    """Cut at astern, they would land at opposite ends of the sheet."""
+    eo, ir = mount("stern", "eo", 165.0, 49.0), mount("stern", "ir", 195.0, 24.0)
+
+    laid = names([*AHEAD, eo, ir])
+    assert abs(laid.index(["stern_eo"]) - laid.index(["stern_ir"])) == 1
+
+
+def test_the_widest_cameras_set_the_columns_whatever_the_order() -> None:
+    ir = mount("bow", "ir", 22.0, 24.0)
+
+    assert names([ir, *reversed(AHEAD)]) == names([*AHEAD, ir])
 
 
 @pytest.fixture
@@ -20,15 +75,17 @@ def rigs() -> Scenario:
 
 
 def frames(scenario: Scenario, into: Path) -> dict[str, Rgb]:
-    """Stand-ins for a render, named as `render` names them, each its own colour.
+    """Stand-ins for a render, named as `render` names them, each its own colour and
+    a tenth of its camera's size.
 
     Fully saturated, so no caption's grey text or fan matches one.
     """
     colours: dict[str, Rgb] = {}
-    for i, mount in enumerate(scenario.mounts):
+    for i, each in enumerate(scenario.mounts):
         r, g, b = colorsys.hsv_to_rgb(i / len(scenario.mounts), 1.0, 1.0)
-        colours[mount.name] = (round(255 * r), round(255 * g), round(255 * b))
-        Image.new("RGB", (64, 36), colours[mount.name]).save(into / f"{mount.name}.png")
+        colours[each.name] = (round(255 * r), round(255 * g), round(255 * b))
+        size = (each.camera.width_px // 10, each.camera.height_px // 10)
+        Image.new("RGB", size, colours[each.name]).save(into / f"{each.name}.png")
     return colours
 
 
@@ -37,25 +94,30 @@ def sheet(scenario: Scenario, into: Path) -> tuple[np.ndarray, dict[str, Rgb]]:
     return np.asarray(Image.open(montage.compose(scenario, into))), colours
 
 
-def turned(scenario: Scenario, rig: str, yaw_deg: float, **cameras: float) -> Scenario:
-    """`scenario` with `rig` and its `cameras` turned, validated again."""
-    data = scenario.model_dump()
-    data["rigs"][rig]["yaw_deg"] = yaw_deg
-    for name, camera_yaw_deg in cameras.items():
-        data["rigs"][rig]["cameras"][name]["yaw_deg"] = camera_yaw_deg
-    return Scenario.model_validate(data)
-
-
 def span(picture: np.ndarray, colour: Rgb, axis: int) -> np.ndarray:
     """The columns (axis 0) or rows (axis 1) holding `colour`."""
     return np.flatnonzero((picture == colour).all(axis=2).any(axis=axis))
 
 
-def test_a_band_gets_its_own_row(rigs, tmp_path) -> None:
+def test_a_band_gets_its_own_row_centred_in_its_column(rigs, tmp_path) -> None:
     picture, colours = sheet(rigs, tmp_path)
+    eo, ir = colours["bow_eo"], colours["bow_ir"]
 
-    eo, ir = colours["bow_eo_s"], colours["bow_ir"]
     assert span(picture, eo, 1).max() < span(picture, ir, 1).min()
+    centre = span(picture, eo, 0).mean()
+    assert span(picture, ir, 0).mean() == pytest.approx(centre, abs=0.5)  # whole pixels
+
+
+def test_no_frame_covers_another(rigs, tmp_path) -> None:
+    """Both thermals look ahead, so they share a column; each shows whole."""
+    data = rigs.model_dump()
+    data["rigs"]["stern"]["yaw_deg"] = 0.0
+    picture, colours = sheet(Scenario.model_validate(data), tmp_path)
+
+    for each in rigs.mounts:
+        aspect = each.camera.width_px / each.camera.height_px
+        shown = span(picture, colours[each.name], 0).size
+        assert shown == round(aspect * montage.TILE_H), each.name
 
 
 def test_the_caption_sits_under_the_frame_and_never_on_it(rigs, tmp_path) -> None:
@@ -64,44 +126,6 @@ def test_the_caption_sits_under_the_frame_and_never_on_it(rigs, tmp_path) -> Non
 
     assert (picture[: montage.TILE_H, frame] == colours["stern_eo"]).all()
     assert not (picture[montage.TILE_H :, frame] == colours["stern_eo"]).all(-1).any()
-
-
-def test_a_frame_sits_under_the_camera_that_sees_its_bearing(rigs, tmp_path) -> None:
-    picture, colours = sheet(turned(rigs, "bow", 0.0, ir=35.0), tmp_path)
-
-    under = span(picture, colours["bow_eo_s"], 0)
-    assert span(picture, colours["bow_ir"], 0).mean() == pytest.approx(under.mean())
-
-
-def test_frames_either_side_of_astern_sit_together(rigs, tmp_path) -> None:
-    """Cut at astern, they would land at opposite ends of the sheet."""
-    picture, colours = sheet(turned(rigs, "stern", 180.0, eo=-15.0, ir=15.0), tmp_path)
-    eo, ir = (
-        span(picture, colours["stern_eo"], 0),
-        span(picture, colours["stern_ir"], 0),
-    )
-
-    assert 0 < ir.min() - eo.max() <= montage.GUTTER + 1
-
-
-def test_frames_sharing_a_bearing_sit_side_by_side(rigs, tmp_path) -> None:
-    """Covering one with the other would hide a whole camera."""
-    picture, colours = sheet(turned(rigs, "stern", 0.0), tmp_path)
-    bow, stern = (
-        span(picture, colours["bow_ir"], 0),
-        span(picture, colours["stern_ir"], 0),
-    )
-
-    assert bow.size == stern.size
-    assert bow.max() < stern.min()
-
-
-def test_a_frame_no_column_sees_takes_its_own(rigs, tmp_path) -> None:
-    """Abeam to port, the stern thermal sees what no colour camera does."""
-    picture, colours = sheet(turned(rigs, "stern", 180.0, ir=90.0), tmp_path)
-    alone = span(picture, colours["stern_ir"], 0)
-
-    assert (picture[: montage.TILE_H, alone] == montage.MATTE).all()
 
 
 def test_the_caption_fan_lights_the_frames_own_wedge(rigs, tmp_path) -> None:
