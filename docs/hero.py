@@ -31,7 +31,7 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
     )
 
 
-def tag(
+def mark(
     draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
 ) -> None:
     tb = draw.textbbox(at, text, font=font(size))
@@ -40,7 +40,7 @@ def tag(
 
 
 def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
-    tag(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
+    mark(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
     return img
 
 
@@ -76,7 +76,7 @@ def frame(
         # Off the right edge a label shifts left, off the top it drops below the edge.
         text_w = draw.textlength(text, font=font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
-        tag(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
+        mark(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
     return captioned(img, caption)
 
 
