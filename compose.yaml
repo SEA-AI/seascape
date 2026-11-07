@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
 
 configs:
-  # Only Anthropic's outbound range reaches the connector URL, so a leaked one is
+  # Only Anthropic's outbound ranges reach the connector URL, so a leaked one is
   # useless elsewhere: https://platform.claude.com/docs/en/api/ip-addresses
   ngrok-policy:
     content: |
@@ -52,7 +52,7 @@ configs:
             - type: restrict-ips
               config:
                 enforce: true
-                allow: [160.79.104.0/21]
+                allow: [160.79.104.0/21, 153.61.208.0/20]
 
 volumes:
   cache:
