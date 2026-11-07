@@ -54,7 +54,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.outputs import montage
+from seascape.outputs import preview
 
 KEEP_S = 24 * 3600
 # A client may end a tool call after a minute.
@@ -64,6 +64,7 @@ PROGRESS_S = 5.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
 PREVIEWS = 8
+PREVIEW_STEM = "preview_"
 # Judgement: a result a client can read; the archive holds the rest.
 MAX_LISTED = 200
 # Judgement: far more and longer than a scenario's overrides.
@@ -368,10 +369,10 @@ async def render(
     """Queue a render of a scenario from `catalog` and return its job at once.
 
     `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
-    `sea.wind_speed_mps = { uniform = [2, 12] }`. `variants` renders that many
-    seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet,
-    up to the server's variant and image limits. Every seed it may try must fit
-    the clip, sample and camera limits.
+    `sea.wind_speed_mps = { uniform = [2, 12] }`. A list such as `objects` replaces the
+    whole list. `variants` renders that many seeds from the scenario's own, each drawn
+    anew, skipping a seed whose hulls meet, up to the server's variant and image
+    limits. Every seed it may try must fit the clip, sample and camera limits.
     """
     state = _state(ctx)
     settings = state.settings
@@ -501,13 +502,16 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
 
 
 def _finish(job: Job) -> None:
-    """A preview of each of the first `PREVIEWS` non-exr stills, and an archive."""
-    for scene, folder in zip(job.scenes[:PREVIEWS], job.folders, strict=False):
-        if scene.outputs.frames == 1 and scene.outputs.format != "exr":
-            with Picture.open(montage.compose(scene, folder)) as picture:
-                picture.thumbnail((PREVIEW_PX, PREVIEW_PX))
-                # Judgement: a preview, so a smaller file over fidelity.
-                picture.convert("RGB").save(folder / "preview.jpg", quality=85)
+    """A preview per camera of the first variant (none for exr), and an archive."""
+    scene, folder = job.scenes[0], job.folders[0]
+    if scene.outputs.format != "exr":
+        for mount, path in preview.shown(scene, folder)[:PREVIEWS]:
+            picture = preview.picture(path, mount.camera.agc)
+            picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
+            # Judgement: a preview, so a smaller file over fidelity.
+            preview.watermark(picture).save(
+                folder / f"{PREVIEW_STEM}{mount.name}.jpg", quality=85
+            )
     shutil.make_archive(str(job.folder), "zip", job.folder)
 
 
@@ -522,7 +526,7 @@ def _files(job: Job, renders: Path) -> list[Path]:
 
 async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, its error,
-    or its files as URLs with a preview of the first few stills (none for exr).
+    or its files as URLs with a preview per camera of the first variant (none for exr).
     """
     state = _state(ctx)
     found = state.jobs.get(job)
@@ -551,9 +555,8 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
         if len(listed) > MAX_LISTED:
             report["more_in_the_archive"] = len(listed) - MAX_LISTED
         previews = [
-            Image(path=preview)
-            for folder in found.folders
-            if (preview := folder / "preview.jpg").exists()
+            Image(path=path)
+            for path in sorted(found.folders[0].glob(f"{PREVIEW_STEM}*.jpg"))
         ]
     elif found.state == "queued":
         names = list(state.jobs)

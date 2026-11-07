@@ -244,7 +244,7 @@ def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
     assert not job.waiting
 
 
-def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
+def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
     state: server.State, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def render(*_args: str) -> None:  # Blender's frames, without Blender
@@ -254,7 +254,7 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
             folder.mkdir(parents=True, exist_ok=True)
             for mount in scene.mounts:
                 frame = folder / f"{mount.name}.{scene.outputs.format}"
-                Image.new("RGB", (64, 48)).save(frame)
+                Image.new("RGB", (640, 480)).save(frame)
 
     monkeypatch.setattr(server, "_seascape", render)
 
@@ -268,10 +268,13 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
     report = json.loads(result.content[0].text)
     assert report["status"] == "done", report
     assert report["files"][0].endswith(".zip")
-    assert sum(url.endswith("/preview.jpg") for url in report["files"]) == 2
+    (job,) = state.jobs.values()
+    (scene, *_) = job.scenes
+    cameras = len(scene.mounts)
+    assert sum("/preview_" in url for url in report["files"]) == cameras
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
-    ] * 2
+    ] * cameras
 
 
 def _sleeper(
@@ -699,3 +702,14 @@ def test_a_failed_render_tells_the_client_only_its_last_line(
     with pytest.raises(RuntimeError) as error:
         asyncio.run(server._seascape("render"))
     assert str(error.value) == "ValueError: bad scenario"
+
+
+def test_render_says_a_list_override_replaces_the_scenarios_list(
+    state: server.State,
+) -> None:
+    async def described() -> str:
+        async with Client(server.mcp(state)) as client:
+            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+            return tools["render"].description or ""
+
+    assert "replaces the whole list" in " ".join(asyncio.run(described()).split())
