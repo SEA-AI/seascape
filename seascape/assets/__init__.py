@@ -10,6 +10,7 @@ import urllib.request
 from abc import abstractmethod
 from collections import Counter
 from functools import cache
+from importlib import resources
 from pathlib import Path, PurePosixPath
 from typing import Annotated, ClassVar, Literal, override
 
@@ -22,7 +23,7 @@ from seascape.physics.thermal import ZoneName
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
 _XDG = os.environ.get("XDG_CACHE_HOME", "")
 CACHE = (Path(_XDG) if _XDG.startswith("/") else Path.home() / ".cache") / "seascape"
-MANIFEST = Path(__file__).parent / "assets.toml"
+MANIFEST = resources.files("seascape.assets") / "assets.toml"
 
 
 SHA256 = r"^[0-9a-f]{64}$"

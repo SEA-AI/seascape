@@ -8,13 +8,13 @@ optical properties from water color: a multiband quasi-analytical algorithm for
 optically deep waters", Applied Optics 41(27) 5755, 2002 (doi:10.1364/AO.41.005755).
 """
 
-from pathlib import Path
-
 import numpy as np
 
-_CURVE_CSV = Path(__file__).parent / "data" / "water_colour.csv"
+from seascape.physics.atmosphere import load_table
 
-_CHL_MG_M3, *_RGB = np.loadtxt(_CURVE_CSV, delimiter=",", comments="#", unpack=True)
+_CURVE_CSV = "water_colour.csv"
+
+_CHL_MG_M3, *_RGB = load_table(_CURVE_CSV, unpack=True)
 
 
 def body_color(chl_mg_m3: float, ior: float) -> tuple[float, float, float]:

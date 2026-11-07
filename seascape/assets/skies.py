@@ -27,7 +27,7 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
-from pathlib import Path
+from importlib import resources
 
 import cv2
 import numpy as np
@@ -36,7 +36,7 @@ from pydantic import Field, model_validator
 from seascape.assets import File
 from seascape.physics import colour, earth, lwir
 
-LIBRARY = Path(__file__).parent / "skies.toml"
+LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
 # Judgement: the peak must outshine the median of the ring round it by this factor. An
 # unclipped disc clears it; a sun behind cloud or below the horizon does not. The ring
