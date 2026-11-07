@@ -244,15 +244,21 @@ def test_a_folder_holding_an_earlier_run_is_refused_and_kept(
     assert [p.name for p in tmp_path.iterdir()] == ["kept.png"]
 
 
-def test_an_invalid_setting_is_a_usage_error_without_the_secret(
+def test_an_invalid_setting_is_an_error_without_the_secret(
     run: Run, tmp_path: Path
 ) -> None:
     result = run(
         "serve", "--scenarios", tmp_path, env={"SEASCAPE_MCP_SECRET": "tooshort"}
     )
-    assert result.exit_code == 2
-    assert "32 or more" in result.output
+    assert result.exit_code == 1
+    assert "SEASCAPE_MCP_SECRET needs 32 or more" in result.output
     assert "tooshort" not in result.output
+
+
+def test_an_invalid_setting_names_the_field(run: Run, tmp_path: Path) -> None:
+    result = run("serve", "--scenarios", tmp_path, env={"SEASCAPE_MAX_RUN_S": "-1"})
+    assert result.exit_code == 1
+    assert "max_run_s" in result.output
 
 
 def test_serve_keeps_the_secret_out_of_the_environment(

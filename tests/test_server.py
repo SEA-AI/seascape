@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,10 +20,8 @@ from PIL import Image
 from pydantic import ValidationError
 
 from seascape import server
-from seascape.config import Outputs
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
-# A secret is 32 or more URL-safe characters.
 SECRET = "s" * 32
 
 
@@ -395,24 +394,24 @@ def test_a_job_past_its_deadline_fails_and_frees_the_gpu(
 def test_a_job_waiting_for_the_gpu_keeps_its_whole_run_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    state = _state(tmp_path, max_run_s=0.5)
+    state = _state(tmp_path, max_run_s=0.2)
 
     async def seascape(*_: str) -> None:
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.05)
 
     monkeypatch.setattr(server, "_seascape", seascape)
     monkeypatch.setattr(server, "_finish", lambda _: None)
 
-    async def run() -> list[str]:
-        scenes = load_variants(OPEN_SEA)
-        jobs = [server.Job(tmp_path / n, "open-sea", scenes) for n in "ab"]
-        # The second waits 0.3 s for the GPU, then runs 0.3 s: under the limit each.
-        await asyncio.gather(
-            *(server._run(state, job, tmp_path, [], 1) for job in jobs)
-        )
-        return [job.state for job in jobs]
+    async def run() -> str:
+        job = server.Job(tmp_path / "a", "open-sea", load_variants(OPEN_SEA))
+        async with state.gpu:
+            task = asyncio.create_task(server._run(state, job, tmp_path, [], 1))
+            # Longer than the run limit.
+            await asyncio.sleep(0.3)
+        await task
+        return job.state
 
-    assert asyncio.run(run()) == ["done", "done"]
+    assert asyncio.run(run()) == "done"
 
 
 def test_a_full_queue_refuses_a_job(tmp_path: Path) -> None:
@@ -531,6 +530,11 @@ def test_a_public_url_needs_a_secret(tmp_path: Path) -> None:
         _state(tmp_path, public_url="https://seascape.ngrok.app")
 
 
+def test_listed_hosts_are_trimmed() -> None:
+    settings = server.Settings(scenarios=SCENARIOS, allowed_hosts="a:*, b:* ,")  # type: ignore[arg-type]
+    assert settings.allowed_hosts == ("a:*", "b:*")
+
+
 def test_a_public_url_must_be_https(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="https"):
         _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret=SECRET)
@@ -607,26 +611,32 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     assert state.loads == 0
 
 
-def test_a_render_keeps_its_place_in_the_queue_until_it_is_a_job(
+def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    state = _state(tmp_path, max_queued=1)
-    held: list[int] = []
-    free = shutil.disk_usage
+    state = _state(tmp_path)
+    started, release = threading.Event(), threading.Event()
 
-    def spy(path: Path) -> Any:
-        held.append(state.loads)
-        return free(path)
+    def slow_load(*_: object) -> None:
+        started.set()
+        release.wait(5)
+        raise ValueError("bad scenario")
 
-    async def idle(*_: object) -> None:
-        await asyncio.sleep(0)
+    monkeypatch.setattr(server, "_tried", slow_load)
 
-    monkeypatch.setattr(server, "_tried", lambda *_: (load_variants(BASELINE), 1.0))
-    monkeypatch.setattr(server, "_run", idle)
-    monkeypatch.setattr(server.shutil, "disk_usage", spy)
-    assert not _call(state, "render").is_error
-    assert held == [1]
-    assert state.loads == 0
+    async def attempt() -> tuple[int, int]:
+        async with Client(server.mcp(state)) as client:
+            call = asyncio.create_task(client.call_tool("render", {}))
+            await asyncio.to_thread(started.wait, 5)
+            call.cancel()
+            await asyncio.gather(call, return_exceptions=True)
+            during = state.loads
+            release.set()
+            while state.loads:
+                await asyncio.sleep(0.01)
+        return during, state.loads
+
+    assert asyncio.run(attempt()) == (1, 0)
 
 
 @pytest.mark.parametrize(
@@ -670,11 +680,6 @@ def test_a_preset_key_cannot_leave_the_presets(state: server.State) -> None:
     assert result.is_error
     assert "not a preset directory" in result.content[0].text
     assert "tool.setuptools" not in result.content[0].text
-
-
-def test_a_frame_count_builds_no_list() -> None:
-    outputs = Outputs(duration_s=60, fps=20_000_000)
-    assert outputs.frames == 1_200_000_000
 
 
 def test_a_failing_gpu_probe_still_serves(

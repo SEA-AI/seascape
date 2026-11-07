@@ -71,11 +71,16 @@ def _merge_value(base: Any, over: Any) -> Any:
     return over
 
 
+def names_a_path(name: str) -> bool:
+    """An include is a path when it has a `/` or a `.toml` suffix, else a preset."""
+    return "/" in name or name.endswith(".toml")
+
+
 def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
     """Resolve rule 2. `block` is the preset directory; None allows only a path."""
     if not isinstance(name, str):
         raise ValueError(f"include must be a string, got {name!r}")
-    if "/" in name or name.endswith(".toml"):
+    if names_a_path(name):
         return base / name
     if block is None:
         raise ValueError(f"{name!r} must be a path: it needs a '/' or a '.toml' suffix")

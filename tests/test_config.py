@@ -369,7 +369,7 @@ SUN = "sky.sun_elevation_deg = { uniform = [5.0, 60.0] }"
 
 
 def _hulls(copies: int, lap: int, ring: int, rows: int, columns: int) -> Scenario:
-    """Hulls from every source a scenario has: copies, an orbit, a ring and a farm."""
+    """A scenario with hulls from each source."""
     hull = "asset = 'multipurpose_freighter', range_m = 1000, bearing_deg = 0"
     return load(
         BASELINE,

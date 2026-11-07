@@ -20,6 +20,7 @@ import uuid
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -53,6 +54,7 @@ from seascape.config import (
     load,
     seeds,
 )
+from seascape.config.loader import names_a_path
 from seascape.outputs import montage
 
 KEEP_S = 24 * 3600
@@ -83,7 +85,12 @@ class Settings(BaseSettings):
     # Compose passes a variable set empty in .env as "". nan would pass every
     # comparison and turn a limit off.
     model_config = SettingsConfigDict(
-        env_prefix="SEASCAPE_", env_ignore_empty=True, allow_inf_nan=False, frozen=True
+        env_prefix="SEASCAPE_",
+        env_ignore_empty=True,
+        allow_inf_nan=False,
+        frozen=True,
+        # An error otherwise echoes the rejected input, a secret among them.
+        hide_input_in_errors=True,
     )
 
     scenarios: Path
@@ -109,7 +116,9 @@ class Settings(BaseSettings):
     @classmethod
     def _listed(cls, value: object) -> object:
         if isinstance(value, str):
-            return tuple(h for h in value.split(",") if h) or LOCAL_HOSTS
+            return (
+                tuple(h.strip() for h in value.split(",") if h.strip()) or LOCAL_HOSTS
+            )
         return value
 
     @model_validator(mode="after")
@@ -225,7 +234,7 @@ def _includes(node: Any) -> Iterator[str]:
 
 
 def _url(state: State, ctx: Context[Any, Any]) -> str:
-    """Where this client reaches the jobs' files: the public URL when there is one."""
+    """Where this client reaches the jobs' files."""
     if public := state.settings.public_url:
         return f"{str(public).rstrip('/')}/renders"
     return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
@@ -251,7 +260,7 @@ def _refuse_paths(lines: list[str]) -> None:
         except RecursionError as error:
             raise ValueError("an override nests too deeply") from error
         # A path would read any TOML here, and an error echoes what it read.
-        if any("/" in name or name.endswith(".toml") for name in names):
+        if any(names_a_path(name) for name in names):
             raise ToolError(f"{line!r}: an override names presets, never files")
 
 
@@ -334,27 +343,31 @@ async def _prune(state: State) -> None:
             del state.jobs[name]
 
 
-def _ahead(state: State, held: int = 0) -> int:
-    """How many jobs wait or run; refuses one more past `max_queued`, counting the
-    calls still loading, which become jobs. `held` is the caller's own place.
-    """
-    ahead = sum(j.waiting for j in state.jobs.values())
-    queued, most = ahead + state.loads - held, state.settings.max_queued
+def _waiting(state: State) -> int:
+    """Jobs that wait or run."""
+    return sum(j.waiting for j in state.jobs.values())
+
+
+def _refuse_if_full(state: State) -> None:
+    """Refuse one more past `max_queued`, counting the calls still loading."""
+    queued, most = _waiting(state) + state.loads, state.settings.max_queued
     if queued >= most:
         raise ToolError(f"{queued} jobs queued; the server takes at most {most}")
-    return ahead
 
 
 async def _load(
     state: State, path: Path, lines: list[str], variants: int
 ) -> tuple[list[Scenario], float]:
-    """Load under a slot of `state.loading`.
-
-    The thread cannot be stopped, so the slot is held until it ends, even when the
-    caller goes away.
-    """
+    """`_tried` in a thread under a `state.loading` slot, held until the thread ends."""
     async with state.loading:
         return await asyncio.to_thread(_tried, path, lines, variants, state.settings)
+
+
+def _release(state: State, task: asyncio.Task[Any]) -> None:
+    """Give back a place in the queue; read the outcome, which no caller will."""
+    state.loads -= 1
+    if not task.cancelled():
+        task.exception()
 
 
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
@@ -402,9 +415,8 @@ async def render(
     state.renders.mkdir(parents=True, exist_ok=True)
     await _prune(state)
     # Refuse before loading, which is the cost.
-    _ahead(state)
-    # A place in the queue, kept until this call is a job or fails, and until its
-    # load thread ends if the caller goes away first.
+    _refuse_if_full(state)
+    # A queue place until this call is a job or fails, or its thread ends.
     state.loads += 1
     loading = asyncio.create_task(_load(state, path, lines, variants))
     try:
@@ -417,7 +429,7 @@ async def render(
             raise ToolError(
                 f"{type(error).__name__}: a file the scenario names could not be read"
             ) from error
-        ahead = _ahead(state, held=1)
+        ahead = _waiting(state)
         name = uuid.uuid4().hex
         job = Job(state.renders / name, scenario, scenes, worst_bytes=worst_bytes)
         # A running job's images count twice, as written and as still to come; a
@@ -438,13 +450,11 @@ async def render(
         job.task = asyncio.create_task(_run(state, job, path, lines, variants))
         return {"job": name, "images": job.total, "jobs_ahead": ahead}
     finally:
-        # `waiting` counts a job from here on.
+        # The job counts in `waiting` from here.
         if loading.done():
             state.loads -= 1
         else:
-            loading.add_done_callback(
-                lambda _: setattr(state, "loads", state.loads - 1)
-            )
+            loading.add_done_callback(partial(_release, state))
 
 
 async def _seascape(*args: str) -> None:
@@ -487,9 +497,8 @@ async def _run(
     try:
         async with state.gpu:
             job.state, job.started_s = "running", time.time()
-            # Made here, since the deadline is fixed when it is made, not entered:
-            # the wait for the GPU is not the run. Past it, the process awaited is
-            # killed as on `cancel`.
+            # Made after the GPU wait, which the deadline must not count. Past it, the
+            # awaited process is killed as on `cancel`.
             limit = asyncio.timeout(max_run_s)
             async with limit:
                 await _seascape(
@@ -653,12 +662,14 @@ def mcp(state: State) -> MCPServer:
         "images, render `randomized`, or draw fields in `overrides`.",
         lifespan=lifespan,
     )
-    # A client may run a read-only tool without asking; `render` and `cancel` change
-    # what the server holds.
+    # Only `render` and `cancel` change what the server holds.
     read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
     served.add_tool(catalog, annotations=read_only)
     served.add_tool(jobs, annotations=read_only)
-    served.add_tool(render, annotations=ToolAnnotations(open_world_hint=False))
+    served.add_tool(
+        render,
+        annotations=ToolAnnotations(destructive_hint=False, open_world_hint=False),
+    )
     served.add_tool(
         cancel,
         annotations=ToolAnnotations(destructive_hint=True, open_world_hint=False),
@@ -669,7 +680,7 @@ def mcp(state: State) -> MCPServer:
 
 
 def serve(state: State, host: str, port: int) -> None:
-    """Probe the GPU, then serve `app` on `host`:`port`."""
+    """Serve `app` on `host`:`port`."""
     # In a process of its own, so the server never holds Blender.
     try:
         probe = subprocess.run(
@@ -713,7 +724,7 @@ def app(state: State, host: str) -> Starlette:
     # so MCP refuses any Host or Origin not listed.
     hosts = list(state.settings.allowed_hosts)
     if tunnel := state.settings.public_url:
-        # The Host header carries the port when it is not the scheme's default.
+        # `port` is the scheme's default when the URL names none; a Host may carry it.
         hosts += [tunnel.host or "", f"{tunnel.host}:{tunnel.port}"]
     security = TransportSecuritySettings(
         allowed_hosts=hosts,
