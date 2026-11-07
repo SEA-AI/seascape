@@ -105,7 +105,7 @@ def test_a_download_cut_off_mid_write_leaves_no_part(
 
 
 def test_fetch_puts_a_mesh_s_files_where_it_names_them(one: Path) -> None:
-    with assets.MANIFEST.open("a") as manifest:
+    with (one.parent / "assets.toml").open("a") as manifest:
         manifest.write(
             f'[ship.files."textures/skin.jpg"]\nurl = "{one.as_uri()}"\n'
             f'sha256 = "{DIGEST}"\n'
