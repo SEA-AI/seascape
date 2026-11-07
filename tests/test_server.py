@@ -579,6 +579,34 @@ def test_a_render_is_refused_before_anything_loads_when_the_queue_is_full(
     assert not loads
 
 
+def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_queued=2)
+    loads: list[object] = []
+
+    def slow_load(*args: object) -> tuple[list[object], float]:
+        loads.append(args)
+        time.sleep(0.3)
+        return [], 1.0
+
+    async def idle(*_: object) -> None:
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(server, "_tried", slow_load)
+    monkeypatch.setattr(server, "_run", idle)
+
+    async def burst() -> list[bool]:
+        async with Client(server.mcp(state)) as client:
+            calls = [client.call_tool("render", {}) for _ in range(5)]
+            return [bool(r.is_error) for r in await asyncio.gather(*calls)]
+
+    refused = asyncio.run(burst())
+    assert refused.count(True) == 3
+    assert len(loads) == 2
+    assert state.loads == 0
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [

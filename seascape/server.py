@@ -201,6 +201,7 @@ class State:
     loading: asyncio.Semaphore = field(
         default_factory=lambda: asyncio.Semaphore(LOADING)
     )
+    loads: int = 0  # `render` calls that wait for or run a load
 
     def scenarios(self) -> dict[str, Path]:
         """The scenarios a job can name, by file stem."""
@@ -334,13 +335,31 @@ async def _prune(state: State) -> None:
 
 
 def _ahead(state: State) -> int:
-    """How many jobs wait or run; refuses one more past `max_queued`."""
+    """How many jobs wait or run; refuses one more past `max_queued`, counting the
+    calls still loading, which become jobs.
+    """
     ahead = sum(j.waiting for j in state.jobs.values())
-    if ahead >= state.settings.max_queued:
-        raise ToolError(
-            f"{ahead} jobs queued; the server takes at most {state.settings.max_queued}"
-        )
+    queued, most = ahead + state.loads, state.settings.max_queued
+    if queued >= most:
+        raise ToolError(f"{queued} jobs queued; the server takes at most {most}")
     return ahead
+
+
+async def _load(
+    state: State, path: Path, lines: list[str], variants: int
+) -> tuple[list[Scenario], float]:
+    """Load under a slot of `state.loading`; the caller counted itself in `loads`.
+
+    The thread cannot be stopped, so the slot and the count are held until it ends,
+    even when the caller goes away.
+    """
+    try:
+        async with state.loading:
+            return await asyncio.to_thread(
+                _tried, path, lines, variants, state.settings
+            )
+    finally:
+        state.loads -= 1
 
 
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
@@ -389,11 +408,11 @@ async def render(
     await _prune(state)
     # Refuse before loading, which is the cost.
     _ahead(state)
+    state.loads += 1
     try:
-        async with state.loading:
-            scenes, worst_bytes = await asyncio.to_thread(
-                _tried, path, lines, variants, settings
-            )
+        scenes, worst_bytes = await asyncio.shield(
+            asyncio.create_task(_load(state, path, lines, variants))
+        )
     # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
     except ValueError as error:
         raise ToolError(str(error)) from error
