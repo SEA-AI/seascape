@@ -8,6 +8,7 @@ import asyncio
 import heapq
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,14 +21,21 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import urlsplit
 
 import uvicorn
 from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from PIL import Image as Picture
-from pydantic import Field, PositiveFloat, PositiveInt, SecretStr, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    Field,
+    PositiveFloat,
+    PositiveInt,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
@@ -76,11 +84,10 @@ class Settings(BaseSettings):
     min_free_gb: PositiveFloat = 10.0
     max_run_s: PositiveFloat = 12 * 3600.0
     max_queued: PositiveInt = 20
-    # A claude.ai connector may send no header, so on a public URL the path is the
-    # credential.
+    # The path is the credential: an MCP client may send no header.
     mcp_secret: SecretStr | None = None
-    # The public URL of a tunnel in front; its host is forwarded unchanged.
-    public_url: str = ""
+    # A tunnel's public URL; its host is allowed.
+    public_url: AnyHttpUrl | None = None
 
     @field_validator("allowed_hosts", mode="before")
     @classmethod
@@ -88,6 +95,19 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return tuple(h for h in value.split(",") if h) or LOCAL_HOSTS
         return value
+
+    @model_validator(mode="after")
+    def _secret_guards_the_path(self) -> "Settings":
+        if self.public_url and not self.mcp_secret:
+            raise ValueError("SEASCAPE_PUBLIC_URL needs SEASCAPE_MCP_SECRET")
+        # It becomes a route path, where `/` and `{}` mean something else.
+        if self.mcp_secret and not re.fullmatch(
+            r"[\w-]+", self.mcp_secret.get_secret_value()
+        ):
+            raise ValueError(
+                "SEASCAPE_MCP_SECRET may hold only letters, digits, _ and -"
+            )
+        return self
 
 
 # The most a pixel takes on disk, by band and format; a render test pins each. An exr
@@ -182,11 +202,11 @@ def _includes(node: Any) -> Iterator[str]:
             yield from _includes(value)
 
 
-def _url(ctx: Context[Any, Any]) -> str:
-    """Where this client reaches the jobs' files, through any HTTPS proxy in front."""
-    headers = ctx.headers or {}
-    scheme = headers.get("x-forwarded-proto", "http")
-    return f"{scheme}://{headers.get('host', 'localhost')}/renders"
+def _url(state: State, ctx: Context[Any, Any]) -> str:
+    """Where this client reaches the jobs' files: the public URL when there is one."""
+    if public := state.settings.public_url:
+        return f"{str(public).rstrip('/')}/renders"
+    return f"http://{(ctx.headers or {}).get('host', 'localhost')}/renders"
 
 
 def _bytes(scene: Scenario) -> float:
@@ -417,7 +437,7 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     if found.state == "failed":
         report["error"] = found.error
     elif found.state == "done":
-        url = _url(ctx)
+        url = _url(state, ctx)
         # A sequence's frames are in the archive only.
         report["files"] = [f"{url}/{job}.zip"] + [
             f"{url}/{path.relative_to(state.renders)}"
@@ -458,8 +478,8 @@ async def cancel(job: str, ctx: Context[State, Any]) -> dict[str, Any]:
 
 def jobs(ctx: Context[State, Any]) -> dict[str, Any]:
     """Every job the server remembers, newest first, and the disk left for more."""
-    url = _url(ctx)
     state = _state(ctx)
+    url = _url(state, ctx)
     return {
         "free_gb": round(shutil.disk_usage(state.renders).free / 1e9, 1),
         "jobs": [
@@ -543,16 +563,14 @@ def serve(state: State, host: str, port: int) -> None:
 
 
 def app(state: State, host: str) -> Starlette:
-    """MCP at /mcp, or at /mcp/<secret> when one is set, and the jobs' files at
-    /renders/.
-    """
+    """MCP at /mcp/<secret> (/mcp with no secret), the jobs' files at /renders/."""
     secret = state.settings.mcp_secret
     path = f"/mcp/{secret.get_secret_value()}" if secret else "/mcp"
     # A web page can point a browser on the network at this port by DNS rebinding,
     # so MCP refuses any Host or Origin not listed.
     hosts = list(state.settings.allowed_hosts)
-    if tunnel := urlsplit(state.settings.public_url).hostname:
-        hosts.append(tunnel)
+    if tunnel := state.settings.public_url:
+        hosts.append(tunnel.host or "")
     security = TransportSecuritySettings(
         allowed_hosts=hosts,
         allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],

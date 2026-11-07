@@ -22,7 +22,6 @@ services:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
 
-  # Only with `--profile ngrok`: a public HTTPS URL that dials out, so no inbound port.
   ngrok:
     image: ngrok/ngrok:3
     profiles: [ngrok]
