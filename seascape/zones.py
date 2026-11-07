@@ -268,9 +268,8 @@ def _mark(
     taken: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     typeface = canvas.font(15)
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=typeface)
-    w, h = right - left + 8, bottom - top + 6
-    box = (xy[0] - w / 2, xy[1] - h / 2, xy[0] + w / 2, xy[1] + h / 2)
+    left, top, right, bottom = draw.textbbox(xy, text, font=typeface, anchor="mm")
+    box = (left - 4, top - 3, right + 4, bottom + 3)
     if taken is not None:
         if any(
             box[0] < t[2] and t[0] < box[2] and box[1] < t[3] and t[1] < box[3]
@@ -279,9 +278,7 @@ def _mark(
             return
         taken.append(box)
     draw.rectangle(box, fill=(0, 0, 0), outline=tuple(edge), width=2)
-    draw.text(
-        (box[0] + 4 - left, box[1] + 3 - top), text, font=typeface, fill=canvas.INK
-    )
+    draw.text(xy, text, font=typeface, fill=canvas.INK, anchor="mm")
 
 
 def _grid(tiles: list[tuple[Image.Image, str]], title: list[str]) -> Image.Image:
