@@ -5,12 +5,14 @@ services:
     # Unset, each keeps the default in seascape/server.py.
     environment:
       - SEASCAPE_ALLOWED_HOSTS
+      - SEASCAPE_PUBLIC_URL=${NGROK_URL:-}
       - SEASCAPE_MAX_DURATION_S
       - SEASCAPE_MAX_PIXELS
       - SEASCAPE_MAX_IMAGES
       - SEASCAPE_MIN_FREE_GB
       - SEASCAPE_MAX_RUN_S
       - SEASCAPE_MAX_QUEUED
+      - SEASCAPE_MCP_SECRET
     volumes:
       - cache:/root/.cache/seascape
       - ${SEASCAPE_RENDERS:-./renders}:/root/.cache/seascape/renders
@@ -19,6 +21,38 @@ services:
       resources:
         reservations:
           devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+
+  ngrok:
+    image: ngrok/ngrok:3
+    profiles: [ngrok]
+    # Compose reads a required variable for every service, selected or not, so the
+    # check is here: plain `docker compose up` never starts this service.
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        test -n "$$NGROK_URL" || { echo "NGROK_URL is required"; exit 1; };
+        exec ngrok http seascape:8765 --url "$$NGROK_URL"
+        --traffic-policy-file /policy.yaml
+    environment:
+      - NGROK_AUTHTOKEN
+      - NGROK_URL
+    configs:
+      - source: ngrok-policy
+        target: /policy.yaml
+    restart: unless-stopped
+
+configs:
+  # Only Anthropic's outbound range reaches the connector URL, so a leaked one is
+  # useless elsewhere: https://platform.claude.com/docs/en/api/ip-addresses
+  ngrok-policy:
+    content: |
+      on_http_request:
+        - actions:
+            - type: restrict-ips
+              config:
+                enforce: true
+                allow: [160.79.104.0/21]
 
 volumes:
   cache:

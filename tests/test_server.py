@@ -26,6 +26,18 @@ def _state(renders: Path, **limits: Any) -> server.State:
     return server.State(server.Settings(scenarios=SCENARIOS, **limits), renders)
 
 
+async def _statuses(served: Any, path: str, *hosts: str) -> list[int]:
+    async with served.router.lifespan_context(served):
+        transport = httpx2.ASGITransport(app=served)
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            return [
+                (await client.post(path, json={}, headers={"host": h})).status_code
+                for h in hosts
+            ]
+
+
 @pytest.fixture
 def state(tmp_path: Path) -> server.State:
     return _state(tmp_path)
@@ -154,16 +166,8 @@ def test_listed_hosts_are_the_only_ones_mcp_answers(
     monkeypatch.setenv("SEASCAPE_ALLOWED_HOSTS", allowed)
     served = server.app(_state(tmp_path), "0.0.0.0")
 
-    async def post() -> int:
-        async with served.router.lifespan_context(served):
-            transport = httpx2.ASGITransport(app=served)
-            async with httpx2.AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as client:
-                response = await client.post("/mcp", json={}, headers={"host": host})
-                return response.status_code
-
-    assert (asyncio.run(post()) == 421) is refused
+    [status] = asyncio.run(_statuses(served, "/mcp", host))
+    assert (status == 421) is refused
 
 
 def test_a_hung_gpu_probe_still_serves(
@@ -180,6 +184,24 @@ def test_a_hung_gpu_probe_still_serves(
     server.serve(state, "127.0.0.1", 0)
     assert served
     assert "no answer" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("secret", "logged"), [(None, True), ("s3cret", False)])
+def test_a_secret_path_is_not_access_logged(
+    secret: str | None,
+    logged: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kwargs: dict[str, Any] = {}
+    monkeypatch.setattr(
+        server.subprocess,
+        "run",
+        lambda *_, **__: SimpleNamespace(stdout="None"),
+    )
+    monkeypatch.setattr(server.uvicorn, "run", lambda _, **kw: kwargs.update(kw))
+    server.serve(_state(tmp_path, mcp_secret=secret), "127.0.0.1", 0)
+    assert kwargs["access_log"] is logged
 
 
 def test_jobs_lists_a_finished_job_whose_archive_is_gone(
@@ -425,3 +447,62 @@ def test_a_killed_job_leaves_no_temporary_files(
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(server._seascape("render"))
     assert not seen["tmp"].exists()
+
+
+@pytest.mark.parametrize(
+    ("secret", "path", "found"),
+    [
+        (None, "/mcp", True),
+        ("s3cret", "/mcp", False),
+        ("s3cret", "/mcp/wrong", False),
+        ("s3cret", "/mcp/s3cret", True),
+    ],
+)
+def test_a_secret_is_the_only_path_to_mcp(
+    secret: str | None, path: str, found: bool, tmp_path: Path
+) -> None:
+    served = server.app(_state(tmp_path, mcp_secret=secret), "0.0.0.0")
+    [status] = asyncio.run(_statuses(served, path, "localhost:8765"))
+    assert (status != 404) is found
+
+
+def test_the_public_urls_host_is_allowed(tmp_path: Path) -> None:
+    state = _state(
+        tmp_path, public_url="https://seascape.ngrok.app", mcp_secret="s3cret"
+    )
+    served = server.app(state, "0.0.0.0")
+    tunnel, other = asyncio.run(
+        _statuses(served, "/mcp/s3cret", "seascape.ngrok.app", "evil.example")
+    )
+    assert tunnel != 421
+    assert other == 421
+
+
+def test_a_public_url_needs_a_secret(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="SEASCAPE_MCP_SECRET"):
+        _state(tmp_path, public_url="https://seascape.ngrok.app")
+
+
+def test_a_public_url_must_be_https(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="https"):
+        _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret="s3cret")
+
+
+def test_a_secret_must_be_path_safe(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        _state(tmp_path, mcp_secret="a/b")
+
+
+@pytest.mark.parametrize(
+    ("public", "url"),
+    [
+        (None, "http://gpu-box:8765/renders"),
+        ("https://seascape.ngrok.app", "https://seascape.ngrok.app/renders"),
+    ],
+)
+def test_files_are_linked_at_the_public_url(
+    public: str | None, url: str, tmp_path: Path
+) -> None:
+    state = _state(tmp_path, public_url=public, mcp_secret="s3cret")
+    ctx = SimpleNamespace(headers={"host": "gpu-box:8765"})
+    assert server._url(state, ctx) == url  # ty: ignore[invalid-argument-type]
