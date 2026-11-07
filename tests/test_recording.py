@@ -97,7 +97,7 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
         )
     Calibration(cameras=cameras[::-1]).write(into)
     scenario = {
-        "rigs": {"port": {"height_m": 51.8}},
+        "rigs": {"port": {"height_m": 51.8, "videos": {}}},
         "sky": {"t_air_k": 283.15},
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
     }
@@ -121,6 +121,7 @@ def test_a_rig_becomes_one_recording_folder_named_for_its_model(run: Path) -> No
             into / "user_settings.json",
             into / "POWER_Const/camera_parameters.json",
             into / "POWER_Const/pod_sensors.json",
+            into / "serialized_parameters.json",
         ]
     )
     assert (into / "Pod_EO_record_2026_09_29_03_55_21.mp4").samefile(run / "EO.mp4")
@@ -176,6 +177,30 @@ def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
         },
         abs=1e-9,
     )
+
+
+@pytest.mark.parametrize(
+    "videos",
+    [{}, {"RGB": {"kind": "crop", "camera": "EO", "left_px": 40}}],
+    ids=["none", "unrendered, as in an exr"],
+)
+def test_a_camera_without_a_rendered_video_is_recorded_as_it_is(
+    run: Path, videos: dict
+) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    truth.info["scenario"]["rigs"]["port"]["videos"] = videos
+    truth.write(run)
+
+    recording.export(run)
+
+    (folder,) = run.glob("recordings/port/*")
+    serialized = json.loads((folder / "serialized_parameters.json").read_text())
+    (entry,) = serialized["cameras"]
+    assert entry["name"] == "EO"
+    assert entry["transformation_type"] == "identity"
+    assert entry["transformation_parameters"] is None
+    (source,) = entry["camera_sources"]
+    assert (source["name"], source["device_name"]) == ("EO", "EO")
 
 
 @pytest.mark.parametrize(
