@@ -1,0 +1,53 @@
+#:schema ../schema/scenario.json
+
+# A cliff photo of two merchant ships under broken cloud, matched as
+# docs/matching-a-photo.md describes. Every number below was fitted to that photo.
+
+seed = 20261101
+
+# The rig, the ownship's roll and the ships: low-res silhouettes against the photo's.
+[rigs.cliff]
+height_m = 28.5
+pitch_deg = 0.195
+
+[rigs.cliff.cameras.eo]
+preset = "basler_daa3840_ar0821"
+hfov_deg = 8.0
+width_px = 1200
+height_px = 960
+processing.exposure_ev = 2.25
+processing.white_balance = "grey_world"
+lens.f_number = 5.0
+lens.vignetting = true
+
+# The HDRI whose pixels scored closest to the photo's sky; a hidden sun for its glint.
+[sky]
+sun_bearing_deg = -2.5
+sun_elevation_deg = 20.0
+hdri = "snow_field_2"
+sun_diffuse_fraction = 0.5
+visibility_km = 70.0
+
+[sea]
+wind_speed_mps = 3.5
+wind_from_deg = 60.0
+fetch_km = 2.0
+swell = { height_m = 1.0, period_s = 12.0, from_deg = 0.0 }
+
+[ownship]
+roll_deg = -1.32
+
+[[objects]]
+asset = "bulk_carrier"
+draught_m = 7.5
+range_m = 5045.0
+bearing_deg = 1.375
+heading_deg = 349.1
+speed_mps = 6.0
+
+[[objects]]
+asset = "cargo_ship"
+range_m = 4012.0
+bearing_deg = 3.402
+heading_deg = 207.0
+speed_mps = 6.0
