@@ -4,13 +4,13 @@ No Blender: this reads the images `render` already wrote. Captions sit under eac
 frame, never on it: in an exr they would corrupt radiance.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 from PIL.ImageFont import FreeTypeFont
 
-from seascape.config import Mount, Scenario
+from seascape.config import Band, Mount, Scenario
 from seascape.outputs import agc
 
 TILE_H = 260
@@ -79,6 +79,16 @@ def _tile(
     return tile
 
 
+def _cut_deg(bearings_deg: Sequence[float]) -> float:
+    """The middle of the widest gap between `bearings_deg`: cut there, the circle
+    leaves no two neighbours at opposite ends.
+    """
+    around = sorted(bearing % 360.0 for bearing in bearings_deg)
+    after = [*around[1:], around[0] + 360.0]
+    gap, start = max((b - a, a) for a, b in zip(around, after, strict=True))
+    return start + gap / 2
+
+
 def _columns(mounts: Sequence[Mount]) -> list[list[Mount]]:
     """`mounts` in columns, left to right by bearing, each column's in bearing order.
 
@@ -96,18 +106,42 @@ def _columns(mounts: Sequence[Mount]) -> list[list[Mount]]:
         else:
             columns.append([mount])
 
-    # Cut the circle in its widest gap, so no two neighbours land at opposite ends.
-    around = sorted(column[0].nominal_bearing_deg % 360.0 for column in columns)
-    after = [*around[1:], around[0] + 360.0]
-    gaps = [b - a for a, b in zip(around, after, strict=True)]
-    widest = gaps.index(max(gaps))
-    cut_deg = around[widest] + gaps[widest] / 2
+    cut_deg = _cut_deg([column[0].nominal_bearing_deg for column in columns])
 
     def rightward(mount: Mount) -> float:
         return (mount.nominal_bearing_deg - cut_deg) % 360.0
 
     columns.sort(key=lambda column: rightward(column[0]))
     return [sorted(column, key=rightward) for column in columns]
+
+
+def _beside(images: Sequence[Image.Image]) -> Image.Image:
+    """`images` left to right, GUTTER apart, tops aligned."""
+    width = sum(image.width for image in images) + GUTTER * max(len(images) - 1, 0)
+    height = max((image.height for image in images), default=0)
+    out = Image.new("RGB", (width, height), MATTE)
+    x = 0
+    for image in images:
+        out.paste(image, (x, 0))
+        x += image.width + GUTTER
+    return out
+
+
+def _stacked(
+    column: Sequence[Mount], bands: Sequence[Band], tiles: Mapping[str, Image.Image]
+) -> Image.Image:
+    """A row per band of `column`'s tiles, side by side and centred."""
+    cells = [
+        _beside([tiles[m.name] for m in column if m.camera.band == band])
+        for band in bands
+    ]
+    row_h = TILE_H + CAPTION_H + GUTTER
+    out = Image.new(
+        "RGB", (max(c.width for c in cells), row_h * len(cells) - GUTTER), MATTE
+    )
+    for r, cell in enumerate(cells):
+        out.paste(cell, ((out.width - cell.width) // 2, r * row_h))
+    return out
 
 
 def compose(scenario: Scenario, into: Path) -> Path:
@@ -130,28 +164,6 @@ def compose(scenario: Scenario, into: Path) -> Path:
             raise FileNotFoundError(f"{frame}: render it, as png or jpg")
         tiles[mount.name] = _tile(frame, typeface, mount, mounts)
 
-    columns = _columns(mounts)
-    rows = [
-        [[tiles[m.name] for m in column if m.camera.band == band] for column in columns]
-        for band in bands
-    ]
-
-    def width(cell: list[Image.Image]) -> int:
-        return sum(tile.width for tile in cell) + GUTTER * max(len(cell) - 1, 0)
-
-    column_w = [max(width(row[c]) for row in rows) for c in range(len(columns))]
-    row_h = TILE_H + CAPTION_H + GUTTER
-    sheet_w = sum(column_w) + GUTTER * (len(columns) - 1)
-    sheet = Image.new("RGB", (sheet_w, row_h * len(rows) - GUTTER), MATTE)
-    for r, row in enumerate(rows):
-        left = 0
-        for cell, cell_w in zip(row, column_w, strict=True):
-            x = left + (cell_w - width(cell)) // 2
-            for tile in cell:
-                sheet.paste(tile, (x, r * row_h))
-                x += tile.width + GUTTER
-            left += cell_w + GUTTER
-
     out = into / "montage.png"
-    sheet.save(out)
+    _beside([_stacked(column, bands, tiles) for column in _columns(mounts)]).save(out)
     return out
