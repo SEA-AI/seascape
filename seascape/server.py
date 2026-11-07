@@ -27,6 +27,7 @@ import uvicorn
 from mcp.server.mcpserver import Context, Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from PIL import Image as Picture
 from pydantic import (
     AnyHttpUrl,
@@ -625,10 +626,18 @@ def mcp(state: State) -> MCPServer:
         "images, render `randomized`, or draw fields in `overrides`.",
         lifespan=lifespan,
     )
-    for tool in (catalog, render, cancel, jobs):
-        served.add_tool(tool)
+    # A client may run a read-only tool without asking; `render` and `cancel` change
+    # what the server holds.
+    read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+    served.add_tool(catalog, annotations=read_only)
+    served.add_tool(jobs, annotations=read_only)
+    served.add_tool(render, annotations=ToolAnnotations(open_world_hint=False))
+    served.add_tool(
+        cancel,
+        annotations=ToolAnnotations(destructive_hint=True, open_world_hint=False),
+    )
     # Unstructured: the previews are images, which structured content cannot carry.
-    served.add_tool(render_result, structured_output=False)
+    served.add_tool(render_result, annotations=read_only, structured_output=False)
     return served
 
 
