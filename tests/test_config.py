@@ -29,8 +29,10 @@ from seascape.config import (
     Sensor,
     Sky,
     Targets,
+    instantiate,
     json_schema,
     load,
+    resolve,
     seeds,
     substream,
 )
@@ -203,6 +205,19 @@ def test_a_bad_override_is_refused(override: str, error: type[Exception]) -> Non
     """`tomllib.TOMLDecodeError` is a `ValueError`: the CLI reports both alike."""
     with pytest.raises(error):
         load(BASELINE, [override])
+
+
+def test_a_resolved_scenario_is_drawn_per_seed_as_if_loaded_with_it() -> None:
+    tree = resolve(RANDOMIZED)
+    drawn = instantiate(tree, 7)
+    assert drawn == load(RANDOMIZED, ["seed = 7"])
+    assert instantiate(tree, 8) != drawn
+    assert instantiate(tree, 7) == drawn  # the draws of 8 left the tree as it was
+
+
+def test_an_override_may_be_barred_from_naming_a_file() -> None:
+    with pytest.raises(ValueError, match="not a path"):
+        resolve(BASELINE, ['objects = [{ preset = "/etc/hosts.toml" }]'], files=False)
 
 
 def test_objects_merge_their_preset(baseline) -> None:

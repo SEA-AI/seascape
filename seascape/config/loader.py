@@ -303,14 +303,13 @@ def _draught_m(copy: dict[str, Any], seed: int, path: str) -> dict[str, Any]:
     return {"draught_m": lightest_m + fraction * (deepest_m - lightest_m)}
 
 
-def load(
+def resolve(
     path: str | Path,
     overrides: Iterable[str | Mapping[str, Any]] = (),
     *,
     files: bool = True,
-) -> Scenario:
-    """Read a scenario TOML, resolving `extends` and `preset`, draw every random
-    field, and validate it.
+) -> dict[str, Any]:
+    """Read a scenario TOML, resolving `extends` and `preset`; no field is drawn.
 
     Each override, a TOML assignment such as `rigs.bow.pitch_deg = -5` or the table it
     parses to, merges over the file and resolves as if it were a line in it. With
@@ -323,6 +322,16 @@ def load(
     for override in overrides:
         table = tomllib.loads(override) if isinstance(override, str) else dict(override)
         data = _expand(_merge(data, table), None, base, ())
+    return data
+
+
+def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
+    """Draw every random field of a `resolve`d scenario from `seed`, the tree's own
+    when None, and validate it. The tree is left as it was, for the next seed.
+    """
+    data = dict(tree)
+    if seed is not None:
+        data["seed"] = seed
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")
@@ -341,6 +350,16 @@ def load(
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
+
+
+def load(
+    path: str | Path,
+    overrides: Iterable[str | Mapping[str, Any]] = (),
+    *,
+    files: bool = True,
+) -> Scenario:
+    """`resolve` a scenario TOML, then `instantiate` it from its own seed."""
+    return instantiate(resolve(path, overrides, files=files))
 
 
 # Judgement: enough redraws that a variant whose hulls meet rarely runs out of seeds.

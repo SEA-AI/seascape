@@ -49,8 +49,9 @@ from seascape.config import (
     Band,
     ImageFormat,
     Scenario,
+    instantiate,
     json_schema,
-    load,
+    resolve,
     seeds,
 )
 from seascape.outputs import montage
@@ -258,15 +259,14 @@ def _tried(
         settings: The server's limits.
     """
     try:
-        first = load(path, lines, files=False)
+        tree = resolve(path, lines, files=False)
+        first = instantiate(tree)
     except RecursionError as error:
         raise ValueError("an override nests too deeply") from error
     scenes: list[Scenario] = []
     images, sizes = [], []
     for seed in seeds(first.seed, variants):
-        scene = first
-        if seed != first.seed:
-            scene = load(path, [*lines, f"seed = {seed}"], files=False)
+        scene = first if seed == first.seed else instantiate(tree, seed)
         if scene.outputs.duration_s > settings.max_duration_s:
             raise ToolError(f"a clip lasts at most {settings.max_duration_s} s")
         samples = scene.outputs.samples
@@ -496,7 +496,8 @@ async def _run(
 
 def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
     """The scenario of each variant `render` wrote, by the seed its folder names."""
-    return [load(path, [*overrides, f"seed = {f.name}"]) for f in job.folders]
+    tree = resolve(path, overrides, files=False)
+    return [instantiate(tree, int(f.name)) for f in job.folders]
 
 
 def _finish(job: Job) -> None:
