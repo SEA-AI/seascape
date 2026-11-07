@@ -56,6 +56,8 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 | `SEASCAPE_MAX_DURATION_S`, `SEASCAPE_MAX_PIXELS`, `SEASCAPE_MAX_IMAGES`, `SEASCAPE_MIN_FREE_GB` | a job's limits, per camera for pixels |
 | `SEASCAPE_MAX_RUN_S` | how long a job runs before it fails |
 | `SEASCAPE_MAX_QUEUED` | how many jobs wait or run at once |
+| `SEASCAPE_MCP_SECRET` | moves MCP from `/mcp` to `/mcp/<secret>`, and turns the server's access log off |
+| `SEASCAPE_PUBLIC_URL` | a tunnel's public URL, whose host MCP then answers; needs `SEASCAPE_MCP_SECRET` and `https://`; Compose sets it from `NGROK_URL` |
 
 ```bash
 echo "SEASCAPE_MAX_DURATION_S=120" >> .env
@@ -63,3 +65,19 @@ docker compose up -d
 ```
 
 Without Docker, `uv run seascape serve --host 0.0.0.0` serves the checkout's `scenarios/`, or `--scenarios DIR` (`SEASCAPE_SCENARIOS`).
+
+## Reach it from claude.ai
+
+A claude.ai connector calls from Anthropic's servers, so it needs a public HTTPS URL. [ngrok](https://ngrok.com) gives one by dialing out, with no inbound port. Add your ngrok authtoken and dev domain to `.env`, plus a secret:
+
+```bash
+echo "NGROK_AUTHTOKEN=<authtoken>" >> .env
+echo "NGROK_URL=https://<dev domain>" >> .env
+echo "SEASCAPE_MCP_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" >> .env
+docker compose --profile ngrok up -d
+```
+
+Then add a custom connector at `https://<dev domain>/mcp/<secret>` with **No sign-in**.
+
+> [!WARNING]
+> The URL is the only credential: anyone with it can queue renders. Rotate the secret if it leaks. `/renders` links need no secret, only their random job ID. ngrok's Traffic Inspector records paths, so the secret shows in your ngrok dashboard: limit who opens it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp/`; other addresses get 403. Clients on the network use `/mcp/<secret>` on the server's own address.
