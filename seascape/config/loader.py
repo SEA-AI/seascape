@@ -33,13 +33,11 @@ from seascape.config.draws import (
     kind,
     substream,
 )
+from seascape.config.objects import MAX_HULLS
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
 PRESETS = Path(__file__).parent / "presets"
-# Judgement: far more hulls than a frame can show, and few enough to load in
-# milliseconds.
-MAX_COPIES = 1000
 
 
 def _is_draw(node: Any) -> bool:
@@ -177,6 +175,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
 def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     """Each entry `count` times, every copy drawn from a substream of its own."""
     out = []
+    hulls = 0
     for i, spec in enumerate(objects):
         if not isinstance(spec, dict):
             out.append(spec)  # validation names what it should have been
@@ -187,8 +186,9 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             raise ValueError(
                 f"objects[{i}]: count must be a whole number from 0, not {count}"
             )
-        if count > MAX_COPIES:
-            raise ValueError(f"objects[{i}]: count is at most {MAX_COPIES}")
+        hulls += count
+        if hulls > MAX_HULLS:
+            raise ValueError(f"objects: at most {MAX_HULLS} hulls in all")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
         for k in range(count):

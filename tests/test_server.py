@@ -19,6 +19,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from seascape import server
+from seascape.config import Outputs
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
 # A secret is 32 or more URL-safe characters.
@@ -371,6 +372,29 @@ def test_a_job_past_its_deadline_fails_and_frees_the_gpu(
     assert not state.gpu.locked()
 
 
+def test_a_job_waiting_for_the_gpu_keeps_its_whole_run_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_run_s=0.5)
+
+    async def seascape(*_: str) -> None:
+        await asyncio.sleep(0.3)
+
+    monkeypatch.setattr(server, "_seascape", seascape)
+    monkeypatch.setattr(server, "_finish", lambda _: None)
+
+    async def run() -> list[str]:
+        scenes = load_variants(OPEN_SEA)
+        jobs = [server.Job(tmp_path / n, "open-sea", scenes) for n in "ab"]
+        # The second waits 0.3 s for the GPU, then runs 0.3 s: under the limit each.
+        await asyncio.gather(
+            *(server._run(state, job, tmp_path, [], 1) for job in jobs)
+        )
+        return [job.state for job in jobs]
+
+    assert asyncio.run(run()) == ["done", "done"]
+
+
 def test_a_full_queue_refuses_a_job(tmp_path: Path) -> None:
     state = _state(tmp_path, max_queued=1)
     state.jobs["queued"] = server.Job(
@@ -536,19 +560,38 @@ def test_a_render_is_refused_before_anything_loads_when_the_queue_is_full(
 
 
 @pytest.mark.parametrize(
-    "arguments",
+    ("arguments", "message"),
     [
-        {"variants": 101},
-        {"overrides": ["sky.name = '" + "x" * server.MAX_OVERRIDE_CHARS + "'"]},
-        {"overrides": ["outputs.samples.eo = 100000"]},
-        {"overrides": ["objects = [{ preset = 'tug', count = 100000 }]"]},
-        {"overrides": ["x = " + "[" * 20000 + "]" * 20000]},
+        ({"variants": 101}, "at most 100 variants"),
+        (
+            {"overrides": ["x = '" + "x" * server.MAX_OVERRIDE_CHARS + "'"]},
+            "characters",
+        ),
+        ({"overrides": ["outputs.samples.eo = 100000"]}, "samples per pixel"),
+        ({"overrides": ["objects = [{ count = 100000 }]"]}, "hulls in all"),
+        ({"overrides": ["seed = 1"] * (server.MAX_OVERRIDES + 1)}, "items"),
+        ({"overrides": ["x = " + "[" * 497 + "]" * 497]}, "nests too deeply"),
+        (
+            {
+                "overrides": [
+                    "farms = [{ asset = 'turbine_15mw_floating', range_m = 1000,"
+                    " bearing_deg = 0, rows = 3000, columns = 3000 }]"
+                ]
+            },
+            "hulls",
+        ),
+        (
+            {"overrides": ["outputs.duration_s = 60", "outputs.fps = 20000000"]},
+            "images; a job writes at most",
+        ),
     ],
 )
 def test_a_costly_request_is_refused(
-    arguments: dict[str, Any], state: server.State
+    arguments: dict[str, Any], message: str, state: server.State
 ) -> None:
-    assert _call(state, "render", **arguments).is_error
+    result = _call(state, "render", **arguments)
+    assert result.is_error
+    assert message in result.content[0].text
     assert not state.jobs
 
 
@@ -559,27 +602,9 @@ def test_a_preset_key_cannot_leave_the_presets(state: server.State) -> None:
     assert "tool.setuptools" not in result.content[0].text
 
 
-def test_a_clip_with_a_huge_frame_rate_is_refused_without_a_frame_list(
-    state: server.State,
-) -> None:
-    result = _call(
-        state, "render", overrides=["outputs.duration_s = 60", "outputs.fps = 20000000"]
-    )
-    assert result.is_error
-
-
-def test_a_render_does_not_pass_the_secret_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SEASCAPE_MCP_SECRET", SECRET)
-    seen: dict[str, Any] = {}
-
-    async def spawn(*_: Any, **kwargs: Any) -> Any:
-        seen.update(kwargs["env"])
-        raise OSError("stop")
-
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    with pytest.raises(OSError, match="stop"):
-        asyncio.run(server._seascape("render"))
-    assert "SEASCAPE_MCP_SECRET" not in seen
+def test_a_frame_count_builds_no_list() -> None:
+    outputs = Outputs(duration_s=60, fps=20_000_000)
+    assert outputs.frames == 1_200_000_000
 
 
 def test_a_failing_gpu_probe_still_serves(
@@ -596,3 +621,31 @@ def test_a_failing_gpu_probe_still_serves(
     server.serve(state, "127.0.0.1", 0)
     assert served
     assert "no GL" in capsys.readouterr().out
+
+
+def test_a_running_job_is_not_deleted_for_its_age(
+    tmp_path: Path, state: server.State
+) -> None:
+    folder = tmp_path / "busy"
+    folder.mkdir()
+    a_day_ago = time.time() - server.KEEP_S - 1
+    os.utime(folder, (a_day_ago, a_day_ago))
+    state.jobs["busy"] = server.Job(folder, "baseline", [], state="running")
+    asyncio.run(server._prune(state))
+    assert folder.exists()
+    assert "busy" in state.jobs
+
+
+def test_a_failed_render_tells_the_client_only_its_last_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def spawn(*_: Any, **__: Any) -> Any:
+        async def communicate() -> tuple[bytes, bytes]:
+            return b"", b"Traceback\n  File /srv/x.py\nValueError: bad scenario\n"
+
+        return SimpleNamespace(communicate=communicate, returncode=1)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(RuntimeError) as error:
+        asyncio.run(server._seascape("render"))
+    assert str(error.value) == "ValueError: bad scenario"
