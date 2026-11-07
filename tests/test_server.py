@@ -21,6 +21,9 @@ from pydantic import ValidationError
 from seascape import server
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
+# A secret is 32 or more URL-safe characters.
+SECRET = "s" * 32
+
 
 def _state(renders: Path, **limits: Any) -> server.State:
     return server.State(server.Settings(scenarios=SCENARIOS, **limits), renders)
@@ -128,7 +131,7 @@ def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: server.State) 
     a_day_ago = time.time() - server.KEEP_S - 1
     for path in (old, tmp_path / "old.zip"):
         os.utime(path, (a_day_ago, a_day_ago))
-    server._prune(state)
+    asyncio.run(server._prune(state))
     assert [path.name for path in tmp_path.iterdir()] == ["new"]
 
 
@@ -186,7 +189,7 @@ def test_a_hung_gpu_probe_still_serves(
     assert "no answer" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize(("secret", "logged"), [(None, True), ("s3cret", False)])
+@pytest.mark.parametrize(("secret", "logged"), [(None, True), (SECRET, False)])
 def test_a_secret_path_is_not_access_logged(
     secret: str | None,
     logged: bool,
@@ -281,8 +284,9 @@ def _sleeper(
 
 async def _started(state: server.State, name: str) -> int:
     pid = state.jobs[name].folder / "pid"
-    while not pid.exists() or not pid.read_text():
-        await asyncio.sleep(0.01)
+    async with asyncio.timeout(10):
+        while not pid.exists() or not pid.read_text():
+            await asyncio.sleep(0.01)
     return int(pid.read_text())
 
 
@@ -331,7 +335,9 @@ def test_a_job_is_refused_when_its_images_would_fill_the_disk(
     state = _state(tmp_path)
     queued = server.Job(tmp_path / "queued", "baseline", load_variants(BASELINE))
     state.jobs["queued"] = queued
-    room = SimpleNamespace(free=2 * queued.bytes + state.settings.min_free_gb * 1e9)
+    room = SimpleNamespace(
+        free=2 * queued.size_bytes + state.settings.min_free_gb * 1e9
+    )
     monkeypatch.setattr(shutil, "disk_usage", lambda _: room)
 
     async def run(*_: object) -> None:
@@ -416,7 +422,7 @@ def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: server.State) 
         old.created_s -= server.KEEP_S + 1
         old.task = new.task = done
         state.jobs.update(old=old, new=new)
-        server._prune(state)
+        await server._prune(state)
         return list(state.jobs)
 
     assert asyncio.run(forget()) == ["new"]
@@ -453,9 +459,9 @@ def test_a_killed_job_leaves_no_temporary_files(
     ("secret", "path", "found"),
     [
         (None, "/mcp", True),
-        ("s3cret", "/mcp", False),
-        ("s3cret", "/mcp/wrong", False),
-        ("s3cret", "/mcp/s3cret", True),
+        (SECRET, "/mcp", False),
+        (SECRET, "/mcp/wrong", False),
+        (SECRET, f"/mcp/{SECRET}", True),
     ],
 )
 def test_a_secret_is_the_only_path_to_mcp(
@@ -467,12 +473,10 @@ def test_a_secret_is_the_only_path_to_mcp(
 
 
 def test_the_public_urls_host_is_allowed(tmp_path: Path) -> None:
-    state = _state(
-        tmp_path, public_url="https://seascape.ngrok.app", mcp_secret="s3cret"
-    )
+    state = _state(tmp_path, public_url="https://seascape.ngrok.app", mcp_secret=SECRET)
     served = server.app(state, "0.0.0.0")
     tunnel, other = asyncio.run(
-        _statuses(served, "/mcp/s3cret", "seascape.ngrok.app", "evil.example")
+        _statuses(served, f"/mcp/{SECRET}", "seascape.ngrok.app", "evil.example")
     )
     assert tunnel != 421
     assert other == 421
@@ -485,12 +489,15 @@ def test_a_public_url_needs_a_secret(tmp_path: Path) -> None:
 
 def test_a_public_url_must_be_https(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="https"):
-        _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret="s3cret")
+        _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret=SECRET)
 
 
-def test_a_secret_must_be_path_safe(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError):
-        _state(tmp_path, mcp_secret="a/b")
+@pytest.mark.parametrize(
+    "secret", ["short", "a/b" + "s" * 30, "{x}" + "s" * 30, "ä" * 40]
+)
+def test_a_secret_must_be_long_and_path_safe(secret: str, tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="32 or more"):
+        _state(tmp_path, mcp_secret=secret)
 
 
 @pytest.mark.parametrize(
@@ -503,6 +510,89 @@ def test_a_secret_must_be_path_safe(tmp_path: Path) -> None:
 def test_files_are_linked_at_the_public_url(
     public: str | None, url: str, tmp_path: Path
 ) -> None:
-    state = _state(tmp_path, public_url=public, mcp_secret="s3cret")
+    state = _state(tmp_path, public_url=public, mcp_secret=SECRET)
     ctx = SimpleNamespace(headers={"host": "gpu-box:8765"})
     assert server._url(state, ctx) == url  # ty: ignore[invalid-argument-type]
+
+
+def test_a_public_url_with_a_port_is_allowed(tmp_path: Path) -> None:
+    state = _state(tmp_path, public_url="https://box.example:8443", mcp_secret=SECRET)
+    served = server.app(state, "0.0.0.0")
+    [status] = asyncio.run(_statuses(served, f"/mcp/{SECRET}", "box.example:8443"))
+    assert status != 421
+
+
+def test_a_render_is_refused_before_anything_loads_when_the_queue_is_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_queued=1)
+    state.jobs["busy"] = server.Job(tmp_path / "busy", "baseline", [], state="running")
+    loads: list[object] = []
+    monkeypatch.setattr(server, "_tried", lambda *a: loads.append(a))
+    result = _call(state, "render")
+    assert result.is_error
+    assert "queued" in result.content[0].text
+    assert not loads
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"variants": 101},
+        {"overrides": ["sky.name = '" + "x" * server.MAX_OVERRIDE_CHARS + "'"]},
+        {"overrides": ["outputs.samples.eo = 100000"]},
+        {"overrides": ["objects = [{ preset = 'tug', count = 100000 }]"]},
+        {"overrides": ["x = " + "[" * 20000 + "]" * 20000]},
+    ],
+)
+def test_a_costly_request_is_refused(
+    arguments: dict[str, Any], state: server.State
+) -> None:
+    assert _call(state, "render", **arguments).is_error
+    assert not state.jobs
+
+
+def test_a_preset_key_cannot_leave_the_presets(state: server.State) -> None:
+    result = _call(state, "render", overrides=['"../../.." = { preset = "pyproject" }'])
+    assert result.is_error
+    assert "not a preset directory" in result.content[0].text
+    assert "tool.setuptools" not in result.content[0].text
+
+
+def test_a_clip_with_a_huge_frame_rate_is_refused_without_a_frame_list(
+    state: server.State,
+) -> None:
+    result = _call(
+        state, "render", overrides=["outputs.duration_s = 60", "outputs.fps = 20000000"]
+    )
+    assert result.is_error
+
+
+def test_a_render_does_not_pass_the_secret_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEASCAPE_MCP_SECRET", SECRET)
+    seen: dict[str, Any] = {}
+
+    async def spawn(*_: Any, **kwargs: Any) -> Any:
+        seen.update(kwargs["env"])
+        raise OSError("stop")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(OSError, match="stop"):
+        asyncio.run(server._seascape("render"))
+    assert "SEASCAPE_MCP_SECRET" not in seen
+
+
+def test_a_failing_gpu_probe_still_serves(
+    state: server.State,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail(*args: Any, **_: Any) -> None:
+        raise subprocess.CalledProcessError(1, args[0], stderr="no GL\n")
+
+    served: list[Any] = []
+    monkeypatch.setattr(server.subprocess, "run", fail)
+    monkeypatch.setattr(server.uvicorn, "run", lambda app, **_: served.append(app))
+    server.serve(state, "127.0.0.1", 0)
+    assert served
+    assert "no GL" in capsys.readouterr().out

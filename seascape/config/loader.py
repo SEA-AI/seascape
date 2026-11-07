@@ -37,6 +37,9 @@ from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
 PRESETS = Path(__file__).parent / "presets"
+# Judgement: far more hulls than a frame can show, and few enough to load in
+# milliseconds.
+MAX_COPIES = 1000
 
 
 def _is_draw(node: Any) -> bool:
@@ -78,7 +81,11 @@ def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
         return base / name
     if block is None:
         raise ValueError(f"{name!r} must be a path: it needs a '/' or a '.toml' suffix")
-    return PRESETS / block / f"{name}.toml"
+    path = PRESETS / block / f"{name}.toml"
+    # A table named `../..` would lift the preset out of PRESETS.
+    if not path.resolve().is_relative_to(PRESETS.resolve()):
+        raise ValueError(f"{block!r} is not a preset directory")
+    return path
 
 
 # Tables of named entries: an entry's preset is one of its table's, never of its name.
@@ -180,6 +187,8 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             raise ValueError(
                 f"objects[{i}]: count must be a whole number from 0, not {count}"
             )
+        if count > MAX_COPIES:
+            raise ValueError(f"objects[{i}]: count is at most {MAX_COPIES}")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
         for k in range(count):
