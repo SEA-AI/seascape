@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
 from seascape.config import Mount, Scenario
-from seascape.outputs import agc, canvas
+from seascape.outputs import canvas, preview
 
 TILE_H = 260
 CAPTION_H = 26
@@ -50,12 +50,7 @@ def _tile(
     mount: Mount,
     mounts: Sequence[Mount],
 ) -> Image.Image:
-    t_k = agc.kelvin(path)
-    frame = (
-        Image.open(path)
-        if t_k is None
-        else Image.fromarray(agc.Agc(mount.camera.agc)(t_k))
-    ).convert("RGB")
+    frame = preview.picture(path, mount.camera.agc)
     frame = ImageOps.scale(frame, TILE_H / frame.height, Image.Resampling.LANCZOS)
 
     tile = ImageOps.expand(frame, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
