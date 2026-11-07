@@ -33,6 +33,7 @@ from seascape.config.draws import (
     kind,
     substream,
 )
+from seascape.config.objects import MAX_HULLS
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
@@ -78,7 +79,11 @@ def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
         return base / name
     if block is None:
         raise ValueError(f"{name!r} must be a path: it needs a '/' or a '.toml' suffix")
-    return PRESETS / block / f"{name}.toml"
+    path = PRESETS / block / f"{name}.toml"
+    # A table named `../..` would lift the preset out of PRESETS.
+    if not path.resolve().is_relative_to(PRESETS.resolve()):
+        raise ValueError(f"{block!r} is not a preset directory")
+    return path
 
 
 # Tables of named entries: an entry's preset is one of its table's, never of its name.
@@ -170,6 +175,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
 def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     """Each entry `count` times, every copy drawn from a substream of its own."""
     out = []
+    hulls = 0
     for i, spec in enumerate(objects):
         if not isinstance(spec, dict):
             out.append(spec)  # validation names what it should have been
@@ -180,6 +186,9 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             raise ValueError(
                 f"objects[{i}]: count must be a whole number from 0, not {count}"
             )
+        hulls += count
+        if hulls > MAX_HULLS:
+            raise ValueError(f"objects: at most {MAX_HULLS} hulls in all")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
         for k in range(count):
