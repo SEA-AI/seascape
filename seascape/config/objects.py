@@ -48,6 +48,8 @@ TurbineName = Annotated[
     AfterValidator(_a_turbine),
     WithJsonSchema({"type": "string", "enum": _names(turbines=True)}),
 ]
+# Judgement: far more hulls than a frame can show.
+MAX_HULLS = 1000
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = (
     "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, "
@@ -102,7 +104,9 @@ class Orbit(Model):
     """
 
     period_s: float = Field(gt=0.0, description="One full lap.")
-    count: int = Field(default=1, gt=0, description="Hulls spaced evenly on it.")
+    count: int = Field(
+        default=1, gt=0, le=MAX_HULLS, description="Hulls spaced evenly on it."
+    )
 
 
 class Object(Model):

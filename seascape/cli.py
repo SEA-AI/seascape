@@ -257,7 +257,7 @@ def schema() -> None:
     help="The folder of scenarios clients render.",
 )
 def serve(host: str, port: int, scenarios: Path) -> None:
-    """Render for MCP clients at http://HOST:PORT/mcp[/SECRET]; SEASCAPE_* sets up."""
+    """Render for MCP clients at http://HOST:PORT/mcp[/SECRET]; see SEASCAPE_*."""
     from pydantic import ValidationError
 
     from seascape import server
@@ -265,7 +265,11 @@ def serve(host: str, port: int, scenarios: Path) -> None:
     try:
         settings = server.Settings(scenarios=scenarios)
     except ValidationError as error:
-        raise click.UsageError(str(error)) from error
+        # Without the inputs, which hold the rejected secret.
+        problems = error.errors(include_input=False, include_url=False)
+        raise click.UsageError("; ".join(p["msg"] for p in problems)) from error
+    # Out of the environment, which the GPU probe and every render inherit.
+    os.environ.pop("SEASCAPE_MCP_SECRET", None)
     server.serve(server.State(settings), host, port)
 
 

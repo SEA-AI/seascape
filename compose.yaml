@@ -12,6 +12,8 @@ services:
       - SEASCAPE_MIN_FREE_GB
       - SEASCAPE_MAX_RUN_S
       - SEASCAPE_MAX_QUEUED
+      - SEASCAPE_MAX_VARIANTS
+      - SEASCAPE_MAX_SAMPLES
       - SEASCAPE_MCP_SECRET
     volumes:
       - cache:/root/.cache/seascape

@@ -63,9 +63,11 @@ PREVIEW_PX = 1568
 PREVIEWS = 8
 # Judgement: a result a client can read; the archive holds the rest.
 MAX_LISTED = 200
-# Judgement: far longer than a scenario's overrides, short of a request that stalls
-# the parser.
-MAX_OVERRIDE_CHARS = 10_000
+# Judgement: far more and longer than a scenario's overrides.
+MAX_OVERRIDES = 50
+MAX_OVERRIDE_CHARS = 1000
+# Judgement: loads hold the GIL, so a few at once cost every other client.
+LOADING = 2
 # A judgement: longer than a driver takes to answer, short of a hung one.
 PROBE_S = 60.0
 LOCAL_HOSTS = ("localhost:*", "127.0.0.1:*", "[::1]:*")
@@ -90,10 +92,9 @@ class Settings(BaseSettings):
     min_free_gb: PositiveFloat = 10.0
     max_run_s: PositiveFloat = 12 * 3600.0
     max_queued: PositiveInt = 20
-    # Judgement: far more seeds than a client reviews, few enough to load in seconds.
+    # Judgement: more seeds than a client reviews.
     max_variants: PositiveInt = 100
-    # Judgement: well above the shipped scenes, short of a frame that outlasts
-    # `max_run_s`.
+    # Judgement: bounds a frame's render time.
     max_samples: PositiveInt = 1024
     # The path is the credential: an MCP client may send no header.
     mcp_secret: SecretStr | None = None
@@ -114,8 +115,8 @@ class Settings(BaseSettings):
         # The secret travels in the path, in the clear over http.
         if self.public_url and self.public_url.scheme != "https":
             raise ValueError("SEASCAPE_PUBLIC_URL must be https")
-        # It becomes a route path, where `/` and `{}` mean something else.
-        # The only credential on a public URL, so as long as 24 random bytes encode.
+        # The only credential on a public URL, and a route path, where `/` and `{}`
+        # mean something else. Judgement: enough entropy to resist guessing.
         if self.mcp_secret and not re.fullmatch(
             r"[A-Za-z0-9_-]{32,}", self.mcp_secret.get_secret_value()
         ):
@@ -196,6 +197,9 @@ class State:
     renders: Path = assets.CACHE / "renders"
     jobs: dict[str, Job] = field(default_factory=dict)
     gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
+    loading: asyncio.Semaphore = field(
+        default_factory=lambda: asyncio.Semaphore(LOADING)
+    )
 
     def scenarios(self) -> dict[str, Path]:
         """The scenarios a job can name, by file stem."""
@@ -253,8 +257,8 @@ def _tried(
     path: Path, lines: list[str], variants: int, settings: Settings
 ) -> tuple[list[Scenario], float]:
     """The first scenes, and the most bytes the seeds `render` may try can write.
-    Refuses any of those seeds past a clip or camera limit, and the largest of them
-    past the image limit.
+    Refuses any of those seeds past a clip, sample or camera limit, and the largest
+    of them past the image limit.
 
     Args:
         path: The scenario's TOML file.
@@ -307,7 +311,7 @@ def _expire(state: State) -> list[str]:
             if path.stat().st_mtime >= cutoff:
                 continue
             if path.is_dir():
-                shutil.rmtree(path)
+                shutil.rmtree(path, ignore_errors=True)
             else:
                 path.unlink()
         except FileNotFoundError:  # `cancel` removed it first
@@ -357,7 +361,11 @@ def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
 async def render(
     ctx: Context[State, Any],
     scenario: str = "baseline",
-    overrides: list[str] | None = None,
+    overrides: Annotated[
+        list[Annotated[str, Field(max_length=MAX_OVERRIDE_CHARS)]],
+        Field(max_length=MAX_OVERRIDES),
+    ]
+    | None = None,
     variants: Annotated[int, Field(ge=1)] = 1,
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
@@ -365,34 +373,33 @@ async def render(
     `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
     `sea.wind_speed_mps = { uniform = [2, 12] }`. `variants` renders that many
     seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet,
-    up to the server's image limit. Every seed it may try must fit the clip and
-    camera limits.
+    up to the server's variant and image limits. Every seed it may try must fit
+    the clip, sample and camera limits.
     """
     state = _state(ctx)
     settings = state.settings
     if (path := state.scenarios().get(scenario)) is None:
         raise ToolError(f"no scenario {scenario!r} in {sorted(state.scenarios())}")
     # Each variant writes an image at least, so this refuses before loading.
-    if variants > min(settings.max_variants, settings.max_images):
-        raise ToolError(
-            f"at most {min(settings.max_variants, settings.max_images)} variants"
-        )
+    if variants > (most := min(settings.max_variants, settings.max_images)):
+        raise ToolError(f"at most {most} variants")
     lines = overrides or []
-    if sum(map(len, lines)) > MAX_OVERRIDE_CHARS:
-        raise ToolError(f"overrides hold at most {MAX_OVERRIDE_CHARS} characters")
     state.renders.mkdir(parents=True, exist_ok=True)
     await _prune(state)
-    # Before the loading, which is the cost.
+    # Refuse before loading, which is the cost.
     _ahead(state)
     try:
-        scenes, worst_bytes = await asyncio.to_thread(
-            _tried, path, lines, variants, settings
-        )
+        async with state.loading:
+            scenes, worst_bytes = await asyncio.to_thread(
+                _tried, path, lines, variants, settings
+            )
     # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
     except ValueError as error:
         raise ToolError(str(error)) from error
     except OSError as error:
-        raise ToolError(f"{type(error).__name__}: a file the scenario names") from error
+        raise ToolError(
+            f"{type(error).__name__}: a file the scenario names could not be read"
+        ) from error
     # Other calls may have queued while this one loaded.
     ahead = _ahead(state)
     name = uuid.uuid4().hex
@@ -415,8 +422,6 @@ async def render(
 async def _seascape(*args: str) -> None:
     # A killed Blender leaves its temporary files, the foam memory's frames among them;
     # here they go with the job.
-    # The render needs none of the server's secret.
-    env = {k: v for k, v in os.environ.items() if k != "SEASCAPE_MCP_SECRET"}
     with tempfile.TemporaryDirectory(prefix="seascape-job-") as tmp:
         process = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -425,7 +430,7 @@ async def _seascape(*args: str) -> None:
             *args,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
-            env={**env, "TMPDIR": tmp},
+            env={**os.environ, "TMPDIR": tmp},
         )
         try:
             _, stderr = await process.communicate()
@@ -440,7 +445,9 @@ async def _seascape(*args: str) -> None:
             "seascape %s exited %s: %s", args[0], process.returncode, text[-2000:]
         )
         # The client gets the last line: the full trace holds this server's paths.
-        raise RuntimeError(text.splitlines()[-1][:500] if text else "no output")
+        raise RuntimeError(
+            text.splitlines()[-1][:500] if text else f"exit {process.returncode}"
+        )
 
 
 async def _run(
@@ -448,11 +455,14 @@ async def _run(
 ) -> None:
     sets = [arg for line in overrides for arg in ("--set", line)]
     max_run_s = state.settings.max_run_s
-    limit = asyncio.timeout(max_run_s)
+    limit: asyncio.Timeout | None = None
     try:
         async with state.gpu:
             job.state, job.started_s = "running", time.time()
-            # Past it, the process awaited is killed as on `cancel`.
+            # Made here, since the deadline is fixed when it is made, not entered:
+            # the wait for the GPU is not the run. Past it, the process awaited is
+            # killed as on `cancel`.
+            limit = asyncio.timeout(max_run_s)
             async with limit:
                 await _seascape(
                     "render", str(path), "-o", str(job.folder), "--variants",
@@ -470,11 +480,14 @@ async def _run(
     except TimeoutError as error:
         job.state = "failed"
         # Any other TimeoutError came from inside the job.
-        job.error = (
-            f"ran past {max_run_s:g} s" if limit.expired() else f"TimeoutError: {error}"
-        )
+        ran_out = limit is not None and limit.expired()
+        job.error = f"ran past {max_run_s:g} s" if ran_out else f"TimeoutError: {error}"
     except Exception as error:  # whatever it was, the client polling is told
-        log.exception("job %s failed", job.folder.name)
+        # A failed render was logged with its stderr already.
+        log.error(
+            "job %s failed: %s", job.folder.name, error,
+            exc_info=not isinstance(error, RuntimeError),
+        )  # fmt: skip
         job.state, job.error = "failed", f"{type(error).__name__}: {error}"
 
 
@@ -517,7 +530,7 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     while not found.task.done() and (left := deadline - time.monotonic()) > 0:
         await asyncio.wait({found.task}, timeout=min(PROGRESS_S, left))
         await ctx.report_progress(
-            await asyncio.to_thread(getattr, found, "images"), found.total
+            await asyncio.to_thread(lambda: found.images), found.total
         )
     report: dict[str, Any] = {"status": found.state}
     previews: list[Image] = []
@@ -544,7 +557,7 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
             state.jobs[n].waiting for n in names[: names.index(job)]
         )
     elif found.state == "running":
-        done, total = await asyncio.to_thread(getattr, found, "images"), found.total
+        done, total = await asyncio.to_thread(lambda: found.images), found.total
         report["images"] = f"{done} of {total}"
         if done and found.started_s is not None:
             pace_s = (time.time() - found.started_s) / done

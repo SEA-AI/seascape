@@ -78,7 +78,7 @@ echo "SEASCAPE_MCP_SECRET=$(python3 -c 'import secrets; print(secrets.token_urls
 docker compose --profile ngrok up -d
 ```
 
-Then add a custom connector at `https://<dev domain>/mcp/<secret>` with **No sign-in**.
+Then add a custom connector at `https://<dev domain>/mcp/<secret>` with **No sign-in**. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
 
 > [!WARNING]
 > The URL is the only credential: anyone with it can queue renders. Render links under `/renders` need no secret, only their random job ID. Rotate the secret if the URL leaks. ngrok's Traffic Inspector records request paths, so the secret shows in your ngrok dashboard: limit who can open it. The tunnel admits only Anthropic's [outbound range](https://platform.claude.com/docs/en/api/ip-addresses), so the URL answers 403 from any other address. Clients on the network use `/mcp/<secret>` on the server's own address.
