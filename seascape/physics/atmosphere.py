@@ -28,15 +28,13 @@ ATMOSPHERE: Atmosphere = "north_sea"
 
 
 def load_table(csv: str, **kwargs: Any) -> np.ndarray:
-    """The rows of the shipped CSV `csv`, its `#` lines left out; `kwargs` go to
-    `np.loadtxt`.
-    """
+    """A shipped CSV's rows, `#` lines skipped; `kwargs` go to `np.loadtxt`."""
     with (DATA / csv).open() as f:
         return np.loadtxt(f, delimiter=",", comments="#", **kwargs)
 
 
 def header(csv: str) -> list[str]:
-    """A shipped LOWTRAN table's column names after the first: its last comment line."""
+    """A LOWTRAN table's column names after the first: its last comment line."""
     with (DATA / csv).open() as f:
         header = [line for line in f if line.startswith("#")][-1]
     return header.removeprefix("#").strip().split(",")[1:]
