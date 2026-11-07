@@ -1,7 +1,7 @@
 # The design geometry: three colour cameras on custom 42 deg lenses, 40 deg apart,
-# and a thermal camera on a custom 24 deg lens, straight ahead as in the centre
-# variant. The colour cameras balance white continuously, as they ship, and take
-# the AR0821's eHDR (datasheet) at Basler HDR Beyond's default ratio.
+# and a thermal camera on a custom 24 deg lens. The colour cameras balance white
+# continuously, as they ship, and take the AR0821's eHDR (datasheet) at Basler HDR
+# Beyond's default ratio.
 model = "Pod"
 
 [cameras.eo_p]
