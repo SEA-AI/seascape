@@ -11,7 +11,7 @@ from pydantic import (
 from seascape.assets import manifest
 from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
-from seascape.config.objects import Farm, Object, Ownship, Targets
+from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets
 from seascape.config.world import Sea, Sky
 from seascape.model import Model
 from seascape.physics import waves
@@ -81,14 +81,19 @@ class Outputs(Model):
     )
 
     @property
+    def frames(self) -> int:
+        """How many frames; one for a still."""
+        return max(1, round(self.duration_s * self.fps))
+
+    @property
     def times_s(self) -> list[float]:
         """Each frame's time, from 0; one frame for a still."""
-        return [f / self.fps for f in range(max(1, round(self.duration_s * self.fps)))]
+        return [f / self.fps for f in range(self.frames)]
 
     @property
     def span_s(self) -> float:
         """From frame 0 to the frame after the last, which a loop makes frame 0."""
-        return len(self.times_s) / self.fps
+        return self.frames / self.fps
 
     def period_s(self, period_s: float) -> float:
         """In a loop, the nearest whole fraction of the span, so every cycle closes."""
@@ -145,7 +150,7 @@ class Scenario(Model):
     def images(self) -> int:
         """How many images a render writes."""
         rendered = sum(m.camera.band in self.outputs.bands for m in self.mounts)
-        return rendered * len(self.outputs.times_s)
+        return rendered * self.outputs.frames
 
     @property
     def worn(self) -> frozenset[str]:
@@ -183,6 +188,17 @@ class Scenario(Model):
             self.outputs.period_s,
             substream(self.seed, "sea/swell"),
         )
+
+    @model_validator(mode="after")
+    def _hulls_are_bounded(self) -> "Scenario":
+        hulls = (
+            sum(o.orbit.count if o.orbit else 1 for o in self.objects)
+            + (self.targets.count if self.targets else 0)
+            + sum(farm.rows * farm.columns for farm in self.farms)
+        )
+        if hulls > MAX_HULLS:
+            raise ValueError(f"{hulls} hulls; a scenario holds at most {MAX_HULLS}")
+        return self
 
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":

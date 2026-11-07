@@ -33,6 +33,7 @@ from seascape.config.draws import (
     kind,
     substream,
 )
+from seascape.config.objects import MAX_HULLS
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
@@ -70,15 +71,23 @@ def _merge_value(base: Any, over: Any) -> Any:
     return over
 
 
-def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
-    """Resolve rule 2. `block` is the preset directory; None allows only a path."""
+def _include_path(name: Any, base: Path | None, block: str | None = None) -> Path:
+    """Resolve rule 2. `block` is the preset directory; None allows only a path, and a
+    `base` of None allows none.
+    """
     if not isinstance(name, str):
         raise ValueError(f"include must be a string, got {name!r}")
     if "/" in name or name.endswith(".toml"):
+        if base is None:
+            raise ValueError(f"{name!r} must be a preset name, not a path")
         return base / name
     if block is None:
         raise ValueError(f"{name!r} must be a path: it needs a '/' or a '.toml' suffix")
-    return PRESETS / block / f"{name}.toml"
+    path = PRESETS / block / f"{name}.toml"
+    # A table named `../..` would lift the preset out of PRESETS.
+    if not path.resolve().is_relative_to(PRESETS.resolve()):
+        raise ValueError(f"{block!r} is not a preset directory")
+    return path
 
 
 # Tables of named entries: an entry's preset is one of its table's, never of its name.
@@ -88,7 +97,7 @@ _KEYED = {"rigs", "cameras", "videos"}
 def _expand(
     node: Any,
     block: str | None,
-    base: Path,
+    base: Path | None,
     chain: tuple[Path, ...],
     keyed: bool = False,
 ) -> Any:
@@ -170,6 +179,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
 def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     """Each entry `count` times, every copy drawn from a substream of its own."""
     out = []
+    hulls = 0
     for i, spec in enumerate(objects):
         if not isinstance(spec, dict):
             out.append(spec)  # validation names what it should have been
@@ -180,6 +190,9 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             raise ValueError(
                 f"objects[{i}]: count must be a whole number from 0, not {count}"
             )
+        hulls += count
+        if hulls > MAX_HULLS:
+            raise ValueError(f"objects: at most {MAX_HULLS} hulls in all")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
         for k in range(count):
@@ -290,20 +303,35 @@ def _draught_m(copy: dict[str, Any], seed: int, path: str) -> dict[str, Any]:
     return {"draught_m": lightest_m + fraction * (deepest_m - lightest_m)}
 
 
-def load(
-    path: str | Path, overrides: Iterable[str | Mapping[str, Any]] = ()
-) -> Scenario:
-    """Read a scenario TOML, resolving `extends` and `preset`, draw every random
-    field, and validate it.
+def resolve(
+    path: str | Path,
+    overrides: Iterable[str | Mapping[str, Any]] = (),
+    *,
+    files: bool = True,
+) -> dict[str, Any]:
+    """Read a scenario TOML, resolving `extends` and `preset`; no field is drawn.
 
     Each override, a TOML assignment such as `rigs.bow.pitch_deg = -5` or the table it
-    parses to, merges over the file and resolves as if it were a line in it.
+    parses to, merges over the file and resolves as if it were a line in it. With
+    `files` False a `preset` in an override may name only a preset, never a file:
+    a path would read any TOML on the host.
     """
     path = Path(path)
     data = _read(path)
+    base = path.parent if files else None
     for override in overrides:
         table = tomllib.loads(override) if isinstance(override, str) else dict(override)
-        data = _expand(_merge(data, table), None, path.parent, ())
+        data = _expand(_merge(data, table), None, base, ())
+    return data
+
+
+def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
+    """Draw every random field of a `resolve`d scenario from `seed`, the tree's own
+    when None, and validate it. The tree is left as it was, for the next seed.
+    """
+    data = dict(tree)
+    if seed is not None:
+        data["seed"] = seed
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")
@@ -322,6 +350,16 @@ def load(
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
+
+
+def load(
+    path: str | Path,
+    overrides: Iterable[str | Mapping[str, Any]] = (),
+    *,
+    files: bool = True,
+) -> Scenario:
+    """`resolve` a scenario TOML, then `instantiate` it from its own seed."""
+    return instantiate(resolve(path, overrides, files=files))
 
 
 # Judgement: enough redraws that a variant whose hulls meet rarely runs out of seeds.

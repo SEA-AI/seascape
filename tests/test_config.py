@@ -29,8 +29,10 @@ from seascape.config import (
     Sensor,
     Sky,
     Targets,
+    instantiate,
     json_schema,
     load,
+    resolve,
     seeds,
     substream,
 )
@@ -205,6 +207,19 @@ def test_a_bad_override_is_refused(override: str, error: type[Exception]) -> Non
         load(BASELINE, [override])
 
 
+def test_a_resolved_scenario_is_drawn_per_seed_as_if_loaded_with_it() -> None:
+    tree = resolve(RANDOMIZED)
+    drawn = instantiate(tree, 7)
+    assert drawn == load(RANDOMIZED, ["seed = 7"])
+    assert instantiate(tree, 8) != drawn
+    assert instantiate(tree, 7) == drawn  # the draws of 8 left the tree as it was
+
+
+def test_an_override_may_be_barred_from_naming_a_file() -> None:
+    with pytest.raises(ValueError, match="not a path"):
+        resolve(BASELINE, ['objects = [{ preset = "/etc/hosts.toml" }]'], files=False)
+
+
 def test_objects_merge_their_preset(baseline) -> None:
     """A list-of-tables preset: asset from cfg, pose here."""
     obj = baseline.objects[0]
@@ -366,6 +381,36 @@ def test_a_named_substream_is_reproducible_and_local_to_its_name() -> None:
 
 
 SUN = "sky.sun_elevation_deg = { uniform = [5.0, 60.0] }"
+
+
+def _hulls(copies: int, lap: int, ring: int, rows: int, columns: int) -> Scenario:
+    """A scenario with hulls from each source."""
+    hull = "asset = 'multipurpose_freighter', range_m = 1000, bearing_deg = 0"
+    return load(
+        BASELINE,
+        [
+            f"objects = [{{ {hull}, count = {copies} }},"
+            f" {{ {hull}, orbit = {{ period_s = 60, count = {lap} }} }}]",
+            "targets = { asset = 'multipurpose_freighter', range_m = 1000,"
+            f" bearing_deg = [0, 10], count = {ring} }}",
+            "farms = [{ asset = 'turbine_15mw_floating', range_m = 1000,"
+            f" bearing_deg = 0, rows = {rows}, columns = {columns} }}]",
+        ],
+    )
+
+
+def test_a_scenario_may_hold_a_thousand_hulls_from_all_its_sources() -> None:
+    assert len(_hulls(400, 300, 200, 10, 10).objects) == 401
+
+
+@pytest.mark.parametrize(
+    "split", [(401, 300, 200, 10, 10), (400, 301, 200, 10, 10), (400, 300, 200, 1, 101)]
+)
+def test_a_scenario_holds_no_more_than_a_thousand_hulls(
+    split: tuple[int, int, int, int, int],
+) -> None:
+    with pytest.raises(ValueError, match=r"1001 hulls|at most 1000"):
+        _hulls(*split)
 
 
 def _sun(seed: int, *more: str) -> float:

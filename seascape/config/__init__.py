@@ -20,8 +20,10 @@ from seascape.config.cameras import (
 from seascape.config.draws import substream
 from seascape.config.loader import (
     PRESETS,
+    instantiate,
     json_schema,
     load,
+    resolve,
     seeds,
 )
 from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
@@ -55,8 +57,10 @@ __all__ = [
     "Undistortion",
     "Video",
     "WarmLayer",
+    "instantiate",
     "json_schema",
     "load",
+    "resolve",
     "seeds",
     "sources",
     "substream",
