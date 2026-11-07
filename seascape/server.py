@@ -370,10 +370,9 @@ async def render(
 
     `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
     `sea.wind_speed_mps = { uniform = [2, 12] }`. A list such as `objects` replaces the
-    whole list, so give every item. `variants` renders that many
-    seeds from the scenario's own, each drawn anew, skipping a seed whose hulls meet,
-    up to the server's variant and image limits. Every seed it may try must fit
-    the clip, sample and camera limits.
+    whole list. `variants` renders that many seeds from the scenario's own, each drawn
+    anew, skipping a seed whose hulls meet, up to the server's variant and image
+    limits. Every seed it may try must fit the clip, sample and camera limits.
     """
     state = _state(ctx)
     settings = state.settings
@@ -503,9 +502,7 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
 
 
 def _finish(job: Job) -> None:
-    """A watermarked preview of each camera's frame in the first variant, none for an
-    exr, and an archive. A clip shows its middle frame.
-    """
+    """A preview per camera of the first variant (none for exr), and an archive."""
     scene, folder = job.scenes[0], job.folders[0]
     if scene.outputs.format != "exr":
         for mount, path in preview.shown(scene, folder)[:PREVIEWS]:
@@ -529,8 +526,7 @@ def _files(job: Job, renders: Path) -> list[Path]:
 
 async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, its error,
-    or its files as URLs with a preview of each camera's frame in the first variant,
-    none for exr.
+    or its files as URLs with a preview per camera of the first variant (none for exr).
     """
     state = _state(ctx)
     found = state.jobs.get(job)

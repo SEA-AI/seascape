@@ -1,7 +1,4 @@
-"""A render's frames as pictures to share, each with the SEA.AI mark on it.
-
-No Blender: this reads the images `render` already wrote.
-"""
+"""A render's frames as pictures to share, each with the SEA.AI mark on it."""
 
 from functools import cache
 from importlib import resources
@@ -13,16 +10,14 @@ from PIL import Image
 from seascape.config import Agc, Mount, Scenario
 from seascape.outputs import agc
 
-# The mark's pixels, from the SEA.AI Brand Book 2026: a copy of the official PNG,
-# never redrawn, at the bottom right of an image shared off-platform.
+# Official SEA.AI Brand Book 2026 PNGs; never redraw the mark.
 BRAND = resources.files("seascape.outputs") / "brand"
-MIN_MARK_PX = 15
-# A mark of this share of the short edge clears the minimum at any size worth sharing.
+MIN_MARK_PX = 15  # Brand Book 2026 minimum height
+# Judgement: the mark's height over the image's short edge.
 MARK_SHARE = 0.03
-# The cursor icon's width over the mark's, which the Brand Book sets as the clear space.
+# Brand Book clear space: the cursor icon's share of the mark's width.
 CURSOR_SHARE = 0.179
-# Mid-grey of 8-bit luma: the white mark above it, the black below.
-DARK = 128
+DARK = 128  # luma below this takes the white mark
 
 
 @cache
