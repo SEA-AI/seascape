@@ -334,12 +334,12 @@ async def _prune(state: State) -> None:
             del state.jobs[name]
 
 
-def _ahead(state: State) -> int:
+def _ahead(state: State, held: int = 0) -> int:
     """How many jobs wait or run; refuses one more past `max_queued`, counting the
-    calls still loading, which become jobs.
+    calls still loading, which become jobs. `held` is the caller's own place.
     """
     ahead = sum(j.waiting for j in state.jobs.values())
-    queued, most = ahead + state.loads, state.settings.max_queued
+    queued, most = ahead + state.loads - held, state.settings.max_queued
     if queued >= most:
         raise ToolError(f"{queued} jobs queued; the server takes at most {most}")
     return ahead
@@ -348,18 +348,13 @@ def _ahead(state: State) -> int:
 async def _load(
     state: State, path: Path, lines: list[str], variants: int
 ) -> tuple[list[Scenario], float]:
-    """Load under a slot of `state.loading`; the caller counted itself in `loads`.
+    """Load under a slot of `state.loading`.
 
-    The thread cannot be stopped, so the slot and the count are held until it ends,
-    even when the caller goes away.
+    The thread cannot be stopped, so the slot is held until it ends, even when the
+    caller goes away.
     """
-    try:
-        async with state.loading:
-            return await asyncio.to_thread(
-                _tried, path, lines, variants, state.settings
-            )
-    finally:
-        state.loads -= 1
+    async with state.loading:
+        return await asyncio.to_thread(_tried, path, lines, variants, state.settings)
 
 
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
@@ -408,35 +403,48 @@ async def render(
     await _prune(state)
     # Refuse before loading, which is the cost.
     _ahead(state)
+    # A place in the queue, kept until this call is a job or fails, and until its
+    # load thread ends if the caller goes away first.
     state.loads += 1
+    loading = asyncio.create_task(_load(state, path, lines, variants))
     try:
-        scenes, worst_bytes = await asyncio.shield(
-            asyncio.create_task(_load(state, path, lines, variants))
+        try:
+            scenes, worst_bytes = await asyncio.shield(loading)
+        # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
+        except ValueError as error:
+            raise ToolError(str(error)) from error
+        except OSError as error:
+            raise ToolError(
+                f"{type(error).__name__}: a file the scenario names could not be read"
+            ) from error
+        ahead = _ahead(state, held=1)
+        name = uuid.uuid4().hex
+        job = Job(state.renders / name, scenario, scenes, worst_bytes=worst_bytes)
+        # A running job's images count twice, as written and as still to come; a
+        # finishing one still writes its zip.
+        writing = [
+            j for j in state.jobs.values() if j.waiting or j.state == "finishing"
+        ]
+        free = shutil.disk_usage(state.renders).free - sum(
+            j.size_bytes for j in writing
         )
-    # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
-    except ValueError as error:
-        raise ToolError(str(error)) from error
-    except OSError as error:
-        raise ToolError(
-            f"{type(error).__name__}: a file the scenario names could not be read"
-        ) from error
-    # Other calls may have queued while this one loaded.
-    ahead = _ahead(state)
-    name = uuid.uuid4().hex
-    job = Job(state.renders / name, scenario, scenes, worst_bytes=worst_bytes)
-    # A running job's images count twice, as written and as still to come; a
-    # finishing one still writes its zip.
-    writing = [j for j in state.jobs.values() if j.waiting or j.state == "finishing"]
-    free = shutil.disk_usage(state.renders).free - sum(j.size_bytes for j in writing)
-    free_gb = free / 1e9
-    if (needs_gb := job.size_bytes / 1e9 + settings.min_free_gb) > free_gb:
-        raise ToolError(
-            f"{free_gb:.0f} GB free after the jobs queued; this job needs "
-            f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
-        )
-    state.jobs[name] = job
-    job.task = asyncio.create_task(_run(state, job, path, lines, variants))
-    return {"job": name, "images": job.total, "jobs_ahead": ahead}
+        free_gb = free / 1e9
+        if (needs_gb := job.size_bytes / 1e9 + settings.min_free_gb) > free_gb:
+            raise ToolError(
+                f"{free_gb:.0f} GB free after the jobs queued; this job needs "
+                f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
+            )
+        state.jobs[name] = job
+        job.task = asyncio.create_task(_run(state, job, path, lines, variants))
+        return {"job": name, "images": job.total, "jobs_ahead": ahead}
+    finally:
+        # `waiting` counts a job from here on.
+        if loading.done():
+            state.loads -= 1
+        else:
+            loading.add_done_callback(
+                lambda _: setattr(state, "loads", state.loads - 1)
+            )
 
 
 async def _seascape(*args: str) -> None:

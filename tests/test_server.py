@@ -607,6 +607,28 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     assert state.loads == 0
 
 
+def test_a_render_keeps_its_place_in_the_queue_until_it_is_a_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_queued=1)
+    held: list[int] = []
+    free = shutil.disk_usage
+
+    def spy(path: Path) -> Any:
+        held.append(state.loads)
+        return free(path)
+
+    async def idle(*_: object) -> None:
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(server, "_tried", lambda *_: (load_variants(BASELINE), 1.0))
+    monkeypatch.setattr(server, "_run", idle)
+    monkeypatch.setattr(server.shutil, "disk_usage", spy)
+    assert not _call(state, "render").is_error
+    assert held == [1]
+    assert state.loads == 0
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
