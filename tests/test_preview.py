@@ -10,17 +10,23 @@ def frame(grey: int, size: tuple[int, int] = (1000, 600)) -> Image.Image:
     return Image.new("RGB", size, (grey, grey, grey))
 
 
-def mark_pixels(marked: Image.Image, grey: int) -> np.ndarray:
+def mark_pixels(marked: Image.Image | np.ndarray, grey: int) -> np.ndarray:
     """Where `marked` differs from the flat frame under the mark."""
     return np.asarray(marked).astype(int)[..., 0] != grey
 
 
-@pytest.mark.parametrize(("grey", "ink"), [(20, 255), (230, 0)])
-def test_the_mark_is_white_on_dark_and_black_on_light(grey: int, ink: int) -> None:
-    marked = np.asarray(preview.watermark(frame(grey)))
-    changed = np.abs(marked.astype(int) - grey).sum(axis=2) > 0
-    assert changed.any()
-    assert (marked[changed][:, 0].max() if ink else marked[changed][:, 0].min()) == ink
+def test_the_mark_is_white_on_dark() -> None:
+    marked = np.asarray(preview.watermark(frame(20)))
+    assert marked[mark_pixels(marked, 20)].max() == 255
+
+
+def test_the_mark_is_black_on_light() -> None:
+    marked = np.asarray(preview.watermark(frame(230)))
+    assert marked[mark_pixels(marked, 230)].min() == 0
+
+
+def test_a_frame_smaller_than_the_mark_still_takes_it() -> None:
+    assert mark_pixels(preview.watermark(frame(20, (100, 80))), 20).any()
 
 
 def test_the_mark_sits_bottom_right_clear_of_the_edge() -> None:

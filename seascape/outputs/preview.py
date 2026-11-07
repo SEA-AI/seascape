@@ -45,7 +45,9 @@ def watermark(image: Image.Image) -> Image.Image:
     white = _logo("white")
     width = round(height * white.width / white.height)
     clear = round(width * CURSOR_SHARE)
-    left, top = marked.width - clear - width, marked.height - clear - height
+    # A frame too small for the clear space still takes the mark, flush to its corner.
+    left = max(0, marked.width - clear - width)
+    top = max(0, marked.height - clear - height)
     behind = marked.crop((left, top, left + width, top + height)).convert("L")
     logo = _logo("white" if np.asarray(behind).mean() < DARK else "black")
     marked.alpha_composite(
