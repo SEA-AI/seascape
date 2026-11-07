@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     def _secret_guards_the_path(self) -> "Settings":
         if self.public_url and not self.mcp_secret:
             raise ValueError("SEASCAPE_PUBLIC_URL needs SEASCAPE_MCP_SECRET")
+        # The secret travels in the path, in the clear over http.
+        if self.public_url and self.public_url.scheme != "https":
+            raise ValueError("SEASCAPE_PUBLIC_URL must be https")
         # It becomes a route path, where `/` and `{}` mean something else.
         if self.mcp_secret and not re.fullmatch(
             r"[\w-]+", self.mcp_secret.get_secret_value()

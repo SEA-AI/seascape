@@ -483,6 +483,11 @@ def test_a_public_url_needs_a_secret(tmp_path: Path) -> None:
         _state(tmp_path, public_url="https://seascape.ngrok.app")
 
 
+def test_a_public_url_must_be_https(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="https"):
+        _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret="s3cret")
+
+
 def test_a_secret_must_be_path_safe(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         _state(tmp_path, mcp_secret="a/b")
