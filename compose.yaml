@@ -25,10 +25,34 @@ services:
   ngrok:
     image: ngrok/ngrok:3
     profiles: [ngrok]
-    command: [http, "seascape:8765", --url, "${NGROK_URL:-}"]
+    # Compose reads a required variable for every service, selected or not, so the
+    # check is here: plain `docker compose up` never starts this service.
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        test -n "$$NGROK_URL" || { echo "NGROK_URL is required"; exit 1; };
+        exec ngrok http seascape:8765 --url "$$NGROK_URL"
+        --traffic-policy-file /policy.yaml
     environment:
       - NGROK_AUTHTOKEN
+      - NGROK_URL
+    configs:
+      - source: ngrok-policy
+        target: /policy.yaml
     restart: unless-stopped
+
+configs:
+  # Only Anthropic's outbound range reaches the connector URL, so a leaked one is
+  # useless elsewhere: https://platform.claude.com/docs/en/api/ip-addresses
+  ngrok-policy:
+    content: |
+      on_http_request:
+        - actions:
+            - type: restrict-ips
+              config:
+                enforce: true
+                allow: [160.79.104.0/21]
 
 volumes:
   cache:
