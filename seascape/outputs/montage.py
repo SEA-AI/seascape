@@ -7,7 +7,7 @@ frame, never on it: in an exr they would corrupt radiance.
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
 from seascape.config import Band, Mount, Scenario
@@ -63,19 +63,17 @@ def _tile(
         if t_k is None
         else Image.fromarray(agc.Agc(mount.camera.agc)(t_k))
     ).convert("RGB")
-    width = round(frame.width * TILE_H / frame.height)
-    frame = frame.resize((width, TILE_H), Image.Resampling.LANCZOS)
+    frame = ImageOps.scale(frame, TILE_H / frame.height, Image.Resampling.LANCZOS)
 
-    tile = Image.new("RGB", (width, TILE_H + CAPTION_H), MATTE)
-    tile.paste(frame, (0, 0))
+    tile = ImageOps.expand(frame, border=(0, 0, 0, CAPTION_H), fill=MATTE)
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
     _fan(draw, GUTTER + FAN_R, middle, mounts, mount)
     bearing = _wrapped(mount.nominal_bearing_deg)
     caption = f"{mount.name}  {bearing:+.0f}°  {mount.camera.hfov_deg:.0f}° wide"
-    left, top, right, bottom = draw.textbbox((0, 0), caption, font=typeface)
-    x = max((width - (right - left)) / 2, 2 * (GUTTER + FAN_R))
-    draw.text((x, middle - (bottom - top) / 2 - top), caption, font=typeface, fill=INK)
+    text_px = draw.textlength(caption, font=typeface)
+    x = max((tile.width - text_px) / 2, 2 * (GUTTER + FAN_R))
+    draw.text((x, middle), caption, font=typeface, fill=INK, anchor="lm")
     return tile
 
 
