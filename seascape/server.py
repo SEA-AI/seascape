@@ -15,9 +15,8 @@ import subprocess
 import sys
 import tempfile
 import time
-import tomllib
 import uuid
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import partial
@@ -54,7 +53,6 @@ from seascape.config import (
     load,
     seeds,
 )
-from seascape.config.loader import names_a_path
 from seascape.outputs import montage
 
 KEEP_S = 24 * 3600
@@ -117,7 +115,8 @@ class Settings(BaseSettings):
     def _listed(cls, value: object) -> object:
         if isinstance(value, str):
             return (
-                tuple(h.strip() for h in value.split(",") if h.strip()) or LOCAL_HOSTS
+                tuple(h for part in value.split(",") if (h := part.strip()))
+                or LOCAL_HOSTS
             )
         return value
 
@@ -198,6 +197,11 @@ class Job:
         """Whether the job is queued or running."""
         return self.state in ("queued", "running")
 
+    @property
+    def writing(self) -> bool:
+        """Whether the job still writes files: waiting, or zipping."""
+        return self.waiting or self.state == "finishing"
+
 
 @dataclass
 class State:
@@ -208,7 +212,7 @@ class State:
     jobs: dict[str, Job] = field(default_factory=dict)
     gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
     loading: asyncio.Semaphore = field(
-        default_factory=lambda: asyncio.Semaphore(LOADING)
+        default_factory=partial(asyncio.Semaphore, LOADING)
     )
 
     def scenarios(self) -> dict[str, Path]:
@@ -218,18 +222,6 @@ class State:
 
 def _state(ctx: Context[State, Any]) -> State:
     return ctx.request_context.lifespan_context
-
-
-def _includes(node: Any) -> Iterator[str]:
-    """Every `extends` and `preset` in a TOML tree."""
-    if isinstance(node, list):
-        for item in node:
-            yield from _includes(item)
-    elif isinstance(node, dict):
-        for key, value in node.items():
-            if key in ("extends", "preset") and isinstance(value, str):
-                yield value
-            yield from _includes(value)
 
 
 def _url(state: State, ctx: Context[Any, Any]) -> str:
@@ -251,18 +243,6 @@ def _bytes(scene: Scenario) -> float:
     )
 
 
-def _refuse_paths(lines: list[str]) -> None:
-    """Refuse an override that names a file, where a preset name belongs."""
-    for line in lines:
-        try:
-            names = list(_includes(tomllib.loads(line)))
-        except RecursionError as error:
-            raise ValueError("an override nests too deeply") from error
-        # A path would read any TOML here, and an error echoes what it read.
-        if any(names_a_path(name) for name in names):
-            raise ToolError(f"{line!r}: an override names presets, never files")
-
-
 def _tried(
     path: Path, lines: list[str], variants: int, settings: Settings
 ) -> tuple[list[Scenario], float]:
@@ -277,12 +257,16 @@ def _tried(
             largest this many of the seeds tried.
         settings: The server's limits.
     """
-    _refuse_paths(lines)
-    first = load(path, lines)
+    try:
+        first = load(path, lines, files=False)
+    except RecursionError as error:
+        raise ValueError("an override nests too deeply") from error
     scenes: list[Scenario] = []
     images, sizes = [], []
     for seed in seeds(first.seed, variants):
-        scene = first if seed == first.seed else load(path, [*lines, f"seed = {seed}"])
+        scene = first
+        if seed != first.seed:
+            scene = load(path, [*lines, f"seed = {seed}"], files=False)
         if scene.outputs.duration_s > settings.max_duration_s:
             raise ToolError(f"a clip lasts at most {settings.max_duration_s} s")
         samples = scene.outputs.samples
@@ -308,11 +292,7 @@ def _expire(state: State) -> list[str]:
     """Delete what is older than `KEEP_S` and name the jobs it was. Runs in a thread."""
     cutoff = time.time() - KEEP_S
     # A running job's folder may sit unchanged past the cutoff.
-    live = {
-        name
-        for name, job in list(state.jobs.items())
-        if job.waiting or job.state == "finishing"
-    }
+    live = {name for name, job in list(state.jobs.items()) if job.writing}
     gone = []
     for path in state.renders.glob("*"):
         if path.stem in live:
@@ -340,16 +320,6 @@ async def _prune(state: State) -> None:
         done = job.task is not None and job.task.done()
         if done and job.created_s < cutoff and not job.folder.exists():
             del state.jobs[name]
-
-
-def _ahead(state: State) -> int:
-    """How many jobs wait or run; refuses one more past `max_queued`."""
-    ahead = sum(j.waiting for j in state.jobs.values())
-    if ahead >= state.settings.max_queued:
-        raise ToolError(
-            f"{ahead} jobs queued; the server takes at most {state.settings.max_queued}"
-        )
-    return ahead
 
 
 async def _load(
@@ -413,8 +383,13 @@ async def render(
     lines = overrides or []
     state.renders.mkdir(parents=True, exist_ok=True)
     await _prune(state)
-    # Refuse before loading, which is the cost.
-    ahead = _ahead(state)
+    # Refuse before loading, which is the cost. No await from here to the job's place
+    # in the queue, or a burst all sees it empty.
+    ahead = sum(j.waiting for j in state.jobs.values())
+    if ahead >= settings.max_queued:
+        raise ToolError(
+            f"{ahead} jobs queued; the server takes at most {settings.max_queued}"
+        )
     name = uuid.uuid4().hex
     # Queued while it loads, so a burst fills the queue before any call pays for a
     # load.
@@ -433,11 +408,7 @@ async def render(
             ) from error
         # A running job's images count twice, as written and as still to come; a
         # finishing one still writes its zip.
-        writing = [
-            j
-            for j in state.jobs.values()
-            if j is not job and (j.waiting or j.state == "finishing")
-        ]
+        writing = [j for j in state.jobs.values() if j is not job and j.writing]
         free = shutil.disk_usage(state.renders).free - sum(
             j.size_bytes for j in writing
         )
@@ -541,11 +512,11 @@ def _finish(job: Job) -> None:
 
 def _files(job: Job, renders: Path) -> list[Path]:
     """The job's files, relative to `renders`, but its numbered frames."""
-    return [
+    return sorted(
         path.relative_to(renders)
-        for path in sorted(job.folder.rglob("*"))
-        if path.is_file() and not path.stem.isdigit()
-    ]
+        for path in job.folder.rglob("*")
+        if not path.stem.isdigit() and path.is_file()
+    )
 
 
 async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
