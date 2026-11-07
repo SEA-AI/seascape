@@ -252,15 +252,50 @@ def _least_squares(basis: np.ndarray, value: np.ndarray) -> np.ndarray:
     return coefficients
 
 
-def _bluest(blueness: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Row and column of the bluest pixel in each FIT_STRIDE square of `blueness`."""
+def _farthest(away: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Row and column of the largest `away` in each FIT_STRIDE square."""
     s = FIT_STRIDE
-    h, w = blueness.shape
-    padded = np.pad(blueness, ((0, -h % s), (0, -w % s)), constant_values=-np.inf)
+    h, w = away.shape
+    padded = np.pad(away, ((0, -h % s), (0, -w % s)), constant_values=-np.inf)
     rows, cols = padded.shape[0] // s, padded.shape[1] // s
     squares = padded.reshape(rows, s, cols, s).swapaxes(1, 2).reshape(rows, cols, -1)
     at = squares.argmax(axis=-1)
     return np.arange(rows)[:, None] * s + at // s, np.arange(cols) * s + at % s
+
+
+def _envelope(
+    away: np.ndarray, side: np.ndarray, elevation_deg: np.ndarray, cos_sun: np.ndarray
+) -> np.ndarray:
+    """The clear sky's blueness, fitted to the largest `away` in each FIT_STRIDE square.
+
+    Cloud only greys the sky, so the clear sky is the envelope on its side: a gap
+    anywhere in a square holds it there. A square's noise pushes the fit out by the top
+    of its spread, which the share reads as a trace of cloud on clear sky.
+
+    Args:
+        away: Each pixel's blueness times `side`; -inf where it cannot be clear sky.
+        side: 1 where the clear sky is bluer than grey, -1 where redder.
+        elevation_deg: Each row's elevation, (h, 1).
+        cos_sun: Cosine of each pixel's angle from the sun.
+    """
+    rows, cols = _farthest(away)
+    fitted = np.isfinite(away[rows, cols])
+    rows, cols = rows[fitted], cols[fitted]
+    outward = side[rows, cols]
+    seen = outward * away[rows, cols]
+    basis = np.stack(list(_terms(elevation_deg[rows, 0], cos_sun[rows, cols])), axis=-1)
+    clear_ones = np.ones(seen.shape, bool)
+    # The first refit keeps what lies past the fit, so a few gaps in a mostly grey sky
+    # pull it off grey before the band can take the grey for clear.
+    band = 0.0
+    for _ in range(FIT_PASSES):
+        coefficients = _least_squares(basis[clear_ones], seen[clear_ones])
+        refit = outward * (seen - basis @ coefficients) >= -band
+        band = CLEAR_BAND
+        if not refit.any() or np.array_equal(refit, clear_ones):
+            break
+        clear_ones = refit
+    return _fitted(coefficients, elevation_deg, cos_sun)
 
 
 def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
@@ -271,10 +306,13 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     shaded cloud base, lit by the blue sky: DARK ramps it in, added to the colour's.
 
     Limitation: a cloud as white as the circumsolar sky beside it reads clear, a disc's
-    aureole takes the cloud round it, a dusk's glow redder than grey reads cloud, a gap
-    in an overcast photo reads cloud, haze darker than the clear sky beside it reads
-    cloud, and a shaded base much wider than BESIDE_DEG reads cloud only at its
-    rim.
+    aureole takes the cloud round it, a glow reads red only where the first fit lies
+    under grey, a cloud greyer than a red glow and as bright as it reads clear, a
+    glow redder than its fit can follow reads cloud, a shaded base bluer than the glow
+    round it reads clear and the glow cloud, a gap in an overcast photo reads cloud,
+    haze darker than the clear sky beside it reads cloud, a shaded base much wider than
+    BESIDE_DEG reads cloud only at its rim, and a deck no darker than the clear sky
+    fitted under it reads only as far as it is grey.
 
     Args:
         radiance: The photo's linear RGB, (h, w, 3), top row first.
@@ -299,24 +337,13 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     )
     cos_sun = earth.direction(bearing, elevation) @ toward
     aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
-    # Cloud only greys the sky, so the clear sky is blueness's upper envelope: a gap
-    # anywhere in a square holds it up. A square's noise lifts the fit by the top of
-    # its spread, which the share reads as a trace of cloud on clear sky.
-    rows, cols = _bluest(blueness)
-    basis = np.stack(list(_terms(elevation[rows, 0], cos_sun[rows, cols])), axis=-1)
-    seen = blueness[rows, cols]
-    clear_ones = np.ones(seen.shape, bool)
-    # The first refit keeps what lies above the fit, so a few gaps in a mostly grey sky
-    # lift it off grey before the band can take the grey for clear.
-    band = 0.0
-    for _ in range(FIT_PASSES):
-        coefficients = _least_squares(basis[clear_ones], seen[clear_ones])
-        refit = seen >= basis @ coefficients - band
-        band = CLEAR_BAND
-        if not refit.any() or np.array_equal(refit, clear_ones):
-            break
-        clear_ones = refit
-    clear = _fitted(coefficients, elevation, cos_sun)
+    clear = _envelope(blueness, np.ones_like(blueness), elevation, cos_sun)
+    # A dusk's glow is redder than grey and cloud greys it toward blue, so there the
+    # clear sky is each square's reddest pixel.
+    if (clear < 0.0).any():
+        side = np.where(clear < 0.0, -1.0, 1.0).astype(np.float32)
+        away = side * blueness
+        clear = _envelope(np.where(away > 0.0, away, -np.inf), side, elevation, cos_sun)
     share = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
     # Colour and darkness are two ways off the clear sky: either, or part of both.
     share = np.minimum(share + _darkness(radiance[sky], share), 1.0).astype(np.float32)

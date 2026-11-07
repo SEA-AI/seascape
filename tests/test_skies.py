@@ -108,6 +108,21 @@ def test_a_clear_sky_darker_across_the_photo_is_no_cloud() -> None:
     assert skies.cloud(sky, PHOTO)[ABOVE_2_DEG].max() < 0.05
 
 
+def test_a_glow_redder_than_grey_is_no_cloud_and_a_bank_in_it_is() -> None:
+    sky = _clear_sky()
+    # A dusk's glow: red round the sun.
+    glow = (_sky(*SUN_DEG, 30.0, 1.0)[..., 0] - 1.0)[:: H // CH, :: W // CW]
+    red = np.array([1.0, 0.5, 0.35], np.float32)
+    sky += glow[..., None] * (red - sky)
+    # A grey bank in it, shaded: bluer than the glow.
+    bank = np.s_[112:116, 192:320]
+    sky[bank] = 0.3
+    cloud = skies.cloud(sky, PHOTO)
+    assert cloud[bank].min() == pytest.approx(1.0)
+    cloud[bank] = 0.0
+    assert cloud[ABOVE_2_DEG].max() < 0.05
+
+
 def test_an_overcast_photo_is_cloud_down_to_the_horizon() -> None:
     cloud = skies.cloud(_clear_sky(), PHOTO.model_copy(update={"overcast": True}))
     assert cloud[: CH // 2].min() == 1.0
