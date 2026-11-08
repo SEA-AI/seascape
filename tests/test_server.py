@@ -14,19 +14,22 @@ from typing import Any
 
 import httpx2
 import pytest
+import uvicorn
 from mcp import Client
 from mcp.types import TextContent
 from PIL import Image
 from pydantic import ValidationError
 
 from seascape import server
+from seascape.server import Settings, State, tools, work
+from seascape.server.work import Job
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
 SECRET = "s" * 32
 
 
-def _state(renders: Path, **limits: Any) -> server.State:
-    return server.State(server.Settings(scenarios=SCENARIOS, **limits), renders)
+def _state(renders: Path, **limits: Any) -> State:
+    return State(Settings(scenarios=SCENARIOS, **limits), renders)
 
 
 async def _statuses(served: Any, path: str, *hosts: str) -> list[int]:
@@ -42,11 +45,11 @@ async def _statuses(served: Any, path: str, *hosts: str) -> list[int]:
 
 
 @pytest.fixture
-def state(tmp_path: Path) -> server.State:
+def state(tmp_path: Path) -> State:
     return _state(tmp_path)
 
 
-def _call(state: server.State, tool: str, **arguments: Any) -> Any:
+def _call(state: State, tool: str, **arguments: Any) -> Any:
     async def call() -> Any:
         async with Client(server.mcp(state)) as client:
             return await client.call_tool(tool, arguments)
@@ -85,15 +88,13 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         "sky.sun_elevation_deg =",
     ],
 )
-def test_a_bad_override_is_refused_before_any_job(
-    line: str, state: server.State
-) -> None:
+def test_a_bad_override_is_refused_before_any_job(line: str, state: State) -> None:
     result = _call(state, "render", overrides=[line])
     assert result.is_error
     assert not state.jobs
 
 
-def test_an_unknown_scenario_is_refused(state: server.State) -> None:
+def test_an_unknown_scenario_is_refused(state: State) -> None:
     result = _call(state, "render", scenario="../baseline")
     assert result.is_error
     assert not state.jobs
@@ -107,23 +108,23 @@ def test_a_full_disk_refuses_a_job(tmp_path: Path) -> None:
     assert not state.jobs
 
 
-def test_jobs_reports_the_free_disk(state: server.State) -> None:
+def test_jobs_reports_the_free_disk(state: State) -> None:
     listed = _call(state, "jobs").structured_content
     assert listed["jobs"] == []
     assert listed["free_gb"] > 0
 
 
-def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: server.State) -> None:
+def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: State) -> None:
     old, busy, new = tmp_path / "old", tmp_path / "busy", tmp_path / "new"
     for folder in (old, busy, new):
         folder.mkdir()
         (folder / "labels.json").touch()
     (tmp_path / "old.zip").touch()
-    state.jobs["busy"] = server.Job(busy, "baseline", [], state="running")
-    a_day_ago = time.time() - server.KEEP_S - 1
+    state.jobs["busy"] = Job(busy, "baseline", [], state="running")
+    a_day_ago = time.time() - work.KEEP_S - 1
     for path in (old, busy, tmp_path / "old.zip"):
         os.utime(path, (a_day_ago, a_day_ago))
-    asyncio.run(server._prune(state))
+    asyncio.run(work.prune(state))
     # A running job's folder may sit unchanged past the cutoff.
     assert sorted(path.name for path in tmp_path.iterdir()) == ["busy", "new"]
     assert "busy" in state.jobs
@@ -136,9 +137,9 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     for seed in (first, first + 2):
         (tmp_path / str(seed)).mkdir()
     (tmp_path / "labels.json").touch()
-    job = server.Job(tmp_path, "open-sea", scenes)
+    job = Job(tmp_path, "open-sea", scenes)
     assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
-    assert [s.seed for s in server._written(job, OPEN_SEA, [])] == [
+    assert [s.seed for s in work._written(job, OPEN_SEA, [])] == [
         first,
         first + 2,
     ]
@@ -178,7 +179,7 @@ def test_listed_hosts_are_the_only_ones_mcp_answers(
 def test_a_gpu_probe_that_fails_still_serves(
     error: Exception,
     said: str,
-    state: server.State,
+    state: State,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -186,8 +187,8 @@ def test_a_gpu_probe_that_fails_still_serves(
         raise error
 
     served: list[Any] = []
-    monkeypatch.setattr(server.subprocess, "run", fail)
-    monkeypatch.setattr(server.uvicorn, "run", lambda app, **_: served.append(app))
+    monkeypatch.setattr(subprocess, "run", fail)
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
     server.serve(state, "127.0.0.1", 0)
     assert served
     assert said in capsys.readouterr().out
@@ -202,20 +203,20 @@ def test_a_secret_path_is_not_access_logged(
 ) -> None:
     kwargs: dict[str, Any] = {}
     monkeypatch.setattr(
-        server.subprocess,
+        subprocess,
         "run",
         lambda *_, **__: SimpleNamespace(stdout="None"),
     )
-    monkeypatch.setattr(server.uvicorn, "run", lambda _, **kw: kwargs.update(kw))
+    monkeypatch.setattr(uvicorn, "run", lambda _, **kw: kwargs.update(kw))
     server.serve(_state(tmp_path, mcp_secret=secret), "127.0.0.1", 0)
     assert kwargs["access_log"] is logged
 
 
 def test_jobs_lists_a_finished_job_whose_archive_is_gone(
-    tmp_path: Path, state: server.State
+    tmp_path: Path, state: State
 ) -> None:
     scenes = load_variants(OPEN_SEA)
-    state.jobs["gone"] = server.Job(tmp_path / "gone", "open-sea", scenes, state="done")
+    state.jobs["gone"] = Job(tmp_path / "gone", "open-sea", scenes, state="done")
     (listed,) = _call(state, "jobs").structured_content["jobs"]
     assert listed["status"] == "done"
     assert "archive" not in listed
@@ -226,7 +227,7 @@ def test_a_limit_reads_the_environment(
     value: str, expected: float, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SEASCAPE_MIN_FREE_GB", value)
-    assert server.Settings(scenarios=SCENARIOS).min_free_gb == expected
+    assert Settings(scenarios=SCENARIOS).min_free_gb == expected
 
 
 @pytest.mark.parametrize("value", ["4k", "inf", "0"])
@@ -235,17 +236,17 @@ def test_a_limit_that_is_not_a_positive_number_names_its_field(
 ) -> None:
     monkeypatch.setenv("SEASCAPE_MIN_FREE_GB", value)
     with pytest.raises(ValidationError, match="min_free_gb"):
-        server.Settings(scenarios=SCENARIOS)
+        Settings(scenarios=SCENARIOS)
 
 
 def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
     scenes = load_variants(OPEN_SEA)
-    job = server.Job(tmp_path, "open-sea", scenes, state="finishing")
+    job = Job(tmp_path, "open-sea", scenes, state="finishing")
     assert not job.waiting
 
 
 def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
-    state: server.State, monkeypatch: pytest.MonkeyPatch
+    state: State, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def render(*_args: str) -> None:  # Blender's frames, without Blender
         (job,) = state.jobs.values()
@@ -256,7 +257,7 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
                 frame = folder / f"{mount.name}.{scene.outputs.format}"
                 Image.new("RGB", (640, 480)).save(frame)
 
-    monkeypatch.setattr(server, "_seascape", render)
+    monkeypatch.setattr(work, "_seascape", render)
 
     async def call() -> Any:
         async with Client(server.mcp(state)) as client:
@@ -277,9 +278,7 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
     ] * cameras
 
 
-def _sleeper(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any
-) -> server.State:
+def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any) -> State:
     """`seascape render` as a process that writes into its job's folder and waits."""
     script = tmp_path / "sleeper"
     # $6 is the folder after `-m seascape.cli render <scenario> -o`.
@@ -289,7 +288,7 @@ def _sleeper(
     return _state(tmp_path / "renders", **limits)
 
 
-async def _started(state: server.State, name: str) -> int:
+async def _started(state: State, name: str) -> int:
     pid = state.jobs[name].folder / "pid"
     async with asyncio.timeout(10):
         while not pid.exists() or not pid.read_text():
@@ -340,7 +339,7 @@ def test_a_job_is_refused_when_its_images_would_fill_the_disk(
 ) -> None:
     """With room for one jpg job, beside one already queued, and the margin."""
     state = _state(tmp_path)
-    queued = server.Job(tmp_path / "queued", "baseline", load_variants(BASELINE))
+    queued = Job(tmp_path / "queued", "baseline", load_variants(BASELINE))
     state.jobs["queued"] = queued
     room = SimpleNamespace(
         free=2 * queued.size_bytes + state.settings.min_free_gb * 1e9
@@ -350,7 +349,7 @@ def test_a_job_is_refused_when_its_images_would_fill_the_disk(
     async def run(*_: object) -> None:
         pass
 
-    monkeypatch.setattr(server, "_run", run)
+    monkeypatch.setattr(tools, "run", run)
     result = _call(state, "render", overrides=[f'outputs.format = "{fmt}"'])
     assert result.is_error is refused
     assert len(state.jobs) == 1 + (not refused)
@@ -386,13 +385,13 @@ def test_a_job_waiting_for_the_gpu_keeps_its_whole_run_limit(
     async def seascape(*_: str) -> None:
         await asyncio.sleep(0.05)
 
-    monkeypatch.setattr(server, "_seascape", seascape)
-    monkeypatch.setattr(server, "_finish", lambda _: None)
+    monkeypatch.setattr(work, "_seascape", seascape)
+    monkeypatch.setattr(work, "_finish", lambda _: None)
 
     async def run() -> str:
-        job = server.Job(tmp_path / "a", "open-sea", load_variants(OPEN_SEA))
+        job = Job(tmp_path / "a", "open-sea", load_variants(OPEN_SEA))
         async with state.gpu:
-            task = asyncio.create_task(server._run(state, job, tmp_path, [], 1))
+            task = asyncio.create_task(work.run(state, job, tmp_path, [], 1))
             # Longer than the run limit.
             await asyncio.sleep(0.3)
         await task
@@ -405,8 +404,8 @@ def test_a_waiting_result_reports_progress(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = _sleeper(tmp_path, monkeypatch)
-    monkeypatch.setattr(server, "WAIT_S", 0.3)
-    monkeypatch.setattr(server, "PROGRESS_S", 0.1)
+    monkeypatch.setattr(tools, "WAIT_S", 0.3)
+    monkeypatch.setattr(tools, "PROGRESS_S", 0.1)
     reported: list[tuple[float, float | None]] = []
 
     async def progress(
@@ -430,18 +429,18 @@ def test_a_waiting_result_reports_progress(
     assert set(reported) == {(0, 2)}
 
 
-def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: server.State) -> None:
+def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: State) -> None:
     scenes = load_variants(OPEN_SEA)
 
     async def forget() -> list[str]:
         done = asyncio.create_task(asyncio.sleep(0))
         await done
-        old = server.Job(tmp_path / "old", "open-sea", scenes, state="cancelled")
-        new = server.Job(tmp_path / "new", "open-sea", scenes, state="cancelled")
-        old.created_s -= server.KEEP_S + 1
+        old = Job(tmp_path / "old", "open-sea", scenes, state="cancelled")
+        new = Job(tmp_path / "new", "open-sea", scenes, state="cancelled")
+        old.created_s -= work.KEEP_S + 1
         old.task = new.task = done
         state.jobs.update(old=old, new=new)
-        await server._prune(state)
+        await work.prune(state)
         return list(state.jobs)
 
     assert asyncio.run(forget()) == ["new"]
@@ -468,9 +467,9 @@ def test_a_killed_job_leaves_no_temporary_files(
         (seen["tmp"] / "blender_frames").mkdir()
         return Killed()
 
-    monkeypatch.setattr(server.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(server._seascape("render"))
+        asyncio.run(work._seascape("render"))
     assert not seen["tmp"].exists()
 
 
@@ -538,16 +537,16 @@ def test_files_are_linked_at_the_public_url(
 ) -> None:
     state = _state(tmp_path, public_url=public, mcp_secret=SECRET)
     ctx = SimpleNamespace(headers={"host": "gpu-box:8765"})
-    assert server._url(state, ctx) == url  # ty: ignore[invalid-argument-type]
+    assert tools._url(state, ctx) == url  # ty: ignore[invalid-argument-type]
 
 
 def test_a_render_is_refused_before_anything_loads_when_the_queue_is_full(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = _state(tmp_path, max_queued=1)
-    state.jobs["busy"] = server.Job(tmp_path / "busy", "baseline", [], state="running")
+    state.jobs["busy"] = Job(tmp_path / "busy", "baseline", [], state="running")
     loads: list[object] = []
-    monkeypatch.setattr(server, "_tried", lambda *a: loads.append(a))
+    monkeypatch.setattr(work, "_tried", lambda *a: loads.append(a))
     result = _call(state, "render")
     assert result.is_error
     assert "queued" in result.content[0].text
@@ -569,8 +568,8 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     async def idle(*_: object) -> None:
         await asyncio.sleep(0)
 
-    monkeypatch.setattr(server, "_tried", slow_load)
-    monkeypatch.setattr(server, "_run", idle)
+    monkeypatch.setattr(work, "_tried", slow_load)
+    monkeypatch.setattr(tools, "run", idle)
 
     async def burst() -> list[bool]:
         async with Client(server.mcp(state)) as client:
@@ -594,7 +593,7 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
         release.wait(5)
         raise ValueError("bad scenario")
 
-    monkeypatch.setattr(server, "_tried", slow_load)
+    monkeypatch.setattr(work, "_tried", slow_load)
 
     async def attempt() -> tuple[int, int]:
         async with Client(server.mcp(state)) as client:
@@ -651,12 +650,12 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
             "images",
         ),
         (
-            {"overrides": ["x = '" + "x" * server.MAX_OVERRIDE_CHARS + "'"]},
+            {"overrides": ["x = '" + "x" * tools.MAX_OVERRIDE_CHARS + "'"]},
             "characters",
         ),
         ({"overrides": ["outputs.samples.eo = 100000"]}, "samples per pixel"),
         ({"overrides": ["objects = [{ count = 100000 }]"]}, "hulls in all"),
-        ({"overrides": ["seed = 1"] * (server.MAX_OVERRIDES + 1)}, "items"),
+        ({"overrides": ["seed = 1"] * (tools.MAX_OVERRIDES + 1)}, "items"),
         ({"overrides": ["x = " + "[" * 497 + "]" * 497]}, "nests too deeply"),
         (
             {
@@ -674,7 +673,7 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
     ],
 )
 def test_a_costly_request_is_refused(
-    arguments: dict[str, Any], message: str, state: server.State
+    arguments: dict[str, Any], message: str, state: State
 ) -> None:
     result = _call(state, "render", **arguments)
     assert result.is_error
@@ -682,7 +681,7 @@ def test_a_costly_request_is_refused(
     assert not state.jobs
 
 
-def test_a_preset_key_cannot_leave_the_presets(state: server.State) -> None:
+def test_a_preset_key_cannot_leave_the_presets(state: State) -> None:
     result = _call(state, "render", overrides=['"../../.." = { preset = "pyproject" }'])
     assert result.is_error
     assert "not a preset directory" in result.content[0].text
@@ -700,12 +699,12 @@ def test_a_failed_render_tells_the_client_only_its_last_line(
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     with pytest.raises(RuntimeError) as error:
-        asyncio.run(server._seascape("render"))
+        asyncio.run(work._seascape("render"))
     assert str(error.value) == "ValueError: bad scenario"
 
 
 def test_render_says_a_list_override_replaces_the_scenarios_list(
-    state: server.State,
+    state: State,
 ) -> None:
     async def described() -> str:
         async with Client(server.mcp(state)) as client:
