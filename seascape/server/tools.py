@@ -15,7 +15,7 @@ from pydantic import Field
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import json_schema
+from seascape.config import json_schema, schema_section
 from seascape.server.jobs import (
     PREVIEW_STEM,
     Job,
@@ -50,19 +50,36 @@ def _url(state: State, ctx: Context[Any, Any]) -> str:
 
 
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
-    """The scenarios `render` starts from, the meshes and skies a scenario can name,
-    and the scenario's JSON schema. Any field can be a draw instead of a value:
-    `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed.
+    """The names `render` takes: its scenarios (`scenario` reads one), the meshes and
+    skies a scenario can name, and the sections of the scenario's schema (`schema`
+    reads one). Any field can be a draw instead of a value: `{ uniform = [lo, hi] }`
+    or `{ choice = [...] }`, drawn per seed.
     """
+    sections = json_schema()["properties"]
     return {
-        "scenarios": {n: p.read_text() for n, p in _state(ctx).scenarios().items()},
+        "scenarios": list(_state(ctx).scenarios()),
+        "schema_sections": {n: s.get("description", "") for n, s in sections.items()},
         "meshes": {
             name: f"{mesh.kind}, {mesh.category}, {mesh.size}"
             for name, mesh in assets.manifest().items()
         },
         "skies": {name: photo.sun for name, photo in skies.library().items()},
-        "schema": json_schema(),
     }
+
+
+def scenario(name: str, ctx: Context[State, Any]) -> str:
+    """The TOML of one scenario from `catalog`."""
+    if (path := _state(ctx).scenarios().get(name)) is None:
+        raise ToolError(f"no scenario {name!r} in {sorted(_state(ctx).scenarios())}")
+    return path.read_text()
+
+
+def schema(section: str) -> dict[str, Any]:
+    """The schema of one section from `catalog`, with the definitions it uses."""
+    sections = json_schema()["properties"]
+    if section not in sections:
+        raise ToolError(f"no section {section!r} in {sorted(sections)}")
+    return schema_section(section)
 
 
 async def render(

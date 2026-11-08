@@ -20,7 +20,7 @@ Any field can instead be a draw, a table named for one of `draws.DRAWS` such as
 """
 
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -372,6 +372,33 @@ def seeds(first: int, variants: int) -> range:
     replaced.
     """
     return range(first, first + (1 if variants == 1 else TRIES_PER_VARIANT * variants))
+
+
+def _refs(node: Any) -> Iterator[str]:
+    """Every `$ref` under `node`."""
+    if isinstance(node, dict):
+        if "$ref" in node:
+            yield node["$ref"]
+        for value in node.values():
+            yield from _refs(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _refs(value)
+
+
+def schema_section(name: str) -> dict[str, Any]:
+    """One top-level field of the scenario's schema, with the definitions it reaches."""
+    schema = json_schema()
+    spec = schema["properties"][name]
+    reached: dict[str, Any] = {}
+    pending = [spec]
+    while pending:
+        for ref in _refs(pending.pop()):
+            key = ref.removeprefix("#/$defs/")
+            if key not in reached:
+                reached[key] = schema["$defs"][key]
+                pending.append(reached[key])
+    return {"properties": {name: spec}, "$defs": reached}
 
 
 def json_schema() -> dict[str, Any]:
