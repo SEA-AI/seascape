@@ -1,6 +1,7 @@
 """The MCP server and the HTTP app that serves it."""
 
 import asyncio
+import hmac
 import subprocess
 import sys
 from collections.abc import AsyncGenerator, Mapping
@@ -12,7 +13,10 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
+from starlette.datastructures import Headers
+from starlette.responses import PlainTextResponse
 from starlette.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from seascape.server.jobs import State, sweep
 from seascape.server.tools import (
@@ -27,6 +31,7 @@ from seascape.server.tools import (
 
 # A judgement: longer than a driver takes to answer, short of a hung one.
 PROBE_S = 60.0
+MCP_PATH = "/mcp"
 
 
 def mcp(state: State) -> MCPServer:
@@ -94,19 +99,27 @@ def serve(state: State, host: str, port: int) -> None:
             f"Cycles renders on {'the CPU' if backend == 'None' else backend}",
             flush=True,
         )
-    # The access log would write the secret path.
-    uvicorn.run(
-        app(state, host),
-        host=host,
-        port=port,
-        access_log=state.settings.mcp_secret is None,
-    )
+    uvicorn.run(app(state, host), host=host, port=port)
+
+
+class _BearerOnly:
+    """Refuses a request to `MCP_PATH` that lacks `Authorization: Bearer <token>`."""
+
+    def __init__(self, app: ASGIApp, token: str) -> None:
+        self.app = app
+        self.expected = f"Bearer {token}".encode()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] == MCP_PATH:
+            given = Headers(scope=scope).get("authorization", "").encode()
+            if not hmac.compare_digest(given, self.expected):
+                refusal = PlainTextResponse("unauthorized", status_code=401)
+                return await refusal(scope, receive, send)
+        await self.app(scope, receive, send)
 
 
 def app(state: State, host: str) -> Starlette:
     """The MCP server and the HTTP app that serves it."""
-    secret = state.settings.mcp_secret
-    path = f"/mcp/{secret.get_secret_value()}" if secret else "/mcp"
     # A web page can point a browser on the network at this port by DNS rebinding,
     # so MCP refuses any Host or Origin not listed.
     hosts = list(state.settings.allowed_hosts)
@@ -118,9 +131,11 @@ def app(state: State, host: str) -> Starlette:
         allowed_origins=[f"{s}://{h}" for h in hosts for s in ("http", "https")],
     )
     served = mcp(state).streamable_http_app(
-        host=host, streamable_http_path=path, transport_security=security
+        host=host, streamable_http_path=MCP_PATH, transport_security=security
     )
     served.mount("/renders", StaticFiles(directory=state.renders))
+    if secret := state.settings.mcp_secret:
+        served.add_middleware(_BearerOnly, token=secret.get_secret_value())
     # Wrap, don't replace: the app's lifespan runs the MCP session manager.
     mcp_lifespan = served.router.lifespan_context
 

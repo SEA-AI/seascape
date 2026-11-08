@@ -52,7 +52,7 @@ configs:
     content: |
       on_http_request:
         - expressions:
-            - req.url.path.startsWith('/mcp/')
+            - req.url.path.startsWith('/mcp')
           actions:
             - type: restrict-ips
               config:

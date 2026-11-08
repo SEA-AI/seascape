@@ -32,14 +32,22 @@ def _state(renders: Path, **limits: Any) -> State:
     return State(Settings(scenarios=SCENARIOS, **limits), renders)
 
 
-async def _statuses(served: Any, path: str, *hosts: str) -> list[int]:
+async def _statuses(
+    served: Any, path: str, *hosts: str, auth: str | None = None
+) -> list[int]:
     async with served.router.lifespan_context(served):
         transport = httpx2.ASGITransport(app=served)
         async with httpx2.AsyncClient(
             transport=transport, base_url="http://test"
         ) as client:
             return [
-                (await client.post(path, json={}, headers={"host": h})).status_code
+                (
+                    await client.post(
+                        path,
+                        json={},
+                        headers={"host": h} | ({"authorization": auth} if auth else {}),
+                    )
+                ).status_code
                 for h in hosts
             ]
 
@@ -262,24 +270,6 @@ def test_a_gpu_probe_that_fails_still_serves(
     transport.serve(state, "127.0.0.1", 0)
     assert served
     assert said in capsys.readouterr().out
-
-
-@pytest.mark.parametrize(("secret", "logged"), [(None, True), (SECRET, False)])
-def test_a_secret_path_is_not_access_logged(
-    secret: str | None,
-    logged: bool,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    kwargs: dict[str, Any] = {}
-    monkeypatch.setattr(
-        transport.subprocess,
-        "run",
-        lambda *_, **__: SimpleNamespace(stdout="None"),
-    )
-    monkeypatch.setattr(transport.uvicorn, "run", lambda _, **kw: kwargs.update(kw))
-    transport.serve(_state(tmp_path, mcp_secret=secret), "127.0.0.1", 0)
-    assert kwargs["access_log"] is logged
 
 
 def test_jobs_lists_a_finished_job_whose_archive_is_gone(
@@ -544,20 +534,38 @@ def test_a_killed_job_leaves_no_temporary_files(
 
 
 @pytest.mark.parametrize(
-    ("secret", "path", "found"),
+    ("secret", "auth", "refused"),
     [
-        (None, "/mcp", True),
-        (SECRET, "/mcp", False),
-        (SECRET, "/mcp/wrong", False),
-        (SECRET, f"/mcp/{SECRET}", True),
+        (None, None, False),
+        (SECRET, None, True),
+        (SECRET, "Bearer wrong", True),
+        (SECRET, SECRET, True),
+        (SECRET, f"Bearer {SECRET}", False),
     ],
 )
-def test_a_secret_is_the_only_path_to_mcp(
-    secret: str | None, path: str, found: bool, tmp_path: Path
+def test_a_secret_is_the_bearer_token_mcp_needs(
+    secret: str | None, auth: str | None, refused: bool, tmp_path: Path
 ) -> None:
     served = transport.app(_state(tmp_path, mcp_secret=secret), "0.0.0.0")
-    [status] = asyncio.run(_statuses(served, path, "localhost:8765"))
-    assert (status != 404) is found
+    [status] = asyncio.run(_statuses(served, "/mcp", "localhost:8765", auth=auth))
+    assert (status == 401) is refused
+
+
+def test_renders_need_no_token(tmp_path: Path) -> None:
+    (tmp_path / "job").mkdir()
+    (tmp_path / "job" / "a.txt").write_text("hi")
+    served = transport.app(_state(tmp_path, mcp_secret=SECRET), "0.0.0.0")
+
+    async def fetch() -> int:
+        transport_ = httpx2.ASGITransport(app=served)
+        async with httpx2.AsyncClient(
+            transport=transport_, base_url="http://test"
+        ) as c:
+            return (
+                await c.get("/renders/job/a.txt", headers={"host": "localhost"})
+            ).status_code
+
+    assert asyncio.run(fetch()) == 200
 
 
 @pytest.mark.parametrize(
@@ -573,7 +581,7 @@ def test_only_the_public_urls_host_is_allowed(
 ) -> None:
     state = _state(tmp_path, public_url=public, mcp_secret=SECRET)
     served = transport.app(state, "0.0.0.0")
-    [status] = asyncio.run(_statuses(served, f"/mcp/{SECRET}", host))
+    [status] = asyncio.run(_statuses(served, "/mcp", host, auth=f"Bearer {SECRET}"))
     assert (status == 421) is refused
 
 
@@ -588,9 +596,9 @@ def test_a_public_url_must_be_https(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "secret", ["short", "a/b" + "s" * 30, "{x}" + "s" * 30, "ä" * 40]
+    "secret", ["short", "s" * 31, "ä" * 40, "has space" + "s" * 30]
 )
-def test_a_secret_must_be_long_and_path_safe(secret: str, tmp_path: Path) -> None:
+def test_a_secret_must_be_long_and_header_safe(secret: str, tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="32 or more"):
         _state(tmp_path, mcp_secret=secret)
 

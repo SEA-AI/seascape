@@ -257,7 +257,7 @@ def schema() -> None:
     help="The folder of scenarios clients render.",
 )
 def serve(host: str, port: int, scenarios: Path) -> None:
-    """Render for MCP clients at http://HOST:PORT/mcp[/SECRET]; see SEASCAPE_*."""
+    """Render for MCP clients at http://HOST:PORT/mcp; see SEASCAPE_*."""
     from seascape import server
 
     settings = server.Settings(scenarios=scenarios)
