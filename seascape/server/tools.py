@@ -15,7 +15,7 @@ from pydantic import Field
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import json_schema
+from seascape.config import schema_section, schema_sections
 from seascape.server.jobs import (
     PREVIEW_STEM,
     Job,
@@ -50,19 +50,38 @@ def _url(state: State, ctx: Context[Any, Any]) -> str:
 
 
 def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
-    """The scenarios `render` starts from, the meshes and skies a scenario can name,
-    and the scenario's JSON schema. Any field can be a draw instead of a value:
-    `{ uniform = [lo, hi] }` or `{ choice = [...] }`, drawn per seed.
+    """The scenarios `render` starts from (`scenario` reads one), the meshes and skies
+    a scenario can name, and the schema's sections (`schema` reads one). Any field
+    can be a draw instead of a value: `{ uniform = [lo, hi] }` or `{ choice = [...] }`,
+    drawn per seed.
     """
     return {
-        "scenarios": {n: p.read_text() for n, p in _state(ctx).scenarios().items()},
+        "scenarios": list(_state(ctx).scenarios()),
+        "schema_sections": schema_sections(),
         "meshes": {
             name: f"{mesh.kind}, {mesh.category}, {mesh.size}"
             for name, mesh in assets.manifest().items()
         },
         "skies": {name: photo.sun for name, photo in skies.library().items()},
-        "schema": json_schema(),
     }
+
+
+def scenario(name: str, ctx: Context[State, Any]) -> str:
+    """The TOML of one scenario from `catalog`."""
+    scenarios = _state(ctx).scenarios()
+    if (path := scenarios.get(name)) is None:
+        raise ToolError(f"no scenario {name!r} in {sorted(scenarios)}")
+    return path.read_text(encoding="utf-8")
+
+
+def schema(section: str) -> dict[str, Any]:
+    """The schema of one section from `catalog`, with the definitions it uses."""
+    try:
+        return schema_section(section)
+    except KeyError:
+        raise ToolError(
+            f"no section {section!r} in {sorted(schema_sections())}"
+        ) from None
 
 
 async def render(

@@ -13,7 +13,15 @@ from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
 from seascape.server.jobs import State
-from seascape.server.tools import cancel, catalog, jobs, render, render_result
+from seascape.server.tools import (
+    cancel,
+    catalog,
+    jobs,
+    render,
+    render_result,
+    scenario,
+    schema,
+)
 
 # A judgement: longer than a driver takes to answer, short of a hung one.
 PROBE_S = 60.0
@@ -31,15 +39,18 @@ def mcp(state: State) -> MCPServer:
     served = MCPServer(
         "seascape",
         instructions="Synthetic maritime camera frames with exact ground truth. Read "
-        "`catalog` once, start a job with `render`, then call `render_result` until "
-        "it is done. Without draws, variants differ only in their waves: for varied "
-        "images, render `randomized`, or draw fields in `overrides`.",
+        "`catalog` once, then `scenario` and `schema` for what you will change. Start "
+        "a job with `render`, then call `render_result` until it is done. Without "
+        "draws, variants differ only in their waves: for varied images, render "
+        "`randomized`, or draw fields in `overrides`.",
         lifespan=lifespan,
     )
     # Only `render` and `cancel` change what the server holds.
     read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
     served.add_tool(catalog, annotations=read_only)
     served.add_tool(jobs, annotations=read_only)
+    served.add_tool(scenario, annotations=read_only)
+    served.add_tool(schema, annotations=read_only)
     served.add_tool(
         render,
         annotations=ToolAnnotations(destructive_hint=False, open_world_hint=False),
