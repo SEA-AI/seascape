@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,7 +21,6 @@ from PIL import Image
 from pydantic import ValidationError
 
 from seascape.config import json_schema
-from seascape.config.loader import _refs
 from seascape.server import Settings, State, jobs, tools, transport
 from seascape.server.jobs import Job
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
@@ -107,6 +107,7 @@ def test_the_catalog_names_what_render_takes(state: State) -> None:
 
     assert listed["scenarios"] == list(state.scenarios())
     assert set(listed["schema_sections"]) == set(json_schema()["properties"])
+    assert all(listed["schema_sections"].values())
     assert "schema" not in listed
 
 
@@ -123,7 +124,8 @@ def test_a_schema_section_holds_what_it_reaches_and_no_more(state: State) -> Non
     assert section["$defs"]
     full = json_schema()
     assert len(json.dumps(section)) < len(json.dumps(full)) / 2
-    assert {r.removeprefix("#/$defs/") for r in _refs(section)} <= set(section["$defs"])
+    refs = set(re.findall(r'"#/\$defs/(\w+)"', json.dumps(section)))
+    assert refs <= set(section["$defs"])
     assert _call(state, "schema", section="nope").is_error
 
 

@@ -25,6 +25,7 @@ from seascape.config.loader import (
     load,
     resolve,
     schema_section,
+    schema_sections,
     seeds,
 )
 from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
@@ -63,6 +64,7 @@ __all__ = [
     "load",
     "resolve",
     "schema_section",
+    "schema_sections",
     "seeds",
     "sources",
     "substream",
