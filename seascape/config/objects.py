@@ -202,8 +202,8 @@ class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the motion alone.
 
-    It sails from the origin on its bow's bearing; the sea, sky and objects stay put,
-    and every bearing in a scenario is from its bow at t = 0.
+    It sails from the origin along its heading; the sea and sky stay put, and every
+    bearing in a scenario is from its bow at t = 0.
     """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)

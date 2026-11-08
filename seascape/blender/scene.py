@@ -225,8 +225,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # if a sea rocks one visibly.
     ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
     solid = list(chain(*targets.values()))
-    # Limitation: a hull-less ownship has no footprint, so its camera can sail through a
-    # hull.
+    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
     if scenario.ownship.asset is not None:
         solid.append(vessel)
     if meeting := overlaps(solid, len(outputs.times_s)):

@@ -138,9 +138,7 @@ STEPS_PER_YAW = 64
 
 
 class Pose(NamedTuple):
-    """Where the ownship is: east and north in metres, the heading in radians
-    clockwise from north.
-    """
+    """East and north of the start; the heading is clockwise from north."""
 
     east_m: float
     north_m: float
@@ -148,9 +146,7 @@ class Pose(NamedTuple):
 
 
 def _track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
-    """The ownship's pose at a frame's time: the heading swings by `yaw`, and the
-    position integrates `speed_mps` along it.
-    """
+    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings."""
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
     # Whole substeps per frame, so every frame lands on the grid; a straight run is
@@ -166,7 +162,6 @@ def _track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
         heading = math.radians(swing.amplitude_deg) * np.sin(omega * tau)
 
     def integral(speed: np.ndarray) -> np.ndarray:
-        """Trapezoid from 0, one value per grid point."""
         area = np.diff(tau) * (speed[1:] + speed[:-1]) / 2.0
         return np.concatenate(([0.0], np.cumsum(area)))
 
@@ -225,8 +220,7 @@ def add_ownship(
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
     track = _track(ownship, outputs)
     sailing = ownship.speed_mps > 0.0
-    # Limitation: it leaves no wake, which `wakes.Wake` could draw only along a straight
-    # run; add one if a camera ever looks astern.
+    # Limitation: it leaves no wake; `wakes.Wake` draws only a straight run.
     if sailing:
         animate(anchor, "location", outputs.times_s, lambda t: track(t).east_m, 0)
         animate(anchor, "location", outputs.times_s, lambda t: track(t).north_m, 1)

@@ -1358,7 +1358,6 @@ class TestOwnshipMotion:
 class TestOwnshipUnderway:
     SPEED_MPS = 400.0  # far past a boat's, so the sea's curve is measurable
     STRAIGHT = variant(outputs={"duration_s": 2.0}, ownship={"speed_mps": SPEED_MPS})
-    # One full yaw period.
     STEERED = variant(
         outputs={"duration_s": 4.0},
         ownship={
@@ -1432,7 +1431,7 @@ class TestOwnshipUnderway:
         assert hull[:, :2] == pytest.approx(0.0, abs=1e-9)
         assert np.ptp(bearing) == pytest.approx(60.0, abs=1.0)
 
-    def test_the_sea_reaches_past_the_farthest_camera_s_horizon(self) -> None:
+    def test_the_sea_reaches_a_horizon_past_the_farthest_camera(self) -> None:
         built = scene.build(self.STRAIGHT)
         farthest = max(
             math.hypot(*v.matrix.translation.xy)

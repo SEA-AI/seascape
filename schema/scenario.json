@@ -2148,7 +2148,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone.\n\nIt sails from the origin on its bow's bearing; the sea, sky and objects stay put,\nand every bearing in a scenario is from its bow at t = 0.",
+      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",

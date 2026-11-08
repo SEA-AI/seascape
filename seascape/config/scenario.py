@@ -229,7 +229,6 @@ class Scenario(Model):
 
     @model_validator(mode="after")
     def _an_orbit_needs_a_fixed_ownship(self) -> "Scenario":
-        """An orbit circles the origin, which a sailing ownship leaves behind."""
         if self.ownship.speed_mps > 0.0 and any(o.orbit for o in self.objects):
             raise ValueError("an object orbits the origin: set ownship.speed_mps to 0")
         return self
