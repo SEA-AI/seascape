@@ -1580,7 +1580,7 @@
         },
         "heading_from": {
           "title": "Heading From",
-          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it, where 0 points away and 180 towards.",
+          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it at t = 0, where 0 points away and 180 towards.",
           "default": "ownship",
           "anyOf": [
             {
@@ -2148,7 +2148,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.\n\nIt sails from the origin on its bow's bearing. The sea, the sky and every object\nkeep their places, so it passes through them: an object's `range_m` and\n`bearing_deg` are from the ownship's start.",
+      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone.\n\nIt sails from the origin on its bow's bearing; the sea, sky and objects stay put,\nand every bearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2243,7 +2243,7 @@
         },
         "speed_mps": {
           "title": "Speed Mps",
-          "description": "Along its heading; 0 holds it at the origin.",
+          "description": "Along its heading.",
           "default": 0.0,
           "anyOf": [
             {
@@ -2268,7 +2268,7 @@
           ]
         },
         "yaw": {
-          "description": "Its heading about the start's. Under way, it sails the curve this steers.",
+          "description": "Its heading about the start's.",
           "default": null,
           "anyOf": [
             {

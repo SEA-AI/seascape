@@ -1356,8 +1356,9 @@ class TestOwnshipMotion:
 
 
 class TestOwnshipUnderway:
-    SPEED_MPS = 400.0  # far past a boat's, so the curved sea drops it within 2 s
+    SPEED_MPS = 400.0  # far past a boat's, so the sea's curve is measurable
     STRAIGHT = variant(outputs={"duration_s": 2.0}, ownship={"speed_mps": SPEED_MPS})
+    # One full yaw period.
     STEERED = variant(
         outputs={"duration_s": 4.0},
         ownship={
@@ -1365,71 +1366,81 @@ class TestOwnshipUnderway:
             "yaw": {"amplitude_deg": 30.0, "period_s": 4.0},
         },
     )
+    TURNING = variant(
+        outputs={"duration_s": 4.0},
+        ownship={"yaw": {"amplitude_deg": 30.0, "period_s": 4.0}},
+    )
 
     @staticmethod
-    def _path(scenario: Scenario) -> tuple[np.ndarray, np.ndarray]:
-        """The ownship's world position and heading, in degrees, at every frame."""
+    def _run(scenario: Scenario) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The ownship's world position and heading in degrees, and the first
+        camera's position, at every frame.
+        """
         built = scene.build(scenario)
+        camera = camera_of(scenario.mounts[0])
         sc = bpy.context.scene
-        found, bearings = [], []
+        hull, bearing, eye = [], [], []
         for frame in range(len(scenario.outputs.times_s)):
             sc.frame_set(frame)
-            found.append(tuple(built.vessel.matrix_world.translation))
-            bearings.append(math.degrees(heading_rad(built.vessel)))
-        return np.array(found), np.array(bearings)
+            hull.append(tuple(built.vessel.matrix_world.translation))
+            bearing.append(math.degrees(heading_rad(built.vessel)))
+            eye.append(tuple(camera.matrix_world.translation))
+        return np.array(hull), np.array(bearing), np.array(eye)
 
     def test_it_sails_its_speed_along_its_bow_and_rides_the_curved_sea(self) -> None:
-        path, bearing = self._path(self.STRAIGHT)
+        hull, bearing, eye = self._run(self.STRAIGHT)
 
         times = np.array(self.STRAIGHT.outputs.times_s)
-        assert path[:, 0] == pytest.approx(0.0, abs=1e-6)
-        assert path[:, 1] == pytest.approx(self.SPEED_MPS * times, abs=1e-3)
+        assert hull[:, 0] == pytest.approx(0.0, abs=1e-6)
+        assert hull[:, 1] == pytest.approx(self.SPEED_MPS * times, abs=1e-3)
         assert bearing == pytest.approx(0.0, abs=1e-6)
         radius = earth.earth_radius_m(self.STRAIGHT.sea.refraction_k)
-        for (east, north, up), t_s in zip(path, times, strict=True):
+        for (east, north, up), t_s in zip(hull, times, strict=True):
             expected = earth.sea_z_m(east, north, radius) + _ridden_m(
                 self.STRAIGHT, t_s, east, north
             )
             assert up == pytest.approx(expected, abs=1e-4)
-
-    def test_the_camera_goes_with_it(self) -> None:
-        built = scene.build(self.STRAIGHT)
-        camera = camera_of(self.STRAIGHT.mounts[0])
-        sc = bpy.context.scene
-        sc.frame_set(0)
-        camera_start, hull_start = (
-            Vector(camera.matrix_world.translation),
-            Vector(built.vessel.matrix_world.translation),
-        )
-        sc.frame_set(len(self.STRAIGHT.outputs.times_s) - 1)
-        camera_run = camera.matrix_world.translation.xy - camera_start.xy
-        hull_run = built.vessel.matrix_world.translation.xy - hull_start.xy
-        assert tuple(camera_run) == pytest.approx(tuple(hull_run), abs=1e-4)
-        assert camera_run.y == pytest.approx(
-            self.SPEED_MPS * self.STRAIGHT.outputs.times_s[-1], abs=1e-3
-        )
+        assert eye[:, :2] - eye[0, :2] == pytest.approx(hull[:, :2] - hull[0, :2])
 
     def test_a_yawing_ownship_sails_along_the_heading_it_swings_through(self) -> None:
-        path, bearing = self._path(self.STEERED)
+        hull, bearing, _ = self._run(self.STEERED)
 
-        step = np.diff(path[:, :2], axis=0)
+        step = np.diff(hull[:, :2], axis=0)
         times = np.array(self.STEERED.outputs.times_s)
-        dt = np.diff(times)
-        assert np.linalg.norm(step, axis=1) / dt == pytest.approx(
+        assert np.linalg.norm(step, axis=1) / np.diff(times) == pytest.approx(
             self.SPEED_MPS, rel=2e-3
         )
         # A step runs along the mean of its two ends' headings.
         along = np.degrees(np.arctan2(step[:, 0], step[:, 1]))
         assert along == pytest.approx((bearing[1:] + bearing[:-1]) / 2, abs=0.5)
-        # A quarter period in, it has swung the full amplitude.
-        assert bearing[10] == pytest.approx(30.0, abs=1e-3)
+        quarter = np.argmin(abs(times - 4.0 / 4))
+        assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
 
-    def test_the_sea_reaches_past_the_run(self) -> None:
-        run_m = self.SPEED_MPS * self.STRAIGHT.outputs.duration_s
-        still = variant(outputs={"duration_s": 2.0})
-        assert sea.sea_reach_m(self.STRAIGHT) == pytest.approx(
-            sea.sea_reach_m(still) + run_m
+    def test_the_track_integrates_the_heading_to_the_closed_form(self) -> None:
+        hull, _, _ = self._run(self.STEERED)
+
+        end_s = self.STEERED.outputs.times_s[-1]
+        theta = np.linspace(0.0, end_s, 400_001)
+        heading = np.radians(30.0) * np.sin(2.0 * np.pi * theta / 4.0)
+        east = self.SPEED_MPS * np.trapezoid(np.sin(heading), theta)
+        north = self.SPEED_MPS * np.trapezoid(np.cos(heading), theta)
+        assert tuple(hull[-1, :2]) == pytest.approx((east, north), rel=1e-3)
+
+    def test_a_ship_without_speed_turns_in_place(self) -> None:
+        hull, bearing, _ = self._run(self.TURNING)
+
+        assert hull[:, :2] == pytest.approx(0.0, abs=1e-9)
+        assert np.ptp(bearing) == pytest.approx(60.0, abs=1.0)
+
+    def test_the_sea_reaches_past_the_farthest_camera_s_horizon(self) -> None:
+        built = scene.build(self.STRAIGHT)
+        farthest = max(
+            math.hypot(*v.matrix.translation.xy)
+            for v in views(self.STRAIGHT, "eo", built.cameras)
         )
+        eye_m = max(rig.height_m for rig in self.STRAIGHT.rigs.values())
+        horizon = earth.horizon_m(eye_m, self.STRAIGHT.sea.refraction_k)
+        assert sea.sea_reach_m(self.STRAIGHT) - farthest >= horizon
 
 
 def _finest_m(scenario: Scenario, built: scene.Built) -> float:

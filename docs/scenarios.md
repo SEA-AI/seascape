@@ -184,7 +184,7 @@ uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg
 uv run seascape video out/                               # out/<camera>.mp4
 ```
 
-The ownship sails too. It starts at the origin on its bow's bearing, and every object's `range_m` and `bearing_deg` are from that start. `speed_mps` takes it along its heading, and a `yaw` swing steers it a weaving course. The sea, the sky and the objects stay where they are, so a buoy falls astern at the ownship's speed and a vessel with a `heading_deg` and `speed_mps` crosses its track:
+The ownship sails too: `speed_mps` takes it along its heading and a `yaw` swing weaves it. Every object's `range_m` and `bearing_deg` are from its start, and the sea, sky and objects stay put, so a buoy falls astern and a vessel with a `heading_deg` and `speed_mps` crosses the track:
 
 ```toml
 [ownship]

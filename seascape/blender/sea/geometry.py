@@ -45,8 +45,8 @@ SEA_MARGIN = 1.5
 
 
 def sea_reach_m(scenario: Scenario) -> float:
-    """Half-width of the sea, a margin past the highest rig's horizon from as far
-    from the origin as the ownship sails: a turn only shortens the run.
+    """Half-width of the sea: a margin past the highest rig's horizon, plus the run
+    `speed_mps * duration_s`, which a turn only shortens.
     """
     height_m = max(rig.height_m for rig in scenario.rigs.values())
     run_m = scenario.ownship.speed_mps * scenario.outputs.duration_s

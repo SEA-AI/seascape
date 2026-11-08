@@ -612,6 +612,15 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         (
             "baseline.toml",
             [
+                'objects = [{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0,'
+                " orbit = { period_s = 80.0 } }]",
+                "ownship.speed_mps = 5.0",
+            ],
+            "orbits the origin",
+        ),
+        (
+            "baseline.toml",
+            [
                 "ownship.yaw = { amplitude_deg = 5.0, period_s = 9.0 }",
                 "outputs.loop = true",
                 "outputs.duration_s = 8",
@@ -653,6 +662,18 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
     with pytest.raises(ValidationError, match=match):
         load(SCENARIOS / name, overrides)
+
+
+def test_an_ownship_that_only_turns_can_loop() -> None:
+    loaded = load(
+        SCENARIOS / "baseline.toml",
+        [
+            "ownship.yaw = { amplitude_deg = 5.0, period_s = 4.0 }",
+            "outputs.loop = true",
+            "outputs.duration_s = 8",
+        ],
+    )
+    assert loaded.ownship.speed_mps == 0.0
 
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:

@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import chain, combinations
+from typing import NamedTuple
 
 import bpy
 import numpy as np
@@ -132,28 +133,48 @@ def _vessel(
     return anchor
 
 
-# A judgement: the quadrature step that integrates the heading into a track, far
-# under the shortest yaw period a hull steers.
-TRACK_STEP_S = 0.05
+# A judgement: trapezoid steps per yaw period; the error falls with the square.
+STEPS_PER_YAW = 64
 
 
-def _track(
-    ownship: Ownship, outputs: Outputs
-) -> Callable[[float], tuple[float, float, float]]:
-    """Where the ownship is at a time: east and north in metres, and the heading in
-    radians clockwise from north. It sails `speed_mps` along its heading, and the
-    heading swings by `yaw`, so the position is the heading's integral.
+class Pose(NamedTuple):
+    """Where the ownship is: east and north in metres, the heading in radians
+    clockwise from north.
     """
-    swing = ownship.yaw
-    amplitude = 0.0 if swing is None else math.radians(swing.amplitude_deg)
-    omega = 0.0 if swing is None else 2.0 * math.pi / outputs.period_s(swing.period_s)
 
-    def at(t_s: float) -> tuple[float, float, float]:
-        tau = np.linspace(0.0, t_s, max(2, math.ceil(t_s / TRACK_STEP_S) + 1))
-        heading = amplitude * np.sin(omega * tau)
-        east = ownship.speed_mps * np.trapezoid(np.sin(heading), tau)
-        north = ownship.speed_mps * np.trapezoid(np.cos(heading), tau)
-        return float(east), float(north), float(heading[-1])
+    east_m: float
+    north_m: float
+    heading_rad: float
+
+
+def _track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
+    """The ownship's pose at a frame's time: the heading swings by `yaw`, and the
+    position integrates `speed_mps` along it.
+    """
+    times = np.asarray(outputs.times_s)
+    swing = ownship.yaw
+    # Whole substeps per frame, so every frame lands on the grid; a straight run is
+    # exact in one.
+    sub = 1
+    if swing is not None:
+        step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
+        sub = math.ceil(1.0 / (outputs.fps * step_s))
+    tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
+    heading = np.zeros_like(tau)
+    if swing is not None:
+        omega = 2.0 * math.pi / outputs.period_s(swing.period_s)
+        heading = math.radians(swing.amplitude_deg) * np.sin(omega * tau)
+
+    def integral(speed: np.ndarray) -> np.ndarray:
+        """Trapezoid from 0, one value per grid point."""
+        area = np.diff(tau) * (speed[1:] + speed[:-1]) / 2.0
+        return np.concatenate(([0.0], np.cumsum(area)))
+
+    east = ownship.speed_mps * integral(np.sin(heading))
+    north = ownship.speed_mps * integral(np.cos(heading))
+
+    def at(t_s: float) -> Pose:
+        return Pose(*(float(np.interp(t_s, tau, c)) for c in (east, north, heading)))
 
     return at
 
@@ -204,21 +225,17 @@ def add_ownship(
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
     track = _track(ownship, outputs)
     sailing = ownship.speed_mps > 0.0
+    # Limitation: it leaves no wake, which `wakes.Wake` could draw only along a straight
+    # run; add one if a camera ever looks astern.
     if sailing:
-        for index in (0, 1):
-            animate(
-                anchor,
-                "location",
-                outputs.times_s,
-                lambda t, index=index: track(t)[index],
-                index,
-            )
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).east_m, 0)
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).north_m, 1)
     if ownship.yaw is not None:
         animate(
             anchor,
             "rotation_euler",
             outputs.times_s,
-            lambda t: yaw(math.degrees(track(t)[2])),
+            lambda t: yaw(math.degrees(track(t).heading_rad)),
             2,
         )
     scripted = sine(anchor.location.z, 0.0, 1.0)
@@ -233,14 +250,15 @@ def add_ownship(
         )
 
         def value_at(t_s: float) -> float:
-            east, north, heading = track(t_s)
-            rest = map(
-                float,
-                waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s),
+            pose = track(t_s)
+            rest = waves.gerstner_rest_m(
+                tall, np.array(pose.east_m), np.array(pose.north_m), t_s
             )
-            hull = waves.Waterplane(*rest, heading, length_m, beam_m)
+            hull = waves.Waterplane(
+                *map(float, rest), pose.heading_rad, length_m, beam_m
+            )
             return (
-                earth.sea_z_m(east, north, radius_m)
+                earth.sea_z_m(pose.east_m, pose.north_m, radius_m)
                 + scripted(t_s)
                 + waves.heave_m(tall, hull, t_s)
             )
