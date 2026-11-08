@@ -1,4 +1,4 @@
-"""MCP at /mcp/<secret> (/mcp with no secret), the jobs' files at /renders/."""
+"""The MCP server and the HTTP app that serves it."""
 
 import subprocess
 import sys
@@ -12,8 +12,8 @@ from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
+from seascape.server.jobs import State
 from seascape.server.tools import cancel, catalog, jobs, render, render_result
-from seascape.server.work import State
 
 # A judgement: longer than a driver takes to answer, short of a hung one.
 PROBE_S = 60.0
@@ -91,7 +91,7 @@ def serve(state: State, host: str, port: int) -> None:
 
 
 def app(state: State, host: str) -> Starlette:
-    """MCP at /mcp/<secret> (/mcp with no secret), the jobs' files at /renders/."""
+    """The MCP server and the HTTP app that serves it."""
     secret = state.settings.mcp_secret
     path = f"/mcp/{secret.get_secret_value()}" if secret else "/mcp"
     # A web page can point a browser on the network at this port by DNS rebinding,

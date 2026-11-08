@@ -1,4 +1,4 @@
-"""The tools a client calls: `catalog`, `render`, `render_result`, `cancel`, `jobs`."""
+"""The MCP tools."""
 
 import asyncio
 import json
@@ -16,7 +16,7 @@ from pydantic import Field
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import json_schema
-from seascape.server.work import (
+from seascape.server.jobs import (
     PREVIEW_STEM,
     Job,
     State,

@@ -1,6 +1,4 @@
-"""What the server is told: where its scenarios are, who may reach it, and what a job
-may ask of this host.
-"""
+"""The server's settings."""
 
 import re
 from pathlib import Path
