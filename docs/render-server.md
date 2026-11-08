@@ -57,7 +57,7 @@ Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 | `SEASCAPE_MAX_VARIANTS`, `SEASCAPE_MAX_SAMPLES` | the most variants a job renders, and the most Cycles samples per pixel |
 | `SEASCAPE_MAX_RUN_S` | how long a job runs before it fails |
 | `SEASCAPE_MAX_QUEUED` | how many jobs wait or run at once |
-| `SEASCAPE_MCP_SECRET` | 32 or more of `A-Za-z0-9_-`; moves MCP from `/mcp` to `/mcp/<secret>` and turns the server's access log off |
+| `SEASCAPE_MCP_SECRET` | 32 or more printable ASCII characters; MCP then needs `Authorization: Bearer <secret>` |
 | `SEASCAPE_PUBLIC_URL` | a tunnel's public URL, whose host MCP then answers; needs `SEASCAPE_MCP_SECRET` and `https://`; Compose sets it from `NGROK_URL` |
 
 ```bash
@@ -78,7 +78,7 @@ echo "SEASCAPE_MCP_SECRET=$(python3 -c 'import secrets; print(secrets.token_urls
 docker compose --profile ngrok up -d
 ```
 
-Then add a custom connector at `https://<dev domain>/mcp/<secret>` with **No sign-in**. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
+Then add a custom connector at `https://<dev domain>/mcp` with **No sign-in** and the request header `authorization` set to `Bearer <secret>`. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
 
 > [!WARNING]
-> The URL is the only credential: anyone with it can queue renders. Rotate the secret if it leaks. `/renders` links need no secret, only their random job ID. ngrok's Traffic Inspector records paths, so the secret shows in your ngrok dashboard: limit who opens it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp/`; other addresses get 403. Clients on the network use `/mcp/<secret>` on the server's own address.
+> The secret is the only credential: anyone with it can queue renders. Rotate it if it leaks; a connector's headers cannot be edited, so remove and re-add it. `/renders` links need no secret, only their random job ID. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp`; other addresses get 403. Clients on the network send the same header to the server's own address, for example `claude mcp add --transport http seascape http://<host>:8765/mcp --header "Authorization: Bearer <secret>"`.
