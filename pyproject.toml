@@ -51,6 +51,12 @@ root_package = "seascape"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
+name = "Each server module imports only those below it"
+type = "layers"
+containers = ["seascape.server"]
+layers = ["transport", "tools", "jobs", "settings"]
+
+[[tool.importlinter.contracts]]
 name = "Each layer imports only those below it"
 type = "layers"
 containers = ["seascape"]
