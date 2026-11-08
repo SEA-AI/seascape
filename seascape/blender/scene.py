@@ -179,8 +179,6 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
-    # The default 1000 m renders a target past it as sky, and the clip boundary
-    # reads as the horizon.
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
     seen = views(scenario, band, rigs.cameras)
