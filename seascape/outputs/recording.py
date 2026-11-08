@@ -266,12 +266,14 @@ def _write_settings(
     )
     parameters = into / "POWER_Const" / "camera_parameters.json"
     _write_json(parameters, _camera_parameters(firsts))
-    sensors = into / "POWER_Const" / f"{model.lower()}_sensors.json"
-    _write_json(sensors, _sensors(raw or firsts, created))
+    videos = rig["videos"]
     if raw is None:
-        return [settings, parameters, sensors]
+        raw = firsts
+        videos = {name: {"kind": "identity", "camera": name} for name in firsts}
+    sensors = into / "POWER_Const" / f"{model.lower()}_sensors.json"
+    _write_json(sensors, _sensors(raw, created))
     serialized = into / "serialized_parameters.json"
-    entries = _parameters(firsts, raw, rig["videos"])
+    entries = _parameters(firsts, raw, videos)
     _write_json(serialized, {"product_name": model, "cameras": entries})
     return [settings, parameters, sensors, serialized]
 

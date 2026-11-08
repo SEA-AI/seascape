@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,9 +22,23 @@ from pydantic import ValidationError
 from seascape import server
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
+SECRET = "s" * 32
+
 
 def _state(renders: Path, **limits: Any) -> server.State:
     return server.State(server.Settings(scenarios=SCENARIOS, **limits), renders)
+
+
+async def _statuses(served: Any, path: str, *hosts: str) -> list[int]:
+    async with served.router.lifespan_context(served):
+        transport = httpx2.ASGITransport(app=served)
+        async with httpx2.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as client:
+            return [
+                (await client.post(path, json={}, headers={"host": h})).status_code
+                for h in hosts
+            ]
 
 
 @pytest.fixture
@@ -37,6 +52,26 @@ def _call(state: server.State, tool: str, **arguments: Any) -> Any:
             return await client.call_tool(tool, arguments)
 
     return asyncio.run(call())
+
+
+def test_only_the_tools_that_change_state_ask_a_client_for_approval(
+    tmp_path: Path,
+) -> None:
+    async def listed() -> dict[str, bool]:
+        async with Client(server.mcp(_state(tmp_path))) as client:
+            tools = (await client.list_tools()).tools
+            return {
+                t.name: bool(t.annotations and t.annotations.read_only_hint)
+                for t in tools
+            }
+
+    assert asyncio.run(listed()) == {
+        "catalog": True,
+        "jobs": True,
+        "render_result": True,
+        "render": False,
+        "cancel": False,
+    }
 
 
 @pytest.mark.parametrize(
@@ -64,35 +99,6 @@ def test_an_unknown_scenario_is_refused(state: server.State) -> None:
     assert not state.jobs
 
 
-@pytest.mark.parametrize(
-    ("overrides", "variants", "refusal"),
-    [
-        (["outputs.duration_s = 61.0"], 1, "a clip lasts"),
-        (
-            ["rigs.bow.cameras.eo = { width_px = 7680, height_px = 4320 }"],
-            1,
-            "pixels",
-        ),
-        (["outputs.duration_s = 60.0", "outputs.fps = 100"], 2, "images"),
-        # The first seeds' clips fit; a seed tried after one whose hulls meet does not.
-        (["outputs.duration_s = { uniform = [0.0, 70.0] }"], 2, "a clip lasts"),
-        # The first seeds' images fit; two seeds render may try instead do not.
-        (
-            ["outputs.duration_s = { uniform = [0.0, 60.0] }", "outputs.fps = 50"],
-            2,
-            "images",
-        ),
-    ],
-)
-def test_an_oversized_job_is_refused(
-    overrides: list[str], variants: int, refusal: str, state: server.State
-) -> None:
-    result = _call(state, "render", overrides=overrides, variants=variants)
-    assert result.is_error
-    assert refusal in result.content[0].text
-    assert not state.jobs
-
-
 def test_a_full_disk_refuses_a_job(tmp_path: Path) -> None:
     state = _state(tmp_path, min_free_gb=2.0**50)
     result = _call(state, "render")
@@ -108,16 +114,19 @@ def test_jobs_reports_the_free_disk(state: server.State) -> None:
 
 
 def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: server.State) -> None:
-    old, new = tmp_path / "old", tmp_path / "new"
-    for folder in (old, new):
+    old, busy, new = tmp_path / "old", tmp_path / "busy", tmp_path / "new"
+    for folder in (old, busy, new):
         folder.mkdir()
         (folder / "labels.json").touch()
     (tmp_path / "old.zip").touch()
+    state.jobs["busy"] = server.Job(busy, "baseline", [], state="running")
     a_day_ago = time.time() - server.KEEP_S - 1
-    for path in (old, tmp_path / "old.zip"):
+    for path in (old, busy, tmp_path / "old.zip"):
         os.utime(path, (a_day_ago, a_day_ago))
-    server._prune(state)
-    assert [path.name for path in tmp_path.iterdir()] == ["new"]
+    asyncio.run(server._prune(state))
+    # A running job's folder may sit unchanged past the cutoff.
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["busy", "new"]
+    assert "busy" in state.jobs
 
 
 def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
@@ -142,6 +151,7 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
         ("", "gpu-box:8765", True),
         ("gpu-box:*", "gpu-box:8765", False),
         ("gpu-box:*", "evil.example", True),
+        ("gpu-box:* , ", "gpu-box:8765", False),
     ],
 )
 def test_listed_hosts_are_the_only_ones_mcp_answers(
@@ -154,32 +164,51 @@ def test_listed_hosts_are_the_only_ones_mcp_answers(
     monkeypatch.setenv("SEASCAPE_ALLOWED_HOSTS", allowed)
     served = server.app(_state(tmp_path), "0.0.0.0")
 
-    async def post() -> int:
-        async with served.router.lifespan_context(served):
-            transport = httpx2.ASGITransport(app=served)
-            async with httpx2.AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as client:
-                response = await client.post("/mcp", json={}, headers={"host": host})
-                return response.status_code
-
-    assert (asyncio.run(post()) == 421) is refused
+    [status] = asyncio.run(_statuses(served, "/mcp", host))
+    assert (status == 421) is refused
 
 
-def test_a_hung_gpu_probe_still_serves(
+@pytest.mark.parametrize(
+    ("error", "said"),
+    [
+        (subprocess.TimeoutExpired("probe", 60), "no answer"),
+        (subprocess.CalledProcessError(1, "probe", stderr="no GL\n"), "no GL"),
+    ],
+)
+def test_a_gpu_probe_that_fails_still_serves(
+    error: Exception,
+    said: str,
     state: server.State,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def hang(*args: Any, **kwargs: Any) -> None:
-        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+    def fail(*_: Any, **__: Any) -> None:
+        raise error
 
     served: list[Any] = []
-    monkeypatch.setattr(server.subprocess, "run", hang)
+    monkeypatch.setattr(server.subprocess, "run", fail)
     monkeypatch.setattr(server.uvicorn, "run", lambda app, **_: served.append(app))
     server.serve(state, "127.0.0.1", 0)
     assert served
-    assert "no answer" in capsys.readouterr().out
+    assert said in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("secret", "logged"), [(None, True), (SECRET, False)])
+def test_a_secret_path_is_not_access_logged(
+    secret: str | None,
+    logged: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kwargs: dict[str, Any] = {}
+    monkeypatch.setattr(
+        server.subprocess,
+        "run",
+        lambda *_, **__: SimpleNamespace(stdout="None"),
+    )
+    monkeypatch.setattr(server.uvicorn, "run", lambda _, **kw: kwargs.update(kw))
+    server.serve(_state(tmp_path, mcp_secret=secret), "127.0.0.1", 0)
+    assert kwargs["access_log"] is logged
 
 
 def test_jobs_lists_a_finished_job_whose_archive_is_gone(
@@ -215,7 +244,7 @@ def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
     assert not job.waiting
 
 
-def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
+def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
     state: server.State, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def render(*_args: str) -> None:  # Blender's frames, without Blender
@@ -225,7 +254,7 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
             folder.mkdir(parents=True, exist_ok=True)
             for mount in scene.mounts:
                 frame = folder / f"{mount.name}.{scene.outputs.format}"
-                Image.new("RGB", (64, 48)).save(frame)
+                Image.new("RGB", (640, 480)).save(frame)
 
     monkeypatch.setattr(server, "_seascape", render)
 
@@ -239,10 +268,13 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_variant(
     report = json.loads(result.content[0].text)
     assert report["status"] == "done", report
     assert report["files"][0].endswith(".zip")
-    assert sum(url.endswith("/preview.jpg") for url in report["files"]) == 2
+    (job,) = state.jobs.values()
+    (scene, *_) = job.scenes
+    cameras = len(scene.mounts)
+    assert sum("/preview_" in url for url in report["files"]) == cameras
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
-    ] * 2
+    ] * cameras
 
 
 def _sleeper(
@@ -259,8 +291,9 @@ def _sleeper(
 
 async def _started(state: server.State, name: str) -> int:
     pid = state.jobs[name].folder / "pid"
-    while not pid.exists() or not pid.read_text():
-        await asyncio.sleep(0.01)
+    async with asyncio.timeout(10):
+        while not pid.exists() or not pid.read_text():
+            await asyncio.sleep(0.01)
     return int(pid.read_text())
 
 
@@ -309,7 +342,9 @@ def test_a_job_is_refused_when_its_images_would_fill_the_disk(
     state = _state(tmp_path)
     queued = server.Job(tmp_path / "queued", "baseline", load_variants(BASELINE))
     state.jobs["queued"] = queued
-    room = SimpleNamespace(free=2 * queued.bytes + state.settings.min_free_gb * 1e9)
+    room = SimpleNamespace(
+        free=2 * queued.size_bytes + state.settings.min_free_gb * 1e9
+    )
     monkeypatch.setattr(shutil, "disk_usage", lambda _: room)
 
     async def run(*_: object) -> None:
@@ -343,15 +378,27 @@ def test_a_job_past_its_deadline_fails_and_frees_the_gpu(
     assert not state.gpu.locked()
 
 
-def test_a_full_queue_refuses_a_job(tmp_path: Path) -> None:
-    state = _state(tmp_path, max_queued=1)
-    state.jobs["queued"] = server.Job(
-        tmp_path / "queued", "baseline", load_variants(BASELINE)
-    )
-    result = _call(state, "render")
-    assert result.is_error
-    assert "at most 1" in result.content[0].text
-    assert len(state.jobs) == 1
+def test_a_job_waiting_for_the_gpu_keeps_its_whole_run_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_run_s=0.2)
+
+    async def seascape(*_: str) -> None:
+        await asyncio.sleep(0.05)
+
+    monkeypatch.setattr(server, "_seascape", seascape)
+    monkeypatch.setattr(server, "_finish", lambda _: None)
+
+    async def run() -> str:
+        job = server.Job(tmp_path / "a", "open-sea", load_variants(OPEN_SEA))
+        async with state.gpu:
+            task = asyncio.create_task(server._run(state, job, tmp_path, [], 1))
+            # Longer than the run limit.
+            await asyncio.sleep(0.3)
+        await task
+        return job.state
+
+    assert asyncio.run(run()) == "done"
 
 
 def test_a_waiting_result_reports_progress(
@@ -394,7 +441,7 @@ def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: server.State) 
         old.created_s -= server.KEEP_S + 1
         old.task = new.task = done
         state.jobs.update(old=old, new=new)
-        server._prune(state)
+        await server._prune(state)
         return list(state.jobs)
 
     assert asyncio.run(forget()) == ["new"]
@@ -425,3 +472,244 @@ def test_a_killed_job_leaves_no_temporary_files(
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(server._seascape("render"))
     assert not seen["tmp"].exists()
+
+
+@pytest.mark.parametrize(
+    ("secret", "path", "found"),
+    [
+        (None, "/mcp", True),
+        (SECRET, "/mcp", False),
+        (SECRET, "/mcp/wrong", False),
+        (SECRET, f"/mcp/{SECRET}", True),
+    ],
+)
+def test_a_secret_is_the_only_path_to_mcp(
+    secret: str | None, path: str, found: bool, tmp_path: Path
+) -> None:
+    served = server.app(_state(tmp_path, mcp_secret=secret), "0.0.0.0")
+    [status] = asyncio.run(_statuses(served, path, "localhost:8765"))
+    assert (status != 404) is found
+
+
+@pytest.mark.parametrize(
+    ("public", "host", "refused"),
+    [
+        ("https://seascape.ngrok.app", "seascape.ngrok.app", False),
+        ("https://seascape.ngrok.app", "evil.example", True),
+        ("https://box.example:8443", "box.example:8443", False),
+    ],
+)
+def test_only_the_public_urls_host_is_allowed(
+    public: str, host: str, refused: bool, tmp_path: Path
+) -> None:
+    state = _state(tmp_path, public_url=public, mcp_secret=SECRET)
+    served = server.app(state, "0.0.0.0")
+    [status] = asyncio.run(_statuses(served, f"/mcp/{SECRET}", host))
+    assert (status == 421) is refused
+
+
+def test_a_public_url_needs_a_secret(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="SEASCAPE_MCP_SECRET"):
+        _state(tmp_path, public_url="https://seascape.ngrok.app")
+
+
+def test_a_public_url_must_be_https(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="https"):
+        _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret=SECRET)
+
+
+@pytest.mark.parametrize(
+    "secret", ["short", "a/b" + "s" * 30, "{x}" + "s" * 30, "ä" * 40]
+)
+def test_a_secret_must_be_long_and_path_safe(secret: str, tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="32 or more"):
+        _state(tmp_path, mcp_secret=secret)
+
+
+@pytest.mark.parametrize(
+    ("public", "url"),
+    [
+        (None, "http://gpu-box:8765/renders"),
+        ("https://seascape.ngrok.app", "https://seascape.ngrok.app/renders"),
+    ],
+)
+def test_files_are_linked_at_the_public_url(
+    public: str | None, url: str, tmp_path: Path
+) -> None:
+    state = _state(tmp_path, public_url=public, mcp_secret=SECRET)
+    ctx = SimpleNamespace(headers={"host": "gpu-box:8765"})
+    assert server._url(state, ctx) == url  # ty: ignore[invalid-argument-type]
+
+
+def test_a_render_is_refused_before_anything_loads_when_the_queue_is_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_queued=1)
+    state.jobs["busy"] = server.Job(tmp_path / "busy", "baseline", [], state="running")
+    loads: list[object] = []
+    monkeypatch.setattr(server, "_tried", lambda *a: loads.append(a))
+    result = _call(state, "render")
+    assert result.is_error
+    assert "queued" in result.content[0].text
+    assert not loads
+    assert len(state.jobs) == 1
+
+
+def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path, max_queued=2)
+    loads: list[object] = []
+
+    def slow_load(*args: object) -> tuple[list[object], float]:
+        loads.append(args)
+        time.sleep(0.3)
+        return [], 1.0
+
+    async def idle(*_: object) -> None:
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(server, "_tried", slow_load)
+    monkeypatch.setattr(server, "_run", idle)
+
+    async def burst() -> list[bool]:
+        async with Client(server.mcp(state)) as client:
+            calls = [client.call_tool("render", {}) for _ in range(5)]
+            return [bool(r.is_error) for r in await asyncio.gather(*calls)]
+
+    refused = asyncio.run(burst())
+    assert refused.count(True) == 3
+    assert len(loads) == 2
+    assert len(state.jobs) == 2
+
+
+def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(tmp_path)
+    started, release = threading.Event(), threading.Event()
+
+    def slow_load(*_: object) -> None:
+        started.set()
+        release.wait(5)
+        raise ValueError("bad scenario")
+
+    monkeypatch.setattr(server, "_tried", slow_load)
+
+    async def attempt() -> tuple[int, int]:
+        async with Client(server.mcp(state)) as client:
+            call = asyncio.create_task(client.call_tool("render", {}))
+            await asyncio.to_thread(started.wait, 5)
+            call.cancel()
+            await asyncio.gather(call, return_exceptions=True)
+            during = len(state.jobs)
+            release.set()
+            while state.jobs:
+                await asyncio.sleep(0.01)
+        return during, len(state.jobs)
+
+    assert asyncio.run(attempt()) == (1, 0)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"variants": 101}, "at most 100 variants"),
+        ({"overrides": ["outputs.duration_s = 61.0"]}, "a clip lasts"),
+        (
+            {
+                "overrides": [
+                    "rigs.bow.cameras.eo = { width_px = 7680, height_px = 4320 }"
+                ]
+            },
+            "pixels",
+        ),
+        (
+            {
+                "overrides": ["outputs.duration_s = 60.0", "outputs.fps = 100"],
+                "variants": 2,
+            },
+            "images",
+        ),
+        # The first seeds' clips fit; a seed tried after one whose hulls meet does not.
+        (
+            {
+                "overrides": ["outputs.duration_s = { uniform = [0.0, 70.0] }"],
+                "variants": 2,
+            },
+            "a clip lasts",
+        ),
+        # The first seeds' images fit; two seeds render may try instead do not.
+        (
+            {
+                "overrides": [
+                    "outputs.duration_s = { uniform = [0.0, 60.0] }",
+                    "outputs.fps = 50",
+                ],
+                "variants": 2,
+            },
+            "images",
+        ),
+        (
+            {"overrides": ["x = '" + "x" * server.MAX_OVERRIDE_CHARS + "'"]},
+            "characters",
+        ),
+        ({"overrides": ["outputs.samples.eo = 100000"]}, "samples per pixel"),
+        ({"overrides": ["objects = [{ count = 100000 }]"]}, "hulls in all"),
+        ({"overrides": ["seed = 1"] * (server.MAX_OVERRIDES + 1)}, "items"),
+        ({"overrides": ["x = " + "[" * 497 + "]" * 497]}, "nests too deeply"),
+        (
+            {
+                "overrides": [
+                    "farms = [{ asset = 'turbine_15mw_floating', range_m = 1000,"
+                    " bearing_deg = 0, rows = 3000, columns = 3000 }]"
+                ]
+            },
+            "hulls",
+        ),
+        (
+            {"overrides": ["outputs.duration_s = 60", "outputs.fps = 20000000"]},
+            "images; a job writes at most",
+        ),
+    ],
+)
+def test_a_costly_request_is_refused(
+    arguments: dict[str, Any], message: str, state: server.State
+) -> None:
+    result = _call(state, "render", **arguments)
+    assert result.is_error
+    assert message in result.content[0].text
+    assert not state.jobs
+
+
+def test_a_preset_key_cannot_leave_the_presets(state: server.State) -> None:
+    result = _call(state, "render", overrides=['"../../.." = { preset = "pyproject" }'])
+    assert result.is_error
+    assert "not a preset directory" in result.content[0].text
+    assert "tool.setuptools" not in result.content[0].text
+
+
+def test_a_failed_render_tells_the_client_only_its_last_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def spawn(*_: Any, **__: Any) -> Any:
+        async def communicate() -> tuple[bytes, bytes]:
+            return b"", b"Traceback\n  File /srv/x.py\nValueError: bad scenario\n"
+
+        return SimpleNamespace(communicate=communicate, returncode=1)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    with pytest.raises(RuntimeError) as error:
+        asyncio.run(server._seascape("render"))
+    assert str(error.value) == "ValueError: bad scenario"
+
+
+def test_render_says_a_list_override_replaces_the_scenarios_list(
+    state: server.State,
+) -> None:
+    async def described() -> str:
+        async with Client(server.mcp(state)) as client:
+            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+            return tools["render"].description or ""
+
+    assert "replaces the whole list" in " ".join(asyncio.run(described()).split())

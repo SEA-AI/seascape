@@ -48,6 +48,8 @@ TurbineName = Annotated[
     AfterValidator(_a_turbine),
     WithJsonSchema({"type": "string", "enum": _names(turbines=True)}),
 ]
+# Judgement: far more hulls than a frame can show.
+MAX_HULLS = 1000
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = (
     "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, "
@@ -79,7 +81,7 @@ _DRAUGHT = (
     "How deep it floats, keel to waterline, within the asset's `draught_range_m`. "
     "Unset, the asset's own."
 )
-_RANGE = "Horizontal, from the ownship's origin."
+_RANGE = "Horizontal, from the ownship's origin at t = 0."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
 
@@ -102,7 +104,9 @@ class Orbit(Model):
     """
 
     period_s: float = Field(gt=0.0, description="One full lap.")
-    count: int = Field(default=1, gt=0, description="Hulls spaced evenly on it.")
+    count: int = Field(
+        default=1, gt=0, le=MAX_HULLS, description="Hulls spaced evenly on it."
+    )
 
 
 class Object(Model):
@@ -117,7 +121,7 @@ class Object(Model):
     heading_from: Literal["ownship", "line_of_sight"] = Field(
         default="ownship",
         description="What `heading_deg` turns from: the ownship's bow, or the line "
-        "from the ownship to it, where 0 points away and 180 towards.",
+        "from the ownship to it at t = 0, where 0 points away and 180 towards.",
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
@@ -196,11 +200,18 @@ class Heave(Model):
 
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
-    waterline. Without an asset it is the attitude alone.
+    waterline. Without an asset it is the motion alone.
+
+    It sails from the origin along its heading; the sea and sky stay put, and every
+    bearing in a scenario is from its bow at t = 0.
     """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)
     t_k: HullTemperatureK = None
+    speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
+    yaw: Swing | None = Field(
+        default=None, description="Its heading about the start's."
+    )
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
     )

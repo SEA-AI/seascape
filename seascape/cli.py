@@ -257,10 +257,13 @@ def schema() -> None:
     help="The folder of scenarios clients render.",
 )
 def serve(host: str, port: int, scenarios: Path) -> None:
-    """Render for MCP clients at http://HOST:PORT/mcp; SEASCAPE_* sets the limits."""
+    """Render for MCP clients at http://HOST:PORT/mcp[/SECRET]; see SEASCAPE_*."""
     from seascape import server
 
-    server.serve(server.State(server.Settings(scenarios=scenarios)), host, port)
+    settings = server.Settings(scenarios=scenarios)
+    # Out of the environment, which the GPU probe and every render inherit.
+    os.environ.pop("SEASCAPE_MCP_SECRET", None)
+    server.serve(server.State(settings), host, port)
 
 
 @main.group("assets")

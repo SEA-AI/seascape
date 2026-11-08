@@ -169,14 +169,14 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     )
     bpy.context.scene.world = add_world(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
-    far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
+    far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) from the origin
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     rigs = add_rigs(scenario, far_m)
     heat = surroundings(scenario) if band == "ir" else None
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
-    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall)
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
+    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall, radius_m)
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
@@ -225,6 +225,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # if a sea rocks one visibly.
     ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
     solid = list(chain(*targets.values()))
+    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
     if scenario.ownship.asset is not None:
         solid.append(vessel)
     if meeting := overlaps(solid, len(outputs.times_s)):

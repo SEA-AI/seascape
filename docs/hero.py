@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from docs.brand import FOG_WHITE, NIGHT_BLUE, font
-from seascape.outputs import labels
+from seascape.outputs import canvas, labels
 from seascape.outputs.calibration import Calibration
 
 SCENARIO = Path(__file__).with_name("hero.toml")
@@ -31,7 +31,7 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
     )
 
 
-def tag(
+def mark(
     draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
 ) -> None:
     tb = draw.textbbox(at, text, font=font(size))
@@ -40,7 +40,7 @@ def tag(
 
 
 def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
-    tag(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
+    mark(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
     return img
 
 
@@ -76,7 +76,7 @@ def frame(
         # Off the right edge a label shifts left, off the top it drops below the edge.
         text_w = draw.textlength(text, font=font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
-        tag(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
+        mark(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
     return captioned(img, caption)
 
 
@@ -115,14 +115,8 @@ def main(hero: Path) -> None:
             run = Path(tmp) / name
             render(SCENARIO, overrides, run)
             columns.append(column(run))
-    w, h = columns[0][0].size
-    sheet = Image.new(
-        "RGB", (len(columns) * (w + GAP_PX) - GAP_PX, 2 * h + GAP_PX), "white"
-    )
-    for i, pair in enumerate(columns):
-        for j, img in enumerate(pair):
-            sheet.paste(img, (i * (w + GAP_PX), j * (h + GAP_PX)))
-    sheet.save(hero, quality=85)
+    rows = list(zip(*columns, strict=True))
+    canvas.table(rows, gap_px=GAP_PX, matte="white").save(hero, quality=85)
 
 
 if __name__ == "__main__":

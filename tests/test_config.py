@@ -29,8 +29,10 @@ from seascape.config import (
     Sensor,
     Sky,
     Targets,
+    instantiate,
     json_schema,
     load,
+    resolve,
     seeds,
     substream,
 )
@@ -205,6 +207,19 @@ def test_a_bad_override_is_refused(override: str, error: type[Exception]) -> Non
         load(BASELINE, [override])
 
 
+def test_a_resolved_scenario_is_drawn_per_seed_as_if_loaded_with_it() -> None:
+    tree = resolve(RANDOMIZED)
+    drawn = instantiate(tree, 7)
+    assert drawn == load(RANDOMIZED, ["seed = 7"])
+    assert instantiate(tree, 8) != drawn
+    assert instantiate(tree, 7) == drawn  # the draws of 8 left the tree as it was
+
+
+def test_an_override_may_be_barred_from_naming_a_file() -> None:
+    with pytest.raises(ValueError, match="not a path"):
+        resolve(BASELINE, ['objects = [{ preset = "/etc/hosts.toml" }]'], files=False)
+
+
 def test_objects_merge_their_preset(baseline) -> None:
     """A list-of-tables preset: asset from cfg, pose here."""
     obj = baseline.objects[0]
@@ -366,6 +381,36 @@ def test_a_named_substream_is_reproducible_and_local_to_its_name() -> None:
 
 
 SUN = "sky.sun_elevation_deg = { uniform = [5.0, 60.0] }"
+
+
+def _hulls(copies: int, lap: int, ring: int, rows: int, columns: int) -> Scenario:
+    """A scenario with hulls from each source."""
+    hull = "asset = 'multipurpose_freighter', range_m = 1000, bearing_deg = 0"
+    return load(
+        BASELINE,
+        [
+            f"objects = [{{ {hull}, count = {copies} }},"
+            f" {{ {hull}, orbit = {{ period_s = 60, count = {lap} }} }}]",
+            "targets = { asset = 'multipurpose_freighter', range_m = 1000,"
+            f" bearing_deg = [0, 10], count = {ring} }}",
+            "farms = [{ asset = 'turbine_15mw_floating', range_m = 1000,"
+            f" bearing_deg = 0, rows = {rows}, columns = {columns} }}]",
+        ],
+    )
+
+
+def test_a_scenario_may_hold_a_thousand_hulls_from_all_its_sources() -> None:
+    assert len(_hulls(400, 300, 200, 10, 10).objects) == 401
+
+
+@pytest.mark.parametrize(
+    "split", [(401, 300, 200, 10, 10), (400, 301, 200, 10, 10), (400, 300, 200, 1, 101)]
+)
+def test_a_scenario_holds_no_more_than_a_thousand_hulls(
+    split: tuple[int, int, int, int, int],
+) -> None:
+    with pytest.raises(ValueError, match=r"1001 hulls|at most 1000"):
+        _hulls(*split)
 
 
 def _sun(seed: int, *more: str) -> float:
@@ -556,6 +601,33 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         ("baseline.toml", ["outputs.loop = true"], "duration_s > 0"),
         ("underway.toml", ["outputs.loop = true"], "drift"),
         (
+            "baseline.toml",
+            [
+                "ownship.speed_mps = 5.0",
+                "outputs.loop = true",
+                "outputs.duration_s = 8",
+            ],
+            "ownship.speed_mps",
+        ),
+        (
+            "baseline.toml",
+            [
+                'objects = [{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0,'
+                " orbit = { period_s = 80.0 } }]",
+                "ownship.speed_mps = 5.0",
+            ],
+            "orbits the origin",
+        ),
+        (
+            "baseline.toml",
+            [
+                "ownship.yaw = { amplitude_deg = 5.0, period_s = 9.0 }",
+                "outputs.loop = true",
+                "outputs.duration_s = 8",
+            ],
+            "ownship.yaw's 9.0 s",
+        ),
+        (
             "drifting.toml",
             [
                 'targets = { asset = "multipurpose_freighter", count = 2,'
@@ -590,6 +662,18 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
     with pytest.raises(ValidationError, match=match):
         load(SCENARIOS / name, overrides)
+
+
+def test_an_ownship_that_only_turns_can_loop() -> None:
+    loaded = load(
+        SCENARIOS / "baseline.toml",
+        [
+            "ownship.yaw = { amplitude_deg = 5.0, period_s = 4.0 }",
+            "outputs.loop = true",
+            "outputs.duration_s = 8",
+        ],
+    )
+    assert loaded.ownship.speed_mps == 0.0
 
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:
@@ -755,7 +839,7 @@ def test_a_hidden_sun_needs_a_hidden_disc_above_the_horizon(
 def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
     photos = skies.library()
     for name in ("sunflowers", "mud_road", "snow_field"):
-        base, _ = lwir.CLOUD_LAYER_M[photos[name].cloud_genus]
+        base = lwir.CLOUD_BASE_M[photos[name].cloud_genus]
         assert Sky.model_validate({"hdri": name}).cloud_base_m == base
     given = Sky.model_validate({"hdri": "sunflowers", "cloud_base_m": 1500.0})
     assert given.cloud_base_m == 1500.0
@@ -1100,6 +1184,17 @@ def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> 
     line = f'rigs = {{ bow = {{ preset = "{rig}", height_m = 10.0 }} }}'
     loaded = load(BASELINE, [line]).rigs["bow"]
     assert (loaded.model, set(loaded.cameras)) == (model, cameras)
+
+
+def test_a_side_pod_turns_its_thermal_inboard() -> None:
+    def rig(preset: str) -> Rig:
+        line = f'rigs = {{ bow = {{ preset = "{preset}", height_m = 10.0 }} }}'
+        return load(BASELINE, [line]).rigs["bow"]
+
+    port, starboard = rig("port"), rig("starboard")
+    assert rig("pod").cameras["ir"].yaw_deg == 0.0
+    assert port.cameras["ir"].yaw_deg == -starboard.cameras["ir"].yaw_deg
+    assert port.cameras["ir"].yaw_deg * port.yaw_deg < 0.0
 
 
 def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:

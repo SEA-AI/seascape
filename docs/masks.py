@@ -13,7 +13,7 @@ from PIL import Image
 
 from docs.hero import GAP_PX, SCENARIO, captioned, render
 from docs.outline import outlined
-from seascape.outputs import labels
+from seascape.outputs import canvas, labels
 
 PANEL_PX = (640, 480)
 MARGIN = 1.3
@@ -61,14 +61,7 @@ def main(figure: Path) -> None:
             panel = Image.fromarray(spotlight(*around(image, found))[..., ::-1])
             panel = panel.resize(PANEL_PX, Image.Resampling.LANCZOS)
             panels.append(captioned(panel, CAPTIONS[bands[Path(path).name]]))
-    sheet = Image.new(
-        "RGB", (sum(p.width for p in panels) + GAP_PX * (len(panels) - 1), PANEL_PX[1])
-    )
-    left = 0
-    for panel in panels:
-        sheet.paste(panel, (left, 0))
-        left += panel.width + GAP_PX
-    sheet.save(figure, quality=85)
+    canvas.beside(panels, gap_px=GAP_PX, matte="black").save(figure, quality=85)
 
 
 if __name__ == "__main__":
