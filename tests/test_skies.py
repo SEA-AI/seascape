@@ -113,7 +113,8 @@ def test_a_glow_redder_than_grey_is_no_cloud_and_a_bank_in_it_is() -> None:
     glow = (_sky(*SUN_DEG, 30.0, 1.0)[..., 0] - 1.0)[:: H // CH, :: W // CW]
     red = np.array([1.0, 0.5, 0.35], np.float32)
     sky += glow[..., None] * (red - sky)
-    # A grey bank in it, shaded: bluer than the glow.
+    # A grey bank in it, shaded: bluer than the glow. Under a red clear sky the colour
+    # share counts only what is redder than the fit, so the bank reads by its darkness.
     bank = np.s_[112:116, 192:320]
     sky[bank] = 0.3
     cloud = skies.cloud(sky, PHOTO)
