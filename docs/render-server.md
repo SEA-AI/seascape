@@ -78,7 +78,7 @@ echo "SEASCAPE_MCP_SECRET=$(python3 -c 'import secrets; print(secrets.token_urls
 docker compose --profile ngrok up -d
 ```
 
-Then add a custom connector at `https://<dev domain>/mcp` with **No sign-in** and the request header `authorization` set to `Bearer <secret>`. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
+Then add a custom connector at `https://<dev domain>/mcp` with **No sign-in** and the request header `Authorization` set to `Bearer <secret>`. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
 
 > [!WARNING]
-> The secret is the only credential: anyone with it can queue renders. Rotate it if it leaks; a connector's headers cannot be edited, so remove and re-add it. `/renders` links need no secret, only their random job ID. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp`; other addresses get 403. Clients on the network send the same header to the server's own address, for example `claude mcp add --transport http seascape http://<host>:8765/mcp --header "Authorization: Bearer <secret>"`.
+> The secret is the only credential: anyone with it can queue renders. Rotate it if it leaks. `/renders` links need no secret, only their random job ID. ngrok's Traffic Inspector records requests: limit who opens it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp`; other addresses get 403. Clients on the network send the same header, for example `claude mcp add --transport http seascape http://<host>:8765/mcp --header "Authorization: Bearer <secret>"`.

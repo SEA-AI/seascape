@@ -61,7 +61,7 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _secret_guards_the_public_url(self) -> "Settings":
+    def _secret_is_set_and_long(self) -> "Settings":
         if self.public_url and not self.mcp_secret:
             raise ValueError("SEASCAPE_PUBLIC_URL needs SEASCAPE_MCP_SECRET")
         # The only credential on a public URL. Judgement: enough entropy to resist

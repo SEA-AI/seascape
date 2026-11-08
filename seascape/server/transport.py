@@ -103,7 +103,7 @@ def serve(state: State, host: str, port: int) -> None:
 
 
 class _BearerOnly:
-    """Refuses a request to `MCP_PATH` that lacks `Authorization: Bearer <token>`."""
+    """Refuses a request to `MCP_PATH` without `Authorization: Bearer <token>`."""
 
     def __init__(self, app: ASGIApp, token: str) -> None:
         self.app = app
