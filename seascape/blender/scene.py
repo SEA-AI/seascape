@@ -221,11 +221,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
-    ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
-    solid = list(chain(*targets.values()))
+    afloat = list(chain(*vessels.values()))
     # Limitation: a hull-less ownship has no footprint, so it sails through targets.
     if scenario.ownship.asset is not None:
-        solid.append(vessel)
+        afloat.append(vessel)
+    ride(afloat, wind + swell, tall, outputs)
+    solid = afloat + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)

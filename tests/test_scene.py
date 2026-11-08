@@ -829,6 +829,40 @@ def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
+def test_an_ownship_hull_rides_the_sea_and_swings_its_yaw() -> None:
+    scenario = variant(
+        ownship={
+            "asset": "container",
+            "yaw": {"amplitude_deg": 3.0, "period_s": 8.0},
+        },
+        outputs={"fps": 2, "duration_s": 3.0},
+    )
+    built = scene.build(scenario, "eo")
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    (attitude,) = built.vessel.children
+    period_s = scenario.outputs.period_s(8.0)
+
+    for frame, t_s in enumerate(scenario.outputs.times_s):
+        bpy.context.scene.frame_set(frame)
+        heading = math.radians(3.0) * math.sin(math.tau * t_s / period_s)
+        rest = map(float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s))
+        plane = waves.Waterplane(
+            *rest, heading, built.vessel["length_m"], built.vessel["beam_m"]
+        )
+        pitch, roll = waves.attitude(wind + swell, plane, t_s)
+        bearing, _ = boresight_deg(camera_of(scenario.mounts[0]))
+
+        assert tuple(built.vessel.rotation_euler) == pytest.approx(
+            (0.0, 0.0, -heading), abs=1e-6
+        )
+        assert tuple(attitude.rotation_euler) == pytest.approx(
+            (pitch, -roll, 0.0), abs=1e-6
+        )
+        assert attitude.location.z == pytest.approx(waves.heave_m(tall, plane, t_s))
+        assert bearing == pytest.approx(math.degrees(heading), abs=1e-4)
+
+
 def test_the_far_clip_clears_a_hull_down_target() -> None:
     """Hull down from a low camera, its upperworks still up."""
     range_m = 20000.0
