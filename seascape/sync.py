@@ -25,13 +25,12 @@ class Container(NamedTuple):
     mounts: tuple[Mount, ...]
 
 
-def half_vfov_rad(camera: Camera) -> float:
-    """Half the angle the camera sees down its image."""
+def _angle_rad(camera: Camera, rows_px: float) -> float:
+    """The angle off the axis of a point `rows_px` down the image's middle column."""
     if (k := camera.lens.fisheye) is None:
         tan_h = math.tan(math.radians(camera.hfov_deg) / 2)
-        return math.atan(tan_h * camera.height_px / camera.width_px)
-    half_h = np.array(camera.height_px / 2)
-    return float(fisheye.theta(half_h, k, camera.fisheye_focal_px))
+        return math.atan(rows_px * tan_h / (camera.width_px / 2))
+    return float(fisheye.theta(np.array(rows_px), k, camera.fisheye_focal_px))
 
 
 def _central_columns_deg(mount: Mount) -> tuple[float, float]:
@@ -86,10 +85,13 @@ def heights_m(placed: Sequence[Container], floor_m: float) -> tuple[float, float
     for container in placed:
         for mount in container.mounts:
             down = -math.radians(mount.camera.pitch_deg)
-            quarter = half_vfov_rad(mount.camera) / 2
-            reach_m = container.range_m * math.tan(down - quarter)
+            quarter = _angle_rad(mount.camera, mount.camera.height_px / 4)
+            off_axis = math.radians(container.bearing_deg - mount.nominal_bearing_deg)
+            # Limitation: exact for a pinhole; a fisheye's rows bend off its axis.
+            ahead_m = container.range_m * math.cos(off_axis)
+            reach_m = ahead_m * math.tan(down - quarter)
             low = max(low, (reach_m, mount.name))
-            reach_m = container.range_m * math.tan(down + quarter)
+            reach_m = ahead_m * math.tan(down + quarter)
             high = min(high, (reach_m, mount.name))
     if low[0] > high[0]:
         raise ValueError(

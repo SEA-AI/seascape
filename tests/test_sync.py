@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from seascape import assets, sync
-from seascape.config import Mount, Object
+from seascape.config import Mount, Object, load
 from seascape.physics import fisheye
 from tests.scenarios import SYNC, SYNC_SENTRY, SYNC_WATCHKEEPER
 
@@ -76,6 +76,27 @@ def test_every_camera_sees_a_container_whole_in_its_frame_s_central_half(
     path: Path, overrides: list[Any]
 ) -> None:
     scenario = sync.scene(path, overrides)
+
+    for mount in scenario.mounts:
+        assert any(mid_frame(mount, o) for o in scenario.objects), mount.name
+
+
+@pytest.mark.parametrize("bound", [0, 1])
+def test_either_height_bound_keeps_an_off_axis_container_mid_frame(bound: int) -> None:
+    # One container between two pitched cameras, 10 deg off both axes.
+    splayed = [
+        "rigs.mast.model = 'Sentry'",
+        *(
+            f"rigs.mast.cameras.{name} = {{ preset = 'eo_4k_49deg', hfov_deg = 42.0, "
+            f"yaw_deg = {yaw}, pitch_deg = -10.0 }}"
+            for name, yaw in (("eo", 10.0), ("ir", -10.0))
+        ),
+    ]
+    placed = sync.containers(load(SYNC, splayed).mounts)
+    height_m = sync.heights_m(placed, 0.0)[bound]
+    inside_m = 0.999 * height_m if bound else 1.001 * height_m
+
+    scenario = sync.scene(SYNC, [*splayed, f"rigs.mast.height_m = {inside_m}"])
 
     for mount in scenario.mounts:
         assert any(mid_frame(mount, o) for o in scenario.objects), mount.name
