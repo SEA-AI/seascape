@@ -71,7 +71,7 @@ def scenario(name: str, ctx: Context[State, Any]) -> str:
     scenarios = _state(ctx).scenarios()
     if (path := scenarios.get(name)) is None:
         raise ToolError(f"no scenario {name!r} in {sorted(scenarios)}")
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def schema(section: str) -> dict[str, Any]:
