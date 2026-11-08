@@ -23,6 +23,20 @@ Claude Desktop, through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote)
 }
 ```
 
+With `SEASCAPE_MCP_SECRET` set, each client sends it. Claude Code adds `--header "Authorization: Bearer <secret>"`. `mcp-remote` takes the value from an environment variable, which also works where a space in `args` is mangled:
+
+```json
+{
+  "mcpServers": {
+    "seascape": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://<host>:8765/mcp", "--allow-http", "--header", "Authorization:${SEASCAPE_AUTH}"],
+      "env": { "SEASCAPE_AUTH": "Bearer <secret>" }
+    }
+  }
+}
+```
+
 Then ask for what you want: *"render the baseline at sunset with a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
 A job's files are served under `http://<host>:8765/renders/<job>/` and zipped at `http://<host>:8765/renders/<job>.zip`. `jobs` lists the jobs still kept, with their archive links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
@@ -81,4 +95,4 @@ docker compose --profile ngrok up -d
 Then add a custom connector at `https://<dev domain>/mcp` with **No sign-in** and the request header `Authorization` set to `Bearer <secret>`. On a Team or Enterprise plan an Owner adds it under **Organization settings > Connectors**, once for everyone.
 
 > [!WARNING]
-> The secret is the only credential: anyone with it can queue renders. Rotate it if it leaks. `/renders` links need no secret, only their random job ID. ngrok's Traffic Inspector records requests: limit who opens it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp`; other addresses get 403. Clients on the network send the same header, for example `claude mcp add --transport http seascape http://<host>:8765/mcp --header "Authorization: Bearer <secret>"`.
+> The secret is the only credential: anyone with it can queue renders. Rotate it if it leaks. `/renders` links need no secret, only their random job ID. ngrok's Traffic Inspector records requests: limit who opens it. The tunnel admits only Anthropic's [outbound ranges](https://platform.claude.com/docs/en/api/ip-addresses) on `/mcp`; other addresses get 403.
