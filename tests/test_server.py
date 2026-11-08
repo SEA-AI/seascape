@@ -113,7 +113,8 @@ def test_the_catalog_names_what_render_takes(state: State) -> None:
 
 def test_a_scenario_is_its_file(state: State) -> None:
     result = _call(state, "scenario", name="baseline")
-    assert result.content[0].text == (SCENARIOS / "baseline.toml").read_text()
+    file = SCENARIOS / "baseline.toml"
+    assert result.content[0].text == file.read_text(encoding="utf-8")
     assert _call(state, "scenario", name="../baseline").is_error
 
 
