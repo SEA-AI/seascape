@@ -43,7 +43,7 @@ from seascape.outputs import agc, labels
 from seascape.outputs.calibration import Calibration
 from seascape.physics import lwir, thermal, waves
 from seascape.physics.wakes import Wake
-from seascape.server import work
+from seascape.server import jobs
 from tests.probes import probe
 from tests.scenarios import (
     BASELINE,
@@ -950,7 +950,7 @@ def test_no_image_outgrows_what_the_server_reserves_for_it(
     for mount in scenario.mounts:
         camera = mount.camera
         reserved = camera.width_px * camera.height_px
-        reserved *= work.BYTES_PER_PX[camera.band, fmt]
+        reserved *= jobs.BYTES_PER_PX[camera.band, fmt]
         assert (tmp_path / f"{mount.name}.{fmt}").stat().st_size <= reserved
 
 

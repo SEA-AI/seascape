@@ -14,15 +14,13 @@ from typing import Any
 
 import httpx2
 import pytest
-import uvicorn
 from mcp import Client
 from mcp.types import TextContent
 from PIL import Image
 from pydantic import ValidationError
 
-from seascape import server
-from seascape.server import Settings, State, tools, work
-from seascape.server.work import Job
+from seascape.server import Settings, State, jobs, tools, transport
+from seascape.server.jobs import Job
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
 SECRET = "s" * 32
@@ -51,7 +49,7 @@ def state(tmp_path: Path) -> State:
 
 def _call(state: State, tool: str, **arguments: Any) -> Any:
     async def call() -> Any:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             return await client.call_tool(tool, arguments)
 
     return asyncio.run(call())
@@ -61,7 +59,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
     tmp_path: Path,
 ) -> None:
     async def listed() -> dict[str, bool]:
-        async with Client(server.mcp(_state(tmp_path))) as client:
+        async with Client(transport.mcp(_state(tmp_path))) as client:
             tools = (await client.list_tools()).tools
             return {
                 t.name: bool(t.annotations and t.annotations.read_only_hint)
@@ -121,10 +119,10 @@ def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: State) -> None
         (folder / "labels.json").touch()
     (tmp_path / "old.zip").touch()
     state.jobs["busy"] = Job(busy, "baseline", [], state="running")
-    a_day_ago = time.time() - work.KEEP_S - 1
+    a_day_ago = time.time() - jobs.KEEP_S - 1
     for path in (old, busy, tmp_path / "old.zip"):
         os.utime(path, (a_day_ago, a_day_ago))
-    asyncio.run(work.prune(state))
+    asyncio.run(jobs.prune(state))
     # A running job's folder may sit unchanged past the cutoff.
     assert sorted(path.name for path in tmp_path.iterdir()) == ["busy", "new"]
     assert "busy" in state.jobs
@@ -139,7 +137,7 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     (tmp_path / "labels.json").touch()
     job = Job(tmp_path, "open-sea", scenes)
     assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
-    assert [s.seed for s in work._written(job, OPEN_SEA, [])] == [
+    assert [s.seed for s in jobs._written(job, OPEN_SEA, [])] == [
         first,
         first + 2,
     ]
@@ -163,7 +161,7 @@ def test_listed_hosts_are_the_only_ones_mcp_answers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SEASCAPE_ALLOWED_HOSTS", allowed)
-    served = server.app(_state(tmp_path), "0.0.0.0")
+    served = transport.app(_state(tmp_path), "0.0.0.0")
 
     [status] = asyncio.run(_statuses(served, "/mcp", host))
     assert (status == 421) is refused
@@ -188,8 +186,8 @@ def test_a_gpu_probe_that_fails_still_serves(
 
     served: list[Any] = []
     monkeypatch.setattr(subprocess, "run", fail)
-    monkeypatch.setattr(uvicorn, "run", lambda app, **_: served.append(app))
-    server.serve(state, "127.0.0.1", 0)
+    monkeypatch.setattr(transport.uvicorn, "run", lambda app, **_: served.append(app))
+    transport.serve(state, "127.0.0.1", 0)
     assert served
     assert said in capsys.readouterr().out
 
@@ -203,12 +201,12 @@ def test_a_secret_path_is_not_access_logged(
 ) -> None:
     kwargs: dict[str, Any] = {}
     monkeypatch.setattr(
-        subprocess,
+        transport.subprocess,
         "run",
         lambda *_, **__: SimpleNamespace(stdout="None"),
     )
-    monkeypatch.setattr(uvicorn, "run", lambda _, **kw: kwargs.update(kw))
-    server.serve(_state(tmp_path, mcp_secret=secret), "127.0.0.1", 0)
+    monkeypatch.setattr(transport.uvicorn, "run", lambda _, **kw: kwargs.update(kw))
+    transport.serve(_state(tmp_path, mcp_secret=secret), "127.0.0.1", 0)
     assert kwargs["access_log"] is logged
 
 
@@ -257,10 +255,10 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
                 frame = folder / f"{mount.name}.{scene.outputs.format}"
                 Image.new("RGB", (640, 480)).save(frame)
 
-    monkeypatch.setattr(work, "_seascape", render)
+    monkeypatch.setattr(jobs, "_seascape", render)
 
     async def call() -> Any:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {"variants": 2})
             job = started.structured_content["job"]
             return await client.call_tool("render_result", {"job": job})
@@ -302,7 +300,7 @@ def test_cancel_stops_a_job_and_hands_the_gpu_on(
     state = _sleeper(tmp_path, monkeypatch)
 
     async def call() -> None:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             first, queued, last = [
                 (await client.call_tool("render", {})).structured_content["job"]
                 for _ in range(3)
@@ -361,7 +359,7 @@ def test_a_job_past_its_deadline_fails_and_frees_the_gpu(
     state = _sleeper(tmp_path, monkeypatch, max_run_s=0.5)
 
     async def call() -> None:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {})
             name = started.structured_content["job"]
             pid = await _started(state, name)
@@ -385,13 +383,13 @@ def test_a_job_waiting_for_the_gpu_keeps_its_whole_run_limit(
     async def seascape(*_: str) -> None:
         await asyncio.sleep(0.05)
 
-    monkeypatch.setattr(work, "_seascape", seascape)
-    monkeypatch.setattr(work, "_finish", lambda _: None)
+    monkeypatch.setattr(jobs, "_seascape", seascape)
+    monkeypatch.setattr(jobs, "_finish", lambda _: None)
 
     async def run() -> str:
         job = Job(tmp_path / "a", "open-sea", load_variants(OPEN_SEA))
         async with state.gpu:
-            task = asyncio.create_task(work.run(state, job, tmp_path, [], 1))
+            task = asyncio.create_task(jobs.run(state, job, tmp_path, [], 1))
             # Longer than the run limit.
             await asyncio.sleep(0.3)
         await task
@@ -416,7 +414,7 @@ def test_a_waiting_result_reports_progress(
         reported.append((progress, total))
 
     async def call() -> None:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {})
             name = started.structured_content["job"]
             await client.call_tool(
@@ -437,10 +435,10 @@ def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: State) -> None
         await done
         old = Job(tmp_path / "old", "open-sea", scenes, state="cancelled")
         new = Job(tmp_path / "new", "open-sea", scenes, state="cancelled")
-        old.created_s -= work.KEEP_S + 1
+        old.created_s -= jobs.KEEP_S + 1
         old.task = new.task = done
         state.jobs.update(old=old, new=new)
-        await work.prune(state)
+        await jobs.prune(state)
         return list(state.jobs)
 
     assert asyncio.run(forget()) == ["new"]
@@ -467,9 +465,9 @@ def test_a_killed_job_leaves_no_temporary_files(
         (seen["tmp"] / "blender_frames").mkdir()
         return Killed()
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(jobs.asyncio, "create_subprocess_exec", spawn)
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(work._seascape("render"))
+        asyncio.run(jobs._seascape("render"))
     assert not seen["tmp"].exists()
 
 
@@ -485,7 +483,7 @@ def test_a_killed_job_leaves_no_temporary_files(
 def test_a_secret_is_the_only_path_to_mcp(
     secret: str | None, path: str, found: bool, tmp_path: Path
 ) -> None:
-    served = server.app(_state(tmp_path, mcp_secret=secret), "0.0.0.0")
+    served = transport.app(_state(tmp_path, mcp_secret=secret), "0.0.0.0")
     [status] = asyncio.run(_statuses(served, path, "localhost:8765"))
     assert (status != 404) is found
 
@@ -502,7 +500,7 @@ def test_only_the_public_urls_host_is_allowed(
     public: str, host: str, refused: bool, tmp_path: Path
 ) -> None:
     state = _state(tmp_path, public_url=public, mcp_secret=SECRET)
-    served = server.app(state, "0.0.0.0")
+    served = transport.app(state, "0.0.0.0")
     [status] = asyncio.run(_statuses(served, f"/mcp/{SECRET}", host))
     assert (status == 421) is refused
 
@@ -546,7 +544,7 @@ def test_a_render_is_refused_before_anything_loads_when_the_queue_is_full(
     state = _state(tmp_path, max_queued=1)
     state.jobs["busy"] = Job(tmp_path / "busy", "baseline", [], state="running")
     loads: list[object] = []
-    monkeypatch.setattr(work, "_tried", lambda *a: loads.append(a))
+    monkeypatch.setattr(jobs, "_tried", lambda *a: loads.append(a))
     result = _call(state, "render")
     assert result.is_error
     assert "queued" in result.content[0].text
@@ -568,11 +566,11 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     async def idle(*_: object) -> None:
         await asyncio.sleep(0)
 
-    monkeypatch.setattr(work, "_tried", slow_load)
+    monkeypatch.setattr(jobs, "_tried", slow_load)
     monkeypatch.setattr(tools, "run", idle)
 
     async def burst() -> list[bool]:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             calls = [client.call_tool("render", {}) for _ in range(5)]
             return [bool(r.is_error) for r in await asyncio.gather(*calls)]
 
@@ -593,10 +591,10 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
         release.wait(5)
         raise ValueError("bad scenario")
 
-    monkeypatch.setattr(work, "_tried", slow_load)
+    monkeypatch.setattr(jobs, "_tried", slow_load)
 
     async def attempt() -> tuple[int, int]:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             call = asyncio.create_task(client.call_tool("render", {}))
             await asyncio.to_thread(started.wait, 5)
             call.cancel()
@@ -697,9 +695,9 @@ def test_a_failed_render_tells_the_client_only_its_last_line(
 
         return SimpleNamespace(communicate=communicate, returncode=1)
 
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(jobs.asyncio, "create_subprocess_exec", spawn)
     with pytest.raises(RuntimeError) as error:
-        asyncio.run(work._seascape("render"))
+        asyncio.run(jobs._seascape("render"))
     assert str(error.value) == "ValueError: bad scenario"
 
 
@@ -707,7 +705,7 @@ def test_render_says_a_list_override_replaces_the_scenarios_list(
     state: State,
 ) -> None:
     async def described() -> str:
-        async with Client(server.mcp(state)) as client:
+        async with Client(transport.mcp(state)) as client:
             tools = {tool.name: tool for tool in (await client.list_tools()).tools}
             return tools["render"].description or ""
 
