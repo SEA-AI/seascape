@@ -447,8 +447,6 @@ def _over_horizon(
 # g / c_p: air lifted from the surface cools at it to the cloud base, where it condenses
 # (Wallace & Hobbs, Atmospheric Science, 2nd ed., 2006).
 DRY_LAPSE_K_PER_M = 9.8e-3
-# U.S. Standard Atmosphere (1976) troposphere: a cloud's side is at the air round it.
-STANDARD_LAPSE_K_PER_M = 6.5e-3
 
 
 def cloud_base_k(t_air_k: float, cloud_base_m: float) -> float:
@@ -465,45 +463,18 @@ type CloudGenus = Literal[
     "altostratus",
     "cirrus",
 ]
-# Each genus's base and top in LOWTRAN 7's cloud models (lowtran7.f, card 2: ICLD 1
-# to 4). Altocumulus takes altostratus's, a judgement: LOWTRAN models no other cloud
-# at the middle level (WMO International Cloud Atlas). Cirrus has its own table.
-CLOUD_LAYER_M: dict[CloudGenus, tuple[float, float]] = {
-    "cumulus": (660.0, 2700.0),
-    "stratocumulus": (660.0, 2000.0),
-    "stratus": (330.0, 1000.0),
-    "altocumulus": (2400.0, 3000.0),
-    "altostratus": (2400.0, 3000.0),
+# Each genus's base in LOWTRAN 7's cloud models (lowtran7.f, card 2: ICLD 1 to 4).
+# Altocumulus takes altostratus's, a judgement: LOWTRAN models no other cloud at the
+# middle level (WMO International Cloud Atlas). Cirrus has its own table.
+CLOUD_BASE_M: dict[CloudGenus, float] = {
+    "cumulus": 660.0,
+    "stratocumulus": 660.0,
+    "stratus": 330.0,
+    "altocumulus": 2400.0,
+    "altostratus": 2400.0,
 }
 # A clear sky's stray cloud is a fair-weather cumulus.
-CLOUD_LAYER_M["clear"] = CLOUD_LAYER_M["cumulus"]
-
-
-def cloud_height_m(
-    elev_rad: npt.ArrayLike,
-    bottom_rad: npt.ArrayLike,
-    cloud_base_m: float,
-    depth_m: float,
-) -> FloatArray:
-    """How far over its base a line of sight meets a cloud: on the side it turns to
-    the camera, as far off as its base under its bottom.
-
-    On a flat Earth: the curve matters only near the horizon, where the air in front
-    hides the cloud.
-
-    Args:
-        elev_rad: Elevation of the line of sight.
-        bottom_rad: Elevation at which the cloud's bottom shows. At or under the
-            horizon it is out of sight, and the answer is the base.
-        cloud_base_m: Height of the cloud base above the sea, which puts a cloud of
-            a given bottom elevation that far off.
-        depth_m: The cloud's thickness, base to top, which caps the answer.
-    """
-    elev = np.asarray(elev_rad, dtype=np.float64)
-    bottom = np.asarray(bottom_rad, dtype=np.float64)
-    seen = bottom > 0.0
-    rise = np.tan(elev) / np.tan(np.where(seen, bottom, np.pi / 4)) - 1.0
-    return np.where(seen, np.clip(cloud_base_m * rise, 0.0, depth_m), 0.0)
+CLOUD_BASE_M["clear"] = CLOUD_BASE_M["cumulus"]
 
 
 def cloudy_sky_radiance(
@@ -512,13 +483,11 @@ def cloudy_sky_radiance(
     cloud_base_m: float,
     t_air_k: float | None = None,
     atmosphere: Atmosphere = ATMOSPHERE,
-    height_m: npt.ArrayLike = 0.0,
 ) -> FloatArray:
-    """`sky_radiance` partly under a cloud that is a blackbody at the air round it: air
-    lifted dry to the base, and the standard lapse over it.
+    """`sky_radiance` partly under a cloud at `cloud_base_k` (Smith & Toumi 2008).
 
     The cloud hides the air over its base; the air under it, LOWTRAN's path to the base,
-    emits and transmits in front of the base and the side alike.
+    emits and transmits in front of it.
 
     Args:
         elev_rad: Elevation above the horizon.
@@ -527,17 +496,13 @@ def cloudy_sky_radiance(
             lifted at the dry lapse rate condenses (Wallace & Hobbs 2006).
         t_air_k: Surface air temperature; unset, the atmosphere's own.
         atmosphere: The model atmosphere whose tables are read.
-        height_m: Where the line of sight meets the cloud, over its base.
     """
     if t_air_k is None:
         t_air_k = SURFACE_AIR_K[atmosphere]
     elev = np.asarray(elev_rad, dtype=np.float64)
     clear = sky_radiance(elev, t_air_k, atmosphere)
     path, transmitted = _under_base(elev, cloud_base_m, atmosphere)
-    t_cloud_k = cloud_base_k(
-        t_air_k, cloud_base_m
-    ) - STANDARD_LAPSE_K_PER_M * np.asarray(height_m, dtype=np.float64)
-    cloud_radiance = np.interp(t_cloud_k, _TB_GRID, _TB_RADIANCE)
+    cloud_radiance = band_radiance(cloud_base_k(t_air_k, cloud_base_m))
     overcast = path * band_radiance(t_air_k) + transmitted * cloud_radiance
     return clear + np.asarray(cloud) * (overcast - clear)
 

@@ -324,49 +324,6 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     return out
 
 
-def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
-    """The elevation where the run of cloud (share at least CLEAR_SHARE) over each
-    pixel ends down its column. NaN where the pixel is clear or its run reaches the
-    horizon.
-
-    Args:
-        share: Cloud share, (h, w) top row first, as `cloud` gives it.
-    """
-    h = share.shape[0]
-    rows = np.arange(h // 2, dtype=np.int32)[:, None]
-    clear = share[: h // 2] < CLEAR_SHARE
-    # The nearest clear row at or under each row; past the horizon, none.
-    under = np.minimum.accumulate(np.where(clear, rows, h // 2)[::-1], axis=0)[::-1]
-    foot = _elevation_deg(np.arange(h // 2 + 1) - 0.5, h).astype(np.float32)
-    out = np.full(share.shape, np.nan, np.float32)
-    out[: h // 2] = np.where(clear | (under == h // 2), np.nan, foot[under])
-    return out
-
-
-def cloud_height_m(
-    share: np.ndarray, cloud_base_m: float, depth_m: float
-) -> np.ndarray:
-    """How far over its base the cloud in each row is: `lwir.cloud_height_m` averaged
-    by share over the cloud whose bottom shows, and the base where none does.
-
-    Args:
-        share: Cloud share, (h, w) top row first, as `cloud` gives it.
-        cloud_base_m: Height of the cloud base over the sea.
-        depth_m: How far over its base a cloud reaches at most.
-    """
-    h = share.shape[0]
-    bottom = cloud_bottom_deg(share)
-    seen = ~np.isnan(bottom)
-    elevation = np.radians(_elevation_deg(np.arange(h), h))[:, None]
-    height = lwir.cloud_height_m(
-        elevation, np.radians(np.where(seen, bottom, 0.0)), cloud_base_m, depth_m
-    )
-    weight = np.where(seen, share, 0.0)
-    total = weight.sum(axis=1)
-    summed = (weight * height).sum(axis=1)
-    return np.divide(summed, total, out=np.zeros(h), where=total > 0)
-
-
 def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:
     """How much darker each pixel is than the clear sky beside it, 0 to 1 over DARK.
 
