@@ -1,4 +1,4 @@
-"""The sync check's scene: 20 ft containers that every camera sees whole and near the
+"""The sync check's scene: containers that every camera sees whole and near the
 middle of its frame, at the rig heights that keep them there.
 
 "Near the middle" is the central half of a frame's field across and down, where lens
@@ -14,7 +14,7 @@ import numpy as np
 
 from seascape import assets
 from seascape.config import Camera, Mount, Scenario, load
-from seascape.physics import fisheye, waves
+from seascape.physics import earth, fisheye, waves
 
 
 class Container(NamedTuple):
@@ -22,7 +22,7 @@ class Container(NamedTuple):
 
     bearing_deg: float
     range_m: float
-    mounts: list[Mount]
+    mounts: tuple[Mount, ...]
 
 
 def half_vfov_rad(camera: Camera) -> float:
@@ -51,17 +51,17 @@ def containers(mounts: Sequence[Mount]) -> list[Container]:
         mounts: One rig's cameras.
     """
     # Limitation: bearings do not wrap, so 180 deg astern can take two containers.
-    groups: list[tuple[float, float, list[Mount]]] = []
-    # Greedy interval stabbing, by right edge: the fewest points that stab every half.
+    groups: list[tuple[float, float, tuple[Mount, ...]]] = []
+    # Greedy interval stabbing, by right edge.
     for mount in sorted(mounts, key=lambda m: _central_columns_deg(m)[1]):
         left, right = _central_columns_deg(mount)
         if groups and left <= groups[-1][1]:
             low, high, seen = groups[-1]
-            groups[-1] = (max(low, left), high, [*seen, mount])
+            groups[-1] = (max(low, left), high, (*seen, mount))
         else:
-            groups.append((left, right, [mount]))
+            groups.append((left, right, (mount,)))
     box = assets.manifest()["container"]
-    assert isinstance(box, assets.Debris)  # the manifest's kind
+    assert isinstance(box, assets.Debris)
     placed = []
     for low, high, seen in groups:
         quarter = math.radians(min(m.camera.hfov_deg for m in seen)) / 4
@@ -103,14 +103,17 @@ def scene(path: Path, overrides: Sequence[str | Mapping[str, Any]] = ()) -> Scen
     """The scenario at `path`, its objects the containers.
 
     Raises:
-        ValueError: A rig is pitched, or its height keeps a container off mid-frame.
+        ValueError: A rig has no model, is pitched, or its height keeps a container
+            off mid-frame.
     """
     scenario = load(path, overrides)
     # Judgement: a rig lower than Hs looks into crests.
-    floor_m = waves.significant_height_m(scenario.wind_waves() + scenario.swell_waves())
+    floor_m = waves.significant_height_m(scenario.wave_field())
     objects: list[dict[str, Any]] = []
     # Limitation: placed for a level ownship; its mean pitch and roll tilt every frame.
     for name, rig in scenario.rigs.items():
+        if rig.model is None:
+            raise ValueError(f"sync records a product: {name} has no model")
         if rig.pitch_deg:
             # Its pitch turns an off-axis camera's bearing and tilt from their sums.
             raise ValueError(
@@ -124,10 +127,10 @@ def scene(path: Path, overrides: Sequence[str | Mapping[str, Any]] = ()) -> Scen
                 f"set it within {low_m:.2f} to {high_m:.2f}"
             )
         for container in placed:
-            bearing = math.radians(container.bearing_deg)
+            ahead = container.range_m * earth.direction(container.bearing_deg, 0.0)
             # Ranges and bearings are from the ownship's origin, not the rig.
-            east_m = rig.offset_x_m + container.range_m * math.sin(bearing)
-            north_m = rig.offset_y_m + container.range_m * math.cos(bearing)
+            east_m = rig.offset_x_m + float(ahead[0])
+            north_m = rig.offset_y_m + float(ahead[1])
             objects.append(
                 {
                     "asset": "container",

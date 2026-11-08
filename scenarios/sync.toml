@@ -1,10 +1,9 @@
 #:schema ../schema/scenario.json
 
-# The sea, sky and clip every `seascape sync` scene shares; `sync-<product>.toml`
-# extends it and replaces the rig.
+# Shared by `sync-<product>.toml`, which replaces the rig.
 seed = 20261106
 
-# A stand-in, so this file validates and renders alone.
+# A stand-in, so this file validates alone.
 [rigs.mast]
 height_m = 1.6
 cameras.eo = { preset = "eo_4k_49deg" }

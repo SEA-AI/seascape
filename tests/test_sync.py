@@ -10,9 +10,8 @@ import pytest
 from seascape import assets, sync
 from seascape.config import Mount, Object
 from seascape.physics import fisheye
+from tests.scenarios import SYNC, SYNC_SENTRY, SYNC_WATCHKEEPER
 
-SENTRY = Path("scenarios/sync-sentry.toml")
-WATCHKEEPER = Path("scenarios/sync-watchkeeper.toml")
 POD = {"rigs": {"mast": {"preset": "port", "height_m": 3.3}}}
 
 
@@ -66,13 +65,12 @@ def mid_frame(mount: Mount, target: Object) -> bool:
 @pytest.mark.parametrize(
     ("path", "overrides"),
     [
-        (Path("scenarios/sync.toml"), []),
-        (SENTRY, []),
-        (WATCHKEEPER, []),
-        (WATCHKEEPER, ["outputs.format = 'exr'"]),
-        (SENTRY, [POD]),
+        (SYNC_SENTRY, []),
+        (SYNC_WATCHKEEPER, []),
+        (SYNC_WATCHKEEPER, ["outputs.format = 'exr'"]),
+        (SYNC_SENTRY, [POD]),
     ],
-    ids=["stand-in", "sentry", "watchkeeper", "watchkeeper fisheye", "side pod"],
+    ids=["sentry", "watchkeeper", "watchkeeper fisheye", "side pod"],
 )
 def test_every_camera_sees_a_container_whole_in_its_frame_s_central_half(
     path: Path, overrides: list[Any]
@@ -92,7 +90,7 @@ def test_a_sync_scene_holds_only_its_containers() -> None:
             "bearing_deg": [0.0, 90.0],
         }
     }
-    scenario = sync.scene(SENTRY, [ring])
+    scenario = sync.scene(SYNC_SENTRY, [ring])
 
     assert scenario.targets is None
     assert [o.asset for o in scenario.objects] == ["container"]
@@ -100,4 +98,9 @@ def test_a_sync_scene_holds_only_its_containers() -> None:
 
 def test_a_rig_height_that_moves_a_container_off_mid_frame_is_an_error() -> None:
     with pytest.raises(ValueError, match="set it within"):
-        sync.scene(SENTRY, ["rigs.mast.height_m = 5.0"])
+        sync.scene(SYNC_SENTRY, ["rigs.mast.height_m = 5.0"])
+
+
+def test_a_rig_without_a_model_is_an_error() -> None:
+    with pytest.raises(ValueError, match="no model"):
+        sync.scene(SYNC)

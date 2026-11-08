@@ -490,9 +490,8 @@ def zones(
     from seascape import zones as sheets
 
     into = output or Path("zones") / asset
-    # An earlier run's sheets would pass for this one's.
-    if not contact and into.is_dir() and any(into.iterdir()):
-        raise click.ClickException(f"{into} is not empty: remove it or pick another")
+    if not contact:
+        _empty(into)
     with _blender_log(into / "blender.log"):
         if contact:
             written = [sheets.contact(asset, into / "zones.png")]

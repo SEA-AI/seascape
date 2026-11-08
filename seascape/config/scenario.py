@@ -189,6 +189,10 @@ class Scenario(Model):
             substream(self.seed, "sea/swell"),
         )
 
+    def wave_field(self) -> tuple[waves.Wave, ...]:
+        """Every wave on the sea, wind sea then swell."""
+        return self.wind_waves() + self.swell_waves()
+
     @model_validator(mode="after")
     def _hulls_are_bounded(self) -> "Scenario":
         hulls = (
