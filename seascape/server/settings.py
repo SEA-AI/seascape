@@ -44,9 +44,8 @@ class Settings(BaseSettings):
     max_variants: PositiveInt = 100
     # Judgement: bounds a frame's render time.
     max_samples: PositiveInt = 1024
-    # The path is the credential: an MCP client may send no header.
+    # The bearer token an MCP client sends; in the clear over http.
     mcp_secret: SecretStr | None = None
-    # The secret travels in the path, in the clear over http.
     public_url: Annotated[AnyUrl, UrlConstraints(allowed_schemes=["https"])] | None = (
         None
     )
@@ -62,15 +61,15 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def _secret_guards_the_path(self) -> "Settings":
+    def _secret_is_set_and_long(self) -> "Settings":
         if self.public_url and not self.mcp_secret:
             raise ValueError("SEASCAPE_PUBLIC_URL needs SEASCAPE_MCP_SECRET")
-        # The only credential on a public URL, and a route path, where `/` and `{}`
-        # mean something else. Judgement: enough entropy to resist guessing.
+        # The only credential on a public URL. Judgement: enough entropy to resist
+        # guessing. Printable ASCII, which a header value can carry.
         if self.mcp_secret and not re.fullmatch(
-            r"[A-Za-z0-9_-]{32,}", self.mcp_secret.get_secret_value()
+            r"[\x21-\x7e]{32,}", self.mcp_secret.get_secret_value()
         ):
             raise ValueError(
-                "SEASCAPE_MCP_SECRET needs 32 or more of A-Z, a-z, 0-9, _ and -"
+                "SEASCAPE_MCP_SECRET needs 32 or more printable ASCII characters"
             )
         return self
