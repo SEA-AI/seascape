@@ -19,6 +19,8 @@ from mcp.types import TextContent
 from PIL import Image
 from pydantic import ValidationError
 
+from seascape.config import json_schema
+from seascape.config.loader import _refs
 from seascape.server import Settings, State, jobs, tools, transport
 from seascape.server.jobs import Job
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
@@ -68,6 +70,8 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
 
     assert asyncio.run(listed()) == {
         "catalog": True,
+        "scenario": True,
+        "schema": True,
         "jobs": True,
         "render_result": True,
         "render": False,
@@ -96,6 +100,31 @@ def test_an_unknown_scenario_is_refused(state: State) -> None:
     result = _call(state, "render", scenario="../baseline")
     assert result.is_error
     assert not state.jobs
+
+
+def test_the_catalog_names_what_render_takes(state: State) -> None:
+    listed = _call(state, "catalog").structured_content
+
+    assert listed["scenarios"] == list(state.scenarios())
+    assert set(listed["schema_sections"]) == set(json_schema()["properties"])
+    assert "schema" not in listed
+
+
+def test_a_scenario_is_its_file(state: State) -> None:
+    result = _call(state, "scenario", name="baseline")
+    assert result.content[0].text == (SCENARIOS / "baseline.toml").read_text()
+    assert _call(state, "scenario", name="../baseline").is_error
+
+
+def test_a_schema_section_holds_what_it_reaches_and_no_more(state: State) -> None:
+    section = _call(state, "schema", section="sea").structured_content
+
+    assert set(section["properties"]) == {"sea"}
+    assert section["$defs"]
+    full = json_schema()
+    assert len(json.dumps(section)) < len(json.dumps(full)) / 2
+    assert {r.removeprefix("#/$defs/") for r in _refs(section)} <= set(section["$defs"])
+    assert _call(state, "schema", section="nope").is_error
 
 
 def test_a_full_disk_refuses_a_job(tmp_path: Path) -> None:
