@@ -252,8 +252,8 @@ class Sky(Model):
             raise ValueError("sun_diffuse_fraction is for an hdri with no disc")
         elif "sun_elevation_deg" not in data:
             raise ValueError("sun_diffuse_fraction needs sun_elevation_deg")
-        if layer := lwir.CLOUD_LAYER_M.get(photo.cloud_genus):
-            data.setdefault("cloud_base_m", layer[0])
+        if (base := lwir.CLOUD_BASE_M.get(photo.cloud_genus)) is not None:
+            data.setdefault("cloud_base_m", base)
         if elevation is None:
             # No disc, no direct beam: nothing warms a sunlit side over a shaded one.
             data.setdefault("solar_gain_k", 0.0)

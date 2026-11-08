@@ -82,7 +82,7 @@ def test_opaque_fog_radiates_as_the_air() -> None:
 
 
 @pytest.mark.parametrize("t_air_k", [250.0, 300.0])
-@pytest.mark.parametrize("base_m", sorted({b for b, _ in lwir.CLOUD_LAYER_M.values()}))
+@pytest.mark.parametrize("base_m", sorted(set(lwir.CLOUD_BASE_M.values())))
 def test_an_overcast_sky_outshines_a_clear_one_at_any_base(
     base_m: float, t_air_k: float
 ) -> None:
