@@ -33,7 +33,7 @@ from seascape.outputs import preview
 from seascape.server.settings import Settings
 
 KEEP_S = 24 * 3600
-# Judgement: an expired file waits at most this much longer than `KEEP_S`.
+# Judgement: how much longer than `KEEP_S` an expired file may stay.
 SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568

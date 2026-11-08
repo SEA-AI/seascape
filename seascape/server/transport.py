@@ -3,8 +3,8 @@
 import asyncio
 import subprocess
 import sys
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Mapping
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 import uvicorn
@@ -121,17 +121,19 @@ def app(state: State, host: str) -> Starlette:
         host=host, streamable_http_path=path, transport_security=security
     )
     served.mount("/renders", StaticFiles(directory=state.renders))
-    # The app's own lifespan runs the MCP session manager; the sweep joins it.
+    # Wrap, don't replace: the app's lifespan runs the MCP session manager.
     mcp_lifespan = served.router.lifespan_context
 
     @asynccontextmanager
-    async def lifespan(scope: Starlette) -> AsyncGenerator[Any]:
+    async def lifespan(app: Starlette) -> AsyncGenerator[Mapping[str, Any]]:
         sweeping = asyncio.create_task(sweep(state))
         try:
-            async with mcp_lifespan(scope) as held:
-                yield held
+            async with mcp_lifespan(app) as held:
+                yield held or {}
         finally:
             sweeping.cancel()
+            with suppress(asyncio.CancelledError):
+                await sweeping
 
     served.router.lifespan_context = lifespan
     return served
