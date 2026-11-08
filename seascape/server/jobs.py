@@ -187,24 +187,31 @@ def _tried(
 
 
 def _expire(state: State) -> list[str]:
-    """Delete what is older than `KEEP_S` and name the jobs it was. Runs in a thread."""
+    """Delete what is older than `KEEP_S` and name the jobs it was. Runs in a thread.
+
+    A job's folder and its archive age together, by the newer of the two.
+    """
     cutoff = time.time() - KEEP_S
     # A running job's folder may sit unchanged past the cutoff.
     live = {name for name, job in list(state.jobs.items()) if job.writing}
-    gone = []
+    by_job: dict[str, list[Path]] = {}
     for path in state.renders.glob("*"):
-        if path.stem in live:
+        by_job.setdefault(path.stem, []).append(path)
+    gone = []
+    for name, paths in by_job.items():
+        if name in live:
             continue
         try:
-            if path.stat().st_mtime >= cutoff:
+            if max(path.stat().st_mtime for path in paths) >= cutoff:
                 continue
+        except FileNotFoundError:  # `cancel` removed it first
+            continue
+        for path in paths:
             if path.is_dir():
                 shutil.rmtree(path, ignore_errors=True)
             else:
-                path.unlink()
-        except FileNotFoundError:  # `cancel` removed it first
-            continue
-        gone.append(path.stem)
+                path.unlink(missing_ok=True)
+        gone.append(name)
     return gone
 
 
@@ -220,14 +227,14 @@ async def prune(state: State) -> None:
             del state.jobs[name]
 
 
-async def sweep(state: State, every_s: float = SWEEP_S) -> None:
-    """Prune every `every_s`, so an idle server still frees its disk."""
+async def sweep(state: State) -> None:
+    """Prune every `SWEEP_S`, so an idle server still frees its disk."""
     while True:
         try:
             await prune(state)
         except Exception:  # one failed sweep must not end the next
             log.exception("pruning the renders failed")
-        await asyncio.sleep(every_s)
+        await asyncio.sleep(SWEEP_S)
 
 
 async def load(
