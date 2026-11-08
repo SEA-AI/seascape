@@ -183,11 +183,11 @@ def add_ownship(
     radius_m: float,
 ) -> bpy.types.Object:
     """Bow to +Y at the origin, carrying the rigs, and sailing from it. A hull rides
-    the sea as a target does, once `ride` keys it.
+    the sea once `ride` keys it.
 
     Args:
         ownship: Its hull, attitude and scripted motion.
-        rigs: Parented to the ownship; their offsets are in its frame.
+        rigs: Parented to the hull's attitude, or to a bare ownship, in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
         tall: The waves that are geometry, which a bare rig heaves on.
@@ -240,20 +240,18 @@ def add_ownship(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
     # A bare rig is a point: it heaves, but would tilt with every ripple.
-    bare = () if ownship.asset else tall
+    bare = ownship.asset is None and bool(tall)
     if heave is not None or bare or sailing:
 
         def value_at(t_s: float) -> float:
             pose = track(t_s)
-            rest = waves.gerstner_rest_m(
-                bare, np.array(pose.east_m), np.array(pose.north_m), t_s
-            )
-            point = waves.Waterplane(*map(float, rest), pose.heading_rad, 0.0, 0.0)
-            return (
-                earth.sea_z_m(pose.east_m, pose.north_m, radius_m)
-                + scripted(t_s)
-                + waves.heave_m(bare, point, t_s)
-            )
+            z = earth.sea_z_m(pose.east_m, pose.north_m, radius_m) + scripted(t_s)
+            if bare:
+                rest = waves.gerstner_rest_m(
+                    tall, np.array(pose.east_m), np.array(pose.north_m), t_s
+                )
+                z += waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
+            return z
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor

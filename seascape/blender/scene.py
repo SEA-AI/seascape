@@ -42,6 +42,9 @@ class Built:
     """
 
     vessel: bpy.types.Object
+    deck: (
+        bpy.types.Object
+    )  # what the rigs are bolted to: a hull's attitude rides the sea
     rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
@@ -51,7 +54,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     """A built camera's geometry, read off the scene."""
     camera = built.cameras[mount.name]
     world = camera.matrix_world @ _BLENDER_TO_CV
-    vessel = built.vessel.matrix_world
+    vessel = built.deck.matrix_world
     rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
     if mount.camera.lens.fisheye is None:
@@ -178,6 +181,17 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
+    # Before `views`, which reads where the cameras look as the hulls rock.
+    # Limitation: a floating turbine stands still; give it its platform's motion
+    # if a sea rocks one visibly.
+    afloat = list(chain(*vessels.values()))
+    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
+    if scenario.ownship.asset is not None:
+        afloat.append(vessel)
+    ride(afloat, wind + swell, tall, outputs)
+    solid = afloat + list(chain(*turbines.values()))
+    if meeting := overlaps(solid, len(outputs.times_s)):
+        raise OverlapError(f"hulls inside each other: {meeting}")
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
@@ -219,15 +233,5 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
-    # Limitation: a floating turbine stands still; give it its platform's motion
-    # if a sea rocks one visibly.
-    afloat = list(chain(*vessels.values()))
-    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
-    if scenario.ownship.asset is not None:
-        afloat.append(vessel)
-    ride(afloat, wind + swell, tall, outputs)
-    solid = afloat + list(chain(*turbines.values()))
-    if meeting := overlaps(solid, len(outputs.times_s)):
-        raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)
-    return Built(vessel, rigs.rigs, rigs.cameras, targets)
+    return Built(vessel, rigs.root.parent, rigs.rigs, rigs.cameras, targets)
