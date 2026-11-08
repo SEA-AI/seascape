@@ -442,12 +442,11 @@ def _cloud_images(sky: Sky) -> tuple[bpy.types.Image, bpy.types.Image]:
     cloud = cv2.resize(share, (w // f, h // f), interpolation=cv2.INTER_AREA)
     rows = cloud.shape[0]
     elevation = np.radians(texels(rows) * 180.0 - 90.0)
-    genus = sky.photo.cloud_genus
-    radiance = _cloud_radiance(sky, genus, elevation[:, None], cloud)
-    image = curve_image(
-        "cloudy_sky_radiance", _hazed(sky, radiance, elevation[:, None])
-    )
-    _bake_cloud_excess(sky, genus)
+    # As the shader draws it: affine in the share.
+    clear = _table_sky(sky, elevation)[:, None]
+    excess = _cloud_excess(sky, elevation)[:, None]
+    image = curve_image("cloudy_sky_radiance", clear + cloud * excess)
+    curve_image("cloud_excess", _cloud_excess(sky, _curve_elevation()))
     # As a horizontal surface sees the sky: each row by its projected solid angle.
     up = elevation > 0
     weight = np.sin(elevation[up]) * np.cos(elevation[up])
@@ -477,42 +476,23 @@ def _cloudy_sky(
     return Num(tree, share).madd(excess, lookup(tree, _sky_image(sky), up)).socket
 
 
-def _cloud_radiance(
-    sky: Sky,
-    genus: lwir.CloudGenus,
-    elevation: np.ndarray,
-    cloud: np.ndarray | float,
-) -> np.ndarray:
-    """The sky under a `cloud` fraction of the photo's `genus`."""
-    if genus == "cirrus":
-        return lwir.cirrus_sky_radiance(elevation, cloud, sky.t_air_k, sky.atmosphere)
-    return lwir.cloudy_sky_radiance(
-        elevation,
-        cloud,
-        sky.cloud_base_m,
-        sky.t_air_k,
-        sky.atmosphere,
-    )
+def _cloud_excess(sky: Sky, elevation: np.ndarray) -> np.ndarray:
+    """What a whole cloud of the photo's genus adds to the hazed clear sky at
+    `elevation`.
+    """
+    if sky.photo.cloud_genus == "cirrus":
+        whole = lwir.cirrus_sky_radiance(elevation, 1.0, sky.t_air_k, sky.atmosphere)
+    else:
+        whole = lwir.cloudy_sky_radiance(
+            elevation, 1.0, sky.cloud_base_m, sky.t_air_k, sky.atmosphere
+        )
+    return _hazed(sky, whole, elevation) - _table_sky(sky, elevation)
 
 
 def _cloud_excess_image(sky: Sky) -> bpy.types.Image:
     """What a whole cloud adds to the hazed clear sky, baked with `_cloud_images`."""
     _cloud_images(sky)
     return bpy.data.images["cloud_excess"]
-
-
-def _bake_cloud_excess(sky: Sky, genus: lwir.CloudGenus) -> None:
-    """Bake `_cloud_excess_image` as `_sky_image` is.
-
-    Args:
-        sky: Its air temperature, atmosphere and cloud base set the cloud's radiance;
-            its visibility sets the haze.
-        genus: The photo's cloud genus; cirrus has its own radiance.
-    """
-    elevation = _curve_elevation()
-    whole = _cloud_radiance(sky, genus, elevation, 1.0)
-    excess = _hazed(sky, whole, elevation) - _table_sky(sky, elevation)
-    curve_image("cloud_excess", excess)
 
 
 def _clouds(sky: Sky) -> sea.Clouds | None:
