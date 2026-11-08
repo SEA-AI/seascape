@@ -33,6 +33,8 @@ from seascape.outputs import preview
 from seascape.server.settings import Settings
 
 KEEP_S = 24 * 3600
+# Judgement: an expired file waits at most this much longer than `KEEP_S`.
+SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
 PREVIEWS = 8
@@ -216,6 +218,16 @@ async def prune(state: State) -> None:
         done = job.task is not None and job.task.done()
         if done and job.created_s < cutoff and not job.folder.exists():
             del state.jobs[name]
+
+
+async def sweep(state: State, every_s: float = SWEEP_S) -> None:
+    """Prune every `every_s`, so an idle server still frees its disk."""
+    while True:
+        try:
+            await prune(state)
+        except Exception:  # one failed sweep must not end the next
+            log.exception("pruning the renders failed")
+        await asyncio.sleep(every_s)
 
 
 async def load(

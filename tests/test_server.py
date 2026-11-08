@@ -160,6 +160,27 @@ def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: State) -> None
     assert "busy" in state.jobs
 
 
+def test_an_idle_server_still_deletes_what_expired(
+    tmp_path: Path, state: State
+) -> None:
+    old = tmp_path / "old"
+    old.mkdir()
+    a_day_ago = time.time() - jobs.KEEP_S - 1
+    os.utime(old, (a_day_ago, a_day_ago))
+
+    application = transport.app(state, "localhost")
+
+    async def served() -> None:
+        async with application.router.lifespan_context(application):
+            for _ in range(100):
+                if not old.exists():
+                    return
+                await asyncio.sleep(0.05)
+
+    asyncio.run(served())
+    assert not old.exists()
+
+
 def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     scenes = load_variants(OPEN_SEA, count=2)
     first = scenes[0].seed

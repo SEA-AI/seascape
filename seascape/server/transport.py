@@ -1,9 +1,11 @@
 """The MCP server and the HTTP app that serves it."""
 
+import asyncio
 import subprocess
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import uvicorn
 from mcp.server.mcpserver import MCPServer
@@ -12,7 +14,7 @@ from mcp.types import ToolAnnotations
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from seascape.server.jobs import State
+from seascape.server.jobs import State, sweep
 from seascape.server.tools import (
     cancel,
     catalog,
@@ -119,4 +121,17 @@ def app(state: State, host: str) -> Starlette:
         host=host, streamable_http_path=path, transport_security=security
     )
     served.mount("/renders", StaticFiles(directory=state.renders))
+    # The app's own lifespan runs the MCP session manager; the sweep joins it.
+    mcp_lifespan = served.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(scope: Starlette) -> AsyncGenerator[Any]:
+        sweeping = asyncio.create_task(sweep(state))
+        try:
+            async with mcp_lifespan(scope) as held:
+                yield held
+        finally:
+            sweeping.cancel()
+
+    served.router.lifespan_context = lifespan
     return served
