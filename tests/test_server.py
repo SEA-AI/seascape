@@ -160,25 +160,44 @@ def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: State) -> None
     assert "busy" in state.jobs
 
 
-def test_an_idle_server_still_deletes_what_expired(
-    tmp_path: Path, state: State
+def test_an_idle_server_keeps_deleting_what_expires(
+    tmp_path: Path, state: State, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    old = tmp_path / "old"
-    old.mkdir()
+    monkeypatch.setattr(jobs, "SWEEP_S", 0.05)
+    first, second = tmp_path / "first", tmp_path / "second"
+    for folder in (first, second):
+        folder.mkdir()
     a_day_ago = time.time() - jobs.KEEP_S - 1
-    os.utime(old, (a_day_ago, a_day_ago))
-
+    os.utime(first, (a_day_ago, a_day_ago))
     application = transport.app(state, "localhost")
+
+    async def until(gone: Path) -> None:
+        for _ in range(100):
+            if not gone.exists():
+                return
+            await asyncio.sleep(0.05)
 
     async def served() -> None:
         async with application.router.lifespan_context(application):
-            for _ in range(100):
-                if not old.exists():
-                    return
-                await asyncio.sleep(0.05)
+            await until(first)
+            # Expires after the startup sweep, so only a later one can delete it.
+            os.utime(second, (a_day_ago, a_day_ago))
+            await until(second)
 
     asyncio.run(served())
-    assert not old.exists()
+    assert not first.exists()
+    assert not second.exists()
+
+
+def test_a_folder_lives_as_long_as_its_archive(tmp_path: Path, state: State) -> None:
+    folder, archive = tmp_path / "job", tmp_path / "job.zip"
+    folder.mkdir()
+    archive.touch()
+    a_day_ago = time.time() - jobs.KEEP_S - 1
+    os.utime(folder, (a_day_ago, a_day_ago))
+    asyncio.run(jobs.prune(state))
+    assert folder.exists()
+    assert archive.exists()
 
 
 def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
