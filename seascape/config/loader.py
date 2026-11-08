@@ -375,7 +375,6 @@ def seeds(first: int, variants: int) -> range:
 
 
 def _refs(node: Any) -> Iterator[str]:
-    """Every `$ref` under `node`."""
     if isinstance(node, dict):
         if "$ref" in node:
             yield node["$ref"]
@@ -386,8 +385,25 @@ def _refs(node: Any) -> Iterator[str]:
             yield from _refs(value)
 
 
+def schema_sections() -> dict[str, str]:
+    """Each top-level field of the scenario's schema, with what it describes."""
+    schema = json_schema()
+    described = {}
+    for name, spec in schema["properties"].items():
+        # A model-typed field has no description of its own; its model's is the doc.
+        first = next(_refs(spec), "").removeprefix("#/$defs/")
+        described[name] = spec.get("description") or schema["$defs"].get(first, {}).get(
+            "description", ""
+        )
+    return described
+
+
 def schema_section(name: str) -> dict[str, Any]:
-    """One top-level field of the scenario's schema, with the definitions it reaches."""
+    """One top-level field of the scenario's schema, with the definitions it reaches.
+
+    Raises:
+        KeyError: No such field.
+    """
     schema = json_schema()
     spec = schema["properties"][name]
     reached: dict[str, Any] = {}
