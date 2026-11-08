@@ -1503,7 +1503,7 @@
         },
         "range_m": {
           "title": "Range M",
-          "description": "Horizontal, from the ownship's origin.",
+          "description": "Horizontal, from the ownship's origin at t = 0.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -2148,7 +2148,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.",
+      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.\n\nIt sails from the origin on its bow's bearing. The sea, the sky and every object\nkeep their places, so it passes through them: an object's `range_m` and\n`bearing_deg` are from the ownship's start.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2220,6 +2220,59 @@
               "maximum": 400.0,
               "minimum": 250.0,
               "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "speed_mps": {
+          "title": "Speed Mps",
+          "description": "Along its heading; 0 holds it at the origin.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "yaw": {
+          "description": "Its heading about the start's. Under way, it sails the curve this steers.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Swing"
             },
             {
               "type": "null"
@@ -3959,7 +4012,7 @@
         },
         "range_m": {
           "title": "Range M",
-          "description": "Horizontal, from the ownship's origin.",
+          "description": "Horizontal, from the ownship's origin at t = 0.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,

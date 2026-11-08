@@ -601,6 +601,24 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         ("baseline.toml", ["outputs.loop = true"], "duration_s > 0"),
         ("underway.toml", ["outputs.loop = true"], "drift"),
         (
+            "baseline.toml",
+            [
+                "ownship.speed_mps = 5.0",
+                "outputs.loop = true",
+                "outputs.duration_s = 8",
+            ],
+            "ownship.speed_mps",
+        ),
+        (
+            "baseline.toml",
+            [
+                "ownship.yaw = { amplitude_deg = 5.0, period_s = 9.0 }",
+                "outputs.loop = true",
+                "outputs.duration_s = 8",
+            ],
+            "ownship.yaw's 9.0 s",
+        ),
+        (
             "drifting.toml",
             [
                 'targets = { asset = "multipurpose_freighter", count = 2,'

@@ -81,7 +81,7 @@ _DRAUGHT = (
     "How deep it floats, keel to waterline, within the asset's `draught_range_m`. "
     "Unset, the asset's own."
 )
-_RANGE = "Horizontal, from the ownship's origin."
+_RANGE = "Horizontal, from the ownship's origin at t = 0."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
 
@@ -201,10 +201,22 @@ class Heave(Model):
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the attitude alone.
+
+    It sails from the origin on its bow's bearing. The sea, the sky and every object
+    keep their places, so it passes through them: an object's `range_m` and
+    `bearing_deg` are from the ownship's start.
     """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)
     t_k: HullTemperatureK = None
+    speed_mps: float = Field(
+        default=0.0, ge=0.0, description="Along its heading; 0 holds it at the origin."
+    )
+    yaw: Swing | None = Field(
+        default=None,
+        description="Its heading about the start's. Under way, it sails the curve "
+        "this steers.",
+    )
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
     )

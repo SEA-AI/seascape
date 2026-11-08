@@ -175,8 +175,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     heat = surroundings(scenario) if band == "ir" else None
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
-    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall)
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
+    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall, radius_m)
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both

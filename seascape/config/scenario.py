@@ -239,7 +239,13 @@ class Scenario(Model):
                     f"{spec.asset} has speed_mps > 0, and a straight run never comes "
                     "back to close a loop: give it a drift instead"
                 )
+        if self.ownship.speed_mps > 0.0:
+            raise ValueError(
+                "ownship.speed_mps > 0, and a straight run never comes back to close "
+                "a loop: set it to 0"
+            )
         motions = [
+            ("ownship.yaw", self.ownship.yaw),
             ("ownship.roll", self.ownship.roll),
             ("ownship.pitch", self.ownship.pitch),
             ("ownship.heave", self.ownship.heave),

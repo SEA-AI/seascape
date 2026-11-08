@@ -184,6 +184,18 @@ uv run seascape render scenarios/underway.toml -o out/   # out/<camera>/0000.jpg
 uv run seascape video out/                               # out/<camera>.mp4
 ```
 
+The ownship sails too. It starts at the origin on its bow's bearing, and every object's `range_m` and `bearing_deg` are from that start. `speed_mps` takes it along its heading, and a `yaw` swing steers it a weaving course. The sea, the sky and the objects stay where they are, so a buoy falls astern at the ownship's speed and a vessel with a `heading_deg` and `speed_mps` crosses its track:
+
+```toml
+[ownship]
+asset = "zodiac"
+speed_mps = 15.4                                   # 30 kt
+
+[ownship.yaw]
+amplitude_deg = 8.0
+period_s = 40.0
+```
+
 `seascape recording` lays the videos out as a rig's `model` records them, so it takes a rig that names one, such as the Pod in `scenarios/port-pod-loop.toml`:
 
 ```bash
@@ -192,6 +204,6 @@ uv run seascape video out/
 uv run seascape recording out/                           # out/recordings/<rig>/<model>_recordings_<ts>/
 ```
 
-`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target cannot be underway; give it a `drift`, as `scenarios/drifting.toml` does.
+`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target cannot be underway, nor can the ownship; give a target a `drift`, as `scenarios/drifting.toml` does.
 
 Every frame has its own entry in `calibration.json` and `labels.json`, stamped with `time_s`. `seascape video` paces the frames by it, so a clip re-encodes without re-rendering. The `.blend` from `seascape build` carries the motion as keyframes. `montage` and `panorama` take stills.

@@ -2,7 +2,7 @@
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import chain, combinations
 
@@ -132,14 +132,41 @@ def _vessel(
     return anchor
 
 
+# A judgement: the quadrature step that integrates the heading into a track, far
+# under the shortest yaw period a hull steers.
+TRACK_STEP_S = 0.05
+
+
+def _track(
+    ownship: Ownship, outputs: Outputs
+) -> Callable[[float], tuple[float, float, float]]:
+    """Where the ownship is at a time: east and north in metres, and the heading in
+    radians clockwise from north. It sails `speed_mps` along its heading, and the
+    heading swings by `yaw`, so the position is the heading's integral.
+    """
+    swing = ownship.yaw
+    amplitude = 0.0 if swing is None else math.radians(swing.amplitude_deg)
+    omega = 0.0 if swing is None else 2.0 * math.pi / outputs.period_s(swing.period_s)
+
+    def at(t_s: float) -> tuple[float, float, float]:
+        tau = np.linspace(0.0, t_s, max(2, math.ceil(t_s / TRACK_STEP_S) + 1))
+        heading = amplitude * np.sin(omega * tau)
+        east = ownship.speed_mps * np.trapezoid(np.sin(heading), tau)
+        north = ownship.speed_mps * np.trapezoid(np.cos(heading), tau)
+        return float(east), float(north), float(heading[-1])
+
+    return at
+
+
 def add_ownship(
     ownship: Ownship,
     rigs: bpy.types.Object,
     hulls: Hulls,
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
+    radius_m: float,
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rigs.
+    """Bow to +Y at the origin, carrying the rigs, and sailing from it.
 
     Args:
         ownship: Its hull, attitude and scripted motion.
@@ -147,6 +174,7 @@ def add_ownship(
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
         tall: The waves that are geometry, which it heaves on as well as its script.
+        radius_m: Earth's effective radius, which drops it to the curved sea.
     """
     if ownship.asset is None:
         anchor = empty("ownship")
@@ -174,23 +202,48 @@ def add_ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
+    track = _track(ownship, outputs)
+    sailing = ownship.speed_mps > 0.0
+    if sailing:
+        for index in (0, 1):
+            animate(
+                anchor,
+                "location",
+                outputs.times_s,
+                lambda t, index=index: track(t)[index],
+                index,
+            )
+    if ownship.yaw is not None:
+        animate(
+            anchor,
+            "rotation_euler",
+            outputs.times_s,
+            lambda t: yaw(math.degrees(track(t)[2])),
+            2,
+        )
     scripted = sine(anchor.location.z, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
         scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
-    if heave is not None or tall:
-        # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
+    if heave is not None or tall or sailing:
+        # A rig without a hull rides the water under it.
         length_m, beam_m = (
             (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
         )
 
         def value_at(t_s: float) -> float:
+            east, north, heading = track(t_s)
             rest = map(
-                float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+                float,
+                waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s),
             )
-            hull = waves.Waterplane(*rest, 0.0, length_m, beam_m)
-            return scripted(t_s) + waves.heave_m(tall, hull, t_s)
+            hull = waves.Waterplane(*rest, heading, length_m, beam_m)
+            return (
+                earth.sea_z_m(east, north, radius_m)
+                + scripted(t_s)
+                + waves.heave_m(tall, hull, t_s)
+            )
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
