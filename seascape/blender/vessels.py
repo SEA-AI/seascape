@@ -2,9 +2,10 @@
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import chain, combinations
+from typing import NamedTuple
 
 import bpy
 import numpy as np
@@ -132,14 +133,56 @@ def _vessel(
     return anchor
 
 
+# A judgement: trapezoid steps per yaw period; the error falls with the square.
+STEPS_PER_YAW = 64
+
+
+class Pose(NamedTuple):
+    """East and north of the start; the heading is clockwise from north."""
+
+    east_m: float
+    north_m: float
+    heading_rad: float
+
+
+def _track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
+    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings."""
+    times = np.asarray(outputs.times_s)
+    swing = ownship.yaw
+    # Whole substeps per frame, so every frame lands on the grid; a straight run is
+    # exact in one.
+    sub = 1
+    if swing is not None:
+        step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
+        sub = math.ceil(1.0 / (outputs.fps * step_s))
+    tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
+    heading = np.zeros_like(tau)
+    if swing is not None:
+        omega = 2.0 * math.pi / outputs.period_s(swing.period_s)
+        heading = math.radians(swing.amplitude_deg) * np.sin(omega * tau)
+
+    def integral(speed: np.ndarray) -> np.ndarray:
+        area = np.diff(tau) * (speed[1:] + speed[:-1]) / 2.0
+        return np.concatenate(([0.0], np.cumsum(area)))
+
+    east = ownship.speed_mps * integral(np.sin(heading))
+    north = ownship.speed_mps * integral(np.cos(heading))
+
+    def at(t_s: float) -> Pose:
+        return Pose(*(float(np.interp(t_s, tau, c)) for c in (east, north, heading)))
+
+    return at
+
+
 def add_ownship(
     ownship: Ownship,
     rigs: bpy.types.Object,
     hulls: Hulls,
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
+    radius_m: float,
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rigs.
+    """Bow to +Y at the origin, carrying the rigs, and sailing from it.
 
     Args:
         ownship: Its hull, attitude and scripted motion.
@@ -147,6 +190,7 @@ def add_ownship(
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
         tall: The waves that are geometry, which it heaves on as well as its script.
+        radius_m: Earth's effective radius, which drops it to the curved sea.
     """
     if ownship.asset is None:
         anchor = empty("ownship")
@@ -174,23 +218,44 @@ def add_ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
+    track = _track(ownship, outputs)
+    sailing = ownship.speed_mps > 0.0
+    # Limitation: it leaves no wake; `wakes.Wake` draws only a straight run.
+    if sailing:
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).east_m, 0)
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).north_m, 1)
+    if ownship.yaw is not None:
+        animate(
+            anchor,
+            "rotation_euler",
+            outputs.times_s,
+            lambda t: yaw(math.degrees(track(t).heading_rad)),
+            2,
+        )
     scripted = sine(anchor.location.z, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
         scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
-    if heave is not None or tall:
-        # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
+    if heave is not None or tall or sailing:
+        # A rig without a hull rides the water under it.
         length_m, beam_m = (
             (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
         )
 
         def value_at(t_s: float) -> float:
-            rest = map(
-                float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+            pose = track(t_s)
+            rest = waves.gerstner_rest_m(
+                tall, np.array(pose.east_m), np.array(pose.north_m), t_s
             )
-            hull = waves.Waterplane(*rest, 0.0, length_m, beam_m)
-            return scripted(t_s) + waves.heave_m(tall, hull, t_s)
+            hull = waves.Waterplane(
+                *map(float, rest), pose.heading_rad, length_m, beam_m
+            )
+            return (
+                earth.sea_z_m(pose.east_m, pose.north_m, radius_m)
+                + scripted(t_s)
+                + waves.heave_m(tall, hull, t_s)
+            )
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor

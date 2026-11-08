@@ -45,9 +45,12 @@ SEA_MARGIN = 1.5
 
 
 def sea_reach_m(scenario: Scenario) -> float:
-    """Half-width of the sea, a margin past the highest rig's horizon."""
+    """Half-width of the sea: a margin past the highest rig's horizon, plus the run
+    `speed_mps * duration_s`, which a turn only shortens.
+    """
     height_m = max(rig.height_m for rig in scenario.rigs.values())
-    return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k)
+    run_m = scenario.ownship.speed_mps * scenario.outputs.duration_s
+    return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k) + run_m
 
 
 # Waves per lane-vector: a Vector Math node costs Cycles about what a Math node does.

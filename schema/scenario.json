@@ -1503,7 +1503,7 @@
         },
         "range_m": {
           "title": "Range M",
-          "description": "Horizontal, from the ownship's origin.",
+          "description": "Horizontal, from the ownship's origin at t = 0.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -1580,7 +1580,7 @@
         },
         "heading_from": {
           "title": "Heading From",
-          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it, where 0 points away and 180 towards.",
+          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it at t = 0, where 0 points away and 180 towards.",
           "default": "ownship",
           "anyOf": [
             {
@@ -2148,7 +2148,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.",
+      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2220,6 +2220,59 @@
               "maximum": 400.0,
               "minimum": 250.0,
               "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "speed_mps": {
+          "title": "Speed Mps",
+          "description": "Along its heading.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "yaw": {
+          "description": "Its heading about the start's.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Swing"
             },
             {
               "type": "null"
@@ -3959,7 +4012,7 @@
         },
         "range_m": {
           "title": "Range M",
-          "description": "Horizontal, from the ownship's origin.",
+          "description": "Horizontal, from the ownship's origin at t = 0.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
