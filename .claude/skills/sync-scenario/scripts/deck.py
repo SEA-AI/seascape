@@ -1,0 +1,40 @@
+"""A hull's top per station along it, in the vessel frame a rig's `offset_y_m`,
+`offset_x_m` and `height_m` use: y forward of midships, z above the waterline.
+
+    uv run python .claude/skills/sync-scenario/scripts/deck.py lobster_yacht [step_m]
+"""
+
+import sys
+
+import bpy
+import numpy as np
+
+from seascape.blender import meshes
+
+
+def tops(name: str, step_m: float) -> list[tuple[float, float, float]]:
+    """(y, top z, x at the top) per `step_m` of length, stern first."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = meshes.import_asset(name, "eo")
+    bpy.context.view_layer.update()
+    found = []
+    for mesh in meshes.mesh_objects(parts):
+        local = np.empty(len(mesh.data.vertices) * 3)
+        mesh.data.vertices.foreach_get("co", local)
+        world = np.array(mesh.matrix_world)
+        found.append(local.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3])
+    x, y, z = np.concatenate(found).T
+    rows = []
+    for start in np.arange(y.min(), y.max(), step_m):
+        inside = (y >= start) & (y < start + step_m)
+        if inside.any():
+            top = np.argmax(np.where(inside, z, -np.inf))
+            rows.append((start + step_m / 2, z[top], x[top]))
+    return rows
+
+
+if __name__ == "__main__":
+    step = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
+    print("y_m     top_z_m  x_m")
+    for y_m, z_m, x_m in tops(sys.argv[1], step):
+        print(f"{y_m:6.2f}  {z_m:6.2f}  {x_m:6.2f}")

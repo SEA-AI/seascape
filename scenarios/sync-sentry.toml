@@ -2,7 +2,21 @@
 
 extends = "sync.toml"
 
+# Sentry rides on motor yachts.
+[ownship]
+asset = "lobster_yacht"
+
+# On the hardtop's roof, whose top is 2.73 m up, 1.6 to 2.1 m aft.
 [rigs.mast]
 preset = "sentry"
-height_m = 1.9
-offset_y_m = -2.6
+height_m = 2.9
+offset_y_m = -1.8
+
+# On the cameras' boresight, broadside, far enough that the narrow cameras look
+# barely down at it.
+[[objects]]
+asset = "container"
+range_m = 150.0
+bearing_deg = 0.0
+heading_deg = 90.0
+heading_from = "line_of_sight"

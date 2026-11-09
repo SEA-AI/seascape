@@ -199,20 +199,31 @@ def render(
 
 @main.command()
 @_scenario("A directory. Default: beside the scenario.")
-def sync(scenario: Path, output: Path | None, overrides: tuple[str, ...]) -> None:
-    """Render, encode and record a scenario with its objects replaced by containers
-    every camera sees mid-frame, which each rig's height must keep there.
-    """
-    from seascape import sync as placement
+@click.option(
+    "--preview",
+    is_flag=True,
+    help="Render at 1 fps, a quarter the size and one sample, and check every video "
+    "keeps its containers whole in every frame; nothing is encoded.",
+)
+def sync(
+    scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
+) -> None:
+    """Render, encode and record a sync scenario, or preview it."""
+    from seascape import sync as checks
 
-    built = placement.scene(scenario, overrides)
-    into = _empty(output or scenario.with_suffix(""))
-    click.echo(f"{len(built.objects)} containers", err=True)
+    built = load(scenario, list(overrides))
+    if not preview:
+        into = _empty(output or scenario.with_suffix(""))
+        _render(built, into)
+        _encode(into, _QUALITY)
+        for path in recording.export(into):
+            click.echo(path)
+        return
+    built = load(scenario, [*overrides, checks.preview(built)])
+    into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
     _render(built, into)
-    placement.check(built, labels.Labels.read(into))
-    _encode(into, _QUALITY)
-    for path in recording.export(into):
-        click.echo(path)
+    checks.check(labels.Labels.read(into))
+    click.echo(f"every video keeps its containers whole: {into}")
 
 
 @main.command("montage")

@@ -14,7 +14,7 @@ from seascape import assets, cli, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
-from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
+from tests.scenarios import BASELINE, OPEN_SEA
 
 type Run = Callable[..., Result]
 
@@ -67,14 +67,6 @@ def test_a_scenario_mistake_is_an_error_on_stderr_and_exit_1(run: Run) -> None:
     assert failed.stderr.startswith("Error: ")
     assert "Traceback" not in failed.stderr
     assert not failed.stdout
-
-
-def test_sync_names_the_cameras_no_rig_height_suits(run: Run) -> None:
-    failed = run("sync", SYNC_SENTRY, "--set", "rigs.mast.cameras.t_n.pitch_deg = -30")
-
-    assert failed.exit_code == 1
-    assert "no rig height" in failed.stderr
-    assert "mast_t_n" in failed.stderr
 
 
 def test_schema_and_a_scenario_mistake_never_load_blender() -> None:
