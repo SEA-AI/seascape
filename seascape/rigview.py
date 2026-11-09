@@ -15,7 +15,7 @@ from seascape.blender.rigs import add_rigs, boresight_deg
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
 from seascape.outputs import canvas
-from seascape.physics import earth
+from seascape.physics import earth, fisheye
 
 VIEWS = (
     workbench.Aim("starboard beam", 90.0, 0.0),
@@ -27,8 +27,6 @@ TILE = (800, 600)
 REACH = 0.15
 # A frustum's edge, as a share of its length.
 WIRE = 1 / 30
-# tan(hfov / 2) blows up at 180 deg and flips past it.
-WIDEST_DEG = 160.0
 FONT_PX = 18
 LINE_PX = FONT_PX + 4
 
@@ -40,18 +38,21 @@ def _frustum(
 ) -> bpy.types.Object:
     """A wireframe pyramid from `camera` along its view: nested ones stay visible."""
     spec = mount.camera
-    aspect = spec.width_px / spec.height_px
-    across = math.radians(min(spec.hfov_deg, WIDEST_DEG)) / 2
-    # A fisheye's angle grows with the pixel radius, a pinhole's tangent does.
-    up = across / aspect if spec.lens.fisheye else math.atan(math.tan(across) / aspect)
-    half_w, half_h = length_m * math.tan(across), length_m * math.tan(up)
-    far = [
-        (sx * half_w, sy * half_h, -length_m)
-        for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))
-    ]
+    corners_px = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)]) / 2
+    corners_px = corners_px * (spec.width_px, spec.height_px)
+    if spec.lens.fisheye is not None:
+        k, fx = spec.lens.fisheye, spec.fisheye_focal_px
+        rays = fisheye.direction(corners_px[:, 0], corners_px[:, 1], k, fx)
+        far = rays * length_m / -rays[:, 2:]
+    else:
+        across = math.tan(math.radians(spec.hfov_deg) / 2)
+        far = (
+            np.column_stack([corners_px * 2 * across / spec.width_px, -np.ones(4)])
+            * length_m
+        )
     mesh = bpy.data.meshes.new(camera.name)
     mesh.from_pydata(
-        [(0.0, 0.0, 0.0), *far],
+        [(0.0, 0.0, 0.0), *map(tuple, far)],
         [],
         [(0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 1), (1, 4, 3, 2)],
     )
