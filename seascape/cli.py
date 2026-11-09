@@ -381,6 +381,32 @@ def measure(mesh: Path) -> None:
 
 
 @assets_.command()
+@click.argument("asset", shell_complete=_names)
+@click.option(
+    "--step-m",
+    type=click.FloatRange(min=0, min_open=True),
+    default=0.5,
+    show_default=True,
+    help="Station length along the hull.",
+)
+def top(asset: str, step_m: float) -> None:
+    """Print a hull's highest point per station along its length.
+
+    To mount a rig on a hardtop or radar arch, pick its station: offset_y_m is its
+    y_m, offset_x_m its x_m, height_m just above its top_z_m.
+    """
+    if asset not in assets.manifest():
+        raise click.BadParameter(f"no mesh {asset!r}; see `seascape assets list`")
+    from seascape.blender import meshes
+
+    with _blender_log(Path(os.devnull)):
+        rows = meshes.top(asset, step_m)
+    click.echo("y_m     top_z_m  x_m")
+    for y_m, z_m, x_m in rows:
+        click.echo(f"{y_m:6.2f}  {z_m:6.2f}  {x_m:6.2f}")
+
+
+@assets_.command()
 @click.argument("scenario", type=_FILE)
 @click.argument("out", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--band", type=_BANDS, default="eo", show_default=True)

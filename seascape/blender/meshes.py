@@ -1,6 +1,7 @@
 """An asset's meshes: imported, joined, fitted to its size, and measured."""
 
 import contextlib
+import itertools
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
@@ -181,6 +182,74 @@ def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
         for obj in [part, *part.children_recursive]
         if obj.type == "MESH"
     ]
+
+
+def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
+    """Every triangle of `objects` as evaluated, in world metres: (n, corner, xyz)."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    found = []
+    for obj in objects:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        mesh.calc_loop_triangles()
+        local = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices))
+        corners = faces.ints(
+            mesh.loop_triangles, "vertices", 3 * len(mesh.loop_triangles)
+        )
+        world = np.array(evaluated.matrix_world)
+        points = local.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
+        found.append(points[corners].reshape(-1, 3, 3))
+        evaluated.to_mesh_clear()
+    return np.concatenate(found) if found else np.empty((0, 3, 3))
+
+
+def top(name: str, step_m: float) -> list[tuple[float, float, float]]:
+    """`top_per_station` of an asset as fitted, in an emptied scene: y forward of
+    midships, z above the waterline.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = import_asset(name, "eo")
+    bpy.context.view_layer.update()
+    facets = triangles(mesh_objects(parts))
+    if not len(facets):
+        raise ValueError(f"{name} has no triangles to find the top of")
+    return top_per_station(facets, step_m)
+
+
+def top_per_station(
+    facets: np.ndarray, step_m: float
+) -> list[tuple[float, float, float]]:
+    """The top of triangles `facets` (n, corner, xyz) per `step_m` along y, stern
+    first: (y, top z, x), at the point of the top nearest its middle.
+
+    A triangle's highest point inside a station lies on a corner inside it or where
+    an edge crosses a face, so those points give the top exactly.
+    """
+    starts = facets.reshape(-1, 3)
+    along = np.roll(facets, -1, axis=1).reshape(-1, 3) - starts
+    y = starts[:, 1]
+    count = max(int(np.ceil((y.max() - y.min()) / step_m)), 1) + 1
+    planes = y.min() + step_m * np.arange(count)
+    planes[-1] = y.max()  # the last station ends with the hull, rounding aside
+    crossings = []
+    for plane_m in planes:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = (plane_m - y) / along[:, 1]
+        crosses = (t >= 0) & (t <= 1)  # NaN and inf, from an edge along the plane, fail
+        crossings.append(starts[crosses] + t[crosses, None] * along[crosses])
+    rows = []
+    for i, (near_m, far_m) in enumerate(itertools.pairwise(planes)):
+        inside = starts[(y >= near_m) & (y <= far_m)]
+        points = np.concatenate([inside, crossings[i], crossings[i + 1]])
+        if len(points):
+            top_m = points[:, 2].max()
+            # Rounding leaves a flat roof's corners at slightly different heights.
+            # An exact match would keep one corner and report the edge, not the middle.
+            top = points[np.isclose(points[:, 2], top_m)]
+            middle = (top.min(axis=0) + top.max(axis=0)) / 2
+            x_m, y_m, z_m = top[np.linalg.norm(top - middle, axis=1).argmin()]
+            rows.append((float(y_m), float(z_m), float(x_m)))
+    return rows
 
 
 _CACHE_FORMAT = 3  # raise to orphan every cache already written
