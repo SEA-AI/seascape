@@ -20,7 +20,7 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 2. **Mount.** Print the hull's top along its length, in the frame the rig uses:
 
    ```bash
-   uv run python .claude/skills/sync-scenario/scripts/deck.py <asset>
+   uv run seascape assets profile <asset>
    ```
 
    Find where the product is installed on such a boat (a hardtop, a radar arch, a
