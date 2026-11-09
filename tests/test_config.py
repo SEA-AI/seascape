@@ -1451,6 +1451,17 @@ def test_a_drawn_ownship_draught_that_can_leave_the_range_is_refused() -> None:
         load(BASELINE, [f'ownship = {{ asset = "bulk_carrier", {drawn} }}'])
 
 
+def test_an_ownship_load_draws_its_draught_per_seed_within_its_range() -> None:
+    laden = 'ownship = { asset = "cargo_ship", draught_m = { loaded = [0.0, 1.0] } }'
+    span_m = manifest()["cargo_ship"].draught_range_m
+    assert span_m is not None
+    draughts_m = {
+        load(BASELINE, [laden, f"seed = {seed}"]).ownship.draught_m for seed in range(3)
+    }
+    assert len(draughts_m) == 3
+    assert all(d is not None and span_m[0] <= d <= span_m[1] for d in draughts_m)
+
+
 @pytest.mark.parametrize(
     ("asset", "draught_m", "match"),
     [

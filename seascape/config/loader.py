@@ -348,6 +348,10 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
             for i, spec in enumerate(option):
                 _draughts_fit(spec, f"objects[{i}]")
     _draughts_fit(data.get("ownship"), "ownship")
+    # `draw/ownship` is the path the whole tree's draw gives it, as for the sky.
+    if isinstance(ownship := _draw(data.get("ownship"), seed, "draw/ownship"), dict):
+        path = "draw/ownship/draught_m/loaded"
+        data["ownship"] = ownship | _draught_m(ownship, seed, path)
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
@@ -439,7 +443,8 @@ def json_schema() -> dict[str, Any]:
         {"$ref": "#/$defs/OpticalDepth"}
     )
     schema["$defs"]["Loaded"] = Loaded.model_json_schema()
-    schema["$defs"]["Object"]["properties"]["draught_m"]["anyOf"].append(
-        {"$ref": "#/$defs/Loaded"}
-    )
+    for model in ("Object", "Ownship"):
+        schema["$defs"][model]["properties"]["draught_m"]["anyOf"].append(
+            {"$ref": "#/$defs/Loaded"}
+        )
     return schema
