@@ -1,6 +1,7 @@
 """An asset's meshes: imported, joined, fitted to its size, and measured."""
 
 import contextlib
+import itertools
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
@@ -181,6 +182,64 @@ def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
         for obj in [part, *part.children_recursive]
         if obj.type == "MESH"
     ]
+
+
+def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
+    """Every triangle of `objects` as evaluated, in world metres: (n, corner, xyz)."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    found = []
+    for obj in objects:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        mesh.calc_loop_triangles()
+        local = np.empty(len(mesh.vertices) * 3)
+        mesh.vertices.foreach_get("co", local)
+        corners = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int32)
+        mesh.loop_triangles.foreach_get("vertices", corners)
+        world = np.array(evaluated.matrix_world)
+        points = local.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
+        found.append(points[corners].reshape(-1, 3, 3))
+        evaluated.to_mesh_clear()
+    return np.concatenate(found)
+
+
+def profile(name: str, step_m: float) -> list[tuple[float, float, float]]:
+    """`top_per_station` of an asset as fitted, in a scene of its own: y forward of
+    midships, z above the waterline, the frame a rig's offsets and height use.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = import_asset(name, "eo")
+    bpy.context.view_layer.update()
+    return top_per_station(triangles(mesh_objects(parts)), step_m)
+
+
+def top_per_station(
+    facets: np.ndarray, step_m: float
+) -> list[tuple[float, float, float]]:
+    """The top of triangles `facets` (n, corner, xyz) per `step_m` along y, stern
+    first: (y of the station's middle, top z, x at the top).
+
+    A triangle's highest point inside a slab of y lies on a corner inside it or where
+    an edge crosses the slab's face, so those points give the top exactly.
+    """
+    starts = facets.reshape(-1, 3)
+    along = np.roll(facets, -1, axis=1).reshape(-1, 3) - starts
+    y = starts[:, 1]
+    planes = np.arange(y.min(), y.max() + step_m, step_m)
+    crossings = []
+    for plane_m in planes:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = (plane_m - y) / along[:, 1]
+        crosses = (t >= 0) & (t <= 1)  # NaN and inf, from an edge along the plane, fail
+        crossings.append(starts[crosses] + t[crosses, None] * along[crosses])
+    rows = []
+    for i, (near_m, far_m) in enumerate(itertools.pairwise(planes)):
+        inside = starts[(y >= near_m) & (y <= far_m)]
+        points = np.concatenate([inside, crossings[i], crossings[i + 1]])
+        if len(points):
+            top = points[points[:, 2].argmax()]
+            rows.append((float(near_m + far_m) / 2, float(top[2]), float(top[0])))
+    return rows
 
 
 _CACHE_FORMAT = 3  # raise to orphan every cache already written
