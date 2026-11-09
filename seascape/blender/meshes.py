@@ -243,6 +243,8 @@ def top_per_station(
         points = np.concatenate([inside, crossings[i], crossings[i + 1]])
         if len(points):
             top_m = points[:, 2].max()
+            # Close, not equal: rounding splits a flat roof's corners, and `==` keeps
+            # one, at the roof's edge.
             top = points[np.isclose(points[:, 2], top_m)]
             middle = (top.min(axis=0) + top.max(axis=0)) / 2
             x_m, y_m, z_m = top[np.linalg.norm(top - middle, axis=1).argmin()]
