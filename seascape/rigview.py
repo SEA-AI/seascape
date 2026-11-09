@@ -116,6 +116,7 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
 
 
 def _caption(lines: list[Line], width_px: int) -> Image.Image:
+    """`lines` top to bottom, each in its own ink, on the matte."""
     caption = Image.new("RGB", (width_px, 16 + LINE_PX * len(lines)), canvas.MATTE)
     pen = ImageDraw.Draw(caption)
     for k, (text, ink) in enumerate(lines):
