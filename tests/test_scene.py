@@ -836,8 +836,11 @@ def test_a_lighter_ownship_lifts_its_rig_with_its_hull() -> None:
     rise_m = ship.draught_m - lightest_m
     heights = []
     for draught_m in (None, lightest_m):
+        # On a calm sea: a lighter hull heaves differently.
+        calm = {"wind_speed_mps": 0, "swell": None}
         built = scene.build(
-            variant(ownship={"asset": "cargo_ship", "draught_m": draught_m}), "eo"
+            variant(ownship={"asset": "cargo_ship", "draught_m": draught_m}, sea=calm),
+            "eo",
         )
         hull = mesh_objects(built.vessel.children_recursive)
         top_m = max(c.z for c in box_corners(hull))
@@ -1893,7 +1896,19 @@ class TestDrifting:
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
-            hull = waves.Waterplane(*map(float, rest), heading, length, beam)
+            (spec,) = scenario.objects
+            assert anchor["speed_mps"] == spec.speed_mps
+            assert 0 < anchor["box_draught_m"] < manifest()[spec.asset].draught_m
+            hull = waves.Waterplane(
+                *map(float, rest),
+                heading,
+                length,
+                beam,
+                anchor["box_beam_m"],
+                anchor["box_draught_m"],
+                spec.speed_mps * math.sin(heading),
+                spec.speed_mps * math.cos(heading),
+            )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
                 (pitch, -roll), abs=1e-5

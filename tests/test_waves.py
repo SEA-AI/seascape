@@ -1,4 +1,5 @@
 import math
+from collections.abc import Callable
 from statistics import NormalDist
 
 import numpy as np
@@ -645,6 +646,94 @@ def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     )
     own_slope = ripple.amplitude_m * ripple.k_rad_m
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
+
+
+def _jensen(wave: waves.Wave, hull: waves.Waterplane) -> tuple[float, float]:
+    """Gain and phase lead of heave and pitch over the hull's static ones: Jensen,
+    Mansour & Olsen (2004) eqs. 2.3-2.5, 2.9, 2.10, 2.13 and 4.4, at the frequency
+    of encounter's magnitude.
+    """
+    k, omega = wave.k_rad_m, wave.omega_rad_s
+    met = (
+        omega - wave.k_east_rad_m * hull.east_mps - wave.k_north_rad_m * hull.north_mps
+    )
+    alpha, b, t = abs(met) / omega, hull.box_beam_m, hull.box_draught_m
+    a = 2 * math.sin(k * b * alpha**2 / 2) * math.exp(-k * t * alpha**2)
+    k_along = wave.k_east_rad_m * math.sin(hull.heading_rad) + (
+        wave.k_north_rad_m * math.cos(hull.heading_rad)
+    )
+    smith = math.exp(-abs(k_along) * t)
+    excite = complex(1 - k * t, a**2 / (k * b * alpha**3))
+    respond = complex(1 - 2 * k * t * alpha**2, -(a**2) / (k * b * alpha**2))
+    lead = math.atan2(excite.imag, excite.real) + math.atan2(respond.imag, respond.real)
+    return smith * abs(excite) / abs(respond), lead
+
+
+def _heave(wave: waves.Wave, hull: waves.Waterplane, t_s: float) -> float:
+    return waves.heave_m((wave,), hull, t_s)
+
+
+def _pitch_slope(wave: waves.Wave, hull: waves.Waterplane, t_s: float) -> float:
+    return math.tan(waves.attitude((wave,), hull, t_s)[0])
+
+
+@pytest.mark.parametrize("motion", [_heave, _pitch_slope])
+@pytest.mark.parametrize(
+    ("toward_deg", "speed_mps", "omega_rad_s"),
+    [
+        pytest.param(180.0, 18.1, 0.8, id="head"),
+        pytest.param(150.0, 18.1, 1.3, id="bow-quartering"),
+        pytest.param(20.0, 18.1, 1.2, id="overtaking-following"),
+    ],
+)
+def test_a_hull_moves_as_jensen_s_box_its_static_ride_a_lead_later(
+    motion: Callable[[waves.Wave, waves.Waterplane, float], float],
+    toward_deg: float,
+    speed_mps: float,
+    omega_rad_s: float,
+) -> None:
+    """TMV114 (Jensen et al. 2004, 3.1), sailing north."""
+    wave = waves.Wave(0.01, omega_rad_s, math.radians(toward_deg), 0.4)
+
+    def hull(t_s: float) -> waves.Waterplane:
+        return waves.Waterplane(
+            0.0,
+            speed_mps * t_s,
+            0.0,
+            length_m=96.0,
+            beam_m=13.8,
+            box_beam_m=13.8 * 0.53,
+            box_draught_m=2.5,
+            north_mps=speed_mps,
+        )
+
+    def still(t_s: float) -> waves.Waterplane:
+        """The waterplane alone, with no box."""
+        return hull(t_s)._replace(box_beam_m=0.0, box_draught_m=0.0)
+
+    gain, lead = _jensen(wave, hull(0.0))
+    met = abs(omega_rad_s - wave.k_north_rad_m * speed_mps)
+    times = np.linspace(0.0, 2 * math.pi / met, 7)
+
+    moved = [motion(wave, hull(t), t) for t in times]
+    static = [motion(wave, still(t + lead / met), t + lead / met) for t in times]
+
+    assert moved == pytest.approx(gain * np.array(static), abs=1e-9)
+
+
+def test_a_deep_hull_feels_a_short_wave_less_than_the_water_s_slope() -> None:
+    wave = waves.Wave(0.01, 1.5, math.radians(180.0), 0.0)
+    times = np.linspace(0.0, 2 * math.pi / 1.5, 32)
+
+    shallow, deep = (
+        max(
+            abs(waves.attitude((wave,), waves.Waterplane(0, 0, 0, 20, 5, 5, d), t)[0])
+            for t in times
+        )
+        for d in (0.0, 6.0)
+    )
+
+    assert deep < 0.5 * shallow
 
 
 def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:

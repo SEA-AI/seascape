@@ -9,6 +9,7 @@ from pathlib import Path
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 from seascape import atomic
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
@@ -399,6 +400,48 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
     # Above the waterline, which the fit puts at z = 0.
     parts[0]["height_m"] = max(c.z for c in fitted)
     return parts
+
+
+# Judgement: cells along and across the hull; the volume's error falls with their size.
+KEEL_CELLS = (64, 32)
+
+
+def keel_m(facets: np.ndarray) -> tuple[np.ndarray, float]:
+    """The lowest surface of triangles `facets` (n, corner, xyz) below the waterline,
+    z = 0, seen from beneath at the centres of `KEEL_CELLS` over their span in x and
+    y; 0 where none is. Its depth over a cell's area sums to the volume displaced,
+    which an open or overlapping mesh does not upset. Returns the heights (along,
+    across) and a cell's area.
+    """
+    low = facets[facets[:, :, 2].min(axis=1) < 0]
+    points = facets.reshape(-1, 3)
+    (x0, y0, z0), (x1, y1, _) = points.min(axis=0), points.max(axis=0)
+    along, across = KEEL_CELLS
+    keel = np.zeros((along, across))
+    if len(low):
+        tree = BVHTree.FromPolygons(
+            low.reshape(-1, 3).tolist(), np.arange(3 * len(low)).reshape(-1, 3).tolist()
+        )
+        for i, y in enumerate(y0 + (y1 - y0) * (np.arange(along) + 0.5) / along):
+            for j, x in enumerate(x0 + (x1 - x0) * (np.arange(across) + 0.5) / across):
+                hit, *_ = tree.ray_cast((x, y, z0 - 1.0), (0.0, 0.0, 1.0), 1.0 - z0)
+                if hit is not None:
+                    keel[i, j] = min(hit.z, 0.0)
+    return keel, float((x1 - x0) * (y1 - y0) / (along * across))
+
+
+def box_m(
+    keel: np.ndarray, cell_m2: float, length_m: float, rise_m: float = 0.0
+) -> tuple[float, float]:
+    """Beam and draught of the box with a hull's displaced volume and waterplane area
+    over `length_m`, from `keel_m`'s heights and cell; the waterline `rise_m` below
+    z = 0, on a hull lighter than as fitted.
+    """
+    depth_m = np.clip(-rise_m - keel, 0.0, None)
+    waterplane_m2 = np.count_nonzero(depth_m) * cell_m2
+    if not waterplane_m2:
+        return 0.0, 0.0
+    return waterplane_m2 / length_m, float(depth_m.sum() * cell_m2 / waterplane_m2)
 
 
 def _crevice(
