@@ -234,6 +234,21 @@ def montage_(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
     click.echo(montage.compose(built, output or scenario.with_suffix("")))
 
 
+@main.command("rig-view")
+@_scenario("The image. Default: beside the scenario.")
+def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) -> None:
+    """Draw the ownship with each rig camera's view on it, to confirm a mount."""
+    built = load(scenario, list(overrides))
+    if built.ownship.asset is None:
+        raise click.ClickException("the ownship has no asset to show its rigs on")
+    from seascape import rigview
+
+    path = output or scenario.with_name(f"{scenario.stem}-rig.png")
+    with _blender_log(Path(os.devnull)):
+        rigview.draw(built, path)
+    click.echo(path)
+
+
 @main.command("panorama")
 @click.argument("folder", type=_FOLDER)
 @click.option(

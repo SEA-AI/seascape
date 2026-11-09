@@ -1,8 +1,10 @@
 """Pictures laid out for a person to look at."""
 
+import colorsys
 from collections.abc import Sequence
 from itertools import batched
 
+import numpy as np
 from PIL import Image, ImageFont, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
@@ -78,3 +80,24 @@ def _centred(image: Image.Image, width: int, matte: Colour) -> Image.Image:
     left = (width - image.width) // 2
     border = (left, 0, width - image.width - left, 0)
     return ImageOps.expand(image.convert(_MODE), border=border, fill=matte)
+
+
+def on_backdrop(image: Image.Image) -> Image.Image:
+    """A dark hull shows on mid grey, not on the matte."""
+    backdrop = Image.new("RGBA", image.size, (110, 110, 110, 255))
+    return Image.alpha_composite(backdrop, image.convert("RGBA")).convert("RGB")
+
+
+def palette(n: int) -> np.ndarray:
+    """`n` colours apart from their neighbours: golden-ratio hues, three values."""
+    hues = (np.arange(n) * 0.618034) % 1.0
+    return np.array(
+        [
+            [
+                round(255 * c)
+                for c in colorsys.hsv_to_rgb(h, 0.75, (1.0, 0.8, 0.6)[k % 3])
+            ]
+            for k, h in enumerate(hues)
+        ],
+        dtype=np.uint8,
+    ).reshape(-1, 3)
