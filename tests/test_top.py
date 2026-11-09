@@ -22,10 +22,8 @@ def test_a_broad_roof_with_no_corner_in_a_station_still_tops_it() -> None:
 
     rows = meshes.top_per_station(hull, step_m=1.0)
 
-    tops = {y: z for y, z, _ in rows}
-
-    assert tops == {-3.5: 0, -2: 2, -1.5: 2, -0.5: 2, 0.5: 2, 1.5: 2, 2: 2, 3.5: 0}
-    assert all(x == 0 for _, _, x in rows)
+    assert [z for _, z, _ in rows] == [0, 2, 2, 2, 2, 2, 2, 0]
+    assert all(-2 <= y <= 2 and -1 <= x <= 1 for y, z, x in rows if z == 2)
 
 
 def test_a_ramp_tops_where_it_leaves_the_station_not_at_its_middle() -> None:
@@ -70,4 +68,15 @@ def test_a_post_at_the_stern_or_bow_is_inside_the_last_station() -> None:
 def test_a_station_longer_than_the_hull_stays_on_it() -> None:
     rows = meshes.top_per_station(sheet((0, 1), (0, 0)), step_m=5.0)
 
-    assert [y for y, _, _ in rows] == [0.5]
+    assert all(0 <= y <= 1 for y, _, _ in rows)
+
+
+def test_two_posts_as_tall_as_each_other_top_on_one_not_between() -> None:
+    deck = sheet((0, 1), (0, 0))
+    posts = np.array(
+        [[[x, 0.5, 0], [x + 0.01, 0.5, 0], [x, 0.5, 2]] for x in (-1.0, 1.0)]
+    )
+
+    ((_, _, x_m),) = meshes.top_per_station(np.concatenate([deck, posts]), step_m=1)
+
+    assert x_m in (-1.0, 1.0)
