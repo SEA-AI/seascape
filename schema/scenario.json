@@ -2769,32 +2769,6 @@
             }
           ]
         },
-        "near_clip_m": {
-          "title": "Near Clip M",
-          "description": "Anything nearer a camera is not rendered.",
-          "default": 5.0,
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
         "cameras": {
           "title": "Cameras",
           "description": "Its cameras, by name.",

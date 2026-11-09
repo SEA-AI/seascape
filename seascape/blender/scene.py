@@ -95,17 +95,15 @@ def _rows(m: Matrix) -> Matrix4:
     return x, y, z, w
 
 
-def _viewport(near_m: float, far_m: float) -> None:
-    """Blender's view clip defaults to 0.01-1000 m, which cuts a sea reaching tens
-    of km.
-    """
+def _viewport(far_m: float) -> None:
+    """Blender's view clip ends at 1000 m, short of a sea reaching tens of km."""
     for screen in bpy.data.screens:
         for area in screen.areas:
             if area.type != "VIEW_3D":
                 continue
             for space in area.spaces:
                 if space.type == "VIEW_3D":
-                    space.clip_start, space.clip_end = near_m, far_m
+                    space.clip_end = far_m
 
 
 def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
@@ -171,7 +169,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     reach_m = sea.sea_reach_m(scenario)
     far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) from the origin
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
-    rigs = add_rigs(scenario, far_m)
+    rigs = add_rigs(scenario)
     heat = surroundings(scenario) if band == "ir" else None
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
@@ -214,7 +212,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # The first camera may belong to the other band, whose optics this build lacks.
     first = mounts[0]
     look_through(rigs.cameras, first, substream(scenario.seed, f"sensor/{first.name}"))
-    _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
+    _viewport(far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
     sc = bpy.context.scene

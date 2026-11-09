@@ -326,12 +326,6 @@ class TestEoBand:
             assert data.sensor_fit == "HORIZONTAL"
             assert math.degrees(data.angle_x) == pytest.approx(mount.camera.hfov_deg)
 
-    def test_the_near_clip_leaves_the_depth_buffer_usable_at_range(self) -> None:
-        for mount in SCENARIO.mounts:
-            data = camera_of(mount).data
-            assert data.clip_start == mount.rig.near_clip_m
-            assert data.clip_start < data.clip_end
-
     def test_every_3d_view_clips_past_the_sea(self) -> None:
         corner_m = math.sqrt(2) * sea.sea_reach_m(SCENARIO)
         views = [
@@ -345,7 +339,6 @@ class TestEoBand:
 
         assert views, "no 3D view to clip: the assertions below would pass on nothing"
         for space in views:
-            assert space.clip_start == SCENARIO.rigs["bow"].near_clip_m
             assert space.clip_end > corner_m
 
     def test_the_far_clip_clears_every_target(self) -> None:
@@ -834,13 +827,6 @@ def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
     )
 
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
-
-
-def test_a_near_clip_past_the_far_plane_is_an_error() -> None:
-    deep = variant(BASELINE, rig={"near_clip_m": 500000.0})
-
-    with pytest.raises(ValueError, match="near clip"):
-        scene.build(deep, "eo")
 
 
 def test_the_far_clip_clears_a_hull_down_target() -> None:
