@@ -44,7 +44,7 @@ class Built:
     vessel: bpy.types.Object
     deck: (
         bpy.types.Object
-    )  # what the rigs are bolted to: a hull's attitude rides the sea
+    )  # what the rigs are bolted to: a hull's draught lift, which rides the sea
     rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset

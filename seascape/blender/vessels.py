@@ -187,7 +187,7 @@ def add_ownship(
 
     Args:
         ownship: Its hull, attitude and scripted motion.
-        rigs: Parented to the hull's attitude, or to a bare ownship, in its frame.
+        rigs: Parented to the hull's draught, or to a bare ownship, in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
         tall: The waves that are geometry, which a bare rig heaves on.
@@ -198,9 +198,14 @@ def add_ownship(
         rigs.parent = anchor
     else:
         anchor = _vessel(
-            ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
+            ownship.asset,
+            condition=Condition(t_k=ownship.t_k),
+            hulls=hulls,
+            rise_m=ownship.rise_m,
         )
-        (rigs.parent,) = anchor.children
+        (attitude,) = anchor.children
+        (draught,) = attitude.children
+        rigs.parent = draught
     anchor.name = "ownship"
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     anchor.rotation_mode = "YXZ"

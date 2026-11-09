@@ -22,6 +22,7 @@ from seascape.config import (
     Microbolometer,
     Object,
     Outputs,
+    Ownship,
     Processing,
     Rig,
     Scenario,
@@ -1442,6 +1443,27 @@ def test_a_draught_outside_the_asset_s_range_is_refused(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         Object(asset=asset, range_m=500.0, bearing_deg=0.0, draught_m=draught_m)
+
+
+def test_a_drawn_ownship_draught_that_can_leave_the_range_is_refused() -> None:
+    drawn = "draught_m = { uniform = [4.0, 8.0] }"
+    with pytest.raises(ValueError, match=r"ownship: draught_m can be 4\.0-8\.0"):
+        load(BASELINE, [f'ownship = {{ asset = "bulk_carrier", {drawn} }}'])
+
+
+@pytest.mark.parametrize(
+    ("asset", "draught_m", "match"),
+    [
+        ("bulk_carrier", 4.0, "outside"),
+        ("zodiac", 0.4, "no draught_range_m"),
+        (None, 1.0, "needs an asset"),
+    ],
+)
+def test_an_ownship_draught_its_asset_cannot_take_is_refused(
+    asset: str | None, draught_m: float, match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Ownship(asset=asset, draught_m=draught_m)
 
 
 @pytest.mark.parametrize(

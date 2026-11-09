@@ -241,7 +241,7 @@ def _draught_span_m(draught: Any) -> tuple[float, float] | None:
     return min(low for low, _ in spans), max(high for _, high in spans)
 
 
-def _draughts_fit(spec: Any, i: int) -> None:
+def _draughts_fit(spec: Any, where: str) -> None:
     """Refuse a draught that can leave its asset's range, whatever the seed, for
     every object a choice can make and every asset that object can be. Each copy
     checks only what its seed drew.
@@ -258,14 +258,14 @@ def _draughts_fit(spec: Any, i: int) -> None:
             if asset is None:
                 continue  # validation names the asset
             if asset.draught_range_m is None:
-                raise ValueError(f"objects[{i}]: {named} has no draught_range_m")
+                raise ValueError(f"{where}: {named} has no draught_range_m")
             if span_m is None:
                 continue  # a load fits any range
             low_m, high_m = span_m
             lightest_m, deepest_m = asset.draught_range_m
             if low_m < lightest_m or high_m > deepest_m:
                 raise ValueError(
-                    f"objects[{i}]: draught_m can be {low_m}-{high_m}, outside "
+                    f"{where}: draught_m can be {low_m}-{high_m}, outside "
                     f"{named}'s draught_range_m {asset.draught_range_m}"
                 )
 
@@ -346,7 +346,8 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
     for option in _outcomes(data.get("objects")):
         if isinstance(option, list):
             for i, spec in enumerate(option):
-                _draughts_fit(spec, i)
+                _draughts_fit(spec, f"objects[{i}]")
+    _draughts_fit(data.get("ownship"), "ownship")
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))

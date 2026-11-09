@@ -2428,6 +2428,35 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "draught_m": {
+          "title": "Draught M",
+          "description": "How deep it floats, keel to waterline, within the asset's `draught_range_m`. Unset, the asset's own.",
+          "default": null,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "title": "Ownship",
@@ -2644,7 +2673,7 @@
         },
         "height_m": {
           "title": "Height M",
-          "description": "Above the waterline.",
+          "description": "Above the asset's own waterline.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
