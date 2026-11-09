@@ -108,14 +108,19 @@ def scene(path: Path, overrides: Sequence[str | Mapping[str, Any]] = ()) -> Scen
     """The scenario at `path`, its objects the containers.
 
     Raises:
-        ValueError: A rig has no model, is pitched, or its height keeps a container
-            off mid-frame.
+        ValueError: The ownship is tilted, a rig has no model or is pitched, or its
+            height keeps a container off mid-frame.
     """
     scenario = load(path, overrides)
     # Judgement: a rig lower than Hs looks into crests.
     floor_m = waves.significant_height_m(scenario.wave_field())
     objects: list[dict[str, Any]] = []
     # Placed for a still, level ownship; `check` catches what its motion takes out.
+    if (ship := scenario.ownship).pitch_deg or ship.roll_deg:
+        raise ValueError(
+            f"sync takes a level ownship: pitch_deg {ship.pitch_deg}, "
+            f"roll_deg {ship.roll_deg}"
+        )
     for name, rig in scenario.rigs.items():
         if rig.model is None:
             raise ValueError(f"sync records a product: {name} has no model")

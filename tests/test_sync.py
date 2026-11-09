@@ -158,3 +158,9 @@ def test_a_frame_short_of_its_containers_fails_the_check(
     for camera, count in whole.items():
         with pytest.raises(ValueError, match=camera):
             sync.check(scenario, seen({**whole, camera: count - 1}))
+
+
+@pytest.mark.parametrize("axis", ["pitch_deg", "roll_deg"])
+def test_a_tilted_ownship_is_an_error(axis: str) -> None:
+    with pytest.raises(ValueError, match="level ownship"):
+        sync.scene(SYNC_SENTRY, [f"ownship.{axis} = 2.0"])
