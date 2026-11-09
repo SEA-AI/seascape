@@ -1,10 +1,8 @@
 """A hull's top per station along it, in the vessel frame a rig's `offset_y_m`,
 `offset_x_m` and `height_m` use: y forward of midships, z above the waterline.
-
-    uv run python .claude/skills/sync-scenario/scripts/deck.py lobster_yacht [step_m]
 """
 
-import sys
+import argparse
 
 import bpy
 import numpy as np
@@ -49,7 +47,22 @@ def tops(name: str, step_m: float) -> list[tuple[float, float, float]]:
 
 
 if __name__ == "__main__":
-    step = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="Pick the station where the product is installed (a hardtop, a radar "
+        "arch, a mast): offset_y_m = y_m, offset_x_m = x_m, height_m a little above "
+        "top_z_m.",
+    )
+    parser.add_argument(
+        "asset", help="A hull in assets.toml; `seascape assets list` names them."
+    )
+    parser.add_argument(
+        "--step-m",
+        type=float,
+        default=0.5,
+        help="Length of each station along the hull, in metres (default: %(default)s).",
+    )
+    args = parser.parse_args()
     print("y_m     top_z_m  x_m")
-    for y_m, z_m, x_m in tops(sys.argv[1], step):
+    for y_m, z_m, x_m in tops(args.asset, args.step_m):
         print(f"{y_m:6.2f}  {z_m:6.2f}  {x_m:6.2f}")
