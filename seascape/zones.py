@@ -6,38 +6,26 @@ own textures. Every sheet is cut from those three, so the render count does not 
 with the number of parts.
 """
 
-import colorsys
 import json
 import math
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal
 
 import bpy
 import cv2
 import numpy as np
-from mathutils import Vector
 from PIL import Image, ImageDraw, ImageOps
 
 from seascape.assets import manifest
 from seascape.blender import blend, faces, wear
 from seascape.blender.faces import Parts, face_zones
-from seascape.blender.meshes import box_corners, import_asset, mesh_objects
+from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.workbench import VIEW_PX, Aim, aim, setup, shoot
 from seascape.outputs import canvas
-from seascape.physics import earth
 from seascape.physics.colour import srgb_encode
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
-
-
-class Aim(NamedTuple):
-    """Where a view looks from."""
-
-    name: str
-    # Bearing from the asset's centre, bow 0, starboard 90.
-    bearing_deg: float
-    elevation_deg: float
-
 
 VIEWS: tuple[Aim, ...] = (
     Aim("bow", 0.0, 15.0),
@@ -49,7 +37,6 @@ VIEWS: tuple[Aim, ...] = (
     Aim("starboard beam", 90.0, 10.0),
     Aim("top", 270.0, 80.0),
 )
-VIEW_PX = (1600, 1200)
 TILE = (400, 300)
 COLUMNS = 4
 CAPTION_H = 22
@@ -83,22 +70,6 @@ ZONE_COLOURS: dict[ZoneName, tuple[int, int, int]] = {
 }
 
 Kind = Literal["slots", "islands"]
-
-
-def _setup() -> None:
-    sc = bpy.context.scene
-    sc.render.engine = "BLENDER_WORKBENCH"
-    sc.render.resolution_x, sc.render.resolution_y = VIEW_PX
-    sc.render.resolution_percentage = 100
-    sc.render.film_transparent = True
-    sc.render.dither_intensity = 0.0
-    view = sc.view_settings
-    view.view_transform, view.look = "Standard", "None"
-    view.exposure, view.gamma = 0.0, 1.0
-    shading = sc.display.shading
-    shading.show_cavity = shading.show_shadows = False
-    shading.show_specular_highlight = False
-    shading.single_color = (0.8, 0.8, 0.8)
 
 
 def _textures() -> None:
@@ -136,38 +107,6 @@ def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
         mesh.color_attributes.render_color_index = mesh.color_attributes.find("part")
 
 
-def _aim(found: Parts, bearing_deg: float, elevation_deg: float) -> None:
-    corners = np.array([tuple(c) for c in box_corners(found.objects)])
-    centre = Vector(tuple((corners.min(axis=0) + corners.max(axis=0)) / 2))
-    toward = Vector(earth.direction(bearing_deg, elevation_deg))
-    camera = bpy.context.scene.camera
-    camera.rotation_mode = "QUATERNION"
-    camera.rotation_quaternion = (-toward).to_track_quat("-Z", "Y")
-    rotation = camera.rotation_quaternion.to_matrix()
-    right, up = rotation.col[0], rotation.col[1]
-    offsets = [Vector(tuple(c)) - centre for c in corners]
-    half_w = max(abs(o.dot(right)) for o in offsets)
-    half_h = max(abs(o.dot(up)) for o in offsets)
-    aspect = VIEW_PX[0] / VIEW_PX[1]
-    radius = max(o.length for o in offsets)
-    camera.data.ortho_scale = 2.1 * max(half_w, half_h * aspect)
-    camera.data.clip_end = 4 * radius
-    camera.location = centre + 2 * radius * toward
-
-
-def _shoot(path: Path, color_type: str, light: str, aa: str, exr: bool) -> None:
-    sc = bpy.context.scene
-    sc.display.shading.color_type = color_type
-    sc.display.shading.light = light
-    sc.display.render_aa = aa
-    settings = sc.render.image_settings
-    settings.file_format = "OPEN_EXR" if exr else "PNG"
-    settings.color_depth = "32" if exr else "8"
-    settings.color_mode = "RGBA"
-    sc.render.filepath = str(path)
-    bpy.ops.render.render(write_still=True)
-
-
 @dataclass
 class View:
     """One view's renders."""
@@ -179,7 +118,7 @@ class View:
 
 
 def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
-    _setup()
+    setup()
     _textures()
     _paint(found, per_face)
     data = bpy.data.cameras.new("zones")
@@ -189,22 +128,22 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     bpy.context.scene.camera = camera
     views = []
     with tempfile.TemporaryDirectory() as tmp:
-        for aim in VIEWS:
-            _aim(found, aim.bearing_deg, aim.elevation_deg)
+        for pose in VIEWS:
+            aim(found.objects, pose.bearing_deg, pose.elevation_deg)
             ids, grey, tex = (Path(tmp) / n for n in ("id.exr", "grey.png", "tex.png"))
-            _shoot(ids, "VERTEX", "FLAT", "OFF", exr=True)
-            _shoot(grey, "SINGLE", "STUDIO", "FXAA", exr=False)
-            _shoot(tex, "TEXTURE", "STUDIO", "FXAA", exr=False)
+            shoot(ids, "VERTEX", "FLAT", "OFF", exr=True)
+            shoot(grey, "SINGLE", "STUDIO", "FXAA", exr=False)
+            shoot(tex, "TEXTURE", "STUDIO", "FXAA", exr=False)
             rgba = blend.read(ids)[::-1]
             digits = np.rint(rgba[..., :3]).astype(np.int64)
             value = digits @ (DIGIT ** np.arange(3))
             part = np.where(rgba[..., 3] > 0.5, value, -1)
             views.append(
                 View(
-                    aim.name,
+                    pose.name,
                     part.astype(np.int64),
                     np.asarray(Image.open(grey).convert("L"), np.float32) / 255,
-                    np.asarray(_on_backdrop(Image.open(tex))),
+                    np.asarray(canvas.on_backdrop(Image.open(tex))),
                 )
             )
     return views
@@ -222,27 +161,6 @@ def parts(name: str, worn: bool = False) -> Parts:
     roots = import_asset(name, "eo", worn=worn)
     bpy.context.view_layer.update()
     return faces.found(mesh_objects(roots))
-
-
-def _on_backdrop(image: Image.Image) -> Image.Image:
-    """A dark hull shows on mid grey, not on the matte."""
-    backdrop = Image.new("RGBA", image.size, (110, 110, 110, 255))
-    return Image.alpha_composite(backdrop, image.convert("RGBA")).convert("RGB")
-
-
-def palette(n: int) -> np.ndarray:
-    """`n` colours apart from their neighbours: golden-ratio hues, three values."""
-    hues = (np.arange(n) * 0.618034) % 1.0
-    return np.array(
-        [
-            [
-                round(255 * c)
-                for c in colorsys.hsv_to_rgb(h, 0.75, (1.0, 0.8, 0.6)[k % 3])
-            ]
-            for k, h in enumerate(hues)
-        ],
-        dtype=np.uint8,
-    ).reshape(-1, 3)
 
 
 def _lit(part: np.ndarray, grey: np.ndarray, colours: np.ndarray) -> np.ndarray:
@@ -634,7 +552,7 @@ def _island_records(
 
 
 def _atlas(rgb: np.ndarray, cover: np.ndarray, texels: np.ndarray) -> Image.Image:
-    colours = palette(len(texels))
+    colours = canvas.palette(len(texels))
     image = (np.clip(rgb, 0, 1) * 255).astype(np.float32)
     inside = cover >= 0
     image[inside] = 0.5 * image[inside] + 0.5 * colours[cover[inside]]
@@ -697,7 +615,7 @@ def sheets(
         names = [f"{i.object} / {i.material}" for i in found.islands]
         records, atlases = _island_records(found)
     views = _views(found, per_face)
-    colours = palette(len(labels))
+    colours = canvas.palette(len(labels))
     if kind == "islands":
         colours[-1] = REST
     written = []
@@ -807,12 +725,12 @@ def _worn_tiles(found: Parts, weathered: bool) -> list[tuple[Image.Image, str]]:
     caption = ", its textures' own wear" if weathered else ""
     tiles = []
     with tempfile.TemporaryDirectory() as tmp:
-        for aim in VIEWS:
-            _aim(found, aim.bearing_deg, aim.elevation_deg)
-            sc.render.filepath = str(Path(tmp) / f"{aim.name}.png")
+        for pose in VIEWS:
+            aim(found.objects, pose.bearing_deg, pose.elevation_deg)
+            sc.render.filepath = str(Path(tmp) / f"{pose.name}.png")
             bpy.ops.render.render(write_still=True)
-            tile = _on_backdrop(Image.open(sc.render.filepath))
-            tiles.append((tile, f"{aim.name}{caption}"))
+            tile = canvas.on_backdrop(Image.open(sc.render.filepath))
+            tiles.append((tile, f"{pose.name}{caption}"))
     return tiles
 
 
