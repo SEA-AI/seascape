@@ -203,7 +203,7 @@ def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
     return np.concatenate(found) if found else np.empty((0, 3, 3))
 
 
-def profile(name: str, step_m: float) -> list[tuple[float, float, float]]:
+def top(name: str, step_m: float) -> list[tuple[float, float, float]]:
     """`top_per_station` of an asset as fitted, in an emptied scene: y forward of
     midships, z above the waterline.
     """
@@ -212,7 +212,7 @@ def profile(name: str, step_m: float) -> list[tuple[float, float, float]]:
     bpy.context.view_layer.update()
     facets = triangles(mesh_objects(parts))
     if not len(facets):
-        raise ValueError(f"{name} has no triangles to profile")
+        raise ValueError(f"{name} has no triangles to find the top of")
     return top_per_station(facets, step_m)
 
 
