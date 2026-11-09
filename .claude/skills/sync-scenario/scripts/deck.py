@@ -13,7 +13,11 @@ from seascape.blender import meshes
 
 
 def tops(name: str, step_m: float) -> list[tuple[float, float, float]]:
-    """(y, top z, x at the top) per `step_m` of length, stern first."""
+    """(y, top z, x at the top) per `step_m` of length, stern first: the highest
+    vertex in it, or face that a ray cast straight down through its middle meets.
+    Vertices catch thin rails and tubes that rays slip past; rays catch a broad roof
+    with no vertex inside a station.
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     parts = meshes.import_asset(name, "eo")
     bpy.context.view_layer.update()
@@ -24,12 +28,23 @@ def tops(name: str, step_m: float) -> list[tuple[float, float, float]]:
         world = np.array(mesh.matrix_world)
         found.append(local.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3])
     x, y, z = np.concatenate(found).T
+    depsgraph = bpy.context.evaluated_depsgraph_get()
     rows = []
     for start in np.arange(y.min(), y.max(), step_m):
+        middle_m = start + step_m / 2
         inside = (y >= start) & (y < start + step_m)
-        if inside.any():
-            top = np.argmax(np.where(inside, z, -np.inf))
-            rows.append((start + step_m / 2, z[top], x[top]))
+        hits = (
+            [(z[inside].max(), x[inside][z[inside].argmax()])] if inside.any() else []
+        )
+        for across_m in np.linspace(x.min(), x.max(), 41):
+            hit, at, *_ = bpy.context.scene.ray_cast(
+                depsgraph, (across_m, middle_m, z.max() + 1.0), (0.0, 0.0, -1.0)
+            )
+            if hit:
+                hits.append((at.z, across_m))
+        if hits:
+            top_m, at_m = max(hits)
+            rows.append((middle_m, top_m, at_m))
     return rows
 
 
