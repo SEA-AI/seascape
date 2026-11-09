@@ -49,6 +49,8 @@ def aim(
     camera = bpy.context.scene.camera
     camera.rotation_mode = "QUATERNION"
     camera.rotation_quaternion = (-toward).to_track_quat("-Z", "Y")
+    # Not camera_fit_coords: its ortho scale is wrong on a non-square frame unless the
+    # height binds.
     rotation = camera.rotation_quaternion.to_matrix()
     right, up = rotation.col[0], rotation.col[1]
     offsets = [Vector(tuple(c)) - centre for c in corners]
