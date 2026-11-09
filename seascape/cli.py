@@ -13,7 +13,7 @@ import click
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import Band, json_schema, load, seeds
+from seascape.config import Band, Scenario, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
 
 _BANDS = click.Choice(get_args(Band.__value__))
@@ -82,6 +82,36 @@ def _progress(length: int, label: str) -> Any:
     return click.progressbar(length=length, label=label, file=sys.stderr)
 
 
+def _empty(into: Path) -> Path:
+    # An earlier run's frames would pass for this one's.
+    if into.is_dir() and any(into.iterdir()):
+        raise click.ClickException(f"{into} is not empty: remove it or pick another")
+    return into
+
+
+def _render(built: Scenario, into: Path) -> list[Path]:
+    from seascape import render as renderer
+
+    with (
+        _progress(built.images, "Rendering") as bar,
+        _blender_log(into / "blender.log"),
+    ):
+        return renderer.render(built, into, lambda: bar.update(1))
+
+
+_QUALITY = "perc_lossless"
+
+
+def _encode(folder: Path, quality: str) -> list[Path]:
+    from seascape.render import video as encoder
+
+    with (
+        _progress(len(encoder.cameras(folder)), "Encoding") as bar,
+        _blender_log(folder / "blender.log"),
+    ):
+        return encoder.encode(folder, quality.upper(), lambda: bar.update(1))
+
+
 @click.group(cls=_Seascape)
 @click.version_option(package_name="seascape")
 def main() -> None:
@@ -130,19 +160,12 @@ def render(
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
     built = load(scenario, list(overrides))
-    into = output or scenario.with_suffix("")
-    # An earlier run's frames would pass for this one's.
-    if into.is_dir() and any(into.iterdir()):
-        raise click.ClickException(f"{into} is not empty: remove it or pick another")
+    into = _empty(output or scenario.with_suffix(""))
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
     if variants == 1:
-        with (
-            _progress(built.images, "Rendering") as bar,
-            _blender_log(into / "blender.log"),
-        ):
-            written = renderer.render(built, into, lambda: bar.update(1))
+        written = _render(built, into)
     else:
         written, folders = [], []
         with (
@@ -172,6 +195,35 @@ def render(
     for path in written:
         click.echo(path)
     click.echo(f"{len(written)} files in {into}", err=True)
+
+
+@main.command()
+@_scenario("A directory. Default: beside the scenario.")
+@click.option(
+    "--preview",
+    is_flag=True,
+    help="Render at 1 fps, a quarter the size and one sample, and check every video "
+    "keeps its containers whole in every frame; nothing is encoded.",
+)
+def sync(
+    scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
+) -> None:
+    """Render, encode and record a sync scenario, or preview it."""
+    from seascape import sync as checks
+
+    built = load(scenario, list(overrides))
+    if not preview:
+        into = _empty(output or scenario.with_suffix(""))
+        _render(built, into)
+        _encode(into, _QUALITY)
+        for path in recording.export(into):
+            click.echo(path)
+        return
+    built = load(scenario, [*overrides, checks.preview(built)])
+    into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
+    _render(built, into)
+    checks.check(labels.Labels.read(into))
+    click.echo(f"every video keeps its containers whole: {into}")
 
 
 @main.command("montage")
@@ -214,20 +266,13 @@ def panorama_(
     type=click.Choice(
         ["lossless", "perc_lossless", "high", "medium", "low", "verylow", "lowest"]
     ),
-    default="perc_lossless",
+    default=_QUALITY,
     show_default=True,
     help="Blender's H.264 constant-quality preset.",
 )
 def video(folder: Path, quality: str) -> None:
     """Encode each camera's frames as an mp4, from labels.json."""
-    from seascape.render import video as encoder
-
-    with (
-        _progress(len(encoder.cameras(folder)), "Encoding") as bar,
-        _blender_log(folder / "blender.log"),
-    ):
-        written = encoder.encode(folder, quality.upper(), lambda: bar.update(1))
-    for path in written:
+    for path in _encode(folder, quality):
         click.echo(path)
 
 
@@ -457,9 +502,8 @@ def zones(
     from seascape import zones as sheets
 
     into = output or Path("zones") / asset
-    # An earlier run's sheets would pass for this one's.
-    if not contact and into.is_dir() and any(into.iterdir()):
-        raise click.ClickException(f"{into} is not empty: remove it or pick another")
+    if not contact:
+        _empty(into)
     with _blender_log(into / "blender.log"):
         if contact:
             written = [sheets.contact(asset, into / "zones.png")]

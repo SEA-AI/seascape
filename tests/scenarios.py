@@ -22,6 +22,8 @@ BASELINE = SCENARIOS / "baseline.toml"
 OPEN_SEA = SCENARIOS / "open-sea.toml"
 DRIFTING = SCENARIOS / "drifting.toml"
 UNDERWAY = SCENARIOS / "underway.toml"
+SYNC_SENTRY = SCENARIOS / "sync-sentry.toml"
+SYNC_WATCHKEEPER = SCENARIOS / "sync-watchkeeper.toml"
 
 
 @contextmanager
