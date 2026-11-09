@@ -217,12 +217,10 @@ def top(name: str, step_m: float) -> list[tuple[float, float, float]]:
 
 
 def top_per_station(
-    facets: np.ndarray, step_m: float, tolerance_m: float = 0.001
+    facets: np.ndarray, step_m: float
 ) -> list[tuple[float, float, float]]:
     """The top of triangles `facets` (n, corner, xyz) per `step_m` along y, stern
-    first: (y, top z, x), at the point of the top nearest its middle. The top is every
-    point within `tolerance_m` below the highest, so a flat roof whose corners differ
-    by rounding reports its middle, not one corner.
+    first: (y, top z, x), at the point of the top nearest its middle.
 
     A triangle's highest point inside a station lies on a corner inside it or where
     an edge crosses a face, so those points give the top exactly.
@@ -245,7 +243,9 @@ def top_per_station(
         points = np.concatenate([inside, crossings[i], crossings[i + 1]])
         if len(points):
             top_m = points[:, 2].max()
-            top = points[points[:, 2] >= top_m - tolerance_m]
+            # Rounding leaves a flat roof's corners at slightly different heights.
+            # An exact match would keep one corner and report the edge, not the middle.
+            top = points[np.isclose(points[:, 2], top_m)]
             middle = (top.min(axis=0) + top.max(axis=0)) / 2
             x_m, y_m, z_m = top[np.linalg.norm(top - middle, axis=1).argmin()]
             rows.append((float(y_m), float(z_m), float(x_m)))
