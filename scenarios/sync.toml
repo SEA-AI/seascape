@@ -3,19 +3,22 @@
 # Shared by `sync-<product>.toml`, which replaces the rig.
 seed = 20261106
 
-# A stand-in, so this file validates alone.
+# A stand-in, so this file validates alone, on the zodiac's radar arch: its top is
+# 1.78 m up and 2.6 m aft.
 [rigs.mast]
-height_m = 1.6
+height_m = 1.9
+offset_y_m = -2.6
 cameras.eo = { preset = "eo_4k_49deg" }
 cameras.ir = { preset = "ir_vga_24deg" }
 
-# Its waves' rocking and a yaw swing give every IMU axis a signal.
+# Its waves' rocking and a yaw swing give every IMU axis a signal, small enough that
+# the narrow cameras keep their containers mid-frame.
 [ownship]
-asset = "container"
-yaw = { amplitude_deg = 2.0, period_s = 10.0 }
+asset = "zodiac"
+yaw = { amplitude_deg = 0.5, period_s = 10.0 }
 
 [sea]
-wind_speed_mps = 12.0
+wind_speed_mps = 3.5
 fetch_km = 20.0
 wind_from_deg = 300.0
 

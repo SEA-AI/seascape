@@ -209,6 +209,7 @@ def sync(scenario: Path, output: Path | None, overrides: tuple[str, ...]) -> Non
     into = _empty(output or scenario.with_suffix(""))
     click.echo(f"{len(built.objects)} containers", err=True)
     _render(built, into)
+    placement.check(built, labels.Labels.read(into))
     _encode(into, _QUALITY)
     for path in recording.export(into):
         click.echo(path)

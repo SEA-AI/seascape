@@ -1,4 +1,4 @@
-"""The sync check's containers and rig height."""
+"""The sync check's containers, rig height and motion check."""
 
 import math
 from pathlib import Path
@@ -9,6 +9,7 @@ import pytest
 
 from seascape import assets, sync
 from seascape.config import Mount, Object, load
+from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.physics import fisheye
 from tests.scenarios import SYNC, SYNC_SENTRY, SYNC_WATCHKEEPER
 
@@ -125,3 +126,35 @@ def test_a_rig_height_that_moves_a_container_off_mid_frame_is_an_error() -> None
 def test_a_rig_without_a_model_is_an_error() -> None:
     with pytest.raises(ValueError, match="no model"):
         sync.scene(SYNC)
+
+
+def seen(whole: dict[str, int]) -> Labels:
+    """One frame per camera, with `whole` untruncated containers and one cut."""
+    images = [
+        Image.model_construct(id=i, camera=c, time_s=0.0) for i, c in enumerate(whole)
+    ]
+    annotations = [
+        Annotation.model_construct(image_id=image.id, truncated=cut)
+        for image in images
+        for cut in [False] * whole[image.camera] + [True]
+    ]
+    return Labels.model_construct(images=images, annotations=annotations)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "whole"),
+    [
+        # Each thermal of the stitch sees one container, so its video sees both.
+        ([], {"mast_RGB1": 1, "mast_T1": 2}),
+        (["outputs.format = 'exr'"], {"mast_eo": 1, "mast_ir_l": 1, "mast_ir_r": 1}),
+    ],
+)
+def test_a_frame_short_of_its_containers_fails_the_check(
+    overrides: list[str], whole: dict[str, int]
+) -> None:
+    scenario = sync.scene(SYNC_WATCHKEEPER, overrides)
+    sync.check(scenario, seen(whole))
+
+    for camera, count in whole.items():
+        with pytest.raises(ValueError, match=camera):
+            sync.check(scenario, seen({**whole, camera: count - 1}))

@@ -33,7 +33,6 @@ from seascape.config import (
     Mount,
     Scenario,
     Stitch,
-    sources,
     substream,
 )
 from seascape.outputs import agc, labels, microbolometer, stitch
@@ -309,15 +308,7 @@ def _shoot(
     """
     scene.look_through(built.cameras, mount, rng)
     # An exr is the radiance the cameras saw, before any recorder.
-    videos = mount.rig.videos if fmt != "exr" else {}
-    video = next(
-        (
-            (f"{mount.rig_name}_{name}", recorded)
-            for name, recorded in videos.items()
-            if mount.camera_name in sources(recorded)
-        ),
-        None,
-    )
+    video = mount.rig.recording(mount.camera_name) if fmt != "exr" else None
     crop = video[1] if video and isinstance(video[1], Crop) else None
     width, height = mount.camera.width_px, mount.camera.height_px
     tree = bpy.context.scene.compositing_node_group
@@ -335,7 +326,7 @@ def _shoot(
     written = []
     # A stitch's cameras keep their names; `_stitch` names what it makes of them.
     if video is not None and not isinstance(video[1], Stitch):
-        out = video[0]
+        out = f"{mount.rig_name}_{video[0]}"
         camera = camera.model_copy(update={"name": out})
         if crop is not None:
             # The camera's own frame stays, unlabelled.

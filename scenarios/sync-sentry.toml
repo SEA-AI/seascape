@@ -4,4 +4,5 @@ extends = "sync.toml"
 
 [rigs.mast]
 preset = "sentry"
-height_m = 1.6
+height_m = 1.9
+offset_y_m = -2.6
