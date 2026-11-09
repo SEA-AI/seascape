@@ -873,7 +873,11 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         assert tuple(attitude.rotation_euler) == pytest.approx(
             (pitch, -roll, 0.0), abs=1e-6
         )
-        assert attitude.location.z == pytest.approx(waves.heave_m(tall, plane, t_s))
+        # Straight up, however the script tilts the hull.
+        lift = attitude.matrix_world.translation - built.vessel.matrix_world.translation
+        assert tuple(lift) == pytest.approx(
+            (0.0, 0.0, waves.heave_m(tall, plane, t_s)), abs=1e-6
+        )
 
     assert max(rocked) > math.radians(1.0), "a calm sea would pass vacuously"
     assert still == pytest.approx([still[0]] * len(still), abs=1e-4)
@@ -1868,9 +1872,9 @@ def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
 
     channels = dict(keyed())
 
-    assert len(channels) == 11, (
-        "the target's xyz, pitch, roll, heave; the ownship's pitch, roll, heave; "
-        "the sea's cos, sin"
+    assert len(channels) == 13, (
+        "the target's xyz, pitch, roll, heave's xyz; the ownship's pitch, roll, "
+        "heave; the sea's cos, sin"
     )
     # A few ulps: F-curves are float32.
     unclosed = [

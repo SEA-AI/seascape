@@ -530,11 +530,13 @@ def ride(
             pitch, roll = waves.attitude(field, hull, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
-            attitude.location.z = waves.heave_m(tall, hull, t_s)
+            # Straight up in the world, through whatever tilt the anchor is keyed to.
+            up = Vector((0.0, 0.0, waves.heave_m(tall, hull, t_s)))
+            attitude.location = anchor.matrix_world.to_quaternion().inverted() @ up
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
                 attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
-                attitude.keyframe_insert("location", index=2, frame=frame)
+                attitude.keyframe_insert("location", frame=frame)
 
 
 class OverlapError(ValueError):
