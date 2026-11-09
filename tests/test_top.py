@@ -55,3 +55,13 @@ def test_triangles_are_in_world_metres() -> None:
     assert found.shape == (12, 3, 3)
     assert found.min(axis=(0, 1)) == pytest.approx([-1, 3, 0.5])
     assert found.max(axis=(0, 1)) == pytest.approx([1, 7, 1.5])
+
+
+def test_a_post_at_the_stern_or_bow_is_inside_the_last_station() -> None:
+    """0.9 / 0.3 rounds to just under 3 stations."""
+    deck = sheet((0, 0.9), (0, 0))
+    post = np.array([[[0, 0.9, 0], [0.1, 0.9, 0], [0, 0.9, 3]]], dtype=float)
+
+    rows = meshes.top_per_station(np.concatenate([deck, post]), step_m=0.3)
+
+    assert rows[-1][1] == 3

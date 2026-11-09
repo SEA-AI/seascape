@@ -228,7 +228,9 @@ def top_per_station(
     starts = facets.reshape(-1, 3)
     along = np.roll(facets, -1, axis=1).reshape(-1, 3) - starts
     y = starts[:, 1]
-    planes = np.arange(y.min(), y.max() + step_m, step_m)
+    count = max(int(np.ceil((y.max() - y.min()) / step_m)), 1) + 1
+    planes = y.min() + step_m * np.arange(count)
+    planes[-1] = max(planes[-1], y.max())  # rounding can stop it short
     crossings = []
     for plane_m in planes:
         with np.errstate(divide="ignore", invalid="ignore"):
