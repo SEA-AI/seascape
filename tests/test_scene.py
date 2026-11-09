@@ -829,6 +829,61 @@ def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
+def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
+    """The sea pitches, rolls and heaves the hull's attitude, under its scripted
+    motion and course, and the cameras stay fixed in the vessel frame.
+    """
+    scenario = variant(
+        ownship={
+            "asset": "container",
+            "speed_mps": 2.0,
+            "roll": {"amplitude_deg": 3.0, "period_s": 8.0},
+            "heave": {"amplitude_m": 0.2, "period_s": 6.0},
+        },
+        outputs={"fps": 2, "duration_s": 3.0},
+    )
+    built = scene.build(scenario, "eo")
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    (attitude,) = built.vessel.children
+    radius = earth.earth_radius_m(scenario.sea.refraction_k)
+    roll_s, heave_s = scenario.outputs.period_s(8.0), scenario.outputs.period_s(6.0)
+    rocked, mounted, still = [], [], []
+
+    for frame, t_s in enumerate(scenario.outputs.times_s):
+        bpy.context.scene.frame_set(frame)
+        east, north, up = built.vessel.matrix_world.translation
+        rest = waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s)
+        plane = waves.Waterplane(
+            *map(float, rest),
+            heading_rad(built.vessel),
+            built.vessel["length_m"],
+            built.vessel["beam_m"],
+        )
+        pitch, roll = waves.attitude(wind + swell, plane, t_s)
+        rocked.append(abs(pitch) + abs(roll))
+        script = 0.2 * math.sin(math.tau * t_s / heave_s)
+        still.append(up - earth.sea_z_m(east, north, radius) - script)
+        calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
+        mounted.append(np.array(calibration.extrinsics["vessel"]))
+
+        assert built.vessel.rotation_euler[1] == pytest.approx(
+            math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6
+        )
+        assert tuple(attitude.rotation_euler) == pytest.approx(
+            (pitch, -roll, 0.0), abs=1e-6
+        )
+        # Straight up, however the script tilts the hull.
+        lift = attitude.matrix_world.translation - built.vessel.matrix_world.translation
+        assert tuple(lift) == pytest.approx(
+            (0.0, 0.0, waves.heave_m(tall, plane, t_s)), abs=1e-6
+        )
+
+    assert max(rocked) > math.radians(1.0), "a calm sea would pass vacuously"
+    assert still == pytest.approx([still[0]] * len(still), abs=1e-4)
+    assert np.allclose(mounted, mounted[0], atol=1e-6)
+
+
 def test_the_far_clip_clears_a_hull_down_target() -> None:
     """Hull down from a low camera, its upperworks still up."""
     range_m = 20000.0
@@ -1817,9 +1872,9 @@ def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
 
     channels = dict(keyed())
 
-    assert len(channels) == 11, (
-        "the target's xyz, pitch, roll, heave; the ownship's pitch, roll, heave; "
-        "the sea's cos, sin"
+    assert len(channels) == 13, (
+        "the target's xyz, pitch, roll, heave's xyz; the ownship's pitch, roll, "
+        "heave; the sea's cos, sin"
     )
     # A few ulps: F-curves are float32.
     unclosed = [

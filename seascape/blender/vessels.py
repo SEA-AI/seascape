@@ -182,24 +182,26 @@ def add_ownship(
     tall: tuple[waves.Wave, ...],
     radius_m: float,
 ) -> bpy.types.Object:
-    """Bow to +Y at the origin, carrying the rigs, and sailing from it.
+    """Bow to +Y at the origin, carrying the rigs, and sailing from it. A hull rides
+    the sea once `ride` keys it.
 
     Args:
         ownship: Its hull, attitude and scripted motion.
-        rigs: Parented to the ownship; their offsets are in its frame.
+        rigs: Parented to the hull's attitude, or to a bare ownship, in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
-        tall: The waves that are geometry, which it heaves on as well as its script.
+        tall: The waves that are geometry, which a bare rig heaves on.
         radius_m: Earth's effective radius, which drops it to the curved sea.
     """
     if ownship.asset is None:
         anchor = empty("ownship")
+        rigs.parent = anchor
     else:
         anchor = _vessel(
             ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
         )
+        (rigs.parent,) = anchor.children
     anchor.name = "ownship"
-    rigs.parent = anchor
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     anchor.rotation_mode = "YXZ"
     anchor.rotation_euler = (
@@ -237,25 +239,19 @@ def add_ownship(
         scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
-    if heave is not None or tall or sailing:
-        # A rig without a hull rides the water under it.
-        length_m, beam_m = (
-            (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
-        )
+    # A bare rig is a point: it heaves, but would tilt with every ripple.
+    bare = ownship.asset is None and bool(tall)
+    if heave is not None or bare or sailing:
 
         def value_at(t_s: float) -> float:
             pose = track(t_s)
-            rest = waves.gerstner_rest_m(
-                tall, np.array(pose.east_m), np.array(pose.north_m), t_s
-            )
-            hull = waves.Waterplane(
-                *map(float, rest), pose.heading_rad, length_m, beam_m
-            )
-            return (
-                earth.sea_z_m(pose.east_m, pose.north_m, radius_m)
-                + scripted(t_s)
-                + waves.heave_m(tall, hull, t_s)
-            )
+            z = earth.sea_z_m(pose.east_m, pose.north_m, radius_m) + scripted(t_s)
+            if bare:
+                rest = waves.gerstner_rest_m(
+                    tall, np.array(pose.east_m), np.array(pose.north_m), t_s
+                )
+                z += waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
+            return z
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
@@ -534,11 +530,13 @@ def ride(
             pitch, roll = waves.attitude(field, hull, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
-            attitude.location.z = waves.heave_m(tall, hull, t_s)
+            # Straight up in the world, through whatever tilt the anchor is keyed to.
+            up = Vector((0.0, 0.0, waves.heave_m(tall, hull, t_s)))
+            attitude.location = anchor.matrix_world.to_quaternion().inverted() @ up
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
                 attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
-                attitude.keyframe_insert("location", index=2, frame=frame)
+                attitude.keyframe_insert("location", frame=frame)
 
 
 class OverlapError(ValueError):
