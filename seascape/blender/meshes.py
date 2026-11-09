@@ -220,7 +220,9 @@ def top_per_station(
     facets: np.ndarray, step_m: float
 ) -> list[tuple[float, float, float]]:
     """The top of triangles `facets` (n, corner, xyz) per `step_m` along y, stern
-    first: (y, top z, x), at the point of the top nearest its middle.
+    first: (y, top z, x), at the point of the top nearest its middle. The top is every
+    point within rounding of the highest (`np.isclose`), so its z can sit that much
+    lower.
 
     A triangle's highest point inside a station lies on a corner inside it or where
     an edge crosses a face, so those points give the top exactly.
