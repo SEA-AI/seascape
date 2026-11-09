@@ -230,7 +230,7 @@ def top_per_station(
     y = starts[:, 1]
     count = max(int(np.ceil((y.max() - y.min()) / step_m)), 1) + 1
     planes = y.min() + step_m * np.arange(count)
-    planes[-1] = max(planes[-1], y.max())  # rounding can stop it short
+    planes[-1] = y.max()  # the last station ends with the hull, rounding aside
     crossings = []
     for plane_m in planes:
         with np.errstate(divide="ignore", invalid="ignore"):

@@ -65,3 +65,9 @@ def test_a_post_at_the_stern_or_bow_is_inside_the_last_station() -> None:
     rows = meshes.top_per_station(np.concatenate([deck, post]), step_m=0.3)
 
     assert rows[-1][1] == 3
+
+
+def test_a_station_longer_than_the_hull_stays_on_it() -> None:
+    rows = meshes.top_per_station(sheet((0, 1), (0, 0)), step_m=5.0)
+
+    assert [y for y, _, _ in rows] == [0.5]
