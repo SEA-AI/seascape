@@ -15,13 +15,13 @@ import pytest
 from pydantic import BaseModel
 
 from seascape.config import Camera, Object, Scenario, load
+from seascape.physics import waves
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
 OPEN_SEA = SCENARIOS / "open-sea.toml"
 DRIFTING = SCENARIOS / "drifting.toml"
 UNDERWAY = SCENARIOS / "underway.toml"
-SYNC = SCENARIOS / "sync.toml"
 SYNC_SENTRY = SCENARIOS / "sync-sentry.toml"
 SYNC_WATCHKEEPER = SCENARIOS / "sync-watchkeeper.toml"
 
@@ -132,6 +132,11 @@ def two_rigs(**sections: Any) -> Scenario:
         },
         **sections,
     )
+
+
+def wave_field(scenario: Scenario) -> tuple[waves.Wave, ...]:
+    """Every wave on the sea, wind sea then swell."""
+    return scenario.wind_waves() + scenario.swell_waves()
 
 
 def load_variants(path: Path, count: int = 1) -> list[Scenario]:

@@ -154,7 +154,7 @@ def test_a_fully_developed_sea_is_as_high_as_pierson_moskowitz_s(
 ) -> None:
     # Pierson & Moskowitz 1964: Hs = 0.209 U(19.5 m)^2 / g. JONSWAP's peak enhancement
     # in Elfouhaily et al. 1997 adds some.
-    hs = waves.significant_height_m(field(wind_speed_mps))
+    hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in field(wind_speed_mps)))
     wind = waves.wind_at_m(wind_speed_mps, 19.5)
     assert hs == pytest.approx(0.209 * wind**2 / earth.GRAVITY_MS2, rel=0.12)
 
@@ -172,7 +172,7 @@ def test_a_sea_short_of_fetch_is_as_high_as_jonswap_measured(
     young = waves.wind_sea(
         wind_speed_mps, 0.0, fetch_km * 1e3, lambda p: p, np.random.default_rng(0)
     )
-    hs = waves.significant_height_m(young)
+    hs = 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in young))
     g = earth.GRAVITY_MS2
     x = g * fetch_km * 1e3 / wind_speed_mps**2
     assert hs == pytest.approx(1.6e-3 * math.sqrt(x) * wind_speed_mps**2 / g, rel=0.1)
@@ -502,7 +502,7 @@ def test_a_ray_meets_the_water_where_it_first_dips_under(elevation_deg: float) -
 
 def test_a_swell_carries_its_height_from_where_it_comes() -> None:
     swell = waves.swell(2.0, 12.0, 90.0, lambda p: p, np.random.default_rng(0))
-    assert waves.significant_height_m(swell) == pytest.approx(2.0)
+    assert 4 * math.sqrt(sum(w.amplitude_m**2 / 2 for w in swell)) == pytest.approx(2.0)
     assert all(w.omega_rad_s == pytest.approx(2 * math.pi / 12.0) for w in swell)
     assert np.mean([w.k_east_rad_m for w in swell]) < 0.0
 
