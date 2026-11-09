@@ -245,8 +245,8 @@ def top_per_station(
             top_m = points[:, 2].max()
             top = points[np.isclose(points[:, 2], top_m)]
             middle = (top.min(axis=0) + top.max(axis=0)) / 2
-            x_m, y_m, _ = top[np.linalg.norm(top - middle, axis=1).argmin()]
-            rows.append((float(y_m), float(top_m), float(x_m)))
+            x_m, y_m, z_m = top[np.linalg.norm(top - middle, axis=1).argmin()]
+            rows.append((float(y_m), float(z_m), float(x_m)))
     return rows
 
 
