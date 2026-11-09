@@ -481,12 +481,6 @@ class Rig(Model):
                 cameras[video.camera] = video.pinhole(cameras[video.camera])
         return cameras
 
-    def recording(self, camera: Name) -> tuple[Name, Video] | None:
-        """The video that records `camera`, by name; None if none does."""
-        return next(
-            ((n, v) for n, v in self.videos.items() if camera in sources(v)), None
-        )
-
 
 class Mount(NamedTuple):
     """A camera and the rig carrying it."""
