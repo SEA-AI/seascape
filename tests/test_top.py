@@ -82,9 +82,9 @@ def test_two_posts_as_tall_as_each_other_top_on_one_not_between() -> None:
     assert x_m in (-1.0, 1.0)
 
 
-def test_a_flat_roof_with_rounding_in_its_corners_tops_at_its_middle() -> None:
+def test_a_flat_roof_with_one_corner_slightly_higher_tops_at_its_middle() -> None:
     corners = np.array([[-1, 0, 2], [1, 0, 2], [1, 1, 2], [-1, 1, 2]], dtype=float)
-    corners[0, 2] += 1e-12  # one corner a rounding error higher
+    corners[0, 2] += 1e-4  # one corner higher, within the tolerance
     middle = np.array([0, 0.5, 2])
     roof = np.array(
         [[a, b, middle] for a, b in zip(corners, np.roll(corners, -1, 0), strict=True)]
