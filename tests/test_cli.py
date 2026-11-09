@@ -90,6 +90,7 @@ assert "bpy" not in sys.modules
         (("render", "no_such.toml"), "does not exist"),
         (("build", BASELINE, "--band", "uv"), "'uv' is not one of"),
         (("assets", "show", "no_such"), "no mesh or sky"),
+        (("assets", "profile", "no_such"), "no mesh 'no_such'"),
     ],
 )
 def test_a_usage_mistake_is_exit_2(run: Run, args: tuple, says: str) -> None:

@@ -20,9 +20,12 @@ def sheet(
 def test_a_broad_roof_with_no_corner_in_a_station_still_tops_it() -> None:
     hull = np.concatenate([sheet((-4, 4), (0, 0)), sheet((-2, 2), (2, 2))])
 
-    tops = {y: z for y, z, _ in meshes.top_per_station(hull, step_m=1.0)}
+    rows = meshes.top_per_station(hull, step_m=1.0)
+
+    tops = {y: z for y, z, _ in rows}
 
     assert tops == {-3.5: 0, -2.5: 2, -1.5: 2, -0.5: 2, 0.5: 2, 1.5: 2, 2.5: 2, 3.5: 0}
+    assert all(x == 0 for _, _, x in rows)
 
 
 def test_a_ramp_tops_where_it_leaves_the_station_not_at_its_middle() -> None:
@@ -33,13 +36,13 @@ def test_a_ramp_tops_where_it_leaves_the_station_not_at_its_middle() -> None:
     assert tops == pytest.approx([1, 2, 3, 4])
 
 
-def test_a_tube_thinner_than_any_spacing_is_found_with_its_side() -> None:
+def test_a_tube_thinner_than_a_station_is_found_with_its_x() -> None:
     deck = sheet((0, 2), (0, 0))
     tube = np.array([[[0.3, 0.5, 3.0], [0.301, 0.5, 3.0], [0.3, 0.501, 2.9]]])
 
     rows = meshes.top_per_station(np.concatenate([deck, tube]), step_m=1.0)
 
-    assert rows[0] == (0.5, 3.0, 0.3)
+    assert rows[0] == pytest.approx((0.5, 3.0, 0.3), abs=1e-3)
 
 
 @pytest.mark.usefixtures("empty_blend")

@@ -387,15 +387,13 @@ def measure(mesh: Path) -> None:
     type=click.FloatRange(min=0, min_open=True),
     default=0.5,
     show_default=True,
-    help="Length of each station along the hull, in metres.",
+    help="Station length along the hull.",
 )
 def profile(asset: str, step_m: float) -> None:
-    """Print a hull's top per station along it, in the frame a rig's offset_y_m,
-    offset_x_m and height_m use.
+    """Print a hull's top per station along its length.
 
-    To mount a rig, pick the station where the product sits (a hardtop, a radar
-    arch, a mast): offset_y_m is its y_m, offset_x_m its x_m, height_m a little
-    above its top_z_m.
+    To mount a rig on a hardtop or radar arch, pick its station: offset_y_m is its
+    y_m, offset_x_m its x_m, height_m just above its top_z_m.
     """
     if asset not in assets.manifest():
         raise click.BadParameter(f"no mesh {asset!r}; see `seascape assets list`")
