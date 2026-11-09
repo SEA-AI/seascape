@@ -44,7 +44,7 @@ class Built:
     vessel: bpy.types.Object
     deck: (
         bpy.types.Object
-    )  # what the rigs are bolted to: a hull's attitude rides the sea
+    )  # what the rigs are bolted to: a hull's draught lift, which rides the sea
     rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
@@ -118,8 +118,10 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     if not tops_m:
         return 0.0
     heave = scenario.ownship.heave
-    eye_m = max(rig.height_m for rig in scenario.rigs.values()) + (
-        heave.amplitude_m if heave is not None else 0.0
+    eye_m = (
+        max(rig.height_m for rig in scenario.rigs.values())
+        + scenario.ownship.rise_m
+        + (heave.amplitude_m if heave is not None else 0.0)
     )
     k = scenario.sea.refraction_k
     return earth.horizon_m(eye_m, k) + earth.horizon_m(max(tops_m), k)

@@ -148,21 +148,11 @@ class Object(Model):
     @property
     def rise_m(self) -> float:
         """How far it rides above the asset's own draught."""
-        if self.draught_m is None:
-            return 0.0
-        return assets.manifest()[self.asset].draught_m - self.draught_m
+        return _rise_m(self.asset, self.draught_m)
 
     @model_validator(mode="after")
     def _draught_in_range(self) -> "Object":
-        if self.draught_m is None:
-            return self
-        if (span := assets.manifest()[self.asset].draught_range_m) is None:
-            raise ValueError(f"{self.asset} has no draught_range_m: it floats as built")
-        lightest_m, deepest_m = span
-        if not lightest_m <= self.draught_m <= deepest_m:
-            raise ValueError(
-                f"{self.asset}: draught_m {self.draught_m} is outside {span}"
-            )
+        _check_draught(self.asset, self.draught_m)
         return self
 
     @model_validator(mode="after")
@@ -198,6 +188,24 @@ class Heave(Model):
     period_s: float = Field(gt=0.0, description="One full cycle.")
 
 
+def _rise_m(asset: str | None, draught_m: float | None) -> float:
+    if asset is None or draught_m is None:
+        return 0.0
+    return assets.manifest()[asset].draught_m - draught_m
+
+
+def _check_draught(asset: str | None, draught_m: float | None) -> None:
+    if draught_m is None:
+        return
+    if asset is None:
+        raise ValueError("draught_m needs an asset to float")
+    if (span := assets.manifest()[asset].draught_range_m) is None:
+        raise ValueError(f"{asset} has no draught_range_m: it floats as built")
+    lightest_m, deepest_m = span
+    if not lightest_m <= draught_m <= deepest_m:
+        raise ValueError(f"{asset}: draught_m {draught_m} is outside {span}")
+
+
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
     waterline. Without an asset it is the motion alone; a hull also rides the sea.
@@ -222,6 +230,17 @@ class Ownship(Model):
     roll: Swing | None = Field(default=None, description="About roll_deg.")
     pitch: Swing | None = Field(default=None, description="About pitch_deg.")
     heave: Heave | None = Field(default=None, description="About the waterline.")
+    draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
+
+    @property
+    def rise_m(self) -> float:
+        """How far it rides above the asset's own draught."""
+        return _rise_m(self.asset, self.draught_m)
+
+    @model_validator(mode="after")
+    def _draught_in_range(self) -> "Ownship":
+        _check_draught(self.asset, self.draught_m)
+        return self
 
 
 class Targets(Model):

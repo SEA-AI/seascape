@@ -413,7 +413,7 @@ class Rig(Model):
     model: str | None = Field(
         default=None, description="The product, such as Pod. A recording needs it."
     )
-    height_m: float = Field(gt=0.0, description="Above the waterline.")
+    height_m: float = Field(gt=0.0, description="Above the asset's own waterline.")
     yaw_deg: float = Field(
         default=0.0, description="Its axis relative to the bow, positive to starboard."
     )

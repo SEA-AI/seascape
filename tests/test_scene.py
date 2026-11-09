@@ -829,6 +829,49 @@ def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
+def test_a_lighter_ownship_lifts_its_rig_with_its_hull() -> None:
+    ship = manifest()["cargo_ship"]
+    assert ship.draught_range_m is not None
+    lightest_m, _ = ship.draught_range_m
+    rise_m = ship.draught_m - lightest_m
+    heights = []
+    for draught_m in (None, lightest_m):
+        built = scene.build(
+            variant(ownship={"asset": "cargo_ship", "draught_m": draught_m}), "eo"
+        )
+        hull = mesh_objects(built.vessel.children_recursive)
+        top_m = max(c.z for c in box_corners(hull))
+        camera_m = camera_of(SCENARIO.mounts[0]).matrix_world.translation.z
+        heights.append((top_m, camera_m))
+
+    (top_m, camera_m), (lifted_top_m, lifted_camera_m) = heights
+    assert lifted_top_m - top_m == pytest.approx(rise_m, abs=1e-3)
+    assert lifted_camera_m - camera_m == pytest.approx(rise_m, abs=1e-3)
+
+
+def test_a_lighter_ownship_sees_as_far_as_its_rig_raised_by_the_rise() -> None:
+    ship = manifest()["cargo_ship"]
+    assert ship.draught_range_m is not None
+    lightest_m, _ = ship.draught_range_m
+    yacht = target("yacht", 900.0)
+    lighter = variant(
+        ownship={"asset": "cargo_ship", "draught_m": lightest_m}, objects=[yacht]
+    )
+    (rig,) = lighter.rigs.values()
+    raised = variant(
+        ownship={"asset": "cargo_ship"},
+        rig={"height_m": rig.height_m + lighter.ownship.rise_m},
+        objects=[yacht],
+    )
+    built = scene.build(lighter, "eo")
+    (anchor,) = built.targets["yacht"]
+
+    assert sea.sea_reach_m(lighter) == pytest.approx(sea.sea_reach_m(raised))
+    assert scene._sightline_m(lighter, [anchor]) == pytest.approx(
+        scene._sightline_m(raised, [anchor])
+    )
+
+
 def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     """The sea pitches, rolls and heaves the hull's attitude, under its scripted
     motion and course, and the cameras stay fixed in the vessel frame.

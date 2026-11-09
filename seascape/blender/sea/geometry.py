@@ -49,6 +49,7 @@ def sea_reach_m(scenario: Scenario) -> float:
     `speed_mps * duration_s`, which a turn only shortens.
     """
     height_m = max(rig.height_m for rig in scenario.rigs.values())
+    height_m += scenario.ownship.rise_m  # a lighter hull lifts its rigs
     run_m = scenario.ownship.speed_mps * scenario.outputs.duration_s
     return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k) + run_m
 
