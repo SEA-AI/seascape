@@ -64,31 +64,37 @@ def _frustum(
     return obj
 
 
-def _hit_m(origin: Vector, up: bool) -> float | None:
-    """Height of the first surface straight above or below `origin`, if any."""
+def _hit_m(frame: bpy.types.Object, origin: Vector, up: bool) -> float | None:
+    """Height in `frame` of the first surface along its vertical above or below
+    `origin`, if any.
+    """
+    to_frame = frame.matrix_world.inverted()
+    axis = frame.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0 if up else -1.0))
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    hit, location, *_ = bpy.context.scene.ray_cast(
-        depsgraph, origin, Vector((0.0, 0.0, 1.0 if up else -1.0))
-    )
-    return location.z if hit else None
+    hit, location, *_ = bpy.context.scene.ray_cast(depsgraph, origin, axis)
+    return (to_frame @ location).z if hit else None
 
 
-def _rig_line(name: str, scenario: Scenario, rig: bpy.types.Object) -> Line:
-    """The rig's numbers and what of the hull lies straight below and above it. Cast
-    before the frusta exist, which a ray would hit.
+def _rig_line(
+    name: str, scenario: Scenario, rig: bpy.types.Object, frame: bpy.types.Object
+) -> Line:
+    """The rig's numbers and what of the hull lies straight below and above it in
+    `frame`, the hull's, so a trimmed or heeled ownship measures along its own mast.
+    Cast before the frusta exist, which a ray would hit.
     """
     spec = scenario.rigs[name]
     at = rig.matrix_world.translation
+    height_m = (frame.matrix_world.inverted() @ at).z
     text = (
         f"rig {name}: height_m {spec.height_m:g}, offset_y_m {spec.offset_y_m:g}, "
         f"offset_x_m {spec.offset_x_m:g}"
     )
-    below_m = _hit_m(at, up=False)
+    below_m = _hit_m(frame, at, up=False)
     if below_m is None:
         text += "; no hull below it"
     else:
-        text += f"; hull below it at {below_m:.2f} m, {at.z - below_m:.2f} m clear"
-    if (above_m := _hit_m(at, up=True)) is not None:
+        text += f"; hull below it at {below_m:.2f} m, {height_m - below_m:.2f} m clear"
+    if (above_m := _hit_m(frame, at, up=True)) is not None:
         text += f"; hull ABOVE it at {above_m:.2f} m"
     return text, canvas.INK
 
@@ -141,7 +147,9 @@ def draw(scenario: Scenario, out: Path) -> None:
     )
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     hull = mesh_objects([vessel])
-    lines = [_rig_line(name, scenario, rig) for name, rig in built.rigs.items()]
+    lines = [
+        _rig_line(name, scenario, rig, built.root) for name, rig in built.rigs.items()
+    ]
 
     corners = np.array([tuple(c) for c in box_corners(hull)])
     length_m = REACH * float(np.linalg.norm(corners.max(axis=0) - corners.min(axis=0)))
