@@ -24,7 +24,7 @@ def test_a_broad_roof_with_no_corner_in_a_station_still_tops_it() -> None:
 
     tops = {y: z for y, z, _ in rows}
 
-    assert tops == {-3.5: 0, -2.5: 2, -1.5: 2, -0.5: 2, 0.5: 2, 1.5: 2, 2.5: 2, 3.5: 0}
+    assert tops == {-3.5: 0, -2: 2, -1.5: 2, -0.5: 2, 0.5: 2, 1.5: 2, 2: 2, 3.5: 0}
     assert all(x == 0 for _, _, x in rows)
 
 

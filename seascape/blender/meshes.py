@@ -220,7 +220,7 @@ def top_per_station(
     facets: np.ndarray, step_m: float
 ) -> list[tuple[float, float, float]]:
     """The top of triangles `facets` (n, corner, xyz) per `step_m` along y, stern
-    first: (y of the station's middle, top z, x midway across the top).
+    first: (y, top z, x), with y and x midway across the top.
 
     A triangle's highest point inside a station lies on a corner inside it or where
     an edge crosses a face, so those points give the top exactly.
@@ -244,9 +244,9 @@ def top_per_station(
         if len(points):
             top_m = points[:, 2].max()
             # Judgement: a millimetre, far under any mount, makes a flat roof one top.
-            x = points[points[:, 2] >= top_m - 1e-3, 0]
-            middle_m = (x.min() + x.max()) / 2
-            rows.append((float(near_m + far_m) / 2, float(top_m), float(middle_m)))
+            top = points[points[:, 2] >= top_m - 1e-3]
+            x_m, y_m, _ = (top.min(axis=0) + top.max(axis=0)) / 2
+            rows.append((float(y_m), float(top_m), float(x_m)))
     return rows
 
 
