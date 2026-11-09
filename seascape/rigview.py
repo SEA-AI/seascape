@@ -20,7 +20,7 @@ from seascape.physics import earth
 VIEWS = (
     workbench.Aim("starboard beam", 90.0, 0.0),
     workbench.Aim("top", 90.0, 89.0),
-    workbench.Aim("starboard bow", 45.0, 25.0),
+    workbench.Aim("astern", 150.0, 20.0),
 )
 TILE = (800, 600)
 # A frustum's length, as a share of the hull's diagonal.
