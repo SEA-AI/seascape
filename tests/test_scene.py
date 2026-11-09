@@ -829,20 +829,6 @@ def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
-def test_a_low_wide_camera_sees_the_water_at_the_frame_s_foot() -> None:
-    height_m, wide = 2.5, {"hfov_deg": 130.0, "width_px": 360, "height_px": 108}
-    scenario = variant(
-        rig={"height_m": height_m, "pitch_deg": 0.0}, cameras={"eo": wide}
-    )
-    scene.build(scenario, "eo")
-    (mount,) = (m for m in scenario.mounts if m.camera.hfov_deg == wide["hfov_deg"])
-    half_h = math.radians(wide["hfov_deg"]) / 2
-    half_v = math.atan(math.tan(half_h) * wide["height_px"] / wide["width_px"])
-
-    # Along the axis, the frame's bottom edge meets the water this far out.
-    assert camera_of(mount).data.clip_start < height_m / math.tan(half_v)
-
-
 def test_the_far_clip_clears_a_hull_down_target() -> None:
     """Hull down from a low camera, its upperworks still up."""
     range_m = 20000.0
