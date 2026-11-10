@@ -6,9 +6,10 @@ width_px = 640
 height_px = 512
 
 [microbolometer]
-# Professional grade, <= 50 mK at f/1.0 against 30 C (Boson datasheet 102-2013-40,
-# table 15): an upper bound.
-netd_k = 0.05
+# Professional grade, <= 50 mK at f/1.0 against 30 C (Boson datasheet 102-2013-40
+# Rev 340, table 13), scaled by (f/#)^2 / tau for this lens: 1.00 and 92 % (table
+# 11). An upper bound.
+netd_k = 0.054
 pitch_um = 12.0
-# The 20640A032 lens (Boson datasheet 102-2013-40, table 13).
+# The 20640A032 lens (same datasheet, table 11).
 f_number = 1.0

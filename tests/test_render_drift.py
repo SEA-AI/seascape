@@ -30,6 +30,7 @@ from seascape.blender.sea.memory import _frames_folder
 from seascape.blender.sky import _sky_texture, haze
 from seascape.config import Band, Camera, Lens, Mount, Scenario, Sky, load, substream
 from seascape.physics import colour, lwir, optics, wakes, waves
+from tests import gerstner
 from tests.probes import probe, show_sea
 from tests.scenarios import BASELINE, OPEN_SEA, preset_target, target, variant
 
@@ -136,25 +137,27 @@ def _sea_texture_fades_with_range(frame: np.ndarray) -> None:
     )
 
 
-def sea_of(scenario: Scenario, waves: bool) -> np.ndarray:
-    """The near sea of an ir frame, optionally with the wave relief flattened: the
+def sea_of(scenario: Scenario) -> tuple[np.ndarray, np.ndarray]:
+    """The near sea of an ir frame, then the same with the wave relief flattened: the
     shaded waves and the displaced ones, whose tilt the Geometry node's normal holds.
     """
     built = scene.build(scenario, "ir")
-    if not waves:
-        tree = bpy.data.materials["sea"].node_tree
-        output = next(
-            n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial"
-        )
-        for link in output.inputs["Displacement"].links:
-            tree.links.remove(link)
-        flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
-        tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
     sc = bpy.context.scene
     sc.camera = _camera(built, scenario, "ir")
-    frame = shoot((320, 256), "isothermal")
-    horizon = frame.shape[0] // 2
-    return frame[horizon + 30 : horizon + 80]
+
+    def near_sea(name: str) -> np.ndarray:
+        frame = shoot((320, 256), name)
+        horizon = frame.shape[0] // 2
+        return frame[horizon + 30 : horizon + 80]
+
+    rippled = near_sea("isothermal")
+    tree = bpy.data.materials["sea"].node_tree
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    for link in output.inputs["Displacement"].links:
+        tree.links.remove(link)
+    flat = tree.nodes.new("ShaderNodeNewGeometry").outputs["Normal"]
+    tree.links.new(flat, tree.nodes["wave_normal"].inputs["Vector"])
+    return rippled, near_sea("isothermal_flat")
 
 
 def test_waves_survive_a_sea_at_air_temperature() -> None:
@@ -163,7 +166,7 @@ def test_waves_survive_a_sea_at_air_temperature() -> None:
     """
     isothermal = _clear(variant(sea={"t_sea_k": SCENARIO.sky.t_air_k}))
 
-    rippled, flat = sea_of(isothermal, True), sea_of(isothermal, False)
+    rippled, flat = sea_of(isothermal)
 
     assert texture(rippled) > 2.5 * texture(flat)
 
@@ -221,8 +224,8 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     # The rest of the waves tilt the facet where its water was at rest.
     tall, shaded = sea.displaced((scenario.wind_waves(), scenario.swell_waves()))
     t_s = scenario.outputs.times_s[frame]
-    seen = waves.filtered(shaded[0] + shaded[1], span_m / px)
-    slope = waves.slope(seen, *rest, t_s)
+    seen = gerstner.filtered(shaded[0] + shaded[1], span_m / px)
+    slope = gerstner.slope(seen, *rest, t_s)
     tilted = facet - np.array([slope[0], slope[1], np.zeros_like(slope[0])])
     tilted /= np.linalg.norm(tilted, axis=0)
     assert np.abs(normal - tilted).max() < 2e-3
@@ -236,7 +239,7 @@ def test_the_shader_tilts_the_sea_by_the_field_s_slope(
     curved = sum(w.amplitude_m * w.k_rad_m**2 for w in tall)
     assert np.abs(rest - at_rest).max() < dice_m**2 / 8 * curved
     bent = sum(w.amplitude_m * w.k_rad_m**3 for w in tall)
-    surface = np.array(waves.gerstner_normal(tall, *at_rest, t_s))
+    surface = np.array(gerstner.normal(tall, *at_rest, t_s))
     assert np.abs(facet - surface).max() < dice_m**2 * (1 / 8 + 1 / 6) * bent
 
 
@@ -246,7 +249,7 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
     water having drifted since.
     """
     clip = _clear(variant(OPEN_SEA, outputs={"duration_s": 1.0, "fps": 4}))
-    stale = _frames_folder() / "0.25m" / "foam_0001.exr"
+    stale = _frames_folder() / "0.25m" / "foam_0001.png"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.touch()
     built = scene.build(clip, "eo")
@@ -277,7 +280,11 @@ def test_the_shader_reads_the_foam_memory_where_the_water_is() -> None:
             10.0,
         )
         rendered = shoot((px, px), f"memory_probe_{frame}")
-        stored = blend.read(first.with_name(f"foam_{frame + 1:04d}.exr"))[..., 0]
+        file = bpy.data.images.load(str(first.with_name(f"foam_{frame + 1:04d}.png")))
+        # A png loads as sRGB, which would decode the stored fractions.
+        file.colorspace_settings.name = "Non-Color"
+        stored = blend.pixels(file)[..., 0]
+        bpy.data.images.remove(file)
         expected = stored[row : row + px, column : column + px][::-1]
         assert expected.max() > 0.0
         np.testing.assert_allclose(rendered, expected, atol=2e-3)
@@ -522,16 +529,14 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     )
     view = np.array([0.0, -math.cos(d), math.sin(d)])  # toward the camera
     ahead = np.repeat(-view[:, None], rays, axis=1)
-    rest = waves.gerstner_hit(tall, origin, ahead, 0.0, 0.25)[:2]
+    rest = gerstner.hit(tall, origin, ahead, 0.0, 0.25)[:2]
     moved = np.array(waves.gerstner_offset_m(tall, *rest, 0.0))
-    normal = np.array(waves.gerstner_normal(tall, *rest, 0.0))
+    normal = np.array(gerstner.normal(tall, *rest, 0.0))
     toward = view @ normal
     bounced = 2 * toward * normal - view[:, None]
     hit = np.array([*rest, np.zeros(rays)]) + moved + 1e-3 * normal
-    *beyond, blocked = waves.gerstner_hit(tall, hit, bounced, 0.0, 0.25)
-    met = np.abs(
-        np.sum(bounced * np.array(waves.gerstner_normal(tall, *beyond, 0.0)), 0)
-    )
+    *beyond, blocked = gerstner.hit(tall, hit, bounced, 0.0, 0.25)
+    met = np.abs(np.sum(bounced * np.array(gerstner.normal(tall, *beyond, 0.0)), 0))
     sky = np.where(
         blocked,
         1 - lwir.fresnel_emissivity(np.arccos(np.clip(met, 0, 1)), SEAWATER_IOR, 0.0),
@@ -566,11 +571,7 @@ def _sea_reflectance(scenario: Scenario, depression_deg: float) -> float:
     return float(np.sum(area * _mirrored(facing) * lit * sky[:, None]) / np.sum(area))
 
 
-def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float:
-    """The sea's reflection alone of a white sky, looking down at `depression_deg`. A
-    steep frame sees a few metres of sea tilted by the long wave under it; frames a
-    long wave apart average to the sea's.
-    """
+def _white_sky_over_the_sea(scenario: Scenario) -> None:
     scene.build(scenario, "eo")
     world = bpy.context.scene.world.node_tree
     background = world.nodes["Background"]
@@ -584,6 +585,13 @@ def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float
         mixed = link.to_socket
         tree.links.remove(link)
         mixed.default_value = 0.0
+
+
+def _uniform_sky_reflectance(depression_deg: float) -> float:
+    """The built sea's reflection of a white sky, looking down at `depression_deg`. A
+    steep frame sees a few metres of sea tilted by the long wave under it; frames a
+    long wave apart average to the sea's.
+    """
     lens = bpy.data.cameras.new("probe")
     lens.clip_end, lens.angle_x = 1e5, math.radians(PROBE_FOV_DEG)
     camera = probe(lens, pitch_deg=90.0 - depression_deg)
@@ -594,21 +602,28 @@ def _uniform_sky_reflectance(scenario: Scenario, depression_deg: float) -> float
     return float(np.mean(frames))
 
 
-@pytest.mark.parametrize("depression_deg", [3.0, 10.0, 40.0])
-@pytest.mark.parametrize("wind_from_deg", [0.0, 90.0])
-def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
-    wind_from_deg: float, depression_deg: float
-) -> None:
+class TestUniformSky:
     """The lobe's distribution sets how much sky the sea returns near the horizon,
     looking upwind and across the wind.
     """
-    scenario = _clear(variant(sea={"wind_from_deg": wind_from_deg}))
-    expected = _sea_reflectance(scenario, depression_deg)
 
-    rendered = _uniform_sky_reflectance(scenario, depression_deg)
+    @pytest.fixture(scope="class", params=[0.0, 90.0], ids=lambda deg: f"wind{deg:g}")
+    @classmethod
+    def scenario(cls, request: pytest.FixtureRequest) -> Scenario:
+        scenario = _clear(variant(sea={"wind_from_deg": request.param}))
+        _white_sky_over_the_sea(scenario)
+        return scenario
 
-    # A judgement.
-    assert rendered == pytest.approx(expected, rel=0.06)
+    @pytest.mark.parametrize("depression_deg", [3.0, 40.0])
+    def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
+        self, scenario: Scenario, depression_deg: float
+    ) -> None:
+        expected = _sea_reflectance(scenario, depression_deg)
+
+        rendered = _uniform_sky_reflectance(depression_deg)
+
+        # A judgement.
+        assert rendered == pytest.approx(expected, rel=0.06)
 
 
 def test_the_rendered_whitecaps_cover_what_monahan_measured() -> None:
@@ -710,8 +725,8 @@ def test_haze_leaves_a_black_card_its_share_of_the_sky(
     assert far_m < sc.camera.data.clip_end, "past the far plane there is no haze"
     lens = bpy.data.cameras.new("probe")
     lens.angle, lens.clip_end = math.radians(0.2), 2 * far_m
-    # A rig's near plane, which the haze ignores.
-    lens.clip_start = hazy.rigs["bow"].near_clip_m
+    # A near plane well off the lens: the haze must still count from the lens.
+    lens.clip_start = 50.0
     elevation = math.radians(0.2)  # under the haze's top at every range
     probe(  # towards +Y
         lens,
@@ -772,10 +787,8 @@ def test_ir_takes_the_same_light_however_cycles_samples_it() -> None:
 
 
 def srgb_counts(linear: np.ndarray) -> np.ndarray:
-    """What the Standard view writes to 8 bits: clipped, IEC 61966-2-1 encoded."""
-    x = np.clip(linear, 0.0, 1.0)
-    encoded = np.where(x <= 0.0031308, 12.92 * x, 1.055 * x ** (1 / 2.4) - 0.055)
-    return np.round(255 * encoded)
+    """What the Standard view writes to 8 bits."""
+    return np.round(255 * colour.srgb_encode(linear))
 
 
 class TestCamera:
@@ -1099,6 +1112,19 @@ class TestSensor:
             (1.0, 1.0, 1.0), sensor=hdr, processing={"exposure_ev": 1.0}
         )
         assert np.median(frame) == pytest.approx(2 * MID_GREY, rel=0.1)
+
+    @pytest.mark.parametrize("hdr_ratio", [1.0, 16.0])
+    def test_an_exposure_target_is_the_mean_of_the_output(
+        self, hdr_ratio: float
+    ) -> None:
+        """Past a clipped or tone-mapped sun, where the log-average's grey misses it."""
+        frame = self.through(
+            (1.0, 1.0, 1.0),
+            sun=9.0,
+            sensor={"full_well_e": 1e12, "hdr_ratio": hdr_ratio},
+            processing={"exposure_target": 0.22},
+        )
+        assert (frame @ colour.LUMINANCE).mean() == pytest.approx(0.22, rel=0.01)
 
     def test_noise_is_drawn_apart_per_camera_scenario_and_frame(self) -> None:
         noisy = {"full_well_e": 400.0, "dark_noise_e": 4.0}

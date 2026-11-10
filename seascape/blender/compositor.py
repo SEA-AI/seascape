@@ -28,7 +28,11 @@ from seascape.config import (
 )
 from seascape.physics import colour, optics
 
+# Judgement: a frame is a product, not a preview, so quality over file size.
 JPEG_QUALITY = 95
+# The Switches that turn a fisheye's image and object-index pass back.
+ROLL = "lens.roll"
+INDEX_ROLL = "index.roll"
 
 
 # ISO 12232's saturation-based speed puts mid-grey at 10/78 of saturation; the
@@ -118,6 +122,22 @@ def set_output(
     sc.cycles.use_animated_seed = True
 
 
+def unroll(
+    tree: bpy.types.NodeTree, image: bpy.types.NodeSocket, name: str
+) -> bpy.types.NodeSocket:
+    """An image as Cycles' polynomial fisheye draws it, turned back: the projection puts
+    the scene half a turn about the optical axis.
+
+    Args:
+        tree: The compositor tree to add the turn to.
+        image: The rendered pass, such as the image or the object index.
+        name: The Switch's name, which `respond` turns on for a fisheye camera.
+    """
+    flip = node(tree, "CompositorNodeFlip", {"Image": image})
+    flip.inputs["Flip X"].default_value = flip.inputs["Flip Y"].default_value = True
+    return switch(tree, name, image, flip.outputs["Image"])
+
+
 def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
     """The render as a camera takes it.
 
@@ -129,7 +149,7 @@ def _compositor(compensation_ev: float | None, graded: bool = False) -> None:
     tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
     tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
     bpy.context.scene.compositing_node_group = tree
-    image = tree.nodes.new("CompositorNodeRLayers").outputs["Image"]
+    image = unroll(tree, tree.nodes.new("CompositorNodeRLayers").outputs["Image"], ROLL)
     if compensation_ev is not None:
         image = _camera(tree, image, compensation_ev, graded)
     node(tree, "NodeGroupOutput", {"Image": image})
@@ -151,8 +171,7 @@ def _camera(
     Args:
         tree: The compositor's tree.
         image: The render's linear radiance, as it reaches the lens.
-        compensation_ev: Stops over auto-exposure, which puts the frame's log-average
-            at `MID_GREY`.
+        compensation_ev: Stops over auto-exposure.
         with_sensor: Add the sensor and ISP after auto-exposure.
     """
     coords = node(tree, "CompositorNodeImageCoordinates", {"Image": image})
@@ -187,17 +206,25 @@ def _camera(
     tree.links.new(combine(tree, size_px, size_px), blur.inputs["Size"])
     tree.links.new(glare.outputs["Image"], blur.inputs["Image"])
     image = blur.outputs["Image"]
-    _, average = sensor.log_average(tree, image)
+    lit, average = sensor.log_average(tree, image)
     gain = scalar(
         tree, "DIVIDE", 2**compensation_ev * MID_GREY, average, name="exposure"
     )
+    target = value(tree, "exposure.target")
+    if with_sensor:
+        # Without HDR, a camera with a target meters its clipped output.
+        metered = sensor.clipped_gain(tree, lit, gain, target)
+        gain = switch(
+            tree, "exposure.clipped", gain, (metered * 2**compensation_ev).socket
+        )
     processing = value(tree, "processing.gain", 1.0)
     gain = scalar(tree, "MULTIPLY", gain, processing)
     exposed = vector(tree, "SCALE", image, gain)
     if with_sensor:
         # A camera without a full well shares the tree, and takes the ideal frame.
-        grey = scalar(tree, "MULTIPLY", processing, 2**compensation_ev * MID_GREY)
-        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey)
+        over = scalar(tree, "MULTIPLY", processing, 2**compensation_ev)
+        grey = scalar(tree, "MULTIPLY", over, MID_GREY)
+        read = sensor.chain(tree, exposed, coords.outputs["Pixel"], grey, target, over)
         exposed = switch(tree, "sensor.on", exposed, read)
     return _tone(tree, exposed)
 
@@ -295,9 +322,8 @@ def _set_diffraction(tree: bpy.types.NodeTree, camera: Camera) -> None:
         if psf.image is not None:
             bpy.data.images.remove(psf.image)
         return
-    assert camera.sensor.pitch_um is not None, "f_number needs sensor.pitch_um"
-    sites_per_px = (camera.sensor.width_px or camera.width_px) / camera.width_px
-    pitch_m = camera.sensor.pitch_um * 1e-6 * sites_per_px
+    assert camera.pitch_um is not None, "f_number needs sensor.pitch_um"
+    pitch_m = camera.pitch_um * 1e-6
     built = (psf.get("f_number"), psf.get("pitch_m"))
     if psf.image is not None and built == (f_number, pitch_m):
         return
@@ -325,9 +351,14 @@ def respond(mount: Mount, noise: np.random.Generator) -> None:
         cycles.pixel_filter_type = props["pixel_filter_type"].default
         cycles.filter_width = props["filter_width"].default
     tree = bpy.context.scene.compositing_node_group
-    if tree is None or "lens.vignette" not in tree.nodes:
+    if tree is None:
         return
     camera = mount.camera
+    for name in (ROLL, INDEX_ROLL):
+        if name in tree.nodes:
+            toggle(tree, name, camera.lens.fisheye is not None)
+    if "lens.vignette" not in tree.nodes:
+        return
     longer_of_width = max(camera.width_px, camera.height_px) / camera.width_px
     tangent = longer_of_width * math.tan(math.radians(camera.hfov_deg) / 2)
     set_value(tree, "lens.vignette", tangent if camera.lens.vignetting else 0.0)

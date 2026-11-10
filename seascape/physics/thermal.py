@@ -88,14 +88,16 @@ SEA_EMISSIVITY = 0.96
 # degrees of it. A wall's inner film; its outer one is this module's convection and
 # radiation.
 _R_SI_M2K_W = 0.13
-# Judgement: a glass fibre blanket, ~0.04 W m^-1 K^-1, Incropera & DeWitt Table A.3
-# (0.035-0.046 by density) as recalled, unchecked.
+# Judgement: a glass fibre blanket, 0.04 W m^-1 K^-1, inside the 0.034-0.046 of pink
+# fibreglass batts (Owens Corning data, tabulated in Wikipedia's List of thermal
+# conductivities).
 _GLASS_WOOL_W_MK = 0.04
 # Thompson et al. 1998: 25 mm (1") of glass wool on a heated compartment's bulkheads.
 _INSULATION_M = 0.025
-# Judgement: soda-lime glass, 1.0 W m^-1 K^-1, EN 673's value as recalled, unchecked.
+# Judgement: soda-lime glass, 1.0 W m^-1 K^-1, the upper end of the 0.8-1.0 published
+# for window glass.
 _GLASS_W_MK = 1.0
-# Judgement: a 6 mm wheelhouse pane.
+# Judgement: a 6 mm float pane, a common wheelhouse thickness.
 _PANE_M = 0.006
 
 # Uninsulated steel plate: steel's resistance, ~1e-4 m^2 K W^-1 for 6 mm, is lost
@@ -178,8 +180,7 @@ ZONES: dict[ZoneName, Zone] = {
     # compilation). Fenders and inflatable tubes. Judgement: absorptance grey to black,
     # taken as paint's; no source.
     "rubber": Zone(0.859, (GREY_PAINT_ABSORPTANCE, 0.97), 0.9, "none", 0.0),
-    # Judgement: cloth 0.75-0.90 at 300 K, Incropera & DeWitt Table A.11 as recalled,
-    # unchecked.
+    # Judgement: cloth emissivity 0.85 at 300 K, mid-range for woven fabric; no source.
     # Absorptance by colour, taken as paint's. Limitation: a canopy has air on both
     # sides and convects from each; the balance gives it one.
     "fabric": Zone(0.85, PAINT_ABSORPTANCE, GREY_PAINT_ABSORPTANCE, "none", 0.0),
@@ -280,8 +281,7 @@ class Environment:
     fog_cover: float = 0.0
     beam_transmittance: float = 1.0
     fog_sunlight_transmittance: float = 1.0
-    # Judgement: 22 C, ISO 7547's winter design for accommodation as recalled,
-    # unchecked.
+    # ISO 7547:2002 clause 4.3: winter indoor air, +22 C, in accommodation spaces.
     t_cabin_k: float = 295.15
     # Thompson et al. 1998: ventilation should hold compartments below 50 C; the
     # ceiling, so a hard-run engine room.
@@ -369,9 +369,9 @@ def sky_longwave_w_m2(
     Clear sky by Swinbank 1963. Cloud covers its fraction as a blackbody at the air,
     less what the 8-14 um window loses to a colder base: only the window sees past the
     lowest air (Kimball, Idso & Aase, Water Resour. Res. 18(4) 931, 1982). Judgement:
-    mixed linearly with the clear sky, as in Crawford & Duchon, J. Appl. Meteor. 38(4)
-    474, 1999, unchecked. Past about 312 K, extrapolated, Swinbank's clear sky
-    outshines an overcast at 2400 m.
+    mixed linearly with the clear sky; Crawford & Duchon, J. Appl. Meteor. 38(4) 474,
+    1999, likewise modify clear-sky emissivity by cloudiness. Past about 312 K,
+    extrapolated, Swinbank's clear sky outshines an overcast at 2400 m.
 
     Args:
         t_air_k: Surface air temperature.

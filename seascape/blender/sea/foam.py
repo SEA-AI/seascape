@@ -1,13 +1,13 @@
 """Whitecaps: their lace and lattice, shaded from the foam memory."""
 
 import math
-from statistics import NormalDist
 from typing import NamedTuple
 
 import bpy
 import numpy as np
 
 from seascape.blender.blend import (
+    CURVE_SAMPLES,
     Num,
     clamped,
     combine,
@@ -16,7 +16,6 @@ from seascape.blender.blend import (
     node,
     scalar,
     separate,
-    texels,
 )
 from seascape.blender.sea.wind import (
     _downwind,
@@ -34,6 +33,7 @@ from seascape.physics.waves import (
     WHITECAP_EFFECTIVE_REFLECTANCE,
     FoamGrid,
     foam_lattice_field,
+    gaussian_quantiles,
     whitecap_fraction,
 )
 
@@ -158,7 +158,7 @@ def _remembered(
     if pulls:
         # Each pull s g is clipped to [-a, a]: g is Gaussian, so 1 + clamp(s g) averages
         # 1 and Monahan's cover holds; (1 + a)^2 under 1 / cover keeps it under full.
-        # The floor keeps INVERSE_SQRT, which reads 0 at 0, off an empty cell.
+        # Numerics: the floor keeps INVERSE_SQRT, which reads 0 at 0, off an empty cell.
         headroom = (cover.op("MAXIMUM", 1e-6).op("INVERSE_SQRT") - 1.0).op(
             "MINIMUM", 1.0
         )
@@ -269,7 +269,7 @@ def _bare(tree: bpy.types.NodeTree) -> _Whitecaps:
 
 def _quantiles() -> np.ndarray:
     """The unit normal's 1 - p quantile, sampled in p."""
-    return np.vectorize(NormalDist().inv_cdf)(1 - texels())
+    return -gaussian_quantiles(CURVE_SAMPLES)
 
 
 class _FoamTexture(NamedTuple):

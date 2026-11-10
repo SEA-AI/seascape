@@ -87,7 +87,7 @@ def test_fetch_rejects_bytes_that_miss_the_digest(one: Path) -> None:
     with pytest.raises(ValueError, match="manifest says"):
         assets.fetch("ship")
     assert not (assets.CACHE / "ship.fbx").exists()
-    assert not list(assets.CACHE.glob("*.part"))
+    assert not list(assets.CACHE.glob("*.part*"))
 
 
 @pytest.mark.usefixtures("one")
@@ -101,11 +101,11 @@ def test_a_download_cut_off_mid_write_leaves_no_part(
     monkeypatch.setattr(assets.shutil, "copyfileobj", cut_off)
     with pytest.raises(OSError, match="connection reset"):
         assets.fetch("ship")
-    assert not list(assets.CACHE.glob("*.part"))
+    assert not list(assets.CACHE.glob("*.part*"))
 
 
 def test_fetch_puts_a_mesh_s_files_where_it_names_them(one: Path) -> None:
-    with assets.MANIFEST.open("a") as manifest:
+    with (one.parent / "assets.toml").open("a") as manifest:
         manifest.write(
             f'[ship.files."textures/skin.jpg"]\nurl = "{one.as_uri()}"\n'
             f'sha256 = "{DIGEST}"\n'

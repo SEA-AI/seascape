@@ -19,9 +19,8 @@ from seascape.blender.meshes import mesh_objects
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.vessels import waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
-from seascape.outputs import agc, panorama
+from seascape.outputs import agc, canvas, panorama
 from seascape.outputs.calibration import Calibration
-from seascape.outputs.montage import INK
 from seascape.physics import waves
 from tests.scenarios import two_rigs
 
@@ -334,7 +333,7 @@ def test_the_ruler_ticks_under_the_image_where_column_says(
     strip = ruled[image.shape[0] :]
     assert (ruled[: image.shape[0]] == image).all()
     tick = strip[:16, round(panorama.column(layout, bearing) or -1)]
-    assert (tick == INK).all()
+    assert (tick == canvas.INK).all()
 
 
 def test_rectilinear_refuses_a_camera_behind_its_plane(built: scene.Built) -> None:

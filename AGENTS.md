@@ -69,7 +69,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **LWIR waves do not need `t_sea_k - t_air_k`.** A tilted facet reflects a different elevation of a sky that runs cold overhead to ambient at the horizon, so relief shows with the sea exactly at air temperature. Under a uniform ambient world it does not.
 - **The engine identifier is version-dependent.** `BLENDER_EEVEE` means EEVEE Legacy on ≤4.1 and EEVEE Next on ≥5.0, with `BLENDER_EEVEE_NEXT` in between. The Sky Texture's `NISHITA` is `SINGLE_SCATTERING` on ≥5.0; `MULTIPLE_SCATTERING` is a new model.
 - **Do not validate an engine against the enum.** Under the `bpy` module `render.engine` reports only `['BLENDER_EEVEE']`, on the class and the instance alike, because Cycles registers as an add-on. Assigning `CYCLES` works anyway and reads back. Assign it and let Blender raise: an identifier it does not know is a `TypeError`.
-- **Both clip planes cut in silence.** `clip_end` defaults to 1000 m, so a target at 2 km renders as sky and the boundary reads as a convincing horizon. A rig's `near_clip_m` does the same to anything nearer than itself, and Blender accepts a near plane beyond the far one by rendering an empty frame. Nothing warns at either end.
+- **The far clip plane cuts in silence.** `clip_end` defaults to 1000 m, so a target at 2 km renders as sky and the boundary reads as a convincing horizon.
 - **An orthographic camera sees the displaced sea as off-screen.** Cycles dices it at `offscreen_dicing_scale`, 128x coarser, and the waves render nearly flat with no warning. A probe of the sea's geometry needs a perspective camera.
 - **A culled build draws only what its own cameras resolve.** `scene.build(..., cull=True)`, which `render` uses, leaves out every wave finer than the scenario's cameras can draw at their resolution. Zoom a camera, raise its resolution or add one afterwards and the shortest ripples are missing, in silence. Every other build keeps the whole sea.
 - **Wear is decided at import.** An asset is tagged, and in EO its materials dirtied, only when `Scenario.worn` names it as the build starts. Set `wear` on a hull afterwards, or on an asset the build imported clean, and it renders clean with no error.
@@ -111,7 +111,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Units in field names.** `height_m`, `t_sea_k`, `range_m`. No units library.
 - **Randomness comes from named substreams** off the scenario seed — `substream(seed, "sea/surface")`. Never `np.random` module functions. Named streams mean adding a component doesn't perturb an existing one.
 - **Poses are functions of time.** Ground truth records a timestamp, not a frame index: sensors run at different rates, so frame *n* is not one instant.
-- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo.
+- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo. The exception is the SEA.AI logo PNGs in `seascape/outputs/brand/`.
 - **Components are pydantic models; a second kind of one makes a discriminated union**, registered in one place. Not a registry dict, not entry points.
 - Annotate every function signature outside tests.
 

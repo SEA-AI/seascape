@@ -76,12 +76,12 @@ def gaussian_ranks(tile: np.ndarray) -> np.ndarray:
         tile: A float field; only the order of its values survives.
     """
     ranked = np.empty(tile.size, tile.dtype)
-    ranked[np.argsort(tile, axis=None)] = _gaussian_quantiles(tile.size)
+    ranked[np.argsort(tile, axis=None)] = gaussian_quantiles(tile.size)
     return ranked.reshape(tile.shape)
 
 
 @cache
-def _gaussian_quantiles(count: int) -> np.ndarray:
+def gaussian_quantiles(count: int) -> np.ndarray:
     """A unit Gaussian's quantiles at the centres of equal shares, ascending. Frozen:
     the cache hands every caller the same array.
 

@@ -46,9 +46,7 @@ def diffract(
     radiance: FloatArray, f_number: float, pitch_m: float, t_k: float
 ) -> FloatArray:
     """`radiance` through the lens's diffraction, the frame mirrored at its edges."""
-    # Four Airy-disc diameters, 2.44 lambda N each to the first dark ring (Goodman
-    # 2005), at the band's longest.
-    pad = math.ceil(4 * 2.44 * lwir.BAND_M[1] * f_number / pitch_m)
+    pad = optics.airy_reach_px(lwir.BAND_M[1], f_number, pitch_m)
     padded = np.pad(radiance, pad, mode="reflect")
     fy = np.fft.fftfreq(padded.shape[0])[:, None]
     fx = np.fft.rfftfreq(padded.shape[1])[None, :]

@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import bpy
+import cv2
 import numpy as np
 from mathutils import Vector
 
@@ -14,7 +15,7 @@ from seascape.blender.rigs import View
 from seascape.blender.sea.foam import FOAM_SEAM_CELLS
 from seascape.blender.sea.wind import surface_drift
 from seascape.config import Outputs, Scenario, Sea
-from seascape.physics import earth, waves
+from seascape.physics import earth, fisheye, waves
 from seascape.physics.waves import (
     FoamGrid,
     Wave,
@@ -51,24 +52,25 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
     rays = []
     for view in seen:
         turn = view.matrix.to_3x3()
-        camera = view.mount.camera
-        # Not `view_frame`: it takes the scene's aspect, which the build sets last.
-        across = math.tan(view.angle_x_rad / 2)
-        up = across * camera.height_px / camera.width_px
-        corners = [
-            Vector((x * across, y * up, -1.0))
-            for x, y in ((1, 1), (1, -1), (-1, -1), (-1, 1))
-        ]
         # Water at x is on the grid at x - v t.
         origin = view.matrix.translation - Vector(
             (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
         )
-        for a in np.linspace(0.0, 1.0, FOAM_RAYS):
-            for b in np.linspace(0.0, 1.0, FOAM_RAYS):
-                toward = (corners[2].lerp(corners[1], a)).lerp(
-                    corners[3].lerp(corners[0], a), b
-                )
-                rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
+        camera = view.mount.camera
+        steps = np.linspace(-1.0, 1.0, FOAM_RAYS)
+        if camera.lens.fisheye is None:
+            # Not `view_frame`: it takes the scene's aspect, which the build sets last.
+            across = math.tan(view.angle_x_rad / 2)
+            up = across * camera.height_px / camera.width_px
+            frame = [Vector((x * across, y * up, -1.0)) for x in steps for y in steps]
+        else:
+            x, y = np.meshgrid(
+                steps * camera.width_px / 2, steps * camera.height_px / 2
+            )
+            k, fx = camera.lens.fisheye, camera.fisheye_focal_px
+            frame = [Vector(d) for d in fisheye.direction(x.ravel(), y.ravel(), k, fx)]
+        for toward in frame:
+            rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
     return rays
 
 
@@ -159,30 +161,17 @@ def foam_grids(
 
 
 def _write_frames(
-    folder: Path,
-    grid: FoamGrid,
-    frames: Iterator[tuple[np.ndarray, np.ndarray]],
+    folder: Path, frames: Iterator[tuple[np.ndarray, np.ndarray]]
 ) -> None:
-    """Each frame's (cover, breaking) as an EXR in `folder`."""
+    """Each frame's (cover, breaking) as a 16-bit PNG in `folder`."""
     folder.mkdir(parents=True)
-    image = bpy.data.images.new(
-        "sea_foam_frame", grid.columns, grid.rows, float_buffer=True
-    )
-    image.colorspace_settings.name = "Non-Color"
-    # `Image.save` writes 32-bit floats uncompressed; a scene's output settings write
-    # half floats, which keep cover to a part in 2048, zipped.
-    frames_scene = bpy.data.scenes.new("sea_foam_frames")
-    settings = frames_scene.render.image_settings
-    settings.file_format, settings.color_mode = "OPEN_EXR", "RGB"
-    settings.color_depth, settings.exr_codec = "16", "ZIP"
-    rgba = np.zeros((grid.rows, grid.columns, 4), np.float32)
-    rgba[..., 3] = 1.0
     for i, (cover, breaking) in enumerate(frames):
-        rgba[..., 0], rgba[..., 1] = cover, breaking
-        image.pixels.foreach_set(rgba.ravel())
-        image.save_render(str(folder / f"foam_{i + 1:04d}.exr"), scene=frames_scene)
-    bpy.data.scenes.remove(frames_scene)
-    bpy.data.images.remove(image)
+        # 16 bits hold a fraction to a part in 65535, finer than a half float's 2048.
+        # cv2 takes BGR and writes the top row first; Blender's rows run bottom up.
+        counts = np.rint(np.dstack([np.zeros_like(cover), breaking, cover]) * 65535)
+        cv2.imwrite(
+            str(folder / f"foam_{i + 1:04d}.png"), counts.astype(np.uint16)[::-1]
+        )
 
 
 # The foam memories the last build asked for and has not simulated: a build that never
@@ -270,7 +259,7 @@ def foam_frames(
             f"sea_foam_{grid.cell_m:g}m_frames", 1, 1, float_buffer=True
         )
         sequence.source = "SEQUENCE"
-        sequence.filepath = str(folder / "foam_0001.exr")
+        sequence.filepath = str(folder / "foam_0001.png")
         sequence.colorspace_settings.name = "Non-Color"
         out.append((grid, sequence))
     return out
@@ -290,6 +279,5 @@ def _simulate(
     times = outputs.times_s
     _write_frames(
         folder,
-        grid,
         foam_memory(wind, drift, grid, times[0], step, len(times), float(threshold)),
     )

@@ -1925,6 +1925,7 @@ node = "iea_15_240_rwt_monopile_rotor"
 # Gaertner et al. 2020, Table 1-1.
 diameter_m = 240.0
 hub_height_m = 150.0
+blades = 3
 tip_speed_ratio = 9.0
 min_rpm = 5.0
 rated_rpm = 7.56
@@ -1963,6 +1964,7 @@ node = "iea_15_240_rwt_volturnus_rotor"
 # Gaertner et al. 2020, Table 1-1.
 diameter_m = 240.0
 hub_height_m = 150.0
+blades = 3
 tip_speed_ratio = 9.0
 min_rpm = 5.0
 rated_rpm = 7.56

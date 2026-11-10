@@ -25,6 +25,7 @@ from seascape.config import (
 )
 from seascape.model import Model
 from seascape.outputs.calibration import CameraCalibration, write_json
+from seascape.physics import fisheye
 
 FILENAME = "labels.json"
 
@@ -183,7 +184,7 @@ class Labels(Model):
             height=camera.height_px,
             camera=camera.name,
             band=camera.band,
-            hfov_deg=math.degrees(2 * math.atan(camera.width_px / 2 / camera.K[0][0])),
+            hfov_deg=camera.hfov_deg,
             time_s=time_s,
             horizon_px=horizon_px(camera, radius_m),
             sensor=settings.sensor if grade else None,
@@ -261,13 +262,18 @@ class Labels(Model):
         """Write to `folder`; the file written."""
         return write_json(self, folder / FILENAME)
 
+    @classmethod
+    def read(cls, folder: Path) -> "Labels":
+        """The labels in `folder`."""
+        return cls.model_validate_json((folder / FILENAME).read_text())
+
 
 def merge(root: Path, folders: Sequence[Path]) -> Labels:
     """The labels in `folders` as one set for `root`."""
     merged = Labels()
     scenarios: dict[str, Any] = {}
     for folder in folders:
-        part = Labels.model_validate_json((folder / FILENAME).read_text())
+        part = Labels.read(folder)
         prefix = folder.relative_to(root).as_posix()
         merged.info = merged.info or part.info
         scenarios[prefix] = part.info["scenario"]
@@ -457,6 +463,8 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
     linear in the row, so grazing is a quadratic in the row; its root with b < 0
     grazes in front of the camera.
     """
+    if camera.distortion is not None:
+        return _fisheye_horizon(camera, radius_m)
     pose = np.array(camera.extrinsics["world"])
     rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
     k_inv = np.linalg.inv(camera.K)
@@ -476,6 +484,36 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
     v = np.where(b0 + roots[0] * b1 < 0, roots[0], roots[1]) + 0.5
     keep = (v >= 0) & (v <= camera.height_px)
     return [(float(x), float(y)) for x, y in zip(u[keep], v[keep], strict=True)]
+
+
+def _fisheye_horizon(
+    camera: CameraCalibration, radius_m: float
+) -> list[tuple[float, float]]:
+    """`horizon_px` for a fisheye, whose rays are not linear down a column: each column
+    is walked a row at a time, and the graze is where b^2 - 4 a c changes sign.
+    """
+    pose = np.array(camera.extrinsics["world"])
+    rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
+    assert camera.distortion is not None
+    u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
+    v = np.arange(camera.height_px + 1, dtype=float)
+    columns, rows = np.meshgrid(u, v)
+    # Blender's camera frame is right, up, back; OpenCV's is right, down, forward.
+    right, down = columns - 0.5 - camera.K[0][2], rows - 0.5 - camera.K[1][2]
+    ray = fisheye.direction(right, -down, camera.distortion, camera.K[0][0])
+    d = (ray * np.array([1.0, -1.0, -1.0])) @ rotation.T
+    a = (d[..., 0] ** 2 + d[..., 1] ** 2) / (2 * radius_m)
+    b = d[..., 2] + (cx * d[..., 0] + cy * d[..., 1]) / radius_m
+    c = cz + (cx * cx + cy * cy) / (2 * radius_m)
+    graze = b * b - 4 * a * c
+    crossing = (graze[:-1] * graze[1:] < 0) & (b[:-1] < 0)
+    found = []
+    for x, flips, column in zip(u, crossing.T, graze.T, strict=True):
+        crossings = np.flatnonzero(flips)
+        if crossings.size:
+            i = int(crossings[0])
+            found.append((float(x), float(i + column[i] / (column[i] - column[i + 1]))))
+    return found
 
 
 def agcs(folder: Path) -> dict[str, Agc]:

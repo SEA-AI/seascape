@@ -9,8 +9,9 @@ from pathlib import Path
 import bpy
 import pytest
 from click.testing import CliRunner, Result
+from PIL import Image
 
-from seascape import assets, cli, server
+from seascape import assets, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
@@ -90,6 +91,7 @@ assert "bpy" not in sys.modules
         (("render", "no_such.toml"), "does not exist"),
         (("build", BASELINE, "--band", "uv"), "'uv' is not one of"),
         (("assets", "show", "no_such"), "no mesh or sky"),
+        (("assets", "top", "no_such"), "no mesh 'no_such'"),
     ],
 )
 def test_a_usage_mistake_is_exit_2(run: Run, args: tuple, says: str) -> None:
@@ -242,3 +244,53 @@ def test_a_folder_holding_an_earlier_run_is_refused_and_kept(
     assert result.exit_code == 1
     assert "is not empty" in result.stderr
     assert [p.name for p in tmp_path.iterdir()] == ["kept.png"]
+
+
+def test_an_invalid_setting_is_an_error_without_the_secret(
+    run: Run, tmp_path: Path
+) -> None:
+    result = run(
+        "serve", "--scenarios", tmp_path, env={"SEASCAPE_MCP_SECRET": "tooshort"}
+    )
+    assert result.exit_code == 1
+    assert "SEASCAPE_MCP_SECRET needs 32 or more" in result.output
+    assert "tooshort" not in result.output
+
+
+def test_an_invalid_setting_names_the_field(run: Run, tmp_path: Path) -> None:
+    result = run("serve", "--scenarios", tmp_path, env={"SEASCAPE_MAX_RUN_S": "-1"})
+    assert result.exit_code == 1
+    assert "max_run_s" in result.output
+
+
+def test_serve_keeps_the_secret_out_of_the_environment(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[bool] = []
+    monkeypatch.setattr(
+        server, "serve", lambda *_: seen.append("SEASCAPE_MCP_SECRET" in os.environ)
+    )
+    secret = {"SEASCAPE_MCP_SECRET": "s" * 32}
+    assert run("serve", "--scenarios", tmp_path, env=secret).exit_code == 0
+    assert seen == [False]
+
+
+def test_rig_view_needs_a_hull_to_draw_on(run: Run, tmp_path: Path) -> None:
+    failed = run("rig-view", OPEN_SEA, "-o", tmp_path / "rig.png")
+    assert failed.exit_code == 1
+    assert "no asset to show its rigs on" in failed.stderr
+    assert not (tmp_path / "rig.png").exists()
+
+
+@pytest.mark.render
+def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
+    scenario = Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper.toml"
+    out = tmp_path / "rig.png"
+    drawn = run("rig-view", scenario, "-o", out)
+    assert drawn.exit_code == 0, drawn.stderr
+    assert drawn.stdout == f"{out}\n"
+    drawn_px = Image.open(out).size
+    assert drawn_px[0] == len(rigview.VIEWS) * rigview.TILE[0]
+    built = load(scenario)
+    lines = len(built.rigs) + len(built.mounts)
+    assert drawn_px[1] == rigview.TILE[1] + 16 + rigview.LINE_PX * lines

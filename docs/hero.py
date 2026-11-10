@@ -3,7 +3,6 @@
 uv run --with supervision python -m docs.hero docs/hero.jpg
 """
 
-import json
 import subprocess
 import sys
 import tempfile
@@ -12,6 +11,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from docs.brand import FOG_WHITE, NIGHT_BLUE, font
+from seascape.outputs import canvas, labels
+from seascape.outputs.calibration import Calibration
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
@@ -30,7 +31,7 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
     )
 
 
-def tag(
+def mark(
     draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
 ) -> None:
     tb = draw.textbbox(at, text, font=font(size))
@@ -39,14 +40,14 @@ def tag(
 
 
 def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
-    tag(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
+    mark(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
     return img
 
 
 def frame(
     run: Path,
-    image: dict,
-    annotations: list[dict],
+    image: labels.Image,
+    annotations: list[labels.Annotation],
     window: tuple[float, float, float, float],
     size: tuple[int, int],
     caption: str,
@@ -54,7 +55,7 @@ def frame(
     """`window` is (left, top, width, height) in source pixels."""
     left, top, width, height = window
     s = size[0] / width
-    img = Image.open(run / image["file_name"]).convert("RGB")
+    img = Image.open(run / image.file_name).convert("RGB")
     box = (left, top, left + width, top + height)
     img = img.resize(size, Image.Resampling.LANCZOS, box=box)
     if annotations:
@@ -66,41 +67,40 @@ def frame(
     def at(x: float, y: float) -> tuple[float, float]:
         return (x - left) * s, (y - top) * s
 
-    draw.line([at(x, y) for x, y in image["horizon_px"]], fill=FOG_WHITE)
+    draw.line([at(x, y) for x, y in image.horizon_px], fill=FOG_WHITE)
     for a in annotations:
-        x0, y0 = at(*a["bbox"][:2])
-        r = a["range_m"]
+        x0, y0 = at(*a.bbox[:2])
+        r = a.range_m
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
-        text = f"{a['name']}  {dist}  {a['bearing_deg']:.1f}°"
+        text = f"{a.name}  {dist}  {a.bearing_deg:.1f}°"
         # Off the right edge a label shifts left, off the top it drops below the edge.
         text_w = draw.textlength(text, font=font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
-        tag(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
+        mark(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
     return captioned(img, caption)
 
 
 def column(run: Path) -> tuple[Image.Image, Image.Image]:
     """EO cropped to the LWIR field of view, and LWIR, both at LWIR size."""
-    labels = json.loads((run / "labels.json").read_text())
-    calibration = json.loads((run / "calibration.json").read_text())
-    by_band = {im["band"]: im for im in labels["images"]}
-    if len(by_band) != len(labels["images"]):
-        raise ValueError(f"{run}: one camera per band, got {len(labels['images'])}")
-    fx = {c["band"]: c["K"][0][0] for c in calibration["cameras"]}
+    found = labels.Labels.read(run)
+    by_band = {im.band: im for im in found.images}
+    if len(by_band) != len(found.images):
+        raise ValueError(f"{run}: one camera per band, got {len(found.images)}")
+    fx = {c.band: c.K[0][0] for c in Calibration.read(run).cameras}
     eo, ir = by_band["eo"], by_band["ir"]
-    size = (ir["width"], ir["height"])
+    size = (ir.width, ir.height)
     # Assumes coaxial cameras.
     w, h = size[0] * fx["eo"] / fx["ir"], size[1] * fx["eo"] / fx["ir"]
 
-    def boxes(im: dict) -> list[dict]:
-        return [a for a in labels["annotations"] if a["image_id"] == im["id"]]
+    def boxes(im: labels.Image) -> list[labels.Annotation]:
+        return [a for a in found.annotations if a.image_id == im.id]
 
     return (
         frame(
             run,
             eo,
             boxes(eo),
-            ((eo["width"] - w) / 2, (eo["height"] - h) / 2, w, h),
+            ((eo.width - w) / 2, (eo.height - h) / 2, w, h),
             size,
             "EO",
         ),
@@ -115,14 +115,8 @@ def main(hero: Path) -> None:
             run = Path(tmp) / name
             render(SCENARIO, overrides, run)
             columns.append(column(run))
-    w, h = columns[0][0].size
-    sheet = Image.new(
-        "RGB", (len(columns) * (w + GAP_PX) - GAP_PX, 2 * h + GAP_PX), "white"
-    )
-    for i, pair in enumerate(columns):
-        for j, img in enumerate(pair):
-            sheet.paste(img, (i * (w + GAP_PX), j * (h + GAP_PX)))
-    sheet.save(hero, quality=85)
+    rows = list(zip(*columns, strict=True))
+    canvas.table(rows, gap_px=GAP_PX, matte="white").save(hero, quality=85)
 
 
 if __name__ == "__main__":

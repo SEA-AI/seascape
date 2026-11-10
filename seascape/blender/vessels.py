@@ -2,24 +2,33 @@
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from itertools import chain, combinations
+from typing import NamedTuple
 
 import bpy
 import numpy as np
 from mathutils import Vector
 
-from seascape.assets import manifest
+from seascape.assets import Hull, manifest
 from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
+    empty,
     place,
     sine,
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
-from seascape.blender.meshes import import_asset, mesh_objects, prefix_names
+from seascape.blender.meshes import (
+    box_m,
+    import_asset,
+    keel_m,
+    mesh_objects,
+    prefix_names,
+    triangles,
+)
 from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
     Drift,
@@ -46,29 +55,49 @@ class Hulls:
     heat: Heat | None
     worn: frozenset[str] = frozenset()
     imported: dict[str, list[bpy.types.Object]] = field(default_factory=dict)
+    # A hull's `keel_m` heights and cell area, as fitted.
+    keels: dict[str, tuple[np.ndarray, float]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Condition:
     """How a hull is kept and run: one temperature for all of it or none, minutes
-    since its engines stopped, its paint's solar absorptance and its wear.
+    since its engines stopped and its paint's solar absorptance.
     """
 
     t_k: float | None = None
     engine_off_min: float = 0.0
     paint_absorptance: float | None = None
-    wear: float = 0.0
 
     @classmethod
     def of(cls, spec: Object | Targets) -> "Condition":
         """The condition an object or a ring of targets asks for."""
-        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance, spec.wear)
+        return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance)
 
 
 def heading_rad(anchor: bpy.types.Object) -> float:
     """Where a hull's bow points, clockwise from north: bow to +Y, as fitted."""
     bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
     return math.atan2(bow.x, bow.y)
+
+
+def _parts(name: str, hulls: Hulls) -> list[bpy.types.Object]:
+    """`name`'s parts: a copy of an asset already imported, else imported, and a
+    hull's keel measured as fitted.
+    """
+    if name in hulls.imported:
+        return [_copy_tree(part, None) for part in hulls.imported[name]]
+    worn = name in hulls.worn
+    band = "eo" if hulls.heat is None else "ir"
+    parts = hulls.imported[name] = import_asset(name, band, worn=worn)
+    if isinstance(manifest()[name], Hull):
+        bpy.context.view_layer.update()
+        hulls.keels[name] = keel_m(triangles(mesh_objects(parts)))
+    if hulls.heat is None:
+        prefix_names(name, parts)
+        if worn:
+            dirty(parts)
+    return parts
 
 
 def _vessel(
@@ -84,17 +113,7 @@ def _vessel(
             it.
     """
     heat = hulls.heat
-    if name in hulls.imported:
-        parts = [_copy_tree(part, None) for part in hulls.imported[name]]
-    else:
-        band = "eo" if heat is None else "ir"
-        worn = name in hulls.worn
-        parts = hulls.imported[name] = import_asset(name, band, worn=worn)
-        if heat is None:
-            prefix_names(name, parts)
-            if worn:
-                dirty(parts)
-
+    parts = _parts(name, hulls)
     if heat is not None:
         heat = heat._replace(env=heat.env.stopped(condition.engine_off_min * 60.0))
         t_k = condition.t_k
@@ -116,28 +135,67 @@ def _vessel(
                     crevice=mesh.get(CREVICE),
                 )
 
-    anchor = bpy.data.objects.new(name, None)
+    anchor = empty(name)
     for size in ("beam_m", "length_m"):
         anchor[size] = parts[0][size]
     anchor["height_m"] = parts[0]["height_m"] + rise_m
+    # Only a `Hull` has a box; without one it follows the water.
+    anchor["box_beam_m"] = anchor["box_draught_m"] = 0.0
+    if name in hulls.keels:
+        anchor["box_beam_m"], anchor["box_draught_m"] = box_m(
+            *hulls.keels[name], anchor["length_m"], rise_m
+        )
     anchor["engine_off_min"] = condition.engine_off_min
-    anchor["wear"] = condition.wear
     # Pitch and roll go here, so the anchor keeps the pose labels read.
-    attitude = bpy.data.objects.new(f"{name}_attitude", None)
+    attitude = empty(f"{name}_attitude", anchor)
     # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
-    draught = bpy.data.objects.new(f"{name}_draught", None)
-    for obj in (anchor, attitude, draught):
-        bpy.context.collection.objects.link(obj)
-    attitude.parent = anchor
-    draught.parent = attitude
+    draught = empty(f"{name}_draught", attitude, (0.0, 0.0, rise_m))
     for part in parts:
         part.parent = draught
-    place(anchor, 0.0, 0.0, 0.0)
-    place(attitude, 0.0, 0.0, 0.0)
-    place(draught, 0.0, 0.0, rise_m)
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     attitude.rotation_mode = "YXZ"
     return anchor
+
+
+# A judgement: trapezoid steps per yaw period; the error falls with the square.
+STEPS_PER_YAW = 64
+
+
+class Pose(NamedTuple):
+    """East and north of the start; the heading is clockwise from north."""
+
+    east_m: float
+    north_m: float
+    heading_rad: float
+
+
+def _track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
+    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings."""
+    times = np.asarray(outputs.times_s)
+    swing = ownship.yaw
+    # Whole substeps per frame, so every frame lands on the grid; a straight run is
+    # exact in one.
+    sub = 1
+    if swing is not None:
+        step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
+        sub = math.ceil(1.0 / (outputs.fps * step_s))
+    tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
+    heading = np.zeros_like(tau)
+    if swing is not None:
+        omega = 2.0 * math.pi / outputs.period_s(swing.period_s)
+        heading = math.radians(swing.amplitude_deg) * np.sin(omega * tau)
+
+    def integral(speed: np.ndarray) -> np.ndarray:
+        area = np.diff(tau) * (speed[1:] + speed[:-1]) / 2.0
+        return np.concatenate(([0.0], np.cumsum(area)))
+
+    east = ownship.speed_mps * integral(np.sin(heading))
+    north = ownship.speed_mps * integral(np.cos(heading))
+
+    def at(t_s: float) -> Pose:
+        return Pose(*(float(np.interp(t_s, tau, c)) for c in (east, north, heading)))
+
+    return at
 
 
 def add_ownship(
@@ -146,26 +204,34 @@ def add_ownship(
     hulls: Hulls,
     outputs: Outputs,
     tall: tuple[waves.Wave, ...],
+    radius_m: float,
 ) -> bpy.types.Object:
-    """At the origin, bow to +Y, carrying the rigs.
+    """Bow to +Y at the origin, carrying the rigs, and sailing from it. A hull rides
+    the sea once `ride` keys it.
 
     Args:
         ownship: Its hull, attitude and scripted motion.
-        rigs: Parented to the ownship; their offsets are in its frame.
+        rigs: Parented to the hull's draught, or to a bare ownship, in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
-        tall: The waves that are geometry, which it heaves on as well as its script.
+        tall: The waves that are geometry, which a bare rig heaves on.
+        radius_m: Earth's effective radius, which drops it to the curved sea.
     """
     if ownship.asset is None:
-        anchor = bpy.data.objects.new("ownship", None)
-        bpy.context.collection.objects.link(anchor)
-        place(anchor, 0.0, 0.0, 0.0)
+        anchor = empty("ownship")
+        rigs.parent = anchor
     else:
         anchor = _vessel(
-            ownship.asset, condition=Condition(t_k=ownship.t_k), hulls=hulls
+            ownship.asset,
+            condition=Condition(t_k=ownship.t_k),
+            hulls=hulls,
+            rise_m=ownship.rise_m,
         )
+        (attitude,) = anchor.children
+        (draught,) = attitude.children
+        rigs.parent = draught
     anchor.name = "ownship"
-    rigs.parent = anchor
+    anchor["speed_mps"] = ownship.speed_mps
     # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
     anchor.rotation_mode = "YXZ"
     anchor.rotation_euler = (
@@ -184,23 +250,38 @@ def add_ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
+    track = _track(ownship, outputs)
+    sailing = ownship.speed_mps > 0.0
+    # Limitation: it leaves no wake; `wakes.Wake` draws only a straight run.
+    if sailing:
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).east_m, 0)
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).north_m, 1)
+    if ownship.yaw is not None:
+        animate(
+            anchor,
+            "rotation_euler",
+            outputs.times_s,
+            lambda t: yaw(math.degrees(track(t).heading_rad)),
+            2,
+        )
     scripted = sine(anchor.location.z, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
         scripted = sine(
             anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
         )
-    if heave is not None or tall:
-        # Bow to +Y, a heading of 0; a rig without a hull rides the water under it.
-        length_m, beam_m = (
-            (anchor["length_m"], anchor["beam_m"]) if ownship.asset else (0.0, 0.0)
-        )
+    # A bare rig is a point: it heaves, but would tilt with every ripple.
+    bare = ownship.asset is None and bool(tall)
+    if heave is not None or bare or sailing:
 
         def value_at(t_s: float) -> float:
-            rest = map(
-                float, waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
-            )
-            hull = waves.Waterplane(*rest, 0.0, length_m, beam_m)
-            return scripted(t_s) + waves.heave_m(tall, hull, t_s)
+            pose = track(t_s)
+            z = earth.sea_z_m(pose.east_m, pose.north_m, radius_m) + scripted(t_s)
+            if bare:
+                rest = waves.gerstner_rest_m(
+                    tall, np.array(pose.east_m), np.array(pose.north_m), t_s
+                )
+                z += waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
+            return z
 
         animate(anchor, "location", outputs.times_s, value_at, index=2)
     return anchor
@@ -249,6 +330,7 @@ def _pose(
     place(anchor, *at(0.0))
     animate(anchor, "location", outputs.times_s, at)
     anchor.rotation_euler = (0.0, 0.0, yaw(heading_deg))
+    anchor["speed_mps"] = speed_mps
 
 
 def _orbit(
@@ -269,6 +351,7 @@ def _orbit(
 
     place(anchor, *at(0.0))
     animate(anchor, "location", times_s, at)
+    anchor["speed_mps"] = 2 * math.pi * range_m / lap_s
     # Clockwise, the bow runs a right angle ahead of the bearing.
     animate(
         anchor,
@@ -353,7 +436,7 @@ def _object(
         _orbit(hull, spec.range_m, bearing_deg, lap_s, radius_m, outputs.times_s)
     trails.append(
         wakes.Wake(
-            speed_mps=2 * math.pi * spec.range_m / lap_s,
+            speed_mps=anchor["speed_mps"],
             length_m=anchor["length_m"],
             beam_m=anchor["beam_m"],
             orbit_m=spec.range_m,
@@ -379,7 +462,7 @@ def _turbine(
     """
     anchor = _vessel(
         farm.asset,
-        condition=Condition(paint_absorptance=farm.paint_absorptance, wear=farm.wear),
+        condition=Condition(paint_absorptance=farm.paint_absorptance),
         hulls=hulls,
     )
     outputs = scenario.outputs
@@ -394,8 +477,9 @@ def _turbine(
         outputs,
     )
     rpm = farm.rpm(scenario.sea)
-    # A loop closes on a third of a turn.
-    third_s = outputs.period_s(20.0 / rpm) if rpm else math.inf
+    spec = farm.turbine.rotor
+    # A loop closes on a turn of `symmetry_rad`.
+    symmetry_s = outputs.period_s(spec.symmetry_period_s(rpm)) if rpm else math.inf
     start = rng.uniform(0.0, 2.0 * math.pi)
     (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
     rest = rotor["rest_rad"]
@@ -406,7 +490,7 @@ def _turbine(
         rotor,
         "rotation_euler",
         outputs.times_s,
-        lambda t: rest - start - 2.0 * math.pi / 3.0 * t / third_s,
+        lambda t: rest - start - spec.symmetry_rad * t / symmetry_s,
         index=1,
     )
     return anchor
@@ -474,15 +558,27 @@ def ride(
                     tall, np.array(east), np.array(north), t_s
                 )
             ]
-            hull = waves.Waterplane(*rest, heading, length_m, beam_m)
+            speed_mps = anchor["speed_mps"]
+            hull = waves.Waterplane(
+                *rest,
+                heading,
+                length_m,
+                beam_m,
+                anchor["box_beam_m"],
+                anchor["box_draught_m"],
+                speed_mps * math.sin(heading),
+                speed_mps * math.cos(heading),
+            )
             pitch, roll = waves.attitude(field, hull, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
-            attitude.location.z = waves.heave_m(tall, hull, t_s)
+            # Straight up in the world, through whatever tilt the anchor is keyed to.
+            up = Vector((0.0, 0.0, waves.heave_m(tall, hull, t_s)))
+            attitude.location = anchor.matrix_world.to_quaternion().inverted() @ up
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
                 attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
-                attitude.keyframe_insert("location", index=2, frame=frame)
+                attitude.keyframe_insert("location", frame=frame)
 
 
 class OverlapError(ValueError):

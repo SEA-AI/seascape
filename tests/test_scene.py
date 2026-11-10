@@ -71,6 +71,7 @@ from tests.scenarios import (
     preset_target,
     target,
     variant,
+    wave_field,
     white_photo,
 )
 
@@ -325,12 +326,6 @@ class TestEoBand:
             assert data.sensor_fit == "HORIZONTAL"
             assert math.degrees(data.angle_x) == pytest.approx(mount.camera.hfov_deg)
 
-    def test_the_near_clip_leaves_the_depth_buffer_usable_at_range(self) -> None:
-        for mount in SCENARIO.mounts:
-            data = camera_of(mount).data
-            assert data.clip_start == mount.rig.near_clip_m
-            assert data.clip_start < data.clip_end
-
     def test_every_3d_view_clips_past_the_sea(self) -> None:
         corner_m = math.sqrt(2) * sea.sea_reach_m(SCENARIO)
         views = [
@@ -344,7 +339,6 @@ class TestEoBand:
 
         assert views, "no 3D view to clip: the assertions below would pass on nothing"
         for space in views:
-            assert space.clip_start == SCENARIO.rigs["bow"].near_clip_m
             assert space.clip_end > corner_m
 
     def test_the_far_clip_clears_every_target(self) -> None:
@@ -405,7 +399,7 @@ class TestEoBand:
             ) == pytest.approx(waves.fade_axis(wave), rel=1e-6, abs=1e-7)
 
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
-        field = SCENARIO.wave_field()
+        field = wave_field(SCENARIO)
         assert len(field) == waves.WIND_WAVES
         carried = drawn(SCENARIO)
         tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
@@ -835,11 +829,105 @@ def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
     assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
-def test_a_near_clip_past_the_far_plane_is_an_error() -> None:
-    deep = variant(BASELINE, rig={"near_clip_m": 500000.0})
+def test_a_lighter_ownship_lifts_its_rig_with_its_hull() -> None:
+    ship = manifest()["cargo_ship"]
+    assert ship.draught_range_m is not None
+    lightest_m, _ = ship.draught_range_m
+    rise_m = ship.draught_m - lightest_m
+    heights = []
+    for draught_m in (None, lightest_m):
+        # On a calm sea: a lighter hull heaves differently.
+        calm = {"wind_speed_mps": 0, "swell": None}
+        built = scene.build(
+            variant(ownship={"asset": "cargo_ship", "draught_m": draught_m}, sea=calm),
+            "eo",
+        )
+        hull = mesh_objects(built.vessel.children_recursive)
+        top_m = max(c.z for c in box_corners(hull))
+        camera_m = camera_of(SCENARIO.mounts[0]).matrix_world.translation.z
+        heights.append((top_m, camera_m))
 
-    with pytest.raises(ValueError, match="near clip"):
-        scene.build(deep, "eo")
+    (top_m, camera_m), (lifted_top_m, lifted_camera_m) = heights
+    assert lifted_top_m - top_m == pytest.approx(rise_m, abs=1e-3)
+    assert lifted_camera_m - camera_m == pytest.approx(rise_m, abs=1e-3)
+
+
+def test_a_lighter_ownship_sees_as_far_as_its_rig_raised_by_the_rise() -> None:
+    ship = manifest()["cargo_ship"]
+    assert ship.draught_range_m is not None
+    lightest_m, _ = ship.draught_range_m
+    yacht = target("yacht", 900.0)
+    lighter = variant(
+        ownship={"asset": "cargo_ship", "draught_m": lightest_m}, objects=[yacht]
+    )
+    (rig,) = lighter.rigs.values()
+    raised = variant(
+        ownship={"asset": "cargo_ship"},
+        rig={"height_m": rig.height_m + lighter.ownship.rise_m},
+        objects=[yacht],
+    )
+    built = scene.build(lighter, "eo")
+    (anchor,) = built.targets["yacht"]
+
+    assert sea.sea_reach_m(lighter) == pytest.approx(sea.sea_reach_m(raised))
+    assert scene._sightline_m(lighter, [anchor]) == pytest.approx(
+        scene._sightline_m(raised, [anchor])
+    )
+
+
+def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
+    """The sea pitches, rolls and heaves the hull's attitude, under its scripted
+    motion and course, and the cameras stay fixed in the vessel frame.
+    """
+    scenario = variant(
+        ownship={
+            "asset": "container",
+            "speed_mps": 2.0,
+            "roll": {"amplitude_deg": 3.0, "period_s": 8.0},
+            "heave": {"amplitude_m": 0.2, "period_s": 6.0},
+        },
+        outputs={"fps": 2, "duration_s": 3.0},
+    )
+    built = scene.build(scenario, "eo")
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    (attitude,) = built.vessel.children
+    radius = earth.earth_radius_m(scenario.sea.refraction_k)
+    roll_s, heave_s = scenario.outputs.period_s(8.0), scenario.outputs.period_s(6.0)
+    rocked, mounted, still = [], [], []
+
+    for frame, t_s in enumerate(scenario.outputs.times_s):
+        bpy.context.scene.frame_set(frame)
+        east, north, up = built.vessel.matrix_world.translation
+        rest = waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s)
+        plane = waves.Waterplane(
+            *map(float, rest),
+            heading_rad(built.vessel),
+            built.vessel["length_m"],
+            built.vessel["beam_m"],
+        )
+        pitch, roll = waves.attitude(wind + swell, plane, t_s)
+        rocked.append(abs(pitch) + abs(roll))
+        script = 0.2 * math.sin(math.tau * t_s / heave_s)
+        still.append(up - earth.sea_z_m(east, north, radius) - script)
+        calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
+        mounted.append(np.array(calibration.extrinsics["vessel"]))
+
+        assert built.vessel.rotation_euler[1] == pytest.approx(
+            math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6
+        )
+        assert tuple(attitude.rotation_euler) == pytest.approx(
+            (pitch, -roll, 0.0), abs=1e-6
+        )
+        # Straight up, however the script tilts the hull.
+        lift = attitude.matrix_world.translation - built.vessel.matrix_world.translation
+        assert tuple(lift) == pytest.approx(
+            (0.0, 0.0, waves.heave_m(tall, plane, t_s)), abs=1e-6
+        )
+
+    assert max(rocked) > math.radians(1.0), "a calm sea would pass vacuously"
+    assert still == pytest.approx([still[0]] * len(still), abs=1e-4)
+    assert np.allclose(mounted, mounted[0], atol=1e-6)
 
 
 def test_the_far_clip_clears_a_hull_down_target() -> None:
@@ -1306,10 +1394,12 @@ def _tall(scenario: Scenario) -> tuple[waves.Wave, ...]:
     return sea.displaced((scenario.wind_waves(), scenario.swell_waves()))[0]
 
 
-def _ridden_m(scenario: Scenario, t_s: float) -> float:
-    """How high a hull-less ownship rides the water under it."""
+def _ridden_m(
+    scenario: Scenario, t_s: float, east_m: float = 0.0, north_m: float = 0.0
+) -> float:
+    """How high a hull-less ownship rides the water under it at a point."""
     tall = _tall(scenario)
-    rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
+    rest = waves.gerstner_rest_m(tall, np.array(east_m), np.array(north_m), t_s)
     return waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
 
 
@@ -1350,6 +1440,93 @@ class TestOwnshipMotion:
         assert heave == pytest.approx(
             [_ridden_m(scenario, t) for t in scenario.outputs.times_s], abs=1e-6
         )
+
+
+class TestOwnshipUnderway:
+    SPEED_MPS = 400.0  # far past a boat's, so the sea's curve is measurable
+    STRAIGHT = variant(outputs={"duration_s": 2.0}, ownship={"speed_mps": SPEED_MPS})
+    STEERED = variant(
+        outputs={"duration_s": 4.0},
+        ownship={
+            "speed_mps": SPEED_MPS,
+            "yaw": {"amplitude_deg": 30.0, "period_s": 4.0},
+        },
+    )
+    TURNING = variant(
+        outputs={"duration_s": 4.0},
+        ownship={"yaw": {"amplitude_deg": 30.0, "period_s": 4.0}},
+    )
+
+    @staticmethod
+    def _run(scenario: Scenario) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The ownship's world position and heading in degrees, and the first
+        camera's position, at every frame.
+        """
+        built = scene.build(scenario)
+        camera = camera_of(scenario.mounts[0])
+        sc = bpy.context.scene
+        hull, bearing, eye = [], [], []
+        for frame in range(len(scenario.outputs.times_s)):
+            sc.frame_set(frame)
+            hull.append(tuple(built.vessel.matrix_world.translation))
+            bearing.append(math.degrees(heading_rad(built.vessel)))
+            eye.append(tuple(camera.matrix_world.translation))
+        return np.array(hull), np.array(bearing), np.array(eye)
+
+    def test_it_sails_its_speed_along_its_bow_and_rides_the_curved_sea(self) -> None:
+        hull, bearing, eye = self._run(self.STRAIGHT)
+
+        times = np.array(self.STRAIGHT.outputs.times_s)
+        assert hull[:, 0] == pytest.approx(0.0, abs=1e-6)
+        assert hull[:, 1] == pytest.approx(self.SPEED_MPS * times, abs=1e-3)
+        assert bearing == pytest.approx(0.0, abs=1e-6)
+        radius = earth.earth_radius_m(self.STRAIGHT.sea.refraction_k)
+        for (east, north, up), t_s in zip(hull, times, strict=True):
+            expected = earth.sea_z_m(east, north, radius) + _ridden_m(
+                self.STRAIGHT, t_s, east, north
+            )
+            assert up == pytest.approx(expected, abs=1e-4)
+        assert eye[:, :2] - eye[0, :2] == pytest.approx(hull[:, :2] - hull[0, :2])
+
+    def test_a_yawing_ownship_sails_along_the_heading_it_swings_through(self) -> None:
+        hull, bearing, _ = self._run(self.STEERED)
+
+        step = np.diff(hull[:, :2], axis=0)
+        times = np.array(self.STEERED.outputs.times_s)
+        assert np.linalg.norm(step, axis=1) / np.diff(times) == pytest.approx(
+            self.SPEED_MPS, rel=2e-3
+        )
+        # A step runs along the mean of its two ends' headings.
+        along = np.degrees(np.arctan2(step[:, 0], step[:, 1]))
+        assert along == pytest.approx((bearing[1:] + bearing[:-1]) / 2, abs=0.5)
+        quarter = np.argmin(abs(times - 4.0 / 4))
+        assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
+
+    def test_the_track_integrates_the_heading_to_the_closed_form(self) -> None:
+        hull, _, _ = self._run(self.STEERED)
+
+        end_s = self.STEERED.outputs.times_s[-1]
+        theta = np.linspace(0.0, end_s, 400_001)
+        heading = np.radians(30.0) * np.sin(2.0 * np.pi * theta / 4.0)
+        east = self.SPEED_MPS * np.trapezoid(np.sin(heading), theta)
+        north = self.SPEED_MPS * np.trapezoid(np.cos(heading), theta)
+        assert tuple(hull[-1, :2]) == pytest.approx((east, north), rel=1e-3)
+
+    def test_a_ship_without_speed_turns_in_place(self) -> None:
+        hull, bearing, _ = self._run(self.TURNING)
+
+        assert hull[:, :2] == pytest.approx(0.0, abs=1e-9)
+        assert np.ptp(bearing) == pytest.approx(60.0, abs=1.0)
+
+    def test_the_sea_reaches_a_horizon_past_the_farthest_camera(self) -> None:
+        built = scene.build(self.STRAIGHT)
+        farthest = max(
+            math.hypot(*v.matrix.translation.xy)
+            for v in views(self.STRAIGHT, "eo", built.cameras)
+        )
+        eye_m = max(rig.height_m for rig in self.STRAIGHT.rigs.values())
+        horizon = earth.horizon_m(eye_m, self.STRAIGHT.sea.refraction_k)
+        assert sea.sea_reach_m(self.STRAIGHT) - farthest >= horizon
 
 
 def _finest_m(scenario: Scenario, built: scene.Built) -> float:
@@ -1502,8 +1679,8 @@ class TestSeaEvolves:
 
     def test_a_swell_leaves_the_wind_s_waves_alone(self) -> None:
         swell = variant(BASELINE, sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
-        wind = SCENARIO.wave_field()
-        assert swell.wave_field()[: len(wind)] == wind
+        wind = wave_field(SCENARIO)
+        assert wave_field(swell)[: len(wind)] == wind
 
     def test_the_sea_draws_a_swell_in_triples_of_its_own(self) -> None:
         swell = variant(sea={"swell": {"height_m": 1.5, "period_s": 11.0}})
@@ -1548,7 +1725,7 @@ class TestSeaEvolves:
     ) -> None:
         """Probes and a hand-moved camera need every wave in a default build."""
         scenario = variant(rig={"height_m": 100.0})
-        field = scenario.wave_field()
+        field = wave_field(scenario)
         scene.build(scenario, "eo")
         assert [w for w, _, _ in drawn(scenario)] == shaded(scenario)
         built = scene.build(scenario, "eo", cull=True)
@@ -1585,7 +1762,7 @@ class TestLoop:
 
     def test_every_wave_in_a_loop_turns_a_whole_number_of_times(self) -> None:
         span_s = self.LOOP.outputs.span_s
-        for wave in self.LOOP.wave_field():
+        for wave in wave_field(self.LOOP):
             turns = wave.omega_rad_s * span_s / (2 * math.pi)
             assert turns == pytest.approx(round(turns), abs=1e-9)
 
@@ -1715,12 +1892,24 @@ class TestDrifting:
             )
             t_s = scenario.outputs.times_s[frame]
             # Only the tall waves move the water the hull sits on.
-            assert len(_tall(scenario)) < len(scenario.wave_field())
+            assert len(_tall(scenario)) < len(wave_field(scenario))
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
-            hull = waves.Waterplane(*map(float, rest), heading, length, beam)
-            pitch, roll = waves.attitude(scenario.wave_field(), hull, t_s)
+            (spec,) = scenario.objects
+            assert anchor["speed_mps"] == spec.speed_mps
+            assert 0 < anchor["box_draught_m"] < manifest()[spec.asset].draught_m
+            hull = waves.Waterplane(
+                *map(float, rest),
+                heading,
+                length,
+                beam,
+                anchor["box_beam_m"],
+                anchor["box_draught_m"],
+                spec.speed_mps * math.sin(heading),
+                spec.speed_mps * math.cos(heading),
+            )
+            pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
                 (pitch, -roll), abs=1e-5
             )
@@ -1741,9 +1930,9 @@ def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
 
     channels = dict(keyed())
 
-    assert len(channels) == 11, (
-        "the target's xyz, pitch, roll, heave; the ownship's pitch, roll, heave; "
-        "the sea's cos, sin"
+    assert len(channels) == 13, (
+        "the target's xyz, pitch, roll, heave's xyz; the ownship's pitch, roll, "
+        "heave; the sea's cos, sin"
     )
     # A few ulps: F-curves are float32.
     unclosed = [
@@ -2177,14 +2366,18 @@ def test_a_rotor_turns_at_its_wind_s_speed_from_an_angle_of_its_own() -> None:
     assert math.remainder(turned, 2 * math.pi) == pytest.approx(
         rpm * math.pi / 30 / fps
     )
-    assert math.remainder(starts[0] - starts[1], 2 * math.pi / 3) != pytest.approx(0)
+    symmetry_rad = clip.farms[0].turbine.rotor.symmetry_rad
+    assert math.remainder(starts[0] - starts[1], symmetry_rad) != pytest.approx(0)
 
 
-def test_a_looping_rotor_s_last_frame_is_one_step_short_of_a_whole_third() -> None:
+def test_a_looping_rotor_s_last_frame_is_one_step_short_of_its_symmetry_turn() -> None:
     fps = 4
     farm = {"asset": "turbine_15mw_monopile", "range_m": 2000.0, "bearing_deg": 0.0}
     clip = variant(farms=[farm], outputs={"duration_s": 4.0, "fps": fps, "loop": True})
-    third_s = clip.outputs.period_s(20.0 / clip.farms[0].rpm(clip.sea))
+    rotor = clip.farms[0].turbine.rotor
+    symmetry_s = clip.outputs.period_s(
+        rotor.symmetry_period_s(clip.farms[0].rpm(clip.sea))
+    )
 
     built = scene.build(clip, "eo")
 
@@ -2193,8 +2386,8 @@ def test_a_looping_rotor_s_last_frame_is_one_step_short_of_a_whole_third() -> No
     sc.frame_set(0)
     start = _rotor_angle(anchor)
     sc.frame_set(sc.frame_end)
-    seam = math.remainder(start - _rotor_angle(anchor), 2 * math.pi / 3)
-    assert seam == pytest.approx(2 * math.pi / (3 * third_s * fps))
+    seam = math.remainder(start - _rotor_angle(anchor), rotor.symmetry_rad)
+    assert seam == pytest.approx(rotor.symmetry_rad / (symmetry_s * fps))
 
 
 def test_the_ownship_is_indexed_after_every_target() -> None:

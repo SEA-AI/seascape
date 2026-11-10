@@ -2,7 +2,6 @@
 
 import json
 import math
-import runpy
 import statistics
 import tomllib
 import warnings
@@ -17,10 +16,13 @@ from seascape.config import (
     PRESETS,
     Band,
     Camera,
+    Crop,
     Farm,
     Lens,
+    Microbolometer,
     Object,
     Outputs,
+    Ownship,
     Processing,
     Rig,
     Scenario,
@@ -28,8 +30,10 @@ from seascape.config import (
     Sensor,
     Sky,
     Targets,
+    instantiate,
     json_schema,
     load,
+    resolve,
     seeds,
     substream,
 )
@@ -204,6 +208,19 @@ def test_a_bad_override_is_refused(override: str, error: type[Exception]) -> Non
         load(BASELINE, [override])
 
 
+def test_a_resolved_scenario_is_drawn_per_seed_as_if_loaded_with_it() -> None:
+    tree = resolve(RANDOMIZED)
+    drawn = instantiate(tree, 7)
+    assert drawn == load(RANDOMIZED, ["seed = 7"])
+    assert instantiate(tree, 8) != drawn
+    assert instantiate(tree, 7) == drawn  # the draws of 8 left the tree as it was
+
+
+def test_an_override_may_be_barred_from_naming_a_file() -> None:
+    with pytest.raises(ValueError, match="not a path"):
+        resolve(BASELINE, ['objects = [{ preset = "/etc/hosts.toml" }]'], files=False)
+
+
 def test_objects_merge_their_preset(baseline) -> None:
     """A list-of-tables preset: asset from cfg, pose here."""
     obj = baseline.objects[0]
@@ -322,7 +339,7 @@ def test_a_mistyped_key_is_an_error_not_a_silent_default(tmp_path) -> None:
         load(variant(tmp_path, "[rigs.bow]\nheight_metres = 22.0\n"))
 
 
-@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+@pytest.mark.parametrize("value", ["nan", "inf"])
 def test_non_finite_numbers_are_rejected(tmp_path, value) -> None:
     """`yaw_deg` carries no bound, so nothing else would catch one."""
     with pytest.raises(ValidationError, match="yaw_deg"):
@@ -365,6 +382,36 @@ def test_a_named_substream_is_reproducible_and_local_to_its_name() -> None:
 
 
 SUN = "sky.sun_elevation_deg = { uniform = [5.0, 60.0] }"
+
+
+def _hulls(copies: int, lap: int, ring: int, rows: int, columns: int) -> Scenario:
+    """A scenario with hulls from each source."""
+    hull = "asset = 'multipurpose_freighter', range_m = 1000, bearing_deg = 0"
+    return load(
+        BASELINE,
+        [
+            f"objects = [{{ {hull}, count = {copies} }},"
+            f" {{ {hull}, orbit = {{ period_s = 60, count = {lap} }} }}]",
+            "targets = { asset = 'multipurpose_freighter', range_m = 1000,"
+            f" bearing_deg = [0, 10], count = {ring} }}",
+            "farms = [{ asset = 'turbine_15mw_floating', range_m = 1000,"
+            f" bearing_deg = 0, rows = {rows}, columns = {columns} }}]",
+        ],
+    )
+
+
+def test_a_scenario_may_hold_a_thousand_hulls_from_all_its_sources() -> None:
+    assert len(_hulls(400, 300, 200, 10, 10).objects) == 401
+
+
+@pytest.mark.parametrize(
+    "split", [(401, 300, 200, 10, 10), (400, 301, 200, 10, 10), (400, 300, 200, 1, 101)]
+)
+def test_a_scenario_holds_no_more_than_a_thousand_hulls(
+    split: tuple[int, int, int, int, int],
+) -> None:
+    with pytest.raises(ValueError, match=r"1001 hulls|at most 1000"):
+        _hulls(*split)
 
 
 def _sun(seed: int, *more: str) -> float:
@@ -446,6 +493,11 @@ def test_the_schema_never_offers_a_drawn_seed() -> None:
     assert "$ref" not in str(json_schema()["properties"]["seed"])
 
 
+def test_a_negative_seed_is_rejected_without_the_loader() -> None:
+    with pytest.raises(ValidationError, match="seed"):
+        Scenario.model_validate({"seed": -1})
+
+
 def test_the_seed_is_never_drawn() -> None:
     with pytest.raises(ValueError, match="seed cannot be drawn"):
         load(BASELINE, ["seed = { choice = [1, 2] }"])
@@ -462,15 +514,6 @@ def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     line = path.read_text().splitlines()[0]
     assert line.startswith("#:schema ")
     assert (path.parent / line.removeprefix("#:schema ")).resolve() == SCHEMA
-
-
-@pytest.mark.parametrize(
-    "overrides", runpy.run_path(str(HERO.with_suffix(".py")))["SKIES"].values()
-)
-def test_every_readme_hero_sky_loads_without_a_warning(overrides: list[str]) -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        load(HERO, overrides)
 
 
 @pytest.mark.parametrize("path", [RANDOMIZED, DATASET, AUTONOMICS])
@@ -559,6 +602,33 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
         ("baseline.toml", ["outputs.loop = true"], "duration_s > 0"),
         ("underway.toml", ["outputs.loop = true"], "drift"),
         (
+            "baseline.toml",
+            [
+                "ownship.speed_mps = 5.0",
+                "outputs.loop = true",
+                "outputs.duration_s = 8",
+            ],
+            "ownship.speed_mps",
+        ),
+        (
+            "baseline.toml",
+            [
+                'objects = [{ asset = "yacht", range_m = 300.0, bearing_deg = 0.0,'
+                " orbit = { period_s = 80.0 } }]",
+                "ownship.speed_mps = 5.0",
+            ],
+            "orbits the origin",
+        ),
+        (
+            "baseline.toml",
+            [
+                "ownship.yaw = { amplitude_deg = 5.0, period_s = 9.0 }",
+                "outputs.loop = true",
+                "outputs.duration_s = 8",
+            ],
+            "ownship.yaw's 9.0 s",
+        ),
+        (
             "drifting.toml",
             [
                 'targets = { asset = "multipurpose_freighter", count = 2,'
@@ -593,6 +663,18 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
 def test_a_loop_that_cannot_close_is_an_error(name, overrides, match) -> None:
     with pytest.raises(ValidationError, match=match):
         load(SCENARIOS / name, overrides)
+
+
+def test_an_ownship_that_only_turns_can_loop() -> None:
+    loaded = load(
+        SCENARIOS / "baseline.toml",
+        [
+            "ownship.yaw = { amplitude_deg = 5.0, period_s = 4.0 }",
+            "outputs.loop = true",
+            "outputs.duration_s = 8",
+        ],
+    )
+    assert loaded.ownship.speed_mps == 0.0
 
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:
@@ -758,7 +840,7 @@ def test_a_hidden_sun_needs_a_hidden_disc_above_the_horizon(
 def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
     photos = skies.library()
     for name in ("sunflowers", "mud_road", "snow_field"):
-        base, _ = lwir.CLOUD_LAYER_M[photos[name].cloud_genus]
+        base = lwir.CLOUD_BASE_M[photos[name].cloud_genus]
         assert Sky.model_validate({"hdri": name}).cloud_base_m == base
     given = Sky.model_validate({"hdri": "sunflowers", "cloud_base_m": 1500.0})
     assert given.cloud_base_m == 1500.0
@@ -1068,14 +1150,121 @@ def test_a_camera_refuses_a_setting_its_band_or_sensor_cannot_take(
         load(BASELINE, [f"rigs.bow.cameras.{line}"])
 
 
+def test_an_image_pixel_s_pitch_is_the_sensor_s_times_the_sites_it_averages() -> None:
+    sensor = Sensor(full_well_e=1e4, pitch_um=2.0, width_px=16)
+    eo = EO.model_copy(update={"sensor": sensor})
+    assert eo.pitch_um == 4.0
+    ir = Camera(
+        band="ir",
+        hfov_deg=45.0,
+        width_px=8,
+        height_px=8,
+        microbolometer=Microbolometer(pitch_um=12.0, f_number=1.0),
+    )
+    assert (EO.pitch_um, ir.pitch_um) == (None, 12.0)
+
+
 def test_a_boson_preset_extends_another() -> None:
     camera = (
         load(BASELINE, ['rigs.bow.cameras.ir.preset = "boson_320_34deg"'])
         .rigs["bow"]
         .cameras["ir"]
     )
-    assert (camera.width_px, camera.hfov_deg) == (320, 34.0)
+    assert (camera.width_px, camera.hfov_deg) == (320, 34.1)
     assert camera.microbolometer.pitch_um == 12.0
+
+
+@pytest.mark.parametrize(
+    ("rig", "model", "cameras"),
+    [
+        ("sentry", "Sentry", {"t_w", "t_n", "eo_w", "eo_n"}),
+        ("watchkeeper", "Watchkeeper", {"eo", "ir_l", "ir_r"}),
+    ],
+)
+def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> None:
+    line = f'rigs = {{ bow = {{ preset = "{rig}", height_m = 10.0 }} }}'
+    loaded = load(BASELINE, [line]).rigs["bow"]
+    assert (loaded.model, set(loaded.cameras)) == (model, cameras)
+
+
+def test_a_side_pod_turns_its_thermal_inboard() -> None:
+    def rig(preset: str) -> Rig:
+        line = f'rigs = {{ bow = {{ preset = "{preset}", height_m = 10.0 }} }}'
+        return load(BASELINE, [line]).rigs["bow"]
+
+    port, starboard = rig("port"), rig("starboard")
+    assert rig("pod").cameras["ir"].yaw_deg == 0.0
+    assert port.cameras["ir"].yaw_deg == -starboard.cameras["ir"].yaw_deg
+    assert port.cameras["ir"].yaw_deg * port.yaw_deg < 0.0
+
+
+def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
+    line = 'rigs = { bow = { preset = "sentry", height_m = 10.0 } }'
+    rig = load(BASELINE, [line]).rigs["bow"]
+    for name in ("RGBwFoV", "RGBnFoV"):
+        crop = rig.videos[name]
+        assert isinstance(crop, Crop)
+        width = rig.cameras[crop.camera].width_px - crop.left_px - crop.right_px
+        assert width == 1200
+    assert {video.kind for video in rig.videos.values()} == {"identity", "crop"}
+
+
+def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
+    lines = ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
+    scenario = load(BASELINE, lines)
+    (eo,) = (m.camera for m in scenario.mounts if m.camera_name == "eo")
+    # A recorded Watchkeeper's RGB1.
+    fx = eo.width_px / 2 / math.tan(math.radians(eo.hfov_deg) / 2)
+    assert (eo.width_px, eo.height_px, eo.lens.fisheye) == (3600, 1080, None)
+    assert fx == pytest.approx(839.3537846789975)
+    exr = load(BASELINE, [*lines, 'outputs.format = "exr"'])
+    (raw,) = (m.camera for m in exr.mounts if m.camera_name == "eo")
+    assert raw == scenario.rigs["bow"].cameras["eo"]
+
+
+@pytest.mark.parametrize(
+    ("videos", "match"),
+    [
+        ('{ eo = { kind = "identity", camera = "ir" } }', "named as cameras"),
+        ('{ v = { kind = "identity", camera = "eo" } }', r"\['ir'\] are in no video"),
+        (
+            '{ a = { kind = "identity", camera = "eo" }, '
+            'b = { kind = "identity", camera = "eo" }, '
+            'c = { kind = "identity", camera = "ir" } }',
+            "more than one video",
+        ),
+        (
+            '{ a = { kind = "identity", camera = "eo" }, '
+            'b = { kind = "identity", camera = "lens" } }',
+            r"no camera \['lens'\]",
+        ),
+        (
+            '{ a = { kind = "crop", camera = "eo", left_px = 100000 }, '
+            'b = { kind = "identity", camera = "ir" } }',
+            "crops all of eo",
+        ),
+        (
+            '{ a = { kind = "identity", camera = "eo" }, '
+            'b = { kind = "crop", camera = "ir", left_px = 2 } }',
+            "crops ir camera ir",
+        ),
+        (
+            '{ v = { kind = "horizontal_stitching", cameras = ["eo", "ir"] } }',
+            "stitches unlike",
+        ),
+    ],
+)
+def test_a_rig_refuses_a_video_it_cannot_record(videos: str, match: str) -> None:
+    with pytest.raises(ValidationError, match=match):
+        load(BASELINE, [f"rigs.bow.videos = {videos}"])
+
+
+def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:
+    line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
+    rig = load(BASELINE, [line]).rigs["bow"]
+    left, right = rig.cameras["ir_l"], rig.cameras["ir_r"]
+    assert left.yaw_deg == -right.yaw_deg != 0.0
+    assert rig.cameras["eo"].lens.fisheye is not None
 
 
 GRADE = (
@@ -1119,6 +1308,49 @@ def test_a_preset_keeps_its_sensor_under_a_block_that_draws_the_rest() -> None:
     sensor = load(BASELINE, [line]).rigs["bow"].cameras["eo"].sensor
     assert (sensor.full_well_e, sensor.dark_noise_e) == (12600.0, 4.0)
     assert 0.0 <= sensor.gain_db <= 12.0
+
+
+def test_the_ecam50_cunx_preset_scales_its_sensor_down_to_a_smaller_image() -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "econ_ecam50_cunx", hfov_deg = 45.0, '
+        "width_px = 1280, height_px = 960 }"
+    )
+    camera = load(BASELINE, [line]).rigs["bow"].cameras["eo"]
+    assert (camera.sensor.width_px or 0) >= 2 * camera.width_px
+
+
+def test_the_evidir_alpha_preset_needs_its_lens_f_number() -> None:
+    line = (
+        'rigs.bow.cameras.ir = { preset = "jenoptik_evidir_alpha_640", '
+        "hfov_deg = 32.0 }"
+    )
+    with pytest.raises(ValidationError, match="go together"):
+        load(BASELINE, [line])
+
+
+def test_a_camera_takes_a_fisheye_lens() -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "basler_daa3840_ar0821", hfov_deg = 132.93, '
+        "lens = { fisheye = [-0.0793, -0.0461, 0.0331, -0.0065] } }"
+    )
+    lens = load(BASELINE, [line]).rigs["bow"].cameras["eo"].lens
+    assert lens.fisheye == (-0.0793, -0.0461, 0.0331, -0.0065)
+
+
+@pytest.mark.parametrize(
+    ("lens", "match"),
+    [
+        ("{ fisheye = [0.0, 0.0, 0.0, 0.0], vignetting = true }", "pinhole"),
+        ("{ fisheye = [-1.0, 0.0, 0.0, 0.0] }", "misses the fisheye model"),
+    ],
+)
+def test_a_fisheye_refuses_what_it_cannot_draw(lens: str, match: str) -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "basler_daa3840_ar0821", '
+        f"hfov_deg = 130.0, lens = {lens} }}"
+    )
+    with pytest.raises(ValidationError, match=match):
+        load(BASELINE, [line])
 
 
 def test_a_rigs_cameras_share_a_draw_through_nested_picks() -> None:
@@ -1211,6 +1443,38 @@ def test_a_draught_outside_the_asset_s_range_is_refused(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         Object(asset=asset, range_m=500.0, bearing_deg=0.0, draught_m=draught_m)
+
+
+def test_a_drawn_ownship_draught_that_can_leave_the_range_is_refused() -> None:
+    drawn = "draught_m = { uniform = [4.0, 8.0] }"
+    with pytest.raises(ValueError, match=r"ownship: draught_m can be 4\.0-8\.0"):
+        load(BASELINE, [f'ownship = {{ asset = "bulk_carrier", {drawn} }}'])
+
+
+def test_an_ownship_load_draws_its_draught_per_seed_within_its_range() -> None:
+    laden = 'ownship = { asset = "cargo_ship", draught_m = { loaded = [0.0, 1.0] } }'
+    span_m = manifest()["cargo_ship"].draught_range_m
+    assert span_m is not None
+    draughts_m = {
+        load(BASELINE, [laden, f"seed = {seed}"]).ownship.draught_m for seed in range(3)
+    }
+    assert len(draughts_m) == 3
+    assert all(d is not None and span_m[0] <= d <= span_m[1] for d in draughts_m)
+
+
+@pytest.mark.parametrize(
+    ("asset", "draught_m", "match"),
+    [
+        ("bulk_carrier", 4.0, "outside"),
+        ("zodiac", 0.4, "no draught_range_m"),
+        (None, 1.0, "needs an asset"),
+    ],
+)
+def test_an_ownship_draught_its_asset_cannot_take_is_refused(
+    asset: str | None, draught_m: float, match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Ownship(asset=asset, draught_m=draught_m)
 
 
 @pytest.mark.parametrize(

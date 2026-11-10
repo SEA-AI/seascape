@@ -1,6 +1,7 @@
 """An asset's meshes: imported, joined, fitted to its size, and measured."""
 
 import contextlib
+import itertools
 import uuid
 from collections.abc import Iterable
 from pathlib import Path
@@ -8,7 +9,9 @@ from pathlib import Path
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
+from seascape import atomic
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
 from seascape.blender import faces, wear
 from seascape.blender.blend import (
@@ -182,6 +185,74 @@ def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
     ]
 
 
+def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
+    """Every triangle of `objects` as evaluated, in world metres: (n, corner, xyz)."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    found = []
+    for obj in objects:
+        evaluated = obj.evaluated_get(depsgraph)
+        mesh = evaluated.to_mesh()
+        mesh.calc_loop_triangles()
+        local = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices))
+        corners = faces.ints(
+            mesh.loop_triangles, "vertices", 3 * len(mesh.loop_triangles)
+        )
+        world = np.array(evaluated.matrix_world)
+        points = local.reshape(-1, 3) @ world[:3, :3].T + world[:3, 3]
+        found.append(points[corners].reshape(-1, 3, 3))
+        evaluated.to_mesh_clear()
+    return np.concatenate(found) if found else np.empty((0, 3, 3))
+
+
+def top(name: str, step_m: float) -> list[tuple[float, float, float]]:
+    """`top_per_station` of an asset as fitted, in an emptied scene: y forward of
+    midships, z above the waterline.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    parts = import_asset(name, "eo")
+    bpy.context.view_layer.update()
+    facets = triangles(mesh_objects(parts))
+    if not len(facets):
+        raise ValueError(f"{name} has no triangles to find the top of")
+    return top_per_station(facets, step_m)
+
+
+def top_per_station(
+    facets: np.ndarray, step_m: float
+) -> list[tuple[float, float, float]]:
+    """The top of triangles `facets` (n, corner, xyz) per `step_m` along y, stern
+    first: (y, top z, x), at the point of the top nearest its middle.
+
+    A triangle's highest point inside a station lies on a corner inside it or where
+    an edge crosses a face, so those points give the top exactly.
+    """
+    starts = facets.reshape(-1, 3)
+    along = np.roll(facets, -1, axis=1).reshape(-1, 3) - starts
+    y = starts[:, 1]
+    count = max(int(np.ceil((y.max() - y.min()) / step_m)), 1) + 1
+    planes = y.min() + step_m * np.arange(count)
+    planes[-1] = y.max()  # the last station ends with the hull, rounding aside
+    crossings = []
+    for plane_m in planes:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = (plane_m - y) / along[:, 1]
+        crosses = (t >= 0) & (t <= 1)  # NaN and inf, from an edge along the plane, fail
+        crossings.append(starts[crosses] + t[crosses, None] * along[crosses])
+    rows = []
+    for i, (near_m, far_m) in enumerate(itertools.pairwise(planes)):
+        inside = starts[(y >= near_m) & (y <= far_m)]
+        points = np.concatenate([inside, crossings[i], crossings[i + 1]])
+        if len(points):
+            top_m = points[:, 2].max()
+            # Rounding leaves a flat roof's corners at slightly different heights.
+            # An exact match would keep one corner and report the edge, not the middle.
+            top = points[np.isclose(points[:, 2], top_m)]
+            middle = (top.min(axis=0) + top.max(axis=0)) / 2
+            x_m, y_m, z_m = top[np.linalg.norm(top - middle, axis=1).argmin()]
+            rows.append((float(y_m), float(z_m), float(x_m)))
+    return rows
+
+
 _CACHE_FORMAT = 3  # raise to orphan every cache already written
 
 
@@ -227,15 +298,14 @@ def _load(path: Path) -> set[bpy.types.Object]:
                     held[datablock] = name
         objects = _parse(path)
         wear.unwrap(list(objects))
-        # A killed write must not leave a truncated file under the cache name.
-        part = imported.with_name(f"{imported.name}.{uuid.uuid4().hex}.part")
-        try:
+        # A read-only or full cache is only slower.
+        with (
+            contextlib.suppress(OSError, RuntimeError),
+            atomic.replacing(imported) as part,
+        ):
             bpy.data.libraries.write(
                 str(part), objects, path_remap="ABSOLUTE", compress=False
             )
-            part.replace(imported)
-        except (OSError, RuntimeError):  # a read-only or full cache is only slower
-            part.unlink(missing_ok=True)
     finally:
         for datablock, name in held.items():
             datablock.rename(name, mode="ALWAYS")
@@ -332,6 +402,48 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
     return parts
 
 
+# Judgement: cells along and across the hull; the volume's error falls with their size.
+KEEL_CELLS = (64, 32)
+
+
+def keel_m(facets: np.ndarray) -> tuple[np.ndarray, float]:
+    """The lowest surface of triangles `facets` (n, corner, xyz) below the waterline,
+    z = 0, seen from beneath at the centres of `KEEL_CELLS` over their span in x and
+    y; 0 where none is. Its depth over a cell's area sums to the volume displaced,
+    which an open or overlapping mesh does not upset. Returns the heights (along,
+    across) and a cell's area.
+    """
+    low = facets[facets[:, :, 2].min(axis=1) < 0]
+    points = facets.reshape(-1, 3)
+    (x0, y0, z0), (x1, y1, _) = points.min(axis=0), points.max(axis=0)
+    along, across = KEEL_CELLS
+    keel = np.zeros((along, across))
+    if len(low):
+        tree = BVHTree.FromPolygons(
+            low.reshape(-1, 3).tolist(), np.arange(3 * len(low)).reshape(-1, 3).tolist()
+        )
+        for i, y in enumerate(y0 + (y1 - y0) * (np.arange(along) + 0.5) / along):
+            for j, x in enumerate(x0 + (x1 - x0) * (np.arange(across) + 0.5) / across):
+                hit, *_ = tree.ray_cast((x, y, z0 - 1.0), (0.0, 0.0, 1.0), 1.0 - z0)
+                if hit is not None:
+                    keel[i, j] = min(hit.z, 0.0)
+    return keel, float((x1 - x0) * (y1 - y0) / (along * across))
+
+
+def box_m(
+    keel: np.ndarray, cell_m2: float, length_m: float, rise_m: float = 0.0
+) -> tuple[float, float]:
+    """Beam and draught of the box with a hull's displaced volume and waterplane area
+    over `length_m`, from `keel_m`'s heights and cell; the waterline `rise_m` below
+    z = 0, on a hull lighter than as fitted.
+    """
+    depth_m = np.clip(-rise_m - keel, 0.0, None)
+    waterplane_m2 = np.count_nonzero(depth_m) * cell_m2
+    if not waterplane_m2:
+        return 0.0, 0.0
+    return waterplane_m2 / length_m, float(depth_m.sum() * cell_m2 / waterplane_m2)
+
+
 def _crevice(
     name: str, objects: list[bpy.types.Object], scale: float, parse: Path
 ) -> None:
@@ -364,15 +476,12 @@ def _crevice(
             mesh = joined.data
             bpy.data.objects.remove(joined)
             bpy.data.meshes.remove(mesh)
-        # A killed write must not leave a truncated file under the cache name.
-        part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part.png")
-        image.filepath_raw, image.file_format = str(part), "PNG"
-        try:
-            image.save()
-            part.replace(path)
+        # A read-only or full cache only rebakes.
+        with contextlib.suppress(OSError, RuntimeError):
+            with atomic.replacing(path) as part:
+                image.filepath_raw, image.file_format = str(part), "PNG"
+                image.save()
             image.filepath_raw = str(path)
-        except (OSError, RuntimeError):  # a read-only or full cache only rebakes
-            part.unlink(missing_ok=True)
     image.name = f"{name}/crevice"
     # Unpacked, a saved .blend would point into the cache.
     if not image.packed_file:

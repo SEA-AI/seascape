@@ -6,23 +6,22 @@ import supervision as sv
 from PIL import Image
 
 from docs.brand import FOCUS_RED
+from seascape.outputs import labels
 
 
 def masks(
-    image: dict,
-    annotations: list[dict],
+    image: labels.Image,
+    annotations: list[labels.Annotation],
     box: tuple[float, float, float, float],
     size: tuple[int, int],
 ) -> np.ndarray:
     """Each mask, cropped to `box` and resized to `size`; a pixel it touches stays."""
-    resolution = (image["width"], image["height"])
+    resolution = (image.width, image.height)
     return np.stack(
         [
             np.asarray(
                 Image.fromarray(
-                    sv.rle_to_mask(a["segmentation"]["counts"], resolution).astype(
-                        np.uint8
-                    )
+                    sv.rle_to_mask(a.segmentation.counts, resolution).astype(np.uint8)
                     * 255
                 ).resize(size, Image.Resampling.BOX, box=box)
             )

@@ -20,7 +20,7 @@ Any field can instead be a draw, a table named for one of `draws.DRAWS` such as
 """
 
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from seascape.config.draws import (
     kind,
     substream,
 )
+from seascape.config.objects import MAX_HULLS
 from seascape.config.scenario import Scenario
 from seascape.config.world import Sky
 
@@ -70,25 +71,33 @@ def _merge_value(base: Any, over: Any) -> Any:
     return over
 
 
-def _include_path(name: Any, base: Path, block: str | None = None) -> Path:
-    """Resolve rule 2. `block` is the preset directory; None allows only a path."""
+def _include_path(name: Any, base: Path | None, block: str | None = None) -> Path:
+    """Resolve rule 2. `block` is the preset directory; None allows only a path, and a
+    `base` of None allows none.
+    """
     if not isinstance(name, str):
         raise ValueError(f"include must be a string, got {name!r}")
     if "/" in name or name.endswith(".toml"):
+        if base is None:
+            raise ValueError(f"{name!r} must be a preset name, not a path")
         return base / name
     if block is None:
         raise ValueError(f"{name!r} must be a path: it needs a '/' or a '.toml' suffix")
-    return PRESETS / block / f"{name}.toml"
+    path = PRESETS / block / f"{name}.toml"
+    # A table named `../..` would lift the preset out of PRESETS.
+    if not path.resolve().is_relative_to(PRESETS.resolve()):
+        raise ValueError(f"{block!r} is not a preset directory")
+    return path
 
 
 # Tables of named entries: an entry's preset is one of its table's, never of its name.
-_KEYED = {"rigs", "cameras"}
+_KEYED = {"rigs", "cameras", "videos"}
 
 
 def _expand(
     node: Any,
     block: str | None,
-    base: Path,
+    base: Path | None,
     chain: tuple[Path, ...],
     keyed: bool = False,
 ) -> Any:
@@ -170,6 +179,7 @@ def _draw(node: Any, seed: int, path: str) -> Any:
 def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     """Each entry `count` times, every copy drawn from a substream of its own."""
     out = []
+    hulls = 0
     for i, spec in enumerate(objects):
         if not isinstance(spec, dict):
             out.append(spec)  # validation names what it should have been
@@ -180,6 +190,9 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             raise ValueError(
                 f"objects[{i}]: count must be a whole number from 0, not {count}"
             )
+        hulls += count
+        if hulls > MAX_HULLS:
+            raise ValueError(f"objects: at most {MAX_HULLS} hulls in all")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
         for k in range(count):
@@ -228,7 +241,7 @@ def _draught_span_m(draught: Any) -> tuple[float, float] | None:
     return min(low for low, _ in spans), max(high for _, high in spans)
 
 
-def _draughts_fit(spec: Any, i: int) -> None:
+def _draughts_fit(spec: Any, where: str) -> None:
     """Refuse a draught that can leave its asset's range, whatever the seed, for
     every object a choice can make and every asset that object can be. Each copy
     checks only what its seed drew.
@@ -245,14 +258,14 @@ def _draughts_fit(spec: Any, i: int) -> None:
             if asset is None:
                 continue  # validation names the asset
             if asset.draught_range_m is None:
-                raise ValueError(f"objects[{i}]: {named} has no draught_range_m")
+                raise ValueError(f"{where}: {named} has no draught_range_m")
             if span_m is None:
                 continue  # a load fits any range
             low_m, high_m = span_m
             lightest_m, deepest_m = asset.draught_range_m
             if low_m < lightest_m or high_m > deepest_m:
                 raise ValueError(
-                    f"objects[{i}]: draught_m can be {low_m}-{high_m}, outside "
+                    f"{where}: draught_m can be {low_m}-{high_m}, outside "
                     f"{named}'s draught_range_m {asset.draught_range_m}"
                 )
 
@@ -290,20 +303,35 @@ def _draught_m(copy: dict[str, Any], seed: int, path: str) -> dict[str, Any]:
     return {"draught_m": lightest_m + fraction * (deepest_m - lightest_m)}
 
 
-def load(
-    path: str | Path, overrides: Iterable[str | Mapping[str, Any]] = ()
-) -> Scenario:
-    """Read a scenario TOML, resolving `extends` and `preset`, draw every random
-    field, and validate it.
+def resolve(
+    path: str | Path,
+    overrides: Iterable[str | Mapping[str, Any]] = (),
+    *,
+    files: bool = True,
+) -> dict[str, Any]:
+    """Read a scenario TOML, resolving `extends` and `preset`; no field is drawn.
 
     Each override, a TOML assignment such as `rigs.bow.pitch_deg = -5` or the table it
-    parses to, merges over the file and resolves as if it were a line in it.
+    parses to, merges over the file and resolves as if it were a line in it. With
+    `files` False a `preset` in an override may name only a preset, never a file:
+    a path would read any TOML on the host.
     """
     path = Path(path)
     data = _read(path)
+    base = path.parent if files else None
     for override in overrides:
         table = tomllib.loads(override) if isinstance(override, str) else dict(override)
-        data = _expand(_merge(data, table), None, path.parent, ())
+        data = _expand(_merge(data, table), None, base, ())
+    return data
+
+
+def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
+    """Draw every random field of a `resolve`d scenario from `seed`, the tree's own
+    when None, and validate it. The tree is left as it was, for the next seed.
+    """
+    data = dict(tree)
+    if seed is not None:
+        data["seed"] = seed
     seed = data.get("seed", Scenario.model_fields["seed"].default)
     if isinstance(seed, dict):
         raise ValueError("seed cannot be drawn: it seeds the draws")
@@ -318,12 +346,28 @@ def load(
     for option in _outcomes(data.get("objects")):
         if isinstance(option, list):
             for i, spec in enumerate(option):
-                _draughts_fit(spec, i)
+                _draughts_fit(spec, f"objects[{i}]")
+    _draughts_fit(data.get("ownship"), "ownship")
+    # `draw/ownship` is the path the whole tree's draw gives it, as for the sky.
+    if isinstance(ownship := _draw(data.get("ownship"), seed, "draw/ownship"), dict):
+        path = "draw/ownship/draught_m/loaded"
+        data["ownship"] = ownship | _draught_m(ownship, seed, path)
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
+def load(
+    path: str | Path,
+    overrides: Iterable[str | Mapping[str, Any]] = (),
+    *,
+    files: bool = True,
+) -> Scenario:
+    """`resolve` a scenario TOML, then `instantiate` it from its own seed."""
+    return instantiate(resolve(path, overrides, files=files))
+
+
+# Judgement: enough redraws that a variant whose hulls meet rarely runs out of seeds.
 # Seeds `render --variants` tries per variant before it gives up on hulls that meet.
 TRIES_PER_VARIANT = 10
 
@@ -335,11 +379,47 @@ def seeds(first: int, variants: int) -> range:
     return range(first, first + (1 if variants == 1 else TRIES_PER_VARIANT * variants))
 
 
-def load_variants(path: str | Path, count: int = 1) -> list[Scenario]:
-    """`count` scenarios from consecutive seeds, the file's own first."""
-    first = load(path)
-    later = range(first.seed + 1, first.seed + count)
-    return [first, *(load(path, [f"seed = {seed}"]) for seed in later)]
+def _refs(node: Any) -> Iterator[str]:
+    if isinstance(node, dict):
+        if "$ref" in node:
+            yield node["$ref"]
+        for value in node.values():
+            yield from _refs(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _refs(value)
+
+
+def schema_sections() -> dict[str, str]:
+    """Each top-level field of the scenario's schema, with what it describes."""
+    schema = json_schema()
+    described = {}
+    for name, spec in schema["properties"].items():
+        # A model-typed field has no description of its own; its model's is the doc.
+        first = next(_refs(spec), "").removeprefix("#/$defs/")
+        described[name] = spec.get("description") or schema["$defs"].get(first, {}).get(
+            "description", ""
+        )
+    return described
+
+
+def schema_section(name: str) -> dict[str, Any]:
+    """One top-level field of the scenario's schema, with the definitions it reaches.
+
+    Raises:
+        KeyError: No such field.
+    """
+    schema = json_schema()
+    spec = schema["properties"][name]
+    reached: dict[str, Any] = {}
+    pending = [spec]
+    while pending:
+        for ref in _refs(pending.pop()):
+            key = ref.removeprefix("#/$defs/")
+            if key not in reached:
+                reached[key] = schema["$defs"][key]
+                pending.append(reached[key])
+    return {"properties": {name: spec}, "$defs": reached}
 
 
 def json_schema() -> dict[str, Any]:
@@ -363,7 +443,8 @@ def json_schema() -> dict[str, Any]:
         {"$ref": "#/$defs/OpticalDepth"}
     )
     schema["$defs"]["Loaded"] = Loaded.model_json_schema()
-    schema["$defs"]["Object"]["properties"]["draught_m"]["anyOf"].append(
-        {"$ref": "#/$defs/Loaded"}
-    )
+    for model in ("Object", "Ownship"):
+        schema["$defs"][model]["properties"]["draught_m"]["anyOf"].append(
+            {"$ref": "#/$defs/Loaded"}
+        )
     return schema

@@ -1,0 +1,29 @@
+#:schema ../schema/scenario.json
+
+# Shared by `sync-<product>.toml`, which sets the ownship, the rig and the containers.
+seed = 20261106
+
+# A stand-in, so this file validates alone.
+[rigs.mast]
+height_m = 3.0
+cameras.eo = { preset = "eo_4k_49deg" }
+cameras.ir = { preset = "ir_vga_24deg" }
+
+# With the waves' rocking, gives every IMU axis a signal.
+[ownship]
+yaw = { amplitude_deg = 0.5, period_s = 10.0 }
+
+[sea]
+wind_speed_mps = 3.5
+fetch_km = 20.0
+wind_from_deg = 300.0
+
+[sky]
+hdri = "industrial_sunset"
+sun_bearing_deg = 150.0
+
+[outputs]
+fps = 30
+duration_s = 30.0
+format = "png"
+samples = { eo = 8, ir = 8 }

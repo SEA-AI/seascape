@@ -11,7 +11,8 @@ from PIL import Image, ImageDraw
 from seascape import assets, render
 from seascape.blender import meshes
 from seascape.config import Band, Scenario, load
-from seascape.outputs import montage
+from seascape.outputs import canvas
+from seascape.outputs.labels import Labels
 
 TILE = (480, 270)
 COLUMNS = 4
@@ -41,8 +42,6 @@ def shot(
         # A tenth of the range up, aimed at the waterline.
         "height_m": 0.1 * range_m,
         "pitch_deg": -math.degrees(math.atan(0.1)),
-        # The default clips the water in front of a camera this low.
-        "near_clip_m": 0.01 * size_m,
         "cameras": {
             band: {
                 "band": band,
@@ -52,19 +51,15 @@ def shot(
             }
         },
     }
-    at = f'asset = "{name}", range_m = {range_m}, bearing_deg = 0.0'
+    at = {"asset": name, "range_m": range_m, "bearing_deg": 0.0}
     if isinstance(mesh, assets.Turbine):
         # It faces the wind, so the wind turns it.
-        placed = [f"farms = [{{ {at} }}]", f"sea.wind_from_deg = {HEADING_DEG}"]
+        placed = {"farms": [at], "sea": {"wind_from_deg": HEADING_DEG}}
     else:
-        placed = [f"objects = [{{ {at}, heading_deg = {HEADING_DEG} }}]"]
+        placed = {"objects": [at | {"heading_deg": HEADING_DEG}]}
     built = load(
         scenario,
-        [
-            *placed,
-            f'outputs.bands = ["{band}"]',
-            "outputs.duration_s = 0.0",
-        ],
+        [placed, {"outputs": {"bands": [band], "duration_s": 0.0}}],
     )
     # The mesh alone, through one camera: TOML cannot set the ring or the ownship's
     # hull to none, and the scenario's rigs merge with any it is given.
@@ -75,8 +70,9 @@ def shot(
     alone["ownship"] |= {"asset": None}
     built = Scenario.model_validate(alone)
     frame = Image.open(render.render(built, into)[0]).convert("RGB")
-    (label,) = json.loads((into / "labels.json").read_text())["annotations"]
-    x, y, w, h = label["bbox"]
+    labelled = Labels.read(into)
+    (label,) = labelled.annotations
+    x, y, w, h = label.bbox
     left = min(max(x + w // 2 - TILE[0] // 2, 0), TILE[0])
     top = min(max(y + h // 2 - TILE[1] // 2, 0), TILE[1])
     return frame.crop((left, top, left + TILE[0], top + TILE[1]))
@@ -84,23 +80,22 @@ def shot(
 
 def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
     """Write a sheet of every asset in the manifest, shot in `scenario`, to `out`."""
-    entries = assets.manifest()
-    rows = math.ceil(len(entries) / COLUMNS)
-    page = Image.new("RGB", (TILE[0] * COLUMNS, TILE[1] * rows))
-    draw = ImageDraw.Draw(page)
-    font = montage.font(15)
+    font = canvas.font(15)
+    tiles = []
     with tempfile.TemporaryDirectory() as tmp:
-        for k, (name, mesh) in enumerate(entries.items()):
-            x, y = (k % COLUMNS) * TILE[0], (k // COLUMNS) * TILE[1]
-            page.paste(shot(name, mesh, scenario, band, Path(tmp) / name), (x, y))
+        for name, mesh in assets.manifest().items():
+            tile = shot(name, mesh, scenario, band, Path(tmp) / name)
             n = len(mesh.texture_px)
             textures = f"{n} texture{'s' * (n > 1)}" if n else "flat"
             # The LWIR build replaces every material, so textures show only in EO.
             label = f"{name}  {mesh.size}  {mesh.triangles:,} tris"
             label += f"  {textures}" if band == "eo" else ""
-            draw.rectangle((x, y, x + TILE[0], y + 22), fill="black")
-            draw.text((x + 6, y + 3), label, fill="white", font=font)
-    page.save(out, quality=85)
+            draw = ImageDraw.Draw(tile)
+            draw.rectangle((0, 0, TILE[0], 22), fill="black")
+            draw.text((6, 3), label, fill="white", font=font)
+            tiles.append(tile)
+    # Judgement: a contact sheet to look at, so a smaller file over fidelity.
+    canvas.grid(tiles, COLUMNS, matte="black").save(out, quality=85)
 
 
 def measure(path: Path) -> str:

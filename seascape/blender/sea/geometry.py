@@ -40,14 +40,18 @@ OFFSCREEN_DICING = 128.0
 # knob. A cell's sagitta, width^2 / 8R, is far under a pixel at the horizon.
 SEA_CELLS = 128
 
-# Margin on the horizon, or the grid's own edge becomes the horizon.
+# Judgement: a margin on the horizon, or the grid's own edge becomes the horizon.
 SEA_MARGIN = 1.5
 
 
 def sea_reach_m(scenario: Scenario) -> float:
-    """Half-width of the sea, a margin past the highest rig's horizon."""
+    """Half-width of the sea: a margin past the highest rig's horizon, plus the run
+    `speed_mps * duration_s`, which a turn only shortens.
+    """
     height_m = max(rig.height_m for rig in scenario.rigs.values())
-    return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k)
+    height_m += scenario.ownship.rise_m  # a lighter hull lifts its rigs
+    run_m = scenario.ownship.speed_mps * scenario.outputs.duration_s
+    return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k) + run_m
 
 
 # Waves per lane-vector: a Vector Math node costs Cycles about what a Math node does.
@@ -82,15 +86,6 @@ def _group(
     return group, given, group.nodes.new("NodeGroupOutput").inputs
 
 
-def _spread(
-    group: bpy.types.NodeTree, value: bpy.types.NodeSocket
-) -> bpy.types.NodeSocket:
-    """A scalar in every lane. Cycles merges identical nodes, so each spread runs once
-    per sample however many groups make it.
-    """
-    return combine(group, value, value, value)
-
-
 def _total(
     tree: bpy.types.NodeTree, lanes: bpy.types.NodeSocket
 ) -> bpy.types.NodeSocket:
@@ -113,11 +108,10 @@ _SUMS = (("Sum X", "Vector"), ("Sum Y", "Vector"), ("Sum Z", "Vector"))
 
 def _fade(
     group: bpy.types.NodeTree, given: bpy.types.NodeOutputs, calm: bool
-) -> tuple[bpy.types.NodeSocket, tuple[bpy.types.NodeSocket, bpy.types.NodeSocket]]:
+) -> bpy.types.NodeSocket:
     """How much of each lane the pixel draws, `waves.visibility` at its footprint
     along the wave, footprint^2 = across^2 + (along^2 - across^2) cos^2: sin(y) / y
     at y = footprint k / 2, held at 0 past pi; scaled by `Calm` in a `Damped` lane.
-    And `Along`, (x, y), spread.
 
     cos^2 is `fade_axis`'s. A judgement: the wave fades at the band's RMS footprint,
     not by the band's mean visibility.
@@ -125,20 +119,19 @@ def _fade(
     Built alike in every group, so Cycles merges a triple's fade across them.
     """
     along_x, along_y, _ = separate(group, given["Along"])
-    along_xy = (_spread(group, along_x), _spread(group, along_y))
     heading = vector(
         group,
         "MULTIPLY_ADD",
         given["Ty"],
-        along_xy[1],
-        vector(group, "MULTIPLY", given["Tx"], along_xy[0]),
+        along_y,
+        vector(group, "MULTIPLY", given["Tx"], along_x),
     )
     footprint_sq = vector(
         group,
         "MULTIPLY_ADD",
         vector(group, "MULTIPLY_ADD", heading, heading, given["Band"]),
-        _spread(group, given["Stretch"]),
-        _spread(group, given["Across Sq"]),
+        given["Stretch"],
+        given["Across Sq"],
     )
     y = vector(
         group,
@@ -154,10 +147,10 @@ def _fade(
         y,
     )
     if calm:
-        less = _spread(group, scalar(group, "SUBTRACT", given["Calm"], 1.0))
+        less = scalar(group, "SUBTRACT", given["Calm"], 1.0)
         scale = vector(group, "MULTIPLY_ADD", given["Damped"], less, (1.0, 1.0, 1.0))
         seen = vector(group, "MULTIPLY", seen, scale)
-    return seen, along_xy
+    return seen
 
 
 def _wave_group(calm: bool) -> bpy.types.NodeTree:
@@ -185,9 +178,7 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
         ),
         _SUMS,
     )
-    east, north, time_s = (
-        _spread(group, axis) for axis in separate(group, given["Position"])
-    )
+    east, north, time_s = separate(group, given["Position"])
     phase = vector(
         group,
         "MULTIPLY_ADD",
@@ -201,7 +192,7 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
             vector(group, "MULTIPLY_ADD", given["W"], time_s, given["Phase"]),
         ),
     )
-    seen, _ = _fade(group, given, calm)
+    seen = _fade(group, given, calm)
 
     def shown(trig: str) -> bpy.types.NodeSocket:
         return vector(group, "MULTIPLY", vector(group, trig, phase), seen)

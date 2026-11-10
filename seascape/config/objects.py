@@ -3,6 +3,7 @@
 import math
 from typing import Annotated, Literal
 
+import numpy as np
 from pydantic import (
     AfterValidator,
     Field,
@@ -47,6 +48,8 @@ TurbineName = Annotated[
     AfterValidator(_a_turbine),
     WithJsonSchema({"type": "string", "enum": _names(turbines=True)}),
 ]
+# Judgement: far more hulls than a frame can show.
+MAX_HULLS = 1000
 _ASSET = "An asset name from the manifest: `seascape assets list` shows them."
 _T_HULL = (
     "One temperature for the whole hull, warmed by `sky.solar_gain_k` in sun. Unset, "
@@ -56,6 +59,10 @@ _ENGINE_OFF = (
     "Minutes since its engines stopped; 0 is running. The engine room and exhaust "
     "cool toward the air. IR only, with zones."
 )
+# Judgement: from an arctic night to an exhaust casing in sun.
+HullTemperatureK = Annotated[
+    float | None, Field(ge=250.0, le=400.0, description=_T_HULL)
+]
 PaintAbsorptance = Annotated[
     float | None,
     Field(
@@ -74,7 +81,7 @@ _DRAUGHT = (
     "How deep it floats, keel to waterline, within the asset's `draught_range_m`. "
     "Unset, the asset's own."
 )
-_RANGE = "Horizontal, from the ownship's origin."
+_RANGE = "Horizontal, from the ownship's origin at t = 0."
 _SPEED = "Along its heading."
 _DRIFT = "A figure-eight about its pose."
 
@@ -97,7 +104,9 @@ class Orbit(Model):
     """
 
     period_s: float = Field(gt=0.0, description="One full lap.")
-    count: int = Field(default=1, gt=0, description="Hulls spaced evenly on it.")
+    count: int = Field(
+        default=1, gt=0, le=MAX_HULLS, description="Hulls spaced evenly on it."
+    )
 
 
 class Object(Model):
@@ -112,12 +121,12 @@ class Object(Model):
     heading_from: Literal["ownship", "line_of_sight"] = Field(
         default="ownship",
         description="What `heading_deg` turns from: the ownship's bow, or the line "
-        "from the ownship to it, where 0 points away and 180 towards.",
+        "from the ownship to it at t = 0, where 0 points away and 180 towards.",
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
-    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
@@ -139,21 +148,11 @@ class Object(Model):
     @property
     def rise_m(self) -> float:
         """How far it rides above the asset's own draught."""
-        if self.draught_m is None:
-            return 0.0
-        return assets.manifest()[self.asset].draught_m - self.draught_m
+        return _rise_m(self.asset, self.draught_m)
 
     @model_validator(mode="after")
     def _draught_in_range(self) -> "Object":
-        if self.draught_m is None:
-            return self
-        if (span := assets.manifest()[self.asset].draught_range_m) is None:
-            raise ValueError(f"{self.asset} has no draught_range_m: it floats as built")
-        lightest_m, deepest_m = span
-        if not lightest_m <= self.draught_m <= deepest_m:
-            raise ValueError(
-                f"{self.asset}: draught_m {self.draught_m} is outside {span}"
-            )
+        _check_draught(self.asset, self.draught_m)
         return self
 
     @model_validator(mode="after")
@@ -189,24 +188,59 @@ class Heave(Model):
     period_s: float = Field(gt=0.0, description="One full cycle.")
 
 
+def _rise_m(asset: str | None, draught_m: float | None) -> float:
+    if asset is None or draught_m is None:
+        return 0.0
+    return assets.manifest()[asset].draught_m - draught_m
+
+
+def _check_draught(asset: str | None, draught_m: float | None) -> None:
+    if draught_m is None:
+        return
+    if asset is None:
+        raise ValueError("draught_m needs an asset to float")
+    if (span := assets.manifest()[asset].draught_range_m) is None:
+        raise ValueError(f"{asset} has no draught_range_m: it floats as built")
+    lightest_m, deepest_m = span
+    if not lightest_m <= draught_m <= deepest_m:
+        raise ValueError(f"{asset}: draught_m {draught_m} is outside {span}")
+
+
 class Ownship(Model):
     """The vessel the rig is bolted to, rolling and pitching about its origin at the
-    waterline. Without an asset it is the attitude alone.
+    waterline. Without an asset it is the motion alone; a hull also rides the sea.
+
+    It sails from the origin along its heading; the sea and sky stay put, and every
+    bearing in a scenario is from its bow at t = 0.
     """
 
     asset: VesselName | None = Field(default=None, description=_ASSET)
-    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: HullTemperatureK = None
+    speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
+    yaw: Swing | None = Field(
+        default=None, description="Its heading about the start's."
+    )
     roll_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is starboard down."
     )
     pitch_deg: float = Field(
         default=0.0, gt=-90.0, lt=90.0, description="Positive is bow up."
     )
-    # Limitation: one sine per axis, a sum over a wave spectrum when irregular motion
-    # matters.
+    # Limitation: one sine per axis; only a hull adds the sea's irregular motion.
     roll: Swing | None = Field(default=None, description="About roll_deg.")
     pitch: Swing | None = Field(default=None, description="About pitch_deg.")
     heave: Heave | None = Field(default=None, description="About the waterline.")
+    draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
+
+    @property
+    def rise_m(self) -> float:
+        """How far it rides above the asset's own draught."""
+        return _rise_m(self.asset, self.draught_m)
+
+    @model_validator(mode="after")
+    def _draught_in_range(self) -> "Ownship":
+        _check_draught(self.asset, self.draught_m)
+        return self
 
 
 class Targets(Model):
@@ -231,24 +265,18 @@ class Targets(Model):
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
     drift: Drift | None = Field(default=None, description=_DRIFT)
-    t_k: float | None = Field(default=None, ge=250.0, le=400.0, description=_T_HULL)
+    t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
 
-    def _spread(self, span: tuple[float, float], i: int) -> float:
-        low, high = span
-        return low + (high - low) * i / max(self.count - 1, 1)
-
     def poses(self) -> list[tuple[str, float, float]]:
         """Asset, bearing_deg and heading_deg per target."""
         names = [self.asset] if isinstance(self.asset, str) else self.asset
+        bearings = np.linspace(*self.bearing_deg, self.count)
+        headings = np.linspace(*self.heading_deg, self.count)
         return [
-            (
-                names[i % len(names)],
-                self._spread(self.bearing_deg, i),
-                self._spread(self.heading_deg, i),
-            )
+            (names[i % len(names)], float(bearings[i]), float(headings[i]))
             for i in range(self.count)
         ]
 

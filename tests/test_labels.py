@@ -8,13 +8,14 @@ import cv2
 import numpy as np
 import pytest
 
-from seascape.config import Agc, Camera, Lens, Sensor
+from seascape.config import Agc, Camera, Crop, Lens, Sensor
 from seascape.outputs import labels
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import earth
+from seascape.physics import earth, fisheye
 
 RADIUS_M = earth.earth_radius_m(0.13)
 FLAT = np.ones((48, 64, 3))
+ZERO = np.zeros(3)
 
 
 def camera(
@@ -24,9 +25,15 @@ def camera(
     pitch_deg: float = 0.0,
     roll_deg: float = 0.0,
     at_m: tuple[float, float, float] = (0.0, 0.0, 50.0),
+    distortion: fisheye.K | None = None,
 ) -> CameraCalibration:
-    """Facing north, then pitched about its x and rolled about its z."""
-    f = width / 2 / math.tan(math.radians(hfov_deg) / 2)
+    """Facing north, then pitched about its x and rolled about its z; a fisheye with
+    `distortion`.
+    """
+    if distortion is None:
+        f = width / 2 / math.tan(math.radians(hfov_deg) / 2)
+    else:
+        f = fisheye.focal_px(math.radians(hfov_deg), width, distortion)
     level = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
     pitch, _ = cv2.Rodrigues(np.array([math.radians(pitch_deg), 0.0, 0.0]))
     roll, _ = cv2.Rodrigues(np.array([0.0, 0.0, math.radians(roll_deg)]))
@@ -40,6 +47,7 @@ def camera(
         width_px=width,
         height_px=height,
         K=((f, 0, (width - 1) / 2), (0, f, (height - 1) / 2), (0, 0, 1)),
+        distortion=distortion,
         extrinsics={"world": tuple(map(tuple, pose))},
     )
 
@@ -431,26 +439,62 @@ def grazing_circle_px(cam: CameraCalibration, radius_m: float) -> np.ndarray:
         np.stack([x, y, -(x * x + y * y) / (2 * radius_m)]) - centre[:, None]
     )
     ahead = ahead[:, ahead[2] > 0]
-    u, v, _ = np.array(cam.K) @ ahead / ahead[2]
+    if cam.distortion is None:
+        u, v, _ = np.array(cam.K) @ ahead / ahead[2]
+    else:
+        points = ahead.T.reshape(-1, 1, 3)
+        k = np.array(cam.distortion)
+        image, _ = cv2.fisheye.projectPoints(points, ZERO, ZERO, np.array(cam.K), k)
+        u, v = image.reshape(-1, 2).T
     order = np.argsort(u)
     return np.stack([u[order], v[order]], axis=1) + 0.5
 
 
+FISHEYE = (-0.0793, -0.0461, 0.0331, -0.0065)
+
+
 @pytest.mark.parametrize(
-    ("pitch_deg", "roll_deg", "at_m"),
-    [(0.0, 0.0, (0.0, 0.0, 50.0)), (-6.0, 2.0, (21.5, -68.2, 51.8))],
+    ("pitch_deg", "roll_deg", "at_m", "distortion", "tolerance_px"),
+    [
+        (0.0, 0.0, (0.0, 0.0, 50.0), None, 1e-3),
+        (-6.0, 2.0, (21.5, -68.2, 51.8), None, 1e-3),
+        (0.0, 0.0, (0.0, 0.0, 50.0), FISHEYE, 0.05),
+        (25.0, 0.0, (0.0, 0.0, 8.0), FISHEYE, 0.05),
+        (0.0, 20.0, (21.5, -68.2, 51.8), FISHEYE, 0.05),
+    ],
 )
 def test_the_horizon_lies_where_rays_graze_the_sea(
-    pitch_deg: float, roll_deg: float, at_m: tuple[float, float, float]
+    pitch_deg: float,
+    roll_deg: float,
+    at_m: tuple[float, float, float],
+    distortion: fisheye.K | None,
+    tolerance_px: float,
 ) -> None:
-    cam = camera(3840, 2160, 49.0, pitch_deg, roll_deg, at_m)
+    hfov_deg = 49.0 if distortion is None else 132.93
+    cam = camera(3840, 2160, hfov_deg, pitch_deg, roll_deg, at_m, distortion)
     reference = grazing_circle_px(cam, RADIUS_M)
 
     points = np.array(labels.horizon_px(cam, RADIUS_M))
 
     assert len(points) == labels.HORIZON_POINTS
     expected = np.interp(points[:, 0], reference[:, 0], reference[:, 1])
-    assert points[:, 1] == pytest.approx(expected, abs=1e-3)
+    assert points[:, 1] == pytest.approx(expected, abs=tolerance_px)
+
+
+def test_a_fisheyes_field_of_view_is_the_angle_across_its_width() -> None:
+    assert camera(3840, 2160, 132.93, distortion=FISHEYE).hfov_deg == pytest.approx(
+        132.93
+    )
+    assert camera(3840, 2160, 49.0).hfov_deg == pytest.approx(49.0)
+
+
+@pytest.mark.parametrize(("hfov_deg", "distortion"), [(49.0, None), (132.93, FISHEYE)])
+def test_a_crop_to_one_side_sees_half_the_field(
+    hfov_deg: float, distortion: tuple[float, float, float, float] | None
+) -> None:
+    right = Crop(kind="crop", camera="eo", left_px=1920)
+    cut = camera(3840, 2160, hfov_deg, distortion=distortion).cropped(right)
+    assert cut.hfov_deg == pytest.approx(hfov_deg / 2)
 
 
 def test_no_horizon_in_a_frame_that_looks_at_the_sea_only() -> None:

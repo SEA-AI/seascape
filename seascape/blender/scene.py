@@ -42,6 +42,9 @@ class Built:
     """
 
     vessel: bpy.types.Object
+    deck: (
+        bpy.types.Object
+    )  # what the rigs are bolted to: a hull's draught lift, which rides the sea
     rigs: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
@@ -51,22 +54,26 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     """A built camera's geometry, read off the scene."""
     camera = built.cameras[mount.name]
     world = camera.matrix_world @ _BLENDER_TO_CV
-    vessel = built.vessel.matrix_world
+    vessel = built.deck.matrix_world
     rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
-    f = (width / 2) / math.tan(camera.data.angle_x / 2)
+    if mount.camera.lens.fisheye is None:
+        f = (width / 2) / math.tan(camera.data.angle_x / 2)
+    else:
+        f = mount.camera.fisheye_focal_px
     return CameraCalibration(
         name=mount.name,
         band=mount.camera.band,
         image=image,
         rig=mount.rig_name,
         model=mount.rig.model,
-        pitch_um=mount.camera.microbolometer.pitch_um,
+        pitch_um=mount.camera.pitch_um,
         width_px=width,
         height_px=height,
         # Blender's frame spans pixel edges, so its centre is half a pixel past
         # OpenCV's.
         K=((f, 0.0, (width - 1) / 2), (0.0, f, (height - 1) / 2), (0.0, 0.0, 1.0)),
+        distortion=mount.camera.lens.fisheye,
         extrinsics={
             "world": _rows(world),
             "vessel": _rows(vessel.inverted() @ world),
@@ -91,17 +98,15 @@ def _rows(m: Matrix) -> Matrix4:
     return x, y, z, w
 
 
-def _viewport(near_m: float, far_m: float) -> None:
-    """Blender's view clip defaults to 0.01-1000 m, which cuts a sea reaching tens
-    of km.
-    """
+def _viewport(far_m: float) -> None:
+    """Blender's view clip ends at 1000 m, short of a sea reaching tens of km."""
     for screen in bpy.data.screens:
         for area in screen.areas:
             if area.type != "VIEW_3D":
                 continue
             for space in area.spaces:
                 if space.type == "VIEW_3D":
-                    space.clip_start, space.clip_end = near_m, far_m
+                    space.clip_end = far_m
 
 
 def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
@@ -113,8 +118,10 @@ def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> flo
     if not tops_m:
         return 0.0
     heave = scenario.ownship.heave
-    eye_m = max(rig.height_m for rig in scenario.rigs.values()) + (
-        heave.amplitude_m if heave is not None else 0.0
+    eye_m = (
+        max(rig.height_m for rig in scenario.rigs.values())
+        + scenario.ownship.rise_m
+        + (heave.amplitude_m if heave is not None else 0.0)
     )
     k = scenario.sea.refraction_k
     return earth.horizon_m(eye_m, k) + earth.horizon_m(max(tops_m), k)
@@ -165,17 +172,28 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     )
     bpy.context.scene.world = add_world(scenario.sky, band)
     reach_m = sea.sea_reach_m(scenario)
-    far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) away
+    far_m = 1.5 * reach_m  # the sea's corner is reach * sqrt(2) from the origin
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
-    rigs = add_rigs(scenario, far_m)
+    rigs = add_rigs(scenario)
     heat = surroundings(scenario) if band == "ir" else None
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
-    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall)
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
+    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall, radius_m)
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
     targets = {**vessels, **turbines}  # no asset is both
+    # Before `views`, which reads where the cameras look as the hulls rock.
+    # Limitation: a floating turbine stands still; give it its platform's motion
+    # if a sea rocks one visibly.
+    afloat = list(chain(*vessels.values()))
+    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
+    if scenario.ownship.asset is not None:
+        afloat.append(vessel)
+    ride(afloat, wind + swell, tall, outputs)
+    solid = afloat + list(chain(*turbines.values()))
+    if meeting := overlaps(solid, len(outputs.times_s)):
+        raise OverlapError(f"hulls inside each other: {meeting}")
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
     for camera in rigs.cameras.values():
         camera.data.clip_end = far_m
@@ -210,20 +228,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # The first camera may belong to the other band, whose optics this build lacks.
     first = mounts[0]
     look_through(rigs.cameras, first, substream(scenario.seed, f"sensor/{first.name}"))
-    _viewport(min(rig.near_clip_m for rig in scenario.rigs.values()), far_m)
+    _viewport(far_m)
     # After the last import, which sets fps and fps_base to the file's own. The
     # factory scene starts at frame 1.
     sc = bpy.context.scene
     sc.frame_start = sc.frame_current = 0
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
-    # Limitation: a floating turbine stands still; give it its platform's motion
-    # if a sea rocks one visibly.
-    ride(list(chain(*vessels.values())), wind + swell, tall, outputs)
-    solid = list(chain(*targets.values()))
-    if scenario.ownship.asset is not None:
-        solid.append(vessel)
-    if meeting := overlaps(solid, len(outputs.times_s)):
-        raise OverlapError(f"hulls inside each other: {meeting}")
     sc.frame_set(0)
-    return Built(vessel, rigs.rigs, rigs.cameras, targets)
+    return Built(vessel, rigs.root.parent, rigs.rigs, rigs.cameras, targets)

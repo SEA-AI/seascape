@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from seascape.config import Crop, Stitch, Undistortion, Video
 from seascape.outputs import recording
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -96,7 +97,7 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
         )
     Calibration(cameras=cameras[::-1]).write(into)
     scenario = {
-        "rigs": {"port": {"height_m": 51.8}},
+        "rigs": {"port": {"height_m": 51.8, "videos": {}}},
         "sky": {"t_air_k": 283.15},
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
     }
@@ -120,6 +121,7 @@ def test_a_rig_becomes_one_recording_folder_named_for_its_model(run: Path) -> No
             into / "user_settings.json",
             into / "POWER_Const/camera_parameters.json",
             into / "POWER_Const/pod_sensors.json",
+            into / "serialized_parameters.json",
         ]
     )
     assert (into / "Pod_EO_record_2026_09_29_03_55_21.mp4").samefile(run / "EO.mp4")
@@ -175,6 +177,116 @@ def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
         },
         abs=1e-9,
     )
+
+
+@pytest.mark.parametrize(
+    "videos",
+    [{}, {"RGB": {"kind": "crop", "camera": "EO", "left_px": 40}}],
+    ids=["none", "unrendered, as in an exr"],
+)
+def test_a_camera_without_a_rendered_video_is_recorded_as_it_is(
+    run: Path, videos: dict
+) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    truth.info["scenario"]["rigs"]["port"]["videos"] = videos
+    truth.write(run)
+
+    recording.export(run)
+
+    (folder,) = run.glob("recordings/port/*")
+    serialized = json.loads((folder / "serialized_parameters.json").read_text())
+    (entry,) = serialized["cameras"]
+    assert entry["name"] == "EO"
+    assert entry["transformation_type"] == "identity"
+    assert entry["transformation_parameters"] is None
+    (source,) = entry["camera_sources"]
+    assert (source["name"], source["device_name"]) == ("EO", "EO")
+
+
+@pytest.mark.parametrize(
+    ("video", "transform", "cut_px"),
+    [
+        (
+            Crop(kind="crop", camera="EO", left_px=40, right_px=40),
+            {"pixel_sacrifice": [40, 40, 0, 0]},
+            40,
+        ),
+        (
+            Undistortion(
+                kind="undistortion",
+                camera="EO",
+                hfov_deg=130.0,
+                vfov_deg=65.5,
+                downscale=2,
+            ),
+            {"downscale": 2, "out-fov": {"value": [130.0, 65.5], "unit": "degrees"}},
+            0,
+        ),
+    ],
+)
+def test_a_video_is_recorded_with_its_camera_as_rendered(
+    run: Path, video: Video, transform: dict, cut_px: int
+) -> None:
+    calibration = Calibration.read(run)
+    recorded = [
+        camera.model_copy(update={"name": "port_RGB"}) for camera in calibration.cameras
+    ]
+    if isinstance(video, Crop):
+        recorded = [camera.cropped(video) for camera in recorded]
+    if isinstance(video, Undistortion):
+        # A wider pinhole than the camera it dewarps.
+        recorded = [
+            camera.model_copy(
+                update={"K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0])))}
+            )
+            for camera in recorded
+        ]
+    Calibration(cameras=recorded, raw=calibration.cameras).write(run)
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video.model_dump()}
+    truth.write(run)
+    (run / "EO.mp4").rename(run / "port_RGB.mp4")
+
+    recording.export(run)
+
+    (folder,) = run.glob("recordings/port/*")
+    assert (folder / "Pod_RGB_record_2026_09_29_03_55_21.mp4").exists()
+    sensors = json.loads((folder / "POWER_Const/pod_sensors.json").read_text())
+    (sensor,) = sensors["cameras"].values()
+    assert sensor["resolution"]["value"] == [WIDTH, HEIGHT]
+    serialized = json.loads((folder / "serialized_parameters.json").read_text())
+    (entry,) = serialized["cameras"]
+    assert entry["resolution"] == [WIDTH - 2 * cut_px, HEIGHT]
+    assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2 - cut_px)
+    assert entry["transformation_type"] == video.kind
+    assert entry["transformation_parameters"] == transform
+    assert entry["focal_length"] == sensor["focal_length"]["value"]
+    (source,) = entry["camera_sources"]
+    assert (source["name"], source["device_name"]) == ("EO", "RGB")
+    assert source["center_x"] == sensor["center_x"]["value"]
+
+
+def test_a_stitch_is_recorded_with_both_its_cameras(run: Path) -> None:
+    left = Calibration.read(run).cameras
+    right = [camera.model_copy(update={"name": "IR"}) for camera in left]
+    stitched = [camera.model_copy(update={"name": "port_T1"}) for camera in left]
+    Calibration(cameras=stitched, raw=left + right).write(run)
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    video = Stitch(kind="horizontal_stitching", cameras=("EO", "IR"))
+    truth.info["scenario"]["rigs"]["port"]["videos"] = {"T1": video.model_dump()}
+    truth.write(run)
+    (run / "EO.mp4").rename(run / "port_T1.mp4")
+
+    recording.export(run)
+
+    (folder,) = run.glob("recordings/port/*")
+    sensors = json.loads((folder / "POWER_Const/pod_sensors.json").read_text())
+    assert set(sensors["cameras"]) == {"EO", "IR"}
+    serialized = json.loads((folder / "serialized_parameters.json").read_text())
+    (entry,) = serialized["cameras"]
+    assert entry["transformation_type"] == "horizontal_stitching"
+    devices = [(s["name"], s["device_name"]) for s in entry["camera_sources"]]
+    assert devices == [("EO", "EO"), ("IR", "IR")]
 
 
 def test_a_missing_video_writes_nothing(run: Path) -> None:

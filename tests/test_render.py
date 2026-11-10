@@ -15,7 +15,7 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-from seascape import render, server
+from seascape import render
 from seascape.blender import blend, scene, sea
 from seascape.blender.compositor import (
     FORMATS,
@@ -43,6 +43,7 @@ from seascape.outputs import agc, labels
 from seascape.outputs.calibration import Calibration
 from seascape.physics import lwir, thermal, waves
 from seascape.physics.wakes import Wake
+from seascape.server import jobs
 from tests.probes import probe
 from tests.scenarios import (
     BASELINE,
@@ -325,7 +326,7 @@ def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
     scenario = variant(outputs={"bands": ["eo"]})
     mount = scenario.band_mounts("eo")[0]
 
-    with pytest.raises(RuntimeError, match=f"frame 0 of camera {mount.name}"):
+    with pytest.raises(RuntimeError, match=f"camera {mount.name}'s frame"):
         render.render(scenario, Path("out"))
 
     assert Path(handed[0]).is_absolute()
@@ -673,6 +674,167 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
 
 
 @pytest.mark.render
+def test_a_fisheye_draws_each_hull_where_its_lens_puts_it(tmp_path: Path) -> None:
+    """Both axes: Cycles' polynomial lens draws the scene half a turn about the optical
+    axis, and the build turns the image and its index pass back.
+    """
+    k = (-0.0793, -0.0461, 0.0331, -0.0065)
+    scenario = variant(
+        cameras={
+            "eo": {
+                "hfov_deg": 132.93,
+                "width_px": 640,
+                "height_px": 360,
+                "lens": {"fisheye": list(k)},
+            }
+        },
+        objects=[target("yacht", 300.0, -40.0), target("yacht", 300.0, 35.0)],
+        outputs={"bands": ["eo"], "samples": {"eo": 2}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (camera,) = Calibration.read(tmp_path).cameras
+    assert len(truth.annotations) == 2
+    for found in truth.annotations:
+        centre = bpy.data.objects[found.name].matrix_world.translation
+        seen = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+        zero = np.zeros(3)
+        image, _ = cv2.fisheye.projectPoints(
+            seen[None, None, :3], zero, zero, np.array(camera.K), np.array(k)
+        )
+        u, v = image.ravel() + 0.5  # COCO pixels
+        left, top, width, height = found.bbox
+        assert left - 0.5 <= u <= left + width + 0.5, found.name
+        assert top - 0.5 <= v <= top + height + 0.5, found.name
+    frame = cv2.imread(str(tmp_path / truth.images[0].file_name))
+    assert frame is not None
+    assert frame[:60].mean() > frame[-60:].mean(), "the sky is above the sea"
+
+
+@pytest.mark.render
+def test_a_crop_records_the_cameras_frame_less_its_edges(tmp_path: Path) -> None:
+    """Uneven edges, so a crop measured from the wrong side or flipped shows."""
+    crop = {"left_px": 24, "right_px": 8, "top_px": 6, "bottom_px": 10}
+    scenario = variant(
+        rig={
+            "videos": {
+                "cut": {"kind": "crop", "camera": "eo"} | crop,
+                "thermal": {"kind": "identity", "camera": "ir"},
+            }
+        },
+        cameras={"eo": {"width_px": 160, "height_px": 90}},
+        objects=[target("yacht", 300.0, -9.0)],
+        outputs={"bands": ["eo"], "format": "png", "samples": {"eo": 2}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    whole = cv2.imread(str(tmp_path / "bow_eo.png"))
+    cut = cv2.imread(str(tmp_path / "bow_cut.png"))
+    assert whole is not None and cut is not None
+    # Blender dithers each 8-bit save on its own.
+    assert np.abs(cut - whole[6:-10, 24:-8].astype(int)).max() <= 2
+    (camera,) = Calibration.read(tmp_path).cameras
+    (source,) = Calibration.read(tmp_path).raw
+    assert (camera.name, camera.width_px, camera.height_px) == ("bow_cut", 128, 74)
+    assert np.subtract(source.K, camera.K)[:2, 2] == pytest.approx((24.0, 6.0))
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (found,) = truth.annotations
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
+    left, top, width, height = found.bbox
+    assert left - 0.5 <= u <= left + width + 0.5
+    assert top - 0.5 <= v <= top + height + 0.5
+
+
+@pytest.mark.render
+def test_an_undistortion_renders_its_pinhole_and_records_the_fisheye(
+    tmp_path: Path,
+) -> None:
+    undistortion = {"hfov_deg": 130.0, "vfov_deg": 65.5, "downscale": 2}
+    scenario = variant(
+        rig={
+            "videos": {
+                "RGB1": {"kind": "undistortion", "camera": "eo"} | undistortion,
+                "T1": {"kind": "identity", "camera": "ir"},
+            }
+        },
+        cameras={
+            "eo": {
+                "hfov_deg": 136.0,
+                "width_px": 640,
+                "height_px": 360,
+                "lens": {"fisheye": [0.0, 0.0, 0.0, 0.0]},
+            }
+        },
+        objects=[target("yacht", 300.0, -9.0)],
+        outputs={"bands": ["eo"], "samples": {"eo": 2}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    (camera,) = Calibration.read(tmp_path).cameras
+    (source,) = Calibration.read(tmp_path).raw
+    frame = cv2.imread(str(tmp_path / camera.image))
+    assert frame is not None and frame.shape[:2] == (180, 600)
+    assert (camera.name, camera.distortion) == ("bow_RGB1", None)
+    assert camera.hfov_deg == pytest.approx(130.0)
+    assert (source.width_px, source.height_px) == (640, 360)
+    assert source.distortion == (0.0, 0.0, 0.0, 0.0)
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (found,) = truth.annotations
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
+    left, top, width, height = found.bbox
+    assert left - 0.5 <= u <= left + width + 0.5
+    assert top - 0.5 <= v <= top + height + 0.5
+
+
+@pytest.mark.render
+def test_a_stitch_labels_one_frame_of_both_cameras(tmp_path: Path) -> None:
+    ir = load(OPEN_SEA).rigs["bow"].cameras["ir"]
+    small = {"width_px": 80, "height_px": 64}
+    scenario = variant(
+        rig={
+            "videos": {
+                "E": {"kind": "identity", "camera": "eo"},
+                "T1": {"kind": "horizontal_stitching", "cameras": ["ir", "ir_r"]},
+            }
+        },
+        cameras={
+            "eo": {"width_px": 96, "height_px": 54},
+            "ir": small | {"yaw_deg": -11.4},
+            "ir_r": ir.model_copy(update=small | {"yaw_deg": 11.4}),
+        },
+        objects=[target("yacht", 300.0, 0.0)],
+        # eo too: its frames have no stitch to make.
+        outputs={"bands": ["eo", "ir"], "samples": {"eo": 1, "ir": 4}},
+    )
+
+    render.render(scenario, tmp_path)
+
+    calibration = Calibration.read(tmp_path)
+    (camera,) = (c for c in calibration.cameras if c.band == "ir")
+    assert camera.name == "bow_T1"
+    assert {c.name for c in calibration.raw} == {"bow_eo", "bow_ir", "bow_ir_r"}
+    frame = cv2.imread(str(tmp_path / camera.image), cv2.IMREAD_UNCHANGED)
+    assert frame is not None and frame.shape == (camera.height_px, camera.width_px)
+    truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
+    (image,) = (i for i in truth.images if i.camera == "bow_T1")
+    (found,) = (a for a in truth.annotations if a.image_id == image.id)
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
+    left, top, width, height = found.bbox
+    assert left - 0.5 <= u <= left + width + 0.5
+    assert top - 0.5 <= v <= top + height + 0.5
+
+
+@pytest.mark.render
 def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> None:
     """Fast enough that the ship crosses pixels between frames."""
     scenario = variant(
@@ -788,7 +950,7 @@ def test_no_image_outgrows_what_the_server_reserves_for_it(
     for mount in scenario.mounts:
         camera = mount.camera
         reserved = camera.width_px * camera.height_px
-        reserved *= server.BYTES_PER_PX[camera.band, fmt]
+        reserved *= jobs.BYTES_PER_PX[camera.band, fmt]
         assert (tmp_path / f"{mount.name}.{fmt}").stat().st_size <= reserved
 
 

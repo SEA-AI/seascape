@@ -7,22 +7,23 @@ import re
 import shutil
 import tomllib
 import urllib.request
-import uuid
 from abc import abstractmethod
 from collections import Counter
 from functools import cache
+from importlib import resources
 from pathlib import Path, PurePosixPath
 from typing import Annotated, ClassVar, Literal, override
 
 from pydantic import Field, TypeAdapter, field_validator, model_validator
 
+from seascape import atomic
 from seascape.model import FrozenModel
 from seascape.physics.thermal import ZoneName
 
 # XDG ignores a relative XDG_CACHE_HOME; honouring one puts meshes in the source tree.
 _XDG = os.environ.get("XDG_CACHE_HOME", "")
 CACHE = (Path(_XDG) if _XDG.startswith("/") else Path.home() / ".cache") / "seascape"
-MANIFEST = Path(__file__).parent / "assets.toml"
+MANIFEST = resources.files("seascape.assets") / "assets.toml"
 
 
 SHA256 = r"^[0-9a-f]{64}$"
@@ -256,6 +257,7 @@ class Rotor(FrozenModel):
     node: str = Field(min_length=1)
     diameter_m: float = Field(gt=0.0)
     hub_height_m: float = Field(gt=0.0)  # above the waterline
+    blades: int = Field(gt=0)
     tip_speed_ratio: float = Field(gt=0.0)
     min_rpm: float = Field(ge=0.0)
     rated_rpm: float = Field(gt=0.0)
@@ -276,6 +278,15 @@ class Rotor(FrozenModel):
             return 0.0
         tracking = 60.0 * self.tip_speed_ratio * hub_mps / (math.pi * self.diameter_m)
         return min(max(tracking, self.min_rpm), self.rated_rpm)
+
+    @property
+    def symmetry_rad(self) -> float:
+        """The turn that carries each blade onto the next one's place."""
+        return 2.0 * math.pi / self.blades
+
+    def symmetry_period_s(self, rpm: float) -> float:
+        """Seconds per `symmetry_rad` at `rpm`."""
+        return 60.0 / (self.blades * rpm)
 
 
 class Turbine(_Mesh):
@@ -365,10 +376,7 @@ def _get(path: Path, url: str, sha256: str) -> Path:
         return path
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    # A killed or corrupt transfer must never take the cache name, and concurrent
-    # callers must not share a scratch file.
-    part = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
-    try:
+    with atomic.replacing(path) as part:
         # The default socket timeout is None, so a server that stops sending hangs
         # the build forever.
         with (
@@ -378,7 +386,4 @@ def _get(path: Path, url: str, sha256: str) -> Path:
             shutil.copyfileobj(response, out)
         if (got := digest(part)) != sha256:
             raise ValueError(f"{url}: sha256 {got}, manifest says {sha256}")
-        part.replace(path)
-    finally:
-        part.unlink(missing_ok=True)
     return path

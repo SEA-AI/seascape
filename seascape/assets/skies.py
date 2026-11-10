@@ -15,10 +15,11 @@ bluer than cloud in (B - R) / (B + R) of camera counts, and cloud is grey, B = R
 clear sky's own blueness falls toward the horizon and the sun, so a cloud is told from
 it by its departure from a clear sky fitted to the photo, as Aebi et al. ("Cloud
 fraction determined by thermal infrared and visible all-sky cameras", Atmos. Meas.
-Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit their clear sky to the pixels
-near it and refit; the clear-sky library of Ghonima et al. (Atmos. Meas. Tech. 5 2881,
-2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith and angle from the sun. An
-overcast photo has no clear sky to fit; `skies.toml` marks which.
+Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit theirs to the pixels that are
+not cloud, against zenith angle, and refit; the clear-sky library of Ghonima et al.
+(Atmos. Meas. Tech. 5 2881, 2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith
+and angle from the sun. An overcast photo has no clear sky to fit; `skies.toml` marks
+which.
 """
 
 import math
@@ -26,56 +27,73 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
-from pathlib import Path
+from importlib import resources
 
 import cv2
 import numpy as np
 from pydantic import Field, model_validator
 
 from seascape.assets import File
-from seascape.physics import colour, lwir
+from seascape.physics import colour, earth, lwir
 
-LIBRARY = Path(__file__).parent / "skies.toml"
+LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
-# Judgements: the ring round the peak, and how much brighter than it the peak must be,
-# between an unclipped sun's contrast and that of a sun behind cloud or below the
-# horizon.
+# Judgement: the peak must outshine the median of the ring round it by this factor. An
+# unclipped disc clears it; a sun behind cloud or below the horizon does not. The ring
+# starts past DISC_DEG and ends inside AUREOLE_DEG, so it holds neither disc nor glare.
 DISC_CONTRAST = 100.0
 RING_DEG = (2.0, 5.0)
-# Judgements: how far from the peak the disc reaches, and its floor as a fraction of
-# the peak.
+# Judgement: DISC_DEG reaches past the sun's semi-diameter (module docstring) for the
+# glare a lens adds. DISC_FLOOR sits above the ring, which a disc keeps under
+# 1 / DISC_CONTRAST of its peak, and keeps the disc's dimmer edge.
 DISC_DEG = 1.0
 DISC_FLOOR = 0.1
-# A judgement round the disc's RMS radius: a star is one pixel, a glow degrees wide.
+# Judgement: brackets the sun's own RMS radius (module docstring), from a star's one
+# pixel to a glow degrees wide.
 DISC_RMS_DEG = (0.1, 0.6)
-# The grid a glow is found on, and its blur in cells: a judgement, a few degrees.
+# Judgement: cells finer than a glow, blurred over a few of them, so a patch of sky
+# outweighs one bright pixel.
 GLOW_CELLS = (128, 256)
 GLOW_BLUR = 5
 # sRGB's approximate display gamma (IEC 61966-2-1): counts = radiance ** (1 / GAMMA).
 GAMMA = 2.2
-# Judgement: how far under the fitted clear sky a blueness may fall and refit as clear.
+# Judgement: in (B - R) / (B + R) units. Aebi et al. (2018, Sect. 2.1.1) refit
+# with 1.2 K of brightness temperature, another quantity, so no value carries over.
 CLEAR_BAND = 0.03
-# Judgement: a clear blueness under this is too grey to show a cloud by colour.
+# Judgement: under this blueness a clear sky is too grey for colour to rank cloud, so a
+# share divides by this and not by a blueness near 0.
 GREY_CLEAR = 0.05
+# Aebi et al. (2018, Sect. 2.1.1): the clear-sky fit is repeated up to 10 times. Also
+# bounds the darkness refit.
 FIT_PASSES = 10
 # The bluest pixel of each FIT_STRIDE square is fitted: the clear sky is smooth.
+# Judgement: 4 px, a sixteenth of the pixels.
 FIT_STRIDE = 4
-# A judgement: powers of the horizon's nearness and the sun's. The steepest halve 5 deg
-# above the horizon and 24 deg from the sun.
+# Judgement: powers of the horizon's nearness and the sun's. Ghonima et al. (2012,
+# Sect. 3.2.1) index their clear sky by the same two angles, as its red-blue ratio
+# rises toward both; the powers are not theirs. The steepest halve 5 deg above the
+# horizon and 24 deg from the sun.
 HORIZON_POWERS = (0, 1, 2, 4, 8)
 SUN_POWERS = (0, 1, 2, 4, 8, 16)
-# Judgements: the aureole round a disc, as white as cloud, and how far round each of its
-# pixels it is filled from.
+# Judgement: the aureole round a disc, as white as cloud, and how far round each of its
+# pixels it is filled from. Ghonima et al. (Sect. 4.1) lower the thick-cloud threshold
+# out to 35 deg from the sun, where a clear sky saturates; this takes only the white
+# core.
 AUREOLE_DEG = 8.0
 INPAINT_RADIUS_DEG = 0.5
-# Judgement: a pixel under this share by colour is clear sky to judge darkness against.
+# Judgement: halfway up the share's 0 to 1, so a pixel is clear sky to judge darkness
+# against when colour reads it more clear than cloud.
 CLEAR_SHARE = 0.5
-# Judgements: the luminance, as a fraction of the clear sky's beside it, where a pixel
-# starts to read as shaded cloud and where it reads as all cloud.
+# Judgement: the luminance, as a fraction of the clear sky's beside it, where a pixel
+# starts to read as shaded cloud and where it reads as all cloud. The first sits near
+# enough 1 for a shaded base to show and far enough under it for the clear sky's own
+# gradient not to.
 DARK = (0.9, 0.6)
-# Judgement: the Gaussian sigma of "beside".
+# Judgement: the Gaussian sigma of "beside", wide enough to reach clear sky past a
+# cloud's edge and narrow enough that the clear sky's gradient across it stays small.
 BESIDE_DEG = 3.0
-# The clear sky beside a pixel is solved on a grid of this many cells to a sigma.
+# Judgement: cells a quarter of a sigma wide. A cell's own spread is 1 / sqrt(12) of its
+# width, which adds under 1% to sigma.
 CELLS_PER_SIGMA = 4
 
 
@@ -138,13 +156,6 @@ def _elevation_deg(rows: np.ndarray, h: int) -> np.ndarray:
     return 90.0 - (rows + 0.5) / h * 180.0
 
 
-def _directions(bearing_deg: np.ndarray, elevation_deg: np.ndarray) -> np.ndarray:
-    b, e = np.radians(bearing_deg), np.radians(elevation_deg)
-    return np.stack(
-        np.broadcast_arrays(np.cos(e) * np.sin(b), np.cos(e) * np.cos(b), np.sin(e)), -1
-    )
-
-
 def _glow_deg(lum: np.ndarray) -> float:
     """The bearing of the brightest patch, a few degrees wide, above the horizon."""
     rows, cols = GLOW_CELLS
@@ -171,8 +182,8 @@ def sun(radiance: np.ndarray) -> Sun:
     rows = np.arange(h)[band]
     bearings = _bearing_deg((np.arange(w) + 0.5) / w)
     elevations = _elevation_deg(rows, h)
-    seen = _directions(bearings[None, :], elevations[:, None])
-    peak = _directions(bearings[col], _elevation_deg(np.array(row), h))
+    seen = earth.direction(bearings[None, :], elevations[:, None])
+    peak = earth.direction(bearings[col], _elevation_deg(np.array(row), h))
     angle = np.degrees(np.arccos(np.clip(seen @ peak, -1.0, 1.0)))
     near = lum[band]
     ring = np.median(near[(angle > RING_DEG[0]) & (angle < RING_DEG[1])])
@@ -241,15 +252,50 @@ def _least_squares(basis: np.ndarray, value: np.ndarray) -> np.ndarray:
     return coefficients
 
 
-def _bluest(blueness: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Row and column of the bluest pixel in each FIT_STRIDE square of `blueness`."""
+def _farthest(away: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Row and column of the largest `away` in each FIT_STRIDE square."""
     s = FIT_STRIDE
-    h, w = blueness.shape
-    padded = np.pad(blueness, ((0, -h % s), (0, -w % s)), constant_values=-np.inf)
+    h, w = away.shape
+    padded = np.pad(away, ((0, -h % s), (0, -w % s)), constant_values=-np.inf)
     rows, cols = padded.shape[0] // s, padded.shape[1] // s
     squares = padded.reshape(rows, s, cols, s).swapaxes(1, 2).reshape(rows, cols, -1)
     at = squares.argmax(axis=-1)
     return np.arange(rows)[:, None] * s + at // s, np.arange(cols) * s + at % s
+
+
+def _envelope(
+    away: np.ndarray, side: np.ndarray, elevation_deg: np.ndarray, cos_sun: np.ndarray
+) -> np.ndarray:
+    """The clear sky's blueness, fitted to the largest `away` in each FIT_STRIDE square.
+
+    Cloud only greys the sky, so the clear sky is the envelope on its side: a gap
+    anywhere in a square holds it there. A square's noise pushes the fit out by the top
+    of its spread, which the share reads as a trace of cloud on clear sky.
+
+    Args:
+        away: Each pixel's blueness times `side`; -inf where it cannot be clear sky.
+        side: 1 where the clear sky is bluer than grey, -1 where redder.
+        elevation_deg: Each row's elevation, (h, 1).
+        cos_sun: Cosine of each pixel's angle from the sun.
+    """
+    rows, cols = _farthest(away)
+    fitted = np.isfinite(away[rows, cols])
+    rows, cols = rows[fitted], cols[fitted]
+    outward = side[rows, cols]
+    seen = outward * away[rows, cols]
+    basis = np.stack(list(_terms(elevation_deg[rows, 0], cos_sun[rows, cols])), axis=-1)
+    clear_ones = np.ones(seen.shape, bool)
+    # The first refit keeps what lies past the fit, so a few gaps in a mostly grey sky
+    # pull it off grey before the band can take the grey for clear.
+    band = 0.0
+    for _ in range(FIT_PASSES):
+        coefficients = _least_squares(basis[clear_ones], seen[clear_ones])
+        refit = outward * (seen - basis @ coefficients) >= -band
+        band = CLEAR_BAND
+        if not refit.any() or np.array_equal(refit, clear_ones):
+            break
+        clear_ones = refit
+    return _fitted(coefficients, elevation_deg, cos_sun)
 
 
 def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
@@ -260,10 +306,13 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     shaded cloud base, lit by the blue sky: DARK ramps it in, added to the colour's.
 
     Limitation: a cloud as white as the circumsolar sky beside it reads clear, a disc's
-    aureole takes the cloud round it, a dusk's glow redder than grey reads cloud, a gap
-    in an overcast photo reads cloud, haze darker than the clear sky beside it reads
-    cloud, and a shaded base much wider than BESIDE_DEG reads cloud only at its
-    rim.
+    aureole takes the cloud round it, a glow reads red only where the first fit lies
+    under grey, a cloud greyer than a red glow and as bright as it reads clear, a
+    glow redder than its fit can follow reads cloud, a shaded base bluer than the glow
+    round it reads clear and the glow cloud, a gap in an overcast photo reads cloud,
+    haze darker than the clear sky beside it reads cloud, a shaded base much wider than
+    BESIDE_DEG reads cloud only at its rim, and a deck no darker than the clear sky
+    fitted under it reads only as far as it is grey.
 
     Args:
         radiance: The photo's linear RGB, (h, w, 3), top row first.
@@ -283,75 +332,23 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     disc = photo.sun_elevation_deg is not None
     # A judgement: with no disc, the glow's bearing at the horizon.
     sun_elevation_deg = photo.sun_elevation_deg if disc else 0.0
-    toward = _directions(np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg))
-    cos_sun = _directions(bearing, elevation) @ toward
+    toward = earth.direction(
+        np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg)
+    )
+    cos_sun = earth.direction(bearing, elevation) @ toward
     aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
-    # Cloud only greys the sky, so the clear sky is blueness's upper envelope: a gap
-    # anywhere in a square holds it up. A square's noise lifts the fit by the top of
-    # its spread, which the share reads as a trace of cloud on clear sky.
-    rows, cols = _bluest(blueness)
-    basis = np.stack(list(_terms(elevation[rows, 0], cos_sun[rows, cols])), axis=-1)
-    seen = blueness[rows, cols]
-    clear_ones = np.ones(seen.shape, bool)
-    # The first refit keeps what lies above the fit, so a few gaps in a mostly grey sky
-    # lift it off grey before the band can take the grey for clear.
-    band = 0.0
-    for _ in range(FIT_PASSES):
-        coefficients = _least_squares(basis[clear_ones], seen[clear_ones])
-        refit = seen >= basis @ coefficients - band
-        band = CLEAR_BAND
-        if not refit.any() or np.array_equal(refit, clear_ones):
-            break
-        clear_ones = refit
-    clear = _fitted(coefficients, elevation, cos_sun)
+    clear = _envelope(blueness, np.ones_like(blueness), elevation, cos_sun)
+    # A dusk's glow is redder than grey and cloud greys it toward blue, so there the
+    # clear sky is each square's reddest pixel.
+    if (clear < 0.0).any():
+        side = np.where(clear < 0.0, -1.0, 1.0).astype(np.float32)
+        away = side * blueness
+        clear = _envelope(np.where(away > 0.0, away, -np.inf), side, elevation, cos_sun)
     share = np.clip((clear - blueness) / np.maximum(clear, GREY_CLEAR), 0.0, 1.0)
     # Colour and darkness are two ways off the clear sky: either, or part of both.
     share = np.minimum(share + _darkness(radiance[sky], share), 1.0).astype(np.float32)
     out[sky] = share if aureole is None else _filled(share, aureole)
     return out
-
-
-def cloud_bottom_deg(share: np.ndarray) -> np.ndarray:
-    """The elevation where the run of cloud (share at least CLEAR_SHARE) over each
-    pixel ends down its column. NaN where the pixel is clear or its run reaches the
-    horizon.
-
-    Args:
-        share: Cloud share, (h, w) top row first, as `cloud` gives it.
-    """
-    h = share.shape[0]
-    rows = np.arange(h // 2, dtype=np.int32)[:, None]
-    clear = share[: h // 2] < CLEAR_SHARE
-    # The nearest clear row at or under each row; past the horizon, none.
-    under = np.minimum.accumulate(np.where(clear, rows, h // 2)[::-1], axis=0)[::-1]
-    foot = _elevation_deg(np.arange(h // 2 + 1) - 0.5, h).astype(np.float32)
-    out = np.full(share.shape, np.nan, np.float32)
-    out[: h // 2] = np.where(clear | (under == h // 2), np.nan, foot[under])
-    return out
-
-
-def cloud_height_m(
-    share: np.ndarray, cloud_base_m: float, depth_m: float
-) -> np.ndarray:
-    """How far over its base the cloud in each row is: `lwir.cloud_height_m` averaged
-    by share over the cloud whose bottom shows, and the base where none does.
-
-    Args:
-        share: Cloud share, (h, w) top row first, as `cloud` gives it.
-        cloud_base_m: Height of the cloud base over the sea.
-        depth_m: How far over its base a cloud reaches at most.
-    """
-    h = share.shape[0]
-    bottom = cloud_bottom_deg(share)
-    seen = ~np.isnan(bottom)
-    elevation = np.radians(_elevation_deg(np.arange(h), h))[:, None]
-    height = lwir.cloud_height_m(
-        elevation, np.radians(np.where(seen, bottom, 0.0)), cloud_base_m, depth_m
-    )
-    weight = np.where(seen, share, 0.0)
-    total = weight.sum(axis=1)
-    summed = (weight * height).sum(axis=1)
-    return np.divide(summed, total, out=np.zeros(h), where=total > 0)
 
 
 def _darkness(radiance: np.ndarray, share: np.ndarray) -> np.ndarray:

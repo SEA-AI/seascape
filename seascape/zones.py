@@ -6,36 +6,26 @@ own textures. Every sheet is cut from those three, so the render count does not 
 with the number of parts.
 """
 
-import colorsys
 import json
 import math
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal
 
 import bpy
 import cv2
 import numpy as np
-from mathutils import Vector
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from seascape.assets import manifest
 from seascape.blender import blend, faces, wear
 from seascape.blender.faces import Parts, face_zones
-from seascape.blender.meshes import box_corners, import_asset, mesh_objects
-from seascape.outputs.montage import INK, MATTE, font
+from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.workbench import VIEW_PX, Aim, aim, setup, shoot
+from seascape.outputs import canvas
+from seascape.physics.colour import srgb_encode
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
-
-
-class Aim(NamedTuple):
-    """Where a view looks from."""
-
-    name: str
-    # Bearing from the asset's centre, bow 0, starboard 90.
-    bearing_deg: float
-    elevation_deg: float
-
 
 VIEWS: tuple[Aim, ...] = (
     Aim("bow", 0.0, 15.0),
@@ -47,7 +37,6 @@ VIEWS: tuple[Aim, ...] = (
     Aim("starboard beam", 90.0, 10.0),
     Aim("top", 270.0, 80.0),
 )
-VIEW_PX = (1600, 1200)
 TILE = (400, 300)
 COLUMNS = 4
 CAPTION_H = 22
@@ -81,22 +70,6 @@ ZONE_COLOURS: dict[ZoneName, tuple[int, int, int]] = {
 }
 
 Kind = Literal["slots", "islands"]
-
-
-def _setup() -> None:
-    sc = bpy.context.scene
-    sc.render.engine = "BLENDER_WORKBENCH"
-    sc.render.resolution_x, sc.render.resolution_y = VIEW_PX
-    sc.render.resolution_percentage = 100
-    sc.render.film_transparent = True
-    sc.render.dither_intensity = 0.0
-    view = sc.view_settings
-    view.view_transform, view.look = "Standard", "None"
-    view.exposure, view.gamma = 0.0, 1.0
-    shading = sc.display.shading
-    shading.show_cavity = shading.show_shadows = False
-    shading.show_specular_highlight = False
-    shading.single_color = (0.8, 0.8, 0.8)
 
 
 def _textures() -> None:
@@ -134,46 +107,6 @@ def _paint(found: Parts, per_face: list[np.ndarray]) -> None:
         mesh.color_attributes.render_color_index = mesh.color_attributes.find("part")
 
 
-def _aim(found: Parts, bearing_deg: float, elevation_deg: float) -> None:
-    corners = np.array([tuple(c) for c in box_corners(found.objects)])
-    centre = Vector(tuple((corners.min(axis=0) + corners.max(axis=0)) / 2))
-    bearing, elevation = math.radians(bearing_deg), math.radians(elevation_deg)
-    # A direction, not a rotation: no negation.
-    toward = Vector(
-        (
-            math.sin(bearing) * math.cos(elevation),
-            math.cos(bearing) * math.cos(elevation),
-            math.sin(elevation),
-        )
-    )
-    camera = bpy.context.scene.camera
-    camera.rotation_mode = "QUATERNION"
-    camera.rotation_quaternion = (-toward).to_track_quat("-Z", "Y")
-    rotation = camera.rotation_quaternion.to_matrix()
-    right, up = rotation.col[0], rotation.col[1]
-    offsets = [Vector(tuple(c)) - centre for c in corners]
-    half_w = max(abs(o.dot(right)) for o in offsets)
-    half_h = max(abs(o.dot(up)) for o in offsets)
-    aspect = VIEW_PX[0] / VIEW_PX[1]
-    radius = max(o.length for o in offsets)
-    camera.data.ortho_scale = 2.1 * max(half_w, half_h * aspect)
-    camera.data.clip_end = 4 * radius
-    camera.location = centre + 2 * radius * toward
-
-
-def _shoot(path: Path, color_type: str, light: str, aa: str, exr: bool) -> None:
-    sc = bpy.context.scene
-    sc.display.shading.color_type = color_type
-    sc.display.shading.light = light
-    sc.display.render_aa = aa
-    settings = sc.render.image_settings
-    settings.file_format = "OPEN_EXR" if exr else "PNG"
-    settings.color_depth = "32" if exr else "8"
-    settings.color_mode = "RGBA"
-    sc.render.filepath = str(path)
-    bpy.ops.render.render(write_still=True)
-
-
 @dataclass
 class View:
     """One view's renders."""
@@ -185,7 +118,7 @@ class View:
 
 
 def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
-    _setup()
+    setup()
     _textures()
     _paint(found, per_face)
     data = bpy.data.cameras.new("zones")
@@ -195,22 +128,22 @@ def _views(found: Parts, per_face: list[np.ndarray]) -> list[View]:
     bpy.context.scene.camera = camera
     views = []
     with tempfile.TemporaryDirectory() as tmp:
-        for aim in VIEWS:
-            _aim(found, aim.bearing_deg, aim.elevation_deg)
+        for pose in VIEWS:
+            aim(found.objects, pose.bearing_deg, pose.elevation_deg)
             ids, grey, tex = (Path(tmp) / n for n in ("id.exr", "grey.png", "tex.png"))
-            _shoot(ids, "VERTEX", "FLAT", "OFF", exr=True)
-            _shoot(grey, "SINGLE", "STUDIO", "FXAA", exr=False)
-            _shoot(tex, "TEXTURE", "STUDIO", "FXAA", exr=False)
+            shoot(ids, "VERTEX", "FLAT", "OFF", exr=True)
+            shoot(grey, "SINGLE", "STUDIO", "FXAA", exr=False)
+            shoot(tex, "TEXTURE", "STUDIO", "FXAA", exr=False)
             rgba = blend.read(ids)[::-1]
             digits = np.rint(rgba[..., :3]).astype(np.int64)
             value = digits @ (DIGIT ** np.arange(3))
             part = np.where(rgba[..., 3] > 0.5, value, -1)
             views.append(
                 View(
-                    aim.name,
+                    pose.name,
                     part.astype(np.int64),
                     np.asarray(Image.open(grey).convert("L"), np.float32) / 255,
-                    np.asarray(_on_backdrop(Image.open(tex))),
+                    np.asarray(canvas.on_backdrop(Image.open(tex))),
                 )
             )
     return views
@@ -230,32 +163,11 @@ def parts(name: str, worn: bool = False) -> Parts:
     return faces.found(mesh_objects(roots))
 
 
-def _on_backdrop(image: Image.Image) -> Image.Image:
-    """A dark hull shows on mid grey, not on the matte."""
-    backdrop = Image.new("RGBA", image.size, (110, 110, 110, 255))
-    return Image.alpha_composite(backdrop, image.convert("RGBA")).convert("RGB")
-
-
-def palette(n: int) -> np.ndarray:
-    """`n` colours apart from their neighbours: golden-ratio hues, three values."""
-    hues = (np.arange(n) * 0.618034) % 1.0
-    return np.array(
-        [
-            [
-                round(255 * c)
-                for c in colorsys.hsv_to_rgb(h, 0.75, (1.0, 0.8, 0.6)[k % 3])
-            ]
-            for k, h in enumerate(hues)
-        ],
-        dtype=np.uint8,
-    ).reshape(-1, 3)
-
-
 def _lit(part: np.ndarray, grey: np.ndarray, colours: np.ndarray) -> np.ndarray:
     """`colours` (h, w, 3) shaded by a view's grey, on the matte where no part is."""
     shade = 0.35 + 0.65 * grey[..., None]
     image = np.clip(colours * shade, 0, 255).astype(np.uint8)
-    image[part < 0] = MATTE
+    image[part < 0] = canvas.MATTE
     return image
 
 
@@ -273,10 +185,9 @@ def _mark(
     edge: tuple[int, ...],
     taken: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
-    typeface = font(15)
-    left, top, right, bottom = draw.textbbox((0, 0), text, font=typeface)
-    w, h = right - left + 8, bottom - top + 6
-    box = (xy[0] - w / 2, xy[1] - h / 2, xy[0] + w / 2, xy[1] + h / 2)
+    typeface = canvas.font(15)
+    left, top, right, bottom = draw.textbbox(xy, text, font=typeface, anchor="mm")
+    box = (left - 4, top - 3, right + 4, bottom + 3)
     if taken is not None:
         if any(
             box[0] < t[2] and t[0] < box[2] and box[1] < t[3] and t[1] < box[3]
@@ -285,25 +196,27 @@ def _mark(
             return
         taken.append(box)
     draw.rectangle(box, fill=(0, 0, 0), outline=tuple(edge), width=2)
-    draw.text((box[0] + 4 - left, box[1] + 3 - top), text, font=typeface, fill=INK)
+    draw.text(xy, text, font=typeface, fill=canvas.INK, anchor="mm")
 
 
 def _grid(tiles: list[tuple[Image.Image, str]], title: list[str]) -> Image.Image:
-    rows = max(1, math.ceil(len(tiles) / COLUMNS))
-    sheet = Image.new(
-        "RGB",
-        (TILE[0] * COLUMNS, TITLE_H + rows * (TILE[1] + CAPTION_H)),
-        MATTE,
-    )
-    draw = ImageDraw.Draw(sheet)
+    head = Image.new("RGB", (TILE[0] * COLUMNS, TITLE_H), canvas.MATTE)
+    draw = ImageDraw.Draw(head)
     for k, line in enumerate(title[:2]):
-        draw.text((8, 4 + 22 * k), line, font=font(18 if k == 0 else 14), fill=INK)
-    for k, (tile, caption) in enumerate(tiles):
-        x = (k % COLUMNS) * TILE[0]
-        y = TITLE_H + (k // COLUMNS) * (TILE[1] + CAPTION_H)
-        sheet.paste(tile, (x, y))
-        draw.text((x + 6, y + TILE[1] + 3), caption, font=font(14), fill=INK)
-    return sheet
+        draw.text(
+            (8, 4 + 22 * k),
+            line,
+            font=canvas.font(18 if k == 0 else 14),
+            fill=canvas.INK,
+        )
+    cells = []
+    for tile, caption in tiles:
+        cell = ImageOps.expand(tile, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
+        ImageDraw.Draw(cell).text(
+            (6, TILE[1] + 3), caption, font=canvas.font(14), fill=canvas.INK
+        )
+        cells.append(cell)
+    return canvas.above([head, canvas.grid(cells, COLUMNS)])
 
 
 def _crop(mask: np.ndarray) -> tuple[int, int, int, int]:
@@ -387,25 +300,16 @@ def overview(
 def _legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.Image:
     rows = math.ceil(len(names) / 3)
     line = 20
-    image = Image.new("RGB", (TILE[0] * COLUMNS, 8 + rows * line), MATTE)
+    image = Image.new("RGB", (TILE[0] * COLUMNS, 8 + rows * line), canvas.MATTE)
     draw = ImageDraw.Draw(image)
     width = TILE[0] * COLUMNS // 3
     for k, (label, name) in enumerate(zip(labels, names, strict=True)):
         x, y = (k // rows) * width + 8, 4 + (k % rows) * line
         draw.rectangle((x, y + 2, x + 14, y + 16), fill=tuple(colours[k]))
-        draw.text((x + 20, y), f"{label}  {name}"[:52], font=font(14), fill=INK)
+        draw.text(
+            (x + 20, y), f"{label}  {name}"[:52], font=canvas.font(14), fill=canvas.INK
+        )
     return image
-
-
-def _stack(*images: Image.Image) -> Image.Image:
-    sheet = Image.new(
-        "RGB", (max(i.width for i in images), sum(i.height for i in images)), MATTE
-    )
-    y = 0
-    for image in images:
-        sheet.paste(image, (0, y))
-        y += image.height
-    return sheet
 
 
 # By image name, for one `sheets` run: Base Color, Alpha and Metallic share atlases.
@@ -464,14 +368,6 @@ def _hex(rgb: np.ndarray) -> str:
     return "#" + "".join(f"{round(255 * float(c)):02x}" for c in np.clip(rgb, 0, 1))
 
 
-def _srgb(linear: np.ndarray) -> np.ndarray:
-    """IEC 61966-2-1's transfer function."""
-    linear = np.clip(linear, 0, 1)
-    return np.where(
-        linear <= 0.0031308, 12.92 * linear, 1.055 * linear ** (1 / 2.4) - 0.055
-    )
-
-
 def _channel_stats(values: np.ndarray) -> dict[str, float]:
     return {
         "mean": round(float(values.mean()), 3),
@@ -491,13 +387,13 @@ def _input(
     bsdf = faces.bsdf(material)
     if bsdf is None:
         if socket == "Base Color" and material is not None:
-            return {"colour": _hex(_srgb(np.array(material.diffuse_color[:3])))}
+            return {"colour": _hex(srgb_encode(np.array(material.diffuse_color[:3])))}
         return {}
     source = faces.source(bsdf.inputs[socket])
     if source is None:
         value = bsdf.inputs[socket].default_value
         if socket == "Base Color":
-            return {"colour": _hex(_srgb(np.array(value[:3])))}
+            return {"colour": _hex(srgb_encode(np.array(value[:3])))}
         return {"value": round(float(value), 3)}
     image = source.image
     texels = _texels(image)
@@ -510,7 +406,7 @@ def _input(
         # Texels as stored: an sRGB image's are already display values.
         mean = picked[:, :3].mean(axis=0)
         is_linear = image.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}
-        out["colour"] = _hex(_srgb(mean) if is_linear else mean)
+        out["colour"] = _hex(srgb_encode(mean) if is_linear else mean)
     else:
         out |= _channel_stats(picked[:, source.channel or 0] * source.scale)
     return out
@@ -608,7 +504,7 @@ def _island_records(
             continue
         rgb = _texels(source)[..., :3]
         if source.colorspace_settings.name not in {"sRGB", "sRGB EOTF"}:
-            rgb = _srgb(rgb)
+            rgb = srgb_encode(rgb)
         # Each island's triangles, in island order: a later one paints over.
         mine = (island_material == name)[all_island]
         uv, island = all_uv[mine], all_island[mine]
@@ -656,7 +552,7 @@ def _island_records(
 
 
 def _atlas(rgb: np.ndarray, cover: np.ndarray, texels: np.ndarray) -> Image.Image:
-    colours = palette(len(texels))
+    colours = canvas.palette(len(texels))
     image = (np.clip(rgb, 0, 1) * 255).astype(np.float32)
     inside = cover >= 0
     image[inside] = 0.5 * image[inside] + 0.5 * colours[cover[inside]]
@@ -719,7 +615,7 @@ def sheets(
         names = [f"{i.object} / {i.material}" for i in found.islands]
         records, atlases = _island_records(found)
     views = _views(found, per_face)
-    colours = palette(len(labels))
+    colours = canvas.palette(len(labels))
     if kind == "islands":
         colours[-1] = REST
     written = []
@@ -734,7 +630,7 @@ def sheets(
         ],
     )
     if kind == "slots":
-        sheet = _stack(sheet, _legend(colours, labels, names))
+        sheet = canvas.above([sheet, _legend(colours, labels, names)])
     sheet.save(path := into / "overview.png")
     written.append(path)
     for texture, atlas in atlases.items():
@@ -829,12 +725,12 @@ def _worn_tiles(found: Parts, weathered: bool) -> list[tuple[Image.Image, str]]:
     caption = ", its textures' own wear" if weathered else ""
     tiles = []
     with tempfile.TemporaryDirectory() as tmp:
-        for aim in VIEWS:
-            _aim(found, aim.bearing_deg, aim.elevation_deg)
-            sc.render.filepath = str(Path(tmp) / f"{aim.name}.png")
+        for pose in VIEWS:
+            aim(found.objects, pose.bearing_deg, pose.elevation_deg)
+            sc.render.filepath = str(Path(tmp) / f"{pose.name}.png")
             bpy.ops.render.render(write_still=True)
-            tile = _on_backdrop(Image.open(sc.render.filepath))
-            tiles.append((tile, f"{aim.name}{caption}"))
+            tile = canvas.on_backdrop(Image.open(sc.render.filepath))
+            tiles.append((tile, f"{pose.name}{caption}"))
     return tiles
 
 
@@ -858,13 +754,15 @@ def contact(name: str, out: Path) -> Path:
     sheet = overview(
         views, colours, vocabulary, [head, f"share of triangles below; {numbering}"]
     )
-    sheet = _stack(
-        sheet,
-        _legend(colours[present], shares, [vocabulary[z] for z in present]),
-        _grid(
-            _worn_tiles(found, asset.weathered),
-            [f"worn {SHOWN_WEAR}, as a build lays it"],
-        ),
+    sheet = canvas.above(
+        [
+            sheet,
+            _legend(colours[present], shares, [vocabulary[z] for z in present]),
+            _grid(
+                _worn_tiles(found, asset.weathered),
+                [f"worn {SHOWN_WEAR}, as a build lays it"],
+            ),
+        ]
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out)

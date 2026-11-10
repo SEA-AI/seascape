@@ -11,7 +11,7 @@ from pydantic import (
 from seascape.assets import manifest
 from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
-from seascape.config.objects import Farm, Object, Ownship, Targets
+from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets
 from seascape.config.world import Sea, Sky
 from seascape.model import Model
 from seascape.physics import waves
@@ -27,9 +27,10 @@ class Samples(Model):
     and drop the band left out.
     """
 
+    # Judgement: a trade between an EO frame's grain and its render time.
     eo: int = Field(default=16, gt=0, description="Per pixel, for EO frames.")
     # Where the open sea's grain, adaptive sampling off, falls below a Boson's NETD of
-    # 50 mK (datasheet 102-2013-40, table 15).
+    # 50 mK (datasheet 102-2013-40 Rev 340, table 13).
     ir: int = Field(default=64, gt=0, description="Per pixel, for IR frames.")
 
 
@@ -80,14 +81,19 @@ class Outputs(Model):
     )
 
     @property
+    def frames(self) -> int:
+        """How many frames; one for a still."""
+        return max(1, round(self.duration_s * self.fps))
+
+    @property
     def times_s(self) -> list[float]:
         """Each frame's time, from 0; one frame for a still."""
-        return [f / self.fps for f in range(max(1, round(self.duration_s * self.fps)))]
+        return [f / self.fps for f in range(self.frames)]
 
     @property
     def span_s(self) -> float:
         """From frame 0 to the frame after the last, which a loop makes frame 0."""
-        return len(self.times_s) / self.fps
+        return self.frames / self.fps
 
     def period_s(self, period_s: float) -> float:
         """In a loop, the nearest whole fraction of the span, so every cycle closes."""
@@ -110,7 +116,7 @@ LOOP_SNAP_TOLERANCE = 0.05
 class Scenario(Model):
     """One scene: the rigs, the world around them, and what a render writes."""
 
-    seed: int = Field(default=0, description="Seeds every random draw.")
+    seed: int = Field(default=0, ge=0, description="Seeds every random draw.")
     rigs: dict[Name, Rig] = Field(
         min_length=1, description="The products on the ownship, by name."
     )
@@ -128,11 +134,12 @@ class Scenario(Model):
 
     @property
     def mounts(self) -> list[Mount]:
-        """Every camera, with the rig carrying it."""
+        """Every camera as rendered, with its rig; an exr renders the rig's own."""
+        exr = self.outputs.format == "exr"
         return [
             Mount(rig_name, rig, camera_name, camera)
             for rig_name, rig in self.rigs.items()
-            for camera_name, camera in rig.cameras.items()
+            for camera_name, camera in (rig.cameras if exr else rig.rendered).items()
         ]
 
     def band_mounts(self, band: Band) -> list[Mount]:
@@ -143,7 +150,7 @@ class Scenario(Model):
     def images(self) -> int:
         """How many images a render writes."""
         rendered = sum(m.camera.band in self.outputs.bands for m in self.mounts)
-        return rendered * len(self.outputs.times_s)
+        return rendered * self.outputs.frames
 
     @property
     def worn(self) -> frozenset[str]:
@@ -182,9 +189,16 @@ class Scenario(Model):
             substream(self.seed, "sea/swell"),
         )
 
-    def wave_field(self) -> tuple[waves.Wave, ...]:
-        """Every wave on the sea, wind sea then swell."""
-        return self.wind_waves() + self.swell_waves()
+    @model_validator(mode="after")
+    def _hulls_are_bounded(self) -> "Scenario":
+        hulls = (
+            sum(o.orbit.count if o.orbit else 1 for o in self.objects)
+            + (self.targets.count if self.targets else 0)
+            + sum(farm.rows * farm.columns for farm in self.farms)
+        )
+        if hulls > MAX_HULLS:
+            raise ValueError(f"{hulls} hulls; a scenario holds at most {MAX_HULLS}")
+        return self
 
     @model_validator(mode="after")
     def _camera_names_are_unique(self) -> "Scenario":
@@ -214,6 +228,12 @@ class Scenario(Model):
         return self
 
     @model_validator(mode="after")
+    def _an_orbit_needs_a_fixed_ownship(self) -> "Scenario":
+        if self.ownship.speed_mps > 0.0 and any(o.orbit for o in self.objects):
+            raise ValueError("an object orbits the origin: set ownship.speed_mps to 0")
+        return self
+
+    @model_validator(mode="after")
     def _a_loop_can_close(self) -> "Scenario":
         if not self.outputs.loop:
             return self
@@ -225,7 +245,13 @@ class Scenario(Model):
                     f"{spec.asset} has speed_mps > 0, and a straight run never comes "
                     "back to close a loop: give it a drift instead"
                 )
+        if self.ownship.speed_mps > 0.0:
+            raise ValueError(
+                "ownship.speed_mps > 0, and a straight run never comes back to close "
+                "a loop: set it to 0"
+            )
         motions = [
+            ("ownship.yaw", self.ownship.yaw),
             ("ownship.roll", self.ownship.roll),
             ("ownship.pitch", self.ownship.pitch),
             ("ownship.heave", self.ownship.heave),
@@ -238,9 +264,9 @@ class Scenario(Model):
             for spec in self.objects
             if spec.orbit is not None
         ]
-        # Three blades look the same every third of a turn.
+        # The blades look the same every `symmetry_rad`.
         periods += [
-            (f"{farm.asset} rotor", 20.0 / rpm)
+            (f"{farm.asset} rotor", farm.turbine.rotor.symmetry_period_s(rpm))
             for farm in self.farms
             if (rpm := farm.rpm(self.sea)) > 0.0
         ]

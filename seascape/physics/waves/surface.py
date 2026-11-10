@@ -1,9 +1,14 @@
 """The Gerstner surface the waves make, and a hull riding it.
 
-Hull attitude: Jensen, Mansour & Olsen, "Estimation of ship motions using closed-form
-expressions", Ocean Engineering 31(1) 61-85, 2004 (doi:10.1016/S0029-8018(03)00108-2):
-their pitch, static, without the dynamic or draft (exp(-kT)) factors, is the
-least-squares slope of each wave along a box hull; roll is the same across it.
+Hull motion: Jensen, Mansour & Olsen, "Estimation of ship motions using closed-form
+expressions", Ocean Engineering 31(1) 61-85, 2004 (doi:10.1016/S0029-8018(03)00108-2).
+Their static heave and pitch are the mean and the least-squares slope of each wave
+along a box hull; roll is the same slope across it.
+
+Limitation: roll follows the water at once; Jensen et al.'s roll needs a natural
+period and metacentric height no asset has.
+Limitation: their box is strip theory, checked to Fn 0.84; a planing hull rides on
+lift it lacks.
 """
 
 import math
@@ -28,23 +33,6 @@ def phases(
         return of_wave.reshape(-1, *[1] * ndim)
 
     return col(kx) * east_m + col(ky) * north_m - col(omega) * t_s + col(phase)
-
-
-def height_m(
-    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
-) -> np.ndarray:
-    """The surface's height at each point."""
-    phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
-    return np.tensordot(columns(field)[0], np.cos(phase), axes=1)
-
-
-def slope(
-    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """The sea's slope: d height / d east and d height / d north."""
-    sine = np.sin(phases(field, np.asarray(east_m), np.asarray(north_m), t_s))
-    a, _, kx, ky, *_ = columns(field)
-    return np.tensordot(-a * kx, sine, axes=1), np.tensordot(-a * ky, sine, axes=1)
 
 
 def gerstner_offset_m(
@@ -103,7 +91,7 @@ def gerstner_rest_m(
             < 1e-9
         ):
             break
-        # d(rest + offset)/d(rest), as `gerstner_normal`'s.
+        # d(rest + offset)/d(rest).
         ee = 1 - np.tensordot(along * k_east**2, cosine, 1)
         nn = 1 - np.tensordot(along * k_north**2, cosine, 1)
         en = -np.tensordot(along * k_east * k_north, cosine, 1)
@@ -113,119 +101,11 @@ def gerstner_rest_m(
     return rest_east, rest_north
 
 
-def gerstner_normal(
-    field: tuple[Wave, ...], east_m: np.ndarray, north_m: np.ndarray, t_s: float
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The unit normal of a Gerstner surface at the water at rest: the cross product
-    of the surface's derivatives along east and north at rest.
-
-    Args:
-        field: Gerstner waves, whose offsets add.
-        east_m: Where the water sits on a calm sea, east; a Gerstner wave carries it
-            round a circle about there.
-        north_m: The same, north.
-        t_s: Time; each wave's phase advances at its angular frequency.
-    """
-    phase = phases(field, np.asarray(east_m), np.asarray(north_m), t_s)
-    sine, cosine = np.sin(phase), np.cos(phase)
-
-    a, k, kx, ky, *_ = columns(field)
-    # d(offset)/d(rest): -a k_i k_j / k cos along, -a k_j sin up.
-    ee = 1 - np.tensordot(a * kx**2 / k, cosine, axes=1)
-    nn = 1 - np.tensordot(a * ky**2 / k, cosine, axes=1)
-    en = -np.tensordot(a * kx * ky / k, cosine, axes=1)
-    ue = -np.tensordot(a * kx, sine, axes=1)
-    un = -np.tensordot(a * ky, sine, axes=1)
-    # (ee, en, ue) x (en, nn, un)
-    normal = np.array([en * un - ue * nn, ue * en - ee * un, ee * nn - en * en])
-    normal /= np.linalg.norm(normal, axis=0)
-    return normal[0], normal[1], normal[2]
-
-
-def gerstner_hit(
-    field: tuple[Wave, ...],
-    origin_m: np.ndarray,
-    direction: np.ndarray,
-    t_s: float,
-    step_m: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Where rays first meet a Gerstner surface: the water's rest there, and whether
-    they meet it at all before rising clear of the crests. Marched along the sea by
-    the ray's height over the water, over the steepest the surface can rise, or by
-    the shortest step where that is less; then halved to a micrometre.
-
-    Args:
-        field: Gerstner waves, whose offsets add.
-        origin_m: Where the rays start, 3 x n: east, north, up.
-        direction: The rays' unit directions, 3 x n: east, north, up.
-        t_s: Time; each wave's phase advances at its angular frequency.
-        step_m: The shortest step along the sea. A crest thinner than it is
-            missed.
-    """
-    origin, direction = np.asarray(origin_m, float), np.asarray(direction, float)
-    crest = sum(w.amplitude_m for w in field)
-    # The surface's slope is the offset's over its stretch, 1 - sum(a k) at least. A
-    # field steeper than 1 has no such bound, and marches at `step_m`.
-    steepness = sum(w.amplitude_m * w.k_rad_m for w in field)
-    steepest = steepness / (1 - steepness) if steepness < 1 else math.inf
-    run = np.hypot(direction[0], direction[1])
-    # From where the ray is first as low as a crest.
-    start = np.where(
-        direction[2] < 0, np.maximum((origin[2] - crest) / -direction[2], 0.0), 0.0
-    )
-    near, far = start.copy(), start.copy()
-    rest_east = origin[0] + start * direction[0]
-    rest_north = origin[1] + start * direction[1]
-    met = np.zeros(origin.shape[1], bool)
-    gap = np.zeros(origin.shape[1])
-    # Rising no faster than `steepest` along the sea, the water cannot close the gap
-    # within a step.
-    closing = np.maximum(steepest * run - direction[2], 1e-6)
-    marching = np.arange(origin.shape[1])
-    while marching.size:
-        i = marching
-        step = np.maximum(step_m / np.maximum(run[i], 1e-6), gap[i] / closing[i])
-        far[i] = near[i] + step
-        at = origin[:, i] + far[i] * direction[:, i]
-        # The water under a point moves with it, near enough to start from.
-        rest_east[i], rest_north[i] = gerstner_rest_m(
-            field,
-            at[0],
-            at[1],
-            t_s,
-            (
-                rest_east[i] + step * direction[0, i],
-                rest_north[i] + step * direction[1, i],
-            ),
-        )
-        up = gerstner_offset_m(field, rest_east[i], rest_north[i], t_s)[2]
-        gap[i] = at[2] - up
-        below = gap[i] < 0
-        met[i] = below
-        clear = (at[2] > crest) & (direction[2, i] >= 0)
-        sunk = at[2] < -crest
-        going = ~below & ~clear & ~sunk
-        near[i[going]] = far[i[going]]
-        marching = i[going]
-    # The surface lies between `near` and `far` on every ray that met it.
-    i = np.flatnonzero(met)
-    widest = float((far[i] - near[i]).max(initial=1e-6))
-    for _ in range(int(np.ceil(np.log2(widest / 1e-6)))):
-        middle = (near[i] + far[i]) / 2
-        at = origin[:, i] + middle * direction[:, i]
-        rest_east[i], rest_north[i] = gerstner_rest_m(
-            field, at[0], at[1], t_s, (rest_east[i], rest_north[i])
-        )
-        up = gerstner_offset_m(field, rest_east[i], rest_north[i], t_s)[2]
-        below = at[2] < up
-        far[i] = np.where(below, middle, far[i])
-        near[i] = np.where(below, near[i], middle)
-    return rest_east, rest_north, met
-
-
 class Waterplane(NamedTuple):
     """A hull's waterplane, centred where the water under it was at rest, `length_m`
-    along `heading_rad` and `beam_m` across; a point by default.
+    along `heading_rad` and `beam_m` across, sailing at (`east_mps`, `north_mps`);
+    a point at rest by default. Below it, the box `response` moves, `length_m` long:
+    none by default, which follows the water.
     """
 
     rest_east_m: float
@@ -233,14 +113,19 @@ class Waterplane(NamedTuple):
     heading_rad: float = 0.0
     length_m: float = 0.0
     beam_m: float = 0.0
+    # Waterplane area over length, and displaced volume over waterplane area.
+    box_beam_m: float = 0.0
+    box_draught_m: float = 0.0
+    east_mps: float = 0.0
+    north_mps: float = 0.0
 
 
 def attitude(
     field: tuple[Wave, ...], hull: Waterplane, t_s: float
 ) -> tuple[float, float]:
     """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull:
-    each wave's least-squares slope at its phase at the hull's rest. The hull
-    follows it at once: no inertia.
+    each wave's least-squares slope at its phase at the hull's rest. The pitch is that
+    times `response`; the roll follows it at once.
 
     Args:
         field: Gerstner waves, whose offsets add.
@@ -250,16 +135,14 @@ def attitude(
     """
     if not field:
         return 0.0, 0.0
-    rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
-    amplitude, _, k_east, k_north, *_ = columns(field)
-    # Starboard of the heading is (cos, -sin).
-    k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
-    k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
-    u, v = k_along * length_m / 2, k_across * beam_m / 2
-    at = phases(field, np.array(rest_east_m), np.array(rest_north_m), t_s)
+    amplitude, *_ = columns(field)
+    k_along, k_across = _along_across(field, hull)
+    u, v = k_along * hull.length_m / 2, k_across * hull.beam_m / 2
+    at = phases(field, np.array(hull.rest_east_m), np.array(hull.rest_north_m), t_s)
     # 1, x, y are orthogonal over a hull centred at the rest position, so each wave's
-    # slope separates.
-    rise_along = -amplitude * np.sin(at) * k_along * _lever(u) * np.sinc(v / math.pi)
+    # slope separates. -sin(at) is Im(e^{-i at}).
+    rise_along = amplitude * k_along * _lever(u) * np.sinc(v / math.pi)
+    rise_along = rise_along * (response(field, hull) * np.exp(-1j * at)).imag
     rise_across = -amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
     return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
 
@@ -267,9 +150,8 @@ def attitude(
 def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     """Mean height of a Gerstner surface over a hull's waterplane, where a wall-sided
     hull floats (Archimedes): each wave's mean over the rectangle, as `attitude`'s,
-    at its phase at the hull's rest. Exact for a point; under a hull, it misses the
-    Gerstner surface's second order in steepness. The hull follows it at once: no
-    inertia.
+    at its phase at the hull's rest, times `response`. Exact for a point;
+    under a hull, it misses the Gerstner surface's second order in steepness.
 
     Args:
         field: Gerstner waves, whose offsets add.
@@ -279,15 +161,48 @@ def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     """
     if not field:
         return 0.0
-    rest_east_m, rest_north_m, heading_rad, length_m, beam_m = hull
-    amplitude, _, k_east, k_north, *_ = columns(field)
-    # Starboard of the heading is (cos, -sin).
-    k_along = k_east * math.sin(heading_rad) + k_north * math.cos(heading_rad)
-    k_across = k_east * math.cos(heading_rad) - k_north * math.sin(heading_rad)
-    u, v = k_along * length_m / 2, k_across * beam_m / 2
-    at = phases(field, np.array(rest_east_m), np.array(rest_north_m), t_s)
-    under = amplitude * np.cos(at) * np.sinc(u / math.pi) * np.sinc(v / math.pi)
-    return float(under.sum())
+    amplitude, *_ = columns(field)
+    k_along, k_across = _along_across(field, hull)
+    u, v = k_along * hull.length_m / 2, k_across * hull.beam_m / 2
+    at = phases(field, np.array(hull.rest_east_m), np.array(hull.rest_north_m), t_s)
+    under = amplitude * np.sinc(u / math.pi) * np.sinc(v / math.pi)
+    return float((under * (response(field, hull) * np.exp(-1j * at)).real).sum())
+
+
+def response(field: tuple[Wave, ...], hull: Waterplane) -> np.ndarray:
+    """Each wave's heave and pitch over their static values, as a complex gain whose
+    angle is the lead: Jensen et al.'s box, its Smith factor (2.10), excitation (2.9)
+    and dynamic response (2.13) with the phases of (4.4), at the frequency the hull
+    meets the wave (2.3); 1 for no box.
+
+    Their box (eq. 3.1), B0 Cb wide and T deep, heaves at w^2 = g / 2T with added
+    mass equal to its mass; the hull heaves at g A_wp / 2V. A box with the hull's
+    waterplane matches it, and a fin keel or a leg deep under a shallow body cannot
+    turn it into a narrow, deep box that resonates undamped.
+    """
+    _, k, k_east, k_north, omega, _ = columns(field)
+    k_along, _ = _along_across(field, hull)
+    met = omega - k_east * hull.east_mps - k_north * hull.north_mps
+    alpha = np.abs(met) / omega
+    breadth_m, draught_m = hull.box_beam_m, hull.box_draught_m
+    # Eq. 2.5's A, over k B alpha^2 so a point or a still encounter divides by nothing.
+    s = k * breadth_m * alpha**2 / 2
+    a_over = np.sinc(s / math.pi) * np.exp(-k * draught_m * alpha**2)
+    damping = 2 * s * a_over**2  # A^2 / (k B alpha^2)
+    excite = (1 - k * draught_m) + 1j * k * breadth_m * alpha * a_over**2
+    respond = (1 - 2 * k * draught_m * alpha**2) + 1j * damping
+    gain = np.exp(-np.abs(k_along) * draught_m) * excite / respond
+    # The wave overtaken turns the other way at the hull.
+    return np.where(met < 0, gain.conj(), gain)
+
+
+def _along_across(
+    field: tuple[Wave, ...], hull: Waterplane
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each wave's wavenumber along the bow and to starboard."""
+    _, _, k_east, k_north, *_ = columns(field)
+    sin, cos = math.sin(hull.heading_rad), math.cos(hull.heading_rad)
+    return k_east * sin + k_north * cos, k_east * cos - k_north * sin
 
 
 def _lever(u: np.ndarray) -> np.ndarray:

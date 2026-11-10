@@ -1,10 +1,13 @@
 # Teledyne FLIR Boson 320 with its 34 deg lens.
 # https://www.oem.flir.com/products/boson/
 extends = "boson_640_32deg.toml"
-hfov_deg = 34.0
+# The 20320A034 lens (Boson datasheet 102-2013-40 Rev 340, table 11): 34.1 x 27.3 deg.
+hfov_deg = 34.1
 width_px = 320
 height_px = 256
 
 [microbolometer]
-# The 20320A034 lens (Boson datasheet 102-2013-40, table 13).
+# Same table.
 f_number = 1.01
+# Table 13's 50 mK scaled by (f/#)^2 / tau: 1.01 and 94 % (table 11).
+netd_k = 0.054

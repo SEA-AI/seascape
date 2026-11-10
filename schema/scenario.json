@@ -542,6 +542,170 @@
       "title": "Camera",
       "type": "object"
     },
+    "Crop": {
+      "additionalProperties": false,
+      "description": "A camera's frames less rows and columns at their edges.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is a part of each frame.",
+          "anyOf": [
+            {
+              "const": "crop",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "camera": {
+          "description": "The rig's camera it records.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "left_px": {
+          "title": "Left Px",
+          "description": "Columns cut at the left.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "right_px": {
+          "title": "Right Px",
+          "description": "Columns cut at the right.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "top_px": {
+          "title": "Top Px",
+          "description": "Rows cut at the top.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "bottom_px": {
+          "title": "Bottom Px",
+          "description": "Rows cut at the bottom.",
+          "default": 0,
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "camera"
+      ],
+      "title": "Crop",
+      "type": "object"
+    },
     "Drift": {
       "additionalProperties": false,
       "description": "A hull at single anchor fishtails: across its heading once a period, along it\ntwice. Starts at its pose; the heading holds.",
@@ -979,6 +1143,66 @@
       "title": "Heave",
       "type": "object"
     },
+    "Identity": {
+      "additionalProperties": false,
+      "description": "A camera's frames as they are.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is the camera's frames.",
+          "anyOf": [
+            {
+              "const": "identity",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "camera": {
+          "description": "The rig's camera it records.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "camera"
+      ],
+      "title": "Identity",
+      "type": "object"
+    },
     "ImageFormat": {
       "enum": [
         "exr",
@@ -1051,6 +1275,50 @@
             {
               "exclusiveMinimum": 0.0,
               "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "fisheye": {
+          "title": "Fisheye",
+          "description": "OpenCV's fisheye k1..k4, all 0 for an equidistant lens. Unset, a pinhole. hfov_deg is then the field angle across the image width.",
+          "default": null,
+          "anyOf": [
+            {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
             },
             {
               "type": "null"
@@ -1235,7 +1503,7 @@
         },
         "range_m": {
           "title": "Range M",
-          "description": "Horizontal, from the ownship's origin.",
+          "description": "Horizontal, from the ownship's origin at t = 0.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -1312,7 +1580,7 @@
         },
         "heading_from": {
           "title": "Heading From",
-          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it, where 0 points away and 180 towards.",
+          "description": "What `heading_deg` turns from: the ownship's bow, or the line from the ownship to it at t = 0, where 0 points away and 180 towards.",
           "default": "ownship",
           "anyOf": [
             {
@@ -1635,6 +1903,7 @@
           "anyOf": [
             {
               "exclusiveMinimum": 0,
+              "maximum": 1000,
               "type": "integer"
             },
             {
@@ -1879,7 +2148,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the attitude alone.",
+      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone; a hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -1951,6 +2220,59 @@
               "maximum": 400.0,
               "minimum": 250.0,
               "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "speed_mps": {
+          "title": "Speed Mps",
+          "description": "Along its heading.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "yaw": {
+          "description": "Its heading about the start's.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Swing"
             },
             {
               "type": "null"
@@ -2106,6 +2428,38 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "draught_m": {
+          "title": "Draught M",
+          "description": "How deep it floats, keel to waterline, within the asset's `draught_range_m`. Unset, the asset's own.",
+          "default": null,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Loaded"
+            }
+          ]
         }
       },
       "title": "Ownship",
@@ -2113,7 +2467,7 @@
     },
     "Processing": {
       "additionalProperties": false,
-      "description": "The camera's ISP. White balance and sharpening need a sensor; exposure and\ntone do not.",
+      "description": "The camera's ISP. All but exposure_ev and tone need a sensor.",
       "properties": {
         "exposure_ev": {
           "title": "Exposure Ev",
@@ -2124,6 +2478,36 @@
               "maximum": 126.0,
               "minimum": -126.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "exposure_target": {
+          "title": "Exposure Target",
+          "description": "The mean, before tone, that auto-exposure brings the sensor's output to, clipped or, with HDR, tone-mapped. Unset, it puts the frame's log-average at ISO 12232's mid-grey.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2292,7 +2676,7 @@
         },
         "height_m": {
           "title": "Height M",
-          "description": "Above the waterline.",
+          "description": "Above the asset's own waterline.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -2417,14 +2801,19 @@
             }
           ]
         },
-        "near_clip_m": {
-          "title": "Near Clip M",
-          "description": "Anything nearer a camera is not rendered.",
-          "default": 5.0,
+        "cameras": {
+          "title": "Cameras",
+          "description": "Its cameras, by name.",
           "anyOf": [
             {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
+              "additionalProperties": {
+                "$ref": "#/$defs/Camera"
+              },
+              "minProperties": 1,
+              "propertyNames": {
+                "$ref": "#/$defs/Name"
+              },
+              "type": "object"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2443,15 +2832,14 @@
             }
           ]
         },
-        "cameras": {
-          "title": "Cameras",
-          "description": "Its cameras, by name.",
+        "videos": {
+          "title": "Videos",
+          "description": "What it records, by name, each from one camera or a stitch's two, which then go unlabelled. Unset, it records each camera whole. An exr ignores it.",
           "anyOf": [
             {
               "additionalProperties": {
-                "$ref": "#/$defs/Camera"
+                "$ref": "#/$defs/Video"
               },
-              "minProperties": 1,
               "propertyNames": {
                 "$ref": "#/$defs/Name"
               },
@@ -3281,6 +3669,77 @@
       "title": "Sky",
       "type": "object"
     },
+    "Stitch": {
+      "additionalProperties": false,
+      "description": "Two cameras' frames side by side, as the pinhole between them sees them.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is two pinholes' frames stitched into one.",
+          "anyOf": [
+            {
+              "const": "horizontal_stitching",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "cameras": {
+          "title": "Cameras",
+          "description": "The rig's cameras it records, left then right: pinholes of one band and size.",
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/Name"
+                },
+                {
+                  "$ref": "#/$defs/Name"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "cameras"
+      ],
+      "title": "Stitch",
+      "type": "object"
+    },
     "Swell": {
       "additionalProperties": false,
       "description": "Waves from a distant storm, whatever the local wind.",
@@ -3559,7 +4018,7 @@
         },
         "range_m": {
           "title": "Range M",
-          "description": "Horizontal, from the ownship's origin.",
+          "description": "Horizontal, from the ownship's origin at t = 0.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -3836,6 +4295,197 @@
         "emor"
       ],
       "type": "string"
+    },
+    "Undistortion": {
+      "additionalProperties": false,
+      "description": "A fisheye's frames as the pinhole its recorder dewarps them to.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "description": "The video is what a pinhole in the camera's place sees.",
+          "anyOf": [
+            {
+              "const": "undistortion",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "camera": {
+          "description": "The rig's camera it records.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "hfov_deg": {
+          "title": "Hfov Deg",
+          "description": "The pinhole's, edge to edge.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 180.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "vfov_deg": {
+          "title": "Vfov Deg",
+          "description": "The pinhole's; with hfov_deg, its frame's shape.",
+          "anyOf": [
+            {
+              "exclusiveMaximum": 180.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "downscale": {
+          "title": "Downscale",
+          "description": "The camera's rows per video row.",
+          "default": 1,
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "method": {
+          "title": "Method",
+          "description": "render: Blender draws the pinhole, so no dewarp resamples it.",
+          "default": "render",
+          "anyOf": [
+            {
+              "const": "render",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "camera",
+        "hfov_deg",
+        "vfov_deg"
+      ],
+      "title": "Undistortion",
+      "type": "object"
+    },
+    "Video": {
+      "discriminator": {
+        "mapping": {
+          "crop": "#/$defs/Crop",
+          "horizontal_stitching": "#/$defs/Stitch",
+          "identity": "#/$defs/Identity",
+          "undistortion": "#/$defs/Undistortion"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Identity"
+        },
+        {
+          "$ref": "#/$defs/Crop"
+        },
+        {
+          "$ref": "#/$defs/Undistortion"
+        },
+        {
+          "$ref": "#/$defs/Stitch"
+        }
+      ]
     },
     "WarmLayer": {
       "additionalProperties": false,
@@ -4135,6 +4785,7 @@
     "seed": {
       "default": 0,
       "description": "Seeds every random draw.",
+      "minimum": 0,
       "title": "Seed",
       "type": "integer"
     },

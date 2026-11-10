@@ -9,6 +9,7 @@ from pydantic import (
 )
 
 from seascape.model import Model
+from seascape.physics import fisheye
 from seascape.physics.colour import Tone
 
 type Band = Literal["eo", "ir"]
@@ -80,6 +81,11 @@ class Lens(Model):
         description="The lens's f-number, which blurs each colour by its diffraction "
         "pattern. It needs sensor.pitch_um. Only png and jpg output use it. An LWIR "
         "camera sets microbolometer.f_number instead.",
+    )
+    fisheye: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="OpenCV's fisheye k1..k4, all 0 for an equidistant lens. Unset, "
+        "a pinhole. hfov_deg is then the field angle across the image width.",
     )
 
 
@@ -185,9 +191,7 @@ class Agc(Model):
 
 
 class Processing(Model):
-    """The camera's ISP. White balance and sharpening need a sensor; exposure and
-    tone do not.
-    """
+    """The camera's ISP. All but exposure_ev and tone need a sensor."""
 
     # 2^±126 stays a normal float32 (IEEE 754), as the compositor computes.
     exposure_ev: float = Field(
@@ -196,6 +200,14 @@ class Processing(Model):
         le=126.0,
         description="Stops over auto-exposure, on top of "
         "outputs.exposure_compensation_ev.",
+    )
+    exposure_target: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="The mean, before tone, that auto-exposure brings the "
+        "sensor's output to, clipped or, with HDR, tone-mapped. Unset, it puts the "
+        "frame's log-average at ISO 12232's mid-grey.",
     )
     white_balance: Literal["fixed", "grey_world"] = Field(
         default="fixed",
@@ -275,8 +287,120 @@ class Camera(Model):
         if self.lens.f_number is not None and self.sensor.pitch_um is None:
             raise ValueError("lens.f_number needs a sensor.pitch_um")
         if self.sensor.full_well_e is None and isp != Processing():
-            raise ValueError("white balance and sharpening need a sensor.full_well_e")
+            raise ValueError(
+                "processing but exposure_ev and tone need a sensor.full_well_e"
+            )
+        if (k := self.lens.fisheye) is not None:
+            # Limitation: the falloff is the pinhole's cos^4 of tan(theta) = r / f.
+            if self.lens.vignetting:
+                raise ValueError("lens.vignetting needs a pinhole camera")
+            fisheye.polynomial(
+                k, self.fisheye_focal_px, self.width_px, self.height_px, 1.0
+            )
         return self
+
+    @property
+    def pitch_um(self) -> float | None:
+        """An image pixel's pitch where the camera sets one: a microbolometer's, or a
+        sensor's times the sites each image pixel averages.
+        """
+        if self.band == "ir":
+            return self.microbolometer.pitch_um
+        if self.sensor.pitch_um is None:
+            return None
+        sites_per_px = (self.sensor.width_px or self.width_px) / self.width_px
+        return self.sensor.pitch_um * sites_per_px
+
+    @property
+    def fisheye_focal_px(self) -> float:
+        """A fisheye's `fx`, the scale of its distorted angle in pixels."""
+        assert self.lens.fisheye is not None
+        return fisheye.focal_px(
+            math.radians(self.hfov_deg), self.width_px, self.lens.fisheye
+        )
+
+
+class Identity(Model):
+    """A camera's frames as they are."""
+
+    kind: Literal["identity"] = Field(description="The video is the camera's frames.")
+    camera: Name = Field(description="The rig's camera it records.")
+
+
+class Crop(Model):
+    """A camera's frames less rows and columns at their edges."""
+
+    kind: Literal["crop"] = Field(description="The video is a part of each frame.")
+    camera: Name = Field(description="The rig's camera it records.")
+    left_px: int = Field(default=0, ge=0, description="Columns cut at the left.")
+    right_px: int = Field(default=0, ge=0, description="Columns cut at the right.")
+    top_px: int = Field(default=0, ge=0, description="Rows cut at the top.")
+    bottom_px: int = Field(default=0, ge=0, description="Rows cut at the bottom.")
+
+
+class Undistortion(Model):
+    """A fisheye's frames as the pinhole its recorder dewarps them to."""
+
+    kind: Literal["undistortion"] = Field(
+        description="The video is what a pinhole in the camera's place sees."
+    )
+    camera: Name = Field(description="The rig's camera it records.")
+    hfov_deg: float = Field(
+        gt=0.0, lt=180.0, description="The pinhole's, edge to edge."
+    )
+    vfov_deg: float = Field(
+        gt=0.0, lt=180.0, description="The pinhole's; with hfov_deg, its frame's shape."
+    )
+    downscale: int = Field(
+        default=1, ge=1, description="The camera's rows per video row."
+    )
+    method: Literal["render"] = Field(
+        default="render",
+        description="render: Blender draws the pinhole, so no dewarp resamples it.",
+    )
+
+    def pinhole(self, camera: Camera) -> Camera:
+        """The pinhole rendered in `camera`'s place, sized as the recorder's
+        `Camera.undistort` sizes it: square pixels, rows over `downscale`, each side
+        rounded down to even.
+        """
+        ratio = math.tan(math.radians(self.hfov_deg) / 2) / math.tan(
+            math.radians(self.vfov_deg) / 2
+        )
+        width = int(int(camera.height_px * ratio) / self.downscale)
+        height = int(camera.height_px / self.downscale)
+        lens = camera.lens.model_dump() | {"fisheye": None}
+        return Camera.model_validate(
+            camera.model_dump()
+            | {
+                "hfov_deg": self.hfov_deg,
+                "width_px": width - width % 2,
+                "height_px": height - height % 2,
+                "lens": lens,
+            }
+        )
+
+
+class Stitch(Model):
+    """Two cameras' frames side by side, as the pinhole between them sees them."""
+
+    kind: Literal["horizontal_stitching"] = Field(
+        description="The video is two pinholes' frames stitched into one."
+    )
+    cameras: tuple[Name, Name] = Field(
+        description="The rig's cameras it records, left then right: pinholes of one "
+        "band and size."
+    )
+
+
+type Video = Annotated[
+    Identity | Crop | Undistortion | Stitch, Field(discriminator="kind")
+]
+
+
+def sources(video: Video) -> tuple[Name, ...]:
+    """The rig's cameras `video` records."""
+    return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
 class Rig(Model):
@@ -289,7 +413,7 @@ class Rig(Model):
     model: str | None = Field(
         default=None, description="The product, such as Pod. A recording needs it."
     )
-    height_m: float = Field(gt=0.0, description="Above the waterline.")
+    height_m: float = Field(gt=0.0, description="Above the asset's own waterline.")
     yaw_deg: float = Field(
         default=0.0, description="Its axis relative to the bow, positive to starboard."
     )
@@ -306,14 +430,56 @@ class Rig(Model):
     offset_y_m: float = Field(
         default=0.0, description="From midships, positive forward."
     )
-    # Depth precision goes as far / near, so larger is better. The bound is a lens's
-    # clearance from its own structure.
-    near_clip_m: float = Field(
-        default=5.0, gt=0.0, description="Anything nearer a camera is not rendered."
-    )
     cameras: dict[Name, Camera] = Field(
         min_length=1, description="Its cameras, by name."
     )
+    videos: dict[Name, Video] = Field(
+        default_factory=dict,
+        description="What it records, by name, each from one camera or a stitch's "
+        "two, which then go unlabelled. Unset, it records each camera whole. An exr "
+        "ignores it.",
+    )
+
+    @model_validator(mode="after")
+    def _each_video_records_a_camera(self) -> "Rig":
+        # A frame is written under its video's name, beside its camera's own.
+        if clash := sorted(self.videos.keys() & self.cameras.keys()):
+            raise ValueError(f"videos {clash} are named as cameras")
+        recorded = [c for video in self.videos.values() for c in sources(video)]
+        if missing := sorted(set(recorded) - self.cameras.keys()):
+            raise ValueError(f"videos record no camera {missing}")
+        # One render per camera, so it takes the one crop.
+        if twice := sorted({c for c in recorded if recorded.count(c) > 1}):
+            raise ValueError(f"cameras {twice} are in more than one video")
+        # A recording holds the videos alone.
+        if self.videos and (idle := sorted(self.cameras.keys() - set(recorded))):
+            raise ValueError(f"cameras {idle} are in no video, so are not recorded")
+        for name, video in self.videos.items():
+            if isinstance(video, Stitch):
+                left, right = (self.cameras[c] for c in video.cameras)
+                shape = [(c.band, c.width_px, c.height_px) for c in (left, right)]
+                if shape[0] != shape[1] or left.lens.fisheye or right.lens.fisheye:
+                    raise ValueError(f"video {name} stitches unlike or fisheye cameras")
+                continue
+            camera = self.cameras[video.camera]
+            # Its focal plane's vignetting and noise are the whole sensor's.
+            if isinstance(video, Crop) and camera.band == "ir":
+                raise ValueError(f"video {name} crops ir camera {video.camera}")
+            if isinstance(video, Crop) and (
+                video.left_px + video.right_px >= camera.width_px
+                or video.top_px + video.bottom_px >= camera.height_px
+            ):
+                raise ValueError(f"video {name} crops all of {video.camera}")
+        return self
+
+    @property
+    def rendered(self) -> dict[Name, Camera]:
+        """Its cameras, an undistortion's as its pinhole."""
+        cameras = dict(self.cameras)
+        for video in self.videos.values():
+            if isinstance(video, Undistortion):
+                cameras[video.camera] = video.pinhole(cameras[video.camera])
+        return cameras
 
 
 class Mount(NamedTuple):
