@@ -240,7 +240,13 @@ async def preview(
         raise ToolError(f"job {job!r} is {found.state}")
     if found.scenes[0].outputs.format == "exr":
         raise ToolError("an exr holds radiance and has no preview")
-    return await asyncio.to_thread(_view, found, variant, camera)
+    try:
+        return await asyncio.to_thread(_view, found, variant, camera)
+    # The trace holds this server's paths.
+    except OSError as error:
+        raise ToolError(
+            f"{type(error).__name__}: the picture could not be read"
+        ) from error
 
 
 async def cancel(job: str, ctx: Context[State, Any]) -> dict[str, Any]:

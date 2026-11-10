@@ -366,11 +366,15 @@ def provenance(job: Job, seed: int, camera: str | None = None) -> Picture.Exif:
 
 def _finish(job: Job) -> None:
     """An archive of the frames, and beside it a watermarked sheet per variant (none
-    for exr).
+    for exr). A sheet that cannot be made is logged and left out: the render is done.
     """
     shutil.make_archive(str(job.folder), "zip", job.folder)
     if job.scenes[0].outputs.format != "exr":
         for scene, folder in zip(job.scenes, job.folders, strict=True):
-            sheet = montage.sheet(scene, folder)
-            exif = provenance(job, scene.seed)
-            (folder / SHEET).write_bytes(marked_jpeg(sheet, exif, below=True))
+            try:
+                sheet = montage.sheet(scene, folder)
+                exif = provenance(job, scene.seed)
+                (folder / SHEET).write_bytes(marked_jpeg(sheet, exif, below=True))
+            # `montage.sheet`: ValueError for no frames, OSError for a missing one.
+            except (OSError, ValueError):
+                log.exception("job %s: no sheet for %s", job.folder.name, folder.name)

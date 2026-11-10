@@ -379,6 +379,23 @@ def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
     assert "no camera 'nope'" in refused[1].content[0].text
 
 
+@pytest.mark.usefixtures("blenderless")
+def test_a_sheet_that_cannot_be_made_leaves_the_render_done(
+    state: State, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*_args: Any) -> None:
+        raise FileNotFoundError("/server/path/frame.png")
+
+    monkeypatch.setattr(jobs.montage, "sheet", refuse)
+    report, sheet = _rendered(state, ("get_job", {}), ("preview", {}))
+    report = json.loads(report.content[0].text)
+    assert report["status"] == "done"
+    assert report["sheets"] == []
+    assert sheet.is_error
+    assert "could not be read" in sheet.content[0].text
+    assert "/server/path" not in sheet.content[0].text
+
+
 def _preview_of(state: State, scene: Scenario, job_state: JobState) -> Any:
     """What `preview` answers for a stored job in `job_state`, with no render."""
 
