@@ -219,6 +219,13 @@ def _wake(
     )
     if not arms:
         return tree
+    # The arms take the path again, from a copy of the position: Cycles merges
+    # identical nodes, and a path shared with the band would hold every wake's place on
+    # its SVM stack from the first accumulator until the last.
+    copy = combine(tree, given["Time"], given["East"], given["North"])
+    path = _path(tree, wake, *separate(tree, copy))
+    along = Num(tree, path.along)
+    behind = along.op("GREATER_THAN", 0.0)
     lasting = behind
     if wake.orbit_m is not None:
         # A judgement: faded over the radius, past which the straight-path pattern
