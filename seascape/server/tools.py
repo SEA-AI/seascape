@@ -29,7 +29,7 @@ from seascape.server.jobs import (
     run,
 )
 
-# Judgement: each image costs the client context.
+# Judgement: each image costs the client tokens.
 PREVIEWS = 8
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
