@@ -156,7 +156,10 @@ def _tried(
     with _RECORDING, warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         scenes, worst_bytes = _checked(path, lines, variants, settings)
-    return scenes, worst_bytes, list(dict.fromkeys(str(w.message) for w in caught))
+    # UserWarning is what `warnings.warn` raises by default, as the scenario does; the
+    # window also sees other threads, whose library warnings are not for a client.
+    heard = (str(w.message) for w in caught if w.category is UserWarning)
+    return scenes, worst_bytes, list(dict.fromkeys(heard))
 
 
 def _checked(
