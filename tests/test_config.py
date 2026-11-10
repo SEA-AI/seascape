@@ -1596,3 +1596,9 @@ def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed(
     for seed in range(3):
         with pytest.raises(ValueError, match="no draught_range_m"):
             load(BASELINE, [{"seed": seed, "objects": [spec]}])
+
+
+def test_the_showcase_is_a_worn_hull_under_a_photographed_sky() -> None:
+    showcase = load(SCENARIOS / "showcase.toml")
+    assert showcase.sky.hdri is not None
+    assert showcase.worn == {"multipurpose_freighter"}

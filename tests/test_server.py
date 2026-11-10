@@ -95,7 +95,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         'objects = [{ preset = "no_such_preset" }]',
         "objects = [{ preset = 5 }]",
         'extends = "baseline.toml"',
-        "sky.sun_elevation_deg = 100.0",
+        "sea.wind_speed_mps = -1.0",
         "sky.sun_elevation_deg =",
     ],
 )
@@ -355,7 +355,7 @@ def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
         ExifTags.Base.ImageDescription
     ]
     assert json.loads(description) == {
-        "scenario": "baseline",
+        "scenario": "showcase",
         "seed": job.scenes[1].seed,
         "overrides": [],
     }

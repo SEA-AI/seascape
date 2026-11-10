@@ -1,0 +1,23 @@
+#:schema ../schema/scenario.json
+
+# What `render` draws unless asked otherwise: the baseline's rig and freighter at
+# sunset, close enough to read its wear, in light from behind the camera.
+extends = "baseline.toml"
+
+[sky]
+hdri = "table_mountain_2"
+# Behind the rig, so the low sun lights the hull. In frame it backlights it.
+sun_bearing_deg = 160.0
+
+[[objects]]
+preset = "multipurpose_freighter"
+range_m = 550.0
+# Whole in the IR frame too.
+bearing_deg = 0.0
+heading_deg = 250.0
+# Judgement: rust, grime and a waterline stain a viewer sees at this range.
+wear = 0.8
+
+[outputs.samples]
+# Judgement: the default 16 leaves grain on the sea; past 64 it stops falling.
+eo = 64

@@ -88,7 +88,7 @@ def schema(section: str) -> dict[str, Any]:
 
 async def render(
     ctx: Context[State, Any],
-    scenario: str = "baseline",
+    scenario: str = "showcase",
     overrides: Annotated[
         list[Annotated[str, Field(max_length=MAX_OVERRIDE_CHARS)]],
         Field(max_length=MAX_OVERRIDES),
@@ -98,7 +98,9 @@ async def render(
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
 
-    `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
+    The default, `showcase`, is a worn freighter at sunset under a photographed sky,
+    whose sun elevation is the photo's: for another, render `baseline`. `overrides`
+    are TOML lines merged over the scenario: `sky.sun_bearing_deg = 90`,
     `sea.wind_speed_mps = { uniform = [2, 12] }`. A list such as `objects` replaces the
     whole list. `variants` renders that many seeds from the scenario's own, each drawn
     anew, skipping a seed whose hulls meet, up to the server's variant and image
