@@ -155,15 +155,13 @@ def _wakes(
     # every wake's shared terms on Cycles' SVM stack until the last closure compiled.
     strongest = None
     tilt = None
-    for wake in wakes:
-        made = tree.nodes.new("ShaderNodeGroup")
-        made.node_tree = _wake(wake, noise, ppf, sea_slope_variance)
-        for name, socket in zip(
-            ("Time", "East", "North", "Footprint"),
-            (time_s, east, north, footprint_m),
-            strict=True,
-        ):
-            tree.links.new(socket, made.inputs[name])
+    for i, wake in enumerate(wakes):
+        made = node(
+            tree,
+            "ShaderNodeGroup",
+            {"Time": time_s, "East": east, "North": north, "Footprint": footprint_m},
+            node_tree=_wake(f"wake_{i}", wake, noise, ppf, sea_slope_variance),
+        )
         these = made.outputs["Strongest"]
         strongest = (
             these if strongest is None else vector(tree, "MAXIMUM", strongest, these)
@@ -176,17 +174,22 @@ def _wakes(
 
 
 def _wake(
-    wake: Wake, noise: bpy.types.Image, ppf: bpy.types.Image, sea_slope_variance: float
+    name: str,
+    wake: Wake,
+    noise: bpy.types.Image,
+    ppf: bpy.types.Image,
+    sea_slope_variance: float,
 ) -> bpy.types.NodeTree:
-    """One hull's wake in its own node group: Blender names a new node against every
-    node in its tree, so the sea's tree builds in cubic time.
+    """One hull's wake, in its own node group: Blender searches a tree's every node to
+    name a new one and its every link to add one, so one tree holding every wake
+    builds in cubic time.
 
     Its outputs are Strongest, (band, foam, bubbles), and Tilt, the Kelvin arms'
     -grad(height), where they stand out from the sea.
     """
     arms = wake.steepest_arm**2 / 2 >= SEEN_SLOPE_VARIANCE * sea_slope_variance
     tree, given, out = node_group(
-        "wake",
+        name,
         (
             ("Time", "Float"),
             ("East", "Float"),
