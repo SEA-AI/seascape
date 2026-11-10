@@ -153,8 +153,12 @@ async def render(
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
         job.task = asyncio.create_task(run(state, job, path, lines, variants))
-        started = {"job": name, "images": job.total, "jobs_ahead": ahead}
-        return {**started, "warnings": warned} if warned else started
+        return {
+            "job": name,
+            "images": job.total,
+            "jobs_ahead": ahead,
+            "warnings": warned,
+        }
     finally:
         # Refused, failed or abandoned. The load thread cannot be stopped, so the
         # place is kept until it ends.

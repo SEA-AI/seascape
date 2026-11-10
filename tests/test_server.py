@@ -880,4 +880,4 @@ def test_an_override_the_scenario_ignores_is_reported_with_the_job(
     ignored = _call(state, "render", overrides=["sky.sun_elevation_deg = 5.0"])
     honoured = _call(state, "render", scenario="baseline")
     assert "sun_elevation_deg is ignored" in str(ignored.structured_content["warnings"])
-    assert "warnings" not in honoured.structured_content
+    assert honoured.structured_content["warnings"] == []
