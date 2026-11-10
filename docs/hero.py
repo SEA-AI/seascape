@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from docs.brand import FOG_WHITE, NIGHT_BLUE, font
+from docs.brand import FOG_WHITE, NIGHT_BLUE
 from seascape.outputs import canvas, labels
 from seascape.outputs.calibration import Calibration
 
@@ -34,9 +34,9 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
 def mark(
     draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
 ) -> None:
-    tb = draw.textbbox(at, text, font=font(size))
+    tb = draw.textbbox(at, text, font=canvas.font(size))
     draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill=fill)
-    draw.text(at, text, fill="white", font=font(size))
+    draw.text(at, text, fill="white", font=canvas.font(size))
 
 
 def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
@@ -74,7 +74,7 @@ def frame(
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a.name}  {dist}  {a.bearing_deg:.1f}°"
         # Off the right edge a label shifts left, off the top it drops below the edge.
-        text_w = draw.textlength(text, font=font(15))
+        text_w = draw.textlength(text, font=canvas.font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
         mark(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
     return captioned(img, caption)

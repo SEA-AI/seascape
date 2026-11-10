@@ -111,7 +111,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Units in field names.** `height_m`, `t_sea_k`, `range_m`. No units library.
 - **Randomness comes from named substreams** off the scenario seed — `substream(seed, "sea/surface")`. Never `np.random` module functions. Named streams mean adding a component doesn't perturb an existing one.
 - **Poses are functions of time.** Ground truth records a timestamp, not a frame index: sensors run at different rates, so frame *n* is not one instant.
-- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo. The exception is the Brand Book files in `seascape/outputs/brand/`: the SEA.AI logo PNGs and the Barlow Semi Condensed Regular font with its licence.
+- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo. The exception is `seascape/outputs/brand/`: the SEA.AI logo PNGs and the Barlow Semi Condensed font with its licence.
 - **Components are pydantic models; a second kind of one makes a discriminated union**, registered in one place. Not a registry dict, not entry points.
 - Annotate every function signature outside tests.
 

@@ -4,13 +4,15 @@ import colorsys
 from collections.abc import Sequence
 from functools import cache
 from importlib import resources
+from io import BytesIO
 from itertools import batched
+from typing import Literal
 
 import numpy as np
 from PIL import Image, ImageFont, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
-# Brand Book 2026 files: the logo PNGs and the typeface, with its licence.
+# Brand Book 2026: logo PNGs, typeface and its licence.
 BRAND = resources.files("seascape.outputs") / "brand"
 # JPEG holds no alpha.
 _MODE = "RGB"
@@ -18,13 +20,16 @@ MATTE = (24, 24, 24)
 INK = (232, 232, 232)
 
 type Colour = str | tuple[int, int, int]
+type Weight = Literal["Regular", "Medium"]
 
 
 @cache
-def font(size: int = 16) -> FreeTypeFont:
-    """The Brand Book's Barlow Semi Condensed Regular at `size` pixels."""
-    with resources.as_file(BRAND / "BarlowSemiCondensed-Regular.ttf") as path:
-        return ImageFont.truetype(path, size)
+def font(size: int = 16, weight: Weight = "Regular") -> FreeTypeFont:
+    """The Brand Book's Barlow Semi Condensed at `size` pixels: Regular for text,
+    Medium for labels and headings.
+    """
+    data = (BRAND / f"BarlowSemiCondensed-{weight}.ttf").read_bytes()
+    return ImageFont.truetype(BytesIO(data), size)
 
 
 def beside(

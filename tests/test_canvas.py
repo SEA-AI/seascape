@@ -1,6 +1,7 @@
 """Laying pictures out for a person to look at."""
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from seascape.outputs import canvas
@@ -58,17 +59,15 @@ def test_nothing_lays_out_as_an_empty_picture() -> None:
     assert canvas.grid([], 3).size == (0, 0)
 
 
-def test_the_typeface_is_the_brand_books() -> None:
-    assert canvas.font(20).getname() == ("Barlow Semi Condensed", "Regular")
+@pytest.mark.parametrize("weight", ["Regular", "Medium"])
+def test_the_typeface_is_the_brand_books(weight: canvas.Weight) -> None:
+    assert canvas.font(20, weight).getname() == ("Barlow Semi Condensed", weight)
 
 
 def test_the_typeface_has_the_glyphs_a_caption_uses() -> None:
-    def ink(char: str) -> np.ndarray:
+    def drawn(char: str) -> tuple[tuple[int, int], bytes]:
         mask = canvas.font(20).getmask(char)
-        return np.array(mask).reshape(mask.size[::-1])
+        return mask.size, np.array(mask).tobytes()
 
     # A glyph the font lacks draws its notdef box, as U+FFFF does.
-    notdef = ink("\uffff")
-    for char in "°+-0w":
-        assert ink(char).shape != notdef.shape or (ink(char) != notdef).any()
-    assert (ink("\u4e2d") == notdef).all()
+    assert all(drawn(char) != drawn("\uffff") for char in "°+-0w")

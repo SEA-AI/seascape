@@ -11,11 +11,11 @@ import bpy
 import numpy as np
 from PIL import Image, ImageDraw
 
-from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
+from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY
 from seascape import render
 from seascape.blender import blend, scene
 from seascape.config import load
-from seascape.outputs import labels
+from seascape.outputs import canvas, labels
 
 SCENARIO = Path(__file__).with_name("visibility.toml")
 PAD_PX, LEFT_PX, WIDTH_PX, THUMB_PX = 24, 620, 1000, (300, 150)
@@ -115,10 +115,17 @@ def chart(r: dict, scale: float, height: int) -> Image.Image:
         for x in range(0, LEFT_PX, 10):
             draw.line([x, mean, x + 5, mean], fill=colour, width=2)
     draw.text(
-        (0, base + 4), "0 = the sea's colour on this row", fill="black", font=font(14)
+        (0, base + 4),
+        "0 = the sea's colour on this row",
+        fill="black",
+        font=canvas.font(14),
     )
     draw.text(
-        (LEFT_PX, base + 4), "dashed: means", fill="black", font=font(14), anchor="ra"
+        (LEFT_PX, base + 4),
+        "dashed: means",
+        fill="black",
+        font=canvas.font(14),
+        anchor="ra",
     )
     return img
 
@@ -155,14 +162,14 @@ def main(out: Path) -> None:
         raise ValueError("the near ship must be seen and the far one not")
     r = row_through(frame, index, near)
     zoom, scale = zoomed(r)
-    body, label = font(18), font(18, "Medium")
+    body, label = canvas.font(18), canvas.font(18, "Medium")
     sheet = Image.new("RGB", (WIDTH_PX, 2000), "white")
     draw = ImageDraw.Draw(sheet)
     draw.text(
         (PAD_PX, PAD_PX),
         "Does the ship differ from the sea more than the sea does from itself?",
         fill=NIGHT_BLUE,
-        font=font(24, "Medium"),
+        font=canvas.font(24, "Medium"),
     )
 
     # The verdicts first: the chart stretches to end level with them.
