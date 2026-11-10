@@ -17,6 +17,7 @@ from seascape import assets
 from seascape.assets import skies
 from seascape.config import schema_section, schema_sections
 from seascape.outputs import preview as pictures
+from seascape.outputs import provenance
 from seascape.server.jobs import (
     SHEET,
     Job,
@@ -24,7 +25,6 @@ from seascape.server.jobs import (
     drop,
     load,
     marked_jpeg,
-    provenance,
     prune,
     run,
 )
@@ -223,7 +223,7 @@ def _view(found: Job, variant: int, camera: str | None) -> Image:
     if camera not in frames:
         raise ToolError(f"no camera {camera!r} in {list(frames)}")
     mount, path = frames[camera]
-    exif = provenance(found, scene.seed, camera)
+    exif = provenance.exif(found.scenario, scene.seed, found.overrides, camera)
     return Image(
         data=marked_jpeg(pictures.picture(path, mount.camera.agc), exif), format="jpeg"
     )

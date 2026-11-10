@@ -409,18 +409,6 @@ def _preview_of(state: State, scene: Scenario, job_state: JobState) -> Any:
     return asyncio.run(call())
 
 
-def test_a_long_request_leaves_its_overrides_out_of_the_exif(tmp_path: Path) -> None:
-    job = Job(tmp_path, "open-sea", [], overrides=['"' * 1000] * 50)
-    exif = jobs.provenance(job, 7)
-    described = json.loads(exif[ExifTags.Base.ImageDescription])
-    assert described == {
-        "scenario": "open-sea",
-        "seed": 7,
-        "overrides_omitted": True,
-    }
-    assert len(exif.tobytes()) < 65_535
-
-
 def test_preview_refuses_an_exr_job(state: State) -> None:
     refused = _preview_of(state, load(OPEN_SEA, ['outputs.format = "exr"']), "done")
     assert refused.is_error

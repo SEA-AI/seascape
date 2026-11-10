@@ -7,7 +7,6 @@ it. Its files are deleted after `KEEP_S`.
 import asyncio
 import heapq
 import io
-import json
 import logging
 import os
 import shutil
@@ -20,7 +19,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
-from PIL import ExifTags
 from PIL import Image as Picture
 
 from seascape import assets
@@ -32,7 +30,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.outputs import montage, preview
+from seascape.outputs import montage, preview, provenance
 from seascape.server.settings import Settings
 
 KEEP_S = 24 * 3600
@@ -41,9 +39,6 @@ SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
 SHEET = "montage.jpg"
-# A JPEG segment's length is 16 bits (ITU-T T.81), and EXIF is one segment.
-# Judgement: the margin left for the tags besides the description.
-EXIF_MAX_BYTES = 60_000
 # Judgement: loads hold the GIL, so a few at once cost every other client.
 LOADING = 2
 # Under uvicorn's handlers, so the lines reach the server's log.
@@ -345,25 +340,6 @@ def marked_jpeg(
     return buffer.getvalue()
 
 
-def provenance(job: Job, seed: int, camera: str | None = None) -> Picture.Exif:
-    """EXIF naming how the picture of `seed` in `job` was made."""
-    made: dict[str, object] = {
-        "scenario": job.scenario,
-        "seed": seed,
-        "overrides": job.overrides,
-    }
-    if camera:
-        made["camera"] = camera
-    text = json.dumps(made)
-    if len(text) > EXIF_MAX_BYTES:
-        omitted = {"scenario": job.scenario, "seed": seed, "overrides_omitted": True}
-        text = json.dumps(omitted | ({"camera": camera} if camera else {}))
-    exif = Picture.Exif()
-    exif[ExifTags.Base.Software] = "seascape"
-    exif[ExifTags.Base.ImageDescription] = text
-    return exif
-
-
 def _finish(job: Job) -> None:
     """An archive of the frames, and beside it a watermarked sheet per variant (none
     for exr). A sheet that cannot be made is logged and left out: the render is done.
@@ -373,7 +349,7 @@ def _finish(job: Job) -> None:
         for scene, folder in zip(job.scenes, job.folders, strict=True):
             try:
                 sheet = montage.sheet(scene, folder)
-                exif = provenance(job, scene.seed)
+                exif = provenance.exif(job.scenario, scene.seed, job.overrides)
                 (folder / SHEET).write_bytes(marked_jpeg(sheet, exif, below=True))
             # `montage.sheet`: ValueError for no frames, OSError for a missing one.
             except (OSError, ValueError):
