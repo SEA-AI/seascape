@@ -253,7 +253,8 @@ def _write_settings(
     Args:
         into: The recording's folder.
         model: The product, which names its sensors file.
-        rig: The rig as the scenario set it.
+        rig: The rig as the scenario set it. Its hardware version, when set, goes to
+            `module_info.json`, by which a replay picks its profile.
         firsts: Each video's first frame, by its name in the recording.
         raw: Each camera the videos were made from, by its name in the recording;
             None when the rig has no videos.
@@ -275,7 +276,21 @@ def _write_settings(
     serialized = into / "serialized_parameters.json"
     entries = _parameters(firsts, raw, videos)
     _write_json(serialized, {"product_name": model, "cameras": entries})
-    return [settings, parameters, sensors, serialized]
+    written = [settings, parameters, sensors, serialized]
+    if rig.get("hardware_version"):
+        module = into / "POWER_Const" / "module_info.json"
+        _write_json(
+            module,
+            {
+                "hardware_version": rig["hardware_version"],
+                "setup_date": created.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                "serial_number": "seascape",
+                "jetson_serial_number": 0,
+                "json_version": 1,
+            },
+        )
+        written.append(module)
+    return written
 
 
 def export(run: Path) -> list[Path]:
