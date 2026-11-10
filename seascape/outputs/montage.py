@@ -7,7 +7,7 @@ frame, never on it: in an exr they would corrupt radiance.
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
 from seascape.config import Mount, Scenario
@@ -46,7 +46,7 @@ def _fan(
 
 def _tile(
     path: Path,
-    typeface: FreeTypeFont | ImageFont.ImageFont,
+    typeface: FreeTypeFont,
     mount: Mount,
     mounts: Sequence[Mount],
 ) -> Image.Image:

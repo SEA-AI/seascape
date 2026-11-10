@@ -1,7 +1,6 @@
 """A render's frames as pictures to share, each with the SEA.AI mark on it."""
 
 from functools import cache
-from importlib import resources
 from pathlib import Path
 
 import numpy as np
@@ -10,8 +9,7 @@ from PIL import Image, ImageOps
 from seascape.config import Agc, Mount, Scenario
 from seascape.outputs import agc, canvas
 
-# Official SEA.AI Brand Book 2026 PNGs; never redraw the mark.
-BRAND = resources.files("seascape.outputs") / "brand"
+# Never redraw the mark: it is the Brand Book's PNG.
 MIN_MARK_PX = 15  # Brand Book 2026 minimum height
 # Judgement: the mark's height over the image's short edge.
 MARK_SHARE = 0.03
@@ -24,7 +22,7 @@ DARK = 128  # luma below this takes the white mark
 
 @cache
 def _logo(colour: str) -> Image.Image:
-    with (BRAND / f"logo_{colour}.png").open("rb") as file:
+    with (canvas.BRAND / f"logo_{colour}.png").open("rb") as file:
         return Image.open(file).convert("RGBA")
 
 
