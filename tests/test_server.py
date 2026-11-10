@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +22,7 @@ from PIL import ExifTags, Image
 from pydantic import ValidationError
 
 from seascape.config import Scenario, json_schema, load
+from seascape.model import ScenarioWarning
 from seascape.server import Settings, State, jobs, tools, transport
 from seascape.server.jobs import Job, JobState
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
@@ -95,7 +97,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         'objects = [{ preset = "no_such_preset" }]',
         "objects = [{ preset = 5 }]",
         'extends = "baseline.toml"',
-        "sky.sun_elevation_deg = 100.0",
+        "sea.wind_speed_mps = -1.0",
         "sky.sun_elevation_deg =",
     ],
 )
@@ -355,7 +357,7 @@ def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
         ExifTags.Base.ImageDescription
     ]
     assert json.loads(description) == {
-        "scenario": "baseline",
+        "scenario": "showcase",
         "seed": job.scenes[1].seed,
         "overrides": [],
     }
@@ -719,10 +721,10 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     state = _state(tmp_path, max_queued=2)
     loads: list[object] = []
 
-    def slow_load(*args: object) -> tuple[list[object], float]:
+    def slow_load(*args: object) -> tuple[list[object], float, list[str]]:
         loads.append(args)
         time.sleep(0.3)
-        return [], 1.0
+        return [], 1.0, []
 
     async def idle(*_: object) -> None:
         await asyncio.sleep(0)
@@ -871,3 +873,29 @@ def test_render_says_a_list_override_replaces_the_scenarios_list(
             return tools["render"].description or ""
 
     assert "replaces the whole list" in " ".join(asyncio.run(described()).split())
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_an_override_the_scenario_ignores_is_reported_with_the_job(
+    state: State,
+) -> None:
+    ignored = _call(state, "render", overrides=["sky.sun_elevation_deg = 5.0"])
+    honoured = _call(state, "render", scenario="baseline")
+    assert "sun_elevation_deg is ignored" in str(ignored.structured_content["warnings"])
+    assert honoured.structured_content["warnings"] == []
+
+
+def test_a_load_reports_each_scenario_warning_once_and_restores_the_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def checked(*_: object) -> tuple[list[object], float]:
+        warnings.warn("ignored", ScenarioWarning, stacklevel=2)
+        warnings.warn("ignored", ScenarioWarning, stacklevel=2)
+        warnings.warn("somebody else's", stacklevel=2)
+        return [], 0.0
+
+    monkeypatch.setattr(jobs, "_checked", checked)
+    before = list(warnings.filters)
+    *_, heard = jobs._tried(Path(), [], 1, Settings(scenarios=SCENARIOS))
+    assert heard == ["ignored"]
+    assert warnings.filters == before

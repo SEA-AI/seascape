@@ -13,6 +13,7 @@ import shutil
 import sys
 import tempfile
 import time
+import warnings
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -30,6 +31,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
+from seascape.model import ScenarioWarning
 from seascape.outputs import montage, preview, provenance
 from seascape.server.settings import Settings
 
@@ -39,8 +41,8 @@ SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
 SHEET = "montage.jpg"
-# Judgement: loads hold the GIL, so a few at once cost every other client.
-LOADING = 2
+# `warnings.catch_warnings` swaps interpreter-wide state, so loads run one at a time.
+LOADING = 1
 # Under uvicorn's handlers, so the lines reach the server's log.
 log = logging.getLogger("uvicorn.error")
 
@@ -145,6 +147,19 @@ def _bytes(scene: Scenario) -> float:
 
 def _tried(
     path: Path, lines: list[str], variants: int, settings: Settings
+) -> tuple[list[Scenario], float, list[str]]:
+    """`_checked`, and what the scenario warned of while loading, so the client hears
+    of what it ignored. Other threads' warnings inside the window are swallowed.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        scenes, worst_bytes = _checked(path, lines, variants, settings)
+    heard = (str(w.message) for w in caught if issubclass(w.category, ScenarioWarning))
+    return scenes, worst_bytes, list(dict.fromkeys(heard))
+
+
+def _checked(
+    path: Path, lines: list[str], variants: int, settings: Settings
 ) -> tuple[list[Scenario], float]:
     """The first scenes, and the most bytes the seeds `render` may try can write.
     Refuses any of those seeds past a clip, sample or camera limit, and the largest
@@ -240,7 +255,7 @@ async def sweep(state: State) -> None:
 
 async def load(
     state: State, path: Path, lines: list[str], variants: int
-) -> tuple[list[Scenario], float]:
+) -> tuple[list[Scenario], float, list[str]]:
     """`_tried` in a thread under a `state.loading` slot, held until the thread ends."""
     async with state.loading:
         return await asyncio.to_thread(_tried, path, lines, variants, state.settings)

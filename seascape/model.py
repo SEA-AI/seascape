@@ -3,6 +3,10 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class ScenarioWarning(UserWarning):
+    """A scenario loaded, but not as the author wrote it: something was ignored."""
+
+
 class Model(BaseModel):
     """Strictness shared by everything this package parses from TOML."""
 

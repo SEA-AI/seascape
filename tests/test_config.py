@@ -508,7 +508,10 @@ def test_a_draw_is_validated_as_the_field_it_lands_in() -> None:
         load(BASELINE, ["sky.sun_elevation_deg = { uniform = [100.0, 120.0] }"])
 
 
-@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED, DATASET, AUTONOMICS])
+@pytest.mark.parametrize(
+    "path",
+    [BASELINE, HERO, RANDOMIZED, DATASET, AUTONOMICS, SCENARIOS / "showcase.toml"],
+)
 def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     """The `#:schema` line is a comment, so nothing else would ever notice it rot."""
     line = path.read_text().splitlines()[0]
@@ -1596,3 +1599,9 @@ def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed(
     for seed in range(3):
         with pytest.raises(ValueError, match="no draught_range_m"):
             load(BASELINE, [{"seed": seed, "objects": [spec]}])
+
+
+def test_the_showcase_is_a_worn_hull_under_a_photographed_sky() -> None:
+    showcase = load(SCENARIOS / "showcase.toml")
+    assert showcase.sky.hdri is not None
+    assert showcase.worn == {"multipurpose_freighter"}

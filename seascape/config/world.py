@@ -11,7 +11,7 @@ from pydantic import (
 )
 
 from seascape.assets import skies
-from seascape.model import Model
+from seascape.model import Model, ScenarioWarning
 from seascape.physics import aerosol, earth, lwir, skin
 from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
@@ -245,7 +245,9 @@ class Sky(Model):
             # scenario holds the photo's own values and is not warned about.
             if data.get("sun_elevation_deg", elevation) != elevation:
                 warnings.warn(
-                    "the hdri sets the sky; sun_elevation_deg is ignored", stacklevel=2
+                    "the hdri sets the sky; sun_elevation_deg is ignored",
+                    ScenarioWarning,
+                    stacklevel=2,
                 )
             data = {**data, "sun_elevation_deg": elevation}
         elif elevation is not None:

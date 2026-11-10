@@ -13,7 +13,7 @@ from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
 from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets
 from seascape.config.world import Sea, Sky
-from seascape.model import Model
+from seascape.model import Model, ScenarioWarning
 from seascape.physics import waves
 from seascape.physics.atmosphere import SURFACE_SEA_K
 
@@ -287,6 +287,7 @@ class Scenario(Model):
             warnings.warn(
                 f"a {span_s} s loop shifts the waves' frequencies by {error:.1%}; a "
                 "longer outputs.duration_s shifts them less",
+                ScenarioWarning,
                 stacklevel=2,
             )
         return self
