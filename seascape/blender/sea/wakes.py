@@ -219,9 +219,10 @@ def _wake(
     )
     if not arms:
         return tree
-    # The arms take the path again, from a copy of the position: Cycles merges
-    # identical nodes, and a path shared with the band would hold every wake's place on
-    # its SVM stack from the first accumulator until the last.
+    # The arms recompute the path rather than share the band's: Cycles compiles what
+    # reads the band and foam before what reads the normal, so a shared along and
+    # across would sit on its SVM stack for every wake in between. Cycles also merges
+    # identical nodes: the arms read a copy of the position to keep theirs apart.
     copy = combine(tree, given["Time"], given["East"], given["North"])
     path = _path(tree, wake, *separate(tree, copy))
     along = Num(tree, path.along)
