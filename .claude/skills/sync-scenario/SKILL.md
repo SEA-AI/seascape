@@ -38,7 +38,18 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
      scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>
    ```
 
-   It prints the new version, `sea-ai/dataset-registry/sync-<product>:v<n>`. A consumer pins that exact version, never `latest`.
+   It prints the new version, `sea-ai/dataset-registry/sync-<product>:v<n>`. The artifact takes the scenario's name, variant included (`sync-watchkeeper-1280-gen1`), so each variant versions apart.
+7. **Link.** Put that version in the W&B Dataset registry, where the team's datasets are listed:
+
+   ```bash
+   uvx --from wandb python -c 'import wandb; print(wandb.Api().artifact("sea-ai/dataset-registry/sync-<product>:v<n>").link("wandb-registry-dataset/sync-<product>").qualified_name)'
+   ```
+
+   It prints the registry's version, which counts its own links and can differ from the project's. A consumer fetches that exact version, never `latest`:
+
+   ```bash
+   uvx wandb artifact get --root sync-<product> wandb-registry-dataset/sync-<product>:v<m>
+   ```
 
 ## When the preview fails
 
