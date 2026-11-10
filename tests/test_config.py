@@ -1180,8 +1180,8 @@ def test_a_boson_preset_extends_another() -> None:
 @pytest.mark.parametrize(
     ("rig", "model", "cameras"),
     [
-        ("sentry", "Sentry", {"t_w", "t_n", "eo_w", "eo_n"}),
-        ("watchkeeper", "Watchkeeper", {"eo", "ir_l", "ir_r"}),
+        ("sentry", "Sentry", {"t1", "t2", "rgb1", "rgb2"}),
+        ("watchkeeper", "Watchkeeper", {"rgb1", "t1", "t2"}),
     ],
 )
 def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> None:
@@ -1215,14 +1215,14 @@ def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
 def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
     lines = ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
     scenario = load(BASELINE, lines)
-    (eo,) = (m.camera for m in scenario.mounts if m.camera_name == "eo")
+    (eo,) = (m.camera for m in scenario.mounts if m.camera_name == "rgb1")
     # A recorded Watchkeeper's RGB1.
     fx = eo.width_px / 2 / math.tan(math.radians(eo.hfov_deg) / 2)
     assert (eo.width_px, eo.height_px, eo.lens.fisheye) == (3600, 1080, None)
     assert fx == pytest.approx(839.3537846789975)
     exr = load(BASELINE, [*lines, 'outputs.format = "exr"'])
-    (raw,) = (m.camera for m in exr.mounts if m.camera_name == "eo")
-    assert raw == scenario.rigs["bow"].cameras["eo"]
+    (raw,) = (m.camera for m in exr.mounts if m.camera_name == "rgb1")
+    assert raw == scenario.rigs["bow"].cameras["rgb1"]
 
 
 @pytest.mark.parametrize(
@@ -1265,9 +1265,9 @@ def test_a_rig_refuses_a_video_it_cannot_record(videos: str, match: str) -> None
 def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:
     line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
     rig = load(BASELINE, [line]).rigs["bow"]
-    left, right = rig.cameras["ir_l"], rig.cameras["ir_r"]
-    assert left.yaw_deg == -right.yaw_deg != 0.0
-    assert rig.cameras["eo"].lens.fisheye is not None
+    left, right = rig.cameras["t2"], rig.cameras["t1"]
+    assert left.yaw_deg == -right.yaw_deg < 0.0
+    assert rig.cameras["rgb1"].lens.fisheye is not None
 
 
 GRADE = (

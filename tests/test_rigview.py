@@ -14,7 +14,7 @@ def test_a_fisheye_frustum_reaches_the_corners_its_lens_sees() -> None:
     line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
     scenario = load(BASELINE, [line])
     # The scenario's mounts swap the fisheye for its undistorted pinhole.
-    spec = scenario.rigs["bow"].cameras["eo"]
+    spec = scenario.rigs["bow"].cameras["rgb1"]
     assert spec.lens.fisheye is not None
     (mount, *_) = scenario.mounts
     bpy.ops.wm.read_factory_settings(use_empty=True)

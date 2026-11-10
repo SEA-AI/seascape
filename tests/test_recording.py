@@ -369,3 +369,28 @@ def test_a_frame_labels_json_does_not_list_writes_nothing(run: Path) -> None:
     with pytest.raises(ValueError, match=r"EO/0001\.jpg"):
         recording.export(run)
     assert not (run / "recordings").exists()
+
+
+def test_a_hardware_version_is_written_where_a_replay_reads_it(run: Path) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    truth.info["scenario"]["rigs"]["port"]["hardware_version"] = "Oscar_V7_Gen_3_1"
+    truth.write(run)
+    recording.export(run)
+    (module,) = run.glob("recordings/port/*/POWER_Const/module_info.json")
+    info = json.loads(module.read_text())
+    assert (info["hardware_version"], info["serial_number"]) == (
+        "Oscar_V7_Gen_3_1",
+        "seascape",
+    )
+
+
+def test_a_re_export_leaves_only_what_it_wrote(run: Path) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    truth.info["scenario"]["rigs"]["port"]["hardware_version"] = "Oscar_V7_Gen_3_1"
+    truth.write(run)
+    recording.export(run)
+    truth.info["scenario"]["rigs"]["port"]["hardware_version"] = None
+    truth.write(run)
+    written = recording.export(run)
+    (into,) = run.glob("recordings/port/*")
+    assert sorted(p for p in into.rglob("*") if p.is_file()) == sorted(written)

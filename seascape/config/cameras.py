@@ -413,6 +413,11 @@ class Rig(Model):
     model: str | None = Field(
         default=None, description="The product, such as Pod. A recording needs it."
     )
+    hardware_version: str | None = Field(
+        default=None,
+        description="The unit's hardware version, such as Oscar_V10_1280_Gen_1, which "
+        "picks the recorder's profile when a recording is replayed.",
+    )
     height_m: float = Field(gt=0.0, description="Above the asset's own waterline.")
     yaw_deg: float = Field(
         default=0.0, description="Its axis relative to the bow, positive to starboard."

@@ -285,7 +285,9 @@ def test_rig_view_needs_a_hull_to_draw_on(run: Run, tmp_path: Path) -> None:
 
 @pytest.mark.render
 def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
-    scenario = Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper.toml"
+    scenario = (
+        Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper-1280-gen1.toml"
+    )
     out = tmp_path / "rig.png"
     drawn = run("rig-view", scenario, "-o", out)
     assert drawn.exit_code == 0, drawn.stderr
