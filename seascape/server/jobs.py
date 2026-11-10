@@ -41,6 +41,9 @@ SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
 SHEET = "montage.jpg"
+# A JPEG segment's length is 16 bits (ITU-T T.81), and EXIF is one segment.
+# Judgement: the margin left for the tags besides the description.
+EXIF_MAX_BYTES = 60_000
 # Judgement: loads hold the GIL, so a few at once cost every other client.
 LOADING = 2
 # Under uvicorn's handlers, so the lines reach the server's log.
@@ -291,7 +294,7 @@ async def _seascape(*args: str) -> None:
 async def run(
     state: State, job: Job, path: Path, overrides: list[str], variants: int
 ) -> None:
-    """Take the GPU in turn, render and encode the job, then preview and zip it."""
+    """Take the GPU in turn, render and encode the job, then zip it, with its sheets."""
     sets = [arg for line in overrides for arg in ("--set", line)]
     max_run_s = state.settings.max_run_s
     limit: asyncio.Timeout | None = None
@@ -334,9 +337,7 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
 def marked_jpeg(
     picture: Picture.Image, exif: Picture.Exif, *, below: bool = False
 ) -> bytes:
-    """`picture`, shrunk in place to `PREVIEW_PX`, as a JPEG with the mark on it or on
-    a strip below.
-    """
+    """`picture` as a marked JPEG at most `PREVIEW_PX` a side, shrunk in place."""
     picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
     buffer = io.BytesIO()
     # Judgement: a preview, so a smaller file over fidelity.
@@ -344,13 +345,9 @@ def marked_jpeg(
     return buffer.getvalue()
 
 
-# A JPEG segment's length is 16 bits (ITU-T T.81), and EXIF is one segment.
-EXIF_MAX_BYTES = 60_000
-
-
 def provenance(job: Job, seed: int, camera: str | None = None) -> Picture.Exif:
     """EXIF naming how the picture of `seed` in `job` was made."""
-    made: dict[str, Any] = {
+    made: dict[str, object] = {
         "scenario": job.scenario,
         "seed": seed,
         "overrides": job.overrides,
@@ -359,7 +356,8 @@ def provenance(job: Job, seed: int, camera: str | None = None) -> Picture.Exif:
         made["camera"] = camera
     text = json.dumps(made)
     if len(text) > EXIF_MAX_BYTES:
-        text = json.dumps({**made, "overrides": "too long to embed"})
+        omitted = {"scenario": job.scenario, "seed": seed, "overrides_omitted": True}
+        text = json.dumps(omitted | ({"camera": camera} if camera else {}))
     exif = Picture.Exif()
     exif[ExifTags.Base.Software] = "seascape"
     exif[ExifTags.Base.ImageDescription] = text
@@ -367,10 +365,12 @@ def provenance(job: Job, seed: int, camera: str | None = None) -> Picture.Exif:
 
 
 def _finish(job: Job) -> None:
-    """A watermarked sheet per variant (none for exr), and an archive."""
+    """An archive of the frames, and beside it a watermarked sheet per variant (none
+    for exr).
+    """
+    shutil.make_archive(str(job.folder), "zip", job.folder)
     if job.scenes[0].outputs.format != "exr":
         for scene, folder in zip(job.scenes, job.folders, strict=True):
             sheet = montage.sheet(scene, folder)
             exif = provenance(job, scene.seed)
             (folder / SHEET).write_bytes(marked_jpeg(sheet, exif, below=True))
-    shutil.make_archive(str(job.folder), "zip", job.folder)

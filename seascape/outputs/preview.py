@@ -5,7 +5,7 @@ from importlib import resources
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from seascape.config import Agc, Mount, Scenario
 from seascape.outputs import agc, canvas
@@ -46,14 +46,12 @@ def _mark_size(image: Image.Image) -> tuple[int, int, int]:
 def watermark(image: Image.Image, *, below: bool = False) -> Image.Image:
     """`image` with the mark at its bottom right, white or black by what is behind.
 
-    `below` adds a strip under `image` for the mark, so it covers none of the picture.
+    `below` adds a strip under `image` for the mark.
     """
     width, height, clear = _mark_size(image)
     if below:
-        strip = Image.new("RGB", (image.width, image.height + height + 2 * clear))
-        strip.paste(canvas.MATTE, (0, 0, *strip.size))
-        strip.paste(image, (0, 0))
-        image = strip
+        strip = (0, 0, 0, height + 2 * clear)
+        image = ImageOps.expand(image, border=strip, fill=canvas.MATTE)
     marked = image.convert("RGBA")
     # A frame too small for the clear space still takes the mark, flush to its corner.
     left = max(0, marked.width - clear - width)
@@ -66,17 +64,21 @@ def watermark(image: Image.Image, *, below: bool = False) -> Image.Image:
     return marked.convert("RGB")
 
 
+def cameras(scenario: Scenario) -> list[Mount]:
+    """The cameras of `scenario`'s bands, band by band."""
+    return [m for band in scenario.outputs.bands for m in scenario.band_mounts(band)]
+
+
 def shown(scenario: Scenario, folder: Path) -> list[tuple[Mount, Path]]:
     """The frame to show of each camera in `folder`: the still, or a clip's middle."""
     ext = scenario.outputs.format
     found: list[tuple[Mount, Path]] = []
-    for band in scenario.outputs.bands:
-        for mount in scenario.band_mounts(band):
-            if scenario.outputs.frames == 1:
-                found.append((mount, folder / f"{mount.name}.{ext}"))
-            else:
-                clip = sorted((folder / mount.name).glob(f"*.{ext}"))
-                if not clip:
-                    raise FileNotFoundError(f"{folder / mount.name}: no frames")
-                found.append((mount, clip[len(clip) // 2]))
+    for mount in cameras(scenario):
+        if scenario.outputs.frames == 1:
+            found.append((mount, folder / f"{mount.name}.{ext}"))
+        else:
+            clip = sorted((folder / mount.name).glob(f"*.{ext}"))
+            if not clip:
+                raise FileNotFoundError(f"{folder / mount.name}: no frames")
+            found.append((mount, clip[len(clip) // 2]))
     return found

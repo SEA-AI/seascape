@@ -20,9 +20,9 @@ from mcp.types import TextContent
 from PIL import ExifTags, Image
 from pydantic import ValidationError
 
-from seascape.config import json_schema
+from seascape.config import Scenario, json_schema, load
 from seascape.server import Settings, State, jobs, tools, transport
-from seascape.server.jobs import Job
+from seascape.server.jobs import Job, JobState
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
 SECRET = "s" * 32
@@ -364,7 +364,8 @@ def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
 
 @pytest.mark.usefixtures("blenderless")
 def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
-    camera = load_variants(BASELINE)[0].mounts[0].name
+    mounts = load_variants(BASELINE)[0].mounts
+    camera = mounts[0].name
     _, sheet, frame, *refused = _rendered(
         state,
         ("render_result", {}),
@@ -374,11 +375,45 @@ def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
         ("preview", {"camera": "nope"}),
     )
     assert [r.content[0].mime_type for r in (sheet, frame)] == ["image/jpeg"] * 2
-    cameras = [m.name for m in load_variants(BASELINE)[0].mounts]
-    assert [r.content[0].text.split(": ", 1)[1] for r in refused] == [
-        "variant 2 is not in 0 to 1",
-        f"no camera 'nope' in {cameras}",
-    ]
+    assert "variant 2 is not in 0 to 1" in refused[0].content[0].text
+    assert "no camera 'nope'" in refused[1].content[0].text
+
+
+def _preview_of(state: State, scene: Scenario, job_state: JobState) -> Any:
+    """What `preview` answers for a stored job in `job_state`, with no render."""
+
+    async def call() -> Any:
+        job = Job(state.renders / "stored", "open-sea", [scene], state=job_state)
+        job.task = asyncio.create_task(asyncio.sleep(0))
+        state.jobs["stored"] = job
+        async with Client(transport.mcp(state)) as client:
+            return await client.call_tool("preview", {"job": "stored"})
+
+    return asyncio.run(call())
+
+
+def test_a_long_request_leaves_its_overrides_out_of_the_exif(tmp_path: Path) -> None:
+    job = Job(tmp_path, "open-sea", [], overrides=['"' * 1000] * 50)
+    exif = jobs.provenance(job, 7)
+    described = json.loads(exif[ExifTags.Base.ImageDescription])
+    assert described == {
+        "scenario": "open-sea",
+        "seed": 7,
+        "overrides_omitted": True,
+    }
+    assert len(exif.tobytes()) < 65_535
+
+
+def test_preview_refuses_an_exr_job(state: State) -> None:
+    refused = _preview_of(state, load(OPEN_SEA, ['outputs.format = "exr"']), "done")
+    assert refused.is_error
+    assert "exr" in refused.content[0].text
+
+
+def test_preview_refuses_a_job_that_is_not_done(state: State) -> None:
+    refused = _preview_of(state, load(OPEN_SEA), "running")
+    assert refused.is_error
+    assert "is running" in refused.content[0].text
 
 
 def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any) -> State:

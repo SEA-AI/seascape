@@ -79,3 +79,11 @@ def test_a_clip_shows_each_cameras_middle_frame(tmp_path) -> None:
     shown = preview.shown(scenario, tmp_path)
     assert {m.name for m, _ in shown} == {m.name for m in scenario.mounts}
     assert all(path.name == "0001.png" for _, path in shown)
+
+
+def test_a_clip_camera_with_no_frames_names_its_folder(tmp_path) -> None:
+    scenario = two_rigs(outputs={"format": "png", "duration_s": 0.3, "fps": 10})
+    first = scenario.mounts[0].name
+    (tmp_path / first).mkdir()
+    with pytest.raises(FileNotFoundError, match=first):
+        preview.shown(scenario, tmp_path)
