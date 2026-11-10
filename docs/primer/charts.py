@@ -158,7 +158,7 @@ def draw(name: str, theme: str) -> None:
     title, subtitle, chart = CHARTS[name]
     with mpl.rc_context(
         {
-            "font.family": brand.FAMILY,
+            "font.family": brand.FONT_FAMILY,
             "font.size": 10.5,
             "figure.facecolor": t["surface"],
             "axes.facecolor": t["surface"],
@@ -189,7 +189,7 @@ def draw(name: str, theme: str) -> None:
 
 
 if __name__ == "__main__":
-    font_manager.findfont(brand.FAMILY, fallback_to_default=False)
+    font_manager.findfont(brand.FONT_FAMILY, fallback_to_default=False)
     OUT.mkdir(exist_ok=True)
     for name in CHARTS:
         for theme in THEMES:

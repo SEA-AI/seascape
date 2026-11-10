@@ -8,7 +8,7 @@ from seascape.outputs import brand
 
 @pytest.mark.parametrize("weight", ["Regular", "Medium"])
 def test_the_typeface_is_the_brand_books(weight: brand.Weight) -> None:
-    assert brand.font(20, weight).getname() == (brand.FAMILY, weight)
+    assert brand.font(20, weight).getname() == (brand.FONT_FAMILY, weight)
 
 
 def test_the_typeface_has_the_glyphs_a_caption_uses() -> None:

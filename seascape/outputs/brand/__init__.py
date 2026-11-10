@@ -15,7 +15,7 @@ OCEAN_TEAL = "#06404C"
 SKY_GREY = "#7B9194"
 FOG_WHITE = "#DFDED9"
 # For matplotlib, which looks fonts up by name.
-FAMILY = "Barlow Semi Condensed"
+FONT_FAMILY = "Barlow Semi Condensed"
 
 type Weight = Literal["Regular", "Medium"]
 
