@@ -54,15 +54,13 @@ An EO camera can model its sensor, lens and image processing. Leave them out and
 
 ```toml
 [rigs.bow.cameras.eo]
-preset = "basler_daa3840_ar0821"   # the sensor; the lens is yours
+preset = "basler_daa3840_ar0821"   # the sensor and its presets; the lens is yours
 hfov_deg = 45.0
 width_px = 1920
 height_px = 1080
 sensor.gain_db = 12.0
-sensor.hdr_ratio = 16.0
 lens.vignetting = true
 lens.f_number = 5.6
-processing.white_balance_k = 800
 processing.tone = "emor"
 ```
 

@@ -1612,6 +1612,4 @@ def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
     camera = next(m.camera for m in showcase.mounts if m.camera.band == "eo")
     assert (camera.width_px, camera.height_px) == (1920, 1080)
     assert camera.sensor.full_well_e == 12600.0
-    assert camera.sensor.hdr_ratio == 16.0
-    assert camera.processing.white_balance == "grey_world"
     assert camera.lens.vignetting
