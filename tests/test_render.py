@@ -550,7 +550,7 @@ def _wakes(hulls: int) -> tuple[Wake, ...]:
     )
 
 
-CROWD = 24
+CROWD = 64
 
 
 # The heaviest sky: a photo, whose clouds the IR sea reflects, in mist, whose haze takes

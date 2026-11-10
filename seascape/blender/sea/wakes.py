@@ -219,6 +219,14 @@ def _wake(
     )
     if not arms:
         return tree
+    # The arms recompute the path rather than share the band's: Cycles compiles what
+    # reads the band and foam before what reads the normal, so a shared along and
+    # across would sit on its SVM stack for every wake in between. Cycles also merges
+    # identical nodes: the arms read a copy of the position to keep theirs apart.
+    copy = combine(tree, given["Time"], given["East"], given["North"])
+    path = _path(tree, wake, *separate(tree, copy))
+    along = Num(tree, path.along)
+    behind = along.op("GREATER_THAN", 0.0)
     lasting = behind
     if wake.orbit_m is not None:
         # A judgement: faded over the radius, past which the straight-path pattern
