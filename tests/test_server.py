@@ -82,6 +82,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         "schema": True,
         "jobs": True,
         "render_result": True,
+        "preview": True,
         "render": False,
         "cancel": False,
     }
@@ -305,10 +306,11 @@ def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
     assert not job.waiting
 
 
-def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
-    state: State, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def render(*_args: str) -> None:  # Blender's frames, without Blender
+@pytest.fixture
+def blenderless(state: State, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`render` writes each variant's frames as blank pictures."""
+
+    async def render(*_args: str) -> None:
         (job,) = state.jobs.values()
         for scene in job.scenes:
             folder = job.folder / str(scene.seed)  # as `render --variants` names it
@@ -319,23 +321,58 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
 
     monkeypatch.setattr(jobs, "_seascape", render)
 
-    async def call() -> Any:
+
+def _rendered(state: State, *then: tuple[str, dict[str, Any]]) -> list[Any]:
+    """Render 2 variants, then call each of `then` on the job."""
+
+    async def call() -> list[Any]:
         async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {"variants": 2})
             job = started.structured_content["job"]
-            return await client.call_tool("render_result", {"job": job})
+            return [
+                await client.call_tool(tool, {"job": job, **arguments})
+                for tool, arguments in then
+            ]
 
-    result = asyncio.run(call())
+    return asyncio.run(call())
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
+    state: State,
+) -> None:
+    (result,) = _rendered(state, ("render_result", {}))
     report = json.loads(result.content[0].text)
     assert report["status"] == "done", report
-    assert report["files"][0].endswith(".zip")
+    assert report["archive"].endswith(".zip")
     (job,) = state.jobs.values()
-    (scene, *_) = job.scenes
-    cameras = len(scene.mounts)
-    assert sum("/preview_" in url for url in report["files"]) == cameras
+    assert report["cameras"] == [m.name for m in job.scenes[0].mounts]
+    assert len(report["sheets"]) == len(job.scenes) == 2
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
-    ] * cameras
+    ] * 2
+    made = json.loads(Image.open(job.folders[1] / jobs.SHEET).getexif()[0x010E])
+    assert made == {
+        "scenario": "baseline",
+        "seed": job.scenes[1].seed,
+        "overrides": [],
+        "camera": None,
+    }
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
+    camera = load_variants(BASELINE)[0].mounts[0].name
+    _, sheet, frame, *refused = _rendered(
+        state,
+        ("render_result", {}),
+        ("preview", {"variant": 1}),
+        ("preview", {"camera": camera}),
+        ("preview", {"variant": 2}),
+        ("preview", {"camera": "nope"}),
+    )
+    assert [r.content[0].mime_type for r in (sheet, frame)] == ["image/jpeg"] * 2
+    assert all(r.is_error for r in refused)
 
 
 def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any) -> State:

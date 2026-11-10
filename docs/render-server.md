@@ -39,7 +39,7 @@ With `SEASCAPE_MCP_SECRET` set, each client sends it. Claude Code adds `--header
 
 Then ask for what you want: *"render the baseline at sunset with a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
-A job's files are served under `http://<host>:8765/renders/<job>/` and zipped at `http://<host>:8765/renders/<job>.zip`. `jobs` lists the jobs still kept, with their archive links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
+A job's files are zipped at `http://<host>:8765/renders/<job>.zip`. Frames, ground truth and exr radiance in it carry no mark. `render_result` shows a sheet of each variant's frames with the SEA.AI mark on it, up to 8 (none for exr), and `preview` shows one camera's frame, or one variant's sheet. `jobs` lists the jobs still kept, with their archive links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
 
 A job is refused when any seed it may try breaks a limit in the table below, or when its images and archive would leave less than `SEASCAPE_MIN_FREE_GB` free after the queued jobs.
 

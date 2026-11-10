@@ -103,17 +103,16 @@ def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
     return [sorted(column, key=rightward) for column in laid]
 
 
-def compose(scenario: Scenario, into: Path) -> Path:
-    """Write `montage.png` in `into`: a row per band, a column per bearing."""
+def sheet(scenario: Scenario, into: Path) -> Image.Image:
+    """The frames in `into` as one picture: a row per band, a column per bearing."""
     bands = [band for band in scenario.outputs.bands if scenario.band_mounts(band)]
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
     mounts = [m for band in bands for m in scenario.band_mounts(band)]
     typeface = canvas.font()
     tiles: dict[str, Image.Image] = {}
-    for mount in mounts:
+    for mount, frame in preview.shown(scenario, into):
         # An exr is radiance; making it a picture is the render's job.
-        frame = into / f"{mount.name}.{scenario.outputs.format}"
         if scenario.outputs.format == "exr" or not frame.exists():
             raise FileNotFoundError(f"{frame}: render it, as png or jpg")
         tiles[mount.name] = _tile(frame, typeface, mount, mounts)
@@ -125,6 +124,11 @@ def compose(scenario: Scenario, into: Path) -> Path:
 
     laid = columns(mounts)
     cells = [[cell(column, band) for column in laid] for band in bands]
+    return canvas.table(cells, gap_px=GUTTER)
+
+
+def compose(scenario: Scenario, into: Path) -> Path:
+    """Write `montage.png` in `into`."""
     out = into / "montage.png"
-    canvas.table(cells, gap_px=GUTTER).save(out)
+    sheet(scenario, into).save(out)
     return out

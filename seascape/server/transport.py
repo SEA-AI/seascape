@@ -23,6 +23,7 @@ from seascape.server.tools import (
     cancel,
     catalog,
     jobs,
+    preview,
     render,
     render_result,
     scenario,
@@ -47,9 +48,9 @@ def mcp(state: State) -> MCPServer:
         "seascape",
         instructions="Synthetic maritime camera frames with exact ground truth. Read "
         "`catalog` once, then `scenario` and `schema` for what you will change. Start "
-        "a job with `render`, then call `render_result` until it is done. Without "
-        "draws, variants differ only in their waves: for varied images, render "
-        "`randomized`, or draw fields in `overrides`.",
+        "a job with `render`, then call `render_result` until it is done; `preview` "
+        "shows one frame. Without draws, variants differ only in their waves: for "
+        "varied images, render `randomized`, or draw fields in `overrides`.",
         lifespan=lifespan,
     )
     # Only `render` and `cancel` change what the server holds.
@@ -66,8 +67,9 @@ def mcp(state: State) -> MCPServer:
         cancel,
         annotations=ToolAnnotations(destructive_hint=True, open_world_hint=False),
     )
-    # Unstructured: the previews are images, which structured content cannot carry.
+    # Unstructured: the sheets are images, which structured content cannot carry.
     served.add_tool(render_result, annotations=read_only, structured_output=False)
+    served.add_tool(preview, annotations=read_only, structured_output=False)
     return served
 
 

@@ -6,6 +6,7 @@ it. Its files are deleted after `KEEP_S`.
 
 import asyncio
 import heapq
+import json
 import logging
 import os
 import shutil
@@ -14,10 +15,12 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from functools import partial
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
+from PIL import ExifTags
 from PIL import Image as Picture
 
 from seascape import assets
@@ -29,7 +32,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.outputs import preview
+from seascape.outputs import montage, preview
 from seascape.server.settings import Settings
 
 KEEP_S = 24 * 3600
@@ -37,8 +40,9 @@ KEEP_S = 24 * 3600
 SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
+# Judgement: sheets in a result before the client asks for more; each costs context.
 PREVIEWS = 8
-PREVIEW_STEM = "preview_"
+SHEET = "montage.jpg"
 # Judgement: loads hold the GIL, so a few at once cost every other client.
 LOADING = 2
 # Under uvicorn's handlers, so the lines reach the server's log.
@@ -74,6 +78,8 @@ class Job:
     task: asyncio.Task[None] | None = None
     # The largest scenes a replacement seed may draw.
     worst_bytes: float = 0.0
+    # What `render` was asked, to reproduce a picture from its metadata.
+    overrides: list[str] = field(default_factory=list)
 
     @property
     def size_bytes(self) -> float:
@@ -328,24 +334,33 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
     return [instantiate(tree, int(f.name)) for f in job.folders]
 
 
+def marked(picture: Picture.Image) -> Picture.Image:
+    """`picture` shrunk to what a client reads, with the mark on it."""
+    picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
+    return preview.watermark(picture)
+
+
+def provenance(job: Job, variant: int, camera: str | None = None) -> Picture.Exif:
+    """EXIF that says how a picture of `job`'s `variant` was made."""
+    exif = Picture.Exif()
+    exif[ExifTags.Base.Software] = f"seascape {version('seascape')}"
+    exif[ExifTags.Base.ImageDescription] = json.dumps(
+        {
+            "scenario": job.scenario,
+            "seed": job.scenes[variant].seed,
+            "overrides": job.overrides,
+            "camera": camera,
+        }
+    )
+    return exif
+
+
 def _finish(job: Job) -> None:
-    """A preview per camera of the first variant (none for exr), and an archive."""
-    scene, folder = job.scenes[0], job.folders[0]
-    if scene.outputs.format != "exr":
-        for mount, path in preview.shown(scene, folder)[:PREVIEWS]:
-            picture = preview.picture(path, mount.camera.agc)
-            picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
+    """A watermarked sheet per variant (none for exr), and an archive."""
+    if job.scenes[0].outputs.format != "exr":
+        for i, (scene, folder) in enumerate(zip(job.scenes, job.folders, strict=True)):
             # Judgement: a preview, so a smaller file over fidelity.
-            preview.watermark(picture).save(
-                folder / f"{PREVIEW_STEM}{mount.name}.jpg", quality=85
+            marked(montage.sheet(scene, folder)).save(
+                folder / SHEET, quality=85, exif=provenance(job, i)
             )
     shutil.make_archive(str(job.folder), "zip", job.folder)
-
-
-def files(job: Job, renders: Path) -> list[Path]:
-    """The job's files, relative to `renders`, but its numbered frames."""
-    return sorted(
-        path.relative_to(renders)
-        for path in job.folder.rglob("*")
-        if not path.stem.isdigit() and path.is_file()
-    )
