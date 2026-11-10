@@ -10,6 +10,7 @@ from seascape.blender.blend import (
     combine,
     lookup,
     node,
+    node_group,
     scalar,
     separate,
     vector,
@@ -103,9 +104,13 @@ def _line_path(
     )
 
 
-def _path(tree: bpy.types.NodeTree, wake: Wake, where: bpy.types.NodeSocket) -> _Path:
-    east, north, time_s = separate(tree, where)
-    east.node.name = "wake_position"
+def _path(
+    tree: bpy.types.NodeTree,
+    wake: Wake,
+    time_s: bpy.types.NodeSocket,
+    east: bpy.types.NodeSocket,
+    north: bpy.types.NodeSocket,
+) -> _Path:
     if wake.orbit_m is not None:
         return _orbit_path(tree, wake, time_s, east, north)
     return _line_path(tree, wake, time_s, east, north)
@@ -143,52 +148,94 @@ def _wakes(
         sea_slope_variance: The sea's total, both axes summed; a hull's arms are
             drawn only where they stand out from it.
     """
+    east, north, time_s = separate(tree, where)
+    east.node.name = "wake_position"
     # (band, foam, bubbles) maxed over wakes in one accumulator, so a wake's terms are
     # used up at its own step. Three, each read by a different closure, would hold
     # every wake's shared terms on Cycles' SVM stack until the last closure compiled.
     strongest = None
     tilt = None
-    for wake in wakes:
-        path = _path(tree, wake, where)
-        along = Num(tree, path.along)
-        behind = along.op("GREATER_THAN", 0.0)
-        # Ahead of the hull nothing has aged: unclamped, the exponentials overflow
-        # there, and the power below takes a negative base.
-        astern = along.op("MAXIMUM", 0.0)
-        side = Num(tree, path.across).op("ABSOLUTE")
-        # A judgement: a beam wide at the stern, widening as distance^(1/5).
-        width = astern.madd(1 / wake.length_m, 1.0).op("POWER", 0.2) * wake.beam_m
-        core = behind * _gaussian(side, width * 0.5)
-        age = astern / wake.speed_mps
-        fresh = (age * (-1 / FOAM_EFOLD_S)).op("EXPONENT")
-        stern = behind * _gaussian(side, wake.beam_m / 2)
-        patchy = _patchy(tree, stern * fresh, path.fixed, noise, ppf)
-        rising = (age * (-1 / BUBBLE_EFOLD_S)).op("EXPONENT")
-        bubbles = core * (rising * BUBBLE_GAIN)
-        these = combine(tree, core.socket, patchy.socket, bubbles.socket)
+    for i, wake in enumerate(wakes):
+        made = node(
+            tree,
+            "ShaderNodeGroup",
+            {"Time": time_s, "East": east, "North": north, "Footprint": footprint_m},
+            node_tree=_wake(f"wake_{i}", wake, noise, ppf, sea_slope_variance),
+        )
+        these = made.outputs["Strongest"]
         strongest = (
             these if strongest is None else vector(tree, "MAXIMUM", strongest, these)
         )
-        if wake.steepest_arm**2 / 2 < SEEN_SLOPE_VARIANCE * sea_slope_variance:
-            continue
-        lasting = behind
-        if wake.orbit_m is not None:
-            # A judgement: faded over the radius, past which the straight-path pattern
-            # no longer follows the turn.
-            fade = (along * (-1 / wake.orbit_m)).op("EXPONENT")
-            lasting = behind * fade
-        # Above the narrowing only the divergent wave, round its peak (Darmon et al.).
-        roots = (1.0, -1.0) if wake.froude <= NARROWING_FROUDE else (1.0,)
-        for root in roots:
-            arm = vector(
-                tree,
-                "SCALE",
-                _kelvin(tree, wake, root, path, footprint_m),
-                lasting,
-            )
-            tilt = arm if tilt is None else vector(tree, "ADD", tilt, arm)
+        if "Tilt" in made.outputs:
+            arms = made.outputs["Tilt"]
+            tilt = arms if tilt is None else vector(tree, "ADD", tilt, arms)
     assert strongest is not None
     return _Wakes(*separate(tree, strongest), tilt)
+
+
+def _wake(
+    name: str,
+    wake: Wake,
+    noise: bpy.types.Image,
+    ppf: bpy.types.Image,
+    sea_slope_variance: float,
+) -> bpy.types.NodeTree:
+    """One hull's wake, in its own node group: Blender searches a tree's every node to
+    name a new one and its every link to add one, so one tree holding every wake
+    builds in cubic time.
+
+    Its outputs are Strongest, (band, foam, bubbles), and Tilt, the Kelvin arms'
+    -grad(height), where they stand out from the sea.
+    """
+    arms = wake.steepest_arm**2 / 2 >= SEEN_SLOPE_VARIANCE * sea_slope_variance
+    tree, given, out = node_group(
+        name,
+        (
+            ("Time", "Float"),
+            ("East", "Float"),
+            ("North", "Float"),
+            ("Footprint", "Float"),
+        ),
+        (("Strongest", "Vector"), *((("Tilt", "Vector"),) if arms else ())),
+    )
+    path = _path(tree, wake, given["Time"], given["East"], given["North"])
+    along = Num(tree, path.along)
+    behind = along.op("GREATER_THAN", 0.0)
+    # Ahead of the hull nothing has aged: unclamped, the exponentials overflow
+    # there, and the power below takes a negative base.
+    astern = along.op("MAXIMUM", 0.0)
+    side = Num(tree, path.across).op("ABSOLUTE")
+    # A judgement: a beam wide at the stern, widening as distance^(1/5).
+    width = astern.madd(1 / wake.length_m, 1.0).op("POWER", 0.2) * wake.beam_m
+    core = behind * _gaussian(side, width * 0.5)
+    age = astern / wake.speed_mps
+    fresh = (age * (-1 / FOAM_EFOLD_S)).op("EXPONENT")
+    stern = behind * _gaussian(side, wake.beam_m / 2)
+    patchy = _patchy(tree, stern * fresh, path.fixed, noise, ppf)
+    rising = (age * (-1 / BUBBLE_EFOLD_S)).op("EXPONENT")
+    bubbles = core * (rising * BUBBLE_GAIN)
+    tree.links.new(
+        combine(tree, core.socket, patchy.socket, bubbles.socket), out["Strongest"]
+    )
+    if not arms:
+        return tree
+    lasting = behind
+    if wake.orbit_m is not None:
+        # A judgement: faded over the radius, past which the straight-path pattern
+        # no longer follows the turn.
+        fade = (along * (-1 / wake.orbit_m)).op("EXPONENT")
+        lasting = behind * fade
+    # Above the narrowing only the divergent wave, round its peak (Darmon et al.).
+    roots = (1.0, -1.0) if wake.froude <= NARROWING_FROUDE else (1.0,)
+    tilt = None
+    for root in roots:
+        arm = vector(
+            tree, "SCALE", _kelvin(tree, wake, root, path, given["Footprint"]), lasting
+        )
+        tilt = arm if tilt is None else vector(tree, "ADD", tilt, arm)
+    assert tilt is not None
+    tree.links.new(tilt, out["Tilt"])
+    return tree
 
 
 def _kelvin(

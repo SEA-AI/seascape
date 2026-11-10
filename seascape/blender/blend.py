@@ -316,6 +316,24 @@ def separate(
     return split.outputs["X"], split.outputs["Y"], split.outputs["Z"]
 
 
+def node_group(
+    name: str,
+    inputs: tuple[tuple[str, str], ...],
+    outputs: tuple[tuple[str, str], ...],
+) -> tuple[bpy.types.NodeTree, bpy.types.NodeOutputs, bpy.types.NodeInputs]:
+    """A node group with these (name, socket kind) inputs and outputs; its Group Input's
+    outputs and Group Output's inputs.
+    """
+    made = bpy.data.node_groups.new(name, "ShaderNodeTree")
+    for sockets, in_out in ((inputs, "INPUT"), (outputs, "OUTPUT")):
+        for socket, kind in sockets:
+            made.interface.new_socket(
+                socket, in_out=in_out, socket_type=f"NodeSocket{kind}"
+            )
+    given = made.nodes.new("NodeGroupInput").outputs
+    return made, given, made.nodes.new("NodeGroupOutput").inputs
+
+
 def value(
     tree: bpy.types.NodeTree, name: str, initial: float = 0.0
 ) -> bpy.types.NodeSocket:
