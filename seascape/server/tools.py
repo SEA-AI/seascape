@@ -65,7 +65,12 @@ def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
             for name, mesh in assets.manifest().items()
         },
         "skies": {
-            name: f"{photo.weather}, sun {photo.sun}"
+            name: {
+                "cover": photo.cover,
+                "cover_oktas": photo.cover_oktas,
+                "sun_band": photo.band,
+                "sun_elevation_deg": photo.sun_elevation_deg,
+            }
             for name, photo in skies.library().items()
         },
     }

@@ -31,9 +31,11 @@ WISHES: dict[str, list[str]] = {
 INSTRUCTIONS = (
     "The user may never have seen a scenario or TOML: turn what they ask for into "
     "`render` overrides yourself and say in plain words what you changed. Read "
-    "`catalog`, then `scenario` and `schema` for what you will change. Each `render` "
-    "takes every override again, and a list such as `objects` replaces the whole "
-    "list. Overrides for common wishes, over the default: "
+    "`catalog`, then `scenario` and `schema` for what you will change. Pick a sky "
+    "for `sky.hdri` from `catalog` by `cover` and `sun_band`, the nearest if none "
+    "matches. Each `render` takes every override again, and a list such as "
+    "`objects` replaces the whole list. Overrides for common wishes, over the "
+    "default: "
     + "; ".join(
         f"{wish}: {', '.join(f'`{line}`' for line in lines)}"
         for wish, lines in WISHES.items()

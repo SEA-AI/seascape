@@ -18,8 +18,7 @@ fraction determined by thermal infrared and visible all-sky cameras", Atmos. Mea
 Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit theirs to the pixels that are
 not cloud, against zenith angle, and refit; the clear-sky library of Ghonima et al.
 (Atmos. Meas. Tech. 5 2881, 2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith
-and angle from the sun. An overcast photo has no clear sky to fit; `skies.toml` marks
-which.
+and angle from the sun. An overcast photo (`cover_oktas` 8) has no clear sky to fit.
 """
 
 import math
@@ -28,6 +27,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -38,8 +38,14 @@ from seascape.physics import colour, earth, lwir
 
 LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
-# The midpoint of CARLA's ClearNoon (sun 45 deg up) and ClearSunset (15 deg).
-NOON_DEG = 30.0
+# Judgement: CARLA's ClearSunset sun altitude (carla-simulator/carla,
+# LibCarla/source/carla/rpc/WeatherParameters.cpp).
+LOW_SUN_DEG = 15.0
+# Aviation cover codes in oktas (eighths of the sky): SKC 0 and FEW 1-2 clear, SCT 3-4,
+# BKN 5-7, OVC 8 (eoas.ubc.ca/courses/atsc113, "Cloud Coverage").
+CLEAR_MAX_OKTAS = 2
+PARTLY_MAX_OKTAS = 4
+OVERCAST_OKTAS = 8
 # Judgement: the peak must outshine the median of the ring round it by this factor. An
 # unclipped disc clears it; a sun behind cloud or below the horizon does not. The ring
 # starts past DISC_DEG and ends inside AUREOLE_DEG, so it holds neither disc nor glare.
@@ -111,8 +117,8 @@ class Photo(File):
     # Measured by `diffuse_irradiance`, where no disc shows: a hidden sun's beam is
     # scaled from it.
     diffuse_irradiance: float | None = Field(default=None, gt=0.0)
-    # Labelled by eye: no clear sky shows, so none can be fitted.
-    overcast: bool = False
+    # By eye, in oktas above the horizon; `cloud` reads a thin or uniform deck as clear.
+    cover_oktas: int = Field(ge=0, le=OVERCAST_OKTAS)
     # The genus over most of the sky, by eye (WMO Cloud Atlas); high cloud is cirrus.
     cloud_genus: lwir.CloudGenus
     licence: str = Field(min_length=1)
@@ -133,17 +139,35 @@ class Photo(File):
         return "no disc" if elevation is None else f"{elevation:.1f} deg"
 
     @property
-    def weather(self) -> str:
-        """The sky in CARLA's words, such as "clear noon"; no disc, no time of day."""
-        if self.overcast:
-            sky = "overcast"
-        elif self.cloud_genus in ("clear", "cirrus"):
-            sky = "clear"
-        else:
-            sky = "cloudy"
-        if (elevation := self.sun_elevation_deg) is None:
-            return sky
-        return f"{sky} {'noon' if elevation >= NOON_DEG else 'sunset'}"
+    def overcast(self) -> bool:
+        """No clear sky shows, so none can be fitted."""
+        return self.cover_oktas == OVERCAST_OKTAS
+
+    @property
+    def cover(self) -> Literal["clear", "partly cloudy", "mostly cloudy", "overcast"]:
+        """Cloud cover in words, from `cover_oktas`."""
+        if self.cover_oktas <= CLEAR_MAX_OKTAS:
+            return "clear"
+        if self.cover_oktas <= PARTLY_MAX_OKTAS:
+            return "partly cloudy"
+        return "overcast" if self.overcast else "mostly cloudy"
+
+    @property
+    def band(self) -> Literal["day", "low sun"] | None:
+        """Where the sun is, from its elevation; None where no disc shows it.
+
+        Limitation: no dusk or night; a moon's disc would read as a sun.
+        """
+        elevation = self.sun_elevation_deg
+        if elevation is None:
+            return None
+        return "day" if elevation > LOW_SUN_DEG else "low sun"
+
+    @property
+    def label(self) -> str:
+        """The sky in everyday words, such as "clear low sun"."""
+        band = self.band
+        return f"{self.cover} {band}" if band else f"{self.cover}, sun hidden"
 
 
 @cache
