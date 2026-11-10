@@ -1,21 +1,17 @@
 #:schema ../schema/scenario.json
 
 # The server's `render` default: the baseline's rig and freighter at sunset, close
-# enough to read its wear, lit from behind the camera, through the camera a
-# Watchkeeper ships.
+# enough to read its wear, lit from behind the camera.
 extends = "baseline.toml"
 
 [sky]
 hdri = "table_mountain_2"
 # Behind the rig, so the low sun lights the hull. In frame it backlights it.
 sun_bearing_deg = 160.0
-# Judgement: a clear day, well above the Met Office's "good" at sea (over 5 nautical
-# miles). Without it the air holds no aerosol.
-visibility_km = 25.0
 
 [rigs.bow.cameras.eo]
-# Its sensor's noise and eHDR, as the Pod rig takes them. A preset replaces the
-# baseline's camera block, so the field of view and size are restated.
+# The sensor's noise and eHDR. A preset replaces the baseline's camera block, so the
+# field of view is restated, and the size at half the sensor's for render cost.
 preset = "basler_daa3840_ar0821"
 hfov_deg = 45.0
 width_px = 1920

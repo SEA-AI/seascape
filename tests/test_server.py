@@ -776,7 +776,7 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
     [
         ({"variants": 101}, "at most 100 variants"),
         ({"overrides": ["outputs.duration_s = 61.0"]}, "a clip lasts"),
-        # The showcase's sensor is 3840 wide, and a wider image fails validation first.
+        # On the baseline: the showcase's 3840-wide sensor fails a wider image first.
         (
             {
                 "scenario": "baseline",

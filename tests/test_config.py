@@ -1607,9 +1607,11 @@ def test_the_showcase_is_a_worn_hull_under_a_photographed_sky() -> None:
     assert showcase.worn == {"multipurpose_freighter"}
 
 
-def test_the_showcase_is_seen_through_air_and_a_sensor_with_noise() -> None:
+def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
     showcase = load(SCENARIOS / "showcase.toml")
     camera = next(m.camera for m in showcase.mounts if m.camera.band == "eo")
-    assert showcase.sky.visibility_km is not None
-    assert camera.sensor.full_well_e is not None
+    assert (camera.width_px, camera.height_px) == (1920, 1080)
+    assert camera.sensor.full_well_e == 12600.0
+    assert camera.sensor.hdr_ratio == 16.0
     assert camera.processing.white_balance == "grey_world"
+    assert camera.lens.vignetting
