@@ -10,14 +10,12 @@ hdri = "table_mountain_2"
 sun_bearing_deg = 160.0
 
 [rigs.bow.cameras.eo]
-# The sensor's noise and eHDR. A preset replaces the baseline's camera block, so the
-# field of view is restated, and the size at half the sensor's for render cost.
+# A preset replaces the baseline's camera block, so the field of view is restated,
+# and the size at half the sensor's for render cost.
 preset = "basler_daa3840_ar0821"
 hfov_deg = 45.0
 width_px = 1920
 height_px = 1080
-processing = { white_balance = "grey_world" }
-sensor = { hdr_ratio = 16.0 }
 # The cos^4 falloff of a lens at its field angle.
 lens = { vignetting = true }
 

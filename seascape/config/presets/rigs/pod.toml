@@ -1,7 +1,5 @@
 # The design geometry: three colour cameras on custom 42 deg lenses, 40 deg apart,
-# and a thermal camera on a custom 24 deg lens. The colour cameras balance white
-# continuously, as they ship, and take the AR0821's eHDR (datasheet) at Basler HDR
-# Beyond's default ratio.
+# and a thermal camera on a custom 24 deg lens.
 model = "Pod"
 
 [cameras.eo_p]
@@ -9,24 +7,18 @@ preset = "basler_daa3840_ar0821"
 hfov_deg = 42.0
 yaw_deg = -40.0
 pitch_deg = -10.0
-processing = { white_balance = "grey_world" }
-sensor = { hdr_ratio = 16.0 }
 
 [cameras.eo_c]
 preset = "basler_daa3840_ar0821"
 hfov_deg = 42.0
 yaw_deg = 0.0
 pitch_deg = -10.0
-processing = { white_balance = "grey_world" }
-sensor = { hdr_ratio = 16.0 }
 
 [cameras.eo_s]
 preset = "basler_daa3840_ar0821"
 hfov_deg = 42.0
 yaw_deg = 40.0
 pitch_deg = -10.0
-processing = { white_balance = "grey_world" }
-sensor = { hdr_ratio = 16.0 }
 
 [cameras.ir]
 preset = "jenoptik_evidir_alpha_640"

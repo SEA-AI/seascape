@@ -59,7 +59,6 @@ hfov_deg = 45.0
 width_px = 1920
 height_px = 1080
 sensor.gain_db = 12.0
-sensor.hdr_ratio = 16.0
 lens.vignetting = true
 lens.f_number = 5.6
 processing.white_balance_k = 800
