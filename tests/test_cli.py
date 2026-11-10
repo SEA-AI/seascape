@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import bpy
+import click
 import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
@@ -294,3 +295,13 @@ def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
     built = load(scenario)
     lines = len(built.rigs) + len(built.mounts)
     assert drawn_px[1] == rigview.TILE[1] + 16 + rigview.LINE_PX * lines
+
+
+def test_a_shader_cycles_draws_black_fails_the_render(tmp_path: Path) -> None:
+    log = tmp_path / "blender.log"
+    log.write_text(
+        "00:06.747  cycles           | ERROR Shader graph: out of SVM stack space, "
+        'shader "sea" too big.\n'
+    )
+    with pytest.raises(click.ClickException, match="SVM stack"):
+        cli._drawn_whole(log)

@@ -96,7 +96,19 @@ def _render(built: Scenario, into: Path) -> list[Path]:
         _progress(built.images, "Rendering") as bar,
         _blender_log(into / "blender.log"),
     ):
-        return renderer.render(built, into, lambda: bar.update(1))
+        written = renderer.render(built, into, lambda: bar.update(1))
+    _drawn_whole(into / "blender.log")
+    return written
+
+
+def _drawn_whole(log: Path) -> None:
+    """Fail where Cycles drew a shader black: past its SVM stack it logs, renders on,
+    and returns no error.
+    """
+    if "out of SVM stack space" in log.read_text(errors="replace"):
+        raise click.ClickException(
+            f"Cycles ran out of SVM stack and drew a shader black: see {log}"
+        )
 
 
 _QUALITY = "perc_lossless"
@@ -191,6 +203,7 @@ def render(
                     f"{len(folders)} of {variants} variants in {len(tries)} seeds: "
                     "hulls meet in the rest"
                 )
+        _drawn_whole(into / "blender.log")
         written.append(labels.merge(into, folders).write(into))
     for path in written:
         click.echo(path)
