@@ -536,10 +536,21 @@ def _heaviest_drawn_sea(*, strongest: bool = False, **sections: Any) -> Scenario
 
 
 def _wakes(hulls: int) -> tuple[Wake, ...]:
+    """Fast enough that their Kelvin arms draw, each its own: Cycles merges identical
+    nodes, so copies of one wake hold the stack of one.
+    """
     return tuple(
-        Wake(speed_mps=3.0, length_m=60.0, beam_m=10.0, start_m=(0.0, 2000.0))
-        for _ in range(hulls)
+        Wake(
+            speed_mps=6.0 + 0.1 * i,
+            length_m=60.0,
+            beam_m=10.0,
+            start_m=(50.0 * i, 2000.0),
+        )
+        for i in range(hulls)
     )
+
+
+CROWD = 24
 
 
 # The heaviest sky: a photo, whose clouds the IR sea reflects, in mist, whose haze takes
@@ -554,7 +565,7 @@ def _heaviest_haze(band: Band) -> None:
 
 @pytest.mark.render
 @pytest.mark.parametrize("band", ["eo", "ir"])
-@pytest.mark.parametrize("hulls", [0, 1])
+@pytest.mark.parametrize("hulls", [0, 1, CROWD])
 def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
     capfd: pytest.CaptureFixture[str],
     tmp_path: Path,

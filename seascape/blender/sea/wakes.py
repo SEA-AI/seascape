@@ -143,9 +143,9 @@ def _wakes(
         sea_slope_variance: The sea's total, both axes summed; a hull's arms are
             drawn only where they stand out from it.
     """
-    band: Num | float = 0.0
-    foam: Num | float = 0.0
-    bubbles: Num | float = 0.0
+    # (band, foam, bubbles) maxed over wakes; three accumulators would each hold every
+    # wake on Cycles' SVM stack until the last closure compiles.
+    strongest = None
     tilt = None
     for wake in wakes:
         path = _path(tree, wake, where)
@@ -158,14 +158,16 @@ def _wakes(
         # A judgement: a beam wide at the stern, widening as distance^(1/5).
         width = astern.madd(1 / wake.length_m, 1.0).op("POWER", 0.2) * wake.beam_m
         core = behind * _gaussian(side, width * 0.5)
-        band = core.rop("MAXIMUM", band)
         age = astern / wake.speed_mps
         fresh = (age * (-1 / FOAM_EFOLD_S)).op("EXPONENT")
         stern = behind * _gaussian(side, wake.beam_m / 2)
         patchy = _patchy(tree, stern * fresh, path.fixed, noise, ppf)
-        foam = patchy.rop("MAXIMUM", foam)
         rising = (age * (-1 / BUBBLE_EFOLD_S)).op("EXPONENT")
-        bubbles = (core * (rising * BUBBLE_GAIN)).rop("MAXIMUM", bubbles)
+        bubbles = core * (rising * BUBBLE_GAIN)
+        these = combine(tree, core.socket, patchy.socket, bubbles.socket)
+        strongest = (
+            these if strongest is None else vector(tree, "MAXIMUM", strongest, these)
+        )
         if wake.steepest_arm**2 / 2 < SEEN_SLOPE_VARIANCE * sea_slope_variance:
             continue
         lasting = behind
@@ -184,9 +186,8 @@ def _wakes(
                 lasting,
             )
             tilt = arm if tilt is None else vector(tree, "ADD", tilt, arm)
-    assert isinstance(band, Num) and isinstance(foam, Num)
-    assert isinstance(bubbles, Num)
-    return _Wakes(band.socket, foam.socket, bubbles.socket, tilt)
+    assert strongest is not None
+    return _Wakes(*separate(tree, strongest), tilt)
 
 
 def _kelvin(
