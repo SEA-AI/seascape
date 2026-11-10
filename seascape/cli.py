@@ -62,6 +62,9 @@ def _blender_log(path: Path) -> Generator[None]:
     file descriptor 1 from C, where either would tear the progress bar and mix into
     stdout.
 
+    Fails where Cycles drew a shader black: past its SVM stack it logs, renders on,
+    and returns no error.
+
     Args:
         path: The log, appended to; its folder is made if missing.
     """
@@ -69,6 +72,7 @@ def _blender_log(path: Path) -> Generator[None]:
     sys.stdout.flush()
     stdout = os.dup(1)
     with path.open("a") as log, redirect_stdout(log):
+        start = log.tell()
         os.dup2(log.fileno(), 1)
         try:
             yield
@@ -76,6 +80,12 @@ def _blender_log(path: Path) -> Generator[None]:
             log.flush()
             os.dup2(stdout, 1)
             os.close(stdout)
+    with path.open(errors="replace") as log:
+        log.seek(start)
+        if "out of SVM stack space" in log.read():
+            raise click.ClickException(
+                f"Cycles ran out of SVM stack and drew a shader black: see {path.name}"
+            )
 
 
 def _progress(length: int, label: str) -> Any:
@@ -96,19 +106,7 @@ def _render(built: Scenario, into: Path) -> list[Path]:
         _progress(built.images, "Rendering") as bar,
         _blender_log(into / "blender.log"),
     ):
-        written = renderer.render(built, into, lambda: bar.update(1))
-    _drawn_whole(into / "blender.log")
-    return written
-
-
-def _drawn_whole(log: Path) -> None:
-    """Fail where Cycles drew a shader black: past its SVM stack it logs, renders on,
-    and returns no error.
-    """
-    if "out of SVM stack space" in log.read_text(errors="replace"):
-        raise click.ClickException(
-            f"Cycles ran out of SVM stack and drew a shader black: see {log}"
-        )
+        return renderer.render(built, into, lambda: bar.update(1))
 
 
 _QUALITY = "perc_lossless"
@@ -203,7 +201,6 @@ def render(
                     f"{len(folders)} of {variants} variants in {len(tries)} seeds: "
                     "hulls meet in the rest"
                 )
-        _drawn_whole(into / "blender.log")
         written.append(labels.merge(into, folders).write(into))
     for path in written:
         click.echo(path)

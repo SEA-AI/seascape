@@ -297,11 +297,42 @@ def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
     assert drawn_px[1] == rigview.TILE[1] + 16 + rigview.LINE_PX * lines
 
 
-def test_a_shader_cycles_draws_black_fails_the_render(tmp_path: Path) -> None:
-    log = tmp_path / "blender.log"
-    log.write_text(
-        "00:06.747  cycles           | ERROR Shader graph: out of SVM stack space, "
-        'shader "sea" too big.\n'
+@pytest.mark.render
+def test_a_shader_cycles_draws_black_fails_the_command(tmp_path: Path) -> None:
+    """Nested Mix Shaders each hold their factor on the SVM stack, past its end."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 1
+    sc.render.resolution_x = sc.render.resolution_y = 8
+    bpy.ops.mesh.primitive_plane_add()
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 5.0))
+    sc.camera = bpy.context.object
+    material = bpy.data.materials.new("deep")
+    bpy.data.objects["Plane"].data.materials.append(material)
+    tree = material.node_tree
+    x = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(
+        tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"], x.inputs[0]
     )
-    with pytest.raises(click.ClickException, match="SVM stack"):
-        cli._drawn_whole(log)
+    surface = tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"]
+    for i in range(300):
+        # Not a constant, or Cycles folds the Mix away.
+        factor = tree.nodes.new("ShaderNodeMath")
+        factor.operation = "MULTIPLY"
+        tree.links.new(x.outputs["X"], factor.inputs[0])
+        factor.inputs[1].default_value = 1e-12 * (i + 1)
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        tree.links.new(factor.outputs[0], mix.inputs[0])
+        tree.links.new(surface, mix.inputs[1])
+        tree.links.new(
+            tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"], mix.inputs[2]
+        )
+        surface = mix.outputs[0]
+    output = tree.nodes["Material Output"]
+    tree.links.new(surface, output.inputs["Surface"])
+    with (
+        pytest.raises(click.ClickException, match=r"see blender\.log"),
+        cli._blender_log(tmp_path / "blender.log"),
+    ):
+        bpy.ops.render.render()
