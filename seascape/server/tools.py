@@ -172,7 +172,7 @@ def _sheets(found: Job) -> list[Path]:
     return [f / SHEET for f in found.folders if (f / SHEET).exists()]
 
 
-async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
+async def get_job(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, its error,
     or its archive URL, the cameras, and a watermarked sheet per variant (none for
     exr). `preview` shows one frame.

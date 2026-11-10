@@ -81,7 +81,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         "scenario": True,
         "schema": True,
         "jobs": True,
-        "render_result": True,
+        "get_job": True,
         "preview": True,
         "render": False,
         "cancel": False,
@@ -341,7 +341,7 @@ def _rendered(state: State, *then: tuple[str, dict[str, Any]]) -> list[Any]:
 def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
     state: State,
 ) -> None:
-    (result,) = _rendered(state, ("render_result", {}))
+    (result,) = _rendered(state, ("get_job", {}))
     report = json.loads(result.content[0].text)
     assert report["status"] == "done", report
     assert report["archive"].endswith(".zip")
@@ -368,7 +368,7 @@ def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
     camera = mounts[0].name
     _, sheet, frame, *refused = _rendered(
         state,
-        ("render_result", {}),
+        ("get_job", {}),
         ("preview", {"variant": 1}),
         ("preview", {"camera": camera}),
         ("preview", {"variant": 2}),
@@ -455,7 +455,7 @@ def test_cancel_stops_a_job_and_hands_the_gpu_on(
             with pytest.raises(ProcessLookupError):
                 os.kill(pid, 0)
             assert not state.jobs[first].folder.exists()
-            reported = await client.call_tool("render_result", {"job": first})
+            reported = await client.call_tool("get_job", {"job": first})
             assert isinstance(report := reported.content[0], TextContent)
             assert json.loads(report.text) == {"status": "cancelled"}
 
@@ -557,9 +557,7 @@ def test_a_waiting_result_reports_progress(
         async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {})
             name = started.structured_content["job"]
-            await client.call_tool(
-                "render_result", {"job": name}, progress_callback=progress
-            )
+            await client.call_tool("get_job", {"job": name}, progress_callback=progress)
             await client.call_tool("cancel", {"job": name})
 
     asyncio.run(call())
