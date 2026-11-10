@@ -6,6 +6,7 @@ it. Its files are deleted after `KEEP_S`.
 
 import asyncio
 import heapq
+import io
 import logging
 import os
 import shutil
@@ -29,7 +30,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.outputs import preview
+from seascape.outputs import montage, preview, provenance
 from seascape.server.settings import Settings
 
 KEEP_S = 24 * 3600
@@ -37,8 +38,7 @@ KEEP_S = 24 * 3600
 SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
-PREVIEWS = 8
-PREVIEW_STEM = "preview_"
+SHEET = "montage.jpg"
 # Judgement: loads hold the GIL, so a few at once cost every other client.
 LOADING = 2
 # Under uvicorn's handlers, so the lines reach the server's log.
@@ -74,6 +74,7 @@ class Job:
     task: asyncio.Task[None] | None = None
     # The largest scenes a replacement seed may draw.
     worst_bytes: float = 0.0
+    overrides: list[str] = field(default_factory=list)
 
     @property
     def size_bytes(self) -> float:
@@ -97,7 +98,7 @@ class Job:
 
     @property
     def images(self) -> int:
-        """Written so far; a jpg job's preview.jpg shares the suffix."""
+        """Written so far; a jpg job's sheet shares the suffix."""
         suffix = f".{self.scenes[0].outputs.format}"
         written = sum(path.suffix == suffix for path in self.folder.rglob("*"))
         return min(written, self.total)
@@ -288,7 +289,7 @@ async def _seascape(*args: str) -> None:
 async def run(
     state: State, job: Job, path: Path, overrides: list[str], variants: int
 ) -> None:
-    """Take the GPU in turn, render and encode the job, then preview and zip it."""
+    """Take the GPU in turn, render and encode the job, then zip it, with its sheets."""
     sets = [arg for line in overrides for arg in ("--set", line)]
     max_run_s = state.settings.max_run_s
     limit: asyncio.Timeout | None = None
@@ -328,24 +329,28 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
     return [instantiate(tree, int(f.name)) for f in job.folders]
 
 
+def marked_jpeg(
+    picture: Picture.Image, exif: Picture.Exif, *, below: bool = False
+) -> bytes:
+    """`picture` as a marked JPEG at most `PREVIEW_PX` a side, shrunk in place."""
+    picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    # Judgement: a preview, so a smaller file over fidelity.
+    preview.watermark(picture, below=below).save(buffer, "JPEG", quality=85, exif=exif)
+    return buffer.getvalue()
+
+
 def _finish(job: Job) -> None:
-    """A preview per camera of the first variant (none for exr), and an archive."""
-    scene, folder = job.scenes[0], job.folders[0]
-    if scene.outputs.format != "exr":
-        for mount, path in preview.shown(scene, folder)[:PREVIEWS]:
-            picture = preview.picture(path, mount.camera.agc)
-            picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
-            # Judgement: a preview, so a smaller file over fidelity.
-            preview.watermark(picture).save(
-                folder / f"{PREVIEW_STEM}{mount.name}.jpg", quality=85
-            )
+    """An archive of the frames, and beside it a watermarked sheet per variant (none
+    for exr). A sheet that cannot be made is logged and left out: the render is done.
+    """
     shutil.make_archive(str(job.folder), "zip", job.folder)
-
-
-def files(job: Job, renders: Path) -> list[Path]:
-    """The job's files, relative to `renders`, but its numbered frames."""
-    return sorted(
-        path.relative_to(renders)
-        for path in job.folder.rglob("*")
-        if not path.stem.isdigit() and path.is_file()
-    )
+    if job.scenes[0].outputs.format != "exr":
+        for scene, folder in zip(job.scenes, job.folders, strict=True):
+            try:
+                sheet = montage.sheet(scene, folder)
+                exif = provenance.exif(job.scenario, scene.seed, job.overrides)
+                (folder / SHEET).write_bytes(marked_jpeg(sheet, exif, below=True))
+            # `montage.sheet`: ValueError for no frames, OSError for a missing one.
+            except (OSError, ValueError):
+                log.exception("job %s: no sheet for %s", job.folder.name, folder.name)
