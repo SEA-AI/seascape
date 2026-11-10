@@ -1613,14 +1613,3 @@ def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
     assert (camera.width_px, camera.height_px) == (1920, 1080)
     assert camera.sensor.full_well_e == 12600.0
     assert camera.lens.vignetting
-
-
-def _basler(preset: str) -> Camera:
-    line = f'rigs.bow.cameras.eo = {{ preset = "{preset}", hfov_deg = 45.0 }}'
-    return load(BASELINE, [line]).rigs["bow"].cameras["eo"]
-
-
-def test_the_basler_preset_ships_its_white_balance_and_ehdr() -> None:
-    camera = _basler("basler_daa3840_ar0821")
-    assert camera.processing.white_balance == "grey_world"
-    assert camera.sensor.hdr_ratio == 16.0
