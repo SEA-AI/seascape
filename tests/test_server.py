@@ -719,10 +719,10 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     state = _state(tmp_path, max_queued=2)
     loads: list[object] = []
 
-    def slow_load(*args: object) -> tuple[list[object], float]:
+    def slow_load(*args: object) -> tuple[list[object], float, list[str]]:
         loads.append(args)
         time.sleep(0.3)
-        return [], 1.0
+        return [], 1.0, []
 
     async def idle(*_: object) -> None:
         await asyncio.sleep(0)
@@ -871,3 +871,13 @@ def test_render_says_a_list_override_replaces_the_scenarios_list(
             return tools["render"].description or ""
 
     assert "replaces the whole list" in " ".join(asyncio.run(described()).split())
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_an_override_the_scenario_ignores_is_reported_with_the_job(
+    state: State,
+) -> None:
+    ignored = _call(state, "render", overrides=["sky.sun_elevation_deg = 5.0"])
+    honoured = _call(state, "render", scenario="baseline")
+    assert "sun_elevation_deg is ignored" in str(ignored.structured_content["warnings"])
+    assert "warnings" not in honoured.structured_content

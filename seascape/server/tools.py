@@ -98,13 +98,14 @@ async def render(
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
 
-    The default, `showcase`, is a worn freighter at sunset under a photographed sky,
-    whose sun elevation is the photo's: for another, render `baseline`. `overrides`
-    are TOML lines merged over the scenario: `sky.sun_bearing_deg = 90`,
+    The default, `showcase`, is a worn freighter at sunset under a photographed sky.
+    The photo fixes the sun's elevation; `baseline` takes `sky.sun_elevation_deg`.
+    `overrides` are TOML lines merged over the scenario: `sky.sun_bearing_deg = 90`,
     `sea.wind_speed_mps = { uniform = [2, 12] }`. A list such as `objects` replaces the
     whole list. `variants` renders that many seeds from the scenario's own, each drawn
     anew, skipping a seed whose hulls meet, up to the server's variant and image
-    limits. Every seed it may try must fit the clip, sample and camera limits.
+    limits. Every seed it may try must fit the clip, sample and camera limits. A
+    `warnings` list in the result names an override that changed nothing.
     """
     state = _state(ctx)
     settings = state.settings
@@ -131,7 +132,7 @@ async def render(
     loading = asyncio.create_task(load(state, path, lines, variants))
     try:
         try:
-            job.scenes, job.worst_bytes = await asyncio.shield(loading)
+            job.scenes, job.worst_bytes, warned = await asyncio.shield(loading)
         # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
         except ValueError as error:
             raise ToolError(str(error)) from error
@@ -152,7 +153,8 @@ async def render(
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
         job.task = asyncio.create_task(run(state, job, path, lines, variants))
-        return {"job": name, "images": job.total, "jobs_ahead": ahead}
+        started = {"job": name, "images": job.total, "jobs_ahead": ahead}
+        return {**started, "warnings": warned} if warned else started
     finally:
         # Refused, failed or abandoned. The load thread cannot be stopped, so the
         # place is kept until it ends.
