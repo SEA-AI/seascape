@@ -14,6 +14,13 @@ from PIL.ImageFont import FreeTypeFont
 
 # Brand Book 2026: logo PNGs, typeface and its licence.
 BRAND = resources.files("seascape.outputs") / "brand"
+FOCUS_RED = "#CB0D00"
+NIGHT_BLUE = "#0B1731"
+OCEAN_TEAL = "#06404C"
+SKY_GREY = "#7B9194"
+FOG_WHITE = "#DFDED9"
+# The family's name, for a plotting library that finds it among installed fonts.
+FONT_FAMILY = "Barlow Semi Condensed"
 # JPEG holds no alpha.
 _MODE = "RGB"
 MATTE = (24, 24, 24)

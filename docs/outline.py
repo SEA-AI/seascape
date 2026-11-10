@@ -5,8 +5,8 @@ import numpy as np
 import supervision as sv
 from PIL import Image
 
-from docs.brand import FOCUS_RED
 from seascape.outputs import labels
+from seascape.outputs.canvas import FOCUS_RED
 
 
 def masks(

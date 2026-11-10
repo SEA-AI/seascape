@@ -10,9 +10,9 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from docs.brand import FOG_WHITE, NIGHT_BLUE
 from seascape.outputs import canvas, labels
 from seascape.outputs.calibration import Calibration
+from seascape.outputs.canvas import FOG_WHITE, NIGHT_BLUE
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {

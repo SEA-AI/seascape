@@ -11,7 +11,6 @@ import numpy as np
 from matplotlib import font_manager
 from matplotlib.axes import Axes
 
-from docs.brand import FOCUS_RED, FOG_WHITE, FONT, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY
 from docs.primer.figures import (
     CROP_PX,
     CROP_SCALE,
@@ -22,6 +21,14 @@ from docs.primer.figures import (
     PRIMER,
 )
 from seascape.config import load
+from seascape.outputs.canvas import (
+    FOCUS_RED,
+    FOG_WHITE,
+    FONT_FAMILY,
+    NIGHT_BLUE,
+    OCEAN_TEAL,
+    SKY_GREY,
+)
 from seascape.physics import atmosphere, earth, lwir
 
 OUT = HERE / "charts"
@@ -158,7 +165,7 @@ def draw(name: str, theme: str) -> None:
     title, subtitle, chart = CHARTS[name]
     with mpl.rc_context(
         {
-            "font.family": FONT,
+            "font.family": FONT_FAMILY,
             "font.size": 10.5,
             "figure.facecolor": t["surface"],
             "axes.facecolor": t["surface"],
@@ -189,7 +196,7 @@ def draw(name: str, theme: str) -> None:
 
 
 if __name__ == "__main__":
-    font_manager.findfont(FONT, fallback_to_default=False)
+    font_manager.findfont(FONT_FAMILY, fallback_to_default=False)
     OUT.mkdir(exist_ok=True)
     for name in CHARTS:
         for theme in THEMES:
