@@ -26,7 +26,7 @@ DISPLACED_HEIGHT_SHARE = 0.999
 # surface and displacement share, at 7 m/s in eo, 2 m fits.
 DISPLACED_MIN_M = 4.0
 # A judgement: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
-DICING_PX = 2.0
+DICING_PX = 3.0
 # A judgement: the longest edge it dices to near the camera, an eighth of the shortest
 # displaced wave, where a straight edge strays from a cosine by at most 1 - cos(pi / 8),
 # 8 % of its amplitude.
