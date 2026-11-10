@@ -277,10 +277,8 @@ def _write_settings(
     entries = _parameters(firsts, raw, videos)
     _write_json(serialized, {"product_name": model, "cameras": entries})
     written = [settings, parameters, sensors, serialized]
-    module = into / "POWER_Const" / "module_info.json"
-    # A re-export reuses the folder: one without a version leaves none behind.
-    module.unlink(missing_ok=True)
     if rig.get("hardware_version"):
+        module = into / "POWER_Const" / "module_info.json"
         _write_json(
             module,
             {
@@ -336,12 +334,11 @@ def export(run: Path) -> list[Path]:
         model = models[rig]
         assert model is not None  # refused above
         into = run / "recordings" / rig / f"{model}_recordings_{ts}"
-        (into / "POWER_Const").mkdir(parents=True, exist_ok=True)
+        _empty(into / "POWER_Const")
         for name, shots in cameras.items():
             shots.sort(key=lambda shot: time_s[shot.image])
             short = _short(shots[0])
             video = into / f"{model}_{short}_record_{ts}.mp4"
-            video.unlink(missing_ok=True)
             # A hard link keeps the render's own layout valid without a copy; a
             # filesystem without them gets the copy.
             try:
@@ -359,6 +356,15 @@ def export(run: Path) -> list[Path]:
             into, model, scenario["rigs"][rig], firsts, raw.get(rig), created
         )
     return written
+
+
+def _empty(folder: Path) -> None:
+    """`folder` made afresh under an empty parent, so nothing an earlier export wrote
+    outlives a re-export.
+    """
+    if folder.parent.exists():
+        shutil.rmtree(folder.parent)
+    folder.mkdir(parents=True)
 
 
 def _short(camera: CameraCalibration) -> str:
