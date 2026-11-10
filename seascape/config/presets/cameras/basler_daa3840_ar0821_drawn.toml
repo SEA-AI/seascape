@@ -16,7 +16,7 @@ vignetting = { choice = [true, false] }
 # Judgements.
 [processing]
 # `white_balance_k` acts only on a fixed balance.
-white_balance = "fixed"
+white_balance = { choice = ["fixed", "grey_world"] }
 white_balance_k = { uniform = [-1500.0, 1500.0] }
 sharpen = { uniform = [0.0, 1.0] }
 exposure_ev = { uniform = [-1.0, 1.0] }

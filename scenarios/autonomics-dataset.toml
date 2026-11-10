@@ -17,8 +17,8 @@ pitch_deg = { uniform = [-10.0, -5.0] }
 [[rigs.bow.cameras.choice]]
 # Judgement: exposure up to the 2.25 EV over this meter that a video frame into the
 # glint took.
-eo42 = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 42.0, width_px = 3840, height_px = 2160, processing = { exposure_ev = { uniform = [-1.0, 2.5] }, white_balance = { choice = ["fixed", "grey_world"] } } }
-eo45 = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 45.0, width_px = 3840, height_px = 2160, processing = { exposure_ev = { uniform = [-1.0, 2.5] }, white_balance = { choice = ["fixed", "grey_world"] } } }
+eo42 = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 42.0, width_px = 3840, height_px = 2160, processing = { exposure_ev = { uniform = [-1.0, 2.5] } } }
+eo45 = { preset = "basler_daa3840_ar0821_drawn", hfov_deg = 45.0, width_px = 3840, height_px = 2160, processing = { exposure_ev = { uniform = [-1.0, 2.5] } } }
 
 [ownship]
 pitch_deg = { uniform = [-0.5, 0.5] }
