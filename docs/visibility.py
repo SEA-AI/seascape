@@ -11,11 +11,10 @@ import bpy
 import numpy as np
 from PIL import Image, ImageDraw
 
-from docs.brand import FOCUS_RED, FOG_WHITE, NIGHT_BLUE, OCEAN_TEAL, SKY_GREY, font
 from seascape import render
 from seascape.blender import blend, scene
 from seascape.config import load
-from seascape.outputs import labels
+from seascape.outputs import brand, labels
 
 SCENARIO = Path(__file__).with_name("visibility.toml")
 PAD_PX, LEFT_PX, WIDTH_PX, THUMB_PX = 24, 620, 1000, (300, 150)
@@ -83,7 +82,7 @@ def zoomed(r: dict) -> tuple[Image.Image, float]:
     img = Image.fromarray(r["rgb"]).resize(size, Image.Resampling.NEAREST)
     draw = ImageDraw.Draw(img)
     y0, y1 = r["row"] * scale, (r["row"] + 1) * scale
-    for part, colour in (("flank", OCEAN_TEAL), ("ship", FOCUS_RED)):
+    for part, colour in (("flank", brand.OCEAN_TEAL), ("ship", brand.FOCUS_RED)):
         for run in runs(r[part]):
             box = [run[0] * scale, y0, (run[-1] + 1) * scale - 1, y1]
             draw.rectangle(box, outline=colour, width=3)
@@ -104,21 +103,32 @@ def chart(r: dict, scale: float, height: int) -> Image.Image:
 
     for x, value in enumerate(r["delta_e"]):
         colour = (
-            FOCUS_RED if r["ship"][x] else OCEAN_TEAL if r["flank"][x] else FOG_WHITE
+            brand.FOCUS_RED
+            if r["ship"][x]
+            else brand.OCEAN_TEAL
+            if r["flank"][x]
+            else brand.FOG_WHITE
         )
         draw.rectangle(
             [x * scale + 1, y(value), (x + 1) * scale - 2, base], fill=colour
         )
-    draw.line([0, base, LEFT_PX, base], fill=SKY_GREY, width=1)
-    for part, colour in (("ship", FOCUS_RED), ("flank", OCEAN_TEAL)):
+    draw.line([0, base, LEFT_PX, base], fill=brand.SKY_GREY, width=1)
+    for part, colour in (("ship", brand.FOCUS_RED), ("flank", brand.OCEAN_TEAL)):
         mean = y(float(r["delta_e"][r[part]].mean()))
         for x in range(0, LEFT_PX, 10):
             draw.line([x, mean, x + 5, mean], fill=colour, width=2)
     draw.text(
-        (0, base + 4), "0 = the sea's colour on this row", fill="black", font=font(14)
+        (0, base + 4),
+        "0 = the sea's colour on this row",
+        fill="black",
+        font=brand.font(14),
     )
     draw.text(
-        (LEFT_PX, base + 4), "dashed: means", fill="black", font=font(14), anchor="ra"
+        (LEFT_PX, base + 4),
+        "dashed: means",
+        fill="black",
+        font=brand.font(14),
+        anchor="ra",
     )
     return img
 
@@ -136,14 +146,16 @@ def thumbnail(frame: np.ndarray, index: np.ndarray, p: int, seen: bool) -> Image
     right, bottom = (xs.max() - x0 + 3) * s, (ys.max() - y0 + 3) * s
     draw = ImageDraw.Draw(img)
     if seen:
-        draw.rectangle([left, top, right, bottom], outline=FOCUS_RED, width=2)
+        draw.rectangle([left, top, right, bottom], outline=brand.FOCUS_RED, width=2)
         return img
     for a in np.arange(left, right, 10):
         for edge in (top, bottom):
-            draw.line([a, edge, min(a + 5, right), edge], fill=FOCUS_RED, width=2)
+            draw.line([a, edge, min(a + 5, right), edge], fill=brand.FOCUS_RED, width=2)
     for a in np.arange(top, bottom, 10):
         for edge in (left, right):
-            draw.line([edge, a, edge, min(a + 5, bottom)], fill=FOCUS_RED, width=2)
+            draw.line(
+                [edge, a, edge, min(a + 5, bottom)], fill=brand.FOCUS_RED, width=2
+            )
     return img
 
 
@@ -155,19 +167,21 @@ def main(out: Path) -> None:
         raise ValueError("the near ship must be seen and the far one not")
     r = row_through(frame, index, near)
     zoom, scale = zoomed(r)
-    body, label = font(18), font(18, "Medium")
+    body, label = brand.font(18), brand.font(18, "Medium")
     sheet = Image.new("RGB", (WIDTH_PX, 2000), "white")
     draw = ImageDraw.Draw(sheet)
     draw.text(
         (PAD_PX, PAD_PX),
         "Does the ship differ from the sea more than the sea does from itself?",
-        fill=NIGHT_BLUE,
-        font=font(24, "Medium"),
+        fill=brand.NIGHT_BLUE,
+        font=brand.font(24, "Medium"),
     )
 
     # The verdicts first: the chart stretches to end level with them.
     x, y = PAD_PX + LEFT_PX + 2 * PAD_PX, PAD_PX + 48
-    draw.text((x, y), "3  Ship mean minus flank mean", fill=NIGHT_BLUE, font=label)
+    draw.text(
+        (x, y), "3  Ship mean minus flank mean", fill=brand.NIGHT_BLUE, font=label
+    )
     y += 28
     for p, value in zip((near, far), found, strict=True):
         seen = value >= labels.MIN_EXCESS_DE
@@ -177,21 +191,26 @@ def main(out: Path) -> None:
         draw.text((x, y), f"{value:.1f} ΔE*ab: {verdict}", fill="black", font=body)
         y += 36
     draw.text(
-        (x, y), f"Under {labels.MIN_EXCESS_DE:g}: no box", fill=FOCUS_RED, font=label
+        (x, y),
+        f"Under {labels.MIN_EXCESS_DE:g}: no box",
+        fill=brand.FOCUS_RED,
+        font=label,
     )
     bottom = y + 24
 
     x, y = PAD_PX, PAD_PX + 48
-    draw.text((x, y), "1  One row through the ship", fill=NIGHT_BLUE, font=label)
+    draw.text((x, y), "1  One row through the ship", fill=brand.NIGHT_BLUE, font=label)
     right = x + LEFT_PX
-    for text, colour in (("ship", FOCUS_RED), ("flank", OCEAN_TEAL)):
+    for text, colour in (("ship", brand.FOCUS_RED), ("flank", brand.OCEAN_TEAL)):
         right -= draw.textlength(text, font=body)
         draw.text((right, y + 2), text, fill=colour, font=body)
         right -= 16
     y += 28
     sheet.paste(zoom, (x, y))
     y += zoom.height + 20
-    draw.text((x, y), "2  Each pixel's ΔE*ab from the sea", fill=NIGHT_BLUE, font=label)
+    draw.text(
+        (x, y), "2  Each pixel's ΔE*ab from the sea", fill=brand.NIGHT_BLUE, font=label
+    )
     y += 28
     sheet.paste(chart(r, scale, bottom - y), (x, y))
     sheet = sheet.crop((0, 0, WIDTH_PX, bottom + PAD_PX))

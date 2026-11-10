@@ -23,7 +23,7 @@ from seascape.blender import blend, faces, wear
 from seascape.blender.faces import Parts, face_zones
 from seascape.blender.meshes import import_asset, mesh_objects
 from seascape.blender.workbench import VIEW_PX, Aim, aim, setup, shoot
-from seascape.outputs import canvas
+from seascape.outputs import brand, canvas
 from seascape.physics.colour import srgb_encode
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
@@ -185,7 +185,7 @@ def _mark(
     edge: tuple[int, ...],
     taken: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
-    typeface = canvas.font(15)
+    typeface = brand.font(15)
     left, top, right, bottom = draw.textbbox(xy, text, font=typeface, anchor="mm")
     box = (left - 4, top - 3, right + 4, bottom + 3)
     if taken is not None:
@@ -206,14 +206,14 @@ def _grid(tiles: list[tuple[Image.Image, str]], title: list[str]) -> Image.Image
         draw.text(
             (8, 4 + 22 * k),
             line,
-            font=canvas.font(18 if k == 0 else 14),
+            font=brand.font(18 if k == 0 else 14),
             fill=canvas.INK,
         )
     cells = []
     for tile, caption in tiles:
         cell = ImageOps.expand(tile, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
         ImageDraw.Draw(cell).text(
-            (6, TILE[1] + 3), caption, font=canvas.font(14), fill=canvas.INK
+            (6, TILE[1] + 3), caption, font=brand.font(14), fill=canvas.INK
         )
         cells.append(cell)
     return canvas.above([head, canvas.grid(cells, COLUMNS)])
@@ -307,7 +307,7 @@ def _legend(colours: np.ndarray, labels: list[str], names: list[str]) -> Image.I
         x, y = (k // rows) * width + 8, 4 + (k % rows) * line
         draw.rectangle((x, y + 2, x + 14, y + 16), fill=tuple(colours[k]))
         draw.text(
-            (x + 20, y), f"{label}  {name}"[:52], font=canvas.font(14), fill=canvas.INK
+            (x + 20, y), f"{label}  {name}"[:52], font=brand.font(14), fill=canvas.INK
         )
     return image
 

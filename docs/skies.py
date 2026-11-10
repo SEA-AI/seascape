@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 from seascape.assets import download, skies
 from seascape.blender import blend
-from seascape.outputs import canvas
+from seascape.outputs import brand, canvas
 
 TILE = (512, 150)
 COLUMNS = 3
@@ -31,7 +31,7 @@ def tile(name: str, photo: skies.Photo) -> Image.Image:
 
 def main(out: Path) -> None:
     photos = skies.library()
-    font = canvas.font(14)
+    font = brand.font(14)
     cells = []
     # Highest sun first, then the skies whose sun shows no disc.
     order = sorted(

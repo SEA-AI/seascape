@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from seascape.outputs import preview
+from seascape.outputs import brand, preview
 from tests.scenarios import two_rigs
 
 
@@ -61,7 +61,7 @@ def test_the_mark_never_shrinks_below_the_brand_minimum() -> None:
 
 @pytest.mark.parametrize("colour", ["white", "black"])
 def test_the_cursor_share_matches_the_logo_files(colour: str) -> None:
-    alpha = np.asarray(preview._logo(colour))[..., 3] > 0
+    alpha = np.asarray(brand.logo(colour))[..., 3] > 0
     columns = alpha.any(axis=0)
     # The cursor is the last opaque run of columns.
     last = np.flatnonzero(~columns)[-1] + 1
