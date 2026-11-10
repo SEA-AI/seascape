@@ -382,3 +382,7 @@ def test_a_hardware_version_is_written_where_a_replay_reads_it(run: Path) -> Non
         "Oscar_V7_Gen_3_1",
         "seascape",
     )
+    truth.info["scenario"]["rigs"]["port"]["hardware_version"] = None
+    truth.write(run)
+    recording.export(run)
+    assert not module.exists()

@@ -277,8 +277,10 @@ def _write_settings(
     entries = _parameters(firsts, raw, videos)
     _write_json(serialized, {"product_name": model, "cameras": entries})
     written = [settings, parameters, sensors, serialized]
+    module = into / "POWER_Const" / "module_info.json"
+    # A re-export reuses the folder: one without a version leaves none behind.
+    module.unlink(missing_ok=True)
     if rig.get("hardware_version"):
-        module = into / "POWER_Const" / "module_info.json"
         _write_json(
             module,
             {
