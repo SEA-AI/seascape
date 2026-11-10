@@ -98,14 +98,11 @@ async def render(
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
 
-    The default, `showcase`, is a worn freighter at sunset under a photographed sky.
-    The photo fixes the sun's elevation; `baseline` takes `sky.sun_elevation_deg`.
-    `overrides` are TOML lines merged over the scenario: `sky.sun_bearing_deg = 90`,
-    `sea.wind_speed_mps = { uniform = [2, 12] }`. A list such as `objects` replaces the
-    whole list. `variants` renders that many seeds from the scenario's own, each drawn
-    anew, skipping a seed whose hulls meet, up to the server's variant and image
-    limits. Every seed it may try must fit the clip, sample and camera limits. A
-    `warnings` list in the result holds what the scenario raised while loading.
+    The default, `showcase`, is a worn freighter at sunset; `baseline` takes
+    `sky.sun_elevation_deg`. `overrides` are TOML lines merged over the scenario:
+    `sky.sun_bearing_deg = 90`, `sea.wind_speed_mps = { uniform = [2, 12] }`. A list
+    such as `objects` replaces the whole list. `variants` renders that many seeds,
+    skipping one whose hulls meet. `warnings` lists what the scenario ignored.
     """
     state = _state(ctx)
     settings = state.settings
