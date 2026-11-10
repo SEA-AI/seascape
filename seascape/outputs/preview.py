@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from seascape.config import Agc, Mount, Scenario
-from seascape.outputs import agc, canvas
+from seascape.outputs import agc, brand, canvas
 
 # Never redraw the mark: it is the Brand Book's PNG.
 MIN_MARK_PX = 15  # Brand Book 2026 minimum height
@@ -22,7 +22,7 @@ DARK = 128  # luma below this takes the white mark
 
 @cache
 def _logo(colour: str) -> Image.Image:
-    with (canvas.BRAND / f"logo_{colour}.png").open("rb") as file:
+    with (brand.ASSETS / f"logo_{colour}.png").open("rb") as file:
         return Image.open(file).convert("RGBA")
 
 

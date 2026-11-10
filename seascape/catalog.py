@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 from seascape import assets, render
 from seascape.blender import meshes
 from seascape.config import Band, Scenario, load
-from seascape.outputs import canvas
+from seascape.outputs import brand, canvas
 from seascape.outputs.labels import Labels
 
 TILE = (480, 270)
@@ -80,7 +80,7 @@ def shot(
 
 def sheet(scenario: Path, out: Path, band: Band = "eo") -> None:
     """Write a sheet of every asset in the manifest, shot in `scenario`, to `out`."""
-    font = canvas.font(15)
+    font = brand.font(15)
     tiles = []
     with tempfile.TemporaryDirectory() as tmp:
         for name, mesh in assets.manifest().items():

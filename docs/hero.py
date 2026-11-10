@@ -10,9 +10,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from seascape.outputs import canvas, labels
+from seascape.outputs import brand, canvas, labels
 from seascape.outputs.calibration import Calibration
-from seascape.outputs.canvas import FOG_WHITE, NIGHT_BLUE
 
 SCENARIO = Path(__file__).with_name("hero.toml")
 SKIES = {
@@ -34,13 +33,13 @@ def render(scenario: Path, overrides: list[str], out: Path) -> None:
 def mark(
     draw: ImageDraw.ImageDraw, at: tuple[float, float], text: str, fill: str, size: int
 ) -> None:
-    tb = draw.textbbox(at, text, font=canvas.font(size))
+    tb = draw.textbbox(at, text, font=brand.font(size))
     draw.rectangle([tb[0] - 4, tb[1] - 3, tb[2] + 4, tb[3] + 3], fill=fill)
-    draw.text(at, text, fill="white", font=canvas.font(size))
+    draw.text(at, text, fill="white", font=brand.font(size))
 
 
 def captioned(img: Image.Image, text: str, size: int = 15) -> Image.Image:
-    mark(ImageDraw.Draw(img), (10, 8), text, NIGHT_BLUE, size)
+    mark(ImageDraw.Draw(img), (10, 8), text, brand.NIGHT_BLUE, size)
     return img
 
 
@@ -67,16 +66,16 @@ def frame(
     def at(x: float, y: float) -> tuple[float, float]:
         return (x - left) * s, (y - top) * s
 
-    draw.line([at(x, y) for x, y in image.horizon_px], fill=FOG_WHITE)
+    draw.line([at(x, y) for x, y in image.horizon_px], fill=brand.FOG_WHITE)
     for a in annotations:
         x0, y0 = at(*a.bbox[:2])
         r = a.range_m
         dist = f"{r / 1000:.1f} km" if r >= 1000 else f"{r:.0f} m"
         text = f"{a.name}  {dist}  {a.bearing_deg:.1f}°"
         # Off the right edge a label shifts left, off the top it drops below the edge.
-        text_w = draw.textlength(text, font=canvas.font(15))
+        text_w = draw.textlength(text, font=brand.font(15))
         x = max(4, min(x0 + 4, img.width - text_w - 8))
-        mark(draw, (x, max(4, y0 - 20)), text, NIGHT_BLUE, 15)
+        mark(draw, (x, max(4, y0 - 20)), text, brand.NIGHT_BLUE, 15)
     return captioned(img, caption)
 
 

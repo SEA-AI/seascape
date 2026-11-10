@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
 from seascape.config import Mount, Scenario
-from seascape.outputs import canvas, preview
+from seascape.outputs import brand, canvas, preview
 
 TILE_H = 260
 CAPTION_H = 26
@@ -111,7 +111,7 @@ def sheet(scenario: Scenario, into: Path) -> Image.Image:
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
     mounts = [m for band in bands for m in scenario.band_mounts(band)]
-    typeface = canvas.font()
+    typeface = brand.font()
     tiles: dict[str, Image.Image] = {}
     for mount, frame in preview.shown(scenario, into):
         # An exr is radiance; making it a picture is the render's job.

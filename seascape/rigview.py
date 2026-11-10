@@ -14,7 +14,7 @@ from seascape.blender.meshes import box_corners, mesh_objects
 from seascape.blender.rigs import add_rigs, boresight_deg
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
-from seascape.outputs import canvas
+from seascape.outputs import brand, canvas
 from seascape.physics import earth, fisheye
 
 VIEWS = (
@@ -116,7 +116,7 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
             tile = canvas.on_backdrop(Image.open(path))
             tile = tile.resize(TILE, Image.Resampling.LANCZOS)
             ImageDraw.Draw(tile).text(
-                (10, 8), pose.name, font=canvas.font(FONT_PX + 2), fill=canvas.INK
+                (10, 8), pose.name, font=brand.font(FONT_PX + 2), fill=canvas.INK
             )
             tiles.append(tile)
     return tiles
@@ -127,7 +127,7 @@ def _caption(lines: list[Line], width_px: int) -> Image.Image:
     caption = Image.new("RGB", (width_px, 16 + LINE_PX * len(lines)), canvas.MATTE)
     pen = ImageDraw.Draw(caption)
     for k, (text, ink) in enumerate(lines):
-        pen.text((10, 8 + LINE_PX * k), text, font=canvas.font(FONT_PX), fill=ink)
+        pen.text((10, 8 + LINE_PX * k), text, font=brand.font(FONT_PX), fill=ink)
     return caption
 
 
