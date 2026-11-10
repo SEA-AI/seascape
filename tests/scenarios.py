@@ -23,7 +23,7 @@ OPEN_SEA = SCENARIOS / "open-sea.toml"
 DRIFTING = SCENARIOS / "drifting.toml"
 UNDERWAY = SCENARIOS / "underway.toml"
 SYNC_SENTRY = SCENARIOS / "sync-sentry-gen3-1.toml"
-SYNC_WATCHKEEPER = SCENARIOS / "sync-watchkeeper-1280.toml"
+SYNC_WATCHKEEPER = SCENARIOS / "sync-watchkeeper-1280-gen1.toml"
 
 
 @contextmanager
