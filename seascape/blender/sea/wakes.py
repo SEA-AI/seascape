@@ -143,8 +143,9 @@ def _wakes(
         sea_slope_variance: The sea's total, both axes summed; a hull's arms are
             drawn only where they stand out from it.
     """
-    # (band, foam, bubbles) maxed over wakes; three accumulators would each hold every
-    # wake on Cycles' SVM stack until the last closure compiles.
+    # (band, foam, bubbles) maxed over wakes in one accumulator, so a wake's terms are
+    # used up at its own step. Three, each read by a different closure, would hold
+    # every wake's shared terms on Cycles' SVM stack until the last closure compiled.
     strongest = None
     tilt = None
     for wake in wakes:
