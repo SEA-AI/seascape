@@ -8,14 +8,13 @@ from typing import Literal
 from PIL import Image, ImageFont
 from PIL.ImageFont import FreeTypeFont
 
-# The logo PNGs, typeface and its licence, beside this file.
 _ASSETS = resources.files(__package__)
 FOCUS_RED = "#CB0D00"
 NIGHT_BLUE = "#0B1731"
 OCEAN_TEAL = "#06404C"
 SKY_GREY = "#7B9194"
 FOG_WHITE = "#DFDED9"
-# The family's name, for a plotting library that finds it among installed fonts.
+# For matplotlib, which looks fonts up by name.
 FAMILY = "Barlow Semi Condensed"
 
 type Weight = Literal["Regular", "Medium"]
@@ -23,9 +22,7 @@ type Weight = Literal["Regular", "Medium"]
 
 @cache
 def font(size: int = 16, weight: Weight = "Regular") -> FreeTypeFont:
-    """The typeface at `size` pixels: Regular for text, Medium for labels and
-    headings.
-    """
+    """The typeface at `size` pixels; Medium for labels and headings."""
     data = (_ASSETS / f"BarlowSemiCondensed-{weight}.ttf").read_bytes()
     return ImageFont.truetype(BytesIO(data), size)
 
