@@ -105,7 +105,7 @@ async def render(
     whole list. `variants` renders that many seeds from the scenario's own, each drawn
     anew, skipping a seed whose hulls meet, up to the server's variant and image
     limits. Every seed it may try must fit the clip, sample and camera limits. A
-    `warnings` list in the result names an override that changed nothing.
+    `warnings` list in the result holds what the scenario raised while loading.
     """
     state = _state(ctx)
     settings = state.settings

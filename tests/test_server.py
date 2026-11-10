@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,6 +22,7 @@ from PIL import ExifTags, Image
 from pydantic import ValidationError
 
 from seascape.config import Scenario, json_schema, load
+from seascape.model import ScenarioWarning
 from seascape.server import Settings, State, jobs, tools, transport
 from seascape.server.jobs import Job, JobState
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
@@ -881,3 +883,19 @@ def test_an_override_the_scenario_ignores_is_reported_with_the_job(
     honoured = _call(state, "render", scenario="baseline")
     assert "sun_elevation_deg is ignored" in str(ignored.structured_content["warnings"])
     assert honoured.structured_content["warnings"] == []
+
+
+def test_a_load_reports_each_scenario_warning_once_and_restores_the_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def checked(*_: object) -> tuple[list[object], float]:
+        warnings.warn("ignored", ScenarioWarning, stacklevel=2)
+        warnings.warn("ignored", ScenarioWarning, stacklevel=2)
+        warnings.warn("somebody else's", stacklevel=2)
+        return [], 0.0
+
+    monkeypatch.setattr(jobs, "_checked", checked)
+    before = list(warnings.filters)
+    *_, heard = jobs._tried(Path(), [], 1, Settings(scenarios=SCENARIOS))
+    assert heard == ["ignored"]
+    assert warnings.filters == before
