@@ -1,7 +1,6 @@
 """The MCP tools."""
 
 import asyncio
-import io
 import json
 import shutil
 import time
@@ -12,26 +11,26 @@ from typing import Annotated, Any
 
 from mcp.server.mcpserver import Context, Image
 from mcp.server.mcpserver.exceptions import ToolError
-from PIL.Image import Exif as PictureExif
 from pydantic import Field
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import Mount, schema_section, schema_sections
-from seascape.outputs import preview as pictures
+from seascape.config import schema_section, schema_sections
+from seascape.outputs.preview import picture, shown
 from seascape.server.jobs import (
-    PREVIEWS,
     SHEET,
     Job,
     State,
     drop,
     load,
-    marked,
+    marked_jpeg,
     provenance,
     prune,
     run,
 )
 
+# Judgement: each image costs the client context.
+PREVIEWS = 8
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
 # Progress report interval; keeps a client's idle timeout from ending the wait.
@@ -169,11 +168,15 @@ def _job(state: State, name: str) -> tuple[Job, asyncio.Task[None]]:
     return found, found.task
 
 
+def _sheets(found: Job) -> list[Path]:
+    """The sheet of each variant that has one."""
+    return [f / SHEET for f in found.folders if (f / SHEET).exists()]
+
+
 async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, its error,
-    or its archive URL, the cameras, and a watermarked sheet of each variant's frames
-    (none for exr). The archive holds the unmarked frames. `preview` shows a sheet or
-    one frame the result leaves out.
+    or its archive URL, the cameras, and a watermarked sheet per variant (none for
+    exr). `preview` shows a sheet or one frame the result leaves out.
     """
     state = _state(ctx)
     found, task = _job(state, job)
@@ -191,13 +194,10 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
         url = _url(state, ctx)
         report["archive"] = f"{url}/{job}.zip"
         report["cameras"] = [mount.name for mount in found.scenes[0].mounts]
-        sheets = [f / SHEET for f in found.folders if (f / SHEET).exists()]
+        sheets = await asyncio.to_thread(_sheets, found)
         report["sheets"] = [f"{url}/{s.relative_to(state.renders)}" for s in sheets]
         previews = [Image(path=sheet) for sheet in sheets[:PREVIEWS]]
-        if len(sheets) > len(previews):
-            report["sheets_not_shown"] = (
-                f"variants {len(previews)} to {len(sheets) - 1}"
-            )
+        report["sheets_not_shown"] = len(sheets) - len(previews)
     elif found.state == "queued":
         names = list(state.jobs)
         report["jobs_ahead"] = sum(
@@ -212,36 +212,33 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
     return [json.dumps(report, indent=1), *previews]
 
 
-def _frame(mount: Mount, path: Path, exif: PictureExif) -> Image:
-    buffer = io.BytesIO()
-    marked(pictures.picture(path, mount.camera.agc)).save(
-        buffer, "JPEG", quality=85, exif=exif
-    )
-    return Image(data=buffer.getvalue(), format="jpeg")
+def _view(found: Job, variant: int, camera: str | None) -> Image:
+    folders = found.folders
+    if not 0 <= variant < len(folders):
+        raise ToolError(f"variant {variant} is not in 0 to {len(folders) - 1}")
+    if camera is None:
+        return Image(path=folders[variant] / SHEET)
+    scene = found.scenes[variant]
+    frames = {m.name: (m, p) for m, p in shown(scene, folders[variant])}
+    if camera not in frames:
+        raise ToolError(f"no camera {camera!r} in {list(frames)}")
+    mount, path = frames[camera]
+    exif = provenance(found, scene.seed, camera)
+    return Image(data=marked_jpeg(picture(path, mount.camera.agc), exif), format="jpeg")
 
 
 async def preview(
     job: str, ctx: Context[State, Any], variant: int = 0, camera: str | None = None
 ) -> Image:
-    """A watermarked picture from a finished job of `render`: `camera`'s frame of
-    `variant` (counted from 0), or the variant's whole sheet when no camera is named.
+    """A watermarked `camera` frame of `variant` (from 0) from a finished job of
+    `render`, or the variant's sheet when no camera is named.
     """
     found, _ = _job(_state(ctx), job)
     if found.state != "done":
         raise ToolError(f"job {job!r} is {found.state}")
     if found.scenes[0].outputs.format == "exr":
         raise ToolError("an exr holds radiance and has no preview")
-    if not 0 <= variant < len(found.folders):
-        raise ToolError(f"variant {variant} is not in 0 to {len(found.folders) - 1}")
-    folder = found.folders[variant]
-    if camera is None:
-        return Image(path=folder / SHEET)
-    frames = {m.name: (m, p) for m, p in pictures.shown(found.scenes[variant], folder)}
-    if camera not in frames:
-        raise ToolError(f"no camera {camera!r} in {list(frames)}")
-    return await asyncio.to_thread(
-        _frame, *frames[camera], provenance(found, variant, camera)
-    )
+    return await asyncio.to_thread(_view, found, variant, camera)
 
 
 async def cancel(job: str, ctx: Context[State, Any]) -> dict[str, Any]:

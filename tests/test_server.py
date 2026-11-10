@@ -17,7 +17,7 @@ import httpx2
 import pytest
 from mcp import Client
 from mcp.types import TextContent
-from PIL import Image
+from PIL import ExifTags, Image
 from pydantic import ValidationError
 
 from seascape.config import json_schema
@@ -351,13 +351,15 @@ def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
     ] * 2
-    made = json.loads(Image.open(job.folders[1] / jobs.SHEET).getexif()[0x010E])
-    assert made == {
+    description = Image.open(job.folders[1] / jobs.SHEET).getexif()[
+        ExifTags.Base.ImageDescription
+    ]
+    assert json.loads(description) == {
         "scenario": "baseline",
         "seed": job.scenes[1].seed,
         "overrides": [],
-        "camera": None,
     }
+    assert report["sheets_not_shown"] == 0
 
 
 @pytest.mark.usefixtures("blenderless")
@@ -372,7 +374,11 @@ def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
         ("preview", {"camera": "nope"}),
     )
     assert [r.content[0].mime_type for r in (sheet, frame)] == ["image/jpeg"] * 2
-    assert all(r.is_error for r in refused)
+    cameras = [m.name for m in load_variants(BASELINE)[0].mounts]
+    assert [r.content[0].text.split(": ", 1)[1] for r in refused] == [
+        "variant 2 is not in 0 to 1",
+        f"no camera 'nope' in {cameras}",
+    ]
 
 
 def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any) -> State:

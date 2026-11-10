@@ -17,12 +17,25 @@ def mark_pixels(marked: Image.Image | np.ndarray, grey: int) -> np.ndarray:
 
 def test_the_mark_is_white_on_dark() -> None:
     marked = np.asarray(preview.watermark(frame(20)))
-    assert marked[mark_pixels(marked, 20)].max() == 255
+    assert marked[mark_pixels(marked, 20)].max() > 20
 
 
 def test_the_mark_is_black_on_light() -> None:
     marked = np.asarray(preview.watermark(frame(230)))
-    assert marked[mark_pixels(marked, 230)].min() == 0
+    assert marked[mark_pixels(marked, 230)].min() < 230
+
+
+def test_the_mark_lets_the_picture_show_through() -> None:
+    marked = np.asarray(preview.watermark(frame(20)))
+    assert 20 < marked[mark_pixels(marked, 20)].max() < 255
+
+
+def test_a_strip_below_holds_the_mark_and_leaves_the_picture_alone() -> None:
+    picture = frame(20)
+    marked = np.asarray(preview.watermark(picture, below=True))
+    assert marked.shape[1] == picture.width and marked.shape[0] > picture.height
+    assert (marked[: picture.height] == 20).all()
+    assert mark_pixels(marked[picture.height :], 24).any()
 
 
 def test_a_frame_smaller_than_the_mark_still_takes_it() -> None:

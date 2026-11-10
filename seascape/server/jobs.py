@@ -6,6 +6,7 @@ it. Its files are deleted after `KEEP_S`.
 
 import asyncio
 import heapq
+import io
 import json
 import logging
 import os
@@ -15,7 +16,6 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from functools import partial
-from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Literal
 
@@ -40,8 +40,6 @@ KEEP_S = 24 * 3600
 SWEEP_S = 3600.0
 # The long edge Claude reads an image at (Anthropic vision docs).
 PREVIEW_PX = 1568
-# Judgement: sheets in a result before the client asks for more; each costs context.
-PREVIEWS = 8
 SHEET = "montage.jpg"
 # Judgement: loads hold the GIL, so a few at once cost every other client.
 LOADING = 2
@@ -78,7 +76,6 @@ class Job:
     task: asyncio.Task[None] | None = None
     # The largest scenes a replacement seed may draw.
     worst_bytes: float = 0.0
-    # What `render` was asked, to reproduce a picture from its metadata.
     overrides: list[str] = field(default_factory=list)
 
     @property
@@ -103,7 +100,7 @@ class Job:
 
     @property
     def images(self) -> int:
-        """Written so far; a jpg job's preview.jpg shares the suffix."""
+        """Written so far; a jpg job's sheet shares the suffix."""
         suffix = f".{self.scenes[0].outputs.format}"
         written = sum(path.suffix == suffix for path in self.folder.rglob("*"))
         return min(written, self.total)
@@ -334,33 +331,46 @@ def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
     return [instantiate(tree, int(f.name)) for f in job.folders]
 
 
-def marked(picture: Picture.Image) -> Picture.Image:
-    """`picture` shrunk to what a client reads, with the mark on it."""
+def marked_jpeg(
+    picture: Picture.Image, exif: Picture.Exif, *, below: bool = False
+) -> bytes:
+    """`picture`, shrunk in place to `PREVIEW_PX`, as a JPEG with the mark on it or on
+    a strip below.
+    """
     picture.thumbnail((PREVIEW_PX, PREVIEW_PX), Picture.Resampling.LANCZOS)
-    return preview.watermark(picture)
+    buffer = io.BytesIO()
+    # Judgement: a preview, so a smaller file over fidelity.
+    preview.watermark(picture, below=below).save(buffer, "JPEG", quality=85, exif=exif)
+    return buffer.getvalue()
 
 
-def provenance(job: Job, variant: int, camera: str | None = None) -> Picture.Exif:
-    """EXIF that says how a picture of `job`'s `variant` was made."""
+# A JPEG segment's length is 16 bits (ITU-T T.81), and EXIF is one segment.
+EXIF_MAX_BYTES = 60_000
+
+
+def provenance(job: Job, seed: int, camera: str | None = None) -> Picture.Exif:
+    """EXIF naming how the picture of `seed` in `job` was made."""
+    made: dict[str, Any] = {
+        "scenario": job.scenario,
+        "seed": seed,
+        "overrides": job.overrides,
+    }
+    if camera:
+        made["camera"] = camera
+    text = json.dumps(made)
+    if len(text) > EXIF_MAX_BYTES:
+        text = json.dumps({**made, "overrides": "too long to embed"})
     exif = Picture.Exif()
-    exif[ExifTags.Base.Software] = f"seascape {version('seascape')}"
-    exif[ExifTags.Base.ImageDescription] = json.dumps(
-        {
-            "scenario": job.scenario,
-            "seed": job.scenes[variant].seed,
-            "overrides": job.overrides,
-            "camera": camera,
-        }
-    )
+    exif[ExifTags.Base.Software] = "seascape"
+    exif[ExifTags.Base.ImageDescription] = text
     return exif
 
 
 def _finish(job: Job) -> None:
     """A watermarked sheet per variant (none for exr), and an archive."""
     if job.scenes[0].outputs.format != "exr":
-        for i, (scene, folder) in enumerate(zip(job.scenes, job.folders, strict=True)):
-            # Judgement: a preview, so a smaller file over fidelity.
-            marked(montage.sheet(scene, folder)).save(
-                folder / SHEET, quality=85, exif=provenance(job, i)
-            )
+        for scene, folder in zip(job.scenes, job.folders, strict=True):
+            sheet = montage.sheet(scene, folder)
+            exif = provenance(job, scene.seed)
+            (folder / SHEET).write_bytes(marked_jpeg(sheet, exif, below=True))
     shutil.make_archive(str(job.folder), "zip", job.folder)
