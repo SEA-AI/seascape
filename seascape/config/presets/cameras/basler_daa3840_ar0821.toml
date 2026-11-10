@@ -1,5 +1,5 @@
-# Basler dart daA3840-30mc, onsemi AR0821 colour sensor: the sensor only. The block
-# that mounts it supplies hfov_deg.
+# Basler dart daA3840-30mc, onsemi AR0821 colour sensor and its image processing.
+# The block that mounts it supplies hfov_deg.
 # https://docs.baslerweb.com/daa3840-30mc
 band = "eo"
 width_px = 3840

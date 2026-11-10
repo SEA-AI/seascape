@@ -13,7 +13,7 @@ height_px = 1080
 lens.vignetting = true
 # Judgement: a machine-vision lens stopped down in daylight.
 lens.f_number = 4.0
-# Judgement: one exposure; the figure shows a camera without eHDR.
+# Judgement: no eHDR.
 sensor.hdr_ratio = 1.0
 
 [rigs.bow.cameras.ir]
