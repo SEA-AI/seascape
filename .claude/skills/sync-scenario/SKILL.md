@@ -1,6 +1,6 @@
 ---
 name: sync-scenario
-description: Write or change a product's `scenarios/sync-<product>.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, and the containers every recorded video must keep whole. Use when a product joins the sync check, when its ownship, mount or containers change, or when `seascape sync --preview` fails.
+description: Write, record or upload a product's `scenarios/sync-<product>.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, and the containers every recorded video must keep whole. Use when a product joins the sync check, when its ownship, mount or containers change, or when `seascape sync --preview` fails.
 ---
 
 # Sync scenario
@@ -30,6 +30,15 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 
    It passes only when it prints `every video keeps its containers whole`.
 5. **Record.** `uv run seascape sync scenarios/sync-<product>.toml` renders, encodes and writes `recordings/<rig>/<Model>_recordings_<timestamp>/`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`. The video names come from the rig preset's `[videos]`.
+6. **Upload.** Commit first, so the hash names code that exists. Then, logged in to W&B (`uvx wandb login`):
+
+   ```bash
+   uvx wandb artifact put --type dataset --name dataset-registry/sync-<product> \
+     --description "seascape $(git rev-parse --short HEAD), scenarios/sync-<product>.toml sha256 $(shasum -a 256 scenarios/sync-<product>.toml | cut -c1-12)" \
+     scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>
+   ```
+
+   It prints the new version, `sea-ai/dataset-registry/sync-<product>:v<n>`. A consumer pins that exact version, never `latest`.
 
 ## When the preview fails
 
