@@ -106,7 +106,7 @@ def _render(
 
     images = built.images
     if frames is not None:
-        images = images // built.outputs.frames * len(frames)
+        images = built.images_per_frame * len(frames)
     with (
         _progress(images, "Rendering") as bar,
         _blender_log(into / "blender.log"),

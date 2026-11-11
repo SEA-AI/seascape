@@ -3,6 +3,7 @@
 import itertools
 import math
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -106,7 +107,7 @@ def test_a_pan_tilt_unit_inclines_to_keep_the_horizon_and_the_nearest_ring() -> 
         assert rig.ptu.inclination_deg + camera.pitch_deg - half_deg < waterline_deg
 
 
-def test_a_pan_tilt_unit_s_inclination_counts_its_mount() -> None:
+def test_a_pan_tilt_unit_holds_its_inclination_whatever_its_mount_s_pitch() -> None:
     scenario = load(SYNC_SENTRY)
     (name,) = scenario.rigs
     pitched = load(SYNC_SENTRY, [{"rigs": {name: {"pitch_deg": -3.0}}}])
@@ -165,16 +166,16 @@ def test_a_preview_has_a_frame_where_each_video_holds_each_of_its_rings(
 
     for whole in preview.held(quick, quick.objects).values():
         assert any(whole[f] for f in frames)
+
+
+def test_a_preview_without_buoys_has_no_keyframes() -> None:
     with pytest.raises(ValueError, match="never holds a buoy"):
-        preview.keyframes(load(path, [preview.PREVIEW, {"objects": []}]))
+        preview.keyframes(load(SYNC_WATCHKEEPER, [preview.PREVIEW, {"objects": []}]))
 
 
 BOX = manifest()[course.CONTAINER].category_id
 BUOY = manifest()[course.BUOY].category_id
-# Stands for the nearest ring's range, which each test reads off the scenario.
-NEAR = -1.0
-
-Seen = list[tuple[int, float, bool, int]]
+type Seen = list[tuple[int, float, bool, int]]
 BOXED: Seen = [(BOX, 300.0, False, 40)]
 
 
@@ -215,7 +216,9 @@ def both(t1: Labels, rgb1: Labels) -> Labels:
     return Labels.model_construct(images=images, annotations=annotations)
 
 
-PASSING = (BOXED, [(BUOY, NEAR, False, 6)], BOXED)
+def passing(near_m: float) -> tuple[Seen, ...]:
+    """The container at both ends, and a buoy of the nearest ring whole between."""
+    return (BOXED, [(BUOY, near_m, False, 6)], BOXED)
 
 
 @pytest.fixture(scope="module")
@@ -228,49 +231,40 @@ def near_m(scenario: Scenario) -> float:
     return course.rings(course.views(*scenario.rigs.values()))[0].range_m
 
 
-def at(frames: tuple[Seen, ...], range_m: float) -> tuple[Seen, ...]:
-    """`frames` with `NEAR` read as `range_m`."""
-    return tuple(
-        [(c, range_m if r == NEAR else r, cut, px) for c, r, cut, px in frame]
-        for frame in frames
-    )
-
-
 def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
     watchkeeper: Scenario,
 ) -> None:
-    passing = at(PASSING, near_m(watchkeeper))
-    preview.check(both(seen("T1", *passing), seen("RGB1", *passing)), watchkeeper)
+    frames = passing(near_m(watchkeeper))
+    preview.check(both(seen("T1", *frames), seen("RGB1", *frames)), watchkeeper)
 
 
 @pytest.mark.parametrize(
     ("frames", "error"),
     [
         (
-            (BOXED, [(BUOY, NEAR, True, 6)], BOXED),
+            lambda near: (BOXED, [(BUOY, near, True, 6)], BOXED),
             "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (
             # Half hidden behind the container.
-            (BOXED, [(BUOY, NEAR, False, 3)], BOXED),
+            lambda near: (BOXED, [(BUOY, near, False, 3)], BOXED),
             "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (
-            ([(BOX, 300.0, True, 40), (BUOY, NEAR, False, 6)], BOXED),
+            lambda near: ([(BOX, 300.0, True, 40), (BUOY, near, False, 6)], BOXED),
             "mast_T1 misses the container in its first frame",
         ),
         (
-            ([*BOXED, (BUOY, NEAR, False, 6)], []),
+            lambda near: ([*BOXED, (BUOY, near, False, 6)], []),
             "mast_T1 misses the container in its last frame",
         ),
     ],
 )
 def test_a_video_that_misses_a_ring_or_the_container_fails(
-    frames: tuple[Seen, ...], error: str, watchkeeper: Scenario
+    frames: Callable[[float], tuple[Seen, ...]], error: str, watchkeeper: Scenario
 ) -> None:
     near = near_m(watchkeeper)
     with pytest.raises(ValueError, match=error.format(near=near)):
         preview.check(
-            both(seen("T1", *at(frames, near)), seen("RGB1", *at(PASSING, near))),
-            watchkeeper,
+            both(seen("T1", *frames(near)), seen("RGB1", *passing(near))), watchkeeper
         )

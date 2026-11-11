@@ -12,6 +12,7 @@ preset = "watchkeeper"
 height_m = 1.9
 offset_y_m = -2.6
 
+# Judgement: a RIB turns at up to 30 deg/s, reached in 1 s.
 [turn]
 top_rate_deg_s = 30.0
 accel_deg_s2 = 30.0

@@ -16,6 +16,7 @@ from seascape.config.cameras import (
     Stitch,
     Undistortion,
     Video,
+    recorded_name,
     sources,
 )
 from seascape.config.draws import substream
@@ -66,6 +67,7 @@ __all__ = [
     "instantiate",
     "json_schema",
     "load",
+    "recorded_name",
     "resolve",
     "schema_section",
     "schema_sections",

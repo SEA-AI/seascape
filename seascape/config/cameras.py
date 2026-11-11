@@ -508,6 +508,11 @@ class Rig(Model):
         return cameras
 
 
+def recorded_name(rig_name: str, name: str) -> str:
+    """The name a rig's camera or video is recorded and labelled under."""
+    return f"{rig_name}_{name}"
+
+
 class Mount(NamedTuple):
     """A camera and the rig carrying it."""
 
@@ -519,7 +524,7 @@ class Mount(NamedTuple):
     @property
     def name(self) -> str:
         """The camera's name, unique in the scenario."""
-        return f"{self.rig_name}_{self.camera_name}"
+        return recorded_name(self.rig_name, self.camera_name)
 
     @property
     def nominal_bearing_deg(self) -> float:

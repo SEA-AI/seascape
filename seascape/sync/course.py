@@ -54,9 +54,9 @@ class Ring(NamedTuple):
 
 
 class Course(NamedTuple):
-    """The course's objects, and the inclination its pan-tilt unit holds."""
+    """The course's objects, and the inclination its pan-tilt unit holds, if any."""
 
-    inclination_deg: float
+    inclination_deg: float | None
     objects: list[Object]
 
 
@@ -156,7 +156,9 @@ def rings(videos: list[View]) -> list[Ring]:
 def asset[T](name: str, kind: type[T]) -> T:
     """The course's `name` asset, which must be a `kind`."""
     if not isinstance(found := manifest()[name], kind):
-        raise TypeError(f"{name} must be a {kind.__name__}")
+        raise TypeError(
+            f"{name} must be a {kind.__name__}, not a {type(found).__name__}"
+        )
     return found
 
 
@@ -186,12 +188,16 @@ def box_half_deg(range_m: float) -> float:
 def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
     """The one rig a course is for, and its turn."""
     if scenario.turn is None or len(scenario.rigs) != 1:
-        raise ValueError("a course needs a turn and one rig")
+        turn = "a turn" if scenario.turn is not None else "no turn"
+        raise ValueError(
+            f"a course needs a turn and one rig: the scenario has {turn} and "
+            f"{len(scenario.rigs)} rigs"
+        )
     ((name, rig),) = scenario.rigs.items()
     return name, rig, scenario.turn
 
 
-def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float:
+def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float | None:
     """The pitch that keeps the horizon and the nearest ring's waterline in every
     video, as far from either edge as it can.
 
@@ -214,7 +220,7 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float:
             f"a buoy {near_m:.0f} m out or the horizon leaves a video: set the rig's "
             f"pitch_deg to {pitch_deg}"
         )
-    return 0.0
+    return None
 
 
 def _placed(
@@ -244,8 +250,8 @@ def _placed(
 
 def course(scenario: Scenario) -> Course:
     """The course for `scenario`'s one rig and its turn: a container at the bow, and
-    a ring of buoys for each pair of videos, spaced so the turn always has one
-    crossing every camera they record, staggered so no ring hides another.
+    a ring of buoys for each pair of videos, spaced a camera's span apart so each
+    camera they record passes one, staggered so no ring hides another.
 
     Raises:
         ValueError: No turn, not one rig, or no pitch that keeps every ring in view.
@@ -281,6 +287,11 @@ def course(scenario: Scenario) -> Course:
         # Each camera of a stitch gets its own crossings.
         span_deg = min(v.camera_deg for v in videos if v.name in ring.videos)
         step_deg = span_deg - 2 * (half_deg(ring.range_m) + MARGIN_DEG)
+        if step_deg <= 0.0:
+            raise ValueError(
+                f"a camera {span_deg:.1f} deg wide cannot hold a buoy "
+                f"{ring.range_m:.0f} m out whole"
+            )
         swept_deg = max(stops_deg) - min(stops_deg)
         count = math.floor(swept_deg / step_deg) + 1
         # Centred on the sweep, each ring shifted a share of a step off the last.
@@ -311,7 +322,7 @@ def verify(scenario: Scenario) -> None:
     """
     name, rig, _ = one_rig(scenario)
     placed = course(scenario)
-    stored_deg = 0.0 if rig.ptu is None else rig.ptu.inclination_deg
+    stored_deg = None if rig.ptu is None else rig.ptu.inclination_deg
     if placed.inclination_deg != stored_deg:
         raise ValueError(
             f"the course needs [rigs.{name}.ptu] "

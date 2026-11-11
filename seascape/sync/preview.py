@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from seascape.angles import bearing_deg, wrapped_deg
 from seascape.assets import manifest
-from seascape.config import Object, Scenario
+from seascape.config import Object, Scenario, recorded_name
 from seascape.motion import rig_track
 from seascape.outputs.labels import Labels
 from seascape.sync.course import (
@@ -66,27 +66,38 @@ def held(
     buoys = [[sight(o, f) for f in frames] for o in objects if o.asset == BUOY]
     boxes = [[sight(o, f) for f in frames] for o in objects if o.asset == CONTAINER]
 
-    def behind(f: int, out_m: float, off: float) -> bool:
-        return any(
-            box_m < out_m and abs(wrapped_deg(off - box)) < box_half_deg(box_m)
-            for box_m, box in (lines[f] for lines in boxes)
-        )
+    def holds(f: int, ring: Ring, view: View) -> bool:
+        """Whether `view` holds a buoy of `ring` whole and clear at frame `f`."""
+        middle = (view.left_deg + view.right_deg) / 2
+        for lines in buoys:
+            out_m, off = lines[f]
+            if nearest_m(circles, out_m) != ring.range_m:
+                continue
+            room = (view.right_deg - view.left_deg) / 2 - half_deg(out_m)
+            inside = abs(wrapped_deg(off - middle)) <= room
+            if inside and not _behind(boxes, f, out_m, off):
+                return True
+        return False
 
     found = {}
     for ring in circles:
-        for view in (v for v in videos if v.name in ring.videos):
-            middle = (view.left_deg + view.right_deg) / 2
-            found[ring, view] = [
-                any(
-                    nearest_m(circles, out_m) == ring.range_m
-                    and abs(wrapped_deg(off - middle))
-                    <= (view.right_deg - view.left_deg) / 2 - half_deg(out_m)
-                    and not behind(f, out_m, off)
-                    for out_m, off in (lines[f] for lines in buoys)
-                )
-                for f in frames
-            ]
+        for view in videos:
+            if view.name in ring.videos:
+                found[ring, view] = [holds(f, ring, view) for f in frames]
     return found
+
+
+def _behind(
+    boxes: list[list[tuple[float, float]]], f: int, out_m: float, off: float
+) -> bool:
+    """Whether a container's sightlines `boxes` cover bearing `off`, nearer than
+    `out_m`, at frame `f`.
+    """
+    for lines in boxes:
+        box_m, box = lines[f]
+        if box_m < out_m and abs(wrapped_deg(off - box)) < box_half_deg(box_m):
+            return True
+    return False
 
 
 def keyframes(scenario: Scenario) -> list[int]:
@@ -132,9 +143,10 @@ def _sees_every_ring(seen: Labels, scenario: Scenario, buoy: int) -> None:
             met[images[a.image_id]].add(nearest_m(circles, a.range_m))
     for ring in circles:
         for video in sorted(ring.videos):
-            if ring.range_m not in met[f"{name}_{video}"]:
+            recorded = recorded_name(name, video)
+            if ring.range_m not in met[recorded]:
                 raise ValueError(
-                    f"{name}_{video} never sees a buoy {ring.range_m:.0f} m out whole"
+                    f"{recorded} never sees a buoy {ring.range_m:.0f} m out whole"
                 )
 
 

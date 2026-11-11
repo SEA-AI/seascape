@@ -154,10 +154,14 @@ class Scenario(Model):
         return [m for m in self.mounts if m.camera.band == band]
 
     @property
+    def images_per_frame(self) -> int:
+        """How many images a render writes a frame: one a camera in its bands."""
+        return sum(m.camera.band in self.outputs.bands for m in self.mounts)
+
+    @property
     def images(self) -> int:
         """How many images a render writes."""
-        rendered = sum(m.camera.band in self.outputs.bands for m in self.mounts)
-        return rendered * self.outputs.frames
+        return self.images_per_frame * self.outputs.frames
 
     @property
     def worn(self) -> frozenset[str]:
