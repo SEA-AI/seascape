@@ -19,7 +19,7 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
    ```
 
    On the highest part of its station (a hardtop, a radar arch, a masthead), set `offset_y_m` and `offset_x_m` to that station's `y_m` and `x_m`, and `height_m` a little above its `top_z_m`. Anywhere else, ask the user where the product sits and show them the spot in `uv run seascape rig-view <scenario>`. Name the part and its numbers in a comment.
-3. **Turn.** Under `[turn]`: `by = "ptu"` when the product's pan-tilt unit turns the cameras (its rig preset sets `ptu`), else the ownship turns. Set `top_rate_deg_s` and, for an ownship, `accel_deg_s2`, from the product's spec or the user. Leave the moves to `sync.toml`.
+3. **Turn.** Under `[turn]`: `ptu = "<rig>"` when that rig's pan-tilt unit turns the cameras (its preset sets `ptu`); without it the ownship turns. Set `top_rate_deg_s` and, for an ownship, `accel_deg_s2`, from the product's spec or the user. Leave the moves to `sync.toml`.
 4. **Objects.** Run the preview with no `objects`: it refuses and prints them. Paste the array above the file's first table, under a comment saying `seascape sync` placed it.
 
    ```bash

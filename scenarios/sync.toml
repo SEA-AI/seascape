@@ -15,7 +15,6 @@ cameras.ir = { preset = "ir_vga_24deg" }
 yaw = { amplitude_deg = 0.76, period_s = 8.0 }
 
 [turn]
-by = "ownship"
 top_rate_deg_s = 30.0
 moves = [
     { to_deg = 0.0, hold_s = 3.0 },

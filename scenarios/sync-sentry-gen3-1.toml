@@ -73,5 +73,5 @@ offset_y_m = -1.8
 ptu = { inclination_deg = -1.9 }
 
 [turn]
-by = "ptu"
+ptu = "mast"
 top_rate_deg_s = 50.0

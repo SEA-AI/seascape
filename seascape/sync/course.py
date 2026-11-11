@@ -224,9 +224,9 @@ def rig_track(scenario: Scenario) -> Callable[[float], Pose]:
     """Where the one rig is at a time, east and north of the ownship's origin, and
     its axis: the ownship's heading, the rig's yaw and a turn by its ptu.
     """
-    _, rig, turn = one_rig(scenario)
+    name, rig, turn = one_rig(scenario)
     path = track(scenario.ownship, scenario.outputs, turn)
-    panned = turned_deg(turn) if turn.by == "ptu" else lambda _: 0.0
+    panned = turned_deg(turn) if turn.ptu == name else lambda _: 0.0
 
     def at(t_s: float) -> Pose:
         pose = path(t_s)
