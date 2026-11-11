@@ -1,6 +1,6 @@
 ---
 name: design
-description: Decide or review where each piece of seascape lives, through SOLID, information hiding and the layer order. Use before writing, and when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers. Line-level style and the choice of container are `clean-code`'s; whether code should exist at all is `anti-hack`'s.
+description: Where each piece of seascape lives, through SOLID, information hiding and the layer order. Use when deciding where new code goes, when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers; `review-pr` runs it as one reviewer. Language and library practice is `stack`'s; whether code should exist at all is `anti-hack`'s.
 ---
 
 # Design

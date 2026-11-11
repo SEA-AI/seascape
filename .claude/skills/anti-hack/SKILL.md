@@ -1,6 +1,6 @@
 ---
 name: anti-hack
-description: Decide or review whether a piece of seascape code should exist at all, and whether it is the proper mechanism or a workaround. Use before writing a helper, flag, special case, constant or retry; when reviewing a diff; or to audit a package for reinvented helpers, uncited constants and dead code. Where code lives is `design`'s; bugs are `/code-review`'s.
+description: Whether a piece of seascape code should exist at all, and whether it is the proper mechanism or a workaround. Use before writing a helper, flag, special case, constant or retry, or to audit a package for reinvented helpers, uncited constants and dead code. Where code lives is `design`'s; bugs are `/code-review`'s; `review-pr` runs it as one reviewer.
 ---
 
 # Anti-hack
