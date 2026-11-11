@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review a seascape pull request with five fresh reviewers (correctness, design, anti-hack, Python practice, prose), then fix what they find. Use before handing any PR over, and again after a push that adds prose.
+description: Review a seascape pull request or diff with five fresh reviewers (correctness, design, anti-hack, stack, prose). Use for any review request, before handing a PR over, and again after a push that adds prose.
 ---
 
 # Review a pull request
@@ -12,12 +12,13 @@ Every PR gets five reviews before it is handed over. Each reviewer is a fresh su
 1. **Correctness.** Run `/code-review` on the PR. Point it at `AGENTS.md`'s traps that fail silently first.
 2. **Design.** Follow the `design` skill on the diff.
 3. **Anti-hack.** Follow the `anti-hack` skill on the diff.
-4. **Python practice.** Follow the `clean-code` skill and its `references/stack.md` on the diff. Any test it proposes is the smallest one that pins the behaviour.
-5. **Prose.** Follow the `prose` skill on the diff, the commit messages and the PR body.
+4. **Stack.** Follow the `stack` skill on the diff.
+5. **Prose.** Follow the `prose` skill.
 
 ## After the reviews
 
-- Fix every finding at its root, in the layer that owns it. A finding you reject gets a one-line reason a reader can check.
-- A real problem outside the PR's scope becomes an issue, not a silent skip.
+A review request ends with the findings. Edit and push only when handing over a PR you wrote, or when asked to fix.
+
+- Apply the fixes each skill's verdicts name. A finding you reject gets a one-line reason a reader can check.
 - Run the tests the fixes touch, then push through `gh stack`.
-- Run the prose review again after any push that adds text.
+- After a fix that changes code, run the correctness, design, anti-hack and stack reviews again on the final diff.
