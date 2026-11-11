@@ -1,11 +1,11 @@
 ---
 name: design
-description: Decide or review where each piece of seascape lives, through SOLID, information hiding and the layer order. Use before writing, and when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers. Line-level style and the choice of container are `clean-code`'s; reinvented helpers and constants are `audit-code`'s.
+description: Decide or review where each piece of seascape lives, through SOLID, information hiding and the layer order. Use before writing, and when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers. Line-level style and the choice of container are `clean-code`'s; whether code should exist at all is `anti-hack`'s.
 ---
 
 # Design
 
-Question every new line: is it justified, or an odd workaround? Each piece lands where its decision lives, and the whole reads as a reusable library.
+Each piece lands where its decision lives, and the whole reads as a reusable library.
 
 `AGENTS.md` and the import-linter contract record project decisions. A review may find one that a principle rejects: report it as an issue for the owner, not as a reason.
 
@@ -66,7 +66,7 @@ Each names its usual root fix.
 4. Trace each value the diff introduces or reroutes: where it is computed, where it is stored, where it is read. Every hop through Blender, a closure or a recomputation needs a reason.
 5. Count homes. For each action, conversion and formula the diff touches, count the places that perform it.
 6. Ask the principle questions only where steps 1 to 5 found friction. Do not grade the diff against every principle.
-7. Before reporting, find why the code is as it is. Only a documented constraint justifies an odd shape: an `AGENTS.md` trap, a Blender limit or a measured cost. Then it is a keep, with that reason. That the codebase does it elsewhere is never a reason; it is a second finding.
+7. Before reporting, find why the code is as it is. `anti-hack` says which reasons justify an odd shape.
 
 ## What a finding contains
 
