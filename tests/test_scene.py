@@ -17,6 +17,7 @@ from mathutils import Vector
 from seascape import motion
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
+from seascape.blender.blend import mesh_objects
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
 from seascape.blender.meshes import (
     _fit,
@@ -25,7 +26,6 @@ from seascape.blender.meshes import (
     box_corners,
     box_m,
     keel_m,
-    mesh_objects,
     triangles,
 )
 from seascape.blender.rigs import boresight_deg, views
