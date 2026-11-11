@@ -31,7 +31,7 @@ from seascape.config import (
     Scenario,
     substream,
 )
-from seascape.motion import Pose, attitude_deg, track
+from seascape.motion import Path, attitude_deg, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes
 
@@ -148,7 +148,7 @@ class Posed(NamedTuple):
     """
 
     cameras: dict[str, np.ndarray]
-    path: Callable[[float], Pose]
+    path: Path
     attitude_deg: Callable[[float], tuple[float, float]]
 
 
@@ -159,7 +159,8 @@ def posed_at_start(scenario: Scenario) -> Posed:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rigs = add_rigs(scenario)
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
-    vessel = add_ownship(
+    afloat: list[Afloat] = []
+    add_ownship(
         scenario.ownship,
         path,
         rigs.root,
@@ -167,6 +168,7 @@ def posed_at_start(scenario: Scenario) -> Posed:
         scenario.outputs,
         (),
         earth.earth_radius_m(scenario.sea.refraction_k),
+        afloat,
     )
     stabilise(rigs.rigs, scenario, lambda _: (0.0, 0.0))
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
@@ -175,9 +177,10 @@ def posed_at_start(scenario: Scenario) -> Posed:
         camera: np.array(rigs.cameras[f"{name}_{camera}"].matrix_world.to_3x3())
         for camera in rig.rendered
     }
+    hull = afloat[0].hull if afloat else None
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    return Posed(cameras, path, attitude_deg(path, vessel, wind + swell, tall))
+    return Posed(cameras, path, attitude_deg(path, hull, wind + swell, tall))
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
