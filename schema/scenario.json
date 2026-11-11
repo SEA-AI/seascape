@@ -1892,7 +1892,7 @@
         },
         "colour": {
           "title": "Colour",
-          "description": "One of the colours its asset lists in `colours`; None keeps the asset's own. Colour only, not its LWIR.",
+          "description": "One of the colours its asset lists in `colours`; None keeps the asset's own. EO only.",
           "default": null,
           "anyOf": [
             {

@@ -134,7 +134,7 @@ class Object(Model):
     colour: str | None = Field(
         default=None,
         description="One of the colours its asset lists in `colours`; None keeps the "
-        "asset's own. Colour only, not its LWIR.",
+        "asset's own. EO only.",
     )
     draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
     count: int = Field(

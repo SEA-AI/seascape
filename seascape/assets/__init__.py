@@ -145,7 +145,9 @@ class _Mesh(FrozenModel):
     # nothing to it.
     weathered: bool = False
     # The colours it is also sold in, as sRGB hex: an object picks one by name.
-    colours: dict[str, str] = Field(default_factory=dict)
+    colours: dict[str, Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")]] = Field(
+        default_factory=dict
+    )
 
     @abstractmethod
     def scale(self, size: tuple[float, float, float]) -> float:
@@ -188,14 +190,6 @@ class _Mesh(FrozenModel):
                 f"{self.draught_range_m}"
             )
         return self
-
-    @field_validator("colours")
-    @classmethod
-    def _hex(cls, colours: dict[str, str]) -> dict[str, str]:
-        for name, value in colours.items():
-            if not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
-                raise ValueError(f"colour {name} is {value!r}, not sRGB hex #RRGGBB")
-        return colours
 
     @field_validator("files")
     @classmethod

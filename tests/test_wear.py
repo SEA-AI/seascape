@@ -368,3 +368,4 @@ def test_an_object_takes_its_colour_and_a_copy_of_its_import_keeps_its_own() -> 
             continue
         mix = shader.inputs["Base Color"].links[0].from_node
         assert mix.inputs["B"].links[0].from_node.attribute_name == "paint"
+        assert mix.inputs["Factor"].links[0].from_node.attribute_name == "painted"
