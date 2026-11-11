@@ -10,7 +10,7 @@ Every line of prose must lose something when deleted.
 ## Rules
 
 1. Try deleting it first. For every line, ask whether anything is lost without it. If not, delete it. Rephrase only lines that must stay.
-2. A rephrase is never longer than the line it replaces.
+2. A rephrase is never longer than the line it replaces, unless it corrects a stale fact.
 3. Comments only say what the code can't: a non-obvious constraint, a unit, a workaround and what removes it, a source. Never the line restated. A better name beats an explanatory comment.
 4. Nothing that can go stale. No numbers derived from values elsewhere, lists copied from another file, test names, or mentions of PRs, reviews, conversations or history. No hardware, specs or consumers the repo doesn't model. If a claim matters, a test asserts it.
 5. A number's source sits beside it, in a comment: a published relation, a derivation from one, or a pinned measurement of Blender. A judgement says "Judgement:".
