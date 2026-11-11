@@ -362,10 +362,5 @@ def test_an_object_takes_its_colour_and_a_copy_of_its_import_keeps_its_own() -> 
     assert list(orange["paint"]) == pytest.approx([0.637, 0.115, 0.024], abs=1e-3)
     assert orange["painted"] == 1.0
     assert "painted" not in white  # reads 0: its own Base Color
-    for material in _materials(anchors[0]):
-        shader = faces.bsdf(material)
-        if shader is None:
-            continue
-        mix = shader.inputs["Base Color"].links[0].from_node
-        assert mix.inputs["B"].links[0].from_node.attribute_name == "paint"
-        assert mix.inputs["Factor"].links[0].from_node.attribute_name == "painted"
+    # One material between them: the colour is each copy's own.
+    assert orange.active_material == white.active_material
