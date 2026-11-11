@@ -44,7 +44,7 @@ Each pattern names its usual root fix.
 - **One action, several homes.** Keying an object, sizing a hull, converting a pose: if two call sites do it, a third will drift. One function owns the action; the others call it.
 - **The same formula in two modules.** One relation with a source has one home in `physics` or `motion`. Two copies are connascence of algorithm and will disagree after the next fix.
 - **A field or default for one caller.** A record field, option or default that exists because one call site wanted it. Compute it at that call site, or ask why the record does not already carry the real quantity.
-- **A tag with one legal value.** A `Literal` with one member, or an enum of one, is speculative generality. Delete it until a second value exists, unless the next change in the same stack adds it; the union arrives with it.
+- **A tag with one legal value.** A `Literal` with one member, or an enum of one, is speculative generality. Delete it until a second value exists; the union arrives with it.
 - **Logic in the wrong layer.** Kinematics or integration written out in `config` rather than called from `physics`; a decision (which wave, which leg, which hull) in `blender`. Config validates and derives simple facts; motion computes over time; Blender keys.
 - **Feature envy.** A function that reads mostly another module's record. It belongs beside that record.
 - **Data clumps and primitive obsession.** The same few floats passed together through several signatures. One `NamedTuple` or frozen dataclass, defined in the lowest layer that uses all of them.
@@ -76,7 +76,7 @@ Each pattern names its usual root fix.
 4. Trace one value end to end: where it is computed, where it is stored, where it is read. Every hop through Blender, a closure or a re-computation needs a reason.
 5. Count homes. For each action and each formula the diff touches, count the places that perform it.
 6. Ask the principle questions above only where steps 2 to 5 found friction. Do not grade the diff against every principle.
-7. Before reporting, find why the code is as it is: an `AGENTS.md` trap, a Blender limit or a measured cost can justify an odd shape. Then it is a keep, with that reason.
+7. Before reporting, find why the code is as it is. Only a documented constraint justifies an odd shape: an `AGENTS.md` trap, a Blender limit or a measured cost. Then it is a keep, with that reason. That the codebase already does it elsewhere is never a reason; it is a second finding.
 
 ## What a finding contains
 
