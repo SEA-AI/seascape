@@ -21,6 +21,7 @@ from mcp.types import TextContent
 from PIL import ExifTags, Image
 from pydantic import ValidationError
 
+from seascape.assets import skies
 from seascape.config import Scenario, json_schema, load
 from seascape.model import ScenarioWarning
 from seascape.server import Settings, State, guide, jobs, tools, transport
@@ -147,6 +148,18 @@ def test_the_catalog_names_what_render_takes(state: State) -> None:
     assert set(listed["schema_sections"]) == set(json_schema()["properties"])
     assert all(listed["schema_sections"].values())
     assert "schema" not in listed
+
+
+def test_the_catalog_describes_each_sky_in_fields_a_client_can_match(
+    state: State,
+) -> None:
+    listed = _call(state, "catalog").structured_content["skies"]
+
+    assert listed.keys() == skies.library().keys()
+    rocky = listed["rocky_ridge"]
+    assert (rocky["cover"], rocky["sun_band"]) == ("partly cloudy", "low sun")
+    assert listed["mud_road"]["sun_band"] is None
+    assert listed["mud_road"]["cover"] == "overcast"
 
 
 def test_a_scenario_is_its_file(state: State) -> None:

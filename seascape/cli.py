@@ -382,10 +382,11 @@ def list_() -> None:
         key=lambda n: math.inf if (e := photos[n].sun_elevation_deg) is None else -e,
     )
     _table(
-        ("SKY", "SUN ELEV", "LICENCE", "CACHED"),
+        ("SKY", "LOOK", "SUN ELEV", "LICENCE", "CACHED"),
         [
             (
                 name,
+                photos[name].label,
                 photos[name].sun,
                 photos[name].licence,
                 _cached(assets.cache_path(name, photos[name].url).exists()),
@@ -425,6 +426,8 @@ def show(name: str) -> None:
         photo = skies.library()[name]
         path = assets.cache_path(name, photo.url)
         fields = {
+            "look": photo.label,
+            "cloud cover": f"{photo.cover_oktas} oktas, {photo.cloud_genus}",
             "sun elevation": photo.sun,
             "sun bearing": f"{photo.sun_bearing_deg:.1f} deg",
             "licence": photo.licence,

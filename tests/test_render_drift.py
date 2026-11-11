@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import bpy
+import cv2
 import numpy as np
 import pytest
 from mathutils import Vector
@@ -1454,6 +1455,26 @@ def test_the_committed_sun_is_what_the_photo_holds(name: str) -> None:
     else:
         assert sun.elevation_deg == pytest.approx(photo.sun_elevation_deg, abs=0.06)
         assert sun.floor == pytest.approx(photo.sun_floor, rel=1e-4)
+
+
+# Judgement: the cover is a sky-wide mean, so a coarse panorama serves.
+COVER_PX = 1024
+# Judgement: oktas a label by eye may fall under what `cloud` finds.
+UNDERSHOOT_OKTAS = 1.0
+
+
+@pytest.mark.parametrize("name", skies.library())
+def test_the_labelled_cover_is_no_less_than_the_detector_finds(name: str) -> None:
+    photo = skies.library()[name]
+    radiance = blend.read(download(name, photo.url, photo.sha256))[::-1, :, :3]
+    small = cv2.resize(
+        radiance, (COVER_PX, COVER_PX // 2), interpolation=cv2.INTER_AREA
+    )
+    share = skies.cloud(small, photo)
+    h = share.shape[0]
+    weight = np.cos(np.radians(90.0 - (np.arange(h // 2) + 0.5) / h * 180.0))
+    found_oktas = 8.0 * (share[: h // 2].mean(axis=1) @ weight) / weight.sum()
+    assert photo.cover_oktas >= found_oktas - UNDERSHOOT_OKTAS
 
 
 def test_a_cached_import_measures_as_the_first_one_did(tmp_path, monkeypatch) -> None:
