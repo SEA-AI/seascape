@@ -1461,7 +1461,7 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
             "pitch": {"amplitude_deg": 3.0, "period_s": 4.0},
             "roll": {"amplitude_deg": 5.0, "period_s": 4.0},
         },
-        turn={"by": "ptu", "top_rate_deg_s": 45.0, "moves": [{"to_deg": 90.0}]},
+        turn={"ptu": "bow", "top_rate_deg_s": 45.0, "moves": [{"to_deg": 90.0}]},
         outputs={"duration_s": 4.0},
     )
     built = scene.build(scenario)

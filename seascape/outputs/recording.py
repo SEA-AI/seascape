@@ -87,7 +87,7 @@ def _row(
     counter: int,
     scenario: dict[str, Any],
     rig: dict[str, Any],
-    turn: Turn | None,
+    scan_deg_s: float | None,
 ) -> dict:
     roll, pitch, yaw = attitude_deg(_to(camera, "rig"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
@@ -105,10 +105,10 @@ def _row(
         _, tilt, pan = attitude_deg(on_deck)
         row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
         row["tilt"] = rig["pitch_deg"] - tilt
-        if turn is not None and turn.by == "ptu":
+        if scan_deg_s is not None:
             row["proc_ptu_mode"] = COLAV_MODE
             # Revolutions per second, as the worker's setting.
-            row["proc_colav_speed"] = turn.scan_rate_deg_s / 360.0
+            row["proc_colav_speed"] = scan_deg_s / 360.0
     row |= {
         "counter": counter,
         # The recording's IMU: degrees, pitch positive nose down.
@@ -375,8 +375,13 @@ def export(run: Path) -> list[Path]:
                 writer = csv.DictWriter(f, COLUMNS, lineterminator="\n")
                 writer.writeheader()
                 head = scenario["rigs"][rig]
+                scan = (
+                    turn.scan_rate_deg_s
+                    if turn is not None and turn.ptu == rig
+                    else None
+                )
                 writer.writerows(
-                    _row(s, i, scenario, head, turn) for i, s in enumerate(shots)
+                    _row(s, i, scenario, head, scan) for i, s in enumerate(shots)
                 )
             written += [video, table]
         firsts = {_short(shots[0]): shots[0] for shots in cameras.values()}

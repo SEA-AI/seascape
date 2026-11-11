@@ -4478,18 +4478,17 @@
     },
     "Turn": {
       "additionalProperties": false,
-      "description": "A scripted turn of the ownship or its ptu, from the bow at t = 0. Each move\nramps up to its rate and down to rest at the acceleration.",
+      "description": "A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each\nmove ramps up to its rate and down to rest at the acceleration.",
       "properties": {
-        "by": {
-          "title": "By",
-          "description": "What turns: the ownship, or the one rig on a ptu.",
+        "ptu": {
+          "description": "The rig whose ptu turns; None turns the ownship.",
+          "default": null,
           "anyOf": [
             {
-              "enum": [
-                "ownship",
-                "ptu"
-              ],
-              "type": "string"
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -4592,7 +4591,6 @@
         }
       },
       "required": [
-        "by",
         "top_rate_deg_s",
         "moves"
       ],

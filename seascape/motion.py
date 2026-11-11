@@ -116,7 +116,7 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
         sub = math.ceil(1.0 / (outputs.fps * step_s))
     yawed = swung(0.0, swing, outputs)
     turned = None
-    if turn is not None and turn.by == "ownship":
+    if turn is not None and turn.ptu is None:
         turned = turned_deg(turn)
         sub = max(sub, math.ceil(turn.top_rate_deg_s / (outputs.fps * STEP_TURN_DEG)))
     tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)

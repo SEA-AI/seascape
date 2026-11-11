@@ -67,7 +67,6 @@ def test_an_orbit_keeps_its_range_and_its_bow_on_the_tangent() -> None:
 
 
 COURSE = Turn(
-    by="ownship",
     top_rate_deg_s=30.0,
     accel_deg_s2=30.0,
     moves=[
@@ -125,7 +124,6 @@ def test_each_move_stops_after_the_last_and_its_hold() -> None:
 def test_a_sailing_ownship_turns_on_a_circle_of_speed_over_rate() -> None:
     speed_mps, rate_deg_s = 10.0, 6.0
     quarter = Turn(
-        by="ownship",
         top_rate_deg_s=rate_deg_s,
         moves=[Move(to_deg=90.0)],
     )
@@ -154,12 +152,15 @@ def test_a_sailing_ownship_turns_on_a_circle_of_speed_over_rate() -> None:
         (
             {
                 "turn": {
-                    "by": "ownship",
                     "top_rate_deg_s": 5.0,
                     "moves": [{"to_deg": 10, "rate_deg_s": 6}],
                 }
             },
             "exceeds top_rate_deg_s",
+        ),
+        (
+            {"turn": COURSE.model_dump() | {"ptu": "bow"}},
+            "is no rig on a ptu",
         ),
     ],
 )
@@ -191,7 +192,7 @@ def test_a_turn_ending_on_the_last_frame_fits() -> None:
 def test_a_turn_too_long_suggests_a_duration_that_fits(
     moves: list[dict[str, object]], fps: int
 ) -> None:
-    turn = {"by": "ownship", "top_rate_deg_s": 10.0, "moves": moves}
+    turn = {"top_rate_deg_s": 10.0, "moves": moves}
     with pytest.raises(ValidationError, match="at least") as refused:
         load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 0.1, "fps": fps}}])
     suggested = float(str(refused.value).split("at least ")[1].split()[0])

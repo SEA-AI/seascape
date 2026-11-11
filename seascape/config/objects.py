@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from seascape import assets
+from seascape.config.cameras import Name
 from seascape.config.world import Sea
 from seascape.model import Model
 from seascape.physics import slew, thermal, waves
@@ -197,12 +198,12 @@ class Move(Model):
 
 
 class Turn(Model):
-    """A scripted turn of the ownship or its ptu, from the bow at t = 0. Each move
-    ramps up to its rate and down to rest at the acceleration.
+    """A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each
+    move ramps up to its rate and down to rest at the acceleration.
     """
 
-    by: Literal["ownship", "ptu"] = Field(
-        description="What turns: the ownship, or the one rig on a ptu."
+    ptu: Name | None = Field(
+        default=None, description="The rig whose ptu turns; None turns the ownship."
     )
     top_rate_deg_s: float = Field(
         gt=0.0, description="As fast as it turns; a move's rate when it sets none."

@@ -58,10 +58,11 @@ def make_run(
     *,
     ptu: bool = False,
     scan_deg_s: float | None = SCAN_DEG_S,
-    turn_by: str = "ptu",
+    turned: str | None = "port",
 ) -> Path:
     """Stand-ins for a render: one camera in a pod on a rolling hull; with `ptu`,
-    panned, tilted and in a turn by `turn_by`, at `scan_deg_s`.
+    panned, tilted and in a turn of the rig `turned`, else of the ownship, at
+    `scan_deg_s`.
     """
     body_to_cv = pose(TO_CV)
     camera_to_pod = pose(
@@ -122,7 +123,7 @@ def make_run(
             "pitch_deg": MOUNT_PITCH_DEG,
         }
         scenario["turn"] = {
-            "by": turn_by,
+            "ptu": turned,
             "top_rate_deg_s": TOP_DEG_S,
             "moves": [{"to_deg": 60.0, "rate_deg_s": scan_deg_s, "hold_s": 0.0}],
         }
@@ -174,7 +175,7 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
 def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
     tmp_path: Path,
 ) -> None:
-    recording.export(make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, turn_by="ownship"))
+    recording.export(make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, turned=None))
     (table,) = tmp_path.glob("recordings/port/*/*.csv")
     with table.open() as f:
         table_rows = list(csv.DictReader(f))

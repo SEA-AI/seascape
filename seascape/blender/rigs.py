@@ -91,9 +91,10 @@ def stabilise(
         attitude_deg: The ownship's pitch, bow up, and roll, starboard down, at a time.
     """
     turn, times = scenario.turn, scenario.outputs.times_s
-    panned = turned_deg(turn) if turn is not None and turn.by == "ptu" else _still
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
+            turns = turn is not None and turn.ptu == name
+            panned = turned_deg(turn) if turns else _still
             _hold(rigs[name], rig, rig.ptu, panned, attitude_deg, times)
 
 
