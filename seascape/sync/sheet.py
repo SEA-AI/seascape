@@ -14,13 +14,13 @@ from typing import NamedTuple
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
+from seascape.angles import wrapped_deg
 from seascape.assets import Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, sources
 from seascape.motion import panned_deg
 from seascape.outputs import brand, canvas
 from seascape.physics import ptu
-from seascape.physics.earth import wrapped_deg
 from seascape.sync import preview
 from seascape.sync.course import (
     BUOY,
