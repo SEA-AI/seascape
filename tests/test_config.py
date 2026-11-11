@@ -1618,7 +1618,7 @@ def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
 @pytest.mark.parametrize(
     ("asset", "colour", "error"),
     [
-        ("mooring_buoy", "purple", r"mooring_buoy comes in \['orange'\], not purple"),
+        ("mooring_buoy", "purple", r"comes in \['orange', 'yellow'\], not purple"),
         ("zodiac", "orange", "zodiac comes in its own colour only, not orange"),
     ],
 )

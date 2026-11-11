@@ -105,8 +105,9 @@ def _parts(name: str, hulls: Hulls) -> list[bpy.types.Object]:
     if hulls.heat is None:
         prefix_names(name, parts)
         # First, so the dirt sits on the new paint.
-        if manifest()[name].colours:
-            recolourable(mesh_objects(parts))
+        if (asset := manifest()[name]).colours:
+            painted = {f"{name}/{m}" for m in asset.paint_hull}
+            recolourable(mesh_objects(parts), painted)
         if worn:
             dirty(parts)
     return parts

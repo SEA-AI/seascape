@@ -570,9 +570,14 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         t.links.new(mixed, socket)
 
 
-def recolourable(meshes: list[bpy.types.Object]) -> None:
-    """Let `paint` set the Base Color of `meshes`, per object and copy."""
-    for material in {s.material for o in meshes for s in o.material_slots} - {None}:
+def recolourable(meshes: list[bpy.types.Object], materials: set[str]) -> None:
+    """Let `paint` set the Base Color of `meshes`' `materials`, per object and copy.
+
+    Limitation: the colour replaces a textured Base Color, its detail too; no asset
+    with colours has one.
+    """
+    used = {s.material for o in meshes for s in o.material_slots} - {None}
+    for material in (m for m in used if m.name in materials):
         t = material.node_tree
         if (shader := faces.bsdf(material)) is None:
             continue
