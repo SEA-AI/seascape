@@ -187,8 +187,8 @@ def add_ownship(
     the sea once `ride` keys it.
 
     Args:
-        ownship: Its hull, attitude and scripted motion.
-        path: Where it is and where its bow points, at a time.
+        ownship: Its hull, temperature, rise and heave.
+        path: Its pose at a time, from `motion.track`.
         rigs: Parented to the hull's draught, or to a bare ownship, in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.

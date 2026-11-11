@@ -1466,7 +1466,7 @@
         },
         "rate_deg_s": {
           "title": "Rate Deg S",
-          "description": "Its cruising rate; None is the top rate.",
+          "description": "Its cruising rate; a short move peaks below it. None is the top rate.",
           "default": null,
           "anyOf": [
             {
@@ -1495,7 +1495,7 @@
         },
         "hold_s": {
           "title": "Hold S",
-          "description": "Still, once there.",
+          "description": "Held still at `to_deg` before the next move.",
           "default": 0.0,
           "anyOf": [
             {
@@ -4416,11 +4416,11 @@
     },
     "Turn": {
       "additionalProperties": false,
-      "description": "A scripted turn of what carries the cameras, from the bow at t = 0. Each move\nramps up to its rate and down to rest at the acceleration.",
+      "description": "A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to\nits rate and down to rest at the acceleration.",
       "properties": {
         "by": {
           "title": "By",
-          "description": "What turns.",
+          "description": "What turns: the ownship's heading.",
           "anyOf": [
             {
               "const": "ownship",
@@ -4470,7 +4470,7 @@
         },
         "accel_deg_s2": {
           "title": "Accel Deg S2",
-          "description": "None reaches each rate at once.",
+          "description": "Of every ramp up and down; None steps to each rate at once.",
           "default": null,
           "anyOf": [
             {
@@ -4499,7 +4499,7 @@
         },
         "moves": {
           "title": "Moves",
-          "description": "In order.",
+          "description": "One after another from t = 0, each from where the last held.",
           "anyOf": [
             {
               "items": {
@@ -5206,7 +5206,7 @@
       ]
     },
     "turn": {
-      "description": "A scripted turn.",
+      "description": "Turns the ownship's heading through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
       "default": null,
       "anyOf": [
         {

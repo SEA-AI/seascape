@@ -131,7 +131,11 @@ class Scenario(Model):
     farms: list[Farm] = Field(
         default_factory=list, description="Wind turbines, in rows or alone."
     )
-    turn: Turn | None = Field(default=None, description="A scripted turn.")
+    turn: Turn | None = Field(
+        default=None,
+        description="Turns the ownship's heading through scripted moves from t = 0. "
+        "It ends within outputs.duration_s, with outputs.loop false.",
+    )
     outputs: Outputs = Field(default_factory=Outputs)
 
     @property
@@ -240,11 +244,18 @@ class Scenario(Model):
         if self.turn is None:
             return self
         if self.outputs.loop:
-            raise ValueError("a turn is a script, not a loop: drop turn or loop")
-        if (turn_s := self.turn.duration_s) > self.outputs.times_s[-1]:
             raise ValueError(
-                f"the turn takes {turn_s:.2f} s: make outputs.duration_s at least "
-                f"{math.ceil((turn_s + 1.0 / self.outputs.fps) * 100) / 100:.2f}"
+                "outputs.loop cannot close a scripted turn: set outputs.loop to false "
+                "or remove turn"
+            )
+        last_s = self.outputs.times_s[-1]
+        if (turn_s := self.turn.duration_s) > last_s:
+            fps = self.outputs.fps
+            # The last frame falls a frame before duration_s.
+            frames = math.ceil(turn_s * fps) + 1
+            raise ValueError(
+                f"the turn ends at {turn_s:.3f} s, after the last frame at "
+                f"{last_s:.3f} s: make outputs.duration_s at least {frames / fps:g}"
             )
         return self
 

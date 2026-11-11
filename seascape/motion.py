@@ -13,7 +13,7 @@ from seascape.physics import slew, waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
-# A judgement: the most a turn moves the heading in one trapezoid step.
+# Judgement: the most a turn moves the heading in one integration substep.
 STEP_TURN_DEG = 1.0
 
 
@@ -96,26 +96,25 @@ def turned_deg(turn: Turn) -> Callable[[float], float]:
         # `covered_deg` holds a leg's end after it, so the last holds forever.
         leg = legs[max(bisect.bisect_right(starts_s, t_s) - 1, 0)]
         return leg.start_deg + slew.covered_deg(
-            leg.distance_deg, leg.peak_deg_s, turn.accel_deg_s2, t_s - leg.start_s
+            leg.distance_deg, leg.rate_deg_s, turn.accel_deg_s2, t_s - leg.start_s
         )
 
     return at
 
 
 def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
-    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings and,
-    if the ownship is what turns, `turn` turns; and the pitch and roll its swings
-    script.
+    """The pose at a time: `speed_mps` integrated along the heading that `yaw` swings
+    and `turn` turns, with the pitch and roll its swings script.
     """
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
     # Whole substeps per frame, so every frame lands on the grid; a straight run is
     # exact in one.
-    sub, amplitude_rad, omega = 1, 0.0, 0.0
+    sub = 1
     if swing is not None:
-        period_s = outputs.period_s(swing.period_s)
-        sub = math.ceil(STEPS_PER_YAW / (outputs.fps * period_s))
-        amplitude_rad, omega = math.radians(swing.amplitude_deg), 2 * math.pi / period_s
+        step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
+        sub = math.ceil(1.0 / (outputs.fps * step_s))
+    yawed = swung(0.0, swing, outputs)
     turned = None
     if turn is not None and turn.by == "ownship":
         turned = turned_deg(turn)
@@ -123,7 +122,7 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
 
     def heading_rad(t_s: float) -> float:
-        rad = amplitude_rad * math.sin(omega * t_s)
+        rad = yawed(t_s)
         return rad if turned is None else rad + math.radians(turned(t_s))
 
     heading = np.array([heading_rad(t) for t in tau])

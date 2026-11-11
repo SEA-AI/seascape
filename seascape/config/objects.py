@@ -186,43 +186,55 @@ class Move(Model):
 
     to_deg: float = Field(description="Clockwise from the bow at t = 0.")
     rate_deg_s: float | None = Field(
-        default=None, gt=0.0, description="Its cruising rate; None is the top rate."
+        default=None,
+        gt=0.0,
+        description="Its cruising rate; a short move peaks below it. None is the "
+        "top rate.",
     )
-    hold_s: float = Field(default=0.0, ge=0.0, description="Still, once there.")
+    hold_s: float = Field(
+        default=0.0, ge=0.0, description="Held still at `to_deg` before the next move."
+    )
 
 
 class Leg(NamedTuple):
-    """A move's turn, from where the last move's hold left off."""
+    """A move's slew, from where the last move's hold ended: `distance_deg` signed,
+    clockwise positive, at `rate_deg_s`, taking `duration_s` before its `hold_s`.
+    """
 
     start_s: float
     start_deg: float
     distance_deg: float
     rate_deg_s: float
-    peak_deg_s: float
     duration_s: float
+    hold_s: float
 
 
 class Turn(Model):
-    """A scripted turn of what carries the cameras, from the bow at t = 0. Each move
-    ramps up to its rate and down to rest at the acceleration.
+    """A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to
+    its rate and down to rest at the acceleration.
     """
 
-    by: Literal["ownship"] = Field(description="What turns.")
+    by: Literal["ownship"] = Field(description="What turns: the ownship's heading.")
     top_rate_deg_s: float = Field(
         gt=0.0, description="As fast as it turns; a move's rate when it sets none."
     )
     accel_deg_s2: float | None = Field(
-        default=None, gt=0.0, description="None reaches each rate at once."
+        default=None,
+        gt=0.0,
+        description="Of every ramp up and down; None steps to each rate at once.",
     )
-    moves: list[Move] = Field(min_length=1, description="In order.")
+    moves: list[Move] = Field(
+        min_length=1,
+        description="One after another from t = 0, each from where the last held.",
+    )
 
     @model_validator(mode="after")
     def _no_move_outruns_the_top_rate(self) -> "Turn":
         for move in self.moves:
             if (rate := move.rate_deg_s) is not None and rate > self.top_rate_deg_s:
                 raise ValueError(
-                    f"a move at {rate} deg/s is faster than top_rate_deg_s "
-                    f"{self.top_rate_deg_s}: lower it or raise the top rate"
+                    f"a move's rate_deg_s {rate} exceeds top_rate_deg_s "
+                    f"{self.top_rate_deg_s}: lower rate_deg_s or raise top_rate_deg_s"
                 )
         return self
 
@@ -230,11 +242,10 @@ class Turn(Model):
         """Each move's turn, in order."""
         legs, at_s, at_deg = [], 0.0, 0.0
         for move in self.moves:
-            rate = move.rate_deg_s or self.top_rate_deg_s
+            rate = self.top_rate_deg_s if move.rate_deg_s is None else move.rate_deg_s
             distance = move.to_deg - at_deg
-            peak = slew.peak_deg_s(distance, rate, self.accel_deg_s2)
-            took_s = slew.duration_s(distance, peak, self.accel_deg_s2)
-            legs.append(Leg(at_s, at_deg, distance, rate, peak, took_s))
+            took_s = slew.duration_s(distance, rate, self.accel_deg_s2)
+            legs.append(Leg(at_s, at_deg, distance, rate, took_s, move.hold_s))
             at_s, at_deg = at_s + took_s + move.hold_s, move.to_deg
         return legs
 
@@ -242,7 +253,7 @@ class Turn(Model):
     def duration_s(self) -> float:
         """From the first move's start to the last move's hold's end."""
         last = self.legs()[-1]
-        return last.start_s + last.duration_s + self.moves[-1].hold_s
+        return last.start_s + last.duration_s + last.hold_s
 
 
 class Heave(Model):

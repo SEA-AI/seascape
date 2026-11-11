@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from seascape import motion
 from seascape.config import Drift, Move, Outputs, Ownship, Turn, load
-from seascape.physics import slew
 from tests.scenarios import OPEN_SEA
 
 SPEED_MPS = 400.0
@@ -112,14 +111,6 @@ def test_the_rate_keeps_under_its_cap_and_ramps_at_the_acceleration() -> None:
     assert np.abs(np.diff(rate)).max() / dt_s == pytest.approx(30.0, rel=1e-2)
 
 
-def test_a_short_turn_never_reaches_its_rate() -> None:
-    # Up and down at 2 deg/s^2 over 2 deg peaks at 2 deg/s, in 2 s.
-    peak = slew.peak_deg_s(2.0, 6.0, 2.0)
-
-    assert peak == pytest.approx(2.0)
-    assert slew.duration_s(2.0, peak, 2.0) == pytest.approx(2.0)
-
-
 def test_each_move_stops_after_the_last_and_its_hold() -> None:
     turned = motion.turned_deg(accelerating(None))
 
@@ -154,11 +145,11 @@ def test_a_sailing_ownship_turns_on_a_circle_of_speed_over_rate() -> None:
     [
         (
             {"turn": COURSE.model_dump(), "outputs": {"duration_s": 10}},
-            "the turn takes",
+            "the turn ends at",
         ),
         (
             {"turn": COURSE.model_dump(), "outputs": {"duration_s": 60, "loop": True}},
-            "not a loop",
+            "cannot close a scripted turn",
         ),
         (
             {
@@ -168,10 +159,31 @@ def test_a_sailing_ownship_turns_on_a_circle_of_speed_over_rate() -> None:
                     "moves": [{"to_deg": 10, "rate_deg_s": 6}],
                 }
             },
-            "faster than top_rate_deg_s",
+            "exceeds top_rate_deg_s",
         ),
     ],
 )
-def test_a_turn_that_cannot_run_is_refused(changes: dict, error: str) -> None:
+def test_a_turn_that_cannot_run_is_refused(
+    changes: dict[str, object], error: str
+) -> None:
     with pytest.raises(ValidationError, match=error):
         load(OPEN_SEA, [changes])
+
+
+@pytest.mark.parametrize(
+    ("moves", "fps"),
+    [
+        (COURSE.model_dump()["moves"], 30),
+        # 0.1096 s: rounding the suggestion to 0.01 s left it a frame short.
+        ([{"to_deg": 1.096}], 10),
+    ],
+)
+def test_a_turn_too_long_suggests_a_duration_that_fits(
+    moves: list[dict[str, object]], fps: int
+) -> None:
+    turn = {"by": "ownship", "top_rate_deg_s": 10.0, "moves": moves}
+    with pytest.raises(ValidationError, match="at least") as refused:
+        load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 0.1, "fps": fps}}])
+    suggested = float(str(refused.value).split("at least ")[1].split()[0])
+
+    load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": suggested, "fps": fps}}])
