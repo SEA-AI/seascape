@@ -5269,7 +5269,7 @@
       ]
     },
     "turn": {
-      "description": "Turns the ownship's heading through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
+      "description": "Turns the ownship, or a rig's ptu, through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
       "default": null,
       "anyOf": [
         {

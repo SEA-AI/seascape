@@ -133,7 +133,8 @@ class Scenario(Model):
     )
     turn: Turn | None = Field(
         default=None,
-        description="Turns the ownship's heading through scripted moves from t = 0. "
+        description="Turns the ownship, or a rig's ptu, through scripted moves from "
+        "t = 0. "
         "It ends within outputs.duration_s, with outputs.loop false.",
     )
     outputs: Outputs = Field(default_factory=Outputs)
