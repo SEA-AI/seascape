@@ -112,11 +112,7 @@ def _hold(
     def pan_deg(t_s: float) -> float:
         return rig.yaw_deg + panned(t_s)
 
-    tilt = ptu.tilt_deg(
-        lambda t: ptu.head_pitch_deg(*attitude_deg(t), pan_deg(t)),
-        times_s,
-        unit.inclination_deg,
-    )
+    tilt = ptu.panned_tilt_deg(attitude_deg, pan_deg, times_s, unit.inclination_deg)
 
     def pitch_rad(t_s: float) -> float:
         return math.radians(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)))

@@ -59,3 +59,23 @@ def head_pitch_deg(pitch_deg: float, roll_deg: float, pan_deg: float) -> float:
     """
     pan = math.radians(pan_deg)
     return pitch_deg * math.cos(pan) - roll_deg * math.sin(pan)
+
+
+def panned_tilt_deg(
+    attitude_deg: Callable[[float], tuple[float, float]],
+    pan_deg: Callable[[float], float],
+    times_s: Sequence[float],
+    target_deg: float,
+) -> np.ndarray:
+    """The tilt the loop holds at each of `times_s` under a head panned `pan_deg` on
+    a base that pitches and rolls by `attitude_deg`.
+
+    Args:
+        attitude_deg: The base's pitch, bow up, and roll, starboard down, at a time.
+        pan_deg: Clockwise from the bow, at a time.
+        times_s: Ascending, from 0.
+        target_deg: The head's pitch the loop holds, up.
+    """
+    return tilt_deg(
+        lambda t: head_pitch_deg(*attitude_deg(t), pan_deg(t)), times_s, target_deg
+    )

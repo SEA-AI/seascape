@@ -1,7 +1,7 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
 
@@ -29,9 +29,9 @@ from seascape.config import (
     Scenario,
     substream,
 )
-from seascape.motion import attitude_deg, track
+from seascape.motion import Path, attitude_deg, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4
-from seascape.physics import earth, wakes
+from seascape.physics import earth, wakes, waves
 
 # Blender's camera looks down -Z with +Y up; OpenCV's looks down +Z with +Y down.
 _BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
@@ -149,6 +149,19 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
+def _attitude(
+    scenario: Scenario, path: Path, hull: waves.Waterplane | None
+) -> Callable[[float], tuple[float, float]]:
+    """The ownship's pitch, bow up, and roll, starboard down, as `hull` rides the
+    scenario's tall waves; None for a bare rig.
+    """
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    return attitude_deg(
+        scenario.ownship, path, hull, wind + swell, tall, scenario.outputs
+    )
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with a scenario.
 
@@ -195,10 +208,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     ride(afloat, wind + swell, tall, outputs)
     if any(rig.ptu for rig in scenario.rigs.values()):
         hull = next((a.hull for a in afloat if a.anchor is vessel), None)
-        attitude = attitude_deg(
-            scenario.ownship, path, hull, wind + swell, tall, outputs
-        )
-        stabilise(rigs.rigs, scenario, attitude)
+        stabilise(rigs.rigs, scenario, _attitude(scenario, path, hull))
     solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
