@@ -23,13 +23,16 @@ class Pose(NamedTuple):
 
 class HullSize(NamedTuple):
     """A hull's size as the waves see it: its waterplane, and the box below it. A
-    point by default.
+    point by default, which follows the water.
     """
 
     length_m: float = 0.0
     beam_m: float = 0.0
     box_beam_m: float = 0.0
     box_draught_m: float = 0.0
+
+
+POINT = HullSize()
 
 
 def track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
@@ -63,19 +66,19 @@ def track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
 
 def waterplane(
     pose: Pose,
-    size: HullSize,
-    speed_mps: float,
     tall: tuple[waves.Wave, ...],
     t_s: float,
+    size: HullSize = POINT,
+    speed_mps: float = 0.0,
 ) -> waves.Waterplane:
     """A hull of `size` at `pose`, centred where the water under it was at rest.
 
     Args:
         pose: Where it is and where its bow points.
-        size: Its size.
-        speed_mps: Its speed along the heading.
         tall: The waves that are geometry, the ones it floats on; the rest only shade.
         t_s: The time the water moved to `pose`.
+        size: Waterplane and box; a point, the default, follows the water.
+        speed_mps: Its speed along the heading.
     """
     rest = waves.gerstner_rest_m(
         tall, np.array(pose.east_m), np.array(pose.north_m), t_s
@@ -83,8 +86,8 @@ def waterplane(
     heading = pose.heading_rad
     return waves.Waterplane(
         *map(float, rest),
-        heading,
-        *size,
-        speed_mps * math.sin(heading),
-        speed_mps * math.cos(heading),
+        heading_rad=heading,
+        **size._asdict(),
+        east_mps=speed_mps * math.sin(heading),
+        north_mps=speed_mps * math.cos(heading),
     )

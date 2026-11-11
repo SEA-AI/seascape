@@ -10,6 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from seascape import motion
 from seascape.assets import Hull, manifest
 from seascape.blender import faces
 from seascape.blender.blend import (
@@ -40,7 +41,6 @@ from seascape.config import (
     Targets,
     substream,
 )
-from seascape.motion import HullSize, Pose, track, waterplane
 from seascape.physics import earth, wakes, waves
 
 
@@ -211,18 +211,18 @@ def add_ownship(
                 outputs.period_s(swing.period_s),
             )
             animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
-    path = track(ownship, outputs)
+    track = motion.track(ownship, outputs)
     sailing = ownship.speed_mps > 0.0
     # Limitation: it leaves no wake; `wakes.Wake` draws only a straight run.
     if sailing:
-        animate(anchor, "location", outputs.times_s, lambda t: path(t).east_m, 0)
-        animate(anchor, "location", outputs.times_s, lambda t: path(t).north_m, 1)
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).east_m, 0)
+        animate(anchor, "location", outputs.times_s, lambda t: track(t).north_m, 1)
     if ownship.yaw is not None:
         animate(
             anchor,
             "rotation_euler",
             outputs.times_s,
-            lambda t: yaw(math.degrees(path(t).heading_rad)),
+            lambda t: yaw(math.degrees(track(t).heading_rad)),
             2,
         )
     scripted = sine(anchor.location.z, 0.0, 1.0)
@@ -235,10 +235,10 @@ def add_ownship(
     if heave is not None or bare or sailing:
 
         def value_at(t_s: float) -> float:
-            pose = path(t_s)
+            pose = track(t_s)
             z = earth.sea_z_m(pose.east_m, pose.north_m, radius_m) + scripted(t_s)
             if bare:
-                point = waterplane(pose, HullSize(), 0.0, tall, t_s)
+                point = motion.waterplane(pose, tall, t_s)
                 z += waves.heave_m(tall, point, t_s)
             return z
 
@@ -503,15 +503,15 @@ def ride(
     hulls = []
     for anchor in anchors:
         (attitude,) = anchor.children
-        size = HullSize(*(anchor[k] for k in HullSize._fields))
+        size = motion.HullSize(*(anchor[k] for k in motion.HullSize._fields))
         hulls.append((anchor, attitude, size))
     keyed = len(outputs.times_s) > 1
     for frame, t_s in enumerate(outputs.times_s):
         sc.frame_set(frame)
         for anchor, attitude, size in hulls:
             east, north, _ = anchor.matrix_world.translation
-            pose = Pose(east, north, heading_rad(anchor))
-            hull = waterplane(pose, size, anchor["speed_mps"], tall, t_s)
+            pose = motion.Pose(east, north, heading_rad(anchor))
+            hull = motion.waterplane(pose, tall, t_s, size, anchor["speed_mps"])
             pitch, roll = waves.attitude(field, hull, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)

@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
+from seascape import motion
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
@@ -1503,14 +1504,15 @@ class TestOwnshipUnderway:
         assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
 
     def test_the_track_integrates_the_heading_to_the_closed_form(self) -> None:
-        hull, _, _ = self._run(self.STEERED)
-
         end_s = self.STEERED.outputs.times_s[-1]
+
+        end = motion.track(self.STEERED.ownship, self.STEERED.outputs)(end_s)
+
         theta = np.linspace(0.0, end_s, 400_001)
         heading = np.radians(30.0) * np.sin(2.0 * np.pi * theta / 4.0)
         east = self.SPEED_MPS * np.trapezoid(np.sin(heading), theta)
         north = self.SPEED_MPS * np.trapezoid(np.cos(heading), theta)
-        assert tuple(hull[-1, :2]) == pytest.approx((east, north), rel=1e-3)
+        assert (end.east_m, end.north_m) == pytest.approx((east, north), rel=1e-3)
 
     def test_a_ship_without_speed_turns_in_place(self) -> None:
         hull, bearing, _ = self._run(self.TURNING)
