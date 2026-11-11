@@ -64,17 +64,22 @@ def panned_tilt_deg(
     attitude_deg: Callable[[float], tuple[float, float]],
     pan_deg: Callable[[float], float],
     times_s: Sequence[float],
-    target_deg: float,
+    inclination_deg: float,
+    mount_pitch_deg: float,
 ) -> np.ndarray:
-    """The tilt the loop holds at each of `times_s` under a head panned `pan_deg` on
-    a base that pitches and rolls by `attitude_deg`.
+    """The tilt past its mount the loop holds at each of `times_s` under a head
+    panned `pan_deg` on a base that pitches and rolls by `attitude_deg`.
 
     Args:
         attitude_deg: The base's pitch, bow up, and roll, starboard down, at a time.
         pan_deg: Clockwise from the bow, at a time.
         times_s: Ascending, from 0.
-        target_deg: The head's pitch the loop holds, up.
+        inclination_deg: The head's pitch the loop holds, up, its mount included.
+        mount_pitch_deg: The mount's pitch on the base, up.
     """
+    # The firmware's IMU sits on the head, so the loop holds the head itself, its
+    # mount included.
+    target_deg = inclination_deg - mount_pitch_deg
     return tilt_deg(
         lambda t: head_pitch_deg(*attitude_deg(t), pan_deg(t)), times_s, target_deg
     )

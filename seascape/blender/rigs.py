@@ -118,10 +118,9 @@ def _hold(
     def pan_deg(t_s: float) -> float:
         return rig.yaw_deg + panned(t_s)
 
-    # The firmware's IMU sits on the head, so the loop holds the head, mount
-    # included, at the inclination.
-    target_deg = unit.inclination_deg - rig.pitch_deg
-    tilt = ptu.panned_tilt_deg(attitude_deg, pan_deg, times_s, target_deg)
+    tilt = ptu.panned_tilt_deg(
+        attitude_deg, pan_deg, times_s, unit.inclination_deg, rig.pitch_deg
+    )
 
     def euler(t_s: float) -> tuple[float, float, float]:
         return _head(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)), pan_deg(t_s))
