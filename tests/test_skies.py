@@ -158,3 +158,26 @@ def test_a_uniform_sky_lights_a_horizontal_surface_with_pi_times_its_radiance() 
     radiance = np.ones((64, 128, 3), np.float32)
     radiance[32:] = 100.0
     assert skies.diffuse_irradiance(radiance) == pytest.approx(math.pi, rel=1e-3)
+
+
+@pytest.mark.parametrize(
+    ("changes", "words"),
+    [
+        ({}, "cloudy sunset"),
+        ({"sun_elevation_deg": 45.0, "cloud_genus": "cirrus"}, "clear noon"),
+        ({"sun_elevation_deg": 15.0, "cloud_genus": "clear"}, "clear sunset"),
+        (
+            {
+                "sun_elevation_deg": None,
+                "sun_floor": None,
+                "diffuse_irradiance": 1.0,
+                "overcast": True,
+            },
+            "overcast",
+        ),
+    ],
+)
+def test_a_photo_is_named_by_its_weather_and_sun(
+    changes: dict[str, object], words: str
+) -> None:
+    assert PHOTO.model_copy(update=changes).weather == words

@@ -23,7 +23,7 @@ from pydantic import ValidationError
 
 from seascape.config import Scenario, json_schema, load
 from seascape.model import ScenarioWarning
-from seascape.server import Settings, State, jobs, tools, transport
+from seascape.server import Settings, State, guide, jobs, tools, transport
 from seascape.server.jobs import Job, JobState
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
@@ -67,7 +67,7 @@ def _call(state: State, tool: str, **arguments: Any) -> Any:
     return asyncio.run(call())
 
 
-def test_only_the_tools_that_change_state_ask_a_client_for_approval(
+def test_only_cancel_asks_a_client_for_approval(
     tmp_path: Path,
 ) -> None:
     async def listed() -> dict[str, bool]:
@@ -85,7 +85,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         "jobs": True,
         "get_job": True,
         "preview": True,
-        "render": False,
+        "render": True,
         "cancel": False,
     }
 
@@ -105,6 +105,33 @@ def test_a_bad_override_is_refused_before_any_job(line: str, state: State) -> No
     result = _call(state, "render", overrides=[line])
     assert result.is_error
     assert not state.jobs
+
+
+@pytest.mark.parametrize("wish", guide.WISHES)
+def test_each_wish_the_guide_offers_loads_over_the_default_scenario(wish: str) -> None:
+    *_, heard = jobs._tried(
+        SCENARIOS / "showcase.toml",
+        guide.WISHES[wish],
+        1,
+        Settings(scenarios=SCENARIOS),
+    )
+    assert heard == []
+
+
+def test_a_client_is_told_the_wishes_and_a_user_can_pick_the_prompt(
+    tmp_path: Path,
+) -> None:
+    async def asked() -> tuple[str, str]:
+        async with Client(transport.mcp(_state(tmp_path))) as client:
+            got = await client.get_prompt("getting_started")
+            content = got.messages[0].content
+            assert isinstance(content, TextContent)
+            return client.instructions or "", content.text
+
+    instructions, prompt = asyncio.run(asked())
+    for wish, lines in guide.WISHES.items():
+        assert all(line in instructions for line in lines)
+        assert wish in prompt
 
 
 def test_an_unknown_scenario_is_refused(state: State) -> None:
