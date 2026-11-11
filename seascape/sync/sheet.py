@@ -17,7 +17,7 @@ from PIL import Image, ImageColor, ImageDraw, ImageOps
 from seascape.assets import Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, sources
-from seascape.motion import turned_deg
+from seascape.motion import panned_deg
 from seascape.outputs import brand, canvas
 from seascape.physics import ptu
 from seascape.physics.earth import wrapped_deg
@@ -92,6 +92,7 @@ class _Course(NamedTuple):
     """What every part of the sheet reads, worked out once."""
 
     scenario: Scenario
+    name: str
     rig: Rig
     videos: list[View]
     rings: list[Ring]
@@ -105,7 +106,7 @@ class _Course(NamedTuple):
 
 
 def _course(scenario: Scenario) -> _Course:
-    ((_, rig),) = scenario.rigs.items()
+    ((name, rig),) = scenario.rigs.items()
     videos = views(rig)
     names = [v.name for v in videos]
     palette = SERIES if len(names) <= len(SERIES) else canvas.palette(len(names))
@@ -115,6 +116,7 @@ def _course(scenario: Scenario) -> _Course:
     }
     return _Course(
         scenario,
+        name,
         rig,
         videos,
         sorted(rings(videos), key=lambda r: r.range_m),
@@ -454,8 +456,8 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     attitude = np.array([posed.attitude_deg(t) for t in times])
     pitch, roll = attitude[:, 0], attitude[:, 1]
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
-    if rig.ptu is not None and turn is not None and turn.ptu is not None:
-        turned = turned_deg(turn)
+    if rig.ptu is not None:
+        turned = panned_deg(turn, course.name)
 
         def pan_deg(t_s: float) -> float:
             return rig.yaw_deg + turned(t_s)
