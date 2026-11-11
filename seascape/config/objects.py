@@ -131,6 +131,11 @@ class Object(Model):
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
+    colour: str | None = Field(
+        default=None,
+        description="One of the colours its asset lists in `colours`; None keeps the "
+        "asset's own. Colour only, not its LWIR.",
+    )
     draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
     count: int = Field(
         default=1,
@@ -154,6 +159,17 @@ class Object(Model):
     @model_validator(mode="after")
     def _draught_in_range(self) -> "Object":
         _check_draught(self.asset, self.draught_m)
+        return self
+
+    @model_validator(mode="after")
+    def _sold_in_its_colour(self) -> "Object":
+        if self.colour is None:
+            return self
+        if self.colour not in (sold := assets.manifest()[self.asset].colours):
+            raise ValueError(
+                f"{self.asset} comes in {sorted(sold) or 'its own colour only'}, "
+                f"not {self.colour}"
+            )
         return self
 
     @model_validator(mode="after")

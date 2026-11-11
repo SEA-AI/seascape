@@ -20,6 +20,7 @@ from seascape.blender.blend import (
     separate,
     vector,
 )
+from seascape.physics.colour import srgb_decode
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
 
 # Occlusion is ray-traced and only the shape decides it, so each asset bakes its
@@ -567,3 +568,29 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     mixed = mix_shader(t, total, shader.outputs["BSDF"], dirt.outputs["BSDF"])
     for socket in consumers:
         t.links.new(mixed, socket)
+
+
+def recolourable(parts: list[bpy.types.Object]) -> None:
+    """Let each object of `parts`, and every copy, take a colour of its own in place
+    of its materials' Base Color, as `paint` sets it.
+    """
+    meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+    for material in {s.material for o in meshes for s in o.material_slots} - {None}:
+        t = material.node_tree
+        if (shader := faces.bsdf(material)) is None:
+            continue
+        mix = node(t, "ShaderNodeMix", data_type="RGBA")
+        feed(t, mix.inputs["Factor"], _attribute(t, "painted", "OBJECT").outputs["Fac"])
+        feed(t, mix.inputs["A"], _source(shader.inputs["Base Color"]))
+        feed(t, mix.inputs["B"], _attribute(t, "paint", "OBJECT").outputs["Color"])
+        t.links.new(mix.outputs["Result"], shader.inputs["Base Color"])
+
+
+def paint(anchor: bpy.types.Object, srgb_hex: str) -> None:
+    """Paint a recolourable hull's meshes `srgb_hex`."""
+    srgb = np.array([int(srgb_hex[i : i + 2], 16) for i in (1, 3, 5)]) / 255.0
+    linear = [float(c) for c in srgb_decode(srgb)]
+    for part in anchor.children_recursive:
+        if part.type == "MESH":
+            part["paint"] = linear
+            part["painted"] = 1.0

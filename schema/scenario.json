@@ -1890,6 +1890,34 @@
             }
           ]
         },
+        "colour": {
+          "title": "Colour",
+          "description": "One of the colours its asset lists in `colours`; None keeps the asset's own. Colour only, not its LWIR.",
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "draught_m": {
           "title": "Draught M",
           "description": "How deep it floats, keel to waterline, within the asset's `draught_range_m`. Unset, the asset's own.",
