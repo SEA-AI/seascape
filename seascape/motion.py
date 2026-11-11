@@ -9,8 +9,7 @@ import numpy as np
 
 from seascape.config import Drift, Outputs, Ownship, Turn
 from seascape.config.objects import Swing
-from seascape.physics import turn as kinematics
-from seascape.physics import waves
+from seascape.physics import slew, waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
@@ -96,8 +95,8 @@ def turned_deg(turn: Turn) -> Callable[[float], float]:
     def at(t_s: float) -> float:
         # `covered_deg` holds a leg's end after it, so the last holds forever.
         leg = legs[max(bisect.bisect_right(starts_s, t_s) - 1, 0)]
-        return leg.start_deg + kinematics.covered_deg(
-            leg.distance_deg, leg.rate_deg_s, turn.accel_deg_s2, t_s - leg.start_s
+        return leg.start_deg + slew.covered_deg(
+            leg.distance_deg, leg.peak_deg_s, turn.accel_deg_s2, t_s - leg.start_s
         )
 
     return at

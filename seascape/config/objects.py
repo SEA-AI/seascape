@@ -14,7 +14,7 @@ from pydantic import (
 from seascape import assets
 from seascape.config.world import Sea
 from seascape.model import Model
-from seascape.physics import thermal, turn, waves
+from seascape.physics import slew, thermal, waves
 
 
 def _names(turbines: bool) -> list[str]:
@@ -192,14 +192,14 @@ class Move(Model):
 
 
 class Leg(NamedTuple):
-    """A move from where the last left off: its turn, then its hold."""
+    """A move's turn, from where the last move's hold left off."""
 
     start_s: float
     start_deg: float
     distance_deg: float
     rate_deg_s: float
+    peak_deg_s: float
     duration_s: float
-    hold_s: float
 
 
 class Turn(Model):
@@ -232,8 +232,9 @@ class Turn(Model):
         for move in self.moves:
             rate = move.rate_deg_s or self.top_rate_deg_s
             distance = move.to_deg - at_deg
-            took_s = turn.duration_s(distance, rate, self.accel_deg_s2)
-            legs.append(Leg(at_s, at_deg, distance, rate, took_s, move.hold_s))
+            peak = slew.peak_deg_s(distance, rate, self.accel_deg_s2)
+            took_s = slew.duration_s(distance, peak, self.accel_deg_s2)
+            legs.append(Leg(at_s, at_deg, distance, rate, peak, took_s))
             at_s, at_deg = at_s + took_s + move.hold_s, move.to_deg
         return legs
 
@@ -241,7 +242,7 @@ class Turn(Model):
     def duration_s(self) -> float:
         """From the first move's start to the last move's hold's end."""
         last = self.legs()[-1]
-        return last.start_s + last.duration_s + last.hold_s
+        return last.start_s + last.duration_s + self.moves[-1].hold_s
 
 
 class Heave(Model):

@@ -1,5 +1,6 @@
 """A whole scenario, and what its render writes."""
 
+import math
 import warnings
 from typing import Literal
 
@@ -243,7 +244,7 @@ class Scenario(Model):
         if (turn_s := self.turn.duration_s) > self.outputs.times_s[-1]:
             raise ValueError(
                 f"the turn takes {turn_s:.2f} s: make outputs.duration_s at least "
-                f"{turn_s + 1.0 / self.outputs.fps:.2f}"
+                f"{math.ceil((turn_s + 1.0 / self.outputs.fps) * 100) / 100:.2f}"
             )
         return self
 
