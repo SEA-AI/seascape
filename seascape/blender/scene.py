@@ -15,6 +15,7 @@ from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
+    Afloat,
     Hulls,
     OverlapError,
     add_ownship,
@@ -179,19 +180,18 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
-    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall, radius_m)
+    afloat: list[Afloat] = []
+    vessel = add_ownship(
+        scenario.ownship, rigs.root, hulls, outputs, tall, radius_m, afloat
+    )
     trails: list[wakes.Wake] = []
-    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails, afloat)
     targets = {**vessels, **turbines}  # no asset is both
     # Before `views`, which reads where the cameras look as the hulls rock.
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
-    afloat = list(chain(*vessels.values()))
-    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
-    if scenario.ownship.asset is not None:
-        afloat.append(vessel)
     ride(afloat, wind + swell, tall, outputs)
-    solid = afloat + list(chain(*turbines.values()))
+    solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))

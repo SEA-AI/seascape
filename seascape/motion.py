@@ -6,36 +6,34 @@ from typing import NamedTuple
 
 import numpy as np
 
-from seascape.config import Outputs, Ownship
+from seascape.config import Drift, Outputs, Ownship
 from seascape.physics import waves
 
-# A judgement: trapezoid steps per yaw period; the error falls with the square.
+# Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
 
 
 class Pose(NamedTuple):
-    """East and north of the start; the heading is clockwise from north."""
+    """East and north in the world, the heading clockwise from north, and the velocity
+    over the ground.
+    """
 
     east_m: float
     north_m: float
     heading_rad: float
+    east_mps: float = 0.0
+    north_mps: float = 0.0
 
 
-class HullSize(NamedTuple):
-    """A hull's size as the waves see it: its waterplane, and the box below it. A
-    point by default, which follows the water.
-    """
-
-    length_m: float = 0.0
-    beam_m: float = 0.0
-    box_beam_m: float = 0.0
-    box_draught_m: float = 0.0
+type Path = Callable[[float], Pose]
 
 
-POINT = HullSize()
+def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
+    """A sine of time in seconds."""
+    return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
 
 
-def track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
+def track(ownship: Ownship, outputs: Outputs) -> Path:
     """The pose at a time: `speed_mps` integrated along the heading `yaw` swings."""
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
@@ -55,39 +53,96 @@ def track(ownship: Ownship, outputs: Outputs) -> Callable[[float], Pose]:
         area = np.diff(tau) * (speed[1:] + speed[:-1]) / 2.0
         return np.concatenate(([0.0], np.cumsum(area)))
 
-    east = ownship.speed_mps * integral(np.sin(heading))
-    north = ownship.speed_mps * integral(np.cos(heading))
+    speed = ownship.speed_mps
+    east = speed * integral(np.sin(heading))
+    north = speed * integral(np.cos(heading))
 
     def at(t_s: float) -> Pose:
-        return Pose(*(float(np.interp(t_s, tau, c)) for c in (east, north, heading)))
+        e, n, h = (float(np.interp(t_s, tau, c)) for c in (east, north, heading))
+        return Pose(e, n, h, speed * math.sin(h), speed * math.cos(h))
+
+    return at
+
+
+def drifting(
+    range_m: float,
+    bearing_deg: float,
+    heading_deg: float,
+    speed_mps: float,
+    drift: Drift | None,
+    outputs: Outputs,
+) -> Path:
+    """From `range_m` out along `bearing_deg` at t = 0, under way along its heading
+    and drifting about that pose: a sway across it, and a surge along it at twice the
+    rate.
+    """
+    bearing, heading = math.radians(bearing_deg), math.radians(heading_deg)
+    sway_m = surge_m = 0.0
+    period_s = 1.0
+    if drift is not None:
+        sway_m, surge_m = drift.sway_m, drift.surge_m
+        period_s = outputs.period_s(drift.period_s)
+    sway = sine(0.0, sway_m, period_s)
+    surge = sine(0.0, surge_m, period_s / 2.0)
+    rate = 2.0 * math.pi / period_s
+
+    def at(t_s: float) -> Pose:
+        phase = rate * t_s
+        along, across = speed_mps * t_s + surge(t_s), sway(t_s)
+        along_mps = speed_mps + 2.0 * rate * surge_m * math.cos(2.0 * phase)
+        across_mps = rate * sway_m * math.cos(phase)
+        # Starboard of the heading is (cos, -sin).
+        sin, cos = math.sin(heading), math.cos(heading)
+        return Pose(
+            range_m * math.sin(bearing) + along * sin + across * cos,
+            range_m * math.cos(bearing) + along * cos - across * sin,
+            heading,
+            along_mps * sin + across_mps * cos,
+            along_mps * cos - across_mps * sin,
+        )
+
+    return at
+
+
+def orbiting(range_m: float, bearing_deg: float, lap_s: float) -> Path:
+    """Clockwise round the origin `range_m` out, from `bearing_deg`, once a `lap_s`;
+    the bow a right angle ahead of the bearing.
+    """
+    speed_mps = 2.0 * math.pi * range_m / lap_s
+
+    def at(t_s: float) -> Pose:
+        bearing = math.radians(bearing_deg + 360.0 * t_s / lap_s)
+        heading = bearing + math.pi / 2.0
+        return Pose(
+            range_m * math.sin(bearing),
+            range_m * math.cos(bearing),
+            heading,
+            speed_mps * math.sin(heading),
+            speed_mps * math.cos(heading),
+        )
 
     return at
 
 
 def waterplane(
-    pose: Pose,
-    tall: tuple[waves.Wave, ...],
-    t_s: float,
-    size: HullSize = POINT,
-    speed_mps: float = 0.0,
+    pose: Pose, tall: tuple[waves.Wave, ...], t_s: float, hull: waves.Waterplane
 ) -> waves.Waterplane:
-    """A hull of `size` at `pose`, centred where the water under it was at rest.
+    """`hull` at `pose`, centred where the water under it was at rest.
 
     Args:
-        pose: Where it is and where its bow points.
+        pose: Where it is, where its bow points and how it moves.
         tall: The waves that are geometry, the ones it floats on; the rest only shade.
-        t_s: The time the water moved to `pose`.
-        size: Waterplane and box; a point, the default, follows the water.
-        speed_mps: Its speed along the heading.
+        t_s: When it is at `pose`.
+        hull: Its size; its pose is ignored.
     """
     rest = waves.gerstner_rest_m(
         tall, np.array(pose.east_m), np.array(pose.north_m), t_s
     )
-    heading = pose.heading_rad
-    return waves.Waterplane(
-        *map(float, rest),
-        heading_rad=heading,
-        **size._asdict(),
-        east_mps=speed_mps * math.sin(heading),
-        north_mps=speed_mps * math.cos(heading),
+    east, north = map(float, rest)
+    return hull._replace(
+        rest_east_m=east,
+        rest_north_m=north,
+        heading_rad=pose.heading_rad,
+        east_mps=pose.east_mps,
+        north_mps=pose.north_mps,
     )

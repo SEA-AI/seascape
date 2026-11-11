@@ -104,12 +104,12 @@ def gerstner_rest_m(
 class Waterplane(NamedTuple):
     """A hull's waterplane, centred where the water under it was at rest, `length_m`
     along `heading_rad` and `beam_m` across, sailing at (`east_mps`, `north_mps`);
-    a point at rest by default. Below it, the box `response` moves, `length_m` long:
-    none by default, which follows the water.
+    a point at rest at the origin by default. Below it, the box `response` moves,
+    `length_m` long: none by default, which follows the water.
     """
 
-    rest_east_m: float
-    rest_north_m: float
+    rest_east_m: float = 0.0
+    rest_north_m: float = 0.0
     heading_rad: float = 0.0
     length_m: float = 0.0
     beam_m: float = 0.0

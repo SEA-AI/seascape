@@ -144,6 +144,7 @@ def draw(scenario: Scenario, out: Path) -> None:
         scenario.outputs,
         (),
         earth.earth_radius_m(scenario.sea.refraction_k),
+        [],
     )
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     hull = mesh_objects([vessel])

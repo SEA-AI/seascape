@@ -61,11 +61,6 @@ def animate(
             owner.keyframe_insert(data_path, index=index, frame=frame)
 
 
-def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
-    """A sine of time in seconds."""
-    return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
-
-
 def drive(
     owner: bpy.types.bpy_struct,
     prop: str,
