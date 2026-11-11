@@ -11,6 +11,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import NamedTuple
 
+from seascape import angles
 from seascape.assets import Buoy, Debris, manifest
 from seascape.config import Camera, Crop, Object, Rig, Scenario, Stitch, Turn, sources
 from seascape.motion import Pose, panned_deg, track, turned_deg
@@ -212,7 +213,7 @@ def _placed(
     return Object(
         asset=asset,
         range_m=round(math.hypot(east, north), DECIMALS),
-        bearing_deg=round(math.degrees(math.atan2(east, north)), DECIMALS),
+        bearing_deg=round(angles.bearing_deg(east, north), DECIMALS),
         heading_deg=90.0,
         heading_from="line_of_sight",
         colour=colour,

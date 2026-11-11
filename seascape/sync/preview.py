@@ -6,7 +6,7 @@ import math
 from collections import defaultdict
 from collections.abc import Callable
 
-from seascape.angles import wrapped_deg
+from seascape.angles import bearing_deg, wrapped_deg
 from seascape.assets import manifest
 from seascape.config import Object, Scenario
 from seascape.outputs.labels import Labels
@@ -41,8 +41,8 @@ def sightlines(scenario: Scenario) -> Callable[[Object, int], tuple[float, float
         b, rig = math.radians(o.bearing_deg), seen_from[f]
         east = o.range_m * math.sin(b) - rig.east_m
         north = o.range_m * math.cos(b) - rig.north_m
-        off = math.atan2(east, north) - rig.heading_rad
-        return math.hypot(east, north), wrapped_deg(math.degrees(off))
+        off = bearing_deg(east, north) - math.degrees(rig.heading_rad)
+        return math.hypot(east, north), wrapped_deg(off)
 
     return at
 
