@@ -1,5 +1,6 @@
 """Where a hull is at a time, and the waterplane the waves tilt it by there."""
 
+import bisect
 import math
 from collections.abc import Callable
 from typing import NamedTuple
@@ -90,33 +91,16 @@ def _hermite(
 def turned_deg(turn: Turn) -> Callable[[float], float]:
     """The turn's angle at a time, clockwise from where it starts."""
     legs = turn.legs()
-    starts_s = np.cumsum(
-        [0.0]
-        + [leg.duration_s + m.hold_s for leg, m in zip(legs, turn.moves, strict=True)]
-    )
+    starts_s = [leg.start_s for leg in legs]
 
     def at(t_s: float) -> float:
-        i = int(np.searchsorted(starts_s, t_s, side="right")) - 1
-        if i >= len(legs):
-            return turn.moves[-1].to_deg
-        leg = legs[max(i, 0)]
-        gone_s = t_s - starts_s[max(i, 0)]
+        # `covered_deg` holds a leg's end after it, so the last holds forever.
+        leg = legs[max(bisect.bisect_right(starts_s, t_s) - 1, 0)]
         return leg.start_deg + kinematics.covered_deg(
-            leg.distance_deg, leg.rate_deg_s, turn.accel_deg_s2, gone_s
+            leg.distance_deg, leg.rate_deg_s, turn.accel_deg_s2, t_s - leg.start_s
         )
 
     return at
-
-
-def turning_points(turn: Turn) -> list[tuple[float, float]]:
-    """Each move's (time, angle) as it comes to rest."""
-    points, t_s = [], 0.0
-    for leg, move in zip(turn.legs(), turn.moves, strict=True):
-        t_s += leg.duration_s
-        if leg.distance_deg != 0.0:
-            points.append((t_s, move.to_deg))
-        t_s += move.hold_s
-    return points
 
 
 def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
@@ -126,25 +110,22 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     """
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
-    turned = turned_deg(turn) if turn is not None and turn.by == "ownship" else None
     # Whole substeps per frame, so every frame lands on the grid; a straight run is
     # exact in one.
-    sub = 1
+    sub, amplitude_rad, omega = 1, 0.0, 0.0
     if swing is not None:
-        step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
-        sub = math.ceil(1.0 / (outputs.fps * step_s))
-    if turned is not None and turn is not None:
+        period_s = outputs.period_s(swing.period_s)
+        sub = math.ceil(STEPS_PER_YAW / (outputs.fps * period_s))
+        amplitude_rad, omega = math.radians(swing.amplitude_deg), 2 * math.pi / period_s
+    turned = None
+    if turn is not None and turn.by == "ownship":
+        turned = turned_deg(turn)
         sub = max(sub, math.ceil(turn.top_rate_deg_s / (outputs.fps * STEP_TURN_DEG)))
     tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
 
     def heading_rad(t_s: float) -> float:
-        rad = 0.0
-        if swing is not None:
-            omega = 2.0 * math.pi / outputs.period_s(swing.period_s)
-            rad += math.radians(swing.amplitude_deg) * math.sin(omega * t_s)
-        if turned is not None:
-            rad += math.radians(turned(t_s))
-        return rad
+        rad = amplitude_rad * math.sin(omega * t_s)
+        return rad if turned is None else rad + math.radians(turned(t_s))
 
     heading = np.array([heading_rad(t) for t in tau])
 

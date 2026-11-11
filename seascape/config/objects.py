@@ -192,12 +192,14 @@ class Move(Model):
 
 
 class Leg(NamedTuple):
-    """A move from where the last left off, before its hold."""
+    """A move from where the last left off: its turn, then its hold."""
 
+    start_s: float
     start_deg: float
     distance_deg: float
     rate_deg_s: float
     duration_s: float
+    hold_s: float
 
 
 class Turn(Model):
@@ -226,22 +228,20 @@ class Turn(Model):
 
     def legs(self) -> list[Leg]:
         """Each move's turn, in order."""
-        legs, at_deg = [], 0.0
+        legs, at_s, at_deg = [], 0.0, 0.0
         for move in self.moves:
             rate = move.rate_deg_s or self.top_rate_deg_s
             distance = move.to_deg - at_deg
             took_s = turn.duration_s(distance, rate, self.accel_deg_s2)
-            legs.append(Leg(at_deg, distance, rate, took_s))
-            at_deg = move.to_deg
+            legs.append(Leg(at_s, at_deg, distance, rate, took_s, move.hold_s))
+            at_s, at_deg = at_s + took_s + move.hold_s, move.to_deg
         return legs
 
     @property
     def duration_s(self) -> float:
         """From the first move's start to the last move's hold's end."""
-        return sum(
-            leg.duration_s + move.hold_s
-            for leg, move in zip(self.legs(), self.moves, strict=True)
-        )
+        last = self.legs()[-1]
+        return last.start_s + last.duration_s + last.hold_s
 
 
 class Heave(Model):

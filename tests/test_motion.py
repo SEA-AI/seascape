@@ -82,25 +82,34 @@ COURSE = Turn(
 )
 
 
-def rates_deg_s(turn: Turn, dt_s: float = 1e-3) -> tuple[np.ndarray, np.ndarray]:
-    times = np.arange(0.0, turn.duration_s, dt_s)
-    angle = np.array([motion.turned_deg(turn)(t) for t in times])
-    return times, np.diff(angle) / dt_s
+def accelerating(accel_deg_s2: float | None) -> Turn:
+    return Turn.model_validate({**COURSE.model_dump(), "accel_deg_s2": accel_deg_s2})
+
+
+def stops(turn: Turn) -> list[tuple[float, float]]:
+    """Each move's (time, angle) as it comes to rest."""
+    return [
+        (leg.start_s + leg.duration_s, leg.start_deg + leg.distance_deg)
+        for leg in turn.legs()
+        if leg.distance_deg
+    ]
 
 
 @pytest.mark.parametrize("accel_deg_s2", [None, 30.0, 2.0])
 def test_a_turn_comes_to_rest_at_each_target(accel_deg_s2: float | None) -> None:
-    turn = COURSE.model_copy(update={"accel_deg_s2": accel_deg_s2})
+    turn = accelerating(accel_deg_s2)
     turned = motion.turned_deg(turn)
 
-    for t_s, to_deg in motion.turning_points(turn):
+    for t_s, to_deg in stops(turn):
         assert turned(t_s) == pytest.approx(to_deg, abs=1e-9)
     assert turned(turn.duration_s + 5.0) == 0.0
 
 
 def test_the_rate_keeps_under_its_cap_and_ramps_at_the_acceleration() -> None:
-    times, rate = rates_deg_s(COURSE)
-    back_at_bow_s = motion.turning_points(COURSE)[2][0]
+    dt_s = 1e-3
+    times = np.arange(0.0, COURSE.duration_s, dt_s)
+    rate = np.diff([motion.turned_deg(COURSE)(t) for t in times]) / dt_s
+    back_at_bow_s = stops(COURSE)[2][0]
 
     assert np.abs(rate).max() == pytest.approx(30.0, rel=1e-3)
     sweep = rate[times[1:] <= back_at_bow_s]
@@ -114,8 +123,8 @@ def test_a_short_turn_never_reaches_its_rate() -> None:
     assert kinematics.duration_s(2.0, 6.0, 2.0) == pytest.approx(2.0)
 
 
-def test_the_turning_points_are_where_each_move_stops() -> None:
-    points = motion.turning_points(COURSE.model_copy(update={"accel_deg_s2": None}))
+def test_each_move_stops_after_the_last_and_its_hold() -> None:
+    points = stops(accelerating(None))
 
     # 3 s still, then 60, 120 and 60 deg at 6 deg/s, 3 s still, 90 deg twice at 30.
     assert points == pytest.approx(
