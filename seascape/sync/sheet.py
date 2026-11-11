@@ -454,7 +454,7 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     attitude = np.array([posed.attitude_deg(t) for t in times])
     pitch, roll = attitude[:, 0], attitude[:, 1]
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
-    if rig.ptu is not None and turn is not None and turn.by == "ptu":
+    if rig.ptu is not None and turn is not None and turn.ptu is not None:
         turned = turned_deg(turn)
 
         def pan_deg(t_s: float) -> float:
@@ -462,7 +462,7 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
 
         signals["pan"] = np.array([pan_deg(t) for t in times])
         signals["tilt"] = ptu.panned_tilt_deg(
-            posed.attitude_deg, pan_deg, times, rig.ptu.inclination_deg
+            posed.attitude_deg, pan_deg, times, rig.ptu.inclination_deg, rig.pitch_deg
         )
     return signals
 
