@@ -206,6 +206,10 @@ def _worn(
 ) -> bpy.types.NodeSocket:
     tree = masks.id_data
     for layer in wear.COVERS:
+        if layer in ("scuff", "dropping"):
+            # Judgement: a scuff is the same paint or plastic, and a dropping a thin
+            # film on it, so both radiate as the surface under them.
+            continue
         if layer == "stain":
             # Judgement: the stain is the splash zone, kept wet at the bulk water's
             # temperature.

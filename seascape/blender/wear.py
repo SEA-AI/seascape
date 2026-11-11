@@ -40,6 +40,8 @@ class Weights(NamedTuple):
     rust: float
     stain: float
     soot: float
+    scuff: float
+    dropping: float
     fade: float
     runoff: float
 
@@ -47,31 +49,31 @@ class Weights(NamedTuple):
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
 # What covers the surface, bottom up; `fade` only tints the paint.
-COVERS = ("grime", "rust", "stain", "soot")
+COVERS = ("grime", "rust", "stain", "soot", "scuff", "dropping")
 
 # Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
 # one; cloth sags and flexes, so water runs off it without leaving a streak.
 PROFILE: dict[ZoneName, Weights] = {
-    "paint_hull": Weights(1.0, 1.0, 1.0, 0.0, 0.5, 1.0),
-    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.5, 1.0),
-    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.3, 1.0),
-    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 1.0),
-    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 1.0),
-    "rubber": Weights(0.6, 0.0, 0.6, 0.0, 0.7, 1.0),
-    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.7, 0.0),
-    "funnel": Weights(0.5, 0.5, 0.0, 1.0, 0.3, 1.0),
-    "exhaust": Weights(0.4, 0.0, 0.0, 1.0, 0.0, 1.0),
-    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.7, 1.0),
-    "wood_composite": Weights(0.8, 0.0, 1.0, 0.0, 0.6, 1.0),
+    "paint_hull": Weights(1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.5, 1.0),
+    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.7, 0.6, 0.5, 1.0),
+    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.6, 0.3, 0.3, 1.0),
+    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 0.3, 0.0, 1.0),
+    "rubber": Weights(0.6, 0.0, 0.6, 0.0, 1.0, 0.3, 0.7, 1.0),
+    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.0, 0.3, 0.7, 0.0),
+    "funnel": Weights(0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 0.3, 1.0),
+    "exhaust": Weights(0.4, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.5, 0.3, 0.7, 1.0),
+    "wood_composite": Weights(0.8, 0.0, 1.0, 0.0, 0.5, 0.3, 0.6, 1.0),
 }
 
 
 def weights(material: Material) -> np.ndarray:
     """(zones, weights), zones in vocabulary order."""
     table = np.array([PROFILE[z] for z in ZONE_NAMES], dtype=np.float32)
-    if material != "steel":
-        # Judgement: other hulls' fittings are stainless.
-        table[:, Weights._fields.index("rust")] = 0.0
+    # Judgement: other hulls' fittings are stainless; a chip on steel shows rust.
+    gone = "scuff" if material == "steel" else "rust"
+    table[:, Weights._fields.index(gone)] = 0.0
     return table
 
 
@@ -374,6 +376,13 @@ class _Masks:
         edge = _smooth(1.0 - Num(t, facing), 0.01, 0.08)
         return edge * self.cover(self.noise(3.0, 7.0), 0.15) * self.region
 
+    def droppings(self) -> Num:
+        # Judgement: splashes 2-5 cm, a few in a hundred of a level top at full wear;
+        # only the noise's peaks pass, which `cover`'s broad threshold would not keep.
+        threshold = self.amount.madd(-0.08, 0.72)
+        splash = _smooth(self.noise(25.0, 9.0, 1.0), threshold, threshold + 0.03)
+        return _smooth(self.up, 0.5, 0.9) * splash * self.region
+
     def stain(self) -> Num:
         bow = _smooth(self.y / self.length, 0.32, 0.45)
         # Judgement: a waterline stain 0.8% of the length tall on GRP, a hand's width
@@ -392,10 +401,19 @@ class _Masks:
         grime = self.grime().op("MAXIMUM", streak * not_steel)
         washed = self.shell * (1.0 - _smooth(self.height, 0.0, 0.5))
         grime = grime * (1.0 - washed)
-        rust = self.chips().op("MAXIMUM", streak * self.steel)
+        chips = self.chips()
+        rust = chips.op("MAXIMUM", streak * self.steel)
         soot = self.cover(self.noise(0.5, 13.0), 0.4, 0.3)
         sky = _smooth(self.up, 0.0, 1.0).madd(0.5, 0.5)
-        return grime, rust, self.stain(), soot, self.amount * sky
+        return (
+            grime,
+            rust,
+            self.stain(),
+            soot,
+            chips,
+            self.droppings(),
+            self.amount * sky,
+        )
 
 
 def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
@@ -435,6 +453,8 @@ RUST = (0.20, 0.065, 0.022, 1.0)
 STAIN_STEEL = (0.06, 0.07, 0.035, 1.0)  # algae on a ship's boot top
 STAIN = (0.22, 0.14, 0.05, 1.0)  # a yacht's: tannin, oil and algae
 SOOT = (0.015, 0.014, 0.013, 1.0)
+SCUFF = (0.42, 0.41, 0.38, 1.0)  # abraded paint and stress-whitened plastic
+DROPPING = (0.62, 0.61, 0.57, 1.0)  # bird lime, dried
 
 
 def dirty(parts: list[bpy.types.Object]) -> None:
@@ -485,7 +505,7 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     stain.inputs["B"].default_value = STAIN_STEEL
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
     for layer, albedo in zip(
-        COVERS[1:], (RUST, stain.outputs["Result"], SOOT), strict=True
+        COVERS[1:], (RUST, stain.outputs["Result"], SOOT, SCUFF, DROPPING), strict=True
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")
         feed(t, mix.inputs["Factor"], cover[layer])
