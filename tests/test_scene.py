@@ -1456,7 +1456,7 @@ class TestOwnshipMotion:
 
 def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     scenario = variant(
-        rig={"ptu": True, "pitch_deg": -2.0},
+        rig={"ptu": {}, "pitch_deg": -2.0},
         ownship={
             "pitch": {"amplitude_deg": 3.0, "period_s": 4.0},
             "roll": {"amplitude_deg": 5.0, "period_s": 4.0},

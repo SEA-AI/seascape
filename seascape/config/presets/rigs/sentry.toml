@@ -5,7 +5,7 @@
 model = "Sentry"
 # Sentry Gen 3.1.
 hardware_version = "Oscar_V7_Gen_3_1"
-ptu = true
+ptu = {}
 
 [cameras.t1]
 preset = "boson_640_32deg"

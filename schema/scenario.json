@@ -2732,6 +2732,41 @@
       "title": "Processing",
       "type": "object"
     },
+    "Ptu": {
+      "additionalProperties": false,
+      "description": "A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu.",
+      "properties": {
+        "inclination_deg": {
+          "title": "Inclination Deg",
+          "description": "The pitch it holds its head at, on top of its mount's. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": -20.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Ptu",
+      "type": "object"
+    },
     "Rig": {
       "additionalProperties": false,
       "description": "One installed product: the frame its cameras sit in, at one mount point.\n\nRigs a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
@@ -2870,39 +2905,14 @@
           ]
         },
         "ptu": {
-          "title": "Ptu",
-          "description": "On a pan-tilt unit, which holds its pitch, and pans when a turn is by the ptu.",
-          "default": false,
+          "description": "What it sits on, if anything.",
+          "default": null,
           "anyOf": [
             {
-              "type": "boolean"
+              "$ref": "#/$defs/Ptu"
             },
             {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "inclination_deg": {
-          "title": "Inclination Deg",
-          "description": "The pitch a pan-tilt unit holds its head at, on top of its mount's. Negative is down.",
-          "default": 0.0,
-          "anyOf": [
-            {
-              "maximum": 20.0,
-              "minimum": -20.0,
-              "type": "number"
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"

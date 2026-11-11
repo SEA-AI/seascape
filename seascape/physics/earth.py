@@ -12,6 +12,11 @@ GRAVITY_MS2 = 9.81
 EARTH_RADIUS_M = 6_371_000.0
 
 
+def wrapped_deg(angle_deg: float) -> float:
+    """The same direction in [-180, 180)."""
+    return (angle_deg + 180.0) % 360.0 - 180.0
+
+
 def earth_radius_m(refraction_k: float) -> float:
     """Effective radius, R / (1 - k).
 

@@ -16,9 +16,10 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
-from seascape.config import Crop, Undistortion, Video, sources
+from seascape.config import Crop, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.physics.earth import wrapped_deg
 
 COLUMNS = [
     "counter",
@@ -70,7 +71,7 @@ def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     return (
         math.degrees(roll),
         math.degrees(pitch),
-        (round(math.degrees(yaw), 6) + 180.0) % 360.0 - 180.0,
+        wrapped_deg(round(math.degrees(yaw), 6)),
     )
 
 
@@ -90,20 +91,18 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
     row = dict.fromkeys(COLUMNS, 0.0)
     rig = scenario["rigs"][camera.rig]
     # An older run has neither key.
-    if rig.get("ptu"):
+    if rig.get("ptu") is not None:
         # The head on the deck, past its mount: pan clockwise, tilt nose down as the
         # IMU's pitch.
         on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
         _, tilt, pan = attitude_deg(on_deck)
-        row["pan"] = (pan - rig["yaw_deg"] + 180.0) % 360.0 - 180.0
+        row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
         row["tilt"] = rig["pitch_deg"] - tilt
-    if (turn := scenario.get("turn")) is not None:
+    if (raw := scenario.get("turn")) is not None:
         row["proc_ptu_mode"] = COLAV_MODE
-        if rig.get("ptu"):
-            rate = next(
-                (r for m in turn["moves"] if (r := m.get("rate_deg_s"))),
-                turn["top_rate_deg_s"],
-            )
+        turn = Turn.model_validate(raw)
+        if turn.by == "ptu":
+            rate = next(leg.rate_deg_s for leg in turn.legs() if leg.distance_deg)
             # Revolutions per second, as the worker's setting.
             row["proc_colav_speed"] = rate / 360.0
     row |= {

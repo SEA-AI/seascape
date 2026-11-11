@@ -111,7 +111,7 @@ def make_run(
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
     }
     if ptu:
-        scenario["rigs"]["port"] |= {"ptu": True, "yaw_deg": 0.0, "pitch_deg": 0.0}
+        scenario["rigs"]["port"] |= {"ptu": {}, "yaw_deg": 0.0, "pitch_deg": 0.0}
         scenario["turn"] = {
             "by": "ptu",
             "top_rate_deg_s": TOP_DEG_S,

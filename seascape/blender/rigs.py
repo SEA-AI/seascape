@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 from seascape.blender.blend import (
@@ -15,6 +16,7 @@ from seascape.blender.blend import (
 from seascape.config import (
     Band,
     Mount,
+    Ptu,
     Rig,
     Scenario,
 )
@@ -91,13 +93,14 @@ def stabilise(
     turn, times = scenario.turn, scenario.outputs.times_s
     turned = turned_deg(turn) if turn is not None and turn.by == "ptu" else None
     for name, rig in scenario.rigs.items():
-        if rig.ptu:
-            _hold(rigs[name], rig, turned, attitude_deg, times)
+        if rig.ptu is not None:
+            _hold(rigs[name], rig, rig.ptu, turned, attitude_deg, times)
 
 
 def _hold(
     head: bpy.types.Object,
     rig: Rig,
+    unit: Ptu,
     turned: Callable[[float], float] | None,
     attitude_deg: Callable[[float], tuple[float, float]],
     times_s: Sequence[float],
@@ -108,11 +111,16 @@ def _hold(
     tilt = ptu.tilt_deg(
         lambda t: ptu.head_pitch_deg(*attitude_deg(t), pan_deg(t)),
         times_s,
-        rig.inclination_deg,
+        unit.inclination_deg,
     )
-    held = dict(zip(times_s, rig.pitch_deg + tilt, strict=True))
-    animate(head, "rotation_euler", times_s, lambda t: math.radians(held[t]), 0)
-    animate(head, "rotation_euler", times_s, lambda t: yaw(pan_deg(t)), 2)
+
+    def pitch_rad(t_s: float) -> float:
+        return math.radians(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)))
+
+    animate(head, "rotation_euler", times_s, pitch_rad, 0)
+    # `add_rigs` set a still pan.
+    if turned is not None:
+        animate(head, "rotation_euler", times_s, lambda t: yaw(pan_deg(t)), 2)
 
 
 class View(NamedTuple):
