@@ -14,6 +14,7 @@ roughness.
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from operator import attrgetter
 
 import numpy as np
@@ -80,9 +81,12 @@ _PER_WAVE = attrgetter(
 )
 
 
+@lru_cache(maxsize=16)
 def columns(field: tuple[Wave, ...]) -> np.ndarray:
-    """Rows in `_PER_WAVE` order, a column per wave."""
-    return np.array([_PER_WAVE(w) for w in field]).reshape(-1, 6).T
+    """Rows in `_PER_WAVE` order, a column per wave; read-only, as it is shared."""
+    table = np.array([_PER_WAVE(w) for w in field]).reshape(-1, 6).T
+    table.flags.writeable = False
+    return table
 
 
 def roughness_m(wind_speed_mps: float) -> float:
