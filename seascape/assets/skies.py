@@ -38,9 +38,10 @@ from seascape.physics import colour, earth, lwir
 
 LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
-# Judgement: CARLA's ClearSunset altitude (WeatherParameters.cpp).
+# Judgement: no maritime or aviation standard sets a low-sun elevation.
 LOW_SUN_DEG = 15.0
-# Oktas by aviation cover code, SKC/FEW to OVC (eoas.ubc.ca/courses/atsc113).
+# Oktas as in WMO Code Table 2700, the ship cloud-cover report; the words follow the
+# aviation cover codes, SKC/FEW to OVC (eoas.ubc.ca/courses/atsc113).
 CLEAR_MAX_OKTAS = 2
 PARTLY_MAX_OKTAS = 4
 OVERCAST_OKTAS = 8
