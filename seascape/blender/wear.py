@@ -570,9 +570,8 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         t.links.new(mixed, socket)
 
 
-def recolourable(parts: list[bpy.types.Object]) -> None:
-    """Let `paint` set the Base Color of `parts`, per object and copy."""
-    meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+def recolourable(meshes: list[bpy.types.Object]) -> None:
+    """Let `paint` set the Base Color of `meshes`, per object and copy."""
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:
         t = material.node_tree
         if (shader := faces.bsdf(material)) is None:

@@ -131,6 +131,7 @@ class Object(Model):
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
+    # Limitation: LWIR keeps `paint_absorptance`, whatever the colour.
     colour: str | None = Field(
         default=None,
         description="One of the colours its asset lists in `colours`; None keeps the "

@@ -106,7 +106,7 @@ def _parts(name: str, hulls: Hulls) -> list[bpy.types.Object]:
         prefix_names(name, parts)
         # First, so the dirt sits on the new paint.
         if manifest()[name].colours:
-            recolourable(parts)
+            recolourable(mesh_objects(parts))
         if worn:
             dirty(parts)
     return parts
@@ -564,7 +564,7 @@ def add_vessels(
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
     for i, spec in enumerate(scenario.objects):
         anchors = _object(spec, radius_m, hulls, outputs, trails, afloat)
-        if spec.colour is not None and hulls.heat is None:
+        if spec.colour is not None:
             painting.append((anchors, manifest()[spec.asset].colours[spec.colour]))
         wearing.append((anchors, spec.wear, f"wear/objects/{i}"))
         vessels[spec.asset] += anchors
