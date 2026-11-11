@@ -7,6 +7,7 @@ from typing import NamedTuple
 import numpy as np
 
 from seascape.config import Drift, Outputs, Ownship
+from seascape.config.objects import Swing
 from seascape.physics import waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
@@ -14,8 +15,9 @@ STEPS_PER_YAW = 64
 
 
 class Pose(NamedTuple):
-    """East and north in the world, the heading clockwise from north, and the velocity
-    over the ground.
+    """East and north in the world, the heading clockwise from north, the velocity
+    over the ground, and the pitch bow up and roll starboard down it is steered to,
+    before the sea tilts it.
     """
 
     east_m: float
@@ -23,6 +25,13 @@ class Pose(NamedTuple):
     heading_rad: float
     east_mps: float = 0.0
     north_mps: float = 0.0
+    pitch_rad: float = 0.0
+    roll_rad: float = 0.0
+
+    @property
+    def speed_mps(self) -> float:
+        """Over the ground."""
+        return math.hypot(self.east_mps, self.north_mps)
 
 
 type Path = Callable[[float], Pose]
@@ -33,8 +42,23 @@ def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], fl
     return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
 
 
+def swung(
+    mean_deg: float, swing: Swing | None, outputs: Outputs
+) -> Callable[[float], float]:
+    """`mean_deg` and the swing about it, in radians at a time."""
+    if swing is None:
+        return sine(math.radians(mean_deg), 0.0, 1.0)
+    return sine(
+        math.radians(mean_deg),
+        math.radians(swing.amplitude_deg),
+        outputs.period_s(swing.period_s),
+    )
+
+
 def track(ownship: Ownship, outputs: Outputs) -> Path:
-    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings."""
+    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings, and
+    the pitch and roll its swings script.
+    """
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
     # Whole substeps per frame, so every frame lands on the grid; a straight run is
@@ -56,10 +80,13 @@ def track(ownship: Ownship, outputs: Outputs) -> Path:
     speed = ownship.speed_mps
     east = speed * integral(np.sin(heading))
     north = speed * integral(np.cos(heading))
+    pitch = swung(ownship.pitch_deg, ownship.pitch, outputs)
+    roll = swung(ownship.roll_deg, ownship.roll, outputs)
 
     def at(t_s: float) -> Pose:
         e, n, h = (float(np.interp(t_s, tau, c)) for c in (east, north, heading))
-        return Pose(e, n, h, speed * math.sin(h), speed * math.cos(h))
+        v_e, v_n = speed * math.sin(h), speed * math.cos(h)
+        return Pose(e, n, h, v_e, v_n, pitch(t_s), roll(t_s))
 
     return at
 

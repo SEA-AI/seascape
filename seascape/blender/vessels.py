@@ -16,7 +16,6 @@ from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
     empty,
-    place,
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
@@ -40,7 +39,6 @@ from seascape.config import (
     Targets,
     substream,
 )
-from seascape.motion import sine
 from seascape.physics import earth, wakes, waves
 
 
@@ -75,20 +73,15 @@ class Condition:
         return cls(spec.t_k, spec.engine_off_min, spec.paint_absorptance)
 
 
-def _level(_t_s: float) -> tuple[float, float]:
-    return 0.0, 0.0
-
-
 @dataclass(frozen=True)
 class Afloat:
-    """A hull `ride` keys: its anchor, the path keyed on it, its waterplane's size,
-    and the pitch and roll in radians keyed on the anchor at a time.
+    """A hull `ride` keys: its anchor, the path keyed on it, and its waterplane's
+    size.
     """
 
     anchor: bpy.types.Object
     path: motion.Path
     hull: waves.Waterplane
-    tilt: Callable[[float], tuple[float, float]] = _level
 
 
 def heading_rad(anchor: bpy.types.Object) -> float:
@@ -180,30 +173,6 @@ def _vessel(
     return anchor, hull
 
 
-def _swing(
-    anchor: bpy.types.Object, ownship: Ownship, outputs: Outputs
-) -> Callable[[float], tuple[float, float]]:
-    """Key the ownship's scripted pitch and roll swings; its pitch and roll at a time,
-    in radians.
-    """
-    swung = []
-    for index, mean_deg, swing in (
-        (0, ownship.pitch_deg, ownship.pitch),
-        (1, ownship.roll_deg, ownship.roll),
-    ):
-        value_at = sine(math.radians(mean_deg), 0.0, 1.0)
-        if swing is not None:
-            value_at = sine(
-                math.radians(mean_deg),
-                math.radians(swing.amplitude_deg),
-                outputs.period_s(swing.period_s),
-            )
-            animate(anchor, "rotation_euler", outputs.times_s, value_at, index)
-        swung.append(value_at)
-    pitch, roll = swung
-    return lambda t_s: (pitch(t_s), roll(t_s))
-
-
 def add_ownship(
     ownship: Ownship,
     rigs: bpy.types.Object,
@@ -240,75 +209,71 @@ def add_ownship(
         (draught,) = attitude.children
         rigs.parent = draught
     anchor.name = "ownship"
-    anchor["speed_mps"] = ownship.speed_mps
-    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
-    anchor.rotation_mode = "YXZ"
-    anchor.rotation_euler = (
-        math.radians(ownship.pitch_deg),
-        math.radians(ownship.roll_deg),
-        0.0,
-    )
-    tilt = _swing(anchor, ownship, outputs)
     track = motion.track(ownship, outputs)
     # Limitation: a hull-less ownship has no footprint, so it sails through targets.
     if hull is not None:
-        afloat.append(Afloat(anchor, track, hull, tilt))
-    sailing = ownship.speed_mps > 0.0
+        afloat.append(Afloat(anchor, track, hull))
     # Limitation: it leaves no wake; `wakes.Wake` draws only a straight run.
-    if sailing:
-        animate(anchor, "location", outputs.times_s, lambda t: track(t).east_m, 0)
-        animate(anchor, "location", outputs.times_s, lambda t: track(t).north_m, 1)
-    if ownship.yaw is not None:
-        animate(
-            anchor,
-            "rotation_euler",
-            outputs.times_s,
-            lambda t: yaw(math.degrees(track(t).heading_rad)),
-            2,
-        )
-    scripted = sine(anchor.location.z, 0.0, 1.0)
+    scripted = motion.sine(0.0, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
-        scripted = sine(
-            anchor.location.z, heave.amplitude_m, outputs.period_s(heave.period_s)
-        )
+        scripted = motion.sine(0.0, heave.amplitude_m, outputs.period_s(heave.period_s))
     # A bare rig is a point: it heaves, but would tilt with every ripple.
     bare = ownship.asset is None and bool(tall)
-    if heave is not None or bare or sailing:
 
-        def value_at(t_s: float) -> float:
-            pose = track(t_s)
-            z = earth.sea_z_m(pose.east_m, pose.north_m, radius_m) + scripted(t_s)
-            if bare:
-                point = motion.waterplane(pose, tall, t_s, waves.Waterplane())
-                z += waves.heave_m(tall, point, t_s)
-            return z
+    def up_m(pose: motion.Pose, t_s: float) -> float:
+        z = earth.sea_z_m(pose.east_m, pose.north_m, radius_m) + scripted(t_s)
+        if bare:
+            point = motion.waterplane(pose, tall, t_s, waves.Waterplane())
+            z += waves.heave_m(tall, point, t_s)
+        return z
 
-        animate(anchor, "location", outputs.times_s, value_at, index=2)
+    _follow(anchor, track, outputs.times_s, up_m)
     return anchor
 
 
-def _on_sea(
+def _follow(
     anchor: bpy.types.Object,
     path: motion.Path,
-    radius_m: float,
     times_s: Sequence[float],
+    up_m: Callable[[motion.Pose, float], float],
 ) -> None:
-    """Key `anchor` along `path` on the curved sea: a hull left at z = 0 flies above it.
+    """Key `anchor` along `path`: its position, `up_m` high, and its pitch, roll and
+    heading.
+    """
+
+    def location(t_s: float) -> tuple[float, float, float]:
+        pose = path(t_s)
+        return pose.east_m, pose.north_m, up_m(pose, t_s)
+
+    def rotation(t_s: float) -> tuple[float, float, float]:
+        pose = path(t_s)
+        return pose.pitch_rad, pose.roll_rad, yaw(math.degrees(pose.heading_rad))
+
+    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
+    anchor.rotation_mode = "YXZ"
+    for data_path, value_at in (("location", location), ("rotation_euler", rotation)):
+        values = np.array([value_at(t) for t in times_s])
+        for index in range(3):
+            # Only what moves is keyed.
+            if np.ptp(values[:, index]) == 0.0:
+                getattr(anchor, data_path)[index] = values[0, index]
+            else:
+                animate(
+                    anchor,
+                    data_path,
+                    times_s,
+                    lambda t, at=value_at, i=index: at(t)[i],
+                    index,
+                )
+
+
+def _on_sea(radius_m: float) -> Callable[[motion.Pose, float], float]:
+    """The curved sea's height under a pose: a hull left at z = 0 flies above it.
 
     Not tilted to the local vertical: at any range the sea reaches, range / R moves a
     hull's ends far less than its draught.
     """
-
-    def at(t_s: float) -> tuple[float, float, float]:
-        pose = path(t_s)
-        return (
-            pose.east_m,
-            pose.north_m,
-            earth.sea_z_m(pose.east_m, pose.north_m, radius_m),
-        )
-
-    place(anchor, *at(0.0))
-    animate(anchor, "location", times_s, at)
+    return lambda pose, _t_s: earth.sea_z_m(pose.east_m, pose.north_m, radius_m)
 
 
 def _pose(
@@ -325,9 +290,7 @@ def _pose(
     heading and drifting about that pose.
     """
     path = motion.drifting(range_m, bearing_deg, heading_deg, speed_mps, drift, outputs)
-    _on_sea(anchor, path, radius_m, outputs.times_s)
-    anchor.rotation_euler = (0.0, 0.0, yaw(heading_deg))
-    anchor["speed_mps"] = speed_mps
+    _follow(anchor, path, outputs.times_s, _on_sea(radius_m))
     return path
 
 
@@ -340,16 +303,7 @@ def _orbit(
     times_s: Sequence[float],
 ) -> motion.Path:
     path = motion.orbiting(range_m, bearing_deg, lap_s)
-    _on_sea(anchor, path, radius_m, times_s)
-    pose = path(0.0)
-    anchor["speed_mps"] = math.hypot(pose.east_mps, pose.north_mps)
-    animate(
-        anchor,
-        "rotation_euler",
-        times_s,
-        lambda t: yaw(math.degrees(path(t).heading_rad)),
-        2,
-    )
+    _follow(anchor, path, times_s, _on_sea(radius_m))
     return path
 
 
@@ -434,7 +388,7 @@ def _object(
         afloat.append(Afloat(copy, path, hull))
     trails.append(
         wakes.Wake(
-            speed_mps=anchor["speed_mps"],
+            speed_mps=path(0.0).speed_mps,
             length_m=anchor["length_m"],
             beam_m=anchor["beam_m"],
             orbit_m=spec.range_m,
@@ -542,13 +496,15 @@ def ride(
     for hull in afloat:
         (attitude,) = hull.anchor.children
         for frame, t_s in enumerate(outputs.times_s):
-            plane = motion.waterplane(hull.path(t_s), tall, t_s, hull.hull)
+            pose = hull.path(t_s)
+            plane = motion.waterplane(pose, tall, t_s, hull.hull)
             pitch, roll = waves.attitude(field, plane, t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (pitch, -roll, 0.0)
             # Straight up in the world, through the tilt keyed on the anchor.
             tilted = Euler(
-                (*hull.tilt(t_s), yaw(math.degrees(plane.heading_rad))), "YXZ"
+                (pose.pitch_rad, pose.roll_rad, yaw(math.degrees(pose.heading_rad))),
+                "YXZ",
             )
             up = Vector((0.0, 0.0, waves.heave_m(tall, plane, t_s)))
             attitude.location = tilted.to_quaternion().inverted() @ up

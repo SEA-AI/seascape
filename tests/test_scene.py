@@ -1911,7 +1911,6 @@ class TestDrifting:
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
-            assert anchor["speed_mps"] == spec.speed_mps
             assert 0 < box_draught_m < manifest()[spec.asset].draught_m
             hull = waves.Waterplane(
                 *map(float, rest),
@@ -1921,7 +1920,8 @@ class TestDrifting:
                 box_beam_m,
                 box_draught_m,
                 # Under way along the heading, and drifting about it.
-                *path(t_s)[3:],
+                path(t_s).east_mps,
+                path(t_s).north_mps,
             )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
