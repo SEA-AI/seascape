@@ -143,12 +143,8 @@ A test pays only for what it checks. Check its cost with `pytest --durations`, t
 
 ## Working here
 
-- **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`).
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Be concise.** Commit messages, PR descriptions, comments and docs state the fact, not the journey. No debugging narration, no restating the diff, no closing paragraph that repeats what was just said.
-- **Comments are for what the code cannot say.** A better name beats a comment explaining a worse one. Write one for a non-obvious constraint, a unit, a workaround, a source — never to restate the line. `# negate the bearing` is noise; `# Blender's +Z turns to port` is the reason.
-- **Nothing that can go stale, nothing from outside the code.** No numbers derived from values elsewhere, no lists or values copied from another file, no names of tests, no PRs, reviews, conversations or history, no hardware, specs or consumers the repo does not model. If a claim matters, a test asserts it; the comment does not point there. When in doubt, delete the line.
-- **Avoid the machine cadence.** `X, not just Y` for emphasis, lists of exactly three, uniformly long sentences, hedges like "it's worth noting". Prefer the specific: a number, a file name or a flag beats an adjective.
+- **Prose**, commits included, follows the `prose` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
-- **Make PRs scannable.** A table, a before/after, or a rendered frame beats a paragraph. Attach frames with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
+- **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.
