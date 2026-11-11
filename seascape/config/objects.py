@@ -1,7 +1,7 @@
 """The ownship and what is around it."""
 
 import math
-from typing import Annotated, Literal, NamedTuple
+from typing import Annotated, Literal
 
 import numpy as np
 from pydantic import (
@@ -196,19 +196,6 @@ class Move(Model):
     )
 
 
-class Leg(NamedTuple):
-    """A move's slew, from where the last move's hold ended: `distance_deg` signed,
-    clockwise positive, at `rate_deg_s`, taking `duration_s` before its `hold_s`.
-    """
-
-    start_s: float
-    start_deg: float
-    distance_deg: float
-    rate_deg_s: float
-    duration_s: float
-    hold_s: float
-
-
 class Turn(Model):
     """A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to
     its rate and down to rest at the acceleration.
@@ -238,16 +225,19 @@ class Turn(Model):
                 )
         return self
 
-    def legs(self) -> list[Leg]:
-        """Each move's turn, in order."""
-        legs, at_s, at_deg = [], 0.0, 0.0
-        for move in self.moves:
-            rate = self.top_rate_deg_s if move.rate_deg_s is None else move.rate_deg_s
-            distance = move.to_deg - at_deg
-            took_s = slew.duration_s(distance, rate, self.accel_deg_s2)
-            legs.append(Leg(at_s, at_deg, distance, rate, took_s, move.hold_s))
-            at_s, at_deg = at_s + took_s + move.hold_s, move.to_deg
-        return legs
+    def legs(self) -> list[slew.Leg]:
+        """Each move's slew, in order."""
+        return slew.chain(
+            [
+                (
+                    move.to_deg,
+                    self.top_rate_deg_s if move.rate_deg_s is None else move.rate_deg_s,
+                    move.hold_s,
+                )
+                for move in self.moves
+            ],
+            self.accel_deg_s2,
+        )
 
     @property
     def duration_s(self) -> float:

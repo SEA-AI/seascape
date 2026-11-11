@@ -3,6 +3,7 @@ its peak and ramps down, a trapezoid; a short slew never reaches its rate, a tri
 """
 
 import math
+from typing import NamedTuple
 
 
 def _peak_deg_s(distance_deg: float, rate_deg_s: float, accel_deg_s2: float) -> float:
@@ -43,3 +44,31 @@ def covered_deg(
             - 0.5 * accel_deg_s2 * down_s**2
         )
     return math.copysign(min(done, abs(distance_deg)), distance_deg)
+
+
+class Leg(NamedTuple):
+    """A move's slew, from where the last move's hold ended: `distance_deg` signed,
+    clockwise positive, at `rate_deg_s`, taking `duration_s` before its `hold_s`.
+    """
+
+    start_s: float
+    start_deg: float
+    distance_deg: float
+    rate_deg_s: float
+    duration_s: float
+    hold_s: float
+
+
+def chain(
+    moves: list[tuple[float, float, float]], accel_deg_s2: float | None
+) -> list[Leg]:
+    """Slews one after another from rest at 0 deg, t = 0: each move is a target angle,
+    its rate and the hold once there, in degrees and seconds.
+    """
+    legs, at_s, at_deg = [], 0.0, 0.0
+    for to_deg, rate_deg_s, hold_s in moves:
+        distance = to_deg - at_deg
+        took_s = duration_s(distance, rate_deg_s, accel_deg_s2)
+        legs.append(Leg(at_s, at_deg, distance, rate_deg_s, took_s, hold_s))
+        at_s, at_deg = at_s + took_s + hold_s, to_deg
+    return legs
