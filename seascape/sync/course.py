@@ -16,28 +16,16 @@ from seascape.config import Camera, Crop, Object, Rig, Scenario, Stitch, Turn, s
 from seascape.motion import Pose, track, turned_deg
 
 BUOY, CONTAINER = "mooring_buoy", "container"
-
-
 BUOY_COLOUR = "orange"
-
-
 # Judgement: weathered, as a buoy left out a season.
 BUOY_WEAR = 0.5
-
-
 # The smallest box a pair's coarser video is assumed to detect (Confluence, Sensors
 # Synchronization).
 BUOY_PX = 6.0
-
-
 # Judgement: the share of the narrowest video the container spans.
 CONTAINER_FILL = 1.0 / 3.0
-
-
 # Judgement: what a buoy keeps clear of a frame's edge, and the horizon of its top.
 MARGIN_DEG = 0.5
-
-
 # The decimals a range, a bearing or an inclination is stored to.
 DECIMALS = 1
 
