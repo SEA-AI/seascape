@@ -7,7 +7,8 @@ from typing import NamedTuple
 
 import numpy as np
 
-from seascape.config import Drift, Outputs, Ownship, Swing, Turn
+from seascape.config import Drift, Outputs, Ownship, Turn
+from seascape.config.objects import Swing
 from seascape.physics import slew, waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
