@@ -1,7 +1,5 @@
 # Sources
 
-What each source contributes to the review, and where to read it.
-
 - Robert C. Martin, single responsibility as "one reason to change": https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html; as "one actor": *Clean Architecture*, 2017, ch. 7.
 - Robert C. Martin, open/closed: https://blog.cleancoder.com/uncle-bob/2014/05/12/TheOpenClosedPrinciple.html
 - Robert C. Martin, the dependency rule: https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html

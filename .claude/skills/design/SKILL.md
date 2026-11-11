@@ -7,7 +7,7 @@ description: Decide or review where each piece of seascape lives, through SOLID,
 
 Question every new line: is it justified, or an odd workaround? Each piece lands where its decision lives, and the whole reads as a reusable library.
 
-This skill owns placement and responsibility, when writing and when reviewing. It states principles; the code under review is evidence, never the norm. `AGENTS.md` and the import-linter contract record project decisions. A review may find one that a principle rejects: report it as an issue for the owner, not as a reason.
+`AGENTS.md` and the import-linter contract record project decisions. A review may find one that a principle rejects: report it as an issue for the owner, not as a reason.
 
 ## The map
 
@@ -19,11 +19,9 @@ This skill owns placement and responsibility, when writing and when reviewing. I
 - The Blender layers are the imperative shell. They turn values into datablocks, nodes and keyframes. A branch there may choose how Blender stores a value (keyed or constant, which channel); a branch that chooses which value, kind or object belongs below it.
 - Entry points parse arguments, call and print. They hold no decision; code that drives `bpy` belongs in the shell.
 
-Dependencies point from volatile code to stable code: the shell depends on the core, never the reverse (Martin's stable dependencies). A violation means the code is in the wrong layer, or the contract is wrong; it never earns an exception.
+Dependencies point from volatile code to stable code: the shell depends on the core, never the reverse (Martin's stable dependencies). A violation means the code is in the wrong layer, or the contract is wrong; it never earns an exception. A contract states generic rules (layers, forbidden, independence); one that lists modules is a finding.
 
 ## Questions per principle
-
-Ask each where the procedure below found friction.
 
 - **Single responsibility (Martin: one reason to change; one actor).** Name the change that forces an edit here. Two unrelated ones is divergent change: split. One change that forces edits in many modules is shotgun surgery: a decision scattered from its home.
 - **Information hiding (Parnas).** Which design decision does this module hide? A module cut by processing step (Ousterhout's temporal decomposition) leaks the same knowledge into every step. Cut by the decision likely to change.
@@ -46,6 +44,7 @@ Each names its usual root fix.
 - **One action, several homes.** Two call sites that must change together (one rule, one Blender trap, one conversion) get one owner now. Look-alikes that may diverge wait for a third case (Fowler's rule of three).
 - **A field or default for one caller.** Compute it at that call site, or ask why the record does not carry the real quantity.
 - **A tag with one legal value.** A `Literal` or enum of one member is speculative generality: delete it. A tag the user writes in a file is part of its format, and adding one later breaks every file; that one may come first.
+- **A literal in the shell.** A number written into Blender-side code is a second source of truth. It lives in the pure layer and is imported by name.
 - **Feature envy.** A function that reads mostly another module's record belongs beside that record.
 - **Data clumps.** The same few values passed together through several signatures become one record, defined at or below the lowest layer that uses it.
 
