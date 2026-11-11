@@ -2,14 +2,17 @@
 one import share its materials and each keeps its own colour.
 """
 
+from collections.abc import Iterable, Set
+
 import bpy
 
 from seascape.blender import faces
 from seascape.blender.blend import attribute, feed, node, source
+from seascape.blender.meshes import mesh_objects
 from seascape.physics.colour import srgb_hex_decode
 
 
-def recolourable(meshes: list[bpy.types.Object], materials: set[str]) -> None:
+def recolourable(meshes: Iterable[bpy.types.Object], materials: Set[str]) -> None:
     """Let `paint` set the Base Color of `meshes`' `materials`, per object and copy.
 
     Limitation: the colour replaces a textured Base Color, its detail too.
@@ -35,8 +38,7 @@ def recolourable(meshes: list[bpy.types.Object], materials: set[str]) -> None:
 def paint(anchor: bpy.types.Object, srgb_hex: str) -> None:
     """Paint a recolourable hull's meshes `srgb_hex`."""
     linear = list(srgb_hex_decode(srgb_hex))
-    for part in anchor.children_recursive:
-        if part.type == "MESH":
-            part["paint"] = linear
-            # An object without it reads 0: its own Base Color.
-            part["painted"] = 1.0
+    for part in mesh_objects([anchor]):
+        part["paint"] = linear
+        # An object without it reads 0: its own Base Color.
+        part["painted"] = 1.0

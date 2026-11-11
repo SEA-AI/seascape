@@ -4,6 +4,7 @@ import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import bpy
 import numpy as np
@@ -395,7 +396,9 @@ def read(path: Path) -> np.ndarray:
 
 
 def attribute(
-    tree: bpy.types.NodeTree, name: str, kind: str = "GEOMETRY"
+    tree: bpy.types.NodeTree,
+    name: str,
+    kind: Literal["GEOMETRY", "OBJECT", "INSTANCER"] = "GEOMETRY",
 ) -> bpy.types.Node:
     """An Attribute node reading `name`, of `kind` GEOMETRY, OBJECT or INSTANCER."""
     return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
