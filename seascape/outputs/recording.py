@@ -54,6 +54,9 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
+# Core-Backend's `proc_ptu_mode`: 1 manual, 2 surveillance, 3 collision avoidance, 4
+# tracking. Both products record 3 while they scan.
+COLAV_MODE = 3
 
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
@@ -85,8 +88,22 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
     bb_roll, bb_pitch, bb_yaw = np.radians(attitude_deg(_to(camera, "vessel")))
     # Rounded first, as in attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
-    # pan and tilt stay 0: a rig is bolted on, with no pan-tilt unit.
     row = dict.fromkeys(COLUMNS, 0.0)
+    rig = scenario["rigs"][camera.rig]
+    # A run rendered before rigs had a ptu or a turn has neither key.
+    if rig.get("ptu"):
+        # The head on the deck, past its mount: pan clockwise, tilt nose down as the
+        # IMU's pitch.
+        on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
+        _, tilt, pan = attitude_deg(on_deck)
+        row["pan"] = (pan - rig["yaw_deg"] + 180.0) % 360.0 - 180.0
+        row["tilt"] = rig["pitch_deg"] - tilt
+    if (turn := scenario.get("turn")) is not None:
+        row["proc_ptu_mode"] = COLAV_MODE
+        if rig.get("ptu"):
+            rate = next(m["rate_deg_s"] for m in turn["moves"] if m["rate_deg_s"])
+            # Revolutions per second, as the worker's setting.
+            row["proc_colav_speed"] = rate / 360.0
     row |= {
         "counter": counter,
         # The recording's IMU: degrees, pitch positive nose down.

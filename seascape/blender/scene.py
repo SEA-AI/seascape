@@ -12,7 +12,7 @@ from mathutils import Matrix
 from seascape.blender import sea
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
-from seascape.blender.rigs import View, add_rigs, views
+from seascape.blender.rigs import View, add_rigs, stabilise, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
     Afloat,
@@ -29,7 +29,7 @@ from seascape.config import (
     Scenario,
     substream,
 )
-from seascape.motion import track
+from seascape.motion import attitude_deg, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4
 from seascape.physics import earth, wakes
 
@@ -193,6 +193,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
+    if any(rig.ptu for rig in scenario.rigs.values()):
+        hull = next((a.hull for a in afloat if a.anchor is vessel), None)
+        attitude = attitude_deg(
+            scenario.ownship, path, hull, wind + swell, tall, outputs
+        )
+        stabilise(rigs.rigs, scenario, attitude)
     solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")

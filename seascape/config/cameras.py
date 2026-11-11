@@ -429,6 +429,11 @@ class Rig(Model):
         description="About its own transverse axis, after its yaw and before its "
         "cameras'. Negative is down.",
     )
+    ptu: bool = Field(
+        default=False,
+        description="On a pan-tilt unit, which holds its pitch, and pans when a turn "
+        "is by the ptu.",
+    )
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )

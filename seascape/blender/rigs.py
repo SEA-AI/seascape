@@ -1,21 +1,25 @@
 """Rigs and their cameras, and where each camera points."""
 
 import math
+from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
 import bpy
 from mathutils import Matrix, Vector
 
 from seascape.blender.blend import (
+    animate,
     empty,
     yaw,
 )
 from seascape.config import (
     Band,
     Mount,
+    Rig,
     Scenario,
 )
-from seascape.physics import fisheye
+from seascape.motion import turned_deg
+from seascape.physics import fisheye, ptu
 
 
 class _RigObjects(NamedTuple):
@@ -69,6 +73,44 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         )
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
+
+
+def stabilise(
+    rigs: dict[str, bpy.types.Object],
+    scenario: Scenario,
+    attitude_deg: Callable[[float], tuple[float, float]],
+) -> None:
+    """Key each rig on a pan-tilt unit: its pan to a turn by the ptu, and its tilt to
+    the unit's loop holding its pitch against the base under it.
+
+    Args:
+        rigs: The rig empties `add_rigs` made, by name.
+        scenario: Its rigs, its turn and the times keyed.
+        attitude_deg: The ownship's pitch, bow up, and roll, starboard down, at a time.
+    """
+    turn, times = scenario.turn, scenario.outputs.times_s
+    turned = turned_deg(turn) if turn is not None and turn.by == "ptu" else None
+    for name, rig in scenario.rigs.items():
+        if rig.ptu:
+            _hold(rigs[name], rig, turned, attitude_deg, times)
+
+
+def _hold(
+    head: bpy.types.Object,
+    rig: Rig,
+    turned: Callable[[float], float] | None,
+    attitude_deg: Callable[[float], tuple[float, float]],
+    times_s: Sequence[float],
+) -> None:
+    def pan_deg(t_s: float) -> float:
+        return rig.yaw_deg + (0.0 if turned is None else turned(t_s))
+
+    tilt = ptu.tilt_deg(
+        lambda t: ptu.head_pitch_deg(*attitude_deg(t), pan_deg(t)), times_s
+    )
+    held = dict(zip(times_s, rig.pitch_deg + tilt, strict=True))
+    animate(head, "rotation_euler", times_s, lambda t: math.radians(held[t]), 0)
+    animate(head, "rotation_euler", times_s, lambda t: yaw(pan_deg(t)), 2)
 
 
 class View(NamedTuple):

@@ -2869,6 +2869,31 @@
             }
           ]
         },
+        "ptu": {
+          "title": "Ptu",
+          "description": "On a pan-tilt unit, which holds its pitch, and pans when a turn is by the ptu.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "offset_x_m": {
           "title": "Offset X M",
           "description": "From the centreline, positive to starboard.",
@@ -4420,10 +4445,13 @@
       "properties": {
         "by": {
           "title": "By",
-          "description": "What turns: the ownship's heading.",
+          "description": "What turns: the ownship, or the one rig on a ptu.",
           "anyOf": [
             {
-              "const": "ownship",
+              "enum": [
+                "ownship",
+                "ptu"
+              ],
               "type": "string"
             },
             {

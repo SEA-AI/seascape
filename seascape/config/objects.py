@@ -201,7 +201,9 @@ class Turn(Model):
     its rate and down to rest at the acceleration.
     """
 
-    by: Literal["ownship"] = Field(description="What turns: the ownship's heading.")
+    by: Literal["ownship", "ptu"] = Field(
+        description="What turns: the ownship, or the one rig on a ptu."
+    )
     top_rate_deg_s: float = Field(
         gt=0.0, description="As fast as it turns; a move's rate when it sets none."
     )

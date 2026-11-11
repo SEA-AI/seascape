@@ -248,6 +248,9 @@ class Scenario(Model):
                 "outputs.loop cannot close a scripted turn: set outputs.loop to false "
                 "or remove turn"
             )
+        on_ptu = [name for name, rig in self.rigs.items() if rig.ptu]
+        if self.turn.by == "ptu" and len(on_ptu) != 1:
+            raise ValueError(f"a turn by the ptu needs one rig on a ptu, not {on_ptu}")
         last_s = self.outputs.times_s[-1]
         # isclose: the legs' times sum in floats, and a turn ending on the last frame
         # can come out an ulp past it.
