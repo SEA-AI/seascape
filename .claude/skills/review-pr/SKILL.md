@@ -19,3 +19,4 @@ Every PR gets five reviews before it is handed over. Each reviewer is a fresh su
 
 - Apply the fixes each skill's verdicts name. A finding you reject gets a one-line reason a reader can check.
 - Run the tests the fixes touch, then push through `gh stack`.
+- After a fix that changes code, run the correctness, design, anti-hack and stack reviews again on the final diff.
