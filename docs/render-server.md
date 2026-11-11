@@ -39,9 +39,11 @@ With `SEASCAPE_MCP_SECRET` set, each client sends it. Claude Code adds `--header
 
 Then ask for what you want: *"render a yacht 300 m off the bow"*, or *"8 variants of the randomized scenario"*.
 
-With no scenario named, `render` draws `showcase`: a worn freighter at sunset. `baseline` takes `sky.sun_elevation_deg`, which a photographed sky fixes: what a scenario ignores, such as that override, comes back in the result's `warnings`.
+New to it? Run the `getting_started` prompt: `/mcp__seascape__getting_started` in Claude Code, or the **+** menu in Claude Desktop.
 
-A job's files are served under `http://<host>:8765/renders/<job>/` and zipped at `http://<host>:8765/renders/<job>.zip`. The archive carries no mark. `get_job` shows a marked sheet per variant (none for exr), and `preview` shows one camera's frame or one variant's sheet. `jobs` lists the jobs still kept, with their archive links, and the disk left. `cancel` stops a queued or running job and deletes what it wrote.
+With no scenario named, `render` draws `showcase`: a worn freighter at sunset. An override a scenario ignores comes back in the result's `warnings`.
+
+A job's files are served under `http://<host>:8765/renders/<job>/` and zipped at `http://<host>:8765/renders/<job>.zip`. The archive carries no mark. `get_job` shows a marked sheet per variant (none for exr), and `preview` shows one camera's frame or one variant's sheet.
 
 A job is refused when any seed it may try breaks a limit in the table below, or when its images and archive would leave less than `SEASCAPE_MIN_FREE_GB` free after the queued jobs.
 

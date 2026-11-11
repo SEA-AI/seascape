@@ -38,6 +38,8 @@ from seascape.physics import colour, earth, lwir
 
 LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
+# The midpoint of CARLA's ClearNoon (sun 45 deg up) and ClearSunset (15 deg).
+NOON_DEG = 30.0
 # Judgement: the peak must outshine the median of the ring round it by this factor. An
 # unclipped disc clears it; a sun behind cloud or below the horizon does not. The ring
 # starts past DISC_DEG and ends inside AUREOLE_DEG, so it holds neither disc nor glare.
@@ -129,6 +131,19 @@ class Photo(File):
         """The sun's elevation, in words."""
         elevation = self.sun_elevation_deg
         return "no disc" if elevation is None else f"{elevation:.1f} deg"
+
+    @property
+    def weather(self) -> str:
+        """The sky in CARLA's words, such as "clear noon"; no disc, no time of day."""
+        if self.overcast:
+            sky = "overcast"
+        elif self.cloud_genus in ("clear", "cirrus"):
+            sky = "clear"
+        else:
+            sky = "cloudy"
+        if (elevation := self.sun_elevation_deg) is None:
+            return sky
+        return f"{sky} {'noon' if elevation >= NOON_DEG else 'sunset'}"
 
 
 @cache
