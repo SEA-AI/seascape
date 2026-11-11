@@ -91,22 +91,26 @@ def stabilise(
         attitude_deg: The ownship's pitch, bow up, and roll, starboard down, at a time.
     """
     turn, times = scenario.turn, scenario.outputs.times_s
-    turned = turned_deg(turn) if turn is not None and turn.by == "ptu" else None
+    panned = turned_deg(turn) if turn is not None and turn.by == "ptu" else _still
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
-            _hold(rigs[name], rig, rig.ptu, turned, attitude_deg, times)
+            _hold(rigs[name], rig, rig.ptu, panned, attitude_deg, times)
+
+
+def _still(_: float) -> float:
+    return 0.0
 
 
 def _hold(
     head: bpy.types.Object,
     rig: Rig,
     unit: Ptu,
-    turned: Callable[[float], float] | None,
+    panned: Callable[[float], float],
     attitude_deg: Callable[[float], tuple[float, float]],
     times_s: Sequence[float],
 ) -> None:
     def pan_deg(t_s: float) -> float:
-        return rig.yaw_deg + (0.0 if turned is None else turned(t_s))
+        return rig.yaw_deg + panned(t_s)
 
     tilt = ptu.tilt_deg(
         lambda t: ptu.head_pitch_deg(*attitude_deg(t), pan_deg(t)),
@@ -118,9 +122,7 @@ def _hold(
         return math.radians(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)))
 
     animate(head, "rotation_euler", times_s, pitch_rad, 0)
-    # `add_rigs` set a still pan.
-    if turned is not None:
-        animate(head, "rotation_euler", times_s, lambda t: yaw(pan_deg(t)), 2)
+    animate(head, "rotation_euler", times_s, lambda t: yaw(pan_deg(t)), 2)
 
 
 class View(NamedTuple):

@@ -16,6 +16,9 @@ MAX_SPEED_DEG_S = 50.0
 DEAD_BAND_DEG_S = 1.0
 # The stabilisation thread's period, STAB_UPDATE_TIME_NS.
 TICK_S = 0.015
+# Ten of the loop's time constants: the head starts in its steady lag, as a unit
+# that has run for a while.
+SETTLE_S = 10.0 / GAIN_PER_S
 
 
 def tilt_deg(
@@ -23,16 +26,17 @@ def tilt_deg(
     times_s: Sequence[float],
     target_deg: float = 0.0,
 ) -> np.ndarray:
-    """The tilt the loop holds at each of `times_s`, from the head on target at 0.
+    """The tilt the loop holds at each of `times_s`, from the head on target
+    `SETTLE_S` before 0.
 
     Args:
-        pitch_deg: The base's pitch under the head, up.
+        pitch_deg: The base's pitch under the head, up, from `-SETTLE_S`.
         times_s: Ascending, from 0.
         target_deg: The head's pitch the loop holds, up; `target_inclination`.
     """
-    ticks = np.arange(0.0, times_s[-1] + TICK_S, TICK_S)
+    ticks = np.arange(-SETTLE_S, times_s[-1] + TICK_S, TICK_S)
     tilt = np.empty_like(ticks)
-    held = target_deg - pitch_deg(0.0)
+    held = target_deg - pitch_deg(-SETTLE_S)
     for i, t_s in enumerate(ticks):
         tilt[i] = held
         speed = GAIN_PER_S * (target_deg - pitch_deg(float(t_s)) - held)

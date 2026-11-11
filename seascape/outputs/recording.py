@@ -102,7 +102,10 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
         row["proc_ptu_mode"] = COLAV_MODE
         turn = Turn.model_validate(raw)
         if turn.by == "ptu":
-            rate = next(leg.rate_deg_s for leg in turn.legs() if leg.distance_deg)
+            rate = next(
+                (leg.rate_deg_s for leg in turn.legs() if leg.distance_deg),
+                turn.top_rate_deg_s,
+            )
             # Revolutions per second, as the worker's setting.
             row["proc_colav_speed"] = rate / 360.0
     row |= {

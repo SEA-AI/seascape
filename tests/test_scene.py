@@ -1456,7 +1456,7 @@ class TestOwnshipMotion:
 
 def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     scenario = variant(
-        rig={"ptu": {}, "pitch_deg": -2.0},
+        rig={"ptu": {"inclination_deg": -1.9}, "pitch_deg": -2.0},
         ownship={
             "pitch": {"amplitude_deg": 3.0, "period_s": 4.0},
             "roll": {"amplitude_deg": 5.0, "period_s": 4.0},
@@ -1469,15 +1469,19 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     assert scenario.turn is not None
     turned = motion.turned_deg(scenario.turn)
 
+    omega = 2.0 * math.pi / 4.0
+    # A base tilted `tilt` turns a boresight at `down` below it by about
+    # tilt * tan(down) + tilt^2 / 2.
+    tilt, down = math.radians(math.hypot(3.0, 5.0)), math.radians(2.0 + 1.9)
+    turns_deg = math.degrees(tilt * math.tan(down) + tilt**2 / 2)
     base, held = [], []
     for frame, t_s in enumerate(scenario.outputs.times_s):
         bpy.context.scene.frame_set(frame)
         bearing, elevation = boresight_deg(camera)
-        assert bearing == pytest.approx(turned(t_s), abs=0.5)
-        omega = 2.0 * math.pi / 4.0
+        assert bearing == pytest.approx(turned(t_s), abs=turns_deg)
         pitch, roll = 3.0 * math.sin(omega * t_s), 5.0 * math.sin(omega * t_s)
         base.append(ptu.head_pitch_deg(pitch, roll, turned(t_s)))
-        held.append(elevation + 2.0)
+        held.append(elevation + 2.0 + 1.9)
     passed = omega / math.hypot(omega, ptu.GAIN_PER_S)
     assert max(map(abs, base)) > 4.0
     assert max(map(abs, held)) < passed * max(map(abs, base)) + 0.2

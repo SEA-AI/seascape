@@ -46,6 +46,8 @@ def rows(m: np.ndarray) -> tuple:
 HULL = [(2.0, 0.5, 0.0), (-1.5, 1.0, -1e-7)]
 POD_YAW_DEG, CAMERA_YAW_DEG, CAMERA_PITCH_DEG = -60.0, 40.0, -10.0
 PTU_TILT_DEG, SCAN_DEG_S, TOP_DEG_S = 4.0, 6.0, 50.0
+# A head's mount, under its pan and tilt, and the hull's heading while it scans.
+MOUNT_YAW_DEG, MOUNT_PITCH_DEG, SCANNING_HULL_YAW_DEG = -20.0, -2.0, 15.0
 WIDTH, HEIGHT, F = 640, 480, 1000.0
 RADIUS_M = earth.earth_radius_m(0.13)
 
@@ -67,7 +69,8 @@ def make_run(
     pod_to_vessel = pose(rotation(0, pod_pitch_deg, POD_YAW_DEG), (-20.0, -60.0, 50.0))
     cameras, images = [], []
     for i, (roll, pitch, yaw) in enumerate(HULL):
-        vessel_to_world = pose(rotation(roll, pitch, yaw), (0, 0, 0.2 * i))
+        heading = yaw + (SCANNING_HULL_YAW_DEG if ptu else 0.0)
+        vessel_to_world = pose(rotation(roll, pitch, heading), (0, 0, 0.2 * i))
         camera_to_vessel = pod_to_vessel @ camera_to_pod
         name = f"EO/{i:04d}.jpg"
         cameras.append(
@@ -111,7 +114,11 @@ def make_run(
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
     }
     if ptu:
-        scenario["rigs"]["port"] |= {"ptu": {}, "yaw_deg": 0.0, "pitch_deg": 0.0}
+        scenario["rigs"]["port"] |= {
+            "ptu": {},
+            "yaw_deg": MOUNT_YAW_DEG,
+            "pitch_deg": MOUNT_PITCH_DEG,
+        }
         scenario["turn"] = {
             "by": "ptu",
             "top_rate_deg_s": TOP_DEG_S,
@@ -175,10 +182,20 @@ def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
         table_rows = list(csv.DictReader(f))
 
     for row in table_rows:
-        assert float(row["pan"]) == pytest.approx(POD_YAW_DEG, abs=1e-5)
+        # The pod sits at POD_YAW_DEG and PTU_TILT_DEG on the deck, past its mount.
+        pan = float(row["pan"])
+        assert pan == pytest.approx(POD_YAW_DEG - MOUNT_YAW_DEG, abs=1e-5)
         # Nose down positive, as the IMU's pitch.
-        assert float(row["tilt"]) == pytest.approx(-PTU_TILT_DEG, abs=1e-5)
-        assert int(float(row["proc_ptu_mode"])) == recording.COLAV_MODE
+        tilt = -(PTU_TILT_DEG - MOUNT_PITCH_DEG)
+        assert float(row["tilt"]) == pytest.approx(tilt, abs=1e-5)
+        # The head's IMU turns with the hull, its mount and its pan; the hull's roll
+        # and pitch tip it a little.
+        hull_deg = math.degrees(float(row["bb_yaw"]))
+        assert float(row["yaw"]) - pan == pytest.approx(
+            hull_deg + MOUNT_YAW_DEG, abs=0.2
+        )
+        # Core-Backend's collision avoidance mode.
+        assert float(row["proc_ptu_mode"]) == 3
         assert float(row["proc_colav_speed"]) == pytest.approx(
             recorded_deg_s / 360.0, abs=1e-6
         )

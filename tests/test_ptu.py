@@ -8,22 +8,28 @@ import pytest
 from seascape.physics import ptu
 
 
-def test_a_slow_swell_leaves_the_first_order_high_pass_of_the_pitch() -> None:
+@pytest.mark.parametrize("target_deg", [0.0, -2.5])
+def test_a_swell_leaves_the_first_order_high_pass_of_the_pitch_from_the_start(
+    target_deg: float,
+) -> None:
     omega = 2.0 * math.pi / 4.0
-    times = np.arange(0.0, 20.0, 1.0 / 30.0)
-    tilt = ptu.tilt_deg(lambda t: 4.0 * math.sin(omega * t), list(times))
+    times = np.arange(0.0, 8.0, 1.0 / 30.0)
+    tilt = ptu.tilt_deg(lambda t: 4.0 * math.sin(omega * t), list(times), target_deg)
 
-    left = 4.0 * np.sin(omega * times) + tilt
-    settled = left[times > 5.0]
+    off = 4.0 * np.sin(omega * times) + tilt - target_deg
     # |H| of e' = -K e + p' at omega: omega / sqrt(omega^2 + K^2).
     gain = omega / math.hypot(omega, ptu.GAIN_PER_S)
-    assert np.abs(settled).max() == pytest.approx(4.0 * gain, rel=0.05)
+    assert np.abs(off).max() == pytest.approx(4.0 * gain, rel=0.05)
 
 
-def test_a_tilt_speed_under_the_dead_band_is_not_sent() -> None:
-    tilt = ptu.tilt_deg(lambda t: 0.05 * t, [0.0, 1.0, 2.0])
+def test_the_head_waits_until_its_error_asks_for_more_than_the_dead_band() -> None:
+    times = np.arange(0.0, 10.0, 0.1)
+    tilt = ptu.tilt_deg(lambda t: 0.05 * t, list(times))
 
-    np.testing.assert_allclose(tilt, 0.0)
+    off = 0.05 * times + tilt
+    # It moves once K times the error reaches the dead band, and then keeps up.
+    waits_deg = ptu.DEAD_BAND_DEG_S / ptu.GAIN_PER_S
+    assert np.abs(off).max() == pytest.approx(waits_deg, rel=0.05)
 
 
 def test_a_pitch_step_turns_the_head_no_faster_than_the_unit_can() -> None:
@@ -42,14 +48,3 @@ def test_a_panned_head_pitches_with_the_base_tilt_it_faces(
 ) -> None:
     # Bow up 3, starboard down 5.
     assert ptu.head_pitch_deg(3.0, 5.0, pan_deg) == pytest.approx(pitch_deg)
-
-
-def test_an_inclined_head_holds_its_pitch_over_a_slow_swell() -> None:
-    omega = 2.0 * math.pi / 8.0
-    times = np.arange(0.0, 20.0, 1.0 / 30.0)
-    tilt = ptu.tilt_deg(lambda t: 2.0 * math.sin(omega * t), list(times), -2.5)
-
-    head = 2.0 * np.sin(omega * times) + tilt
-    # The high pass above, on an 8 s swell, and the dead band's lag.
-    lag = 2.0 * omega / math.hypot(omega, ptu.GAIN_PER_S)
-    assert np.abs(head + 2.5).max() < lag + ptu.DEAD_BAND_DEG_S / ptu.GAIN_PER_S
