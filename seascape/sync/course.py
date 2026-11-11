@@ -13,7 +13,7 @@ from typing import NamedTuple
 
 from seascape.assets import Buoy, Debris, manifest
 from seascape.config import Camera, Crop, Object, Rig, Scenario, Stitch, Turn, sources
-from seascape.motion import Pose, track, turned_deg
+from seascape.motion import Pose, panned_deg, track, turned_deg
 
 BUOY, CONTAINER = "mooring_buoy", "container"
 BUOY_COLOUR = "orange"
@@ -226,7 +226,7 @@ def rig_track(scenario: Scenario) -> Callable[[float], Pose]:
     """
     name, rig, turn = one_rig(scenario)
     path = track(scenario.ownship, scenario.outputs, turn)
-    panned = turned_deg(turn) if turn.ptu == name else lambda _: 0.0
+    panned = panned_deg(turn, name)
 
     def at(t_s: float) -> Pose:
         pose = path(t_s)
