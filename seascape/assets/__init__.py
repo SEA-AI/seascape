@@ -144,8 +144,7 @@ class _Mesh(FrozenModel):
     # Textures already show wear: they are its wear in both bands, and `wear` does
     # nothing to it.
     weathered: bool = False
-    # The colours its hull paint is also sold in, as sRGB hex: an object picks one by
-    # name, and it covers the materials zoned `paint_hull`.
+    # Other colours its hull paint is sold in, by name, as sRGB hex.
     colours: dict[str, Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")]] = Field(
         default_factory=dict
     )

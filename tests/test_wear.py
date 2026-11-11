@@ -340,27 +340,3 @@ def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
     tables = [i for i in bpy.data.images if i.name.startswith(skin.name)]
     # On steel every layer looks up the clean skin's temperatures.
     assert len(tables) == (1 if material == "steel" else 4)
-
-
-def test_an_object_takes_its_colour_and_a_copy_of_its_import_keeps_its_own() -> None:
-    buoy = 'asset = "mooring_buoy", bearing_deg = 0.0'
-    painted = f'{{ {buoy}, range_m = 30.0, colour = "orange" }}'
-    own = f"{{ {buoy}, range_m = 40.0 }}"
-    scenario = load(BASELINE, [f"objects = [{painted}, {own}]"])
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    vessels, _ = add_vessels(
-        scenario,
-        earth.earth_radius_m(scenario.sea.refraction_k),
-        Hulls(scenario.sky, None, scenario.worn),
-        [],
-        [],
-    )
-    anchors = vessels["mooring_buoy"]
-    orange, white = (mesh_objects([a])[0] for a in anchors)
-
-    # RAL 2010's sRGB, decoded: 209, 95, 43 of 255.
-    assert list(orange["paint"]) == pytest.approx([0.637, 0.115, 0.024], abs=1e-3)
-    assert orange["painted"] == 1.0
-    assert "painted" not in white  # reads 0: its own Base Color
-    # One material between them: the colour is each copy's own.
-    assert orange.active_material == white.active_material

@@ -392,3 +392,20 @@ def read(path: Path) -> np.ndarray:
         return pixels(image)
     finally:
         bpy.data.images.remove(image)
+
+
+def attribute(
+    tree: bpy.types.NodeTree, name: str, kind: str = "GEOMETRY"
+) -> bpy.types.Node:
+    """An Attribute node reading `name`, of `kind` GEOMETRY, OBJECT or INSTANCER."""
+    return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
+
+
+def source(
+    socket: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket | float | tuple[float, ...]:
+    """What feeds `socket`: its link, or else its own value."""
+    if socket.is_linked:
+        return socket.links[0].from_socket
+    value = socket.default_value
+    return value if isinstance(value, float) else tuple(value)

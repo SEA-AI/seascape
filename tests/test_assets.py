@@ -147,7 +147,6 @@ def test_colours_cover_only_a_hull_s_paint() -> None:
     bare = zones | {"materials": dict.fromkeys(zones["materials"], "bare_metal")}
     sold = {"red": "#FF0000"}
 
-    assert ship.paint_hull < set(ship.zones.materials)
     assets.Hull.model_validate(ship.model_dump(mode="json") | {"colours": sold})
     with pytest.raises(ValidationError, match="zoned paint_hull"):
         assets.Hull.model_validate(

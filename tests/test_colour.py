@@ -47,3 +47,12 @@ def test_bt709_crushes_the_shadows_that_srgb_lifts() -> None:
 def test_srgb_encode_inverts_srgb_decode() -> None:
     linear = np.linspace(0.0, 1.0, 101)
     np.testing.assert_allclose(colour.srgb_decode(colour.srgb_encode(linear)), linear)
+
+
+@pytest.mark.parametrize("srgb_hex", ["#000000", "#ffffff", "#D05D28"])
+def test_an_srgb_hex_decodes_each_byte_through_the_transfer_function(
+    srgb_hex: str,
+) -> None:
+    encoded = [int(srgb_hex[i : i + 2], 16) / 255.0 for i in (1, 3, 5)]
+    expected = colour.srgb_decode(np.array(encoded))
+    assert colour.srgb_hex_decode(srgb_hex) == pytest.approx(tuple(expected))

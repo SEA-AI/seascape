@@ -27,7 +27,8 @@ from seascape.blender.meshes import (
     prefix_names,
     triangles,
 )
-from seascape.blender.wear import CREVICE, dirty, mark, paint, recolourable
+from seascape.blender.paint import paint, recolourable
+from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
     Drift,
     Farm,
@@ -103,11 +104,11 @@ def _parts(name: str, hulls: Hulls) -> list[bpy.types.Object]:
         bpy.context.view_layer.update()
         hulls.keels[name] = keel_m(triangles(mesh_objects(parts)))
     if hulls.heat is None:
-        prefix_names(name, parts)
-        # First, so the dirt sits on the new paint.
+        # Before the dirt, so it sits on the new paint, and before the prefix, so
+        # the materials carry the names their zones key on.
         if (asset := manifest()[name]).colours:
-            painted = {f"{name}/{m}" for m in asset.paint_hull}
-            recolourable(mesh_objects(parts), painted)
+            recolourable(mesh_objects(parts), asset.paint_hull)
+        prefix_names(name, parts)
         if worn:
             dirty(parts)
     return parts
