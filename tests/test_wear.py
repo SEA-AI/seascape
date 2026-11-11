@@ -4,8 +4,9 @@ import pytest
 
 from seascape.assets import Material
 from seascape.blender import blend, faces, wear
+from seascape.blender.blend import mesh_objects
 from seascape.blender.heat import surroundings, zone_skin
-from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.meshes import import_asset
 from seascape.blender.vessels import Condition, Hulls, _vessel, add_vessels
 from seascape.config import load
 from seascape.physics import earth, thermal

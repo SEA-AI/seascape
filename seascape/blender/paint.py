@@ -7,8 +7,7 @@ from collections.abc import Iterable, Set
 import bpy
 
 from seascape.blender import faces
-from seascape.blender.blend import attribute, feed, node, source
-from seascape.blender.meshes import mesh_objects
+from seascape.blender.blend import attribute, feed, mesh_objects, node, source
 from seascape.physics.colour import srgb_hex_decode
 
 

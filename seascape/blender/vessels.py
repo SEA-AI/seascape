@@ -16,6 +16,7 @@ from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
     empty,
+    mesh_objects,
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
@@ -23,7 +24,6 @@ from seascape.blender.meshes import (
     box_m,
     import_asset,
     keel_m,
-    mesh_objects,
     prefix_names,
     triangles,
 )

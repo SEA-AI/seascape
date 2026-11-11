@@ -1,7 +1,7 @@
 """Small builders over Blender's data."""
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -412,3 +412,13 @@ def source(
         return socket.links[0].from_socket
     value = socket.default_value
     return value if isinstance(value, float) else tuple(value)
+
+
+def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
+    """The meshes in `parts` and their descendants."""
+    return [
+        obj
+        for part in parts
+        for obj in [part, *part.children_recursive]
+        if obj.type == "MESH"
+    ]

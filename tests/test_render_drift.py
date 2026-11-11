@@ -14,7 +14,7 @@ from mathutils import Vector
 
 from seascape.assets import Buoy, download, fetch, manifest, skies
 from seascape.blender import blend, scene, sea
-from seascape.blender.blend import scalar
+from seascape.blender.blend import mesh_objects, scalar
 from seascape.blender.compositor import (
     GLARE_SHOULDER,
     GLARE_SLOPE,
@@ -22,7 +22,7 @@ from seascape.blender.compositor import (
     _set_curve,
     respond,
 )
-from seascape.blender.meshes import import_asset, measure, mesh_objects
+from seascape.blender.meshes import import_asset, measure
 from seascape.blender.rigs import views
 from seascape.blender.sea.daylight import SEAWATER_IOR, SUN_SLOPE_RADIUS
 from seascape.blender.sea.foam import LATTICE_WALL_M

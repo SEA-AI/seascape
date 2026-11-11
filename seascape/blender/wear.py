@@ -15,6 +15,7 @@ from seascape.blender.blend import (
     attribute,
     clamped,
     feed,
+    mesh_objects,
     mix_shader,
     node,
     scalar,
@@ -471,10 +472,9 @@ def mark(anchor: bpy.types.Object, amount: float, rng: np.random.Generator) -> N
     one asset wear apart.
     """
     offset = float(rng.uniform(0.0, 1000.0))
-    for part in anchor.children_recursive:
-        if part.type == "MESH":
-            part["wear"] = amount
-            part["wear_offset"] = offset
+    for part in mesh_objects([anchor]):
+        part["wear"] = amount
+        part["wear_offset"] = offset
 
 
 # Judgement: linear albedo of each layer, from photographs of worn hulls.
@@ -493,7 +493,7 @@ FOULING = (0.035, 0.06, 0.018, 1.0)
 
 def dirty(parts: list[bpy.types.Object]) -> None:
     """Dirty every material of `parts` by their asset's baked crevices."""
-    meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+    meshes = mesh_objects(parts)
     crevice = meshes[0][CREVICE]
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:
         _dirty(material, crevice)

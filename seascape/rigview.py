@@ -10,7 +10,8 @@ from mathutils import Vector
 from PIL import Image, ImageDraw
 
 from seascape.blender import workbench
-from seascape.blender.meshes import box_corners, mesh_objects
+from seascape.blender.blend import mesh_objects
+from seascape.blender.meshes import box_corners
 from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario

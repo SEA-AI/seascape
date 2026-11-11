@@ -5,7 +5,7 @@ import pytest
 
 from seascape.assets import manifest
 from seascape.blender import faces
-from seascape.blender.meshes import mesh_objects
+from seascape.blender.blend import mesh_objects
 from seascape.blender.paint import recolourable
 from seascape.blender.vessels import Hulls, add_vessels
 from seascape.config import load

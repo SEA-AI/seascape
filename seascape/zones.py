@@ -20,8 +20,9 @@ from PIL import Image, ImageDraw, ImageOps
 
 from seascape.assets import manifest
 from seascape.blender import blend, faces, wear
+from seascape.blender.blend import mesh_objects
 from seascape.blender.faces import Parts, face_zones
-from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.meshes import import_asset
 from seascape.blender.workbench import VIEW_PX, Aim, aim, setup, shoot
 from seascape.outputs import brand, canvas
 from seascape.physics.colour import srgb_encode
