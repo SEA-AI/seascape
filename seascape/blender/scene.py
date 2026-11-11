@@ -1,9 +1,10 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
+from typing import NamedTuple
 
 import bpy
 import numpy as np
@@ -30,7 +31,7 @@ from seascape.config import (
     Scenario,
     substream,
 )
-from seascape.motion import attitude_deg, track
+from seascape.motion import Pose, attitude_deg, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes
 
@@ -139,6 +140,44 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
         height_m = max(up - earth.sea_z_m(east, north, radius_m) - crest_m, 0.0)
         finest = min(finest, height_m * view.pixel_rad)
     return finest
+
+
+class Posed(NamedTuple):
+    """The one rig's cameras at the start, by name, each as its rotation from camera
+    to world, and the ownship's path and attitude over the scenario.
+    """
+
+    cameras: dict[str, np.ndarray]
+    path: Callable[[float], Pose]
+    attitude_deg: Callable[[float], tuple[float, float]]
+
+
+def posed_at_start(scenario: Scenario) -> Posed:
+    """The rig on its ownship as the render poses it at the start, a pan-tilt unit
+    holding its inclination on a level sea; no sea, no targets.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    rigs = add_rigs(scenario)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    vessel = add_ownship(
+        scenario.ownship,
+        path,
+        rigs.root,
+        Hulls(scenario.sky, None),
+        scenario.outputs,
+        (),
+        earth.earth_radius_m(scenario.sea.refraction_k),
+    )
+    stabilise(rigs.rigs, scenario, lambda _: (0.0, 0.0))
+    bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
+    ((name, rig),) = scenario.rigs.items()
+    cameras = {
+        camera: np.array(rigs.cameras[f"{name}_{camera}"].matrix_world.to_3x3())
+        for camera in rig.rendered
+    }
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    return Posed(cameras, path, attitude_deg(path, vessel, wind + swell, tall))
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:

@@ -351,3 +351,13 @@ def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
     assert "holds no buoys" in refused.stderr
     assert layout.suggested(load(SYNC_SENTRY)) in refused.stderr
     assert not out.exists()
+
+
+def test_a_course_sheet_is_one_image(run: Run, tmp_path: Path) -> None:
+    out = tmp_path / "course.png"
+
+    drawn = run("sync", SYNC_SENTRY, "--sheet", "-o", out)
+
+    assert drawn.exit_code == 0, drawn.stderr
+    assert drawn.stdout == f"{out}\n"
+    Image.open(out).verify()
