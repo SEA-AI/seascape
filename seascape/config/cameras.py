@@ -434,6 +434,14 @@ class Rig(Model):
         description="On a pan-tilt unit, which holds its pitch, and pans when a turn "
         "is by the ptu.",
     )
+    # Core-Backend's `boat_setup.target_inclination`, bounded there.
+    inclination_deg: float = Field(
+        default=0.0,
+        ge=-20.0,
+        le=20.0,
+        description="The pitch a pan-tilt unit holds its head at, on top of its "
+        "mount's. Negative is down.",
+    )
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )
@@ -449,6 +457,12 @@ class Rig(Model):
         "two, which then go unlabelled. Unset, it records each camera whole. An exr "
         "ignores it.",
     )
+
+    @model_validator(mode="after")
+    def _only_a_ptu_inclines(self) -> "Rig":
+        if self.inclination_deg and not self.ptu:
+            raise ValueError("inclination_deg needs ptu: a fixed mount sets pitch_deg")
+        return self
 
     @model_validator(mode="after")
     def _each_video_records_a_camera(self) -> "Rig":

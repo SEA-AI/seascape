@@ -106,7 +106,9 @@ def _hold(
         return rig.yaw_deg + (0.0 if turned is None else turned(t_s))
 
     tilt = ptu.tilt_deg(
-        lambda t: ptu.head_pitch_deg(*attitude_deg(t), pan_deg(t)), times_s
+        lambda t: ptu.head_pitch_deg(*attitude_deg(t), pan_deg(t)),
+        times_s,
+        rig.inclination_deg,
     )
     held = dict(zip(times_s, rig.pitch_deg + tilt, strict=True))
     animate(head, "rotation_euler", times_s, lambda t: math.radians(held[t]), 0)

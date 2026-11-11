@@ -19,20 +19,23 @@ TICK_S = 0.015
 
 
 def tilt_deg(
-    pitch_deg: Callable[[float], float], times_s: Sequence[float]
+    pitch_deg: Callable[[float], float],
+    times_s: Sequence[float],
+    target_deg: float = 0.0,
 ) -> np.ndarray:
-    """The tilt the loop holds at each of `times_s`, from the head level at 0.
+    """The tilt the loop holds at each of `times_s`, from the head on target at 0.
 
     Args:
         pitch_deg: The base's pitch under the head, up.
         times_s: Ascending, from 0.
+        target_deg: The head's pitch the loop holds, up; `target_inclination`.
     """
     ticks = np.arange(0.0, times_s[-1] + TICK_S, TICK_S)
     tilt = np.empty_like(ticks)
-    held = -pitch_deg(0.0)
+    held = target_deg - pitch_deg(0.0)
     for i, t_s in enumerate(ticks):
         tilt[i] = held
-        speed = -GAIN_PER_S * (pitch_deg(float(t_s)) + held)
+        speed = GAIN_PER_S * (target_deg - pitch_deg(float(t_s)) - held)
         speed = float(np.clip(speed, -MAX_SPEED_DEG_S, MAX_SPEED_DEG_S))
         if abs(speed) < DEAD_BAND_DEG_S:
             speed = 0.0

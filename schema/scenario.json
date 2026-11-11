@@ -2894,6 +2894,33 @@
             }
           ]
         },
+        "inclination_deg": {
+          "title": "Inclination Deg",
+          "description": "The pitch a pan-tilt unit holds its head at, on top of its mount's. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": -20.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "offset_x_m": {
           "title": "Offset X M",
           "description": "From the centreline, positive to starboard.",

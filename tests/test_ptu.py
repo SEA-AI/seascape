@@ -42,3 +42,14 @@ def test_a_panned_head_pitches_with_the_base_tilt_it_faces(
 ) -> None:
     # Bow up 3, starboard down 5.
     assert ptu.head_pitch_deg(3.0, 5.0, pan_deg) == pytest.approx(pitch_deg)
+
+
+def test_an_inclined_head_holds_its_pitch_over_a_slow_swell() -> None:
+    omega = 2.0 * math.pi / 8.0
+    times = np.arange(0.0, 20.0, 1.0 / 30.0)
+    tilt = ptu.tilt_deg(lambda t: 2.0 * math.sin(omega * t), list(times), -2.5)
+
+    head = 2.0 * np.sin(omega * times) + tilt
+    # The high pass above, on an 8 s swell, and the dead band's lag.
+    lag = 2.0 * omega / math.hypot(omega, ptu.GAIN_PER_S)
+    assert np.abs(head + 2.5).max() < lag + ptu.DEAD_BAND_DEG_S / ptu.GAIN_PER_S
