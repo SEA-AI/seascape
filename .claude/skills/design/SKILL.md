@@ -1,13 +1,13 @@
 ---
-name: review-architecture
-description: Review a seascape diff or package for where each piece lives and why it exists, through SOLID, information hiding and the layer order. Use when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers. Line-level style and the choice of container are `clean-code`'s; reinvented helpers and constants are `audit-code`'s.
+name: design
+description: Decide or review where each piece of seascape lives, through SOLID, information hiding and the layer order. Use before writing, and when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers. Line-level style and the choice of container are `clean-code`'s; reinvented helpers and constants are `audit-code`'s.
 ---
 
-# Review architecture
+# Design
 
 Question every new line: is it justified, or an odd workaround? Each piece lands where its decision lives, and the whole reads as a reusable library.
 
-This skill reviews placement and responsibility, and edits nothing. It states principles; the code under review is evidence, never the norm. `AGENTS.md` and the import-linter contract record project decisions. A review may find one that a principle rejects: report it as an issue for the owner, not as a reason.
+This skill owns placement and responsibility, when writing and when reviewing. It states principles; the code under review is evidence, never the norm. `AGENTS.md` and the import-linter contract record project decisions. A review may find one that a principle rejects: report it as an issue for the owner, not as a reason.
 
 ## The map
 
@@ -59,7 +59,7 @@ Each names its usual root fix.
 | Layer purity against a one-line shortcut | The layer wins. |
 | Moving code against a small diff | Report the misplacement. Move it in its own commit, never inside a behaviour change. |
 
-## Review procedure
+## Reviewing
 
 1. Read `AGENTS.md`, then the import-linter contract, and run `uvx --from import-linter lint-imports`. A failure is a finding. So is a package that no layer names: a passing run says nothing about it.
 2. List each public name the diff adds, each new field, and each parameter added to an existing signature. For a package review, list its public names. Each must answer "who needs this, and why here?" in one sentence. No answer is a finding.
