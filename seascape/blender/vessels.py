@@ -175,6 +175,7 @@ def _vessel(
 
 def add_ownship(
     ownship: Ownship,
+    path: motion.Path,
     rigs: bpy.types.Object,
     hulls: Hulls,
     outputs: Outputs,
@@ -187,6 +188,7 @@ def add_ownship(
 
     Args:
         ownship: Its hull, attitude and scripted motion.
+        path: Where it is and where its bow points, at a time.
         rigs: Parented to the hull's draught, or to a bare ownship, in its frame.
         hulls: Where an asset already imported is copied from.
         outputs: The times keyed and the periods they loop on.
@@ -209,10 +211,9 @@ def add_ownship(
         (draught,) = attitude.children
         rigs.parent = draught
     anchor.name = "ownship"
-    track = motion.track(ownship, outputs)
     # Limitation: a hull-less ownship has no footprint, so it sails through targets.
     if hull is not None:
-        afloat.append(Afloat(anchor, track, hull))
+        afloat.append(Afloat(anchor, path, hull))
     # Limitation: it leaves no wake; `wakes.Wake` draws only a straight run.
     scripted = motion.sine(0.0, 0.0, 1.0)
     if (heave := ownship.heave) is not None:
@@ -227,7 +228,7 @@ def add_ownship(
             z += waves.heave_m(tall, point, t_s)
         return z
 
-    _follow(anchor, track, outputs.times_s, up_m)
+    _follow(anchor, path, outputs.times_s, up_m)
     return anchor
 
 

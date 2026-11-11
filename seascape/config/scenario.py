@@ -11,7 +11,7 @@ from pydantic import (
 from seascape.assets import manifest
 from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
-from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets
+from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets, Turn
 from seascape.config.world import Sea, Sky
 from seascape.model import Model, ScenarioWarning
 from seascape.physics import waves
@@ -130,6 +130,7 @@ class Scenario(Model):
     farms: list[Farm] = Field(
         default_factory=list, description="Wind turbines, in rows or alone."
     )
+    turn: Turn | None = Field(default=None, description="A scripted turn.")
     outputs: Outputs = Field(default_factory=Outputs)
 
     @property
@@ -231,6 +232,18 @@ class Scenario(Model):
     def _an_orbit_needs_a_fixed_ownship(self) -> "Scenario":
         if self.ownship.speed_mps > 0.0 and any(o.orbit for o in self.objects):
             raise ValueError("an object orbits the origin: set ownship.speed_mps to 0")
+        return self
+
+    @model_validator(mode="after")
+    def _a_turn_fits(self) -> "Scenario":
+        if self.turn is None:
+            return self
+        if self.outputs.loop:
+            raise ValueError("a turn is a script, not a loop: drop turn or loop")
+        if (turn_s := self.turn.duration_s) > self.outputs.duration_s:
+            raise ValueError(
+                f"the turn takes {turn_s:.2f} s: make outputs.duration_s at least that"
+            )
         return self
 
     @model_validator(mode="after")

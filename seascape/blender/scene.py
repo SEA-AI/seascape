@@ -29,6 +29,7 @@ from seascape.config import (
     Scenario,
     substream,
 )
+from seascape.motion import track
 from seascape.outputs.calibration import CameraCalibration, Matrix4
 from seascape.physics import earth, wakes
 
@@ -181,8 +182,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     tall, _ = sea.displaced((wind, swell))
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     afloat: list[Afloat] = []
+    path = track(scenario.ownship, outputs, scenario.turn)
     vessel = add_ownship(
-        scenario.ownship, rigs.root, hulls, outputs, tall, radius_m, afloat
+        scenario.ownship, path, rigs.root, hulls, outputs, tall, radius_m, afloat
     )
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails, afloat)

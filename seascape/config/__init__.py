@@ -28,7 +28,7 @@ from seascape.config.loader import (
     schema_sections,
     seeds,
 )
-from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
+from seascape.config.objects import Drift, Farm, Move, Object, Ownship, Targets, Turn
 from seascape.config.scenario import ImageFormat, Outputs, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
@@ -45,6 +45,7 @@ __all__ = [
     "Lens",
     "Microbolometer",
     "Mount",
+    "Move",
     "Object",
     "Outputs",
     "Ownship",
@@ -56,6 +57,7 @@ __all__ = [
     "Sky",
     "Stitch",
     "Targets",
+    "Turn",
     "Undistortion",
     "Video",
     "WarmLayer",

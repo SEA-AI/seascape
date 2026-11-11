@@ -1,12 +1,15 @@
-"""Where a hull is at a time. No Blender."""
+"""Where a hull is at a time, and a scripted turn. No Blender."""
 
 import math
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from seascape import motion
-from seascape.config import Drift, Outputs, Ownship
+from seascape.config import Drift, Move, Outputs, Ownship, Turn, load
+from seascape.physics import turn as kinematics
+from tests.scenarios import OPEN_SEA
 
 SPEED_MPS = 400.0
 OUTPUTS = Outputs(duration_s=4.0)
@@ -62,3 +65,76 @@ def test_an_orbit_keeps_its_range_and_its_bow_on_the_tangent() -> None:
         assert math.hypot(pose.east_m, pose.north_m) == pytest.approx(150.0)
         out = math.atan2(pose.east_m, pose.north_m)
         assert (pose.heading_rad - out) % (2 * math.pi) == pytest.approx(math.pi / 2)
+
+
+COURSE = Turn(
+    by="ownship",
+    top_rate_deg_s=30.0,
+    accel_deg_s2=30.0,
+    moves=[
+        Move(to_deg=0.0, hold_s=3.0),
+        Move(to_deg=60.0, rate_deg_s=6.0),
+        Move(to_deg=-60.0, rate_deg_s=6.0),
+        Move(to_deg=0.0, rate_deg_s=6.0, hold_s=3.0),
+        Move(to_deg=90.0, hold_s=1.0),
+        Move(to_deg=0.0, hold_s=3.0),
+    ],
+)
+
+
+def rates_deg_s(turn: Turn, dt_s: float = 1e-3) -> tuple[np.ndarray, np.ndarray]:
+    times = np.arange(0.0, turn.duration_s, dt_s)
+    angle = np.array([motion.turned_deg(turn)(t) for t in times])
+    return times, np.diff(angle) / dt_s
+
+
+@pytest.mark.parametrize("accel_deg_s2", [None, 30.0, 2.0])
+def test_a_turn_comes_to_rest_at_each_target(accel_deg_s2: float | None) -> None:
+    turn = COURSE.model_copy(update={"accel_deg_s2": accel_deg_s2})
+    turned = motion.turned_deg(turn)
+
+    for t_s, to_deg in motion.turning_points(turn):
+        assert turned(t_s) == pytest.approx(to_deg, abs=1e-9)
+    assert turned(turn.duration_s + 5.0) == 0.0
+
+
+def test_the_rate_keeps_under_its_cap_and_ramps_at_the_acceleration() -> None:
+    _, rate = rates_deg_s(COURSE)
+
+    assert np.abs(rate).max() == pytest.approx(30.0, rel=1e-3)
+    # A sweep's own cap holds outside the slews.
+    sweep = rate[: int(46.0 / 1e-3)]
+    assert np.abs(sweep).max() == pytest.approx(6.0, rel=1e-3)
+    assert np.abs(np.diff(rate)).max() / 1e-3 == pytest.approx(30.0, rel=1e-2)
+
+
+def test_a_short_turn_never_reaches_its_rate() -> None:
+    # Up and down at 2 deg/s^2 over 2 deg peaks at 2 deg/s, in 2 s.
+    assert kinematics.peak_deg_s(2.0, 6.0, 2.0) == pytest.approx(2.0)
+    assert kinematics.duration_s(2.0, 6.0, 2.0) == pytest.approx(2.0)
+
+
+def test_the_turning_points_are_where_each_move_stops() -> None:
+    points = motion.turning_points(COURSE.model_copy(update={"accel_deg_s2": None}))
+
+    # 3 s still, then 60, 120 and 60 deg at 6 deg/s, 3 s still, 90 deg twice at 30.
+    assert points == pytest.approx(
+        [(13.0, 60.0), (33.0, -60.0), (43.0, 0.0), (49.0, 90.0), (53.0, 0.0)]
+    )
+
+
+def test_an_ownship_that_turns_heads_where_the_turn_points() -> None:
+    outputs = Outputs(duration_s=COURSE.duration_s, fps=10)
+    path = motion.track(Ownship(), outputs, COURSE)
+    turned = motion.turned_deg(COURSE)
+
+    for t_s in outputs.times_s:
+        assert math.degrees(path(t_s).heading_rad) == pytest.approx(turned(t_s))
+
+
+def test_a_turn_must_fit_the_clip_and_never_loops() -> None:
+    turn = COURSE.model_dump()
+    with pytest.raises(ValidationError, match="the turn takes"):
+        load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 10}}])
+    with pytest.raises(ValidationError, match="not a loop"):
+        load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 60, "loop": True}}])

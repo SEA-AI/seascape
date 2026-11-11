@@ -14,7 +14,7 @@ from pydantic import (
 from seascape import assets
 from seascape.config.world import Sea
 from seascape.model import Model
-from seascape.physics import thermal, waves
+from seascape.physics import thermal, turn, waves
 
 
 def _names(turbines: bool) -> list[str]:
@@ -179,6 +179,46 @@ class Swing(Model):
 
     amplitude_deg: float = Field(ge=0.0, lt=90.0, description="Peak, either way.")
     period_s: float = Field(gt=0.0, description="One full cycle.")
+
+
+class Move(Model):
+    """Turn to `to_deg` from where the last move left off, then hold."""
+
+    to_deg: float = Field(description="Clockwise from the bow at t = 0.")
+    rate_deg_s: float | None = Field(
+        default=None, gt=0.0, description="Its cruising rate; None is the top rate."
+    )
+    hold_s: float = Field(default=0.0, ge=0.0, description="Still, once there.")
+
+
+class Turn(Model):
+    """A scripted turn of what carries the cameras, from the bow at t = 0. Each move
+    ramps up to its rate and down to rest at the acceleration.
+    """
+
+    by: Literal["ownship"] = Field(description="What turns.")
+    top_rate_deg_s: float = Field(gt=0.0, description="As fast as it turns.")
+    accel_deg_s2: float | None = Field(
+        default=None, gt=0.0, description="None reaches each rate at once."
+    )
+    moves: list[Move] = Field(min_length=1, description="In order, from the bow.")
+
+    def legs(self) -> list[tuple[float, float, float]]:
+        """Each move's start angle, distance and rate."""
+        legs, at_deg = [], 0.0
+        for move in self.moves:
+            rate = move.rate_deg_s or self.top_rate_deg_s
+            legs.append((at_deg, move.to_deg - at_deg, rate))
+            at_deg = move.to_deg
+        return legs
+
+    @property
+    def duration_s(self) -> float:
+        """From the first move's start to the last move's hold's end."""
+        return sum(
+            turn.duration_s(distance, rate, self.accel_deg_s2) + move.hold_s
+            for (_, distance, rate), move in zip(self.legs(), self.moves, strict=True)
+        )
 
 
 class Heave(Model):
