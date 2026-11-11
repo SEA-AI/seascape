@@ -10,9 +10,10 @@ from pydantic import (
     model_validator,
 )
 
+from seascape import angles
 from seascape.assets import skies
 from seascape.model import Model, ScenarioWarning
-from seascape.physics import aerosol, earth, lwir, skin
+from seascape.physics import aerosol, lwir, skin
 from seascape.physics.atmosphere import ATMOSPHERE, SURFACE_AIR_K, T_SEA_K, Atmosphere
 
 
@@ -335,5 +336,5 @@ class Sky(Model):
         """Unit (east, north, up) vector towards the sun."""
         if self.sun_elevation_deg is None:
             raise ValueError("a photographed sun without a disc has no direction")
-        east, north, up = earth.direction(self.sun_bearing_deg, self.sun_elevation_deg)
+        east, north, up = angles.direction(self.sun_bearing_deg, self.sun_elevation_deg)
         return float(east), float(north), float(up)

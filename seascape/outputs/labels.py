@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 from pydantic import Field
 
+from seascape import angles
 from seascape.config import (
     Agc,
     Camera,
@@ -205,7 +206,7 @@ class Labels(Model):
                 "image_id": image.id,
                 "name": target.name,
                 "range_m": math.hypot(east, north),
-                "bearing_deg": math.degrees(math.atan2(east, north)),
+                "bearing_deg": angles.bearing_deg(east, north),
             }
             if not len(xs):
                 self.dropped.append(Dropped(**where, reason="no_pixels"))

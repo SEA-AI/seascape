@@ -11,7 +11,7 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets
+from seascape import angles, assets
 from seascape.config.cameras import Name
 from seascape.config.world import Sea
 from seascape.model import Model
@@ -434,6 +434,6 @@ class Farm(Model):
                     - r * across_m * math.sin(row)
                 )
                 placed.append(
-                    (math.hypot(east, north), math.degrees(math.atan2(east, north)))
+                    (math.hypot(east, north), angles.bearing_deg(east, north))
                 )
         return placed
