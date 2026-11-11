@@ -411,8 +411,8 @@ class Ptu(Model):
         default=0.0,
         ge=-20.0,
         le=20.0,
-        description="The pitch it holds its head at, on top of its mount's. Negative "
-        "is down.",
+        description="The pitch it holds its head at, to the horizon, its mount "
+        "included. Negative is down.",
     )
 
 

@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 
 from seascape.blender import workbench
 from seascape.blender.meshes import box_corners, mesh_objects
-from seascape.blender.rigs import add_rigs, boresight_deg
+from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
 from seascape.motion import track
@@ -138,6 +138,8 @@ def draw(scenario: Scenario, out: Path) -> None:
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     built = add_rigs(scenario)
+    # On a level deck: the start shows the head at its inclination.
+    stabilise(built.rigs, scenario, lambda _: (0.0, 0.0))
     vessel = add_ownship(
         scenario.ownship,
         track(scenario.ownship, scenario.outputs, scenario.turn),

@@ -197,8 +197,8 @@ class Move(Model):
 
 
 class Turn(Model):
-    """A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to
-    its rate and down to rest at the acceleration.
+    """A scripted turn of the ownship or its ptu, from the bow at t = 0. Each move
+    ramps up to its rate and down to rest at the acceleration.
     """
 
     by: Literal["ownship", "ptu"] = Field(
@@ -226,6 +226,14 @@ class Turn(Model):
                     f"{self.top_rate_deg_s}: lower rate_deg_s or raise top_rate_deg_s"
                 )
         return self
+
+    @property
+    def scan_rate_deg_s(self) -> float:
+        """The rate it scans at: its first moving leg's, else its top rate."""
+        return next(
+            (leg.rate_deg_s for leg in self.legs() if leg.distance_deg),
+            self.top_rate_deg_s,
+        )
 
     def legs(self) -> list[slew.Leg]:
         """Each move's slew, in order."""

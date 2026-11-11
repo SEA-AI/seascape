@@ -2738,7 +2738,7 @@
       "properties": {
         "inclination_deg": {
           "title": "Inclination Deg",
-          "description": "The pitch it holds its head at, on top of its mount's. Negative is down.",
+          "description": "The pitch it holds its head at, to the horizon, its mount included. Negative is down.",
           "default": 0.0,
           "anyOf": [
             {
@@ -4478,7 +4478,7 @@
     },
     "Turn": {
       "additionalProperties": false,
-      "description": "A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to\nits rate and down to rest at the acceleration.",
+      "description": "A scripted turn of the ownship or its ptu, from the bow at t = 0. Each move\nramps up to its rate and down to rest at the acceleration.",
       "properties": {
         "by": {
           "title": "By",

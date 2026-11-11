@@ -41,7 +41,7 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         )
         # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the rig's own transverse
         # axis, so a pitched rig rolls the horizon of its off-axis cameras.
-        rig_root.rotation_euler = (math.radians(rig.pitch_deg), 0.0, yaw(rig.yaw_deg))
+        rig_root.rotation_euler = _head(rig.pitch_deg, rig.yaw_deg)
         rigs[name] = rig_root
 
     cameras: dict[str, bpy.types.Object] = {}
@@ -101,6 +101,11 @@ def _still(_: float) -> float:
     return 0.0
 
 
+def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:
+    """A rig empty's XYZ euler for its pitch up and its bearing clockwise."""
+    return (math.radians(pitch_deg), 0.0, yaw(yaw_deg))
+
+
 def _hold(
     head: bpy.types.Object,
     rig: Rig,
@@ -112,13 +117,16 @@ def _hold(
     def pan_deg(t_s: float) -> float:
         return rig.yaw_deg + panned(t_s)
 
-    tilt = ptu.panned_tilt_deg(attitude_deg, pan_deg, times_s, unit.inclination_deg)
+    # The firmware's IMU sits on the head, so the loop holds the head, mount
+    # included, at the inclination.
+    target_deg = unit.inclination_deg - rig.pitch_deg
+    tilt = ptu.panned_tilt_deg(attitude_deg, pan_deg, times_s, target_deg)
 
-    def pitch_rad(t_s: float) -> float:
-        return math.radians(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)))
+    def euler(t_s: float) -> tuple[float, float, float]:
+        return _head(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)), pan_deg(t_s))
 
-    animate(head, "rotation_euler", times_s, pitch_rad, 0)
-    animate(head, "rotation_euler", times_s, lambda t: yaw(pan_deg(t)), 2)
+    animate(head, "rotation_euler", times_s, lambda t: euler(t)[0], 0)
+    animate(head, "rotation_euler", times_s, lambda t: euler(t)[2], 2)
 
 
 class View(NamedTuple):

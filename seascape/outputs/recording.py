@@ -55,8 +55,8 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
-# Core-Backend's `proc_ptu_mode`: a scan records collision avoidance, anything else
-# manual, as a replay reads a recording without the column. It has no 0.
+# Core-Backend's `proc_ptu_mode` (ParameterServer): collision avoidance while a ptu
+# turns, else manual, as a replay reads a recording without the column. It has no 0.
 MANUAL_MODE, COLAV_MODE = 1, 3
 
 
@@ -82,7 +82,13 @@ def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
     return world @ np.linalg.inv(np.array(camera.extrinsics[frame]))
 
 
-def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> dict:
+def _row(
+    camera: CameraCalibration,
+    counter: int,
+    scenario: dict[str, Any],
+    rig: dict[str, Any],
+    turn: Turn | None,
+) -> dict:
     roll, pitch, yaw = attitude_deg(_to(camera, "rig"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
@@ -90,8 +96,8 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
     # Rounded first, as in attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
     row = dict.fromkeys(COLUMNS, 0.0)
-    rig = scenario["rigs"][camera.rig]
-    # An older run has neither key.
+    row["proc_ptu_mode"] = MANUAL_MODE
+    # A run from before ptus has no key.
     if rig.get("ptu") is not None:
         # The head on the deck, past its mount: pan clockwise, tilt nose down as the
         # IMU's pitch.
@@ -99,17 +105,10 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
         _, tilt, pan = attitude_deg(on_deck)
         row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
         row["tilt"] = rig["pitch_deg"] - tilt
-    row["proc_ptu_mode"] = MANUAL_MODE
-    if (raw := scenario.get("turn")) is not None:
-        row["proc_ptu_mode"] = COLAV_MODE
-        turn = Turn.model_validate(raw)
-        if turn.by == "ptu":
-            rate = next(
-                (leg.rate_deg_s for leg in turn.legs() if leg.distance_deg),
-                turn.top_rate_deg_s,
-            )
+        if turn is not None and turn.by == "ptu":
+            row["proc_ptu_mode"] = COLAV_MODE
             # Revolutions per second, as the worker's setting.
-            row["proc_colav_speed"] = rate / 360.0
+            row["proc_colav_speed"] = turn.scan_rate_deg_s / 360.0
     row |= {
         "counter": counter,
         # The recording's IMU: degrees, pitch positive nose down.
@@ -326,6 +325,9 @@ def export(run: Path) -> list[Path]:
     # Read, not validated: a dump carries every default, and a validator that rejects
     # a field set alongside another rejects the dump.
     scenario = truth.info["scenario"]
+    turn = (
+        None if scenario.get("turn") is None else Turn.model_validate(scenario["turn"])
+    )
     created = datetime.fromisoformat(truth.info["date_created"])
     ts = created.strftime("%Y_%m_%d_%H_%M_%S")
     time_s = {image.file_name: image.time_s for image in truth.images}
@@ -372,7 +374,10 @@ def export(run: Path) -> list[Path]:
             with table.open("w", newline="") as f:
                 writer = csv.DictWriter(f, COLUMNS, lineterminator="\n")
                 writer.writeheader()
-                writer.writerows(_row(s, i, scenario) for i, s in enumerate(shots))
+                head = scenario["rigs"][rig]
+                writer.writerows(
+                    _row(s, i, scenario, head, turn) for i, s in enumerate(shots)
+                )
             written += [video, table]
         firsts = {_short(shots[0]): shots[0] for shots in cameras.values()}
         written += _write_settings(
