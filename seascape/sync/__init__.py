@@ -1,1 +1,1 @@
-"""The sync course, its preview and its sheet."""
+"""The sync course and its preview."""

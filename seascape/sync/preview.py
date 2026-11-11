@@ -9,6 +9,7 @@ from collections.abc import Callable
 from seascape.angles import bearing_deg, wrapped_deg
 from seascape.assets import manifest
 from seascape.config import Object, Scenario
+from seascape.motion import rig_track
 from seascape.outputs.labels import Labels
 from seascape.sync.course import (
     BUOY,
@@ -19,7 +20,6 @@ from seascape.sync.course import (
     box_half_deg,
     half_deg,
     one_rig,
-    rig_track,
     rings,
     views,
 )
@@ -34,7 +34,7 @@ def sightlines(scenario: Scenario) -> Callable[[Object, int], tuple[float, float
     """An object's range from the one rig at a frame, and its bearing off the rig's
     axis, wrapped to [-180, 180).
     """
-    rig_at = rig_track(scenario)
+    rig_at = rig_track(scenario, one_rig(scenario)[0])
     seen_from = [rig_at(t) for t in scenario.outputs.times_s]
 
     def at(o: Object, f: int) -> tuple[float, float]:

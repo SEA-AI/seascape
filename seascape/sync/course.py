@@ -8,13 +8,12 @@ import itertools
 import json
 import math
 from collections import defaultdict
-from collections.abc import Callable
 from typing import NamedTuple
 
 from seascape import angles
 from seascape.assets import Buoy, Debris, manifest
 from seascape.config import Camera, Crop, Object, Rig, Scenario, Stitch, Turn, sources
-from seascape.motion import Pose, panned_deg, track, turned_deg
+from seascape.motion import rig_track, turned_deg
 
 BUOY, CONTAINER = "mooring_buoy", "container"
 BUOY_COLOUR = "orange"
@@ -92,7 +91,18 @@ def views(rig: Rig) -> list[View]:
             rows = [_rows_deg(c, 0, 0) for c in pair]
             down, up = max(r[0] for r in rows), min(r[1] for r in rows)
             narrowest = min(c.hfov_deg for c in pair)
-            found.append(View(name, left, right, down, up, focal, width, narrowest))
+            found.append(
+                View(
+                    name=name,
+                    left_deg=left,
+                    right_deg=right,
+                    down_deg=down,
+                    up_deg=up,
+                    focal_px=focal,
+                    width_px=width,
+                    camera_deg=narrowest,
+                )
+            )
             continue
         (camera,) = recorded
         focal, half = camera.focal_px, camera.width_px / 2
@@ -106,7 +116,18 @@ def views(rig: Rig) -> list[View]:
         )
         down, up = _rows_deg(camera, top_px, bottom_px)
         width = camera.width_px - left_px - right_px
-        found.append(View(name, left, right, down, up, focal, width, right - left))
+        found.append(
+            View(
+                name=name,
+                left_deg=left,
+                right_deg=right,
+                down_deg=down,
+                up_deg=up,
+                focal_px=focal,
+                width_px=width,
+                camera_deg=right - left,
+            )
+        )
     return found
 
 
@@ -187,7 +208,7 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float:
         )
     pitch_deg = round((least + most) / 2, DECIMALS)
     if rig.ptu is not None:
-        return round(pitch_deg - rig.pitch_deg, DECIMALS)
+        return pitch_deg
     if not least <= rig.pitch_deg <= most:
         raise ValueError(
             f"a buoy {near_m:.0f} m out or the horizon leaves a video: set the rig's "
@@ -197,21 +218,21 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float:
 
 
 def _placed(
-    asset: str,
+    name: str,
     at_m: tuple[float, float],
     bearing_deg: float,
     range_m: float,
     colour: str | None = None,
     wear: float = 0.0,
 ) -> Object:
-    """`asset` `range_m` out along `bearing_deg` from a camera at `at_m`, east and
+    """Asset `name` `range_m` out along `bearing_deg` from a camera at `at_m`, east and
     north of the ownship's origin, broadside to the line of sight from the origin.
     """
     bearing = math.radians(bearing_deg)
     east = at_m[0] + range_m * math.sin(bearing)
     north = at_m[1] + range_m * math.cos(bearing)
     return Object(
-        asset=asset,
+        asset=name,
         range_m=round(math.hypot(east, north), DECIMALS),
         bearing_deg=round(angles.bearing_deg(east, north), DECIMALS),
         heading_deg=90.0,
@@ -219,26 +240,6 @@ def _placed(
         colour=colour,
         wear=wear,
     )
-
-
-def rig_track(scenario: Scenario) -> Callable[[float], Pose]:
-    """Where the one rig is at a time, east and north of the ownship's origin, and
-    its axis: the ownship's heading, the rig's yaw and a turn by its ptu.
-    """
-    name, rig, turn = one_rig(scenario)
-    path = track(scenario.ownship, scenario.outputs, turn)
-    panned = panned_deg(turn, name)
-
-    def at(t_s: float) -> Pose:
-        pose = path(t_s)
-        h, x, y = pose.heading_rad, rig.offset_x_m, rig.offset_y_m
-        return Pose(
-            pose.east_m + x * math.cos(h) + y * math.sin(h),
-            pose.north_m - x * math.sin(h) + y * math.cos(h),
-            h + math.radians(rig.yaw_deg + panned(t_s)),
-        )
-
-    return at
 
 
 def course(scenario: Scenario) -> Course:
@@ -249,13 +250,13 @@ def course(scenario: Scenario) -> Course:
     Raises:
         ValueError: No turn, not one rig, or no pitch that keeps every ring in view.
     """
-    _, rig, turn = one_rig(scenario)
+    name, rig, turn = one_rig(scenario)
     videos = views(rig)
     if not (circles := rings(videos)):
         raise ValueError("no two videos of the rig overlap: a course needs a pair")
     inclination_deg = _inclination_deg(rig, videos, circles[0].range_m)
 
-    rig_at = rig_track(scenario)
+    rig_at = rig_track(scenario, name)
     turned = turned_deg(turn)
     times = scenario.outputs.times_s
     pointing = [turned(t) for t in times]
@@ -263,7 +264,8 @@ def course(scenario: Scenario) -> Course:
     def camera_at(angle_deg: float) -> tuple[float, float]:
         """Where the rig is when the turn first points it along `angle_deg`."""
         apart = [abs(a - angle_deg) for a in pointing]
-        # A staggered ring's end buoy may lie a little past the turn's reach.
+        # Up to one frame's travel at the top rate: a staggered ring's end buoy may
+        # lie a little past the turn's reach, and frames sample the turn.
         near = min(apart) + turn.top_rate_deg_s / scenario.outputs.fps
         pose = rig_at(next(t for t, d in zip(times, apart, strict=True) if d <= near))
         return pose.east_m, pose.north_m
@@ -274,16 +276,16 @@ def course(scenario: Scenario) -> Course:
     middle_deg = (narrow.left_deg + narrow.right_deg) / 2
     # Limitation: every video must hold it, so only a rig that looks forward fits.
     placed = [_placed(CONTAINER, camera_at(0.0), rig.yaw_deg + middle_deg, box_m)]
-    angles = [0.0, *(move.to_deg for move in turn.moves)]
+    stops_deg = [0.0, *(move.to_deg for move in turn.moves)]
     for k, ring in enumerate(circles):
         # Each camera of a stitch gets its own crossings.
         span_deg = min(v.camera_deg for v in videos if v.name in ring.videos)
         step_deg = span_deg - 2 * (half_deg(ring.range_m) + MARGIN_DEG)
-        swept_deg = max(angles) - min(angles)
+        swept_deg = max(stops_deg) - min(stops_deg)
         count = math.floor(swept_deg / step_deg) + 1
         # Centred on the sweep, each ring shifted a share of a step off the last.
         first_deg = (
-            min(angles)
+            min(stops_deg)
             + (swept_deg - (count - 1) * step_deg) / 2
             + step_deg * (k / len(circles) - (len(circles) - 1) / (2 * len(circles)))
         )
@@ -317,17 +319,21 @@ def verify(scenario: Scenario) -> None:
         )
     if placed.objects != scenario.objects:
         raise ValueError(
-            f"{objects_toml(placed.objects)}\nthe objects are not the course's for "
-            "its rig: replace its objects with the array above, before its first table"
+            f"{objects_toml(placed.objects)}\n\nthe objects are not the course's for "
+            "its rig: replace its [[objects]] tables with those above"
         )
 
 
 def objects_toml(objects: list[Object]) -> str:
-    """`objects` as a scenario's `objects` array, a table a line, each field off its
-    default.
-    """
-    rows = (_toml(o.model_dump(exclude_defaults=True)) for o in objects)
-    return "objects = [\n" + "".join(f"    {row},\n" for row in rows) + "]"
+    """`objects` as a scenario's `[[objects]]` tables, each field off its default."""
+    return "\n\n".join(
+        "[[objects]]\n"
+        + "\n".join(
+            f"{key} = {_toml(value)}"
+            for key, value in o.model_dump(exclude_defaults=True).items()
+        )
+        for o in objects
+    )
 
 
 def _toml(value: object) -> str:

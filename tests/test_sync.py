@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from seascape.assets import Buoy, manifest
-from seascape.config import Drift, Object, load, sources
+from seascape.config import Drift, Object, Scenario, load, sources
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import course, preview
 from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
@@ -54,7 +54,16 @@ def test_each_pair_s_coarser_video_sets_a_ring() -> None:
 
 
 def test_videos_either_side_of_the_stern_overlap() -> None:
-    stern = course.View("STERN", 132.5, 227.5, -20.0, 20.0, 1000.0, 1920, 95.0)
+    stern = course.View(
+        name="STERN",
+        left_deg=132.5,
+        right_deg=227.5,
+        down_deg=-20.0,
+        up_deg=20.0,
+        focal_px=1000.0,
+        width_px=1920,
+        camera_deg=95.0,
+    )
     port = stern._replace(name="PORT", left_deg=-137.5, right_deg=-42.5)
 
     assert course.overlap_deg(stern, port) == (222.5, 227.5)
@@ -95,6 +104,17 @@ def test_a_pan_tilt_unit_inclines_to_keep_the_horizon_and_the_nearest_ring() -> 
         half_deg = math.degrees(math.atan(camera.height_px / 2 / camera.focal_px))
         assert rig.ptu.inclination_deg + camera.pitch_deg + half_deg > 0.0
         assert rig.ptu.inclination_deg + camera.pitch_deg - half_deg < waterline_deg
+
+
+def test_a_pan_tilt_unit_s_inclination_counts_its_mount() -> None:
+    scenario = load(SYNC_SENTRY)
+    (name,) = scenario.rigs
+    pitched = load(SYNC_SENTRY, [{"rigs": {name: {"pitch_deg": -3.0}}}])
+
+    # The head holds the inclination itself, whatever its mount's pitch.
+    assert course.course(pitched).inclination_deg == pytest.approx(
+        course.course(scenario).inclination_deg
+    )
 
 
 def test_a_fixed_mount_that_loses_a_ring_names_the_pitch_to_set() -> None:
@@ -146,12 +166,13 @@ def test_a_preview_has_a_frame_where_each_video_holds_each_of_its_rings(
     for whole in preview.held(quick, quick.objects).values():
         assert any(whole[f] for f in frames)
     with pytest.raises(ValueError, match="never holds a buoy"):
-        preview.keyframes(quick.model_copy(update={"objects": []}))
+        preview.keyframes(load(path, [preview.PREVIEW, {"objects": []}]))
 
 
 BOX = manifest()[course.CONTAINER].category_id
 BUOY = manifest()[course.BUOY].category_id
-NEAR_M = course.rings(course.views(*load(SYNC_WATCHKEEPER).rigs.values()))[0].range_m
+# Stands for the nearest ring's range, which each test reads off the scenario.
+NEAR = -1.0
 
 Seen = list[tuple[int, float, bool, int]]
 BOXED: Seen = [(BOX, 300.0, False, 40)]
@@ -194,41 +215,62 @@ def both(t1: Labels, rgb1: Labels) -> Labels:
     return Labels.model_construct(images=images, annotations=annotations)
 
 
-PASSING = (BOXED, [(BUOY, NEAR_M, False, 6)], BOXED)
+PASSING = (BOXED, [(BUOY, NEAR, False, 6)], BOXED)
 
 
-def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass() -> None:
-    preview.check(
-        both(seen("T1", *PASSING), seen("RGB1", *PASSING)), load(SYNC_WATCHKEEPER)
+@pytest.fixture(scope="module")
+def watchkeeper() -> Scenario:
+    return load(SYNC_WATCHKEEPER)
+
+
+def near_m(scenario: Scenario) -> float:
+    """The range of the scenario's nearest ring."""
+    return course.rings(course.views(*scenario.rigs.values()))[0].range_m
+
+
+def at(frames: tuple[Seen, ...], range_m: float) -> tuple[Seen, ...]:
+    """`frames` with `NEAR` read as `range_m`."""
+    return tuple(
+        [(c, range_m if r == NEAR else r, cut, px) for c, r, cut, px in frame]
+        for frame in frames
     )
+
+
+def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
+    watchkeeper: Scenario,
+) -> None:
+    passing = at(PASSING, near_m(watchkeeper))
+    preview.check(both(seen("T1", *passing), seen("RGB1", *passing)), watchkeeper)
 
 
 @pytest.mark.parametrize(
     ("frames", "error"),
     [
         (
-            (BOXED, [(BUOY, NEAR_M, True, 6)], BOXED),
-            f"mast_T1 never sees a buoy {NEAR_M:.0f} m out whole",
+            (BOXED, [(BUOY, NEAR, True, 6)], BOXED),
+            "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (
             # Half hidden behind the container.
-            (BOXED, [(BUOY, NEAR_M, False, 3)], BOXED),
-            f"mast_T1 never sees a buoy {NEAR_M:.0f} m out whole",
+            (BOXED, [(BUOY, NEAR, False, 3)], BOXED),
+            "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (
-            ([(BOX, 300.0, True, 40), (BUOY, NEAR_M, False, 6)], BOXED),
+            ([(BOX, 300.0, True, 40), (BUOY, NEAR, False, 6)], BOXED),
             "mast_T1 misses the container in its first frame",
         ),
         (
-            ([*BOXED, (BUOY, NEAR_M, False, 6)], []),
+            ([*BOXED, (BUOY, NEAR, False, 6)], []),
             "mast_T1 misses the container in its last frame",
         ),
     ],
 )
 def test_a_video_that_misses_a_ring_or_the_container_fails(
-    frames: tuple[Seen, ...], error: str
+    frames: tuple[Seen, ...], error: str, watchkeeper: Scenario
 ) -> None:
-    with pytest.raises(ValueError, match=error):
+    near = near_m(watchkeeper)
+    with pytest.raises(ValueError, match=error.format(near=near)):
         preview.check(
-            both(seen("T1", *frames), seen("RGB1", *PASSING)), load(SYNC_WATCHKEEPER)
+            both(seen("T1", *at(frames, near)), seen("RGB1", *at(PASSING, near))),
+            watchkeeper,
         )

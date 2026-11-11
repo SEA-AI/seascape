@@ -59,10 +59,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     vessel = built.deck.matrix_world
     rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
-    if mount.camera.lens.fisheye is None:
-        f = (width / 2) / math.tan(camera.data.angle_x / 2)
-    else:
-        f = mount.camera.fisheye_focal_px
+    f = mount.camera.focal_px
     return CameraCalibration(
         name=mount.name,
         band=mount.camera.band,
