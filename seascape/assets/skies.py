@@ -18,7 +18,7 @@ fraction determined by thermal infrared and visible all-sky cameras", Atmos. Mea
 Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit theirs to the pixels that are
 not cloud, against zenith angle, and refit; the clear-sky library of Ghonima et al.
 (Atmos. Meas. Tech. 5 2881, 2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith
-and angle from the sun. An overcast photo (`cover_oktas` 8) has no clear sky to fit.
+and angle from the sun. An overcast photo has no clear sky to fit.
 """
 
 import math
@@ -38,11 +38,9 @@ from seascape.physics import colour, earth, lwir
 
 LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
-# Judgement: CARLA's ClearSunset sun altitude (carla-simulator/carla,
-# LibCarla/source/carla/rpc/WeatherParameters.cpp).
+# Judgement: CARLA's ClearSunset altitude (WeatherParameters.cpp).
 LOW_SUN_DEG = 15.0
-# Aviation cover codes in oktas (eighths of the sky): SKC 0 and FEW 1-2 clear, SCT 3-4,
-# BKN 5-7, OVC 8 (eoas.ubc.ca/courses/atsc113, "Cloud Coverage").
+# Oktas by aviation cover code, SKC/FEW to OVC (eoas.ubc.ca/courses/atsc113).
 CLEAR_MAX_OKTAS = 2
 PARTLY_MAX_OKTAS = 4
 OVERCAST_OKTAS = 8
@@ -145,7 +143,7 @@ class Photo(File):
 
     @property
     def cover(self) -> Literal["clear", "partly cloudy", "mostly cloudy", "overcast"]:
-        """Cloud cover in words, from `cover_oktas`."""
+        """Cloud cover in words."""
         if self.cover_oktas <= CLEAR_MAX_OKTAS:
             return "clear"
         if self.cover_oktas <= PARTLY_MAX_OKTAS:
@@ -154,9 +152,9 @@ class Photo(File):
 
     @property
     def band(self) -> Literal["day", "low sun"] | None:
-        """Where the sun is, from its elevation; None where no disc shows it.
+        """Day or low sun by elevation; None where no disc shows.
 
-        Limitation: no dusk or night; a moon's disc would read as a sun.
+        Limitation: no dusk or night band.
         """
         elevation = self.sun_elevation_deg
         if elevation is None:

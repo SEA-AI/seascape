@@ -1465,7 +1465,6 @@ UNDERSHOOT_OKTAS = 1.0
 
 @pytest.mark.parametrize("name", skies.library())
 def test_the_labelled_cover_is_no_less_than_the_detector_finds(name: str) -> None:
-    """`cloud` bounds the cover from below, so the label may not fall under it."""
     photo = skies.library()[name]
     radiance = blend.read(download(name, photo.url, photo.sha256))[::-1, :, :3]
     small = cv2.resize(
