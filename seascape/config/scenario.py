@@ -240,9 +240,10 @@ class Scenario(Model):
             return self
         if self.outputs.loop:
             raise ValueError("a turn is a script, not a loop: drop turn or loop")
-        if (turn_s := self.turn.duration_s) > self.outputs.duration_s:
+        if (turn_s := self.turn.duration_s) > self.outputs.times_s[-1]:
             raise ValueError(
-                f"the turn takes {turn_s:.2f} s: make outputs.duration_s at least that"
+                f"the turn takes {turn_s:.2f} s: make outputs.duration_s at least "
+                f"{turn_s + 1.0 / self.outputs.fps:.2f}"
             )
         return self
 

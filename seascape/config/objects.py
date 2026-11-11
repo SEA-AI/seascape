@@ -1,7 +1,7 @@
 """The ownship and what is around it."""
 
 import math
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NamedTuple
 
 import numpy as np
 from pydantic import (
@@ -191,24 +191,47 @@ class Move(Model):
     hold_s: float = Field(default=0.0, ge=0.0, description="Still, once there.")
 
 
+class Leg(NamedTuple):
+    """A move from where the last left off, before its hold."""
+
+    start_deg: float
+    distance_deg: float
+    rate_deg_s: float
+    duration_s: float
+
+
 class Turn(Model):
     """A scripted turn of what carries the cameras, from the bow at t = 0. Each move
     ramps up to its rate and down to rest at the acceleration.
     """
 
     by: Literal["ownship"] = Field(description="What turns.")
-    top_rate_deg_s: float = Field(gt=0.0, description="As fast as it turns.")
+    top_rate_deg_s: float = Field(
+        gt=0.0, description="As fast as it turns; a move's rate when it sets none."
+    )
     accel_deg_s2: float | None = Field(
         default=None, gt=0.0, description="None reaches each rate at once."
     )
-    moves: list[Move] = Field(min_length=1, description="In order, from the bow.")
+    moves: list[Move] = Field(min_length=1, description="In order.")
 
-    def legs(self) -> list[tuple[float, float, float]]:
-        """Each move's start angle, distance and rate."""
+    @model_validator(mode="after")
+    def _no_move_outruns_the_top_rate(self) -> "Turn":
+        for move in self.moves:
+            if (rate := move.rate_deg_s) is not None and rate > self.top_rate_deg_s:
+                raise ValueError(
+                    f"a move at {rate} deg/s is faster than top_rate_deg_s "
+                    f"{self.top_rate_deg_s}: lower it or raise the top rate"
+                )
+        return self
+
+    def legs(self) -> list[Leg]:
+        """Each move's turn, in order."""
         legs, at_deg = [], 0.0
         for move in self.moves:
             rate = move.rate_deg_s or self.top_rate_deg_s
-            legs.append((at_deg, move.to_deg - at_deg, rate))
+            distance = move.to_deg - at_deg
+            took_s = turn.duration_s(distance, rate, self.accel_deg_s2)
+            legs.append(Leg(at_deg, distance, rate, took_s))
             at_deg = move.to_deg
         return legs
 
@@ -216,8 +239,8 @@ class Turn(Model):
     def duration_s(self) -> float:
         """From the first move's start to the last move's hold's end."""
         return sum(
-            turn.duration_s(distance, rate, self.accel_deg_s2) + move.hold_s
-            for (_, distance, rate), move in zip(self.legs(), self.moves, strict=True)
+            leg.duration_s + move.hold_s
+            for leg, move in zip(self.legs(), self.moves, strict=True)
         )
 
 

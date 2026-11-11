@@ -4445,7 +4445,7 @@
         },
         "top_rate_deg_s": {
           "title": "Top Rate Deg S",
-          "description": "As fast as it turns.",
+          "description": "As fast as it turns; a move's rate when it sets none.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -4499,7 +4499,7 @@
         },
         "moves": {
           "title": "Moves",
-          "description": "In order, from the bow.",
+          "description": "In order.",
           "anyOf": [
             {
               "items": {

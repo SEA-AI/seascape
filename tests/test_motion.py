@@ -99,11 +99,11 @@ def test_a_turn_comes_to_rest_at_each_target(accel_deg_s2: float | None) -> None
 
 
 def test_the_rate_keeps_under_its_cap_and_ramps_at_the_acceleration() -> None:
-    _, rate = rates_deg_s(COURSE)
+    times, rate = rates_deg_s(COURSE)
+    back_at_bow_s = motion.turning_points(COURSE)[2][0]
 
     assert np.abs(rate).max() == pytest.approx(30.0, rel=1e-3)
-    # A sweep's own cap holds outside the slews.
-    sweep = rate[: int(46.0 / 1e-3)]
+    sweep = rate[times[1:] <= back_at_bow_s]
     assert np.abs(sweep).max() == pytest.approx(6.0, rel=1e-3)
     assert np.abs(np.diff(rate)).max() / 1e-3 == pytest.approx(30.0, rel=1e-2)
 
@@ -138,3 +138,8 @@ def test_a_turn_must_fit_the_clip_and_never_loops() -> None:
         load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 10}}])
     with pytest.raises(ValidationError, match="not a loop"):
         load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 60, "loop": True}}])
+
+
+def test_a_move_faster_than_the_top_rate_is_refused() -> None:
+    with pytest.raises(ValidationError, match="faster than top_rate_deg_s"):
+        Turn(by="ownship", top_rate_deg_s=5.0, moves=[Move(to_deg=10, rate_deg_s=6)])

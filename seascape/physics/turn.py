@@ -1,6 +1,5 @@
 """A turn from rest to rest: the rate ramps up at a constant acceleration, cruises at
 its cap and ramps down, a trapezoid; a short turn never reaches the cap, a triangle.
-Degrees and seconds; no acceleration cap reaches the rate at once.
 """
 
 import math

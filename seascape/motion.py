@@ -13,6 +13,8 @@ from seascape.physics import waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
+# A judgement: the most a turn moves the heading in one trapezoid step.
+STEP_TURN_DEG = 1.0
 
 
 class Pose(NamedTuple):
@@ -87,33 +89,31 @@ def _hermite(
 
 def turned_deg(turn: Turn) -> Callable[[float], float]:
     """The turn's angle at a time, clockwise from where it starts."""
+    legs = turn.legs()
     starts_s = np.cumsum(
         [0.0]
-        + [
-            kinematics.duration_s(distance, rate, turn.accel_deg_s2) + move.hold_s
-            for (_, distance, rate), move in zip(turn.legs(), turn.moves, strict=True)
-        ]
+        + [leg.duration_s + m.hold_s for leg, m in zip(legs, turn.moves, strict=True)]
     )
 
     def at(t_s: float) -> float:
         i = int(np.searchsorted(starts_s, t_s, side="right")) - 1
-        if i >= len(turn.moves):
+        if i >= len(legs):
             return turn.moves[-1].to_deg
-        start_deg, distance, rate = turn.legs()[max(i, 0)]
+        leg = legs[max(i, 0)]
         gone_s = t_s - starts_s[max(i, 0)]
-        return start_deg + kinematics.covered_deg(
-            distance, rate, turn.accel_deg_s2, gone_s
+        return leg.start_deg + kinematics.covered_deg(
+            leg.distance_deg, leg.rate_deg_s, turn.accel_deg_s2, gone_s
         )
 
     return at
 
 
 def turning_points(turn: Turn) -> list[tuple[float, float]]:
-    """Each move's (time, angle) as it comes to rest, where a rate changes."""
+    """Each move's (time, angle) as it comes to rest."""
     points, t_s = [], 0.0
-    for (_, distance, rate), move in zip(turn.legs(), turn.moves, strict=True):
-        t_s += kinematics.duration_s(distance, rate, turn.accel_deg_s2)
-        if distance != 0.0:
+    for leg, move in zip(turn.legs(), turn.moves, strict=True):
+        t_s += leg.duration_s
+        if leg.distance_deg != 0.0:
             points.append((t_s, move.to_deg))
         t_s += move.hold_s
     return points
@@ -126,14 +126,16 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     """
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
+    turned = turned_deg(turn) if turn is not None and turn.by == "ownship" else None
     # Whole substeps per frame, so every frame lands on the grid; a straight run is
     # exact in one.
     sub = 1
     if swing is not None:
         step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
         sub = math.ceil(1.0 / (outputs.fps * step_s))
+    if turned is not None and turn is not None:
+        sub = max(sub, math.ceil(turn.top_rate_deg_s / (outputs.fps * STEP_TURN_DEG)))
     tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
-    turned = turned_deg(turn) if turn is not None and turn.by == "ownship" else None
 
     def heading_rad(t_s: float) -> float:
         rad = 0.0
