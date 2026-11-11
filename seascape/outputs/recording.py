@@ -99,11 +99,11 @@ def _row(
     row["proc_ptu_mode"] = MANUAL_MODE
     # A run from before ptus has no key.
     if rig.get("ptu") is not None:
-        # The head on the deck, past its mount: pan clockwise, tilt nose down as the
-        # IMU's pitch.
+        # The head on the deck, past its mount: pan to port, tilt nose down as the
+        # IMU's pitch (Core-Backend's `ptu_rotation`).
         on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
         _, tilt, pan = attitude_deg(on_deck)
-        row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
+        row["pan"] = wrapped_deg(rig["yaw_deg"] - pan)
         row["tilt"] = rig["pitch_deg"] - tilt
         if scan_deg_s is not None:
             row["proc_ptu_mode"] = COLAV_MODE
