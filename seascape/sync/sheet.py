@@ -18,7 +18,7 @@ from seascape.angles import wrapped_deg
 from seascape.assets import Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, sources
-from seascape.motion import panned_deg
+from seascape.motion import panned_deg, rig_track
 from seascape.outputs import brand, canvas
 from seascape.physics import ptu
 from seascape.sync import preview
@@ -32,7 +32,6 @@ from seascape.sync.course import (
     buoy_above_m,
     overlap_deg,
     reach_m,
-    rig_track,
     rings,
     views,
 )
@@ -401,7 +400,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     """
     size = (INNER_PX - ABOVE_W_PX - GAP_PX, TOP_PX)
     tile = _tile(size, "2  Panorama", "outline: at the start  ·  shade: over the turn")
-    rig_at = rig_track(course.scenario)
+    rig_at = rig_track(course.scenario, course.name)
     axis_deg = math.degrees(rig_at(0.0).heading_rad)
     sweep = np.arange(0.0, course.scenario.outputs.times_s[-1] + SWEEP_S, SWEEP_S)
     turned = [math.degrees(rig_at(float(t)).heading_rad) - axis_deg for t in sweep]
