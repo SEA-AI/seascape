@@ -163,6 +163,8 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["heading"]) == pytest.approx(math.radians(yaw), abs=1e-6)
         assert not any(value.startswith("-0.000000") for value in row.values())
         assert float(row["pan"]) == float(row["tilt"]) == 0.0
+        # Manual: Core-Backend's modes start at 1.
+        assert float(row["proc_ptu_mode"]) == 1
         assert float(row["yaw"]) == pytest.approx(POD_YAW_DEG, abs=0.05)
         assert float(row["temp"]) == pytest.approx(10.0)
         assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))

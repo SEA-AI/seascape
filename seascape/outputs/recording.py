@@ -55,8 +55,9 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
-# Core-Backend's `proc_ptu_mode` for collision avoidance, which a scan records.
-COLAV_MODE = 3
+# Core-Backend's `proc_ptu_mode`: a scan records collision avoidance, anything else
+# manual, as a replay reads a recording without the column. It has no 0.
+MANUAL_MODE, COLAV_MODE = 1, 3
 
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
@@ -98,6 +99,7 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
         _, tilt, pan = attitude_deg(on_deck)
         row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
         row["tilt"] = rig["pitch_deg"] - tilt
+    row["proc_ptu_mode"] = MANUAL_MODE
     if (raw := scenario.get("turn")) is not None:
         row["proc_ptu_mode"] = COLAV_MODE
         turn = Turn.model_validate(raw)
