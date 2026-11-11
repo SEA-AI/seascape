@@ -10,9 +10,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
+from seascape.angles import wrapped_deg
 from seascape.config import Mount, Scenario
 from seascape.outputs import brand, canvas, preview
-from seascape.physics.earth import wrapped_deg
 
 TILE_H = 260
 CAPTION_H = 26

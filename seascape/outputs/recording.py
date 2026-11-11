@@ -16,10 +16,10 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
+from seascape.angles import wrapped_deg
 from seascape.config import Crop, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
-from seascape.physics.earth import wrapped_deg
 
 COLUMNS = [
     "counter",

@@ -68,7 +68,7 @@ layers = [
     "outputs | motion",
     "config",
     "assets",
-    "physics | model | atomic",
+    "physics | model | atomic | angles",
 ]
 
 [[tool.importlinter.contracts]]
