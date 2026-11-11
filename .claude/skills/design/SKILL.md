@@ -19,7 +19,7 @@ Question every new line: is it justified, or an odd workaround? Each piece lands
 - The Blender layers are the imperative shell. They turn values into datablocks, nodes and keyframes. A branch there may choose how Blender stores a value (keyed or constant, which channel); a branch that chooses which value, kind or object belongs below it.
 - Entry points parse arguments, call and print. They hold no decision; code that drives `bpy` belongs in the shell.
 
-Dependencies point from volatile code to stable code: the shell depends on the core, never the reverse (Martin's stable dependencies). A violation means the code is in the wrong layer, or the contract is wrong; it never earns an exception. A contract states generic rules (layers, forbidden, independence); one that lists modules is a finding.
+Dependencies point from volatile code to stable code: the shell depends on the core, never the reverse (Martin's stable dependencies). A violation means the code is in the wrong layer, or the contract is wrong; it never earns an exception. A contract states generic rules (layers, forbidden, independence); one that lists seascape's own modules is a finding. Naming an outside package such as `bpy`, and who may import it, is a rule.
 
 ## Questions per principle
 
@@ -44,7 +44,7 @@ Each names its usual root fix.
 - **One action, several homes.** Two call sites that must change together (one rule, one Blender trap, one conversion) get one owner now. Look-alikes that may diverge wait for a third case (Fowler's rule of three).
 - **A field or default for one caller.** Compute it at that call site, or ask why the record does not carry the real quantity.
 - **A tag with one legal value.** A `Literal` or enum of one member is speculative generality: delete it. A tag the user writes in a file is part of its format, and adding one later breaks every file; that one may come first.
-- **A literal in the shell.** A number written into Blender-side code is a second source of truth. It lives in the pure layer and is imported by name.
+- **A literal in the shell.** A physical or design number written into Blender-side code is a second source of truth. It lives in the pure layer and is imported by name. A number that only addresses Blender, such as a channel index, stays in the shell.
 - **Feature envy.** A function that reads mostly another module's record belongs beside that record.
 - **Data clumps.** The same few values passed together through several signatures become one record, defined at or below the lowest layer that uses it.
 
