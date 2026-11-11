@@ -312,6 +312,13 @@ class Camera(Model):
         return self.sensor.pitch_um * sites_per_px
 
     @property
+    def focal_px(self) -> float:
+        """Its `fx`: a pinhole's, or a fisheye's scale of its distorted angle."""
+        if self.lens.fisheye is not None:
+            return self.fisheye_focal_px
+        return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
+
+    @property
     def fisheye_focal_px(self) -> float:
         """A fisheye's `fx`, the scale of its distorted angle in pixels."""
         assert self.lens.fisheye is not None

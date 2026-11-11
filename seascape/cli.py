@@ -4,7 +4,7 @@ import json
 import math
 import os
 import sys
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Collection, Generator
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Any, get_args
@@ -99,14 +99,19 @@ def _empty(into: Path) -> Path:
     return into
 
 
-def _render(built: Scenario, into: Path) -> list[Path]:
+def _render(
+    built: Scenario, into: Path, frames: Collection[int] | None = None
+) -> list[Path]:
     from seascape import render as renderer
 
+    images = built.images
+    if frames is not None:
+        images = images // built.outputs.frames * len(frames)
     with (
-        _progress(built.images, "Rendering") as bar,
+        _progress(images, "Rendering") as bar,
         _blender_log(into / "blender.log"),
     ):
-        return renderer.render(built, into, lambda: bar.update(1))
+        return renderer.render(built, into, lambda: bar.update(1), frames)
 
 
 _QUALITY = "perc_lossless"
@@ -212,16 +217,22 @@ def render(
 @click.option(
     "--preview",
     is_flag=True,
-    help="Render at 1 fps, a quarter the size and one sample, and check every video "
-    "keeps its containers whole in every frame; nothing is encoded.",
+    help="Render the keyframes at one sample, and check every video "
+    "sees a buoy of each of its rings whole and the container at both ends; nothing "
+    "is encoded.",
 )
 def sync(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
 ) -> None:
     """Render, encode and record a sync scenario, or preview it."""
-    from seascape import sync as checks
+    from seascape.sync import course
+    from seascape.sync import preview as checks
 
     built = load(scenario, list(overrides))
+    try:
+        course.verify(built)
+    except ValueError as stale:
+        raise click.ClickException(f"{scenario}: {stale}") from stale
     if not preview:
         into = _empty(output or scenario.with_suffix(""))
         _render(built, into)
@@ -229,11 +240,11 @@ def sync(
         for path in recording.export(into):
             click.echo(path)
         return
-    built = load(scenario, [*overrides, checks.preview(built)])
+    built = load(scenario, [*overrides, checks.PREVIEW])
     into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
-    _render(built, into)
-    checks.check(labels.Labels.read(into))
-    click.echo(f"every video keeps its containers whole: {into}")
+    _render(built, into, checks.keyframes(built))
+    checks.check(labels.Labels.read(into), built)
+    click.echo(f"every video sees the course: {into}")
 
 
 @main.command("montage")

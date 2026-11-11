@@ -11,7 +11,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -357,7 +357,10 @@ def _shoot(
 
 
 def render(
-    scenario: Scenario, into: Path, advance: Callable[[], None] = lambda: None
+    scenario: Scenario,
+    into: Path,
+    advance: Callable[[], None] = lambda: None,
+    frames: Collection[int] | None = None,
 ) -> list[Path]:
     """Write one image per camera and frame, their calibration and their labels. A
     sequence puts each camera's frames in a folder of its own.
@@ -367,6 +370,7 @@ def render(
             their resolution.
         into: Where the images and their truth go; made if missing.
         advance: Runs after each image.
+        frames: The frames rendered, by number; None renders them all.
     """
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
@@ -401,6 +405,8 @@ def render(
                 for m in mounts
             }
             for frame, time_s in enumerate(outputs.times_s):
+                if frames is not None and frame not in frames:
+                    continue
                 sc.frame_set(frame)
                 # Both read matrix_world, which moves with the frame.
                 targets = _targets(built)

@@ -16,7 +16,8 @@ from seascape import assets, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
-from tests.scenarios import BASELINE, OPEN_SEA
+from seascape.sync import course
+from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
 
 type Run = Callable[..., Result]
 
@@ -338,3 +339,14 @@ def test_a_shader_cycles_draws_black_fails_the_command(tmp_path: Path) -> None:
         cli._blender_log(tmp_path / "blender.log"),
     ):
         bpy.ops.render.render()
+
+
+def test_sync_refuses_objects_off_the_course_and_prints_the_course(
+    run: Run, tmp_path: Path
+) -> None:
+    refused = run("sync", SYNC_SENTRY, "--set", "objects = []", "-o", tmp_path)
+
+    assert refused.exit_code == 1
+    assert "not the course's for its rig" in refused.stderr
+    assert course.objects_toml(load(SYNC_SENTRY).objects) in refused.stderr
+    assert not any(tmp_path.iterdir())

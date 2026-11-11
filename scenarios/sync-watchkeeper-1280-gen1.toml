@@ -2,6 +2,17 @@
 
 extends = "sync.toml"
 
+# Placed by `seascape sync` for this rig and turn.
+objects = [
+    { asset = "container", range_m = 18.2, bearing_deg = 0.0, heading_deg = 90.0, heading_from = "line_of_sight" },
+    { asset = "mooring_buoy", range_m = 29.6, bearing_deg = -57.3, heading_deg = 90.0, heading_from = "line_of_sight", wear = 0.5, colour = "orange" },
+    { asset = "mooring_buoy", range_m = 29.6, bearing_deg = -34.4, heading_deg = 90.0, heading_from = "line_of_sight", wear = 0.5, colour = "orange" },
+    { asset = "mooring_buoy", range_m = 29.6, bearing_deg = -11.6, heading_deg = 90.0, heading_from = "line_of_sight", wear = 0.5, colour = "orange" },
+    { asset = "mooring_buoy", range_m = 29.6, bearing_deg = 11.6, heading_deg = 90.0, heading_from = "line_of_sight", wear = 0.5, colour = "orange" },
+    { asset = "mooring_buoy", range_m = 29.6, bearing_deg = 34.4, heading_deg = 90.0, heading_from = "line_of_sight", wear = 0.5, colour = "orange" },
+    { asset = "mooring_buoy", range_m = 29.6, bearing_deg = 57.3, heading_deg = 90.0, heading_from = "line_of_sight", wear = 0.5, colour = "orange" },
+]
+
 # Watchkeeper rides on small motorboats.
 [ownship]
 asset = "zodiac"
@@ -12,17 +23,6 @@ preset = "watchkeeper"
 height_m = 1.9
 offset_y_m = -2.6
 
-# One on each thermal camera's boresight, broadside; the wide colour camera sees both.
-[[objects]]
-asset = "container"
-range_m = 26.0
-bearing_deg = -12.5
-heading_deg = 90.0
-heading_from = "line_of_sight"
-
-[[objects]]
-asset = "container"
-range_m = 26.0
-bearing_deg = 12.5
-heading_deg = 90.0
-heading_from = "line_of_sight"
+[turn]
+top_rate_deg_s = 30.0
+accel_deg_s2 = 30.0
