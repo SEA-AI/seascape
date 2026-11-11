@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review a seascape pull request or diff with five fresh reviewers (correctness, design, anti-hack, stack, prose), then fix what they find. Use for any review request, before handing a PR over, and again after a push that adds prose.
+description: Review a seascape pull request or diff with five fresh reviewers (correctness, design, anti-hack, stack, prose). Use for any review request, before handing a PR over, and again after a push that adds prose.
 ---
 
 # Review a pull request
@@ -16,6 +16,8 @@ Every PR gets five reviews before it is handed over. Each reviewer is a fresh su
 5. **Prose.** Follow the `prose` skill.
 
 ## After the reviews
+
+A review request ends with the findings. Edit and push only when handing over a PR you wrote, or when asked to fix.
 
 - Apply the fixes each skill's verdicts name. A finding you reject gets a one-line reason a reader can check.
 - Run the tests the fixes touch, then push through `gh stack`.
