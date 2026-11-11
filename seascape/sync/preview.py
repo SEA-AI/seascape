@@ -6,10 +6,10 @@ import math
 from collections import defaultdict
 from collections.abc import Callable
 
+from seascape.angles import wrapped_deg
 from seascape.assets import manifest
 from seascape.config import Object, Scenario
 from seascape.outputs.labels import Labels
-from seascape.physics.earth import wrapped_deg
 from seascape.sync.course import (
     BUOY,
     BUOY_PX,
