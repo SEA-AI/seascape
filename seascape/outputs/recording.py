@@ -54,8 +54,7 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
-# Core-Backend's `proc_ptu_mode`: 1 manual, 2 surveillance, 3 collision avoidance, 4
-# tracking. Both products record 3 while they scan.
+# Core-Backend's `proc_ptu_mode` for collision avoidance, which a scan records.
 COLAV_MODE = 3
 
 
@@ -90,7 +89,7 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
     heading = round(float(bb_yaw), 6) % math.tau
     row = dict.fromkeys(COLUMNS, 0.0)
     rig = scenario["rigs"][camera.rig]
-    # A run rendered before rigs had a ptu or a turn has neither key.
+    # An older run has neither key.
     if rig.get("ptu"):
         # The head on the deck, past its mount: pan clockwise, tilt nose down as the
         # IMU's pitch.
@@ -101,7 +100,10 @@ def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> d
     if (turn := scenario.get("turn")) is not None:
         row["proc_ptu_mode"] = COLAV_MODE
         if rig.get("ptu"):
-            rate = next(m["rate_deg_s"] for m in turn["moves"] if m["rate_deg_s"])
+            rate = next(
+                (r for m in turn["moves"] if (r := m.get("rate_deg_s"))),
+                turn["top_rate_deg_s"],
+            )
             # Revolutions per second, as the worker's setting.
             row["proc_colav_speed"] = rate / 360.0
     row |= {

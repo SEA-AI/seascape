@@ -45,14 +45,19 @@ def rows(m: np.ndarray) -> tuple:
 # roll, pitch, yaw per frame; a yaw a hair west of north must not wrap to 2 pi
 HULL = [(2.0, 0.5, 0.0), (-1.5, 1.0, -1e-7)]
 POD_YAW_DEG, CAMERA_YAW_DEG, CAMERA_PITCH_DEG = -60.0, 40.0, -10.0
-PTU_TILT_DEG, SCAN_DEG_S = 4.0, 6.0
+PTU_TILT_DEG, SCAN_DEG_S, TOP_DEG_S = 4.0, 6.0, 50.0
 WIDTH, HEIGHT, F = 640, 480, 1000.0
 RADIUS_M = earth.earth_radius_m(0.13)
 
 
-def make_run(into: Path, camera_yaw_deg: float, ptu: bool = False) -> Path:
-    """Stand-ins for a render: one camera in a pod on a rolling hull, which on a
-    pan-tilt unit is panned and tilted, scanning.
+def make_run(
+    into: Path,
+    camera_yaw_deg: float,
+    ptu: bool = False,
+    scan_deg_s: float | None = SCAN_DEG_S,
+) -> Path:
+    """Stand-ins for a render: one camera in a pod on a rolling hull; with `ptu`,
+    panned, tilted and scanning at `scan_deg_s`.
     """
     body_to_cv = pose(TO_CV)
     camera_to_pod = pose(
@@ -109,7 +114,8 @@ def make_run(into: Path, camera_yaw_deg: float, ptu: bool = False) -> Path:
         scenario["rigs"]["port"] |= {"ptu": True, "yaw_deg": 0.0, "pitch_deg": 0.0}
         scenario["turn"] = {
             "by": "ptu",
-            "moves": [{"to_deg": 60.0, "rate_deg_s": SCAN_DEG_S, "hold_s": 0.0}],
+            "top_rate_deg_s": TOP_DEG_S,
+            "moves": [{"to_deg": 60.0, "rate_deg_s": scan_deg_s, "hold_s": 0.0}],
         }
     info = {"date_created": "2026-09-29T03:55:21+00:00", "scenario": scenario}
     Labels(info=info, images=images).write(into)
@@ -155,10 +161,15 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))
 
 
+@pytest.mark.parametrize(
+    ("scan_deg_s", "recorded_deg_s"), [(SCAN_DEG_S, SCAN_DEG_S), (None, TOP_DEG_S)]
+)
 def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
-    tmp_path: Path,
+    tmp_path: Path, scan_deg_s: float | None, recorded_deg_s: float
 ) -> None:
-    recording.export(make_run(tmp_path, CAMERA_YAW_DEG, ptu=True))
+    recording.export(
+        make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, scan_deg_s=scan_deg_s)
+    )
     (table,) = tmp_path.glob("recordings/port/*/*.csv")
     with table.open() as f:
         table_rows = list(csv.DictReader(f))
@@ -169,7 +180,7 @@ def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
         assert float(row["tilt"]) == pytest.approx(-PTU_TILT_DEG, abs=1e-5)
         assert int(float(row["proc_ptu_mode"])) == recording.COLAV_MODE
         assert float(row["proc_colav_speed"]) == pytest.approx(
-            SCAN_DEG_S / 360.0, abs=1e-6
+            recorded_deg_s / 360.0, abs=1e-6
         )
 
 

@@ -1473,15 +1473,14 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     for frame, t_s in enumerate(scenario.outputs.times_s):
         bpy.context.scene.frame_set(frame)
         bearing, elevation = boresight_deg(camera)
-        # The hull's tilt moves a bearing by a fraction of a degree.
         assert bearing == pytest.approx(turned(t_s), abs=0.5)
         omega = 2.0 * math.pi / 4.0
         pitch, roll = 3.0 * math.sin(omega * t_s), 5.0 * math.sin(omega * t_s)
         base.append(ptu.head_pitch_deg(pitch, roll, turned(t_s)))
         held.append(elevation + 2.0)
-    # The loop's high pass at a 4 s swell leaves 0.16 of the base's pitch.
+    passed = omega / math.hypot(omega, ptu.GAIN_PER_S)
     assert max(map(abs, base)) > 4.0
-    assert max(map(abs, held)) < 0.16 * max(map(abs, base)) + 0.2
+    assert max(map(abs, held)) < passed * max(map(abs, base)) + 0.2
 
 
 class TestOwnshipUnderway:
