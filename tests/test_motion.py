@@ -162,6 +162,19 @@ def test_a_sailing_ownship_turns_on_a_circle_of_speed_over_rate() -> None:
             {"turn": COURSE.model_dump() | {"ptu": "bow"}},
             "is no rig on a ptu",
         ),
+        (
+            {
+                "turn": {
+                    "ptu": "bow",
+                    "top_rate_deg_s": 50.0,
+                    "moves": [
+                        {"to_deg": 60, "rate_deg_s": 6},
+                        {"to_deg": 0, "rate_deg_s": 12},
+                    ],
+                }
+            },
+            "a ptu scans at one rate",
+        ),
     ],
 )
 def test_a_turn_that_cannot_run_is_refused(

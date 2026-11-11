@@ -102,6 +102,15 @@ def turned_deg(turn: Turn) -> Callable[[float], float]:
     return at
 
 
+def panned_deg(turn: Turn | None, rig: str) -> Callable[[float], float]:
+    """The pan of the rig named `rig` at a time, clockwise from its yaw: the turn's
+    when it turns that rig's ptu, else none.
+    """
+    if turn is None or not turn.pans(rig):
+        return lambda _: 0.0
+    return turned_deg(turn)
+
+
 def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     """The pose at a time: `speed_mps` integrated along the heading that `yaw` swings
     and `turn` turns, with the pitch and roll its swings script.

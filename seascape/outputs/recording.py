@@ -377,7 +377,7 @@ def export(run: Path) -> list[Path]:
                 head = scenario["rigs"][rig]
                 scan = (
                     turn.scan_rate_deg_s
-                    if turn is not None and turn.ptu == rig
+                    if turn is not None and turn.pans(rig)
                     else None
                 )
                 writer.writerows(

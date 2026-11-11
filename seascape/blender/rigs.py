@@ -20,7 +20,7 @@ from seascape.config import (
     Rig,
     Scenario,
 )
-from seascape.motion import turned_deg
+from seascape.motion import panned_deg
 from seascape.physics import fisheye, ptu
 
 
@@ -93,13 +93,8 @@ def stabilise(
     turn, times = scenario.turn, scenario.outputs.times_s
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
-            turns = turn is not None and turn.ptu == name
-            panned = turned_deg(turn) if turns else _still
+            panned = panned_deg(turn, name)
             _hold(rigs[name], rig, rig.ptu, panned, attitude_deg, times)
-
-
-def _still(_: float) -> float:
-    return 0.0
 
 
 def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:

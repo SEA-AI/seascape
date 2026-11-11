@@ -228,11 +228,26 @@ class Turn(Model):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _a_ptu_scans_at_one_rate(self) -> "Turn":
+        rates = {m.rate_deg_s for m in self.moves if m.rate_deg_s is not None}
+        if self.ptu is not None and len(rates) > 1:
+            raise ValueError(
+                f"a ptu scans at one rate, not {sorted(rates)}: give every move that "
+                "sets rate_deg_s the same one, and leave it unset to slew at "
+                "top_rate_deg_s"
+            )
+        return self
+
+    def pans(self, rig: str) -> bool:
+        """Whether it turns the ptu of the rig named `rig`."""
+        return self.ptu == rig
+
     @property
     def scan_rate_deg_s(self) -> float:
-        """The rate it scans at: its first moving leg's, else its top rate."""
+        """The one rate its moves set, else its top rate."""
         return next(
-            (leg.rate_deg_s for leg in self.legs() if leg.distance_deg),
+            (m.rate_deg_s for m in self.moves if m.rate_deg_s is not None),
             self.top_rate_deg_s,
         )
 
