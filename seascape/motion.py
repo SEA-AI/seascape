@@ -231,39 +231,28 @@ def waterplane(
 
 
 def attitude_deg(
-    ownship: Ownship,
     path: Path,
     hull: waves.Waterplane | None,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-    outputs: Outputs,
 ) -> Callable[[float], tuple[float, float]]:
-    """The ownship's pitch, bow up, and roll, starboard down, at a time: its scripted
-    swings about their means and, under `hull`, the sea's.
+    """The pitch, bow up, and roll, starboard down, at a time: what `path` steers and,
+    under `hull`, the sea's.
 
     Args:
-        ownship: Its means and swings.
-        path: Where it is and where its bow points.
+        path: Where it is, where its bow points and how it is tilted.
         hull: Its size, or None for a bare rig, which the sea does not tilt.
         field: Every wave, which a hull pitches and rolls on.
         tall: The waves that are geometry, the ones it floats on.
-        outputs: The periods its swings loop on.
     """
 
-    def swung(mean_deg: float, swing: Swing | None, t_s: float) -> float:
-        if swing is None:
-            return mean_deg
-        omega = 2.0 * math.pi / outputs.period_s(swing.period_s)
-        return mean_deg + swing.amplitude_deg * math.sin(omega * t_s)
-
     def at(t_s: float) -> tuple[float, float]:
-        pitch = swung(ownship.pitch_deg, ownship.pitch, t_s)
-        roll = swung(ownship.roll_deg, ownship.roll, t_s)
+        pose = path(t_s)
+        pitch, roll = pose.pitch_rad, pose.roll_rad
         if hull is not None:
-            plane = waterplane(path(t_s), tall, t_s, hull)
+            plane = waterplane(pose, tall, t_s, hull)
             sea_pitch, sea_roll_up = waves.attitude(field, plane, t_s)
-            pitch += math.degrees(sea_pitch)
-            roll -= math.degrees(sea_roll_up)
-        return pitch, roll
+            pitch, roll = pitch + sea_pitch, roll - sea_roll_up
+        return math.degrees(pitch), math.degrees(roll)
 
     return at

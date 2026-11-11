@@ -157,9 +157,7 @@ def _attitude(
     """
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    return attitude_deg(
-        scenario.ownship, path, hull, wind + swell, tall, scenario.outputs
-    )
+    return attitude_deg(path, hull, wind + swell, tall)
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
