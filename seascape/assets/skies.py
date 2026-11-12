@@ -33,8 +33,9 @@ import cv2
 import numpy as np
 from pydantic import Field, model_validator
 
+from seascape import angles
 from seascape.assets import File
-from seascape.physics import colour, earth, lwir
+from seascape.physics import colour, lwir
 
 LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
@@ -220,8 +221,8 @@ def sun(radiance: np.ndarray) -> Sun:
     rows = np.arange(h)[band]
     bearings = _bearing_deg((np.arange(w) + 0.5) / w)
     elevations = _elevation_deg(rows, h)
-    seen = earth.direction(bearings[None, :], elevations[:, None])
-    peak = earth.direction(bearings[col], _elevation_deg(np.array(row), h))
+    seen = angles.direction(bearings[None, :], elevations[:, None])
+    peak = angles.direction(bearings[col], _elevation_deg(np.array(row), h))
     angle = np.degrees(np.arccos(np.clip(seen @ peak, -1.0, 1.0)))
     near = lum[band]
     ring = np.median(near[(angle > RING_DEG[0]) & (angle < RING_DEG[1])])
@@ -238,7 +239,7 @@ def sun(radiance: np.ndarray) -> Sun:
     if not DISC_RMS_DEG[0] <= rms_deg <= DISC_RMS_DEG[1]:
         return Sun(glow, None)
     return Sun(
-        math.degrees(math.atan2(centre[0], centre[1])) % 360.0,
+        angles.bearing_deg(centre[0], centre[1]) % 360.0,
         math.degrees(math.asin(centre[2])),
         floor,
     )
@@ -370,10 +371,10 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     disc = photo.sun_elevation_deg is not None
     # A judgement: with no disc, the glow's bearing at the horizon.
     sun_elevation_deg = photo.sun_elevation_deg if disc else 0.0
-    toward = earth.direction(
+    toward = angles.direction(
         np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg)
     )
-    cos_sun = earth.direction(bearing, elevation) @ toward
+    cos_sun = angles.direction(bearing, elevation) @ toward
     aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
     clear = _envelope(blueness, np.ones_like(blueness), elevation, cos_sun)
     # A dusk's glow is redder than grey and cloud greys it toward blue, so there the

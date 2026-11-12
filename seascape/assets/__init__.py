@@ -144,6 +144,33 @@ class _Mesh(FrozenModel):
     # Textures already show wear: they are its wear in both bands, and `wear` does
     # nothing to it.
     weathered: bool = False
+    # Other colours its hull paint is sold in, by name, as sRGB hex.
+    colours: dict[str, Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")]] = Field(
+        default_factory=dict
+    )
+    # Its own hull paint's name, so an object can ask for it beside `colours`.
+    colour: str | None = None
+
+    @model_validator(mode="after")
+    def _paintable(self) -> "_Mesh":
+        if self.colours and not self.paint_hull:
+            raise ValueError("colours need a material zoned paint_hull to cover")
+        if self.colour in self.colours:
+            raise ValueError(f"{self.colour} is its own colour, not another")
+        return self
+
+    @property
+    def sold_in(self) -> set[str]:
+        """Every colour an object of it may ask for: its own, if named, and the
+        others.
+        """
+        return set(self.colours) | ({self.colour} if self.colour else set())
+
+    @property
+    def paint_hull(self) -> set[str]:
+        """The materials its colours cover."""
+        zoned = {} if self.zones is None else self.zones.materials
+        return {m for m, zone in zoned.items() if zone == "paint_hull"}
 
     @abstractmethod
     def scale(self, size: tuple[float, float, float]) -> float:

@@ -16,7 +16,8 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
-from seascape.config import Crop, Undistortion, Video, sources
+from seascape.angles import wrapped_deg
+from seascape.config import Crop, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
 from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
 
@@ -54,6 +55,9 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
+# Core-Backend's `proc_ptu_mode` (ParameterServer): collision avoidance while a ptu
+# turns, else manual, as a replay reads a recording without the column. It has no 0.
+MANUAL_MODE, COLAV_MODE = 1, 3
 
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
@@ -68,7 +72,7 @@ def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     return (
         math.degrees(roll),
         math.degrees(pitch),
-        (round(math.degrees(yaw), 6) + 180.0) % 360.0 - 180.0,
+        wrapped_deg(round(math.degrees(yaw), 6)),
     )
 
 
@@ -78,15 +82,33 @@ def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
     return world @ np.linalg.inv(np.array(camera.extrinsics[frame]))
 
 
-def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> dict:
+def _row(
+    camera: CameraCalibration,
+    counter: int,
+    scenario: dict[str, Any],
+    rig: dict[str, Any],
+    scan_deg_s: float | None,
+) -> dict:
     roll, pitch, yaw = attitude_deg(_to(camera, "rig"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
     bb_roll, bb_pitch, bb_yaw = np.radians(attitude_deg(_to(camera, "vessel")))
     # Rounded first, as in attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
-    # pan and tilt stay 0: a rig is bolted on, with no pan-tilt unit.
     row = dict.fromkeys(COLUMNS, 0.0)
+    row["proc_ptu_mode"] = MANUAL_MODE
+    # A run from before ptus has no key.
+    if rig.get("ptu") is not None:
+        # The head on the deck, past its mount: pan clockwise, tilt nose down as the
+        # IMU's pitch.
+        on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
+        _, tilt, pan = attitude_deg(on_deck)
+        row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
+        row["tilt"] = rig["pitch_deg"] - tilt
+        if scan_deg_s is not None:
+            row["proc_ptu_mode"] = COLAV_MODE
+            # Revolutions per second, as the worker's setting.
+            row["proc_colav_speed"] = scan_deg_s / 360.0
     row |= {
         "counter": counter,
         # The recording's IMU: degrees, pitch positive nose down.
@@ -303,6 +325,9 @@ def export(run: Path) -> list[Path]:
     # Read, not validated: a dump carries every default, and a validator that rejects
     # a field set alongside another rejects the dump.
     scenario = truth.info["scenario"]
+    turn = (
+        None if scenario.get("turn") is None else Turn.model_validate(scenario["turn"])
+    )
     created = datetime.fromisoformat(truth.info["date_created"])
     ts = created.strftime("%Y_%m_%d_%H_%M_%S")
     time_s = {image.file_name: image.time_s for image in truth.images}
@@ -349,7 +374,15 @@ def export(run: Path) -> list[Path]:
             with table.open("w", newline="") as f:
                 writer = csv.DictWriter(f, COLUMNS, lineterminator="\n")
                 writer.writeheader()
-                writer.writerows(_row(s, i, scenario) for i, s in enumerate(shots))
+                head = scenario["rigs"][rig]
+                scan = (
+                    turn.scan_rate_deg_s
+                    if turn is not None and turn.pans(rig)
+                    else None
+                )
+                writer.writerows(
+                    _row(s, i, scenario, head, scan) for i, s in enumerate(shots)
+                )
             written += [video, table]
         firsts = {_short(shots[0]): shots[0] for shots in cameras.values()}
         written += _write_settings(

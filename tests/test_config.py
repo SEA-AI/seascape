@@ -1613,3 +1613,22 @@ def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
     assert (camera.width_px, camera.height_px) == (1920, 1080)
     assert camera.sensor.full_well_e == 12600.0
     assert camera.lens.vignetting
+
+
+@pytest.mark.parametrize(
+    ("asset", "colour", "error"),
+    [
+        ("mooring_buoy", "purple", r"in \['orange', 'white', 'yellow'\], not purple"),
+        ("zodiac", "orange", "zodiac comes in its own colour only, not orange"),
+    ],
+)
+def test_an_object_takes_only_a_colour_its_asset_is_sold_in(
+    asset: str, colour: str, error: str
+) -> None:
+    with pytest.raises(ValidationError, match=error):
+        Object(asset=asset, range_m=10.0, bearing_deg=0.0, colour=colour)
+
+
+def test_an_object_may_ask_for_its_assets_own_colour() -> None:
+    buoy = Object(asset="mooring_buoy", range_m=10.0, bearing_deg=0.0, colour="white")
+    assert buoy.colour == "white"

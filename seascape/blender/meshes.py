@@ -12,10 +12,11 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 from seascape import atomic
+from seascape.angles import yaw
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
 from seascape.blender import faces, wear
 from seascape.blender.blend import (
-    yaw,
+    mesh_objects,
 )
 from seascape.config import (
     Band,
@@ -173,16 +174,6 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
         @ Matrix.Scale(scale, 4)
         @ turn
     )
-
-
-def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
-    """The meshes in `parts` and their descendants."""
-    return [
-        obj
-        for part in parts
-        for obj in [part, *part.children_recursive]
-        if obj.type == "MESH"
-    ]
 
 
 def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:

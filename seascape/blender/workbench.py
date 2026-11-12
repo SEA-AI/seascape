@@ -7,8 +7,8 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
+from seascape import angles
 from seascape.blender.meshes import box_corners
-from seascape.physics import earth
 
 VIEW_PX = (1600, 1200)
 
@@ -45,7 +45,7 @@ def aim(
     """Point the scene's orthographic camera at `objects`, framed whole."""
     corners = np.array([tuple(c) for c in box_corners(objects)])
     centre = Vector(tuple((corners.min(axis=0) + corners.max(axis=0)) / 2))
-    toward = Vector(earth.direction(bearing_deg, elevation_deg))
+    toward = Vector(angles.direction(bearing_deg, elevation_deg))
     camera = bpy.context.scene.camera
     camera.rotation_mode = "QUATERNION"
     camera.rotation_quaternion = (-toward).to_track_quat("-Z", "Y")

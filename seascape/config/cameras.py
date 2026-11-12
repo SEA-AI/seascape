@@ -312,6 +312,13 @@ class Camera(Model):
         return self.sensor.pitch_um * sites_per_px
 
     @property
+    def focal_px(self) -> float:
+        """Its `fx`: a pinhole's, or a fisheye's scale of its distorted angle."""
+        if self.lens.fisheye is not None:
+            return self.fisheye_focal_px
+        return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
+
+    @property
     def fisheye_focal_px(self) -> float:
         """A fisheye's `fx`, the scale of its distorted angle in pixels."""
         assert self.lens.fisheye is not None
@@ -403,6 +410,19 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
+class Ptu(Model):
+    """A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu."""
+
+    # Core-Backend's `boat_setup.target_inclination`, bounded there.
+    inclination_deg: float = Field(
+        default=0.0,
+        ge=-20.0,
+        le=20.0,
+        description="The pitch it holds its head at, to the horizon, its mount "
+        "included. Negative is down.",
+    )
+
+
 class Rig(Model):
     """One installed product: the frame its cameras sit in, at one mount point.
 
@@ -429,6 +449,7 @@ class Rig(Model):
         description="About its own transverse axis, after its yaw and before its "
         "cameras'. Negative is down.",
     )
+    ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )
@@ -487,6 +508,11 @@ class Rig(Model):
         return cameras
 
 
+def recorded_name(rig_name: str, name: str) -> str:
+    """The name a rig's camera or video is recorded and labelled under."""
+    return f"{rig_name}_{name}"
+
+
 class Mount(NamedTuple):
     """A camera and the rig carrying it."""
 
@@ -498,7 +524,7 @@ class Mount(NamedTuple):
     @property
     def name(self) -> str:
         """The camera's name, unique in the scenario."""
-        return f"{self.rig_name}_{self.camera_name}"
+        return recorded_name(self.rig_name, self.camera_name)
 
     @property
     def nominal_bearing_deg(self) -> float:

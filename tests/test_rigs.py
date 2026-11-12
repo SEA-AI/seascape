@@ -15,7 +15,7 @@ from mathutils import Matrix, Vector
 
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
-from seascape.blender.meshes import mesh_objects
+from seascape.blender.blend import mesh_objects
 from seascape.blender.rigs import boresight_deg
 from seascape.blender.vessels import waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario

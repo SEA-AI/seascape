@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
+from seascape.angles import wrapped_deg
 from seascape.config import Mount, Scenario
 from seascape.outputs import brand, canvas, preview
 
@@ -22,12 +23,8 @@ SHADE = (88, 88, 88)
 LIT = (255, 200, 60)
 
 
-def _wrapped(deg: float) -> float:
-    return (deg + 180.0) % 360.0 - 180.0
-
-
 def _apart_deg(a: Mount, b: Mount) -> float:
-    return abs(_wrapped(a.nominal_bearing_deg - b.nominal_bearing_deg))
+    return abs(wrapped_deg(a.nominal_bearing_deg - b.nominal_bearing_deg))
 
 
 def _fan(
@@ -57,7 +54,7 @@ def _tile(
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
     _fan(draw, GUTTER + FAN_R, middle, mounts, mount)
-    bearing = _wrapped(mount.nominal_bearing_deg)
+    bearing = wrapped_deg(mount.nominal_bearing_deg)
     caption = f"{mount.name}  {bearing:+.0f}°  {mount.camera.hfov_deg:.0f}° wide"
     text_px = draw.textlength(caption, font=typeface)
     x = max((tile.width - text_px) / 2, 2 * (GUTTER + FAN_R))

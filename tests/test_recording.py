@@ -45,20 +45,35 @@ def rows(m: np.ndarray) -> tuple:
 # roll, pitch, yaw per frame; a yaw a hair west of north must not wrap to 2 pi
 HULL = [(2.0, 0.5, 0.0), (-1.5, 1.0, -1e-7)]
 POD_YAW_DEG, CAMERA_YAW_DEG, CAMERA_PITCH_DEG = -60.0, 40.0, -10.0
+PTU_TILT_DEG, SCAN_DEG_S, TOP_DEG_S = 4.0, 6.0, 50.0
+# A head's mount, under its pan and tilt, and the hull's heading while it scans.
+MOUNT_YAW_DEG, MOUNT_PITCH_DEG, SCANNING_HULL_YAW_DEG = -20.0, -2.0, 15.0
 WIDTH, HEIGHT, F = 640, 480, 1000.0
 RADIUS_M = earth.earth_radius_m(0.13)
 
 
-def make_run(into: Path, camera_yaw_deg: float) -> Path:
-    """Stand-ins for a render: one camera in a pod on a rolling hull."""
+def make_run(
+    into: Path,
+    camera_yaw_deg: float,
+    *,
+    ptu: bool = False,
+    scan_deg_s: float | None = SCAN_DEG_S,
+    turned: str | None = "port",
+) -> Path:
+    """Stand-ins for a render: one camera in a pod on a rolling hull; with `ptu`,
+    panned, tilted and in a turn of the rig `turned`, else of the ownship, at
+    `scan_deg_s`.
+    """
     body_to_cv = pose(TO_CV)
     camera_to_pod = pose(
         rotation(0, CAMERA_PITCH_DEG, camera_yaw_deg), (0.1, 0, 0)
     ) @ np.linalg.inv(body_to_cv)
-    pod_to_vessel = pose(rotation(0, 0, POD_YAW_DEG), (-20.0, -60.0, 50.0))
+    pod_pitch_deg = PTU_TILT_DEG if ptu else 0.0
+    pod_to_vessel = pose(rotation(0, pod_pitch_deg, POD_YAW_DEG), (-20.0, -60.0, 50.0))
     cameras, images = [], []
     for i, (roll, pitch, yaw) in enumerate(HULL):
-        vessel_to_world = pose(rotation(roll, pitch, yaw), (0, 0, 0.2 * i))
+        heading = yaw + (SCANNING_HULL_YAW_DEG if ptu else 0.0)
+        vessel_to_world = pose(rotation(roll, pitch, heading), (0, 0, 0.2 * i))
         camera_to_vessel = pod_to_vessel @ camera_to_pod
         name = f"EO/{i:04d}.jpg"
         cameras.append(
@@ -101,6 +116,17 @@ def make_run(into: Path, camera_yaw_deg: float) -> Path:
         "sky": {"t_air_k": 283.15},
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
     }
+    if ptu:
+        scenario["rigs"]["port"] |= {
+            "ptu": {},
+            "yaw_deg": MOUNT_YAW_DEG,
+            "pitch_deg": MOUNT_PITCH_DEG,
+        }
+        scenario["turn"] = {
+            "ptu": turned,
+            "top_rate_deg_s": TOP_DEG_S,
+            "moves": [{"to_deg": 60.0, "rate_deg_s": scan_deg_s, "hold_s": 0.0}],
+        }
     info = {"date_created": "2026-09-29T03:55:21+00:00", "scenario": scenario}
     Labels(info=info, images=images).write(into)
     (into / "EO.mp4").write_bytes(b"not a video")
@@ -140,9 +166,57 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["heading"]) == pytest.approx(math.radians(yaw), abs=1e-6)
         assert not any(value.startswith("-0.000000") for value in row.values())
         assert float(row["pan"]) == float(row["tilt"]) == 0.0
+        assert float(row["proc_ptu_mode"]) == 1
         assert float(row["yaw"]) == pytest.approx(POD_YAW_DEG, abs=0.05)
         assert float(row["temp"]) == pytest.approx(10.0)
         assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))
+
+
+def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
+    tmp_path: Path,
+) -> None:
+    recording.export(make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, turned=None))
+    (table,) = tmp_path.glob("recordings/port/*/*.csv")
+    with table.open() as f:
+        table_rows = list(csv.DictReader(f))
+
+    for row in table_rows:
+        # Core-Backend's manual mode, at no scan speed.
+        assert float(row["proc_ptu_mode"]) == 1
+        assert float(row["proc_colav_speed"]) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("scan_deg_s", "recorded_deg_s"), [(SCAN_DEG_S, SCAN_DEG_S), (None, TOP_DEG_S)]
+)
+def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
+    tmp_path: Path, scan_deg_s: float | None, recorded_deg_s: float
+) -> None:
+    recording.export(
+        make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, scan_deg_s=scan_deg_s)
+    )
+    (table,) = tmp_path.glob("recordings/port/*/*.csv")
+    with table.open() as f:
+        table_rows = list(csv.DictReader(f))
+
+    for row in table_rows:
+        # The pod sits at POD_YAW_DEG and PTU_TILT_DEG on the deck, past its mount.
+        pan = float(row["pan"])
+        assert pan == pytest.approx(POD_YAW_DEG - MOUNT_YAW_DEG, abs=1e-5)
+        # Nose down positive, as the IMU's pitch.
+        tilt = -(PTU_TILT_DEG - MOUNT_PITCH_DEG)
+        assert float(row["tilt"]) == pytest.approx(tilt, abs=1e-5)
+        # The head's IMU turns with the hull, its mount and its pan; the hull's roll
+        # and pitch tip it a little.
+        hull_deg = math.degrees(float(row["bb_yaw"]))
+        assert float(row["yaw"]) - pan == pytest.approx(
+            hull_deg + MOUNT_YAW_DEG, abs=0.2
+        )
+        # Core-Backend's collision avoidance mode.
+        assert float(row["proc_ptu_mode"]) == 3
+        assert float(row["proc_colav_speed"]) == pytest.approx(
+            recorded_deg_s / 360.0, abs=1e-6
+        )
 
 
 def test_a_camera_s_own_pitch_sizes_its_pixels(run: Path) -> None:

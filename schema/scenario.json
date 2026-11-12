@@ -1436,6 +1436,96 @@
       "title": "Microbolometer",
       "type": "object"
     },
+    "Move": {
+      "additionalProperties": false,
+      "description": "Turn to `to_deg` from where the last move left off, then hold.",
+      "properties": {
+        "to_deg": {
+          "title": "To Deg",
+          "description": "Clockwise from the bow at t = 0.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "rate_deg_s": {
+          "title": "Rate Deg S",
+          "description": "Its cruising rate; a short move peaks below it. None is the top rate.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "hold_s": {
+          "title": "Hold S",
+          "description": "Held still at `to_deg` before the next move.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "to_deg"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
     "Name": {
       "pattern": "^[A-Za-z0-9_-]+$",
       "type": "string"
@@ -1800,6 +1890,34 @@
             }
           ]
         },
+        "colour": {
+          "title": "Colour",
+          "description": "One of the colours its asset lists in `colours`, or its own `colour`; None keeps its own too. EO only.",
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "draught_m": {
           "title": "Draught M",
           "description": "How deep it floats, keel to waterline, within the asset's `draught_range_m`. Unset, the asset's own.",
@@ -1840,6 +1958,31 @@
             {
               "minimum": 0,
               "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "spacing_deg": {
+          "title": "Spacing Deg",
+          "description": "Between one copy of a count and the next, clockwise. `load` spaces the copies, so a loaded scenario holds 0.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2642,6 +2785,41 @@
       "title": "Processing",
       "type": "object"
     },
+    "Ptu": {
+      "additionalProperties": false,
+      "description": "A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu.",
+      "properties": {
+        "inclination_deg": {
+          "title": "Inclination Deg",
+          "description": "The pitch it holds its head at, to the horizon, its mount included. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": -20.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Ptu",
+      "type": "object"
+    },
     "Rig": {
       "additionalProperties": false,
       "description": "One installed product: the frame its cameras sit in, at one mount point.\n\nRigs a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
@@ -2761,6 +2939,33 @@
               "exclusiveMaximum": 90.0,
               "exclusiveMinimum": -90.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "ptu": {
+          "description": "What it sits on, if anything.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ptu"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -4324,6 +4529,127 @@
       ],
       "type": "string"
     },
+    "Turn": {
+      "additionalProperties": false,
+      "description": "A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each\nmove ramps up to its rate and down to rest at the acceleration.",
+      "properties": {
+        "ptu": {
+          "description": "The rig whose ptu turns; None turns the ownship.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "top_rate_deg_s": {
+          "title": "Top Rate Deg S",
+          "description": "As fast as it turns; a move's rate when it sets none.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "accel_deg_s2": {
+          "title": "Accel Deg S2",
+          "description": "Of every ramp up and down; None steps to each rate at once.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "moves": {
+          "title": "Moves",
+          "description": "One after another from t = 0, each from where the last held.",
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Move"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "top_rate_deg_s",
+        "moves"
+      ],
+      "title": "Turn",
+      "type": "object"
+    },
     "Undistortion": {
       "additionalProperties": false,
       "description": "A fisheye's frames as the pinhole its recorder dewarps them to.",
@@ -4977,6 +5303,33 @@
             "$ref": "#/$defs/Farm"
           },
           "type": "array"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
+          "$ref": "#/$defs/Integer"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
+    },
+    "turn": {
+      "description": "Turns the ownship, or a rig's ptu, through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Turn"
+        },
+        {
+          "type": "null"
         },
         {
           "$ref": "#/$defs/Uniform"

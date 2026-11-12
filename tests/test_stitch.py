@@ -5,8 +5,9 @@ import math
 import numpy as np
 import pytest
 
+from seascape.config import Camera
 from seascape.outputs import stitch
-from seascape.outputs.calibration import TO_CV, CameraCalibration
+from seascape.outputs.calibration import TO_CV, CameraCalibration, in_rig
 
 # Core-Backend's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
 HALF_TURN = np.diag([-1.0, -1.0, 1.0])
@@ -114,3 +115,23 @@ def test_two_frames_meet_halfway_between_their_levels() -> None:
     frame, _ = stitch.stitch(frames, indices, cameras, fused)
 
     assert (frame == 110).all()
+
+
+@pytest.mark.parametrize(("yaw_deg", "pitch_deg"), [(30.0, -5.0), (-90.0, 10.0)])
+def test_a_camera_looks_along_its_yaw_clockwise_and_up_its_pitch(
+    yaw_deg: float, pitch_deg: float
+) -> None:
+    camera = Camera(
+        band="eo",
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        hfov_deg=60.0,
+        width_px=640,
+        height_px=480,
+    )
+
+    # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
+    x, y, z = np.array(in_rig(camera))[:3, 2]
+
+    assert math.degrees(math.atan2(x, y)) == pytest.approx(yaw_deg)
+    assert math.degrees(math.asin(z)) == pytest.approx(pitch_deg)

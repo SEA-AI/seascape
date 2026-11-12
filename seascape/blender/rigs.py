@@ -1,20 +1,26 @@
 """Rigs and their cameras, and where each camera points."""
 
 import math
+from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
+from seascape.angles import yaw
 from seascape.blender.blend import (
+    BLENDER_TO_CV,
+    animate,
     empty,
-    yaw,
 )
 from seascape.config import (
     Band,
     Mount,
     Scenario,
 )
+from seascape.motion import Deck, axis_deg, held_tilt_deg
+from seascape.outputs.calibration import in_rig
 from seascape.physics import fisheye
 
 
@@ -35,7 +41,7 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         )
         # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the rig's own transverse
         # axis, so a pitched rig rolls the horizon of its off-axis cameras.
-        rig_root.rotation_euler = (math.radians(rig.pitch_deg), 0.0, yaw(rig.yaw_deg))
+        rig_root.rotation_euler = _head(rig.pitch_deg, rig.yaw_deg)
         rigs[name] = rig_root
 
     cameras: dict[str, bpy.types.Object] = {}
@@ -61,14 +67,49 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         bpy.context.collection.objects.link(camera)
         camera.parent = rigs[mount.rig_name]
         camera.rotation_mode = "XYZ"
-        # A camera looks down its local -Z; +90 deg about X aims it at the horizon.
-        camera.rotation_euler = (
-            math.radians(90.0 + mount.camera.pitch_deg),
-            0.0,
-            yaw(mount.camera.yaw_deg),
-        )
+        # A Blender camera looks down its local -Z, OpenCV's down +Z.
+        camera.matrix_basis = Matrix(in_rig(mount.camera)) @ BLENDER_TO_CV
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
+
+
+def stabilise(
+    rigs: dict[str, bpy.types.Object],
+    scenario: Scenario,
+    deck: Deck,
+) -> None:
+    """Key each rig on a pan-tilt unit: its pan to a turn by the ptu, and its tilt to
+    the unit's loop holding its pitch against the base under it.
+
+    Args:
+        rigs: The rig empties `add_rigs` made, by name.
+        scenario: Its rigs, its turn and the times keyed.
+        deck: The ownship's deck rotation at a time, heading aside.
+    """
+    times = scenario.outputs.times_s
+    for name, rig in scenario.rigs.items():
+        if rig.ptu is not None:
+            tilt = held_tilt_deg(scenario, name, deck)
+            _hold(rigs[name], rig.pitch_deg, axis_deg(scenario, name), tilt, times)
+
+
+def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:
+    """A rig empty's XYZ euler for its pitch up and its bearing clockwise."""
+    return (math.radians(pitch_deg), 0.0, yaw(yaw_deg))
+
+
+def _hold(
+    head: bpy.types.Object,
+    pitch_deg: float,
+    axis: Callable[[float], float],
+    tilt_deg: np.ndarray,
+    times_s: Sequence[float],
+) -> None:
+    def euler(t_s: float) -> tuple[float, float, float]:
+        return _head(pitch_deg + float(np.interp(t_s, times_s, tilt_deg)), axis(t_s))
+
+    animate(head, "rotation_euler", times_s, lambda t: euler(t)[0], 0)
+    animate(head, "rotation_euler", times_s, lambda t: euler(t)[2], 2)
 
 
 class View(NamedTuple):

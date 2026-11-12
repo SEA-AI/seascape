@@ -11,10 +11,11 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets
+from seascape import angles, assets
+from seascape.config.cameras import Name
 from seascape.config.world import Sea
 from seascape.model import Model
-from seascape.physics import thermal, waves
+from seascape.physics import slew, thermal, waves
 
 
 def _names(turbines: bool) -> list[str]:
@@ -130,12 +131,23 @@ class Object(Model):
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
     wear: float = Field(default=0.0, ge=0.0, le=1.0, description=_WEAR)
+    # Limitation: LWIR keeps `paint_absorptance`, whatever the colour.
+    colour: str | None = Field(
+        default=None,
+        description="One of the colours its asset lists in `colours`, or its own "
+        "`colour`; None keeps its own too. EO only.",
+    )
     draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
     count: int = Field(
         default=1,
         ge=0,
         description="How many, each drawn anew. `load` makes the copies, so a "
         "loaded scenario holds only 1.",
+    )
+    spacing_deg: float = Field(
+        default=0.0,
+        description="Between one copy of a count and the next, clockwise. `load` "
+        "spaces the copies, so a loaded scenario holds 0.",
     )
 
     @property
@@ -156,10 +168,22 @@ class Object(Model):
         return self
 
     @model_validator(mode="after")
-    def _copies_are_made_on_load(self) -> "Object":
-        if self.count != 1:
+    def _sold_in_its_colour(self) -> "Object":
+        if self.colour is None:
+            return self
+        if self.colour not in (sold := assets.manifest()[self.asset].sold_in):
             raise ValueError(
-                f"{self.asset}: count {self.count} is expanded when a scenario loads"
+                f"{self.asset} comes in {sorted(sold) or 'its own colour only'}, "
+                f"not {self.colour}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _copies_are_made_on_load(self) -> "Object":
+        if self.count != 1 or self.spacing_deg:
+            raise ValueError(
+                f"{self.asset}: count {self.count} spaced {self.spacing_deg} deg is "
+                "expanded when a scenario loads"
             )
         return self
 
@@ -179,6 +203,96 @@ class Swing(Model):
 
     amplitude_deg: float = Field(ge=0.0, lt=90.0, description="Peak, either way.")
     period_s: float = Field(gt=0.0, description="One full cycle.")
+
+
+class Move(Model):
+    """Turn to `to_deg` from where the last move left off, then hold."""
+
+    to_deg: float = Field(description="Clockwise from the bow at t = 0.")
+    rate_deg_s: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Its cruising rate; a short move peaks below it. None is the "
+        "top rate.",
+    )
+    hold_s: float = Field(
+        default=0.0, ge=0.0, description="Held still at `to_deg` before the next move."
+    )
+
+
+class Turn(Model):
+    """A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each
+    move ramps up to its rate and down to rest at the acceleration.
+    """
+
+    ptu: Name | None = Field(
+        default=None, description="The rig whose ptu turns; None turns the ownship."
+    )
+    top_rate_deg_s: float = Field(
+        gt=0.0, description="As fast as it turns; a move's rate when it sets none."
+    )
+    accel_deg_s2: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Of every ramp up and down; None steps to each rate at once.",
+    )
+    moves: list[Move] = Field(
+        min_length=1,
+        description="One after another from t = 0, each from where the last held.",
+    )
+
+    @model_validator(mode="after")
+    def _no_move_outruns_the_top_rate(self) -> "Turn":
+        for move in self.moves:
+            if (rate := move.rate_deg_s) is not None and rate > self.top_rate_deg_s:
+                raise ValueError(
+                    f"a move's rate_deg_s {rate} exceeds top_rate_deg_s "
+                    f"{self.top_rate_deg_s}: lower rate_deg_s or raise top_rate_deg_s"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _a_ptu_scans_at_one_rate(self) -> "Turn":
+        rates = {m.rate_deg_s for m in self.moves if m.rate_deg_s is not None}
+        if self.ptu is not None and len(rates) > 1:
+            raise ValueError(
+                f"a ptu scans at one rate, not {sorted(rates)}: give every move that "
+                "sets rate_deg_s the same one, and leave it unset to slew at "
+                "top_rate_deg_s"
+            )
+        return self
+
+    def pans(self, rig: str) -> bool:
+        """Whether it turns the ptu of the rig named `rig`."""
+        return self.ptu == rig
+
+    @property
+    def scan_rate_deg_s(self) -> float:
+        """The one rate its moves set, else its top rate."""
+        return next(
+            (m.rate_deg_s for m in self.moves if m.rate_deg_s is not None),
+            self.top_rate_deg_s,
+        )
+
+    def legs(self) -> list[slew.Leg]:
+        """Each move's slew, in order."""
+        return slew.chain(
+            [
+                (
+                    move.to_deg,
+                    self.top_rate_deg_s if move.rate_deg_s is None else move.rate_deg_s,
+                    move.hold_s,
+                )
+                for move in self.moves
+            ],
+            self.accel_deg_s2,
+        )
+
+    @property
+    def duration_s(self) -> float:
+        """From the first move's start to the last move's hold's end."""
+        last = self.legs()[-1]
+        return last.start_s + last.duration_s + last.hold_s
 
 
 class Heave(Model):
@@ -343,6 +457,6 @@ class Farm(Model):
                     - r * across_m * math.sin(row)
                 )
                 placed.append(
-                    (math.hypot(east, north), math.degrees(math.atan2(east, north)))
+                    (math.hypot(east, north), angles.bearing_deg(east, north))
                 )
         return placed
