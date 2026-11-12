@@ -17,7 +17,14 @@ Every PR gets five reviews before it is handed over. Each reviewer is a fresh su
 
 ## After the reviews
 
-A review request ends with the findings. Edit and push only when handing over a PR you wrote, or when asked to fix.
+A review request ends with the findings, merged into one table:
+
+| # | Reviewer | Where | Verdict | Finding | Outcome |
+|---|---|---|---|---|---|
+| 1 | anti-hack | `file:line` | delete | a hand-rolled clamp | applied |
+| 2 | prose | `body:4` | delete | restates the diff | rejected: the reason |
+
+Edit and push only when handing over a PR you wrote, or when asked to fix; until then Outcome is blank.
 
 - Apply the fixes each skill's verdicts name. A finding you reject gets a one-line reason a reader can check.
 - Run the tests the fixes touch, then push through `gh stack`.

@@ -70,12 +70,18 @@ Each names its usual root fix.
 
 ## What a finding contains
 
-- `file:line` of the symptom, and of the code it duplicates or depends on.
-- The smell or principle, named in the words above.
-- Its cost: the next change that will go wrong, or the two places that will drift. "Unclean" is not a cost.
-- The root fix and the layer it belongs in. A fix that adds a layer, flag or wrapper is suspect; prefer deleting, moving or passing a value.
-- A verdict: **move**, **merge**, **split**, **pass** (hand over the value instead of recomputing or reading it back), **delete**, **keep (reason)** or **open an issue**.
+Report a table, the finding whose fix removes the most coupling first:
 
-Number the findings. Lead with the one whose fix removes the most coupling. End with what you did not read.
+| # | Where | Verdict | Smell | Cost | Root fix |
+|---|---|---|---|---|---|
+| 1 | `a.py:12`, `b.py:40` | merge | one formula, two homes | the next unit change drifts | one function in `physics` |
+
+- **Where:** the symptom, and the code it duplicates or depends on.
+- **Verdict:** **move**, **merge**, **split**, **pass** (hand over the value instead of recomputing or reading it back), **delete**, **keep** or **open an issue**. A keep gives its reason in the Root fix column.
+- **Smell:** the smell or principle, named in the words above.
+- **Cost:** the next change that will go wrong, or the two places that will drift. "Unclean" is not a cost.
+- **Root fix:** and the layer it belongs in. A fix that adds a layer, flag or wrapper is suspect; prefer deleting, moving or passing a value.
+
+End with what you did not read.
 
 Sources are in [references/sources.md](references/sources.md).

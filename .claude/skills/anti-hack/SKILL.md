@@ -33,9 +33,13 @@ Spend a real attempt on the fix first; the repo often holds the data that remove
 
 ## What a finding contains
 
-- `file:line`, and what it re-does or works around.
-- The replacement: the existing call, the proper mechanism, or the source for the number.
-- Net lines the fix removes.
-- A verdict: **replace**, **delete**, **keep (reason)** or **open an issue**.
+Report a table, ranked by net lines removed:
 
-Number the findings and rank them by net lines removed. End with what you did not read.
+| # | Where | Verdict | Re-does or works around | Replacement | Net lines |
+|---|---|---|---|---|---|
+| 1 | `file:line` | delete | a hand-rolled clamp | `np.clip` | -6 |
+
+- **Verdict:** **replace**, **delete**, **keep** or **open an issue**. A keep gives its reason in the Replacement column.
+- **Replacement:** the existing call, the proper mechanism, or the source for the number.
+
+End with what you did not read.
