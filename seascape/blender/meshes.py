@@ -369,7 +369,7 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
         found = faces.found(mesh_objects(parts))
         per_face = _face_zones(name, found, asset.zones)
     if worn:
-        wear.tag(found.objects, per_face, asset.material)
+        wear.tag(found.objects, per_face, asset.material, still=asset.still)
         _crevice(name, found.objects, fit.to_scale().x, _cached(path))
     if band == "ir":
         _zone_slots(found, per_face)

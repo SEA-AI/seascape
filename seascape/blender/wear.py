@@ -39,6 +39,7 @@ class Weights(NamedTuple):
     grime: float
     rust: float
     stain: float
+    fouling: float
     soot: float
     scuff: float
     dropping: float
@@ -49,22 +50,22 @@ class Weights(NamedTuple):
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
 # What covers the surface, bottom up; `fade` only tints the paint.
-COVERS = ("grime", "rust", "stain", "soot", "scuff", "dropping")
+COVERS = ("grime", "rust", "stain", "fouling", "soot", "scuff", "dropping")
 
-# Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
-# one; cloth sags and flexes, so water runs off it without leaving a streak.
+# Judgement, all of it. A stain and fouling are the waterline's, so only what the sea
+# wets takes them; cloth sags and flexes, so water runs off it without leaving a streak.
 PROFILE: dict[ZoneName, Weights] = {
-    "paint_hull": Weights(1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.5, 1.0),
-    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.7, 0.6, 0.5, 1.0),
-    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.6, 0.3, 0.3, 1.0),
-    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
-    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 0.3, 0.0, 1.0),
-    "rubber": Weights(0.6, 0.0, 0.6, 0.0, 1.0, 0.3, 0.7, 1.0),
-    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.0, 0.3, 0.7, 0.0),
-    "funnel": Weights(0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 0.3, 1.0),
-    "exhaust": Weights(0.4, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
-    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.5, 0.3, 0.7, 1.0),
-    "wood_composite": Weights(0.8, 0.0, 1.0, 0.0, 0.5, 0.3, 0.6, 1.0),
+    "paint_hull": Weights(1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.5, 1.0),
+    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.0, 0.7, 0.6, 0.5, 1.0),
+    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.0, 0.6, 0.3, 0.3, 1.0),
+    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 0.0, 0.3, 0.0, 1.0),
+    "rubber": Weights(0.6, 0.0, 0.6, 0.6, 0.0, 1.0, 0.3, 0.7, 1.0),
+    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.7, 0.0),
+    "funnel": Weights(0.5, 0.5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.3, 1.0),
+    "exhaust": Weights(0.4, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.3, 0.7, 1.0),
+    "wood_composite": Weights(0.8, 0.0, 1.0, 1.0, 0.0, 0.5, 0.3, 0.6, 1.0),
 }
 
 
@@ -99,9 +100,15 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
 
 
 def tag(
-    objects: list[bpy.types.Object], zones: list[np.ndarray], material: Material
+    objects: list[bpy.types.Object],
+    zones: list[np.ndarray],
+    material: Material,
+    *,
+    still: bool,
 ) -> None:
-    """`objects` already fitted; a skinned mesh is read as posed."""
+    """`objects` already fitted; a skinned mesh is read as posed. A `still` asset is
+    never under way, so nothing polishes off its fouling.
+    """
     bpy.context.view_layer.update()  # the fit leaves matrix_world stale
     depsgraph = bpy.context.evaluated_depsgraph_get()
     table = weights(material)
@@ -143,6 +150,7 @@ def tag(
         _write(mesh, "wear_below_m", "CORNER", below_m[at - n : at])
         _write(mesh, "wear_length_m", "FACE", np.full(faces_n, length_m))
         _write(mesh, "wear_steel", "FACE", np.full(faces_n, steel))
+        _write(mesh, "wear_still", "FACE", np.full(faces_n, float(still)))
 
 
 def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> None:
@@ -288,12 +296,20 @@ class _Masks:
         self.tree = t = tree
         self.crevice = crevice
         self.position = _attribute(t, "wear_position_m").outputs["Vector"]
-        self.x, self.y, self.z = (Num(t, s) for s in separate(t, self.position))
+        self.x, self.y, z = (Num(t, s) for s in separate(t, self.position))
+        # Above the water: a copy lifted off its asset's draught meets it lower.
+        self.z = z + Num(t, _attribute(t, "rise_m", "OBJECT").outputs["Factor"])
         normal = _attribute(t, "wear_normal").outputs["Vector"]
         self.nx, self.ny, self.up = (Num(t, s) for s in separate(t, normal))
-        self.below, self.length, self.steel, stain = (
+        self.below, self.length, self.steel, self.still, stain = (
             Num(t, _attribute(t, name).outputs["Factor"])
-            for name in ("wear_below_m", "wear_length_m", "wear_steel", "wear_stain")
+            for name in (
+                "wear_below_m",
+                "wear_length_m",
+                "wear_steel",
+                "wear_still",
+                "wear_stain",
+            )
         )
         self.amount, self.offset = (
             Num(t, _attribute(t, name, "OBJECT").outputs["Factor"])
@@ -321,7 +337,7 @@ class _Masks:
         )
         return Num(t, made.outputs["Factor"])
 
-    def cover(self, field: Num, soft: float, boost: float = 0.0) -> Num:
+    def cover(self, field: Num, soft: float, boost: Num | float = 0.0) -> Num:
         threshold = (self.amount + boost).madd(-0.45, 0.72)
         return _smooth(field, threshold, threshold + soft)
 
@@ -395,6 +411,20 @@ class _Masks:
         band = _smooth(self.z, -0.3, 0.0) * (1.0 - _smooth(self.z, top_m * 0.5, top_m))
         return band * self.cover(patchy, 0.3, 0.3)
 
+    def fouling(self) -> Num:
+        """Weed and slime from the keel up into the splash zone. A hull under way
+        polishes it off, so on one it needs high wear and stays near the waterline.
+        """
+        # Judgement: a third of the freeboard on a still asset, a tenth on a hull, at
+        # most 2.5 m before the patches stretch it by up to 1.4; a still asset covers
+        # at 0.3 less wear, a hull at 0.3 more.
+        reach = self.still.madd(0.23, 0.1)
+        top_m = (self.edge_m * reach).op("MINIMUM", 2.5)
+        patchy = self.noise(2.0, 23.0, 4.0)
+        top_m = top_m * patchy.madd(0.8, 0.6)
+        band = 1.0 - _smooth(self.z, top_m * 0.5, top_m)
+        return band * self.cover(patchy, 0.3, self.still.madd(0.6, -0.3))
+
     def layers(self) -> dict[str, Num]:
         """Each of `LAYERS`' masks, by name."""
         streak = self.streaks()
@@ -410,6 +440,7 @@ class _Masks:
             "grime": grime,
             "rust": rust,
             "stain": self.stain(),
+            "fouling": self.fouling(),
             "soot": soot,
             "scuff": chips,
             "dropping": self.droppings(),
@@ -460,6 +491,8 @@ SOOT = (0.015, 0.014, 0.013, 1.0)
 SCUFF = (0.42, 0.41, 0.38, 1.0)
 # Judgement: bird lime, dried.
 DROPPING = (0.62, 0.61, 0.57, 1.0)
+# Judgement: green weed over brown diatom slime, wet.
+FOULING = (0.035, 0.06, 0.018, 1.0)
 
 
 def dirty(parts: list[bpy.types.Object]) -> None:
@@ -510,7 +543,9 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     stain.inputs["B"].default_value = STAIN_STEEL
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
     for layer, albedo in zip(
-        COVERS[1:], (RUST, stain.outputs["Result"], SOOT, SCUFF, DROPPING), strict=True
+        COVERS[1:],
+        (RUST, stain.outputs["Result"], FOULING, SOOT, SCUFF, DROPPING),
+        strict=True,
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")
         feed(t, mix.inputs["Factor"], cover[layer])
@@ -518,8 +553,8 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         feed(t, mix.inputs["B"], albedo)
         layered = mix.outputs["Result"]
     feed(t, dirt.inputs["Base Color"], layered)
-    # Judgement: dry grime and rust are matte.
-    dirt.inputs["Roughness"].default_value = 0.9
+    # Judgement: dry grime and rust are matte; wet fouling shines.
+    feed(t, dirt.inputs["Roughness"], cover["fouling"].madd(-0.6, 0.9))
     # Glass and decals stay as clear, and lamps as bright, under their dirt.
     for name in ("Alpha", "Normal", "Emission Color", "Emission Strength"):
         if name != "Normal" or shader.inputs[name].is_linked:

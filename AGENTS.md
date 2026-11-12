@@ -124,7 +124,7 @@ These produce wrong output with no error. They are the reason this file exists.
 
 ## Checks — run before committing
 
-These mirror CI; all must pass.
+These mirror CI, which runs them all. Locally, run the linters and only the tests the change touches, such as `uv run pytest tests/test_wear.py`; leave the whole suite to CI.
 
 ```bash
 uvx ruff check .
@@ -137,7 +137,7 @@ uv run pytest
 
 The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but pytest.
 
-The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
+The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 

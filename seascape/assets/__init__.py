@@ -119,6 +119,8 @@ Material = Literal["steel", "grp", "rubber", "wood", "polyethylene"]
 class _Mesh(FrozenModel):
     kind: str
     supercategory: ClassVar[str]
+    # Never under way, so nothing polishes off its fouling.
+    still: ClassVar[bool] = True
 
     description: str = Field(min_length=1)
     material: Material
@@ -199,6 +201,7 @@ class Hull(_Mesh):
 
     kind: Literal["hull"]
     supercategory: ClassVar[str] = "vessel"
+    still: ClassVar[bool] = False
     length_m: float = Field(gt=0.0)  # the mesh arrives in arbitrary units
     # Bearing of the mesh's bow as authored. The build turns it to +Y.
     bow_deg: float = 0.0

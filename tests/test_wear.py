@@ -44,7 +44,7 @@ def box() -> tuple[bpy.types.Object, np.ndarray]:
 
 def test_a_point_is_tagged_where_it_sits_in_the_hull_frame(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     position_m = _read(obj.data, "wear_position_m")
     corner = np.array(obj.matrix_world) @ np.append(obj.data.vertices[0].co, 1.0)
     np.testing.assert_allclose(position_m[0], corner[:3], atol=1e-5)
@@ -55,7 +55,7 @@ def test_a_point_is_tagged_where_it_sits_in_the_hull_frame(box) -> None:
 
 def test_a_face_normal_turns_with_the_fit(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     normal = _read(obj.data, "wear_normal")
     # The faces facing +y as authored face west once turned.
     facing = _normals(obj.data)[:, 1] > 0.5
@@ -68,7 +68,7 @@ def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
     """
     obj, zone = box
     obj.scale.x = -1.0
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     world = obj.data.copy()
     world.transform(obj.matrix_world)
     np.testing.assert_allclose(
@@ -78,7 +78,7 @@ def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
 
 def test_a_side_is_as_deep_as_it_sits_below_the_sheer(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     below_m = _read(obj.data, "wear_below_m")
     position_m = _read(obj.data, "wear_position_m")
     z = position_m[[loop.vertex_index for loop in obj.data.loops], 2]
@@ -106,7 +106,7 @@ def test_each_face_weighs_its_zone_and_a_chip_rusts_on_steel_else_scuffs(
 ) -> None:
     obj, zone = box
     deck = zone == ZONE_NAMES.index("deck")
-    wear.tag([obj], [zone], material)
+    wear.tag([obj], [zone], material, still=False)
     for i, layer in enumerate(wear.LAYERS):
         got = _read(obj.data, f"wear_{layer}")
         want = 0.0 if layer == gone else wear.PROFILE["deck"][i]
@@ -115,24 +115,31 @@ def test_each_face_weighs_its_zone_and_a_chip_rusts_on_steel_else_scuffs(
 
 def test_each_face_knows_its_asset_length_and_whether_it_is_steel(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     # Turned a quarter, the box's 4 m runs along the fitted bow, north.
     np.testing.assert_allclose(_read(obj.data, "wear_length_m"), 4.0, atol=1e-5)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 1.0)
-    wear.tag([obj], [zone], "grp")
+    wear.tag([obj], [zone], "grp", still=False)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 0.0)
+
+
+def test_each_face_knows_whether_its_asset_is_still(box) -> None:
+    obj, zone = box
+    for still in (False, True):
+        wear.tag([obj], [zone], "grp", still=still)
+        np.testing.assert_array_equal(_read(obj.data, "wear_still"), float(still))
 
 
 def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
     obj, zone = box
     zone[:] = ZONE_NAMES.index("paint_hull")
     zone[0] = ZONE_NAMES.index("fabric")
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     np.testing.assert_array_equal(_read(obj.data, "wear_runoff"), zone != zone[0])
 
 
 def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
-    wear.tag([skinned], [np.zeros(1, dtype=np.int64)], "steel")
+    wear.tag([skinned], [np.zeros(1, dtype=np.int64)], "steel", still=False)
     np.testing.assert_allclose(
         _read(skinned.data, "wear_position_m")[:, 2], 5.0, atol=1e-5
     )
@@ -148,6 +155,14 @@ def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
         meshes = mesh_objects([anchor])
         assert all("wear_position_m" in o.data.attributes for o in meshes)
         assert all(o.name.startswith("zodiac/") for o in meshes)
+        # A hull is under way: its fouling is polished off.
+        assert not any(_read(o.data, "wear_still").any() for o in meshes)
+
+
+def test_an_eo_hull_lifted_off_its_draught_tells_its_wear_where_the_water_is() -> None:
+    hulls = Hulls(load(BASELINE).sky, None, frozenset({"zodiac"}))
+    lifted = _vessel("zodiac", condition=Condition(), hulls=hulls, rise_m=0.4)
+    assert all(o["rise_m"] == 0.4 for o in mesh_objects([lifted]))
 
 
 def test_a_clean_build_is_not_tagged() -> None:
@@ -300,8 +315,8 @@ def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
 @pytest.mark.parametrize(
     ("material", "laid"),
     [
-        ("grp", ["grime", "rust", "stain", "soot"]),
-        ("steel", ["rust", "stain", "soot"]),  # grime keeps paint's emissivity
+        ("grp", ["grime", "rust", "stain", "fouling", "soot"]),
+        ("steel", ["rust", "stain", "fouling", "soot"]),  # grime keeps paint's
     ],
 )
 def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
@@ -316,6 +331,7 @@ def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
         "grime": thermal.ZONES["paint_hull"].emissivity,
         "rust": thermal.RUST_EMISSIVITY,
         "stain": thermal.SEA_EMISSIVITY,
+        "fouling": thermal.SEA_EMISSIVITY,
         "soot": thermal.SOOT_EMISSIVITY,
     }
     assert _chain(skin) == [(layer, emissivity[layer]) for layer in laid]

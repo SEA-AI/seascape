@@ -1,6 +1,6 @@
 ---
 name: stack
-description: The practice of each part of seascape's stack: Python, numpy, images, pydantic, bpy, the CLI and tests. Use when writing code in one of them, for its idiom; `review-pr` runs it as one reviewer. Where code lives is `design`'s, whether it should exist `anti-hack`'s, its comments `prose`'s.
+description: The practice of each part of seascape's stack: Python, numpy, images, pydantic, bpy, the CLI and tests. Use when writing code in one of them, for its idiom; `review-pr` runs it as one reviewer. Where code lives is `architecture`'s, whether it should exist `anti-hack`'s, its comments `prose`'s.
 ---
 
 # Stack
