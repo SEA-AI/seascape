@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 import bpy
 import numpy as np
-from mathutils import Euler, Matrix, Vector
+from mathutils import Euler, Matrix
 
 from seascape import angles
 from seascape.blender.blend import (
@@ -145,8 +145,8 @@ def boresight_deg(camera: bpy.types.Object) -> tuple[float, float]:
     """Bearing and elevation a built camera points at, in degrees, in the world.
     `matrix_world` is stale until the depsgraph runs, so build first.
     """
-    forward = camera.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))
-    forward.normalize()
+    # OpenCV's camera looks along +Z.
+    forward = (camera.matrix_world @ BLENDER_TO_CV).to_3x3().col[2].normalized()
     return angles.bearing_deg(forward.x, forward.y), float(
         angles.elevation_deg(forward.z)
     )

@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 from mathutils import Vector
 
+from seascape.blender.blend import BLENDER_TO_CV
 from seascape.blender.rigs import View
 from seascape.blender.sea.foam import FOAM_SEAM_CELLS
 from seascape.blender.sea.wind import surface_drift
@@ -51,7 +52,7 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
     drift = surface_drift(scenario.sea, scenario.outputs)
     rays = []
     for view in seen:
-        turn = view.matrix.to_3x3()
+        R_w_c = view.matrix.to_3x3() @ BLENDER_TO_CV.to_3x3()
         # Water at x is on the grid at x - v t.
         origin = view.matrix.translation - Vector(
             (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
@@ -62,7 +63,7 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
             # Not `view_frame`: it takes the scene's aspect, which the build sets last.
             across = math.tan(view.angle_x_rad / 2)
             up = across * camera.height_px / camera.width_px
-            frame = [Vector((x * across, y * up, -1.0)) for x in steps for y in steps]
+            frame = [Vector((x * across, y * up, 1.0)) for x in steps for y in steps]
         else:
             x, y = np.meshgrid(
                 steps * camera.width_px / 2, steps * camera.height_px / 2
@@ -70,7 +71,7 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
             k, fx = camera.lens.fisheye, camera.fisheye_focal_px
             frame = [Vector(d) for d in fisheye.direction(x.ravel(), y.ravel(), k, fx)]
         for toward in frame:
-            rays.append((origin, (turn @ toward).normalized(), view.pixel_rad))
+            rays.append((origin, (R_w_c @ toward).normalized(), view.pixel_rad))
     return rays
 
 
