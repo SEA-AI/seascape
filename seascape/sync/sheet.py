@@ -32,7 +32,7 @@ from seascape.sync.staging import (
     asset,
     buoy_above_m,
     buoy_half_deg,
-    elevation_deg,
+    elevation_from_rig_deg,
     half_deg,
     one_rig,
     overlap_deg,
@@ -439,7 +439,7 @@ def _bearing_deg(rays: np.ndarray, near_deg: float) -> np.ndarray:
     """Each of (n, 3) unit rays' bearing, unwrapped along the edge it rounds from
     the turn of `near_deg`, so the edges of a stern pair stay together.
     """
-    b = np.degrees(np.unwrap(np.arctan2(rays[:, 0], rays[:, 1])))
+    b = np.unwrap(angles.bearing_deg(rays[:, 0], rays[:, 1]), period=360.0)
     return b - 360.0 * round((b[0] - near_deg) / 360.0)
 
 
@@ -543,7 +543,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     rise_m = course.scenario.ownship.rise_m
 
     def up_deg(range_m: float, above_m: float) -> float:
-        return elevation_deg(course.rig, range_m, above_m - rise_m)
+        return elevation_from_rig_deg(course.rig, range_m, above_m - rise_m)
 
     lowest = min(up_deg(r.range_m, 0.0) for r in course.rings)
     low_e = min(float(elevations.min()), lowest) - UP_PAD_DEG

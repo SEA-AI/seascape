@@ -344,7 +344,7 @@ def tilted(
     return at
 
 
-def elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
+def world_elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
     """The elevation in the world of `toward`, a unit (3,) in the deck's frame, on a
     deck tilted `deck`, (3, 3) deck to world.
     """
@@ -394,6 +394,6 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     # The firmware's IMU sits on the head, so the loop holds the head itself, its
     # mount included.
     def head_deg(t_s: float, tilt_deg: float) -> float:
-        return elevation_deg(deck(t_s), head(t_s, tilt_deg))
+        return world_elevation_deg(deck(t_s), head(t_s, tilt_deg))
 
     return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)

@@ -3,6 +3,7 @@ the horizon, and the rotations and frames they turn.
 """
 
 import math
+from typing import overload
 
 import numpy as np
 import numpy.typing as npt
@@ -34,9 +35,16 @@ def turned(bearing_deg: float, elevation_deg: float) -> np.ndarray:
     return about_z @ about_x
 
 
-def bearing_deg(east: float, north: float) -> float:
-    """The compass bearing towards a point `east` and `north`, in (-180, 180]."""
-    return math.degrees(math.atan2(east, north))
+@overload
+def bearing_deg(east: float, north: float) -> float: ...
+@overload
+def bearing_deg(east: np.ndarray, north: np.ndarray) -> np.ndarray: ...
+def bearing_deg(
+    east: float | np.ndarray, north: float | np.ndarray
+) -> float | np.ndarray:
+    """The compass bearing towards points `east` and `north`, in (-180, 180]."""
+    bearing = np.degrees(np.arctan2(east, north))
+    return float(bearing) if np.ndim(bearing) == 0 else bearing
 
 
 def elevation_deg(up: npt.ArrayLike) -> np.ndarray:
@@ -65,7 +73,7 @@ def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     return (
         math.degrees(roll),
         float(elevation_deg(y[2])),
-        math.degrees(math.atan2(y[0], y[1])),
+        bearing_deg(float(y[0]), float(y[1])),
     )
 
 

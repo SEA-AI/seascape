@@ -10,7 +10,7 @@ import bpy
 import numpy as np
 from mathutils import Euler, Vector
 
-from seascape import motion
+from seascape import angles, motion
 from seascape.angles import yaw
 from seascape.assets import Hull, manifest
 from seascape.blender import faces
@@ -85,10 +85,10 @@ class Afloat:
     hull: waves.Waterplane
 
 
-def heading_rad(anchor: bpy.types.Object) -> float:
+def heading_deg(anchor: bpy.types.Object) -> float:
     """Where a hull's bow points, clockwise from north: bow to +Y, as fitted."""
     bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
-    return math.atan2(bow.x, bow.y)
+    return angles.bearing_deg(bow.x, bow.y)
 
 
 def _parts(name: str, hulls: Hulls) -> list[bpy.types.Object]:
