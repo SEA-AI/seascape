@@ -14,7 +14,7 @@ from pydantic import (
 from seascape import assets
 from seascape.config.world import Sea
 from seascape.model import Model
-from seascape.physics import thermal, waves
+from seascape.physics import slew, thermal, waves
 
 
 def _names(turbines: bool) -> list[str]:
@@ -179,6 +179,71 @@ class Swing(Model):
 
     amplitude_deg: float = Field(ge=0.0, lt=90.0, description="Peak, either way.")
     period_s: float = Field(gt=0.0, description="One full cycle.")
+
+
+class Move(Model):
+    """Turn to `to_deg` from where the last move left off, then hold."""
+
+    to_deg: float = Field(description="Clockwise from the bow at t = 0.")
+    rate_deg_s: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Its cruising rate; a short move peaks below it. None is the "
+        "top rate.",
+    )
+    hold_s: float = Field(
+        default=0.0, ge=0.0, description="Held still at `to_deg` before the next move."
+    )
+
+
+class Turn(Model):
+    """A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to
+    its rate and down to rest at the acceleration.
+    """
+
+    by: Literal["ownship"] = Field(description="What turns: the ownship's heading.")
+    top_rate_deg_s: float = Field(
+        gt=0.0, description="As fast as it turns; a move's rate when it sets none."
+    )
+    accel_deg_s2: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Of every ramp up and down; None steps to each rate at once.",
+    )
+    moves: list[Move] = Field(
+        min_length=1,
+        description="One after another from t = 0, each from where the last held.",
+    )
+
+    @model_validator(mode="after")
+    def _no_move_outruns_the_top_rate(self) -> "Turn":
+        for move in self.moves:
+            if (rate := move.rate_deg_s) is not None and rate > self.top_rate_deg_s:
+                raise ValueError(
+                    f"a move's rate_deg_s {rate} exceeds top_rate_deg_s "
+                    f"{self.top_rate_deg_s}: lower rate_deg_s or raise top_rate_deg_s"
+                )
+        return self
+
+    def legs(self) -> list[slew.Leg]:
+        """Each move's slew, in order."""
+        return slew.chain(
+            [
+                (
+                    move.to_deg,
+                    self.top_rate_deg_s if move.rate_deg_s is None else move.rate_deg_s,
+                    move.hold_s,
+                )
+                for move in self.moves
+            ],
+            self.accel_deg_s2,
+        )
+
+    @property
+    def duration_s(self) -> float:
+        """From the first move's start to the last move's hold's end."""
+        last = self.legs()[-1]
+        return last.start_s + last.duration_s + last.hold_s
 
 
 class Heave(Model):

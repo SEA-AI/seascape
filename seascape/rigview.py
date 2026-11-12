@@ -14,6 +14,7 @@ from seascape.blender.meshes import box_corners, mesh_objects
 from seascape.blender.rigs import add_rigs, boresight_deg
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
+from seascape.motion import track
 from seascape.outputs import brand, canvas
 from seascape.physics import earth, fisheye
 
@@ -139,6 +140,7 @@ def draw(scenario: Scenario, out: Path) -> None:
     built = add_rigs(scenario)
     vessel = add_ownship(
         scenario.ownship,
+        track(scenario.ownship, scenario.outputs, scenario.turn),
         built.root,
         Hulls(scenario.sky, None),  # Workbench draws no wear
         scenario.outputs,

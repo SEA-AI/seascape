@@ -1,17 +1,20 @@
 """Where a hull is at a time, and the waterplane the waves tilt it by there."""
 
+import bisect
 import math
 from collections.abc import Callable
 from typing import NamedTuple
 
 import numpy as np
 
-from seascape.config import Drift, Outputs, Ownship
+from seascape.config import Drift, Outputs, Ownship, Turn
 from seascape.config.objects import Swing
-from seascape.physics import waves
+from seascape.physics import slew, waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
+# Judgement: the most a turn moves the heading in one integration substep.
+STEP_TURN_DEG = 1.0
 
 
 class Pose(NamedTuple):
@@ -84,9 +87,24 @@ def _hermite(
     return float(value), float(slope / step)
 
 
-def track(ownship: Ownship, outputs: Outputs) -> Path:
-    """The pose at a time: `speed_mps` integrated along the heading `yaw` swings, and
-    the pitch and roll its swings script.
+def turned_deg(turn: Turn) -> Callable[[float], float]:
+    """The turn's angle at a time, clockwise from where it starts."""
+    legs = turn.legs()
+    starts_s = [leg.start_s for leg in legs]
+
+    def at(t_s: float) -> float:
+        # `covered_deg` holds a leg's end after it, so the last holds forever.
+        leg = legs[max(bisect.bisect_right(starts_s, t_s) - 1, 0)]
+        return leg.start_deg + slew.covered_deg(
+            leg.distance_deg, leg.rate_deg_s, turn.accel_deg_s2, t_s - leg.start_s
+        )
+
+    return at
+
+
+def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
+    """The pose at a time: `speed_mps` integrated along the heading that `yaw` swings
+    and `turn` turns, with the pitch and roll its swings script.
     """
     times = np.asarray(outputs.times_s)
     swing = ownship.yaw
@@ -96,11 +114,18 @@ def track(ownship: Ownship, outputs: Outputs) -> Path:
     if swing is not None:
         step_s = outputs.period_s(swing.period_s) / STEPS_PER_YAW
         sub = math.ceil(1.0 / (outputs.fps * step_s))
+    yawed = swung(0.0, swing, outputs)
+    turned = None
+    if turn is not None and turn.by == "ownship":
+        turned = turned_deg(turn)
+        sub = max(sub, math.ceil(turn.top_rate_deg_s / (outputs.fps * STEP_TURN_DEG)))
     tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
-    heading = np.zeros_like(tau)
-    if swing is not None:
-        omega = 2.0 * math.pi / outputs.period_s(swing.period_s)
-        heading = math.radians(swing.amplitude_deg) * np.sin(omega * tau)
+
+    def heading_rad(t_s: float) -> float:
+        rad = yawed(t_s)
+        return rad if turned is None else rad + math.radians(turned(t_s))
+
+    heading = np.array([heading_rad(t) for t in tau])
 
     def integral(speed: np.ndarray) -> np.ndarray:
         area = np.diff(tau) * (speed[1:] + speed[:-1]) / 2.0
@@ -115,7 +140,7 @@ def track(ownship: Ownship, outputs: Outputs) -> Path:
     def at(t_s: float) -> Pose:
         e, v_e = _hermite(tau, east, speed * np.sin(heading), t_s)
         n, v_n = _hermite(tau, north, speed * np.cos(heading), t_s)
-        h = float(np.interp(t_s, tau, heading))
+        h = heading_rad(t_s)
         return Pose(e, n, h, v_e, v_n, pitch(t_s), roll(t_s))
 
     return at
