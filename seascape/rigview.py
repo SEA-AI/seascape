@@ -73,11 +73,11 @@ def _hit_m(frame: bpy.types.Object, origin: Vector, up: bool) -> float | None:
     """Height in `frame` of the first surface along its vertical above or below
     `origin`, if any.
     """
-    T_ownship_world = frame.matrix_world.inverted()
+    T_frame_world = frame.matrix_world.inverted()
     axis = frame.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0 if up else -1.0))
     depsgraph = bpy.context.evaluated_depsgraph_get()
     hit, location, *_ = bpy.context.scene.ray_cast(depsgraph, origin, axis)
-    return (T_ownship_world @ location).z if hit else None
+    return (T_frame_world @ location).z if hit else None
 
 
 def _rig_line(

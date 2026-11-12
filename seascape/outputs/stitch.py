@@ -36,16 +36,15 @@ def fused(
     fx = (left.K[0][0] + right.K[0][0]) / 2
     fy = (left.K[1][1] + right.K[1][1]) / 2
     w, h = 2 * left.width_px, left.height_px
-    # Each optical axis's elevation over the rig's horizontal.
+    # Each optical axis's elevation over the head's horizontal.
     elevation_deg = float(
         np.mean(angles.elevation_deg([_in_head(c)[2, 2] for c in (left, right)]))
     )
     at = (np.array(left.extrinsics["rig"]) + np.array(right.extrinsics["rig"])) / 2
-    # The stitched camera s in the rig.
     T_head_stitched = np.eye(4)
     T_head_stitched[:3, :3] = angles.turned(0.0, elevation_deg) @ angles.TO_CV.T
     T_head_stitched[:3, 3] = at[:3, 3]
-    # The rig's pose in each frame, from the left camera's.
+    # The head's pose in each frame, from the left camera's.
     T_left_head = np.linalg.inv(left.extrinsics["rig"])
     extrinsics = {
         frame: tuple(map(tuple, np.array(T_frame_left) @ T_left_head @ T_head_stitched))

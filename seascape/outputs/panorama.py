@@ -47,7 +47,7 @@ def pose(
     """K and R as the stitcher takes them, turned so `bearing_deg` is straight ahead."""
     if camera.distortion is not None:
         raise ValueError(f"{camera.name}: a panorama stitches pinhole cameras")
-    # a: the panorama's frame, +Y along the bearing.
+    # The panorama's frame: +Y along the bearing.
     R_panorama_frame = angles.turned(bearing_deg, 0.0).T
     return (
         np.array(camera.K, np.float32),

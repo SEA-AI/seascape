@@ -110,7 +110,7 @@ def _row(
         T_ownship_head = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(
             camera, "rig"
         )
-        _, tilt, pan = _attitude_deg(T_ownship_head)
+        _, tilt, pan = _attitude_deg(T_ownship_head[:3, :3])
         row["pan"] = FLU_SIGNS[2] * wrapped_deg(pan - rig["yaw_deg"])
         row["tilt"] = FLU_SIGNS[1] * (tilt - rig["pitch_deg"])
         if scan_deg_s is not None:
