@@ -3250,7 +3250,7 @@
         },
         "wind_from_deg": {
           "title": "Wind From Deg",
-          "description": "Where the wind blows from, clockwise from the ownship's bow.",
+          "description": "Where the wind blows from, clockwise from the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
