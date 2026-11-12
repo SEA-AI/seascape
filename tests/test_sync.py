@@ -241,6 +241,28 @@ def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
     preview.check(seen(T1=frames, RGB1=frames), watchkeeper)
 
 
+@pytest.mark.parametrize("drop_farthest", [False, True])
+def test_every_ring_of_a_rig_with_several_must_be_seen(drop_farthest: bool) -> None:
+    sentry = load(SYNC_SENTRY)
+    circles = layout.rings(layout.views(*sentry.rigs.values()))
+    videos = sorted({v for r in circles for v in r.videos})
+    if drop_farthest:
+        circles = circles[:-1]
+
+    def turned(video: str) -> tuple[Seen, ...]:
+        """The container at both ends, and a buoy of each ring the video serves."""
+        held: Seen = [(BUOY, r.range_m, False, 6) for r in circles if video in r.videos]
+        return (BOXED, held, BOXED)
+
+    frames = {v: turned(v) for v in videos}
+
+    if drop_farthest:
+        with pytest.raises(ValueError, match="never sees a buoy"):
+            preview.check(seen(**frames), sentry)
+    else:
+        preview.check(seen(**frames), sentry)
+
+
 def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
     only_t1 = seen(T1=passing(near_m(watchkeeper)))
     with pytest.raises(ValueError, match="mast_RGB1 has no frames"):

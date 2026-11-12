@@ -64,6 +64,8 @@ def _whole(wide_px: int, widest_px: int) -> bool:
 
 
 def _sees_every_ring(seen: Labels, name: str, circles: list[Ring], buoy: int) -> None:
+    if not circles:
+        raise ValueError("no two videos overlap, so the course has no ring to check")
     images = {i.id: i.camera for i in seen.images}
     buoys = [a for a in seen.annotations if a.category_id == buoy and not a.truncated]
     # A buoy drifts mostly along the line of sight and the rig barely moves, so a
