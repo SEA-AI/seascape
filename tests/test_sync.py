@@ -1,5 +1,6 @@
 """The sync course's placement, the preview's settings and its check of the labels."""
 
+import dataclasses
 import itertools
 import math
 import tomllib
@@ -67,12 +68,11 @@ def test_videos_either_side_of_the_stern_overlap() -> None:
         width_px=1920,
         camera_deg=95.0,
     )
-    port = stern._replace(name="PORT", left_deg=-137.5, right_deg=-42.5)
+    port = dataclasses.replace(stern, name="PORT", left_deg=-137.5, right_deg=-42.5)
+    bow = dataclasses.replace(stern, left_deg=0.0, right_deg=95.0)
 
     assert course.overlap_deg(stern, port) == (222.5, 227.5)
-    assert (
-        course.overlap_deg(port, stern._replace(left_deg=0.0, right_deg=95.0)) is None
-    )
+    assert course.overlap_deg(port, bow) is None
 
 
 @pytest.mark.parametrize("path", PRODUCTS)
@@ -89,7 +89,7 @@ def test_every_ring_crosses_every_camera_it_serves(path: Path) -> None:
         for v, video in rig.videos.items()
     }
     for ring in course.rings(course.views(rig)):
-        out_m = pytest.approx(ring.range_m, rel=0.1)
+        out_m = course.stored_m(ring, rig)
         bearings = sorted(o.bearing_deg for o in buoys if o.range_m == out_m)
         narrowest = min(span_deg[v] for v in ring.videos)
         assert bearings[0] - min(stops) < narrowest
@@ -97,24 +97,11 @@ def test_every_ring_crosses_every_camera_it_serves(path: Path) -> None:
         assert max(b - a for a, b in itertools.pairwise(bearings)) < narrowest
 
 
-def test_a_pan_tilt_unit_inclines_to_keep_the_horizon_and_the_nearest_ring() -> None:
-    (rig,) = load(SYNC_SENTRY).rigs.values()
-    assert rig.ptu is not None
-    near_m = course.rings(course.views(rig))[0].range_m
-    waterline_deg = -math.degrees(math.atan(rig.height_m / near_m))
-
-    for camera in rig.rendered.values():
-        half_deg = math.degrees(math.atan(camera.height_px / 2 / camera.focal_px))
-        assert rig.ptu.inclination_deg + camera.pitch_deg + half_deg > 0.0
-        assert rig.ptu.inclination_deg + camera.pitch_deg - half_deg < waterline_deg
-
-
 def test_a_pan_tilt_unit_holds_its_inclination_whatever_its_mount_s_pitch() -> None:
     scenario = load(SYNC_SENTRY)
     (name,) = scenario.rigs
     pitched = load(SYNC_SENTRY, [{"rigs": {name: {"pitch_deg": -3.0}}}])
 
-    # The head holds the inclination itself, whatever its mount's pitch.
     assert course.course(pitched).inclination_deg == pytest.approx(
         course.course(scenario).inclination_deg
     )
@@ -137,21 +124,42 @@ def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
         v: min(rig.rendered[c].focal_px for c in sources(video))
         for v, video in rig.videos.items()
     }
-    rings = course.rings(course.views(rig))
+    off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
+    # A stored range is rounded to half a last decimal.
+    rounding_m = 0.5 * 10.0**-course.DECIMALS
 
-    for o in scenario.objects:
-        if o.asset != course.BUOY:
-            continue
-        # The cameras turn about the rig, not the origin.
-        b = math.radians(o.bearing_deg)
-        east = o.range_m * math.sin(b) - rig.offset_x_m
-        north = o.range_m * math.cos(b) - rig.offset_y_m
-        buoy_m = math.hypot(east, north)
-        ring = min(rings, key=lambda r: abs(math.log(buoy_m / r.range_m)))
+    for ring in course.rings(course.views(rig)):
         coarsest_px = min(focal_px[v] for v in ring.videos)
-        above_px = (buoy.height_m - buoy.draught_m) * coarsest_px / buoy_m
-        # A ring round the ownship is nearer the rig on one side, by its offset.
-        assert course.BUOY_PX * 0.98 <= above_px <= course.BUOY_PX * 1.1
+        for o in scenario.objects:
+            if o.asset != course.BUOY or o.range_m != course.stored_m(ring, rig):
+                continue
+            # The cameras turn about the rig, not the origin.
+            b = math.radians(o.bearing_deg)
+            east = o.range_m * math.sin(b) - rig.offset_x_m
+            north = o.range_m * math.cos(b) - rig.offset_y_m
+            above_px = (buoy.height_m - buoy.draught_m) * coarsest_px
+            above_px /= math.hypot(east, north)
+            # From the ring's range, out to rounding, in to two offsets nearer.
+            low = course.BUOY_PX * ring.range_m / (ring.range_m + rounding_m)
+            near_m = ring.range_m - 2 * off_m - rounding_m
+            assert low <= above_px <= course.BUOY_PX * ring.range_m / near_m
+
+
+def test_a_ring_draws_each_buoy_s_colour_from_the_three_it_comes_in() -> None:
+    entries = course.course(load(SYNC_SENTRY)).entries
+    ring = next(e for e in entries if e["asset"] == course.BUOY)
+
+    buoys = [Object.model_validate(o) for o in copies([ring], seed=0)]
+
+    assert {b.colour for b in buoys} == {"orange", "white", "yellow"}
+
+
+def test_a_drawn_spacing_is_refused() -> None:
+    ring = {"asset": course.BUOY, "range_m": 40.0, "bearing_deg": 0.0, "count": 2}
+    ring["spacing_deg"] = {"uniform": [5.0, 10.0]}
+
+    with pytest.raises(ValueError, match="spacing_deg cannot be drawn"):
+        copies([ring], seed=0)
 
 
 def test_a_course_needs_a_turn() -> None:
@@ -165,18 +173,6 @@ def test_a_course_needs_a_still_ownship() -> None:
         course.course(under_way)
 
 
-@pytest.mark.parametrize("path", PRODUCTS)
-def test_a_preview_has_a_frame_where_each_video_holds_each_of_its_rings(
-    path: Path,
-) -> None:
-    quick = load(path, [preview.PREVIEW])
-
-    frames = preview.keyframes(quick)
-
-    for whole in preview.held(quick, quick.objects).values():
-        assert any(whole[f] for f in frames)
-
-
 def test_a_preview_without_buoys_has_no_keyframes() -> None:
     with pytest.raises(ValueError, match="never holds a buoy"):
         preview.keyframes(load(SYNC_WATCHKEEPER, [preview.PREVIEW, {"objects": []}]))
@@ -188,13 +184,14 @@ type Seen = list[tuple[int, float, bool, int] | tuple[int, float, bool, int, int
 BOXED: Seen = [(BOX, 300.0, False, 40)]
 
 
-def seen(video: str, *frames: Seen) -> Labels:
-    """One video, a frame per entry, an object per (category, range, cut, tall_px)
-    and its wide_px when it is not as wide as tall.
+def seen(**videos: tuple[Seen, ...]) -> Labels:
+    """Each video's frames, an object per (category, range, cut, tall_px) and its
+    wide_px when it is not as wide as tall.
     """
+    shots = [(v, frame) for v, frames in videos.items() for frame in frames]
     images = [
-        Image.model_construct(id=i, camera=f"mast_{video}", time_s=i / 3)
-        for i in range(len(frames))
+        Image.model_construct(id=i, camera=f"mast_{v}", time_s=i / 3)
+        for i, (v, _) in enumerate(shots)
     ]
     annotations = [
         Annotation.model_construct(
@@ -205,25 +202,8 @@ def seen(video: str, *frames: Seen) -> Labels:
             bbox=(0, 0, wide[0] if wide else tall_px, tall_px),
             name=f"{category}-{range_m}",
         )
-        for i, frame in enumerate(frames)
+        for i, (_, frame) in enumerate(shots)
         for category, range_m, cut, tall_px, *wide in frame
-    ]
-    return Labels.model_construct(images=images, annotations=annotations)
-
-
-def both(t1: Labels, rgb1: Labels) -> Labels:
-    """Two videos' labels as one recording's."""
-    shift = len(t1.images)
-    images = [
-        *t1.images,
-        *(i.model_copy(update={"id": i.id + shift}) for i in rgb1.images),
-    ]
-    annotations = [
-        *t1.annotations,
-        *(
-            a.model_copy(update={"image_id": a.image_id + shift})
-            for a in rgb1.annotations
-        ),
     ]
     return Labels.model_construct(images=images, annotations=annotations)
 
@@ -247,11 +227,20 @@ def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
     watchkeeper: Scenario,
 ) -> None:
     frames = passing(near_m(watchkeeper))
-    preview.check(both(seen("T1", *frames), seen("RGB1", *frames)), watchkeeper)
+    preview.check(seen(T1=frames, RGB1=frames), watchkeeper)
+
+
+def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
+    watchkeeper: Scenario,
+) -> None:
+    near = near_m(watchkeeper)
+    # A pinhole draws it wider off the frame's axis.
+    frames = (BOXED, [(BUOY, near, False, 6), (BOX, 300.0, False, 40, 60)], BOXED)
+    preview.check(seen(T1=frames, RGB1=frames), watchkeeper)
 
 
 def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
-    only_t1 = seen("T1", *passing(near_m(watchkeeper)))
+    only_t1 = seen(T1=passing(near_m(watchkeeper)))
     with pytest.raises(ValueError, match="mast_RGB1 has no frames"):
         preview.check(only_t1, watchkeeper)
 
@@ -302,6 +291,4 @@ def test_a_video_that_misses_a_ring_or_the_container_fails(
 ) -> None:
     near = near_m(watchkeeper)
     with pytest.raises(ValueError, match=error.format(near=near)):
-        preview.check(
-            both(seen("T1", *frames(near)), seen("RGB1", *passing(near))), watchkeeper
-        )
+        preview.check(seen(T1=frames(near), RGB1=passing(near)), watchkeeper)

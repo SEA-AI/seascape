@@ -176,9 +176,9 @@ def _draw(node: Any, seed: int, path: str) -> Any:
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
 
 
-def spaced(spec: dict[str, Any], k: int) -> dict[str, Any]:
-    """Copy `k` of an `[[objects]]` entry, alone: `k` spacings clockwise of the
-    entry's bearing.
+def _spaced(spec: dict[str, Any], k: int) -> dict[str, Any]:
+    """Copy `k` of an `[[objects]]` entry as an entry of its own, `k` spacings
+    clockwise of the entry's bearing.
     """
     out = {key: v for key, v in spec.items() if key != "spacing_deg"} | {"count": 1}
     if (step := spec.get("spacing_deg")) and "bearing_deg" in out:
@@ -187,7 +187,9 @@ def spaced(spec: dict[str, Any], k: int) -> dict[str, Any]:
 
 
 def copies(objects: list[Any], seed: int, sky: Any = None) -> list[Any]:
-    """Each entry `count` times, every copy drawn from a substream of its own."""
+    """Each entry `count` times, `spacing_deg` apart, every copy drawn from a
+    substream of its own.
+    """
     out = []
     hulls = 0
     for i, spec in enumerate(objects):
@@ -205,6 +207,9 @@ def copies(objects: list[Any], seed: int, sky: Any = None) -> list[Any]:
             raise ValueError(f"objects: at most {MAX_HULLS} hulls in all")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
+        # Each copy would draw its own step, so the copies would not be evenly spaced.
+        if _is_draw(spec.get("spacing_deg")):
+            raise ValueError(f"objects[{i}]: spacing_deg cannot be drawn")
         for k in range(count):
             copy = _draw(spec, seed, f"{path}/{k}")
             if not isinstance(copy, dict):
@@ -214,7 +219,7 @@ def copies(objects: list[Any], seed: int, sky: Any = None) -> list[Any]:
             if _is_draw(spec) and copy.get("count", 1) != 1:
                 raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
             out.append(
-                spaced(copy, k)
+                _spaced(copy, k)
                 | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
                 # Past the substream a drawn `draught_m` picked its value on.
                 | _draught_m(copy, seed, f"{path}/{k}/draught_m/loaded")

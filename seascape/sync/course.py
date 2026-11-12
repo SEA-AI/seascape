@@ -1,6 +1,6 @@
 """The sync course: where its buoys and container go for a rig.
 
-The course turns the cameras past still objects, so a delay between a video and its
+The course turns the cameras past moored objects, so a delay between a video and its
 metadata, or between two videos, moves where they see one.
 """
 
@@ -8,7 +8,8 @@ import itertools
 import json
 import math
 from collections import defaultdict
-from typing import Any, NamedTuple
+from dataclasses import dataclass
+from typing import Any
 
 from seascape import angles
 from seascape.assets import Buoy, Debris, manifest
@@ -26,12 +27,10 @@ from seascape.config import (
 from seascape.motion import rig_track
 
 BUOY, CONTAINER = "mooring_buoy", "container"
-BUOY_COLOUR = "orange"
 # Judgement: weathered, as a buoy left out a season.
 BUOY_WEAR = 0.5
 # Judgement: a buoy straining at its mooring, half a metre to and fro about a
-# minute, sideways to the cameras so it changes range more than bearing. On the
-# nearest Sentry ring that is under 0.1 deg/s against the course's 6 deg/s. Each buoy
+# minute, sideways to the cameras so it changes range more than bearing. Each buoy
 # draws its own period, so they fall out of step.
 BUOY_DRIFT = {"sway_m": 0.5, "surge_m": 0.25, "period_s": {"uniform": [45.0, 75.0]}}
 # The smallest box a pair's coarser video is assumed to detect (Confluence, Sensors
@@ -45,7 +44,8 @@ MARGIN_DEG = 0.5
 DECIMALS = 1
 
 
-class View(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class View:
     """A video's span of bearings and elevations from its rig's axis, and its
     pixels.
     """
@@ -61,14 +61,18 @@ class View(NamedTuple):
     camera_deg: float
 
 
-class Ring(NamedTuple):
-    """Buoys at one range: 6 px tall in the coarser video of each pair they serve."""
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Ring:
+    """Buoys at one range: `BUOY_PX` tall in the coarser video of each pair they
+    serve.
+    """
 
     range_m: float
     videos: frozenset[str]
 
 
-class Course(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Course:
     """The course's `[[objects]]` entries, a ring of buoys each, and the inclination
     its pan-tilt unit holds, if any.
     """
@@ -112,31 +116,20 @@ def views(rig: Rig) -> list[View]:
             rows = [_rows_deg(c, 0, 0) for c in pair]
             down, up = max(r[0] for r in rows), min(r[1] for r in rows)
             narrowest = min(c.hfov_deg for c in pair)
-            found.append(
-                View(
-                    name=name,
-                    left_deg=left,
-                    right_deg=right,
-                    down_deg=down,
-                    up_deg=up,
-                    focal_px=focal,
-                    width_px=width,
-                    camera_deg=narrowest,
-                )
+        else:
+            (camera,) = recorded
+            focal, half = camera.focal_px, camera.width_px / 2
+            left_px = right_px = top_px = bottom_px = 0
+            if isinstance(video, Crop):
+                left_px, right_px = video.left_px, video.right_px
+                top_px, bottom_px = video.top_px, video.bottom_px
+            left, right = (
+                camera.yaw_deg + math.degrees(math.atan(px / focal))
+                for px in (left_px - half, half - right_px)
             )
-            continue
-        (camera,) = recorded
-        focal, half = camera.focal_px, camera.width_px / 2
-        left_px = right_px = top_px = bottom_px = 0
-        if isinstance(video, Crop):
-            left_px, right_px = video.left_px, video.right_px
-            top_px, bottom_px = video.top_px, video.bottom_px
-        left, right = (
-            camera.yaw_deg + math.degrees(math.atan(px / focal))
-            for px in (left_px - half, half - right_px)
-        )
-        down, up = _rows_deg(camera, top_px, bottom_px)
-        width = camera.width_px - left_px - right_px
+            down, up = _rows_deg(camera, top_px, bottom_px)
+            width = camera.width_px - left_px - right_px
+            narrowest = right - left
         found.append(
             View(
                 name=name,
@@ -146,7 +139,7 @@ def views(rig: Rig) -> list[View]:
                 up_deg=up,
                 focal_px=focal,
                 width_px=width,
-                camera_deg=right - left,
+                camera_deg=narrowest,
             )
         )
     return found
@@ -171,7 +164,10 @@ def rings(videos: list[View]) -> list[Ring]:
         if overlap_deg(a, b) is not None:
             coarser = min(a, b, key=lambda v: v.focal_px)
             served[coarser] |= {a.name, b.name}
-    return sorted(Ring(reach_m(v), frozenset(names)) for v, names in served.items())
+    found = (
+        Ring(range_m=reach_m(v), videos=frozenset(names)) for v, names in served.items()
+    )
+    return sorted(found, key=lambda r: r.range_m)
 
 
 def asset[T](name: str, kind: type[T]) -> T:
@@ -194,16 +190,23 @@ def reach_m(view: View) -> float:
     return buoy_above_m() * view.focal_px / BUOY_PX
 
 
-def half_deg(range_m: float) -> float:
+def stored_m(ring: Ring, rig: Rig) -> float:
+    """The range `ring`'s entry stores: round the ownship, `rig`'s offset nearer, so
+    no buoy is farther from the cameras than the ring's range.
+    """
+    return round(ring.range_m - math.hypot(rig.offset_x_m, rig.offset_y_m), DECIMALS)
+
+
+def half_deg(wide_m: float, range_m: float) -> float:
+    """Half the angle across something `wide_m` wide `range_m` out."""
+    return math.degrees(math.atan(wide_m / 2 / range_m))
+
+
+def buoy_half_deg(range_m: float) -> float:
     """Half the angle across a buoy `range_m` out; judgement: as wide as it stands
     above the water.
     """
-    return math.degrees(math.atan(buoy_above_m() / 2 / range_m))
-
-
-def box_half_deg(range_m: float) -> float:
-    """Half the angle across the container `range_m` out, side on."""
-    return math.degrees(math.atan(asset(CONTAINER, Debris).length_m / 2 / range_m))
+    return half_deg(buoy_above_m(), range_m)
 
 
 def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
@@ -244,29 +247,11 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float | Non
     return None
 
 
-def _placed(
-    name: str, at_m: tuple[float, float], bearing_deg: float, range_m: float
-) -> Object:
-    """Asset `name` `range_m` out along `bearing_deg` from a camera at `at_m`, east and
-    north of the ownship's origin, broadside to the line of sight from the origin.
-    """
-    bearing = math.radians(bearing_deg)
-    east = at_m[0] + range_m * math.sin(bearing)
-    north = at_m[1] + range_m * math.cos(bearing)
-    return Object(
-        asset=name,
-        range_m=round(math.hypot(east, north), DECIMALS),
-        bearing_deg=round(angles.bearing_deg(east, north), DECIMALS),
-        heading_deg=90.0,
-        heading_from="line_of_sight",
-    )
-
-
 def course(scenario: Scenario) -> Course:
     """The course for `scenario`'s one rig and its turn: a container at the bow, and
-    a ring of buoys round the ownship for each pair of videos, spaced a camera's
-    span apart so each camera they record passes one, staggered so no ring hides
-    another.
+    a ring of buoys round the ownship for each video that is the coarser of a pair,
+    spaced within a camera's span so each camera they record passes one, staggered
+    so no ring hides another.
 
     Raises:
         ValueError: No turn, not one rig, an ownship under way, or no pitch that
@@ -282,26 +267,36 @@ def course(scenario: Scenario) -> Course:
     videos = views(rig)
     if not (circles := rings(videos)):
         raise ValueError("no two videos of the rig overlap: a course needs a pair")
-    inclination_deg = _inclination_deg(rig, videos, circles[0].range_m)
+    # A ring is centred on the ownship, so its nearest buoy stands two of the rig's
+    # offsets nearer the cameras than the ring's range.
+    off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
+    inclination_deg = _inclination_deg(rig, videos, circles[0].range_m - 2 * off_m)
 
     start = rig_track(scenario, name)(0.0)
     narrow = min(videos, key=lambda v: v.right_deg - v.left_deg)
     box = asset(CONTAINER, Debris)
     box_m = box.length_m * narrow.focal_px / (CONTAINER_FILL * narrow.width_px)
-    middle_deg = (narrow.left_deg + narrow.right_deg) / 2
     # Limitation: every video must hold it, so only a rig that looks forward fits.
-    at_m = (start.east_m, start.north_m)
-    box_at = _placed(CONTAINER, at_m, rig.yaw_deg + middle_deg, box_m)
-    entries = [box_at.model_dump(exclude_defaults=True)]
-    # Each ring is centred on the ownship, the rig's offset nearer, so no buoy is
-    # farther from the cameras than its ring's range and none drops below BUOY_PX.
-    off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
+    middle = math.radians(rig.yaw_deg + (narrow.left_deg + narrow.right_deg) / 2)
+    east = start.east_m + box_m * math.sin(middle)
+    north = start.north_m + box_m * math.cos(middle)
+    # Broadside to the line of sight from the origin.
+    entries: list[dict[str, Any]] = [
+        {
+            "asset": CONTAINER,
+            "range_m": round(math.hypot(east, north), DECIMALS),
+            "bearing_deg": round(angles.bearing_deg(east, north), DECIMALS),
+            "heading_deg": 90.0,
+            "heading_from": "line_of_sight",
+        }
+    ]
+    colours = {"choice": sorted(asset(BUOY, Buoy).sold_in)}
     stops_deg = [0.0, *(move.to_deg for move in turn.moves)]
     for k, ring in enumerate(circles):
         # Each camera of a stitch gets its own crossings.
         span_deg = min(v.camera_deg for v in videos if v.name in ring.videos)
         # Down to a stored decimal, so the stored step still fits the camera.
-        fits_deg = span_deg - 2 * (half_deg(ring.range_m) + MARGIN_DEG)
+        fits_deg = span_deg - 2 * (buoy_half_deg(ring.range_m) + MARGIN_DEG)
         step_deg = math.floor(fits_deg * 10**DECIMALS) / 10**DECIMALS
         if step_deg <= 0.0:
             raise ValueError(
@@ -319,11 +314,12 @@ def course(scenario: Scenario) -> Course:
         entries.append(
             {
                 "asset": BUOY,
-                "range_m": round(ring.range_m - off_m, DECIMALS),
+                "range_m": stored_m(ring, rig),
                 "bearing_deg": round(rig.yaw_deg + first_deg, DECIMALS),
                 "count": count,
                 "spacing_deg": step_deg,
-                "colour": BUOY_COLOUR,
+                # Each buoy draws its own.
+                "colour": colours,
                 "wear": BUOY_WEAR,
                 # Bow across the line of sight, so its sway runs along it.
                 "heading_deg": 90.0,
@@ -331,7 +327,7 @@ def course(scenario: Scenario) -> Course:
                 "drift": BUOY_DRIFT,
             }
         )
-    return Course(inclination_deg, entries)
+    return Course(inclination_deg=inclination_deg, entries=entries)
 
 
 def verify(scenario: Scenario) -> None:

@@ -217,7 +217,7 @@ def render(
 @click.option(
     "--preview",
     is_flag=True,
-    help="Render the keyframes at one sample, and check every video "
+    help="Render the frames the check needs at one sample, and check every video "
     "sees a buoy of each of its rings whole and the container at both ends; nothing "
     "is encoded.",
 )

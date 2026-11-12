@@ -31,7 +31,7 @@ range_m = 29.6
 bearing_deg = -57.0
 count = 6
 spacing_deg = 22.8
-colour = "orange"
+colour = { choice = ["orange", "white", "yellow"] }
 wear = 0.5
 heading_deg = 90.0
 heading_from = "line_of_sight"
