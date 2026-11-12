@@ -201,6 +201,25 @@ def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
         assert all(e[0] > e[2 * n - 1] for e in elevations)
 
 
+def test_a_rig_on_a_rolled_deck_leans_and_turns_with_it() -> None:
+    """A rig yawed 45 on a deck rolled 20 starboard down points 43.2 from the bow
+    and leans to starboard.
+    """
+    scenario = load(
+        SYNC_SENTRY,
+        [{"ownship": {"roll_deg": 20.0}, "rigs": {"mast": {"yaw_deg": 45.0}}}],
+    )
+    rig = scenario.rigs["mast"]
+    start = rig_track(scenario, "mast")(0.0)
+
+    yaw, roll = math.radians(45.0), math.radians(20.0)
+    expected = math.degrees(math.atan2(math.sin(yaw) * math.cos(roll), math.cos(yaw)))
+    assert math.degrees(start.heading_rad) == pytest.approx(expected)
+    assert (start.east_m, start.north_m) == pytest.approx(
+        (rig.height_m * math.sin(roll), rig.offset_y_m)
+    )
+
+
 BOX = manifest()[staging.CONTAINER].category_id
 BUOY = manifest()[staging.BUOY].category_id
 type Seen = list[tuple[int, float, bool, int] | tuple[int, float, bool, int, int]]
