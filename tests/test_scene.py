@@ -57,7 +57,7 @@ from seascape.blender.vessels import (
     Condition,
     Hulls,
     _vessel,
-    heading_rad,
+    heading_deg,
     waterline_m,
 )
 from seascape.config import (
@@ -938,7 +938,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         rest = waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s)
         plane = waves.Waterplane(
             *map(float, rest),
-            heading_rad(built.vessel),
+            math.radians(heading_deg(built.vessel)),
             built.vessel["length_m"],
             built.vessel["beam_m"],
         )
@@ -1518,12 +1518,14 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
         bpy.context.scene.frame_set(frame)
         bearing, elevation = boresight_deg(camera)
         assert bearing == pytest.approx(turned(t_s), abs=turns_deg)
-        base.append(motion.elevation_deg(deck(t_s), angles.direction(axis(t_s), 0.0)))
+        base.append(
+            motion.world_elevation_deg(deck(t_s), angles.direction(axis(t_s), 0.0))
+        )
         # Blender draws the head the loop holds; 1e-4 deg is float32's asin noise and
         # more.
         forward = np.array(built.rigs[name].matrix_world)[2, 1]
         assert math.degrees(math.asin(forward)) == pytest.approx(
-            motion.elevation_deg(
+            motion.world_elevation_deg(
                 deck(t_s), angles.direction(axis(t_s), mount_deg + held_deg[frame])
             ),
             abs=1e-4,
@@ -1564,7 +1566,7 @@ class TestOwnshipUnderway:
         for frame in range(len(scenario.outputs.times_s)):
             sc.frame_set(frame)
             hull.append(tuple(built.vessel.matrix_world.translation))
-            bearing.append(math.degrees(heading_rad(built.vessel)))
+            bearing.append(heading_deg(built.vessel))
             eye.append(tuple(camera.matrix_world.translation))
         return np.array(hull), np.array(bearing), np.array(eye)
 
@@ -2331,7 +2333,7 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
     built = scene.build(variant(objects=[yacht]), "eo")
 
     (anchor,) = built.targets["yacht"]
-    assert math.degrees(heading_rad(anchor)) % 360.0 == pytest.approx(210.0)
+    assert heading_deg(anchor) % 360.0 == pytest.approx(210.0)
 
 
 @pytest.mark.parametrize(
@@ -2431,7 +2433,7 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
         (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
         shaft = rotor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
 
-        assert math.degrees(heading_rad(anchor)) == pytest.approx(60.0)
+        assert heading_deg(anchor) == pytest.approx(60.0)
         assert math.degrees(math.atan2(shaft.x, shaft.y)) == pytest.approx(60.0)
         assert [o for o in anchor.children_recursive if o.get("rotor")] == [rotor]
         hubs.append(rotor.matrix_world.translation.copy())

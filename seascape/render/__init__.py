@@ -6,7 +6,6 @@ is rendered float and written here as a thermal camera writes one: a png as 16-b
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
-import math
 import os
 import shutil
 import subprocess
@@ -25,7 +24,7 @@ from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
 from seascape.blender.blend import node
 from seascape.blender.compositor import INDEX_ROLL, JPEG_QUALITY, unroll
-from seascape.blender.vessels import heading_rad, waterline_m
+from seascape.blender.vessels import heading_deg, waterline_m
 from seascape.config import (
     Camera,
     Crop,
@@ -163,7 +162,7 @@ def _targets(built: scene.Built) -> list[labels.Target]:
             supercategory=manifest()[asset].supercategory,
             centre_m=tuple(anchor.matrix_world.translation.xy),
             waterline_m=waterline_m(anchor),
-            heading_deg=math.degrees(heading_rad(anchor)) % 360.0,
+            heading_deg=heading_deg(anchor) % 360.0,
             dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
             engine_off_min=anchor["engine_off_min"],
         )

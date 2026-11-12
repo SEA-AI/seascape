@@ -225,7 +225,7 @@ def buoy_half_deg(range_m: float) -> float:
     return half_deg(buoy_above_m(), range_m)
 
 
-def elevation_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
+def elevation_from_rig_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
     """Up from `rig` to a point `above_m` over a flat sea, `range_m` out."""
     return math.degrees(math.atan2(above_m - rig.height_m, range_m))
 
@@ -249,7 +249,7 @@ def _inclination_deg(rig: Rig, near_m: float) -> float | None:
     Raises:
         ValueError: No pitch does, or a fixed mount's is not one.
     """
-    low_deg = elevation_deg(rig, near_m) - MARGIN_DEG
+    low_deg = elevation_from_rig_deg(rig, near_m) - MARGIN_DEG
     least, most = -math.inf, math.inf
     for name, camera in recorded(rig).items():
         top, bottom = _edges(camera)
