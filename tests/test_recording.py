@@ -170,7 +170,7 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["proc_ptu_mode"]) == 1
         assert float(row["yaw"]) == pytest.approx(POD_YAW_DEG, abs=0.05)
         assert float(row["temp"]) == pytest.approx(10.0)
-        assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))
+        assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0), abs=1e-6)
 
 
 def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
@@ -185,6 +185,8 @@ def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
         # Oceanus's manual mode, at no scan speed.
         assert float(row["proc_ptu_mode"]) == 1
         assert float(row["proc_colav_speed"]) == 0.0
+        # The hull has turned 15 to starboard, so the wind from -30 is 45 to port.
+        assert float(row["wind_angle"]) == pytest.approx(math.radians(315.0), abs=1e-5)
 
 
 @pytest.mark.parametrize(

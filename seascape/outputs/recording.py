@@ -126,8 +126,10 @@ def _row(
         "cog": heading,
         "temp": scenario["sky"]["t_air_k"] - 273.15,
         "wind_speed": scenario["sea"]["wind_speed_mps"],
-        # NMEA 2000: radians in [0, 2 pi). Relative to the bow, as the scenario's.
-        "wind_angle": math.radians(scenario["sea"]["wind_from_deg"]) % math.tau,
+        # NMEA 2000: radians in [0, 2 pi) from the bow. The scenario's is from world
+        # +Y, the bow at t = 0, so the heading comes off it.
+        "wind_angle": (math.radians(scenario["sea"]["wind_from_deg"]) - heading)
+        % math.tau,
         "bb_roll": float(bb_roll),
         "bb_pitch": float(bb_pitch),
         "bb_yaw": float(bb_yaw),

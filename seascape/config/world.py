@@ -91,7 +91,8 @@ class Sea(Model):
     )
     wind_from_deg: float = Field(
         default=0.0,
-        description="Where the wind blows from, clockwise from the ownship's bow.",
+        description="Where the wind blows from, clockwise from the ownship's bow at "
+        "the start.",
     )
     fetch_km: float | None = Field(
         default=None,
