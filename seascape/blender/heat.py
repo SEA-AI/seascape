@@ -210,6 +210,10 @@ def _worn(
             # Judgement: the stain is the splash zone, kept wet at the bulk water's
             # temperature.
             covered = water
+        elif layer not in thermal.WEAR_LAYERS:
+            # Judgement: a scuff is the same paint or plastic, and a dropping a thin
+            # film on it, so both radiate as the surface under them.
+            continue
         elif steel:
             # Steel spreads a strip's heat sideways over L = sqrt(k t / h), 0.16 m for
             # 12 mm plate at k = 60.5 W m^-1 K^-1 (Incropera & DeWitt Table A.1, plain
