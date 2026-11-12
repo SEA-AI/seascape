@@ -11,13 +11,13 @@ import numpy as np
 from mathutils import Euler, Vector
 
 from seascape import motion
+from seascape.angles import yaw
 from seascape.assets import Hull, manifest
 from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
     empty,
     mesh_objects,
-    yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
 from seascape.blender.meshes import (

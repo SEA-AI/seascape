@@ -8,11 +8,11 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+from seascape.angles import yaw
 from seascape.blender.blend import (
     BLENDER_TO_CV,
     animate,
     empty,
-    yaw,
 )
 from seascape.config import (
     Band,

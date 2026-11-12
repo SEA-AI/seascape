@@ -181,12 +181,12 @@ def _spaced(spec: dict[str, Any], k: int) -> dict[str, Any]:
     clockwise of the entry's bearing.
     """
     out = {key: v for key, v in spec.items() if key != "spacing_deg"} | {"count": 1}
-    if (step := spec.get("spacing_deg")) and "bearing_deg" in out:
+    if step := spec.get("spacing_deg"):
         out["bearing_deg"] = out["bearing_deg"] + k * step
     return out
 
 
-def copies(objects: list[Any], seed: int, sky: Any = None) -> list[Any]:
+def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
     """Each entry `count` times, `spacing_deg` apart, every copy drawn from a
     substream of its own.
     """
@@ -207,9 +207,13 @@ def copies(objects: list[Any], seed: int, sky: Any = None) -> list[Any]:
             raise ValueError(f"objects: at most {MAX_HULLS} hulls in all")
         if count > 1 and "orbit" in spec:
             raise ValueError(f"objects[{i}]: an orbit spaces its hulls by orbit.count")
-        # Each copy would draw its own step, so the copies would not be evenly spaced.
-        if _is_draw(spec.get("spacing_deg")):
-            raise ValueError(f"objects[{i}]: spacing_deg cannot be drawn")
+        # A drawn step would differ per copy, and one with no bearing has nothing
+        # to step from.
+        step = spec.get("spacing_deg")
+        if step and (_is_draw(step) or "bearing_deg" not in spec):
+            raise ValueError(
+                f"objects[{i}]: spacing_deg is a fixed step from a bearing_deg"
+            )
         for k in range(count):
             copy = _draw(spec, seed, f"{path}/{k}")
             if not isinstance(copy, dict):
@@ -367,7 +371,7 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
         path = "draw/ownship/draught_m/loaded"
         data["ownship"] = ownship | _draught_m(ownship, seed, path)
     if isinstance(objects := data.get("objects"), list):
-        data["objects"] = copies(objects, seed, data.get("sky"))
+        data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 

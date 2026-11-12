@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from seascape.assets import Buoy, manifest
-from seascape.config import Object, Scenario, copies, load, sources
+from seascape.config import Scenario, load, sources
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import course, preview
 from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
@@ -31,7 +31,7 @@ def test_a_ring_loads_evenly_spaced_with_a_drift_drawn_per_buoy() -> None:
     ring |= {"bearing_deg": -10.0, "count": 3, "spacing_deg": 7.5}
     ring["drift"] = course.BUOY_DRIFT
 
-    buoys = [Object.model_validate(o) for o in copies([ring], seed=0)]
+    buoys = load(OPEN_SEA, [{"objects": [ring]}]).objects
 
     assert [b.bearing_deg for b in buoys] == [-10.0, -2.5, 5.0]
     periods = [b.drift.period_s for b in buoys if b.drift is not None]
@@ -140,21 +140,27 @@ def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
             assert low <= above_px <= course.BUOY_PX * ring.range_m / near_m
 
 
-def test_a_ring_draws_each_buoy_s_colour_from_the_three_it_comes_in() -> None:
+def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     entries = course.course(load(SYNC_SENTRY)).entries
     ring = next(e for e in entries if e["asset"] == course.BUOY)
+    sold_in = course.asset(course.BUOY, Buoy).sold_in
 
-    buoys = [Object.model_validate(o) for o in copies([ring], seed=0)]
-
-    assert {b.colour for b in buoys} == {"orange", "white", "yellow"}
+    assert ring["colour"] == {"choice": sorted(sold_in)}
 
 
 def test_a_drawn_spacing_is_refused() -> None:
     ring = {"asset": course.BUOY, "range_m": 40.0, "bearing_deg": 0.0, "count": 2}
     ring["spacing_deg"] = {"uniform": [5.0, 10.0]}
 
-    with pytest.raises(ValueError, match="spacing_deg cannot be drawn"):
-        copies([ring], seed=0)
+    with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
+        load(OPEN_SEA, [{"objects": [ring]}])
+
+
+def test_a_spacing_without_a_bearing_is_refused() -> None:
+    ring = {"asset": course.BUOY, "range_m": 40.0, "count": 2, "spacing_deg": 5.0}
+
+    with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
+        load(OPEN_SEA, [{"objects": [ring]}])
 
 
 def test_a_course_needs_a_turn() -> None:
@@ -168,9 +174,10 @@ def test_a_course_needs_a_still_ownship() -> None:
         course.course(under_way)
 
 
-def test_a_preview_without_buoys_has_no_keyframes() -> None:
-    with pytest.raises(ValueError, match="never holds a buoy"):
-        preview.keyframes(load(SYNC_WATCHKEEPER, [preview.PREVIEW, {"objects": []}]))
+def test_advice_without_a_course_that_fits_says_why() -> None:
+    said = preview.advice(load(OPEN_SEA), "missed")
+
+    assert said.startswith("missed; and no course fits its rig: ")
 
 
 BOX = manifest()[course.CONTAINER].category_id
@@ -250,6 +257,11 @@ def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
         (
             # Half hidden behind the container.
             lambda near: (BOXED, [(BUOY, near, False, 3)], BOXED),
+            "mast_T1 never sees a buoy {near:.0f} m out whole",
+        ),
+        (
+            # A pixel short of the smallest box a detector takes.
+            lambda near: (BOXED, [(BUOY, near, False, 5)], BOXED),
             "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (

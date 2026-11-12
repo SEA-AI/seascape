@@ -5,7 +5,7 @@ description: Write or change a product's `scenarios/sync-<product>.toml`, the fa
 
 # Sync scenario
 
-`scenarios/sync.toml` holds the course every product runs; `sync-<product>.toml` extends it. The existing product files are the working examples.
+`scenarios/sync.toml` holds the turn, sea and outputs every product shares; `sync-<product>.toml` extends it with the ownship, rig and course. The existing product files are the working examples.
 
 Decide by numbers, never by looking at frames. The preview's check is the verdict.
 
@@ -26,11 +26,11 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
    uv run seascape sync scenarios/sync-<product>.toml --preview
    ```
 
-5. **Preview.** Run the preview again. It renders the frames the check needs at one sample, and passes only when it prints `every video sees the course`.
+5. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
 6. **Record.** `uv run seascape sync scenarios/sync-<product>.toml`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
 
 ## When it fails
 
-- **Refuses, printing objects:** the rig, hull or turn changed. Paste the new ones; never edit them by hand.
-- **Refuses, naming `inclination_deg` or `pitch_deg`:** a ring of buoys or the horizon leaves a video. Set the value it names on the rig: a pan-tilt unit holds `ptu.inclination_deg`, a fixed mount takes `pitch_deg`.
+- **Fails, printing the course:** if it differs from the stored objects, the rig, hull or turn changed. Paste it whole; never edit it by hand.
+- **Fails, naming `pitch_deg`:** a fixed mount loses the near ring or the horizon. Set the rig's `pitch_deg` to the value it names.
 - **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/course.py`'s rule, for every product. Never place one by hand.

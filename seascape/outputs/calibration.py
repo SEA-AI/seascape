@@ -10,7 +10,7 @@ from typing import cast
 import numpy as np
 from pydantic import ConfigDict, Field
 
-from seascape import atomic
+from seascape import angles, atomic
 from seascape.config import Camera, Crop
 from seascape.model import Model
 from seascape.physics import fisheye
@@ -30,8 +30,7 @@ def in_rig(camera: Camera) -> Matrix4:
     """`camera` to its rig, in OpenCV's axes: yawed, then pitched about its own
     transverse axis, at the rig's origin.
     """
-    # The rotation negates the bearing: +Z turns to port.
-    yaw, tilt = -math.radians(camera.yaw_deg), math.radians(camera.pitch_deg)
+    yaw, tilt = angles.yaw(camera.yaw_deg), math.radians(camera.pitch_deg)
     cy, sy, ct, st = math.cos(yaw), math.sin(yaw), math.cos(tilt), math.sin(tilt)
     turn = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
     pitched = np.array([[1.0, 0.0, 0.0], [0.0, ct, -st], [0.0, st, ct]])

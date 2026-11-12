@@ -12,11 +12,11 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 from seascape import atomic
+from seascape.angles import yaw
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
 from seascape.blender import faces, wear
 from seascape.blender.blend import (
     mesh_objects,
-    yaw,
 )
 from seascape.config import (
     Band,

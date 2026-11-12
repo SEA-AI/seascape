@@ -4,7 +4,7 @@ import json
 import math
 import os
 import sys
-from collections.abc import Callable, Collection, Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Any, get_args
@@ -99,19 +99,14 @@ def _empty(into: Path) -> Path:
     return into
 
 
-def _render(
-    built: Scenario, into: Path, frames: Collection[int] | None = None
-) -> list[Path]:
+def _render(built: Scenario, into: Path) -> list[Path]:
     from seascape import render as renderer
 
-    images = built.images
-    if frames is not None:
-        images = built.images_per_frame * len(frames)
     with (
-        _progress(images, "Rendering") as bar,
+        _progress(built.images, "Rendering") as bar,
         _blender_log(into / "blender.log"),
     ):
-        return renderer.render(built, into, lambda: bar.update(1), frames)
+        return renderer.render(built, into, lambda: bar.update(1))
 
 
 _QUALITY = "perc_lossless"
@@ -217,15 +212,13 @@ def render(
 @click.option(
     "--preview",
     is_flag=True,
-    help="Render the frames the check needs at one sample, and check every video "
-    "sees a buoy of each of its rings whole and the container at both ends; nothing "
-    "is encoded.",
+    help="Render at 1 fps and one sample, and check every video sees a buoy of each "
+    "of its rings whole and the container at both ends; nothing is encoded.",
 )
 def sync(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
 ) -> None:
     """Render, encode and record a sync scenario, or preview it."""
-    from seascape.sync import course
     from seascape.sync import preview as checks
 
     if not preview:
@@ -237,16 +230,15 @@ def sync(
             click.echo(path)
         return
     built = load(scenario, [*overrides, checks.PREVIEW])
+    if not checks.placed(built):
+        raise click.ClickException(checks.advice(built, f"{scenario} holds no buoys"))
+    into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
+    _render(built, into)
     try:
-        frames = checks.keyframes(built)
-        into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
-        _render(built, into, frames)
         checks.check(labels.Labels.read(into), built)
     except ValueError as missed:
-        # What this rig's course would be, for the user to paste or compare.
         raise click.ClickException(
-            f"{course.suggested(built)}\n\n{scenario}: {missed}; the course for its "
-            "rig is above"
+            checks.advice(built, f"{scenario}: {missed}")
         ) from missed
     click.echo(f"every video sees the course: {into}")
 

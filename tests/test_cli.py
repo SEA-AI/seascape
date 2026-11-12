@@ -348,6 +348,6 @@ def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
     refused = run("sync", SYNC_SENTRY, "--preview", "--set", "objects = []", "-o", out)
 
     assert refused.exit_code == 1
-    assert "never holds a buoy" in refused.stderr
+    assert "holds no buoys" in refused.stderr
     assert course.suggested(load(SYNC_SENTRY)) in refused.stderr
     assert not out.exists()

@@ -13,6 +13,13 @@ def wrapped_deg(angle_deg: float) -> float:
     return (angle_deg + 180.0) % 360.0 - 180.0
 
 
+def yaw(bearing_deg: float) -> float:
+    """Bearing to a rotation about +Z, in radians: the one negation, as +Z turns to
+    port.
+    """
+    return -math.radians(bearing_deg)
+
+
 def bearing_deg(east: float, north: float) -> float:
     """The compass bearing towards a point `east` and `north`, in (-180, 180]."""
     return math.degrees(math.atan2(east, north))

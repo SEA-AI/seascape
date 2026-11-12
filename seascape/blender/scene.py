@@ -35,7 +35,6 @@ from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes
 
 
-# Blender's camera looks down -Z with +Y up; OpenCV's looks down +Z with +Y down.
 @dataclass(frozen=True)
 class Built:
     """What `build` made, by role, valid until the next build. A name in `bpy.data`

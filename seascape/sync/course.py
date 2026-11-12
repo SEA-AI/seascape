@@ -17,12 +17,10 @@ from seascape import angles
 from seascape.assets import Buoy, Debris, manifest
 from seascape.config import (
     Crop,
-    Object,
     Rig,
     Scenario,
     Stitch,
     Turn,
-    copies,
     sources,
 )
 from seascape.motion import rig_track
@@ -83,15 +81,11 @@ class Course:
     inclination_deg: float | None
     entries: list[dict[str, Any]]
 
-    def objects(self, seed: int) -> list[Object]:
-        """The entries as a scenario seeded `seed` loads them, a buoy each."""
-        return [Object.model_validate(o) for o in copies(self.entries, seed)]
-
 
 def recorded(rig: Rig) -> dict[str, CameraCalibration]:
-    """Each video's camera as the render calibrates it, in the rig's frame: a
-    stitch fused and a crop cropped by the code that records them, or each camera
-    where the rig records them whole.
+    """Each video's camera in the rig's frame, as `stitch.fused` and
+    `CameraCalibration.cropped` make it for the render, or each camera where the rig
+    records them whole.
     """
     cameras = rig.rendered
     found = {}
@@ -119,7 +113,7 @@ def _span(camera: CameraCalibration) -> tuple[float, float, float, float]:
     (fx, _, cx), (_, fy, cy), _ = camera.K
     # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
     x, y, z = np.array(camera.extrinsics["rig"])[:3, 2]
-    bearing, up = math.degrees(math.atan2(x, y)), math.degrees(math.asin(z))
+    bearing, up = angles.bearing_deg(x, y), math.degrees(math.asin(z))
     # Pixel centres sit at integers, so a frame's edges are half a pixel out.
     left, right = (-0.5 - cx, camera.width_px - 0.5 - cx)
     top, bottom = (cy + 0.5, camera.height_px - 0.5 - cy)
@@ -331,7 +325,7 @@ def course(scenario: Scenario) -> Course:
                 "bearing_deg": round(rig.yaw_deg + first_deg, DECIMALS),
                 "count": count,
                 "spacing_deg": step_deg,
-                # Each buoy draws its own.
+                # Each buoy draws one of the colours its asset comes in.
                 "colour": colours,
                 "wear": BUOY_WEAR,
                 # Bow across the line of sight, so its sway runs along it.
