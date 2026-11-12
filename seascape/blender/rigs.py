@@ -20,7 +20,6 @@ from seascape.config import (
     Scenario,
 )
 from seascape.motion import Deck, held_tilt_deg, panned_deg
-from seascape.outputs.calibration import in_rig
 from seascape.physics import fisheye
 
 
@@ -64,7 +63,7 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         camera.parent = rigs[mount.rig_name]
         camera.rotation_mode = "XYZ"
         # A Blender camera looks down its local -Z, OpenCV's down +Z.
-        camera.matrix_basis = Matrix(in_rig(mount.camera)) @ BLENDER_TO_CV
+        camera.matrix_basis = Matrix(mount.camera.pose().tolist()) @ BLENDER_TO_CV
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
 
