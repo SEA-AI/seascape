@@ -89,10 +89,8 @@ CONE_ALPHA = 50
 FRAME_ALPHA = 34
 # Judgement: the bird's-eye view's radius, past the farthest cone by this share.
 REACH = 1.05
-# Judgement: points along each edge of a frame, and how often the turn's sweep is
-# drawn, finer than the frames so a fast slew leaves no gaps.
+# Judgement: points along each edge of a frame.
 EDGE_POINTS = 48
-SWEEP_S = 0.25
 # Judgement: a panorama this wide shows every bearing.
 ALL_ROUND_DEG = 300.0
 # Judgement: the panorama's room past its frames, across and up, the timeline's
@@ -461,8 +459,11 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     tile = _tile(size, "2  Panorama", "outline: at the start  ·  shade: over the turn")
     rig_at = rig_track(course.scenario, course.name)
     heading_deg = math.degrees(rig_at(0.0).heading_rad)
-    sweep = np.arange(0.0, course.scenario.outputs.times_s[-1] + SWEEP_S, SWEEP_S)
-    turned = [math.degrees(rig_at(float(t)).heading_rad) - heading_deg for t in sweep]
+    times = course.scenario.outputs.times_s
+    turned = [math.degrees(rig_at(t).heading_rad) - heading_deg for t in times]
+    # Every frame's bearing, one per whole degree: a frame is wider than a degree,
+    # so the shade has no gaps, and a long hold draws once.
+    sweep = np.unique(np.round(turned)).tolist()
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
@@ -476,7 +477,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         low_b, high_b = -180.0, 180.0
     plot = (RING_LABEL_PX, HEAD_PX, size[0], size[1] - FOOT_PX)
     unrolled = _Unrolled(plot, (low_b, high_b), (low_e, high_e), heading_deg)
-    layer = _frames_layer(size, unrolled, frames, course.colours, turned).crop(plot)
+    layer = _frames_layer(size, unrolled, frames, course.colours, sweep).crop(plot)
     tile.paste(layer, plot[:2], mask=layer)
 
     draw = ImageDraw.Draw(tile)
@@ -549,9 +550,11 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
     )
     draw = ImageDraw.Draw(tile)
 
-    # A course has a turn, so its recording lasts: `times[-1]` is never 0.
+    # Out to the end of the last frame, which a bar on it reaches.
+    span_s = course.scenario.outputs.span_s
+
     def x(t_s: float) -> float:
-        return LEFT_PX + t_s / times[-1] * (INNER_PX - LEFT_PX)
+        return LEFT_PX + t_s / span_s * (INNER_PX - LEFT_PX)
 
     for t in range(0, int(times[-1]) + 1, 10):
         _tick(draw, x(t), HEAD_PX, height - FOOT_PX, f"{t} s")
@@ -564,7 +567,7 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
         for on, run in itertools.groupby(lit):
             n = len(list(run))
             if on:
-                end = times[min(frame + n, len(times) - 1)]
+                end = times[frame + n] if frame + n < len(times) else span_s
                 bar = (x(times[frame]), y + 4 * K, x(end), y + ROW_PX - 6 * K)
                 draw.rounded_rectangle(bar, 6 * K, fill=colour)
             frame += n
