@@ -167,14 +167,18 @@ def _sees_every_ring(seen: Labels, scenario: Scenario, buoy: int) -> None:
 
 
 def _keeps_the_container(seen: Labels, box: int) -> None:
-    whole: dict[int, set[int]] = defaultdict(set)
-    for a in seen.annotations:
-        if not a.truncated:
-            whole[a.image_id].add(a.category_id)
+    images = {i.id: i.camera for i in seen.images}
+    boxes = [a for a in seen.annotations if a.category_id == box and not a.truncated]
+    # The first and last frames look along one bearing, so the container is as wide
+    # in both; one hidden but for a sliver is narrower, as a buoy's is.
+    widest: dict[str, int] = defaultdict(int)
+    for a in boxes:
+        widest[images[a.image_id]] = max(widest[images[a.image_id]], a.bbox[2])
+    whole = {a.image_id for a in boxes if a.bbox[2] >= widest[images[a.image_id]] - 1}
     frames: dict[str, list[int]] = defaultdict(list)
     for image in sorted(seen.images, key=lambda i: i.time_s):
         frames[image.camera].append(image.id)
     for video, ids in frames.items():
         for end, i in (("first", ids[0]), ("last", ids[-1])):
-            if box not in whole[i]:
+            if i not in whole:
                 raise ValueError(f"{video} misses the container in its {end} frame")

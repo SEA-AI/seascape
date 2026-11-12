@@ -284,6 +284,14 @@ def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
             lambda near: ([*BOXED, (BUOY, near, False, 6)], []),
             "mast_T1 misses the container in its last frame",
         ),
+        (
+            # Hidden but for a sliver in the last frame.
+            lambda near: (
+                [*BOXED, (BUOY, near, False, 6)],
+                [(BOX, 300.0, False, 40, 4)],
+            ),
+            "mast_T1 misses the container in its last frame",
+        ),
     ],
 )
 def test_a_video_that_misses_a_ring_or_the_container_fails(
