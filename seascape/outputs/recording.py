@@ -55,7 +55,7 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
-# Core-Backend's `proc_ptu_mode` (ParameterServer): collision avoidance while a ptu
+# Oceanus's `proc_ptu_mode`: collision avoidance while a ptu
 # turns, else manual, as a replay reads a recording without the column. It has no 0.
 MANUAL_MODE, COLAV_MODE = 1, 3
 # The recording's signs against seascape's, per file: -1 counts down or to port.

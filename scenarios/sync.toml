@@ -15,8 +15,8 @@ cameras.ir = { preset = "ir_vga_24deg" }
 [ownship]
 yaw = { amplitude_deg = 0.76, period_s = 8.0 }
 
-# 6 deg/s is the collision-avoidance sweep rate the Confluence page "Sensors
-# Synchronization" assumes. Judgement: reversals at +-60 deg, 3 s holds, and a slew at
+# 6 deg/s is the collision-avoidance sweep rate SEA.AI's internal sync specification
+# assumes. Judgement: reversals at +-60 deg, 3 s holds, and a slew at
 # the product's top rate. A stand-in top rate, which each product sets.
 [turn]
 top_rate_deg_s = 30.0

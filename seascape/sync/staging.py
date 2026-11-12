@@ -35,8 +35,8 @@ BUOY_WEAR = 0.5
 # minute, sideways to the cameras so it changes range more than bearing. Each buoy
 # draws its own period, so they fall out of step.
 BUOY_DRIFT = {"sway_m": 0.5, "surge_m": 0.25, "period_s": {"uniform": [45.0, 75.0]}}
-# The smallest box a pair's coarser video is assumed to detect (Confluence, Sensors
-# Synchronization).
+# The smallest box a pair's coarser video is assumed to detect (SEA.AI's internal sync
+# specification).
 BUOY_PX = 6.0
 # Judgement: the share of the narrowest video the container spans.
 CONTAINER_FILL = 1.0 / 3.0
@@ -70,7 +70,7 @@ class Ring:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class Layout:
+class Staging:
     """The course's `[[objects]]` entries, a ring of buoys each, and the inclination
     its pan-tilt unit holds, if any.
     """
@@ -279,7 +279,7 @@ def _inclination_deg(rig: Rig, near_m: float) -> float | None:
     return None
 
 
-def layout(scenario: Scenario) -> Layout:
+def stage(scenario: Scenario) -> Staging:
     """The course for `scenario`'s one rig and its turn: a container at the bow, and
     a ring of buoys round the ownship for each video that is the coarser of a pair,
     spaced within a camera's span so each camera they record passes one, staggered
@@ -360,7 +360,7 @@ def layout(scenario: Scenario) -> Layout:
                 "drift": BUOY_DRIFT,
             }
         )
-    return Layout(inclination_deg=inclination_deg, entries=entries)
+    return Staging(inclination_deg=inclination_deg, entries=entries)
 
 
 def suggested(scenario: Scenario) -> str:
@@ -371,7 +371,7 @@ def suggested(scenario: Scenario) -> str:
         ValueError: No course fits the rig, and the setting to change.
     """
     name, _, _ = one_rig(scenario)
-    placed = layout(scenario)
+    placed = stage(scenario)
     toml = objects_toml(placed.entries)
     if placed.inclination_deg is None:
         return toml

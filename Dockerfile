@@ -1,14 +1,19 @@
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-# The X and GL libraries the bpy wheel links, even headless.
+# The X and GL libraries the bpy wheel links, even headless; the GPU compositor
+# opens EGL.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libgl1 libsm6 libx11-6 libxfixes3 libxi6 libxkbcommon0 libxrender1 libxxf86vm1 \
+        libegl1 libgl1 libsm6 libx11-6 libxfixes3 libxi6 libxkbcommon0 libxrender1 libxxf86vm1 \
     && rm -rf /var/lib/apt/lists/*
 
 # graphics mounts libnvoptix and libnvidia-rtcore; without them OptiX is far slower.
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
     UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+
+# OptiX caches the kernels it compiles on a first render in /var/tmp, which a
+# container loses; the cache volume keeps them.
+ENV OPTIX_CACHE_PATH=/root/.cache/seascape/optix
 
 WORKDIR /seascape
 COPY pyproject.toml uv.lock ./
