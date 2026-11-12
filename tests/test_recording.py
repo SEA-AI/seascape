@@ -182,7 +182,7 @@ def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
         table_rows = list(csv.DictReader(f))
 
     for row in table_rows:
-        # Core-Backend's manual mode, at no scan speed.
+        # Oceanus's manual mode, at no scan speed.
         assert float(row["proc_ptu_mode"]) == 1
         assert float(row["proc_colav_speed"]) == 0.0
 
@@ -213,7 +213,7 @@ def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
         assert float(row["yaw"]) - pan == pytest.approx(
             hull_deg + MOUNT_YAW_DEG, abs=0.2
         )
-        # Core-Backend's collision avoidance mode.
+        # Oceanus's collision avoidance mode.
         assert float(row["proc_ptu_mode"]) == 3
         assert float(row["proc_colav_speed"]) == pytest.approx(
             recorded_deg_s / 360.0, abs=1e-6
@@ -381,7 +381,7 @@ def test_a_rig_without_a_model_writes_nothing(run: Path) -> None:
 
 
 def _core_rotation(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    """Core-Backend's `rotation_matrix(..., roll_axis="x")`: Rz @ Ry @ Rx, radians."""
+    """Oceanus's rotation order, Rz @ Ry @ Rx, in radians."""
     c, s = np.cos([roll, pitch, yaw]), np.sin([roll, pitch, yaw])
     about_x = np.array([[1, 0, 0], [0, c[0], -s[0]], [0, s[0], c[0]]])
     about_y = np.array([[c[1], 0, s[1]], [0, 1, 0], [-s[1], 0, c[1]]])
@@ -392,8 +392,8 @@ def _core_rotation(roll: float, pitch: float, yaw: float) -> np.ndarray:
 def _core_imu_horizon(
     row: dict, sensor: dict, x: np.ndarray, dip: float = 0.0
 ) -> np.ndarray:
-    """Core-Backend's IMU horizon, ported: the CSV's roll and pitch with its yaw
-    zeroed, turned by the camera's rpy, and projected. Core leaves out the horizon's
+    """Oceanus's horizon from the IMU, ported: the CSV's roll and pitch with its yaw
+    zeroed, turned by the camera's rpy, and projected. Oceanus leaves out the horizon's
     `dip`, which reads as the camera pitched up by it.
     """
     imu = _core_rotation(

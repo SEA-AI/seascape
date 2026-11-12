@@ -420,7 +420,7 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
-# Core-Backend's `boat_setup.target_inclination`, bounded there.
+# Oceanus's target inclination, bounded there.
 PTU_INCLINATION_DEG = (-20.0, 20.0)
 
 

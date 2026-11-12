@@ -10,7 +10,7 @@ from seascape.config import Camera
 from seascape.outputs import stitch
 from seascape.outputs.calibration import CameraCalibration
 
-# Core-Backend's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
+# Oceanus's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
 HALF_TURN = np.diag([-1.0, -1.0, 1.0])
 
 
@@ -33,7 +33,7 @@ def camera(
 
 
 def core(rpy_deg: tuple[float, float, float]) -> np.ndarray:
-    """A camera's turn from Core-Backend's roll, pitch and yaw, Ry Rx Rz."""
+    """A camera's turn from Oceanus's roll, pitch and yaw, Ry Rx Rz."""
     roll, pitch, yaw = map(math.radians, rpy_deg)
     c, s = math.cos, math.sin
     rx = np.array([[1, 0, 0], [0, c(pitch), -s(pitch)], [0, s(pitch), c(pitch)]])
