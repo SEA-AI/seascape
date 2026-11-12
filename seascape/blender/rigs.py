@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 import bpy
 import numpy as np
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
 
 from seascape.blender.blend import (
     BLENDER_TO_CV,
@@ -97,11 +97,13 @@ def _hold(
     times_s: Sequence[float],
 ) -> None:
     # Each frame's euler nearest the last, so a pan past the stern keys no spin back.
-    eulers = {}
-    last = None
+    eulers: dict[float, Euler] = {}
+    last: Euler | None = None
     for t_s, tilt in zip(times_s, tilt_deg, strict=True):
         turn = Matrix(rig.pose(pan_deg(t_s), float(tilt))[:3, :3].tolist())
-        last = eulers[t_s] = turn.to_euler("XYZ", last) if last else turn.to_euler()
+        last = turn.to_euler("XYZ") if last is None else turn.to_euler("XYZ", last)
+        eulers[t_s] = last
+    # A pitch then a turn leave no Y.
     animate(head, "rotation_euler", times_s, lambda t: eulers[t][0], 0)
     animate(head, "rotation_euler", times_s, lambda t: eulers[t][2], 2)
 

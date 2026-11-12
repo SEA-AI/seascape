@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from seascape import motion
+from seascape import angles, motion
 from seascape.config import Drift, Move, Outputs, Ownship, Turn, load
 from tests.scenarios import OPEN_SEA
 
@@ -257,4 +257,6 @@ def test_a_head_s_elevation_is_its_boresight_through_the_tilted_deck(
     # Bow up 3, starboard down 5.
     ownship = Ownship(pitch_deg=3.0, roll_deg=5.0)
     deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
-    assert motion.elevation_deg(deck(0.0), pan_deg, up_deg) == pytest.approx(expected)
+    assert motion.elevation_deg(
+        deck(0.0), angles.direction(pan_deg, up_deg)
+    ) == pytest.approx(expected)

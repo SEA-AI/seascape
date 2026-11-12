@@ -120,7 +120,7 @@ def _span(camera: CameraCalibration) -> tuple[float, float]:
 
 def _edges(camera: CameraCalibration) -> np.ndarray:
     """(2, 3) unit rays through the middle of `camera`'s top and bottom edges, in its
-    rig's frame unpitched.
+    rig's frame.
     """
     _, (_, fy, cy), _ = camera.K
     # OpenCV's +Y is down; pixel centres sit at integers.
@@ -130,14 +130,17 @@ def _edges(camera: CameraCalibration) -> np.ndarray:
 
 
 def _pitch_deg(ray: np.ndarray, elevation_deg: float) -> float:
-    """The rig pitch that raises `ray`, a unit (3,) in the rig's frame unpitched, to
+    """The rig pitch that raises `ray`, a unit (3,) in the rig's frame, to
     `elevation_deg`: the pitch turns its (y, z) in their plane, so an off-axis ray
     climbs less than the pitch.
 
     Raises:
-        ValueError: No pitch reaches it.
+        ValueError: No pitch reaches it, or the ray faces aft of the beam.
     """
     _, y, z = ray
+    # Past the beam a pitch lowers the ray, and asin's branch no longer holds.
+    if y <= 0.0:
+        raise ValueError("a camera facing aft of its rig's beam has no course pitch")
     sine = math.sin(math.radians(elevation_deg)) / math.hypot(y, z)
     if abs(sine) > 1.0:
         raise ValueError(f"no rig pitch raises a ray to {elevation_deg:.1f} deg")
