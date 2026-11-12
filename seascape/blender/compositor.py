@@ -3,6 +3,7 @@
 import ctypes.util
 import math
 import sys
+import warnings
 
 import bpy
 import numpy as np
@@ -121,6 +122,13 @@ def set_output(
     # The GPU compositor is the faster. On Linux it opens EGL, and without libEGL it
     # aborts the render, which no caller can catch.
     egl = sys.platform != "linux" or ctypes.util.find_library("EGL") is not None
+    if device == "GPU" and not egl:
+        warnings.warn(
+            "no libEGL.so.1, so the compositor runs on the CPU, about 3x slower an EO "
+            "frame; install libegl1 (Debian, Ubuntu) to put it on the GPU",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     sc.render.compositor_device = device if egl else "CPU"
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True

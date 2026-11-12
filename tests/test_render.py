@@ -16,7 +16,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from seascape import render
-from seascape.blender import blend, scene, sea
+from seascape.blender import blend, compositor, scene, sea
 from seascape.blender.compositor import (
     FORMATS,
     JPEG_QUALITY,
@@ -164,6 +164,18 @@ def test_a_microbolometer_integrates_over_its_pixel(
 
 
 @pytest.mark.usefixtures("empty_blend")
+def test_a_linux_gpu_without_egl_composites_on_the_cpu_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(compositor, "enable_gpu", lambda: "CUDA")
+    monkeypatch.setattr(compositor.sys, "platform", "linux")
+    monkeypatch.setattr(compositor.ctypes.util, "find_library", lambda _: None)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    with pytest.warns(RuntimeWarning, match="libEGL"):
+        set_output(load(OPEN_SEA).outputs, "eo", 16)
+    assert bpy.context.scene.render.compositor_device == "CPU"
+
+
 def test_a_switch_set_off_is_muted() -> None:
     _compositor(0.0, True)
     mount = load(OPEN_SEA).band_mounts("eo")[0]
