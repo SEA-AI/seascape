@@ -109,19 +109,21 @@ def _vessel(
         name: The asset, a key of `assets.toml`.
         condition: How the hull is kept and run; in LWIR, what its skins radiate.
         hulls: Where an asset already imported is copied from.
-        rise_m: Lift above the asset's draught; the LWIR skin's waterline follows
-            it.
+        rise_m: Lift above the asset's draught; the LWIR skin's waterline and the
+            wear's follow it.
     """
     heat = hulls.heat
     parts = _parts(name, hulls)
+    for mesh in mesh_objects(parts):
+        # Where the skin and the wear find the water. Set on every hull: a copy
+        # inherits it.
+        mesh["rise_m"] = rise_m
     if heat is not None:
         heat = heat._replace(env=heat.env.stopped(condition.engine_off_min * 60.0))
         t_k = condition.t_k
         uniform = None if t_k is None else thermal_skin(f"{name}_ir", t_k, hulls.sky)
         worn_on = manifest()[name].material if name in hulls.worn else None
         for mesh in mesh_objects(parts):
-            # Where the skin finds the water. Set on every hull: a copy inherits it.
-            mesh["rise_m"] = rise_m
             for slot, zone in zip(mesh.material_slots, mesh["zones"], strict=True):
                 # Copies share mesh data, and a hull given its own t_k differs.
                 slot.link = "OBJECT"

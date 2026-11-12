@@ -296,7 +296,9 @@ class _Masks:
         self.tree = t = tree
         self.crevice = crevice
         self.position = _attribute(t, "wear_position_m").outputs["Vector"]
-        self.x, self.y, self.z = (Num(t, s) for s in separate(t, self.position))
+        self.x, self.y, z = (Num(t, s) for s in separate(t, self.position))
+        # Above the water: a copy lifted off its asset's draught meets it lower.
+        self.z = z + Num(t, _attribute(t, "rise_m", "OBJECT").outputs["Factor"])
         normal = _attribute(t, "wear_normal").outputs["Vector"]
         self.nx, self.ny, self.up = (Num(t, s) for s in separate(t, normal))
         self.below, self.length, self.steel, self.still, stain = (
