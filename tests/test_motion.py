@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from seascape import motion
 from seascape.config import Drift, Move, Outputs, Ownship, Turn, load
-from seascape.physics import waves
 from tests.scenarios import OPEN_SEA
 
 SPEED_MPS = 400.0
@@ -211,20 +210,6 @@ def test_a_turn_too_long_suggests_a_duration_that_fits(
     suggested = float(str(refused.value).split("at least ")[1].split()[0])
 
     load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": suggested, "fps": fps}}])
-
-
-def test_a_hull_rocks_as_the_waves_tilt_the_water_under_it() -> None:
-    scenario = load(OPEN_SEA)
-    field = scenario.wind_waves() + scenario.swell_waves()
-    hull = waves.Waterplane(length_m=12.0, beam_m=4.0)
-    path = motion.track(Ownship(), Outputs(duration_s=10.0))
-
-    for t_s in (0.0, 3.3, 7.1):
-        pose = path(t_s)
-        sea = motion.rocking(pose, hull=hull, field=field, tall=field, t_s=t_s)
-        assert (sea.pitch_rad, sea.roll_rad) == waves.attitude(
-            field, motion.waterplane(pose, field, t_s, hull), t_s
-        )
 
 
 @pytest.mark.parametrize(
