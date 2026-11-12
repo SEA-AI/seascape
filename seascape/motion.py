@@ -162,8 +162,8 @@ def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
     """The axis of the rig `name` at a time, clockwise from the bow: its yaw and its
     pan.
     """
-    yaw_deg, panned = scenario.rigs[name].yaw_deg, panned_deg(scenario.turn, name)
-    return lambda t_s: yaw_deg + panned(t_s)
+    rig, panned = scenario.rigs[name], panned_deg(scenario.turn, name)
+    return lambda t_s: rig.axis_deg(panned(t_s))
 
 
 def rig_track(scenario: Scenario, name: str) -> Path:
@@ -369,16 +369,12 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
         """The head's axis on the deck."""
         return rig.pose(pan(t_s), tilt_deg)[:3, 1]
 
-    def level(t_s: float) -> np.ndarray:
-        """The head's axis on the deck, pitched level."""
-        return rig.pose(pan(t_s), -rig.pitch_deg)[:3, 1]
-
     times = scenario.outputs.times_s
     for t_s in times:
         # Past the zenith, the head's horizontal part turns against its bearing; the
         # deck turns no heading, so the bearing on a level deck is the reference.
         tipped = deck(t_s) @ head(t_s)
-        if tipped[:2] @ level(t_s)[:2] < 0.0:
+        if tipped[:2] @ head(t_s, -rig.pitch_deg)[:2] < 0.0:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
                 "ptu past the zenith: lower the ownship's pitch, the sea or pitch_deg"
@@ -387,7 +383,7 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
         # the world's up projects onto that plane with length `reach`, the sine of
         # the steepest elevation any tilt gives.
         up = deck(t_s)[2]
-        reach = math.hypot(up @ level(t_s), up[2])
+        reach = math.hypot(up @ head(t_s, -rig.pitch_deg), up[2])
         if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "

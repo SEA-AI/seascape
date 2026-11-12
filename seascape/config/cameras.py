@@ -468,13 +468,19 @@ class Rig(Model):
         "ignores it.",
     )
 
+    def axis_deg(self, pan_deg: float = 0.0) -> float:
+        """Its axis clockwise from the bow, panned `pan_deg`: unwrapped, so a turn's
+        sweep reads off the difference of two.
+        """
+        return self.yaw_deg + pan_deg
+
     def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
         """(4, 4) the rig to its vessel (+X starboard, +Y bow, +Z up, at the waterline
         under midships): at its mount, yawed and panned, then pitched and tilted
         about its own transverse axis, so a pitched rig rolls its off-axis cameras.
         """
         pose = np.eye(4)
-        pose[:3, :3] = angles.turned(self.yaw_deg + pan_deg, self.pitch_deg + tilt_deg)
+        pose[:3, :3] = angles.turned(self.axis_deg(pan_deg), self.pitch_deg + tilt_deg)
         pose[:3, 3] = self.offset_x_m, self.offset_y_m, self.height_m
         return pose
 

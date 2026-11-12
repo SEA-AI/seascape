@@ -400,4 +400,5 @@ def test_a_pan_past_the_stern_keys_no_spin_back() -> None:
     for frame in range(len(times)):
         bpy.context.scene.frame_set(frame)
         yaws.append(head.rotation_euler[2])
+    # Each frame pans 10 deg; a spin back steps about 340.
     assert max(abs(b - a) for a, b in itertools.pairwise(yaws)) < math.radians(15.0)

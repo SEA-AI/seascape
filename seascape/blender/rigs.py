@@ -103,9 +103,7 @@ def _hold(
         turn = Matrix(rig.pose(pan_deg(t_s), float(tilt))[:3, :3].tolist())
         last = turn.to_euler("XYZ") if last is None else turn.to_euler("XYZ", last)
         eulers[t_s] = last
-    # A pitch then a turn leave no Y.
-    animate(head, "rotation_euler", times_s, lambda t: eulers[t][0], 0)
-    animate(head, "rotation_euler", times_s, lambda t: eulers[t][2], 2)
+    animate(head, "rotation_euler", times_s, lambda t: tuple(eulers[t]))
 
 
 class View(NamedTuple):

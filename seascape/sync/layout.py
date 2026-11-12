@@ -267,9 +267,14 @@ def _inclination_deg(rig: Rig, near_m: float) -> float | None:
         ValueError: No pitch does, or a fixed mount's is not one.
     """
     low_deg = elevation_deg(rig, near_m) - MARGIN_DEG
-    edges = [_edges(camera) for camera in recorded(rig).values()]
-    least = max(_pitch_deg(top, MARGIN_DEG) for top, _ in edges)
-    most = min(_pitch_deg(bottom, low_deg) for _, bottom in edges)
+    least, most = -math.inf, math.inf
+    for name, camera in recorded(rig).items():
+        top, bottom = _edges(camera)
+        try:
+            least = max(least, _pitch_deg(top, MARGIN_DEG))
+            most = min(most, _pitch_deg(bottom, low_deg))
+        except ValueError as err:
+            raise ValueError(f"video {name}: {err}") from err
     # The stored pitch is rounded, so it is the rounded one that must fit.
     pitch_deg = round((least + most) / 2, DECIMALS)
     if not least <= pitch_deg <= most:
