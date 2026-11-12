@@ -137,24 +137,6 @@ def _edges(camera: CameraCalibration) -> np.ndarray:
     return rays / np.linalg.norm(rays, axis=1, keepdims=True)
 
 
-def _pitch_deg(ray: np.ndarray, elevation_deg: float) -> float:
-    """The rig pitch that raises `ray`, a unit (3,) in the rig's frame, to
-    `elevation_deg`: the pitch turns its (y, z) in their plane, so an off-axis ray
-    climbs less than the pitch.
-
-    Raises:
-        ValueError: No pitch reaches it, or the ray faces aft of the beam.
-    """
-    _, y, z = ray
-    # Past the beam a pitch lowers the ray, and asin's branch no longer holds.
-    if y <= 0.0:
-        raise ValueError("a camera facing aft of its rig's beam has no course pitch")
-    sine = math.sin(math.radians(elevation_deg)) / math.hypot(y, z)
-    if abs(sine) > 1.0:
-        raise ValueError(f"no rig pitch raises a ray to {elevation_deg:.1f} deg")
-    return math.degrees(math.asin(sine) - math.atan2(z, y))
-
-
 def views(rig: Rig) -> list[View]:
     """Each video, or each camera where the rig records them whole."""
     found = []
@@ -272,8 +254,8 @@ def _inclination_deg(rig: Rig, near_m: float) -> float | None:
     for name, camera in recorded(rig).items():
         top, bottom = _edges(camera)
         try:
-            least = max(least, _pitch_deg(top, MARGIN_DEG))
-            most = min(most, _pitch_deg(bottom, low_deg))
+            least = max(least, angles.pitch_to_deg(top, MARGIN_DEG))
+            most = min(most, angles.pitch_to_deg(bottom, low_deg))
         except ValueError as err:
             raise ValueError(f"video {name}: {err}") from err
     if rig.ptu is not None:
@@ -327,7 +309,7 @@ def layout(scenario: Scenario) -> Layout:
     box = asset(CONTAINER, Debris)
     box_m = box.length_m * narrow.focal_px / (CONTAINER_FILL * narrow.width_px)
     # Limitation: every video must hold it, so only a rig that looks forward fits.
-    middle = math.radians(rig.yaw_deg + (narrow.left_deg + narrow.right_deg) / 2)
+    middle = math.radians(rig.axis_deg((narrow.left_deg + narrow.right_deg) / 2))
     east = start.east_m + box_m * math.sin(middle)
     north = start.north_m + box_m * math.cos(middle)
     # Broadside to the line of sight from the origin.
@@ -366,7 +348,7 @@ def layout(scenario: Scenario) -> Layout:
             {
                 "asset": BUOY,
                 "range_m": stored_m(ring, rig),
-                "bearing_deg": round(rig.yaw_deg + first_deg, DECIMALS),
+                "bearing_deg": round(rig.axis_deg(first_deg), DECIMALS),
                 "count": count,
                 "spacing_deg": step_deg,
                 # Each buoy draws one of the colours its asset comes in.

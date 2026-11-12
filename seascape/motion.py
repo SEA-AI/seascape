@@ -7,6 +7,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from seascape import angles
 from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
 from seascape.physics import ptu, slew, waves
@@ -347,8 +348,7 @@ def elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
     """The elevation in the world of `toward`, a unit (3,) in the deck's frame, on a
     deck tilted `deck`, (3, 3) deck to world.
     """
-    up = float(deck[2] @ toward)
-    return math.degrees(math.asin(max(-1.0, min(1.0, up))))
+    return float(angles.elevation_deg(deck[2] @ toward))
 
 
 def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:

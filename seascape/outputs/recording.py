@@ -16,10 +16,10 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
-from seascape.angles import wrapped_deg
+from seascape.angles import TO_CV, attitude_deg, wrapped_deg
 from seascape.config import Crop, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
-from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration
 
 COLUMNS = [
     "counter",
@@ -60,26 +60,18 @@ _VIDEO = TypeAdapter(Video)
 MANUAL_MODE, COLAV_MODE = 1, 3
 
 
-def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
-    """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
-    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180).
-    """
-    x, y, z = body_to_frame[:3, :3].T
-    roll = math.atan2(-x[2], z[2])
-    pitch = math.asin(max(-1.0, min(1.0, y[2])))
-    yaw = math.atan2(y[0], y[1])
-    # Rounded to the CSV's precision first, so float32 noise at 180 cannot wrap.
-    return (
-        math.degrees(roll),
-        math.degrees(pitch),
-        wrapped_deg(round(math.degrees(yaw), 6)),
-    )
-
-
 def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
     """The named frame's own axes in world: camera-to-world after frame-to-camera."""
     world = np.array(camera.extrinsics["world"])
     return world @ np.linalg.inv(np.array(camera.extrinsics[frame]))
+
+
+def _attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+    """`angles.attitude_deg`, its yaw rounded to the CSV's precision first, so float32
+    noise at 180 cannot wrap.
+    """
+    roll, pitch, yaw = attitude_deg(body_to_frame)
+    return roll, pitch, wrapped_deg(round(yaw, 6))
 
 
 def _row(
@@ -89,11 +81,11 @@ def _row(
     rig: dict[str, Any],
     scan_deg_s: float | None,
 ) -> dict:
-    roll, pitch, yaw = attitude_deg(_to(camera, "rig"))
+    roll, pitch, yaw = _attitude_deg(_to(camera, "rig"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
-    bb_roll, bb_pitch, bb_yaw = np.radians(attitude_deg(_to(camera, "vessel")))
-    # Rounded first, as in attitude_deg.
+    bb_roll, bb_pitch, bb_yaw = np.radians(_attitude_deg(_to(camera, "vessel")))
+    # Rounded first, as in _attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
     row = dict.fromkeys(COLUMNS, 0.0)
     row["proc_ptu_mode"] = MANUAL_MODE
@@ -102,7 +94,7 @@ def _row(
         # The head on the deck, past its mount: pan to port, tilt nose down as the
         # IMU's pitch (Core-Backend's `ptu_rotation`).
         on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
-        _, tilt, pan = attitude_deg(on_deck)
+        _, tilt, pan = _attitude_deg(on_deck)
         row["pan"] = wrapped_deg(rig["yaw_deg"] - pan)
         row["tilt"] = rig["pitch_deg"] - tilt
         if scan_deg_s is not None:
@@ -138,7 +130,7 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
-    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ TO_CV)
+    roll, pitch, yaw = _attitude_deg(rig[:3, :3] @ TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw

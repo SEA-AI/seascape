@@ -7,7 +7,8 @@ import math
 import cv2
 import numpy as np
 
-from seascape.outputs.calibration import TO_CV, CameraCalibration
+from seascape import angles
+from seascape.outputs.calibration import CameraCalibration
 
 
 def _turn(camera: CameraCalibration) -> np.ndarray:
@@ -39,7 +40,7 @@ def fused(
     # Each optical axis's elevation over the rig's horizontal.
     pitch = np.mean([math.asin(_turn(c)[2, 2]) for c in (left, right)])
     c, s = math.cos(pitch), math.sin(pitch)
-    turn = np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]) @ TO_CV.T
+    turn = np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]) @ angles.TO_CV.T
     at = (np.array(left.extrinsics["rig"]) + np.array(right.extrinsics["rig"])) / 2
     rig = np.eye(4)
     rig[:3, :3], rig[:3, 3] = turn, at[:3, 3]

@@ -387,9 +387,9 @@ def _in_frame(uv) -> bool:
     return 0.0 <= uv.x <= 1.0 and 0.0 <= uv.y <= 1.0 and uv.z > 0.0
 
 
-@pytest.mark.usefixtures("empty_blend")
 def test_a_pan_past_the_stern_keys_no_spin_back() -> None:
     """A pan from 170 to 190 deg turns 20 deg, not 340 the other way round."""
+    # Beside the module's built scene, which the other tests share.
     head = bpy.data.objects.new("head", None)
     bpy.context.scene.collection.objects.link(head)
     rig = next(iter(two_rigs().rigs.values()))
@@ -400,5 +400,7 @@ def test_a_pan_past_the_stern_keys_no_spin_back() -> None:
     for frame in range(len(times)):
         bpy.context.scene.frame_set(frame)
         yaws.append(head.rotation_euler[2])
+    bpy.context.scene.frame_set(0)
+    bpy.data.objects.remove(head)
     # Each frame pans 10 deg; a spin back steps about 340.
     assert max(abs(b - a) for a, b in itertools.pairwise(yaws)) < math.radians(15.0)

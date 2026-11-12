@@ -320,6 +320,14 @@ class Camera(Model):
             return self.fisheye_focal_px
         return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
 
+    def pose(self) -> np.ndarray:
+        """(4, 4) the camera to its rig, in OpenCV's axes: yawed, then pitched about
+        its own transverse axis, at the rig's origin.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.yaw_deg, self.pitch_deg) @ angles.TO_CV.T
+        return pose
+
     @property
     def fisheye_focal_px(self) -> float:
         """A fisheye's `fx`, the scale of its distorted angle in pixels."""
@@ -471,11 +479,12 @@ class Rig(Model):
         "ignores it.",
     )
 
-    def axis_deg(self, pan_deg: float = 0.0) -> float:
-        """Its axis clockwise from the bow, panned `pan_deg`: unwrapped, so a turn's
-        sweep reads off the difference of two.
+    def axis_deg(self, off_deg: float = 0.0) -> float:
+        """The bearing `off_deg` clockwise of its axis, from the bow: a pan, or a
+        camera's or a buoy's bearing off the axis. Unwrapped, so a turn's sweep reads
+        off the difference of two.
         """
-        return self.yaw_deg + pan_deg
+        return self.yaw_deg + off_deg
 
     def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
         """(4, 4) the rig to its vessel (+X starboard, +Y bow, +Z up, at the waterline
@@ -553,4 +562,4 @@ class Mount(NamedTuple):
         an off-axis camera points elsewhere. `rigs.boresight_deg` measures the
         built camera.
         """
-        return self.rig.yaw_deg + self.camera.yaw_deg
+        return self.rig.axis_deg(self.camera.yaw_deg)

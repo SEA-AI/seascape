@@ -8,6 +8,7 @@ import bpy
 import numpy as np
 from mathutils import Euler, Matrix, Vector
 
+from seascape import angles
 from seascape.blender.blend import (
     BLENDER_TO_CV,
     animate,
@@ -20,7 +21,6 @@ from seascape.config import (
     Scenario,
 )
 from seascape.motion import Deck, held_tilt_deg, panned_deg
-from seascape.outputs.calibration import in_rig
 from seascape.physics import fisheye
 
 
@@ -64,7 +64,7 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         camera.parent = rigs[mount.rig_name]
         camera.rotation_mode = "XYZ"
         # A Blender camera looks down its local -Z, OpenCV's down +Z.
-        camera.matrix_basis = Matrix(in_rig(mount.camera)) @ BLENDER_TO_CV
+        camera.matrix_basis = Matrix(mount.camera.pose().tolist()) @ BLENDER_TO_CV
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
 
@@ -147,7 +147,6 @@ def boresight_deg(camera: bpy.types.Object) -> tuple[float, float]:
     """
     forward = camera.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))
     forward.normalize()
-    return (
-        math.degrees(math.atan2(forward.x, forward.y)),
-        math.degrees(math.asin(min(1.0, max(-1.0, forward.z)))),
+    return angles.bearing_deg(forward.x, forward.y), float(
+        angles.elevation_deg(forward.z)
     )

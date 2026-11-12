@@ -1,5 +1,7 @@
 """Compass angles."""
 
+import math
+
 import numpy as np
 import pytest
 
@@ -36,3 +38,19 @@ def test_a_turn_takes_ahead_to_its_direction_and_keeps_starboard_level(
         turn[:, 1], angles.direction(bearing_deg, elevation_deg), atol=1e-12
     )
     assert turn[2, 0] == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.parametrize("pitch_deg", [-10.0, 5.0])
+@pytest.mark.parametrize("bearing_deg", [0.0, 40.0])
+def test_a_pitch_is_found_back_from_the_ray_it_raised(
+    pitch_deg: float, bearing_deg: float
+) -> None:
+    """Round trip through `turned`: an off-axis ray climbs less than the pitch."""
+    ray = angles.direction(bearing_deg, 0.0)
+    raised = angles.turned(0.0, pitch_deg) @ ray
+    climbed = math.degrees(math.asin(raised[2]))
+    assert angles.pitch_to_deg(ray, climbed) == pytest.approx(pitch_deg)
+
+
+def test_an_elevation_clamps_float_noise_past_the_zenith() -> None:
+    assert angles.elevation_deg(1.0 + 1e-12) == pytest.approx(90.0)

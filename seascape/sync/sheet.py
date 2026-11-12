@@ -17,12 +17,12 @@ import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
-from seascape.angles import bearing_deg, wrapped_deg
+from seascape import angles
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
 from seascape.motion import axis_deg, drifting, held_tilt_deg, panned_deg, rig_track
-from seascape.outputs import brand, canvas, recording
+from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.layout import (
     BUOY,
@@ -155,8 +155,8 @@ def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, floa
         for t, rig in zip(outputs.times_s, seen_from, strict=True):
             pose = path(t)
             east, north = pose.east_m - rig.east_m, pose.north_m - rig.north_m
-            off = bearing_deg(east, north) - math.degrees(rig.heading_rad)
-            found.append((math.hypot(east, north), wrapped_deg(off)))
+            off = angles.bearing_deg(east, north) - math.degrees(rig.heading_rad)
+            found.append((math.hypot(east, north), angles.wrapped_deg(off)))
         return found
 
     return at
@@ -168,7 +168,7 @@ def _behind(box: tuple[float, float], box_m: float, out_m: float, off: float) ->
     """
     near_m, at = box
     reach = half_deg(box_m, near_m) + buoy_half_deg(out_m)
-    return near_m < out_m and abs(wrapped_deg(off - at)) < reach
+    return near_m < out_m and abs(angles.wrapped_deg(off - at)) < reach
 
 
 def _held(course: "_Course") -> dict[tuple[Ring, View], list[bool]]:
@@ -189,7 +189,7 @@ def _held(course: "_Course") -> dict[tuple[Ring, View], list[bool]]:
         for sight in by_ring.get(ring.range_m, []):
             out_m, off = sight[f]
             room = (view.right_deg - view.left_deg) / 2 - buoy_half_deg(out_m)
-            if abs(wrapped_deg(off - middle)) > room:
+            if abs(angles.wrapped_deg(off - middle)) > room:
                 continue
             if not any(_behind(box[f], box_m, out_m, off) for box in boxes):
                 return True
@@ -338,7 +338,7 @@ def _from_above(course: _Course) -> Image.Image:
     edges = [axis + d for v in videos for d in (v.left_deg, v.right_deg)]
     # A course turned past the beam places objects behind the starting bow.
     edges += [axis + course.sight(o)[0][1] for o in course.objects]
-    aft = any(abs(wrapped_deg(e)) > 90.0 for e in edges)
+    aft = any(abs(angles.wrapped_deg(e)) > 90.0 for e in edges)
     tile = _tile((ABOVE_W_PX, TOP_PX), "1  Top view", "grey: seen by two videos")
     # The forward half disc's ring labels go under its base, in two rows.
     foot = 0 if aft else 2 * FONT_PX + 2 * PAD_PX
@@ -443,11 +443,6 @@ def _bearing_deg(rays: np.ndarray, near_deg: float) -> np.ndarray:
     return b - 360.0 * round((b[0] - near_deg) / 360.0)
 
 
-def _elevation_deg(rays: np.ndarray) -> np.ndarray:
-    """Each of (n, 3) unit rays' elevation."""
-    return np.degrees(np.arcsin(rays[:, 2]))
-
-
 @dataclass(frozen=True, slots=True)
 class _Unrolled:
     """The panorama's scale: bearing and elevation, linear in both, onto `plot`."""
@@ -493,7 +488,10 @@ def _frames_layer(
         swept = Image.new("L", size, 0)
         sweeping = ImageDraw.Draw(swept)
         for rays in edges:
-            b, e = _bearing_deg(rays, unrolled.near_deg), _elevation_deg(rays)
+            b, e = (
+                _bearing_deg(rays, unrolled.near_deg),
+                angles.elevation_deg(rays[:, 2]),
+            )
             for wrap in (-360.0, 0.0, 360.0):
                 for d in sweep_deg:
                     sweeping.polygon(unrolled.polygon(b + d + wrap, e), fill=255)
@@ -512,7 +510,7 @@ def _axes(draw: ImageDraw.ImageDraw, unrolled: _Unrolled) -> None:
     low_b, high_b = unrolled.bearing_deg
     step = 45 if high_b - low_b >= ALL_ROUND_DEG else 30
     for b in range(math.ceil(low_b / step) * step, math.floor(high_b) + 1, step):
-        label = round(wrapped_deg(b)) if abs(b) > 180 else b
+        label = round(angles.wrapped_deg(b)) if abs(b) > 180 else b
         _tick(draw, unrolled.xy(b, 0.0)[0], y0, y1, f"{label:+d}°")
     _, horizon = unrolled.xy(0.0, 0.0)
     draw.line([(x0, horizon), (x1, horizon)], fill=INK, width=K)
@@ -540,7 +538,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     sweep = [float(d) for d in range(round(min(turned)), round(max(turned)) + 1)]
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
-    elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
+    elevations = np.concatenate([angles.elevation_deg(rays[:, 2]) for rays in edges])
     # The posed cameras ride `rise_m` above the rig's height, and so do these.
     rise_m = course.scenario.ownship.rise_m
 
@@ -606,7 +604,7 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     times = course.scenario.outputs.times_s
     heading = np.unwrap([posed.path(t).heading_rad for t in times])
     # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
-    roll, pitch, _ = np.array([recording.attitude_deg(posed.deck(t)) for t in times]).T
+    roll, pitch, _ = np.array([angles.attitude_deg(posed.deck(t)) for t in times]).T
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)

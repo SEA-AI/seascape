@@ -10,7 +10,7 @@ from typing import cast
 import numpy as np
 from pydantic import ConfigDict, Field
 
-from seascape import angles, atomic
+from seascape import atomic
 from seascape.config import Camera, Crop
 from seascape.model import Model
 from seascape.physics import fisheye
@@ -21,18 +21,6 @@ type Row3 = tuple[float, float, float]
 type Row4 = tuple[float, float, float, float]
 type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
-
-# A +X right, +Y ahead, +Z up frame's axes as OpenCV's: +X right, +Y down, +Z ahead.
-TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
-
-
-def in_rig(camera: Camera) -> Matrix4:
-    """`camera` to its rig, in OpenCV's axes: yawed, then pitched about its own
-    transverse axis, at the rig's origin.
-    """
-    pose = np.eye(4)
-    pose[:3, :3] = angles.turned(camera.yaw_deg, camera.pitch_deg) @ TO_CV.T
-    return cast(Matrix4, tuple(map(tuple, pose.tolist())))
 
 
 def intrinsics(camera: Camera) -> Matrix3:
@@ -103,6 +91,7 @@ class CameraCalibration(_Record):
         """`camera` as a render of rig `rig` calibrates it, in that rig's frame
         only: what a video's footprint needs before anything is built.
         """
+        pose = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))
         return cls(
             name=name,
             band=camera.band,
@@ -112,7 +101,7 @@ class CameraCalibration(_Record):
             height_px=camera.height_px,
             K=intrinsics(camera),
             distortion=camera.lens.fisheye,
-            extrinsics={"rig": in_rig(camera)},
+            extrinsics={"rig": pose},
         )
 
     def cropped(self, crop: Crop) -> "CameraCalibration":

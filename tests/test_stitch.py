@@ -5,9 +5,10 @@ import math
 import numpy as np
 import pytest
 
+from seascape import angles
 from seascape.config import Camera
 from seascape.outputs import stitch
-from seascape.outputs.calibration import TO_CV, CameraCalibration, in_rig
+from seascape.outputs.calibration import CameraCalibration
 
 # Core-Backend's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
 HALF_TURN = np.diag([-1.0, -1.0, 1.0])
@@ -38,7 +39,7 @@ def core(rpy_deg: tuple[float, float, float]) -> np.ndarray:
     rx = np.array([[1, 0, 0], [0, c(pitch), -s(pitch)], [0, s(pitch), c(pitch)]])
     ry = np.array([[c(yaw), 0, s(yaw)], [0, 1, 0], [-s(yaw), 0, c(yaw)]])
     rz = np.array([[c(roll), -s(roll), 0], [s(roll), c(roll), 0], [0, 0, 1]])
-    return TO_CV.T @ HALF_TURN @ ry @ rx @ rz @ HALF_TURN
+    return angles.TO_CV.T @ HALF_TURN @ ry @ rx @ rz @ HALF_TURN
 
 
 def toward(yaw_deg: float) -> np.ndarray:
@@ -48,7 +49,7 @@ def toward(yaw_deg: float) -> np.ndarray:
         np.array(
             [[math.cos(a), -math.sin(a), 0], [math.sin(a), math.cos(a), 0], [0, 0, 1]]
         )
-        @ TO_CV.T
+        @ angles.TO_CV.T
     )
 
 
@@ -131,7 +132,7 @@ def test_a_camera_looks_along_its_yaw_clockwise_and_up_its_pitch(
     )
 
     # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
-    x, y, z = np.array(in_rig(camera))[:3, 2]
+    x, y, z = camera.pose()[:3, 2]
 
     assert math.degrees(math.atan2(x, y)) == pytest.approx(yaw_deg)
     assert math.degrees(math.asin(z)) == pytest.approx(pitch_deg)
