@@ -45,7 +45,8 @@ def test_a_path_s_velocity_is_the_rate_its_position_changes(
     path: motion.Path,
 ) -> None:
     h = 1e-4
-    for t_s in (0.3, 1.1, 2.7):
+    # Off the track's grid, and past either end of the clip.
+    for t_s in (0.3, 1.1, 1.1125, 2.7, -0.5, OUTPUTS.span_s + 0.5):
         before, now, after = path(t_s - h), path(t_s), path(t_s + h)
         rate = (after.east_m - before.east_m, after.north_m - before.north_m)
         assert (now.east_mps, now.north_mps) == pytest.approx(

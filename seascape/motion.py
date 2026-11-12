@@ -55,6 +55,35 @@ def swung(
     )
 
 
+def _hermite(
+    tau: np.ndarray, at: np.ndarray, rate: np.ndarray, t_s: float
+) -> tuple[float, float]:
+    """A value and its rate at `t_s`, from samples of both on `tau`: the cubic
+    Hermite spline between samples, so the rate is the value's slope, and straight
+    on at the end's rate past either end.
+    """
+    if t_s <= tau[0] or t_s >= tau[-1]:
+        end = 0 if t_s <= tau[0] else -1
+        return float(at[end] + rate[end] * (t_s - tau[end])), float(rate[end])
+    i = int(np.searchsorted(tau, t_s, side="right")) - 1
+    step = tau[i + 1] - tau[i]
+    s = (t_s - tau[i]) / step
+    p0, p1, m0, m1 = at[i], at[i + 1], rate[i] * step, rate[i + 1] * step
+    value = (
+        (2 * s**3 - 3 * s**2 + 1) * p0
+        + (s**3 - 2 * s**2 + s) * m0
+        + (-2 * s**3 + 3 * s**2) * p1
+        + (s**3 - s**2) * m1
+    )
+    slope = (
+        (6 * s**2 - 6 * s) * p0
+        + (3 * s**2 - 4 * s + 1) * m0
+        + (-6 * s**2 + 6 * s) * p1
+        + (3 * s**2 - 2 * s) * m1
+    )
+    return float(value), float(slope / step)
+
+
 def track(ownship: Ownship, outputs: Outputs) -> Path:
     """The pose at a time: `speed_mps` integrated along the heading `yaw` swings, and
     the pitch and roll its swings script.
@@ -84,8 +113,9 @@ def track(ownship: Ownship, outputs: Outputs) -> Path:
     roll = swung(ownship.roll_deg, ownship.roll, outputs)
 
     def at(t_s: float) -> Pose:
-        e, n, h = (float(np.interp(t_s, tau, c)) for c in (east, north, heading))
-        v_e, v_n = speed * math.sin(h), speed * math.cos(h)
+        e, v_e = _hermite(tau, east, speed * np.sin(heading), t_s)
+        n, v_n = _hermite(tau, north, speed * np.cos(heading), t_s)
+        h = float(np.interp(t_s, tau, heading))
         return Pose(e, n, h, v_e, v_n, pitch(t_s), roll(t_s))
 
     return at
