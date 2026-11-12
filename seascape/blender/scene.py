@@ -36,15 +36,16 @@ from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes, waves
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Built:
     """What `build` made, by role, valid until the next build. A name in `bpy.data`
     belongs to whoever took it first, and an imported asset can carry any name.
     """
 
-    anchor: bpy.types.Object  # the ownship's level frame, tilted by its script
-    # The ownship's frame, which the rigs are bolted to: a hull's draught lift.
-    ownship: bpy.types.Object
+    # The hull's root, named ownship in Blender: its track, heading and scripted trim
+    # and list.
+    anchor: bpy.types.Object
+    ownship: bpy.types.Object  # the rigs' parent: a hull's draught, or the anchor
     heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
@@ -294,4 +295,10 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     sc.frame_set(0)
-    return Built(vessel, rigs.root.parent, rigs.heads, rigs.cameras, targets)
+    return Built(
+        anchor=vessel,
+        ownship=rigs.root.parent,
+        heads=rigs.heads,
+        cameras=rigs.cameras,
+        targets=targets,
+    )

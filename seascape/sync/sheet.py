@@ -144,8 +144,8 @@ def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, floa
     head's axis, wrapped to [-180, 180).
     """
     outputs = scenario.outputs
-    rig_at = head_track(scenario, one_rig(scenario)[0])
-    seen_from = [rig_at(t) for t in outputs.times_s]
+    head_at = head_track(scenario, one_rig(scenario)[0])
+    seen_from = [head_at(t) for t in outputs.times_s]
 
     def at(o: Object) -> list[tuple[float, float]]:
         path = drifting(
@@ -528,11 +528,11 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         "2  Panorama",
         "outline: at the start  ·  shade: the bearings the turn sweeps",
     )
-    rig_at = head_track(course.scenario, course.name)
+    head_at = head_track(course.scenario, course.name)
     times = course.scenario.outputs.times_s
     # Unwrapped, as the turn can pass astern; wrong if it turns 180 or more between
     # two frames.
-    headings = np.unwrap([rig_at(t).heading_rad for t in times])
+    headings = np.unwrap([head_at(t).heading_rad for t in times])
     heading_deg = math.degrees(headings[0])
     turned = np.degrees(headings - headings[0]).tolist()
     # The turn is continuous, so it passes every whole degree between its ends,

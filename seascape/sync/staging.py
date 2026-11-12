@@ -227,7 +227,7 @@ def buoy_half_deg(range_m: float) -> float:
 
 
 def elevation_from_head_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
-    """Up from `rig` to a point `above_m` over a flat sea, `range_m` out."""
+    """Up from `rig`'s head to a point `above_m` over a flat sea, `range_m` out."""
     return math.degrees(math.atan2(above_m - rig.height_m, range_m))
 
 
