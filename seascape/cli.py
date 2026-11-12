@@ -231,11 +231,15 @@ def sync(
     """Render, encode and record a sync scenario, preview it, or draw its course."""
     from seascape.sync import preview as checks
 
+    if sheet and preview:
+        raise click.UsageError("--sheet and --preview are exclusive")
     if sheet:
         from seascape.sync.sheet import draw
 
         built = load(scenario, list(overrides))
-        path = (output or scenario.parent) / f"{scenario.stem}-course.png"
+        into = output or scenario.parent
+        into.mkdir(parents=True, exist_ok=True)
+        path = into / f"{scenario.stem}-course.png"
         with _blender_log(Path(os.devnull)):
             drawn = draw(built, path)
         click.echo(drawn)

@@ -43,9 +43,6 @@ CONTAINER_FILL = 1.0 / 3.0
 MARGIN_DEG = 0.5
 # The decimals a range, a bearing or an inclination is stored to.
 DECIMALS = 1
-# ISO 668: every series 1 container is 2438 mm wide, a standard one 2591 mm tall.
-CONTAINER_WIDE_M = 2.438
-CONTAINER_TALL_M = 2.591
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

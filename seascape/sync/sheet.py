@@ -6,6 +6,7 @@ attitudes the recording holds. A wrong mount or turn is quicker to spot here tha
 a failed preview.
 """
 
+import functools
 import itertools
 import math
 from collections.abc import Callable
@@ -20,21 +21,20 @@ from seascape.angles import wrapped_deg
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import axis_deg, held_tilt_deg, rig_track
+from seascape.motion import axis_deg, held_tilt_deg, panned_deg, rig_track
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.course import (
     BUOY,
     BUOY_COLOUR,
     CONTAINER,
-    CONTAINER_TALL_M,
-    CONTAINER_WIDE_M,
     Ring,
     View,
     asset,
     box_half_deg,
     buoy_above_m,
     elevation_deg,
+    one_rig,
     overlap_deg,
     reach_m,
     rings,
@@ -68,8 +68,18 @@ INK = (0, 0, 0)
 GRID = ImageColor.getrgb(brand.FOG_WHITE)
 MUTED = ImageColor.getrgb(brand.SKY_GREY)
 LABEL = ImageColor.getrgb(brand.NIGHT_BLUE)
+type Colour = tuple[int, int, int]
+
+
+def _rgb(colour: str) -> Colour:
+    r, g, b, *_ = ImageColor.getrgb(colour)
+    return r, g, b
+
+
+# The brand's four colours; its book allows no other, so the grey is the furniture's
+# too. Past four videos, canvas's palette.
 SERIES = [
-    ImageColor.getrgb(c)
+    _rgb(c)
     for c in (brand.FOCUS_RED, brand.OCEAN_TEAL, brand.SKY_GREY, brand.NIGHT_BLUE)
 ]
 BUOY_FILL = ImageColor.getrgb(asset(BUOY, Buoy).colours[BUOY_COLOUR])
@@ -85,8 +95,16 @@ EDGE_POINTS = 48
 SWEEP_S = 0.25
 # Judgement: a panorama this wide shows every bearing.
 ALL_ROUND_DEG = 300.0
-
-type Colour = tuple[int, int, int]
+# Judgement: the panorama's room past its frames, across and up, the timeline's
+# tick, and a signal strip's least half span and its headroom.
+ACROSS_PAD_DEG = 5.0
+UP_PAD_DEG = 2.0
+TICK_S = 10
+LEAST_HALF_DEG = 0.5
+HEADROOM = 1.15
+# ISO 668: every series 1 container is 2438 mm wide, a standard one 2591 mm tall.
+CONTAINER_WIDE_M = 2.438
+CONTAINER_TALL_M = 2.591
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -104,19 +122,14 @@ class _Course:
     sight: Callable[[Object, int], tuple[float, float]]
     colours: dict[str, Colour]
 
-    def elevation_deg(self, range_m: float, above_m: float) -> float:
-        return elevation_deg(self.rig, range_m, above_m)
-
 
 def _course(scenario: Scenario) -> _Course:
-    ((name, rig),) = scenario.rigs.items()
+    name, rig, _ = one_rig(scenario)
     videos = views(rig)
     names = [v.name for v in videos]
-    palette = SERIES if len(names) <= len(SERIES) else canvas.palette(len(names))
-    colours: dict[str, Colour] = {
-        n: (int(c[0]), int(c[1]), int(c[2]))
-        for n, c in zip(names, palette, strict=False)
-    }
+    many = ((int(r), int(g), int(b)) for r, g, b in canvas.palette(len(names)))
+    palette = SERIES if len(names) <= len(SERIES) else list(many)
+    colours: dict[str, Colour] = dict(zip(names, palette, strict=False))
     return _Course(
         scenario=scenario,
         name=name,
@@ -130,7 +143,9 @@ def _course(scenario: Scenario) -> _Course:
     )
 
 
+@functools.cache
 def _font(weight: brand.Weight = "Regular", px: int = FONT_PX) -> FreeTypeFont:
+    """The typeface, read once for each weight and size."""
     return brand.font(px, weight)
 
 
@@ -353,9 +368,12 @@ def frame_edges(
     return frames
 
 
-def _bearing_deg(rays: np.ndarray) -> np.ndarray:
-    """Each of (n, 3) unit rays' bearing, unwrapped along the edge it rounds."""
-    return np.degrees(np.unwrap(np.arctan2(rays[:, 0], rays[:, 1])))
+def _bearing_deg(rays: np.ndarray, near_deg: float) -> np.ndarray:
+    """Each of (n, 3) unit rays' bearing, unwrapped along the edge it rounds from
+    the turn of `near_deg`, so the edges of a stern pair stay together.
+    """
+    b = np.degrees(np.unwrap(np.arctan2(rays[:, 0], rays[:, 1])))
+    return b - 360.0 * round((b[0] - near_deg) / 360.0)
 
 
 def _elevation_deg(rays: np.ndarray) -> np.ndarray:
@@ -370,6 +388,8 @@ class _Unrolled:
     plot: tuple[int, int, int, int]
     bearing_deg: tuple[float, float]
     elevation_deg: tuple[float, float]
+    # The rig's heading at the start, which sets the branch every edge unwraps on.
+    near_deg: float
 
     def _px(self, b: np.ndarray, e: np.ndarray) -> np.ndarray:
         """Bearings `b` and elevations `e` as pixels, one row each."""
@@ -406,7 +426,7 @@ def _frames_layer(
         swept = Image.new("L", size, 0)
         sweeping = ImageDraw.Draw(swept)
         for rays in edges:
-            b, e = _bearing_deg(rays), _elevation_deg(rays)
+            b, e = _bearing_deg(rays, unrolled.near_deg), _elevation_deg(rays)
             for wrap in (-360.0, 0.0, 360.0):
                 for d in sweep_deg:
                     sweeping.polygon(unrolled.polygon(b + d + wrap, e), fill=255)
@@ -440,22 +460,22 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     size = (INNER_PX - ABOVE_W_PX - GAP_PX, TOP_PX)
     tile = _tile(size, "2  Panorama", "outline: at the start  ·  shade: over the turn")
     rig_at = rig_track(course.scenario, course.name)
-    axis_deg = math.degrees(rig_at(0.0).heading_rad)
+    heading_deg = math.degrees(rig_at(0.0).heading_rad)
     sweep = np.arange(0.0, course.scenario.outputs.times_s[-1] + SWEEP_S, SWEEP_S)
-    turned = [math.degrees(rig_at(float(t)).heading_rad) - axis_deg for t in sweep]
+    turned = [math.degrees(rig_at(float(t)).heading_rad) - heading_deg for t in sweep]
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
-    lowest = min(course.elevation_deg(r.range_m, 0.0) for r in course.rings)
-    low_e = min(float(elevations.min()), lowest) - 2.0
-    high_e = float(elevations.max()) + 2.0
-    across = [_bearing_deg(rays) for rays in edges]
-    low_b = min(float(b.min()) for b in across) + min(turned) - 5.0
-    high_b = max(float(b.max()) for b in across) + max(turned) + 5.0
+    lowest = min(elevation_deg(course.rig, r.range_m, 0.0) for r in course.rings)
+    low_e = min(float(elevations.min()), lowest) - UP_PAD_DEG
+    high_e = float(elevations.max()) + UP_PAD_DEG
+    across = [_bearing_deg(rays, heading_deg) for rays in edges]
+    low_b = min(float(b.min()) for b in across) + min(turned) - ACROSS_PAD_DEG
+    high_b = max(float(b.max()) for b in across) + max(turned) + ACROSS_PAD_DEG
     if high_b - low_b >= ALL_ROUND_DEG:
         low_b, high_b = -180.0, 180.0
     plot = (RING_LABEL_PX, HEAD_PX, size[0], size[1] - FOOT_PX)
-    unrolled = _Unrolled(plot, (low_b, high_b), (low_e, high_e))
+    unrolled = _Unrolled(plot, (low_b, high_b), (low_e, high_e), heading_deg)
     layer = _frames_layer(size, unrolled, frames, course.colours, turned).crop(plot)
     tile.paste(layer, plot[:2], mask=layer)
 
@@ -468,26 +488,28 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         # The object's copy, a turn either way, that falls in the plot.
         b = next(
             (
-                axis_deg + off_deg + w
+                heading_deg + off_deg + w
                 for w in (0.0, -360.0, 360.0)
-                if low_b <= axis_deg + off_deg + w <= high_b
+                if low_b <= heading_deg + off_deg + w <= high_b
             ),
             None,
         )
         if b is None:
             continue
         if o.asset == BUOY:
-            _dot(draw, *unrolled.xy(b, course.elevation_deg(range_m, above_m)))
+            _dot(draw, *unrolled.xy(b, elevation_deg(course.rig, range_m, above_m)))
             continue
         half = box_half_deg(range_m)
         tall_m = CONTAINER_TALL_M - box.draught_m
-        top = unrolled.xy(b - half, course.elevation_deg(range_m, tall_m))
-        right, waterline = unrolled.xy(b + half, course.elevation_deg(range_m, 0.0))
+        top = unrolled.xy(b - half, elevation_deg(course.rig, range_m, tall_m))
+        right, waterline = unrolled.xy(
+            b + half, elevation_deg(course.rig, range_m, 0.0)
+        )
         draw.rectangle((*top, right, min(waterline, plot[3])), fill=INK)
     # Far rings crowd the horizon: each label only where it clears the last.
     last = -math.inf
     for ring in course.rings:
-        _, y = unrolled.xy(0.0, course.elevation_deg(ring.range_m, above_m))
+        _, y = unrolled.xy(0.0, elevation_deg(course.rig, ring.range_m, above_m))
         if abs(y - last) >= FONT_PX:
             draw.text(
                 (0, y), _metres(ring.range_m), font=_font(), fill=MUTED, anchor="lm"
@@ -506,8 +528,8 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     pitch, roll = attitude[:, 0], attitude[:, 1]
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
     if course.rig.ptu is not None:
-        axis = axis_deg(course.scenario, course.name)
-        signals["pan"] = np.array([axis(t) for t in times])
+        panned = panned_deg(course.scenario.turn, course.name)
+        signals["pan"] = np.array([panned(t) for t in times])
         signals["tilt"] = held_tilt_deg(
             course.scenario, course.name, posed.attitude_deg
         )
@@ -569,7 +591,7 @@ def draw(scenario: Scenario, out: Path) -> Path:
     scenario stores.
     """
     course = _course(scenario)
-    posed = posed_at_start(scenario)
+    posed = posed_at_start(scenario, course.name)
     sheet = canvas.above(
         [
             _header(course),

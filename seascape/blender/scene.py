@@ -33,7 +33,7 @@ from seascape.config import (
 )
 from seascape.motion import Path, attitude_deg, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
-from seascape.physics import earth, wakes
+from seascape.physics import earth, wakes, waves
 
 
 @dataclass(frozen=True)
@@ -154,9 +154,22 @@ class Posed:
     attitude_deg: Callable[[float], tuple[float, float]]
 
 
-def posed_at_start(scenario: Scenario) -> Posed:
-    """The rig on its ownship as the render poses it at the start, a pan-tilt unit
-    holding its inclination on a level sea; no sea, no targets.
+def _ownship_attitude(
+    path: Path,
+    afloat: list[Afloat],
+    vessel: bpy.types.Object,
+    field: tuple[waves.Wave, ...],
+    tall: tuple[waves.Wave, ...],
+) -> Callable[[float], tuple[float, float]]:
+    """The ownship's pitch and roll at a time, its hull riding `field`."""
+    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
+    return attitude_deg(path, hull, field, tall)
+
+
+def posed_at_start(scenario: Scenario, name: str) -> Posed:
+    """The rig `name` on its ownship as the render poses it at the start, a pan-tilt
+    unit holding its inclination against what the ownship's path scripts on a level
+    sea; no sea, no targets.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rigs = add_rigs(scenario)
@@ -172,9 +185,9 @@ def posed_at_start(scenario: Scenario) -> Posed:
         earth.earth_radius_m(scenario.sea.refraction_k),
         afloat,
     )
-    stabilise(rigs.rigs, scenario, lambda _: (0.0, 0.0))
+    stabilise(rigs.rigs, scenario, attitude_deg(path, None, (), ()))
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
-    ((name, rig),) = scenario.rigs.items()
+    rig = scenario.rigs[name]
     to_cv = BLENDER_TO_CV.to_3x3()
     cameras = {
         camera: np.array(
@@ -182,13 +195,12 @@ def posed_at_start(scenario: Scenario) -> Posed:
         )
         for camera in rig.rendered
     }
-    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
     return Posed(
         cameras=cameras,
         path=path,
-        attitude_deg=attitude_deg(path, hull, wind + swell, tall),
+        attitude_deg=_ownship_attitude(path, afloat, vessel, wind + swell, tall),
     )
 
 
@@ -236,8 +248,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
-    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
-    stabilise(rigs.rigs, scenario, attitude_deg(path, hull, wind + swell, tall))
+    attitude = _ownship_attitude(path, afloat, vessel, wind + swell, tall)
+    stabilise(rigs.rigs, scenario, attitude)
     solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
