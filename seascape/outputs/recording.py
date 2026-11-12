@@ -66,10 +66,10 @@ FLU = (1.0, -1.0, -1.0)
 IMU_PITCH_SIGN = -1.0
 
 
-def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
-    """The named frame's own axes in world: camera-to-world after frame-to-camera."""
-    world = np.array(camera.extrinsics["world"])
-    return world @ np.linalg.inv(np.array(camera.extrinsics[frame]))
+def _in_world(camera: CameraCalibration, frame: str) -> np.ndarray:
+    """T_w_f: the named frame's pose in world."""
+    T_w_c = np.array(camera.extrinsics["world"])
+    return T_w_c @ np.linalg.inv(np.array(camera.extrinsics[frame]))
 
 
 def _attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
@@ -95,10 +95,10 @@ def _row(
     rig: dict[str, Any],
     scan_deg_s: float | None,
 ) -> dict:
-    roll, pitch, yaw = _attitude_deg(_to(camera, "rig"))
+    roll, pitch, yaw = _attitude_deg(_in_world(camera, "rig"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
-    bb_roll, bb_pitch, bb_yaw = np.radians(_attitude_deg(_to(camera, "vessel")))
+    bb_roll, bb_pitch, bb_yaw = np.radians(_attitude_deg(_in_world(camera, "vessel")))
     # Rounded first, as in _attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
     row = dict.fromkeys(COLUMNS, 0.0)
@@ -108,8 +108,8 @@ def _row(
         # The head on the deck, past its mount. Rig.pose turns the head by yaw + pan
         # about up, then pitch + tilt about starboard, so each subtraction undoes a
         # turn about the same axis, exactly.
-        on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
-        _, tilt, pan = _attitude_deg(on_deck)
+        T_v_r = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(camera, "rig")
+        _, tilt, pan = _attitude_deg(T_v_r)
         row["pan"] = FLU[2] * wrapped_deg(pan - rig["yaw_deg"])
         row["tilt"] = FLU[1] * (tilt - rig["pitch_deg"])
         if scan_deg_s is not None:
@@ -144,14 +144,15 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
-    rig = np.array(camera.extrinsics["rig"])
-    rpy = zip(("roll", "pitch", "yaw"), _flu_deg(rig[:3, :3] @ TO_CV), strict=True)
+    T_r_c = np.array(camera.extrinsics["rig"])
+    # The camera's OpenCV axes as a body's: right, ahead, up.
+    rpy = zip(("roll", "pitch", "yaw"), _flu_deg(T_r_c[:3, :3] @ TO_CV), strict=True)
     (fx, _, cx), (_, fy, cy), _ = camera.K
     pixel_mm = camera.pitch_um / 1000 if camera.pitch_um else PIXEL_SIZE_MM[camera.band]
     return {
         # Never a hardware model's name: a live pipeline picks its driver by it.
         "camera_type": f"Blender {camera.band.upper()}",
-        "position": _unit([float(v) * 1000.0 for v in rig[:3, 3]], "mm"),
+        "position": _unit([float(v) * 1000.0 for v in T_r_c[:3, 3]], "mm"),
         "focal_length": _unit(fx * pixel_mm, "mm"),
         "barrel_distortion": _unit(None, "1"),
         "distortion_model": "pinhole" if camera.distortion is None else "fisheye",

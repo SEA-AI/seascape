@@ -91,7 +91,7 @@ class CameraCalibration(_Record):
         """`camera` as a render of rig `rig` calibrates it, in that rig's frame
         only: what a video's footprint needs before anything is built.
         """
-        pose = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))
+        T_r_c = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))
         return cls(
             name=name,
             band=camera.band,
@@ -101,7 +101,7 @@ class CameraCalibration(_Record):
             height_px=camera.height_px,
             K=intrinsics(camera),
             distortion=camera.lens.fisheye,
-            extrinsics={"rig": pose},
+            extrinsics={"rig": T_r_c},
         )
 
     def cropped(self, crop: Crop) -> "CameraCalibration":

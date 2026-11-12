@@ -9,14 +9,15 @@ from seascape import angles
 from seascape.outputs.calibration import CameraCalibration
 
 
-def _turn(camera: CameraCalibration) -> np.ndarray:
+def _in_rig(camera: CameraCalibration) -> np.ndarray:
+    """R_r_c, the camera's turn in its rig."""
     return np.array(camera.extrinsics["rig"])[:3, :3]
 
 
 def homography(source: CameraCalibration, onto: CameraCalibration) -> np.ndarray:
     """Maps `onto`'s pixels to `source`'s, as cameras that turn about one point."""
-    turn = _turn(source).T @ _turn(onto)
-    return np.array(source.K) @ turn @ np.linalg.inv(onto.K)
+    R_s_o = _in_rig(source).T @ _in_rig(onto)
+    return np.array(source.K) @ R_s_o @ np.linalg.inv(onto.K)
 
 
 def fused(
@@ -37,17 +38,18 @@ def fused(
     w, h = 2 * left.width_px, left.height_px
     # Each optical axis's elevation over the rig's horizontal.
     pitch_deg = float(
-        np.mean(angles.elevation_deg([_turn(c)[2, 2] for c in (left, right)]))
+        np.mean(angles.elevation_deg([_in_rig(c)[2, 2] for c in (left, right)]))
     )
-    turn = angles.turned(0.0, pitch_deg) @ angles.TO_CV.T
     at = (np.array(left.extrinsics["rig"]) + np.array(right.extrinsics["rig"])) / 2
-    rig = np.eye(4)
-    rig[:3, :3], rig[:3, 3] = turn, at[:3, 3]
+    # The stitched camera s in the rig.
+    T_r_s = np.eye(4)
+    T_r_s[:3, :3] = angles.turned(0.0, pitch_deg) @ angles.TO_CV.T
+    T_r_s[:3, 3] = at[:3, 3]
     # The rig's pose in each frame, from the left camera's.
-    to_rig = np.linalg.inv(left.extrinsics["rig"])
+    T_l_r = np.linalg.inv(left.extrinsics["rig"])
     extrinsics = {
-        frame: tuple(map(tuple, np.array(pose) @ to_rig @ rig))
-        for frame, pose in left.extrinsics.items()
+        frame: tuple(map(tuple, np.array(T_f_l) @ T_l_r @ T_r_s))
+        for frame, T_f_l in left.extrinsics.items()
     }
     whole = left.model_copy(
         update={
