@@ -7,12 +7,15 @@ import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from seascape.assets import Buoy, manifest
+from seascape.blender.scene import posed_at_start
 from seascape.config import Scenario, load, sources
+from seascape.motion import rig_track
 from seascape.outputs.labels import Annotation, Image, Labels
-from seascape.sync import layout, preview
+from seascape.sync import layout, preview, sheet
 from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
 
 PRODUCTS = [SYNC_SENTRY, SYNC_WATCHKEEPER]
@@ -178,6 +181,26 @@ def test_advice_without_a_course_that_fits_says_why() -> None:
     said = preview.advice(load(OPEN_SEA), "missed")
 
     assert said.startswith("missed; and no course fits its rig: ")
+
+
+def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
+    scenario = load(SYNC_SENTRY)
+    ((name, rig),) = scenario.rigs.items()
+    posed = posed_at_start(scenario, name)
+    heading_deg = math.degrees(rig_track(scenario, name)(0.0).heading_rad)
+    n = sheet.EDGE_POINTS
+    edges = sheet.frame_edges(rig, posed.cameras)
+
+    for view in layout.views(rig):
+        rays = edges[view.name]
+        bearings = [np.degrees(np.arctan2(r[:, 0], r[:, 1])) for r in rays]
+        elevations = [np.degrees(np.arcsin(r[:, 2])) for r in rays]
+        # Clockwise from the top left: the right edge's middle, then the left's.
+        left = min(b[3 * n + n // 2] for b in bearings)
+        right = max(b[n + n // 2] for b in bearings)
+        assert left == pytest.approx(heading_deg + view.left_deg, abs=0.1)
+        assert right == pytest.approx(heading_deg + view.right_deg, abs=0.1)
+        assert all(e[0] > e[2 * n - 1] for e in elevations)
 
 
 BOX = manifest()[layout.CONTAINER].category_id

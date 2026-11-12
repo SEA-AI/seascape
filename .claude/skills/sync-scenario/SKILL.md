@@ -26,8 +26,9 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
    uv run seascape sync scenarios/sync-<product>.toml --preview --set 'objects = []'
    ```
 
-5. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
-6. **Record.** `uv run seascape sync scenarios/sync-<product>.toml`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
+5. **Sheet.** Check the course on `uv run seascape sync scenarios/sync-<product>.toml --sheet`: every ring crosses every video it serves, and each camera's centre sits between the horizon and the nearest waterline.
+6. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
+7. **Record.** `uv run seascape sync scenarios/sync-<product>.toml`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
 
 ## When it fails
 

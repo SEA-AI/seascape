@@ -17,13 +17,11 @@ from seascape.blender.blend import (
 from seascape.config import (
     Band,
     Mount,
-    Ptu,
-    Rig,
     Scenario,
 )
-from seascape.motion import panned_deg
+from seascape.motion import axis_deg, held_tilt_deg
 from seascape.outputs.calibration import in_rig
-from seascape.physics import fisheye, ptu
+from seascape.physics import fisheye
 
 
 class _RigObjects(NamedTuple):
@@ -88,11 +86,11 @@ def stabilise(
         scenario: Its rigs, its turn and the times keyed.
         attitude_deg: The ownship's pitch, bow up, and roll, starboard down, at a time.
     """
-    turn, times = scenario.turn, scenario.outputs.times_s
+    times = scenario.outputs.times_s
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
-            panned = panned_deg(turn, name)
-            _hold(rigs[name], rig, rig.ptu, panned, attitude_deg, times)
+            tilt = held_tilt_deg(scenario, name, attitude_deg)
+            _hold(rigs[name], rig.pitch_deg, axis_deg(scenario, name), tilt, times)
 
 
 def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:
@@ -102,21 +100,13 @@ def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:
 
 def _hold(
     head: bpy.types.Object,
-    rig: Rig,
-    unit: Ptu,
-    panned: Callable[[float], float],
-    attitude_deg: Callable[[float], tuple[float, float]],
+    pitch_deg: float,
+    axis: Callable[[float], float],
+    tilt_deg: np.ndarray,
     times_s: Sequence[float],
 ) -> None:
-    def pan_deg(t_s: float) -> float:
-        return rig.yaw_deg + panned(t_s)
-
-    tilt = ptu.panned_tilt_deg(
-        attitude_deg, pan_deg, times_s, unit.inclination_deg, rig.pitch_deg
-    )
-
     def euler(t_s: float) -> tuple[float, float, float]:
-        return _head(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)), pan_deg(t_s))
+        return _head(pitch_deg + float(np.interp(t_s, times_s, tilt_deg)), axis(t_s))
 
     animate(head, "rotation_euler", times_s, lambda t: euler(t)[0], 0)
     animate(head, "rotation_euler", times_s, lambda t: euler(t)[2], 2)

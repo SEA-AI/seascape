@@ -215,12 +215,35 @@ def render(
     help="Render at 1 fps and one sample, and check every video sees a buoy of each "
     "of its rings whole and the container at both ends; nothing is encoded.",
 )
+@click.option(
+    "--sheet",
+    is_flag=True,
+    help="Draw the course on one image, <scenario>-course.png in the directory, and "
+    "render nothing.",
+)
 def sync(
-    scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
+    scenario: Path,
+    output: Path | None,
+    overrides: tuple[str, ...],
+    preview: bool,
+    sheet: bool,
 ) -> None:
-    """Render, encode and record a sync scenario, or preview it."""
+    """Render, encode and record a sync scenario, preview it, or draw its course."""
     from seascape.sync import preview as checks
 
+    if sheet and preview:
+        raise click.UsageError("--sheet and --preview are exclusive")
+    if sheet:
+        from seascape.sync.sheet import draw
+
+        built = load(scenario, list(overrides))
+        into = output or scenario.parent
+        into.mkdir(parents=True, exist_ok=True)
+        path = into / f"{scenario.stem}-course.png"
+        with _blender_log(Path(os.devnull)):
+            drawn = draw(built, path)
+        click.echo(drawn)
+        return
     if not preview:
         built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))

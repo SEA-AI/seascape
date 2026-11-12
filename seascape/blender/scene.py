@@ -1,7 +1,7 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
 
@@ -28,11 +28,12 @@ from seascape.config import (
     Band,
     Mount,
     Scenario,
+    recorded_name,
     substream,
 )
-from seascape.motion import attitude_deg, track
+from seascape.motion import Path, attitude_deg, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
-from seascape.physics import earth, wakes
+from seascape.physics import earth, wakes, waves
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,68 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Posed:
+    """The one rig's cameras at the start, by name, each as its rotation from camera
+    to world in OpenCV's frame (x right, y down, looking down +z), and the ownship's
+    path and attitude over the scenario.
+    """
+
+    cameras: dict[str, np.ndarray]
+    path: Path
+    attitude_deg: Callable[[float], tuple[float, float]]
+
+
+def _ownship_attitude(
+    path: Path,
+    afloat: list[Afloat],
+    vessel: bpy.types.Object,
+    field: tuple[waves.Wave, ...],
+    tall: tuple[waves.Wave, ...],
+) -> Callable[[float], tuple[float, float]]:
+    """The ownship's pitch and roll at a time, its hull riding `field`."""
+    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
+    return attitude_deg(path, hull, field, tall)
+
+
+def posed_at_start(scenario: Scenario, name: str) -> Posed:
+    """The rig `name` on its ownship as the render poses it at the start, a pan-tilt
+    unit holding its inclination against what the ownship's path scripts on a level
+    sea; no sea, no targets.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    rigs = add_rigs(scenario)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    afloat: list[Afloat] = []
+    vessel = add_ownship(
+        scenario.ownship,
+        path,
+        rigs.root,
+        Hulls(scenario.sky, None),
+        scenario.outputs,
+        (),
+        earth.earth_radius_m(scenario.sea.refraction_k),
+        afloat,
+    )
+    stabilise(rigs.rigs, scenario, attitude_deg(path, None, (), ()))
+    bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
+    rig = scenario.rigs[name]
+    to_cv = BLENDER_TO_CV.to_3x3()
+    cameras = {
+        camera: np.array(
+            rigs.cameras[recorded_name(name, camera)].matrix_world.to_3x3() @ to_cv
+        )
+        for camera in rig.rendered
+    }
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    return Posed(
+        cameras=cameras,
+        path=path,
+        attitude_deg=_ownship_attitude(path, afloat, vessel, wind + swell, tall),
+    )
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with a scenario.
 
@@ -185,8 +248,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
-    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
-    stabilise(rigs.rigs, scenario, attitude_deg(path, hull, wind + swell, tall))
+    attitude = _ownship_attitude(path, afloat, vessel, wind + swell, tall)
+    stabilise(rigs.rigs, scenario, attitude)
     solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
