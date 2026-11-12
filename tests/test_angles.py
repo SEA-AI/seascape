@@ -73,7 +73,16 @@ def test_an_attitude_reads_back_the_roll_pitch_and_yaw_that_built_it(
 
 
 @pytest.mark.parametrize(
-    ("angle_deg", "wrapped"), [(180.0, -180.0), (190.0, -170.0), (-190.0, 170.0)]
+    ("angle_deg", "wrapped"),
+    [(180.0, 180.0), (-180.0, 180.0), (190.0, -170.0), (-190.0, 170.0)],
 )
-def test_an_angle_wraps_into_one_turn(angle_deg: float, wrapped: float) -> None:
+def test_an_angle_wraps_into_the_range_of_a_bearing(
+    angle_deg: float, wrapped: float
+) -> None:
     assert angles.wrapped_deg(angle_deg) == pytest.approx(wrapped)
+
+
+def test_due_south_and_due_north_carry_no_negative_zero() -> None:
+    assert angles.bearing_deg(-0.0, -1.0) == 180.0
+    assert math.copysign(1.0, angles.bearing_deg(-0.0, 1.0)) == 1.0
+    assert math.copysign(1.0, angles.wrapped_deg(0.0)) == 1.0

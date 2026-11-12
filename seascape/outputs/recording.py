@@ -85,7 +85,8 @@ def _flu_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
     roll, pitch, yaw = (
         s * a for s, a in zip(FLU_SIGNS, _attitude_deg(R_frame_body), strict=True)
     )
-    return roll, pitch, yaw
+    # Wrapped after the sign, so a yaw of 180 stays 180.
+    return roll, pitch, wrapped_deg(yaw)
 
 
 def _row(
@@ -111,7 +112,7 @@ def _row(
             camera, "head"
         )
         _, tilt, pan = _attitude_deg(T_ownship_head[:3, :3])
-        row["pan"] = FLU_SIGNS[2] * wrapped_deg(pan - rig["yaw_deg"])
+        row["pan"] = wrapped_deg(FLU_SIGNS[2] * (pan - rig["yaw_deg"]))
         row["tilt"] = FLU_SIGNS[1] * (tilt - rig["pitch_deg"])
         if scan_deg_s is not None:
             row["proc_ptu_mode"] = COLAV_MODE

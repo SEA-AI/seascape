@@ -13,8 +13,8 @@ TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
 def wrapped_deg(angle_deg: float) -> float:
-    """The same direction in [-180, 180)."""
-    return (angle_deg + 180.0) % 360.0 - 180.0
+    """The same direction in (-180, 180], the range `bearing_deg` returns."""
+    return 180.0 - (180.0 - angle_deg) % 360.0
 
 
 def yaw(bearing_deg: float) -> float:
@@ -43,7 +43,8 @@ def bearing_deg(
     east: float | np.ndarray, north: float | np.ndarray
 ) -> float | np.ndarray:
     """The compass bearing towards points `east` and `north`, in (-180, 180]."""
-    bearing = np.degrees(np.arctan2(east, north))
+    # + 0.0 turns an east of -0.0 into 0.0, which atan2 would read as -180 due south.
+    bearing = np.degrees(np.arctan2(east + 0.0, north))
     return float(bearing) if np.ndim(bearing) == 0 else bearing
 
 
