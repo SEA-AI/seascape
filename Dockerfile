@@ -11,6 +11,11 @@ RUN apt-get update \
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
     UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
+# OptiX compiles Cycles' kernels on a container's first render, 96 s on a 2080 Ti,
+# and caches them in /var/tmp, which a container loses. In the cache volume, the
+# next container's first render takes 1.6 s.
+ENV OPTIX_CACHE_PATH=/root/.cache/seascape/optix
+
 WORKDIR /seascape
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
