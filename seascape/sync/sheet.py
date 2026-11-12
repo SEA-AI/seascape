@@ -584,7 +584,9 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         tall_m = CONTAINER_TALL_M - box.draught_m
         top = unrolled.xy(b - half, up_deg(range_m, tall_m))
         right, waterline = unrolled.xy(b + half, up_deg(range_m, 0.0))
-        draw.rectangle((*top, right, min(waterline, plot[3])), fill=INK)
+        # A container below the panorama's floor has nothing in view to draw.
+        if top[1] < plot[3]:
+            draw.rectangle((*top, right, min(waterline, plot[3])), fill=INK)
     # Far rings crowd the horizon: each label only where it clears the last.
     last = -math.inf
     for ring in course.rings:
