@@ -542,15 +542,21 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
 
 
 def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
-    """The turn: a row for each ring and video it serves, lit while the video
-    holds a buoy of the ring whole, then a strip for each attitude.
+    """The turn: a row for each ring and video it serves, lit while the video's
+    bearings hold a buoy of the ring whole, then a strip for each attitude.
+
+    The bar reads bearing alone, as `preview.held` does: a deck pitched past a
+    fixed video's height can drop the buoy out of it, which only the preview's
+    labels show.
     """
     held = preview.held(course.scenario, course.objects)
     times = course.scenario.outputs.times_s
     rows_px = ROW_PX * len(held)
     height = HEAD_PX + rows_px + GAP_PX + SIGNAL_PX * len(signals) + FOOT_PX
     tile = _tile(
-        (INNER_PX, height), "3  Timeline", "bar: holds a buoy of the ring whole"
+        (INNER_PX, height),
+        "3  Timeline",
+        "bar: holds a buoy of the ring whole, by bearing",
     )
     draw = ImageDraw.Draw(tile)
 
