@@ -1776,6 +1776,10 @@ sha256 = "249eee6fb02f4c544f80c4384743c56466a7227bb22ba4cee181b128ad39c00d"
 # mesh at its widest.
 height_m = 0.39
 draught_m = 0.16
+# Nuova Rade also sells it in orange and yellow (Nootica, "Mooring buoy Nuova Rade"):
+# RAL 2010 signal orange and RAL 1003 signal yellow, as rgb.to gives their sRGB.
+colours = { orange = "#D05D28", yellow = "#F9A800" }
+colour = "white"
 triangles = 32008
 texture_px = []
 licence = "CC-BY-4.0"

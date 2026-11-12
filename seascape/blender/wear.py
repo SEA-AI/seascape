@@ -12,12 +12,15 @@ from seascape.assets import Material
 from seascape.blender import faces
 from seascape.blender.blend import (
     Num,
+    attribute,
     clamped,
     feed,
+    mesh_objects,
     mix_shader,
     node,
     scalar,
     separate,
+    source,
     vector,
 )
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
@@ -283,26 +286,20 @@ def _smooth(x: Num, low: Num | float, high: Num | float) -> Num:
     return Num(x.tree, made.outputs["Result"])
 
 
-def _attribute(
-    tree: bpy.types.NodeTree, name: str, kind: str = "GEOMETRY"
-) -> bpy.types.Node:
-    return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
-
-
 class _Masks:
     """Judgement, every number: eyeballed against photographs of worn hulls."""
 
     def __init__(self, tree: bpy.types.NodeTree, crevice: bpy.types.Image) -> None:
         self.tree = t = tree
         self.crevice = crevice
-        self.position = _attribute(t, "wear_position_m").outputs["Vector"]
+        self.position = attribute(t, "wear_position_m").outputs["Vector"]
         self.x, self.y, z = (Num(t, s) for s in separate(t, self.position))
         # Above the water: a copy lifted off its asset's draught meets it lower.
-        self.z = z + Num(t, _attribute(t, "rise_m", "OBJECT").outputs["Factor"])
-        normal = _attribute(t, "wear_normal").outputs["Vector"]
+        self.z = z + Num(t, attribute(t, "rise_m", "OBJECT").outputs["Factor"])
+        normal = attribute(t, "wear_normal").outputs["Vector"]
         self.nx, self.ny, self.up = (Num(t, s) for s in separate(t, normal))
         self.below, self.length, self.steel, self.still, stain = (
-            Num(t, _attribute(t, name).outputs["Factor"])
+            Num(t, attribute(t, name).outputs["Factor"])
             for name in (
                 "wear_below_m",
                 "wear_length_m",
@@ -312,7 +309,7 @@ class _Masks:
             )
         )
         self.amount, self.offset = (
-            Num(t, _attribute(t, name, "OBJECT").outputs["Factor"])
+            Num(t, attribute(t, name, "OBJECT").outputs["Factor"])
             for name in ("wear", "wear_offset")
         )
         self.shell = stain.op("GREATER_THAN", 0.0)  # what the sea wets
@@ -343,7 +340,7 @@ class _Masks:
 
     def grime(self) -> Num:
         t = self.tree
-        uv = _attribute(t, UV).outputs["Vector"]
+        uv = attribute(t, UV).outputs["Vector"]
         texture = node(t, "ShaderNodeTexImage", image=self.crevice)
         t.links.new(uv, texture.inputs["Vector"])
         crevice = Num(t, texture.outputs["Color"])  # grey: any channel
@@ -377,7 +374,7 @@ class _Masks:
         wall = _smooth(self.up.op("ABSOLUTE"), 0.2, 0.5)
         streak = (1.0 - core) * ((1.0 - falling) * (1.0 - wall))
         broken = _smooth(self.noise(2.0, 17.0, 4.0), 0.25, 0.6)
-        broken = broken * Num(t, _attribute(t, "wear_runoff").outputs["Factor"])
+        broken = broken * Num(t, attribute(t, "wear_runoff").outputs["Factor"])
         return streak * active * (broken * self.region)
 
     def chips(self) -> Num:
@@ -465,7 +462,7 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     layers = g.layers()
     for layer in LAYERS:
         mask = layers[layer]
-        weight = Num(group, _attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
+        weight = Num(group, attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
         feed(group, out.inputs[layer], clamped(group, (mask * weight).socket))
     return group
 
@@ -475,10 +472,9 @@ def mark(anchor: bpy.types.Object, amount: float, rng: np.random.Generator) -> N
     one asset wear apart.
     """
     offset = float(rng.uniform(0.0, 1000.0))
-    for part in anchor.children_recursive:
-        if part.type == "MESH":
-            part["wear"] = amount
-            part["wear_offset"] = offset
+    for part in mesh_objects([anchor]):
+        part["wear"] = amount
+        part["wear_offset"] = offset
 
 
 # Judgement: linear albedo of each layer, from photographs of worn hulls.
@@ -497,20 +493,10 @@ FOULING = (0.035, 0.06, 0.018, 1.0)
 
 def dirty(parts: list[bpy.types.Object]) -> None:
     """Dirty every material of `parts` by their asset's baked crevices."""
-    meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+    meshes = mesh_objects(parts)
     crevice = meshes[0][CREVICE]
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:
         _dirty(material, crevice)
-
-
-def _source(
-    socket: bpy.types.NodeSocket,
-) -> bpy.types.NodeSocket | float | tuple[float, ...]:
-    """What feeds `socket`: its link, or else its own value."""
-    if socket.is_linked:
-        return socket.links[0].from_socket
-    value = socket.default_value
-    return value if isinstance(value, float) else tuple(value)
 
 
 def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
@@ -527,10 +513,10 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
 
     # Paint fades; metal does not.
     paint = scalar(t, "SUBTRACT", 1.0, 0.0)
-    feed(t, paint.node.inputs[1], _source(shader.inputs["Metallic"]))
+    feed(t, paint.node.inputs[1], source(shader.inputs["Metallic"]))
     fade = cover["fade"] * Num(t, paint)
     faded = node(t, "ShaderNodeHueSaturation")
-    feed(t, faded.inputs["Color"], _source(shader.inputs["Base Color"]))
+    feed(t, faded.inputs["Color"], source(shader.inputs["Base Color"]))
     # Judgement: full fade halves saturation and lifts value 15%.
     feed(t, faded.inputs["Saturation"], fade.madd(-0.5, 1.0))
     feed(t, faded.inputs["Value"], fade.madd(0.15, 1.0))
@@ -538,7 +524,7 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
 
     dirt = node(t, "ShaderNodeBsdfPrincipled")
     stain = node(t, "ShaderNodeMix", data_type="RGBA")
-    feed(t, stain.inputs["Factor"], _attribute(t, "wear_steel").outputs["Factor"])
+    feed(t, stain.inputs["Factor"], attribute(t, "wear_steel").outputs["Factor"])
     stain.inputs["A"].default_value = STAIN
     stain.inputs["B"].default_value = STAIN_STEEL
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
@@ -558,7 +544,7 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     # Glass and decals stay as clear, and lamps as bright, under their dirt.
     for name in ("Alpha", "Normal", "Emission Color", "Emission Strength"):
         if name != "Normal" or shader.inputs[name].is_linked:
-            feed(t, dirt.inputs[name], _source(shader.inputs[name]))
+            feed(t, dirt.inputs[name], source(shader.inputs[name]))
 
     total = cover["grime"]
     for layer in COVERS[1:]:

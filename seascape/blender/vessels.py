@@ -16,6 +16,7 @@ from seascape.blender import faces
 from seascape.blender.blend import (
     animate,
     empty,
+    mesh_objects,
     yaw,
 )
 from seascape.blender.heat import Heat, thermal_skin, zone_skin
@@ -23,10 +24,10 @@ from seascape.blender.meshes import (
     box_m,
     import_asset,
     keel_m,
-    mesh_objects,
     prefix_names,
     triangles,
 )
+from seascape.blender.paint import paint, recolourable
 from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
     Drift,
@@ -103,6 +104,10 @@ def _parts(name: str, hulls: Hulls) -> list[bpy.types.Object]:
         bpy.context.view_layer.update()
         hulls.keels[name] = keel_m(triangles(mesh_objects(parts)))
     if hulls.heat is None:
+        # Before the dirt, so it sits on the new paint, and before the prefix, so
+        # the materials carry the names their zones key on.
+        if (asset := manifest()[name]).colours:
+            recolourable(mesh_objects(parts), asset.paint_hull)
         prefix_names(name, parts)
         if worn:
             dirty(parts)
@@ -557,9 +562,13 @@ def add_vessels(
     """
     outputs = scenario.outputs
     wearing: list[tuple[list[bpy.types.Object], float, str]] = []
+    painting: list[tuple[list[bpy.types.Object], str]] = []
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
     for i, spec in enumerate(scenario.objects):
         anchors = _object(spec, radius_m, hulls, outputs, trails, afloat)
+        # The asset's own colour is its own paint: nothing to paint over it.
+        if (srgb := manifest()[spec.asset].colours.get(spec.colour or "")) is not None:
+            painting.append((anchors, srgb))
         wearing.append((anchors, spec.wear, f"wear/objects/{i}"))
         vessels[spec.asset] += anchors
     if (ring := scenario.targets) is not None:
@@ -576,12 +585,26 @@ def add_vessels(
             )
             wearing.append(([anchor], farm.wear, f"wear/farms/{f}/{k}"))
             turbines[farm.asset].append(anchor)
+    _dress(scenario.seed, wearing, painting)
+    return vessels, turbines
+
+
+def _dress(
+    seed: int,
+    wearing: list[tuple[list[bpy.types.Object], float, str]],
+    painting: list[tuple[list[bpy.types.Object], str]],
+) -> None:
+    """Wear and paint hulls once all are built: a later copy of the same import
+    would inherit either.
+    """
     for anchors, amount, stream in wearing:
         if amount > 0.0:
-            rng = substream(scenario.seed, stream)
+            rng = substream(seed, stream)
             for anchor in anchors:
                 mark(anchor, amount, rng)
-    return vessels, turbines
+    for anchors, srgb_hex in painting:
+        for anchor in anchors:
+            paint(anchor, srgb_hex)
 
 
 def waterline_m(anchor: bpy.types.Object) -> np.ndarray:

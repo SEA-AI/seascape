@@ -1,9 +1,10 @@
 """Small builders over Blender's data."""
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import bpy
 import numpy as np
@@ -392,3 +393,32 @@ def read(path: Path) -> np.ndarray:
         return pixels(image)
     finally:
         bpy.data.images.remove(image)
+
+
+def attribute(
+    tree: bpy.types.NodeTree,
+    name: str,
+    kind: Literal["GEOMETRY", "OBJECT", "INSTANCER"] = "GEOMETRY",
+) -> bpy.types.Node:
+    """An Attribute node reading `name`, of `kind` GEOMETRY, OBJECT or INSTANCER."""
+    return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
+
+
+def source(
+    socket: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket | float | tuple[float, ...]:
+    """What feeds `socket`: its link, or else its own value."""
+    if socket.is_linked:
+        return socket.links[0].from_socket
+    value = socket.default_value
+    return value if isinstance(value, float) else tuple(value)
+
+
+def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
+    """The meshes in `parts` and their descendants."""
+    return [
+        obj
+        for part in parts
+        for obj in [part, *part.children_recursive]
+        if obj.type == "MESH"
+    ]
