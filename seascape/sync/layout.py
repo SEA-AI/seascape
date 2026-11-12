@@ -23,6 +23,7 @@ from seascape.config import (
     Turn,
     sources,
 )
+from seascape.config.cameras import PTU_INCLINATION_DEG
 from seascape.motion import rig_track
 from seascape.outputs import stitch
 from seascape.outputs.calibration import CameraCalibration
@@ -275,6 +276,10 @@ def _inclination_deg(rig: Rig, near_m: float) -> float | None:
             most = min(most, _pitch_deg(bottom, low_deg))
         except ValueError as err:
             raise ValueError(f"video {name}: {err}") from err
+    if rig.ptu is not None:
+        # The pitch is stored as the unit's inclination, which it bounds.
+        least = max(least, PTU_INCLINATION_DEG[0])
+        most = min(most, PTU_INCLINATION_DEG[1])
     # The stored pitch is rounded, so it is the rounded one that must fit.
     pitch_deg = round((least + most) / 2, DECIMALS)
     if not least <= pitch_deg <= most:
