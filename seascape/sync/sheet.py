@@ -22,7 +22,7 @@ from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
 from seascape.motion import axis_deg, drifting, held_tilt_deg, panned_deg, rig_track
-from seascape.outputs import brand, canvas
+from seascape.outputs import brand, canvas, recording
 from seascape.sync import preview
 from seascape.sync.layout import (
     BUOY,
@@ -605,15 +605,13 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     """
     times = course.scenario.outputs.times_s
     heading = np.unwrap([posed.path(t).heading_rad for t in times])
-    attitude = np.array([posed.attitude_deg(t) for t in times])
-    pitch, roll = attitude[:, 0], attitude[:, 1]
+    # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
+    roll, pitch, _ = np.array([recording.attitude_deg(posed.deck(t)) for t in times]).T
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)
         signals["pan"] = np.array([panned(t) for t in times])
-        signals["tilt"] = held_tilt_deg(
-            course.scenario, course.name, posed.attitude_deg
-        )
+        signals["tilt"] = held_tilt_deg(course.scenario, course.name, posed.deck)
     return signals
 
 

@@ -903,6 +903,14 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
     (attitude,) = built.vessel.children
+    deck = motion.tilted(
+        motion.track(scenario.ownship, scenario.outputs),
+        waves.Waterplane(
+            length_m=built.vessel["length_m"], beam_m=built.vessel["beam_m"]
+        ),
+        wind + swell,
+        tall,
+    )
     radius = earth.earth_radius_m(scenario.sea.refraction_k)
     roll_s, heave_s = scenario.outputs.period_s(8.0), scenario.outputs.period_s(6.0)
     rocked, mounted, still = [], [], []
@@ -928,7 +936,13 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
             math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6
         )
         assert tuple(attitude.rotation_euler) == pytest.approx(
-            (pitch, -roll, 0.0), abs=1e-6
+            (pitch, roll, 0.0), abs=1e-6
+        )
+        # The deck the pan-tilt loop holds against is the one Blender draws. The up
+        # row is all the loop reads, and the heading leaves it be. 1e-6: Blender's
+        # matrix_world is float32, a few ulp near 1 down the parent chain.
+        assert np.array(built.deck.matrix_world)[2, :3] == pytest.approx(
+            deck(t_s)[2], abs=1e-6
         )
         # Straight up, however the script tilts the hull.
         lift = attitude.matrix_world.translation - built.vessel.matrix_world.translation
@@ -1469,6 +1483,13 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     camera = built.cameras[scenario.mounts[0].name]
     assert scenario.turn is not None
     turned = motion.turned_deg(scenario.turn)
+    deck = motion.tilted(
+        motion.track(scenario.ownship, scenario.outputs, scenario.turn), None, (), ()
+    )
+    (name,) = scenario.rigs
+    held_deg = motion.held_tilt_deg(scenario, name, deck)
+    axis = motion.axis_deg(scenario, name)
+    mount_deg = scenario.rigs[name].pitch_deg
 
     omega = 2.0 * math.pi / 4.0
     # A base tilted `tilt` turns a boresight at `down` below it by about
@@ -1480,8 +1501,14 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
         bpy.context.scene.frame_set(frame)
         bearing, elevation = boresight_deg(camera)
         assert bearing == pytest.approx(turned(t_s), abs=turns_deg)
-        pitch, roll = 3.0 * math.sin(omega * t_s), 5.0 * math.sin(omega * t_s)
-        base.append(ptu.head_pitch_deg(pitch, roll, turned(t_s)))
+        base.append(motion.elevation_deg(deck(t_s), axis(t_s), 0.0))
+        # Blender draws the head the loop holds; 1e-4 deg is float32's asin noise and
+        # more.
+        forward = np.array(built.rigs[name].matrix_world)[2, 1]
+        assert math.degrees(math.asin(forward)) == pytest.approx(
+            motion.elevation_deg(deck(t_s), axis(t_s), mount_deg + held_deg[frame]),
+            abs=1e-4,
+        )
         # The head itself holds -1.9, its mount's -2.0 included.
         held.append(elevation + 1.9)
     passed = omega / math.hypot(omega, ptu.GAIN_PER_S)
@@ -1963,7 +1990,7 @@ class TestDrifting:
             )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
-                (pitch, -roll), abs=1e-5
+                (pitch, roll), abs=1e-5
             )
             assert attitude.location.z == pytest.approx(
                 waves.heave_m(_tall(scenario), hull, t_s), abs=1e-5

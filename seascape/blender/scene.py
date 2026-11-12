@@ -1,7 +1,7 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import chain
 
@@ -31,7 +31,7 @@ from seascape.config import (
     recorded_name,
     substream,
 )
-from seascape.motion import Path, attitude_deg, track
+from seascape.motion import Deck, Path, tilted, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes, waves
 
@@ -151,19 +151,19 @@ class Posed:
 
     cameras: dict[str, np.ndarray]
     path: Path
-    attitude_deg: Callable[[float], tuple[float, float]]
+    deck: Deck
 
 
-def _ownship_attitude(
+def _ownship_deck(
     path: Path,
     afloat: list[Afloat],
     vessel: bpy.types.Object,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Callable[[float], tuple[float, float]]:
-    """The ownship's pitch and roll at a time, its hull riding `field`."""
+) -> Deck:
+    """The ownship's deck rotation at a time, its hull riding `field`."""
     hull = next((a.hull for a in afloat if a.anchor is vessel), None)
-    return attitude_deg(path, hull, field, tall)
+    return tilted(path, hull, field, tall)
 
 
 def posed_at_start(scenario: Scenario, name: str) -> Posed:
@@ -185,7 +185,7 @@ def posed_at_start(scenario: Scenario, name: str) -> Posed:
         earth.earth_radius_m(scenario.sea.refraction_k),
         afloat,
     )
-    stabilise(rigs.rigs, scenario, attitude_deg(path, None, (), ()))
+    stabilise(rigs.rigs, scenario, tilted(path, None, (), ()))
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     rig = scenario.rigs[name]
     to_cv = BLENDER_TO_CV.to_3x3()
@@ -200,7 +200,7 @@ def posed_at_start(scenario: Scenario, name: str) -> Posed:
     return Posed(
         cameras=cameras,
         path=path,
-        attitude_deg=_ownship_attitude(path, afloat, vessel, wind + swell, tall),
+        deck=_ownship_deck(path, afloat, vessel, wind + swell, tall),
     )
 
 
@@ -248,8 +248,8 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
-    attitude = _ownship_attitude(path, afloat, vessel, wind + swell, tall)
-    stabilise(rigs.rigs, scenario, attitude)
+    deck = _ownship_deck(path, afloat, vessel, wind + swell, tall)
+    stabilise(rigs.rigs, scenario, deck)
     solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")

@@ -15,7 +15,7 @@ from seascape.blender.meshes import box_corners
 from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
-from seascape.motion import attitude_deg, track
+from seascape.motion import tilted, track
 from seascape.outputs import brand, canvas
 from seascape.physics import earth, fisheye
 
@@ -141,7 +141,7 @@ def draw(scenario: Scenario, out: Path) -> None:
     built = add_rigs(scenario)
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
     # The hull does not ride here, so the deck tilts by its script alone.
-    stabilise(built.rigs, scenario, attitude_deg(path, None, (), ()))
+    stabilise(built.rigs, scenario, tilted(path, None, (), ()))
     vessel = add_ownship(
         scenario.ownship,
         path,

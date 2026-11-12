@@ -7,6 +7,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from seascape import angles
 from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
 from seascape.physics import ptu, slew, waves
@@ -38,6 +39,9 @@ class Pose(NamedTuple):
 
 
 type Path = Callable[[float], Pose]
+# (3, 3): the deck's starboard, bow and up axes in the world's, as columns, at a time,
+# its heading aside.
+type Deck = Callable[[float], np.ndarray]
 
 
 def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
@@ -161,29 +165,6 @@ def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
     """
     yaw_deg, panned = scenario.rigs[name].yaw_deg, panned_deg(scenario.turn, name)
     return lambda t_s: yaw_deg + panned(t_s)
-
-
-def held_tilt_deg(
-    scenario: Scenario,
-    name: str,
-    attitude_deg: Callable[[float], tuple[float, float]],
-) -> np.ndarray:
-    """The tilt the pan-tilt unit of rig `name` adds to its mount's pitch at each
-    frame, holding its inclination against the ownship's `attitude_deg`.
-
-    Raises:
-        ValueError: The rig has no pan-tilt unit.
-    """
-    rig = scenario.rigs[name]
-    if rig.ptu is None:
-        raise ValueError(f"rig {name} has no ptu")
-    return ptu.panned_tilt_deg(
-        attitude_deg,
-        axis_deg(scenario, name),
-        scenario.outputs.times_s,
-        rig.ptu.inclination_deg,
-        rig.pitch_deg,
-    )
 
 
 def rig_track(scenario: Scenario, name: str) -> Path:
@@ -319,18 +300,31 @@ def rocking(
         t_s: Seconds on the scenario's clock, when it is at `pose`.
     """
     plane = waterplane(pose, tall, t_s, hull)
-    pitch, roll_up = waves.attitude(field, plane, t_s)
-    return Rocking(pitch, -roll_up, waves.heave_m(tall, plane, t_s))
+    pitch, roll = waves.attitude(field, plane, t_s)
+    return Rocking(pitch, roll, waves.heave_m(tall, plane, t_s))
 
 
-def attitude_deg(
+def _pitched(rad: float) -> np.ndarray:
+    """Bow up by `rad`: about +x, starboard."""
+    c, s = math.cos(rad), math.sin(rad)
+    return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+
+def _rolled(rad: float) -> np.ndarray:
+    """Starboard down by `rad`: about +y, the bow."""
+    c, s = math.cos(rad), math.sin(rad)
+    return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+
+
+def tilted(
     path: Path,
     hull: waves.Waterplane | None,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Callable[[float], tuple[float, float]]:
-    """The pitch, bow up, and roll, starboard down, at a time: what `path` steers and,
-    under `hull`, the sea's.
+) -> Deck:
+    """The deck tilted by the pitch and roll `path` scripts, then, under `hull`, by
+    the sea's, each with roll innermost as the anchor's and the attitude empty's YXZ
+    eulers key them.
 
     Args:
         path: Where it is, where its bow points and how it is tilted.
@@ -339,12 +333,63 @@ def attitude_deg(
         tall: The waves that are geometry, the ones it floats on.
     """
 
-    def at(t_s: float) -> tuple[float, float]:
+    def at(t_s: float) -> np.ndarray:
         pose = path(t_s)
-        pitch, roll = pose.pitch_rad, pose.roll_rad
+        deck = _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad)
         if hull is not None:
             sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
-            pitch, roll = pitch + sea.pitch_rad, roll + sea.roll_rad
-        return math.degrees(pitch), math.degrees(roll)
+            deck = deck @ _pitched(sea.pitch_rad) @ _rolled(sea.roll_rad)
+        return deck
 
     return at
+
+
+def elevation_deg(deck: np.ndarray, bearing_deg: float, up_deg: float) -> float:
+    """The elevation in the world of a direction `bearing_deg` clockwise from the bow
+    and `up_deg` above a deck tilted `deck`, (3, 3) deck to world.
+    """
+    up = float(deck[2] @ angles.direction(bearing_deg, up_deg))
+    return math.degrees(math.asin(max(-1.0, min(1.0, up))))
+
+
+def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
+    """The tilt the pan-tilt unit of rig `name` adds to its mount's pitch at each
+    frame, holding its inclination on a deck tilted `deck`.
+
+    Raises:
+        ValueError: The rig has no pan-tilt unit, or the deck tips its untilted head
+            past the zenith, where the IMU's pitch folds and the loop holds the head
+            facing aft.
+    """
+    rig = scenario.rigs[name]
+    if rig.ptu is None:
+        raise ValueError(f"rig {name} has no ptu")
+    axis = axis_deg(scenario, name)
+    times = scenario.outputs.times_s
+    for t_s in times:
+        # Past the zenith, the head's horizontal part turns against its bearing; the
+        # deck turns no heading, so the bearing on a level deck is the reference.
+        tipped = deck(t_s) @ angles.direction(axis(t_s), rig.pitch_deg)
+        if tipped[:2] @ angles.direction(axis(t_s), 0.0)[:2] < 0.0:
+            raise ValueError(
+                f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
+                "ptu past the zenith: lower the ownship's pitch, the sea or pitch_deg"
+            )
+        # Tilting sweeps the head through the deck's vertical plane at its bearing;
+        # the world's up projects onto that plane with length `reach`, the sine of
+        # the steepest elevation any tilt gives.
+        up = deck(t_s)[2]
+        reach = math.hypot(up @ angles.direction(axis(t_s), 0.0), up[2])
+        if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
+            raise ValueError(
+                f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "
+                f"inclination_deg {rig.ptu.inclination_deg:g}: lower the ownship's "
+                "roll or the sea"
+            )
+
+    # The firmware's IMU sits on the head, so the loop holds the head itself, its
+    # mount included.
+    def head_deg(t_s: float, tilt_deg: float) -> float:
+        return elevation_deg(deck(t_s), axis(t_s), rig.pitch_deg + tilt_deg)
+
+    return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)

@@ -598,8 +598,9 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
     heading = math.radians(heading_deg)
     rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
     rise_starboard = d_east * math.cos(heading) - d_north * math.sin(heading)
+    # Water rising to starboard rolls the hull port down, a negative roll.
     assert (pitch, roll) == pytest.approx(
-        (math.atan(rise_along), math.atan(rise_starboard)), abs=1e-5
+        (math.atan(rise_along), -math.atan(rise_starboard)), abs=1e-5
     )
     assert abs({"pitch": pitch, "roll": roll}[expected]) > 1e-4
 
@@ -757,7 +758,7 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
     hull = waves.Waterplane(float(rest_east), float(rest_north), heading, length, beam)
     pitch, roll = waves.attitude(sea, hull, t)
     assert (pitch, roll) == pytest.approx(
-        (math.atan(rise_along), math.atan(rise_across)), abs=1e-5
+        (math.atan(rise_along), -math.atan(rise_across)), abs=1e-5
     )
 
 

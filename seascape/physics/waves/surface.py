@@ -123,7 +123,7 @@ class Waterplane(NamedTuple):
 def attitude(
     field: tuple[Wave, ...], hull: Waterplane, t_s: float
 ) -> tuple[float, float]:
-    """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull:
+    """Bow-up pitch and starboard-down roll of the plane fitted to the sea under a hull:
     each wave's least-squares slope at its phase at the hull's rest. The pitch is that
     times `response`; the roll follows it at once.
 
@@ -143,8 +143,9 @@ def attitude(
     # slope separates. -sin(at) is Im(e^{-i at}).
     rise_along = amplitude * k_along * _lever(u) * np.sinc(v / math.pi)
     rise_along = rise_along * (response(field, hull) * np.exp(-1j * at)).imag
-    rise_across = -amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
-    return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
+    # Water higher to port rolls the hull starboard down.
+    drop_across = amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
+    return math.atan(float(rise_along.sum())), math.atan(float(drop_across.sum()))
 
 
 def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:

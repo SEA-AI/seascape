@@ -241,6 +241,24 @@ class Scenario(Model):
         return self
 
     @model_validator(mode="after")
+    def _a_ptu_stays_below_the_zenith(self) -> "Scenario":
+        # A pitch the IMU reads folds past the zenith, and the tilt loop then holds
+        # the head on the wrong side of it, so the scripted deck must stay short of it.
+        ship = self.ownship
+        swing = sum(
+            abs(a) + (s.amplitude_deg if s else 0.0)
+            for a, s in ((ship.pitch_deg, ship.pitch), (ship.roll_deg, ship.roll))
+        )
+        for name, rig in self.rigs.items():
+            if rig.ptu is not None and swing + abs(rig.pitch_deg) >= 90.0:
+                raise ValueError(
+                    f"rigs.{name}: the ownship's pitch and roll and the rig's "
+                    f"pitch_deg reach {swing + abs(rig.pitch_deg):.0f} deg, so its "
+                    "ptu can pass the zenith: keep them under 90 between them"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _a_turn_fits(self) -> "Scenario":
         if self.turn is None:
             return self

@@ -8,7 +8,6 @@ from pydantic import ValidationError
 
 from seascape import motion
 from seascape.config import Drift, Move, Outputs, Ownship, Turn, load
-from seascape.physics import waves
 from tests.scenarios import OPEN_SEA
 
 SPEED_MPS = 400.0
@@ -213,23 +212,49 @@ def test_a_turn_too_long_suggests_a_duration_that_fits(
     load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": suggested, "fps": fps}}])
 
 
-def test_a_hull_s_attitude_is_its_scripted_tilt_and_the_sea_s_starboard_down() -> None:
-    scenario = load(OPEN_SEA)
-    field = scenario.wind_waves() + scenario.swell_waves()
-    hull = waves.Waterplane(length_m=12.0, beam_m=4.0)
-    path = motion.track(Ownship(pitch_deg=2.0, roll_deg=-3.0), Outputs(duration_s=10.0))
-    attitude = motion.attitude_deg(path, hull, field, field)
+@pytest.mark.parametrize(
+    ("pitch_deg", "roll_deg", "axis", "expected"),
+    [
+        # Bow up p: the bow rises to (0, cos p, sin p).
+        (4.0, 0.0, 1, (0.0, math.cos(math.radians(4.0)), math.sin(math.radians(4.0)))),
+        # Starboard down r: starboard falls to (cos r, 0, -sin r).
+        (0.0, 6.0, 0, (math.cos(math.radians(6.0)), 0.0, -math.sin(math.radians(6.0)))),
+    ],
+)
+def test_a_scripted_tilt_turns_the_deck_s_axes(
+    pitch_deg: float, roll_deg: float, axis: int, expected: tuple[float, float, float]
+) -> None:
+    ownship = Ownship(pitch_deg=pitch_deg, roll_deg=roll_deg)
+    deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
+    assert deck(0.0)[:, axis] == pytest.approx(expected)
 
-    for t_s in (0.0, 3.3, 7.1):
-        pose = path(t_s)
-        sea = motion.rocking(pose, hull=hull, field=field, tall=field, t_s=t_s)
-        plane = motion.waterplane(pose, field, t_s, hull)
-        _, roll_up = waves.attitude(field, plane, t_s)
-        # The sea rolls the hull starboard down by what the waves raise to port.
-        assert sea.roll_rad == -roll_up
-        assert attitude(t_s) == pytest.approx(
-            (
-                math.degrees(pose.pitch_rad + sea.pitch_rad),
-                math.degrees(pose.roll_rad + sea.roll_rad),
-            )
-        )
+
+_PITCH, _ROLL = math.radians(3.0), math.radians(5.0)
+_ROLLED = math.degrees(math.asin(math.cos(_PITCH) * math.sin(_ROLL)))
+_AHEAD_UP_7 = math.degrees(
+    math.asin(
+        math.sin(_PITCH) * math.cos(math.radians(7.0))
+        + math.cos(_PITCH) * math.cos(_ROLL) * math.sin(math.radians(7.0))
+    )
+)
+
+
+@pytest.mark.parametrize(
+    ("pan_deg", "up_deg", "expected"),
+    [
+        (0.0, 0.0, 3.0),
+        (180.0, 0.0, -3.0),
+        # Abeam, starboard falls by the roll as the pitch foreshortens it.
+        (90.0, 0.0, -_ROLLED),
+        (-90.0, 0.0, _ROLLED),
+        # Ahead and up 7: the roll leans the head's own elevation off the vertical.
+        (0.0, 7.0, _AHEAD_UP_7),
+    ],
+)
+def test_a_head_s_elevation_is_its_boresight_through_the_tilted_deck(
+    pan_deg: float, up_deg: float, expected: float
+) -> None:
+    # Bow up 3, starboard down 5.
+    ownship = Ownship(pitch_deg=3.0, roll_deg=5.0)
+    deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
+    assert motion.elevation_deg(deck(0.0), pan_deg, up_deg) == pytest.approx(expected)
