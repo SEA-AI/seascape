@@ -297,7 +297,7 @@ class TestEoBand:
         """The one negation. Two of them cancel and the whole rig mirrors unnoticed."""
         for mount in SCENARIO.mounts:
             bearing, _ = boresight_deg(camera_of(mount))
-            assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-6)
+            assert bearing == pytest.approx(mount.nominal_azimuth_deg, abs=1e-6)
 
     def test_the_foam_grid_takes_each_frame_s_view_where_the_water_drifted_from(
         self, built: scene.Built
@@ -817,7 +817,7 @@ def test_a_pitched_lens_points_exactly_where_it_was_asked_to() -> None:
 
     camera = bpy.data.objects[mount.name]
     bearing, elevation = boresight_deg(camera)
-    assert bearing == pytest.approx(mount.nominal_bearing_deg, abs=1e-4)
+    assert bearing == pytest.approx(mount.nominal_azimuth_deg, abs=1e-4)
     assert elevation == pytest.approx(pitch_deg, abs=1e-4)
     across = camera.matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))
     assert across.normalized().z == pytest.approx(0.0, abs=1e-6)
@@ -837,7 +837,7 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() 
     )
     scene.build(scenario, "eo")
     centre, off_axis = (
-        (boresight_deg(bpy.data.objects[m.name]), m.nominal_bearing_deg)
+        (boresight_deg(bpy.data.objects[m.name]), m.nominal_azimuth_deg)
         for m in scenario.band_mounts("eo")
     )
 
@@ -870,7 +870,7 @@ def test_a_lighter_ownship_lifts_its_rig_with_its_hull() -> None:
             variant(ownship={"asset": "cargo_ship", "draught_m": draught_m}, sea=calm),
             "eo",
         )
-        hull = mesh_objects(built.vessel.children_recursive)
+        hull = mesh_objects(built.anchor.children_recursive)
         top_m = max(c.z for c in box_corners(hull))
         camera_m = camera_of(SCENARIO.mounts[0]).matrix_world.translation.z
         heights.append((top_m, camera_m))
@@ -919,11 +919,11 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     built = scene.build(scenario, "eo")
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    (attitude,) = built.vessel.children
+    (attitude,) = built.anchor.children
     deck = motion.tilted(
         motion.track(scenario.ownship, scenario.outputs),
         waves.Waterplane(
-            length_m=built.vessel["length_m"], beam_m=built.vessel["beam_m"]
+            length_m=built.anchor["length_m"], beam_m=built.anchor["beam_m"]
         ),
         wind + swell,
         tall,
@@ -934,13 +934,13 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
 
     for frame, t_s in enumerate(scenario.outputs.times_s):
         bpy.context.scene.frame_set(frame)
-        east, north, up = built.vessel.matrix_world.translation
+        east, north, up = built.anchor.matrix_world.translation
         rest = waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s)
         plane = waves.Waterplane(
             *map(float, rest),
-            math.radians(heading_deg(built.vessel)),
-            built.vessel["length_m"],
-            built.vessel["beam_m"],
+            math.radians(heading_deg(built.anchor)),
+            built.anchor["length_m"],
+            built.anchor["beam_m"],
         )
         pitch, roll = waves.attitude(wind + swell, plane, t_s)
         rocked.append(abs(pitch) + abs(roll))
@@ -949,7 +949,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
         mounted.append(np.array(calibration.extrinsics["vessel"]))
 
-        assert built.vessel.rotation_euler[1] == pytest.approx(
+        assert built.anchor.rotation_euler[1] == pytest.approx(
             math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6
         )
         assert tuple(attitude.rotation_euler) == pytest.approx(
@@ -958,11 +958,11 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         # The deck the pan-tilt loop holds against is the one Blender draws. The up
         # row is all the loop reads, and the heading leaves it be. 1e-6: Blender's
         # matrix_world is float32, a few ulp near 1 down the parent chain.
-        assert np.array(built.deck.matrix_world)[2, :3] == pytest.approx(
+        assert np.array(built.ownship.matrix_world)[2, :3] == pytest.approx(
             deck(t_s)[2], abs=1e-6
         )
         # Straight up, however the script tilts the hull.
-        lift = attitude.matrix_world.translation - built.vessel.matrix_world.translation
+        lift = attitude.matrix_world.translation - built.anchor.matrix_world.translation
         assert tuple(lift) == pytest.approx(
             (0.0, 0.0, waves.heave_m(tall, plane, t_s)), abs=1e-6
         )
@@ -1461,7 +1461,7 @@ class TestOwnshipMotion:
 
     def test_a_quarter_period_in_is_the_peak(self) -> None:
         built = scene.build(self.MOTION)
-        anchor, camera = built.vessel, camera_of(SCENARIO.mounts[0])
+        anchor, camera = built.anchor, camera_of(SCENARIO.mounts[0])
         mounted = anchor.matrix_world.inverted() @ camera.matrix_world
         bpy.context.scene.frame_set(10)
 
@@ -1479,7 +1479,7 @@ class TestOwnshipMotion:
         scenario = variant(outputs={"duration_s": 2.0})
         built = scene.build(scenario)
 
-        action = built.vessel.animation_data.action.name
+        action = built.anchor.animation_data.action.name
         (heave,) = (v for name, v in keyed() if name.startswith(action))
         assert heave == pytest.approx(
             [_ridden_m(scenario, t) for t in scenario.outputs.times_s], abs=1e-6
@@ -1505,7 +1505,7 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     )
     (name,) = scenario.rigs
     held_deg = motion.held_tilt_deg(scenario, name, deck)
-    axis = motion.axis_deg(scenario, name)
+    axis = motion.azimuth_deg(scenario, name)
     mount_deg = scenario.rigs[name].pitch_deg
 
     omega = 2.0 * math.pi / 4.0
@@ -1523,7 +1523,7 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
         )
         # Blender draws the head the loop holds; 1e-4 deg is float32's asin noise and
         # more.
-        forward = np.array(built.rigs[name].matrix_world)[2, 1]
+        forward = np.array(built.heads[name].matrix_world)[2, 1]
         assert math.degrees(math.asin(forward)) == pytest.approx(
             motion.world_elevation_deg(
                 deck(t_s), angles.direction(axis(t_s), mount_deg + held_deg[frame])
@@ -1565,8 +1565,8 @@ class TestOwnshipUnderway:
         hull, bearing, eye = [], [], []
         for frame in range(len(scenario.outputs.times_s)):
             sc.frame_set(frame)
-            hull.append(tuple(built.vessel.matrix_world.translation))
-            bearing.append(heading_deg(built.vessel))
+            hull.append(tuple(built.anchor.matrix_world.translation))
+            bearing.append(heading_deg(built.anchor))
             eye.append(tuple(camera.matrix_world.translation))
         return np.array(hull), np.array(bearing), np.array(eye)
 
@@ -2506,7 +2506,7 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
     )
 
     (anchor,) = built.targets["yacht"]
-    hull = mesh_objects([built.vessel])
+    hull = mesh_objects([built.anchor])
     assert hull, "the ownship has no mesh: nothing below ran"
     assert {p.pass_index for p in hull} == {anchor.pass_index + 1}
 

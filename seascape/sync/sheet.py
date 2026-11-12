@@ -21,7 +21,7 @@ from seascape import angles
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import axis_deg, drifting, held_tilt_deg, panned_deg, rig_track
+from seascape.motion import azimuth_deg, drifting, head_track, held_tilt_deg, panned_deg
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.staging import (
@@ -32,7 +32,7 @@ from seascape.sync.staging import (
     asset,
     buoy_above_m,
     buoy_half_deg,
-    elevation_from_rig_deg,
+    elevation_from_head_deg,
     half_deg,
     one_rig,
     overlap_deg,
@@ -111,7 +111,7 @@ class _Course:
     name: str
     rig: Rig
     # The head's azimuth at the start, clockwise from the bow.
-    axis_deg: float
+    azimuth_deg: float
     videos: list[View]
     rings: list[Ring]
     objects: list[Object]
@@ -130,7 +130,7 @@ def _course(scenario: Scenario) -> _Course:
         scenario=scenario,
         name=name,
         rig=rig,
-        axis_deg=axis_deg(scenario, name)(0.0),
+        azimuth_deg=azimuth_deg(scenario, name)(0.0),
         videos=videos,
         rings=sorted(rings(videos), key=lambda r: r.range_m),
         objects=scenario.objects,
@@ -144,7 +144,7 @@ def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, floa
     head's axis, wrapped to [-180, 180).
     """
     outputs = scenario.outputs
-    rig_at = rig_track(scenario, one_rig(scenario)[0])
+    rig_at = head_track(scenario, one_rig(scenario)[0])
     seen_from = [rig_at(t) for t in outputs.times_s]
 
     def at(o: Object) -> list[tuple[float, float]]:
@@ -306,7 +306,7 @@ def _objects(tile: Image.Image, disc: _Disc, course: _Course) -> None:
     half_m = asset(CONTAINER, Debris).length_m / 2
     for o in course.objects:
         range_m, off_deg = course.sight(o)[0]
-        bearing_deg = course.axis_deg + off_deg
+        bearing_deg = course.azimuth_deg + off_deg
         if o.asset == BUOY:
             _dot(draw, *disc.px(range_m, bearing_deg), o)
             continue
@@ -334,7 +334,7 @@ def _from_above(course: _Course) -> Image.Image:
     cone ends where a buoy drops below `BUOY_PX`; grey is what both videos of a pair
     see. Range is on a square-root scale, so a near ring and a far one both show.
     """
-    axis, videos = course.axis_deg, course.videos
+    axis, videos = course.azimuth_deg, course.videos
     edges = [axis + d for v in videos for d in (v.left_deg, v.right_deg)]
     # A course turned past the beam places objects behind the starting bow.
     edges += [axis + course.sight(o)[0][1] for o in course.objects]
@@ -528,7 +528,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         "2  Panorama",
         "outline: at the start  ·  shade: the bearings the turn sweeps",
     )
-    rig_at = rig_track(course.scenario, course.name)
+    rig_at = head_track(course.scenario, course.name)
     times = course.scenario.outputs.times_s
     # Unwrapped, as the turn can pass astern; wrong if it turns 180 or more between
     # two frames.
@@ -546,7 +546,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     rise_m = course.scenario.ownship.rise_m
 
     def up_deg(range_m: float, above_m: float) -> float:
-        return elevation_from_rig_deg(course.rig, range_m, above_m - rise_m)
+        return elevation_from_head_deg(course.rig, range_m, above_m - rise_m)
 
     lowest = min(up_deg(r.range_m, 0.0) for r in course.rings)
     low_e = min(float(elevations.min()), lowest) - UP_PAD_DEG

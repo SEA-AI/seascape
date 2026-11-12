@@ -485,7 +485,7 @@ class Rig(Model):
         "ignores it.",
     )
 
-    def axis_deg(self, off_deg: float = 0.0) -> float:
+    def azimuth_deg(self, off_deg: float = 0.0) -> float:
         """The azimuth `off_deg` clockwise of its base, from the bow: a pan, or a
         camera's or a buoy's azimuth off the base. Unwrapped, so a turn's sweep reads
         off the difference of two.
@@ -499,7 +499,9 @@ class Rig(Model):
         off-axis cameras.
         """
         pose = np.eye(4)
-        pose[:3, :3] = angles.turned(self.axis_deg(pan_deg), self.pitch_deg + tilt_deg)
+        pose[:3, :3] = angles.turned(
+            self.azimuth_deg(pan_deg), self.pitch_deg + tilt_deg
+        )
         pose[:3, 3] = self.offset_x_m, self.offset_y_m, self.height_m
         return pose
 
@@ -564,9 +566,9 @@ class Mount(NamedTuple):
         return recorded_name(self.rig_name, self.camera_name)
 
     @property
-    def nominal_bearing_deg(self) -> float:
+    def nominal_azimuth_deg(self) -> float:
         """Not the achieved boresight: the rig's pitch sits between the two yaws, so
         an off-axis camera points elsewhere. `rigs.boresight_deg` measures the
         built camera.
         """
-        return self.rig.axis_deg(self.camera.yaw_deg)
+        return self.rig.azimuth_deg(self.camera.yaw_deg)

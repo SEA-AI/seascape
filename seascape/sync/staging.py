@@ -24,7 +24,7 @@ from seascape.config import (
     sources,
 )
 from seascape.config.cameras import PTU_INCLINATION_DEG
-from seascape.motion import rig_track
+from seascape.motion import head_track
 from seascape.outputs import stitch
 from seascape.outputs.calibration import CameraCalibration
 
@@ -226,7 +226,7 @@ def buoy_half_deg(range_m: float) -> float:
     return half_deg(buoy_above_m(), range_m)
 
 
-def elevation_from_rig_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
+def elevation_from_head_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
     """Up from `rig` to a point `above_m` over a flat sea, `range_m` out."""
     return math.degrees(math.atan2(above_m - rig.height_m, range_m))
 
@@ -250,7 +250,7 @@ def _inclination_deg(rig: Rig, near_m: float) -> float | None:
     Raises:
         ValueError: No pitch does, or a fixed mount's is not one.
     """
-    low_deg = elevation_from_rig_deg(rig, near_m) - MARGIN_DEG
+    low_deg = elevation_from_head_deg(rig, near_m) - MARGIN_DEG
     least, most = -math.inf, math.inf
     for name, camera in recorded(rig).items():
         top, bottom = _edges(camera)
@@ -305,12 +305,12 @@ def stage(scenario: Scenario) -> Staging:
     off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
     inclination_deg = _inclination_deg(rig, circles[0].range_m - 2 * off_m)
 
-    start = rig_track(scenario, name)(0.0)
+    start = head_track(scenario, name)(0.0)
     narrow = min(videos, key=lambda v: v.right_deg - v.left_deg)
     box = asset(CONTAINER, Debris)
     box_m = box.length_m * narrow.focal_px / (CONTAINER_FILL * narrow.width_px)
     # Limitation: every video must hold it, so only a rig that looks forward fits.
-    middle = math.radians(rig.axis_deg((narrow.left_deg + narrow.right_deg) / 2))
+    middle = math.radians(rig.azimuth_deg((narrow.left_deg + narrow.right_deg) / 2))
     east = start.east_m + box_m * math.sin(middle)
     north = start.north_m + box_m * math.cos(middle)
     # Broadside to the line of sight from the origin. World +Y is the ownship's bow
@@ -350,7 +350,7 @@ def stage(scenario: Scenario) -> Staging:
             {
                 "asset": BUOY,
                 "range_m": stored_m(ring, rig),
-                "bearing_deg": round(rig.axis_deg(first_deg), DECIMALS),
+                "bearing_deg": round(rig.azimuth_deg(first_deg), DECIMALS),
                 "count": count,
                 "spacing_deg": step_deg,
                 # Each buoy draws one of the colours its asset comes in.

@@ -42,11 +42,10 @@ class Built:
     belongs to whoever took it first, and an imported asset can carry any name.
     """
 
-    vessel: bpy.types.Object
-    deck: (
-        bpy.types.Object
-    )  # what the rigs are bolted to: a hull's draught lift, which rides the sea
-    rigs: dict[str, bpy.types.Object]
+    anchor: bpy.types.Object  # the ownship's level frame, tilted by its script
+    # The ownship's frame, which the rigs are bolted to: a hull's draught lift.
+    ownship: bpy.types.Object
+    heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
 
@@ -55,8 +54,8 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     """A built camera's geometry, read off the scene."""
     camera = built.cameras[mount.name]
     T_world_camera = camera.matrix_world @ BLENDER_TO_CV
-    T_world_ownship = built.deck.matrix_world
-    T_world_head = built.rigs[mount.rig_name].matrix_world
+    T_world_ownship = built.ownship.matrix_world
+    T_world_head = built.heads[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
     return CameraCalibration(
         name=mount.name,
@@ -185,7 +184,7 @@ def posed_at_start(scenario: Scenario, name: str) -> Posed:
         earth.earth_radius_m(scenario.sea.refraction_k),
         afloat,
     )
-    stabilise(rigs.rigs, scenario, tilted(path, None, (), ()))
+    stabilise(rigs.heads, scenario, tilted(path, None, (), ()))
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     rig = scenario.rigs[name]
     to_cv = BLENDER_TO_CV.to_3x3()
@@ -249,7 +248,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
     deck = _ownship_deck(path, afloat, vessel, wind + swell, tall)
-    stabilise(rigs.rigs, scenario, deck)
+    stabilise(rigs.heads, scenario, deck)
     solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
@@ -295,4 +294,4 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     sc.frame_set(0)
-    return Built(vessel, rigs.root.parent, rigs.rigs, rigs.cameras, targets)
+    return Built(vessel, rigs.root.parent, rigs.heads, rigs.cameras, targets)

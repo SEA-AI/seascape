@@ -144,7 +144,7 @@ def draw(scenario: Scenario, out: Path) -> None:
     built = add_rigs(scenario)
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
     # The hull does not ride here, so the deck tilts by its script alone.
-    stabilise(built.rigs, scenario, tilted(path, None, (), ()))
+    stabilise(built.heads, scenario, tilted(path, None, (), ()))
     vessel = add_ownship(
         scenario.ownship,
         path,
@@ -158,7 +158,7 @@ def draw(scenario: Scenario, out: Path) -> None:
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     hull = mesh_objects([vessel])
     lines = [
-        _rig_line(name, scenario, rig, built.root) for name, rig in built.rigs.items()
+        _rig_line(name, scenario, rig, built.root) for name, rig in built.heads.items()
     ]
 
     corners = np.array([tuple(c) for c in box_corners(hull)])
