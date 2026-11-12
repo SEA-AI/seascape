@@ -21,7 +21,7 @@ Every line of prose must lose something when deleted.
 ## Commits and pull requests
 
 - A commit is a Conventional Commit (`feat:`, `fix:`, `chore:`, `ci:`) with an imperative subject; the body says why. Tidying and behaviour change are separate commits.
-- A PR body describes only its final state against its base, never how it evolved inside the PR: no "now" or "no longer" about an intermediate commit.
+- A PR body is What, Why, a short How and Testing. It describes only its final state against its base, never how it evolved inside the PR: no "now" or "no longer" about an intermediate commit.
 - Testing holds evidence CI and the diff do not show: a measurement, a cost, a render. An image wherever the change is visible; any before/after compares the base with the head.
 - Prefer a table, a before/after or a frame over a paragraph. An outside source behind a number or choice gets one line.
 
