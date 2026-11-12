@@ -228,12 +228,8 @@ def sync(
     from seascape.sync import course
     from seascape.sync import preview as checks
 
-    built = load(scenario, list(overrides))
-    try:
-        course.verify(built)
-    except ValueError as stale:
-        raise click.ClickException(f"{scenario}: {stale}") from stale
     if not preview:
+        built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
         _render(built, into)
         _encode(into, _QUALITY)
@@ -241,9 +237,17 @@ def sync(
             click.echo(path)
         return
     built = load(scenario, [*overrides, checks.PREVIEW])
-    into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
-    _render(built, into, checks.keyframes(built))
-    checks.check(labels.Labels.read(into), built)
+    try:
+        frames = checks.keyframes(built)
+        into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
+        _render(built, into, frames)
+        checks.check(labels.Labels.read(into), built)
+    except ValueError as missed:
+        # What this rig's course would be, for the user to paste or compare.
+        raise click.ClickException(
+            f"{course.suggested(built)}\n\n{scenario}: {missed}; the course for its "
+            "rig is above"
+        ) from missed
     click.echo(f"every video sees the course: {into}")
 
 

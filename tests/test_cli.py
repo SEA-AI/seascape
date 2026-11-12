@@ -341,13 +341,13 @@ def test_a_shader_cycles_draws_black_fails_the_command(tmp_path: Path) -> None:
         bpy.ops.render.render()
 
 
-def test_sync_refuses_objects_off_the_course_and_prints_the_course(
+def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
     run: Run, tmp_path: Path
 ) -> None:
-    refused = run("sync", SYNC_SENTRY, "--set", "objects = []", "-o", tmp_path)
+    out = tmp_path / "preview"
+    refused = run("sync", SYNC_SENTRY, "--preview", "--set", "objects = []", "-o", out)
 
     assert refused.exit_code == 1
-    assert "not the course's for its rig" in refused.stderr
-    entries = course.course(load(SYNC_SENTRY)).entries
-    assert course.objects_toml(entries) in refused.stderr
-    assert not any(tmp_path.iterdir())
+    assert "never holds a buoy" in refused.stderr
+    assert course.suggested(load(SYNC_SENTRY)) in refused.stderr
+    assert not out.exists()

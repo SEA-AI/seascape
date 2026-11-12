@@ -1,6 +1,6 @@
 ---
 name: sync-scenario
-description: Write or change a product's `scenarios/sync-<product>.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, or when `seascape sync` refuses or its preview fails.
+description: Write or change a product's `scenarios/sync-<product>.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, or when its preview fails.
 ---
 
 # Sync scenario
@@ -20,7 +20,7 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 
    On the highest part of its station (a hardtop, a radar arch, a masthead), set `offset_y_m` and `offset_x_m` to that station's `y_m` and `x_m`, and `height_m` a little above its `top_z_m`. Anywhere else, ask the user where the product sits and show them the spot in `uv run seascape rig-view <scenario>`. Name the part and its numbers in a comment.
 3. **Turn.** Under `[turn]`: `ptu = "<rig>"` when that rig's pan-tilt unit turns the cameras (its preset sets `ptu`); without it the ownship turns. Set `top_rate_deg_s` and, for an ownship, `accel_deg_s2`, from the product's spec or the user. Leave the moves to `sync.toml`.
-4. **Objects.** Run the preview with no `objects`: it refuses and prints them as `[[objects]]` tables: the container, then one per ring of buoys. Paste them at the end of the file, under a comment saying `seascape sync` placed them.
+4. **Objects.** Run the preview with no `objects`: it fails and prints the course as `[[objects]]` tables, the container then one per ring of buoys, and a pan-tilt unit's inclination. Whenever a later preview fails, it prints the course again. Paste them at the end of the file, under a comment saying `seascape sync` placed them.
 
    ```bash
    uv run seascape sync scenarios/sync-<product>.toml --preview

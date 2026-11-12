@@ -18,11 +18,6 @@ from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
 PRODUCTS = [SYNC_SENTRY, SYNC_WATCHKEEPER]
 
 
-@pytest.mark.parametrize("path", PRODUCTS)
-def test_a_product_stores_the_course_placed_for_it(path: Path) -> None:
-    course.verify(load(path))
-
-
 def test_printed_entries_read_back_as_themselves() -> None:
     entries = course.course(load(SYNC_SENTRY)).entries
 

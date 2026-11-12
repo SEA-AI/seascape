@@ -330,25 +330,19 @@ def course(scenario: Scenario) -> Course:
     return Course(inclination_deg=inclination_deg, entries=entries)
 
 
-def verify(scenario: Scenario) -> None:
-    """Fail unless `scenario` stores the course `course` places for it.
+def suggested(scenario: Scenario) -> str:
+    """The course for `scenario`'s rig, as the TOML to paste: its pan-tilt unit's
+    inclination, if it has one, and its `[[objects]]` tables.
 
     Raises:
-        ValueError: The setting to change, or the `objects` to paste.
+        ValueError: No course fits the rig, and the setting to change.
     """
-    name, rig, _ = one_rig(scenario)
+    name, _, _ = one_rig(scenario)
     placed = course(scenario)
-    stored_deg = None if rig.ptu is None else rig.ptu.inclination_deg
-    if placed.inclination_deg != stored_deg:
-        raise ValueError(
-            f"the course needs [rigs.{name}.ptu] "
-            f"inclination_deg = {placed.inclination_deg}"
-        )
-    if placed.objects(scenario.seed) != scenario.objects:
-        raise ValueError(
-            f"{objects_toml(placed.entries)}\n\nthe objects are not the course's for "
-            "its rig: replace its [[objects]] tables with those above"
-        )
+    toml = objects_toml(placed.entries)
+    if placed.inclination_deg is None:
+        return toml
+    return f"[rigs.{name}.ptu]\ninclination_deg = {placed.inclination_deg}\n\n{toml}"
 
 
 def objects_toml(entries: list[dict[str, Any]]) -> str:
