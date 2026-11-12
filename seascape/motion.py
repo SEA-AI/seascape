@@ -169,19 +169,29 @@ def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
 
 def rig_track(scenario: Scenario, name: str) -> Path:
     """Where the rig `name` is at a time, east and north of the ownship's origin,
-    and its axis: the ownship's heading, the rig's yaw and its pan.
+    and the bearing of its axis before a ptu tilts it, both read off T_w_v @ T_v_r.
+    The deck takes the ownship's scripted pitch and roll.
+
+    Limitation: not the sea's rocking, as the course is laid out on a level sea; and
+    the course's axis in staging and the sheet is still the rig's yaw on a level deck,
+    so a scripted tilt moves the sightlines off it.
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
-    axis = axis_deg(scenario, name)
+    deck = tilted(path, hull=None, field=(), tall=())
+    pan = panned_deg(scenario.turn, name)
 
     def at(t_s: float) -> Pose:
         pose = path(t_s)
-        h, x, y = pose.heading_rad, rig.offset_x_m, rig.offset_y_m
+        T_w_v = np.eye(4)
+        T_w_v[:3, :3] = angles.turned(math.degrees(pose.heading_rad), 0.0) @ deck(t_s)
+        T_w_v[:3, 3] = pose.east_m, pose.north_m, 0.0
+        T_w_r = T_w_v @ rig.pose(pan(t_s))
+        east, north, _ = T_w_r[:3, 1]
         return Pose(
-            pose.east_m + x * math.cos(h) + y * math.sin(h),
-            pose.north_m - x * math.sin(h) + y * math.cos(h),
-            h + math.radians(axis(t_s)),
+            float(T_w_r[0, 3]),
+            float(T_w_r[1, 3]),
+            math.radians(angles.bearing_deg(east, north)),
         )
 
     return at

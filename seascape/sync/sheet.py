@@ -529,9 +529,12 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         "outline: at the start  ·  shade: the bearings the turn sweeps",
     )
     rig_at = rig_track(course.scenario, course.name)
-    heading_deg = math.degrees(rig_at(0.0).heading_rad)
     times = course.scenario.outputs.times_s
-    turned = [math.degrees(rig_at(t).heading_rad) - heading_deg for t in times]
+    # Unwrapped, as the turn can pass astern; a turn of 180 or more between two
+    # frames unwraps wrong.
+    headings = np.unwrap([rig_at(t).heading_rad for t in times])
+    heading_deg = math.degrees(headings[0])
+    turned = np.degrees(headings - headings[0]).tolist()
     # The turn is continuous, so it passes every whole degree between its ends,
     # whatever it covers between two frames: one per degree, as a frame is wider than
     # a degree, leaves the shade no gaps, and a long hold draws once.
