@@ -17,6 +17,8 @@ DEAD_BAND_DEG_S = 1.0
 TICK_S = 0.015
 # Judgement: ten of the loop's time constants, so the head starts in its steady lag.
 SETTLE_S = 10.0 / GAIN_PER_S
+# Judgement: enough steps to bring a head started past the zenith back on target.
+STARTS = 8
 
 
 def tilt_deg(
@@ -35,7 +37,11 @@ def tilt_deg(
     """
     ticks = np.arange(-SETTLE_S, times_s[-1] + TICK_S, TICK_S)
     tilt = np.empty_like(ticks)
-    held = target_deg - head_pitch_deg(-SETTLE_S, 0.0)
+    # The pitch folds past the zenith, so one step from a tilt of 0 can land on the
+    # wrong side of it; each step from where the last left lands nearer the target.
+    held = 0.0
+    for _ in range(STARTS):
+        held += target_deg - head_pitch_deg(-SETTLE_S, held)
     for i, t_s in enumerate(ticks):
         tilt[i] = held
         speed = GAIN_PER_S * (target_deg - head_pitch_deg(float(t_s), held))
