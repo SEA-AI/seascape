@@ -163,7 +163,7 @@ def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
 
 def test_an_eo_hull_lifted_off_its_draught_tells_its_wear_where_the_water_is() -> None:
     hulls = Hulls(load(BASELINE).sky, None, frozenset({"zodiac"}))
-    lifted = _vessel("zodiac", condition=Condition(), hulls=hulls, rise_m=0.4)
+    lifted = _vessel("zodiac", condition=Condition(), hulls=hulls, rise_m=0.4)[0]
     assert all(o["rise_m"] == 0.4 for o in mesh_objects([lifted]))
 
 
