@@ -467,7 +467,13 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
-    lowest = min(elevation_deg(course.rig, r.range_m, 0.0) for r in course.rings)
+    # The posed cameras ride `rise_m` above the rig's height, and so do these.
+    rise_m = course.scenario.ownship.rise_m
+
+    def up_deg(range_m: float, above_m: float) -> float:
+        return elevation_deg(course.rig, range_m, above_m - rise_m)
+
+    lowest = min(up_deg(r.range_m, 0.0) for r in course.rings)
     low_e = min(float(elevations.min()), lowest) - UP_PAD_DEG
     high_e = float(elevations.max()) + UP_PAD_DEG
     across = [_bearing_deg(rays, heading_deg) for rays in edges]
@@ -498,19 +504,17 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         if b is None:
             continue
         if o.asset == BUOY:
-            _dot(draw, *unrolled.xy(b, elevation_deg(course.rig, range_m, above_m)))
+            _dot(draw, *unrolled.xy(b, up_deg(range_m, above_m)))
             continue
         half = box_half_deg(range_m)
         tall_m = CONTAINER_TALL_M - box.draught_m
-        top = unrolled.xy(b - half, elevation_deg(course.rig, range_m, tall_m))
-        right, waterline = unrolled.xy(
-            b + half, elevation_deg(course.rig, range_m, 0.0)
-        )
+        top = unrolled.xy(b - half, up_deg(range_m, tall_m))
+        right, waterline = unrolled.xy(b + half, up_deg(range_m, 0.0))
         draw.rectangle((*top, right, min(waterline, plot[3])), fill=INK)
     # Far rings crowd the horizon: each label only where it clears the last.
     last = -math.inf
     for ring in course.rings:
-        _, y = unrolled.xy(0.0, elevation_deg(course.rig, ring.range_m, above_m))
+        _, y = unrolled.xy(0.0, up_deg(ring.range_m, above_m))
         if abs(y - last) >= FONT_PX:
             draw.text(
                 (0, y), _metres(ring.range_m), font=_font(), fill=MUTED, anchor="lm"
