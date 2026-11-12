@@ -1,6 +1,6 @@
 ---
 name: frames
-description: Coordinate frames, poses and angle conventions in seascape, the robotics way: one internal convention, transforms named by their frames and composed by matching letters, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, a product's recording, NMEA). Where code lives is `architecture`'s.
+description: Coordinate frames, poses and angle conventions in seascape, the robotics way: one internal convention, transforms named by their frames and composed by matching letters, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
 ---
 
 # Frames
@@ -22,7 +22,7 @@ Inside seascape, a bearing is clockwise from north or the bow and an elevation i
 |---|---|---|
 | OpenCV | right, down, forward | `angles.TO_CV`; calibration `extrinsics[f]` is `T_f_c`, the inverse of OpenCV's `[R\|t]` |
 | Blender camera | right, up, backward | `blend.BLENDER_TO_CV` |
-| FLU (ROS REP 103) | forward, left, up: between body frames, yaw to port, pitch nose down | a product recording's camera rpy |
+| FLU (ROS REP 103) | forward, left, up: between body frames, yaw to port, pitch nose down | an Oceanus recording's camera rpy |
 | NED (aerospace, NMEA 2000) | forward, right, down: yaw clockwise, pitch nose up | NMEA attitude and heading |
 
 ## Rules
