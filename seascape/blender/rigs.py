@@ -1,21 +1,27 @@
 """Rigs and their cameras, and where each camera points."""
 
 import math
+from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 from seascape.blender.blend import (
+    animate,
     empty,
     yaw,
 )
 from seascape.config import (
     Band,
     Mount,
+    Ptu,
+    Rig,
     Scenario,
 )
-from seascape.physics import fisheye
+from seascape.motion import panned_deg
+from seascape.physics import fisheye, ptu
 
 
 class _RigObjects(NamedTuple):
@@ -35,7 +41,7 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         )
         # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the rig's own transverse
         # axis, so a pitched rig rolls the horizon of its off-axis cameras.
-        rig_root.rotation_euler = (math.radians(rig.pitch_deg), 0.0, yaw(rig.yaw_deg))
+        rig_root.rotation_euler = _head(rig.pitch_deg, rig.yaw_deg)
         rigs[name] = rig_root
 
     cameras: dict[str, bpy.types.Object] = {}
@@ -69,6 +75,53 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         )
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
+
+
+def stabilise(
+    rigs: dict[str, bpy.types.Object],
+    scenario: Scenario,
+    attitude_deg: Callable[[float], tuple[float, float]],
+) -> None:
+    """Key each rig on a pan-tilt unit: its pan to a turn by the ptu, and its tilt to
+    the unit's loop holding its pitch against the base under it.
+
+    Args:
+        rigs: The rig empties `add_rigs` made, by name.
+        scenario: Its rigs, its turn and the times keyed.
+        attitude_deg: The ownship's pitch, bow up, and roll, starboard down, at a time.
+    """
+    turn, times = scenario.turn, scenario.outputs.times_s
+    for name, rig in scenario.rigs.items():
+        if rig.ptu is not None:
+            panned = panned_deg(turn, name)
+            _hold(rigs[name], rig, rig.ptu, panned, attitude_deg, times)
+
+
+def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:
+    """A rig empty's XYZ euler for its pitch up and its bearing clockwise."""
+    return (math.radians(pitch_deg), 0.0, yaw(yaw_deg))
+
+
+def _hold(
+    head: bpy.types.Object,
+    rig: Rig,
+    unit: Ptu,
+    panned: Callable[[float], float],
+    attitude_deg: Callable[[float], tuple[float, float]],
+    times_s: Sequence[float],
+) -> None:
+    def pan_deg(t_s: float) -> float:
+        return rig.yaw_deg + panned(t_s)
+
+    tilt = ptu.panned_tilt_deg(
+        attitude_deg, pan_deg, times_s, unit.inclination_deg, rig.pitch_deg
+    )
+
+    def euler(t_s: float) -> tuple[float, float, float]:
+        return _head(rig.pitch_deg + float(np.interp(t_s, times_s, tilt)), pan_deg(t_s))
+
+    animate(head, "rotation_euler", times_s, lambda t: euler(t)[0], 0)
+    animate(head, "rotation_euler", times_s, lambda t: euler(t)[2], 2)
 
 
 class View(NamedTuple):

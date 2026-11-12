@@ -11,7 +11,8 @@ from pydantic import (
     model_validator,
 )
 
-from seascape import assets
+from seascape import angles, assets
+from seascape.config.cameras import Name
 from seascape.config.world import Sea
 from seascape.model import Model
 from seascape.physics import slew, thermal, waves
@@ -197,11 +198,13 @@ class Move(Model):
 
 
 class Turn(Model):
-    """A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to
-    its rate and down to rest at the acceleration.
+    """A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each
+    move ramps up to its rate and down to rest at the acceleration.
     """
 
-    by: Literal["ownship"] = Field(description="What turns: the ownship's heading.")
+    ptu: Name | None = Field(
+        default=None, description="The rig whose ptu turns; None turns the ownship."
+    )
     top_rate_deg_s: float = Field(
         gt=0.0, description="As fast as it turns; a move's rate when it sets none."
     )
@@ -224,6 +227,29 @@ class Turn(Model):
                     f"{self.top_rate_deg_s}: lower rate_deg_s or raise top_rate_deg_s"
                 )
         return self
+
+    @model_validator(mode="after")
+    def _a_ptu_scans_at_one_rate(self) -> "Turn":
+        rates = {m.rate_deg_s for m in self.moves if m.rate_deg_s is not None}
+        if self.ptu is not None and len(rates) > 1:
+            raise ValueError(
+                f"a ptu scans at one rate, not {sorted(rates)}: give every move that "
+                "sets rate_deg_s the same one, and leave it unset to slew at "
+                "top_rate_deg_s"
+            )
+        return self
+
+    def pans(self, rig: str) -> bool:
+        """Whether it turns the ptu of the rig named `rig`."""
+        return self.ptu == rig
+
+    @property
+    def scan_rate_deg_s(self) -> float:
+        """The one rate its moves set, else its top rate."""
+        return next(
+            (m.rate_deg_s for m in self.moves if m.rate_deg_s is not None),
+            self.top_rate_deg_s,
+        )
 
     def legs(self) -> list[slew.Leg]:
         """Each move's slew, in order."""
@@ -408,6 +434,6 @@ class Farm(Model):
                     - r * across_m * math.sin(row)
                 )
                 placed.append(
-                    (math.hypot(east, north), math.degrees(math.atan2(east, north)))
+                    (math.hypot(east, north), angles.bearing_deg(east, north))
                 )
         return placed

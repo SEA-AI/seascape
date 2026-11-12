@@ -2732,6 +2732,41 @@
       "title": "Processing",
       "type": "object"
     },
+    "Ptu": {
+      "additionalProperties": false,
+      "description": "A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu.",
+      "properties": {
+        "inclination_deg": {
+          "title": "Inclination Deg",
+          "description": "The pitch it holds its head at, to the horizon, its mount included. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": -20.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Ptu",
+      "type": "object"
+    },
     "Rig": {
       "additionalProperties": false,
       "description": "One installed product: the frame its cameras sit in, at one mount point.\n\nRigs a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
@@ -2851,6 +2886,33 @@
               "exclusiveMaximum": 90.0,
               "exclusiveMinimum": -90.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "ptu": {
+          "description": "What it sits on, if anything.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ptu"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -4416,15 +4478,17 @@
     },
     "Turn": {
       "additionalProperties": false,
-      "description": "A scripted turn of the ownship, from the bow at t = 0. Each move ramps up to\nits rate and down to rest at the acceleration.",
+      "description": "A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each\nmove ramps up to its rate and down to rest at the acceleration.",
       "properties": {
-        "by": {
-          "title": "By",
-          "description": "What turns: the ownship's heading.",
+        "ptu": {
+          "description": "The rig whose ptu turns; None turns the ownship.",
+          "default": null,
           "anyOf": [
             {
-              "const": "ownship",
-              "type": "string"
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -4527,7 +4591,6 @@
         }
       },
       "required": [
-        "by",
         "top_rate_deg_s",
         "moves"
       ],
@@ -5206,7 +5269,7 @@
       ]
     },
     "turn": {
-      "description": "Turns the ownship's heading through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
+      "description": "Turns the ownship, or a rig's ptu, through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
       "default": null,
       "anyOf": [
         {

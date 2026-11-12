@@ -102,6 +102,15 @@ def turned_deg(turn: Turn) -> Callable[[float], float]:
     return at
 
 
+def panned_deg(turn: Turn | None, rig: str) -> Callable[[float], float]:
+    """The pan of the rig named `rig` at a time, clockwise from its yaw: the turn's
+    when it turns that rig's ptu, else none.
+    """
+    if turn is None or not turn.pans(rig):
+        return lambda _: 0.0
+    return turned_deg(turn)
+
+
 def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     """The pose at a time: `speed_mps` integrated along the heading that `yaw` swings
     and `turn` turns, with the pitch and roll its swings script.
@@ -116,7 +125,7 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
         sub = math.ceil(1.0 / (outputs.fps * step_s))
     yawed = swung(0.0, swing, outputs)
     turned = None
-    if turn is not None and turn.by == "ownship":
+    if turn is not None and turn.ptu is None:
         turned = turned_deg(turn)
         sub = max(sub, math.ceil(turn.top_rate_deg_s / (outputs.fps * STEP_TURN_DEG)))
     tau = np.linspace(0.0, times[-1], (len(times) - 1) * sub + 1)
@@ -228,3 +237,31 @@ def waterplane(
         east_mps=pose.east_mps,
         north_mps=pose.north_mps,
     )
+
+
+def attitude_deg(
+    path: Path,
+    hull: waves.Waterplane | None,
+    field: tuple[waves.Wave, ...],
+    tall: tuple[waves.Wave, ...],
+) -> Callable[[float], tuple[float, float]]:
+    """The pitch, bow up, and roll, starboard down, at a time: what `path` steers and,
+    under `hull`, the sea's.
+
+    Args:
+        path: Where it is, where its bow points and how it is tilted.
+        hull: Its size, or None for a bare rig, which the sea does not tilt.
+        field: Every wave, which a hull pitches and rolls on.
+        tall: The waves that are geometry, the ones it floats on.
+    """
+
+    def at(t_s: float) -> tuple[float, float]:
+        pose = path(t_s)
+        pitch, roll = pose.pitch_rad, pose.roll_rad
+        if hull is not None:
+            plane = waterplane(pose, tall, t_s, hull)
+            sea_pitch, sea_roll_up = waves.attitude(field, plane, t_s)
+            pitch, roll = pitch + sea_pitch, roll - sea_roll_up
+        return math.degrees(pitch), math.degrees(roll)
+
+    return at

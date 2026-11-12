@@ -403,6 +403,19 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
+class Ptu(Model):
+    """A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu."""
+
+    # Core-Backend's `boat_setup.target_inclination`, bounded there.
+    inclination_deg: float = Field(
+        default=0.0,
+        ge=-20.0,
+        le=20.0,
+        description="The pitch it holds its head at, to the horizon, its mount "
+        "included. Negative is down.",
+    )
+
+
 class Rig(Model):
     """One installed product: the frame its cameras sit in, at one mount point.
 
@@ -429,6 +442,7 @@ class Rig(Model):
         description="About its own transverse axis, after its yaw and before its "
         "cameras'. Negative is down.",
     )
+    ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )

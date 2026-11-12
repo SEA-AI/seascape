@@ -133,7 +133,8 @@ class Scenario(Model):
     )
     turn: Turn | None = Field(
         default=None,
-        description="Turns the ownship's heading through scripted moves from t = 0. "
+        description="Turns the ownship, or a rig's ptu, through scripted moves from "
+        "t = 0. "
         "It ends within outputs.duration_s, with outputs.loop false.",
     )
     outputs: Outputs = Field(default_factory=Outputs)
@@ -247,6 +248,13 @@ class Scenario(Model):
             raise ValueError(
                 "outputs.loop cannot close a scripted turn: set outputs.loop to false "
                 "or remove turn"
+            )
+        if (name := self.turn.ptu) is not None and (
+            name not in self.rigs or self.rigs[name].ptu is None
+        ):
+            on_ptu = [n for n, rig in self.rigs.items() if rig.ptu is not None]
+            raise ValueError(
+                f"turn.ptu {name!r} is no rig on a ptu: set it to one of {on_ptu}"
             )
         last_s = self.outputs.times_s[-1]
         # isclose: the legs' times sum in floats, and a turn ending on the last frame
