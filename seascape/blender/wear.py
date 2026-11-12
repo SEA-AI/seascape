@@ -51,6 +51,8 @@ class Weights(NamedTuple):
 LAYERS = Weights._fields[:-1]
 # What covers the surface, bottom up; `fade` only tints the paint.
 COVERS = ("grime", "rust", "stain", "fouling", "soot", "scuff", "dropping")
+# A mask group output past `LAYERS`: where a dropping's dark core is.
+CORE = "dropping_core"
 
 # Judgement, all of it. A stain and fouling are the waterline's, so only what the sea
 # wets takes them; cloth sags and flexes, so water runs off it without leaving a streak.
@@ -289,6 +291,11 @@ def _attribute(
     return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
 
 
+class _Dropping(NamedTuple):
+    cover: Num
+    core: Num  # 1 where its dark faeces are
+
+
 class _Masks:
     """Judgement, every number: eyeballed against photographs of worn hulls."""
 
@@ -392,12 +399,16 @@ class _Masks:
         edge = _smooth(1.0 - Num(t, facing), 0.01, 0.08)
         return edge * self.cover(self.noise(3.0, 7.0), 0.15) * self.region
 
-    def droppings(self) -> Num:
+    def droppings(self) -> "_Dropping":
         # Judgement: splashes 1-3 cm over a few percent of a level top at full wear;
         # only the noise's peaks pass, which `cover`'s broad threshold would not keep.
         threshold = self.amount.madd(-0.08, 0.72)
-        splash = _smooth(self.noise(25.0, 9.0, 1.0), threshold, threshold + 0.03)
-        return _smooth(self.up, 0.5, 0.9) * splash * self.region
+        field = self.noise(25.0, 9.0, 1.0)
+        splash = _smooth(field, threshold, threshold + 0.03)
+        # Judgement: the dark faeces sit at the splash's highest peaks, inside the
+        # white urate.
+        core = _smooth(field, threshold + 0.045, threshold + 0.06)
+        return _Dropping(_smooth(self.up, 0.5, 0.9) * splash * self.region, core)
 
     def stain(self) -> Num:
         bow = _smooth(self.y / self.length, 0.32, 0.45)
@@ -426,7 +437,7 @@ class _Masks:
         return band * self.cover(patchy, 0.3, self.still.madd(0.6, -0.3))
 
     def layers(self) -> dict[str, Num]:
-        """Each of `LAYERS`' masks, by name."""
+        """Each of `LAYERS`' masks, and `CORE`, by name."""
         streak = self.streaks()
         not_steel = 1.0 - self.steel
         grime = self.grime().op("MAXIMUM", streak * not_steel)
@@ -436,6 +447,7 @@ class _Masks:
         rust = chips.op("MAXIMUM", streak * self.steel)
         soot = self.cover(self.noise(0.5, 13.0), 0.4, 0.3)
         sky = _smooth(self.up, 0.0, 1.0).madd(0.5, 0.5)
+        dropping = self.droppings()
         return {
             "grime": grime,
             "rust": rust,
@@ -443,8 +455,9 @@ class _Masks:
             "fouling": self.fouling(),
             "soot": soot,
             "scuff": chips,
-            "dropping": self.droppings(),
+            "dropping": dropping.cover,
             "fade": self.amount * sky,
+            CORE: dropping.core,
         }
 
 
@@ -454,7 +467,7 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     if (group := bpy.data.node_groups.get(name)) is not None:
         return group
     group = bpy.data.node_groups.new(name, "ShaderNodeTree")
-    for layer in LAYERS:
+    for layer in (*LAYERS, CORE):
         group.interface.new_socket(
             layer, in_out="OUTPUT", socket_type="NodeSocketFloat"
         )
@@ -467,6 +480,8 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
         mask = layers[layer]
         weight = Num(group, _attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
         feed(group, out.inputs[layer], clamped(group, (mask * weight).socket))
+    # Only where a dropping covers, so it needs no weight of its own.
+    feed(group, out.inputs[CORE], layers[CORE].socket)
     return group
 
 
@@ -491,6 +506,8 @@ SOOT = (0.015, 0.014, 0.013, 1.0)
 SCUFF = (0.42, 0.41, 0.38, 1.0)
 # Judgement: bird lime, dried.
 DROPPING = (0.62, 0.61, 0.57, 1.0)
+# Judgement: the faeces in its middle, dried.
+DROPPING_CORE = (0.05, 0.045, 0.03, 1.0)
 # Judgement: green weed over brown diatom slime, wet.
 FOULING = (0.035, 0.06, 0.018, 1.0)
 
@@ -541,10 +558,21 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
     feed(t, stain.inputs["Factor"], _attribute(t, "wear_steel").outputs["Factor"])
     stain.inputs["A"].default_value = STAIN
     stain.inputs["B"].default_value = STAIN_STEEL
+    dropping = node(t, "ShaderNodeMix", data_type="RGBA")
+    feed(t, dropping.inputs["Factor"], group.outputs[CORE])
+    dropping.inputs["A"].default_value = DROPPING
+    dropping.inputs["B"].default_value = DROPPING_CORE
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
     for layer, albedo in zip(
         COVERS[1:],
-        (RUST, stain.outputs["Result"], FOULING, SOOT, SCUFF, DROPPING),
+        (
+            RUST,
+            stain.outputs["Result"],
+            FOULING,
+            SOOT,
+            SCUFF,
+            dropping.outputs["Result"],
+        ),
         strict=True,
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")

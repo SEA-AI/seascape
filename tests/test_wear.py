@@ -240,6 +240,18 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
     assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"
 
 
+def test_a_dropping_darkens_where_the_masks_put_its_core() -> None:
+    material = bpy.data.materials.new("paint")
+    wear._dirty(material, bpy.data.images.new("crevice", 16, 16))
+    (group,) = (n for n in material.node_tree.nodes if n.type == "GROUP")
+    (link,) = group.outputs[wear.CORE].links
+    (colour,) = link.to_node.outputs["Result"].links
+    covered = colour.to_node
+    assert colour.to_socket == covered.inputs["B"]
+    (cover,) = covered.inputs["Factor"].links
+    assert cover.from_socket == group.outputs["dropping"]
+
+
 def test_the_atlas_lies_in_the_unit_square_and_leaves_the_uv_maps_alone(box) -> None:
     obj, _ = box
     obj.data.uv_layers.new(name="authored")
