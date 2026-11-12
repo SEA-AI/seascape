@@ -5,26 +5,48 @@ description: Write or review seascape prose: comments, docstrings, docs, `assets
 
 # Prose
 
-Every line of prose must lose something when deleted.
+Delete first. A line stays only if the reader loses something without it.
 
-## Rules
+## Delete
 
-1. Try deleting it first. For every line, ask whether anything is lost without it. If not, delete it. Rephrase only lines that must stay.
-2. A rephrase is never longer than the line it replaces, unless it corrects a stale fact.
-3. Comments only say what the code can't: a non-obvious constraint, a unit, a workaround and what removes it, a source. Never the line restated. A better name beats an explanatory comment.
-4. Nothing that can go stale. No numbers derived from values elsewhere, lists copied from another file, test names, or mentions of PRs, reviews, conversations or history. No hardware, specs or consumers the repo doesn't model. If a claim matters, a test asserts it.
-5. A number's source sits beside it, in a comment: a published relation, a derivation from one, or a pinned measurement of Blender. A judgement says "Judgement:".
-6. No machine cadence: no "X, not just Y" emphasis, lists of exactly three, uniformly long sentences, hedges like "it's worth noting", em-dash habits or tacked-on "-ing" clauses. Prefer the specific: a number, a file name or a flag.
-7. State the fact, not the journey. No debugging narration, no restating the diff, no closing recap.
-8. A docstring matches its function's current parameters: a backticked name of a removed or folded-in parameter is stale. Each `Args:` entry teaches something the name does not: what the quantity is, its unit, a typical range, its source. Single backticks for names; no Sphinx roles or directives.
+- **Restating the code.** A comment or docstring that says what the next line does, or what its name already says. A better name beats the comment.
+- **Restating the diff.** A PR body or commit that lists the files touched or walks through the change line by line.
+- **Context spill.** The journey: debugging narration, what was tried, reviews, conversations, other PRs, "now" or "no longer" about an earlier state.
+- **Redundancy.** The same fact in two places, a summary of what was just said, a closing recap, an intro that announces what follows.
+- **Verbosity.** Hedges ("it's worth noting"), filler, "X, not just Y" emphasis, lists padded to three, tacked-on "-ing" clauses, em-dash habits.
+- **What goes stale.** Numbers derived from values elsewhere, lists copied from another file, test names, hardware, specs or consumers the repo doesn't model. If a claim matters, a test asserts it.
 
-## Commits and pull requests
+## Keep
 
-- A commit is a Conventional Commit (`feat:`, `fix:`, `chore:`, `ci:`) with an imperative subject; the body says why. Tidying and behaviour change are separate commits.
-- A PR body is What, Why, a short How and Testing. It describes only its final state against its base, never how it evolved inside the PR: no "now" or "no longer" about an intermediate commit.
-- Testing holds evidence CI and the diff do not show: a measurement, a cost, a render. An image wherever the change is visible; any before/after compares the base with the head.
-- Prefer a table, a before/after or a frame over a paragraph. An outside source behind a number or choice gets one line.
+- What the code can't say: a non-obvious constraint, a unit, a workaround and what removes it.
+- A number's source beside it: a published relation, a derivation from one, or a pinned measurement of Blender. A judgement says "Judgement:".
+- The specific over the general: a number, a file name, a flag.
+- A table, a before/after or a frame over a paragraph.
+
+A rephrase is never longer than what it replaces, unless it corrects a stale fact.
+
+## Where it applies
+
+- **Comments:** the why, never the what.
+- **Docstrings:** match the current signature; a backticked name that no longer exists is stale. Each `Args:` entry says what the name does not: the quantity, its unit, a typical range, its source. Single backticks; no Sphinx roles.
+- **Docs:** how to use the thing as it is, not how it came to be.
+- **Commits:** a Conventional Commit (`feat:`, `fix:`, `chore:`, `ci:`), imperative subject, a body that says why. Tidying and behaviour change are separate commits.
+- **PR bodies:** the final state against the base. Their shape is the PR template's.
 
 ## Reviewing
 
-Review only the prose in the final diff, commit messages and PR body. Output a list of proposed edits, each as `file:line` (a commit by its hash), then old -> new (or "delete"). End with the total net prose lines: added minus removed.
+Review the prose in the final diff, the commit messages and the PR body. Be picky: every line added or changed gets a verdict, and when in doubt the verdict is delete.
+
+Report a table, one row per line or passage, deletes first:
+
+| # | Where | Verdict | Old -> new | Why |
+|---|---|---|---|---|
+| 1 | `file:line` | delete | `old` | restates the code |
+| 2 | `body:3` | rephrase | `old` -> `new` | verbose |
+| 3 | `abc1234` | keep | | the unit's only source |
+
+- **Where:** `file:line`, a commit's hash, or `body:line`.
+- **Verdict:** delete, rephrase or keep. A keep names what the reader would lose.
+- **Why:** the category from Delete or Keep above, in a few words.
+
+End with the net prose lines: added minus removed, after the edits.
