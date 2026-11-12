@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from seascape.config import load
+from seascape.motion import held_tilt_deg
 from seascape.physics import ptu
 from tests.scenarios import SYNC_SENTRY
 
@@ -52,3 +53,12 @@ def test_a_deck_and_mount_that_reach_the_zenith_are_refused() -> None:
     steep = [{"ownship": {"pitch_deg": 60.0}, "rigs": {"mast": {"pitch_deg": 30.0}}}]
     with pytest.raises(ValueError, match="ptu can pass the zenith"):
         load(SYNC_SENTRY, steep)
+
+
+def test_a_deck_the_sea_tips_past_the_zenith_is_refused() -> None:
+    # The config cannot see the sea's rocking, so a deck pitched 120 deg bow up
+    # stands in for it.
+    c, s = math.cos(math.radians(120.0)), math.sin(math.radians(120.0))
+    pitched = np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+    with pytest.raises(ValueError, match="past the zenith"):
+        held_tilt_deg(load(SYNC_SENTRY), "mast", lambda _t_s: pitched)

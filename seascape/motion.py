@@ -357,16 +357,28 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     frame, holding its inclination on a deck tilted `deck`.
 
     Raises:
-        ValueError: The rig has no pan-tilt unit.
+        ValueError: The rig has no pan-tilt unit, or the deck tips its untilted head
+            past the zenith, where the IMU's pitch folds and the loop holds the head
+            facing aft.
     """
     rig = scenario.rigs[name]
     if rig.ptu is None:
         raise ValueError(f"rig {name} has no ptu")
     axis = axis_deg(scenario, name)
+    times = scenario.outputs.times_s
+    for t_s in times:
+        # Past the zenith, the head's horizontal part turns against its bearing; the
+        # deck turns no heading, so the bearing on a level deck is the reference.
+        tipped = deck(t_s) @ angles.direction(axis(t_s), rig.pitch_deg)
+        if tipped[:2] @ angles.direction(axis(t_s), 0.0)[:2] < 0.0:
+            raise ValueError(
+                f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
+                "ptu past the zenith: lower the ownship's pitch, the sea or pitch_deg"
+            )
 
     # The firmware's IMU sits on the head, so the loop holds the head itself, its
     # mount included.
     def head_deg(t_s: float, tilt_deg: float) -> float:
         return elevation_deg(deck(t_s), axis(t_s), rig.pitch_deg + tilt_deg)
 
-    return ptu.tilt_deg(head_deg, scenario.outputs.times_s, rig.ptu.inclination_deg)
+    return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)
