@@ -3,11 +3,13 @@
 import math
 from typing import Annotated, Literal, NamedTuple
 
+import numpy as np
 from pydantic import (
     Field,
     model_validator,
 )
 
+from seascape import angles
 from seascape.model import Model
 from seascape.physics import fisheye
 from seascape.physics.colour import Tone
@@ -410,14 +412,17 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
+# Core-Backend's `boat_setup.target_inclination`, bounded there.
+PTU_INCLINATION_DEG = (-20.0, 20.0)
+
+
 class Ptu(Model):
     """A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu."""
 
-    # Core-Backend's `boat_setup.target_inclination`, bounded there.
     inclination_deg: float = Field(
         default=0.0,
-        ge=-20.0,
-        le=20.0,
+        ge=PTU_INCLINATION_DEG[0],
+        le=PTU_INCLINATION_DEG[1],
         description="The pitch it holds its head at, to the horizon, its mount "
         "included. Negative is down.",
     )
@@ -465,6 +470,22 @@ class Rig(Model):
         "two, which then go unlabelled. Unset, it records each camera whole. An exr "
         "ignores it.",
     )
+
+    def axis_deg(self, pan_deg: float = 0.0) -> float:
+        """Its axis clockwise from the bow, panned `pan_deg`: unwrapped, so a turn's
+        sweep reads off the difference of two.
+        """
+        return self.yaw_deg + pan_deg
+
+    def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
+        """(4, 4) the rig to its vessel (+X starboard, +Y bow, +Z up, at the waterline
+        under midships): at its mount, yawed and panned, then pitched and tilted
+        about its own transverse axis, so a pitched rig rolls its off-axis cameras.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.axis_deg(pan_deg), self.pitch_deg + tilt_deg)
+        pose[:3, 3] = self.offset_x_m, self.offset_y_m, self.height_m
+        return pose
 
     @model_validator(mode="after")
     def _each_video_records_a_camera(self) -> "Rig":

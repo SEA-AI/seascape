@@ -7,7 +7,6 @@ from typing import NamedTuple
 
 import numpy as np
 
-from seascape import angles
 from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
 from seascape.physics import ptu, slew, waves
@@ -163,8 +162,8 @@ def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
     """The axis of the rig `name` at a time, clockwise from the bow: its yaw and its
     pan.
     """
-    yaw_deg, panned = scenario.rigs[name].yaw_deg, panned_deg(scenario.turn, name)
-    return lambda t_s: yaw_deg + panned(t_s)
+    rig, panned = scenario.rigs[name], panned_deg(scenario.turn, name)
+    return lambda t_s: rig.axis_deg(panned(t_s))
 
 
 def rig_track(scenario: Scenario, name: str) -> Path:
@@ -344,11 +343,11 @@ def tilted(
     return at
 
 
-def elevation_deg(deck: np.ndarray, bearing_deg: float, up_deg: float) -> float:
-    """The elevation in the world of a direction `bearing_deg` clockwise from the bow
-    and `up_deg` above a deck tilted `deck`, (3, 3) deck to world.
+def elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
+    """The elevation in the world of `toward`, a unit (3,) in the deck's frame, on a
+    deck tilted `deck`, (3, 3) deck to world.
     """
-    up = float(deck[2] @ angles.direction(bearing_deg, up_deg))
+    up = float(deck[2] @ toward)
     return math.degrees(math.asin(max(-1.0, min(1.0, up))))
 
 
@@ -364,13 +363,18 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     rig = scenario.rigs[name]
     if rig.ptu is None:
         raise ValueError(f"rig {name} has no ptu")
-    axis = axis_deg(scenario, name)
+    pan = panned_deg(scenario.turn, name)
+
+    def head(t_s: float, tilt_deg: float = 0.0) -> np.ndarray:
+        """The head's axis on the deck."""
+        return rig.pose(pan(t_s), tilt_deg)[:3, 1]
+
     times = scenario.outputs.times_s
     for t_s in times:
         # Past the zenith, the head's horizontal part turns against its bearing; the
         # deck turns no heading, so the bearing on a level deck is the reference.
-        tipped = deck(t_s) @ angles.direction(axis(t_s), rig.pitch_deg)
-        if tipped[:2] @ angles.direction(axis(t_s), 0.0)[:2] < 0.0:
+        tipped = deck(t_s) @ head(t_s)
+        if tipped[:2] @ head(t_s, -rig.pitch_deg)[:2] < 0.0:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
                 "ptu past the zenith: lower the ownship's pitch, the sea or pitch_deg"
@@ -379,7 +383,7 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
         # the world's up projects onto that plane with length `reach`, the sine of
         # the steepest elevation any tilt gives.
         up = deck(t_s)[2]
-        reach = math.hypot(up @ angles.direction(axis(t_s), 0.0), up[2])
+        reach = math.hypot(up @ head(t_s, -rig.pitch_deg), up[2])
         if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "
@@ -390,6 +394,6 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     # The firmware's IMU sits on the head, so the loop holds the head itself, its
     # mount included.
     def head_deg(t_s: float, tilt_deg: float) -> float:
-        return elevation_deg(deck(t_s), axis(t_s), rig.pitch_deg + tilt_deg)
+        return elevation_deg(deck(t_s), head(t_s, tilt_deg))
 
     return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)

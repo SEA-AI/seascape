@@ -30,12 +30,8 @@ def in_rig(camera: Camera) -> Matrix4:
     """`camera` to its rig, in OpenCV's axes: yawed, then pitched about its own
     transverse axis, at the rig's origin.
     """
-    yaw, tilt = angles.yaw(camera.yaw_deg), math.radians(camera.pitch_deg)
-    cy, sy, ct, st = math.cos(yaw), math.sin(yaw), math.cos(tilt), math.sin(tilt)
-    turn = np.array([[cy, -sy, 0.0], [sy, cy, 0.0], [0.0, 0.0, 1.0]])
-    pitched = np.array([[1.0, 0.0, 0.0], [0.0, ct, -st], [0.0, st, ct]])
     pose = np.eye(4)
-    pose[:3, :3] = turn @ pitched @ TO_CV.T
+    pose[:3, :3] = angles.turned(camera.yaw_deg, camera.pitch_deg) @ TO_CV.T
     return cast(Matrix4, tuple(map(tuple, pose.tolist())))
 
 

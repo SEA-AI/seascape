@@ -6,9 +6,8 @@ from typing import NamedTuple
 
 import bpy
 import numpy as np
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
 
-from seascape.angles import yaw
 from seascape.blender.blend import (
     BLENDER_TO_CV,
     animate,
@@ -17,9 +16,10 @@ from seascape.blender.blend import (
 from seascape.config import (
     Band,
     Mount,
+    Rig,
     Scenario,
 )
-from seascape.motion import Deck, axis_deg, held_tilt_deg
+from seascape.motion import Deck, held_tilt_deg, panned_deg
 from seascape.outputs.calibration import in_rig
 from seascape.physics import fisheye
 
@@ -36,12 +36,8 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
 
     rigs: dict[str, bpy.types.Object] = {}
     for name, rig in scenario.rigs.items():
-        rig_root = empty(
-            f"rig_{name}", root, (rig.offset_x_m, rig.offset_y_m, rig.height_m)
-        )
-        # XYZ euler is Rz @ Ry @ Rx: yaw, then pitch about the rig's own transverse
-        # axis, so a pitched rig rolls the horizon of its off-axis cameras.
-        rig_root.rotation_euler = _head(rig.pitch_deg, rig.yaw_deg)
+        rig_root = empty(f"rig_{name}", root)
+        rig_root.matrix_basis = Matrix(rig.pose().tolist())
         rigs[name] = rig_root
 
     cameras: dict[str, bpy.types.Object] = {}
@@ -90,26 +86,24 @@ def stabilise(
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
             tilt = held_tilt_deg(scenario, name, deck)
-            _hold(rigs[name], rig.pitch_deg, axis_deg(scenario, name), tilt, times)
-
-
-def _head(pitch_deg: float, yaw_deg: float) -> tuple[float, float, float]:
-    """A rig empty's XYZ euler for its pitch up and its bearing clockwise."""
-    return (math.radians(pitch_deg), 0.0, yaw(yaw_deg))
+            _hold(rigs[name], rig, panned_deg(scenario.turn, name), tilt, times)
 
 
 def _hold(
     head: bpy.types.Object,
-    pitch_deg: float,
-    axis: Callable[[float], float],
+    rig: Rig,
+    pan_deg: Callable[[float], float],
     tilt_deg: np.ndarray,
     times_s: Sequence[float],
 ) -> None:
-    def euler(t_s: float) -> tuple[float, float, float]:
-        return _head(pitch_deg + float(np.interp(t_s, times_s, tilt_deg)), axis(t_s))
-
-    animate(head, "rotation_euler", times_s, lambda t: euler(t)[0], 0)
-    animate(head, "rotation_euler", times_s, lambda t: euler(t)[2], 2)
+    # Each frame's euler nearest the last, so a pan past the stern keys no spin back.
+    eulers: dict[float, Euler] = {}
+    last: Euler | None = None
+    for t_s, tilt in zip(times_s, tilt_deg, strict=True):
+        turn = Matrix(rig.pose(pan_deg(t_s), float(tilt))[:3, :3].tolist())
+        last = turn.to_euler("XYZ") if last is None else turn.to_euler("XYZ", last)
+        eulers[t_s] = last
+    animate(head, "rotation_euler", times_s, lambda t: tuple(eulers[t]))
 
 
 class View(NamedTuple):

@@ -1501,12 +1501,14 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
         bpy.context.scene.frame_set(frame)
         bearing, elevation = boresight_deg(camera)
         assert bearing == pytest.approx(turned(t_s), abs=turns_deg)
-        base.append(motion.elevation_deg(deck(t_s), axis(t_s), 0.0))
+        base.append(motion.elevation_deg(deck(t_s), angles.direction(axis(t_s), 0.0)))
         # Blender draws the head the loop holds; 1e-4 deg is float32's asin noise and
         # more.
         forward = np.array(built.rigs[name].matrix_world)[2, 1]
         assert math.degrees(math.asin(forward)) == pytest.approx(
-            motion.elevation_deg(deck(t_s), axis(t_s), mount_deg + held_deg[frame]),
+            motion.elevation_deg(
+                deck(t_s), angles.direction(axis(t_s), mount_deg + held_deg[frame])
+            ),
             abs=1e-4,
         )
         # The head itself holds -1.9, its mount's -2.0 included.

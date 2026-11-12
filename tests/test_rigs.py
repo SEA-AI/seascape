@@ -2,6 +2,7 @@
 from them. One global Blender session, so it is built once.
 """
 
+import itertools
 import json
 import math
 from pathlib import Path
@@ -16,7 +17,7 @@ from mathutils import Matrix, Vector
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
 from seascape.blender.blend import mesh_objects
-from seascape.blender.rigs import boresight_deg
+from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
@@ -384,3 +385,20 @@ def _in_ship_frame(built: scene.Built, obj: bpy.types.Object) -> Matrix:
 def _in_frame(uv) -> bool:
     """Behind the camera `world_to_camera_view` still lands x, y in range; z decides."""
     return 0.0 <= uv.x <= 1.0 and 0.0 <= uv.y <= 1.0 and uv.z > 0.0
+
+
+@pytest.mark.usefixtures("empty_blend")
+def test_a_pan_past_the_stern_keys_no_spin_back() -> None:
+    """A pan from 170 to 190 deg turns 20 deg, not 340 the other way round."""
+    head = bpy.data.objects.new("head", None)
+    bpy.context.scene.collection.objects.link(head)
+    rig = next(iter(two_rigs().rigs.values()))
+    times = [0.0, 1.0, 2.0]
+    # The axis, yaw and pan, sweeps 170 to 190 deg whatever the rig's own yaw.
+    _hold(head, rig, lambda t: 170.0 - rig.yaw_deg + 10.0 * t, np.zeros(3), times)
+    yaws = []
+    for frame in range(len(times)):
+        bpy.context.scene.frame_set(frame)
+        yaws.append(head.rotation_euler[2])
+    # Each frame pans 10 deg; a spin back steps about 340.
+    assert max(abs(b - a) for a, b in itertools.pairwise(yaws)) < math.radians(15.0)

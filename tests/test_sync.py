@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from seascape import angles
 from seascape.assets import Buoy, manifest
 from seascape.blender.scene import posed_at_start
 from seascape.config import Scenario, load, sources
@@ -60,8 +61,6 @@ def test_videos_either_side_of_the_stern_overlap() -> None:
         name="STERN",
         left_deg=132.5,
         right_deg=227.5,
-        down_deg=-20.0,
-        up_deg=20.0,
         focal_px=1000.0,
         width_px=1920,
         camera_deg=95.0,
@@ -103,6 +102,18 @@ def test_a_pan_tilt_unit_holds_its_inclination_whatever_its_mount_s_pitch() -> N
     assert layout.layout(pitched).inclination_deg == pytest.approx(
         layout.layout(scenario).inclination_deg
     )
+
+
+@pytest.mark.parametrize("pitch_deg", [-10.0, 5.0])
+def test_a_pitch_raises_an_off_axis_ray_by_its_cosine_share(pitch_deg: float) -> None:
+    """A rig pitched p turns a camera yawed psi off its axis up by asin(sin p cos psi),
+    not p: the elevation the course must find the pitch from.
+    """
+    off_axis = angles.direction(40.0, 0.0)
+    climbed = math.degrees(
+        math.asin(math.sin(math.radians(pitch_deg)) * math.cos(math.radians(40.0)))
+    )
+    assert layout._pitch_deg(off_axis, climbed) == pytest.approx(pitch_deg)
 
 
 def test_a_fixed_mount_that_loses_a_ring_names_the_pitch_to_set() -> None:
