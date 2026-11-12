@@ -44,3 +44,37 @@ def direction(bearing_deg: npt.ArrayLike, elevation_deg: npt.ArrayLike) -> np.nd
     return np.stack(
         np.broadcast_arrays(np.cos(e) * np.sin(b), np.cos(e) * np.cos(b), np.sin(e)), -1
     )
+
+
+def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+    """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
+    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180).
+    """
+    x, y, z = body_to_frame[:3, :3].T
+    roll = math.atan2(-x[2], z[2])
+    pitch = math.asin(max(-1.0, min(1.0, y[2])))
+    yaw = math.atan2(y[0], y[1])
+    # Rounded to the CSV's precision first, so float32 noise at 180 cannot wrap.
+    return (
+        math.degrees(roll),
+        math.degrees(pitch),
+        wrapped_deg(round(math.degrees(yaw), 6)),
+    )
+
+
+def pitch_to_deg(ray: np.ndarray, elevation_deg: float) -> float:
+    """The pitch about +X, as `turned` applies it, that raises `ray`, a unit (3,), to
+    `elevation_deg`: the pitch turns its (y, z) in their plane, so an off-axis ray
+    climbs less than the pitch.
+
+    Raises:
+        ValueError: No pitch reaches it, or the ray faces aft of the beam.
+    """
+    _, y, z = ray
+    # Past the beam a pitch lowers the ray, and asin's branch no longer holds.
+    if y <= 0.0:
+        raise ValueError("a ray facing aft of the beam has no pitch")
+    sine = math.sin(math.radians(elevation_deg)) / math.hypot(y, z)
+    if abs(sine) > 1.0:
+        raise ValueError(f"no rig pitch raises a ray to {elevation_deg:.1f} deg")
+    return math.degrees(math.asin(sine) - math.atan2(z, y))
