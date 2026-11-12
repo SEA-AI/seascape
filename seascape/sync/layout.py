@@ -122,9 +122,16 @@ def _edges(camera: CameraCalibration) -> np.ndarray:
     """(2, 3) unit rays through the middle of `camera`'s top and bottom edges, in its
     rig's frame.
     """
-    _, (_, fy, cy), _ = camera.K
-    # OpenCV's +Y is down; pixel centres sit at integers.
-    rows = np.array([[0.0, -0.5 - cy, fy], [0.0, camera.height_px - 0.5 - cy, fy]])
+    (fx, _, cx), (_, fy, cy), _ = camera.K
+    # OpenCV's +Y is down; pixel centres sit at integers. A crop moves the principal
+    # point off the frame's middle column.
+    across = ((camera.width_px - 1) / 2 - cx) / fx
+    rows = np.array(
+        [
+            [across, (-0.5 - cy) / fy, 1.0],
+            [across, (camera.height_px - 0.5 - cy) / fy, 1.0],
+        ]
+    )
     rays = rows @ np.array(camera.extrinsics["rig"])[:3, :3].T
     return rays / np.linalg.norm(rays, axis=1, keepdims=True)
 
