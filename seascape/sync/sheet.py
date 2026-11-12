@@ -17,20 +17,21 @@ import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
-from seascape.angles import wrapped_deg
+from seascape.angles import bearing_deg, wrapped_deg
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import axis_deg, held_tilt_deg, panned_deg, rig_track
+from seascape.motion import axis_deg, drifting, held_tilt_deg, panned_deg, rig_track
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
-from seascape.sync.course import (
+from seascape.sync.layout import (
     BUOY,
     CONTAINER,
     Ring,
     View,
     asset,
     buoy_above_m,
+    buoy_half_deg,
     elevation_deg,
     half_deg,
     one_rig,
@@ -39,7 +40,6 @@ from seascape.sync.course import (
     rings,
     views,
 )
-from seascape.sync.course import course as placed
 
 # Drawn K times the size, then shrunk: Pillow anti-aliases no line or polygon.
 K = 2
@@ -133,10 +133,75 @@ def _course(scenario: Scenario) -> _Course:
         axis_deg=axis_deg(scenario, name)(0.0),
         videos=videos,
         rings=sorted(rings(videos), key=lambda r: r.range_m),
-        objects=placed(scenario).objects(scenario.seed),
-        sight=preview.sightlines(scenario),
+        objects=scenario.objects,
+        sight=_sightlines(scenario),
         colours=colours,
     )
+
+
+def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, float]]]:
+    """An object's range from the one rig at each frame, and its bearing off the
+    rig's axis, wrapped to [-180, 180).
+    """
+    outputs = scenario.outputs
+    rig_at = rig_track(scenario, one_rig(scenario)[0])
+    seen_from = [rig_at(t) for t in outputs.times_s]
+
+    def at(o: Object) -> list[tuple[float, float]]:
+        path = drifting(
+            o.range_m, o.bearing_deg, o.course_deg, o.speed_mps, o.drift, outputs
+        )
+        found = []
+        for t, rig in zip(outputs.times_s, seen_from, strict=True):
+            pose = path(t)
+            east, north = pose.east_m - rig.east_m, pose.north_m - rig.north_m
+            off = bearing_deg(east, north) - math.degrees(rig.heading_rad)
+            found.append((math.hypot(east, north), wrapped_deg(off)))
+        return found
+
+    return at
+
+
+def _behind(box: tuple[float, float], box_m: float, out_m: float, off: float) -> bool:
+    """Whether a container `box_m` long at sightline `box` covers any of a buoy
+    `out_m` out at bearing `off`.
+    """
+    near_m, at = box
+    reach = half_deg(box_m, near_m) + buoy_half_deg(out_m)
+    return near_m < out_m and abs(wrapped_deg(off - at)) < reach
+
+
+def _held(course: "_Course") -> dict[tuple[Ring, View], list[bool]]:
+    """For each ring and each video it serves, whether at each frame the video holds
+    a buoy of that ring whole and clear of the container, by bearing.
+    """
+    lines = {id(o): course.sight(o) for o in course.objects}
+    box_m = asset(CONTAINER, Debris).length_m
+    boxes = [lines[id(o)] for o in course.objects if o.asset == CONTAINER]
+    by_ring: dict[float, list[list[tuple[float, float]]]] = {}
+    for o in course.objects:
+        if o.asset == BUOY:
+            ring = preview.nearest_m(course.rings, o.range_m)
+            by_ring.setdefault(ring, []).append(lines[id(o)])
+
+    def holds(f: int, ring: Ring, view: View) -> bool:
+        middle = (view.left_deg + view.right_deg) / 2
+        for sight in by_ring.get(ring.range_m, []):
+            out_m, off = sight[f]
+            room = (view.right_deg - view.left_deg) / 2 - buoy_half_deg(out_m)
+            if abs(wrapped_deg(off - middle)) > room:
+                continue
+            if not any(_behind(box[f], box_m, out_m, off) for box in boxes):
+                return True
+        return False
+
+    frames = range(len(course.scenario.outputs.times_s))
+    return {
+        (ring, view): [holds(f, ring, view) for f in frames]
+        for ring in course.rings
+        for view in course.videos
+        if view.name in ring.videos
+    }
 
 
 @functools.cache
@@ -554,12 +619,10 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
     """The turn: a row for each ring and video it serves, lit while the video's
     bearings hold a buoy of the ring whole, then a strip for each attitude.
 
-    The bar reads bearing alone, as `preview.held` does: a deck pitched past a
-    fixed video's height can drop the buoy out of it, which only the preview's
-    labels show.
+    The bar reads bearing alone: a deck pitched past a fixed video's height can
+    drop the buoy out of it, which only the preview's labels show.
     """
-    placed = course.scenario.model_copy(update={"objects": course.objects})
-    held = preview.held(placed)
+    held = _held(course)
     times = course.scenario.outputs.times_s
     rows_px = ROW_PX * len(held)
     height = HEAD_PX + rows_px + GAP_PX + SIGNAL_PX * len(signals) + FOOT_PX
@@ -610,9 +673,7 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
 
 
 def draw(scenario: Scenario, out: Path) -> Path:
-    """Draw `scenario`'s course as `course.course` places it, not the objects the
-    scenario stores.
-    """
+    """Draw the course `scenario` stores."""
     course = _course(scenario)
     posed = posed_at_start(scenario, course.name)
     sheet = canvas.above(
