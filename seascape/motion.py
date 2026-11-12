@@ -7,7 +7,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from seascape.config import Drift, Outputs, Ownship, Turn
+from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
 from seascape.physics import slew, waves
 
@@ -151,6 +151,26 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
         n, v_n = _hermite(tau, north, speed * np.cos(heading), t_s)
         h = heading_rad(t_s)
         return Pose(e, n, h, v_e, v_n, pitch(t_s), roll(t_s))
+
+    return at
+
+
+def rig_track(scenario: Scenario, name: str) -> Path:
+    """Where the rig `name` is at a time, east and north of the ownship's origin,
+    and its axis: the ownship's heading, the rig's yaw and its pan.
+    """
+    rig, turn = scenario.rigs[name], scenario.turn
+    path = track(scenario.ownship, scenario.outputs, turn)
+    panned = panned_deg(turn, name)
+
+    def at(t_s: float) -> Pose:
+        pose = path(t_s)
+        h, x, y = pose.heading_rad, rig.offset_x_m, rig.offset_y_m
+        return Pose(
+            pose.east_m + x * math.cos(h) + y * math.sin(h),
+            pose.north_m - x * math.sin(h) + y * math.cos(h),
+            h + math.radians(rig.yaw_deg + panned(t_s)),
+        )
 
     return at
 

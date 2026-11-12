@@ -11,12 +11,55 @@ asset = "lobster_yacht"
 preset = "sentry"
 height_m = 2.9
 offset_y_m = -1.8
+ptu = { inclination_deg = -2.1 }
 
-# On the cameras' boresight, broadside, far enough that the narrow cameras look
-# barely down at it.
+# The Sentry PTU firmware's go-to rate, reached in one step (POWER_Stabilization,
+# ptu_control_c/src/ptu_configuration.h, GOTO_SPEED). Limitation: the firmware
+# slows to 5 deg/s for a go-to's last 10 deg (GOTO_SPEED_SLOW), which the turn omits.
+[turn]
+ptu = "mast"
+top_rate_deg_s = 50.0
+
+# Placed by `seascape sync` for this rig and turn.
 [[objects]]
 asset = "container"
-range_m = 150.0
+range_m = 128.2
 bearing_deg = 0.0
 heading_deg = 90.0
 heading_from = "line_of_sight"
+
+[[objects]]
+asset = "mooring_buoy"
+range_m = 41.0
+bearing_deg = -61.6
+count = 19
+spacing_deg = 6.6
+colour = { choice = ["orange", "white", "yellow"] }
+wear = 0.5
+heading_deg = 90.0
+heading_from = "line_of_sight"
+drift = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }
+
+[[objects]]
+asset = "mooring_buoy"
+range_m = 64.7
+bearing_deg = -57.8
+count = 18
+spacing_deg = 6.8
+colour = { choice = ["orange", "white", "yellow"] }
+wear = 0.5
+heading_deg = 90.0
+heading_from = "line_of_sight"
+drift = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }
+
+[[objects]]
+asset = "mooring_buoy"
+range_m = 173.6
+bearing_deg = -56.4
+count = 18
+spacing_deg = 6.9
+colour = { choice = ["orange", "white", "yellow"] }
+wear = 0.5
+heading_deg = 90.0
+heading_from = "line_of_sight"
+drift = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }

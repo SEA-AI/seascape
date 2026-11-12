@@ -12,17 +12,27 @@ preset = "watchkeeper"
 height_m = 1.9
 offset_y_m = -2.6
 
-# One on each thermal camera's boresight, broadside; the wide colour camera sees both.
+# Judgement: a RIB turns at up to 30 deg/s, reached in 1 s.
+[turn]
+top_rate_deg_s = 30.0
+accel_deg_s2 = 30.0
+
+# Placed by `seascape sync` for this rig and turn.
 [[objects]]
 asset = "container"
-range_m = 26.0
-bearing_deg = -12.5
+range_m = 18.3
+bearing_deg = 0.0
 heading_deg = 90.0
 heading_from = "line_of_sight"
 
 [[objects]]
-asset = "container"
-range_m = 26.0
-bearing_deg = 12.5
+asset = "mooring_buoy"
+range_m = 29.6
+bearing_deg = -57.0
+count = 6
+spacing_deg = 22.8
+colour = { choice = ["orange", "white", "yellow"] }
+wear = 0.5
 heading_deg = 90.0
 heading_from = "line_of_sight"
+drift = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }

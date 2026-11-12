@@ -144,6 +144,11 @@ class Object(Model):
         description="How many, each drawn anew. `load` makes the copies, so a "
         "loaded scenario holds only 1.",
     )
+    spacing_deg: float = Field(
+        default=0.0,
+        description="Between one copy of a count and the next, clockwise. `load` "
+        "spaces the copies, so a loaded scenario holds 0.",
+    )
 
     @property
     def course_deg(self) -> float:
@@ -175,9 +180,10 @@ class Object(Model):
 
     @model_validator(mode="after")
     def _copies_are_made_on_load(self) -> "Object":
-        if self.count != 1:
+        if self.count != 1 or self.spacing_deg:
             raise ValueError(
-                f"{self.asset}: count {self.count} is expanded when a scenario loads"
+                f"{self.asset}: count {self.count} spaced {self.spacing_deg} deg is "
+                "expanded when a scenario loads"
             )
         return self
 

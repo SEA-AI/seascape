@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
-from seascape import motion
+from seascape import angles, motion
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
 from seascape.blender.blend import mesh_objects
@@ -775,7 +775,7 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
         cameras={"eo": Camera(**LENS, yaw_deg=yaw_deg)},
     )
     expected = math.degrees(
-        math.asin(math.sin(math.radians(pitch_deg)) * math.sin(blend.yaw(yaw_deg)))
+        math.asin(math.sin(math.radians(pitch_deg)) * math.sin(angles.yaw(yaw_deg)))
     )
 
     scene.build(scenario, "eo")
@@ -783,8 +783,9 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
         (1.0, 0.0, 0.0)
     )
 
+    # Blender keeps a pose in float32: 2^-23 rad is about 7e-6 deg.
     assert math.degrees(math.asin(across.normalized().z)) == pytest.approx(
-        expected, abs=1e-6
+        expected, abs=1e-5
     )
 
 
@@ -1853,7 +1854,7 @@ class TestOrbitingYachts:
                     (200.0 * math.sin(bearing), 200.0 * math.cos(bearing)), abs=1e-3
                 )
                 assert hull.rotation_euler.z == pytest.approx(
-                    blend.yaw(bearing_deg + 90)
+                    angles.yaw(bearing_deg + 90)
                 )
 
 
@@ -1909,7 +1910,8 @@ class TestDrifting:
                 along * spec.drift.surge_m, abs=1e-2
             )
             assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
-            assert anchor.rotation_euler.z == pytest.approx(blend.yaw(spec.heading_deg))
+            yaw_rad = angles.yaw(spec.heading_deg)
+            assert anchor.rotation_euler.z == pytest.approx(yaw_rad)
         assert pose.length == pytest.approx(spec.range_m)
 
     def test_a_hull_rides_the_sea_it_sits_on(self, built: scene.Built) -> None:

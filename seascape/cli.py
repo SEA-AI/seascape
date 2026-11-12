@@ -212,28 +212,35 @@ def render(
 @click.option(
     "--preview",
     is_flag=True,
-    help="Render at 1 fps, a quarter the size and one sample, and check every video "
-    "keeps its containers whole in every frame; nothing is encoded.",
+    help="Render at 1 fps and one sample, and check every video sees a buoy of each "
+    "of its rings whole and the container at both ends; nothing is encoded.",
 )
 def sync(
     scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
 ) -> None:
     """Render, encode and record a sync scenario, or preview it."""
-    from seascape import sync as checks
+    from seascape.sync import preview as checks
 
-    built = load(scenario, list(overrides))
     if not preview:
+        built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
         _render(built, into)
         _encode(into, _QUALITY)
         for path in recording.export(into):
             click.echo(path)
         return
-    built = load(scenario, [*overrides, checks.preview(built)])
+    built = load(scenario, [*overrides, checks.PREVIEW])
+    if not checks.placed(built):
+        raise click.ClickException(checks.advice(built, f"{scenario} holds no buoys"))
     into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
     _render(built, into)
-    checks.check(labels.Labels.read(into))
-    click.echo(f"every video keeps its containers whole: {into}")
+    try:
+        checks.check(labels.Labels.read(into), built)
+    except ValueError as missed:
+        raise click.ClickException(
+            checks.advice(built, f"{scenario}: {missed}")
+        ) from missed
+    click.echo(f"every video sees the course: {into}")
 
 
 @main.command("montage")

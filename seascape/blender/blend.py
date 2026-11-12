@@ -1,6 +1,5 @@
 """Small builders over Blender's data."""
 
-import math
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,6 +7,7 @@ from typing import Literal
 
 import bpy
 import numpy as np
+from mathutils import Matrix
 
 type Operand = Num | bpy.types.NodeSocket | float
 
@@ -19,9 +19,8 @@ CURVE_SAMPLES = 256
 SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
 
 
-def yaw(bearing_deg: float) -> float:
-    """Bearing to Blender yaw, in radians: the one negation, as +Z turns to port."""
-    return -math.radians(bearing_deg)
+# Blender's camera axes to OpenCV's: Y and Z flip. Its own inverse.
+BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 
 
 def place(obj: bpy.types.Object, east_m: float, north_m: float, up_m: float) -> None:
