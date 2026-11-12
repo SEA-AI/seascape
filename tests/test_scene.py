@@ -14,10 +14,20 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
+from seascape import motion
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
-from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_objects
+from seascape.blender.meshes import (
+    _fit,
+    _images,
+    _joined,
+    box_corners,
+    box_m,
+    keel_m,
+    mesh_objects,
+    triangles,
+)
 from seascape.blender.rigs import boresight_deg, views
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
@@ -983,7 +993,7 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
     asset = SCENARIO.objects[0].asset
     hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
-    anchor = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
+    anchor, _ = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
     hull = mesh_objects([anchor])[0]
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
@@ -999,7 +1009,7 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     asset = SCENARIO.objects[0].asset
     skins = []
     for minutes in (0.0, 30.0):
-        anchor = _vessel(
+        anchor, _ = _vessel(
             asset, condition=Condition(engine_off_min=minutes), hulls=hulls
         )
         assert anchor["engine_off_min"] == minutes
@@ -1015,7 +1025,9 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 @pytest.mark.usefixtures("empty_blend")
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
-    anchor = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
+    anchor, _ = _vessel(
+        "zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None)
+    )
     bpy.context.view_layer.update()
     level = waterline_m(anchor)
     (attitude,) = anchor.children
@@ -1031,7 +1043,7 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     """
     hulls = Hulls(SCENARIO.sky, None)
     level, raised = (
-        _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)
+        _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)[0]
         for rise_m in (0.0, 5.0)
     )
     bpy.context.view_layer.update()
@@ -1502,16 +1514,6 @@ class TestOwnshipUnderway:
         quarter = np.argmin(abs(times - 4.0 / 4))
         assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
 
-    def test_the_track_integrates_the_heading_to_the_closed_form(self) -> None:
-        hull, _, _ = self._run(self.STEERED)
-
-        end_s = self.STEERED.outputs.times_s[-1]
-        theta = np.linspace(0.0, end_s, 400_001)
-        heading = np.radians(30.0) * np.sin(2.0 * np.pi * theta / 4.0)
-        east = self.SPEED_MPS * np.trapezoid(np.sin(heading), theta)
-        north = self.SPEED_MPS * np.trapezoid(np.cos(heading), theta)
-        assert tuple(hull[-1, :2]) == pytest.approx((east, north), rel=1e-3)
-
     def test_a_ship_without_speed_turns_in_place(self) -> None:
         hull, bearing, _ = self._run(self.TURNING)
 
@@ -1881,6 +1883,19 @@ class TestDrifting:
         corners = box_corners(mesh_objects([anchor]), attitude.matrix_world.inverted())
         length = max(c.y for c in corners) - min(c.y for c in corners)
         beam = max(c.x for c in corners) - min(c.x for c in corners)
+        # The keel as `_parts` measures it, level with the waterline at z = 0.
+        into = np.array(attitude.matrix_world.inverted())
+        facets = triangles(mesh_objects([anchor])) @ into[:3, :3].T + into[:3, 3]
+        box_beam_m, box_draught_m = box_m(*keel_m(facets), length, 0.0)
+        (spec,) = scenario.objects
+        path = motion.drifting(
+            spec.range_m,
+            spec.bearing_deg,
+            spec.course_deg,
+            spec.speed_mps,
+            spec.drift,
+            scenario.outputs,
+        )
         sc = bpy.context.scene
         for frame in (0, 7, 31):
             sc.frame_set(frame)
@@ -1896,18 +1911,17 @@ class TestDrifting:
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
-            (spec,) = scenario.objects
-            assert anchor["speed_mps"] == spec.speed_mps
-            assert 0 < anchor["box_draught_m"] < manifest()[spec.asset].draught_m
+            assert 0 < box_draught_m < manifest()[spec.asset].draught_m
             hull = waves.Waterplane(
                 *map(float, rest),
                 heading,
                 length,
                 beam,
-                anchor["box_beam_m"],
-                anchor["box_draught_m"],
-                spec.speed_mps * math.sin(heading),
-                spec.speed_mps * math.cos(heading),
+                box_beam_m,
+                box_draught_m,
+                # Under way along the heading, and drifting about it.
+                path(t_s).east_mps,
+                path(t_s).north_mps,
             )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(

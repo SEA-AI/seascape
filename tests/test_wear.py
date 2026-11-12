@@ -147,7 +147,9 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
 
 def _zodiacs(worn: frozenset[str], count: int = 1) -> list[bpy.types.Object]:
     hulls = Hulls(load(BASELINE).sky, None, worn)
-    return [_vessel("zodiac", condition=Condition(), hulls=hulls) for _ in range(count)]
+    return [
+        _vessel("zodiac", condition=Condition(), hulls=hulls)[0] for _ in range(count)
+    ]
 
 
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
@@ -161,7 +163,7 @@ def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
 
 def test_an_eo_hull_lifted_off_its_draught_tells_its_wear_where_the_water_is() -> None:
     hulls = Hulls(load(BASELINE).sky, None, frozenset({"zodiac"}))
-    lifted = _vessel("zodiac", condition=Condition(), hulls=hulls, rise_m=0.4)
+    lifted = _vessel("zodiac", condition=Condition(), hulls=hulls, rise_m=0.4)[0]
     assert all(o["rise_m"] == 0.4 for o in mesh_objects([lifted]))
 
 
@@ -213,7 +215,7 @@ def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> 
     def parts() -> list[bpy.types.Object]:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         vessels, _ = add_vessels(
-            scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), []
+            scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), [], []
         )
         return [mesh_objects([a])[0] for a in vessels["zodiac"]]
 
