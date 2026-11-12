@@ -140,6 +140,20 @@ def test_a_rotor_s_limits_are_in_order() -> None:
         assets.Rotor.model_validate(turbine.rotor.model_dump() | {"cut_in_mps": 30.0})
 
 
+def test_colours_cover_only_a_hull_s_paint() -> None:
+    ship = assets.manifest()["patrol_vessel"]
+    assert ship.zones is not None
+    zones = ship.zones.model_dump(mode="json")
+    bare = zones | {"materials": dict.fromkeys(zones["materials"], "bare_metal")}
+    sold = {"red": "#FF0000"}
+
+    assets.Hull.model_validate(ship.model_dump(mode="json") | {"colours": sold})
+    with pytest.raises(ValidationError, match="zoned paint_hull"):
+        assets.Hull.model_validate(
+            ship.model_dump(mode="json") | {"zones": bare, "colours": sold}
+        )
+
+
 def test_an_asset_s_draught_lies_in_its_own_range() -> None:
     carrier = assets.manifest()["bulk_carrier"].model_dump(exclude={"zones"})
     with pytest.raises(ValidationError, match="outside draught_range_m"):

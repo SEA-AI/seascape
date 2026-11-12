@@ -5,12 +5,13 @@ Imports no Blender, so a consumer reads it without the bpy wheel.
 
 import math
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 from pydantic import ConfigDict, Field
 
 from seascape import atomic
-from seascape.config import Crop
+from seascape.config import Camera, Crop
 from seascape.model import Model
 from seascape.physics import fisheye
 
@@ -21,8 +22,13 @@ type Row4 = tuple[float, float, float, float]
 type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
 
-# A +X right, +Y ahead, +Z up frame's axes as OpenCV's: +X right, +Y down, +Z ahead.
-TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
+
+def intrinsics(camera: Camera) -> Matrix3:
+    """`camera`'s K. Blender's frame spans pixel edges, so its centre is half a pixel
+    past OpenCV's.
+    """
+    f, w, h = camera.focal_px, camera.width_px, camera.height_px
+    return (f, 0.0, (w - 1) / 2), (0.0, f, (h - 1) / 2), (0.0, 0.0, 1.0)
 
 
 def write_json(model: Model, path: Path) -> Path:
@@ -79,6 +85,24 @@ class CameraCalibration(_Record):
             return math.degrees(np.arctan(reach / fx).sum())
         angles = fisheye.theta(reach, self.distortion, fx)
         return math.degrees(angles.sum())
+
+    @classmethod
+    def planned(cls, name: str, camera: Camera, rig: str) -> "CameraCalibration":
+        """`camera` as a render of rig `rig` calibrates it, in that rig's frame
+        only: what a video's footprint needs before anything is built.
+        """
+        pose = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))
+        return cls(
+            name=name,
+            band=camera.band,
+            image="",
+            rig=rig,
+            width_px=camera.width_px,
+            height_px=camera.height_px,
+            K=intrinsics(camera),
+            distortion=camera.lens.fisheye,
+            extrinsics={"rig": pose},
+        )
 
     def cropped(self, crop: Crop) -> "CameraCalibration":
         """The camera that sees what `crop` leaves of this one's frame."""

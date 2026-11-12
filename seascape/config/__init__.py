@@ -10,11 +10,13 @@ from seascape.config.cameras import (
     Microbolometer,
     Mount,
     Processing,
+    Ptu,
     Rig,
     Sensor,
     Stitch,
     Undistortion,
     Video,
+    recorded_name,
     sources,
 )
 from seascape.config.draws import substream
@@ -28,7 +30,7 @@ from seascape.config.loader import (
     schema_sections,
     seeds,
 )
-from seascape.config.objects import Drift, Farm, Object, Ownship, Targets
+from seascape.config.objects import Drift, Farm, Move, Object, Ownship, Targets, Turn
 from seascape.config.scenario import ImageFormat, Outputs, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
@@ -45,10 +47,12 @@ __all__ = [
     "Lens",
     "Microbolometer",
     "Mount",
+    "Move",
     "Object",
     "Outputs",
     "Ownship",
     "Processing",
+    "Ptu",
     "Rig",
     "Scenario",
     "Sea",
@@ -56,12 +60,14 @@ __all__ = [
     "Sky",
     "Stitch",
     "Targets",
+    "Turn",
     "Undistortion",
     "Video",
     "WarmLayer",
     "instantiate",
     "json_schema",
     "load",
+    "recorded_name",
     "resolve",
     "schema_section",
     "schema_sections",

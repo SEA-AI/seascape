@@ -14,9 +14,10 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
+from seascape import angles
 from seascape.config import Agc
 from seascape.outputs import agc, canvas
-from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import agcs
 
 # CLI name to cv2.PyRotationWarper type.
@@ -50,7 +51,7 @@ def pose(
     turn = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
     return (
         np.array(camera.K, np.float32),
-        np.array(TO_CV @ turn @ _rotation(camera, frame), np.float32),
+        np.array(angles.TO_CV @ turn @ _rotation(camera, frame), np.float32),
     )
 
 

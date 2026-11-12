@@ -1,6 +1,9 @@
 """The compositor each camera writes through, its output formats, and the GPU."""
 
+import ctypes.util
 import math
+import sys
+import warnings
 
 import bpy
 import numpy as np
@@ -94,7 +97,8 @@ def set_output(
     sc.render.engine = "CYCLES"
     # Caps reflected light at 10, and LWIR radiance is tens of W m^-2 sr^-1.
     sc.eevee.clamp_surface_indirect = 0.0
-    sc.cycles.device = "GPU" if enable_gpu() else "CPU"
+    device = "GPU" if enable_gpu() else "CPU"
+    sc.cycles.device = device
     sc.cycles.samples = getattr(outputs.samples, band)
     # Adaptive sampling stops a pixel at a noise threshold set for a picture, not for
     # kelvin; ir's samples are what holds its grain below the NETD.
@@ -115,9 +119,17 @@ def set_output(
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
     sc.render.use_persistent_data = True
-    # The GPU compositor, the factory's, keeps memory from every render, and a clip
-    # runs out of it.
-    sc.render.compositor_device = "CPU"
+    # The GPU compositor is the faster. On Linux it opens EGL, and without libEGL it
+    # aborts the render, which no caller can catch.
+    egl = sys.platform != "linux" or ctypes.util.find_library("EGL") is not None
+    if device == "GPU" and not egl:
+        warnings.warn(
+            "no libEGL.so.1, so the compositor runs on the CPU, about 3x slower an EO "
+            "frame; install libegl1 (Debian, Ubuntu) to put it on the GPU",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    sc.render.compositor_device = device if egl else "CPU"
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True
 

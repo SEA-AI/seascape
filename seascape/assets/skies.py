@@ -18,8 +18,7 @@ fraction determined by thermal infrared and visible all-sky cameras", Atmos. Mea
 Tech. 11 5549, 2018, doi:10.5194/amt-11-5549-2018) fit theirs to the pixels that are
 not cloud, against zenith angle, and refit; the clear-sky library of Ghonima et al.
 (Atmos. Meas. Tech. 5 2881, 2012, doi:10.5194/amt-5-2881-2012) indexes it by zenith
-and angle from the sun. An overcast photo has no clear sky to fit; `skies.toml` marks
-which.
+and angle from the sun. An overcast photo has no clear sky to fit.
 """
 
 import math
@@ -28,16 +27,25 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
+from typing import Literal
 
 import cv2
 import numpy as np
 from pydantic import Field, model_validator
 
+from seascape import angles
 from seascape.assets import File
-from seascape.physics import colour, earth, lwir
+from seascape.physics import colour, lwir
 
 LIBRARY = resources.files("seascape.assets") / "skies.toml"
 LUMINANCE = np.asarray(colour.LUMINANCE, np.float32)
+# Judgement: no maritime or aviation standard sets a low-sun elevation.
+LOW_SUN_DEG = 15.0
+# Oktas as in WMO Code Table 2700, the ship cloud-cover report; the words follow the
+# aviation cover codes, SKC/FEW to OVC (eoas.ubc.ca/courses/atsc113).
+CLEAR_MAX_OKTAS = 2
+PARTLY_MAX_OKTAS = 4
+OVERCAST_OKTAS = 8
 # Judgement: the peak must outshine the median of the ring round it by this factor. An
 # unclipped disc clears it; a sun behind cloud or below the horizon does not. The ring
 # starts past DISC_DEG and ends inside AUREOLE_DEG, so it holds neither disc nor glare.
@@ -109,8 +117,8 @@ class Photo(File):
     # Measured by `diffuse_irradiance`, where no disc shows: a hidden sun's beam is
     # scaled from it.
     diffuse_irradiance: float | None = Field(default=None, gt=0.0)
-    # Labelled by eye: no clear sky shows, so none can be fitted.
-    overcast: bool = False
+    # By eye, in oktas above the horizon; `cloud` reads a thin or uniform deck as clear.
+    cover_oktas: int = Field(ge=0, le=OVERCAST_OKTAS)
     # The genus over most of the sky, by eye (WMO Cloud Atlas); high cloud is cirrus.
     cloud_genus: lwir.CloudGenus
     licence: str = Field(min_length=1)
@@ -129,6 +137,37 @@ class Photo(File):
         """The sun's elevation, in words."""
         elevation = self.sun_elevation_deg
         return "no disc" if elevation is None else f"{elevation:.1f} deg"
+
+    @property
+    def overcast(self) -> bool:
+        """No clear sky shows, so none can be fitted."""
+        return self.cover_oktas == OVERCAST_OKTAS
+
+    @property
+    def cover(self) -> Literal["clear", "partly cloudy", "mostly cloudy", "overcast"]:
+        """Cloud cover in words."""
+        if self.cover_oktas <= CLEAR_MAX_OKTAS:
+            return "clear"
+        if self.cover_oktas <= PARTLY_MAX_OKTAS:
+            return "partly cloudy"
+        return "overcast" if self.overcast else "mostly cloudy"
+
+    @property
+    def band(self) -> Literal["day", "low sun"] | None:
+        """Day or low sun by elevation; None where no disc shows.
+
+        Limitation: no dusk or night band.
+        """
+        elevation = self.sun_elevation_deg
+        if elevation is None:
+            return None
+        return "day" if elevation > LOW_SUN_DEG else "low sun"
+
+    @property
+    def label(self) -> str:
+        """The sky in everyday words, such as "clear low sun"."""
+        band = self.band
+        return f"{self.cover} {band}" if band else f"{self.cover}, sun hidden"
 
 
 @cache
@@ -182,8 +221,8 @@ def sun(radiance: np.ndarray) -> Sun:
     rows = np.arange(h)[band]
     bearings = _bearing_deg((np.arange(w) + 0.5) / w)
     elevations = _elevation_deg(rows, h)
-    seen = earth.direction(bearings[None, :], elevations[:, None])
-    peak = earth.direction(bearings[col], _elevation_deg(np.array(row), h))
+    seen = angles.direction(bearings[None, :], elevations[:, None])
+    peak = angles.direction(bearings[col], _elevation_deg(np.array(row), h))
     angle = np.degrees(np.arccos(np.clip(seen @ peak, -1.0, 1.0)))
     near = lum[band]
     ring = np.median(near[(angle > RING_DEG[0]) & (angle < RING_DEG[1])])
@@ -200,8 +239,8 @@ def sun(radiance: np.ndarray) -> Sun:
     if not DISC_RMS_DEG[0] <= rms_deg <= DISC_RMS_DEG[1]:
         return Sun(glow, None)
     return Sun(
-        math.degrees(math.atan2(centre[0], centre[1])) % 360.0,
-        math.degrees(math.asin(centre[2])),
+        angles.bearing_deg(centre[0], centre[1]) % 360.0,
+        float(angles.elevation_deg(centre[2])),
         floor,
     )
 
@@ -332,10 +371,10 @@ def cloud(radiance: np.ndarray, photo: Photo) -> np.ndarray:
     disc = photo.sun_elevation_deg is not None
     # A judgement: with no disc, the glow's bearing at the horizon.
     sun_elevation_deg = photo.sun_elevation_deg if disc else 0.0
-    toward = earth.direction(
+    toward = angles.direction(
         np.array(photo.sun_bearing_deg), np.array(sun_elevation_deg)
     )
-    cos_sun = earth.direction(bearing, elevation) @ toward
+    cos_sun = angles.direction(bearing, elevation) @ toward
     aureole = cos_sun > math.cos(math.radians(AUREOLE_DEG)) if disc else None
     clear = _envelope(blueness, np.ones_like(blueness), elevation, cos_sun)
     # A dusk's glow is redder than grey and cloud greys it toward blue, so there the

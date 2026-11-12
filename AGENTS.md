@@ -55,7 +55,7 @@ Building fresh each time is also what keeps a long-lived session from accumulati
 
 These produce wrong output with no error. They are the reason this file exists.
 
-- **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `blend.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
+- **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `angles.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
 - **Wind and swell are named for where they come from; waves run the other way.** `wind_from_deg` and `swell.from_deg` are bearings of origin, and `waves` turns them by 180 once. A second turn looks right in a still.
 - **A camera's bearing is not `rig yaw + camera yaw`.** In the chain `rigs.add_rigs` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `rigs.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
@@ -83,7 +83,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **The sun is the world's custom properties.** `sun_elevation`, `sun_rotation` and `aerosol_density` on `scene.world` drive the Sky Texture and the haze; one set on the node is overwritten. Set one from Python and call `world.update_tag()`, or every render after the first keeps the old sun in the haze and the sea's glint. With `sky.hdri` the world has none: the photo's turn is baked at build, and nothing set on the world moves it.
 - **A surface with an Emission node is a light Cycles samples.** `emission_sampling` defaults to `AUTO`, so the haze's airlight makes every triangle of the sea a light, and each light sample runs the sea's whole shader. The frame converges to the same picture, only slower. `sky.haze` turns it off.
 - **Persistent data keeps the first render's light sampling.** `build` turns it on, and a change between renders to `world.cycles.sampling_method` or `material.cycles.emission_sampling` is ignored; one to `scene.cycles.samples` applies. Set light sampling before the first render, or turn persistent data off.
-- **Blender's GPU compositor keeps memory from every render**, about 65 MB a 1080p frame even through a tree that only passes the render on. A clip dies with SIGKILL and nothing in the log. `build` puts the compositor on the CPU; `read_factory_settings` puts it back, and on a machine without a GPU the render aborts.
+- **The GPU compositor aborts the render without a GPU or `libEGL.so.1`**: exit 134, one log line. `build` puts it where Cycles renders, or on the CPU when it finds no `libEGL`; `read_factory_settings` puts it back on the GPU.
 - **The compositor is the camera, and the build picks it by format.** An 8-bit EO build puts glare, blur and auto-exposure there; an exr build passes the radiance through. Switch the file format after `build` and an exr holds the look, a png the raw frame.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
@@ -124,7 +124,7 @@ These produce wrong output with no error. They are the reason this file exists.
 
 ## Checks — run before committing
 
-These mirror CI; all must pass.
+These mirror CI, which runs them all. Locally, run the linters and only the tests the change touches, such as `uv run pytest tests/test_wear.py`; leave the whole suite to CI.
 
 ```bash
 uvx ruff check .
@@ -137,18 +137,14 @@ uv run pytest
 
 The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but pytest.
 
-The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
+The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 
 ## Working here
 
-- **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`).
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Be concise.** Commit messages, PR descriptions, comments and docs state the fact, not the journey. No debugging narration, no restating the diff, no closing paragraph that repeats what was just said.
-- **Comments are for what the code cannot say.** A better name beats a comment explaining a worse one. Write one for a non-obvious constraint, a unit, a workaround, a source — never to restate the line. `# negate the bearing` is noise; `# Blender's +Z turns to port` is the reason.
-- **Nothing that can go stale, nothing from outside the code.** No numbers derived from values elsewhere, no lists or values copied from another file, no names of tests, no PRs, reviews, conversations or history, no hardware, specs or consumers the repo does not model. If a claim matters, a test asserts it; the comment does not point there. When in doubt, delete the line.
-- **Avoid the machine cadence.** `X, not just Y` for emphasis, lists of exactly three, uniformly long sentences, hedges like "it's worth noting". Prefer the specific: a number, a file name or a flag beats an adjective.
+- **Prose**, commits included, follows the `prose` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
-- **Make PRs scannable.** A table, a before/after, or a rendered frame beats a paragraph. Attach frames with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
+- **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.

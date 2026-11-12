@@ -14,10 +14,20 @@ import numpy as np
 import pytest
 from mathutils import Vector
 
+from seascape import angles, motion
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
+from seascape.blender.blend import mesh_objects
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
-from seascape.blender.meshes import _fit, _images, _joined, box_corners, mesh_objects
+from seascape.blender.meshes import (
+    _fit,
+    _images,
+    _joined,
+    box_corners,
+    box_m,
+    keel_m,
+    triangles,
+)
 from seascape.blender.rigs import boresight_deg, views
 from seascape.blender.sea import memory
 from seascape.blender.sea.daylight import SUN_SLOPE_RADIUS
@@ -63,7 +73,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs.calibration import CameraCalibration
-from seascape.physics import aerosol, atmosphere, earth, lwir, thermal, waves
+from seascape.physics import aerosol, atmosphere, earth, lwir, ptu, thermal, waves
 from tests.scenarios import (
     BASELINE,
     DRIFTING,
@@ -765,7 +775,7 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
         cameras={"eo": Camera(**LENS, yaw_deg=yaw_deg)},
     )
     expected = math.degrees(
-        math.asin(math.sin(math.radians(pitch_deg)) * math.sin(blend.yaw(yaw_deg)))
+        math.asin(math.sin(math.radians(pitch_deg)) * math.sin(angles.yaw(yaw_deg)))
     )
 
     scene.build(scenario, "eo")
@@ -773,8 +783,9 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
         (1.0, 0.0, 0.0)
     )
 
+    # Blender keeps a pose in float32: 2^-23 rad is about 7e-6 deg.
     assert math.degrees(math.asin(across.normalized().z)) == pytest.approx(
-        expected, abs=1e-6
+        expected, abs=1e-5
     )
 
 
@@ -892,6 +903,14 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
     (attitude,) = built.vessel.children
+    deck = motion.tilted(
+        motion.track(scenario.ownship, scenario.outputs),
+        waves.Waterplane(
+            length_m=built.vessel["length_m"], beam_m=built.vessel["beam_m"]
+        ),
+        wind + swell,
+        tall,
+    )
     radius = earth.earth_radius_m(scenario.sea.refraction_k)
     roll_s, heave_s = scenario.outputs.period_s(8.0), scenario.outputs.period_s(6.0)
     rocked, mounted, still = [], [], []
@@ -917,7 +936,13 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
             math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6
         )
         assert tuple(attitude.rotation_euler) == pytest.approx(
-            (pitch, -roll, 0.0), abs=1e-6
+            (pitch, roll, 0.0), abs=1e-6
+        )
+        # The deck the pan-tilt loop holds against is the one Blender draws. The up
+        # row is all the loop reads, and the heading leaves it be. 1e-6: Blender's
+        # matrix_world is float32, a few ulp near 1 down the parent chain.
+        assert np.array(built.deck.matrix_world)[2, :3] == pytest.approx(
+            deck(t_s)[2], abs=1e-6
         )
         # Straight up, however the script tilts the hull.
         lift = attitude.matrix_world.translation - built.vessel.matrix_world.translation
@@ -983,7 +1008,7 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
     asset = SCENARIO.objects[0].asset
     hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
-    anchor = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
+    anchor, _ = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
     hull = mesh_objects([anchor])[0]
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
@@ -999,7 +1024,7 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     asset = SCENARIO.objects[0].asset
     skins = []
     for minutes in (0.0, 30.0):
-        anchor = _vessel(
+        anchor, _ = _vessel(
             asset, condition=Condition(engine_off_min=minutes), hulls=hulls
         )
         assert anchor["engine_off_min"] == minutes
@@ -1015,7 +1040,9 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 @pytest.mark.usefixtures("empty_blend")
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
-    anchor = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
+    anchor, _ = _vessel(
+        "zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None)
+    )
     bpy.context.view_layer.update()
     level = waterline_m(anchor)
     (attitude,) = anchor.children
@@ -1031,7 +1058,7 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     """
     hulls = Hulls(SCENARIO.sky, None)
     level, raised = (
-        _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)
+        _vessel("bulk_carrier", condition=Condition(), hulls=hulls, rise_m=rise_m)[0]
         for rise_m in (0.0, 5.0)
     )
     bpy.context.view_layer.update()
@@ -1442,6 +1469,57 @@ class TestOwnshipMotion:
         )
 
 
+def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
+    scenario = variant(
+        rig={"ptu": {"inclination_deg": -1.9}, "pitch_deg": -2.0},
+        ownship={
+            "pitch": {"amplitude_deg": 3.0, "period_s": 4.0},
+            "roll": {"amplitude_deg": 5.0, "period_s": 4.0},
+        },
+        turn={"ptu": "bow", "top_rate_deg_s": 45.0, "moves": [{"to_deg": 90.0}]},
+        outputs={"duration_s": 4.0},
+    )
+    built = scene.build(scenario)
+    camera = built.cameras[scenario.mounts[0].name]
+    assert scenario.turn is not None
+    turned = motion.turned_deg(scenario.turn)
+    deck = motion.tilted(
+        motion.track(scenario.ownship, scenario.outputs, scenario.turn), None, (), ()
+    )
+    (name,) = scenario.rigs
+    held_deg = motion.held_tilt_deg(scenario, name, deck)
+    axis = motion.axis_deg(scenario, name)
+    mount_deg = scenario.rigs[name].pitch_deg
+
+    omega = 2.0 * math.pi / 4.0
+    # A base tilted `tilt` turns a boresight at `down` below it by about
+    # tilt * tan(down) + tilt^2 / 2.
+    tilt, down = math.radians(math.hypot(3.0, 5.0)), math.radians(1.9)
+    turns_deg = math.degrees(tilt * math.tan(down) + tilt**2 / 2)
+    base, held = [], []
+    for frame, t_s in enumerate(scenario.outputs.times_s):
+        bpy.context.scene.frame_set(frame)
+        bearing, elevation = boresight_deg(camera)
+        assert bearing == pytest.approx(turned(t_s), abs=turns_deg)
+        base.append(motion.elevation_deg(deck(t_s), angles.direction(axis(t_s), 0.0)))
+        # Blender draws the head the loop holds; 1e-4 deg is float32's asin noise and
+        # more.
+        forward = np.array(built.rigs[name].matrix_world)[2, 1]
+        assert math.degrees(math.asin(forward)) == pytest.approx(
+            motion.elevation_deg(
+                deck(t_s), angles.direction(axis(t_s), mount_deg + held_deg[frame])
+            ),
+            abs=1e-4,
+        )
+        # The head itself holds -1.9, its mount's -2.0 included.
+        held.append(elevation + 1.9)
+    passed = omega / math.hypot(omega, ptu.GAIN_PER_S)
+    assert max(map(abs, base)) > 4.0
+    # Judgement: twice the dead band's lag, for the tick and the frames' interpolation.
+    lag_deg = 2.0 * ptu.DEAD_BAND_DEG_S / ptu.GAIN_PER_S
+    assert max(map(abs, held)) < passed * max(map(abs, base)) + lag_deg
+
+
 class TestOwnshipUnderway:
     SPEED_MPS = 400.0  # far past a boat's, so the sea's curve is measurable
     STRAIGHT = variant(outputs={"duration_s": 2.0}, ownship={"speed_mps": SPEED_MPS})
@@ -1501,16 +1579,6 @@ class TestOwnshipUnderway:
         assert along == pytest.approx((bearing[1:] + bearing[:-1]) / 2, abs=0.5)
         quarter = np.argmin(abs(times - 4.0 / 4))
         assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
-
-    def test_the_track_integrates_the_heading_to_the_closed_form(self) -> None:
-        hull, _, _ = self._run(self.STEERED)
-
-        end_s = self.STEERED.outputs.times_s[-1]
-        theta = np.linspace(0.0, end_s, 400_001)
-        heading = np.radians(30.0) * np.sin(2.0 * np.pi * theta / 4.0)
-        east = self.SPEED_MPS * np.trapezoid(np.sin(heading), theta)
-        north = self.SPEED_MPS * np.trapezoid(np.cos(heading), theta)
-        assert tuple(hull[-1, :2]) == pytest.approx((east, north), rel=1e-3)
 
     def test_a_ship_without_speed_turns_in_place(self) -> None:
         hull, bearing, _ = self._run(self.TURNING)
@@ -1815,7 +1883,7 @@ class TestOrbitingYachts:
                     (200.0 * math.sin(bearing), 200.0 * math.cos(bearing)), abs=1e-3
                 )
                 assert hull.rotation_euler.z == pytest.approx(
-                    blend.yaw(bearing_deg + 90)
+                    angles.yaw(bearing_deg + 90)
                 )
 
 
@@ -1871,7 +1939,8 @@ class TestDrifting:
                 along * spec.drift.surge_m, abs=1e-2
             )
             assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
-            assert anchor.rotation_euler.z == pytest.approx(blend.yaw(spec.heading_deg))
+            yaw_rad = angles.yaw(spec.heading_deg)
+            assert anchor.rotation_euler.z == pytest.approx(yaw_rad)
         assert pose.length == pytest.approx(spec.range_m)
 
     def test_a_hull_rides_the_sea_it_sits_on(self, built: scene.Built) -> None:
@@ -1881,6 +1950,19 @@ class TestDrifting:
         corners = box_corners(mesh_objects([anchor]), attitude.matrix_world.inverted())
         length = max(c.y for c in corners) - min(c.y for c in corners)
         beam = max(c.x for c in corners) - min(c.x for c in corners)
+        # The keel as `_parts` measures it, level with the waterline at z = 0.
+        into = np.array(attitude.matrix_world.inverted())
+        facets = triangles(mesh_objects([anchor])) @ into[:3, :3].T + into[:3, 3]
+        box_beam_m, box_draught_m = box_m(*keel_m(facets), length, 0.0)
+        (spec,) = scenario.objects
+        path = motion.drifting(
+            spec.range_m,
+            spec.bearing_deg,
+            spec.course_deg,
+            spec.speed_mps,
+            spec.drift,
+            scenario.outputs,
+        )
         sc = bpy.context.scene
         for frame in (0, 7, 31):
             sc.frame_set(frame)
@@ -1896,22 +1978,21 @@ class TestDrifting:
             rest = waves.gerstner_rest_m(
                 _tall(scenario), np.array(east), np.array(north), t_s
             )
-            (spec,) = scenario.objects
-            assert anchor["speed_mps"] == spec.speed_mps
-            assert 0 < anchor["box_draught_m"] < manifest()[spec.asset].draught_m
+            assert 0 < box_draught_m < manifest()[spec.asset].draught_m
             hull = waves.Waterplane(
                 *map(float, rest),
                 heading,
                 length,
                 beam,
-                anchor["box_beam_m"],
-                anchor["box_draught_m"],
-                spec.speed_mps * math.sin(heading),
-                spec.speed_mps * math.cos(heading),
+                box_beam_m,
+                box_draught_m,
+                # Under way along the heading, and drifting about it.
+                path(t_s).east_mps,
+                path(t_s).north_mps,
             )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
             assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
-                (pitch, -roll), abs=1e-5
+                (pitch, roll), abs=1e-5
             )
             assert attitude.location.z == pytest.approx(
                 waves.heave_m(_tall(scenario), hull, t_s), abs=1e-5

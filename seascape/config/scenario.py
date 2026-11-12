@@ -1,5 +1,6 @@
 """A whole scenario, and what its render writes."""
 
+import math
 import warnings
 from typing import Literal
 
@@ -11,7 +12,7 @@ from pydantic import (
 from seascape.assets import manifest
 from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
-from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets
+from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets, Turn
 from seascape.config.world import Sea, Sky
 from seascape.model import Model, ScenarioWarning
 from seascape.physics import waves
@@ -130,6 +131,12 @@ class Scenario(Model):
     farms: list[Farm] = Field(
         default_factory=list, description="Wind turbines, in rows or alone."
     )
+    turn: Turn | None = Field(
+        default=None,
+        description="Turns the ownship, or a rig's ptu, through scripted moves from "
+        "t = 0. "
+        "It ends within outputs.duration_s, with outputs.loop false.",
+    )
     outputs: Outputs = Field(default_factory=Outputs)
 
     @property
@@ -231,6 +238,54 @@ class Scenario(Model):
     def _an_orbit_needs_a_fixed_ownship(self) -> "Scenario":
         if self.ownship.speed_mps > 0.0 and any(o.orbit for o in self.objects):
             raise ValueError("an object orbits the origin: set ownship.speed_mps to 0")
+        return self
+
+    @model_validator(mode="after")
+    def _a_ptu_stays_below_the_zenith(self) -> "Scenario":
+        # A pitch the IMU reads folds past the zenith, and the tilt loop then holds
+        # the head on the wrong side of it, so the scripted deck must stay short of it.
+        ship = self.ownship
+        swing = sum(
+            abs(a) + (s.amplitude_deg if s else 0.0)
+            for a, s in ((ship.pitch_deg, ship.pitch), (ship.roll_deg, ship.roll))
+        )
+        for name, rig in self.rigs.items():
+            if rig.ptu is not None and swing + abs(rig.pitch_deg) >= 90.0:
+                raise ValueError(
+                    f"rigs.{name}: the ownship's pitch and roll and the rig's "
+                    f"pitch_deg reach {swing + abs(rig.pitch_deg):.0f} deg, so its "
+                    "ptu can pass the zenith: keep them under 90 between them"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _a_turn_fits(self) -> "Scenario":
+        if self.turn is None:
+            return self
+        if self.outputs.loop:
+            raise ValueError(
+                "outputs.loop cannot close a scripted turn: set outputs.loop to false "
+                "or remove turn"
+            )
+        if (name := self.turn.ptu) is not None and (
+            name not in self.rigs or self.rigs[name].ptu is None
+        ):
+            on_ptu = [n for n, rig in self.rigs.items() if rig.ptu is not None]
+            raise ValueError(
+                f"turn.ptu {name!r} is no rig on a ptu: set it to one of {on_ptu}"
+            )
+        last_s = self.outputs.times_s[-1]
+        # isclose: the legs' times sum in floats, and a turn ending on the last frame
+        # can come out an ulp past it.
+        turn_s = self.turn.duration_s
+        if turn_s > last_s and not math.isclose(turn_s, last_s):
+            fps = self.outputs.fps
+            # The last frame falls a frame before duration_s.
+            frames = math.ceil(turn_s * fps) + 1
+            raise ValueError(
+                f"the turn ends at {turn_s:.3f} s, after the last frame at "
+                f"{last_s:.3f} s: make outputs.duration_s at least {frames / fps:g}"
+            )
         return self
 
     @model_validator(mode="after")

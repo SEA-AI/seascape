@@ -10,11 +10,13 @@ import numpy as np
 from mathutils import Matrix
 
 from seascape.blender import sea
+from seascape.blender.blend import BLENDER_TO_CV
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
-from seascape.blender.rigs import View, add_rigs, views
+from seascape.blender.rigs import View, add_rigs, stabilise, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
+    Afloat,
     Hulls,
     OverlapError,
     add_ownship,
@@ -26,13 +28,12 @@ from seascape.config import (
     Band,
     Mount,
     Scenario,
+    recorded_name,
     substream,
 )
-from seascape.outputs.calibration import CameraCalibration, Matrix4
-from seascape.physics import earth, wakes
-
-# Blender's camera looks down -Z with +Y up; OpenCV's looks down +Z with +Y down.
-_BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
+from seascape.motion import Deck, Path, tilted, track
+from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
+from seascape.physics import earth, wakes, waves
 
 
 @dataclass(frozen=True)
@@ -53,14 +54,10 @@ class Built:
 def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     """A built camera's geometry, read off the scene."""
     camera = built.cameras[mount.name]
-    world = camera.matrix_world @ _BLENDER_TO_CV
+    world = camera.matrix_world @ BLENDER_TO_CV
     vessel = built.deck.matrix_world
     rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
-    if mount.camera.lens.fisheye is None:
-        f = (width / 2) / math.tan(camera.data.angle_x / 2)
-    else:
-        f = mount.camera.fisheye_focal_px
     return CameraCalibration(
         name=mount.name,
         band=mount.camera.band,
@@ -70,9 +67,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         pitch_um=mount.camera.pitch_um,
         width_px=width,
         height_px=height,
-        # Blender's frame spans pixel edges, so its centre is half a pixel past
-        # OpenCV's.
-        K=((f, 0.0, (width - 1) / 2), (0.0, f, (height - 1) / 2), (0.0, 0.0, 1.0)),
+        K=intrinsics(mount.camera),
         distortion=mount.camera.lens.fisheye,
         extrinsics={
             "world": _rows(world),
@@ -147,6 +142,68 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Posed:
+    """The one rig's cameras at the start, by name, each as its rotation from camera
+    to world in OpenCV's frame (x right, y down, looking down +z), and the ownship's
+    path and attitude over the scenario.
+    """
+
+    cameras: dict[str, np.ndarray]
+    path: Path
+    deck: Deck
+
+
+def _ownship_deck(
+    path: Path,
+    afloat: list[Afloat],
+    vessel: bpy.types.Object,
+    field: tuple[waves.Wave, ...],
+    tall: tuple[waves.Wave, ...],
+) -> Deck:
+    """The ownship's deck rotation at a time, its hull riding `field`."""
+    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
+    return tilted(path, hull, field, tall)
+
+
+def posed_at_start(scenario: Scenario, name: str) -> Posed:
+    """The rig `name` on its ownship as the render poses it at the start, a pan-tilt
+    unit holding its inclination against what the ownship's path scripts on a level
+    sea; no sea, no targets.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    rigs = add_rigs(scenario)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    afloat: list[Afloat] = []
+    vessel = add_ownship(
+        scenario.ownship,
+        path,
+        rigs.root,
+        Hulls(scenario.sky, None),
+        scenario.outputs,
+        (),
+        earth.earth_radius_m(scenario.sea.refraction_k),
+        afloat,
+    )
+    stabilise(rigs.rigs, scenario, tilted(path, None, (), ()))
+    bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
+    rig = scenario.rigs[name]
+    to_cv = BLENDER_TO_CV.to_3x3()
+    cameras = {
+        camera: np.array(
+            rigs.cameras[recorded_name(name, camera)].matrix_world.to_3x3() @ to_cv
+        )
+        for camera in rig.rendered
+    }
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    return Posed(
+        cameras=cameras,
+        path=path,
+        deck=_ownship_deck(path, afloat, vessel, wind + swell, tall),
+    )
+
+
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     """Replace the current Blender session's contents with a scenario.
 
@@ -179,19 +236,21 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
-    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall, radius_m)
+    afloat: list[Afloat] = []
+    path = track(scenario.ownship, outputs, scenario.turn)
+    vessel = add_ownship(
+        scenario.ownship, path, rigs.root, hulls, outputs, tall, radius_m, afloat
+    )
     trails: list[wakes.Wake] = []
-    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails, afloat)
     targets = {**vessels, **turbines}  # no asset is both
     # Before `views`, which reads where the cameras look as the hulls rock.
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
-    afloat = list(chain(*vessels.values()))
-    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
-    if scenario.ownship.asset is not None:
-        afloat.append(vessel)
     ride(afloat, wind + swell, tall, outputs)
-    solid = afloat + list(chain(*turbines.values()))
+    deck = _ownship_deck(path, afloat, vessel, wind + swell, tall)
+    stabilise(rigs.rigs, scenario, deck)
+    solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))

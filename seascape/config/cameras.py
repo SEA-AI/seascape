@@ -3,11 +3,13 @@
 import math
 from typing import Annotated, Literal, NamedTuple
 
+import numpy as np
 from pydantic import (
     Field,
     model_validator,
 )
 
+from seascape import angles
 from seascape.model import Model
 from seascape.physics import fisheye
 from seascape.physics.colour import Tone
@@ -312,6 +314,21 @@ class Camera(Model):
         return self.sensor.pitch_um * sites_per_px
 
     @property
+    def focal_px(self) -> float:
+        """Its `fx`: a pinhole's, or a fisheye's scale of its distorted angle."""
+        if self.lens.fisheye is not None:
+            return self.fisheye_focal_px
+        return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
+
+    def pose(self) -> np.ndarray:
+        """(4, 4) the camera to its rig, in OpenCV's axes: yawed, then pitched about
+        its own transverse axis, at the rig's origin.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.yaw_deg, self.pitch_deg) @ angles.TO_CV.T
+        return pose
+
+    @property
     def fisheye_focal_px(self) -> float:
         """A fisheye's `fx`, the scale of its distorted angle in pixels."""
         assert self.lens.fisheye is not None
@@ -403,6 +420,22 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
+# Core-Backend's `boat_setup.target_inclination`, bounded there.
+PTU_INCLINATION_DEG = (-20.0, 20.0)
+
+
+class Ptu(Model):
+    """A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu."""
+
+    inclination_deg: float = Field(
+        default=0.0,
+        ge=PTU_INCLINATION_DEG[0],
+        le=PTU_INCLINATION_DEG[1],
+        description="The pitch it holds its head at, to the horizon, its mount "
+        "included. Negative is down.",
+    )
+
+
 class Rig(Model):
     """One installed product: the frame its cameras sit in, at one mount point.
 
@@ -429,6 +462,7 @@ class Rig(Model):
         description="About its own transverse axis, after its yaw and before its "
         "cameras'. Negative is down.",
     )
+    ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )
@@ -444,6 +478,23 @@ class Rig(Model):
         "two, which then go unlabelled. Unset, it records each camera whole. An exr "
         "ignores it.",
     )
+
+    def axis_deg(self, off_deg: float = 0.0) -> float:
+        """The bearing `off_deg` clockwise of its axis, from the bow: a pan, or a
+        camera's or a buoy's bearing off the axis. Unwrapped, so a turn's sweep reads
+        off the difference of two.
+        """
+        return self.yaw_deg + off_deg
+
+    def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
+        """(4, 4) the rig to its vessel (+X starboard, +Y bow, +Z up, at the waterline
+        under midships): at its mount, yawed and panned, then pitched and tilted
+        about its own transverse axis, so a pitched rig rolls its off-axis cameras.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.axis_deg(pan_deg), self.pitch_deg + tilt_deg)
+        pose[:3, 3] = self.offset_x_m, self.offset_y_m, self.height_m
+        return pose
 
     @model_validator(mode="after")
     def _each_video_records_a_camera(self) -> "Rig":
@@ -487,6 +538,11 @@ class Rig(Model):
         return cameras
 
 
+def recorded_name(rig_name: str, name: str) -> str:
+    """The name a rig's camera or video is recorded and labelled under."""
+    return f"{rig_name}_{name}"
+
+
 class Mount(NamedTuple):
     """A camera and the rig carrying it."""
 
@@ -498,7 +554,7 @@ class Mount(NamedTuple):
     @property
     def name(self) -> str:
         """The camera's name, unique in the scenario."""
-        return f"{self.rig_name}_{self.camera_name}"
+        return recorded_name(self.rig_name, self.camera_name)
 
     @property
     def nominal_bearing_deg(self) -> float:
@@ -506,4 +562,4 @@ class Mount(NamedTuple):
         an off-axis camera points elsewhere. `rigs.boresight_deg` measures the
         built camera.
         """
-        return self.rig.yaw_deg + self.camera.yaw_deg
+        return self.rig.axis_deg(self.camera.yaw_deg)

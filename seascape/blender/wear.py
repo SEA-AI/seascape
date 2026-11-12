@@ -12,12 +12,15 @@ from seascape.assets import Material
 from seascape.blender import faces
 from seascape.blender.blend import (
     Num,
+    attribute,
     clamped,
     feed,
+    mesh_objects,
     mix_shader,
     node,
     scalar,
     separate,
+    source,
     vector,
 )
 from seascape.physics.thermal import ZONE_NAMES, ZoneName
@@ -39,7 +42,10 @@ class Weights(NamedTuple):
     grime: float
     rust: float
     stain: float
+    fouling: float
     soot: float
+    scuff: float
+    dropping: float
     fade: float
     runoff: float
 
@@ -47,31 +53,33 @@ class Weights(NamedTuple):
 # The layers the masks cover; `runoff` only gates streaks.
 LAYERS = Weights._fields[:-1]
 # What covers the surface, bottom up; `fade` only tints the paint.
-COVERS = ("grime", "rust", "stain", "soot")
+COVERS = ("grime", "rust", "stain", "fouling", "soot", "scuff", "dropping")
+# A mask group output past `LAYERS`: where a dropping's dark core is.
+CORE = "dropping_core"
 
-# Judgement, all of it. A stain is the waterline's, so only what the sea wets takes
-# one; cloth sags and flexes, so water runs off it without leaving a streak.
+# Judgement, all of it. A stain and fouling are the waterline's, so only what the sea
+# wets takes them; cloth sags and flexes, so water runs off it without leaving a streak.
 PROFILE: dict[ZoneName, Weights] = {
-    "paint_hull": Weights(1.0, 1.0, 1.0, 0.0, 0.5, 1.0),
-    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.5, 1.0),
-    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.3, 1.0),
-    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 1.0),
-    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 1.0),
-    "rubber": Weights(0.6, 0.0, 0.6, 0.0, 0.7, 1.0),
-    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.7, 0.0),
-    "funnel": Weights(0.5, 0.5, 0.0, 1.0, 0.3, 1.0),
-    "exhaust": Weights(0.4, 0.0, 0.0, 1.0, 0.0, 1.0),
-    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.7, 1.0),
-    "wood_composite": Weights(0.8, 0.0, 1.0, 0.0, 0.6, 1.0),
+    "paint_hull": Weights(1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.5, 1.0),
+    "paint_superstructure": Weights(0.8, 0.7, 0.0, 0.0, 0.0, 0.7, 0.6, 0.5, 1.0),
+    "deck": Weights(1.0, 0.6, 0.0, 0.0, 0.0, 0.6, 0.3, 0.3, 1.0),
+    "glass": Weights(0.35, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+    "bare_metal": Weights(0.6, 0.6, 0.0, 0.0, 0.0, 0.0, 0.3, 0.0, 1.0),
+    "rubber": Weights(0.6, 0.0, 0.6, 0.6, 0.0, 1.0, 0.3, 0.7, 1.0),
+    "fabric": Weights(0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 0.7, 0.0),
+    "funnel": Weights(0.5, 0.5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.3, 1.0),
+    "exhaust": Weights(0.4, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    "engine_cowl": Weights(0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.3, 0.7, 1.0),
+    "wood_composite": Weights(0.8, 0.0, 1.0, 1.0, 0.0, 0.5, 0.3, 0.6, 1.0),
 }
 
 
 def weights(material: Material) -> np.ndarray:
     """(zones, weights), zones in vocabulary order."""
     table = np.array([PROFILE[z] for z in ZONE_NAMES], dtype=np.float32)
-    if material != "steel":
-        # Judgement: other hulls' fittings are stainless.
-        table[:, Weights._fields.index("rust")] = 0.0
+    # Judgement: other hulls' fittings are stainless; a chip on steel shows rust.
+    gone = "scuff" if material == "steel" else "rust"
+    table[:, Weights._fields.index(gone)] = 0.0
     return table
 
 
@@ -97,9 +105,15 @@ def below_edge_m(position_m: np.ndarray, zone: np.ndarray) -> np.ndarray:
 
 
 def tag(
-    objects: list[bpy.types.Object], zones: list[np.ndarray], material: Material
+    objects: list[bpy.types.Object],
+    zones: list[np.ndarray],
+    material: Material,
+    *,
+    still: bool,
 ) -> None:
-    """`objects` already fitted; a skinned mesh is read as posed."""
+    """`objects` already fitted; a skinned mesh is read as posed. A `still` asset is
+    never under way, so nothing polishes off its fouling.
+    """
     bpy.context.view_layer.update()  # the fit leaves matrix_world stale
     depsgraph = bpy.context.evaluated_depsgraph_get()
     table = weights(material)
@@ -141,6 +155,7 @@ def tag(
         _write(mesh, "wear_below_m", "CORNER", below_m[at - n : at])
         _write(mesh, "wear_length_m", "FACE", np.full(faces_n, length_m))
         _write(mesh, "wear_steel", "FACE", np.full(faces_n, steel))
+        _write(mesh, "wear_still", "FACE", np.full(faces_n, float(still)))
 
 
 def _write(mesh: bpy.types.Mesh, name: str, domain: str, values: np.ndarray) -> None:
@@ -273,10 +288,9 @@ def _smooth(x: Num, low: Num | float, high: Num | float) -> Num:
     return Num(x.tree, made.outputs["Result"])
 
 
-def _attribute(
-    tree: bpy.types.NodeTree, name: str, kind: str = "GEOMETRY"
-) -> bpy.types.Node:
-    return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
+class _Dropping(NamedTuple):
+    cover: Num
+    core: Num  # 1 where its dark faeces are
 
 
 class _Masks:
@@ -285,16 +299,24 @@ class _Masks:
     def __init__(self, tree: bpy.types.NodeTree, crevice: bpy.types.Image) -> None:
         self.tree = t = tree
         self.crevice = crevice
-        self.position = _attribute(t, "wear_position_m").outputs["Vector"]
-        self.x, self.y, self.z = (Num(t, s) for s in separate(t, self.position))
-        normal = _attribute(t, "wear_normal").outputs["Vector"]
+        self.position = attribute(t, "wear_position_m").outputs["Vector"]
+        self.x, self.y, z = (Num(t, s) for s in separate(t, self.position))
+        # Above the water: a copy lifted off its asset's draught meets it lower.
+        self.z = z + Num(t, attribute(t, "rise_m", "OBJECT").outputs["Factor"])
+        normal = attribute(t, "wear_normal").outputs["Vector"]
         self.nx, self.ny, self.up = (Num(t, s) for s in separate(t, normal))
-        self.below, self.length, self.steel, stain = (
-            Num(t, _attribute(t, name).outputs["Factor"])
-            for name in ("wear_below_m", "wear_length_m", "wear_steel", "wear_stain")
+        self.below, self.length, self.steel, self.still, stain = (
+            Num(t, attribute(t, name).outputs["Factor"])
+            for name in (
+                "wear_below_m",
+                "wear_length_m",
+                "wear_steel",
+                "wear_still",
+                "wear_stain",
+            )
         )
         self.amount, self.offset = (
-            Num(t, _attribute(t, name, "OBJECT").outputs["Factor"])
+            Num(t, attribute(t, name, "OBJECT").outputs["Factor"])
             for name in ("wear", "wear_offset")
         )
         self.shell = stain.op("GREATER_THAN", 0.0)  # what the sea wets
@@ -319,13 +341,13 @@ class _Masks:
         )
         return Num(t, made.outputs["Factor"])
 
-    def cover(self, field: Num, soft: float, boost: float = 0.0) -> Num:
+    def cover(self, field: Num, soft: float, boost: Num | float = 0.0) -> Num:
         threshold = (self.amount + boost).madd(-0.45, 0.72)
         return _smooth(field, threshold, threshold + soft)
 
     def grime(self) -> Num:
         t = self.tree
-        uv = _attribute(t, UV).outputs["Vector"]
+        uv = attribute(t, UV).outputs["Vector"]
         texture = node(t, "ShaderNodeTexImage", image=self.crevice)
         t.links.new(uv, texture.inputs["Vector"])
         crevice = Num(t, texture.outputs["Color"])  # grey: any channel
@@ -359,7 +381,7 @@ class _Masks:
         wall = _smooth(self.up.op("ABSOLUTE"), 0.2, 0.5)
         streak = (1.0 - core) * ((1.0 - falling) * (1.0 - wall))
         broken = _smooth(self.noise(2.0, 17.0, 4.0), 0.25, 0.6)
-        broken = broken * Num(t, _attribute(t, "wear_runoff").outputs["Factor"])
+        broken = broken * Num(t, attribute(t, "wear_runoff").outputs["Factor"])
         return streak * active * (broken * self.region)
 
     def chips(self) -> Num:
@@ -374,6 +396,17 @@ class _Masks:
         edge = _smooth(1.0 - Num(t, facing), 0.01, 0.08)
         return edge * self.cover(self.noise(3.0, 7.0), 0.15) * self.region
 
+    def droppings(self) -> "_Dropping":
+        # Judgement: splashes 1-3 cm over a few percent of a level top at full wear;
+        # only the noise's peaks pass, which `cover`'s broad threshold would not keep.
+        threshold = self.amount.madd(-0.08, 0.72)
+        field = self.noise(25.0, 9.0, 1.0)
+        splash = _smooth(field, threshold, threshold + 0.03)
+        # Judgement: the dark faeces sit at the splash's highest peaks, inside the
+        # white urate.
+        core = _smooth(field, threshold + 0.07, threshold + 0.08)
+        return _Dropping(_smooth(self.up, 0.5, 0.9) * splash * self.region, core)
+
     def stain(self) -> Num:
         bow = _smooth(self.y / self.length, 0.32, 0.45)
         # Judgement: a waterline stain 0.8% of the length tall on GRP, a hand's width
@@ -386,16 +419,43 @@ class _Masks:
         band = _smooth(self.z, -0.3, 0.0) * (1.0 - _smooth(self.z, top_m * 0.5, top_m))
         return band * self.cover(patchy, 0.3, 0.3)
 
-    def layers(self) -> tuple[Num, ...]:
+    def fouling(self) -> Num:
+        """Weed and slime from the keel up into the splash zone. A hull under way
+        polishes it off, so on one it needs high wear and stays near the waterline.
+        """
+        # Judgement: a third of the freeboard on a still asset, a tenth on a hull, at
+        # most 2.5 m before the patches stretch it by up to 1.4; a still asset covers
+        # at 0.3 less wear, a hull at 0.3 more.
+        reach = self.still.madd(0.23, 0.1)
+        top_m = (self.edge_m * reach).op("MINIMUM", 2.5)
+        patchy = self.noise(2.0, 23.0, 4.0)
+        top_m = top_m * patchy.madd(0.8, 0.6)
+        band = 1.0 - _smooth(self.z, top_m * 0.5, top_m)
+        return band * self.cover(patchy, 0.3, self.still.madd(0.6, -0.3))
+
+    def layers(self) -> dict[str, Num]:
+        """Each of `LAYERS`' masks, and `CORE`, by name."""
         streak = self.streaks()
         not_steel = 1.0 - self.steel
         grime = self.grime().op("MAXIMUM", streak * not_steel)
         washed = self.shell * (1.0 - _smooth(self.height, 0.0, 0.5))
         grime = grime * (1.0 - washed)
-        rust = self.chips().op("MAXIMUM", streak * self.steel)
+        chips = self.chips()
+        rust = chips.op("MAXIMUM", streak * self.steel)
         soot = self.cover(self.noise(0.5, 13.0), 0.4, 0.3)
         sky = _smooth(self.up, 0.0, 1.0).madd(0.5, 0.5)
-        return grime, rust, self.stain(), soot, self.amount * sky
+        dropping = self.droppings()
+        return {
+            "grime": grime,
+            "rust": rust,
+            "stain": self.stain(),
+            "fouling": self.fouling(),
+            "soot": soot,
+            "scuff": chips,
+            "dropping": dropping.cover,
+            "fade": self.amount * sky,
+            CORE: dropping.core,
+        }
 
 
 def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
@@ -404,7 +464,7 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     if (group := bpy.data.node_groups.get(name)) is not None:
         return group
     group = bpy.data.node_groups.new(name, "ShaderNodeTree")
-    for layer in LAYERS:
+    for layer in (*LAYERS, CORE):
         group.interface.new_socket(
             layer, in_out="OUTPUT", socket_type="NodeSocketFloat"
         )
@@ -412,9 +472,13 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     out = node(group, "NodeGroupOutput")
     # An unworn copy shares its worn twin's import and materials: no cover at all.
     worn = g.amount.op("GREATER_THAN", 0.0)
-    for layer, mask in zip(LAYERS, g.layers(), strict=True):
-        weight = Num(group, _attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
+    layers = g.layers()
+    for layer in LAYERS:
+        mask = layers[layer]
+        weight = Num(group, attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
         feed(group, out.inputs[layer], clamped(group, (mask * weight).socket))
+    # Only where a dropping covers, so it needs no weight of its own.
+    feed(group, out.inputs[CORE], layers[CORE].socket)
     return group
 
 
@@ -423,10 +487,9 @@ def mark(anchor: bpy.types.Object, amount: float, rng: np.random.Generator) -> N
     one asset wear apart.
     """
     offset = float(rng.uniform(0.0, 1000.0))
-    for part in anchor.children_recursive:
-        if part.type == "MESH":
-            part["wear"] = amount
-            part["wear_offset"] = offset
+    for part in mesh_objects([anchor]):
+        part["wear"] = amount
+        part["wear_offset"] = offset
 
 
 # Judgement: linear albedo of each layer, from photographs of worn hulls.
@@ -435,24 +498,22 @@ RUST = (0.20, 0.065, 0.022, 1.0)
 STAIN_STEEL = (0.06, 0.07, 0.035, 1.0)  # algae on a ship's boot top
 STAIN = (0.22, 0.14, 0.05, 1.0)  # a yacht's: tannin, oil and algae
 SOOT = (0.015, 0.014, 0.013, 1.0)
+# Judgement: abraded paint and stress-whitened plastic.
+SCUFF = (0.42, 0.41, 0.38, 1.0)
+# Judgement: bird lime, dried.
+DROPPING = (0.62, 0.61, 0.57, 1.0)
+# Judgement: the faeces in its middle, dried.
+DROPPING_CORE = (0.05, 0.045, 0.03, 1.0)
+# Judgement: green weed over brown diatom slime, wet.
+FOULING = (0.035, 0.06, 0.018, 1.0)
 
 
 def dirty(parts: list[bpy.types.Object]) -> None:
     """Dirty every material of `parts` by their asset's baked crevices."""
-    meshes = [o for p in parts for o in (p, *p.children_recursive) if o.type == "MESH"]
+    meshes = mesh_objects(parts)
     crevice = meshes[0][CREVICE]
     for material in {s.material for o in meshes for s in o.material_slots} - {None}:
         _dirty(material, crevice)
-
-
-def _source(
-    socket: bpy.types.NodeSocket,
-) -> bpy.types.NodeSocket | float | tuple[float, ...]:
-    """What feeds `socket`: its link, or else its own value."""
-    if socket.is_linked:
-        return socket.links[0].from_socket
-    value = socket.default_value
-    return value if isinstance(value, float) else tuple(value)
 
 
 def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
@@ -469,10 +530,10 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
 
     # Paint fades; metal does not.
     paint = scalar(t, "SUBTRACT", 1.0, 0.0)
-    feed(t, paint.node.inputs[1], _source(shader.inputs["Metallic"]))
+    feed(t, paint.node.inputs[1], source(shader.inputs["Metallic"]))
     fade = cover["fade"] * Num(t, paint)
     faded = node(t, "ShaderNodeHueSaturation")
-    feed(t, faded.inputs["Color"], _source(shader.inputs["Base Color"]))
+    feed(t, faded.inputs["Color"], source(shader.inputs["Base Color"]))
     # Judgement: full fade halves saturation and lifts value 15%.
     feed(t, faded.inputs["Saturation"], fade.madd(-0.5, 1.0))
     feed(t, faded.inputs["Value"], fade.madd(0.15, 1.0))
@@ -480,12 +541,25 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
 
     dirt = node(t, "ShaderNodeBsdfPrincipled")
     stain = node(t, "ShaderNodeMix", data_type="RGBA")
-    feed(t, stain.inputs["Factor"], _attribute(t, "wear_steel").outputs["Factor"])
+    feed(t, stain.inputs["Factor"], attribute(t, "wear_steel").outputs["Factor"])
     stain.inputs["A"].default_value = STAIN
     stain.inputs["B"].default_value = STAIN_STEEL
+    dropping = node(t, "ShaderNodeMix", data_type="RGBA")
+    feed(t, dropping.inputs["Factor"], group.outputs[CORE])
+    dropping.inputs["A"].default_value = DROPPING
+    dropping.inputs["B"].default_value = DROPPING_CORE
     layered: bpy.types.NodeSocket | tuple[float, ...] = GRIME
     for layer, albedo in zip(
-        COVERS[1:], (RUST, stain.outputs["Result"], SOOT), strict=True
+        COVERS[1:],
+        (
+            RUST,
+            stain.outputs["Result"],
+            FOULING,
+            SOOT,
+            SCUFF,
+            dropping.outputs["Result"],
+        ),
+        strict=True,
     ):
         mix = node(t, "ShaderNodeMix", data_type="RGBA")
         feed(t, mix.inputs["Factor"], cover[layer])
@@ -493,12 +567,12 @@ def _dirty(material: bpy.types.Material, crevice: bpy.types.Image) -> None:
         feed(t, mix.inputs["B"], albedo)
         layered = mix.outputs["Result"]
     feed(t, dirt.inputs["Base Color"], layered)
-    # Judgement: dry grime and rust are matte.
-    dirt.inputs["Roughness"].default_value = 0.9
+    # Judgement: dry grime and rust are matte; wet fouling shines.
+    feed(t, dirt.inputs["Roughness"], cover["fouling"].madd(-0.6, 0.9))
     # Glass and decals stay as clear, and lamps as bright, under their dirt.
     for name in ("Alpha", "Normal", "Emission Color", "Emission Strength"):
         if name != "Normal" or shader.inputs[name].is_linked:
-            feed(t, dirt.inputs[name], _source(shader.inputs[name]))
+            feed(t, dirt.inputs[name], source(shader.inputs[name]))
 
     total = cover["grime"]
     for layer in COVERS[1:]:

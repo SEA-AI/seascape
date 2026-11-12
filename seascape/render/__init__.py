@@ -33,6 +33,7 @@ from seascape.config import (
     Mount,
     Scenario,
     Stitch,
+    recorded_name,
     sources,
     substream,
 )
@@ -260,7 +261,7 @@ def _stitch(
                 continue
             pair = [by_camera.pop((rig_name, c)) for c in video.cameras]
             (mount, left, *_), (_, right, *_) = pair
-            out = f"{rig_name}_{name}"
+            out = recorded_name(rig_name, name)
             camera = stitch.fused(left, right, out, f"{_stem(out, frame)}.{fmt}")
             image, index = stitch.stitch(
                 (pair[0][3], pair[1][3]),
@@ -312,7 +313,7 @@ def _shoot(
     videos = mount.rig.videos if fmt != "exr" else {}
     video = next(
         (
-            (f"{mount.rig_name}_{name}", recorded)
+            (recorded_name(mount.rig_name, name), recorded)
             for name, recorded in videos.items()
             if mount.camera_name in sources(recorded)
         ),

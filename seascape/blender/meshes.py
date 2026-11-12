@@ -12,10 +12,11 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 from seascape import atomic
+from seascape.angles import yaw
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
 from seascape.blender import faces, wear
 from seascape.blender.blend import (
-    yaw,
+    mesh_objects,
 )
 from seascape.config import (
     Band,
@@ -173,16 +174,6 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
         @ Matrix.Scale(scale, 4)
         @ turn
     )
-
-
-def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
-    """The meshes in `parts` and their descendants."""
-    return [
-        obj
-        for part in parts
-        for obj in [part, *part.children_recursive]
-        if obj.type == "MESH"
-    ]
 
 
 def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
@@ -369,7 +360,7 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
         found = faces.found(mesh_objects(parts))
         per_face = _face_zones(name, found, asset.zones)
     if worn:
-        wear.tag(found.objects, per_face, asset.material)
+        wear.tag(found.objects, per_face, asset.material, still=asset.still)
         _crevice(name, found.objects, fit.to_scale().x, _cached(path))
     if band == "ir":
         _zone_slots(found, per_face)

@@ -10,10 +10,12 @@ from mathutils import Vector
 from PIL import Image, ImageDraw
 
 from seascape.blender import workbench
-from seascape.blender.meshes import box_corners, mesh_objects
-from seascape.blender.rigs import add_rigs, boresight_deg
+from seascape.blender.blend import mesh_objects
+from seascape.blender.meshes import box_corners
+from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
+from seascape.motion import tilted, track
 from seascape.outputs import brand, canvas
 from seascape.physics import earth, fisheye
 
@@ -137,13 +139,18 @@ def draw(scenario: Scenario, out: Path) -> None:
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     built = add_rigs(scenario)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    # The hull does not ride here, so the deck tilts by its script alone.
+    stabilise(built.rigs, scenario, tilted(path, None, (), ()))
     vessel = add_ownship(
         scenario.ownship,
+        path,
         built.root,
         Hulls(scenario.sky, None),  # Workbench draws no wear
         scenario.outputs,
         (),
         earth.earth_radius_m(scenario.sea.refraction_k),
+        [],
     )
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     hull = mesh_objects([vessel])
