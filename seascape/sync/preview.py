@@ -125,8 +125,15 @@ def check(seen: Labels, scenario: Scenario) -> None:
     frames. A box cut by the container or a crest is too short.
 
     Raises:
-        ValueError: The first video that fails, and what it missed.
+        ValueError: A video with no frames, or the first that fails, and what it
+            missed.
     """
+    name, rig, _ = one_rig(scenario)
+    rendered = {i.camera for i in seen.images}
+    # A video with no frames is one the preview did not render: a band left out.
+    for video in sorted(recorded_name(name, v.name) for v in views(rig)):
+        if video not in rendered:
+            raise ValueError(f"{video} has no frames: add its band to outputs.bands")
     assets = manifest()
     _sees_every_ring(seen, scenario, assets[BUOY].category_id)
     _keeps_the_container(seen, assets[CONTAINER].category_id)
@@ -136,11 +143,20 @@ def _sees_every_ring(seen: Labels, scenario: Scenario, buoy: int) -> None:
     name, rig, _ = one_rig(scenario)
     circles = rings(views(rig))
     images = {i.id: i.camera for i in seen.images}
+    buoys = [a for a in seen.annotations if a.category_id == buoy and not a.truncated]
+    # A buoy stands still and the rig barely moves, so a video's widest box of it is
+    # the whole buoy: one hidden but for a sliver is narrower.
+    widest: dict[tuple[str, str], int] = defaultdict(int)
+    for a in buoys:
+        key = (images[a.image_id], a.name)
+        widest[key] = max(widest[key], a.bbox[2])
     met: dict[str, set[float]] = defaultdict(set)
-    for a in seen.annotations:
-        # A box rounds a buoy to whole rows: one row short is still all of it.
-        if a.category_id == buoy and not a.truncated and a.bbox[3] >= BUOY_PX - 1:
-            met[images[a.image_id]].add(nearest_m(circles, a.range_m))
+    for a in buoys:
+        video = images[a.image_id]
+        # A box rounds a buoy to whole pixels: one short is still all of it.
+        tall = a.bbox[3] >= BUOY_PX - 1
+        if tall and a.bbox[2] >= widest[video, a.name] - 1:
+            met[video].add(nearest_m(circles, a.range_m))
     for ring in circles:
         for video in sorted(ring.videos):
             recorded = recorded_name(name, video)

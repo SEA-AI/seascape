@@ -181,12 +181,14 @@ def test_a_preview_without_buoys_has_no_keyframes() -> None:
 
 BOX = manifest()[course.CONTAINER].category_id
 BUOY = manifest()[course.BUOY].category_id
-type Seen = list[tuple[int, float, bool, int]]
+type Seen = list[tuple[int, float, bool, int] | tuple[int, float, bool, int, int]]
 BOXED: Seen = [(BOX, 300.0, False, 40)]
 
 
 def seen(video: str, *frames: Seen) -> Labels:
-    """One video, a frame per entry, an object per (category, range, cut, tall_px)."""
+    """One video, a frame per entry, an object per (category, range, cut, tall_px)
+    and its wide_px when it is not as wide as tall.
+    """
     images = [
         Image.model_construct(id=i, camera=f"mast_{video}", time_s=i / 3)
         for i in range(len(frames))
@@ -197,10 +199,11 @@ def seen(video: str, *frames: Seen) -> Labels:
             category_id=category,
             range_m=range_m,
             truncated=cut,
-            bbox=(0, 0, tall_px, tall_px),
+            bbox=(0, 0, wide[0] if wide else tall_px, tall_px),
+            name=f"{category}-{range_m}",
         )
         for i, frame in enumerate(frames)
-        for category, range_m, cut, tall_px in frame
+        for category, range_m, cut, tall_px, *wide in frame
     ]
     return Labels.model_construct(images=images, annotations=annotations)
 
@@ -244,6 +247,12 @@ def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
     preview.check(both(seen("T1", *frames), seen("RGB1", *frames)), watchkeeper)
 
 
+def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
+    only_t1 = seen("T1", *passing(near_m(watchkeeper)))
+    with pytest.raises(ValueError, match="mast_RGB1 has no frames"):
+        preview.check(only_t1, watchkeeper)
+
+
 @pytest.mark.parametrize(
     ("frames", "error"),
     [
@@ -254,6 +263,17 @@ def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
         (
             # Half hidden behind the container.
             lambda near: (BOXED, [(BUOY, near, False, 3)], BOXED),
+            "mast_T1 never sees a buoy {near:.0f} m out whole",
+        ),
+        (
+            # Full height in one frame, but for a sliver; full width in the next,
+            # but sunk in a trough.
+            lambda near: (
+                BOXED,
+                [(BUOY, near, False, 6, 1)],
+                [(BUOY, near, False, 4, 6)],
+                BOXED,
+            ),
             "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (
