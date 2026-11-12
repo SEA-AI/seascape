@@ -28,8 +28,8 @@ def tilt_deg(
     `SETTLE_S` before 0.
 
     Args:
-        head_pitch_deg: The head's pitch, up, at a time from `-SETTLE_S` and a tilt:
-            what the IMU on it reads.
+        head_pitch_deg: The head's pitch, up, that the IMU on it reads, given a time
+            from `-SETTLE_S` and the unit's tilt.
         times_s: Ascending, from 0.
         target_deg: The head's pitch the loop holds, up; `target_inclination`.
     """

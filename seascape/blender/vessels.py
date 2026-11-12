@@ -173,7 +173,8 @@ def _vessel(
     draught = empty(f"{name}_draught", attitude, (0.0, 0.0, rise_m))
     for part in parts:
         part.parent = draught
-    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
+    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost. motion.tilted
+    # composes the same order.
     attitude.rotation_mode = "YXZ"
     return anchor, hull
 
@@ -255,7 +256,8 @@ def _follow(
         pose = path(t_s)
         return pose.pitch_rad, pose.roll_rad, yaw(math.degrees(pose.heading_rad))
 
-    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost.
+    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost. motion.tilted
+    # composes the same order.
     anchor.rotation_mode = "YXZ"
     for data_path, value_at in (("location", location), ("rotation_euler", rotation)):
         values = np.array([value_at(t) for t in times_s])

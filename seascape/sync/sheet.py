@@ -605,9 +605,8 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     """
     times = course.scenario.outputs.times_s
     heading = np.unwrap([posed.path(t).heading_rad for t in times])
-    # Read off the deck as the recording reads its IMU.
-    attitude = np.array([recording.attitude_deg(posed.deck(t))[:2] for t in times])
-    roll, pitch = attitude[:, 0], attitude[:, 1]
+    # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
+    roll, pitch, _ = np.array([recording.attitude_deg(posed.deck(t)) for t in times]).T
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)

@@ -15,7 +15,7 @@ def test_a_swell_leaves_the_first_order_high_pass_of_the_pitch_from_the_start(
     omega = 2.0 * math.pi / 4.0
     times = np.arange(0.0, 8.0, 1.0 / 30.0)
     tilt = ptu.tilt_deg(
-        lambda t, tilt: 4.0 * math.sin(omega * t) + tilt, list(times), target_deg
+        lambda t, held: 4.0 * math.sin(omega * t) + held, list(times), target_deg
     )
 
     off = 4.0 * np.sin(omega * times) + tilt - target_deg
@@ -27,7 +27,7 @@ def test_a_swell_leaves_the_first_order_high_pass_of_the_pitch_from_the_start(
 
 def test_the_head_waits_until_its_error_asks_for_more_than_the_dead_band() -> None:
     times = np.arange(0.0, 10.0, 0.1)
-    tilt = ptu.tilt_deg(lambda t, tilt: 0.05 * t + tilt, list(times), 0.0)
+    tilt = ptu.tilt_deg(lambda t, held: 0.05 * t + held, list(times), 0.0)
 
     off = 0.05 * times + tilt
     # It moves once K times the error reaches the dead band, and then keeps up.
@@ -39,7 +39,7 @@ def test_the_head_waits_until_its_error_asks_for_more_than_the_dead_band() -> No
 def test_a_pitch_step_turns_the_head_no_faster_than_the_unit_can() -> None:
     times = np.arange(0.0, 1.0, 0.01)
     tilt = ptu.tilt_deg(
-        lambda t, tilt: (30.0 if t > 0.0 else 0.0) + tilt, list(times), 0.0
+        lambda t, held: (30.0 if t > 0.0 else 0.0) + held, list(times), 0.0
     )
 
     speed = np.diff(tilt) / np.diff(times)

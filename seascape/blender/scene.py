@@ -31,7 +31,7 @@ from seascape.config import (
     recorded_name,
     substream,
 )
-from seascape.motion import Path, Tilt, tilt, track
+from seascape.motion import Deck, Path, tilted, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes, waves
 
@@ -151,7 +151,7 @@ class Posed:
 
     cameras: dict[str, np.ndarray]
     path: Path
-    deck: Tilt
+    deck: Deck
 
 
 def _ownship_deck(
@@ -160,10 +160,10 @@ def _ownship_deck(
     vessel: bpy.types.Object,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Tilt:
-    """The ownship's deck, tilted at a time, its hull riding `field`."""
+) -> Deck:
+    """The ownship's deck rotation at a time, its hull riding `field`."""
     hull = next((a.hull for a in afloat if a.anchor is vessel), None)
-    return tilt(path, hull, field, tall)
+    return tilted(path, hull, field, tall)
 
 
 def posed_at_start(scenario: Scenario, name: str) -> Posed:
@@ -185,7 +185,7 @@ def posed_at_start(scenario: Scenario, name: str) -> Posed:
         earth.earth_radius_m(scenario.sea.refraction_k),
         afloat,
     )
-    stabilise(rigs.rigs, scenario, tilt(path, None, (), ()))
+    stabilise(rigs.rigs, scenario, tilted(path, None, (), ()))
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     rig = scenario.rigs[name]
     to_cv = BLENDER_TO_CV.to_3x3()

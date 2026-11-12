@@ -39,6 +39,9 @@ class Pose(NamedTuple):
 
 
 type Path = Callable[[float], Pose]
+# (3, 3): the deck's starboard, bow and up axes in the world's, as columns, at a time,
+# its heading aside.
+type Deck = Callable[[float], np.ndarray]
 
 
 def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
@@ -301,9 +304,6 @@ def rocking(
     return Rocking(pitch, roll, waves.heave_m(tall, plane, t_s))
 
 
-type Tilt = Callable[[float], np.ndarray]
-
-
 def _pitched(rad: float) -> np.ndarray:
     """Bow up by `rad`: about +x, starboard."""
     c, s = math.cos(rad), math.sin(rad)
@@ -316,15 +316,15 @@ def _rolled(rad: float) -> np.ndarray:
     return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
 
 
-def tilt(
+def tilted(
     path: Path,
     hull: waves.Waterplane | None,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Tilt:
-    """The deck's axes, starboard, bow and up, in the world's at a time, its heading
-    aside: the pitch and roll `path` scripts, then, under `hull`, the sea's, each
-    roll innermost as Blender keys them.
+) -> Deck:
+    """The deck tilted by the pitch and roll `path` scripts, then, under `hull`, by
+    the sea's, each with roll innermost as the anchor's and the attitude empty's YXZ
+    eulers key them.
 
     Args:
         path: Where it is, where its bow points and how it is tilted.
@@ -346,13 +346,13 @@ def tilt(
 
 def elevation_deg(deck: np.ndarray, bearing_deg: float, up_deg: float) -> float:
     """The elevation in the world of a direction `bearing_deg` clockwise from the bow
-    and `up_deg` off a deck tilted `deck`.
+    and `up_deg` above a deck tilted `deck`, (3, 3) deck to world.
     """
     up = float(deck[2] @ angles.direction(bearing_deg, up_deg))
     return math.degrees(math.asin(max(-1.0, min(1.0, up))))
 
 
-def held_tilt_deg(scenario: Scenario, name: str, deck: Tilt) -> np.ndarray:
+def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     """The tilt the pan-tilt unit of rig `name` adds to its mount's pitch at each
     frame, holding its inclination on a deck tilted `deck`.
 

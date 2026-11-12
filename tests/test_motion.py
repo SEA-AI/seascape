@@ -213,22 +213,11 @@ def test_a_turn_too_long_suggests_a_duration_that_fits(
     load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": suggested, "fps": fps}}])
 
 
-def _x(rad: float) -> np.ndarray:
-    c, s = math.cos(rad), math.sin(rad)
-    return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
-
-
-def _y(rad: float) -> np.ndarray:
-    c, s = math.cos(rad), math.sin(rad)
-    return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
-
-
-def test_a_hull_s_deck_is_its_scripted_tilt_then_the_sea_s() -> None:
+def test_a_hull_rocks_as_the_waves_tilt_the_water_under_it() -> None:
     scenario = load(OPEN_SEA)
     field = scenario.wind_waves() + scenario.swell_waves()
     hull = waves.Waterplane(length_m=12.0, beam_m=4.0)
-    path = motion.track(Ownship(pitch_deg=2.0, roll_deg=-3.0), Outputs(duration_s=10.0))
-    deck = motion.tilt(path, hull, field, field)
+    path = motion.track(Ownship(), Outputs(duration_s=10.0))
 
     for t_s in (0.0, 3.3, 7.1):
         pose = path(t_s)
@@ -236,24 +225,51 @@ def test_a_hull_s_deck_is_its_scripted_tilt_then_the_sea_s() -> None:
         assert (sea.pitch_rad, sea.roll_rad) == waves.attitude(
             field, motion.waterplane(pose, field, t_s, hull), t_s
         )
-        # The anchor's YXZ euler, then the attitude empty's: roll innermost in each.
-        scripted = _x(pose.pitch_rad) @ _y(pose.roll_rad)
-        expected = scripted @ _x(sea.pitch_rad) @ _y(sea.roll_rad)
-        assert np.allclose(deck(t_s), expected, atol=1e-12)
 
 
-@pytest.mark.parametrize("pan_deg", [0.0, 90.0, -90.0, 180.0])
-def test_a_head_s_elevation_is_its_boresight_through_the_tilted_deck(
-    pan_deg: float,
+@pytest.mark.parametrize(
+    ("pitch_deg", "roll_deg", "axis", "expected"),
+    [
+        # Bow up p: the bow rises to (0, cos p, sin p).
+        (4.0, 0.0, 1, (0.0, math.cos(math.radians(4.0)), math.sin(math.radians(4.0)))),
+        # Starboard down r: starboard falls to (cos r, 0, -sin r).
+        (0.0, 6.0, 0, (math.cos(math.radians(6.0)), 0.0, -math.sin(math.radians(6.0)))),
+    ],
+)
+def test_a_scripted_tilt_turns_the_deck_s_axes(
+    pitch_deg: float, roll_deg: float, axis: int, expected: tuple[float, float, float]
 ) -> None:
-    pitch, roll = math.radians(3.0), math.radians(5.0)
-    # Bow up 3, starboard down 5: the bow rises by the pitch, starboard falls by the
-    # roll as the pitch foreshortens it.
-    up = {
-        0.0: 3.0,
-        180.0: -3.0,
-        90.0: -math.degrees(math.asin(math.cos(pitch) * math.sin(roll))),
-        -90.0: math.degrees(math.asin(math.cos(pitch) * math.sin(roll))),
-    }
-    deck = _x(pitch) @ _y(roll)
-    assert motion.elevation_deg(deck, pan_deg, 0.0) == pytest.approx(up[pan_deg])
+    ownship = Ownship(pitch_deg=pitch_deg, roll_deg=roll_deg)
+    deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
+    assert deck(0.0)[:, axis] == pytest.approx(expected)
+
+
+_PITCH, _ROLL = math.radians(3.0), math.radians(5.0)
+_ROLLED = math.degrees(math.asin(math.cos(_PITCH) * math.sin(_ROLL)))
+_AHEAD_UP_7 = math.degrees(
+    math.asin(
+        math.sin(_PITCH) * math.cos(math.radians(7.0))
+        + math.cos(_PITCH) * math.cos(_ROLL) * math.sin(math.radians(7.0))
+    )
+)
+
+
+@pytest.mark.parametrize(
+    ("pan_deg", "up_deg", "expected"),
+    [
+        (0.0, 0.0, 3.0),
+        (180.0, 0.0, -3.0),
+        # Abeam, starboard falls by the roll as the pitch foreshortens it.
+        (90.0, 0.0, -_ROLLED),
+        (-90.0, 0.0, _ROLLED),
+        # Ahead and up 7: the roll leans the head's own elevation off the vertical.
+        (0.0, 7.0, _AHEAD_UP_7),
+    ],
+)
+def test_a_head_s_elevation_is_its_boresight_through_the_tilted_deck(
+    pan_deg: float, up_deg: float, expected: float
+) -> None:
+    # Bow up 3, starboard down 5.
+    ownship = Ownship(pitch_deg=3.0, roll_deg=5.0)
+    deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
+    assert motion.elevation_deg(deck(0.0), pan_deg, up_deg) == pytest.approx(expected)
