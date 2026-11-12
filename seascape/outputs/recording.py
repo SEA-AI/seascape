@@ -58,8 +58,7 @@ _VIDEO = TypeAdapter(Video)
 # Core-Backend's `proc_ptu_mode` (ParameterServer): collision avoidance while a ptu
 # turns, else manual, as a replay reads a recording without the column. It has no 0.
 MANUAL_MODE, COLAV_MODE = 1, 3
-# Core-Backend's signs against seascape's, per file: -1 counts down or to port
-# (`ptu_rotation`).
+# The recording's signs against seascape's, per file: -1 counts down or to port.
 CSV_SIGN = {"pitch": -1.0, "pan": -1.0, "tilt": -1.0}
 SENSOR_SIGN = {"pitch": -1.0, "yaw": -1.0}
 
