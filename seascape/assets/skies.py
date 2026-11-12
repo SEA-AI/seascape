@@ -240,7 +240,7 @@ def sun(radiance: np.ndarray) -> Sun:
         return Sun(glow, None)
     return Sun(
         angles.bearing_deg(centre[0], centre[1]) % 360.0,
-        math.degrees(math.asin(centre[2])),
+        float(angles.elevation_deg(centre[2])),
         floor,
     )
 

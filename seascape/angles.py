@@ -1,5 +1,5 @@
-"""Compass angles in degrees: a bearing clockwise from north, an elevation up from
-the horizon.
+"""Compass angles in degrees, a bearing clockwise from north and an elevation up from
+the horizon, and the rotations and frames they turn.
 """
 
 import math
@@ -58,17 +58,14 @@ def direction(bearing_deg: npt.ArrayLike, elevation_deg: npt.ArrayLike) -> np.nd
 
 def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
-    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180).
+    roll: roll positive starboard down, pitch bow up, yaw clockwise in (-180, 180].
     """
     x, y, z = body_to_frame[:3, :3].T
     roll = math.atan2(-x[2], z[2])
-    pitch = math.asin(max(-1.0, min(1.0, y[2])))
-    yaw = math.atan2(y[0], y[1])
-    # Rounded to the CSV's precision first, so float32 noise at 180 cannot wrap.
     return (
         math.degrees(roll),
-        math.degrees(pitch),
-        wrapped_deg(round(math.degrees(yaw), 6)),
+        float(elevation_deg(y[2])),
+        math.degrees(math.atan2(y[0], y[1])),
     )
 
 
