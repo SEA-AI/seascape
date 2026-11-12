@@ -24,7 +24,7 @@ from seascape.config import Crop, Object, Rig, Scenario, Video, sources
 from seascape.motion import axis_deg, drifting, held_tilt_deg, panned_deg, rig_track
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
-from seascape.sync.layout import (
+from seascape.sync.staging import (
     BUOY,
     CONTAINER,
     Ring,
