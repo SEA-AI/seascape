@@ -309,7 +309,7 @@ def layout(scenario: Scenario) -> Layout:
     box = asset(CONTAINER, Debris)
     box_m = box.length_m * narrow.focal_px / (CONTAINER_FILL * narrow.width_px)
     # Limitation: every video must hold it, so only a rig that looks forward fits.
-    middle = math.radians(rig.yaw_deg + (narrow.left_deg + narrow.right_deg) / 2)
+    middle = math.radians(rig.axis_deg((narrow.left_deg + narrow.right_deg) / 2))
     east = start.east_m + box_m * math.sin(middle)
     north = start.north_m + box_m * math.cos(middle)
     # Broadside to the line of sight from the origin.
@@ -348,7 +348,7 @@ def layout(scenario: Scenario) -> Layout:
             {
                 "asset": BUOY,
                 "range_m": stored_m(ring, rig),
-                "bearing_deg": round(rig.yaw_deg + first_deg, DECIMALS),
+                "bearing_deg": round(rig.axis_deg(first_deg), DECIMALS),
                 "count": count,
                 "spacing_deg": step_deg,
                 # Each buoy draws one of the colours its asset comes in.
