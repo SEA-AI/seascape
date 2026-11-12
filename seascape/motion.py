@@ -375,6 +375,17 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
                 f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
                 "ptu past the zenith: lower the ownship's pitch, the sea or pitch_deg"
             )
+        # Tilting sweeps the head through the deck's vertical plane at its bearing;
+        # the world's up projects onto that plane with length `reach`, the sine of
+        # the steepest elevation any tilt gives.
+        up = deck(t_s)[2]
+        reach = math.hypot(up @ angles.direction(axis(t_s), 0.0), up[2])
+        if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
+            raise ValueError(
+                f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "
+                f"inclination_deg {rig.ptu.inclination_deg:g}: lower the ownship's "
+                "roll or the sea"
+            )
 
     # The firmware's IMU sits on the head, so the loop holds the head itself, its
     # mount included.
