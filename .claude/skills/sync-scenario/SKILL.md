@@ -29,22 +29,24 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 5. **Sheet.** Check the course on `uv run seascape sync scenarios/sync-<product>.toml --sheet`: every ring crosses every video it serves, and each camera's centre sits between the horizon and the nearest waterline.
 6. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
 7. **Record.** `uv run seascape sync scenarios/sync-<product>.toml` renders, encodes and writes `recordings/<rig>/<Model>_recordings_<timestamp>/`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
-8. **Upload.** Commit first, so the hash names code that exists. Then, logged in to W&B (`uvx wandb login`):
+8. **Upload.** Commit first, so the hash names code that exists. Then, logged in to W&B (`uvx wandb login`), upload the recording with the scenario files that made it, and link it into the W&B Dataset registry, where the team's datasets are listed:
 
    ```bash
-   uvx wandb artifact put --type dataset --name dataset-registry/sync-<product> \
-     --description "seascape $(git rev-parse --short HEAD), scenarios/sync-<product>.toml sha256 $(shasum -a 256 scenarios/sync-<product>.toml | cut -c1-12)" \
-     scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>
+   uvx --from wandb python - <<'EOF'
+   import wandb
+   name, rec = "sync-<product>", "scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>"
+   commit = "<git rev-parse --short HEAD>"
+   with wandb.init(entity="sea-ai", project="dataset-registry", job_type="upload-sync") as run:
+       art = wandb.Artifact(name, type="dataset", description=f"seascape {commit}")
+       art.add_dir(rec, name=rec.rsplit("/", 1)[1])
+       for toml in (f"{name}.toml", "sync.toml"):  # the scenario and the file it extends
+           art.add_file(f"scenarios/{toml}")
+       run.log_artifact(art).wait()
+       print(art.qualified_name, "->", art.link(f"wandb-registry-dataset/{name}").qualified_name)
+   EOF
    ```
 
-   It prints the new version, `sea-ai/dataset-registry/sync-<product>:v<n>`. The artifact takes the scenario's name, variant included (`sync-watchkeeper-1280-gen1`), so each variant versions apart.
-9. **Link.** Put that version in the W&B Dataset registry, where the team's datasets are listed:
-
-   ```bash
-   uvx --from wandb python -c 'import wandb; print(wandb.Api().artifact("sea-ai/dataset-registry/sync-<product>:v<n>").link("wandb-registry-dataset/sync-<product>").qualified_name)'
-   ```
-
-   It prints the registry's version, which counts its own links and can differ from the project's. A consumer fetches that exact version, never `latest`:
+   It prints the project's version and the registry's, which counts its own links and can differ. The artifact takes the scenario's name, variant included (`sync-watchkeeper-1280-gen1`), so each variant versions apart. W&B never reuses a version number: deleting a version leaves the next one higher. A consumer fetches the registry's exact version, never `latest`:
 
    ```bash
    uvx wandb artifact get --root sync-<product> wandb-registry-dataset/sync-<product>:v<m>
