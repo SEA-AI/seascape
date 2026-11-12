@@ -1,6 +1,8 @@
 """The compositor each camera writes through, its output formats, and the GPU."""
 
+import ctypes.util
 import math
+import sys
 
 import bpy
 import numpy as np
@@ -116,8 +118,10 @@ def set_output(
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
     sc.render.use_persistent_data = True
-    # The GPU compositor is the faster; on a machine without a GPU it aborts the render.
-    sc.render.compositor_device = device
+    # The GPU compositor is the faster. On Linux it opens EGL, and without libEGL it
+    # aborts the render, which no caller can catch.
+    egl = sys.platform != "linux" or ctypes.util.find_library("EGL") is not None
+    sc.render.compositor_device = device if egl else "CPU"
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True
 

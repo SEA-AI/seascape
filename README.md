@@ -36,7 +36,7 @@ cd seascape
 uv sync
 ```
 
-Blender ships as a Python package. On Linux with a GPU, the compositor also needs `libEGL.so.1` (Debian and Ubuntu: `libegl1`); without it a render aborts.
+Blender ships as a Python package, so there is nothing else to install.
 
 ## Quickstart
 
