@@ -2,34 +2,39 @@
 
 The sheet stacks a title over two rows: the course from above beside it unrolled as
 the rig sees it, then a timeline of which video holds a buoy of each ring, over the
-attitudes the recording holds.
+attitudes the recording holds. A wrong mount or turn is quicker to spot here than in
+a failed preview.
 """
 
 import itertools
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
+from PIL.ImageFont import FreeTypeFont
 
 from seascape.angles import wrapped_deg
-from seascape.assets import Debris
+from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
-from seascape.config import Crop, Object, Rig, Scenario, sources
-from seascape.motion import panned_deg, rig_track
+from seascape.config import Crop, Object, Rig, Scenario, Video, sources
+from seascape.motion import axis_deg, held_tilt_deg, rig_track
 from seascape.outputs import brand, canvas
-from seascape.physics import ptu
 from seascape.sync import preview
 from seascape.sync.course import (
     BUOY,
+    BUOY_COLOUR,
     CONTAINER,
+    CONTAINER_TALL_M,
+    CONTAINER_WIDE_M,
     Ring,
     View,
     asset,
     box_half_deg,
     buoy_above_m,
+    elevation_deg,
     overlap_deg,
     reach_m,
     rings,
@@ -55,12 +60,9 @@ PAD_PX = 8 * K
 TICK_PX = 12 * K
 LINE_PX = 2 * K
 DOT_PX = 7 * K
-# Seen at about half its size, so a label reads at 14 px, the least ONS's data
-# visualisation typography allows.
+# Seen at about half its size; ONS's data visualisation typography sets a 14 px
+# floor.
 FONT_PX = 28 * K
-FONT = brand.font(FONT_PX)
-BOLD = brand.font(FONT_PX, "Medium")
-TITLE = brand.font(2 * FONT_PX, "Medium")
 MATTE = (255, 255, 255)
 INK = (0, 0, 0)
 GRID = ImageColor.getrgb(brand.FOG_WHITE)
@@ -70,29 +72,32 @@ SERIES = [
     ImageColor.getrgb(c)
     for c in (brand.FOCUS_RED, brand.OCEAN_TEAL, brand.SKY_GREY, brand.NIGHT_BLUE)
 ]
-BUOY_FILL = (240, 120, 50)
+BUOY_FILL = ImageColor.getrgb(asset(BUOY, Buoy).colours[BUOY_COLOUR])
 SHADOW = (0, 0, 0, 40)
 PAIR = (0, 0, 0, 60)
 CONE_ALPHA = 50
 FRAME_ALPHA = 34
-# The bird's-eye view's radius: past the farthest cone by this share.
+# Judgement: the bird's-eye view's radius, past the farthest cone by this share.
 REACH = 1.05
-# ISO 668's 20 ft container: 2438 mm wide and 2591 mm tall over 6058 mm long.
-CONTAINER_WIDTH = 2438 / 6058
-CONTAINER_TALL_M = 2.591
-# Points along each edge of a frame, and how often the turn's sweep is drawn.
+# Judgement: points along each edge of a frame, and how often the turn's sweep is
+# drawn, finer than the frames so a fast slew leaves no gaps.
 EDGE_POINTS = 48
 SWEEP_S = 0.25
+# Judgement: a panorama this wide shows every bearing.
+ALL_ROUND_DEG = 300.0
 
 type Colour = tuple[int, int, int]
 
 
-class _Course(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _Course:
     """What every part of the sheet reads, worked out once."""
 
     scenario: Scenario
     name: str
     rig: Rig
+    # The rig's axis at the start, clockwise from the bow.
+    axis_deg: float
     videos: list[View]
     rings: list[Ring]
     objects: list[Object]
@@ -100,8 +105,7 @@ class _Course(NamedTuple):
     colours: dict[str, Colour]
 
     def elevation_deg(self, range_m: float, above_m: float) -> float:
-        """Up from the rig to a point `above_m` over the water, `range_m` out."""
-        return math.degrees(math.atan2(above_m - self.rig.height_m, range_m))
+        return elevation_deg(self.rig, range_m, above_m)
 
 
 def _course(scenario: Scenario) -> _Course:
@@ -114,15 +118,20 @@ def _course(scenario: Scenario) -> _Course:
         for n, c in zip(names, palette, strict=False)
     }
     return _Course(
-        scenario,
-        name,
-        rig,
-        videos,
-        sorted(rings(videos), key=lambda r: r.range_m),
-        placed(scenario).objects,
-        preview.sightlines(scenario),
-        colours,
+        scenario=scenario,
+        name=name,
+        rig=rig,
+        axis_deg=axis_deg(scenario, name)(0.0),
+        videos=videos,
+        rings=sorted(rings(videos), key=lambda r: r.range_m),
+        objects=placed(scenario).objects(scenario.seed),
+        sight=preview.sightlines(scenario),
+        colours=colours,
     )
+
+
+def _font(weight: brand.Weight = "Regular", px: int = FONT_PX) -> FreeTypeFont:
+    return brand.font(px, weight)
 
 
 def _metres(range_m: float) -> str:
@@ -133,9 +142,12 @@ def _tile(size: tuple[int, int], title: str, note: str) -> Image.Image:
     """A blank tile, its title at the top left and its key after it."""
     tile = Image.new("RGB", size, MATTE)
     pen = ImageDraw.Draw(tile)
-    pen.text((0, 0), title, font=BOLD, fill=LABEL)
+    pen.text((0, 0), title, font=_font("Medium"), fill=LABEL)
     pen.text(
-        (pen.textlength(title, font=BOLD) + GAP_PX, 0), note, font=FONT, fill=MUTED
+        (pen.textlength(title, font=_font("Medium")) + GAP_PX, 0),
+        note,
+        font=_font(),
+        fill=MUTED,
     )
     return tile
 
@@ -145,7 +157,7 @@ def _tick(
 ) -> None:
     """A gridline from `top` to `bottom`, its label centred under it."""
     draw.line([(x, top), (x, bottom)], fill=GRID, width=K)
-    draw.text((x, bottom + TICK_PX), text, font=FONT, fill=INK, anchor="ma")
+    draw.text((x, bottom + TICK_PX), text, font=_font(), fill=INK, anchor="ma")
 
 
 def _dot(draw: ImageDraw.ImageDraw, x: float, y: float) -> None:
@@ -156,15 +168,21 @@ def _header(course: _Course) -> Image.Image:
     """The product's name, and each video's colour by its name at the right."""
     tile = Image.new("RGB", (INNER_PX, 2 * FONT_PX + PAD_PX), MATTE)
     pen = ImageDraw.Draw(tile)
-    pen.text((0, 0), f"{course.rig.model or 'Rig'} sync course", font=TITLE, fill=INK)
+    pen.text(
+        (0, 0),
+        f"{course.rig.model or 'Rig'} sync course",
+        font=_font("Medium", 2 * FONT_PX),
+        fill=INK,
+    )
     x = INNER_PX
     for name, colour in reversed(course.colours.items()):
-        pen.text((x, FONT_PX), name, font=FONT, fill=colour, anchor="rm")
-        x -= pen.textlength(name, font=FONT) + GAP_PX
+        pen.text((x, FONT_PX), name, font=_font(), fill=colour, anchor="rm")
+        x -= pen.textlength(name, font=_font()) + GAP_PX
     return tile
 
 
-class _Disc(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class _Disc:
     """The bird's-eye view's scale: range on a square-root scale off the rig."""
 
     centre: tuple[int, int]
@@ -208,24 +226,24 @@ def _objects(tile: Image.Image, disc: _Disc, course: _Course) -> None:
     half_m = asset(CONTAINER, Debris).length_m / 2
     for o in course.objects:
         range_m, off_deg = course.sight(o, 0)
-        bearing_deg = course.rig.yaw_deg + off_deg
-        if o.asset != CONTAINER:
+        bearing_deg = course.axis_deg + off_deg
+        if o.asset == BUOY:
             _dot(draw, *disc.px(range_m, bearing_deg))
             continue
         half_deg = box_half_deg(range_m)
         start, end = bearing_deg - half_deg - 90.0, bearing_deg + half_deg - 90.0
         hidden.pieslice(disc.box(disc.reach_m), start, end, fill=SHADOW)
         hidden.pieslice(disc.box(range_m), start, end, fill=(0, 0, 0, 0))
-        faces_m = (
-            range_m - CONTAINER_WIDTH * half_m,
-            range_m + CONTAINER_WIDTH * half_m,
-        )
-        corners = [
-            disc.px(math.hypot(half_m, r), bearing_deg + side * math.degrees(atan))
-            for r, sides in zip(faces_m, ((-1, 1), (1, -1)), strict=True)
-            for side in sides
-            for atan in (math.atan(half_m / r),)
-        ]
+        # Round the footprint: the near face left to right, the far one back.
+        corners = []
+        for face_m, sides in (
+            (range_m - CONTAINER_WIDE_M / 2, (-1, 1)),
+            (range_m + CONTAINER_WIDE_M / 2, (1, -1)),
+        ):
+            out_m = math.hypot(half_m, face_m)
+            across_deg = math.degrees(math.atan(half_m / face_m))
+            for side in sides:
+                corners.append(disc.px(out_m, bearing_deg + side * across_deg))
         draw.polygon(corners, fill=INK)
     tile.paste(shadow, mask=shadow)
 
@@ -236,8 +254,8 @@ def _from_above(course: _Course) -> Image.Image:
     below `BUOY_PX`; grey is what both videos of a pair see. Range is on a
     square-root scale, so a near ring and a far one both show.
     """
-    rig, videos = course.rig, course.videos
-    edges = [rig.yaw_deg + d for v in videos for d in (v.left_deg, v.right_deg)]
+    axis, videos = course.axis_deg, course.videos
+    edges = [axis + d for v in videos for d in (v.left_deg, v.right_deg)]
     aft = any(abs(wrapped_deg(e)) > 90.0 for e in edges)
     tile = _tile((ABOVE_W_PX, TOP_PX), "1  Top view", "grey: seen by two videos")
     # The forward half disc's ring labels go under its base, in two rows.
@@ -252,7 +270,7 @@ def _from_above(course: _Course) -> Image.Image:
     disc = _Disc(centre, radius, max(reach_m(v) for v in videos) * REACH)
 
     def bearings(span: tuple[float, float]) -> tuple[float, float]:
-        return rig.yaw_deg + span[0], rig.yaw_deg + span[1]
+        return axis + span[0], axis + span[1]
 
     # Farthest first, so every shorter cone shows on top.
     for view in sorted(videos, key=reach_m, reverse=True):
@@ -274,15 +292,15 @@ def _from_above(course: _Course) -> Image.Image:
         label = _metres(ring.range_m)
         if aft:
             x, y = disc.px(ring.range_m, 0.0)
-            draw.text((x + PAD_PX, y), label, font=FONT, fill=MUTED, anchor="lb")
+            draw.text((x + PAD_PX, y), label, font=_font(), fill=MUTED, anchor="lb")
             continue
         # Under the arc's port end, a row down where it would touch the last.
         x, y = disc.px(ring.range_m, -90.0)
-        half = draw.textlength(label, font=FONT) / 2
+        half = draw.textlength(label, font=_font()) / 2
         row = 1 - row if x + half + PAD_PX > clear else 0
         clear = x - half
         top = y + PAD_PX + row * (FONT_PX + PAD_PX // 2)
-        draw.text((x, top), label, font=FONT, fill=MUTED, anchor="ma")
+        draw.text((x, top), label, font=_font(), fill=MUTED, anchor="ma")
     _objects(tile, disc, course)
     x, y = centre
     bow = [(x, y - 12 * K), (x - PAD_PX, y + 5 * K), (x + PAD_PX, y + 5 * K)]
@@ -290,42 +308,63 @@ def _from_above(course: _Course) -> Image.Image:
     return tile
 
 
-def _frames(rig: Rig, cameras: dict[str, np.ndarray]) -> dict[str, list[np.ndarray]]:
-    """Each video's kept frame edge as unit rays in the world, one array per camera it
-    records, rounding the frame from its top left.
+def _videos(rig: Rig) -> dict[str, tuple[tuple[str, ...], Video | None]]:
+    """Each video's cameras and the video itself; each camera on its own, as None,
+    where the rig records them whole.
+    """
+    return {
+        name: (sources(video) if video else (name,), video)
+        for name, video in (rig.videos or dict.fromkeys(rig.rendered)).items()
+    }
+
+
+def _margins_px(video: Video | None) -> tuple[int, int, int, int]:
+    """The pixels `video` cuts off its camera's left, right, top and bottom."""
+    if isinstance(video, Crop):
+        return video.left_px, video.right_px, video.top_px, video.bottom_px
+    return 0, 0, 0, 0
+
+
+def frame_edges(
+    rig: Rig, cameras: dict[str, np.ndarray]
+) -> dict[str, list[np.ndarray]]:
+    """Each video's kept frame edge as unit rays in the world (x east, y north, z
+    up), one (4 * `EDGE_POINTS`, 3) array per camera it records, rounding the frame
+    clockwise from its top left: the top edge, the right, the bottom, the left.
+
+    Args:
+        rig: Its videos and cameras.
+        cameras: Each camera's rotation from camera to world, OpenCV's frame.
     """
     frames: dict[str, list[np.ndarray]] = {}
-    for video, cut in (rig.videos or dict.fromkeys(rig.rendered)).items():
-        for name in sources(cut) if cut else (video,):
+    for video, (names, cut) in _videos(rig).items():
+        left, right, top, bottom = _margins_px(cut)
+        for name in names:
             camera = rig.rendered[name]
-            left = right = top = bottom = 0
-            if isinstance(cut, Crop):
-                left, right = cut.left_px, cut.right_px
-                top, bottom = cut.top_px, cut.bottom_px
             w, h, n = camera.width_px / 2, camera.height_px / 2, EDGE_POINTS
             xs = np.linspace(-w + left, w - right, n)
             ys = np.linspace(-h + top, h - bottom, n)  # rows count down
             x = np.concatenate([xs, np.full(n, xs[-1]), xs[::-1], np.full(n, xs[0])])
             y = np.concatenate([np.full(n, ys[0]), ys, np.full(n, ys[-1]), ys[::-1]])
-            # A Blender camera looks down its -Z, +Y up.
             f = camera.focal_px
-            rays = np.column_stack([x / f, -y / f, -np.ones_like(x)]) @ cameras[name].T
+            rays = np.column_stack([x / f, y / f, np.ones_like(x)]) @ cameras[name].T
             unit = rays / np.linalg.norm(rays, axis=1, keepdims=True)
             frames.setdefault(video, []).append(unit)
     return frames
 
 
 def _bearing_deg(rays: np.ndarray) -> np.ndarray:
-    """Each unit ray's bearing, unwrapped along the edge it rounds."""
+    """Each of (n, 3) unit rays' bearing, unwrapped along the edge it rounds."""
     return np.degrees(np.unwrap(np.arctan2(rays[:, 0], rays[:, 1])))
 
 
 def _elevation_deg(rays: np.ndarray) -> np.ndarray:
-    """Each unit ray's elevation."""
+    """Each of (n, 3) unit rays' elevation."""
     return np.degrees(np.arcsin(rays[:, 2]))
 
 
-class _Unrolled(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class _Unrolled:
     """The panorama's scale: bearing and elevation, linear in both, onto `plot`."""
 
     plot: tuple[int, int, int, int]
@@ -384,13 +423,13 @@ def _axes(draw: ImageDraw.ImageDraw, unrolled: _Unrolled) -> None:
     """A gridline at every 30 deg of bearing, 45 all round, and the horizon."""
     x0, y0, x1, y1 = unrolled.plot
     low_b, high_b = unrolled.bearing_deg
-    step = 45 if high_b - low_b >= 300.0 else 30
-    for b in range(-180, 181, step):
-        if low_b <= b <= high_b:
-            _tick(draw, unrolled.xy(b, 0.0)[0], y0, y1, f"{b:+d}°")
+    step = 45 if high_b - low_b >= ALL_ROUND_DEG else 30
+    for b in range(math.ceil(low_b / step) * step, math.floor(high_b) + 1, step):
+        label = round(wrapped_deg(b)) if abs(b) > 180 else b
+        _tick(draw, unrolled.xy(b, 0.0)[0], y0, y1, f"{label:+d}°")
     _, horizon = unrolled.xy(0.0, 0.0)
     draw.line([(x0, horizon), (x1, horizon)], fill=INK, width=K)
-    draw.text((x1, horizon - PAD_PX), "horizon", font=FONT, fill=INK, anchor="rd")
+    draw.text((x1, horizon - PAD_PX), "horizon", font=_font(), fill=INK, anchor="rd")
 
 
 def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
@@ -404,7 +443,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     axis_deg = math.degrees(rig_at(0.0).heading_rad)
     sweep = np.arange(0.0, course.scenario.outputs.times_s[-1] + SWEEP_S, SWEEP_S)
     turned = [math.degrees(rig_at(float(t)).heading_rad) - axis_deg for t in sweep]
-    frames = _frames(course.rig, cameras)
+    frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
     lowest = min(course.elevation_deg(r.range_m, 0.0) for r in course.rings)
@@ -413,7 +452,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     across = [_bearing_deg(rays) for rays in edges]
     low_b = min(float(b.min()) for b in across) + min(turned) - 5.0
     high_b = max(float(b.max()) for b in across) + max(turned) + 5.0
-    if high_b - low_b >= 300.0:
+    if high_b - low_b >= ALL_ROUND_DEG:
         low_b, high_b = -180.0, 180.0
     plot = (RING_LABEL_PX, HEAD_PX, size[0], size[1] - FOOT_PX)
     unrolled = _Unrolled(plot, (low_b, high_b), (low_e, high_e))
@@ -426,7 +465,17 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     box = asset(CONTAINER, Debris)
     for o in course.objects:
         range_m, off_deg = course.sight(o, 0)
-        b = wrapped_deg(axis_deg + off_deg)
+        # The object's copy, a turn either way, that falls in the plot.
+        b = next(
+            (
+                axis_deg + off_deg + w
+                for w in (0.0, -360.0, 360.0)
+                if low_b <= axis_deg + off_deg + w <= high_b
+            ),
+            None,
+        )
+        if b is None:
+            continue
         if o.asset == BUOY:
             _dot(draw, *unrolled.xy(b, course.elevation_deg(range_m, above_m)))
             continue
@@ -440,7 +489,9 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     for ring in course.rings:
         _, y = unrolled.xy(0.0, course.elevation_deg(ring.range_m, above_m))
         if abs(y - last) >= FONT_PX:
-            draw.text((0, y), _metres(ring.range_m), font=FONT, fill=MUTED, anchor="lm")
+            draw.text(
+                (0, y), _metres(ring.range_m), font=_font(), fill=MUTED, anchor="lm"
+            )
             last = y
     return tile
 
@@ -449,21 +500,16 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     """The ownship's heading, pitch and roll, and a pan-tilt unit's pan and tilt, at
     each frame.
     """
-    rig, turn = course.rig, course.scenario.turn
     times = course.scenario.outputs.times_s
     heading = np.unwrap([posed.path(t).heading_rad for t in times])
     attitude = np.array([posed.attitude_deg(t) for t in times])
     pitch, roll = attitude[:, 0], attitude[:, 1]
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
-    if rig.ptu is not None:
-        turned = panned_deg(turn, course.name)
-
-        def pan_deg(t_s: float) -> float:
-            return rig.yaw_deg + turned(t_s)
-
-        signals["pan"] = np.array([pan_deg(t) for t in times])
-        signals["tilt"] = ptu.panned_tilt_deg(
-            posed.attitude_deg, pan_deg, times, rig.ptu.inclination_deg, rig.pitch_deg
+    if course.rig.ptu is not None:
+        axis = axis_deg(course.scenario, course.name)
+        signals["pan"] = np.array([axis(t) for t in times])
+        signals["tilt"] = held_tilt_deg(
+            course.scenario, course.name, posed.attitude_deg
         )
     return signals
 
@@ -481,6 +527,7 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
     )
     draw = ImageDraw.Draw(tile)
 
+    # A course has a turn, so its recording lasts: `times[-1]` is never 0.
     def x(t_s: float) -> float:
         return LEFT_PX + t_s / times[-1] * (INNER_PX - LEFT_PX)
 
@@ -490,7 +537,7 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
         y = HEAD_PX + ROW_PX * k
         colour = course.colours[view.name]
         label = f"{_metres(ring.range_m)}  {view.name}"
-        draw.text((0, y), label, font=FONT, fill=colour)
+        draw.text((0, y), label, font=_font(), fill=colour)
         frame = 0
         for on, run in itertools.groupby(lit):
             n = len(list(run))
@@ -505,9 +552,9 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
         mid, half = (lo + hi) / 2, max((hi - lo) / 2, 0.5) * 1.15
         top, low = y + 10 * K, y + SIGNAL_PX - 10 * K
         draw.line([(LEFT_PX, y), (INNER_PX, y)], fill=GRID, width=K)
-        draw.text((0, top), name, font=BOLD, fill=INK)
+        draw.text((0, top), name, font=_font("Medium"), fill=INK)
         span = f"{lo:+.1f}° to {hi:+.1f}°"
-        draw.text((0, top + FONT_PX + 4 * K), span, font=FONT, fill=MUTED)
+        draw.text((0, top + FONT_PX + 4 * K), span, font=_font(), fill=MUTED)
         trace = [
             (x(t), low - (v - mid + half) / (2 * half) * (low - top))
             for t, v in zip(times, values, strict=True)
@@ -518,7 +565,9 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
 
 
 def draw(scenario: Scenario, out: Path) -> Path:
-    """Draw `scenario`'s course as `course.course` places it, whatever it stores."""
+    """Draw `scenario`'s course as `course.course` places it, not the objects the
+    scenario stores.
+    """
     course = _course(scenario)
     posed = posed_at_start(scenario)
     sheet = canvas.above(

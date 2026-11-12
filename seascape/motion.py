@@ -9,7 +9,7 @@ import numpy as np
 
 from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
-from seascape.physics import slew, waves
+from seascape.physics import ptu, slew, waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
@@ -155,13 +155,44 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     return at
 
 
+def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
+    """The axis of the rig `name` at a time, clockwise from the bow: its yaw and its
+    pan.
+    """
+    yaw_deg, panned = scenario.rigs[name].yaw_deg, panned_deg(scenario.turn, name)
+    return lambda t_s: yaw_deg + panned(t_s)
+
+
+def held_tilt_deg(
+    scenario: Scenario,
+    name: str,
+    attitude_deg: Callable[[float], tuple[float, float]],
+) -> np.ndarray:
+    """The tilt the pan-tilt unit of rig `name` adds to its mount's pitch at each
+    frame, holding its inclination against the ownship's `attitude_deg`.
+
+    Raises:
+        ValueError: The rig has no pan-tilt unit.
+    """
+    rig = scenario.rigs[name]
+    if rig.ptu is None:
+        raise ValueError(f"rig {name} has no ptu")
+    return ptu.panned_tilt_deg(
+        attitude_deg,
+        axis_deg(scenario, name),
+        scenario.outputs.times_s,
+        rig.ptu.inclination_deg,
+        rig.pitch_deg,
+    )
+
+
 def rig_track(scenario: Scenario, name: str) -> Path:
     """Where the rig `name` is at a time, east and north of the ownship's origin,
     and its axis: the ownship's heading, the rig's yaw and its pan.
     """
-    rig, turn = scenario.rigs[name], scenario.turn
-    path = track(scenario.ownship, scenario.outputs, turn)
-    panned = panned_deg(turn, name)
+    rig = scenario.rigs[name]
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    axis = axis_deg(scenario, name)
 
     def at(t_s: float) -> Pose:
         pose = path(t_s)
@@ -169,7 +200,7 @@ def rig_track(scenario: Scenario, name: str) -> Path:
         return Pose(
             pose.east_m + x * math.cos(h) + y * math.sin(h),
             pose.north_m - x * math.sin(h) + y * math.cos(h),
-            h + math.radians(rig.yaw_deg + panned(t_s)),
+            h + math.radians(axis(t_s)),
         )
 
     return at

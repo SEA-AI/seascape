@@ -218,8 +218,8 @@ def render(
 @click.option(
     "--sheet",
     is_flag=True,
-    help="Draw the course its rig gets from above, as a panorama and over the turn, "
-    "and render nothing.",
+    help="Draw the course on one image, <scenario>-course.png in the directory, and "
+    "render nothing.",
 )
 def sync(
     scenario: Path,
@@ -235,7 +235,7 @@ def sync(
         from seascape.sync.sheet import draw
 
         built = load(scenario, list(overrides))
-        path = output or scenario.with_name(f"{scenario.stem}-course.png")
+        path = (output or scenario.parent) / f"{scenario.stem}-course.png"
         with _blender_log(Path(os.devnull)):
             drawn = draw(built, path)
         click.echo(drawn)

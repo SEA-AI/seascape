@@ -4,7 +4,6 @@ import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
-from typing import NamedTuple
 
 import bpy
 import numpy as np
@@ -29,6 +28,7 @@ from seascape.config import (
     Band,
     Mount,
     Scenario,
+    recorded_name,
     substream,
 )
 from seascape.motion import Path, attitude_deg, track
@@ -142,9 +142,11 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
-class Posed(NamedTuple):
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Posed:
     """The one rig's cameras at the start, by name, each as its rotation from camera
-    to world, and the ownship's path and attitude over the scenario.
+    to world in OpenCV's frame (x right, y down, looking down +z), and the ownship's
+    path and attitude over the scenario.
     """
 
     cameras: dict[str, np.ndarray]
@@ -160,7 +162,7 @@ def posed_at_start(scenario: Scenario) -> Posed:
     rigs = add_rigs(scenario)
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
     afloat: list[Afloat] = []
-    add_ownship(
+    vessel = add_ownship(
         scenario.ownship,
         path,
         rigs.root,
@@ -173,14 +175,21 @@ def posed_at_start(scenario: Scenario) -> Posed:
     stabilise(rigs.rigs, scenario, lambda _: (0.0, 0.0))
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     ((name, rig),) = scenario.rigs.items()
+    to_cv = BLENDER_TO_CV.to_3x3()
     cameras = {
-        camera: np.array(rigs.cameras[f"{name}_{camera}"].matrix_world.to_3x3())
+        camera: np.array(
+            rigs.cameras[recorded_name(name, camera)].matrix_world.to_3x3() @ to_cv
+        )
         for camera in rig.rendered
     }
-    hull = afloat[0].hull if afloat else None
+    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    return Posed(cameras, path, attitude_deg(path, hull, wind + swell, tall))
+    return Posed(
+        cameras=cameras,
+        path=path,
+        attitude_deg=attitude_deg(path, hull, wind + swell, tall),
+    )
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:

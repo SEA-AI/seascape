@@ -43,6 +43,9 @@ CONTAINER_FILL = 1.0 / 3.0
 MARGIN_DEG = 0.5
 # The decimals a range, a bearing or an inclination is stored to.
 DECIMALS = 1
+# ISO 668: every series 1 container is 2438 mm wide, a standard one 2591 mm tall.
+CONTAINER_WIDE_M = 2.438
+CONTAINER_TALL_M = 2.591
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -215,6 +218,11 @@ def buoy_half_deg(range_m: float) -> float:
     return half_deg(buoy_above_m(), range_m)
 
 
+def elevation_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
+    """Up from `rig` to a point `above_m` over a flat sea, `range_m` out."""
+    return math.degrees(math.atan2(above_m - rig.height_m, range_m))
+
+
 def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
     """The one rig a course is for, and its turn."""
     if scenario.turn is None or len(scenario.rigs) != 1:
@@ -234,7 +242,7 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float | Non
     Raises:
         ValueError: No pitch does, or a fixed mount's is not one.
     """
-    low_deg = -math.degrees(math.atan(rig.height_m / near_m)) - MARGIN_DEG
+    low_deg = elevation_deg(rig, near_m) - MARGIN_DEG
     least = max(MARGIN_DEG - v.up_deg for v in videos)
     most = min(low_deg - v.down_deg for v in videos)
     # The stored pitch is rounded, so it is the rounded one that must fit.
