@@ -249,7 +249,10 @@ class Scenario(Model):
                 "or remove turn"
             )
         last_s = self.outputs.times_s[-1]
-        if (turn_s := self.turn.duration_s) > last_s:
+        # isclose: the legs' times sum in floats, and a turn ending on the last frame
+        # can come out an ulp past it.
+        turn_s = self.turn.duration_s
+        if turn_s > last_s and not math.isclose(turn_s, last_s):
             fps = self.outputs.fps
             # The last frame falls a frame before duration_s.
             frames = math.ceil(turn_s * fps) + 1

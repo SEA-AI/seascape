@@ -170,6 +170,16 @@ def test_a_turn_that_cannot_run_is_refused(
         load(OPEN_SEA, [changes])
 
 
+def test_a_turn_ending_on_the_last_frame_fits() -> None:
+    # 0.1 + 0.2 sums to 0.30000000000000004, an ulp past the last frame at 0.3.
+    turn = {
+        "by": "ownship",
+        "top_rate_deg_s": 1.0,
+        "moves": [{"to_deg": 0.1, "hold_s": 0.2}],
+    }
+    load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": 0.4, "fps": 10}}])
+
+
 @pytest.mark.parametrize(
     ("moves", "fps"),
     [
