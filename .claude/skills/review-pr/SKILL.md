@@ -32,6 +32,6 @@ A review request ends with the findings, merged into one table:
 
 Edit and push only when handing over a PR you wrote, or when asked to fix; until then Outcome is blank, and the steps below do not apply.
 
-- Apply the fixes each skill's verdicts name. A finding you reject gets a one-line reason a reader can check.
+- For each finding but a keep, apply its Fix or give a one-line reason a reader can check for rejecting it.
 - Run the tests the fixes touch, then push through `gh stack`.
 - After a fix that changes code, run the correctness, architecture, anti-hack and stack reviews again on the final diff.
