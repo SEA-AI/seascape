@@ -58,9 +58,12 @@ _VIDEO = TypeAdapter(Video)
 # Oceanus's `proc_ptu_mode`: collision avoidance while a ptu
 # turns, else manual, as a replay reads a recording without the column. It has no 0.
 MANUAL_MODE, COLAV_MODE = 1, 3
-# The recording's signs against seascape's, per file: -1 counts down or to port.
-CSV_SIGN = {"pitch": -1.0, "pan": -1.0, "tilt": -1.0}
-SENSOR_SIGN = {"pitch": -1.0, "yaw": -1.0}
+# FLU (ROS REP 103: forward, left, up) against `attitude_deg`'s starboard, bow, up:
+# roll keeps its sign; pitch about left counts nose down, yaw about up to port.
+FLU = (1.0, -1.0, -1.0)
+# The recording's IMU pitch counts nose down, and its roll and yaw as NED does; no
+# change of basis gives that, so it is the format's own sign.
+IMU_PITCH_SIGN = -1.0
 
 
 def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
@@ -75,6 +78,14 @@ def _attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
     """
     roll, pitch, yaw = attitude_deg(body_to_frame)
     return roll, pitch, wrapped_deg(round(yaw, 6))
+
+
+def _flu_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+    """`_attitude_deg` in FLU."""
+    roll, pitch, yaw = (
+        s * a for s, a in zip(FLU, _attitude_deg(body_to_frame), strict=True)
+    )
+    return roll, pitch, yaw
 
 
 def _row(
@@ -94,11 +105,13 @@ def _row(
     row["proc_ptu_mode"] = MANUAL_MODE
     # A run from before ptus has no key.
     if rig.get("ptu") is not None:
-        # The head on the deck, past its mount.
+        # The head on the deck, past its mount. Rig.pose turns the head by yaw + pan
+        # about up, then pitch + tilt about starboard, so each subtraction undoes a
+        # turn about the same axis, exactly.
         on_deck = np.linalg.inv(_to(camera, "vessel")) @ _to(camera, "rig")
         _, tilt, pan = _attitude_deg(on_deck)
-        row["pan"] = wrapped_deg(pan - rig["yaw_deg"])
-        row["tilt"] = tilt - rig["pitch_deg"]
+        row["pan"] = FLU[2] * wrapped_deg(pan - rig["yaw_deg"])
+        row["tilt"] = FLU[1] * (tilt - rig["pitch_deg"])
         if scan_deg_s is not None:
             row["proc_ptu_mode"] = COLAV_MODE
             # Revolutions per second, as the worker's setting.
@@ -107,7 +120,7 @@ def _row(
         "counter": counter,
         # The recording's IMU, in degrees.
         "roll": roll,
-        "pitch": pitch,
+        "pitch": IMU_PITCH_SIGN * pitch,
         "yaw": yaw,
         "heading": heading,
         "cog": heading,
@@ -121,9 +134,7 @@ def _row(
     }
     # + 0.0 turns the -0.0 that rounding leaves of noise into 0.0.
     return {
-        k: v
-        if isinstance(v, int)
-        else f"{round(CSV_SIGN.get(k, 1.0) * v, 6) + 0.0:.6f}"
+        k: v if isinstance(v, int) else f"{round(v, 6) + 0.0:.6f}"
         for k, v in row.items()
     }
 
@@ -134,7 +145,7 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
-    rpy = zip(("roll", "pitch", "yaw"), _attitude_deg(rig[:3, :3] @ TO_CV), strict=True)
+    rpy = zip(("roll", "pitch", "yaw"), _flu_deg(rig[:3, :3] @ TO_CV), strict=True)
     (fx, _, cx), (_, fy, cy), _ = camera.K
     pixel_mm = camera.pitch_um / 1000 if camera.pitch_um else PIXEL_SIZE_MM[camera.band]
     return {
@@ -144,7 +155,7 @@ def _sensor(camera: CameraCalibration) -> dict[str, Any]:
         "focal_length": _unit(fx * pixel_mm, "mm"),
         "barrel_distortion": _unit(None, "1"),
         "distortion_model": "pinhole" if camera.distortion is None else "fisheye",
-        **{k: _unit(SENSOR_SIGN.get(k, 1.0) * v, "deg") for k, v in rpy},
+        **{k: _unit(v, "deg") for k, v in rpy},
         "pixel_size": _unit(pixel_mm, "mm"),
         "resolution": _unit([camera.width_px, camera.height_px], "1"),
         "camera_orientation": _unit(0, "deg"),

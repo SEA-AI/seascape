@@ -499,10 +499,9 @@ def _fisheye_horizon(
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     v = np.arange(camera.height_px + 1, dtype=float)
     columns, rows = np.meshgrid(u, v)
-    # Blender's camera frame is right, up, back; OpenCV's is right, down, forward.
     right, down = columns - 0.5 - camera.K[0][2], rows - 0.5 - camera.K[1][2]
-    ray = fisheye.direction(right, -down, camera.distortion, camera.K[0][0])
-    d = (ray * np.array([1.0, -1.0, -1.0])) @ rotation.T
+    ray = fisheye.direction(right, down, camera.distortion, camera.K[0][0])
+    d = ray @ rotation.T
     a = (d[..., 0] ** 2 + d[..., 1] ** 2) / (2 * radius_m)
     b = d[..., 2] + (cx * d[..., 0] + cy * d[..., 1]) / radius_m
     c = cz + (cx * cx + cy * cy) / (2 * radius_m)

@@ -10,7 +10,7 @@ from mathutils import Vector
 from PIL import Image, ImageDraw
 
 from seascape.blender import workbench
-from seascape.blender.blend import mesh_objects
+from seascape.blender.blend import BLENDER_TO_CV, mesh_objects
 from seascape.blender.meshes import box_corners
 from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
@@ -40,18 +40,21 @@ def _frustum(
 ) -> bpy.types.Object:
     """A wireframe pyramid from `camera` along its view: nested ones stay visible."""
     spec = mount.camera
-    corners_px = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)]) / 2
+    # In OpenCV's camera axes, right, down and ahead.
+    corners_px = np.array([(-1, 1), (1, 1), (1, -1), (-1, -1)]) / 2
     corners_px = corners_px * (spec.width_px, spec.height_px)
     if spec.lens.fisheye is not None:
         k, fx = spec.lens.fisheye, spec.fisheye_focal_px
         rays = fisheye.direction(corners_px[:, 0], corners_px[:, 1], k, fx)
-        far = rays * length_m / -rays[:, 2:]
+        far_cv = rays * length_m / rays[:, 2:]
     else:
         across = math.tan(math.radians(spec.hfov_deg) / 2)
-        far = (
-            np.column_stack([corners_px * 2 * across / spec.width_px, -np.ones(4)])
+        far_cv = (
+            np.column_stack([corners_px * 2 * across / spec.width_px, np.ones(4)])
             * length_m
         )
+    # The frustum is the camera's child, in Blender's camera axes.
+    far = far_cv @ np.array(BLENDER_TO_CV.to_3x3()).T
     mesh = bpy.data.meshes.new(camera.name)
     mesh.from_pydata(
         [(0.0, 0.0, 0.0), *map(tuple, far)],

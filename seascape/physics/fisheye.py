@@ -54,16 +54,15 @@ def theta(radius: np.ndarray, k: K, fx: float) -> np.ndarray:
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
     """
-    return np.arccos(-direction(radius, np.zeros_like(radius), k, fx)[..., 2])
+    return np.arccos(direction(radius, np.zeros_like(radius), k, fx)[..., 2])
 
 
 def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray:
-    """Unit rays, (..., 3), in a camera that looks down -Z with +X right and +Y up, as
-    Blender's does.
+    """Unit rays, (..., 3), in OpenCV's camera axes: +X right, +Y down, +Z ahead.
 
     Args:
         x_px: Pixels right of the principal point.
-        y_px: Pixels up from the principal point, against the image's rows.
+        y_px: Pixels down from the principal point, along the image's rows.
         k: OpenCV's k1..k4, all 0 for an equidistant lens.
         fx: Image radius per radian of the distorted angle, in pixels.
     """
@@ -73,7 +72,7 @@ def direction(x_px: np.ndarray, y_px: np.ndarray, k: K, fx: float) -> np.ndarray
     # the pixel's side of each axis.
     ahead = cv2.fisheye.undistortPoints(pixels.reshape(-1, 1, 2), matrix, np.array(k))
     rays = np.concatenate(
-        [ahead.reshape(pixels.shape), -np.ones_like(pixels[..., :1])], axis=-1
+        [ahead.reshape(pixels.shape), np.ones_like(pixels[..., :1])], axis=-1
     )
     return rays / np.linalg.norm(rays, axis=-1, keepdims=True)
 
