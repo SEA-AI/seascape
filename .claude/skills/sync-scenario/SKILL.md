@@ -34,4 +34,4 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 
 - **Fails, printing the course:** if it differs from the stored objects, the rig, hull or turn changed. Paste it whole; never edit it by hand.
 - **Fails, naming `pitch_deg`:** a fixed mount loses the near ring or the horizon. Set the rig's `pitch_deg` to the value it names.
-- **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/layout.py`'s rule, for every product. Never place one by hand.
+- **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/staging.py`'s rule, for every product. Never place one by hand.
