@@ -11,6 +11,10 @@ RUN apt-get update \
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
     UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
+# OptiX caches the kernels it compiles on a first render in /var/tmp, which a
+# container loses; the cache volume keeps them.
+ENV OPTIX_CACHE_PATH=/root/.cache/seascape/optix
+
 WORKDIR /seascape
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
