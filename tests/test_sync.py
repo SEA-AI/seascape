@@ -156,6 +156,12 @@ def test_a_course_needs_a_turn() -> None:
         course.course(load(OPEN_SEA))
 
 
+def test_a_course_needs_a_still_ownship() -> None:
+    under_way = load(PRODUCTS[0], [{"ownship": {"speed_mps": 2.0}}])
+    with pytest.raises(ValueError, match="a course needs it still"):
+        course.course(under_way)
+
+
 @pytest.mark.parametrize("path", PRODUCTS)
 def test_a_preview_has_a_frame_where_each_video_holds_each_of_its_rings(
     path: Path,

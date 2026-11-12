@@ -254,9 +254,16 @@ def course(scenario: Scenario) -> Course:
     camera they record passes one, staggered so no ring hides another.
 
     Raises:
-        ValueError: No turn, not one rig, or no pitch that keeps every ring in view.
+        ValueError: No turn, not one rig, an ownship under way, or no pitch that
+            keeps every ring in view.
     """
     name, rig, turn = one_rig(scenario)
+    # The container is placed once, where the rig starts: a hull under way leaves it.
+    if scenario.ownship.speed_mps:
+        raise ValueError(
+            f"the ownship makes {scenario.ownship.speed_mps:g} m/s: a course needs "
+            "it still, so set ownship.speed_mps to 0"
+        )
     videos = views(rig)
     if not (circles := rings(videos)):
         raise ValueError("no two videos of the rig overlap: a course needs a pair")
