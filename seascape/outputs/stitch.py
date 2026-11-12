@@ -2,8 +2,6 @@
 does.
 """
 
-import math
-
 import cv2
 import numpy as np
 
@@ -38,9 +36,10 @@ def fused(
     fy = (left.K[1][1] + right.K[1][1]) / 2
     w, h = 2 * left.width_px, left.height_px
     # Each optical axis's elevation over the rig's horizontal.
-    pitch = np.mean([math.asin(_turn(c)[2, 2]) for c in (left, right)])
-    c, s = math.cos(pitch), math.sin(pitch)
-    turn = np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]) @ angles.TO_CV.T
+    pitch_deg = float(
+        np.mean(angles.elevation_deg([_turn(c)[2, 2] for c in (left, right)]))
+    )
+    turn = angles.turned(0.0, pitch_deg) @ angles.TO_CV.T
     at = (np.array(left.extrinsics["rig"]) + np.array(right.extrinsics["rig"])) / 2
     rig = np.eye(4)
     rig[:3, :3], rig[:3, 3] = turn, at[:3, 3]

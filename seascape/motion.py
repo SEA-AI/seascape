@@ -199,7 +199,10 @@ def drifting(
     and drifting about that pose: a sway across it, and a surge along it at twice the
     rate.
     """
-    bearing, heading = math.radians(bearing_deg), math.radians(heading_deg)
+    start = range_m * angles.direction(bearing_deg, 0.0)[:2]
+    # The hull's starboard and bow axes in the world's (east, north), as columns.
+    R_w_v = angles.turned(heading_deg, 0.0)[:2, :2]
+    heading = math.radians(heading_deg)
     sway_m = surge_m = 0.0
     period_s = 1.0
     if drift is not None:
@@ -214,14 +217,10 @@ def drifting(
         along, across = speed_mps * t_s + surge(t_s), sway(t_s)
         along_mps = speed_mps + 2.0 * rate * surge_m * math.cos(2.0 * phase)
         across_mps = rate * sway_m * math.cos(phase)
-        # Starboard of the heading is (cos, -sin).
-        sin, cos = math.sin(heading), math.cos(heading)
+        east, north = start + R_w_v @ (across, along)
+        east_mps, north_mps = R_w_v @ (across_mps, along_mps)
         return Pose(
-            range_m * math.sin(bearing) + along * sin + across * cos,
-            range_m * math.cos(bearing) + along * cos - across * sin,
-            heading,
-            along_mps * sin + across_mps * cos,
-            along_mps * cos - across_mps * sin,
+            float(east), float(north), heading, float(east_mps), float(north_mps)
         )
 
     return at

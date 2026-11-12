@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import bpy
 
+from seascape import angles
 from seascape.blender.blend import (
     Num,
     combine,
@@ -142,12 +143,8 @@ def _unresolved(
     speed = sea.wind_speed_mps
     # From or toward, the axis is the same.
     wind_axis = math.radians(sea.wind_from_deg)
-    facing = vector(
-        tree,
-        "DOT_PRODUCT",
-        pixel.along_dir,
-        (math.sin(wind_axis), math.cos(wind_axis), 0),
-    )
+    along_wind = tuple(angles.direction(sea.wind_from_deg, 0.0).tolist())
+    facing = vector(tree, "DOT_PRODUCT", pixel.along_dir, along_wind)
     cos2 = Num(tree, scalar(tree, "MULTIPLY", facing, facing, name="sea_wind_facing"))
     footprints = (pixel.along_m, pixel.across_m)
 

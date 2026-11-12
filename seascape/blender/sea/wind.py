@@ -30,6 +30,7 @@ from seascape.physics.waves import (
     foam_drift_mps,
     gaussian_ranks,
     gust_slope_variance,
+    toward_rad,
     turbulence_intensity,
     von_karman_field,
 )
@@ -138,13 +139,11 @@ def surface_drift(sea: Sea, outputs: Outputs) -> tuple[float, float]:
     """
     if outputs.loop:
         return 0.0, 0.0
-    east, north = _downwind(sea)
-    return foam_drift_mps(sea.wind_speed_mps, math.atan2(east, north))
+    return foam_drift_mps(sea.wind_speed_mps, toward_rad(sea.wind_from_deg))
 
 
 def _downwind(sea: Sea) -> tuple[float, float]:
-    # Wind is named for where it blows from.
-    toward = math.radians(sea.wind_from_deg + 180.0)
+    toward = toward_rad(sea.wind_from_deg)
     return math.sin(toward), math.cos(toward)
 
 
