@@ -26,14 +26,13 @@ from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.course import (
     BUOY,
-    BUOY_COLOUR,
     CONTAINER,
     Ring,
     View,
     asset,
-    box_half_deg,
     buoy_above_m,
     elevation_deg,
+    half_deg,
     one_rig,
     overlap_deg,
     reach_m,
@@ -82,7 +81,6 @@ SERIES = [
     _rgb(c)
     for c in (brand.FOCUS_RED, brand.OCEAN_TEAL, brand.SKY_GREY, brand.NIGHT_BLUE)
 ]
-BUOY_FILL = ImageColor.getrgb(asset(BUOY, Buoy).colours[BUOY_COLOUR])
 SHADOW = (0, 0, 0, 40)
 PAIR = (0, 0, 0, 60)
 CONE_ALPHA = 50
@@ -117,7 +115,7 @@ class _Course:
     videos: list[View]
     rings: list[Ring]
     objects: list[Object]
-    sight: Callable[[Object, int], tuple[float, float]]
+    sight: Callable[[Object], list[tuple[float, float]]]
     colours: dict[str, Colour]
 
 
@@ -173,8 +171,12 @@ def _tick(
     draw.text((x, bottom + TICK_PX), text, font=_font(), fill=INK, anchor="ma")
 
 
-def _dot(draw: ImageDraw.ImageDraw, x: float, y: float) -> None:
-    draw.ellipse((x - DOT_PX, y - DOT_PX, x + DOT_PX, y + DOT_PX), fill=BUOY_FILL)
+def _dot(draw: ImageDraw.ImageDraw, x: float, y: float, buoy: Object) -> None:
+    """`buoy` in its colour, outlined so a white one shows on the sheet."""
+    sold = asset(BUOY, Buoy).colours
+    fill = ImageColor.getrgb(sold.get(buoy.colour or "", "#FFFFFF"))
+    box = (x - DOT_PX, y - DOT_PX, x + DOT_PX, y + DOT_PX)
+    draw.ellipse(box, fill=fill, outline=INK, width=1)
 
 
 def _header(course: _Course) -> Image.Image:
@@ -238,13 +240,13 @@ def _objects(tile: Image.Image, disc: _Disc, course: _Course) -> None:
     hidden = ImageDraw.Draw(shadow)
     half_m = asset(CONTAINER, Debris).length_m / 2
     for o in course.objects:
-        range_m, off_deg = course.sight(o, 0)
+        range_m, off_deg = course.sight(o)[0]
         bearing_deg = course.axis_deg + off_deg
         if o.asset == BUOY:
-            _dot(draw, *disc.px(range_m, bearing_deg))
+            _dot(draw, *disc.px(range_m, bearing_deg), o)
             continue
-        half_deg = box_half_deg(range_m)
-        start, end = bearing_deg - half_deg - 90.0, bearing_deg + half_deg - 90.0
+        half = half_deg(2 * half_m, range_m)
+        start, end = bearing_deg - half - 90.0, bearing_deg + half - 90.0
         hidden.pieslice(disc.box(disc.reach_m), start, end, fill=SHADOW)
         hidden.pieslice(disc.box(range_m), start, end, fill=(0, 0, 0, 0))
         # Round the footprint: the near face left to right, the far one back.
@@ -270,7 +272,7 @@ def _from_above(course: _Course) -> Image.Image:
     axis, videos = course.axis_deg, course.videos
     edges = [axis + d for v in videos for d in (v.left_deg, v.right_deg)]
     # A course turned past the beam places objects behind the starting bow.
-    edges += [axis + course.sight(o, 0)[1] for o in course.objects]
+    edges += [axis + course.sight(o)[0][1] for o in course.objects]
     aft = any(abs(wrapped_deg(e)) > 90.0 for e in edges)
     tile = _tile((ABOVE_W_PX, TOP_PX), "1  Top view", "grey: seen by two videos")
     # The forward half disc's ring labels go under its base, in two rows.
@@ -458,14 +460,19 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     shaded over the turn; each buoy and the container stand where they are.
     """
     size = (INNER_PX - ABOVE_W_PX - GAP_PX, TOP_PX)
-    tile = _tile(size, "2  Panorama", "outline: at the start  ·  shade: over the turn")
+    tile = _tile(
+        size,
+        "2  Panorama",
+        "outline: at the start  ·  shade: the bearings the turn sweeps",
+    )
     rig_at = rig_track(course.scenario, course.name)
     heading_deg = math.degrees(rig_at(0.0).heading_rad)
     times = course.scenario.outputs.times_s
     turned = [math.degrees(rig_at(t).heading_rad) - heading_deg for t in times]
-    # Every frame's bearing, one per whole degree: a frame is wider than a degree,
-    # so the shade has no gaps, and a long hold draws once.
-    sweep = np.unique(np.round(turned)).tolist()
+    # The turn is continuous, so it passes every whole degree between its ends,
+    # whatever it covers between two frames: one per degree, as a frame is wider than
+    # a degree, leaves the shade no gaps, and a long hold draws once.
+    sweep = [float(d) for d in range(round(min(turned)), round(max(turned)) + 1)]
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
@@ -493,7 +500,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     above_m = buoy_above_m()
     box = asset(CONTAINER, Debris)
     for o in course.objects:
-        range_m, off_deg = course.sight(o, 0)
+        range_m, off_deg = course.sight(o)[0]
         # The object's copy, a turn either way, that falls in the plot.
         b = next(
             (
@@ -506,9 +513,9 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         if b is None:
             continue
         if o.asset == BUOY:
-            _dot(draw, *unrolled.xy(b, up_deg(range_m, above_m)))
+            _dot(draw, *unrolled.xy(b, up_deg(range_m, above_m)), o)
             continue
-        half = box_half_deg(range_m)
+        half = half_deg(box.length_m, range_m)
         tall_m = CONTAINER_TALL_M - box.draught_m
         top = unrolled.xy(b - half, up_deg(range_m, tall_m))
         right, waterline = unrolled.xy(b + half, up_deg(range_m, 0.0))
@@ -551,7 +558,8 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
     fixed video's height can drop the buoy out of it, which only the preview's
     labels show.
     """
-    held = preview.held(course.scenario, course.objects)
+    placed = course.scenario.model_copy(update={"objects": course.objects})
+    held = preview.held(placed)
     times = course.scenario.outputs.times_s
     rows_px = ROW_PX * len(held)
     height = HEAD_PX + rows_px + GAP_PX + SIGNAL_PX * len(signals) + FOOT_PX
