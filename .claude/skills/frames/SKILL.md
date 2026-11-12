@@ -23,7 +23,7 @@ Every body is RFU (+X starboard or right, +Y bow or forward, +Z up); `world` is 
 
 - **ownship and target are one kind of frame,** a hull.
 - **`T_level_hull`** carries the sea's tilt, the scripted trim and list, and heave. It pivots at the floating waterline, `rise_m` below the hull's origin.
-- **`base` is where the PTU's pan reads zero;** its tilt reads zero at `pitch_deg`. A mount bolted off the bow and a moved home are the same `T_ownship_base`, and any value renders right.
+- **`base` is where the PTU's pan reads zero;** `Rig.pose`'s tilt counts from `pitch_deg`; the PTU's encoder, and so a recording's tilt, from level. A mount bolted off the bow and a moved home are the same `T_ownship_base`, and any value renders right.
 - **A fixed rig** is a head with pan and tilt at 0.
 
 Any other frame is local to the module that owns it and is named there.

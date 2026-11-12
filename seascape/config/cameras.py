@@ -465,8 +465,9 @@ class Rig(Model):
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="Its head's pitch where its tilt reads zero: after the pan, "
-        "before its cameras' pitch. Negative is down.",
+        description="Its head's pitch before any tilt: after the pan, before its "
+        "cameras' pitch. A pan-tilt unit's tilt axis holds it, so a recording's tilt "
+        "counts it. Negative is down.",
     )
     ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(

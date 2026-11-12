@@ -2932,7 +2932,7 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "Its head's pitch where its tilt reads zero: after the pan, before its cameras' pitch. Negative is down.",
+          "description": "Its head's pitch before any tilt: after the pan, before its cameras' pitch. A pan-tilt unit's tilt axis holds it, so a recording's tilt counts it. Negative is down.",
           "default": 0.0,
           "anyOf": [
             {
