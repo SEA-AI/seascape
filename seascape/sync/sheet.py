@@ -263,12 +263,14 @@ def _objects(tile: Image.Image, disc: _Disc, course: _Course) -> None:
 
 def _from_above(course: _Course) -> Image.Image:
     """The rig, the bow up: a half disc with the rig at the bottom while every video
-    looks forward, else a whole disc around it. Each cone ends where a buoy drops
-    below `BUOY_PX`; grey is what both videos of a pair see. Range is on a
-    square-root scale, so a near ring and a far one both show.
+    and every object at the start lies forward, else a whole disc around it. Each
+    cone ends where a buoy drops below `BUOY_PX`; grey is what both videos of a pair
+    see. Range is on a square-root scale, so a near ring and a far one both show.
     """
     axis, videos = course.axis_deg, course.videos
     edges = [axis + d for v in videos for d in (v.left_deg, v.right_deg)]
+    # A course turned past the beam places objects behind the starting bow.
+    edges += [axis + course.sight(o, 0)[1] for o in course.objects]
     aft = any(abs(wrapped_deg(e)) > 90.0 for e in edges)
     tile = _tile((ABOVE_W_PX, TOP_PX), "1  Top view", "grey: seen by two videos")
     # The forward half disc's ring labels go under its base, in two rows.
