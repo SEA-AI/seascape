@@ -213,23 +213,47 @@ def test_a_turn_too_long_suggests_a_duration_that_fits(
     load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": suggested, "fps": fps}}])
 
 
-def test_a_hull_s_attitude_is_its_scripted_tilt_and_the_sea_s_starboard_down() -> None:
+def _x(rad: float) -> np.ndarray:
+    c, s = math.cos(rad), math.sin(rad)
+    return np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+
+def _y(rad: float) -> np.ndarray:
+    c, s = math.cos(rad), math.sin(rad)
+    return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+
+
+def test_a_hull_s_deck_is_its_scripted_tilt_then_the_sea_s() -> None:
     scenario = load(OPEN_SEA)
     field = scenario.wind_waves() + scenario.swell_waves()
     hull = waves.Waterplane(length_m=12.0, beam_m=4.0)
     path = motion.track(Ownship(pitch_deg=2.0, roll_deg=-3.0), Outputs(duration_s=10.0))
-    attitude = motion.attitude_deg(path, hull, field, field)
+    deck = motion.tilt(path, hull, field, field)
 
     for t_s in (0.0, 3.3, 7.1):
         pose = path(t_s)
         sea = motion.rocking(pose, hull=hull, field=field, tall=field, t_s=t_s)
-        plane = motion.waterplane(pose, field, t_s, hull)
-        _, roll_up = waves.attitude(field, plane, t_s)
-        # The sea rolls the hull starboard down by what the waves raise to port.
-        assert sea.roll_rad == -roll_up
-        assert attitude(t_s) == pytest.approx(
-            (
-                math.degrees(pose.pitch_rad + sea.pitch_rad),
-                math.degrees(pose.roll_rad + sea.roll_rad),
-            )
+        assert (sea.pitch_rad, sea.roll_rad) == waves.attitude(
+            field, motion.waterplane(pose, field, t_s, hull), t_s
         )
+        # The anchor's YXZ euler, then the attitude empty's: roll innermost in each.
+        scripted = _x(pose.pitch_rad) @ _y(pose.roll_rad)
+        expected = scripted @ _x(sea.pitch_rad) @ _y(sea.roll_rad)
+        assert np.allclose(deck(t_s), expected, atol=1e-12)
+
+
+@pytest.mark.parametrize("pan_deg", [0.0, 90.0, -90.0, 180.0])
+def test_a_head_s_elevation_is_its_boresight_through_the_tilted_deck(
+    pan_deg: float,
+) -> None:
+    pitch, roll = math.radians(3.0), math.radians(5.0)
+    # Bow up 3, starboard down 5: the bow rises by the pitch, starboard falls by the
+    # roll as the pitch foreshortens it.
+    up = {
+        0.0: 3.0,
+        180.0: -3.0,
+        90.0: -math.degrees(math.asin(math.cos(pitch) * math.sin(roll))),
+        -90.0: math.degrees(math.asin(math.cos(pitch) * math.sin(roll))),
+    }
+    deck = _x(pitch) @ _y(roll)
+    assert motion.elevation_deg(deck, pan_deg, 0.0) == pytest.approx(up[pan_deg])

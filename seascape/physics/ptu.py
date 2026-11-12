@@ -2,7 +2,6 @@
 SEA.AI's firmware drives it (POWER_Stabilization, `ptu_control_c`, `stabilize_ptu`).
 """
 
-import math
 from collections.abc import Callable, Sequence
 
 import numpy as np
@@ -21,7 +20,7 @@ SETTLE_S = 10.0 / GAIN_PER_S
 
 
 def tilt_deg(
-    pitch_deg: Callable[[float], float],
+    head_pitch_deg: Callable[[float, float], float],
     times_s: Sequence[float],
     target_deg: float,
 ) -> np.ndarray:
@@ -29,57 +28,19 @@ def tilt_deg(
     `SETTLE_S` before 0.
 
     Args:
-        pitch_deg: The base's pitch under the head, up, from `-SETTLE_S`.
+        head_pitch_deg: The head's pitch, up, at a time from `-SETTLE_S` and a tilt:
+            what the IMU on it reads.
         times_s: Ascending, from 0.
         target_deg: The head's pitch the loop holds, up; `target_inclination`.
     """
     ticks = np.arange(-SETTLE_S, times_s[-1] + TICK_S, TICK_S)
     tilt = np.empty_like(ticks)
-    held = target_deg - pitch_deg(-SETTLE_S)
+    held = target_deg - head_pitch_deg(-SETTLE_S, 0.0)
     for i, t_s in enumerate(ticks):
         tilt[i] = held
-        speed = GAIN_PER_S * (target_deg - pitch_deg(float(t_s)) - held)
+        speed = GAIN_PER_S * (target_deg - head_pitch_deg(float(t_s), held))
         speed = float(np.clip(speed, -MAX_SPEED_DEG_S, MAX_SPEED_DEG_S))
         if abs(speed) < DEAD_BAND_DEG_S:
             speed = 0.0
         held += speed * TICK_S
     return np.interp(times_s, ticks, tilt)
-
-
-def head_pitch_deg(pitch_deg: float, roll_deg: float, pan_deg: float) -> float:
-    """The base's tilt under a head panned `pan_deg` clockwise from the bow: bow up
-    ahead, starboard up abeam to starboard. Small angles, so pitch and roll add as
-    the components of one tilt vector.
-
-    Args:
-        pitch_deg: Bow up.
-        roll_deg: Starboard down.
-        pan_deg: Clockwise from the bow.
-    """
-    pan = math.radians(pan_deg)
-    return pitch_deg * math.cos(pan) - roll_deg * math.sin(pan)
-
-
-def panned_tilt_deg(
-    attitude_deg: Callable[[float], tuple[float, float]],
-    pan_deg: Callable[[float], float],
-    times_s: Sequence[float],
-    inclination_deg: float,
-    mount_pitch_deg: float,
-) -> np.ndarray:
-    """The tilt past its mount the loop holds at each of `times_s` under a head
-    panned `pan_deg` on a base that pitches and rolls by `attitude_deg`.
-
-    Args:
-        attitude_deg: The base's pitch, bow up, and roll, starboard down, at a time.
-        pan_deg: Clockwise from the bow, at a time.
-        times_s: Ascending, from 0.
-        inclination_deg: The head's pitch the loop holds, up, its mount included.
-        mount_pitch_deg: The mount's pitch on the base, up.
-    """
-    # The firmware's IMU sits on the head, so the loop holds the head itself, its
-    # mount included.
-    target_deg = inclination_deg - mount_pitch_deg
-    return tilt_deg(
-        lambda t: head_pitch_deg(*attitude_deg(t), pan_deg(t)), times_s, target_deg
-    )
