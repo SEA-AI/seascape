@@ -58,11 +58,11 @@ _VIDEO = TypeAdapter(Video)
 # Oceanus's `proc_ptu_mode`: collision avoidance while a ptu
 # turns, else manual, as a replay reads a recording without the column. It has no 0.
 MANUAL_MODE, COLAV_MODE = 1, 3
-# FLU (ROS REP 103: forward, left, up) against `attitude_deg`'s starboard, bow, up:
-# roll keeps its sign; pitch about left counts nose down, yaw about up to port.
+# Roll, pitch and yaw signs in FLU (ROS REP 103) against `attitude_deg`'s: pitch
+# counts nose down, yaw to port.
 FLU = (1.0, -1.0, -1.0)
-# The recording's IMU pitch counts nose down, and its roll and yaw as NED does; no
-# change of basis gives that, so it is the format's own sign.
+# The recording's IMU pitch counts nose down, its roll and yaw as `attitude_deg`'s;
+# no change of basis gives that mix.
 IMU_PITCH_SIGN = -1.0
 
 
@@ -105,9 +105,8 @@ def _row(
     row["proc_ptu_mode"] = MANUAL_MODE
     # A run from before ptus has no key.
     if rig.get("ptu") is not None:
-        # The head on the deck, past its mount. Rig.pose turns the head by yaw + pan
-        # about up, then pitch + tilt about starboard, so each subtraction undoes a
-        # turn about the same axis, exactly.
+        # The head on the deck, less its mount: Rig.pose adds pan to yaw and tilt to
+        # pitch, so subtracting undoes them exactly.
         T_v_r = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(camera, "rig")
         _, tilt, pan = _attitude_deg(T_v_r)
         row["pan"] = FLU[2] * wrapped_deg(pan - rig["yaw_deg"])
@@ -126,8 +125,8 @@ def _row(
         "cog": heading,
         "temp": scenario["sky"]["t_air_k"] - 273.15,
         "wind_speed": scenario["sea"]["wind_speed_mps"],
-        # NMEA 2000: radians in [0, 2 pi) from the bow. The scenario's is from world
-        # +Y, the bow at t = 0, so the heading comes off it.
+        # NMEA 2000: radians in [0, 2 pi) from the current bow; the scenario's is
+        # from the bow at the start.
         "wind_angle": (math.radians(scenario["sea"]["wind_from_deg"]) - heading)
         % math.tau,
         "bb_roll": float(bb_roll),

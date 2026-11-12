@@ -10,7 +10,7 @@ from seascape.outputs.calibration import CameraCalibration
 
 
 def _in_rig(camera: CameraCalibration) -> np.ndarray:
-    """R_r_c, the camera's turn in its rig."""
+    """R_r_c: the camera's rotation in its rig."""
     return np.array(camera.extrinsics["rig"])[:3, :3]
 
 

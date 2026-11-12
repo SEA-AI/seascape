@@ -48,7 +48,7 @@ class Wave:
 
     amplitude_m: float
     omega_rad_s: float
-    toward_rad: float  # clockwise from world +Y, the ownship's bow at t = 0
+    toward_rad: float  # clockwise from the ownship's bow at the start
     phase_rad: float
     # The headings the wave stands for, as `heading_band` gives them.
     heading_concentration: float = 1.0

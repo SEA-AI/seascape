@@ -314,7 +314,7 @@ def stage(scenario: Scenario) -> Staging:
     east = start.east_m + box_m * math.sin(middle)
     north = start.north_m + box_m * math.cos(middle)
     # Broadside to the line of sight from the origin. World +Y is the ownship's bow
-    # at t = 0, so a world bearing is the scenario's.
+    # at the start, so a world bearing is a scenario bearing.
     entries: list[dict[str, Any]] = [
         {
             "asset": CONTAINER,

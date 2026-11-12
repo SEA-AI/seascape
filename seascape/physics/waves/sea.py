@@ -201,7 +201,7 @@ def wind_sea(
 
 
 def toward_rad(from_deg: float) -> float:
-    """Where waves run, from the bearing their wind or swell comes from."""
+    """The bearing waves run toward, from the one their wind or swell comes from."""
     return math.radians(from_deg + 180.0)
 
 

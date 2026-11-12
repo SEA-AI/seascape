@@ -169,12 +169,11 @@ def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
 
 def rig_track(scenario: Scenario, name: str) -> Path:
     """Where the rig `name` is at a time, east and north of the ownship's origin,
-    and the bearing of its axis before a ptu tilts it, both read off T_w_v @ T_v_r.
-    The deck takes the ownship's scripted pitch and roll.
+    and the bearing of its axis, on a deck tilted by the ownship's scripted pitch and
+    roll.
 
-    Limitation: not the sea's rocking, as the course is laid out on a level sea; and
-    the course's axis in staging and the sheet is still the rig's yaw on a level deck,
-    so a scripted tilt moves the sightlines off it.
+    Limitation: leaves out the sea's rocking and a ptu's tilt; staging and the sheet
+    still aim the course along the rig's yaw on a level deck.
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
@@ -207,10 +206,10 @@ def drifting(
 ) -> Path:
     """From `range_m` out along `bearing_deg` at t = 0, under way along its heading
     and drifting about that pose: a sway across it, and a surge along it at twice the
-    rate. Both bearings are clockwise from world +Y, the ownship's bow at t = 0.
+    rate. Bearings are from the ownship's bow at the start.
     """
     start = range_m * angles.direction(bearing_deg, 0.0)[:2]
-    # The hull's starboard and bow axes in the world's (east, north), as columns.
+    # Columns: the hull's starboard and bow, in (east, north).
     R_w_v = angles.turned(heading_deg, 0.0)[:2, :2]
     heading = math.radians(heading_deg)
     sway_m = surge_m = 0.0

@@ -224,7 +224,7 @@ def test_waves_run_away_from_the_wind() -> None:
 
 
 def test_a_wind_off_every_axis_runs_its_sea_downwind() -> None:
-    """From 60, so a mirror in east or north alone shows."""
+    """From 60, off both axes, so a sign slip in east or north shows."""
     built = field(7.0, wind_from_deg=60.0)
     k_east = sum(w.k_east_rad_m * w.amplitude_m**2 for w in built)
     k_north = sum(w.k_north_rad_m * w.amplitude_m**2 for w in built)
