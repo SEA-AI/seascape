@@ -17,7 +17,7 @@ import numpy as np
 from pydantic import TypeAdapter
 
 from seascape.angles import TO_CV, attitude_deg, wrapped_deg
-from seascape.config import Crop, Turn, Undistortion, Video, sources
+from seascape.config import Crop, Ownship, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
 from seascape.outputs.calibration import Calibration, CameraCalibration, Frame
 
@@ -274,6 +274,7 @@ def _write_settings(
     into: Path,
     model: str,
     rig: dict[str, Any],
+    height_m: float,
     firsts: dict[str, CameraCalibration],
     raw: dict[str, CameraCalibration] | None,
     created: datetime,
@@ -285,6 +286,7 @@ def _write_settings(
         model: The product, which names its sensors file.
         rig: The rig as the scenario set it. Its hardware version, when set, goes to
             `module_info.json`, by which a replay picks its profile.
+        height_m: The rig's head above a calm sea.
         firsts: Each video's first frame, by its name in the recording.
         raw: Each camera the videos were made from, by its name in the recording;
             None when the rig has no videos.
@@ -293,7 +295,7 @@ def _write_settings(
     settings = into / "user_settings.json"
     _write_json(
         settings,
-        {"boat_setup": {"mounting_height": rig["height_m"], "mast_to_bow_length": 0.0}},
+        {"boat_setup": {"mounting_height": height_m, "mast_to_bow_length": 0.0}},
     )
     parameters = into / "POWER_Const" / "camera_parameters.json"
     _write_json(parameters, _camera_parameters(firsts))
@@ -336,6 +338,7 @@ def export(run: Path) -> list[Path]:
     turn = (
         None if scenario.get("turn") is None else Turn.model_validate(scenario["turn"])
     )
+    rise_m = Ownship.model_validate(scenario["ownship"]).rise_m
     created = datetime.fromisoformat(truth.info["date_created"])
     ts = created.strftime("%Y_%m_%d_%H_%M_%S")
     time_s = {image.file_name: image.time_s for image in truth.images}
@@ -394,7 +397,13 @@ def export(run: Path) -> list[Path]:
             written += [video, table]
         firsts = {_short(shots[0]): shots[0] for shots in cameras.values()}
         written += _write_settings(
-            into, model, scenario["rigs"][rig], firsts, raw.get(rig), created
+            into,
+            model,
+            scenario["rigs"][rig],
+            scenario["rigs"][rig]["height_m"] + rise_m,
+            firsts,
+            raw.get(rig),
+            created,
         )
     return written
 

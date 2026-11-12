@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from seascape import angles
-from seascape.config import Crop, Stitch, Undistortion, Video
+from seascape.config import Crop, Ownship, Stitch, Undistortion, Video
 from seascape.outputs import recording
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -114,6 +114,7 @@ def make_run(
         )
     Calibration(cameras=cameras[::-1]).write(into)
     scenario = {
+        "ownship": {},
         "rigs": {"port": {"height_m": 51.8, "videos": {}}},
         "sky": {"t_air_k": 283.15},
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
@@ -461,6 +462,17 @@ def test_a_hardware_version_is_written_where_a_replay_reads_it(run: Path) -> Non
         "Oscar_V7_Gen_3_1",
         "seascape",
     )
+
+
+def test_a_lighter_hull_raises_its_mounting_height(run: Path) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    ship = Ownship(asset="cargo_ship", draught_m=5.24)
+    truth.info["scenario"]["ownship"] = ship.model_dump()
+    truth.write(run)
+    recording.export(run)
+    (settings,) = run.glob("recordings/port/*/user_settings.json")
+    height_m = json.loads(settings.read_text())["boat_setup"]["mounting_height"]
+    assert height_m == pytest.approx(51.8 + ship.rise_m)
 
 
 def test_a_re_export_leaves_only_what_it_wrote(run: Path) -> None:

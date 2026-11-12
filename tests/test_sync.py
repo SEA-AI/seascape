@@ -220,6 +220,18 @@ def test_a_rig_on_a_rolled_deck_leans_and_turns_with_it() -> None:
     )
 
 
+def test_a_lighter_hull_lifts_its_rig_along_its_tilted_mast() -> None:
+    """The hull rolls about its floating waterline, so its rise leans with it."""
+    roll_deg = 20.0
+    ownship = {"asset": "cargo_ship", "draught_m": 5.24, "roll_deg": roll_deg}
+    scenario = load(SYNC_SENTRY, [{"ownship": ownship}])
+    start = head_track(scenario, "mast")(0.0)
+
+    height_m = scenario.head_height_m("mast")
+    assert height_m > scenario.rigs["mast"].height_m
+    assert start.east_m == pytest.approx(height_m * math.sin(math.radians(roll_deg)))
+
+
 BOX = manifest()[staging.CONTAINER].category_id
 BUOY = manifest()[staging.BUOY].category_id
 type Seen = list[tuple[int, float, bool, int] | tuple[int, float, bool, int, int]]
