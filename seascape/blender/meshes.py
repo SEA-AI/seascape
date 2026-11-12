@@ -197,7 +197,7 @@ def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
 
 def top(name: str, step_m: float) -> list[tuple[float, float, float]]:
     """`top_per_station` of an asset as fitted, in an emptied scene: y forward of
-    midships, z above the waterline.
+    its origin, z above the waterline.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     parts = import_asset(name, "eo")

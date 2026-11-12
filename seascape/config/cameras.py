@@ -244,13 +244,13 @@ class Camera(Model):
 
     band: Band = Field(description="The band it sees in: eo visible, ir LWIR.")
     yaw_deg: float = Field(
-        default=0.0, description="Relative to its head, positive to starboard."
+        default=0.0, description="Relative to its rig's head, positive to starboard."
     )
     pitch_deg: float = Field(
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="Relative to the rig, negative is down.",
+        description="Relative to its rig's head, negative is down.",
     )
     hfov_deg: float = Field(
         gt=0.0,
@@ -453,7 +453,8 @@ class Rig(Model):
     )
     height_m: float = Field(
         gt=0.0,
-        description="Above the ownship's origin, on its asset's design waterline.",
+        description="Above the ownship's origin: its asset's design waterline, or "
+        "the sea under a bare ownship.",
     )
     yaw_deg: float = Field(
         default=0.0,
@@ -464,8 +465,8 @@ class Rig(Model):
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="Its head's tilt at rest: after the pan, before its cameras' "
-        "pitch. Negative is down.",
+        description="Its head's pitch where its tilt reads zero: after the pan, "
+        "before its cameras' pitch. Negative is down.",
     )
     ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(
@@ -492,7 +493,8 @@ class Rig(Model):
         return self.yaw_deg + off_deg
 
     def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
-        """(4, 4) `T_ownship_head`: at the rig point, yawed and panned, then pitched
+        """(4, 4) `T_ownship_head`: at `(offset_x_m, offset_y_m, height_m)`, yawed and
+        panned, then pitched
         and tilted about its own transverse axis, so a pitched head rolls its
         off-axis cameras.
         """

@@ -167,12 +167,11 @@ def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
 
 
 def rig_track(scenario: Scenario, name: str) -> Path:
-    """Where the rig `name` is at a time, east and north of the ownship's origin,
-    and the bearing of its axis, on a deck tilted by the ownship's scripted pitch and
-    roll.
+    """Where the head of rig `name` is at a time, in world east and north, and the
+    bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
 
     Limitation: leaves out the sea's rocking and a ptu's tilt; staging and the sheet
-    still aim the course along the rig's yaw on a level deck.
+    still aim the course along the base's yaw on a level hull.
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
@@ -359,7 +358,7 @@ def world_elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
 
 
 def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
-    """The tilt the pan-tilt unit of rig `name` adds to its head's `pitch_deg` at each
+    """The tilt the pan-tilt unit of rig `name` adds to the rig's `pitch_deg` at each
     frame, holding its inclination on a deck tilted `deck`.
 
     Raises:

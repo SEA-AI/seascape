@@ -105,8 +105,8 @@ def _row(
     row["proc_ptu_mode"] = MANUAL_MODE
     # A run from before ptus has no key.
     if rig.get("ptu") is not None:
-        # The head on the deck, less its mount: Rig.pose adds pan to yaw and tilt to
-        # pitch, so subtracting undoes them exactly.
+        # The head on the hull, less its base's yaw and `pitch_deg`: Rig.pose adds pan
+        # to yaw and tilt to pitch, so subtracting undoes them exactly.
         T_v_r = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(camera, "rig")
         _, tilt, pan = _attitude_deg(T_v_r)
         row["pan"] = FLU[2] * wrapped_deg(pan - rig["yaw_deg"])

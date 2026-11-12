@@ -209,8 +209,8 @@ class Move(Model):
     """Turn to `to_deg` from where the last move left off, then hold."""
 
     to_deg: float = Field(
-        description="Clockwise: the ownship's heading from its start, or a ptu's pan "
-        "from its base."
+        description="Clockwise: the ownship's turn from its start heading, its yaw "
+        "swing aside, or a ptu's pan from its base."
     )
     rate_deg_s: float | None = Field(
         default=None,
@@ -325,8 +325,8 @@ def _check_draught(asset: str | None, draught_m: float | None) -> None:
 
 class Ownship(Model):
     """The vessel the rigs are bolted to, rolling and pitching about its floating
-    waterline, `rise_m` below its origin. Without an asset it is the motion alone;
-    a hull also rides the sea.
+    waterline, which `draught_m` sets below its origin. Without an asset it is the
+    motion alone; a hull also rides the sea.
 
     It sails from the origin along its heading; the sea and sky stay put, and every
     bearing in a scenario is from its bow at t = 0.

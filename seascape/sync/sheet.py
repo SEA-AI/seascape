@@ -140,7 +140,7 @@ def _course(scenario: Scenario) -> _Course:
 
 
 def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, float]]]:
-    """An object's range from the one rig at each frame, and its bearing off the
+    """An object's range from the one rig at each frame, and its azimuth off the
     head's axis, wrapped to [-180, 180).
     """
     outputs = scenario.outputs

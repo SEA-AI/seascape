@@ -295,7 +295,7 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Relative to its head, positive to starboard.",
+          "description": "Relative to its rig's head, positive to starboard.",
           "default": 0.0,
           "anyOf": [
             {
@@ -320,7 +320,7 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "Relative to the rig, negative is down.",
+          "description": "Relative to its rig's head, negative is down.",
           "default": 0.0,
           "anyOf": [
             {
@@ -1442,7 +1442,7 @@
       "properties": {
         "to_deg": {
           "title": "To Deg",
-          "description": "Clockwise: the ownship's heading from its start, or a ptu's pan from its base.",
+          "description": "Clockwise: the ownship's turn from its start heading, its yaw swing aside, or a ptu's pan from its base.",
           "anyOf": [
             {
               "type": "number"
@@ -2291,7 +2291,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rigs are bolted to, rolling and pitching about its floating\nwaterline, `rise_m` below its origin. Without an asset it is the motion alone;\na hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
+      "description": "The vessel the rigs are bolted to, rolling and pitching about its floating\nwaterline, which `draught_m` sets below its origin. Without an asset it is the\nmotion alone; a hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2882,7 +2882,7 @@
         },
         "height_m": {
           "title": "Height M",
-          "description": "Above the ownship's origin, on its asset's design waterline.",
+          "description": "Above the ownship's origin: its asset's design waterline, or the sea under a bare ownship.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -2932,7 +2932,7 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "Its head's tilt at rest: after the pan, before its cameras' pitch. Negative is down.",
+          "description": "Its head's pitch where its tilt reads zero: after the pan, before its cameras' pitch. Negative is down.",
           "default": 0.0,
           "anyOf": [
             {
