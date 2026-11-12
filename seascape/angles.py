@@ -39,6 +39,13 @@ def bearing_deg(east: float, north: float) -> float:
     return math.degrees(math.atan2(east, north))
 
 
+def elevation_deg(up: npt.ArrayLike) -> np.ndarray:
+    """The elevation of unit rays whose up component is `up`; float noise past 1 is
+    clamped.
+    """
+    return np.degrees(np.arcsin(np.clip(up, -1.0, 1.0)))
+
+
 def direction(bearing_deg: npt.ArrayLike, elevation_deg: npt.ArrayLike) -> np.ndarray:
     """Unit (east, north, up) towards a compass bearing and elevation, on the last
     axis. A direction, so the bearing is not negated.

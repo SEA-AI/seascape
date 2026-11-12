@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
+from seascape import angles
 from seascape.angles import attitude_deg, bearing_deg, wrapped_deg
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
@@ -443,11 +444,6 @@ def _bearing_deg(rays: np.ndarray, near_deg: float) -> np.ndarray:
     return b - 360.0 * round((b[0] - near_deg) / 360.0)
 
 
-def _elevation_deg(rays: np.ndarray) -> np.ndarray:
-    """Each of (n, 3) unit rays' elevation."""
-    return np.degrees(np.arcsin(rays[:, 2]))
-
-
 @dataclass(frozen=True, slots=True)
 class _Unrolled:
     """The panorama's scale: bearing and elevation, linear in both, onto `plot`."""
@@ -493,7 +489,10 @@ def _frames_layer(
         swept = Image.new("L", size, 0)
         sweeping = ImageDraw.Draw(swept)
         for rays in edges:
-            b, e = _bearing_deg(rays, unrolled.near_deg), _elevation_deg(rays)
+            b, e = (
+                _bearing_deg(rays, unrolled.near_deg),
+                angles.elevation_deg(rays[:, 2]),
+            )
             for wrap in (-360.0, 0.0, 360.0):
                 for d in sweep_deg:
                     sweeping.polygon(unrolled.polygon(b + d + wrap, e), fill=255)
@@ -540,7 +539,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     sweep = [float(d) for d in range(round(min(turned)), round(max(turned)) + 1)]
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
-    elevations = np.concatenate([_elevation_deg(rays) for rays in edges])
+    elevations = np.concatenate([angles.elevation_deg(rays[:, 2]) for rays in edges])
     # The posed cameras ride `rise_m` above the rig's height, and so do these.
     rise_m = course.scenario.ownship.rise_m
 

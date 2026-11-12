@@ -50,3 +50,7 @@ def test_a_pitch_is_found_back_from_the_ray_it_raised(
     raised = angles.turned(0.0, pitch_deg) @ ray
     climbed = math.degrees(math.asin(raised[2]))
     assert angles.pitch_to_deg(ray, climbed) == pytest.approx(pitch_deg)
+
+
+def test_an_elevation_clamps_float_noise_past_the_zenith() -> None:
+    assert angles.elevation_deg(1.0 + 1e-12) == pytest.approx(90.0)
