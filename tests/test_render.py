@@ -286,8 +286,8 @@ class TestEachBand:
     def test_ir_takes_every_sample(self, sc: bpy.types.Scene, band: Band) -> None:
         assert sc.cycles.use_adaptive_sampling is (band != "ir")
 
-    def test_the_compositor_runs_on_the_cpu(self, sc: bpy.types.Scene) -> None:
-        assert sc.render.compositor_device == "CPU"
+    def test_the_compositor_runs_where_cycles_does(self, sc: bpy.types.Scene) -> None:
+        assert sc.render.compositor_device == sc.cycles.device
 
     def test_both_bands_render_in_cycles(self, sc: bpy.types.Scene) -> None:
         assert sc.render.engine == "CYCLES"
