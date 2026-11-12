@@ -8,6 +8,7 @@ from typing import Literal
 
 import bpy
 import numpy as np
+from mathutils import Matrix
 
 type Operand = Num | bpy.types.NodeSocket | float
 
@@ -17,6 +18,10 @@ CURVE_SAMPLES = 256
 # On the world itself: a depsgraph links a driver to an ID's property, not to a node's
 # (https://projects.blender.org/blender/blender/issues/142601).
 SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
+
+
+# OpenCV's camera axes as Blender's: Y and Z flip. Its own inverse.
+BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 
 
 def yaw(bearing_deg: float) -> float:

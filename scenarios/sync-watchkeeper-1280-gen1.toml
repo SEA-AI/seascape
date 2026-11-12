@@ -20,7 +20,7 @@ accel_deg_s2 = 30.0
 # Placed by `seascape sync` for this rig and turn.
 [[objects]]
 asset = "container"
-range_m = 18.2
+range_m = 18.3
 bearing_deg = 0.0
 heading_deg = 90.0
 heading_from = "line_of_sight"

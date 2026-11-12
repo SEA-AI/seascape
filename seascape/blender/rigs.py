@@ -9,6 +9,7 @@ import numpy as np
 from mathutils import Matrix, Vector
 
 from seascape.blender.blend import (
+    BLENDER_TO_CV,
     animate,
     empty,
     yaw,
@@ -21,6 +22,7 @@ from seascape.config import (
     Scenario,
 )
 from seascape.motion import panned_deg
+from seascape.outputs.calibration import in_rig
 from seascape.physics import fisheye, ptu
 
 
@@ -67,12 +69,8 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
         bpy.context.collection.objects.link(camera)
         camera.parent = rigs[mount.rig_name]
         camera.rotation_mode = "XYZ"
-        # A camera looks down its local -Z; +90 deg about X aims it at the horizon.
-        camera.rotation_euler = (
-            math.radians(90.0 + mount.camera.pitch_deg),
-            0.0,
-            yaw(mount.camera.yaw_deg),
-        )
+        # A Blender camera looks down its local -Z, OpenCV's down +Z.
+        camera.matrix_basis = Matrix(in_rig(mount.camera)) @ BLENDER_TO_CV
         cameras[mount.name] = camera
     return _RigObjects(root, rigs, cameras)
 

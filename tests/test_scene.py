@@ -783,8 +783,9 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
         (1.0, 0.0, 0.0)
     )
 
+    # Blender keeps a pose in float32: 2^-23 rad is about 7e-6 deg.
     assert math.degrees(math.asin(across.normalized().z)) == pytest.approx(
-        expected, abs=1e-6
+        expected, abs=1e-5
     )
 
 

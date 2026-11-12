@@ -11,10 +11,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+
 from seascape import angles
 from seascape.assets import Buoy, Debris, manifest
 from seascape.config import (
-    Camera,
     Crop,
     Object,
     Rig,
@@ -25,6 +26,8 @@ from seascape.config import (
     sources,
 )
 from seascape.motion import rig_track
+from seascape.outputs import stitch
+from seascape.outputs.calibration import CameraCalibration
 
 BUOY, CONTAINER = "mooring_buoy", "container"
 # Judgement: weathered, as a buoy left out a season.
@@ -85,51 +88,60 @@ class Course:
         return [Object.model_validate(o) for o in copies(self.entries, seed)]
 
 
-def _rows_deg(camera: Camera, top_px: int, bottom_px: int) -> tuple[float, float]:
-    """The elevations of the lowest and highest rows a video keeps of `camera`."""
-    half, f = camera.height_px / 2, camera.focal_px
+def recorded(rig: Rig) -> dict[str, CameraCalibration]:
+    """Each video's camera as the render calibrates it, in the rig's frame: a
+    stitch fused and a crop cropped by the code that records them, or each camera
+    where the rig records them whole.
+    """
+    cameras = rig.rendered
+    found = {}
+    for name, video in (rig.videos or dict.fromkeys(cameras)).items():
+        planned = [
+            CameraCalibration.planned(c, cameras[c], "rig")
+            for c in (sources(video) if video else (name,))
+        ]
+        if any(c.distortion is not None for c in planned):
+            raise ValueError(f"{name} records a fisheye: undistort it")
+        if isinstance(video, Stitch):
+            left, right = planned
+            found[name] = stitch.fused(left, right, name, "")
+        elif isinstance(video, Crop):
+            found[name] = planned[0].cropped(video)
+        else:
+            found[name] = planned[0]
+    return found
+
+
+def _span(camera: CameraCalibration) -> tuple[float, float, float, float]:
+    """The bearings off the rig's axis of `camera`'s left and right edges, and the
+    elevations of its bottom and top, along the middle row and column.
+    """
+    (fx, _, cx), (_, fy, cy), _ = camera.K
+    # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
+    x, y, z = np.array(camera.extrinsics["rig"])[:3, 2]
+    bearing, up = math.degrees(math.atan2(x, y)), math.degrees(math.asin(z))
+    # Pixel centres sit at integers, so a frame's edges are half a pixel out.
+    left, right = (-0.5 - cx, camera.width_px - 0.5 - cx)
+    top, bottom = (cy + 0.5, camera.height_px - 0.5 - cy)
     return (
-        camera.pitch_deg - math.degrees(math.atan((half - bottom_px) / f)),
-        camera.pitch_deg + math.degrees(math.atan((half - top_px) / f)),
+        bearing + math.degrees(math.atan(left / fx)),
+        bearing + math.degrees(math.atan(right / fx)),
+        up - math.degrees(math.atan(bottom / fy)),
+        up + math.degrees(math.atan(top / fy)),
     )
 
 
 def views(rig: Rig) -> list[View]:
     """Each video, or each camera where the rig records them whole."""
-    cameras = rig.rendered
-    videos = rig.videos or dict.fromkeys(cameras)
     found = []
-    for name, video in videos.items():
-        recorded = [cameras[c] for c in (sources(video) if video else (name,))]
-        if any(c.lens.fisheye is not None for c in recorded):
-            raise ValueError(f"{name} records a fisheye: undistort it")
-        if isinstance(video, Stitch):
-            pair = sorted(recorded, key=lambda c: c.yaw_deg)
-            (left, _), (_, right) = (
-                (c.yaw_deg - c.hfov_deg / 2, c.yaw_deg + c.hfov_deg / 2) for c in pair
-            )
-            # Limitation: `stitch.fused` crops an asymmetric pair to its axis.
-            if not math.isclose(left, -right, abs_tol=10.0**-DECIMALS):
-                raise ValueError(f"{name} stitches a pair asymmetric about the rig")
-            focal = sum(c.focal_px for c in pair) / 2
-            width = 2 * focal * math.tan(math.radians(right))
-            rows = [_rows_deg(c, 0, 0) for c in pair]
-            down, up = max(r[0] for r in rows), min(r[1] for r in rows)
-            narrowest = min(c.hfov_deg for c in pair)
-        else:
-            (camera,) = recorded
-            focal, half = camera.focal_px, camera.width_px / 2
-            left_px = right_px = top_px = bottom_px = 0
-            if isinstance(video, Crop):
-                left_px, right_px = video.left_px, video.right_px
-                top_px, bottom_px = video.top_px, video.bottom_px
-            left, right = (
-                camera.yaw_deg + math.degrees(math.atan(px / focal))
-                for px in (left_px - half, half - right_px)
-            )
-            down, up = _rows_deg(camera, top_px, bottom_px)
-            width = camera.width_px - left_px - right_px
-            narrowest = right - left
+    for name, camera in recorded(rig).items():
+        left, right, down, up = _span(camera)
+        video = rig.videos.get(name)
+        # Each camera of a stitch is crossed on its own.
+        stitched = video.cameras if isinstance(video, Stitch) else ()
+        narrowest = min(
+            (rig.rendered[c].hfov_deg for c in stitched), default=right - left
+        )
         found.append(
             View(
                 name=name,
@@ -137,8 +149,8 @@ def views(rig: Rig) -> list[View]:
                 right_deg=right,
                 down_deg=down,
                 up_deg=up,
-                focal_px=focal,
-                width_px=width,
+                focal_px=camera.K[0][0],
+                width_px=camera.width_px,
                 camera_deg=narrowest,
             )
         )
@@ -285,7 +297,8 @@ def course(scenario: Scenario) -> Course:
         {
             "asset": CONTAINER,
             "range_m": round(math.hypot(east, north), DECIMALS),
-            "bearing_deg": round(angles.bearing_deg(east, north), DECIMALS),
+            # Plus 0.0, so a bearing rounded from just port of the bow is 0.0, not -0.0.
+            "bearing_deg": round(angles.bearing_deg(east, north), DECIMALS) + 0.0,
             "heading_deg": 90.0,
             "heading_from": "line_of_sight",
         }

@@ -10,6 +10,7 @@ import numpy as np
 from mathutils import Matrix
 
 from seascape.blender import sea
+from seascape.blender.blend import BLENDER_TO_CV
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, stabilise, views
@@ -30,13 +31,11 @@ from seascape.config import (
     substream,
 )
 from seascape.motion import attitude_deg, track
-from seascape.outputs.calibration import CameraCalibration, Matrix4
+from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes
 
+
 # Blender's camera looks down -Z with +Y up; OpenCV's looks down +Z with +Y down.
-_BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
-
-
 @dataclass(frozen=True)
 class Built:
     """What `build` made, by role, valid until the next build. A name in `bpy.data`
@@ -55,11 +54,10 @@ class Built:
 def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     """A built camera's geometry, read off the scene."""
     camera = built.cameras[mount.name]
-    world = camera.matrix_world @ _BLENDER_TO_CV
+    world = camera.matrix_world @ BLENDER_TO_CV
     vessel = built.deck.matrix_world
     rig = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
-    f = mount.camera.focal_px
     return CameraCalibration(
         name=mount.name,
         band=mount.camera.band,
@@ -69,9 +67,7 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         pitch_um=mount.camera.pitch_um,
         width_px=width,
         height_px=height,
-        # Blender's frame spans pixel edges, so its centre is half a pixel past
-        # OpenCV's.
-        K=((f, 0.0, (width - 1) / 2), (0.0, f, (height - 1) / 2), (0.0, 0.0, 1.0)),
+        K=intrinsics(mount.camera),
         distortion=mount.camera.lens.fisheye,
         extrinsics={
             "world": _rows(world),
