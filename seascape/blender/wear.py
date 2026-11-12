@@ -407,7 +407,7 @@ class _Masks:
         splash = _smooth(field, threshold, threshold + 0.03)
         # Judgement: the dark faeces sit at the splash's highest peaks, inside the
         # white urate.
-        core = _smooth(field, threshold + 0.045, threshold + 0.06)
+        core = _smooth(field, threshold + 0.07, threshold + 0.08)
         return _Dropping(_smooth(self.up, 0.5, 0.9) * splash * self.region, core)
 
     def stain(self) -> Num:
