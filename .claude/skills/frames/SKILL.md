@@ -1,6 +1,6 @@
 ---
 name: frames
-description: Coordinate frames, poses and angle conventions in seascape, the robotics way: one internal convention, transforms named by their frames and composed by matching letters, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
+description: Coordinate frames, poses and angle conventions in seascape, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
 ---
 
 # Frames
@@ -9,29 +9,61 @@ Every angle and vector belongs to a frame. Name the frame, compose by frames, an
 
 ## The frames
 
-| Frame | Axes | Built by |
-|---|---|---|
-| world | +X east, +Y north, +Z up, at sea level | the scene's origin |
-| vessel | +X starboard, +Y bow, +Z up, at the waterline under midships | `motion.track`, `motion.tilted`: `T_w_v` |
-| rig | the vessel's axes turned to the rig's axis, at its mount | `Rig.pose(pan, tilt)` |
-| camera | OpenCV: +X right, +Y down, +Z along the optical axis | `Camera.pose()` |
+Every body is RFU (+X starboard or right, +Y bow or forward, +Z up); `world` is ENU. A body at heading 0 has the world's axes.
 
-Inside seascape, a bearing is clockwise from north or the bow and an elevation is up from the horizon (`angles`). Other conventions are formats, never internal state:
+| Frame | Standard | Origin | Axes |
+|---|---|---|---|
+| world | REP 105 `map`, Fossen {n} | the tangent plane at mean sea level under the ownship's origin at the start | +X east, +Y north at the origin (the ownship's bow at the start), +Z up |
+| level | REP 120 `base_footprint` | a hull's track point on the curved sea | world turned by the hull's heading |
+| ownship, target | REP 103 `base_link`, Fossen {b} | centreline, the centre of the hull's bounding box, design waterline | RFU, fixed to the hull |
+| base | `ptu_base_link` | the rig point, `(offset_x_m, offset_y_m, height_m)` in the ownship | ownship turned by `Rig.yaw_deg`; the PTU's reported zero |
+| head | `ptu_mount_link` | the base's point | base turned by pan, then tilted by `pitch_deg` + tilt; the IMU sits here |
+| camera | OpenCV, REP 103 `*_optical` | the projection centre | right, down, along the optical axis |
+| pixel | OpenCV image | the centre of the top-left pixel | u right, v down; COCO edges = OpenCV + 0.5 |
 
-| Format | Frame | Where it applies |
+- **ownship and target are one kind of frame,** a hull.
+- **`T_level_hull`** carries the sea's tilt, the scripted trim and list, and heave. It pivots at the floating waterline, `rise_m` below the hull's origin.
+- **`base` is wherever the PTU reads zero:** a mount bolted off the bow and a home offset are the same `T_ownship_base`. Any value renders right, and a recording writes pan and tilt from it, as the device does.
+- **A fixed rig** is a head with pan and tilt at 0.
+
+Any other frame is local to the module that owns it and is named there. Examples: the sea's rest position, the sky photo, the wind's tiles, a panorama, a stitched view, and Blender's camera axes and empties.
+
+## Angles
+
+| Quantity | Convention |
+|---|---|
+| bearing | clockwise from world +Y. As a direction it is `(sin b, cos b, 0)`, read back with `atan2(x + 0.0, y)`. Only a rotation negates it: `Rz(-b)`, in `angles.yaw` |
+| azimuth | the same angle in another frame (ownship, base or head). A relative bearing is an azimuth from the bow, in the level plane |
+| attitude | `R = Rz(-yaw) @ Rx(pitch) @ Ry(roll)`: yaw clockwise, pitch bow up, roll starboard down. This is Fossen's ZYX with SNAME's signs (`angles.attitude_deg`) |
+| pan, tilt | pan clockwise, tilt up |
+| `*_from_deg` | the bearing a wind or swell comes from; waves run toward it + 180 |
+| wrap | directions in [0, 360); signed angles in (-180, 180] |
+
+Inside seascape an elevation is up from the horizon. Other conventions are formats, never internal state:
+
+| Format | Axes | Where it applies |
 |---|---|---|
-| OpenCV | right, down, forward | `angles.TO_CV`; calibration `extrinsics[f]` is `T_f_c`, the inverse of OpenCV's `[R\|t]` |
+| OpenCV | right, down, forward | `angles.TO_CV`; calibration `extrinsics[f]` is `T_f_camera`, the inverse of OpenCV's `[R\|t]` |
 | Blender camera | right, up, backward | `blend.BLENDER_TO_CV` |
-| FLU (ROS REP 103) | forward, left, up: between body frames, yaw to port, pitch nose down | an Oceanus recording's camera rpy |
-| NED (aerospace, NMEA 2000) | forward, right, down: yaw clockwise, pitch nose up | NMEA attitude and heading |
+| FLU (ROS REP 103) | forward, left, up: yaw to port, pitch nose down | an Oceanus recording's pan, tilt and camera rpy |
+| NED (NMEA 2000) | forward, right, down: yaw clockwise, pitch nose up | NMEA attitude and heading |
 
 ## Rules
 
-1. **Name a transform by its frames.** `T_a_b` is frame b's pose in frame a: it takes coordinates in b to coordinates in a. Compose by matching inner letters, `T_w_c = T_w_v @ T_v_r @ T_r_c`; an inverse swaps them, `T_b_a = inv(T_a_b)`. A product whose inner letters don't match is the bug. `R_a_b` is the rotation alone; `ruff.toml` lets `T`, `R`, `H`, `K`, `B` and `T_*`, `R_*`, `H_*`, `K_*` through pep8-naming.
+1. **Name a transform by its frames.**
+   - `T_a_b` is frame b's pose in frame a: `p_a = T_a_b @ p_b`. `T_world_camera = T_world_ownship @ T_ownship_head @ T_head_camera`.
+   - Frame names are whole words, one per frame. A product whose inner names don't match is the bug.
+   - An inverse gets its own name, `T_camera_world`.
+   - `R_a_b` is the rotation alone and `p_a_b = T_a_b[:3, 3]`. `d_a_x` is the unit direction toward x, expressed in a. `v_a_b_c` is b's velocity relative to a, expressed in c (c = a when it is dropped).
+   - Name frame kinds, never instances: `T_head_camera[name]`.
+   - `ruff.toml` lets `T`, `R`, `H`, `K`, `B` and `T_*`, `R_*`, `H_*`, `K_*` through pep8-naming.
 2. **A vector or angle says its frame,** in its name or its docstring: `up_deg` of what, above which horizon.
 3. **Compose matrices, never angles.** Adding a rig's yaw to a camera's yaw is AGENTS.md's trap; it holds only on a level, centred chain. Build each link with `angles.turned` or a `.pose`, multiply, read back once.
-4. **Euler angles are a readout,** taken from a finished rotation by one decomposition (`angles.attitude_deg`, `angles.bearing_deg`, `angles.elevation_deg`, `angles.pitch_to_deg`), never stored and fed back in.
-5. **Convert a convention by a change of basis,** with a named constant, then decompose. Re-axing both frames is `R_a'_b' = B_a @ R_a_b @ B_b.T`, and `B @ R @ B.T` only when both take the same `B`; re-axing the child alone is `R_a_b @ B_b.T`, as `Camera.pose` does with `TO_CV`. A sign flip per field hides which frame the field lives in; it is the symptom of a missing basis.
+4. **Euler angles are a readout,** taken from a finished rotation by one decomposition (`angles.attitude_deg`, `angles.bearing_deg`, `angles.elevation_deg`), never stored and fed back in.
+5. **Convert a convention by a change of basis,** with a named constant, then decompose.
+   - Re-axing both frames is `R_a'_b' = B_a @ R_a_b @ B_b.T`, and `B @ R @ B.T` only when both take the same `B`.
+   - Re-axing the child alone is `R_a_b @ B_b.T`, as `Camera.pose` does with `TO_CV`.
+   - A sign flip per field hides which frame the field lives in; it is the symptom of a missing basis.
 6. **Convert at the boundary.** The code that writes a file, or hands a matrix to Blender, converts; everything before it stays in seascape's convention.
 7. **Draw the chain** in a docstring or the PR when a change adds a link: which frames, which way each arrow points.
 
