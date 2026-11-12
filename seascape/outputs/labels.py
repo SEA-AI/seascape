@@ -466,13 +466,13 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
     """
     if camera.distortion is not None:
         return _fisheye_horizon(camera, radius_m)
-    T_w_c = np.array(camera.extrinsics["world"])
-    R_w_c, (cx, cy, cz) = T_w_c[:3, :3], T_w_c[:3, 3]
+    T_world_camera = np.array(camera.extrinsics["world"])
+    R_world_camera, (cx, cy, cz) = T_world_camera[:3, :3], T_world_camera[:3, 3]
     k_inv = np.linalg.inv(camera.K)
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     # The world ray through (u, v) is p + v q, in calibration.json's pixels.
-    p = R_w_c @ k_inv @ np.stack([u - 0.5, np.zeros_like(u), np.ones_like(u)])
-    q = R_w_c @ k_inv @ np.array([0.0, 1.0, 0.0])
+    p = R_world_camera @ k_inv @ np.stack([u - 0.5, np.zeros_like(u), np.ones_like(u)])
+    q = R_world_camera @ k_inv @ np.array([0.0, 1.0, 0.0])
     b0 = p[2] + (cx * p[0] + cy * p[1]) / radius_m
     b1 = q[2] + (cx * q[0] + cy * q[1]) / radius_m
     s = 2 * (cz + (cx * cx + cy * cy) / (2 * radius_m)) / radius_m
@@ -493,15 +493,15 @@ def _fisheye_horizon(
     """`horizon_px` for a fisheye, whose rays are not linear down a column: each column
     is walked a row at a time, and the graze is where b^2 - 4 a c changes sign.
     """
-    T_w_c = np.array(camera.extrinsics["world"])
-    R_w_c, (cx, cy, cz) = T_w_c[:3, :3], T_w_c[:3, 3]
+    T_world_camera = np.array(camera.extrinsics["world"])
+    R_world_camera, (cx, cy, cz) = T_world_camera[:3, :3], T_world_camera[:3, 3]
     assert camera.distortion is not None
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     v = np.arange(camera.height_px + 1, dtype=float)
     columns, rows = np.meshgrid(u, v)
     right, down = columns - 0.5 - camera.K[0][2], rows - 0.5 - camera.K[1][2]
     ray = fisheye.direction(right, down, camera.distortion, camera.K[0][0])
-    d = ray @ R_w_c.T
+    d = ray @ R_world_camera.T
     a = (d[..., 0] ** 2 + d[..., 1] ** 2) / (2 * radius_m)
     b = d[..., 2] + (cx * d[..., 0] + cy * d[..., 1]) / radius_m
     c = cz + (cx * cx + cy * cy) / (2 * radius_m)

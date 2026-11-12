@@ -133,8 +133,8 @@ def _edges(camera: CameraCalibration) -> np.ndarray:
             [across, (camera.height_px - 0.5 - cy) / fy, 1.0],
         ]
     )
-    R_r_c = np.array(camera.extrinsics["rig"])[:3, :3]
-    rays = rows @ R_r_c.T
+    R_head_camera = np.array(camera.extrinsics["rig"])[:3, :3]
+    rays = rows @ R_head_camera.T
     return rays / np.linalg.norm(rays, axis=1, keepdims=True)
 
 

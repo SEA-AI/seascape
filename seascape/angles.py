@@ -64,11 +64,11 @@ def direction(bearing_deg: npt.ArrayLike, elevation_deg: npt.ArrayLike) -> np.nd
     )
 
 
-def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+def attitude_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
     """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
     roll: roll positive starboard down, pitch bow up, yaw clockwise in (-180, 180].
     """
-    x, y, z = body_to_frame[:3, :3].T
+    x, y, z = R_frame_body[:3, :3].T
     roll = math.atan2(-x[2], z[2])
     return (
         math.degrees(roll),

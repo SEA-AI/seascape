@@ -48,10 +48,12 @@ def pose(
     if camera.distortion is not None:
         raise ValueError(f"{camera.name}: a panorama stitches pinhole cameras")
     # a: the panorama's frame, +Y along the bearing.
-    R_a_f = angles.turned(bearing_deg, 0.0).T
+    R_panorama_frame = angles.turned(bearing_deg, 0.0).T
     return (
         np.array(camera.K, np.float32),
-        np.array(angles.TO_CV @ R_a_f @ _rotation(camera, frame), np.float32),
+        np.array(
+            angles.TO_CV @ R_panorama_frame @ _rotation(camera, frame), np.float32
+        ),
     )
 
 
