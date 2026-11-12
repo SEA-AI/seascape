@@ -37,6 +37,29 @@ def test_published_values_have_not_drifted() -> None:
     assert 2 * math.pi * earth.GRAVITY_MS2 / peak**2 == pytest.approx(44.5, abs=0.2)
 
 
+@pytest.mark.parametrize("north_m", [0.0, 7000.0])
+def test_a_ray_stops_where_it_meets_the_curved_sea(north_m: float) -> None:
+    """From 20 m over the sea, at the origin and 7 km out, where the sea has dropped
+    under the tangent plane.
+    """
+    radius_m = earth.earth_radius_m(0.13)
+    up_m = earth.sea_z_m(0.0, north_m, radius_m) + 20.0
+    toward = np.array([0.0, 1.0, -0.01]) / math.hypot(1.0, 0.01)
+    run_m = earth.sea_run_m((0.0, north_m, up_m), tuple(toward), radius_m)
+
+    assert run_m is not None
+    hit = np.array([0.0, north_m, up_m]) + toward * run_m / toward[1]
+    assert hit[2] == pytest.approx(earth.sea_z_m(*hit[:2], radius_m), abs=1e-6)
+    assert run_m > 20.0 / 0.01
+
+
+def test_a_ray_above_the_dip_of_the_horizon_meets_no_sea() -> None:
+    radius_m = earth.earth_radius_m(0.13)
+    # The horizon dips sqrt(2 h / R), 1.6 mrad from 10 m: 0.1 mrad passes over it.
+    toward = (0.0, 1.0, -1e-4)
+    assert earth.sea_run_m((0.0, 0.0, 10.0), toward, radius_m) is None
+
+
 def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
     # From DNV-RP-C205 2010, 2.3.2.4.
     assert waves.wind_at_m(10.0, 10.0) == pytest.approx(10.0)

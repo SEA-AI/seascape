@@ -2513,9 +2513,10 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
 def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
     down = Vector((0.0, 1.0, -0.2)).normalized()
     rays = [(Vector((0.0, y, 20.0)), down, 1e-3) for y in (-150.0, 150.0)]
-    assert memory._foam_box(rays, memory.FOAM_NEAR_CELL_M) is None
+    radius_m = earth.earth_radius_m(0.13)
+    assert memory._foam_box(rays, memory.FOAM_NEAR_CELL_M, radius_m) is None
     cell_m = memory.FOAM_NEAR_CELL_M * memory.FOAM_LEVEL_RATIO
-    fit = memory._foam_box(rays, cell_m)
+    fit = memory._foam_box(rays, cell_m, radius_m)
     assert fit is not None
     _, _, width, height, _ = fit
     assert max(width, height) <= memory.FOAM_MAX_CELLS * cell_m
