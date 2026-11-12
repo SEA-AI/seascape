@@ -202,15 +202,16 @@ def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
 
     for row in table_rows:
         # The pod sits at POD_YAW_DEG and PTU_TILT_DEG on the deck, past its mount.
+        # Pan to port.
         pan = float(row["pan"])
-        assert pan == pytest.approx(POD_YAW_DEG - MOUNT_YAW_DEG, abs=1e-5)
+        assert pan == pytest.approx(MOUNT_YAW_DEG - POD_YAW_DEG, abs=1e-5)
         # Nose down positive, as the IMU's pitch.
         tilt = -(PTU_TILT_DEG - MOUNT_PITCH_DEG)
         assert float(row["tilt"]) == pytest.approx(tilt, abs=1e-5)
         # The head's IMU turns with the hull, its mount and its pan; the hull's roll
         # and pitch tip it a little.
         hull_deg = math.degrees(float(row["bb_yaw"]))
-        assert float(row["yaw"]) - pan == pytest.approx(
+        assert float(row["yaw"]) + pan == pytest.approx(
             hull_deg + MOUNT_YAW_DEG, abs=0.2
         )
         # Oceanus's collision avoidance mode.
