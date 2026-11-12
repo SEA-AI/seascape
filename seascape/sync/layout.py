@@ -237,12 +237,13 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float | Non
     low_deg = -math.degrees(math.atan(rig.height_m / near_m)) - MARGIN_DEG
     least = max(MARGIN_DEG - v.up_deg for v in videos)
     most = min(low_deg - v.down_deg for v in videos)
-    if least > most:
+    # The stored pitch is rounded, so it is the rounded one that must fit.
+    pitch_deg = round((least + most) / 2, DECIMALS)
+    if not least <= pitch_deg <= most:
         raise ValueError(
             f"no pitch keeps the horizon and a buoy {near_m:.0f} m out in every "
             "video: the rig's vertical fields are too narrow for its height"
         )
-    pitch_deg = round((least + most) / 2, DECIMALS)
     if rig.ptu is not None:
         return pitch_deg
     if not least <= rig.pitch_deg <= most:
