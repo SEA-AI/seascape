@@ -176,7 +176,17 @@ def _draw(node: Any, seed: int, path: str) -> Any:
     return {key: _draw(value, seed, f"{path}/{key}") for key, value in node.items()}
 
 
-def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
+def spaced(spec: dict[str, Any], k: int) -> dict[str, Any]:
+    """Copy `k` of an `[[objects]]` entry, alone: `k` spacings clockwise of the
+    entry's bearing.
+    """
+    out = {key: v for key, v in spec.items() if key != "spacing_deg"} | {"count": 1}
+    if (step := spec.get("spacing_deg")) and "bearing_deg" in out:
+        out["bearing_deg"] = out["bearing_deg"] + k * step
+    return out
+
+
+def copies(objects: list[Any], seed: int, sky: Any = None) -> list[Any]:
     """Each entry `count` times, every copy drawn from a substream of its own."""
     out = []
     hulls = 0
@@ -204,8 +214,7 @@ def _copies(objects: list[Any], seed: int, sky: Any) -> list[Any]:
             if _is_draw(spec) and copy.get("count", 1) != 1:
                 raise ValueError(f"objects[{i}]: a drawn object cannot carry a count")
             out.append(
-                copy
-                | {"count": 1}
+                spaced(copy, k)
                 | _range_m(copy, seed, f"{path}/{k}/range_m", sky, i)
                 # Past the substream a drawn `draught_m` picked its value on.
                 | _draught_m(copy, seed, f"{path}/{k}/draught_m/loaded")
@@ -353,7 +362,7 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
         path = "draw/ownship/draught_m/loaded"
         data["ownship"] = ownship | _draught_m(ownship, seed, path)
     if isinstance(objects := data.get("objects"), list):
-        data["objects"] = _copies(objects, seed, data.get("sky"))
+        data["objects"] = copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 

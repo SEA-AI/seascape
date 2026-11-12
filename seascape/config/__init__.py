@@ -22,6 +22,7 @@ from seascape.config.cameras import (
 from seascape.config.draws import substream
 from seascape.config.loader import (
     PRESETS,
+    copies,
     instantiate,
     json_schema,
     load,
@@ -64,6 +65,7 @@ __all__ = [
     "Undistortion",
     "Video",
     "WarmLayer",
+    "copies",
     "instantiate",
     "json_schema",
     "load",

@@ -348,5 +348,6 @@ def test_sync_refuses_objects_off_the_course_and_prints_the_course(
 
     assert refused.exit_code == 1
     assert "not the course's for its rig" in refused.stderr
-    assert course.objects_toml(load(SYNC_SENTRY).objects) in refused.stderr
+    entries = course.course(load(SYNC_SENTRY)).entries
+    assert course.objects_toml(entries) in refused.stderr
     assert not any(tmp_path.iterdir())

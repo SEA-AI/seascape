@@ -144,6 +144,11 @@ class Object(Model):
         description="How many, each drawn anew. `load` makes the copies, so a "
         "loaded scenario holds only 1.",
     )
+    spacing_deg: float = Field(
+        default=0.0,
+        description="Between one copy of a count and the next, clockwise. `load` "
+        "spaces the copies, so a loaded scenario holds 0.",
+    )
 
     @property
     def course_deg(self) -> float:

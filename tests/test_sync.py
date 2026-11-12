@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from seascape.assets import Buoy, manifest
-from seascape.config import Drift, Object, Scenario, load, sources
+from seascape.config import Object, Scenario, copies, load, sources
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import course, preview
 from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
@@ -22,22 +22,24 @@ def test_a_product_stores_the_course_placed_for_it(path: Path) -> None:
     course.verify(load(path))
 
 
-def test_printed_objects_read_back_as_themselves() -> None:
-    objects = [
-        Object(
-            asset=course.BUOY, range_m=40.0, bearing_deg=60.0, colour="orange", wear=0.5
-        ),
-        Object(
-            asset=course.CONTAINER,
-            range_m=100.0,
-            bearing_deg=0.0,
-            drift=Drift(sway_m=1.0, surge_m=0.5, period_s=60.0),
-        ),
-    ]
+def test_printed_entries_read_back_as_themselves() -> None:
+    entries = course.course(load(SYNC_SENTRY)).entries
 
-    read = tomllib.loads(course.objects_toml(objects))["objects"]
+    read = tomllib.loads(course.objects_toml(entries))["objects"]
 
-    assert [Object.model_validate(o) for o in read] == objects
+    assert read == entries
+
+
+def test_a_ring_loads_evenly_spaced_with_a_drift_drawn_per_buoy() -> None:
+    ring: dict[str, object] = {"asset": course.BUOY, "range_m": 40.0}
+    ring |= {"bearing_deg": -10.0, "count": 3, "spacing_deg": 7.5}
+    ring["drift"] = course.BUOY_DRIFT
+
+    buoys = [Object.model_validate(o) for o in copies([ring], seed=0)]
+
+    assert [b.bearing_deg for b in buoys] == [-10.0, -2.5, 5.0]
+    periods = [b.drift.period_s for b in buoys if b.drift is not None]
+    assert len(set(periods)) == 3
 
 
 def test_each_pair_s_coarser_video_sets_a_ring() -> None:
@@ -126,7 +128,7 @@ def test_a_fixed_mount_that_loses_a_ring_names_the_pitch_to_set() -> None:
         course.course(load(SYNC_WATCHKEEPER, [{"rigs": {name: {"pitch_deg": 20.0}}}]))
 
 
-def test_every_buoy_stands_buoy_px_tall_in_the_coarsest_video_it_serves() -> None:
+def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
     scenario = load(SYNC_SENTRY)
     (rig,) = scenario.rigs.values()
     buoy = manifest()[course.BUOY]
@@ -148,7 +150,8 @@ def test_every_buoy_stands_buoy_px_tall_in_the_coarsest_video_it_serves() -> Non
         ring = min(rings, key=lambda r: abs(math.log(buoy_m / r.range_m)))
         coarsest_px = min(focal_px[v] for v in ring.videos)
         above_px = (buoy.height_m - buoy.draught_m) * coarsest_px / buoy_m
-        assert above_px == pytest.approx(course.BUOY_PX, rel=0.02)
+        # A ring round the ownship is nearer the rig on one side, by its offset.
+        assert course.BUOY_PX * 0.98 <= above_px <= course.BUOY_PX * 1.1
 
 
 def test_a_course_needs_a_turn() -> None:

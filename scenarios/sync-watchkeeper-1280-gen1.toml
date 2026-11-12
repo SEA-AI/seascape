@@ -28,53 +28,11 @@ heading_from = "line_of_sight"
 [[objects]]
 asset = "mooring_buoy"
 range_m = 29.6
-bearing_deg = -57.3
+bearing_deg = -57.0
+count = 6
+spacing_deg = 22.8
+colour = "orange"
+wear = 0.5
 heading_deg = 90.0
 heading_from = "line_of_sight"
-wear = 0.5
-colour = "orange"
-
-[[objects]]
-asset = "mooring_buoy"
-range_m = 29.6
-bearing_deg = -34.4
-heading_deg = 90.0
-heading_from = "line_of_sight"
-wear = 0.5
-colour = "orange"
-
-[[objects]]
-asset = "mooring_buoy"
-range_m = 29.6
-bearing_deg = -11.6
-heading_deg = 90.0
-heading_from = "line_of_sight"
-wear = 0.5
-colour = "orange"
-
-[[objects]]
-asset = "mooring_buoy"
-range_m = 29.6
-bearing_deg = 11.6
-heading_deg = 90.0
-heading_from = "line_of_sight"
-wear = 0.5
-colour = "orange"
-
-[[objects]]
-asset = "mooring_buoy"
-range_m = 29.6
-bearing_deg = 34.4
-heading_deg = 90.0
-heading_from = "line_of_sight"
-wear = 0.5
-colour = "orange"
-
-[[objects]]
-asset = "mooring_buoy"
-range_m = 29.6
-bearing_deg = 57.3
-heading_deg = 90.0
-heading_from = "line_of_sight"
-wear = 0.5
-colour = "orange"
+drift = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }

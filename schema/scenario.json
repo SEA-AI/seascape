@@ -1975,6 +1975,31 @@
               "$ref": "#/$defs/Choice"
             }
           ]
+        },
+        "spacing_deg": {
+          "title": "Spacing Deg",
+          "description": "Between one copy of a count and the next, clockwise. `load` spaces the copies, so a loaded scenario holds 0.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
         }
       },
       "required": [
