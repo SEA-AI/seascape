@@ -8,8 +8,8 @@ from collections import defaultdict
 from seascape.assets import manifest
 from seascape.config import Scenario, recorded_name
 from seascape.outputs.labels import Labels
-from seascape.sync import course
-from seascape.sync.course import BUOY, BUOY_PX, CONTAINER, Ring, one_rig, rings, views
+from seascape.sync import layout
+from seascape.sync.layout import BUOY, BUOY_PX, CONTAINER, Ring, one_rig, rings, views
 
 # Full size, so a buoy stands `BUOY_PX` tall; 1 fps, which holds every buoy in each
 # video it serves for several frames at the turn's 6 deg/s; one sample.
@@ -24,7 +24,7 @@ def placed(scenario: Scenario) -> bool:
 def advice(scenario: Scenario, missed: str) -> str:
     """`missed`, after the course for the scenario's rig to paste where one fits."""
     try:
-        printed = course.suggested(scenario)
+        printed = layout.suggested(scenario)
     except ValueError as why:
         return f"{missed}; and no course fits its rig: {why}"
     return f"{printed}\n\n{missed}; the course for its rig is above"

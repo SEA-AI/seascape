@@ -16,7 +16,7 @@ from seascape import assets, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
-from seascape.sync import course
+from seascape.sync import layout
 from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
 
 type Run = Callable[..., Result]
@@ -349,5 +349,5 @@ def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
 
     assert refused.exit_code == 1
     assert "holds no buoys" in refused.stderr
-    assert course.suggested(load(SYNC_SENTRY)) in refused.stderr
+    assert layout.suggested(load(SYNC_SENTRY)) in refused.stderr
     assert not out.exists()
