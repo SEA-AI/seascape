@@ -502,15 +502,15 @@ def ride(
         (attitude,) = hull.anchor.children
         for frame, t_s in enumerate(outputs.times_s):
             pose = hull.path(t_s)
-            pitch, roll, heave = motion.rocking(pose, hull.hull, field, tall, t_s)
+            sea = motion.rocking(pose, hull=hull.hull, field=field, tall=tall, t_s=t_s)
             # +x turns the bow up; +y turns starboard down.
-            attitude.rotation_euler = (pitch, roll, 0.0)
+            attitude.rotation_euler = (sea.pitch_rad, sea.roll_rad, 0.0)
             # Straight up in the world, through the tilt keyed on the anchor.
             tilted = Euler(
                 (pose.pitch_rad, pose.roll_rad, yaw(math.degrees(pose.heading_rad))),
                 "YXZ",
             )
-            up = Vector((0.0, 0.0, heave))
+            up = Vector((0.0, 0.0, sea.heave_m))
             attitude.location = tilted.to_quaternion().inverted() @ up
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)

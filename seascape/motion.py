@@ -290,15 +290,25 @@ def waterplane(
     )
 
 
+class Rocking(NamedTuple):
+    """What the sea does to a hull: its pitch, bow up, its roll, starboard down, and
+    its heave.
+    """
+
+    pitch_rad: float
+    roll_rad: float
+    heave_m: float
+
+
 def rocking(
     pose: Pose,
+    *,
     hull: waves.Waterplane,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
     t_s: float,
-) -> tuple[float, float, float]:
-    """The pitch bow up and roll starboard down, in radians, and the heave in metres
-    of `hull` at `pose`.
+) -> Rocking:
+    """How the sea rocks `hull` at `pose`.
 
     Args:
         pose: Where it is, where its bow points and how it moves.
@@ -306,11 +316,11 @@ def rocking(
         field: Every wave, which it pitches and rolls on.
         tall: The waves that are geometry, which alone heave it: the rest are
             shading, which a heaving hull would break its waterline on.
-        t_s: The time.
+        t_s: Seconds on the scenario's clock, when it is at `pose`.
     """
     plane = waterplane(pose, tall, t_s, hull)
     pitch, roll_up = waves.attitude(field, plane, t_s)
-    return pitch, -roll_up, waves.heave_m(tall, plane, t_s)
+    return Rocking(pitch, -roll_up, waves.heave_m(tall, plane, t_s))
 
 
 def attitude_deg(
@@ -333,8 +343,8 @@ def attitude_deg(
         pose = path(t_s)
         pitch, roll = pose.pitch_rad, pose.roll_rad
         if hull is not None:
-            sea_pitch, sea_roll, _ = rocking(pose, hull, field, tall, t_s)
-            pitch, roll = pitch + sea_pitch, roll + sea_roll
+            sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
+            pitch, roll = pitch + sea.pitch_rad, roll + sea.roll_rad
         return math.degrees(pitch), math.degrees(roll)
 
     return at
