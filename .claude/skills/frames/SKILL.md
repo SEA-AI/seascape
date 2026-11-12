@@ -52,7 +52,7 @@ Inside seascape an elevation is up from the horizon. Other conventions are forma
 ## Rules
 
 1. **Name a transform by its frames.**
-   - `T_a_b` is frame b's pose in frame a: `p_a = T_a_b @ p_b`. `T_world_camera = T_world_ownship @ T_ownship_head @ T_head_camera`.
+   - `T_a_b` is frame b's pose in frame a; it maps b's coordinates into a. `T_world_camera = T_world_ownship @ T_ownship_head @ T_head_camera`.
    - Frame names are whole words, one per frame. A product whose inner names don't match is the bug.
    - An inverse gets its own name, `T_camera_world`.
    - `R_a_b` is the rotation alone and `p_a_b` the translation: `p_a = R_a_b @ p_b + p_a_b`.
