@@ -27,7 +27,7 @@ Inside seascape, a bearing is clockwise from north or the bow and an elevation i
 
 ## Rules
 
-1. **Name a transform by its frames.** `T_a_b` is frame b's pose in frame a: it takes coordinates in b to coordinates in a. Compose by matching inner letters, `T_w_c = T_w_v @ T_v_r @ T_r_c`; an inverse swaps them, `T_b_a = inv(T_a_b)`. A product whose inner letters don't match is the bug.
+1. **Name a transform by its frames.** `T_a_b` is frame b's pose in frame a: it takes coordinates in b to coordinates in a. Compose by matching inner letters, `T_w_c = T_w_v @ T_v_r @ T_r_c`; an inverse swaps them, `T_b_a = inv(T_a_b)`. A product whose inner letters don't match is the bug. `R_a_b` is the rotation alone; `ruff.toml` lets `T`, `R`, `H`, `K` and `T_*`, `R_*`, `H_*` through pep8-naming.
 2. **A vector or angle says its frame,** in its name or its docstring: `up_deg` of what, above which horizon.
 3. **Compose matrices, never angles.** Adding a rig's yaw to a camera's yaw is AGENTS.md's trap; it holds only on a level, centred chain. Build each link with `angles.turned` or a `.pose`, multiply, read back once.
 4. **Euler angles are a readout,** taken from a finished rotation by one decomposition (`angles.attitude_deg`, `angles.bearing_deg`, `angles.elevation_deg`, `angles.pitch_to_deg`), never stored and fed back in.
