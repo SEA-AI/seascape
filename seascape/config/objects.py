@@ -208,7 +208,10 @@ class Swing(Model):
 class Move(Model):
     """Turn to `to_deg` from where the last move left off, then hold."""
 
-    to_deg: float = Field(description="Clockwise from the bow at t = 0.")
+    to_deg: float = Field(
+        description="Clockwise: the ownship's heading from its start, or a ptu's pan "
+        "from its base."
+    )
     rate_deg_s: float | None = Field(
         default=None,
         gt=0.0,
@@ -221,8 +224,8 @@ class Move(Model):
 
 
 class Turn(Model):
-    """A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each
-    move ramps up to its rate and down to rest at the acceleration.
+    """A scripted turn of the ownship from its start heading, or of a rig's ptu from
+    its base. Each move ramps up to its rate and down to rest at the acceleration.
     """
 
     ptu: Name | None = Field(
@@ -321,8 +324,9 @@ def _check_draught(asset: str | None, draught_m: float | None) -> None:
 
 
 class Ownship(Model):
-    """The vessel the rig is bolted to, rolling and pitching about its origin at the
-    waterline. Without an asset it is the motion alone; a hull also rides the sea.
+    """The vessel the rigs are bolted to, rolling and pitching about its floating
+    waterline, `rise_m` below its origin. Without an asset it is the motion alone;
+    a hull also rides the sea.
 
     It sails from the origin along its heading; the sea and sky stay put, and every
     bearing in a scenario is from its bow at t = 0.

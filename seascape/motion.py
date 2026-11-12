@@ -39,8 +39,7 @@ class Pose(NamedTuple):
 
 
 type Path = Callable[[float], Pose]
-# (3, 3): the deck's starboard, bow and up axes in the world's, as columns, at a time,
-# its heading aside.
+# (3, 3) `R_level_ownship` at a time: the hull's tilt, its heading aside.
 type Deck = Callable[[float], np.ndarray]
 
 
@@ -107,7 +106,7 @@ def turned_deg(turn: Turn) -> Callable[[float], float]:
 
 
 def panned_deg(turn: Turn | None, rig: str) -> Callable[[float], float]:
-    """The pan of the rig named `rig` at a time, clockwise from its yaw: the turn's
+    """The pan of the rig named `rig` at a time, clockwise from its base: the turn's
     when it turns that rig's ptu, else none.
     """
     if turn is None or not turn.pans(rig):
@@ -160,8 +159,8 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
 
 
 def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
-    """The axis of the rig `name` at a time, clockwise from the bow: its yaw and its
-    pan.
+    """The azimuth of the head of rig `name` at a time, clockwise from the bow: its
+    base's yaw and its pan.
     """
     rig, panned = scenario.rigs[name], panned_deg(scenario.turn, name)
     return lambda t_s: rig.axis_deg(panned(t_s))
@@ -353,14 +352,14 @@ def tilted(
 
 
 def world_elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
-    """The elevation in the world of `toward`, a unit (3,) in the deck's frame, on a
-    deck tilted `deck`, (3, 3) deck to world.
+    """The elevation in the world of `toward`, a unit (3,) in the ownship's frame,
+    on a hull tilted `deck`, (3, 3) `R_level_ownship`.
     """
     return float(angles.elevation_deg(deck[2] @ toward))
 
 
 def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
-    """The tilt the pan-tilt unit of rig `name` adds to its mount's pitch at each
+    """The tilt the pan-tilt unit of rig `name` adds to its head's `pitch_deg` at each
     frame, holding its inclination on a deck tilted `deck`.
 
     Raises:
@@ -399,8 +398,8 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
                 "roll or the sea"
             )
 
-    # The firmware's IMU sits on the head, so the loop holds the head itself, its
-    # mount included.
+    # The firmware's IMU sits on the head, so the loop holds the head itself,
+    # `pitch_deg` included.
     def head_deg(t_s: float, tilt_deg: float) -> float:
         return world_elevation_deg(deck(t_s), head(t_s, tilt_deg))
 

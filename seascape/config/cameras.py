@@ -244,7 +244,7 @@ class Camera(Model):
 
     band: Band = Field(description="The band it sees in: eo visible, ir LWIR.")
     yaw_deg: float = Field(
-        default=0.0, description="Relative to the rig's axis, positive to starboard."
+        default=0.0, description="Relative to its head, positive to starboard."
     )
     pitch_deg: float = Field(
         default=0.0,
@@ -321,8 +321,8 @@ class Camera(Model):
         return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
 
     def pose(self) -> np.ndarray:
-        """(4, 4) the camera to its rig, in OpenCV's axes: yawed, then pitched about
-        its own transverse axis, at the rig's origin.
+        """(4, 4) `T_head_camera`, in OpenCV's axes: yawed, then pitched about its own
+        transverse axis, at the head's origin.
         """
         pose = np.eye(4)
         pose[:3, :3] = angles.turned(self.yaw_deg, self.pitch_deg) @ angles.TO_CV.T
@@ -431,8 +431,8 @@ class Ptu(Model):
         default=0.0,
         ge=PTU_INCLINATION_DEG[0],
         le=PTU_INCLINATION_DEG[1],
-        description="The pitch it holds its head at, to the horizon, its mount "
-        "included. Negative is down.",
+        description="The pitch it holds its head at, above the horizon, the rig's "
+        "`pitch_deg` included. Negative is down.",
     )
 
 
@@ -451,23 +451,28 @@ class Rig(Model):
         description="The unit's hardware version, such as Oscar_V10_1280_Gen_1, which "
         "picks the recorder's profile when a recording is replayed.",
     )
-    height_m: float = Field(gt=0.0, description="Above the asset's own waterline.")
+    height_m: float = Field(
+        gt=0.0,
+        description="Above the ownship's origin, on its asset's design waterline.",
+    )
     yaw_deg: float = Field(
-        default=0.0, description="Its axis relative to the bow, positive to starboard."
+        default=0.0,
+        description="Its base's turn from the bow, where its pan reads zero; "
+        "positive to starboard.",
     )
     pitch_deg: float = Field(
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="About its own transverse axis, after its yaw and before its "
-        "cameras'. Negative is down.",
+        description="Its head's tilt at rest: after the pan, before its cameras' "
+        "pitch. Negative is down.",
     )
     ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )
     offset_y_m: float = Field(
-        default=0.0, description="From midships, positive forward."
+        default=0.0, description="From the ownship's origin, positive forward."
     )
     cameras: dict[Name, Camera] = Field(
         min_length=1, description="Its cameras, by name."
@@ -480,16 +485,16 @@ class Rig(Model):
     )
 
     def axis_deg(self, off_deg: float = 0.0) -> float:
-        """The bearing `off_deg` clockwise of its axis, from the bow: a pan, or a
-        camera's or a buoy's bearing off the axis. Unwrapped, so a turn's sweep reads
+        """The azimuth `off_deg` clockwise of its base, from the bow: a pan, or a
+        camera's or a buoy's azimuth off the base. Unwrapped, so a turn's sweep reads
         off the difference of two.
         """
         return self.yaw_deg + off_deg
 
     def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
-        """(4, 4) the rig to its vessel (+X starboard, +Y bow, +Z up, at the waterline
-        under midships): at its mount, yawed and panned, then pitched and tilted
-        about its own transverse axis, so a pitched rig rolls its off-axis cameras.
+        """(4, 4) `T_ownship_head`: at the rig point, yawed and panned, then pitched
+        and tilted about its own transverse axis, so a pitched head rolls its
+        off-axis cameras.
         """
         pose = np.eye(4)
         pose[:3, :3] = angles.turned(self.axis_deg(pan_deg), self.pitch_deg + tilt_deg)
