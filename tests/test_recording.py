@@ -472,3 +472,46 @@ def test_a_re_export_leaves_only_what_it_wrote(run: Path) -> None:
     written = recording.export(run)
     (into,) = run.glob("recordings/port/*")
     assert sorted(p for p in into.rglob("*") if p.is_file()) == sorted(written)
+
+
+GOLDEN = Path(__file__).with_name("recording_golden.json")
+
+
+def _rounded(value: object) -> object:
+    """JSON with floats to 9 decimals: libm's last digits differ across machines."""
+    if isinstance(value, float):
+        return round(value, 9) + 0.0
+    if isinstance(value, list):
+        return [_rounded(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _rounded(v) for k, v in value.items()}
+    return value
+
+
+def _written(run: Path) -> dict[str, object]:
+    (into,) = {p.parent for p in recording.export(run) if p.suffix == ".csv"}
+    return {
+        p.relative_to(into).as_posix(): (
+            p.read_text().splitlines()
+            if p.suffix == ".csv"
+            else _rounded(json.loads(p.read_text()))
+        )
+        for p in sorted(into.rglob("*"))
+        if p.suffix in {".csv", ".json"}
+    }
+
+
+def test_a_recording_stays_as_written(tmp_path: Path) -> None:
+    """Every file a fixed rig and a PTU rig write, against `recording_golden.json`.
+    A change meant to keep the recording leaves it equal; one meant to change it
+    deletes the file, reruns, and shows the diff in review.
+    """
+    written = {}
+    for key in ("fixed", "ptu"):
+        (tmp_path / key).mkdir()
+        run = make_run(tmp_path / key, CAMERA_YAW_DEG, ptu=key == "ptu")
+        written[key] = _written(run)
+    if not GOLDEN.exists():
+        GOLDEN.write_text(json.dumps(written, indent=1) + "\n")
+        pytest.fail(f"wrote {GOLDEN.name}; rerun")
+    assert written == json.loads(GOLDEN.read_text())
