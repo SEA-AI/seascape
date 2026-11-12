@@ -85,6 +85,16 @@ Pick the container by what the data is:
 - **Error message:** what failed, the offending value, the valid range or fix. One problem per message: `f"radius_m must be > 0, got {radius_m!r}"`.
 - **`logging` for events, `print` only for CLI output.** Libraries do not configure the root logger.
 
+## What a finding contains
+
+Report a table, the likeliest failure first:
+
+| # | Where | Practice | Failure it prevents | Fix |
+|---|---|---|---|---|
+| 1 | `file:line` | a test fails when the code is wrong | a regression passes in silence | assert the keyed yaw steps |
+
+End with what you did not read.
+
 ## Sources
 
 - Google engineering practices: https://google.github.io/eng-practices/

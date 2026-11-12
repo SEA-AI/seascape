@@ -17,8 +17,21 @@ Every PR gets five reviews before it is handed over. Each reviewer is a fresh su
 
 ## After the reviews
 
-A review request ends with the findings. Edit and push only when handing over a PR you wrote, or when asked to fix.
+A review request ends with the findings, merged into one table:
 
-- Apply the fixes each skill's verdicts name. A finding you reject gets a one-line reason a reader can check.
+| # | Reviewer | Where | Verdict | Finding | Fix | Outcome |
+|---|---|---|---|---|---|---|
+| 1 | correctness | `file:line` | bug | a stale `matrix_world` | `view_layer.update()` first | applied |
+| 2 | anti-hack | `file:line` | replace | a hand-rolled clamp | `np.clip` | applied |
+| 3 | prose | `body:4` | delete | restates the diff | | rejected: the reason |
+
+- **Order:** bugs, then deletes and replaces, then the rest; keeps last.
+- **Verdict:** the reviewer's own; `—` where its table has none, as stack's.
+- **Finding:** what is wrong, and its cost where the reviewer gives one. A keep's reason goes here.
+- **Fix:** the replacement, root fix or new text the reviewer names.
+
+Edit and push only when handing over a PR you wrote, or when asked to fix; until then Outcome is blank, and the steps below do not apply.
+
+- For each finding but a keep, apply its Fix or give a one-line reason a reader can check for rejecting it.
 - Run the tests the fixes touch, then push through `gh stack`.
 - After a fix that changes code, run the correctness, architecture, anti-hack and stack reviews again on the final diff.
