@@ -80,7 +80,7 @@ Report a table, the finding whose fix removes the most coupling first:
 - **Verdict:** **move**, **merge**, **split**, **pass** (hand over the value instead of recomputing or reading it back), **delete**, **keep** or **open an issue**. A keep gives its reason in the Root fix column.
 - **Smell:** the smell or principle, named in the words above.
 - **Cost:** the next change that will go wrong, or the two places that will drift. "Unclean" is not a cost.
-- **Root fix:** and the layer it belongs in. A fix that adds a layer, flag or wrapper is suspect; prefer deleting, moving or passing a value.
+- **Root fix:** the fix, and the layer it belongs in. A fix that adds a layer, flag or wrapper is suspect; prefer deleting, moving or passing a value.
 
 End with what you did not read.
 

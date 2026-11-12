@@ -37,7 +37,7 @@ Report a table, ranked by net lines removed:
 
 | # | Where | Verdict | Re-does or works around | Replacement | Net lines |
 |---|---|---|---|---|---|
-| 1 | `file:line` | delete | a hand-rolled clamp | `np.clip` | -6 |
+| 1 | `file:line` | replace | a hand-rolled clamp | `np.clip` | -6 |
 
 - **Verdict:** **replace**, **delete**, **keep** or **open an issue**. A keep gives its reason in the Replacement column.
 - **Replacement:** the existing call, the proper mechanism, or the source for the number.
