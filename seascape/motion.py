@@ -174,10 +174,12 @@ def rig_track(scenario: Scenario, name: str) -> Path:
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
     axis = axis_deg(scenario, name)
+    # A pan turns the rig about its own mount.
+    x, y = rig.pose()[:2, 3]
 
     def at(t_s: float) -> Pose:
         pose = path(t_s)
-        h, x, y = pose.heading_rad, rig.offset_x_m, rig.offset_y_m
+        h = pose.heading_rad
         return Pose(
             pose.east_m + x * math.cos(h) + y * math.sin(h),
             pose.north_m - x * math.sin(h) + y * math.cos(h),

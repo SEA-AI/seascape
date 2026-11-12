@@ -20,6 +20,17 @@ def yaw(bearing_deg: float) -> float:
     return -math.radians(bearing_deg)
 
 
+def turned(bearing_deg: float, elevation_deg: float) -> np.ndarray:
+    """(3, 3) rotation taking +Y to `direction(bearing_deg, elevation_deg)`: a pitch
+    about +X, then a turn about +Z, so +X stays level.
+    """
+    turn, pitch = yaw(bearing_deg), math.radians(elevation_deg)
+    ct, st, cp, sp = math.cos(turn), math.sin(turn), math.cos(pitch), math.sin(pitch)
+    about_z = np.array([[ct, -st, 0.0], [st, ct, 0.0], [0.0, 0.0, 1.0]])
+    about_x = np.array([[1.0, 0.0, 0.0], [0.0, cp, -sp], [0.0, sp, cp]])
+    return about_z @ about_x
+
+
 def bearing_deg(east: float, north: float) -> float:
     """The compass bearing towards a point `east` and `north`, in (-180, 180]."""
     return math.degrees(math.atan2(east, north))

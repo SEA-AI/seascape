@@ -3,11 +3,13 @@
 import math
 from typing import Annotated, Literal, NamedTuple
 
+import numpy as np
 from pydantic import (
     Field,
     model_validator,
 )
 
+from seascape import angles
 from seascape.model import Model
 from seascape.physics import fisheye
 from seascape.physics.colour import Tone
@@ -465,6 +467,16 @@ class Rig(Model):
         "two, which then go unlabelled. Unset, it records each camera whole. An exr "
         "ignores it.",
     )
+
+    def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
+        """(4, 4) the rig to its vessel (+X starboard, +Y bow, +Z up, at the waterline
+        under midships): at its mount, yawed and panned, then pitched and tilted
+        about its own transverse axis, so a pitched rig rolls its off-axis cameras.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.yaw_deg + pan_deg, self.pitch_deg + tilt_deg)
+        pose[:3, 3] = self.offset_x_m, self.offset_y_m, self.height_m
+        return pose
 
     @model_validator(mode="after")
     def _each_video_records_a_camera(self) -> "Rig":

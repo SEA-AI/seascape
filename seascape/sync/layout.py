@@ -47,15 +47,11 @@ DECIMALS = 1
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class View:
-    """A video's span of bearings and elevations from its rig's axis, and its
-    pixels.
-    """
+    """A video's span of bearings from its rig's axis, and its pixels."""
 
     name: str
     left_deg: float
     right_deg: float
-    down_deg: float
-    up_deg: float
     focal_px: float
     width_px: float
     # The narrowest span one of its cameras covers: a stitch's camera's, else its own.
@@ -106,30 +102,53 @@ def recorded(rig: Rig) -> dict[str, CameraCalibration]:
     return found
 
 
-def _span(camera: CameraCalibration) -> tuple[float, float, float, float]:
-    """The bearings off the rig's axis of `camera`'s left and right edges, and the
-    elevations of its bottom and top, along the middle row and column.
+def _span(camera: CameraCalibration) -> tuple[float, float]:
+    """The bearings off the rig's axis of `camera`'s left and right edges, along its
+    middle row.
     """
-    (fx, _, cx), (_, fy, cy), _ = camera.K
+    (fx, _, cx), _, _ = camera.K
     # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
-    x, y, z = np.array(camera.extrinsics["rig"])[:3, 2]
-    bearing, up = angles.bearing_deg(x, y), math.degrees(math.asin(z))
+    x, y, _ = np.array(camera.extrinsics["rig"])[:3, 2]
+    bearing = angles.bearing_deg(x, y)
     # Pixel centres sit at integers, so a frame's edges are half a pixel out.
     left, right = (-0.5 - cx, camera.width_px - 0.5 - cx)
-    top, bottom = (cy + 0.5, camera.height_px - 0.5 - cy)
     return (
         bearing + math.degrees(math.atan(left / fx)),
         bearing + math.degrees(math.atan(right / fx)),
-        up - math.degrees(math.atan(bottom / fy)),
-        up + math.degrees(math.atan(top / fy)),
     )
+
+
+def _edges(camera: CameraCalibration) -> np.ndarray:
+    """(2, 3) unit rays through the middle of `camera`'s top and bottom edges, in its
+    rig's frame unpitched.
+    """
+    _, (_, fy, cy), _ = camera.K
+    # OpenCV's +Y is down; pixel centres sit at integers.
+    rows = np.array([[0.0, -0.5 - cy, fy], [0.0, camera.height_px - 0.5 - cy, fy]])
+    rays = rows @ np.array(camera.extrinsics["rig"])[:3, :3].T
+    return rays / np.linalg.norm(rays, axis=1, keepdims=True)
+
+
+def _pitch_deg(ray: np.ndarray, elevation_deg: float) -> float:
+    """The rig pitch that raises `ray`, a unit (3,) in the rig's frame unpitched, to
+    `elevation_deg`: the pitch turns its (y, z) in their plane, so an off-axis ray
+    climbs less than the pitch.
+
+    Raises:
+        ValueError: No pitch reaches it.
+    """
+    _, y, z = ray
+    sine = math.sin(math.radians(elevation_deg)) / math.hypot(y, z)
+    if abs(sine) > 1.0:
+        raise ValueError(f"no rig pitch raises a ray to {elevation_deg:.1f} deg")
+    return math.degrees(math.asin(sine) - math.atan2(z, y))
 
 
 def views(rig: Rig) -> list[View]:
     """Each video, or each camera where the rig records them whole."""
     found = []
     for name, camera in recorded(rig).items():
-        left, right, down, up = _span(camera)
+        left, right = _span(camera)
         video = rig.videos.get(name)
         # Each camera of a stitch is crossed on its own.
         stitched = video.cameras if isinstance(video, Stitch) else ()
@@ -141,8 +160,6 @@ def views(rig: Rig) -> list[View]:
                 name=name,
                 left_deg=left,
                 right_deg=right,
-                down_deg=down,
-                up_deg=up,
                 focal_px=camera.K[0][0],
                 width_px=camera.width_px,
                 camera_deg=narrowest,
@@ -232,7 +249,7 @@ def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
     return name, rig, scenario.turn
 
 
-def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float | None:
+def _inclination_deg(rig: Rig, near_m: float) -> float | None:
     """The pitch that keeps the horizon and the nearest ring's waterline in every
     video, as far from either edge as it can.
 
@@ -240,8 +257,9 @@ def _inclination_deg(rig: Rig, videos: list[View], near_m: float) -> float | Non
         ValueError: No pitch does, or a fixed mount's is not one.
     """
     low_deg = elevation_deg(rig, near_m) - MARGIN_DEG
-    least = max(MARGIN_DEG - v.up_deg for v in videos)
-    most = min(low_deg - v.down_deg for v in videos)
+    edges = [_edges(camera) for camera in recorded(rig).values()]
+    least = max(_pitch_deg(top, MARGIN_DEG) for top, _ in edges)
+    most = min(_pitch_deg(bottom, low_deg) for _, bottom in edges)
     # The stored pitch is rounded, so it is the rounded one that must fit.
     pitch_deg = round((least + most) / 2, DECIMALS)
     if not least <= pitch_deg <= most:
@@ -282,7 +300,7 @@ def layout(scenario: Scenario) -> Layout:
     # A ring is centred on the ownship, so its nearest buoy stands two of the rig's
     # offsets nearer the cameras than the ring's range.
     off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
-    inclination_deg = _inclination_deg(rig, videos, circles[0].range_m - 2 * off_m)
+    inclination_deg = _inclination_deg(rig, circles[0].range_m - 2 * off_m)
 
     start = rig_track(scenario, name)(0.0)
     narrow = min(videos, key=lambda v: v.right_deg - v.left_deg)
