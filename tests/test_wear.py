@@ -100,15 +100,17 @@ def test_a_flared_side_finds_its_sheer_a_patch_outboard() -> None:
     )
 
 
-def test_each_face_weighs_its_zone_and_a_chip_rusts_on_steel_else_scuffs(box) -> None:
+@pytest.mark.parametrize(("material", "gone"), [("grp", "rust"), ("steel", "scuff")])
+def test_each_face_weighs_its_zone_and_a_chip_rusts_on_steel_else_scuffs(
+    box, material: Material, gone: str
+) -> None:
     obj, zone = box
     deck = zone == ZONE_NAMES.index("deck")
-    for material, gone in (("grp", "rust"), ("steel", "scuff")):
-        wear.tag([obj], [zone], material)
-        for i, layer in enumerate(wear.LAYERS):
-            got = _read(obj.data, f"wear_{layer}")
-            want = 0.0 if layer == gone else wear.PROFILE["deck"][i]
-            np.testing.assert_allclose(got[deck], want)
+    wear.tag([obj], [zone], material)
+    for i, layer in enumerate(wear.LAYERS):
+        got = _read(obj.data, f"wear_{layer}")
+        want = 0.0 if layer == gone else wear.PROFILE["deck"][i]
+        np.testing.assert_allclose(got[deck], want)
 
 
 def test_each_face_knows_its_asset_length_and_whether_it_is_steel(box) -> None:

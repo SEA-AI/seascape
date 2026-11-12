@@ -377,7 +377,7 @@ class _Masks:
         return edge * self.cover(self.noise(3.0, 7.0), 0.15) * self.region
 
     def droppings(self) -> Num:
-        # Judgement: splashes 2-5 cm, a few in a hundred of a level top at full wear;
+        # Judgement: splashes 1-3 cm over a few percent of a level top at full wear;
         # only the noise's peaks pass, which `cover`'s broad threshold would not keep.
         threshold = self.amount.madd(-0.08, 0.72)
         splash = _smooth(self.noise(25.0, 9.0, 1.0), threshold, threshold + 0.03)
@@ -395,7 +395,8 @@ class _Masks:
         band = _smooth(self.z, -0.3, 0.0) * (1.0 - _smooth(self.z, top_m * 0.5, top_m))
         return band * self.cover(patchy, 0.3, 0.3)
 
-    def layers(self) -> tuple[Num, ...]:
+    def layers(self) -> dict[str, Num]:
+        """Each of `LAYERS`' masks, by name."""
         streak = self.streaks()
         not_steel = 1.0 - self.steel
         grime = self.grime().op("MAXIMUM", streak * not_steel)
@@ -405,15 +406,15 @@ class _Masks:
         rust = chips.op("MAXIMUM", streak * self.steel)
         soot = self.cover(self.noise(0.5, 13.0), 0.4, 0.3)
         sky = _smooth(self.up, 0.0, 1.0).madd(0.5, 0.5)
-        return (
-            grime,
-            rust,
-            self.stain(),
-            soot,
-            chips,
-            self.droppings(),
-            self.amount * sky,
-        )
+        return {
+            "grime": grime,
+            "rust": rust,
+            "stain": self.stain(),
+            "soot": soot,
+            "scuff": chips,
+            "dropping": self.droppings(),
+            "fade": self.amount * sky,
+        }
 
 
 def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
@@ -430,7 +431,9 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     out = node(group, "NodeGroupOutput")
     # An unworn copy shares its worn twin's import and materials: no cover at all.
     worn = g.amount.op("GREATER_THAN", 0.0)
-    for layer, mask in zip(LAYERS, g.layers(), strict=True):
+    layers = g.layers()
+    for layer in LAYERS:
+        mask = layers[layer]
         weight = Num(group, _attribute(group, f"wear_{layer}").outputs["Factor"]) * worn
         feed(group, out.inputs[layer], clamped(group, (mask * weight).socket))
     return group
@@ -453,8 +456,10 @@ RUST = (0.20, 0.065, 0.022, 1.0)
 STAIN_STEEL = (0.06, 0.07, 0.035, 1.0)  # algae on a ship's boot top
 STAIN = (0.22, 0.14, 0.05, 1.0)  # a yacht's: tannin, oil and algae
 SOOT = (0.015, 0.014, 0.013, 1.0)
-SCUFF = (0.42, 0.41, 0.38, 1.0)  # abraded paint and stress-whitened plastic
-DROPPING = (0.62, 0.61, 0.57, 1.0)  # bird lime, dried
+# Judgement: abraded paint and stress-whitened plastic.
+SCUFF = (0.42, 0.41, 0.38, 1.0)
+# Judgement: bird lime, dried.
+DROPPING = (0.62, 0.61, 0.57, 1.0)
 
 
 def dirty(parts: list[bpy.types.Object]) -> None:
