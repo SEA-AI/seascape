@@ -104,19 +104,28 @@ def recorded(rig: Rig) -> dict[str, CameraCalibration]:
 
 
 def _span(camera: CameraCalibration) -> tuple[float, float]:
-    """The azimuths off the head's axis of `camera`'s left and right edges, along
-    its middle row.
+    """The azimuths off the head's axis of `camera`'s left and right edges where
+    they cross the head's level, where a course's buoys stand, or the nearer of
+    their ends where the level lies out of frame.
     """
-    (fx, _, cx), _, _ = camera.K
-    # The optical axis in the head: +X starboard, +Y along its axis, +Z up.
-    x, y, _ = np.array(camera.extrinsics["head"])[:3, 2]
-    bearing = angles.bearing_deg(x, y)
-    # Pixel centres sit at integers, so a frame's edges are half a pixel out.
-    left, right = (-0.5 - cx, camera.width_px - 0.5 - cx)
-    return (
-        bearing + math.degrees(math.atan(left / fx)),
-        bearing + math.degrees(math.atan(right / fx)),
+    (fx, _, cx), (_, fy, cy), _ = camera.K
+    R_head_camera = np.array(camera.extrinsics["head"])[:3, :3]
+    # Pixel centres sit at integers, so a frame's edges are half a pixel out. OpenCV's
+    # +Y is down.
+    top, bottom = (-0.5 - cy) / fy, (camera.height_px - 0.5 - cy) / fy
+    rays = []
+    for x in ((-0.5 - cx) / fx, (camera.width_px - 0.5 - cx) / fx):
+        # Up in the head along the edge is a + b y: level where it is zero.
+        up = R_head_camera[2]
+        a, b = up[0] * x + up[2], up[1]
+        y = -a / b if b else 0.0
+        rays.append(R_head_camera @ (x, float(np.clip(y, top, bottom)), 1.0))
+    # Each edge as a turn off the optical axis, so a span across the stern stays whole.
+    axis = angles.bearing_deg(*R_head_camera[:2, 2])
+    left, right = (
+        axis + angles.wrapped_deg(angles.bearing_deg(x, y) - axis) for x, y, _ in rays
     )
+    return left, right
 
 
 def _edges(camera: CameraCalibration) -> np.ndarray:

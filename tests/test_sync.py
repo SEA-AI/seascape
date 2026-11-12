@@ -10,10 +10,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from seascape import angles
 from seascape.assets import Buoy, manifest
 from seascape.blender.scene import posed_at_start
 from seascape.config import Scenario, load, sources
 from seascape.motion import head_track
+from seascape.outputs.calibration import CameraCalibration
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import preview, sheet, staging
 from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
@@ -230,6 +232,31 @@ def test_a_lighter_hull_lifts_its_rig_along_its_tilted_mast() -> None:
     height_m = scenario.head_height_m("mast")
     assert height_m > scenario.rigs["mast"].height_m
     assert start.east_m == pytest.approx(height_m * math.sin(math.radians(roll_deg)))
+
+
+def test_a_pitched_camera_s_span_is_read_at_the_head_s_level() -> None:
+    """Pitched 10 up in its head, a camera's edges cross the head's level, where the
+    buoys stand, atan(x cos 10) off its axis, not atan(x).
+    """
+    pitch = math.radians(10.0)
+    R_head_camera = angles.turned(0.0, 10.0) @ angles.TO_CV.T
+    T_head_camera = np.eye(4)
+    T_head_camera[:3, :3] = R_head_camera
+    width, f = 1001, 500.0
+    camera = CameraCalibration(
+        name="c",
+        band="eo",
+        image="c.png",
+        rig="r",
+        width_px=width,
+        height_px=width,
+        K=((f, 0.0, (width - 1) / 2), (0.0, f, (width - 1) / 2), (0.0, 0.0, 1.0)),
+        extrinsics={"head": tuple(map(tuple, T_head_camera))},
+    )
+
+    x = (width / 2) / f
+    edge = math.degrees(math.atan(x * math.cos(pitch)))
+    assert staging._span(camera) == pytest.approx((-edge, edge))
 
 
 BOX = manifest()[staging.CONTAINER].category_id
