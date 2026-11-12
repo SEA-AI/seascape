@@ -42,7 +42,7 @@ Inside seascape an elevation is up from the horizon. Other conventions are forma
 
 | Format | Axes | Where it applies |
 |---|---|---|
-| OpenCV | right, down, forward | `angles.TO_CV`; calibration `extrinsics[f]` is `T_f_camera`, the inverse of OpenCV's `[R\|t]`, with keys `world`, `vessel` (ownship) and `rig` (head) |
+| OpenCV | right, down, forward | `angles.TO_CV`; calibration `extrinsics[f]` is `T_f_camera`, the inverse of OpenCV's `[R\|t]`, keyed `world`, `ownship` and `head` |
 | COCO | pixel edges: OpenCV + 0.5 | `labels.py` |
 | Blender camera | right, up, backward | `blend.BLENDER_TO_CV` |
 | FLU (ROS REP 103) | forward, left, up: yaw to port, pitch nose down | an Oceanus recording's pan, tilt and camera rpy |

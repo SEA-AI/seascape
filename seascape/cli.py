@@ -15,6 +15,7 @@ from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
+from seascape.outputs.calibration import Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -299,15 +300,16 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
 )
 @click.option(
     "--frame",
+    type=click.Choice(get_args(Frame.__value__)),
     default="world",
     show_default=True,
     help="An extrinsics frame in calibration.json, which sets what is level: world "
-    "the horizon, vessel the deck, rig the product.",
+    "the horizon, ownship the hull, head the rig's head, panned and tilted.",
 )
 @click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
 @click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
 def panorama_(
-    folder: Path, projection: str, frame: str, max_width: int | None, ruler: bool
+    folder: Path, projection: str, frame: Frame, max_width: int | None, ruler: bool
 ) -> None:
     """Stitch each rig's frames, from calibration.json."""
     for path in panorama.panoramas(folder, projection, frame, max_width, ruler):

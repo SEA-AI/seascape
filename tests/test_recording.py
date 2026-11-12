@@ -94,8 +94,8 @@ def make_run(
                 ),
                 extrinsics={
                     "world": rows(vessel_to_world @ camera_to_vessel),
-                    "vessel": rows(camera_to_vessel),
-                    "rig": rows(camera_to_pod),
+                    "ownship": rows(camera_to_vessel),
+                    "head": rows(camera_to_pod),
                 },
             )
         )

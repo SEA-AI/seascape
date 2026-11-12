@@ -71,8 +71,8 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         distortion=mount.camera.lens.fisheye,
         extrinsics={
             "world": _rows(T_world_camera),
-            "vessel": _rows(T_world_ownship.inverted() @ T_world_camera),
-            "rig": _rows(T_world_head.inverted() @ T_world_camera),
+            "ownship": _rows(T_world_ownship.inverted() @ T_world_camera),
+            "head": _rows(T_world_head.inverted() @ T_world_camera),
         },
     )
 

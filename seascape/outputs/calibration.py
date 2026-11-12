@@ -5,7 +5,7 @@ Imports no Blender, so a consumer reads it without the bpy wheel.
 
 import math
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 from pydantic import ConfigDict, Field
@@ -21,6 +21,7 @@ type Row3 = tuple[float, float, float]
 type Row4 = tuple[float, float, float, float]
 type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
+type Frame = Literal["world", "ownship", "head"]
 
 
 def intrinsics(camera: Camera) -> Matrix3:
@@ -70,9 +71,8 @@ class CameraCalibration(_Record):
         min_length=1,
         description=(
             "camera to each named frame: world (+X east, +Y north, +Z up, at sea "
-            "level under the ownship's start), vessel (the ownship: +X starboard, "
-            "+Y bow, +Z up, moving with the hull) and rig (its head: +Y along its "
-            "axis, panned and tilted)"
+            "level under the ownship's start), ownship (+X starboard, +Y bow, +Z up, "
+            "moving with the hull) and head (+Y along its axis, panned and tilted)"
         ),
     )
 
@@ -102,7 +102,7 @@ class CameraCalibration(_Record):
             height_px=camera.height_px,
             K=intrinsics(camera),
             distortion=camera.lens.fisheye,
-            extrinsics={"rig": T_head_camera},
+            extrinsics={"head": T_head_camera},
         )
 
     def cropped(self, crop: Crop) -> "CameraCalibration":

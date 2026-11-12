@@ -177,7 +177,7 @@ def test_a_calibration_with_fields_it_does_not_know_still_reads(
 def test_in_its_rig_a_camera_points_exactly_as_asked(
     mount: Mount, built: scene.Built
 ) -> None:
-    axis = np.array(scene.calibrate(built, mount, "").extrinsics["rig"])[:3, 2]
+    axis = np.array(scene.calibrate(built, mount, "").extrinsics["head"])[:3, 2]
 
     bearing = math.degrees(math.atan2(axis[0], axis[1]))
     elevation = math.degrees(math.asin(axis[2]))
@@ -224,7 +224,7 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
         cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
     ).write(tmp_path)
 
-    paths = panorama.panoramas(tmp_path, "cylindrical", "rig", max_width=400)
+    paths = panorama.panoramas(tmp_path, "cylindrical", "head", max_width=400)
 
     image = cv2.imread(str(paths[0]))
     assert image is not None
@@ -239,7 +239,7 @@ def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> No
         cameras=[scene.calibrate(built, mount, f"{mount.name}_{i}.png") for i in (0, 1)]
     ).write(tmp_path)
     with pytest.raises(ValueError, match="a sequence"):
-        panorama.panoramas(tmp_path, "cylindrical", "rig")
+        panorama.panoramas(tmp_path, "cylindrical", "head")
 
 
 def test_a_thermal_panorama_is_one_grey_per_temperature(
@@ -261,7 +261,7 @@ def test_a_thermal_panorama_is_one_grey_per_temperature(
         cv2.imwrite(str(white / f"{mount.name}.png"), frame.astype(np.uint8))
 
     image, coverage = (
-        cv2.imread(str(panorama.panoramas(f, "cylindrical", "rig", max_width=400)[0]))
+        cv2.imread(str(panorama.panoramas(f, "cylindrical", "head", max_width=400)[0]))
         for f in (thermal, white)
     )
     assert image is not None and coverage is not None
@@ -280,9 +280,9 @@ def test_the_width_is_capped_and_never_raised(
     cv2.imwrite(str(tmp_path / "frame.png"), black_frame(mount))
     camera = scene.calibrate(built, mount, "frame.png")
 
-    native, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "rig")
-    capped, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "rig", 101)
-    uncapped, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "rig", 10**6)
+    native, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "head")
+    capped, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "head", 101)
+    uncapped, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "head", 10**6)
 
     assert capped.shape[1] == 101
     assert uncapped.shape == native.shape
@@ -303,11 +303,13 @@ def test_a_bearing_lands_where_the_stitch_put_it(
         frame[cy - 6 : cy + 7, cx - 6 : cx + 7] = 255
         cv2.imwrite(str(tmp_path / camera.image), frame)
 
-    image, layout = panorama.stitch(tmp_path, cameras, projection, "rig", 2000)
+    image, layout = panorama.stitch(tmp_path, cameras, projection, "head", 2000)
 
     for camera in cameras:
         dot = (camera.K[0][2] + camera.width_px / 4, camera.K[1][2], 1.0)
-        ray = np.array(camera.extrinsics["rig"])[:3, :3] @ np.linalg.inv(camera.K) @ dot
+        ray = (
+            np.array(camera.extrinsics["head"])[:3, :3] @ np.linalg.inv(camera.K) @ dot
+        )
         x, y, _ = ray
         expected = panorama.column(layout, math.degrees(math.atan2(x, y)))
         assert expected is not None
@@ -322,9 +324,9 @@ def test_the_ruler_ticks_under_the_image_where_column_says(
     mount = SCENARIO.mounts[0]
     cv2.imwrite(str(tmp_path / "frame.png"), black_frame(mount))
     camera = scene.calibrate(built, mount, "frame.png")
-    image, layout = panorama.stitch(tmp_path, [camera], "cylindrical", "rig", 1000)
+    image, layout = panorama.stitch(tmp_path, [camera], "cylindrical", "head", 1000)
     # The labelled bearing nearest the camera's axis, so it is in frame.
-    x, y, _ = np.array(camera.extrinsics["rig"])[:3, 2]
+    x, y, _ = np.array(camera.extrinsics["head"])[:3, 2]
     bearing = panorama.LABEL_DEG * round(
         math.degrees(math.atan2(x, y)) / panorama.LABEL_DEG
     )
@@ -351,16 +353,19 @@ def test_rectilinear_refuses_a_camera_behind_its_plane(built: scene.Built) -> No
 
 def test_a_frame_the_calibration_lacks_is_named(built: scene.Built) -> None:
     camera = scene.calibrate(built, SCENARIO.mounts[0], "")
+    headless = camera.model_copy(
+        update={"extrinsics": {"world": camera.extrinsics["world"]}}
+    )
 
-    with pytest.raises(ValueError, match="'deck'"):
-        panorama.stitch(Path(), [camera], "cylindrical", "deck")
+    with pytest.raises(ValueError, match="'head'"):
+        panorama.stitch(Path(), [headless], "cylindrical", "head")
 
 
 def test_a_max_width_under_a_pixel_is_an_error(built: scene.Built) -> None:
     camera = scene.calibrate(built, SCENARIO.mounts[0], "")
 
     with pytest.raises(ValueError, match="max width"):
-        panorama.stitch(Path(), [camera], "cylindrical", "rig", 0)
+        panorama.stitch(Path(), [camera], "cylindrical", "head", 0)
 
 
 def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
@@ -368,7 +373,7 @@ def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
 ) -> None:
     camera = scene.calibrate(built, SCENARIO.mounts[0], "")
     frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)
-    k, _ = panorama.pose(camera, "rig", 0.0)
+    k, _ = panorama.pose(camera, "head", 0.0)
 
     small, k = panorama._shrink(frame, k, 0.25)
 

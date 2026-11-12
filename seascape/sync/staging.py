@@ -109,7 +109,7 @@ def _span(camera: CameraCalibration) -> tuple[float, float]:
     """
     (fx, _, cx), _, _ = camera.K
     # The optical axis in the head: +X starboard, +Y along its axis, +Z up.
-    x, y, _ = np.array(camera.extrinsics["rig"])[:3, 2]
+    x, y, _ = np.array(camera.extrinsics["head"])[:3, 2]
     bearing = angles.bearing_deg(x, y)
     # Pixel centres sit at integers, so a frame's edges are half a pixel out.
     left, right = (-0.5 - cx, camera.width_px - 0.5 - cx)
@@ -133,7 +133,7 @@ def _edges(camera: CameraCalibration) -> np.ndarray:
             [across, (camera.height_px - 0.5 - cy) / fy, 1.0],
         ]
     )
-    R_head_camera = np.array(camera.extrinsics["rig"])[:3, :3]
+    R_head_camera = np.array(camera.extrinsics["head"])[:3, :3]
     rays = rows @ R_head_camera.T
     return rays / np.linalg.norm(rays, axis=1, keepdims=True)
 

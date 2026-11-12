@@ -28,7 +28,7 @@ def camera(
         width_px=640,
         height_px=512,
         K=((fx, 0.0, cx), (0.0, fy, cy), (0.0, 0.0, 1.0)),
-        extrinsics={"rig": tuple(map(tuple, pose)), "world": tuple(map(tuple, pose))},
+        extrinsics={"head": tuple(map(tuple, pose)), "world": tuple(map(tuple, pose))},
     )
 
 
@@ -82,7 +82,7 @@ def test_a_stitch_puts_each_ray_where_the_fused_camera_sees_it() -> None:
         """Each pixel's bearing in the rig, degrees to starboard."""
         v, u = np.mgrid[: c.height_px, : c.width_px]
         rays = np.stack([u, v, np.ones_like(u)], axis=-1) @ np.linalg.inv(c.K).T
-        x, y, _ = np.moveaxis(rays @ np.array(c.extrinsics["rig"])[:3, :3].T, -1, 0)
+        x, y, _ = np.moveaxis(rays @ np.array(c.extrinsics["head"])[:3, :3].T, -1, 0)
         return np.degrees(np.arctan2(x, y))
 
     def counts(c: CameraCalibration) -> np.ndarray:
