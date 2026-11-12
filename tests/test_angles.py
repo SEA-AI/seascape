@@ -54,3 +54,26 @@ def test_a_pitch_is_found_back_from_the_ray_it_raised(
 
 def test_an_elevation_clamps_float_noise_past_the_zenith() -> None:
     assert angles.elevation_deg(1.0 + 1e-12) == pytest.approx(90.0)
+
+
+def _rolled(roll_deg: float) -> np.ndarray:
+    """About +Y, the bow: positive puts starboard down."""
+    c, s = math.cos(math.radians(roll_deg)), math.sin(math.radians(roll_deg))
+    return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+
+
+@pytest.mark.parametrize(
+    ("roll_deg", "pitch_deg", "yaw_deg"), [(-8.0, 12.0, 30.0), (20.0, -5.0, -120.0)]
+)
+def test_an_attitude_reads_back_the_roll_pitch_and_yaw_that_built_it(
+    roll_deg: float, pitch_deg: float, yaw_deg: float
+) -> None:
+    body = angles.turned(yaw_deg, pitch_deg) @ _rolled(roll_deg)
+    assert angles.attitude_deg(body) == pytest.approx((roll_deg, pitch_deg, yaw_deg))
+
+
+@pytest.mark.parametrize(
+    ("angle_deg", "wrapped"), [(180.0, -180.0), (190.0, -170.0), (-190.0, 170.0)]
+)
+def test_an_angle_wraps_into_one_turn(angle_deg: float, wrapped: float) -> None:
+    assert angles.wrapped_deg(angle_deg) == pytest.approx(wrapped)

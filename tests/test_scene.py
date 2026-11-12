@@ -560,6 +560,23 @@ class TestEoBand:
         sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
         assert sky.sun_size == pytest.approx(4 * SUN_SLOPE_RADIUS)
 
+    def test_the_glint_follows_the_world_s_sun_off_every_axis(self) -> None:
+        """At 70, so a mirror in east or north alone shows."""
+        world = bpy.data.worlds["sky"]
+        was = world["sun_rotation"]
+        world["sun_rotation"] = math.radians(70.0)
+        try:
+            world.update_tag()
+            bpy.context.scene.frame_set(bpy.context.scene.frame_current)
+            toward = bpy.data.materials["sea"].node_tree.nodes["glint_sun"]
+            got = [toward.inputs[axis].default_value for axis in "XYZ"]
+            elevation = math.degrees(world["sun_elevation"])
+            assert got == pytest.approx(angles.direction(70.0, elevation).tolist())
+        finally:
+            world["sun_rotation"] = was
+            world.update_tag()
+            bpy.context.scene.frame_set(bpy.context.scene.frame_current)
+
     def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
         nodes = bpy.data.node_groups["haze"].nodes
         beta = nodes["haze_beta"]
@@ -2248,6 +2265,12 @@ class TestPhotographedThermalSky:
 
     def test_the_photo_is_not_kept(self) -> None:
         assert "white.hdr" not in bpy.data.images
+
+
+def test_the_surface_drifts_downwind_off_every_axis() -> None:
+    clip = variant(sea={"wind_from_deg": 60.0}, outputs={"duration_s": 1.0})
+    east, north = sea.surface_drift(clip.sea, clip.outputs)
+    assert angles.bearing_deg(east, north) == pytest.approx(-120.0)
 
 
 def test_a_cloud_brightens_the_sea_under_its_bearing() -> None:

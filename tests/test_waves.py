@@ -7,7 +7,7 @@ import pytest
 
 from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
-from seascape.physics.waves import sea
+from seascape.physics.waves import sea, surface
 from tests import gerstner
 
 
@@ -221,6 +221,15 @@ def test_the_tallest_waves_are_the_fewest_carrying_the_share() -> None:
 def test_waves_run_away_from_the_wind() -> None:
     from_east = field(7.0, wind_from_deg=90.0)
     assert np.mean([w.k_east_rad_m for w in from_east]) < 0.0
+
+
+def test_a_wind_off_every_axis_runs_its_sea_downwind() -> None:
+    """From 60, so a mirror in east or north alone shows."""
+    built = field(7.0, wind_from_deg=60.0)
+    k_east = sum(w.k_east_rad_m * w.amplitude_m**2 for w in built)
+    k_north = sum(w.k_north_rad_m * w.amplitude_m**2 for w in built)
+    # The spread's random strata leave the energy-weighted mean a few degrees off.
+    assert math.degrees(math.atan2(k_east, k_north)) == pytest.approx(-120.0, abs=5.0)
 
 
 def test_a_crest_travels_at_its_phase_speed() -> None:
@@ -603,6 +612,15 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
         (math.atan(rise_along), -math.atan(rise_starboard)), abs=1e-5
     )
     assert abs({"pitch": pitch, "roll": roll}[expected]) > 1e-4
+
+
+def test_an_oblique_wave_meets_an_oblique_hull_ahead_and_from_port() -> None:
+    """Toward 30 on a heading of 75: 45 to port of the bow."""
+    wave = waves.Wave(0.5, 0.2, math.radians(30.0), 1.0)
+    hull = waves.Waterplane(heading_rad=math.radians(75.0))
+    along, across = surface._along_across((wave,), hull)
+    k = wave.k_rad_m * math.sqrt(0.5)
+    assert (along[0], across[0]) == pytest.approx((k, -k))
 
 
 @pytest.mark.parametrize("length_m", [0.0, 20.0, 90.0])
