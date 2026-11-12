@@ -566,8 +566,9 @@ def add_vessels(
     vessels: defaultdict[str, list[bpy.types.Object]] = defaultdict(list)
     for i, spec in enumerate(scenario.objects):
         anchors = _object(spec, radius_m, hulls, outputs, trails, afloat)
-        if spec.colour is not None:
-            painting.append((anchors, manifest()[spec.asset].colours[spec.colour]))
+        # The asset's own colour is its own paint: nothing to paint over it.
+        if (srgb := manifest()[spec.asset].colours.get(spec.colour or "")) is not None:
+            painting.append((anchors, srgb))
         wearing.append((anchors, spec.wear, f"wear/objects/{i}"))
         vessels[spec.asset] += anchors
     if (ring := scenario.targets) is not None:

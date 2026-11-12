@@ -134,8 +134,8 @@ class Object(Model):
     # Limitation: LWIR keeps `paint_absorptance`, whatever the colour.
     colour: str | None = Field(
         default=None,
-        description="One of the colours its asset lists in `colours`; None keeps the "
-        "asset's own. EO only.",
+        description="One of the colours its asset lists in `colours`, or its own "
+        "`colour`; None keeps its own too. EO only.",
     )
     draught_m: float | None = Field(default=None, ge=0.0, description=_DRAUGHT)
     count: int = Field(
@@ -166,7 +166,7 @@ class Object(Model):
     def _sold_in_its_colour(self) -> "Object":
         if self.colour is None:
             return self
-        if self.colour not in (sold := assets.manifest()[self.asset].colours):
+        if self.colour not in (sold := assets.manifest()[self.asset].sold_in):
             raise ValueError(
                 f"{self.asset} comes in {sorted(sold) or 'its own colour only'}, "
                 f"not {self.colour}"

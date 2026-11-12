@@ -1892,7 +1892,7 @@
         },
         "colour": {
           "title": "Colour",
-          "description": "One of the colours its asset lists in `colours`; None keeps the asset's own. EO only.",
+          "description": "One of the colours its asset lists in `colours`, or its own `colour`; None keeps its own too. EO only.",
           "default": null,
           "anyOf": [
             {
