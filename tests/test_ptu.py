@@ -5,7 +5,9 @@ import math
 import numpy as np
 import pytest
 
+from seascape.config import load
 from seascape.physics import ptu
+from tests.scenarios import SYNC_SENTRY
 
 
 @pytest.mark.parametrize("target_deg", [0.0, -2.5])
@@ -46,12 +48,7 @@ def test_a_pitch_step_turns_the_head_no_faster_than_the_unit_can() -> None:
     assert np.abs(speed).max() == pytest.approx(ptu.MAX_SPEED_DEG_S, rel=0.02)
 
 
-def test_a_head_started_past_the_zenith_starts_on_target() -> None:
-    # Deck and mount pitched 165 between them: the IMU reads the pitch folded.
-    def head_deg(_t_s: float, held: float) -> float:
-        up = math.radians(165.0 + held)
-        return math.degrees(math.asin(math.sin(up)))
-
-    tilt = ptu.tilt_deg(head_deg, [0.0], 0.0)
-
-    assert head_deg(0.0, tilt[0]) == pytest.approx(0.0, abs=0.1)
+def test_a_deck_and_mount_that_reach_the_zenith_are_refused() -> None:
+    steep = [{"ownship": {"pitch_deg": 60.0}, "rigs": {"mast": {"pitch_deg": 30.0}}}]
+    with pytest.raises(ValueError, match="ptu can pass the zenith"):
+        load(SYNC_SENTRY, steep)
