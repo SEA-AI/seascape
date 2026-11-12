@@ -116,8 +116,7 @@ def set_output(
     sc.render.image_settings.color_depth = depth
     sc.render.image_settings.quality = JPEG_QUALITY
     sc.render.use_persistent_data = True
-    # The GPU compositor takes a 3600x1080 frame in 2.15 s, the CPU in 6.52 s, on a
-    # 2080 Ti; a machine without a GPU aborts on it.
+    # The GPU compositor is the faster; on a machine without a GPU it aborts the render.
     sc.render.compositor_device = device
     # A fixed seed would hold the sample noise still while the scene moves under it.
     sc.cycles.use_animated_seed = True

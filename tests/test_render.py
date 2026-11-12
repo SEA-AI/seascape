@@ -369,8 +369,8 @@ def _plane_seen_from_above(
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     sc.render.resolution_x, sc.render.resolution_y = resolution
-    # As a build leaves it. Factory settings put the compositor on the GPU, which a
-    # machine without one aborts on.
+    # Factory settings put the compositor on the GPU, which a machine without one
+    # aborts on.
     sc.render.compositor_device = "CPU"
     mesh = bpy.data.meshes.new("plane")
     mesh.from_pydata(corners, [], [(0, 1, 2, 3)])
