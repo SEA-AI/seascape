@@ -206,8 +206,8 @@ def _worn(
 ) -> bpy.types.NodeSocket:
     tree = masks.id_data
     for layer in wear.COVERS:
-        if layer == "stain":
-            # Judgement: the stain is the splash zone, kept wet at the bulk water's
+        if layer in ("stain", "fouling"):
+            # Judgement: both are the splash zone's, kept wet at the bulk water's
             # temperature.
             covered = water
         elif layer not in thermal.WEAR_LAYERS:
