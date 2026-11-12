@@ -439,7 +439,7 @@ class Farm(Model):
         """Range and bearing, row by row."""
         along_m, across_m = (d * self.turbine.rotor.diameter_m for d in self.spacing_d)
         first = self.range_m * angles.direction(self.bearing_deg, 0.0)[:2]
-        # A row's starboard and ahead in the world's (east, north), as columns.
+        # Columns: a row's starboard and ahead, in (east, north).
         row = angles.turned(self.row_bearing_deg, 0.0)[:2, :2]
         placed = []
         for r in range(self.rows):

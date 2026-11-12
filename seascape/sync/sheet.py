@@ -530,8 +530,8 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     )
     rig_at = rig_track(course.scenario, course.name)
     times = course.scenario.outputs.times_s
-    # Unwrapped, as the turn can pass astern; a turn of 180 or more between two
-    # frames unwraps wrong.
+    # Unwrapped, as the turn can pass astern; wrong if it turns 180 or more between
+    # two frames.
     headings = np.unwrap([rig_at(t).heading_rad for t in times])
     heading_deg = math.degrees(headings[0])
     turned = np.degrees(headings - headings[0]).tolist()

@@ -561,7 +561,7 @@ class TestEoBand:
         assert sky.sun_size == pytest.approx(4 * SUN_SLOPE_RADIUS)
 
     def test_the_glint_follows_the_world_s_sun_off_every_axis(self) -> None:
-        """At 70, so a mirror in east or north alone shows."""
+        """At 70, off both axes, so a sign slip in east or north shows."""
         world = bpy.data.worlds["sky"]
         was = world["sun_rotation"]
         world["sun_rotation"] = math.radians(70.0)

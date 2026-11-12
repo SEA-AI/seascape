@@ -40,7 +40,7 @@ def _frustum(
 ) -> bpy.types.Object:
     """A wireframe pyramid from `camera` along its view: nested ones stay visible."""
     spec = mount.camera
-    # In OpenCV's camera axes, right, down and ahead.
+    # In image axes: x right, y down.
     corners_px = np.array([(-1, 1), (1, 1), (1, -1), (-1, -1)]) / 2
     corners_px = corners_px * (spec.width_px, spec.height_px)
     if spec.lens.fisheye is not None:
@@ -53,7 +53,7 @@ def _frustum(
             np.column_stack([corners_px * 2 * across / spec.width_px, np.ones(4)])
             * length_m
         )
-    # The frustum is the camera's child, in Blender's camera axes.
+    # Parented to the camera, so in Blender's camera axes.
     far = far_cv @ np.array(BLENDER_TO_CV.to_3x3()).T
     mesh = bpy.data.meshes.new(camera.name)
     mesh.from_pydata(

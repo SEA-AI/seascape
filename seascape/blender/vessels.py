@@ -505,8 +505,8 @@ def ride(
             sea = motion.rocking(pose, hull=hull.hull, field=field, tall=tall, t_s=t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (sea.pitch_rad, sea.roll_rad, 0.0)
-            # Straight up in the world, through the tilt keyed on the anchor; the
-            # heading turns about up, so it leaves up where it is.
+            # Straight up in the world, in the anchor's tilted frame; the heading
+            # turns about up, so it drops out.
             attitude.location = scripted(t_s).T @ (0.0, 0.0, sea.heave_m)
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
