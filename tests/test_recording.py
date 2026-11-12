@@ -509,7 +509,7 @@ def _written(run: Path) -> dict[str, object]:
         elif p.suffix == ".json":
             text = p.read_text()
             files[p.relative_to(into).as_posix()] = json.loads(
-                text, parse_float=lambda f: round(float(f), 9)
+                text, parse_float=lambda f: round(float(f), 9) + 0.0
             )
     return files
 
