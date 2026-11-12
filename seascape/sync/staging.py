@@ -133,7 +133,8 @@ def _edges(camera: CameraCalibration) -> np.ndarray:
             [across, (camera.height_px - 0.5 - cy) / fy, 1.0],
         ]
     )
-    rays = rows @ np.array(camera.extrinsics["rig"])[:3, :3].T
+    R_r_c = np.array(camera.extrinsics["rig"])[:3, :3]
+    rays = rows @ R_r_c.T
     return rays / np.linalg.norm(rays, axis=1, keepdims=True)
 
 
@@ -312,7 +313,8 @@ def stage(scenario: Scenario) -> Staging:
     middle = math.radians(rig.axis_deg((narrow.left_deg + narrow.right_deg) / 2))
     east = start.east_m + box_m * math.sin(middle)
     north = start.north_m + box_m * math.cos(middle)
-    # Broadside to the line of sight from the origin.
+    # Broadside to the line of sight from the origin. World +Y is the ownship's bow
+    # at t = 0, so a world bearing is the scenario's.
     entries: list[dict[str, Any]] = [
         {
             "asset": CONTAINER,

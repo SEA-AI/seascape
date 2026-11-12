@@ -197,7 +197,7 @@ def drifting(
 ) -> Path:
     """From `range_m` out along `bearing_deg` at t = 0, under way along its heading
     and drifting about that pose: a sway across it, and a surge along it at twice the
-    rate.
+    rate. Both bearings are clockwise from world +Y, the ownship's bow at t = 0.
     """
     start = range_m * angles.direction(bearing_deg, 0.0)[:2]
     # The hull's starboard and bow axes in the world's (east, north), as columns.

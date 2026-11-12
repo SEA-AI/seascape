@@ -62,11 +62,11 @@ def _joined(
         bpy.ops.object.join()
     hull = meshes[0]
     frame = Matrix.Identity(4) if frame is None else frame
-    baked = frame.inverted() @ hull.matrix_world
+    T_f_h = frame.inverted() @ hull.matrix_world
     hull.parent = None
     hull.matrix_parent_inverse.identity()
-    hull.data.transform(baked)
-    if baked.determinant() < 0:  # a mirrored part turns inside out
+    hull.data.transform(T_f_h)
+    if T_f_h.determinant() < 0:  # a mirrored part turns inside out
         hull.data.flip_normals()
     hull.matrix_basis = frame
     for obj in others:
@@ -144,8 +144,8 @@ def box_corners(
         evaluated.to_mesh_clear()
         if not co.size:
             continue
-        to = np.array((into or Matrix()) @ obj.matrix_world)
-        moved = co.reshape(-1, 3) @ to[:3, :3].T + to[:3, 3]
+        T_i_o = np.array((into or Matrix()) @ obj.matrix_world)
+        moved = co.reshape(-1, 3) @ T_i_o[:3, :3].T + T_i_o[:3, 3]
         points += [moved.min(axis=0), moved.max(axis=0)]
     if not points:
         return []

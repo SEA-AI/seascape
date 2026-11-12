@@ -611,19 +611,19 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     # Limitation: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.
     (attitude,) = anchor.children
-    to_world = np.array(attitude.matrix_world)
-    to_hull = np.linalg.inv(to_world)
+    T_w_a = np.array(attitude.matrix_world)
+    T_a_w = np.linalg.inv(T_w_a)
     crossings = []
     for part in mesh_objects([anchor]):
         mesh = part.data
         local = faces.floats(mesh.vertices, "co", 3 * len(mesh.vertices))
         ends = faces.ints(mesh.edges, "vertices", 2 * len(mesh.edges))
-        m = to_hull @ np.array(part.matrix_world)
-        hull = local.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+        T_a_p = T_a_w @ np.array(part.matrix_world)
+        hull = local.reshape(-1, 3) @ T_a_p[:3, :3].T + T_a_p[:3, 3]
         a, b = hull[ends.reshape(-1, 2)].transpose(1, 0, 2)
         cross = a[:, 2] * b[:, 2] < 0
         a, b = a[cross], b[cross]
         t = -a[:, 2] / (b[:, 2] - a[:, 2])
         at = a + t[:, None] * (b - a)
-        crossings.append((at @ to_world[:3, :3].T + to_world[:3, 3])[:, :2])
+        crossings.append((at @ T_w_a[:3, :3].T + T_w_a[:3, 3])[:, :2])
     return np.concatenate(crossings)
