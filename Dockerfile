@@ -11,9 +11,8 @@ RUN apt-get update \
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
     UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
-# OptiX compiles Cycles' kernels on a container's first render, 96 s on a 2080 Ti,
-# and caches them in /var/tmp, which a container loses. In the cache volume, the
-# next container's first render takes 1.6 s.
+# OptiX caches the kernels it compiles on a first render in /var/tmp, which a
+# container loses; the cache volume keeps them.
 ENV OPTIX_CACHE_PATH=/root/.cache/seascape/optix
 
 WORKDIR /seascape
