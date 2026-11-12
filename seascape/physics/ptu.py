@@ -1,5 +1,5 @@
 """A pan-tilt unit holding its head's pitch: the tilt loop of a FLIR PTU-5 as
-SEA.AI's firmware drives it (POWER_Stabilization, `ptu_control_c`, `stabilize_ptu`).
+SEA.AI's PTU firmware drives it.
 """
 
 from collections.abc import Callable, Sequence
@@ -31,7 +31,7 @@ def tilt_deg(
         head_pitch_deg: The head's pitch, up, that the IMU on it reads, given a time
             from `-SETTLE_S` and the unit's tilt.
         times_s: Ascending, from 0.
-        target_deg: The head's pitch the loop holds, up; `target_inclination`.
+        target_deg: The head's pitch the loop holds, up; Oceanus's target inclination.
     """
     ticks = np.arange(-SETTLE_S, times_s[-1] + TICK_S, TICK_S)
     tilt = np.empty_like(ticks)

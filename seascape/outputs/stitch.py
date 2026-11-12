@@ -1,5 +1,5 @@
-"""Two pinholes' frames stitched side by side, as the recorder's horizontal stitching
-does (Core-Backend's `ThermalFusion`).
+"""Two pinholes' frames stitched side by side, as Oceanus's horizontal stitching
+does.
 """
 
 import math
