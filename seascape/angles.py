@@ -7,6 +7,9 @@ import math
 import numpy as np
 import numpy.typing as npt
 
+# A +X right, +Y ahead, +Z up frame's axes as OpenCV's: +X right, +Y down, +Z ahead.
+TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
+
 
 def wrapped_deg(angle_deg: float) -> float:
     """The same direction in [-180, 180)."""

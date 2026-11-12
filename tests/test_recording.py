@@ -8,9 +8,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from seascape import angles
 from seascape.config import Crop, Stitch, Undistortion, Video
 from seascape.outputs import recording
-from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
 from seascape.physics import earth
 
@@ -64,7 +65,7 @@ def make_run(
     panned, tilted and in a turn of the rig `turned`, else of the ownship, at
     `scan_deg_s`.
     """
-    body_to_cv = pose(TO_CV)
+    body_to_cv = pose(angles.TO_CV)
     camera_to_pod = pose(
         rotation(0, CAMERA_PITCH_DEG, camera_yaw_deg), (0.1, 0, 0)
     ) @ np.linalg.inv(body_to_cv)

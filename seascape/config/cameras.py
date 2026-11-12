@@ -320,6 +320,14 @@ class Camera(Model):
             return self.fisheye_focal_px
         return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
 
+    def pose(self) -> np.ndarray:
+        """(4, 4) the camera to its rig, in OpenCV's axes: yawed, then pitched about
+        its own transverse axis, at the rig's origin.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.yaw_deg, self.pitch_deg) @ angles.TO_CV.T
+        return pose
+
     @property
     def fisheye_focal_px(self) -> float:
         """A fisheye's `fx`, the scale of its distorted angle in pixels."""

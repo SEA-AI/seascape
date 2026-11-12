@@ -16,10 +16,11 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
+from seascape import angles
 from seascape.angles import attitude_deg, wrapped_deg
 from seascape.config import Crop, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
-from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration
 
 COLUMNS = [
     "counter",
@@ -122,7 +123,7 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
     rig = np.array(camera.extrinsics["rig"])
-    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ TO_CV)
+    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ angles.TO_CV)
     # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
     # port, pitch positive down.
     pitch, yaw = -pitch, -yaw
