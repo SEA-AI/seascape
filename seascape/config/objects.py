@@ -438,24 +438,14 @@ class Farm(Model):
     def positions(self) -> list[tuple[float, float]]:
         """Range and bearing, row by row."""
         along_m, across_m = (d * self.turbine.rotor.diameter_m for d in self.spacing_d)
-        bearing = math.radians(self.bearing_deg)
-        row = math.radians(self.row_bearing_deg)
+        first = self.range_m * angles.direction(self.bearing_deg, 0.0)[:2]
+        # A row's starboard and ahead in the world's (east, north), as columns.
+        row = angles.turned(self.row_bearing_deg, 0.0)[:2, :2]
         placed = []
         for r in range(self.rows):
             shift = 0.5 if self.staggered and r % 2 else 0.0
             for c in range(self.columns):
-                ahead_m = along_m * (c + shift)
-                # Starboard of a row's bearing is (cos, -sin).
-                east = (
-                    self.range_m * math.sin(bearing)
-                    + ahead_m * math.sin(row)
-                    + r * across_m * math.cos(row)
-                )
-                north = (
-                    self.range_m * math.cos(bearing)
-                    + ahead_m * math.cos(row)
-                    - r * across_m * math.sin(row)
-                )
+                east, north = first + row @ (r * across_m, along_m * (c + shift))
                 placed.append(
                     (math.hypot(east, north), angles.bearing_deg(east, north))
                 )

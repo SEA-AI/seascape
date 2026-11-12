@@ -43,6 +43,7 @@ from seascape.physics.waves.sea import (
     snap_error,
     spreading_delta,
     swell,
+    toward_rad,
     wind_sea,
 )
 from seascape.physics.waves.slopes import (
@@ -151,6 +152,7 @@ __all__ = [
     "spreading_delta",
     "swell",
     "tallest",
+    "toward_rad",
     "turbulence_intensity",
     "twinkle_hz",
     "unresolved_slope_variances",

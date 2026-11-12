@@ -8,7 +8,7 @@ from itertools import chain, combinations
 
 import bpy
 import numpy as np
-from mathutils import Euler, Vector
+from mathutils import Vector
 
 from seascape import angles, motion
 from seascape.angles import yaw
@@ -469,16 +469,13 @@ def _wake(
     """
     if spec.speed_mps <= 0.0:
         return []
-    bearing = math.radians(bearing_deg)
+    east, north, _ = spec.range_m * angles.direction(bearing_deg, 0.0)
     return [
         wakes.Wake(
             speed_mps=spec.speed_mps,
             length_m=anchor["length_m"],
             beam_m=anchor["beam_m"],
-            start_m=(
-                spec.range_m * math.sin(bearing),
-                spec.range_m * math.cos(bearing),
-            ),
+            start_m=(float(east), float(north)),
             heading_rad=math.radians(heading_deg),
         )
     ]
@@ -502,18 +499,15 @@ def ride(
     keyed = len(outputs.times_s) > 1
     for hull in afloat:
         (attitude,) = hull.anchor.children
+        scripted = motion.tilted(hull.path, hull=None, field=(), tall=())
         for frame, t_s in enumerate(outputs.times_s):
             pose = hull.path(t_s)
             sea = motion.rocking(pose, hull=hull.hull, field=field, tall=tall, t_s=t_s)
             # +x turns the bow up; +y turns starboard down.
             attitude.rotation_euler = (sea.pitch_rad, sea.roll_rad, 0.0)
-            # Straight up in the world, through the tilt keyed on the anchor.
-            tilted = Euler(
-                (pose.pitch_rad, pose.roll_rad, yaw(math.degrees(pose.heading_rad))),
-                "YXZ",
-            )
-            up = Vector((0.0, 0.0, sea.heave_m))
-            attitude.location = tilted.to_quaternion().inverted() @ up
+            # Straight up in the world, through the tilt keyed on the anchor; the
+            # heading turns about up, so it leaves up where it is.
+            attitude.location = scripted(t_s).T @ (0.0, 0.0, sea.heave_m)
             if keyed:
                 attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
                 attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
