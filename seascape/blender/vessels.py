@@ -8,7 +8,7 @@ from itertools import chain, combinations
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Euler, Vector
 
 from seascape import angles, motion
 from seascape.angles import yaw
@@ -167,15 +167,12 @@ def _vessel(
     anchor["length_m"], anchor["beam_m"] = length_m, beam_m
     anchor["height_m"] = parts[0]["height_m"] + rise_m
     anchor["engine_off_min"] = condition.engine_off_min
-    # Pitch and roll go here, so the anchor keeps the pose labels read.
+    # Heave goes here, straight up in the world.
     attitude = empty(f"{name}_attitude", anchor)
     # Lifts the hull inside the attitude, so it pitches and rolls about its waterline.
     draught = empty(f"{name}_draught", attitude, (0.0, 0.0, rise_m))
     for part in parts:
         part.parent = draught
-    # YXZ euler is Rz @ Rx @ Ry: roll about the keel, innermost. motion.tilted
-    # composes the same order.
-    attitude.rotation_mode = "YXZ"
     return anchor, hull
 
 
@@ -487,8 +484,8 @@ def ride(
     tall: tuple[waves.Wave, ...],
     outputs: Outputs,
 ) -> None:
-    """Key each hull's pitch and roll to the sea under it along its path, and its heave
-    to the waves that are geometry.
+    """Key each hull's pitch and roll, `motion.tilt` of the sea under it and its
+    scripted trim and list, and its heave to the waves that are geometry.
 
     Args:
         afloat: The hulls, each anchor over its attitude empty.
@@ -498,19 +495,21 @@ def ride(
     """
     keyed = len(outputs.times_s) > 1
     for hull in afloat:
-        (attitude,) = hull.anchor.children
-        scripted = motion.tilted(hull.path, hull=None, field=(), tall=())
+        anchor = hull.anchor
+        (attitude,) = anchor.children
         for frame, t_s in enumerate(outputs.times_s):
             pose = hull.path(t_s)
             sea = motion.rocking(pose, hull=hull.hull, field=field, tall=tall, t_s=t_s)
-            # +x turns the bow up; +y turns starboard down.
-            attitude.rotation_euler = (sea.pitch_rad, sea.roll_rad, 0.0)
+            pitch_rad, roll_rad = motion.tilt(pose, sea)
+            # The anchor's YXZ euler: +x turns the bow up, +y turns starboard down.
+            anchor.rotation_euler[0], anchor.rotation_euler[1] = pitch_rad, roll_rad
             # Straight up in the world, in the anchor's tilted frame; the heading
             # turns about up, so it drops out.
-            attitude.location = scripted(t_s).T @ (0.0, 0.0, sea.heave_m)
+            tilt = Euler((pitch_rad, roll_rad, 0.0), "YXZ").to_matrix()
+            attitude.location = tilt.transposed() @ Vector((0.0, 0.0, sea.heave_m))
             if keyed:
-                attitude.keyframe_insert("rotation_euler", index=0, frame=frame)
-                attitude.keyframe_insert("rotation_euler", index=1, frame=frame)
+                anchor.keyframe_insert("rotation_euler", index=0, frame=frame)
+                anchor.keyframe_insert("rotation_euler", index=1, frame=frame)
                 attitude.keyframe_insert("location", frame=frame)
 
 
@@ -605,8 +604,8 @@ def waterline_m(anchor: bpy.types.Object) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
 
     The waterline is z = 0 in the attitude's frame, which heaves, pitches and rolls
-    with the waves: `_fit` puts the keel the asset's draught below it, and `_vessel`
-    lifts it by `rise_m`.
+    with the waves and its scripted trim and list: `_fit` puts the keel the asset's
+    draught below it, and `_vessel` lifts it by `rise_m`.
     """
     # Limitation: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.

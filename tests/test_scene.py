@@ -904,8 +904,8 @@ def test_a_lighter_ownship_sees_as_far_as_its_rig_raised_by_the_rise() -> None:
 
 
 def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
-    """The sea pitches, rolls and heaves the hull's attitude, under its scripted
-    motion and course, and the cameras stay fixed in the vessel frame.
+    """The sea pitches and rolls the hull outside its scripted motion and heaves its
+    attitude, and the cameras stay fixed in the vessel frame.
     """
     scenario = variant(
         ownship={
@@ -929,7 +929,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         tall,
     )
     radius = earth.earth_radius_m(scenario.sea.refraction_k)
-    roll_s, heave_s = scenario.outputs.period_s(8.0), scenario.outputs.period_s(6.0)
+    heave_s = scenario.outputs.period_s(6.0)
     rocked, mounted, still = [], [], []
 
     for frame, t_s in enumerate(scenario.outputs.times_s):
@@ -949,12 +949,11 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
         mounted.append(np.array(calibration.extrinsics["ownship"]))
 
-        assert built.anchor.rotation_euler[1] == pytest.approx(
-            math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6
+        tilt_roll, tilt_pitch, _ = angles.attitude_deg(deck(t_s))
+        assert tuple(built.anchor.rotation_euler)[:2] == pytest.approx(
+            (math.radians(tilt_pitch), math.radians(tilt_roll)), abs=1e-6
         )
-        assert tuple(attitude.rotation_euler) == pytest.approx(
-            (pitch, roll, 0.0), abs=1e-6
-        )
+        assert tuple(attitude.rotation_euler) == (0.0, 0.0, 0.0)
         # The deck the pan-tilt loop holds against is the one Blender draws. The up
         # row is all the loop reads, and the heading leaves it be. 1e-6: Blender's
         # matrix_world is float32, a few ulp near 1 down the parent chain.
@@ -2010,7 +2009,7 @@ class TestDrifting:
                 path(t_s).north_mps,
             )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
-            assert tuple(attitude.rotation_euler[:2]) == pytest.approx(
+            assert tuple(anchor.rotation_euler[:2]) == pytest.approx(
                 (pitch, roll), abs=1e-5
             )
             assert attitude.location.z == pytest.approx(

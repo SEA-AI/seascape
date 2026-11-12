@@ -326,15 +326,36 @@ def _rolled(rad: float) -> np.ndarray:
     return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
 
 
+def tilt(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
+    """A hull's pitch, bow up, and roll, starboard down, in radians: the sea's tilt
+    `sea` outside the trim and list `pose` scripts, which are relative to the water.
+    Two tilts composed also yaw the hull; that yaw is dropped, as the hull's heading
+    is its track's (Fossen, Handbook of Marine Craft Hydrodynamics, 2011, §2.2: yaw
+    of the whole attitude).
+    """
+    if sea is None:
+        return pose.pitch_rad, pose.roll_rad
+    R_level_hull = (
+        _pitched(sea.pitch_rad)
+        @ _rolled(sea.roll_rad)
+        @ _pitched(pose.pitch_rad)
+        @ _rolled(pose.roll_rad)
+    )
+    # As `angles.attitude_deg` reads them: the up row, which a yaw leaves alone.
+    return (
+        math.asin(R_level_hull[2, 1]),
+        math.atan2(-R_level_hull[2, 0], R_level_hull[2, 2]),
+    )
+
+
 def tilted(
     path: Path,
     hull: waves.Waterplane | None,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
 ) -> Deck:
-    """The deck tilted by the pitch and roll `path` scripts, then, under `hull`, by
-    the sea's, each with roll innermost as the anchor's and the attitude empty's YXZ
-    eulers key them.
+    """`R_level_ownship` at a time: its `tilt` by the pitch and roll `path` scripts
+    and, under `hull`, the sea's.
 
     Args:
         path: Where it is, where its bow points and how it is tilted.
@@ -345,11 +366,11 @@ def tilted(
 
     def at(t_s: float) -> np.ndarray:
         pose = path(t_s)
-        deck = _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad)
+        sea = None
         if hull is not None:
             sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
-            deck = deck @ _pitched(sea.pitch_rad) @ _rolled(sea.roll_rad)
-        return deck
+        pitch_rad, roll_rad = tilt(pose, sea)
+        return _pitched(pitch_rad) @ _rolled(roll_rad)
 
     return at
 
