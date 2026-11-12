@@ -1,6 +1,6 @@
 ---
 name: frames
-description: Coordinate frames, poses and angle conventions in seascape, the robotics way: one internal convention, transforms named by their frames and composed by matching letters, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, Core-Backend, NMEA). Where code lives is `architecture`'s.
+description: Coordinate frames, poses and angle conventions in seascape, the robotics way: one internal convention, transforms named by their frames and composed by matching letters, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, a product's recording, NMEA). Where code lives is `architecture`'s.
 ---
 
 # Frames
@@ -11,8 +11,8 @@ Every angle and vector belongs to a frame. Name the frame, compose by frames, an
 
 | Frame | Axes | Built by |
 |---|---|---|
-| world | +X east, +Y north, +Z up, at sea level | `motion.track`, `motion.tilted` |
-| vessel | +X starboard, +Y bow, +Z up, at the waterline under midships | the hull's pose |
+| world | +X east, +Y north, +Z up, at sea level | the scene's origin |
+| vessel | +X starboard, +Y bow, +Z up, at the waterline under midships | `motion.track`, `motion.tilted`: `T_w_v` |
 | rig | the vessel's axes turned to the rig's axis, at its mount | `Rig.pose(pan, tilt)` |
 | camera | OpenCV: +X right, +Y down, +Z along the optical axis | `Camera.pose()` |
 
@@ -20,18 +20,18 @@ Inside seascape, a bearing is clockwise from north or the bow and an elevation i
 
 | Format | Frame | Where it applies |
 |---|---|---|
-| OpenCV | right, down, forward | calibration extrinsics; `angles.TO_CV` |
+| OpenCV | right, down, forward | `angles.TO_CV`; calibration `extrinsics[f]` is `T_f_c`, the inverse of OpenCV's `[R\|t]` |
 | Blender camera | right, up, backward | `blend.BLENDER_TO_CV` |
-| FLU (ROS REP 103) | forward, left, up: yaw to port, pitch nose down | Core-Backend's pan, tilt and camera rpy |
+| FLU (ROS REP 103) | forward, left, up: between body frames, yaw to port, pitch nose down | a product recording's camera rpy |
 | NED (aerospace, NMEA 2000) | forward, right, down: yaw clockwise, pitch nose up | NMEA attitude and heading |
 
 ## Rules
 
-1. **Name a transform by its frames.** `T_a_b` is frame b's pose in frame a: it takes coordinates in b to coordinates in a. Compose by matching inner letters, `T_w_c = T_w_v @ T_v_r @ T_r_c`; an inverse swaps them, `T_b_a = inv(T_a_b)`. A product whose inner letters don't match is the bug. `R_a_b` is the rotation alone; `ruff.toml` lets `T`, `R`, `H`, `K` and `T_*`, `R_*`, `H_*` through pep8-naming.
+1. **Name a transform by its frames.** `T_a_b` is frame b's pose in frame a: it takes coordinates in b to coordinates in a. Compose by matching inner letters, `T_w_c = T_w_v @ T_v_r @ T_r_c`; an inverse swaps them, `T_b_a = inv(T_a_b)`. A product whose inner letters don't match is the bug. `R_a_b` is the rotation alone; `ruff.toml` lets `T`, `R`, `H`, `K`, `B` and `T_*`, `R_*`, `H_*`, `K_*` through pep8-naming.
 2. **A vector or angle says its frame,** in its name or its docstring: `up_deg` of what, above which horizon.
 3. **Compose matrices, never angles.** Adding a rig's yaw to a camera's yaw is AGENTS.md's trap; it holds only on a level, centred chain. Build each link with `angles.turned` or a `.pose`, multiply, read back once.
 4. **Euler angles are a readout,** taken from a finished rotation by one decomposition (`angles.attitude_deg`, `angles.bearing_deg`, `angles.elevation_deg`, `angles.pitch_to_deg`), never stored and fed back in.
-5. **Convert a convention by a change of basis,** `B @ R @ B.T` with a named constant (`TO_CV`, `BLENDER_TO_CV`), then decompose. A sign flip per field hides which frame the field lives in; it is the symptom of a missing basis.
+5. **Convert a convention by a change of basis,** with a named constant, then decompose. Re-axing both frames is `R_a'_b' = B_a @ R_a_b @ B_b.T`, and `B @ R @ B.T` only when both take the same `B`; re-axing the child alone is `R_a_b @ B_b.T`, as `Camera.pose` does with `TO_CV`. A sign flip per field hides which frame the field lives in; it is the symptom of a missing basis.
 6. **Convert at the boundary.** The code that writes a file, or hands a matrix to Blender, converts; everything before it stays in seascape's convention.
 7. **Draw the chain** in a docstring or the PR when a change adds a link: which frames, which way each arrow points.
 
