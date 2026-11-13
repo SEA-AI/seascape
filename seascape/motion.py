@@ -366,7 +366,7 @@ def _afloat(
     tall: tuple[waves.Wave, ...],
     t_s: float,
 ) -> tuple[np.ndarray, float]:
-    """`R_level_ownship` and the sea's heave at `t_s`; `tilted`'s arguments."""
+    """`R_level_waterline` and the sea's heave at `t_s`; `tilted`'s arguments."""
     pose = path(t_s)
     if hull is None:
         return _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad), 0.0
@@ -490,16 +490,17 @@ def head_pose(
     unit's tilt holding its elevation on a hull tilted `tilt`.
 
     Raises:
-        KeyError: Called at a time that is no frame's, where the loop holds no tilt.
+        KeyError: On a pan-tilt unit, called at a time that is no frame's, where the
+            loop holds no tilt.
     """
     rig = scenario.rigs[name]
     pan = panned_deg(scenario.turn, name)
+    if rig.ptu is None:
+        return lambda t_s: rig.pose(pan(t_s))
     times = scenario.outputs.times_s
-    held = dict.fromkeys(times, 0.0)
-    if rig.ptu is not None:
-        held = dict(
-            zip(times, map(float, held_tilt_deg(scenario, name, tilt)), strict=True)
-        )
+    held = dict(
+        zip(times, map(float, held_tilt_deg(scenario, name, tilt)), strict=True)
+    )
     return lambda t_s: rig.pose(pan(t_s), held[t_s])
 
 

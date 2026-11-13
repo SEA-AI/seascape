@@ -1,10 +1,9 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
-from typing import cast
 
 import bpy
 import numpy as np
@@ -39,8 +38,8 @@ from seascape.motion import (
     track,
     waterline_pose,
 )
-from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
-from seascape.physics import earth, wakes, waves
+from seascape.outputs.calibration import CameraCalibration, intrinsics, matrix4
+from seascape.physics import earth, wakes
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -49,8 +48,8 @@ class Built:
     belongs to whoever took it first, and an imported asset can carry any name.
     """
 
-    # The hull's root, named ownship in Blender: its track, heading and scripted trim
-    # and list.
+    # The hull's root, named ownship in Blender: `motion.waterline_pose`, heave
+    # included.
     root: bpy.types.Object
     ownship: bpy.types.Object  # the rigs' parent: a hull's draught, or the root
     heads: dict[str, bpy.types.Object]
@@ -60,12 +59,10 @@ class Built:
     # rig's `T_ownship_head` by name.
     ownship_pose: Callable[[float], np.ndarray]
     head_poses: dict[str, Callable[[float], np.ndarray]]
-    times_s: Sequence[float]
 
 
-def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
-    """A built camera's geometry at the scene's current frame."""
-    t_s = built.times_s[bpy.context.scene.frame_current]
+def calibrate(built: Built, mount: Mount, image: str, t_s: float) -> CameraCalibration:
+    """A built camera's geometry at `t_s`, a frame's time."""
     T_head_camera = mount.camera.pose()
     T_ownship_camera = built.head_poses[mount.rig_name](t_s) @ T_head_camera
     T_world_camera = built.ownship_pose(t_s) @ T_ownship_camera
@@ -82,9 +79,9 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         K=intrinsics(mount.camera),
         distortion=mount.camera.lens.fisheye,
         extrinsics={
-            "world": _rows(T_world_camera),
-            "ownship": _rows(T_ownship_camera),
-            "head": _rows(T_head_camera),
+            "world": matrix4(T_world_camera),
+            "ownship": matrix4(T_ownship_camera),
+            "head": matrix4(T_head_camera),
         },
     )
 
@@ -98,10 +95,6 @@ def look_through(
     sc.render.resolution_x = mount.camera.width_px
     sc.render.resolution_y = mount.camera.height_px
     respond(mount, rng)
-
-
-def _rows(m: np.ndarray) -> Matrix4:
-    return cast(Matrix4, tuple(map(tuple, m.tolist())))
 
 
 def _viewport(far_m: float) -> None:
@@ -151,18 +144,6 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
-def _ownship_tilt(
-    path: Path,
-    afloat: list[Afloat],
-    vessel: bpy.types.Object,
-    field: tuple[waves.Wave, ...],
-    tall: tuple[waves.Wave, ...],
-) -> Tilt:
-    """The ownship's `R_level_ownship` at a time, its hull riding `field`."""
-    hull = next((a.hull for a in afloat if a.root is vessel), None)
-    return tilted(path, hull, field, tall)
-
-
 def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
     """`R_level_ownship` at a time: the ownship's hull, measured from its imported
     mesh, riding the sea along `path`; no rigs, no targets.
@@ -186,7 +167,8 @@ def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
     )
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    return _ownship_tilt(path, afloat, vessel, wind + swell, tall)
+    hull = next((a.hull for a in afloat if a.root is vessel), None)
+    return tilted(path, hull, wind + swell, tall)
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
@@ -292,5 +274,4 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         targets=targets,
         ownship_pose=lambda t_s: waterline(t_s) @ T_waterline_ownship,
         head_poses=head_poses,
-        times_s=outputs.times_s,
     )

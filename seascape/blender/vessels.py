@@ -226,6 +226,10 @@ def _follow(
     a YXZ euler, Rz @ Rx @ Ry: heading, pitch, then roll, as `motion` composes them.
     """
     root.rotation_mode = "YXZ"
+    # `ride` keys a hull again on the sea: a curve left from the first keying would
+    # override a channel this one sets constant.
+    if root.animation_data is not None and root.animation_data.action is not None:
+        bpy.data.actions.remove(root.animation_data.action)
     location, rotation = [], []
     last: Euler | None = None
     for t_s in times_s:

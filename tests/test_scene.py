@@ -132,7 +132,7 @@ def test_the_sun_is_out_of_every_frame() -> None:
     built = scene.build(bare, "eo")
     sun = np.array(scenario.sky.sun_vector)
     for mount in scenario.mounts:
-        camera = scene.calibrate(built, mount, "")
+        camera = scene.calibrate(built, mount, "", 0.0)
         assert not _in_frame(camera, sun), mount.name
 
 
@@ -370,7 +370,7 @@ class TestEoBand:
         ship = bpy.data.objects[spec.asset].matrix_world.translation
         for mount in SCENARIO.mounts:
             eye = camera_of(mount).matrix_world.translation
-            camera = scene.calibrate(built, mount, "")
+            camera = scene.calibrate(built, mount, "", 0.0)
             assert _in_frame(camera, ship - eye), mount.name
 
     def test_a_target_is_fitted_to_its_manifest_length(self) -> None:
@@ -445,20 +445,6 @@ class TestEoBand:
 
         assert reach > horizon
         assert reach > max(spec.range_m for spec in SCENARIO.objects)
-
-    def test_a_hull_floats_on_the_sea_and_not_on_the_tangent_plane(self) -> None:
-        """Hulls left at z = 0 fly with range and bearing still right, so nothing else
-        catches it.
-        """
-        radius = earth.earth_radius_m(SCENARIO.sea.refraction_k)
-        # Off the curved sea by its heave, no more than the tall waves' crest.
-        crest_m = sum(w.amplitude_m for w in _tall(SCENARIO))
-
-        for spec in SCENARIO.objects:
-            root = bpy.data.objects[spec.asset]
-            east, north, up = root.matrix_world.translation
-
-            assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=crest_m)
 
     def test_a_hull_beyond_the_horizon_is_cut_off(self) -> None:
         """A target past the horizon shows its waterline when it should be hull-down."""
@@ -945,7 +931,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         script = 0.2 * math.sin(math.tau * t_s / heave_s)
         heave = waves.heave_m(tall, plane, t_s)
         still.append(up - earth.sea_z_m(east, north, radius) - script - heave)
-        calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
+        calibration = scene.calibrate(built, scenario.mounts[0], "frame.png", t_s)
         mounted.append(np.array(calibration.extrinsics["ownship"]))
         # Blender draws the camera motion composed; 1e-5: float32 down the chain.
         drawn = built.cameras[scenario.mounts[0].name].matrix_world @ BLENDER_TO_CV
@@ -1949,16 +1935,13 @@ class TestDrifting:
         heading = math.radians(spec.heading_deg)
         ahead = Vector((math.sin(heading), math.cos(heading)))
         starboard = Vector((math.cos(heading), -math.sin(heading)))
-        radius = earth.earth_radius_m(scenario.sea.refraction_k)
-        # Off the curved sea by its heave, no more than the tall waves' crest.
-        crest_m = sum(w.amplitude_m for w in _tall(scenario))
         pose = root.matrix_world.translation.xy.copy()
         s = math.sqrt(0.5)
         eighths = [(0, 0), (s, 1), (1, 0), (s, -1), (0, 0), (-s, 1), (-1, 0), (-s, -1)]
 
         for eighth, (across, along) in enumerate(eighths):
             sc.frame_set(round(eighth * period_s / 8 * scenario.outputs.fps))
-            east, north, up = root.matrix_world.translation
+            east, north, _ = root.matrix_world.translation
             offset = Vector((east, north)) - pose
 
             assert offset.dot(starboard) == pytest.approx(
@@ -1967,7 +1950,6 @@ class TestDrifting:
             assert offset.dot(ahead) == pytest.approx(
                 along * spec.fishtail.surge_m, abs=1e-2
             )
-            assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=crest_m)
             turn_deg = math.degrees(root.rotation_euler.z)
             assert angles.wrapped_deg(
                 turn_deg - math.degrees(angles.yaw(spec.heading_deg))

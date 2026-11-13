@@ -39,6 +39,11 @@ def write_json(model: Model, path: Path) -> Path:
     return path
 
 
+def matrix4(m: np.ndarray) -> Matrix4:
+    """A (4, 4) array as the rows a calibration stores."""
+    return cast(Matrix4, tuple(map(tuple, m.tolist())))
+
+
 class _Record(Model):
     # Another writer's file, or a newer one, carries fields this reader has no use for.
     model_config = ConfigDict(extra="ignore")
@@ -92,7 +97,7 @@ class CameraCalibration(_Record):
         """`camera` as a render of rig `rig` calibrates it, in that rig's head's frame
         only: what a video's footprint needs before anything is built.
         """
-        T_head_camera = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))
+        T_head_camera = matrix4(camera.pose())
         return cls(
             name=name,
             band=camera.band,

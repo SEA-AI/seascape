@@ -284,7 +284,7 @@ def _shoot(
     built: scene.Built,
     mount: Mount,
     rng: np.random.Generator,
-    frame: int | None,
+    frame: tuple[int | None, float],
     fmt: ImageFormat,
     thermal: tuple[agc.Agc, np.random.Generator] | None,
     into: Path,
@@ -296,7 +296,7 @@ def _shoot(
         built: The scene, at the frame's time.
         mount: The camera to render through.
         rng: Draws its sensor's noise.
-        frame: The frame's number in a sequence; None for a still.
+        frame: The frame's number in a sequence, None for a still, and its time.
         fmt: The format written.
         thermal: The AGC and NETD noise an ir frame is written through; None keeps
             the render.
@@ -307,6 +307,7 @@ def _shoot(
         The labelled frame as its mount, calibration, object index and image; the
         camera as rendered, if a video records it; and the files written.
     """
+    number, time_s = frame
     scene.look_through(built.cameras, mount, rng)
     # An exr is the radiance the cameras saw, before any recorder.
     videos = mount.rig.videos if fmt != "exr" else {}
@@ -323,14 +324,14 @@ def _shoot(
     tree = bpy.context.scene.compositing_node_group
     tree.nodes["index.output"].file_name = f"{mount.name}."
     _cut(mount.name, width, height, crop)
-    bpy.context.scene.render.filepath = str(into / _stem(mount.name, frame))
+    bpy.context.scene.render.filepath = str(into / _stem(mount.name, number))
     ext = "exr" if thermal else fmt
-    rendered = into / f"{_stem(mount.name, frame)}.{ext}"
+    rendered = into / f"{_stem(mount.name, number)}.{ext}"
     _render_still(rendered, f"camera {mount.name}'s frame")
-    camera = scene.calibrate(built, mount, f"{_stem(mount.name, frame)}.{fmt}")
+    camera = scene.calibrate(built, mount, f"{_stem(mount.name, number)}.{fmt}", time_s)
     # An undistortion renders its pinhole; the camera recorded is the rig's.
     own = mount._replace(camera=mount.rig.cameras[mount.camera_name])
-    source = scene.calibrate(built, own, camera.image)
+    source = scene.calibrate(built, own, camera.image, time_s)
     index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
     written = []
     # A stitch's cameras keep their names; `_stitch` names what it makes of them.
@@ -340,11 +341,11 @@ def _shoot(
         if crop is not None:
             # The camera's own frame stays, unlabelled.
             written.append(rendered)
-            rendered = into / f"{_stem(out, frame)}.{ext}"
+            rendered = into / f"{_stem(out, number)}.{ext}"
             rendered.parent.mkdir(exist_ok=True)
             # The passes' temporary folder can sit on another filesystem.
             shutil.move(passes / f"{mount.name}.video.{ext}", rendered)
-            image = f"{_stem(out, frame)}.{fmt}"
+            image = f"{_stem(out, number)}.{fmt}"
             camera = camera.model_copy(update={"image": image}).cropped(crop)
             rows = slice(crop.top_px, height - crop.bottom_px)
             index = index[rows, crop.left_px : width - crop.right_px]
@@ -402,7 +403,7 @@ def render(
             }
             for frame, time_s in enumerate(outputs.times_s):
                 sc.frame_set(frame)
-                # Both read matrix_world, which moves with the frame.
+                # Reads matrix_world, which moves with the frame.
                 targets = _targets(built)
                 shot = []
                 for mount in mounts:
@@ -410,7 +411,7 @@ def render(
                         built,
                         mount,
                         substream(scenario.seed, f"sensor/{mount.name}"),
-                        frame if sequence else None,
+                        (frame if sequence else None, time_s),
                         outputs.format,
                         (tones[mount.name], noises[mount.name]) if thermal else None,
                         into,
