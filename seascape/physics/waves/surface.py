@@ -150,9 +150,10 @@ def attitude(
 
 def yaw_rad(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     """The turn, bow to starboard, that best fits the water's horizontal Gerstner
-    offset over a hull's waterplane: least squares of a rigid turn about its rest
-    centre, by each wave's mean of x d_across - y d_along over the rectangle, x along
-    the bow and y to starboard.
+    offset over a hull's waterplane: the least-squares rigid turn about its rest
+    centre, atan2 of the means of x d_across - y d_along and of x^2 + y^2 + x d_along
+    + y d_across over the rectangle, x along the bow and y to starboard (2D
+    Procrustes).
 
     The offset is a gradient, so the water strains and never turns: a point yaws by
     nothing, and a square by nothing in waves much longer than it.
@@ -169,12 +170,14 @@ def yaw_rad(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     amplitude, k_along, k_across, u, v, at = _under(field, hull, t_s)
     k = columns(field)[1]
     # The offset across is -a k_across / k sin(phase), along -a k_along / k sin(phase);
-    # each one's mean moment against x or y is `_lever`'s slope times x^2's mean.
+    # each one's mean moment against x or y is `_lever`'s slope times x^2's mean,
+    # here times 12.
     along = length2 * _lever(u) * np.sinc(v / math.pi)
     across = beam2 * _lever(v) * np.sinc(u / math.pi)
-    turn = -amplitude * k_along * k_across / k * np.cos(at) * (along - across)
-    turn = turn / (length2 + beam2)
-    return math.atan(float(turn.sum()))
+    offset = -amplitude / k * np.cos(at)
+    turn = offset * k_along * k_across * (along - across)
+    stretch = offset * (k_along**2 * along + k_across**2 * across)
+    return math.atan2(float(turn.sum()), length2 + beam2 + float(stretch.sum()))
 
 
 def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:

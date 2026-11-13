@@ -714,10 +714,15 @@ def test_a_hull_yaws_with_the_water_under_it(
         (wave,), 30.0 + x * sin + y * cos, -40.0 + x * cos - y * sin, 2.0
     )
     along, starboard = east * sin + north * cos, east * cos - north * sin
-    fit = np.trapezoid(np.trapezoid(x * starboard - y * along, axis=1), axis=0)
-    fit /= np.trapezoid(np.trapezoid(x * x + y * y, axis=1), axis=0)
+
+    def mean(f: np.ndarray) -> float:
+        return float(np.trapezoid(np.trapezoid(f, axis=1), axis=0))
+
+    turn = mean(x * starboard - y * along)
     yaw = waves.yaw_rad((wave,), hull, 2.0)
-    assert yaw == pytest.approx(math.atan(fit), abs=1e-6)
+    assert yaw == pytest.approx(
+        math.atan2(turn, mean(x * x + y * y + x * along + y * starboard)), abs=1e-6
+    )
     assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
 
 
