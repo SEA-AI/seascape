@@ -54,9 +54,9 @@ class Built:
 def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
     """A built camera's geometry, read off the scene."""
     camera = built.cameras[mount.name]
-    T_w_c = camera.matrix_world @ BLENDER_TO_CV
-    T_w_v = built.deck.matrix_world
-    T_w_r = built.rigs[mount.rig_name].matrix_world
+    T_world_camera = camera.matrix_world @ BLENDER_TO_CV
+    T_world_ownship = built.deck.matrix_world
+    T_world_head = built.rigs[mount.rig_name].matrix_world
     width, height = mount.camera.width_px, mount.camera.height_px
     return CameraCalibration(
         name=mount.name,
@@ -70,9 +70,9 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         K=intrinsics(mount.camera),
         distortion=mount.camera.lens.fisheye,
         extrinsics={
-            "world": _rows(T_w_c),
-            "vessel": _rows(T_w_v.inverted() @ T_w_c),
-            "rig": _rows(T_w_r.inverted() @ T_w_c),
+            "world": _rows(T_world_camera),
+            "vessel": _rows(T_world_ownship.inverted() @ T_world_camera),
+            "rig": _rows(T_world_head.inverted() @ T_world_camera),
         },
     )
 

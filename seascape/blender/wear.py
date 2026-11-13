@@ -123,17 +123,17 @@ def tag(
         posed = obj.evaluated_get(depsgraph).to_mesh() if obj.modifiers else mesh
         if len(posed.vertices) != len(mesh.vertices):
             raise ValueError(f"{obj.name}: its modifiers change its vertex count")
-        T_w_o = np.array(obj.matrix_world)
+        T_world_object = np.array(obj.matrix_world)
         position_m = (
             faces.floats(posed.vertices, "co", 3 * len(mesh.vertices)).reshape(-1, 3)
-            @ T_w_o[:3, :3].T
-            + T_w_o[:3, 3]
+            @ T_world_object[:3, :3].T
+            + T_world_object[:3, 3]
         )
         normal = faces.floats(posed.polygons, "normal", 3 * len(zone)).reshape(-1, 3)
         if posed is not mesh:
             obj.evaluated_get(depsgraph).to_mesh_clear()
         # A normal takes the inverse transpose; a mirrored part's winding turns it in.
-        linear = T_w_o[:3, :3]
+        linear = T_world_object[:3, :3]
         normal = normal @ np.linalg.inv(linear) * np.sign(np.linalg.det(linear))
         normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
         _write(mesh, "wear_position_m", "POINT", position_m)

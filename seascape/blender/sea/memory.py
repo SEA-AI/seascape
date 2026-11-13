@@ -52,7 +52,7 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
     drift = surface_drift(scenario.sea, scenario.outputs)
     rays = []
     for view in seen:
-        R_w_c = view.matrix.to_3x3() @ BLENDER_TO_CV.to_3x3()
+        R_world_camera = view.matrix.to_3x3() @ BLENDER_TO_CV.to_3x3()
         # Water at x is on the grid at x - v t.
         origin = view.matrix.translation - Vector(
             (drift[0] * view.t_s, drift[1] * view.t_s, 0.0)
@@ -71,7 +71,9 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
             k, fx = camera.lens.fisheye, camera.fisheye_focal_px
             frame = [Vector(d) for d in fisheye.direction(x.ravel(), y.ravel(), k, fx)]
         for toward in frame:
-            rays.append((origin, (R_w_c @ toward).normalized(), view.pixel_rad))
+            rays.append(
+                (origin, (R_world_camera @ toward).normalized(), view.pixel_rad)
+            )
     return rays
 
 

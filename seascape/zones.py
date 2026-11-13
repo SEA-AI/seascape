@@ -428,8 +428,8 @@ def _heights(found: Parts, per_face: list[np.ndarray], n: int) -> np.ndarray:
         evaluated.to_mesh_clear()
         if len(co) != len(mesh.vertices):
             raise ValueError(f"{obj.name}: a modifier changes its vertices")
-        T_w_o = np.array(obj.matrix_world)
-        z = co @ T_w_o[2, :3] + T_w_o[2, 3]
+        T_world_object = np.array(obj.matrix_world)
+        z = co @ T_world_object[2, :3] + T_world_object[2, 3]
         total = faces.ints(mesh.polygons, "loop_total", len(mesh.polygons))
         loop_value = np.repeat(value, total)
         loop_z = z[faces.ints(mesh.loops, "vertex_index", len(mesh.loops))]

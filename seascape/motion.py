@@ -180,14 +180,16 @@ def rig_track(scenario: Scenario, name: str) -> Path:
 
     def at(t_s: float) -> Pose:
         pose = path(t_s)
-        T_w_v = np.eye(4)
-        T_w_v[:3, :3] = angles.turned(math.degrees(pose.heading_rad), 0.0) @ deck(t_s)
-        T_w_v[:3, 3] = pose.east_m, pose.north_m, 0.0
-        T_w_r = T_w_v @ rig.pose(pan(t_s))
-        east, north, _ = T_w_r[:3, 1]
+        T_world_ownship = np.eye(4)
+        T_world_ownship[:3, :3] = angles.turned(
+            math.degrees(pose.heading_rad), 0.0
+        ) @ deck(t_s)
+        T_world_ownship[:3, 3] = pose.east_m, pose.north_m, 0.0
+        T_world_head = T_world_ownship @ rig.pose(pan(t_s))
+        east, north, _ = T_world_head[:3, 1]
         return Pose(
-            float(T_w_r[0, 3]),
-            float(T_w_r[1, 3]),
+            float(T_world_head[0, 3]),
+            float(T_world_head[1, 3]),
             math.radians(angles.bearing_deg(east, north)),
         )
 
@@ -208,7 +210,7 @@ def drifting(
     """
     start = range_m * angles.direction(bearing_deg, 0.0)[:2]
     # Columns: the hull's starboard and bow, in (east, north).
-    R_w_v = angles.turned(heading_deg, 0.0)[:2, :2]
+    R_world_target = angles.turned(heading_deg, 0.0)[:2, :2]
     heading = math.radians(heading_deg)
     sway_m = surge_m = 0.0
     period_s = 1.0
@@ -224,8 +226,8 @@ def drifting(
         along, across = speed_mps * t_s + surge(t_s), sway(t_s)
         along_mps = speed_mps + 2.0 * rate * surge_m * math.cos(2.0 * phase)
         across_mps = rate * sway_m * math.cos(phase)
-        east, north = start + R_w_v @ (across, along)
-        east_mps, north_mps = R_w_v @ (across_mps, along_mps)
+        east, north = start + R_world_target @ (across, along)
+        east_mps, north_mps = R_world_target @ (across_mps, along_mps)
         return Pose(
             float(east), float(north), heading, float(east_mps), float(north_mps)
         )

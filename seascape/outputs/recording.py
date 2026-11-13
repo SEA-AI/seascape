@@ -60,30 +60,30 @@ _VIDEO = TypeAdapter(Video)
 MANUAL_MODE, COLAV_MODE = 1, 3
 # Roll, pitch and yaw signs in FLU (ROS REP 103) against `attitude_deg`'s: pitch
 # counts nose down, yaw to port.
-FLU = (1.0, -1.0, -1.0)
+FLU_SIGNS = (1.0, -1.0, -1.0)
 # The recording's IMU pitch counts nose down, its roll and yaw as `attitude_deg`'s;
 # no change of basis gives that mix.
 IMU_PITCH_SIGN = -1.0
 
 
 def _in_world(camera: CameraCalibration, frame: str) -> np.ndarray:
-    """T_w_f: the named frame's pose in world."""
-    T_w_c = np.array(camera.extrinsics["world"])
-    return T_w_c @ np.linalg.inv(np.array(camera.extrinsics[frame]))
+    """T_world_frame: the named frame's pose in world."""
+    T_world_camera = np.array(camera.extrinsics["world"])
+    return T_world_camera @ np.linalg.inv(np.array(camera.extrinsics[frame]))
 
 
-def _attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+def _attitude_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
     """`angles.attitude_deg`, its yaw rounded to the CSV's precision first, so float32
     noise at 180 cannot wrap.
     """
-    roll, pitch, yaw = attitude_deg(body_to_frame)
+    roll, pitch, yaw = attitude_deg(R_frame_body)
     return roll, pitch, wrapped_deg(round(yaw, 6))
 
 
-def _flu_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+def _flu_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
     """`_attitude_deg` in FLU."""
     roll, pitch, yaw = (
-        s * a for s, a in zip(FLU, _attitude_deg(body_to_frame), strict=True)
+        s * a for s, a in zip(FLU_SIGNS, _attitude_deg(R_frame_body), strict=True)
     )
     return roll, pitch, yaw
 
@@ -107,10 +107,12 @@ def _row(
     if rig.get("ptu") is not None:
         # The head on the hull, less its base's yaw and `pitch_deg`: Rig.pose adds pan
         # to yaw and tilt to pitch, so subtracting undoes them exactly.
-        T_v_r = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(camera, "rig")
-        _, tilt, pan = _attitude_deg(T_v_r)
-        row["pan"] = FLU[2] * wrapped_deg(pan - rig["yaw_deg"])
-        row["tilt"] = FLU[1] * (tilt - rig["pitch_deg"])
+        T_ownship_head = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(
+            camera, "rig"
+        )
+        _, tilt, pan = _attitude_deg(T_ownship_head[:3, :3])
+        row["pan"] = FLU_SIGNS[2] * wrapped_deg(pan - rig["yaw_deg"])
+        row["tilt"] = FLU_SIGNS[1] * (tilt - rig["pitch_deg"])
         if scan_deg_s is not None:
             row["proc_ptu_mode"] = COLAV_MODE
             # Revolutions per second, as the worker's setting.
@@ -145,15 +147,17 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
-    T_r_c = np.array(camera.extrinsics["rig"])
+    T_head_camera = np.array(camera.extrinsics["rig"])
     # The camera's OpenCV axes as a body's: right, ahead, up.
-    rpy = zip(("roll", "pitch", "yaw"), _flu_deg(T_r_c[:3, :3] @ TO_CV), strict=True)
+    rpy = zip(
+        ("roll", "pitch", "yaw"), _flu_deg(T_head_camera[:3, :3] @ TO_CV), strict=True
+    )
     (fx, _, cx), (_, fy, cy), _ = camera.K
     pixel_mm = camera.pitch_um / 1000 if camera.pitch_um else PIXEL_SIZE_MM[camera.band]
     return {
         # Never a hardware model's name: a live pipeline picks its driver by it.
         "camera_type": f"Blender {camera.band.upper()}",
-        "position": _unit([float(v) * 1000.0 for v in T_r_c[:3, 3]], "mm"),
+        "position": _unit([float(v) * 1000.0 for v in T_head_camera[:3, 3]], "mm"),
         "focal_length": _unit(fx * pixel_mm, "mm"),
         "barrel_distortion": _unit(None, "1"),
         "distortion_model": "pinhole" if camera.distortion is None else "fisheye",
