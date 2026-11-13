@@ -906,8 +906,9 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     built = scene.build(scenario, "eo")
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
+    path = motion.track(scenario.ownship, scenario.outputs)
     tilt = motion.tilted(
-        motion.track(scenario.ownship, scenario.outputs),
+        path,
         waves.Waterplane(length_m=built.root["length_m"], beam_m=built.root["beam_m"]),
         wind + swell,
         tall,
@@ -922,7 +923,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         rest = waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s)
         plane = waves.Waterplane(
             *map(float, rest),
-            math.radians(heading_deg(built.root)),
+            path(t_s).heading_rad,
             built.root["length_m"],
             built.root["beam_m"],
         )
@@ -1895,8 +1896,11 @@ class TestOrbitingYachts:
                 assert (east, north) == pytest.approx(
                     (200.0 * math.sin(bearing), 200.0 * math.cos(bearing)), abs=1e-3
                 )
-                assert hull.rotation_euler.z == pytest.approx(
-                    angles.yaw(bearing_deg + 90)
+                # The sea yaws it a few degrees off its lap.
+                turn_deg = math.degrees(hull.rotation_euler.z)
+                lap_deg = math.degrees(angles.yaw(bearing_deg + 90))
+                assert angles.wrapped_deg(turn_deg - lap_deg) == pytest.approx(
+                    0.0, abs=5.0
                 )
 
 
@@ -1950,10 +1954,6 @@ class TestDrifting:
             assert offset.dot(ahead) == pytest.approx(
                 along * spec.fishtail.surge_m, abs=1e-2
             )
-            turn_deg = math.degrees(root.rotation_euler.z)
-            assert angles.wrapped_deg(
-                turn_deg - math.degrees(angles.yaw(spec.heading_deg))
-            ) == pytest.approx(0.0, abs=1e-4)
         assert pose.length == pytest.approx(spec.range_m)
 
     def test_a_hull_rides_the_sea_it_sits_on(self, built: scene.Built) -> None:
@@ -1980,10 +1980,7 @@ class TestDrifting:
             sc.frame_set(frame)
             east, north, up = root.matrix_world.translation
             bow = root.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
-            heading = math.atan2(bow.x, bow.y)
-            assert math.degrees(heading) % 360 == pytest.approx(
-                scenario.objects[0].heading_deg % 360, abs=1e-4
-            )
+            heading = math.radians(spec.heading_deg)
             t_s = scenario.outputs.times_s[frame]
             # Only the tall waves move the water the hull sits on.
             assert len(_tall(scenario)) < len(wave_field(scenario))
@@ -2006,6 +2003,10 @@ class TestDrifting:
             assert tuple(root.rotation_euler[:2]) == pytest.approx(
                 (pitch, roll), abs=1e-5
             )
+            yaw = waves.yaw_rad(wave_field(scenario), hull, t_s)
+            assert angles.wrapped_deg(
+                math.degrees(math.atan2(bow.x, bow.y) - heading - yaw)
+            ) == pytest.approx(0.0, abs=1e-4)
             radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
             assert up - earth.sea_z_m(east, north, radius_m) == pytest.approx(
                 waves.heave_m(_tall(scenario), hull, t_s), abs=1e-5
@@ -2024,9 +2025,9 @@ def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
 
     channels = dict(keyed())
 
-    assert len(channels) == 10, (
-        "the target's xyz, pitch, roll; the ownship's pitch, roll, z; the sea's "
-        "cos, sin"
+    assert len(channels) == 11, (
+        "the target's xyz, pitch, roll, yaw; the ownship's pitch, roll, z; the "
+        "sea's cos, sin"
     )
     # A few ulps: F-curves are float32.
     unclosed = [
@@ -2327,7 +2328,8 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
     built = scene.build(variant(objects=[yacht]), "eo")
 
     (root,) = built.targets["yacht"]
-    assert heading_deg(root) % 360.0 == pytest.approx(210.0)
+    # The sea yaws it a few degrees off its course.
+    assert heading_deg(root) % 360.0 == pytest.approx(210.0, abs=5.0)
 
 
 @pytest.mark.parametrize(

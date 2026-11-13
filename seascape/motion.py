@@ -275,13 +275,14 @@ def waterplane(
 
 
 class Rocking(NamedTuple):
-    """What the sea does to a hull: its pitch, bow up, its roll, starboard down, and
-    its heave.
+    """What the sea does to a hull: its pitch, bow up, its roll, starboard down, its
+    heave, and its yaw, bow to starboard, off its track.
     """
 
     pitch_rad: float
     roll_rad: float
     heave_m: float
+    yaw_rad: float
 
 
 def rocking(
@@ -297,14 +298,16 @@ def rocking(
     Args:
         pose: Where it is, where its bow points and how it moves.
         hull: Its size; its pose is ignored.
-        field: Every wave, which it pitches and rolls on.
+        field: Every wave, which it pitches, rolls and yaws on.
         tall: The waves that are geometry, which alone heave it: the rest are
             shading, which a heaving hull would break its waterline on.
         t_s: Seconds on the scenario's clock, when it is at `pose`.
     """
     plane = waterplane(pose, tall, t_s, hull)
     pitch, roll = waves.attitude(field, plane, t_s)
-    return Rocking(pitch, roll, waves.heave_m(tall, plane, t_s))
+    return Rocking(
+        pitch, roll, waves.heave_m(tall, plane, t_s), waves.yaw_rad(field, plane, t_s)
+    )
 
 
 def _pitched(rad: float) -> np.ndarray:
@@ -323,8 +326,8 @@ def tilt_rad(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
     """A hull's pitch, bow up, and roll, starboard down, in radians: the sea's tilt
     `sea` outside the trim and list `pose` scripts, which are relative to the water.
     Two tilts composed also yaw the hull; that yaw is dropped, as the hull's heading
-    is its track's (Fossen, Handbook of Marine Craft Hydrodynamics, 2011, §2.2: yaw
-    of the whole attitude).
+    is its track's and the sea's `yaw_rad` (Fossen, Handbook of Marine Craft
+    Hydrodynamics, 2011, §2.2: yaw of the whole attitude).
     """
     if sea is None:
         return pose.pitch_rad, pose.roll_rad
@@ -365,14 +368,16 @@ def _afloat(
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
     t_s: float,
-) -> tuple[np.ndarray, float]:
-    """`R_level_waterline` and the sea's heave at `t_s`; `tilted`'s arguments."""
+) -> tuple[np.ndarray, Rocking]:
+    """`R_level_waterline` and the sea's rocking at `t_s`; `tilted`'s arguments."""
     pose = path(t_s)
     if hull is None:
-        return _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad), 0.0
+        return _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad), Rocking(
+            0.0, 0.0, 0.0, 0.0
+        )
     sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
     pitch_rad, roll_rad = tilt_rad(pose, sea)
-    return _pitched(pitch_rad) @ _rolled(roll_rad), sea.heave_m
+    return _pitched(pitch_rad) @ _rolled(roll_rad), sea
 
 
 def waterline_pose(
@@ -384,24 +389,28 @@ def waterline_pose(
 ) -> Callable[[float], np.ndarray]:
     """(4, 4) `T_world_waterline` at a time: the point on a hull's floating waterline
     it pitches and rolls about, `up_m` high plus the sea's heave, turned by `path`'s
-    heading and tilted as `tilted`. The hull's origin is `lifted(rise_m)` above it.
+    heading and the sea's yaw, and tilted as `tilted`. The hull's origin is
+    `lifted(rise_m)` above it.
 
     Args:
         path: Where it is, where its bow points and how it is tilted.
         up_m: The point's height at a pose and time, the sea's heave aside.
         hull: Its size, or None for a bare rig, which the sea does not tilt.
-        field: Every wave, which a hull pitches and rolls on.
+        field: Every wave, which a hull pitches, rolls and yaws on.
         tall: The waves that are geometry, the ones it floats on.
     """
 
     def at(t_s: float) -> np.ndarray:
         pose = path(t_s)
-        R_level_waterline, heave_m = _afloat(path, hull, field, tall, t_s)
+        R_level_waterline, sea = _afloat(path, hull, field, tall, t_s)
+        heading_deg = math.degrees(pose.heading_rad + sea.yaw_rad)
         T_world_waterline = np.eye(4)
-        T_world_waterline[:3, :3] = (
-            angles.turned(math.degrees(pose.heading_rad), 0.0) @ R_level_waterline
+        T_world_waterline[:3, :3] = angles.turned(heading_deg, 0.0) @ R_level_waterline
+        T_world_waterline[:3, 3] = (
+            pose.east_m,
+            pose.north_m,
+            up_m(pose, t_s) + sea.heave_m,
         )
-        T_world_waterline[:3, 3] = pose.east_m, pose.north_m, up_m(pose, t_s) + heave_m
         return T_world_waterline
 
     return at

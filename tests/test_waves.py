@@ -690,6 +690,30 @@ def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
 
 
+@pytest.mark.parametrize(("length_m", "beam_m"), [(60.0, 10.0), (10.0, 10.0)])
+def test_a_hull_yaws_with_the_water_under_it(length_m: float, beam_m: float) -> None:
+    """The least-squares turn of the Gerstner offset, summed over a grid; none for a
+    square, as the offset is a gradient.
+    """
+    wave = waves.Wave(0.8, 0.6, math.radians(40.0), 1.0)
+    hull = waves.Waterplane(30.0, -40.0, math.radians(100.0), length_m, beam_m)
+    x, y = np.meshgrid(
+        np.linspace(-length_m / 2, length_m / 2, 301),
+        np.linspace(-beam_m / 2, beam_m / 2, 101),
+        indexing="ij",
+    )
+    sin, cos = math.sin(hull.heading_rad), math.cos(hull.heading_rad)
+    east, north, _ = waves.gerstner_offset_m(
+        (wave,), 30.0 + x * sin + y * cos, -40.0 + x * cos - y * sin, 2.0
+    )
+    along, starboard = east * sin + north * cos, east * cos - north * sin
+    fit = np.trapezoid(np.trapezoid(x * starboard - y * along, axis=1), axis=0)
+    fit /= np.trapezoid(np.trapezoid(x * x + y * y, axis=1), axis=0)
+    yaw = waves.yaw_rad((wave,), hull, 2.0)
+    assert yaw == pytest.approx(math.atan(fit), abs=1e-6)
+    assert (abs(yaw) > 1e-3) == (length_m != beam_m)
+
+
 def _jensen(wave: waves.Wave, hull: waves.Waterplane) -> tuple[float, float]:
     """Gain and phase lead of heave and pitch over the hull's static ones: Jensen,
     Mansour & Olsen (2004) eqs. 2.3-2.5, 2.9, 2.10, 2.13 and 4.4, at the frequency

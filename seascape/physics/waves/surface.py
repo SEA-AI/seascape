@@ -5,7 +5,7 @@ expressions", Ocean Engineering 31(1) 61-85, 2004 (doi:10.1016/S0029-8018(03)001
 Their static heave and pitch are the mean and the least-squares slope of each wave
 along a box hull; roll is the same slope across it.
 
-Limitation: roll follows the water at once; Jensen et al.'s roll needs a natural
+Limitation: roll and yaw follow the water at once; Jensen et al.'s roll needs a natural
 period and metacentric height no asset has.
 Limitation: their box is strip theory, checked to Fn 0.84; a planing hull rides on
 lift it lacks.
@@ -146,6 +146,37 @@ def attitude(
     # Water higher to port rolls the hull starboard down.
     drop_across = amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
     return math.atan(float(rise_along.sum())), math.atan(float(drop_across.sum()))
+
+
+def yaw_rad(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
+    """The turn, bow to starboard, that best fits the water's horizontal Gerstner
+    offset over a hull's waterplane: least squares of a rigid turn about its rest
+    centre, by each wave's mean of x d_across - y d_along over the rectangle.
+
+    The offset is a gradient, so the water strains and never turns: a square or a
+    point yaws by nothing, and a hull long against its beam turns by most of the
+    strain along it.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        hull: The rectangle the turn is fitted over; a wave much shorter than it
+            averages out.
+        t_s: Time; each wave's phase advances at its angular frequency.
+    """
+    length2, beam2 = hull.length_m**2, hull.beam_m**2
+    if not field or length2 + beam2 == 0.0:
+        return 0.0
+    amplitude, k, *_ = columns(field)
+    k_along, k_across = _along_across(field, hull)
+    u, v = k_along * hull.length_m / 2, k_across * hull.beam_m / 2
+    at = phases(field, np.array(hull.rest_east_m), np.array(hull.rest_north_m), t_s)
+    # The offset across is -a k_across / k sin(phase), along -a k_along / k sin(phase);
+    # each one's mean moment against x or y is `_lever`'s slope times x^2's mean.
+    lever = length2 * _lever(u) * np.sinc(v / math.pi) - beam2 * _lever(v) * np.sinc(
+        u / math.pi
+    )
+    turn = -amplitude * k_along * k_across / k * np.cos(at) * lever / (length2 + beam2)
+    return math.atan(float(turn.sum()))
 
 
 def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
