@@ -14,6 +14,7 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
+from seascape import angles
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
 from seascape.blender.blend import mesh_objects
@@ -207,9 +208,12 @@ def test_a_panorama_puts_each_principal_point_on_its_boresight(
     # Spherical: u is the bearing, v the angle down from straight up.
     u, v = warper.warpPoint((float(k[0, 2]), float(k[1, 2])), k, r)
 
-    assert (math.degrees(u), 90.0 - math.degrees(v)) == pytest.approx(
-        boresight_deg(built.cameras[mount.name]), abs=1e-3
+    bearing_deg, elevation_deg = boresight_deg(built.cameras[mount.name])
+    # A stern camera reads either end of (-180, 180].
+    assert angles.wrapped_deg(math.degrees(u) - bearing_deg) == pytest.approx(
+        0.0, abs=1e-3
     )
+    assert 90.0 - math.degrees(v) == pytest.approx(elevation_deg, abs=1e-3)
 
 
 def test_a_panorama_lays_its_cameras_out_in_yaw_order(
@@ -400,7 +404,7 @@ def test_a_pan_past_the_stern_keys_no_spin_back() -> None:
     rig = next(iter(two_rigs().rigs.values()))
     times = [0.0, 1.0, 2.0]
     # The axis, yaw and pan, sweeps 170 to 190 deg whatever the rig's own yaw.
-    _hold(head, rig, lambda t: 170.0 - rig.yaw_deg + 10.0 * t, np.zeros(3), times)
+    _hold(head, lambda t: rig.pose(170.0 - rig.yaw_deg + 10.0 * t), times)
     yaws = []
     for frame in range(len(times)):
         bpy.context.scene.frame_set(frame)

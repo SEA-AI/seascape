@@ -1,16 +1,16 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import chain
+from typing import cast
 
 import bpy
 import numpy as np
-from mathutils import Matrix
 
 from seascape.blender import sea
-from seascape.blender.blend import BLENDER_TO_CV, empty
+from seascape.blender.blend import empty
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, stabilise, views
@@ -30,7 +30,15 @@ from seascape.config import (
     Scenario,
     substream,
 )
-from seascape.motion import Path, Tilt, tilted, track
+from seascape.motion import (
+    Path,
+    Tilt,
+    lifted,
+    ownship_up_m,
+    tilted,
+    track,
+    waterline_pose,
+)
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes, waves
 
@@ -48,14 +56,19 @@ class Built:
     heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
+    # What Blender was keyed from, at a frame's time: `T_world_ownship`, and each
+    # rig's `T_ownship_head` by name.
+    ownship_pose: Callable[[float], np.ndarray]
+    head_poses: dict[str, Callable[[float], np.ndarray]]
+    times_s: Sequence[float]
 
 
 def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
-    """A built camera's geometry, read off the scene."""
-    camera = built.cameras[mount.name]
-    T_world_camera = camera.matrix_world @ BLENDER_TO_CV
-    T_world_ownship = built.ownship.matrix_world
-    T_world_head = built.heads[mount.rig_name].matrix_world
+    """A built camera's geometry at the scene's current frame."""
+    t_s = built.times_s[bpy.context.scene.frame_current]
+    T_head_camera = mount.camera.pose()
+    T_ownship_camera = built.head_poses[mount.rig_name](t_s) @ T_head_camera
+    T_world_camera = built.ownship_pose(t_s) @ T_ownship_camera
     width, height = mount.camera.width_px, mount.camera.height_px
     return CameraCalibration(
         name=mount.name,
@@ -70,8 +83,8 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         distortion=mount.camera.lens.fisheye,
         extrinsics={
             "world": _rows(T_world_camera),
-            "ownship": _rows(T_world_ownship.inverted() @ T_world_camera),
-            "head": _rows(T_world_head.inverted() @ T_world_camera),
+            "ownship": _rows(T_ownship_camera),
+            "head": _rows(T_head_camera),
         },
     )
 
@@ -87,9 +100,8 @@ def look_through(
     respond(mount, rng)
 
 
-def _rows(m: Matrix) -> Matrix4:
-    x, y, z, w = map(tuple, m)
-    return x, y, z, w
+def _rows(m: np.ndarray) -> Matrix4:
+    return cast(Matrix4, tuple(map(tuple, m.tolist())))
 
 
 def _viewport(far_m: float) -> None:
@@ -157,14 +169,19 @@ def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     afloat: list[Afloat] = []
-    vessel = add_ownship(
+    up_m = ownship_up_m(
         scenario.ownship,
-        path,
-        empty("rigs"),
-        Hulls(scenario.sky, None),
         scenario.outputs,
         (),
         earth.earth_radius_m(scenario.sea.refraction_k),
+    )
+    vessel = add_ownship(
+        scenario.ownship,
+        path,
+        up_m,
+        empty("rigs"),
+        Hulls(scenario.sky, None),
+        scenario.outputs.times_s,
         afloat,
     )
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
@@ -206,8 +223,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     afloat: list[Afloat] = []
     path = track(scenario.ownship, outputs, scenario.turn)
+    up_m = ownship_up_m(scenario.ownship, outputs, tall, radius_m)
     vessel = add_ownship(
-        scenario.ownship, path, rigs.root, hulls, outputs, tall, radius_m, afloat
+        scenario.ownship, path, up_m, rigs.root, hulls, outputs.times_s, afloat
     )
     trails: list[wakes.Wake] = []
     vessels, turbines = add_vessels(scenario, radius_m, hulls, trails, afloat)
@@ -216,8 +234,11 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
-    tilt = _ownship_tilt(path, afloat, vessel, wind + swell, tall)
-    stabilise(rigs.heads, scenario, tilt)
+    hull = next((a.hull for a in afloat if a.root is vessel), None)
+    tilt = tilted(path, hull, wind + swell, tall)
+    head_poses = stabilise(rigs.heads, scenario, tilt)
+    T_waterline_ownship = lifted(scenario.ownship.rise_m)
+    waterline = waterline_pose(path, up_m, hull, wind + swell, tall)
     solid = [a.root for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
@@ -269,4 +290,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
         heads=rigs.heads,
         cameras=rigs.cameras,
         targets=targets,
+        ownship_pose=lambda t_s: waterline(t_s) @ T_waterline_ownship,
+        head_poses=head_poses,
+        times_s=outputs.times_s,
     )
