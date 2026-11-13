@@ -51,6 +51,7 @@ PTU_TILT_DEG, SCAN_DEG_S, TOP_DEG_S = 4.0, 6.0, 50.0
 MOUNT_YAW_DEG, MOUNT_PITCH_DEG, SCANNING_HULL_YAW_DEG = -20.0, -2.0, 15.0
 WIDTH, HEIGHT, F = 640, 480, 1000.0
 RADIUS_M = earth.earth_radius_m(0.13)
+GOLDEN = Path(__file__).with_name("recording_golden.json")
 
 
 def make_run(
@@ -472,3 +473,59 @@ def test_a_re_export_leaves_only_what_it_wrote(run: Path) -> None:
     written = recording.export(run)
     (into,) = run.glob("recordings/port/*")
     assert sorted(p for p in into.rglob("*") if p.is_file()) == sorted(written)
+
+
+def _cropped_for_hardware(run: Path) -> Path:
+    """The rig as a cropped video on a named hardware version: the branches a bare
+    camera leaves out of `serialized_parameters.json` and `module_info.json`.
+    """
+    video = Crop(kind="crop", camera="EO", left_px=40, right_px=40)
+    calibration = Calibration.read(run)
+    cropped = [
+        camera.model_copy(update={"name": "port_RGB"}).cropped(video)
+        for camera in calibration.cameras
+    ]
+    Calibration(cameras=cropped, raw=calibration.cameras).write(run)
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    rig = truth.info["scenario"]["rigs"]["port"]
+    rig |= {
+        "videos": {"RGB": video.model_dump()},
+        "hardware_version": "Oscar_V7_Gen_3_1",
+    }
+    truth.write(run)
+    (run / "EO.mp4").rename(run / "port_RGB.mp4")
+    return run
+
+
+def _written(run: Path) -> dict[str, object]:
+    """Each table and setting, with JSON floats to 9 decimals: libm's last digits
+    differ across machines.
+    """
+    (into,) = {p.parent for p in recording.export(run) if p.suffix == ".csv"}
+    files = {}
+    for p in sorted(into.rglob("*")):
+        if p.suffix == ".csv":
+            files[p.relative_to(into).as_posix()] = p.read_text(newline="").split("\n")
+        elif p.suffix == ".json":
+            text = p.read_text()
+            files[p.relative_to(into).as_posix()] = json.loads(
+                text, parse_float=lambda f: round(float(f), 9) + 0.0
+            )
+    return files
+
+
+def test_a_recording_stays_as_written(tmp_path: Path) -> None:
+    """Every table and setting a fixed rig, and a cropped PTU rig, write, as the
+    text of `recording_golden.json`, so an int turned float shows. To change the
+    recording on purpose, delete the file and rerun.
+    """
+    written = {}
+    for key in ("fixed", "ptu"):
+        (tmp_path / key).mkdir()
+        run = make_run(tmp_path / key, CAMERA_YAW_DEG, ptu=key == "ptu")
+        written[key] = _written(_cropped_for_hardware(run) if key == "ptu" else run)
+    text = json.dumps(written, indent=1) + "\n"
+    if not GOLDEN.exists():
+        GOLDEN.write_text(text)
+        pytest.fail(f"wrote {GOLDEN.name}; rerun")
+    assert text == GOLDEN.read_text()
