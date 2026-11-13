@@ -229,6 +229,19 @@ def test_a_scripted_tilt_turns_the_deck_s_axes(
     assert deck(0.0)[:, axis] == pytest.approx(expected)
 
 
+def test_the_sea_tilts_a_trimmed_hull_from_outside_and_leaves_its_heading() -> None:
+    """Trimmed 5 bow up on a sea rolling it 10: the roll turns the bow off its trim,
+    and the yaw the two tilts make is dropped.
+    """
+    trim, sea = math.radians(5.0), math.radians(10.0)
+    pose = motion.Pose(0.0, 0.0, 0.0, pitch_rad=trim)
+    pitch_rad, roll_rad = motion.tilt(pose, motion.Rocking(0.0, sea, 0.0))
+
+    assert pitch_rad == pytest.approx(math.asin(math.cos(sea) * math.sin(trim)))
+    expected_roll = math.atan2(math.sin(sea), math.cos(sea) * math.cos(trim))
+    assert roll_rad == pytest.approx(expected_roll)
+
+
 _PITCH, _ROLL = math.radians(3.0), math.radians(5.0)
 _ROLLED = math.degrees(math.asin(math.cos(_PITCH) * math.sin(_ROLL)))
 _AHEAD_UP_7 = math.degrees(
