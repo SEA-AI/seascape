@@ -151,7 +151,7 @@ def build(
         bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()), relative_remap=False)
     mounts = built.mounts
     bands = ", ".join(sorted({mount.camera.band for mount in mounts}))
-    heights = ", ".join(f"{rig.height_m} m" for rig in built.rigs.values())
+    heights = ", ".join(f"{built.head_height_m(name)} m" for name in built.rigs)
     click.echo(f"{path}: {band}, {len(mounts)} cameras ({bands}) at {heights}")
 
 

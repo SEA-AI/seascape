@@ -226,9 +226,13 @@ def buoy_half_deg(range_m: float) -> float:
     return half_deg(buoy_above_m(), range_m)
 
 
-def elevation_from_head_deg(rig: Rig, range_m: float, above_m: float = 0.0) -> float:
-    """Up from `rig`'s head to a point `above_m` over a flat sea, `range_m` out."""
-    return math.degrees(math.atan2(above_m - rig.height_m, range_m))
+def elevation_from_head_deg(
+    height_m: float, range_m: float, above_m: float = 0.0
+) -> float:
+    """Up from a head `height_m` over a flat sea to a point `above_m` over it,
+    `range_m` out.
+    """
+    return math.degrees(math.atan2(above_m - height_m, range_m))
 
 
 def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
@@ -243,14 +247,14 @@ def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
     return name, rig, scenario.turn
 
 
-def _inclination_deg(rig: Rig, near_m: float) -> float | None:
+def _inclination_deg(rig: Rig, height_m: float, near_m: float) -> float | None:
     """The pitch that keeps the horizon and the nearest ring's waterline in every
     video, as far from either edge as it can.
 
     Raises:
         ValueError: No pitch does, or a fixed mount's is not one.
     """
-    low_deg = elevation_from_head_deg(rig, near_m) - MARGIN_DEG
+    low_deg = elevation_from_head_deg(height_m, near_m) - MARGIN_DEG
     least, most = -math.inf, math.inf
     for name, camera in recorded(rig).items():
         top, bottom = _edges(camera)
@@ -303,7 +307,8 @@ def stage(scenario: Scenario) -> Staging:
     # A ring is centred on the ownship, so its nearest buoy stands two of the rig's
     # offsets nearer the cameras than the ring's range.
     off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
-    inclination_deg = _inclination_deg(rig, circles[0].range_m - 2 * off_m)
+    near_m = circles[0].range_m - 2 * off_m
+    inclination_deg = _inclination_deg(rig, scenario.head_height_m(name), near_m)
 
     start = head_track(scenario, name)(0.0)
     narrow = min(videos, key=lambda v: v.right_deg - v.left_deg)

@@ -185,6 +185,8 @@ def head_track(scenario: Scenario, name: str) -> Path:
             math.degrees(pose.heading_rad), 0.0
         ) @ deck(t_s)
         T_world_ownship[:3, 3] = pose.east_m, pose.north_m, 0.0
+        # The hull tilts about its floating waterline, `rise_m` under its origin.
+        T_world_ownship[:3, 3] += T_world_ownship[:3, 2] * scenario.ownship.rise_m
         T_world_head = T_world_ownship @ rig.pose(pan(t_s))
         east, north, _ = T_world_head[:3, 1]
         return Pose(

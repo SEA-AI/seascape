@@ -153,6 +153,12 @@ class Scenario(Model):
         """The cameras that see in `band`."""
         return [m for m in self.mounts if m.camera.band == band]
 
+    def head_height_m(self, rig: str) -> float:
+        """The head of rig `rig` above a calm sea: its height on the hull, which a
+        lighter hull lifts by its rise.
+        """
+        return self.rigs[rig].height_m + self.ownship.rise_m
+
     @property
     def images(self) -> int:
         """How many images a render writes."""

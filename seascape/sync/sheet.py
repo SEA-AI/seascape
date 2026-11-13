@@ -542,11 +542,10 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([angles.elevation_deg(rays[:, 2]) for rays in edges])
-    # The posed cameras ride `rise_m` above the rig's height, and so do these.
-    rise_m = course.scenario.ownship.rise_m
+    height_m = course.scenario.head_height_m(course.name)
 
     def up_deg(range_m: float, above_m: float) -> float:
-        return elevation_from_head_deg(course.rig, range_m, above_m - rise_m)
+        return elevation_from_head_deg(height_m, range_m, above_m)
 
     lowest = min(up_deg(r.range_m, 0.0) for r in course.rings)
     low_e = min(float(elevations.min()), lowest) - UP_PAD_DEG
