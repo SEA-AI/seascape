@@ -325,9 +325,9 @@ def _rolled(rad: float) -> np.ndarray:
 def tilt_rad(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
     """A hull's pitch, bow up, and roll, starboard down, in radians: the sea's tilt
     `sea` outside the trim and list `pose` scripts, which are relative to the water.
-    Two tilts composed also yaw the hull; that yaw is dropped, as the hull's heading
-    is its track's plus the sea's `yaw_rad` (Fossen, Handbook of Marine Craft
-    Hydrodynamics, 2011, §2.2: yaw of the whole attitude).
+    Two tilts composed also yaw the hull (Fossen, Handbook of Marine Craft
+    Hydrodynamics, 2011, §2.2: yaw of the whole attitude); that yaw is dropped, as
+    `Rocking.yaw_rad` sets the heading.
     """
     if sea is None:
         return pose.pitch_rad, pose.roll_rad
@@ -372,9 +372,8 @@ def _afloat(
     """`R_level_waterline` and the sea's rocking at `t_s`; `tilted`'s arguments."""
     pose = path(t_s)
     if hull is None:
-        return _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad), Rocking(
-            0.0, 0.0, 0.0, 0.0
-        )
+        still = Rocking(pitch_rad=0.0, roll_rad=0.0, heave_m=0.0, yaw_rad=0.0)
+        return _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad), still
     sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
     pitch_rad, roll_rad = tilt_rad(pose, sea)
     return _pitched(pitch_rad) @ _rolled(roll_rad), sea

@@ -235,7 +235,9 @@ def test_the_sea_tilts_a_trimmed_hull_from_outside_and_leaves_its_heading() -> N
     """
     trim, sea = math.radians(5.0), math.radians(10.0)
     pose = motion.Pose(0.0, 0.0, 0.0, pitch_rad=trim)
-    pitch_rad, roll_rad = motion.tilt_rad(pose, motion.Rocking(0.0, sea, 0.0, 0.0))
+    pitch_rad, roll_rad = motion.tilt_rad(
+        pose, motion.Rocking(pitch_rad=0.0, roll_rad=sea, heave_m=0.0, yaw_rad=0.0)
+    )
 
     assert pitch_rad == pytest.approx(math.asin(math.cos(sea) * math.sin(trim)))
     expected_roll = math.atan2(math.sin(sea), math.cos(sea) * math.cos(trim))

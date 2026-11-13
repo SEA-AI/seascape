@@ -701,7 +701,9 @@ def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
 def test_a_hull_yaws_with_the_water_under_it(
     omega_rad_s: float, length_m: float, beam_m: float
 ) -> None:
-    """The least-squares turn of the Gerstner offset, summed over a grid."""
+    """The least-squares turn of the Gerstner offset, integrated over a 301 x 101
+    grid.
+    """
     wave = waves.Wave(0.8 * (0.6 / omega_rad_s) ** 2, omega_rad_s, 0.7, 1.0)
     hull = waves.Waterplane(30.0, -40.0, math.radians(100.0), length_m, beam_m)
     x, y = np.meshgrid(
@@ -715,13 +717,14 @@ def test_a_hull_yaws_with_the_water_under_it(
     )
     along, starboard = east * sin + north * cos, east * cos - north * sin
 
-    def mean(f: np.ndarray) -> float:
+    def integral(f: np.ndarray) -> float:
         return float(np.trapezoid(np.trapezoid(f, axis=1), axis=0))
 
-    turn = mean(x * starboard - y * along)
+    # atan2 takes a ratio, so the integrals stand in for the means.
+    turn = integral(x * starboard - y * along)
     yaw = waves.yaw_rad((wave,), hull, 2.0)
     assert yaw == pytest.approx(
-        math.atan2(turn, mean(x * x + y * y + x * along + y * starboard)), abs=1e-6
+        math.atan2(turn, integral(x * x + y * y + x * along + y * starboard)), abs=1e-6
     )
     assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
 

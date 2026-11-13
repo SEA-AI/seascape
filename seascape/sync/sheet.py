@@ -625,7 +625,8 @@ def _signals(
         [angles.attitude_deg(waterline(t)[:3, :3]) for t in times]
     ).T
     signals = {
-        "heading": np.unwrap(heading, period=360.0),
+        # From [0, 360), as recording.csv writes it.
+        "heading": np.unwrap(heading % 360.0, period=360.0),
         "pitch": pitch,
         "roll": roll,
     }
