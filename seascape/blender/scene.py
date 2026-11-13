@@ -10,7 +10,7 @@ import numpy as np
 from mathutils import Matrix
 
 from seascape.blender import sea
-from seascape.blender.blend import BLENDER_TO_CV
+from seascape.blender.blend import BLENDER_TO_CV, empty
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
 from seascape.blender.rigs import View, add_rigs, stabilise, views
@@ -28,7 +28,6 @@ from seascape.config import (
     Band,
     Mount,
     Scenario,
-    recorded_name,
     substream,
 )
 from seascape.motion import Path, Tilt, tilted, track
@@ -140,18 +139,6 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Posed:
-    """The one rig's cameras at the start, by name, each as its rotation from camera
-    to world in OpenCV's frame (x right, y down, looking down +z), and the ownship's
-    path and attitude over the scenario.
-    """
-
-    cameras: dict[str, np.ndarray]
-    path: Path
-    tilt: Tilt
-
-
 def _ownship_tilt(
     path: Path,
     afloat: list[Afloat],
@@ -164,42 +151,25 @@ def _ownship_tilt(
     return tilted(path, hull, field, tall)
 
 
-def posed_at_start(scenario: Scenario, name: str) -> Posed:
-    """The rig `name` on its ownship as the render poses it at the start, a pan-tilt
-    unit holding its elevation against what the ownship's path scripts on a level
-    sea; no sea, no targets.
+def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
+    """The ownship's `R_level_ownship` at a time, its hull, measured as imported,
+    riding the sea along `path`; no rigs, no targets.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    rigs = add_rigs(scenario)
-    path = track(scenario.ownship, scenario.outputs, scenario.turn)
     afloat: list[Afloat] = []
     vessel = add_ownship(
         scenario.ownship,
         path,
-        rigs.root,
+        empty("rigs"),
         Hulls(scenario.sky, None),
         scenario.outputs,
         (),
         earth.earth_radius_m(scenario.sea.refraction_k),
         afloat,
     )
-    stabilise(rigs.heads, scenario, tilted(path, None, (), ()))
-    bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
-    rig = scenario.rigs[name]
-    to_cv = BLENDER_TO_CV.to_3x3()
-    cameras = {
-        camera: np.array(
-            rigs.cameras[recorded_name(name, camera)].matrix_world.to_3x3() @ to_cv
-        )
-        for camera in rig.rendered
-    }
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    return Posed(
-        cameras=cameras,
-        path=path,
-        tilt=_ownship_tilt(path, afloat, vessel, wind + swell, tall),
-    )
+    return _ownship_tilt(path, afloat, vessel, wind + swell, tall)
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:

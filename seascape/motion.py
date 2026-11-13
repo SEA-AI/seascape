@@ -166,6 +166,20 @@ def azimuth_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
     return lambda t_s: rig.azimuth_deg(panned(t_s))
 
 
+def _world_ownship(path: Path, tilt: Tilt, rise_m: float, t_s: float) -> np.ndarray:
+    """(4, 4) `T_world_ownship` at `t_s`, its hull turned by `path`'s heading and
+    tilted by `tilt` about its floating waterline, `rise_m` under its origin.
+    """
+    pose = path(t_s)
+    T_world_ownship = np.eye(4)
+    T_world_ownship[:3, :3] = angles.turned(math.degrees(pose.heading_rad), 0.0) @ tilt(
+        t_s
+    )
+    T_world_ownship[:3, 3] = pose.east_m, pose.north_m, 0.0
+    T_world_ownship[:3, 3] += T_world_ownship[:3, 2] * rise_m
+    return T_world_ownship
+
+
 def head_path(scenario: Scenario, name: str) -> Path:
     """Where the head of rig `name` is at a time, in world east and north, and the
     bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
@@ -179,14 +193,7 @@ def head_path(scenario: Scenario, name: str) -> Path:
     pan = panned_deg(scenario.turn, name)
 
     def at(t_s: float) -> Pose:
-        pose = path(t_s)
-        T_world_ownship = np.eye(4)
-        T_world_ownship[:3, :3] = angles.turned(
-            math.degrees(pose.heading_rad), 0.0
-        ) @ tilt(t_s)
-        T_world_ownship[:3, 3] = pose.east_m, pose.north_m, 0.0
-        # The hull tilts about its floating waterline, `rise_m` under its origin.
-        T_world_ownship[:3, 3] += T_world_ownship[:3, 2] * scenario.ownship.rise_m
+        T_world_ownship = _world_ownship(path, tilt, scenario.ownship.rise_m, t_s)
         T_world_head = T_world_ownship @ rig.pose(pan(t_s))
         east, north, _ = T_world_head[:3, 1]
         return Pose(
@@ -428,3 +435,23 @@ def held_tilt_deg(scenario: Scenario, name: str, tilt: Tilt) -> np.ndarray:
         return world_elevation_deg(tilt(t_s), head(t_s, tilt_deg))
 
     return ptu.tilt_deg(head_deg, times, rig.ptu.elevation_deg)
+
+
+def cameras_at_start(scenario: Scenario, name: str) -> dict[str, np.ndarray]:
+    """Each camera rig `name` renders, by name, as `R_world_camera` in OpenCV's axes
+    at the start: a pan-tilt unit holds its elevation against the ownship's scripted
+    tilt on a level sea.
+    """
+    rig = scenario.rigs[name]
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    tilt = tilted(path, hull=None, field=(), tall=())
+    held_deg = 0.0
+    if rig.ptu is not None:
+        held_deg = float(held_tilt_deg(scenario, name, tilt)[0])
+    T_world_head = _world_ownship(path, tilt, scenario.ownship.rise_m, 0.0) @ rig.pose(
+        panned_deg(scenario.turn, name)(0.0), held_deg
+    )
+    return {
+        camera: (T_world_head @ mount.pose())[:3, :3]
+        for camera, mount in rig.rendered.items()
+    }

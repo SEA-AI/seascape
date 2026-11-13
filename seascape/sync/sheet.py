@@ -17,16 +17,18 @@ import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
-from seascape import angles
+from seascape import angles, motion
 from seascape.assets import Buoy, Debris
-from seascape.blender.scene import Posed, posed_at_start
+from seascape.blender.scene import ownship_tilt
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
 from seascape.motion import (
     azimuth_deg,
+    cameras_at_start,
     head_path,
     held_tilt_deg,
     panned_deg,
     target_path,
+    track,
 )
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
@@ -610,19 +612,21 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     return tile
 
 
-def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
+def _signals(
+    course: _Course, path: motion.Path, tilt: motion.Tilt
+) -> dict[str, np.ndarray]:
     """The ownship's heading, pitch and roll, and a pan-tilt unit's pan and tilt, at
     each frame.
     """
     times = course.scenario.outputs.times_s
-    heading = np.unwrap([posed.path(t).heading_rad for t in times])
+    heading = np.unwrap([path(t).heading_rad for t in times])
     # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
-    roll, pitch, _ = np.array([angles.attitude_deg(posed.tilt(t)) for t in times]).T
+    roll, pitch, _ = np.array([angles.attitude_deg(tilt(t)) for t in times]).T
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)
         signals["pan"] = np.array([panned(t) for t in times])
-        signals["tilt"] = held_tilt_deg(course.scenario, course.name, posed.tilt)
+        signals["tilt"] = held_tilt_deg(course.scenario, course.name, tilt)
     return signals
 
 
@@ -686,16 +690,19 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
 def draw(scenario: Scenario, out: Path) -> Path:
     """Draw the course `scenario` stores."""
     course = _course(scenario)
-    posed = posed_at_start(scenario, course.name)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
     sheet = canvas.above(
         [
             _header(course),
             canvas.beside(
-                [_from_above(course), _panorama(course, posed.cameras)],
+                [
+                    _from_above(course),
+                    _panorama(course, cameras_at_start(scenario, course.name)),
+                ],
                 gap_px=GAP_PX,
                 matte=MATTE,
             ),
-            _over_time(course, _signals(course, posed)),
+            _over_time(course, _signals(course, path, ownship_tilt(scenario, path))),
         ],
         gap_px=GAP_PX,
         matte=MATTE,
