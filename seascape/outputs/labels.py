@@ -109,8 +109,8 @@ class Annotation(Model):
     # waterline, which is what a range from the horizon measures.
     range_m: float
     waterline_range_m: float
-    bearing_deg: float  # clockwise from world +Y
-    heading_deg: float  # clockwise from world +Y
+    bearing_deg: float  # clockwise from world +Y, in [0, 360)
+    heading_deg: float  # clockwise from world +Y, in [0, 360)
     # length, beam, height above the waterline, as floated
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
@@ -123,7 +123,7 @@ class Dropped(Model):
     image_id: int
     name: str
     range_m: float
-    bearing_deg: float  # clockwise from world +Y
+    bearing_deg: float  # clockwise from world +Y, in [0, 360)
     reason: Literal["no_pixels", "low_contrast"]
     # For "low_contrast" only; bbox and area as an annotation's.
     excess_de: float | None = None
@@ -206,7 +206,7 @@ class Labels(Model):
                 "image_id": image.id,
                 "name": target.name,
                 "range_m": math.hypot(east, north),
-                "bearing_deg": angles.bearing_deg(east, north),
+                "bearing_deg": angles.bearing_deg(east, north) % 360.0,
             }
             if not len(xs):
                 self.dropped.append(Dropped(**where, reason="no_pixels"))

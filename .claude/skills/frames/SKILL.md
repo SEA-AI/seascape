@@ -36,7 +36,7 @@ Any other frame is local to the module that owns it and is named there.
 | azimuth | the same angle in another frame (ownship, base or head). A relative bearing is an azimuth from the bow, in the level plane |
 | attitude | `R = Rz(-yaw) @ Rx(pitch) @ Ry(roll)`: yaw clockwise, pitch bow up, roll starboard down. This is Fossen's ZYX with SNAME's signs (`angles.attitude_deg`) |
 | pan, tilt | pan clockwise, tilt up |
-| wrap | `angles.bearing_deg` returns (-180, 180], `angles.wrapped_deg` [-180, 180) |
+| wrap | `angles.bearing_deg` and `angles.wrapped_deg` return (-180, 180] |
 
 Inside seascape an elevation is up from the horizon. Other conventions are formats, never internal state:
 
