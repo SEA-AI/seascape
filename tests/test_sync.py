@@ -12,9 +12,8 @@ import pytest
 
 from seascape import angles
 from seascape.assets import Buoy, manifest
-from seascape.blender.scene import posed_at_start
 from seascape.config import Scenario, load, sources
-from seascape.motion import head_path
+from seascape.motion import cameras_at_start, head_path
 from seascape.outputs.calibration import CameraCalibration
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import preview, sheet, staging
@@ -186,10 +185,9 @@ def test_advice_without_a_course_that_fits_says_why() -> None:
 def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
     scenario = load(SYNC_SENTRY)
     ((name, rig),) = scenario.rigs.items()
-    posed = posed_at_start(scenario, name)
     heading_deg = math.degrees(head_path(scenario, name)(0.0).heading_rad)
     n = sheet.EDGE_POINTS
-    edges = sheet.frame_edges(rig, posed.cameras)
+    edges = sheet.frame_edges(rig, cameras_at_start(scenario, name))
 
     for view in staging.views(rig):
         rays = edges[view.name]
