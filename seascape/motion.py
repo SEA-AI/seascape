@@ -452,6 +452,6 @@ def cameras_at_start(scenario: Scenario, name: str) -> dict[str, np.ndarray]:
         panned_deg(scenario.turn, name)(0.0), held_deg
     )
     return {
-        camera: (T_world_head @ mount.pose())[:3, :3]
-        for camera, mount in rig.rendered.items()
+        camera_name: (T_world_head @ camera.pose())[:3, :3]
+        for camera_name, camera in rig.rendered.items()
     }

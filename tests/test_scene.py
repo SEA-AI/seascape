@@ -17,7 +17,7 @@ from mathutils import Vector
 from seascape import angles, motion
 from seascape.assets import Buoy, Debris, Hull, Turbine, manifest, skies
 from seascape.blender import blend, scene, sea
-from seascape.blender.blend import mesh_objects
+from seascape.blender.blend import BLENDER_TO_CV, mesh_objects
 from seascape.blender.heat import _sunlit_emission, surroundings, zone_skin
 from seascape.blender.meshes import (
     _fit,
@@ -1502,6 +1502,14 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     held_deg = motion.held_tilt_deg(scenario, name, level_ownship)
     axis = motion.azimuth_deg(scenario, name)
     mount_deg = scenario.rigs[name].pitch_deg
+    bpy.context.scene.frame_set(0)
+    # float32 matrices in Blender.
+    assert motion.cameras_at_start(scenario, name)[
+        scenario.mounts[0].camera_name
+    ] == pytest.approx(
+        np.array(camera.matrix_world.to_3x3()) @ np.array(BLENDER_TO_CV.to_3x3()),
+        abs=1e-6,
+    )
 
     omega = 2.0 * math.pi / 4.0
     # A base tilted `tilt` turns a boresight at `down` below it by about

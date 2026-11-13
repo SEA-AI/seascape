@@ -152,8 +152,8 @@ def _ownship_tilt(
 
 
 def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
-    """The ownship's `R_level_ownship` at a time, its hull, measured as imported,
-    riding the sea along `path`; no rigs, no targets.
+    """`R_level_ownship` at a time: the ownship's hull, measured from its imported
+    mesh, riding the sea along `path`; no rigs, no targets.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     afloat: list[Afloat] = []
