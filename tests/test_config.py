@@ -122,8 +122,8 @@ def test_a_preset_supplies_optics_and_the_block_supplies_the_mount(twin) -> None
     )
 
 
-def test_a_nominal_bearing_is_its_rig_plus_its_fan(twin) -> None:
-    bearings = {m.name: m.nominal_bearing_deg for m in twin.mounts}
+def test_a_nominal_azimuth_is_its_rig_plus_its_fan(twin) -> None:
+    bearings = {m.name: m.nominal_azimuth_deg for m in twin.mounts}
 
     assert [bearings[f"port_{c}"] for c in ("a", "b", "c", "ir")] == [
         -90.0,

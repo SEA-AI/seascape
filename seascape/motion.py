@@ -158,15 +158,15 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     return at
 
 
-def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
+def azimuth_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
     """The azimuth of the head of rig `name` at a time, clockwise from the bow: its
     base's yaw and its pan.
     """
     rig, panned = scenario.rigs[name], panned_deg(scenario.turn, name)
-    return lambda t_s: rig.axis_deg(panned(t_s))
+    return lambda t_s: rig.azimuth_deg(panned(t_s))
 
 
-def rig_track(scenario: Scenario, name: str) -> Path:
+def head_track(scenario: Scenario, name: str) -> Path:
     """Where the head of rig `name` is at a time, in world east and north, and the
     bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
 

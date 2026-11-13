@@ -13,7 +13,7 @@ import pytest
 from seascape.assets import Buoy, manifest
 from seascape.blender.scene import posed_at_start
 from seascape.config import Scenario, load, sources
-from seascape.motion import rig_track
+from seascape.motion import head_track
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import preview, sheet, staging
 from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
@@ -185,7 +185,7 @@ def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
     scenario = load(SYNC_SENTRY)
     ((name, rig),) = scenario.rigs.items()
     posed = posed_at_start(scenario, name)
-    heading_deg = math.degrees(rig_track(scenario, name)(0.0).heading_rad)
+    heading_deg = math.degrees(head_track(scenario, name)(0.0).heading_rad)
     n = sheet.EDGE_POINTS
     edges = sheet.frame_edges(rig, posed.cameras)
 
@@ -210,7 +210,7 @@ def test_a_rig_on_a_rolled_deck_leans_and_turns_with_it() -> None:
         [{"ownship": {"roll_deg": 20.0}, "rigs": {"mast": {"yaw_deg": 45.0}}}],
     )
     rig = scenario.rigs["mast"]
-    start = rig_track(scenario, "mast")(0.0)
+    start = head_track(scenario, "mast")(0.0)
 
     yaw, roll = math.radians(45.0), math.radians(20.0)
     expected = math.degrees(math.atan2(math.sin(yaw) * math.cos(roll), math.cos(yaw)))

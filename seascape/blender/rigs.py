@@ -26,7 +26,7 @@ from seascape.physics import fisheye
 
 class _RigObjects(NamedTuple):
     root: bpy.types.Object
-    rigs: dict[str, bpy.types.Object]
+    heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
 
 
@@ -34,11 +34,11 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
     """The scenario's rigs and cameras under one root."""
     root = empty("rigs")
 
-    rigs: dict[str, bpy.types.Object] = {}
+    heads: dict[str, bpy.types.Object] = {}
     for name, rig in scenario.rigs.items():
-        rig_root = empty(f"rig_{name}", root)
-        rig_root.matrix_basis = Matrix(rig.pose().tolist())
-        rigs[name] = rig_root
+        head = empty(f"head_{name}", root)
+        head.matrix_basis = Matrix(rig.pose().tolist())
+        heads[name] = head
 
     cameras: dict[str, bpy.types.Object] = {}
     for mount in scenario.mounts:
@@ -61,16 +61,16 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
             data.angle_x = width / fx
         camera = bpy.data.objects.new(data.name, data)
         bpy.context.collection.objects.link(camera)
-        camera.parent = rigs[mount.rig_name]
+        camera.parent = heads[mount.rig_name]
         camera.rotation_mode = "XYZ"
         # A Blender camera looks down its local -Z, OpenCV's down +Z.
         camera.matrix_basis = Matrix(mount.camera.pose().tolist()) @ BLENDER_TO_CV
         cameras[mount.name] = camera
-    return _RigObjects(root, rigs, cameras)
+    return _RigObjects(root, heads, cameras)
 
 
 def stabilise(
-    rigs: dict[str, bpy.types.Object],
+    heads: dict[str, bpy.types.Object],
     scenario: Scenario,
     deck: Deck,
 ) -> None:
@@ -78,7 +78,7 @@ def stabilise(
     the unit's loop holding its pitch against the base under it.
 
     Args:
-        rigs: The rig empties `add_rigs` made, by name.
+        heads: The head empties `add_rigs` made, by name.
         scenario: Its rigs, its turn and the times keyed.
         deck: The ownship's deck rotation at a time, heading aside.
     """
@@ -86,7 +86,7 @@ def stabilise(
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
             tilt = held_tilt_deg(scenario, name, deck)
-            _hold(rigs[name], rig, panned_deg(scenario.turn, name), tilt, times)
+            _hold(heads[name], rig, panned_deg(scenario.turn, name), tilt, times)
 
 
 def _hold(

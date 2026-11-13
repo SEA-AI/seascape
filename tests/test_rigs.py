@@ -72,7 +72,7 @@ def test_a_rigs_cameras_all_sit_at_its_mount_point(
 
 def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
     """On the water there, which the tall waves raise."""
-    anchor = built.vessel
+    anchor = built.anchor
     tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
     t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
     rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
@@ -85,7 +85,7 @@ def test_the_hull_takes_the_attitude_it_was_given(built: scene.Built) -> None:
     """Pins both signs and the order."""
     roll = math.radians(SCENARIO.ownship.roll_deg)
     pitch = math.radians(SCENARIO.ownship.pitch_deg)
-    rotation = built.vessel.matrix_world.to_3x3()
+    rotation = built.anchor.matrix_world.to_3x3()
 
     bow = rotation @ Vector((0.0, 1.0, 0.0))
     starboard = rotation @ Vector((1.0, 0.0, 0.0))
@@ -379,7 +379,7 @@ def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
 
 def _in_ship_frame(built: scene.Built, obj: bpy.types.Object) -> Matrix:
     """The rig is specified on the hull, so it is measured there."""
-    return built.vessel.matrix_world.inverted() @ obj.matrix_world
+    return built.anchor.matrix_world.inverted() @ obj.matrix_world
 
 
 def _in_frame(uv) -> bool:
