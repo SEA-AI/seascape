@@ -72,20 +72,20 @@ def test_a_rigs_cameras_all_sit_at_its_mount_point(
 
 def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
     """On the water there, which the tall waves raise."""
-    anchor = built.anchor
+    root = built.root
     tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
     t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
     rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
     ridden = waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
 
-    assert tuple(anchor.location) == pytest.approx((0.0, 0.0, ridden))
+    assert tuple(root.location) == pytest.approx((0.0, 0.0, ridden))
 
 
 def test_the_hull_takes_the_attitude_it_was_given(built: scene.Built) -> None:
     """Pins both signs and the order."""
     roll = math.radians(SCENARIO.ownship.roll_deg)
     pitch = math.radians(SCENARIO.ownship.pitch_deg)
-    rotation = built.anchor.matrix_world.to_3x3()
+    rotation = built.root.matrix_world.to_3x3()
 
     bow = rotation @ Vector((0.0, 1.0, 0.0))
     starboard = rotation @ Vector((1.0, 0.0, 0.0))
@@ -107,8 +107,8 @@ def test_every_target_sits_at_the_configured_range() -> None:
 def test_hulls_of_one_asset_share_its_meshes(built: scene.Built) -> None:
     """Clones share datablocks; copied meshes show only when a build runs out of RAM."""
     assert SCENARIO.targets is not None
-    for asset, anchors in built.targets.items():
-        meshes = {frozenset(p.data.name for p in mesh_objects([a])) for a in anchors}
+    for asset, roots in built.targets.items():
+        meshes = {frozenset(p.data.name for p in mesh_objects([a])) for a in roots}
 
         assert len(meshes) == 1, asset
     assert len(targets()) == SCENARIO.targets.count
@@ -149,14 +149,14 @@ def test_the_calibration_projects_every_target_where_blender_draws_it(
 
 def test_a_waterline_rings_its_hull_within_its_length(built: scene.Built) -> None:
     """World metres: in the mesh's own frame it would sit at the origin, far off."""
-    for asset, anchors in built.targets.items():
-        for anchor in anchors:
-            centre = np.array(anchor.matrix_world.translation.xy)
-            reach = np.linalg.norm(waterline_m(anchor) - centre, axis=1)
+    for asset, roots in built.targets.items():
+        for root in roots:
+            centre = np.array(root.matrix_world.translation.xy)
+            reach = np.linalg.norm(waterline_m(root) - centre, axis=1)
 
             hull = manifest()[asset]
             assert isinstance(hull, Hull), asset
-            assert 0.0 < reach.max() <= hull.length_m / 2, anchor.name
+            assert 0.0 < reach.max() <= hull.length_m / 2, root.name
 
 
 def test_a_calibration_with_fields_it_does_not_know_still_reads(
@@ -384,7 +384,7 @@ def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
 
 def _in_ship_frame(built: scene.Built, obj: bpy.types.Object) -> Matrix:
     """The rig is specified on the hull, so it is measured there."""
-    return built.anchor.matrix_world.inverted() @ obj.matrix_world
+    return built.root.matrix_world.inverted() @ obj.matrix_world
 
 
 def _in_frame(uv) -> bool:

@@ -20,7 +20,7 @@ from seascape.config import (
     Rig,
     Scenario,
 )
-from seascape.motion import Deck, held_tilt_deg, panned_deg
+from seascape.motion import Tilt, held_tilt_deg, panned_deg
 from seascape.physics import fisheye
 
 
@@ -72,7 +72,7 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
 def stabilise(
     heads: dict[str, bpy.types.Object],
     scenario: Scenario,
-    deck: Deck,
+    tilt: Tilt,
 ) -> None:
     """Key each rig on a pan-tilt unit: its pan to a turn by the ptu, and its tilt to
     the unit's loop holding its pitch against the base under it.
@@ -80,13 +80,13 @@ def stabilise(
     Args:
         heads: The head empties `add_rigs` made, by name.
         scenario: Its rigs, its turn and the times keyed.
-        deck: The ownship's deck rotation at a time, heading aside.
+        tilt: The ownship's `R_level_ownship` at a time, heading aside.
     """
     times = scenario.outputs.times_s
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
-            tilt = held_tilt_deg(scenario, name, deck)
-            _hold(heads[name], rig, panned_deg(scenario.turn, name), tilt, times)
+            held = held_tilt_deg(scenario, name, tilt)
+            _hold(heads[name], rig, panned_deg(scenario.turn, name), held, times)
 
 
 def _hold(

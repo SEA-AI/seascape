@@ -14,7 +14,7 @@ from seascape import angles
 from seascape.assets import Buoy, manifest
 from seascape.blender.scene import posed_at_start
 from seascape.config import Scenario, load, sources
-from seascape.motion import head_track
+from seascape.motion import head_path
 from seascape.outputs.calibration import CameraCalibration
 from seascape.outputs.labels import Annotation, Image, Labels
 from seascape.sync import preview, sheet, staging
@@ -187,7 +187,7 @@ def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
     scenario = load(SYNC_SENTRY)
     ((name, rig),) = scenario.rigs.items()
     posed = posed_at_start(scenario, name)
-    heading_deg = math.degrees(head_track(scenario, name)(0.0).heading_rad)
+    heading_deg = math.degrees(head_path(scenario, name)(0.0).heading_rad)
     n = sheet.EDGE_POINTS
     edges = sheet.frame_edges(rig, posed.cameras)
 
@@ -212,7 +212,7 @@ def test_a_rig_on_a_rolled_deck_leans_and_turns_with_it() -> None:
         [{"ownship": {"roll_deg": 20.0}, "rigs": {"mast": {"yaw_deg": 45.0}}}],
     )
     rig = scenario.rigs["mast"]
-    start = head_track(scenario, "mast")(0.0)
+    start = head_path(scenario, "mast")(0.0)
 
     yaw, roll = math.radians(45.0), math.radians(20.0)
     expected = math.degrees(math.atan2(math.sin(yaw) * math.cos(roll), math.cos(yaw)))
@@ -227,7 +227,7 @@ def test_a_lighter_hull_lifts_its_rig_along_its_tilted_mast() -> None:
     roll_deg = 20.0
     ownship = {"asset": "cargo_ship", "draught_m": 5.24, "roll_deg": roll_deg}
     scenario = load(SYNC_SENTRY, [{"ownship": ownship}])
-    start = head_track(scenario, "mast")(0.0)
+    start = head_path(scenario, "mast")(0.0)
 
     height_m = scenario.head_height_m("mast")
     assert height_m > scenario.rigs["mast"].height_m

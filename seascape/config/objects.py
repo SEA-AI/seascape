@@ -151,7 +151,7 @@ class Object(Model):
     )
 
     @property
-    def course_deg(self) -> float:
+    def heading_from_bow_deg(self) -> float:
         """`heading_deg` from the ownship's bow, whatever it was given from."""
         if self.heading_from == "line_of_sight":
             return self.bearing_deg + self.heading_deg

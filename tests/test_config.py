@@ -1048,7 +1048,7 @@ def test_a_heading_turns_from_what_heading_from_names(heading_from, course) -> N
         heading_deg=180.0,
         heading_from=heading_from,
     )
-    assert spec.course_deg == course
+    assert spec.heading_from_bow_deg == course
 
 
 @pytest.mark.parametrize(

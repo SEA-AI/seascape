@@ -24,7 +24,7 @@ from seascape.config import (
     sources,
 )
 from seascape.config.cameras import PTU_INCLINATION_DEG
-from seascape.motion import head_track
+from seascape.motion import head_path
 from seascape.outputs import stitch
 from seascape.outputs.calibration import CameraCalibration
 
@@ -319,7 +319,7 @@ def stage(scenario: Scenario) -> Staging:
     near_m = circles[0].range_m - 2 * off_m
     inclination_deg = _inclination_deg(rig, scenario.head_height_m(name), near_m)
 
-    start = head_track(scenario, name)(0.0)
+    start = head_path(scenario, name)(0.0)
     narrow = min(videos, key=lambda v: v.right_deg - v.left_deg)
     box = asset(CONTAINER, Debris)
     box_m = box.length_m * narrow.focal_px / (CONTAINER_FILL * narrow.width_px)

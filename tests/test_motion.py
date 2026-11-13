@@ -225,8 +225,8 @@ def test_a_scripted_tilt_turns_the_deck_s_axes(
     pitch_deg: float, roll_deg: float, axis: int, expected: tuple[float, float, float]
 ) -> None:
     ownship = Ownship(pitch_deg=pitch_deg, roll_deg=roll_deg)
-    deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
-    assert deck(0.0)[:, axis] == pytest.approx(expected)
+    tilt = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
+    assert tilt(0.0)[:, axis] == pytest.approx(expected)
 
 
 def test_the_sea_tilts_a_trimmed_hull_from_outside_and_leaves_its_heading() -> None:
@@ -235,7 +235,7 @@ def test_the_sea_tilts_a_trimmed_hull_from_outside_and_leaves_its_heading() -> N
     """
     trim, sea = math.radians(5.0), math.radians(10.0)
     pose = motion.Pose(0.0, 0.0, 0.0, pitch_rad=trim)
-    pitch_rad, roll_rad = motion.tilt(pose, motion.Rocking(0.0, sea, 0.0))
+    pitch_rad, roll_rad = motion.tilt_rad(pose, motion.Rocking(0.0, sea, 0.0))
 
     assert pitch_rad == pytest.approx(math.asin(math.cos(sea) * math.sin(trim)))
     expected_roll = math.atan2(math.sin(sea), math.cos(sea) * math.cos(trim))
@@ -269,7 +269,7 @@ def test_a_head_s_elevation_is_its_boresight_through_the_tilted_deck(
 ) -> None:
     # Bow up 3, starboard down 5.
     ownship = Ownship(pitch_deg=3.0, roll_deg=5.0)
-    deck = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
+    tilt = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
     assert motion.world_elevation_deg(
-        deck(0.0), angles.direction(pan_deg, up_deg)
+        tilt(0.0), angles.direction(pan_deg, up_deg)
     ) == pytest.approx(expected)

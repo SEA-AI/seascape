@@ -154,8 +154,8 @@ def _zodiacs(worn: frozenset[str], count: int = 1) -> list[bpy.types.Object]:
 
 
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
-    for anchor in _zodiacs(frozenset({"zodiac"}), 2):
-        meshes = mesh_objects([anchor])
+    for root in _zodiacs(frozenset({"zodiac"}), 2):
+        meshes = mesh_objects([root])
         assert all("wear_position_m" in o.data.attributes for o in meshes)
         assert all(o.name.startswith("zodiac/") for o in meshes)
         # A hull is under way: its fouling is polished off.
@@ -174,8 +174,8 @@ def test_a_clean_build_is_not_tagged() -> None:
     assert not any("wear_position_m" in o.data.attributes for o in meshes)
 
 
-def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
-    slots = [s for o in mesh_objects([anchor]) for s in o.material_slots]
+def _materials(root: bpy.types.Object) -> set[bpy.types.Material]:
+    slots = [s for o in mesh_objects([root]) for s in o.material_slots]
     return {s.material for s in slots} - {None}
 
 

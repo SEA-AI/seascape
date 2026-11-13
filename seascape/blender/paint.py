@@ -34,10 +34,10 @@ def recolourable(meshes: Iterable[bpy.types.Object], materials: Set[str]) -> Non
         t.links.new(mix.outputs["Result"], shader.inputs["Base Color"])
 
 
-def paint(anchor: bpy.types.Object, srgb_hex: str) -> None:
+def paint(root: bpy.types.Object, srgb_hex: str) -> None:
     """Paint a recolourable hull's meshes `srgb_hex`."""
     linear = list(srgb_hex_decode(srgb_hex))
-    for part in mesh_objects([anchor]):
+    for part in mesh_objects([root]):
         part["paint"] = linear
         # An object without it reads 0: its own Base Color.
         part["painted"] = 1.0

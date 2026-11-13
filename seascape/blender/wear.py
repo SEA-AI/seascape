@@ -482,12 +482,12 @@ def masks(crevice: bpy.types.Image) -> bpy.types.NodeTree:
     return group
 
 
-def mark(anchor: bpy.types.Object, amount: float, rng: np.random.Generator) -> None:
+def mark(root: bpy.types.Object, amount: float, rng: np.random.Generator) -> None:
     """Give a hull's meshes their wear and a noise offset of their own, so copies of
     one asset wear apart.
     """
     offset = float(rng.uniform(0.0, 1000.0))
-    for part in mesh_objects([anchor]):
+    for part in mesh_objects([root]):
         part["wear"] = amount
         part["wear_offset"] = offset
 

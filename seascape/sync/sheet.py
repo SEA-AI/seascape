@@ -21,7 +21,7 @@ from seascape import angles
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import azimuth_deg, drifting, head_track, held_tilt_deg, panned_deg
+from seascape.motion import azimuth_deg, drifting, head_path, held_tilt_deg, panned_deg
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.staging import (
@@ -144,12 +144,17 @@ def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, floa
     head's axis, wrapped to (-180, 180].
     """
     outputs = scenario.outputs
-    head_at = head_track(scenario, one_rig(scenario)[0])
+    head_at = head_path(scenario, one_rig(scenario)[0])
     seen_from = [head_at(t) for t in outputs.times_s]
 
     def at(o: Object) -> list[tuple[float, float]]:
         path = drifting(
-            o.range_m, o.bearing_deg, o.course_deg, o.speed_mps, o.drift, outputs
+            o.range_m,
+            o.bearing_deg,
+            o.heading_from_bow_deg,
+            o.speed_mps,
+            o.drift,
+            outputs,
         )
         found = []
         for t, rig in zip(outputs.times_s, seen_from, strict=True):
@@ -528,7 +533,7 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         "2  Panorama",
         "outline: at the start  ·  shade: the bearings the turn sweeps",
     )
-    head_at = head_track(course.scenario, course.name)
+    head_at = head_path(course.scenario, course.name)
     times = course.scenario.outputs.times_s
     # Unwrapped, as the turn can pass astern; wrong if it turns 180 or more between
     # two frames.
@@ -606,12 +611,12 @@ def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
     times = course.scenario.outputs.times_s
     heading = np.unwrap([posed.path(t).heading_rad for t in times])
     # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
-    roll, pitch, _ = np.array([angles.attitude_deg(posed.deck(t)) for t in times]).T
+    roll, pitch, _ = np.array([angles.attitude_deg(posed.tilt(t)) for t in times]).T
     signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)
         signals["pan"] = np.array([panned(t) for t in times])
-        signals["tilt"] = held_tilt_deg(course.scenario, course.name, posed.deck)
+        signals["tilt"] = held_tilt_deg(course.scenario, course.name, posed.tilt)
     return signals
 
 

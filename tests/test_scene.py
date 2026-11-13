@@ -376,12 +376,12 @@ class TestEoBand:
     def test_a_target_is_fitted_to_its_manifest_length(self) -> None:
         """The mesh arrives in its author's units; unfitted it is a speck at range."""
         for spec in SCENARIO.objects:
-            anchor = bpy.data.objects[spec.asset]
-            (attitude,) = anchor.children
+            root = bpy.data.objects[spec.asset]
+            (attitude,) = root.children
             into_hull = attitude.matrix_world.inverted()
             corners = [
                 into_hull @ part.matrix_world @ Vector(corner)
-                for part in mesh_objects([anchor])
+                for part in mesh_objects([root])
                 for corner in part.bound_box
             ]
             axes = list(zip(*corners, strict=True))
@@ -454,8 +454,8 @@ class TestEoBand:
         radius = earth.earth_radius_m(SCENARIO.sea.refraction_k)
 
         for spec in SCENARIO.objects:
-            anchor = bpy.data.objects[spec.asset]
-            east, north, up = anchor.matrix_world.translation
+            root = bpy.data.objects[spec.asset]
+            east, north, up = root.matrix_world.translation
 
             assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
 
@@ -870,7 +870,7 @@ def test_a_lighter_ownship_lifts_its_rig_with_its_hull() -> None:
             variant(ownship={"asset": "cargo_ship", "draught_m": draught_m}, sea=calm),
             "eo",
         )
-        hull = mesh_objects(built.anchor.children_recursive)
+        hull = mesh_objects(built.root.children_recursive)
         top_m = max(c.z for c in box_corners(hull))
         camera_m = camera_of(SCENARIO.mounts[0]).matrix_world.translation.z
         heights.append((top_m, camera_m))
@@ -895,11 +895,11 @@ def test_a_lighter_ownship_sees_as_far_as_its_rig_raised_by_the_rise() -> None:
         objects=[yacht],
     )
     built = scene.build(lighter, "eo")
-    (anchor,) = built.targets["yacht"]
+    (root,) = built.targets["yacht"]
 
     assert sea.sea_reach_m(lighter) == pytest.approx(sea.sea_reach_m(raised))
-    assert scene._sightline_m(lighter, [anchor]) == pytest.approx(
-        scene._sightline_m(raised, [anchor])
+    assert scene._sightline_m(lighter, [root]) == pytest.approx(
+        scene._sightline_m(raised, [root])
     )
 
 
@@ -919,12 +919,10 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     built = scene.build(scenario, "eo")
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    (attitude,) = built.anchor.children
-    deck = motion.tilted(
+    (attitude,) = built.root.children
+    tilt = motion.tilted(
         motion.track(scenario.ownship, scenario.outputs),
-        waves.Waterplane(
-            length_m=built.anchor["length_m"], beam_m=built.anchor["beam_m"]
-        ),
+        waves.Waterplane(length_m=built.root["length_m"], beam_m=built.root["beam_m"]),
         wind + swell,
         tall,
     )
@@ -934,13 +932,13 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
 
     for frame, t_s in enumerate(scenario.outputs.times_s):
         bpy.context.scene.frame_set(frame)
-        east, north, up = built.anchor.matrix_world.translation
+        east, north, up = built.root.matrix_world.translation
         rest = waves.gerstner_rest_m(tall, np.array(east), np.array(north), t_s)
         plane = waves.Waterplane(
             *map(float, rest),
-            math.radians(heading_deg(built.anchor)),
-            built.anchor["length_m"],
-            built.anchor["beam_m"],
+            math.radians(heading_deg(built.root)),
+            built.root["length_m"],
+            built.root["beam_m"],
         )
         pitch, roll = waves.attitude(wind + swell, plane, t_s)
         rocked.append(abs(pitch) + abs(roll))
@@ -949,8 +947,8 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
         mounted.append(np.array(calibration.extrinsics["ownship"]))
 
-        tilt_roll, tilt_pitch, _ = angles.attitude_deg(deck(t_s))
-        assert tuple(built.anchor.rotation_euler)[:2] == pytest.approx(
+        tilt_roll, tilt_pitch, _ = angles.attitude_deg(tilt(t_s))
+        assert tuple(built.root.rotation_euler)[:2] == pytest.approx(
             (math.radians(tilt_pitch), math.radians(tilt_roll)), abs=1e-6
         )
         assert tuple(attitude.rotation_euler) == (0.0, 0.0, 0.0)
@@ -958,10 +956,10 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         # row is all the loop reads, and the heading leaves it be. 1e-6: Blender's
         # matrix_world is float32, a few ulp near 1 down the parent chain.
         assert np.array(built.ownship.matrix_world)[2, :3] == pytest.approx(
-            deck(t_s)[2], abs=1e-6
+            tilt(t_s)[2], abs=1e-6
         )
         # Straight up, however the script tilts the hull.
-        lift = attitude.matrix_world.translation - built.anchor.matrix_world.translation
+        lift = attitude.matrix_world.translation - built.root.matrix_world.translation
         assert tuple(lift) == pytest.approx(
             (0.0, 0.0, waves.heave_m(tall, plane, t_s)), abs=1e-6
         )
@@ -980,9 +978,9 @@ def test_the_far_clip_clears_a_hull_down_target() -> None:
         objects=[preset_target("multipurpose_freighter", range_m)],
     )
     built = scene.build(scenario, "eo")
-    (anchor,) = built.targets["multipurpose_freighter"]
-    corners = box_corners(mesh_objects([anchor]))
-    top_m = max(c.z for c in corners) - anchor.matrix_world.translation.z
+    (root,) = built.targets["multipurpose_freighter"]
+    corners = box_corners(mesh_objects([root]))
+    top_m = max(c.z for c in corners) - root.matrix_world.translation.z
     k = scenario.sea.refraction_k
     assert range_m < earth.horizon_m(5.0, k) + earth.horizon_m(top_m, k)
     camera = built.cameras["bow_eo"]
@@ -1024,8 +1022,8 @@ def test_a_hull_given_one_temperature_keeps_one_skin() -> None:
     """`t_k` overrides the zones: one emission, warmed by `solar_gain_k` in sun."""
     asset = SCENARIO.objects[0].asset
     hulls = Hulls(SCENARIO.sky, surroundings(SCENARIO))
-    anchor, _ = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
-    hull = mesh_objects([anchor])[0]
+    root, _ = _vessel(asset, condition=Condition(t_k=300.0), hulls=hulls)
+    hull = mesh_objects([root])[0]
     skins = {slot.material for slot in hull.material_slots}
     assert len(skins) == 1
     emission = next(iter(skins)).node_tree.nodes["Emission"]
@@ -1040,11 +1038,11 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
     asset = SCENARIO.objects[0].asset
     skins = []
     for minutes in (0.0, 30.0):
-        anchor, _ = _vessel(
+        root, _ = _vessel(
             asset, condition=Condition(engine_off_min=minutes), hulls=hulls
         )
-        assert anchor["engine_off_min"] == minutes
-        hull = mesh_objects([anchor])[0]
+        assert root["engine_off_min"] == minutes
+        hull = mesh_objects([root])[0]
         skins.append({s.material.name for s in hull.material_slots})
     running, stopped = skins
     machinery = {n for n in running if n.startswith("thermal_exhaust")}
@@ -1056,15 +1054,13 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 @pytest.mark.usefixtures("empty_blend")
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the attitude past the hull's draught."""
-    anchor, _ = _vessel(
-        "zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None)
-    )
+    root, _ = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
     bpy.context.view_layer.update()
-    level = waterline_m(anchor)
-    (attitude,) = anchor.children
+    level = waterline_m(root)
+    (attitude,) = root.children
     attitude.location.z = 2.0
     bpy.context.view_layer.update()
-    assert waterline_m(anchor) == pytest.approx(level, abs=1e-4)
+    assert waterline_m(root) == pytest.approx(level, abs=1e-4)
 
 
 @pytest.mark.usefixtures("empty_blend")
@@ -1412,13 +1408,13 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
     )
     (spec,) = scenario.objects
     radius = earth.earth_radius_m(scenario.sea.refraction_k)
-    anchor = scene.build(scenario).targets[spec.asset][0]
+    root = scene.build(scenario).targets[spec.asset][0]
     sc = bpy.context.scene
 
-    start = anchor.matrix_world.translation.copy()
+    start = root.matrix_world.translation.copy()
     for frame, t in enumerate(scenario.outputs.times_s[1:], start=1):
         sc.frame_set(frame)
-        east, north, up = anchor.matrix_world.translation
+        east, north, up = root.matrix_world.translation
         run_east, run_north = east - start.x, north - start.y
 
         assert math.hypot(run_east, run_north) == pytest.approx(
@@ -1429,7 +1425,7 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
         )
         assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
     sc.frame_set(0)
-    assert anchor.matrix_world.translation == start
+    assert root.matrix_world.translation == start
     assert start.xy.length == pytest.approx(spec.range_m)
 
 
@@ -1460,25 +1456,25 @@ class TestOwnshipMotion:
 
     def test_a_quarter_period_in_is_the_peak(self) -> None:
         built = scene.build(self.MOTION)
-        anchor, camera = built.anchor, camera_of(SCENARIO.mounts[0])
-        mounted = anchor.matrix_world.inverted() @ camera.matrix_world
+        root, camera = built.root, camera_of(SCENARIO.mounts[0])
+        mounted = root.matrix_world.inverted() @ camera.matrix_world
         bpy.context.scene.frame_set(10)
 
-        pitch, roll, _ = anchor.rotation_euler
+        pitch, roll, _ = root.rotation_euler
         assert math.degrees(pitch) == pytest.approx(-1.0 + 2.0)
         assert math.degrees(roll) == pytest.approx(3.0 + 5.0)
         t_s = self.MOTION.outputs.times_s[10]
-        assert anchor.matrix_world.translation.z == pytest.approx(
+        assert root.matrix_world.translation.z == pytest.approx(
             0.5 + _ridden_m(self.MOTION, t_s)
         )
-        moved = anchor.matrix_world.inverted() @ camera.matrix_world
+        moved = root.matrix_world.inverted() @ camera.matrix_world
         assert np.allclose(moved, mounted, atol=1e-5)
 
     def test_an_ownship_without_motion_only_rides_the_water(self) -> None:
         scenario = variant(outputs={"duration_s": 2.0})
         built = scene.build(scenario)
 
-        action = built.anchor.animation_data.action.name
+        action = built.root.animation_data.action.name
         (heave,) = (v for name, v in keyed() if name.startswith(action))
         assert heave == pytest.approx(
             [_ridden_m(scenario, t) for t in scenario.outputs.times_s], abs=1e-6
@@ -1499,11 +1495,11 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     camera = built.cameras[scenario.mounts[0].name]
     assert scenario.turn is not None
     turned = motion.turned_deg(scenario.turn)
-    deck = motion.tilted(
+    level_ownship = motion.tilted(
         motion.track(scenario.ownship, scenario.outputs, scenario.turn), None, (), ()
     )
     (name,) = scenario.rigs
-    held_deg = motion.held_tilt_deg(scenario, name, deck)
+    held_deg = motion.held_tilt_deg(scenario, name, level_ownship)
     axis = motion.azimuth_deg(scenario, name)
     mount_deg = scenario.rigs[name].pitch_deg
 
@@ -1518,14 +1514,17 @@ def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
         bearing, elevation = boresight_deg(camera)
         assert bearing == pytest.approx(turned(t_s), abs=turns_deg)
         base.append(
-            motion.world_elevation_deg(deck(t_s), angles.direction(axis(t_s), 0.0))
+            motion.world_elevation_deg(
+                level_ownship(t_s), angles.direction(axis(t_s), 0.0)
+            )
         )
         # Blender draws the head the loop holds; 1e-4 deg is float32's asin noise and
         # more.
         forward = np.array(built.heads[name].matrix_world)[2, 1]
         assert math.degrees(math.asin(forward)) == pytest.approx(
             motion.world_elevation_deg(
-                deck(t_s), angles.direction(axis(t_s), mount_deg + held_deg[frame])
+                level_ownship(t_s),
+                angles.direction(axis(t_s), mount_deg + held_deg[frame]),
             ),
             abs=1e-4,
         )
@@ -1564,8 +1563,8 @@ class TestOwnshipUnderway:
         hull, bearing, eye = [], [], []
         for frame in range(len(scenario.outputs.times_s)):
             sc.frame_set(frame)
-            hull.append(tuple(built.anchor.matrix_world.translation))
-            bearing.append(heading_deg(built.anchor))
+            hull.append(tuple(built.root.matrix_world.translation))
+            bearing.append(heading_deg(built.root))
             eye.append(tuple(camera.matrix_world.translation))
         return np.array(hull), np.array(bearing), np.array(eye)
 
@@ -1933,7 +1932,7 @@ class TestDrifting:
         scenario = self.SCENARIO
         (spec,) = scenario.objects
         assert spec.drift is not None
-        anchor = built.targets[spec.asset][0]
+        root = built.targets[spec.asset][0]
         sc = bpy.context.scene
         sc.frame_set(0)
         period_s = scenario.outputs.period_s(spec.drift.period_s)
@@ -1941,13 +1940,13 @@ class TestDrifting:
         ahead = Vector((math.sin(heading), math.cos(heading)))
         starboard = Vector((math.cos(heading), -math.sin(heading)))
         radius = earth.earth_radius_m(scenario.sea.refraction_k)
-        pose = anchor.matrix_world.translation.xy.copy()
+        pose = root.matrix_world.translation.xy.copy()
         s = math.sqrt(0.5)
         eighths = [(0, 0), (s, 1), (1, 0), (s, -1), (0, 0), (-s, 1), (-1, 0), (-s, -1)]
 
         for eighth, (across, along) in enumerate(eighths):
             sc.frame_set(round(eighth * period_s / 8 * scenario.outputs.fps))
-            east, north, up = anchor.matrix_world.translation
+            east, north, up = root.matrix_world.translation
             offset = Vector((east, north)) - pose
 
             assert offset.dot(starboard) == pytest.approx(
@@ -1958,25 +1957,25 @@ class TestDrifting:
             )
             assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
             yaw_rad = angles.yaw(spec.heading_deg)
-            assert anchor.rotation_euler.z == pytest.approx(yaw_rad)
+            assert root.rotation_euler.z == pytest.approx(yaw_rad)
         assert pose.length == pytest.approx(spec.range_m)
 
     def test_a_hull_rides_the_sea_it_sits_on(self, built: scene.Built) -> None:
         scenario = self.SCENARIO
-        (anchor,) = built.targets[scenario.objects[0].asset]
-        (attitude,) = anchor.children
-        corners = box_corners(mesh_objects([anchor]), attitude.matrix_world.inverted())
+        (root,) = built.targets[scenario.objects[0].asset]
+        (attitude,) = root.children
+        corners = box_corners(mesh_objects([root]), attitude.matrix_world.inverted())
         length = max(c.y for c in corners) - min(c.y for c in corners)
         beam = max(c.x for c in corners) - min(c.x for c in corners)
         # The keel as `_parts` measures it, level with the waterline at z = 0.
         into = np.array(attitude.matrix_world.inverted())
-        facets = triangles(mesh_objects([anchor])) @ into[:3, :3].T + into[:3, 3]
+        facets = triangles(mesh_objects([root])) @ into[:3, :3].T + into[:3, 3]
         box_beam_m, box_draught_m = box_m(*keel_m(facets), length, 0.0)
         (spec,) = scenario.objects
         path = motion.drifting(
             spec.range_m,
             spec.bearing_deg,
-            spec.course_deg,
+            spec.heading_from_bow_deg,
             spec.speed_mps,
             spec.drift,
             scenario.outputs,
@@ -1984,8 +1983,8 @@ class TestDrifting:
         sc = bpy.context.scene
         for frame in (0, 7, 31):
             sc.frame_set(frame)
-            east, north, _ = anchor.matrix_world.translation
-            bow = anchor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
+            east, north, _ = root.matrix_world.translation
+            bow = root.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
             heading = math.atan2(bow.x, bow.y)
             assert math.degrees(heading) % 360 == pytest.approx(
                 scenario.objects[0].heading_deg % 360, abs=1e-4
@@ -2009,7 +2008,7 @@ class TestDrifting:
                 path(t_s).north_mps,
             )
             pitch, roll = waves.attitude(wave_field(scenario), hull, t_s)
-            assert tuple(anchor.rotation_euler[:2]) == pytest.approx(
+            assert tuple(root.rotation_euler[:2]) == pytest.approx(
                 (pitch, roll), abs=1e-5
             )
             assert attitude.location.z == pytest.approx(
@@ -2331,8 +2330,8 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
 
     built = scene.build(variant(objects=[yacht]), "eo")
 
-    (anchor,) = built.targets["yacht"]
-    assert heading_deg(anchor) % 360.0 == pytest.approx(210.0)
+    (root,) = built.targets["yacht"]
+    assert heading_deg(root) % 360.0 == pytest.approx(210.0)
 
 
 @pytest.mark.parametrize(
@@ -2388,10 +2387,10 @@ def test_a_still_of_two_hulls_apart_builds() -> None:
 def test_a_built_hull_measures_its_manifest_length() -> None:
     built = scene.build(variant(objects=[target("yacht", 900.0)]), "eo")
 
-    (anchor,) = built.targets["yacht"]
+    (root,) = built.targets["yacht"]
     hull = manifest()["yacht"]
     assert isinstance(hull, Hull)
-    assert anchor["length_m"] == pytest.approx(hull.length_m, rel=1e-6)
+    assert root["length_m"] == pytest.approx(hull.length_m, rel=1e-6)
 
 
 def test_a_built_turbine_measures_its_manifest_height() -> None:
@@ -2399,25 +2398,25 @@ def test_a_built_turbine_measures_its_manifest_height() -> None:
     scenario = variant(farms=[farm])
     built = scene.build(scenario, "eo")
 
-    (anchor,) = built.targets["turbine_15mw_floating"]
+    (root,) = built.targets["turbine_15mw_floating"]
     turbine = manifest()["turbine_15mw_floating"]
     assert isinstance(turbine, Turbine)
-    assert anchor["height_m"] + turbine.draught_m == pytest.approx(turbine.height_m)
+    assert root["height_m"] + turbine.draught_m == pytest.approx(turbine.height_m)
     # Past the tips at top dead centre, wherever the rotor's spin has them.
     k = scenario.sea.refraction_k
     eye_m = max(rig.height_m for rig in scenario.rigs.values())
-    assert scene._sightline_m(scenario, [anchor]) == pytest.approx(
-        earth.horizon_m(eye_m, k) + earth.horizon_m(anchor["height_m"], k)
+    assert scene._sightline_m(scenario, [root]) == pytest.approx(
+        earth.horizon_m(eye_m, k) + earth.horizon_m(root["height_m"], k)
     )
 
 
 def test_a_built_buoy_measures_its_manifest_height() -> None:
     built = scene.build(variant(objects=[target("lateral_mark", 900.0)]), "eo")
 
-    (anchor,) = built.targets["lateral_mark"]
+    (root,) = built.targets["lateral_mark"]
     buoy = manifest()["lateral_mark"]
     assert isinstance(buoy, Buoy)
-    assert anchor["height_m"] + buoy.draught_m == pytest.approx(buoy.height_m, rel=1e-6)
+    assert root["height_m"] + buoy.draught_m == pytest.approx(buoy.height_m, rel=1e-6)
 
 
 def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> None:
@@ -2428,13 +2427,13 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
     hubs = []
     for band in ("eo", "ir"):
         built = scene.build(windy, band)
-        (anchor,) = built.targets["turbine_15mw_monopile"]
-        (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
+        (root,) = built.targets["turbine_15mw_monopile"]
+        (rotor,) = (o for o in root.children_recursive if o.get("rotor"))
         shaft = rotor.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
 
-        assert heading_deg(anchor) == pytest.approx(60.0)
+        assert heading_deg(root) == pytest.approx(60.0)
         assert math.degrees(math.atan2(shaft.x, shaft.y)) == pytest.approx(60.0)
-        assert [o for o in anchor.children_recursive if o.get("rotor")] == [rotor]
+        assert [o for o in root.children_recursive if o.get("rotor")] == [rotor]
         hubs.append(rotor.matrix_world.translation.copy())
     assert (hubs[0] - hubs[1]).length == pytest.approx(0.0, abs=1e-3)
     # Its frame is the hub, 150 m up: no face of it is under the waterline.
@@ -2445,9 +2444,9 @@ def test_a_turbine_faces_the_wind_and_turns_about_its_hub_in_either_band() -> No
     )
 
 
-def _rotor_angle(anchor: bpy.types.Object) -> float:
+def _rotor_angle(root: bpy.types.Object) -> float:
     """Its turn about the shaft, clockwise seen from upwind."""
-    (rotor,) = (o for o in anchor.children_recursive if o.get("rotor"))
+    (rotor,) = (o for o in root.children_recursive if o.get("rotor"))
     return -rotor.rotation_euler.to_matrix().to_euler("YXZ").y
 
 
@@ -2487,11 +2486,11 @@ def test_a_looping_rotor_s_last_frame_is_one_step_short_of_its_symmetry_turn() -
     built = scene.build(clip, "eo")
 
     sc = bpy.context.scene
-    (anchor,) = built.targets["turbine_15mw_monopile"]
+    (root,) = built.targets["turbine_15mw_monopile"]
     sc.frame_set(0)
-    start = _rotor_angle(anchor)
+    start = _rotor_angle(root)
     sc.frame_set(sc.frame_end)
-    seam = math.remainder(start - _rotor_angle(anchor), rotor.symmetry_rad)
+    seam = math.remainder(start - _rotor_angle(root), rotor.symmetry_rad)
     assert seam == pytest.approx(rotor.symmetry_rad / (symmetry_s * fps))
 
 
@@ -2504,10 +2503,10 @@ def test_the_ownship_is_indexed_after_every_target() -> None:
         "eo",
     )
 
-    (anchor,) = built.targets["yacht"]
-    hull = mesh_objects([built.anchor])
+    (root,) = built.targets["yacht"]
+    hull = mesh_objects([built.root])
     assert hull, "the ownship has no mesh: nothing below ran"
-    assert {p.pass_index for p in hull} == {anchor.pass_index + 1}
+    assert {p.pass_index for p in hull} == {root.pass_index + 1}
 
 
 def test_rigs_too_far_apart_for_a_grid_leave_it_to_a_coarser_one() -> None:
