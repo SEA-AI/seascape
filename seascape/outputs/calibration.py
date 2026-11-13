@@ -70,8 +70,9 @@ class CameraCalibration(_Record):
         min_length=1,
         description=(
             "camera to each named frame: world (+X east, +Y north, +Z up, at sea "
-            "level), vessel (+X starboard, +Y bow, +Z up, moving with "
-            "the hull) and rig (the product, +Y along its axis)"
+            "level under the ownship's start), vessel (the ownship: +X starboard, "
+            "+Y bow, +Z up, moving with the hull) and rig (its head: +Y along its "
+            "axis, panned and tilted)"
         ),
     )
 
@@ -88,7 +89,7 @@ class CameraCalibration(_Record):
 
     @classmethod
     def planned(cls, name: str, camera: Camera, rig: str) -> "CameraCalibration":
-        """`camera` as a render of rig `rig` calibrates it, in that rig's frame
+        """`camera` as a render of rig `rig` calibrates it, in that rig's head's frame
         only: what a video's footprint needs before anything is built.
         """
         T_r_c = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))

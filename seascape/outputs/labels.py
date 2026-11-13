@@ -52,7 +52,7 @@ class Target(NamedTuple):
     supercategory: str
     centre_m: tuple[float, float]  # world east, north
     waterline_m: np.ndarray  # (N, 2) world east, north along the hull's waterline
-    heading_deg: float  # true, clockwise from north
+    heading_deg: float  # clockwise from world +Y
     dims_m: tuple[float, float, float]  # length, beam, height above the waterline
     engine_off_min: float = 0.0  # 0 is running
 
@@ -109,8 +109,8 @@ class Annotation(Model):
     # waterline, which is what a range from the horizon measures.
     range_m: float
     waterline_range_m: float
-    bearing_deg: float  # true, clockwise from north
-    heading_deg: float  # true, clockwise from north
+    bearing_deg: float  # clockwise from world +Y
+    heading_deg: float  # clockwise from world +Y
     # length, beam, height above the waterline, as floated
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
@@ -123,7 +123,7 @@ class Dropped(Model):
     image_id: int
     name: str
     range_m: float
-    bearing_deg: float  # true, clockwise from north
+    bearing_deg: float  # clockwise from world +Y
     reason: Literal["no_pixels", "low_contrast"]
     # For "low_contrast" only; bbox and area as an annotation's.
     excess_de: float | None = None

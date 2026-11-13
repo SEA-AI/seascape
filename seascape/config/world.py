@@ -24,7 +24,8 @@ class Swell(Model):
     period_s: float = Field(gt=0.0, description="Seconds between crests.")
     from_deg: float = Field(
         default=0.0,
-        description="Where it comes from, clockwise from the ownship's bow.",
+        description="Where it comes from, clockwise from world +Y: the ownship's bow "
+        "at the start.",
     )
 
 
@@ -91,8 +92,8 @@ class Sea(Model):
     )
     wind_from_deg: float = Field(
         default=0.0,
-        description="Where the wind blows from, clockwise from the ownship's bow at "
-        "the start.",
+        description="Where the wind blows from, clockwise from world +Y: the "
+        "ownship's bow at the start.",
     )
     fetch_km: float | None = Field(
         default=None,
@@ -165,7 +166,8 @@ class Sky(Model):
         "the photo, and None where its sun shows no disc.",
     )
     sun_bearing_deg: float = Field(
-        default=0.0, description="Clockwise from the ownship's bow."
+        default=0.0,
+        description="Clockwise from world +Y: the ownship's bow at the start.",
     )
     # Steady state, where absorbed sun balances convection and re-radiation:
     #   dT = a E / (h + 4 eps sigma T^3)

@@ -295,7 +295,7 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Relative to the rig's axis, positive to starboard.",
+          "description": "Relative to its rig's head, positive to starboard.",
           "default": 0.0,
           "anyOf": [
             {
@@ -320,7 +320,7 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "Relative to the rig, negative is down.",
+          "description": "Relative to its rig's head, negative is down.",
           "default": 0.0,
           "anyOf": [
             {
@@ -1442,7 +1442,7 @@
       "properties": {
         "to_deg": {
           "title": "To Deg",
-          "description": "Clockwise from the bow at t = 0.",
+          "description": "Clockwise: the ownship's turn from its start heading, its yaw swing aside, or a ptu's pan from its base.",
           "anyOf": [
             {
               "type": "number"
@@ -2291,7 +2291,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone; a hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
+      "description": "The vessel the rigs are bolted to, rolling and pitching about its floating\nwaterline, which `draught_m` sets below its origin. Without an asset it is the\nmotion alone; a hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2791,7 +2791,7 @@
       "properties": {
         "inclination_deg": {
           "title": "Inclination Deg",
-          "description": "The pitch it holds its head at, to the horizon, its mount included. Negative is down.",
+          "description": "The pitch it holds its head at, above the horizon, the rig's `pitch_deg` included. Negative is down.",
           "default": 0.0,
           "anyOf": [
             {
@@ -2882,7 +2882,7 @@
         },
         "height_m": {
           "title": "Height M",
-          "description": "Above the asset's own waterline.",
+          "description": "Above the ownship's origin: its asset's design waterline, or the sea under a bare ownship.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -2907,7 +2907,7 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Its axis relative to the bow, positive to starboard.",
+          "description": "Its base's turn from the bow, where its pan reads zero; positive to starboard.",
           "default": 0.0,
           "anyOf": [
             {
@@ -2932,7 +2932,7 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "About its own transverse axis, after its yaw and before its cameras'. Negative is down.",
+          "description": "Its head's pitch where its tilt reads zero: after the pan, before its cameras' pitch. Negative is down.",
           "default": 0.0,
           "anyOf": [
             {
@@ -3011,7 +3011,7 @@
         },
         "offset_y_m": {
           "title": "Offset Y M",
-          "description": "From midships, positive forward.",
+          "description": "From the ownship's origin, positive forward.",
           "default": 0.0,
           "anyOf": [
             {
@@ -3250,7 +3250,7 @@
         },
         "wind_from_deg": {
           "title": "Wind From Deg",
-          "description": "Where the wind blows from, clockwise from the ownship's bow at the start.",
+          "description": "Where the wind blows from, clockwise from world +Y: the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -3650,7 +3650,7 @@
         },
         "sun_bearing_deg": {
           "title": "Sun Bearing Deg",
-          "description": "Clockwise from the ownship's bow.",
+          "description": "Clockwise from world +Y: the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -4029,7 +4029,7 @@
         },
         "from_deg": {
           "title": "From Deg",
-          "description": "Where it comes from, clockwise from the ownship's bow.",
+          "description": "Where it comes from, clockwise from world +Y: the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -4531,7 +4531,7 @@
     },
     "Turn": {
       "additionalProperties": false,
-      "description": "A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each\nmove ramps up to its rate and down to rest at the acceleration.",
+      "description": "A scripted turn of the ownship from its start heading, or of a rig's ptu from\nits base. Each move ramps up to its rate and down to rest at the acceleration.",
       "properties": {
         "ptu": {
           "description": "The rig whose ptu turns; None turns the ownship.",

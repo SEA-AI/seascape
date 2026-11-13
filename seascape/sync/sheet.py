@@ -110,7 +110,7 @@ class _Course:
     scenario: Scenario
     name: str
     rig: Rig
-    # The rig's axis at the start, clockwise from the bow.
+    # The head's azimuth at the start, clockwise from the bow.
     axis_deg: float
     videos: list[View]
     rings: list[Ring]
@@ -140,8 +140,8 @@ def _course(scenario: Scenario) -> _Course:
 
 
 def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, float]]]:
-    """An object's range from the one rig at each frame, and its bearing off the
-    rig's axis, wrapped to [-180, 180).
+    """An object's range from the one rig at each frame, and its azimuth off the
+    head's axis, wrapped to [-180, 180).
     """
     outputs = scenario.outputs
     rig_at = rig_track(scenario, one_rig(scenario)[0])

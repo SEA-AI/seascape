@@ -48,7 +48,7 @@ DECIMALS = 1
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class View:
-    """A video's span of bearings from its rig's axis, and its pixels."""
+    """A video's span of azimuths from its head's axis, and its pixels."""
 
     name: str
     left_deg: float
@@ -80,7 +80,7 @@ class Staging:
 
 
 def recorded(rig: Rig) -> dict[str, CameraCalibration]:
-    """Each video's camera in the rig's frame, as `stitch.fused` and
+    """Each video's camera in the head's frame, as `stitch.fused` and
     `CameraCalibration.cropped` make it for the render, or each camera where the rig
     records them whole.
     """
@@ -104,11 +104,11 @@ def recorded(rig: Rig) -> dict[str, CameraCalibration]:
 
 
 def _span(camera: CameraCalibration) -> tuple[float, float]:
-    """The bearings off the rig's axis of `camera`'s left and right edges, along its
-    middle row.
+    """The azimuths off the head's axis of `camera`'s left and right edges, along
+    its middle row.
     """
     (fx, _, cx), _, _ = camera.K
-    # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
+    # The optical axis in the head: +X starboard, +Y along its axis, +Z up.
     x, y, _ = np.array(camera.extrinsics["rig"])[:3, 2]
     bearing = angles.bearing_deg(x, y)
     # Pixel centres sit at integers, so a frame's edges are half a pixel out.
@@ -121,7 +121,7 @@ def _span(camera: CameraCalibration) -> tuple[float, float]:
 
 def _edges(camera: CameraCalibration) -> np.ndarray:
     """(2, 3) unit rays through the middle of `camera`'s top and bottom edges, in its
-    rig's frame.
+    head's frame.
     """
     (fx, _, cx), (_, fy, cy), _ = camera.K
     # OpenCV's +Y is down; pixel centres sit at integers. A crop moves the principal

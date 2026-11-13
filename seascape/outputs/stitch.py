@@ -24,7 +24,7 @@ def fused(
     left: CameraCalibration, right: CameraCalibration, name: str, image: str
 ) -> CameraCalibration:
     """The pinhole the recorder stitches `left` and `right` onto: their mean focal
-    length and pitch, along the rig's axis, cropped to where both frames reach and
+    length and pitch, along the head's axis, cropped to where both frames reach and
     rounded down to even.
 
     Args:
@@ -77,7 +77,7 @@ def fused(
     def across(a: np.ndarray, b: np.ndarray, y: float) -> float:
         return a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
 
-    # Left and right alike, so the rig's axis stays at the centre.
+    # Left and right alike, so the head's axis stays at the centre.
     side = max(
         *(across(top_left, bottom_left, y) for y in (top, bottom)),
         *(w - across(right_top, right_bottom, y) for y in (top, bottom)),

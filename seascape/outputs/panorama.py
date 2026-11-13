@@ -294,7 +294,7 @@ def panoramas(
         except cv2.error as error:
             raise RuntimeError(f"{path.name}: {error.err}") from error
         if ruler:
-            # World bearings are true bearings; every other frame's are relative.
+            # Bearings from world +Y read as true; every other frame's are relative.
             image = ruled(image, layout, true=frame == "world")
         if not cv2.imwrite(str(path), image):
             raise OSError(f"cannot write {path}")
