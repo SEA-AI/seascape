@@ -14,6 +14,7 @@ import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
+from seascape import angles
 from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
 from seascape.blender.blend import mesh_objects
@@ -119,7 +120,9 @@ def test_the_calibration_projects_every_target_where_blender_draws_it(
 ) -> None:
     """Read back from disk, so a matrix that does not survive JSON fails here too."""
     written = Calibration(
-        cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in SCENARIO.mounts]
+        cameras=[
+            scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in SCENARIO.mounts
+        ]
     ).write(tmp_path)
     render = bpy.context.scene.render
 
@@ -163,7 +166,7 @@ def test_a_calibration_with_fields_it_does_not_know_still_reads(
     tmp_path: Path, built: scene.Built
 ) -> None:
     mount = SCENARIO.mounts[0]
-    record = scene.calibrate(built, mount, "").model_dump()
+    record = scene.calibrate(built, mount, "", 0.0).model_dump()
     (tmp_path / "calibration.json").write_text(
         json.dumps({"cameras": [{**record, "serial": "X"}], "rig": "Y"})
     )
@@ -177,7 +180,7 @@ def test_a_calibration_with_fields_it_does_not_know_still_reads(
 def test_in_its_rig_a_camera_points_exactly_as_asked(
     mount: Mount, built: scene.Built
 ) -> None:
-    axis = np.array(scene.calibrate(built, mount, "").extrinsics["head"])[:3, 2]
+    axis = np.array(scene.calibrate(built, mount, "", 0.0).extrinsics["head"])[:3, 2]
 
     bearing = math.degrees(math.atan2(axis[0], axis[1]))
     elevation = math.degrees(math.asin(axis[2]))
@@ -193,7 +196,7 @@ def test_a_calibration_records_its_camera_s_pitch(built: scene.Built) -> None:
     pitched = mount._replace(
         camera=mount.camera.model_copy(update={"microbolometer": sensor})
     )
-    assert scene.calibrate(built, pitched, "ir.png").pitch_um == 17.0
+    assert scene.calibrate(built, pitched, "ir.png", 0.0).pitch_um == 17.0
 
 
 @pytest.mark.parametrize("mount", MOUNTS)
@@ -201,15 +204,18 @@ def test_a_panorama_puts_each_principal_point_on_its_boresight(
     mount: Mount, built: scene.Built
 ) -> None:
     """A slip in the stitcher's frame flips or mirrors the panorama."""
-    k, r = panorama.pose(scene.calibrate(built, mount, ""), "world", 0.0)
+    k, r = panorama.pose(scene.calibrate(built, mount, "", 0.0), "world", 0.0)
     warper = cv2.PyRotationWarper("spherical", 1.0)
 
     # Spherical: u is the bearing, v the angle down from straight up.
     u, v = warper.warpPoint((float(k[0, 2]), float(k[1, 2])), k, r)
 
-    assert (math.degrees(u), 90.0 - math.degrees(v)) == pytest.approx(
-        boresight_deg(built.cameras[mount.name]), abs=1e-3
+    bearing_deg, elevation_deg = boresight_deg(built.cameras[mount.name])
+    # A stern camera reads either end of (-180, 180].
+    assert angles.wrapped_deg(math.degrees(u) - bearing_deg) == pytest.approx(
+        0.0, abs=1e-3
     )
+    assert 90.0 - math.degrees(v) == pytest.approx(elevation_deg, abs=1e-3)
 
 
 def test_a_panorama_lays_its_cameras_out_in_yaw_order(
@@ -221,7 +227,7 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
         frame[..., channel] = 255
         cv2.imwrite(str(tmp_path / f"{mount.name}.png"), frame)
     Calibration(
-        cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
+        cameras=[scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
     ).write(tmp_path)
 
     paths = panorama.panoramas(tmp_path, "cylindrical", "head", max_width=400)
@@ -236,7 +242,9 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
 def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
     mount = SCENARIO.mounts[0]
     Calibration(
-        cameras=[scene.calibrate(built, mount, f"{mount.name}_{i}.png") for i in (0, 1)]
+        cameras=[
+            scene.calibrate(built, mount, f"{mount.name}_{i}.png", 0.0) for i in (0, 1)
+        ]
     ).write(tmp_path)
     with pytest.raises(ValueError, match="a sequence"):
         panorama.panoramas(tmp_path, "cylindrical", "head")
@@ -248,7 +256,7 @@ def test_a_thermal_panorama_is_one_grey_per_temperature(
     mounts = first_rig_mounts()[:2]
     thermal, white = tmp_path / "thermal", tmp_path / "white"
     calibration = Calibration(
-        cameras=[scene.calibrate(built, m, f"{m.name}.png") for m in mounts]
+        cameras=[scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
     )
     for folder in (thermal, white):
         folder.mkdir()
@@ -278,7 +286,7 @@ def test_the_width_is_capped_and_never_raised(
 ) -> None:
     mount = SCENARIO.mounts[0]
     cv2.imwrite(str(tmp_path / "frame.png"), black_frame(mount))
-    camera = scene.calibrate(built, mount, "frame.png")
+    camera = scene.calibrate(built, mount, "frame.png", 0.0)
 
     native, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "head")
     capped, _ = panorama.stitch(tmp_path, [camera], "cylindrical", "head", 101)
@@ -296,7 +304,9 @@ def test_a_bearing_lands_where_the_stitch_put_it(
     its ray's bearing maps to. Off centre, so a mirrored mapping finds no dot; on a
     pitched camera, so the mapping is held independent of elevation.
     """
-    cameras = [scene.calibrate(built, m, f"{m.name}.png") for m in first_rig_mounts()]
+    cameras = [
+        scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in first_rig_mounts()
+    ]
     for camera in cameras:
         frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)
         cx, cy = round(camera.K[0][2] + camera.width_px / 4), round(camera.K[1][2])
@@ -323,7 +333,7 @@ def test_the_ruler_ticks_under_the_image_where_column_says(
 ) -> None:
     mount = SCENARIO.mounts[0]
     cv2.imwrite(str(tmp_path / "frame.png"), black_frame(mount))
-    camera = scene.calibrate(built, mount, "frame.png")
+    camera = scene.calibrate(built, mount, "frame.png", 0.0)
     image, layout = panorama.stitch(tmp_path, [camera], "cylindrical", "head", 1000)
     # The labelled bearing nearest the camera's axis, so it is in frame.
     x, y, _ = np.array(camera.extrinsics["head"])[:3, 2]
@@ -341,7 +351,7 @@ def test_the_ruler_ticks_under_the_image_where_column_says(
 
 def test_rectilinear_refuses_a_camera_behind_its_plane(built: scene.Built) -> None:
     """Two cameras back to back: no plane faces both, whatever their field."""
-    camera = scene.calibrate(built, SCENARIO.mounts[0], "")
+    camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
     turned = Matrix.Rotation(math.pi, 4, "Z") @ Matrix(camera.extrinsics["world"])
     behind = camera.model_copy(
         update={"extrinsics": {"world": tuple(map(tuple, turned))}}
@@ -352,7 +362,7 @@ def test_rectilinear_refuses_a_camera_behind_its_plane(built: scene.Built) -> No
 
 
 def test_a_frame_the_calibration_lacks_is_named(built: scene.Built) -> None:
-    camera = scene.calibrate(built, SCENARIO.mounts[0], "")
+    camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
     headless = camera.model_copy(
         update={"extrinsics": {"world": camera.extrinsics["world"]}}
     )
@@ -362,7 +372,7 @@ def test_a_frame_the_calibration_lacks_is_named(built: scene.Built) -> None:
 
 
 def test_a_max_width_under_a_pixel_is_an_error(built: scene.Built) -> None:
-    camera = scene.calibrate(built, SCENARIO.mounts[0], "")
+    camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
 
     with pytest.raises(ValueError, match="max width"):
         panorama.stitch(Path(), [camera], "cylindrical", "head", 0)
@@ -371,7 +381,7 @@ def test_a_max_width_under_a_pixel_is_an_error(built: scene.Built) -> None:
 def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
     built: scene.Built,
 ) -> None:
-    camera = scene.calibrate(built, SCENARIO.mounts[0], "")
+    camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
     frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)
     k, _ = panorama.pose(camera, "head", 0.0)
 
@@ -400,7 +410,7 @@ def test_a_pan_past_the_stern_keys_no_spin_back() -> None:
     rig = next(iter(two_rigs().rigs.values()))
     times = [0.0, 1.0, 2.0]
     # The axis, yaw and pan, sweeps 170 to 190 deg whatever the rig's own yaw.
-    _hold(head, rig, lambda t: 170.0 - rig.yaw_deg + 10.0 * t, np.zeros(3), times)
+    _hold(head, lambda t: rig.pose(170.0 - rig.yaw_deg + 10.0 * t), times)
     yaws = []
     for frame in range(len(times)):
         bpy.context.scene.frame_set(frame)

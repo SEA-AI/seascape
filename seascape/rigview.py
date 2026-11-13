@@ -15,7 +15,7 @@ from seascape.blender.meshes import box_corners
 from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
-from seascape.motion import tilted, track
+from seascape.motion import ownship_up_m, tilted, track
 from seascape.outputs import brand, canvas
 from seascape.physics import earth, fisheye
 
@@ -148,11 +148,15 @@ def draw(scenario: Scenario, out: Path) -> None:
     vessel = add_ownship(
         scenario.ownship,
         path,
+        ownship_up_m(
+            scenario.ownship,
+            scenario.outputs,
+            (),
+            earth.earth_radius_m(scenario.sea.refraction_k),
+        ),
         built.root,
         Hulls(scenario.sky, None),  # Workbench draws no wear
-        scenario.outputs,
-        (),
-        earth.earth_radius_m(scenario.sea.refraction_k),
+        scenario.outputs.times_s,
         [],
     )
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before

@@ -132,7 +132,7 @@ def test_the_sun_is_out_of_every_frame() -> None:
     built = scene.build(bare, "eo")
     sun = np.array(scenario.sky.sun_vector)
     for mount in scenario.mounts:
-        camera = scene.calibrate(built, mount, "")
+        camera = scene.calibrate(built, mount, "", 0.0)
         assert not _in_frame(camera, sun), mount.name
 
 
@@ -370,15 +370,14 @@ class TestEoBand:
         ship = bpy.data.objects[spec.asset].matrix_world.translation
         for mount in SCENARIO.mounts:
             eye = camera_of(mount).matrix_world.translation
-            camera = scene.calibrate(built, mount, "")
+            camera = scene.calibrate(built, mount, "", 0.0)
             assert _in_frame(camera, ship - eye), mount.name
 
     def test_a_target_is_fitted_to_its_manifest_length(self) -> None:
         """The mesh arrives in its author's units; unfitted it is a speck at range."""
         for spec in SCENARIO.objects:
             root = bpy.data.objects[spec.asset]
-            (attitude,) = root.children
-            into_hull = attitude.matrix_world.inverted()
+            into_hull = root.matrix_world.inverted()
             corners = [
                 into_hull @ part.matrix_world @ Vector(corner)
                 for part in mesh_objects([root])
@@ -446,18 +445,6 @@ class TestEoBand:
 
         assert reach > horizon
         assert reach > max(spec.range_m for spec in SCENARIO.objects)
-
-    def test_a_hull_floats_on_the_sea_and_not_on_the_tangent_plane(self) -> None:
-        """Hulls left at z = 0 fly with range and bearing still right, so nothing else
-        catches it.
-        """
-        radius = earth.earth_radius_m(SCENARIO.sea.refraction_k)
-
-        for spec in SCENARIO.objects:
-            root = bpy.data.objects[spec.asset]
-            east, north, up = root.matrix_world.translation
-
-            assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
 
     def test_a_hull_beyond_the_horizon_is_cut_off(self) -> None:
         """A target past the horizon shows its waterline when it should be hull-down."""
@@ -904,8 +891,8 @@ def test_a_lighter_ownship_sees_as_far_as_its_rig_raised_by_the_rise() -> None:
 
 
 def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
-    """The sea pitches and rolls the hull outside its scripted motion and heaves its
-    attitude, and the cameras stay fixed in the vessel frame.
+    """The sea pitches and rolls the hull outside its scripted motion and heaves it,
+    and the cameras stay fixed in the vessel frame.
     """
     scenario = variant(
         ownship={
@@ -919,7 +906,6 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
     built = scene.build(scenario, "eo")
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
-    (attitude,) = built.root.children
     tilt = motion.tilted(
         motion.track(scenario.ownship, scenario.outputs),
         waves.Waterplane(length_m=built.root["length_m"], beam_m=built.root["beam_m"]),
@@ -943,25 +929,25 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         pitch, roll = waves.attitude(wind + swell, plane, t_s)
         rocked.append(abs(pitch) + abs(roll))
         script = 0.2 * math.sin(math.tau * t_s / heave_s)
-        still.append(up - earth.sea_z_m(east, north, radius) - script)
-        calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
+        heave = waves.heave_m(tall, plane, t_s)
+        still.append(up - earth.sea_z_m(east, north, radius) - script - heave)
+        calibration = scene.calibrate(built, scenario.mounts[0], "frame.png", t_s)
         mounted.append(np.array(calibration.extrinsics["ownship"]))
+        # Blender draws the camera motion composed; 1e-5: float32 down the chain.
+        drawn = built.cameras[scenario.mounts[0].name].matrix_world @ BLENDER_TO_CV
+        assert np.array(calibration.extrinsics["world"]) == pytest.approx(
+            np.array(drawn), abs=1e-5
+        )
 
         tilt_roll, tilt_pitch, _ = angles.attitude_deg(tilt(t_s))
         assert tuple(built.root.rotation_euler)[:2] == pytest.approx(
             (math.radians(tilt_pitch), math.radians(tilt_roll)), abs=1e-6
         )
-        assert tuple(attitude.rotation_euler) == (0.0, 0.0, 0.0)
         # The deck the pan-tilt loop holds against is the one Blender draws. The up
         # row is all the loop reads, and the heading leaves it be. 1e-6: Blender's
         # matrix_world is float32, a few ulp near 1 down the parent chain.
         assert np.array(built.ownship.matrix_world)[2, :3] == pytest.approx(
             tilt(t_s)[2], abs=1e-6
-        )
-        # Straight up, however the script tilts the hull.
-        lift = attitude.matrix_world.translation - built.root.matrix_world.translation
-        assert tuple(lift) == pytest.approx(
-            (0.0, 0.0, waves.heave_m(tall, plane, t_s)), abs=1e-6
         )
 
     assert max(rocked) > math.radians(1.0), "a calm sea would pass vacuously"
@@ -1053,12 +1039,11 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 
 @pytest.mark.usefixtures("empty_blend")
 def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
-    """The waves lift the attitude past the hull's draught."""
+    """The waves lift the hull past its draught."""
     root, _ = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
     bpy.context.view_layer.update()
     level = waterline_m(root)
-    (attitude,) = root.children
-    attitude.location.z = 2.0
+    root.location.z = 2.0
     bpy.context.view_layer.update()
     assert waterline_m(root) == pytest.approx(level, abs=1e-4)
 
@@ -1074,10 +1059,9 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
         for rise_m in (0.0, 5.0)
     )
     bpy.context.view_layer.update()
-    (attitude,) = raised.children
-    into_attitude = attitude.matrix_world.inverted()
+    into_waterline = raised.matrix_world.inverted()
     keel_m = min(
-        (into_attitude @ part.matrix_world @ Vector(corner)).z
+        (into_waterline @ part.matrix_world @ Vector(corner)).z
         for part in mesh_objects([raised])
         for corner in part.bound_box
     )
@@ -1402,6 +1386,8 @@ def test_a_target_underway_runs_along_its_heading_on_the_curved_sea() -> None:
         OPEN_SEA,
         [
             "outputs.duration_s = 0.3",
+            # A calm sea: no heave, so the hull's height is the curved sea's.
+            "sea.wind_speed_mps = 0.0",
             'objects = [{ asset = "yacht", range_m = 2000.0, bearing_deg = 8.0, '
             "heading_deg = 270.0, speed_mps = 6.0 }]",
         ],
@@ -1949,14 +1935,13 @@ class TestDrifting:
         heading = math.radians(spec.heading_deg)
         ahead = Vector((math.sin(heading), math.cos(heading)))
         starboard = Vector((math.cos(heading), -math.sin(heading)))
-        radius = earth.earth_radius_m(scenario.sea.refraction_k)
         pose = root.matrix_world.translation.xy.copy()
         s = math.sqrt(0.5)
         eighths = [(0, 0), (s, 1), (1, 0), (s, -1), (0, 0), (-s, 1), (-1, 0), (-s, -1)]
 
         for eighth, (across, along) in enumerate(eighths):
             sc.frame_set(round(eighth * period_s / 8 * scenario.outputs.fps))
-            east, north, up = root.matrix_world.translation
+            east, north, _ = root.matrix_world.translation
             offset = Vector((east, north)) - pose
 
             assert offset.dot(starboard) == pytest.approx(
@@ -1965,20 +1950,20 @@ class TestDrifting:
             assert offset.dot(ahead) == pytest.approx(
                 along * spec.fishtail.surge_m, abs=1e-2
             )
-            assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
-            yaw_rad = angles.yaw(spec.heading_deg)
-            assert root.rotation_euler.z == pytest.approx(yaw_rad)
+            turn_deg = math.degrees(root.rotation_euler.z)
+            assert angles.wrapped_deg(
+                turn_deg - math.degrees(angles.yaw(spec.heading_deg))
+            ) == pytest.approx(0.0, abs=1e-4)
         assert pose.length == pytest.approx(spec.range_m)
 
     def test_a_hull_rides_the_sea_it_sits_on(self, built: scene.Built) -> None:
         scenario = self.SCENARIO
         (root,) = built.targets[scenario.objects[0].asset]
-        (attitude,) = root.children
-        corners = box_corners(mesh_objects([root]), attitude.matrix_world.inverted())
+        corners = box_corners(mesh_objects([root]), root.matrix_world.inverted())
         length = max(c.y for c in corners) - min(c.y for c in corners)
         beam = max(c.x for c in corners) - min(c.x for c in corners)
         # The keel as `_parts` measures it, level with the waterline at z = 0.
-        into = np.array(attitude.matrix_world.inverted())
+        into = np.array(root.matrix_world.inverted())
         facets = triangles(mesh_objects([root])) @ into[:3, :3].T + into[:3, 3]
         box_beam_m, box_draught_m = box_m(*keel_m(facets), length, 0.0)
         (spec,) = scenario.objects
@@ -1993,7 +1978,7 @@ class TestDrifting:
         sc = bpy.context.scene
         for frame in (0, 7, 31):
             sc.frame_set(frame)
-            east, north, _ = root.matrix_world.translation
+            east, north, up = root.matrix_world.translation
             bow = root.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
             heading = math.atan2(bow.x, bow.y)
             assert math.degrees(heading) % 360 == pytest.approx(
@@ -2021,7 +2006,8 @@ class TestDrifting:
             assert tuple(root.rotation_euler[:2]) == pytest.approx(
                 (pitch, roll), abs=1e-5
             )
-            assert attitude.location.z == pytest.approx(
+            radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
+            assert up - earth.sea_z_m(east, north, radius_m) == pytest.approx(
                 waves.heave_m(_tall(scenario), hull, t_s), abs=1e-5
             )
 
@@ -2038,9 +2024,9 @@ def test_a_loop_keyed_one_frame_past_its_end_is_back_at_its_first() -> None:
 
     channels = dict(keyed())
 
-    assert len(channels) == 13, (
-        "the target's xyz, pitch, roll, heave's xyz; the ownship's pitch, roll, "
-        "heave; the sea's cos, sin"
+    assert len(channels) == 10, (
+        "the target's xyz, pitch, roll; the ownship's pitch, roll, z; the sea's "
+        "cos, sin"
     )
     # A few ulps: F-curves are float32.
     unclosed = [
