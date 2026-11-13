@@ -106,14 +106,14 @@ def _row(
     row["proc_ptu_mode"] = MANUAL_MODE
     # A run from before ptus has no key.
     if rig.get("ptu") is not None:
-        # The head on the hull, less its base's yaw and `pitch_deg`: Rig.pose adds pan
-        # to yaw and tilt to pitch, so subtracting undoes them exactly.
+        # The head in its base, as a ptu's encoders count: subtracting the base's yaw
+        # undoes Rig.pose's exactly, and the tilt is `pitch_deg` + tilt from level.
         T_ownship_head = np.linalg.inv(_in_world(camera, "ownship")) @ _in_world(
             camera, "head"
         )
         _, tilt, pan = _attitude_deg(T_ownship_head[:3, :3])
         row["pan"] = wrapped_deg(FLU_SIGNS[2] * (pan - rig["yaw_deg"]))
-        row["tilt"] = FLU_SIGNS[1] * (tilt - rig["pitch_deg"])
+        row["tilt"] = FLU_SIGNS[1] * tilt
         if scan_deg_s is not None:
             row["proc_ptu_mode"] = COLAV_MODE
             # Revolutions per second, as the worker's setting.
