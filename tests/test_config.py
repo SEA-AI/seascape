@@ -853,6 +853,11 @@ def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
     assert given.cloud_base_m == 1500.0
 
 
+def test_a_key_the_schema_does_not_know_is_refused_by_its_path() -> None:
+    with pytest.raises(ValidationError, match=r"rigs\.bow\.pitch_degs\n.*Extra inputs"):
+        load(BASELINE, ["rigs.bow.pitch_degs = -5"])
+
+
 def test_an_unknown_hdri_names_the_library() -> None:
     with pytest.raises(ValidationError, match="overcast_soil"):
         Sky.model_validate({"hdri": "no_such_sky"})

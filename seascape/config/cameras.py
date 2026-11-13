@@ -420,7 +420,7 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
-# Oceanus's target inclination, bounded there.
+# The elevation Oceanus accepts for a ptu to hold.
 PTU_ELEVATION_DEG = (-20.0, 20.0)
 
 
