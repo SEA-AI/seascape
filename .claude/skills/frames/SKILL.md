@@ -64,7 +64,7 @@ Inside seascape an elevation is up from the horizon. Other conventions are forma
 5. **Convert a convention by a change of basis,** with a named constant, then decompose.
    - Re-axing both frames is `R_a'_b' = B_a @ R_a_b @ B_b.T`, and `B @ R @ B.T` only when both take the same `B`.
    - Re-axing the child alone is `R_a_b @ B_b.T`, as `Camera.pose` does with `TO_CV`.
-   - A sign flip per field hides which frame the field lives in; it is the symptom of a missing basis.
+   - A sign flip per field hides which frame the field lives in; it is the symptom of a missing basis. Where no basis gives a convention, as with the Oceanus IMU, flip once where the file is written, by a named constant (`IMU_PITCH_SIGN`).
 6. **Convert at the boundary.** The code that writes a file, or hands a matrix to Blender, converts; everything before it stays in seascape's convention.
 7. **Draw the chain** in a docstring or the PR when a change adds a link: which frames, which way each arrow points.
 
