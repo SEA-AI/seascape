@@ -76,7 +76,7 @@ from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import aerosol, atmosphere, earth, lwir, ptu, thermal, waves
 from tests.scenarios import (
     BASELINE,
-    DRIFTING,
+    FISHTAILING,
     OPEN_SEA,
     preset_target,
     target,
@@ -1878,7 +1878,9 @@ class TestOrbitingYachts:
     def built(cls) -> scene.Built:
         yachts = target("yacht", 200.0, -90.0, orbit={"period_s": 80.0, "count": 2})
         return scene.build(
-            variant(DRIFTING, objects=[yachts], outputs={"duration_s": 40.0, "fps": 1})
+            variant(
+                FISHTAILING, objects=[yachts], outputs={"duration_s": 40.0, "fps": 1}
+            )
         )
 
     def test_a_glb_asset_leaves_its_lights_behind(self) -> None:
@@ -1919,7 +1921,7 @@ def keyed() -> Iterator[tuple[str, np.ndarray]]:
 
 class TestDrifting:
     # Every eighth of the drift lands on a frame.
-    SCENARIO = variant(DRIFTING, outputs={"fps": 4})
+    SCENARIO = variant(FISHTAILING, outputs={"fps": 4})
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -1931,11 +1933,11 @@ class TestDrifting:
     ) -> None:
         scenario = self.SCENARIO
         (spec,) = scenario.objects
-        assert spec.drift is not None
+        assert spec.fishtail is not None
         root = built.targets[spec.asset][0]
         sc = bpy.context.scene
         sc.frame_set(0)
-        period_s = scenario.outputs.period_s(spec.drift.period_s)
+        period_s = scenario.outputs.period_s(spec.fishtail.period_s)
         heading = math.radians(spec.heading_deg)
         ahead = Vector((math.sin(heading), math.cos(heading)))
         starboard = Vector((math.cos(heading), -math.sin(heading)))
@@ -1950,10 +1952,10 @@ class TestDrifting:
             offset = Vector((east, north)) - pose
 
             assert offset.dot(starboard) == pytest.approx(
-                across * spec.drift.sway_m, abs=1e-2
+                across * spec.fishtail.sway_m, abs=1e-2
             )
             assert offset.dot(ahead) == pytest.approx(
-                along * spec.drift.surge_m, abs=1e-2
+                along * spec.fishtail.surge_m, abs=1e-2
             )
             assert up == pytest.approx(earth.sea_z_m(east, north, radius), abs=1e-3)
             yaw_rad = angles.yaw(spec.heading_deg)
@@ -1972,12 +1974,12 @@ class TestDrifting:
         facets = triangles(mesh_objects([root])) @ into[:3, :3].T + into[:3, 3]
         box_beam_m, box_draught_m = box_m(*keel_m(facets), length, 0.0)
         (spec,) = scenario.objects
-        path = motion.drifting(
+        path = motion.target_path(
             spec.range_m,
             spec.bearing_deg,
             spec.heading_from_bow_deg,
             spec.speed_mps,
-            spec.drift,
+            spec.fishtail,
             scenario.outputs,
         )
         sc = bpy.context.scene
@@ -2003,7 +2005,7 @@ class TestDrifting:
                 beam,
                 box_beam_m,
                 box_draught_m,
-                # Under way along the heading, and drifting about it.
+                # Under way along the heading, and fishtailing about it.
                 path(t_s).east_mps,
                 path(t_s).north_mps,
             )

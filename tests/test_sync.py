@@ -34,12 +34,12 @@ def test_printed_entries_read_back_as_themselves() -> None:
 def test_a_ring_loads_evenly_spaced_with_a_drift_drawn_per_buoy() -> None:
     ring: dict[str, object] = {"asset": staging.BUOY, "range_m": 40.0}
     ring |= {"bearing_deg": -10.0, "count": 3, "spacing_deg": 7.5}
-    ring["drift"] = staging.BUOY_DRIFT
+    ring["fishtail"] = staging.BUOY_FISHTAIL
 
     buoys = load(OPEN_SEA, [{"objects": [ring]}]).objects
 
     assert [b.bearing_deg for b in buoys] == [-10.0, -2.5, 5.0]
-    periods = [b.drift.period_s for b in buoys if b.drift is not None]
+    periods = [b.fishtail.period_s for b in buoys if b.fishtail is not None]
     assert len(set(periods)) == 3
 
 

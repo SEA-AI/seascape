@@ -21,7 +21,13 @@ from seascape import angles
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import Posed, posed_at_start
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import azimuth_deg, drifting, head_path, held_tilt_deg, panned_deg
+from seascape.motion import (
+    azimuth_deg,
+    head_path,
+    held_tilt_deg,
+    panned_deg,
+    target_path,
+)
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.staging import (
@@ -148,12 +154,12 @@ def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, floa
     seen_from = [head_at(t) for t in outputs.times_s]
 
     def at(o: Object) -> list[tuple[float, float]]:
-        path = drifting(
+        path = target_path(
             o.range_m,
             o.bearing_deg,
             o.heading_from_bow_deg,
             o.speed_mps,
-            o.drift,
+            o.fishtail,
             outputs,
         )
         found = []

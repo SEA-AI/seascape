@@ -706,94 +706,6 @@
       "title": "Crop",
       "type": "object"
     },
-    "Drift": {
-      "additionalProperties": false,
-      "description": "A hull at single anchor fishtails: across its heading once a period, along it\ntwice. Starts at its pose; the heading holds.",
-      "properties": {
-        "sway_m": {
-          "title": "Sway M",
-          "description": "Peak, across the heading.",
-          "anyOf": [
-            {
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "surge_m": {
-          "title": "Surge M",
-          "description": "Peak, along the heading.",
-          "anyOf": [
-            {
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "period_s": {
-          "title": "Period S",
-          "description": "One full figure-eight.",
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "required": [
-        "sway_m",
-        "surge_m",
-        "period_s"
-      ],
-      "title": "Drift",
-      "type": "object"
-    },
     "Farm": {
       "additionalProperties": false,
       "description": "Turbines in rows of equal length, each to starboard of the last along\n`row_bearing_deg`. One row of one is a lone turbine.",
@@ -1079,6 +991,94 @@
         "bearing_deg"
       ],
       "title": "Farm",
+      "type": "object"
+    },
+    "Fishtail": {
+      "additionalProperties": false,
+      "description": "A hull at single anchor fishtails (UFC 4-159-03, \"fishtailing\"): across its\nheading once a period, along it\ntwice. Starts at its pose; the heading holds.",
+      "properties": {
+        "sway_m": {
+          "title": "Sway M",
+          "description": "Peak, across the heading.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "surge_m": {
+          "title": "Surge M",
+          "description": "Peak, along the heading.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "period_s": {
+          "title": "Period S",
+          "description": "One full figure-eight.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sway_m",
+        "surge_m",
+        "period_s"
+      ],
+      "title": "Fishtail",
       "type": "object"
     },
     "Heave": {
@@ -1723,12 +1723,12 @@
             }
           ]
         },
-        "drift": {
+        "fishtail": {
           "description": "A figure-eight about its pose.",
           "default": null,
           "anyOf": [
             {
-              "$ref": "#/$defs/Drift"
+              "$ref": "#/$defs/Fishtail"
             },
             {
               "type": "null"
@@ -4372,12 +4372,12 @@
             }
           ]
         },
-        "drift": {
+        "fishtail": {
           "description": "A figure-eight about its pose.",
           "default": null,
           "anyOf": [
             {
-              "$ref": "#/$defs/Drift"
+              "$ref": "#/$defs/Fishtail"
             },
             {
               "type": "null"

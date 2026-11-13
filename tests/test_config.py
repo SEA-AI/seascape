@@ -443,15 +443,15 @@ def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
         'asset = { choice = ["yacht", "cargo_ship"] }\n'
         "range_m = 500.0\n"
         "bearing_deg = 0.0\n"
-        "drift = { choice = [{ sway_m = { uniform = [1.0, 2.0] }, surge_m = 1.0, "
+        "fishtail = { choice = [{ sway_m = { uniform = [1.0, 2.0] }, surge_m = 1.0, "
         "period_s = 30.0 }] }\n",
     )
     assets, sways = set(), set()
     for seed in range(20):
         (ship,) = load(path, [f"seed = {seed}"]).objects
-        assert ship.drift is not None
+        assert ship.fishtail is not None
         assets.add(ship.asset)
-        sways.add(ship.drift.sway_m)
+        sways.add(ship.fishtail.sway_m)
     assert assets == {"yacht", "cargo_ship"}
     assert all(1.0 <= sway <= 2.0 for sway in sways)
     assert len(sways) == 20
@@ -603,7 +603,7 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
     ("name", "overrides", "match"),
     [
         ("baseline.toml", ["outputs.loop = true"], "duration_s > 0"),
-        ("underway.toml", ["outputs.loop = true"], "drift"),
+        ("underway.toml", ["outputs.loop = true"], "fishtail"),
         (
             "baseline.toml",
             [
@@ -632,15 +632,19 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
             "ownship.yaw's 9.0 s",
         ),
         (
-            "drifting.toml",
+            "fishtailing.toml",
             [
                 'targets = { asset = "multipurpose_freighter", count = 2,'
                 " range_m = 900.0, bearing_deg = [-5.0, 5.0], speed_mps = 1.0 }"
             ],
-            "drift",
+            "fishtail",
         ),
-        ("drifting.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
-        ("drifting.toml", ["outputs.duration_s = 20"], "multipurpose_freighter drift"),
+        ("fishtailing.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
+        (
+            "fishtailing.toml",
+            ["outputs.duration_s = 20"],
+            "multipurpose_freighter fishtail",
+        ),
         (
             "baseline.toml",
             [
@@ -652,7 +656,7 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
             "yacht orbit's 40.0 s",
         ),
         (
-            "drifting.toml",
+            "fishtailing.toml",
             ["sea.swell = { height_m = 1.0, period_s = 40.0 }"],
             "sea.swell's 40.0 s",
         ),
@@ -682,10 +686,10 @@ def test_an_ownship_that_only_turns_can_loop() -> None:
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:
     with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
-        load(SCENARIOS / "drifting.toml", ["sea.wind_speed_mps = 20"])
+        load(SCENARIOS / "fishtailing.toml", ["sea.wind_speed_mps = 20"])
     with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
         load(
-            SCENARIOS / "drifting.toml",
+            SCENARIOS / "fishtailing.toml",
             ["sea.swell = { height_m = 1.0, period_s = 13.0 }"],
         )
 

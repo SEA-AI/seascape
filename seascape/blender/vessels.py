@@ -30,8 +30,8 @@ from seascape.blender.meshes import (
 from seascape.blender.paint import paint, recolourable
 from seascape.blender.wear import CREVICE, dirty, mark
 from seascape.config import (
-    Drift,
     Farm,
+    Fishtail,
     Object,
     Outputs,
     Ownship,
@@ -287,14 +287,16 @@ def _pose(
     bearing_deg: float,
     heading_deg: float,
     speed_mps: float,
-    drift: Drift | None,
+    fishtail: Fishtail | None,
     radius_m: float,
     outputs: Outputs,
 ) -> motion.Path:
     """Put a hull on the sea at a bearing and range at t = 0, underway along its
-    heading and drifting about that pose.
+    heading and fishtailing about that pose.
     """
-    path = motion.drifting(range_m, bearing_deg, heading_deg, speed_mps, drift, outputs)
+    path = motion.target_path(
+        range_m, bearing_deg, heading_deg, speed_mps, fishtail, outputs
+    )
     _follow(root, path, outputs.times_s, _on_sea(radius_m))
     return path
 
@@ -346,7 +348,7 @@ def _targets(
             bearing_deg,
             heading_deg,
             spec.speed_mps,
-            spec.drift,
+            spec.fishtail,
             radius_m,
             outputs,
         )
@@ -378,7 +380,7 @@ def _object(
             spec.bearing_deg,
             spec.heading_from_bow_deg,
             spec.speed_mps,
-            spec.drift,
+            spec.fishtail,
             radius_m,
             outputs,
         )
@@ -461,8 +463,8 @@ def _wake(
 ) -> list[wakes.Wake]:
     """The wake `_pose` leaves, if the hull is under way.
 
-    Limitation: along the heading from the start, without the drift's figure-eight; give
-    the wake the drift's offset if a drifting hull under way shows its wake beside it.
+    Limitation: along the heading from the start, without the fishtail's figure-eight;
+    give the wake its offset if a fishtailing hull under way shows its wake beside it.
     """
     if spec.speed_mps <= 0.0:
         return []

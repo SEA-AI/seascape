@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from seascape import angles, motion
-from seascape.config import Drift, Move, Outputs, Ownship, Turn, load
+from seascape.config import Fishtail, Move, Outputs, Ownship, Turn, load
 from tests.scenarios import OPEN_SEA
 
 SPEED_MPS = 400.0
@@ -31,17 +31,17 @@ def test_the_track_integrates_the_heading_to_the_closed_form() -> None:
     "path",
     [
         motion.track(STEERED, OUTPUTS),
-        motion.drifting(
+        motion.target_path(
             300.0,
             40.0,
             120.0,
             2.0,
-            Drift(sway_m=3.0, surge_m=1.5, period_s=6.0),
+            Fishtail(sway_m=3.0, surge_m=1.5, period_s=6.0),
             OUTPUTS,
         ),
         motion.orbiting(150.0, -30.0, 40.0),
     ],
-    ids=["track", "drifting", "orbiting"],
+    ids=["track", "fishtailing", "orbiting"],
 )
 def test_a_path_s_velocity_is_the_rate_its_position_changes(
     path: motion.Path,

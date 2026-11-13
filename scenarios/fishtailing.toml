@@ -19,7 +19,7 @@ preset = "multipurpose_freighter"
 range_m = 2000.0
 bearing_deg = 8.0
 heading_deg = 250.0
-drift = { sway_m = 40.0, surge_m = 10.0, period_s = 30.0 }
+fishtail = { sway_m = 40.0, surge_m = 10.0, period_s = 30.0 }
 
 [outputs]
 duration_s = 30.0

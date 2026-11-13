@@ -8,7 +8,7 @@ from typing import NamedTuple
 import numpy as np
 
 from seascape import angles
-from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
+from seascape.config import Fishtail, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
 from seascape.physics import ptu, slew, waves
 
@@ -198,16 +198,16 @@ def head_path(scenario: Scenario, name: str) -> Path:
     return at
 
 
-def drifting(
+def target_path(
     range_m: float,
     bearing_deg: float,
     heading_deg: float,
     speed_mps: float,
-    drift: Drift | None,
+    fishtail: Fishtail | None,
     outputs: Outputs,
 ) -> Path:
     """From `range_m` out along `bearing_deg` at t = 0, under way along its heading
-    and drifting about that pose: a sway across it, and a surge along it at twice the
+    and fishtailing about that pose: a sway across it, and a surge along it at twice the
     rate. Bearings are from the ownship's bow at the start.
     """
     start = range_m * angles.direction(bearing_deg, 0.0)[:2]
@@ -216,9 +216,9 @@ def drifting(
     heading = math.radians(heading_deg)
     sway_m = surge_m = 0.0
     period_s = 1.0
-    if drift is not None:
-        sway_m, surge_m = drift.sway_m, drift.surge_m
-        period_s = outputs.period_s(drift.period_s)
+    if fishtail is not None:
+        sway_m, surge_m = fishtail.sway_m, fishtail.surge_m
+        period_s = outputs.period_s(fishtail.period_s)
     sway = sine(0.0, sway_m, period_s)
     surge = sine(0.0, surge_m, period_s / 2.0)
     rate = 2.0 * math.pi / period_s

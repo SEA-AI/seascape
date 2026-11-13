@@ -34,7 +34,7 @@ BUOY_WEAR = 0.5
 # Judgement: a buoy straining at its mooring, half a metre to and fro about a
 # minute, sideways to the cameras so it changes range more than bearing. Each buoy
 # draws its own period, so they fall out of step.
-BUOY_DRIFT = {"sway_m": 0.5, "surge_m": 0.25, "period_s": {"uniform": [45.0, 75.0]}}
+BUOY_FISHTAIL = {"sway_m": 0.5, "surge_m": 0.25, "period_s": {"uniform": [45.0, 75.0]}}
 # The smallest box a pair's coarser video is assumed to detect (SEA.AI's internal sync
 # specification).
 BUOY_PX = 6.0
@@ -373,7 +373,7 @@ def stage(scenario: Scenario) -> Staging:
                 # Bow across the line of sight, so its sway runs along it.
                 "heading_deg": 90.0,
                 "heading_from": "line_of_sight",
-                "drift": BUOY_DRIFT,
+                "fishtail": BUOY_FISHTAIL,
             }
         )
     return Staging(inclination_deg=inclination_deg, entries=entries)
