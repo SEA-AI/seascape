@@ -1896,7 +1896,7 @@ class TestOrbitingYachts:
                 assert (east, north) == pytest.approx(
                     (200.0 * math.sin(bearing), 200.0 * math.cos(bearing)), abs=1e-3
                 )
-                # The sea yaws it a few degrees off its lap.
+                # The sea yaws this 41 m yacht under 1.5 degrees off its lap.
                 turn_deg = math.degrees(hull.rotation_euler.z)
                 lap_deg = math.degrees(angles.yaw(bearing_deg + 90))
                 assert angles.wrapped_deg(turn_deg - lap_deg) == pytest.approx(
@@ -2328,7 +2328,7 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
     built = scene.build(variant(objects=[yacht]), "eo")
 
     (root,) = built.targets["yacht"]
-    # The sea yaws it a few degrees off its course.
+    # The sea yaws this 41 m yacht under 1 degree off its course.
     assert heading_deg(root) % 360.0 == pytest.approx(210.0, abs=5.0)
 
 

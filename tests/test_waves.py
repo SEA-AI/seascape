@@ -690,12 +690,19 @@ def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
 
 
-@pytest.mark.parametrize(("length_m", "beam_m"), [(60.0, 10.0), (10.0, 10.0)])
-def test_a_hull_yaws_with_the_water_under_it(length_m: float, beam_m: float) -> None:
-    """The least-squares turn of the Gerstner offset, summed over a grid; none for a
-    square, as the offset is a gradient.
-    """
-    wave = waves.Wave(0.8, 0.6, math.radians(40.0), 1.0)
+@pytest.mark.parametrize(
+    ("omega_rad_s", "length_m", "beam_m"),
+    [
+        (0.6, 60.0, 10.0),  # 171 m long
+        (1.2, 60.0, 10.0),  # 43 m: the hull's lever turns over
+        (3.0, 10.0, 10.0),  # 6.8 m: a square turns once the wave bends over it
+    ],
+)
+def test_a_hull_yaws_with_the_water_under_it(
+    omega_rad_s: float, length_m: float, beam_m: float
+) -> None:
+    """The least-squares turn of the Gerstner offset, summed over a grid."""
+    wave = waves.Wave(0.8 * (0.6 / omega_rad_s) ** 2, omega_rad_s, 0.7, 1.0)
     hull = waves.Waterplane(30.0, -40.0, math.radians(100.0), length_m, beam_m)
     x, y = np.meshgrid(
         np.linspace(-length_m / 2, length_m / 2, 301),
@@ -711,7 +718,17 @@ def test_a_hull_yaws_with_the_water_under_it(length_m: float, beam_m: float) -> 
     fit /= np.trapezoid(np.trapezoid(x * x + y * y, axis=1), axis=0)
     yaw = waves.yaw_rad((wave,), hull, 2.0)
     assert yaw == pytest.approx(math.atan(fit), abs=1e-6)
-    assert (abs(yaw) > 1e-3) == (length_m != beam_m)
+    assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
+
+
+def test_a_square_yaws_by_nothing_in_a_long_wave() -> None:
+    """The offset is a gradient: over a square, its turn falls with (k L)^2."""
+    wave = waves.Wave(0.8, 0.6, 0.7, 1.0)  # 171 m long
+    square = waves.Waterplane(30.0, -40.0, 1.7, 10.0, 10.0)
+    long = square._replace(length_m=60.0)
+    assert abs(waves.yaw_rad((wave,), square, 2.0)) < 1e-3 * abs(
+        waves.yaw_rad((wave,), long, 2.0)
+    )
 
 
 def _jensen(wave: waves.Wave, hull: waves.Waterplane) -> tuple[float, float]:

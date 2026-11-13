@@ -457,12 +457,12 @@ def ride(
     tall: tuple[waves.Wave, ...],
     outputs: Outputs,
 ) -> None:
-    """Key each hull to `motion.waterline_pose` on the sea: pitched and rolled by
-    `field` outside its scripted trim and list, and heaved by `tall`.
+    """Key each hull to `motion.waterline_pose` on the sea: pitched, rolled and
+    yawed by `field` outside its scripted trim and list, and heaved by `tall`.
 
     Args:
         afloat: The hulls.
-        field: Every wave, which the pitch and roll follow.
+        field: Every wave, which the pitch, roll and yaw follow.
         tall: The waves that are geometry, which alone heave the hull.
         outputs: The times keyed, one per frame.
     """

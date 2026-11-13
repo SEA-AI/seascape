@@ -125,6 +125,7 @@ def _row(
         "pitch": IMU_PITCH_SIGN * pitch,
         "yaw": yaw,
         "heading": heading,
+        # The bow's heading: the run records no track, and sog is 0.
         "cog": heading,
         "temp": scenario["sky"]["t_air_k"] - 273.15,
         "wind_speed": scenario["sea"]["wind_speed_mps"],

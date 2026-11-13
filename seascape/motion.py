@@ -326,7 +326,7 @@ def tilt_rad(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
     """A hull's pitch, bow up, and roll, starboard down, in radians: the sea's tilt
     `sea` outside the trim and list `pose` scripts, which are relative to the water.
     Two tilts composed also yaw the hull; that yaw is dropped, as the hull's heading
-    is its track's and the sea's `yaw_rad` (Fossen, Handbook of Marine Craft
+    is its track's plus the sea's `yaw_rad` (Fossen, Handbook of Marine Craft
     Hydrodynamics, 2011, §2.2: yaw of the whole attitude).
     """
     if sea is None:
