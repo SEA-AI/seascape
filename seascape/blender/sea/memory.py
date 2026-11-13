@@ -78,7 +78,10 @@ def _rays(scenario: Scenario, seen: list[View]) -> list[tuple[Vector, Vector, fl
 
 
 def _box(
-    rays: list[tuple[Vector, Vector, float]], cell_m: float, shrink: float
+    rays: list[tuple[Vector, Vector, float]],
+    cell_m: float,
+    shrink: float,
+    radius_m: float,
 ) -> tuple[float, float, float, float]:
     """(west, south, width, height) round where the rays meet the sea, or pass over
     it, plus the grid's fading edge.
@@ -88,13 +91,15 @@ def _box(
         cell_m: The grid's cell; the box's edges snap to its multiples.
         shrink: Each ray reaches out to where its camera's pixel spans 2 * shrink
             cells; 0 keeps only the origins.
+        radius_m: The effective radius, `earth.earth_radius_m`.
     """
     xs, ys = [], []
     for origin, ray, pixel_rad in rays:
         flat = Vector((ray.x, ray.y))
         run = 2 * shrink * cell_m / pixel_rad
-        if ray.z < 0.0:
-            run = min(run, origin.z / -ray.z * flat.length)
+        hit_m = earth.sea_run_m(tuple(origin), tuple(ray), radius_m)
+        if hit_m is not None:
+            run = min(run, hit_m)
         flat.normalize()
         xs += [origin.x, origin.x + flat.x * run]
         ys += [origin.y, origin.y + flat.y * run]
@@ -105,22 +110,22 @@ def _box(
 
 
 def _foam_box(
-    rays: list[tuple[Vector, Vector, float]], cell_m: float
+    rays: list[tuple[Vector, Vector, float]], cell_m: float, radius_m: float
 ) -> tuple[float, float, float, float, float] | None:
     """`_box` at the largest shrink up to 1 that holds `FOAM_MAX_CELLS` a side, and the
     shrink; None if the cameras stand too far apart for even their origins to fit.
     """
     most_m = FOAM_MAX_CELLS * cell_m
-    least_m = max(_box(rays, cell_m, 0.0)[2:])
+    least_m = max(_box(rays, cell_m, 0.0, radius_m)[2:])
     if least_m >= most_m:
         return None
     shrink = 1.0
-    box = _box(rays, cell_m, shrink)
+    box = _box(rays, cell_m, shrink, radius_m)
     while max(box[2:]) > most_m:
         # The excess over the origins' spread shrinks at most in proportion, so this
         # may repeat.
         shrink *= (most_m - least_m) / (max(box[2:]) - least_m)
-        box = _box(rays, cell_m, shrink)
+        box = _box(rays, cell_m, shrink, radius_m)
     return (*box, shrink)
 
 
@@ -142,6 +147,7 @@ def foam_grids(
     if not wind:
         return ()
     rays = _rays(scenario, seen)
+    radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     horizon = earth.horizon_m(
         max(origin.z for origin, _, _ in rays), scenario.sea.refraction_k
     )
@@ -150,7 +156,7 @@ def foam_grids(
     grids = []
     cell_m = FOAM_NEAR_CELL_M
     while True:
-        fit = _foam_box(rays, cell_m)
+        fit = _foam_box(rays, cell_m, radius_m)
         reach_m = 0.0
         if fit is not None:
             west, south, width, height, shrink = fit
