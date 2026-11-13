@@ -84,11 +84,12 @@ _DRAUGHT = (
 )
 _RANGE = "Horizontal, from the ownship's origin at t = 0."
 _SPEED = "Along its heading."
-_DRIFT = "A figure-eight about its pose."
+_FISHTAIL = "A figure-eight about its pose."
 
 
-class Drift(Model):
-    """A hull at single anchor fishtails: across its heading once a period, along it
+class Fishtail(Model):
+    """A hull at single anchor fishtails (UFC 4-159-03, "fishtailing"): across its
+    heading once a period, along it
     twice. Starts at its pose; the heading holds.
     """
 
@@ -115,7 +116,9 @@ class Object(Model):
 
     asset: VesselName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
-    bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
+    bearing_deg: float = Field(
+        description="Clockwise from world +Y, the ownship's bow at the start."
+    )
     heading_deg: float = Field(
         default=0.0, description="Where its bow points, clockwise."
     )
@@ -125,7 +128,7 @@ class Object(Model):
         "from the ownship to it at t = 0, where 0 points away and 180 towards.",
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
-    drift: Drift | None = Field(default=None, description=_DRIFT)
+    fishtail: Fishtail | None = Field(default=None, description=_FISHTAIL)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
@@ -151,7 +154,7 @@ class Object(Model):
     )
 
     @property
-    def course_deg(self) -> float:
+    def heading_from_bow_deg(self) -> float:
         """`heading_deg` from the ownship's bow, whatever it was given from."""
         if self.heading_from == "line_of_sight":
             return self.bearing_deg + self.heading_deg
@@ -189,7 +192,7 @@ class Object(Model):
 
     @model_validator(mode="after")
     def _an_orbit_steers(self) -> "Object":
-        steered = {"heading_deg", "heading_from", "speed_mps", "drift"}
+        steered = {"heading_deg", "heading_from", "speed_mps", "fishtail"}
         steered &= self.model_fields_set
         if self.orbit is not None and steered:
             raise ValueError(
@@ -373,8 +376,8 @@ class Targets(Model):
     count: int = Field(gt=0, description="How many.")
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: tuple[float, float] = Field(
-        description="First and last, clockwise from the ownship's bow. Both ends get "
-        "a target."
+        description="First and last, clockwise from world +Y, the ownship's bow at "
+        "the start. Both ends get a target."
     )
     # Spread so aspect varies between targets.
     heading_deg: tuple[float, float] = Field(
@@ -382,7 +385,7 @@ class Targets(Model):
         description="First and last, spread evenly, clockwise from the ownship's bow.",
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
-    drift: Drift | None = Field(default=None, description=_DRIFT)
+    fishtail: Fishtail | None = Field(default=None, description=_FISHTAIL)
     t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
@@ -407,7 +410,8 @@ class Farm(Model):
     asset: TurbineName = Field(description=f"{_ASSET} A turbine.")
     range_m: float = Field(gt=0.0, description="To the first turbine of the first row.")
     bearing_deg: float = Field(
-        description="Of the first turbine, clockwise from the ownship's bow."
+        description="Of the first turbine, clockwise from world +Y, the ownship's bow "
+        "at the start."
     )
     rows: int = Field(default=1, gt=0, description="How many rows.")
     columns: int = Field(default=1, gt=0, description="Turbines in a row.")
@@ -418,8 +422,8 @@ class Farm(Model):
     )
     row_bearing_deg: float = Field(
         default=0.0,
-        description="Where a row runs from its first turbine, clockwise from the "
-        "ownship's bow.",
+        description="Where a row runs from its first turbine, clockwise from world "
+        "+Y, the ownship's bow at the start.",
     )
     staggered: bool = Field(
         default=False, description="Every other row shifted half a spacing along."

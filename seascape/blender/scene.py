@@ -31,7 +31,7 @@ from seascape.config import (
     recorded_name,
     substream,
 )
-from seascape.motion import Deck, Path, tilted, track
+from seascape.motion import Path, Tilt, tilted, track
 from seascape.outputs.calibration import CameraCalibration, Matrix4, intrinsics
 from seascape.physics import earth, wakes, waves
 
@@ -44,8 +44,8 @@ class Built:
 
     # The hull's root, named ownship in Blender: its track, heading and scripted trim
     # and list.
-    anchor: bpy.types.Object
-    ownship: bpy.types.Object  # the rigs' parent: a hull's draught, or the anchor
+    root: bpy.types.Object
+    ownship: bpy.types.Object  # the rigs' parent: a hull's draught, or the root
     heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
@@ -104,12 +104,12 @@ def _viewport(far_m: float) -> None:
                     space.clip_end = far_m
 
 
-def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
+def _sightline_m(scenario: Scenario, roots: Iterable[bpy.types.Object]) -> float:
     """Past the camera's horizon plus the tallest hull's own, every hull is below the
     horizon.
     """
     # Stored at import, blade up: measured now, a rotor's top follows its spin.
-    tops_m = [anchor["height_m"] for anchor in anchors]
+    tops_m = [root["height_m"] for root in roots]
     if not tops_m:
         return 0.0
     heave = scenario.ownship.heave
@@ -149,24 +149,24 @@ class Posed:
 
     cameras: dict[str, np.ndarray]
     path: Path
-    deck: Deck
+    tilt: Tilt
 
 
-def _ownship_deck(
+def _ownship_tilt(
     path: Path,
     afloat: list[Afloat],
     vessel: bpy.types.Object,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Deck:
-    """The ownship's deck rotation at a time, its hull riding `field`."""
-    hull = next((a.hull for a in afloat if a.anchor is vessel), None)
+) -> Tilt:
+    """The ownship's `R_level_ownship` at a time, its hull riding `field`."""
+    hull = next((a.hull for a in afloat if a.root is vessel), None)
     return tilted(path, hull, field, tall)
 
 
 def posed_at_start(scenario: Scenario, name: str) -> Posed:
     """The rig `name` on its ownship as the render poses it at the start, a pan-tilt
-    unit holding its inclination against what the ownship's path scripts on a level
+    unit holding its elevation against what the ownship's path scripts on a level
     sea; no sea, no targets.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -198,7 +198,7 @@ def posed_at_start(scenario: Scenario, name: str) -> Posed:
     return Posed(
         cameras=cameras,
         path=path,
-        deck=_ownship_deck(path, afloat, vessel, wind + swell, tall),
+        tilt=_ownship_tilt(path, afloat, vessel, wind + swell, tall),
     )
 
 
@@ -246,9 +246,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
     ride(afloat, wind + swell, tall, outputs)
-    deck = _ownship_deck(path, afloat, vessel, wind + swell, tall)
-    stabilise(rigs.heads, scenario, deck)
-    solid = [a.anchor for a in afloat] + list(chain(*turbines.values()))
+    tilt = _ownship_tilt(path, afloat, vessel, wind + swell, tall)
+    stabilise(rigs.heads, scenario, tilt)
+    solid = [a.root for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
@@ -278,9 +278,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     add_haze(scenario.sky, band, far_m)
     # The object-index pass reads 0 for sky and sea. The ownship takes the index after
     # the targets: no box, and no target's background.
-    anchors = [*chain(*targets.values()), vessel]
-    for index, anchor in enumerate(anchors, start=1):
-        for part in [anchor, *anchor.children_recursive]:
+    roots = [*chain(*targets.values()), vessel]
+    for index, root in enumerate(roots, start=1):
+        for part in [root, *root.children_recursive]:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
     first = mounts[0]
@@ -294,7 +294,7 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     sc.frame_set(0)
     return Built(
-        anchor=vessel,
+        root=vessel,
         ownship=rigs.root.parent,
         heads=rigs.heads,
         cameras=rigs.cameras,

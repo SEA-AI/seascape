@@ -304,7 +304,7 @@ class Scenario(Model):
             if spec is not None and spec.speed_mps > 0.0:
                 raise ValueError(
                     f"{spec.asset} has speed_mps > 0, and a straight run never comes "
-                    "back to close a loop: give it a drift instead"
+                    "back to close a loop: give it a fishtail instead"
                 )
         if self.ownship.speed_mps > 0.0:
             raise ValueError(
@@ -316,8 +316,8 @@ class Scenario(Model):
             ("ownship.roll", self.ownship.roll),
             ("ownship.pitch", self.ownship.pitch),
             ("ownship.heave", self.ownship.heave),
-            *((f"{spec.asset} drift", spec.drift) for spec in self.objects),
-            ("targets.drift", self.targets.drift if self.targets else None),
+            *((f"{spec.asset} fishtail", spec.fishtail) for spec in self.objects),
+            ("targets.fishtail", self.targets.fishtail if self.targets else None),
             ("sea.swell", self.sea.swell),
         ]
         periods = [(n, m.period_s) for n, m in motions if m is not None] + [

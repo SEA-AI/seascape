@@ -11,17 +11,17 @@ from seascape.physics import ptu
 from tests.scenarios import SYNC_SENTRY
 
 
-@pytest.mark.parametrize("target_deg", [0.0, -2.5])
+@pytest.mark.parametrize("elevation_deg", [0.0, -2.5])
 def test_a_swell_leaves_the_first_order_high_pass_of_the_pitch_from_the_start(
-    target_deg: float,
+    elevation_deg: float,
 ) -> None:
     omega = 2.0 * math.pi / 4.0
     times = np.arange(0.0, 8.0, 1.0 / 30.0)
     tilt = ptu.tilt_deg(
-        lambda t, held: 4.0 * math.sin(omega * t) + held, list(times), target_deg
+        lambda t, held: 4.0 * math.sin(omega * t) + held, list(times), elevation_deg
     )
 
-    off = 4.0 * np.sin(omega * times) + tilt - target_deg
+    off = 4.0 * np.sin(omega * times) + tilt - elevation_deg
     # |H| of e' = -K e + p' at omega: omega / sqrt(omega^2 + K^2).
     gain = omega / math.hypot(omega, ptu.GAIN_PER_S)
     # Judgement: 5% for the 15 ms tick and the dead band, which the linear gain omits.
@@ -64,7 +64,7 @@ def test_a_deck_the_sea_tips_past_the_zenith_is_refused() -> None:
         held_tilt_deg(load(SYNC_SENTRY), "mast", lambda _t_s: pitched)
 
 
-def test_an_inclination_no_tilt_reaches_is_refused() -> None:
+def test_an_elevation_no_tilt_reaches_is_refused() -> None:
     # Rolled 89 deg, a bow-facing head sweeps elevations within 1 deg of level.
     c, s = math.cos(math.radians(89.0)), math.sin(math.radians(89.0))
     rolled = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])

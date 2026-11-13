@@ -36,9 +36,9 @@ def shots(out: Path) -> tuple[np.ndarray, np.ndarray, list[int]]:
     frame = render._frame(out / f"frame.{scenario.outputs.format}")
     index = np.rint(blend.read(out / "eo.index.exr")[::-1, :, 0]).astype(int)
     at = camera.matrix_world.translation
-    anchors = [anchor for group in built.targets.values() for anchor in group]
-    anchors.sort(key=lambda a: (a.matrix_world.translation - at).length)
-    return frame, index, [a.pass_index for a in anchors]
+    roots = [root for group in built.targets.values() for root in group]
+    roots.sort(key=lambda a: (a.matrix_world.translation - at).length)
+    return frame, index, [a.pass_index for a in roots]
 
 
 def excess(frame: np.ndarray, index: np.ndarray, p: int) -> float:

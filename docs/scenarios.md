@@ -202,6 +202,6 @@ uv run seascape video out/
 uv run seascape recording out/                           # out/recordings/<rig>/<model>_recordings_<ts>/
 ```
 
-`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target or ownship cannot be underway; give a target a `drift`, as `scenarios/drifting.toml` does.
+`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target or ownship cannot be underway; give a target a `fishtail`, as `scenarios/fishtailing.toml` does.
 
 Every frame has its own entry in `calibration.json` and `labels.json`, stamped with `time_s`. `seascape video` paces the frames by it, so a clip re-encodes without re-rendering. The `.blend` from `seascape build` carries the motion as keyframes. `montage` and `panorama` take stills.

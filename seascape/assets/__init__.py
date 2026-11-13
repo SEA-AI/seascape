@@ -179,7 +179,7 @@ class _Mesh(FrozenModel):
     def centre(
         self, low: tuple[float, float, float], high: tuple[float, float, float]
     ) -> tuple[float, float]:
-        """Where the anchor goes in x and y, from the fitted box's corners."""
+        """Where the root goes in x and y, from the fitted box's corners."""
         return (low[0] + high[0]) / 2, (low[1] + high[1]) / 2
 
     @property

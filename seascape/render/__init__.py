@@ -155,19 +155,19 @@ def _cut(name: str, width_px: int, height_px: int, crop: Crop | None) -> None:
 def _targets(built: scene.Built) -> list[labels.Target]:
     return [
         labels.Target(
-            pass_index=anchor.pass_index,
-            name=anchor.name,
+            pass_index=root.pass_index,
+            name=root.name,
             category_id=manifest()[asset].category_id,
             category=manifest()[asset].category,
             supercategory=manifest()[asset].supercategory,
-            centre_m=tuple(anchor.matrix_world.translation.xy),
-            waterline_m=waterline_m(anchor),
-            heading_deg=heading_deg(anchor) % 360.0,
-            dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
-            engine_off_min=anchor["engine_off_min"],
+            centre_m=tuple(root.matrix_world.translation.xy),
+            waterline_m=waterline_m(root),
+            heading_deg=heading_deg(root) % 360.0,
+            dims_m=(root["length_m"], root["beam_m"], root["height_m"]),
+            engine_off_min=root["engine_off_min"],
         )
-        for asset, anchors in built.targets.items()
-        for anchor in anchors
+        for asset, roots in built.targets.items()
+        for root in roots
     ]
 
 

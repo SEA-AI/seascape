@@ -23,8 +23,8 @@ from seascape.config import (
     Turn,
     sources,
 )
-from seascape.config.cameras import PTU_INCLINATION_DEG
-from seascape.motion import head_track
+from seascape.config.cameras import PTU_ELEVATION_DEG
+from seascape.motion import head_path
 from seascape.outputs import stitch
 from seascape.outputs.calibration import CameraCalibration
 
@@ -34,7 +34,7 @@ BUOY_WEAR = 0.5
 # Judgement: a buoy straining at its mooring, half a metre to and fro about a
 # minute, sideways to the cameras so it changes range more than bearing. Each buoy
 # draws its own period, so they fall out of step.
-BUOY_DRIFT = {"sway_m": 0.5, "surge_m": 0.25, "period_s": {"uniform": [45.0, 75.0]}}
+BUOY_FISHTAIL = {"sway_m": 0.5, "surge_m": 0.25, "period_s": {"uniform": [45.0, 75.0]}}
 # The smallest box a pair's coarser video is assumed to detect (SEA.AI's internal sync
 # specification).
 BUOY_PX = 6.0
@@ -42,7 +42,7 @@ BUOY_PX = 6.0
 CONTAINER_FILL = 1.0 / 3.0
 # Judgement: what a buoy keeps clear of a frame's edge, and the horizon of its top.
 MARGIN_DEG = 0.5
-# The decimals a range, a bearing or an inclination is stored to.
+# The decimals a range, a bearing or an elevation is stored to.
 DECIMALS = 1
 
 
@@ -71,11 +71,11 @@ class Ring:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Staging:
-    """The course's `[[objects]]` entries, a ring of buoys each, and the inclination
+    """The course's `[[objects]]` entries, a ring of buoys each, and the elevation
     its pan-tilt unit holds, if any.
     """
 
-    inclination_deg: float | None
+    elevation_deg: float | None
     entries: list[dict[str, Any]]
 
 
@@ -256,7 +256,7 @@ def one_rig(scenario: Scenario) -> tuple[str, Rig, Turn]:
     return name, rig, scenario.turn
 
 
-def _inclination_deg(rig: Rig, height_m: float, near_m: float) -> float | None:
+def _elevation_deg(rig: Rig, height_m: float, near_m: float) -> float | None:
     """The pitch that keeps the horizon and the nearest ring's waterline in every
     video, as far from either edge as it can.
 
@@ -273,9 +273,9 @@ def _inclination_deg(rig: Rig, height_m: float, near_m: float) -> float | None:
         except ValueError as err:
             raise ValueError(f"video {name}: {err}") from err
     if rig.ptu is not None:
-        # The pitch is stored as the unit's inclination, which it bounds.
-        least = max(least, PTU_INCLINATION_DEG[0])
-        most = min(most, PTU_INCLINATION_DEG[1])
+        # The pitch is stored as the unit's elevation, which it bounds.
+        least = max(least, PTU_ELEVATION_DEG[0])
+        most = min(most, PTU_ELEVATION_DEG[1])
     # The stored pitch is rounded, so it is the rounded one that must fit.
     pitch_deg = round((least + most) / 2, DECIMALS)
     if not least <= pitch_deg <= most:
@@ -317,9 +317,9 @@ def stage(scenario: Scenario) -> Staging:
     # offsets nearer the cameras than the ring's range.
     off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
     near_m = circles[0].range_m - 2 * off_m
-    inclination_deg = _inclination_deg(rig, scenario.head_height_m(name), near_m)
+    elevation_deg = _elevation_deg(rig, scenario.head_height_m(name), near_m)
 
-    start = head_track(scenario, name)(0.0)
+    start = head_path(scenario, name)(0.0)
     narrow = min(videos, key=lambda v: v.right_deg - v.left_deg)
     box = asset(CONTAINER, Debris)
     box_m = box.length_m * narrow.focal_px / (CONTAINER_FILL * narrow.width_px)
@@ -373,15 +373,15 @@ def stage(scenario: Scenario) -> Staging:
                 # Bow across the line of sight, so its sway runs along it.
                 "heading_deg": 90.0,
                 "heading_from": "line_of_sight",
-                "drift": BUOY_DRIFT,
+                "fishtail": BUOY_FISHTAIL,
             }
         )
-    return Staging(inclination_deg=inclination_deg, entries=entries)
+    return Staging(elevation_deg=elevation_deg, entries=entries)
 
 
 def suggested(scenario: Scenario) -> str:
     """The course for `scenario`'s rig, as the TOML to paste: its pan-tilt unit's
-    inclination, if it has one, and its `[[objects]]` tables.
+    elevation, if it has one, and its `[[objects]]` tables.
 
     Raises:
         ValueError: No course fits the rig, and the setting to change.
@@ -389,9 +389,9 @@ def suggested(scenario: Scenario) -> str:
     name, _, _ = one_rig(scenario)
     placed = stage(scenario)
     toml = objects_toml(placed.entries)
-    if placed.inclination_deg is None:
+    if placed.elevation_deg is None:
         return toml
-    return f"[rigs.{name}.ptu]\ninclination_deg = {placed.inclination_deg}\n\n{toml}"
+    return f"[rigs.{name}.ptu]\nelevation_deg = {placed.elevation_deg}\n\n{toml}"
 
 
 def objects_toml(entries: list[dict[str, Any]]) -> str:

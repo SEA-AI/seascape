@@ -8,7 +8,7 @@ from typing import NamedTuple
 import numpy as np
 
 from seascape import angles
-from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
+from seascape.config import Fishtail, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
 from seascape.physics import ptu, slew, waves
 
@@ -40,7 +40,7 @@ class Pose(NamedTuple):
 
 type Path = Callable[[float], Pose]
 # (3, 3) `R_level_ownship` at a time: the hull's tilt, its heading aside.
-type Deck = Callable[[float], np.ndarray]
+type Tilt = Callable[[float], np.ndarray]
 
 
 def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
@@ -166,7 +166,7 @@ def azimuth_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
     return lambda t_s: rig.azimuth_deg(panned(t_s))
 
 
-def head_track(scenario: Scenario, name: str) -> Path:
+def head_path(scenario: Scenario, name: str) -> Path:
     """Where the head of rig `name` is at a time, in world east and north, and the
     bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
 
@@ -175,7 +175,7 @@ def head_track(scenario: Scenario, name: str) -> Path:
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
-    deck = tilted(path, hull=None, field=(), tall=())
+    tilt = tilted(path, hull=None, field=(), tall=())
     pan = panned_deg(scenario.turn, name)
 
     def at(t_s: float) -> Pose:
@@ -183,7 +183,7 @@ def head_track(scenario: Scenario, name: str) -> Path:
         T_world_ownship = np.eye(4)
         T_world_ownship[:3, :3] = angles.turned(
             math.degrees(pose.heading_rad), 0.0
-        ) @ deck(t_s)
+        ) @ tilt(t_s)
         T_world_ownship[:3, 3] = pose.east_m, pose.north_m, 0.0
         # The hull tilts about its floating waterline, `rise_m` under its origin.
         T_world_ownship[:3, 3] += T_world_ownship[:3, 2] * scenario.ownship.rise_m
@@ -198,16 +198,16 @@ def head_track(scenario: Scenario, name: str) -> Path:
     return at
 
 
-def drifting(
+def target_path(
     range_m: float,
     bearing_deg: float,
     heading_deg: float,
     speed_mps: float,
-    drift: Drift | None,
+    fishtail: Fishtail | None,
     outputs: Outputs,
 ) -> Path:
     """From `range_m` out along `bearing_deg` at t = 0, under way along its heading
-    and drifting about that pose: a sway across it, and a surge along it at twice the
+    and fishtailing about that pose: a sway across it, and a surge along it at twice the
     rate. Bearings are from the ownship's bow at the start.
     """
     start = range_m * angles.direction(bearing_deg, 0.0)[:2]
@@ -216,9 +216,9 @@ def drifting(
     heading = math.radians(heading_deg)
     sway_m = surge_m = 0.0
     period_s = 1.0
-    if drift is not None:
-        sway_m, surge_m = drift.sway_m, drift.surge_m
-        period_s = outputs.period_s(drift.period_s)
+    if fishtail is not None:
+        sway_m, surge_m = fishtail.sway_m, fishtail.surge_m
+        period_s = outputs.period_s(fishtail.period_s)
     sway = sine(0.0, sway_m, period_s)
     surge = sine(0.0, surge_m, period_s / 2.0)
     rate = 2.0 * math.pi / period_s
@@ -326,7 +326,7 @@ def _rolled(rad: float) -> np.ndarray:
     return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
 
 
-def tilt(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
+def tilt_rad(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
     """A hull's pitch, bow up, and roll, starboard down, in radians: the sea's tilt
     `sea` outside the trim and list `pose` scripts, which are relative to the water.
     Two tilts composed also yaw the hull; that yaw is dropped, as the hull's heading
@@ -353,8 +353,8 @@ def tilted(
     hull: waves.Waterplane | None,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Deck:
-    """`R_level_ownship` at a time: its `tilt` by the pitch and roll `path` scripts
+) -> Tilt:
+    """`R_level_ownship` at a time: its `tilt_rad` by the pitch and roll `path` scripts
     and, under `hull`, the sea's.
 
     Args:
@@ -369,22 +369,22 @@ def tilted(
         sea = None
         if hull is not None:
             sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
-        pitch_rad, roll_rad = tilt(pose, sea)
+        pitch_rad, roll_rad = tilt_rad(pose, sea)
         return _pitched(pitch_rad) @ _rolled(roll_rad)
 
     return at
 
 
-def world_elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
+def world_elevation_deg(R_level_ownship: np.ndarray, toward: np.ndarray) -> float:
     """The elevation in the world of `toward`, a unit (3,) in the ownship's frame,
-    on a hull tilted `deck`, (3, 3) `R_level_ownship`.
+    on a hull tilted `R_level_ownship`, (3, 3).
     """
-    return float(angles.elevation_deg(deck[2] @ toward))
+    return float(angles.elevation_deg(R_level_ownship[2] @ toward))
 
 
-def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
+def held_tilt_deg(scenario: Scenario, name: str, tilt: Tilt) -> np.ndarray:
     """The tilt the pan-tilt unit of rig `name` adds to the rig's `pitch_deg` at each
-    frame, holding its inclination on a deck tilted `deck`.
+    frame, holding its elevation on a hull tilted `tilt`.
 
     Raises:
         ValueError: The rig has no pan-tilt unit, or the deck tips its untilted head
@@ -404,7 +404,7 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     for t_s in times:
         # Past the zenith, the head's horizontal part turns against its bearing; the
         # deck turns no heading, so the bearing on a level deck is the reference.
-        tipped = deck(t_s) @ head(t_s)
+        tipped = tilt(t_s) @ head(t_s)
         if tipped[:2] @ head(t_s, -rig.pitch_deg)[:2] < 0.0:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
@@ -413,18 +413,18 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
         # Tilting sweeps the head through the deck's vertical plane at its bearing;
         # the world's up projects onto that plane with length `reach`, the sine of
         # the steepest elevation any tilt gives.
-        up = deck(t_s)[2]
+        up = tilt(t_s)[2]
         reach = math.hypot(up @ head(t_s, -rig.pitch_deg), up[2])
-        if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
+        if abs(math.sin(math.radians(rig.ptu.elevation_deg))) > reach:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "
-                f"inclination_deg {rig.ptu.inclination_deg:g}: lower the ownship's "
+                f"elevation_deg {rig.ptu.elevation_deg:g}: lower the ownship's "
                 "roll or the sea"
             )
 
     # The firmware's IMU sits on the head, so the loop holds the head itself,
     # `pitch_deg` included.
     def head_deg(t_s: float, tilt_deg: float) -> float:
-        return world_elevation_deg(deck(t_s), head(t_s, tilt_deg))
+        return world_elevation_deg(tilt(t_s), head(t_s, tilt_deg))
 
-    return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)
+    return ptu.tilt_deg(head_deg, times, rig.ptu.elevation_deg)
