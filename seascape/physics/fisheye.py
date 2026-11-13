@@ -105,4 +105,4 @@ def polynomial(
             f"Blender's fourth-degree polynomial misses the fisheye model by "
             f"{miss:.2f} px within the frame"
         )
-    return tuple(float(c) for c in coefficients)  # ty: ignore[invalid-return-type]
+    return tuple(float(c) for c in coefficients)  # ty: ignore[invalid-explicit-return]
