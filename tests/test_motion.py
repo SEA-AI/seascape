@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from seascape import angles, motion
 from seascape.config import Fishtail, Move, Outputs, Ownship, Turn, load
+from seascape.physics import waves
 from tests.scenarios import OPEN_SEA
 
 SPEED_MPS = 400.0
@@ -227,6 +228,23 @@ def test_a_scripted_tilt_turns_the_deck_s_axes(
     ownship = Ownship(pitch_deg=pitch_deg, roll_deg=roll_deg)
     tilt = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
     assert tilt(0.0)[:, axis] == pytest.approx(expected)
+
+
+def test_a_hull_levelled_off_its_waterline_is_its_tilt() -> None:
+    """The deck `levelled` reads off a yawing, rocking waterline is `tilted`'s."""
+    scenario = load(OPEN_SEA, [])
+    field = scenario.wind_waves() + scenario.swell_waves()
+    ownship = Ownship(speed_mps=2.0, pitch_deg=2.0, roll_deg=-3.0)
+    path = motion.track(ownship, Outputs(duration_s=4.0))
+    hull = waves.Waterplane(length_m=30.0, beam_m=8.0)
+    waterline = motion.waterline_pose(path, motion.at_sea_level, hull, field, field)
+    tilt, levelled = motion.tilted(path, hull, field, field), motion.levelled(waterline)
+
+    headings = []
+    for t_s in (0.0, 1.3, 3.7):
+        assert levelled(t_s) == pytest.approx(tilt(t_s), abs=1e-12)
+        headings.append(angles.attitude_deg(waterline(t_s)[:3, :3])[2])
+    assert max(map(abs, headings)) > 1e-3, "an unyawed hull would pass vacuously"
 
 
 def test_the_sea_tilts_a_trimmed_hull_from_outside_and_leaves_its_heading() -> None:

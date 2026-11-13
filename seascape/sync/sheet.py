@@ -613,12 +613,11 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
 
 
 def _signals(
-    course: _Course, afloat: tuple[motion.Tilt, Callable[[float], np.ndarray]]
+    course: _Course, waterline: Callable[[float], np.ndarray]
 ) -> dict[str, np.ndarray]:
     """The ownship's heading, pitch and roll, and a pan-tilt unit's pan and tilt, at
     each frame, from `scene.ownship_afloat`.
     """
-    tilt, waterline = afloat
     times = course.scenario.outputs.times_s
     # As the recording reads the vessel's bb_roll, bb_pitch and heading.
     roll, pitch, heading = np.array(
@@ -633,7 +632,9 @@ def _signals(
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)
         signals["pan"] = np.array([panned(t) for t in times])
-        signals["tilt"] = held_tilt_deg(course.scenario, course.name, tilt)
+        signals["tilt"] = held_tilt_deg(
+            course.scenario, course.name, motion.levelled(waterline)
+        )
     return signals
 
 

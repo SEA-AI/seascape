@@ -415,6 +415,19 @@ def waterline_pose(
     return at
 
 
+def levelled(waterline: Callable[[float], np.ndarray]) -> Tilt:
+    """`R_level_ownship` at a time, read off `waterline_pose`: its heading, the bow's
+    bearing, which its pitch and roll leave be, turned back out.
+    """
+
+    def at(t_s: float) -> np.ndarray:
+        R_world_waterline = waterline(t_s)[:3, :3]
+        heading_deg = angles.attitude_deg(R_world_waterline)[2]
+        return angles.turned(heading_deg, 0.0).T @ R_world_waterline
+
+    return at
+
+
 def lifted(rise_m: float) -> np.ndarray:
     """(4, 4) a hull's origin on its waterline pivot, `rise_m` up the hull."""
     T = np.eye(4)
