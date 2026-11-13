@@ -726,7 +726,7 @@ def test_a_hull_yaws_with_the_water_under_it(
     assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
 
 
-def test_a_square_yaws_by_nothing_in_a_long_wave() -> None:
+def test_a_square_barely_yaws_in_a_long_wave() -> None:
     """The offset is a gradient: over a square, its turn falls with (k L)^2."""
     wave = waves.Wave(0.8, 0.6, 0.7, 1.0)  # 171 m long
     square = waves.Waterplane(30.0, -40.0, 1.7, 10.0, 10.0)

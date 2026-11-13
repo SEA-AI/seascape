@@ -156,7 +156,7 @@ def yaw_rad(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     Procrustes).
 
     The offset is a gradient, so the water strains and never turns: a point yaws by
-    nothing, and a square by nothing in waves much longer than it.
+    nothing, and a square by next to nothing in waves much longer than it.
 
     Args:
         field: Gerstner waves, whose offsets add.
