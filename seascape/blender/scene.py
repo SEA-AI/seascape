@@ -166,7 +166,7 @@ def _ownship_tilt(
 
 def posed_at_start(scenario: Scenario, name: str) -> Posed:
     """The rig `name` on its ownship as the render poses it at the start, a pan-tilt
-    unit holding its inclination against what the ownship's path scripts on a level
+    unit holding its elevation against what the ownship's path scripts on a level
     sea; no sea, no targets.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)

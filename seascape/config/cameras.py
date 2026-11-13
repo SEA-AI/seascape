@@ -421,16 +421,16 @@ def sources(video: Video) -> tuple[Name, ...]:
 
 
 # Oceanus's target inclination, bounded there.
-PTU_INCLINATION_DEG = (-20.0, 20.0)
+PTU_ELEVATION_DEG = (-20.0, 20.0)
 
 
 class Ptu(Model):
     """A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu."""
 
-    inclination_deg: float = Field(
+    elevation_deg: float = Field(
         default=0.0,
-        ge=PTU_INCLINATION_DEG[0],
-        le=PTU_INCLINATION_DEG[1],
+        ge=PTU_ELEVATION_DEG[0],
+        le=PTU_ELEVATION_DEG[1],
         description="The pitch it holds its head at, above the horizon, the rig's "
         "`pitch_deg` included. Negative is down.",
     )

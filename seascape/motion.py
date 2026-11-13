@@ -384,7 +384,7 @@ def world_elevation_deg(R_level_ownship: np.ndarray, toward: np.ndarray) -> floa
 
 def held_tilt_deg(scenario: Scenario, name: str, tilt: Tilt) -> np.ndarray:
     """The tilt the pan-tilt unit of rig `name` adds to the rig's `pitch_deg` at each
-    frame, holding its inclination on a hull tilted `tilt`.
+    frame, holding its elevation on a hull tilted `tilt`.
 
     Raises:
         ValueError: The rig has no pan-tilt unit, or the deck tips its untilted head
@@ -415,10 +415,10 @@ def held_tilt_deg(scenario: Scenario, name: str, tilt: Tilt) -> np.ndarray:
         # the steepest elevation any tilt gives.
         up = tilt(t_s)[2]
         reach = math.hypot(up @ head(t_s, -rig.pitch_deg), up[2])
-        if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
+        if abs(math.sin(math.radians(rig.ptu.elevation_deg))) > reach:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "
-                f"inclination_deg {rig.ptu.inclination_deg:g}: lower the ownship's "
+                f"elevation_deg {rig.ptu.elevation_deg:g}: lower the ownship's "
                 "roll or the sea"
             )
 
@@ -427,4 +427,4 @@ def held_tilt_deg(scenario: Scenario, name: str, tilt: Tilt) -> np.ndarray:
     def head_deg(t_s: float, tilt_deg: float) -> float:
         return world_elevation_deg(tilt(t_s), head(t_s, tilt_deg))
 
-    return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)
+    return ptu.tilt_deg(head_deg, times, rig.ptu.elevation_deg)

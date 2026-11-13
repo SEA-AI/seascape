@@ -95,13 +95,13 @@ def test_every_ring_crosses_every_camera_it_serves(path: Path) -> None:
         assert max(b - a for a, b in itertools.pairwise(bearings)) < narrowest
 
 
-def test_a_pan_tilt_unit_holds_its_inclination_whatever_its_mount_s_pitch() -> None:
+def test_a_pan_tilt_unit_holds_its_elevation_whatever_its_mount_s_pitch() -> None:
     scenario = load(SYNC_SENTRY)
     (name,) = scenario.rigs
     pitched = load(SYNC_SENTRY, [{"rigs": {name: {"pitch_deg": -3.0}}}])
 
-    assert staging.stage(pitched).inclination_deg == pytest.approx(
-        staging.stage(scenario).inclination_deg
+    assert staging.stage(pitched).elevation_deg == pytest.approx(
+        staging.stage(scenario).elevation_deg
     )
 
 

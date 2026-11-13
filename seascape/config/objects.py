@@ -116,7 +116,9 @@ class Object(Model):
 
     asset: VesselName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
-    bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
+    bearing_deg: float = Field(
+        description="Clockwise from world +Y, the ownship's bow at the start."
+    )
     heading_deg: float = Field(
         default=0.0, description="Where its bow points, clockwise."
     )
@@ -374,8 +376,8 @@ class Targets(Model):
     count: int = Field(gt=0, description="How many.")
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: tuple[float, float] = Field(
-        description="First and last, clockwise from the ownship's bow. Both ends get "
-        "a target."
+        description="First and last, clockwise from world +Y, the ownship's bow at "
+        "the start. Both ends get a target."
     )
     # Spread so aspect varies between targets.
     heading_deg: tuple[float, float] = Field(
@@ -408,7 +410,8 @@ class Farm(Model):
     asset: TurbineName = Field(description=f"{_ASSET} A turbine.")
     range_m: float = Field(gt=0.0, description="To the first turbine of the first row.")
     bearing_deg: float = Field(
-        description="Of the first turbine, clockwise from the ownship's bow."
+        description="Of the first turbine, clockwise from world +Y, the ownship's bow "
+        "at the start."
     )
     rows: int = Field(default=1, gt=0, description="How many rows.")
     columns: int = Field(default=1, gt=0, description="Turbines in a row.")
@@ -419,8 +422,8 @@ class Farm(Model):
     )
     row_bearing_deg: float = Field(
         default=0.0,
-        description="Where a row runs from its first turbine, clockwise from the "
-        "ownship's bow.",
+        description="Where a row runs from its first turbine, clockwise from world "
+        "+Y, the ownship's bow at the start.",
     )
     staggered: bool = Field(
         default=False, description="Every other row shifted half a spacing along."

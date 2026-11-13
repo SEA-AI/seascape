@@ -64,7 +64,7 @@ def test_a_deck_the_sea_tips_past_the_zenith_is_refused() -> None:
         held_tilt_deg(load(SYNC_SENTRY), "mast", lambda _t_s: pitched)
 
 
-def test_an_inclination_no_tilt_reaches_is_refused() -> None:
+def test_an_elevation_no_tilt_reaches_is_refused() -> None:
     # Rolled 89 deg, a bow-facing head sweeps elevations within 1 deg of level.
     c, s = math.cos(math.radians(89.0)), math.sin(math.radians(89.0))
     rolled = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])

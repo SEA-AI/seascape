@@ -765,7 +765,7 @@
         },
         "bearing_deg": {
           "title": "Bearing Deg",
-          "description": "Of the first turbine, clockwise from the ownship's bow.",
+          "description": "Of the first turbine, clockwise from world +Y, the ownship's bow at the start.",
           "anyOf": [
             {
               "type": "number"
@@ -879,7 +879,7 @@
         },
         "row_bearing_deg": {
           "title": "Row Bearing Deg",
-          "description": "Where a row runs from its first turbine, clockwise from the ownship's bow.",
+          "description": "Where a row runs from its first turbine, clockwise from world +Y, the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -1621,7 +1621,7 @@
         },
         "bearing_deg": {
           "title": "Bearing Deg",
-          "description": "Clockwise from the ownship's bow.",
+          "description": "Clockwise from world +Y, the ownship's bow at the start.",
           "anyOf": [
             {
               "type": "number"
@@ -2789,8 +2789,8 @@
       "additionalProperties": false,
       "description": "A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu.",
       "properties": {
-        "inclination_deg": {
-          "title": "Inclination Deg",
+        "elevation_deg": {
+          "title": "Elevation Deg",
           "description": "The pitch it holds its head at, above the horizon, the rig's `pitch_deg` included. Negative is down.",
           "default": 0.0,
           "anyOf": [
@@ -4276,7 +4276,7 @@
         },
         "bearing_deg": {
           "title": "Bearing Deg",
-          "description": "First and last, clockwise from the ownship's bow. Both ends get a target.",
+          "description": "First and last, clockwise from world +Y, the ownship's bow at the start. Both ends get a target.",
           "anyOf": [
             {
               "maxItems": 2,

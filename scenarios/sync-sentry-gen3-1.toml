@@ -11,7 +11,7 @@ asset = "lobster_yacht"
 preset = "sentry"
 height_m = 2.9
 offset_y_m = -1.8
-ptu = { inclination_deg = -2.1 }
+ptu = { elevation_deg = -2.1 }
 
 # The Sentry PTU firmware's go-to rate, reached in one step. Limitation: the firmware
 # slows to 5 deg/s for a go-to's last 10 deg, which the turn omits.
