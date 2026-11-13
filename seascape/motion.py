@@ -170,8 +170,8 @@ def head_path(scenario: Scenario, name: str) -> Path:
     """Where the head of rig `name` is at a time, in world east and north, and the
     bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
 
-    Limitation: leaves out the sea's rocking and a ptu's tilt; staging and the sheet
-    still aim the course along the base's yaw on a level hull.
+    Limitation: leaves out the sea's rocking, its yaw included, and a ptu's tilt;
+    staging and the sheet still aim the course along the base's yaw on a level hull.
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
