@@ -17,7 +17,7 @@ import numpy as np
 from seascape import angles
 from seascape.config import Agc
 from seascape.outputs import agc, canvas
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration, Frame
 from seascape.outputs.labels import agcs
 
 # CLI name to cv2.PyRotationWarper type.
@@ -31,18 +31,18 @@ TICK_DEG = 10
 LABEL_DEG = 30
 
 
-def _rotation(camera: CameraCalibration, frame: str) -> np.ndarray:
+def _rotation(camera: CameraCalibration, frame: Frame) -> np.ndarray:
     return np.array(camera.extrinsics[frame])[:3, :3]
 
 
-def axis_deg(cameras: list[CameraCalibration], frame: str) -> float:
+def axis_deg(cameras: list[CameraCalibration], frame: Frame) -> float:
     """Bearing of the summed optical axes, which cannot wrap as a mean of angles can."""
     x, y, _ = np.sum([_rotation(camera, frame)[:, 2] for camera in cameras], axis=0)
     return angles.bearing_deg(float(x), float(y))
 
 
 def pose(
-    camera: CameraCalibration, frame: str, bearing_deg: float
+    camera: CameraCalibration, frame: Frame, bearing_deg: float
 ) -> tuple[np.ndarray, np.ndarray]:
     """K and R as the stitcher takes them, turned so `bearing_deg` is straight ahead."""
     if camera.distortion is not None:
@@ -151,7 +151,7 @@ def stitch(
     folder: Path,
     cameras: list[CameraCalibration],
     projection: str,
-    frame: str,
+    frame: Frame,
     max_width: int | None = None,
 ) -> tuple[np.ndarray, Layout]:
     """One panorama of the cameras' frames, and where it sits in its projection.
@@ -275,7 +275,7 @@ def _shrink(
 def panoramas(
     folder: Path,
     projection: str,
-    frame: str,
+    frame: Frame,
     max_width: int | None = None,
     ruler: bool = False,
 ) -> list[Path]:

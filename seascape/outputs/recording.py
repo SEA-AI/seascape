@@ -19,7 +19,7 @@ from pydantic import TypeAdapter
 from seascape.angles import TO_CV, attitude_deg, wrapped_deg
 from seascape.config import Crop, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration, Frame
 
 COLUMNS = [
     "counter",
@@ -66,7 +66,7 @@ FLU_SIGNS = (1.0, -1.0, -1.0)
 IMU_PITCH_SIGN = -1.0
 
 
-def _in_world(camera: CameraCalibration, frame: str) -> np.ndarray:
+def _in_world(camera: CameraCalibration, frame: Frame) -> np.ndarray:
     """T_world_frame: the named frame's pose in world."""
     T_world_camera = np.array(camera.extrinsics["world"])
     return T_world_camera @ np.linalg.inv(np.array(camera.extrinsics[frame]))
@@ -95,10 +95,10 @@ def _row(
     rig: dict[str, Any],
     scan_deg_s: float | None,
 ) -> dict:
-    roll, pitch, yaw = _attitude_deg(_in_world(camera, "rig"))
+    roll, pitch, yaw = _attitude_deg(_in_world(camera, "head"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
-    bb_roll, bb_pitch, bb_yaw = np.radians(_attitude_deg(_in_world(camera, "vessel")))
+    bb_roll, bb_pitch, bb_yaw = np.radians(_attitude_deg(_in_world(camera, "ownship")))
     # Rounded first, as in _attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
     row = dict.fromkeys(COLUMNS, 0.0)
@@ -107,8 +107,8 @@ def _row(
     if rig.get("ptu") is not None:
         # The head on the hull, less its base's yaw and `pitch_deg`: Rig.pose adds pan
         # to yaw and tilt to pitch, so subtracting undoes them exactly.
-        T_ownship_head = np.linalg.inv(_in_world(camera, "vessel")) @ _in_world(
-            camera, "rig"
+        T_ownship_head = np.linalg.inv(_in_world(camera, "ownship")) @ _in_world(
+            camera, "head"
         )
         _, tilt, pan = _attitude_deg(T_ownship_head[:3, :3])
         row["pan"] = FLU_SIGNS[2] * wrapped_deg(pan - rig["yaw_deg"])
@@ -147,7 +147,7 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
-    T_head_camera = np.array(camera.extrinsics["rig"])
+    T_head_camera = np.array(camera.extrinsics["head"])
     # The camera's OpenCV axes as a body's: right, ahead, up.
     rpy = zip(
         ("roll", "pitch", "yaw"), _flu_deg(T_head_camera[:3, :3] @ TO_CV), strict=True

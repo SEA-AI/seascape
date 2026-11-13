@@ -947,7 +947,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         script = 0.2 * math.sin(math.tau * t_s / heave_s)
         still.append(up - earth.sea_z_m(east, north, radius) - script)
         calibration = scene.calibrate(built, scenario.mounts[0], "frame.png")
-        mounted.append(np.array(calibration.extrinsics["vessel"]))
+        mounted.append(np.array(calibration.extrinsics["ownship"]))
 
         assert built.anchor.rotation_euler[1] == pytest.approx(
             math.radians(3.0) * math.sin(math.tau * t_s / roll_s), abs=1e-6

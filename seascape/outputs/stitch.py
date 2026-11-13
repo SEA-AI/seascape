@@ -11,7 +11,7 @@ from seascape.outputs.calibration import CameraCalibration
 
 def _in_head(camera: CameraCalibration) -> np.ndarray:
     """R_head_camera: the camera's rotation in its head."""
-    return np.array(camera.extrinsics["rig"])[:3, :3]
+    return np.array(camera.extrinsics["head"])[:3, :3]
 
 
 def homography(source: CameraCalibration, onto: CameraCalibration) -> np.ndarray:
@@ -40,12 +40,12 @@ def fused(
     elevation_deg = float(
         np.mean(angles.elevation_deg([_in_head(c)[2, 2] for c in (left, right)]))
     )
-    at = (np.array(left.extrinsics["rig"]) + np.array(right.extrinsics["rig"])) / 2
+    at = (np.array(left.extrinsics["head"]) + np.array(right.extrinsics["head"])) / 2
     T_head_stitched = np.eye(4)
     T_head_stitched[:3, :3] = angles.turned(0.0, elevation_deg) @ angles.TO_CV.T
     T_head_stitched[:3, 3] = at[:3, 3]
     # The head's pose in each frame, from the left camera's.
-    T_left_head = np.linalg.inv(left.extrinsics["rig"])
+    T_left_head = np.linalg.inv(left.extrinsics["head"])
     extrinsics = {
         frame: tuple(map(tuple, np.array(T_frame_left) @ T_left_head @ T_head_stitched))
         for frame, T_frame_left in left.extrinsics.items()
