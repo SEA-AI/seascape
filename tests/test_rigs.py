@@ -19,7 +19,7 @@ from seascape.assets import Hull, manifest
 from seascape.blender import scene, sea
 from seascape.blender.blend import mesh_objects
 from seascape.blender.rigs import _hold, boresight_deg
-from seascape.blender.vessels import waterline_m
+from seascape.blender.vessels import waterline_crossings, waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
 from seascape.outputs.calibration import Calibration
@@ -155,7 +155,9 @@ def test_a_waterline_rings_its_hull_within_its_length(built: scene.Built) -> Non
     for asset, roots in built.targets.items():
         for root in roots:
             centre = np.array(root.matrix_world.translation.xy)
-            reach = np.linalg.norm(waterline_m(root) - centre, axis=1)
+            reach = np.linalg.norm(
+                waterline_m(root, waterline_crossings(root)) - centre, axis=1
+            )
 
             hull = manifest()[asset]
             assert isinstance(hull, Hull), asset

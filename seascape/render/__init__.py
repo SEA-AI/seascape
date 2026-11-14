@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -24,7 +24,7 @@ from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
 from seascape.blender.blend import node
 from seascape.blender.compositor import INDEX_ROLL, JPEG_QUALITY, unroll
-from seascape.blender.vessels import heading_deg, waterline_m
+from seascape.blender.vessels import heading_deg, waterline_crossings, waterline_m
 from seascape.config import (
     Camera,
     Crop,
@@ -152,7 +152,15 @@ def _cut(name: str, width_px: int, height_px: int, crop: Crop | None) -> None:
     sockets["Height"].default_value = height_px - crop.top_px - crop.bottom_px
 
 
-def _targets(built: scene.Built) -> list[labels.Target]:
+def _targets(
+    built: scene.Built, crossings: Mapping[str, np.ndarray]
+) -> list[labels.Target]:
+    """Each target as the frame shows it.
+
+    Args:
+        built: The scene, at the frame's time.
+        crossings: Each hull's `waterline_crossings`, by name.
+    """
     return [
         labels.Target(
             pass_index=root.pass_index,
@@ -161,7 +169,7 @@ def _targets(built: scene.Built) -> list[labels.Target]:
             category=manifest()[asset].category,
             supercategory=manifest()[asset].supercategory,
             centre_m=tuple(root.matrix_world.translation.xy),
-            waterline_m=waterline_m(root),
+            waterline_m=waterline_m(root, crossings[root.name]),
             heading_deg=heading_deg(root) % 360.0,
             dims_m=(root["length_m"], root["beam_m"], root["height_m"]),
             engine_off_min=root["engine_off_min"],
@@ -401,10 +409,16 @@ def render(
                 m.name: substream(scenario.seed, f"microbolometer/{m.name}")
                 for m in mounts
             }
+            # Once: reading a hull's meshes costs more than a frame's other labels.
+            crossings = {
+                root.name: waterline_crossings(root)
+                for roots in built.targets.values()
+                for root in roots
+            }
             for frame, time_s in enumerate(outputs.times_s):
                 sc.frame_set(frame)
                 # Reads matrix_world, which moves with the frame.
-                targets = _targets(built)
+                targets = _targets(built, crossings)
                 shot = []
                 for mount in mounts:
                     taken, source, files = _shoot(

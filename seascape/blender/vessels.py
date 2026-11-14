@@ -556,17 +556,30 @@ def _dress(
             paint(root, srgb_hex)
 
 
-def waterline_m(root: bpy.types.Object) -> np.ndarray:
+def waterline_m(root: bpy.types.Object, crossings: np.ndarray) -> np.ndarray:
     """Where a hull's edges cross its waterline, as world east and north, (N, 2).
+
+    Args:
+        root: The hull, at the time its waterline is wanted.
+        crossings: `waterline_crossings(root)`, read at any time.
+    """
+    T_world_waterline = np.array(root.matrix_world)
+    return (crossings @ T_world_waterline[:3, :3].T + T_world_waterline[:3, 3])[:, :2]
+
+
+def waterline_crossings(root: bpy.types.Object) -> np.ndarray:
+    """Where a hull's edges cross its waterline, in the waterline's frame, (N, 3).
 
     The waterline is z = 0 in the root's frame, which heaves, pitches and rolls
     with the waves and its scripted trim and list: `_fit` puts the keel the asset's
     draught below it, and `_vessel` lifts it by `rise_m`.
+
+    Limitation: they hold at every frame only while no part moves on the root
+    through z = 0, as a turbine's rotor turns clear of it.
     """
     # Limitation: the crossings, not the segments between them, so the nearest one to a
     # camera at range r is up to side^2 / 2r further than a side facing it.
-    T_world_waterline = np.array(root.matrix_world)
-    T_waterline_world = np.linalg.inv(T_world_waterline)
+    T_waterline_world = np.linalg.inv(np.array(root.matrix_world))
     crossings = []
     for part in mesh_objects([root]):
         mesh = part.data
@@ -580,8 +593,5 @@ def waterline_m(root: bpy.types.Object) -> np.ndarray:
         cross = a[:, 2] * b[:, 2] < 0
         a, b = a[cross], b[cross]
         t = -a[:, 2] / (b[:, 2] - a[:, 2])
-        at = a + t[:, None] * (b - a)
-        crossings.append(
-            (at @ T_world_waterline[:3, :3].T + T_world_waterline[:3, 3])[:, :2]
-        )
+        crossings.append(a + t[:, None] * (b - a))
     return np.concatenate(crossings)
