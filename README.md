@@ -89,6 +89,7 @@ For bash, `bash_source` in `~/.bashrc`.
 | [How seascape works](docs/primer/) | a tour for anyone new to Blender: rendering, HDR, EO and LWIR, the sea, limitations |
 | [Scenarios](docs/scenarios.md) | `--set`, `extends`, skies, sequences |
 | [Outputs](docs/outputs.md) | labels, LWIR radiometry, montage, panorama |
+| [Matching a photo](docs/matching-a-photo.md) | recreate a real frame by scoring, not by eye |
 | [Assets](docs/assets.md) | the meshes, where they come from, adding one |
 | [Render server](docs/render-server.md) | render from Claude, on a shared GPU |
 | [Blender MCP](docs/blender-mcp.md) | an AI agent in the open Blender scene |
