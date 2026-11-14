@@ -63,7 +63,7 @@ docker compose up -d
 docker compose logs   # names the GPU backend
 ```
 
-To update, `docker compose pull && docker compose up -d`. From a checkout, `SEASCAPE_COMMIT=$(git describe --always --dirty --abbrev=40 --exclude='*') docker compose up -d --build` builds it instead, and its labels name that commit, marked `-dirty` if the tree has changes.
+To update, `docker compose pull && docker compose up -d`. The old server first lets its running job end, up to `stop_grace_period`; the new one runs the jobs left queued and reports one cut off as failed. From a checkout, `SEASCAPE_COMMIT=$(git describe --always --dirty --abbrev=40 --exclude='*') docker compose up -d --build` builds it instead, and its labels name that commit, marked `-dirty` if the tree has changes.
 
 Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 

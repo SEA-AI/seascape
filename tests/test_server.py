@@ -1,10 +1,12 @@
 """The render server, without Blender."""
 
 import asyncio
+import dataclasses
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -16,6 +18,7 @@ from typing import Any
 
 import httpx2
 import pytest
+import uvicorn
 from mcp import Client
 from mcp.types import TextContent
 from PIL import ExifTags, Image
@@ -308,8 +311,12 @@ def test_a_gpu_probe_that_fails_still_serves(
         raise error
 
     served: list[Any] = []
+
+    def run(server: Any) -> None:
+        served.append(server)
+
     monkeypatch.setattr(subprocess, "run", fail)
-    monkeypatch.setattr(transport.uvicorn, "run", lambda app, **_: served.append(app))
+    monkeypatch.setattr(uvicorn.Server, "run", run)
     transport.serve(state, "127.0.0.1", 0)
     assert served
     assert said in capsys.readouterr().out
@@ -627,6 +634,131 @@ def test_an_old_cancelled_job_is_forgotten(tmp_path: Path, state: State) -> None
         return list(state.jobs)
 
     assert asyncio.run(forget()) == ["new"]
+
+
+def _folders_only(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """`render` as a process that only makes its job's folder; returns the folders."""
+    rendered = []
+
+    async def render(*args: str) -> None:
+        Path(args[3]).mkdir(parents=True)
+        rendered.append(Path(args[3]).name)
+
+    monkeypatch.setattr(jobs, "_seascape", render)
+    return rendered
+
+
+def test_a_restarted_server_runs_what_was_queued_and_fails_what_was_cut_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = _folders_only(monkeypatch)
+    scenes = load_variants(OPEN_SEA)
+    left = _state(tmp_path)
+    stored: list[tuple[str, JobState]] = [
+        ("done", "done"),
+        ("cut", "running"),
+        ("next", "queued"),
+    ]
+    for name, job_state in stored:
+        Job(tmp_path / name, "open-sea", scenes, state=job_state).save()
+    Job(tmp_path / "gone", "removed", scenes).save()
+    (tmp_path / "torn.json").write_text("{")
+
+    async def restart() -> dict[str, JobState]:
+        jobs.resume(left)
+        await asyncio.gather(*(j.task for j in left.jobs.values() if j.task))
+        return {name: job.state for name, job in left.jobs.items()}
+
+    assert asyncio.run(restart()) == {
+        "done": "done",
+        "cut": "failed",
+        "next": "done",
+        "gone": "failed",
+    }
+    assert rendered == ["next"]
+    assert "without scenario 'removed'" in (left.jobs["gone"].error or "")
+    # The next server reads what this one wrote.
+    again = _state(tmp_path)
+    jobs.resume(again)
+    assert {n: j.state for n, j in again.jobs.items()} == {
+        n: j.state for n, j in left.jobs.items()
+    }
+    assert again.jobs["done"].scenes == scenes
+
+
+def test_a_draining_server_queues_a_job_for_the_next_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = _folders_only(monkeypatch)
+    draining = _state(tmp_path)
+    draining.draining = True
+
+    async def call() -> str:
+        async with Client(transport.mcp(draining)) as client:
+            started = await client.call_tool("render", {"scenario": "open-sea"})
+            name = started.structured_content["job"]
+            task = draining.jobs[name].task
+            assert task
+            await task
+            return name
+
+    name = asyncio.run(call())
+    assert draining.jobs[name].state == "queued"
+    assert not rendered
+
+    async def restart() -> JobState:
+        next_one = _state(tmp_path)
+        jobs.resume(next_one)
+        task = next_one.jobs[name].task
+        assert task
+        await task
+        return next_one.jobs[name].state
+
+    assert asyncio.run(restart()) == "done"
+    assert rendered == [name]
+
+
+def test_a_stopped_server_exits_once_its_running_job_ends(state: State) -> None:
+    server = transport._Draining(uvicorn.Config(transport.app(state, "x")), state)
+    job = Job(state.renders / "job", "open-sea", load_variants(OPEN_SEA))
+    state.jobs["job"] = job
+
+    async def tick() -> bool:
+        return await server.on_tick(1)  # not a tenth: no headers to refresh
+
+    server.handle_exit(signal.SIGTERM, None)
+    assert state.draining
+    ticks = {}
+    # A queued job waits for the next server.
+    for name in ("running", "finishing", "queued", "done"):
+        job.state = name
+        ticks[name] = asyncio.run(tick())
+    assert ticks == {"running": False, "finishing": False, "queued": True, "done": True}
+
+
+@pytest.mark.parametrize("path", sorted(SCENARIOS.glob("*.toml")), ids=lambda p: p.stem)
+def test_each_scenario_reads_back_from_its_job_record(path: Path, state: State) -> None:
+    scenes = load_variants(path)
+    job = Job(state.renders / "job", path.stem, scenes)
+    job.save()
+    assert jobs.Record.model_validate_json(job.record.read_bytes()).scenes == scenes
+
+
+def test_a_record_holds_every_field_of_a_job_but_its_folder_and_task() -> None:
+    kept = {f.name for f in dataclasses.fields(Job)} - {"folder", "task"}
+    assert set(jobs.Record.model_fields) == kept
+
+
+def test_a_second_signal_stops_a_server_at_once(state: State) -> None:
+    server = transport._Draining(uvicorn.Config(transport.app(state, "x")), state)
+    state.jobs["job"] = Job(
+        state.renders / "job", "open-sea", load_variants(OPEN_SEA), state="running"
+    )
+    server.handle_exit(signal.SIGTERM, None)
+    assert not server.should_exit
+    server.handle_exit(signal.SIGTERM, None)
+    assert server.should_exit
+    assert server.force_exit
 
 
 def test_a_killed_job_leaves_no_temporary_files(

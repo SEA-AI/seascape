@@ -1,7 +1,8 @@
 """Jobs: what a render may ask for, how they queue, and how one runs.
 
 A job runs the CLI in a process of its own, so Blender's crashes and leaks end with
-it. Its files are deleted after `KEEP_S`.
+it. Its files are deleted after `KEEP_S`. Each job keeps its state in a record beside
+its files, so a restarted server still answers for it, and runs it if it was queued.
 """
 
 import asyncio
@@ -31,7 +32,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.model import ScenarioWarning
+from seascape.model import Model, ScenarioWarning
 from seascape.outputs import montage, preview, provenance
 from seascape.server.settings import Settings
 
@@ -106,6 +107,26 @@ class Job:
         return min(written, self.total)
 
     @property
+    def record(self) -> Path:
+        """The job's state, for the next server; `_expire` deletes it with the job's
+        files.
+        """
+        return self.folder.with_suffix(".json")
+
+    def save(self) -> None:
+        """Write the job's state to `record`, whole: a crash leaves the old one."""
+        part = self.folder.with_suffix(".part")
+        record = Record.model_validate(self, from_attributes=True)
+        # Unset: a scenario refuses a default set beside what overrules it.
+        part.write_text(record.model_dump_json(exclude_unset=True))
+        part.replace(self.record)
+
+    @property
+    def started(self) -> bool:
+        """Whether the job is running or finishing."""
+        return self.state in ("running", "finishing")
+
+    @property
     def waiting(self) -> bool:
         """Whether the job is queued or running."""
         return self.state in ("queued", "running")
@@ -116,14 +137,30 @@ class Job:
         return self.waiting or self.state == "finishing"
 
 
+class Record(Model):
+    """A job as a restarted server reads it back: `Job` without its folder and task."""
+
+    scenario: str
+    scenes: list[Scenario]
+    created_s: float
+    started_s: float | None
+    state: JobState
+    error: str | None
+    worst_bytes: float
+    overrides: list[str]
+
+
 @dataclass
 class State:
-    """What the tools share; jobs take turns on `gpu`."""
+    """What the tools share; jobs take turns on `gpu`. A `draining` server starts no
+    job: it is about to exit, and the next one runs what is queued.
+    """
 
     settings: Settings
     renders: Path = assets.CACHE / "renders"
     jobs: dict[str, Job] = field(default_factory=dict)
     gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
+    draining: bool = False
     loading: asyncio.Semaphore = field(
         default_factory=partial(asyncio.Semaphore, LOADING)
     )
@@ -310,7 +347,11 @@ async def run(
     limit: asyncio.Timeout | None = None
     try:
         async with state.gpu:
+            if state.draining:
+                return  # still queued, for the next server
             job.state, job.started_s = "running", time.time()
+            # Killed from here on, the next server reads the job back as cut off.
+            job.save()
             # Made after the GPU wait, which the deadline must not count. Past it, the
             # awaited process is killed as on `cancel`.
             limit = asyncio.timeout(max_run_s)
@@ -336,6 +377,39 @@ async def run(
     except Exception as error:  # whatever it was, the client polling is told
         log.exception("job %s failed", job.folder.name)
         job.state, job.error = "failed", f"{type(error).__name__}: {error}"
+    finally:
+        job.save()
+
+
+def resume(state: State) -> None:
+    """Read back the jobs the last server left in `state.renders`: run each one
+    still queued and fail each one it was running. Call it on the event loop: it
+    starts their tasks.
+    """
+    records = []
+    for path in state.renders.glob("*.json"):
+        try:
+            records.append((path, Record.model_validate_json(path.read_bytes())))
+        # pydantic's ValidationError is a ValueError: a record of another version.
+        except (OSError, ValueError):
+            log.exception("cannot read the job record %s", path.name)
+    # In the order they queued, which `get_job` counts the jobs ahead by.
+    for path, record in sorted(records, key=lambda found: found[1].created_s):
+        job = Job(path.with_suffix(""), **dict(record))
+        state.jobs[job.folder.name] = job
+        scenario = state.scenarios().get(job.scenario)
+        if job.state == "queued" and scenario is not None:
+            # As many variants as it asked.
+            job.task = asyncio.create_task(
+                run(state, job, scenario, job.overrides, len(job.scenes))
+            )
+        elif job.state == "queued":
+            job.state = "failed"
+            job.error = f"the server restarted without scenario {job.scenario!r}"
+            job.save()
+        elif job.started:
+            job.state, job.error = "failed", "the server restarted while it ran"
+            job.save()
 
 
 def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
