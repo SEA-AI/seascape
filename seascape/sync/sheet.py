@@ -19,7 +19,7 @@ from PIL.ImageFont import FreeTypeFont
 
 from seascape import angles, motion
 from seascape.assets import Buoy, Debris
-from seascape.blender.scene import ownship_tilt
+from seascape.blender.scene import ownship_afloat
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
 from seascape.motion import (
     azimuth_deg,
@@ -613,20 +613,28 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
 
 
 def _signals(
-    course: _Course, path: motion.Path, tilt: motion.Tilt
+    course: _Course, waterline: Callable[[float], np.ndarray]
 ) -> dict[str, np.ndarray]:
     """The ownship's heading, pitch and roll, and a pan-tilt unit's pan and tilt, at
-    each frame.
+    each frame, from `scene.ownship_afloat`.
     """
     times = course.scenario.outputs.times_s
-    heading = np.unwrap([path(t).heading_rad for t in times])
-    # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
-    roll, pitch, _ = np.array([angles.attitude_deg(tilt(t)) for t in times]).T
-    signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
+    # As the recording reads the vessel's bb_roll, bb_pitch and heading.
+    roll, pitch, heading = np.array(
+        [angles.attitude_deg(waterline(t)[:3, :3]) for t in times]
+    ).T
+    signals = {
+        # From [0, 360), as recording.csv writes it.
+        "heading": np.unwrap(heading % 360.0, period=360.0),
+        "pitch": pitch,
+        "roll": roll,
+    }
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)
         signals["pan"] = np.array([panned(t) for t in times])
-        signals["tilt"] = held_tilt_deg(course.scenario, course.name, tilt)
+        signals["tilt"] = held_tilt_deg(
+            course.scenario, course.name, motion.levelled(waterline)
+        )
     return signals
 
 
@@ -702,7 +710,7 @@ def draw(scenario: Scenario, out: Path) -> Path:
                 gap_px=GAP_PX,
                 matte=MATTE,
             ),
-            _over_time(course, _signals(course, path, ownship_tilt(scenario, path))),
+            _over_time(course, _signals(course, ownship_afloat(scenario, path))),
         ],
         gap_px=GAP_PX,
         matte=MATTE,

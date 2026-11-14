@@ -690,6 +690,74 @@ def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
 
 
+@pytest.mark.parametrize(
+    ("omega_rad_s", "length_m", "beam_m"),
+    [
+        (0.6, 60.0, 10.0),  # 171 m long
+        (1.2, 60.0, 10.0),  # 43 m: the hull's lever turns over
+        (3.0, 10.0, 10.0),  # 6.8 m: a square turns once the wave bends over it
+    ],
+)
+def test_a_hull_yaws_with_the_water_under_it(
+    omega_rad_s: float, length_m: float, beam_m: float
+) -> None:
+    """The least-squares turn of the Gerstner offset, integrated over a 301 x 101
+    grid.
+    """
+    wave = waves.Wave(
+        amplitude_m=0.8 * (0.6 / omega_rad_s) ** 2,
+        omega_rad_s=omega_rad_s,
+        toward_rad=0.7,
+        phase_rad=1.0,
+    )
+    hull = waves.Waterplane(
+        rest_east_m=30.0,
+        rest_north_m=-40.0,
+        heading_rad=math.radians(100.0),
+        length_m=length_m,
+        beam_m=beam_m,
+    )
+    x, y = np.meshgrid(
+        np.linspace(-length_m / 2, length_m / 2, 301),
+        np.linspace(-beam_m / 2, beam_m / 2, 101),
+        indexing="ij",
+    )
+    sin, cos = math.sin(hull.heading_rad), math.cos(hull.heading_rad)
+    east, north, _ = waves.gerstner_offset_m(
+        (wave,), 30.0 + x * sin + y * cos, -40.0 + x * cos - y * sin, 2.0
+    )
+    along, starboard = east * sin + north * cos, east * cos - north * sin
+
+    def integral(f: np.ndarray) -> float:
+        return float(np.trapezoid(np.trapezoid(f, axis=1), axis=0))
+
+    # atan2 takes a ratio, so the integrals stand in for the means.
+    turn = integral(x * starboard - y * along)
+    yaw = waves.yaw_rad((wave,), hull, 2.0)
+    assert yaw == pytest.approx(
+        math.atan2(turn, integral(x * x + y * y + x * along + y * starboard)), abs=1e-6
+    )
+    assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
+
+
+def test_a_square_barely_yaws_in_a_long_wave() -> None:
+    """The offset is a gradient: over a square, its turn falls with (k L)^2."""
+    wave = waves.Wave(amplitude_m=0.8, omega_rad_s=0.6, toward_rad=0.7, phase_rad=1.0)
+    square = waves.Waterplane(
+        rest_east_m=30.0,
+        rest_north_m=-40.0,
+        heading_rad=1.7,
+        length_m=10.0,
+        beam_m=10.0,
+    )
+    long = square._replace(length_m=60.0)
+    # Measured 5e-4, so 1e-3 is a margin over it; a square that turned with the water
+    # as the long hull does would sit near 1.
+    assert abs(waves.yaw_rad((wave,), square, 2.0)) < 1e-3 * abs(
+        waves.yaw_rad((wave,), long, 2.0)
+    )
+
+
 def _jensen(wave: waves.Wave, hull: waves.Waterplane) -> tuple[float, float]:
     """Gain and phase lead of heave and pitch over the hull's static ones: Jensen,
     Mansour & Olsen (2004) eqs. 2.3-2.5, 2.9, 2.10, 2.13 and 4.4, at the frequency

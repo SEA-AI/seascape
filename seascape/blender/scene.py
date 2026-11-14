@@ -31,7 +31,7 @@ from seascape.config import (
 )
 from seascape.motion import (
     Path,
-    Tilt,
+    at_sea_level,
     lifted,
     ownship_up_m,
     tilted,
@@ -144,9 +144,10 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
     return finest
 
 
-def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
-    """`R_level_ownship` at a time: the ownship's hull, measured from its imported
-    mesh, riding the sea along `path`; no rigs, no targets.
+def ownship_afloat(scenario: Scenario, path: Path) -> Callable[[float], np.ndarray]:
+    """`T_world_waterline` at a time: the ownship's hull, measured from its imported
+    mesh, riding the sea along `path`; no rigs, no targets. Its height is sea level
+    plus the sea's heave, without the scripted heave or the earth's curve.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     afloat: list[Afloat] = []
@@ -168,7 +169,7 @@ def ownship_tilt(scenario: Scenario, path: Path) -> Tilt:
     wind, swell = scenario.wind_waves(), scenario.swell_waves()
     tall, _ = sea.displaced((wind, swell))
     hull = next((a.hull for a in afloat if a.root is vessel), None)
-    return tilted(path, hull, wind + swell, tall)
+    return waterline_pose(path, at_sea_level, hull, wind + swell, tall)
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:

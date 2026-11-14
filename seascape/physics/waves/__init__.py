@@ -82,6 +82,7 @@ from seascape.physics.waves.surface import (
     gerstner_rest_m,
     heave_m,
     tallest,
+    yaw_rad,
 )
 from seascape.physics.waves.wind import (
     BEAUFORT_7_MPS,
@@ -161,4 +162,5 @@ __all__ = [
     "whitecap_fraction",
     "wind_at_m",
     "wind_sea",
+    "yaw_rad",
 ]
