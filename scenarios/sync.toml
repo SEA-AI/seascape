@@ -10,11 +10,6 @@ height_m = 3.0
 cameras.eo = { preset = "eo_4k_49deg" }
 cameras.ir = { preset = "ir_vga_24deg" }
 
-# With the waves' rocking, gives every IMU axis a signal. Judgement: a hull's yaw
-# sway peaking at 0.6 deg/s over 8 s, so 0.6 * 8 / (2 pi) = 0.76 deg.
-[ownship]
-yaw = { amplitude_deg = 0.76, period_s = 8.0 }
-
 # 6 deg/s is the collision-avoidance sweep rate SEA.AI's internal sync specification
 # assumes. Judgement: reversals at +-60 deg, 3 s holds, and a slew at
 # the product's top rate. A stand-in top rate, which each product sets.
