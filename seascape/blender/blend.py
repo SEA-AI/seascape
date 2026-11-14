@@ -1,12 +1,13 @@
 """Small builders over Blender's data."""
 
-import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import bpy
 import numpy as np
+from mathutils import Matrix
 
 type Operand = Num | bpy.types.NodeSocket | float
 
@@ -18,9 +19,8 @@ CURVE_SAMPLES = 256
 SUN = ("sun_elevation", "sun_rotation", "aerosol_density")
 
 
-def yaw(bearing_deg: float) -> float:
-    """Bearing to Blender yaw, in radians: the one negation, as +Z turns to port."""
-    return -math.radians(bearing_deg)
+# Blender's camera axes to OpenCV's: Y and Z flip. Its own inverse.
+BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 
 
 def place(obj: bpy.types.Object, east_m: float, north_m: float, up_m: float) -> None:
@@ -59,11 +59,6 @@ def animate(
             getattr(owner, data_path)[index] = value_at(t)
         if len(times_s) > 1:
             owner.keyframe_insert(data_path, index=index, frame=frame)
-
-
-def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
-    """A sine of time in seconds."""
-    return lambda t: mean + amplitude * math.sin(2.0 * math.pi * t / period_s)
 
 
 def drive(
@@ -316,6 +311,24 @@ def separate(
     return split.outputs["X"], split.outputs["Y"], split.outputs["Z"]
 
 
+def node_group(
+    name: str,
+    inputs: tuple[tuple[str, str], ...],
+    outputs: tuple[tuple[str, str], ...],
+) -> tuple[bpy.types.NodeTree, bpy.types.NodeOutputs, bpy.types.NodeInputs]:
+    """A node group with these (name, socket kind) inputs and outputs; its Group Input's
+    outputs and Group Output's inputs.
+    """
+    made = bpy.data.node_groups.new(name, "ShaderNodeTree")
+    for sockets, in_out in ((inputs, "INPUT"), (outputs, "OUTPUT")):
+        for socket, kind in sockets:
+            made.interface.new_socket(
+                socket, in_out=in_out, socket_type=f"NodeSocket{kind}"
+            )
+    given = made.nodes.new("NodeGroupInput").outputs
+    return made, given, made.nodes.new("NodeGroupOutput").inputs
+
+
 def value(
     tree: bpy.types.NodeTree, name: str, initial: float = 0.0
 ) -> bpy.types.NodeSocket:
@@ -379,3 +392,32 @@ def read(path: Path) -> np.ndarray:
         return pixels(image)
     finally:
         bpy.data.images.remove(image)
+
+
+def attribute(
+    tree: bpy.types.NodeTree,
+    name: str,
+    kind: Literal["GEOMETRY", "OBJECT", "INSTANCER"] = "GEOMETRY",
+) -> bpy.types.Node:
+    """An Attribute node reading `name`, of `kind` GEOMETRY, OBJECT or INSTANCER."""
+    return node(tree, "ShaderNodeAttribute", attribute_type=kind, attribute_name=name)
+
+
+def source(
+    socket: bpy.types.NodeSocket,
+) -> bpy.types.NodeSocket | float | tuple[float, ...]:
+    """What feeds `socket`: its link, or else its own value."""
+    if socket.is_linked:
+        return socket.links[0].from_socket
+    value = socket.default_value
+    return value if isinstance(value, float) else tuple(value)
+
+
+def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
+    """The meshes in `parts` and their descendants."""
+    return [
+        obj
+        for part in parts
+        for obj in [part, *part.children_recursive]
+        if obj.type == "MESH"
+    ]

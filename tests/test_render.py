@@ -16,7 +16,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from seascape import render
-from seascape.blender import blend, scene, sea
+from seascape.blender import blend, compositor, scene, sea
 from seascape.blender.compositor import (
     FORMATS,
     JPEG_QUALITY,
@@ -164,6 +164,18 @@ def test_a_microbolometer_integrates_over_its_pixel(
 
 
 @pytest.mark.usefixtures("empty_blend")
+def test_a_linux_gpu_without_egl_composites_on_the_cpu_and_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(compositor, "enable_gpu", lambda: "CUDA")
+    monkeypatch.setattr(compositor.sys, "platform", "linux")
+    monkeypatch.setattr(compositor.ctypes.util, "find_library", lambda _: None)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    with pytest.warns(RuntimeWarning, match="libEGL"):
+        set_output(load(OPEN_SEA).outputs, "eo", 16)
+    assert bpy.context.scene.render.compositor_device == "CPU"
+
+
 def test_a_switch_set_off_is_muted() -> None:
     _compositor(0.0, True)
     mount = load(OPEN_SEA).band_mounts("eo")[0]
@@ -286,8 +298,8 @@ class TestEachBand:
     def test_ir_takes_every_sample(self, sc: bpy.types.Scene, band: Band) -> None:
         assert sc.cycles.use_adaptive_sampling is (band != "ir")
 
-    def test_the_compositor_runs_on_the_cpu(self, sc: bpy.types.Scene) -> None:
-        assert sc.render.compositor_device == "CPU"
+    def test_the_compositor_runs_where_cycles_does(self, sc: bpy.types.Scene) -> None:
+        assert sc.render.compositor_device == sc.cycles.device
 
     def test_both_bands_render_in_cycles(self, sc: bpy.types.Scene) -> None:
         assert sc.render.engine == "CYCLES"
@@ -369,8 +381,8 @@ def _plane_seen_from_above(
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     sc.render.resolution_x, sc.render.resolution_y = resolution
-    # As a build leaves it. Factory settings put the compositor on the GPU, which a
-    # machine without one aborts on.
+    # Factory settings put the compositor on the GPU, which a machine without one
+    # aborts on.
     sc.render.compositor_device = "CPU"
     mesh = bpy.data.meshes.new("plane")
     mesh.from_pydata(corners, [], [(0, 1, 2, 3)])
@@ -536,10 +548,21 @@ def _heaviest_drawn_sea(*, strongest: bool = False, **sections: Any) -> Scenario
 
 
 def _wakes(hulls: int) -> tuple[Wake, ...]:
+    """Fast enough that their Kelvin arms draw, each its own: Cycles merges identical
+    nodes, so copies of one wake hold the stack of one.
+    """
     return tuple(
-        Wake(speed_mps=3.0, length_m=60.0, beam_m=10.0, start_m=(0.0, 2000.0))
-        for _ in range(hulls)
+        Wake(
+            speed_mps=6.0 + 0.1 * i,
+            length_m=60.0,
+            beam_m=10.0,
+            start_m=(50.0 * i, 2000.0),
+        )
+        for i in range(hulls)
     )
+
+
+CROWD = 64
 
 
 # The heaviest sky: a photo, whose clouds the IR sea reflects, in mist, whose haze takes
@@ -554,7 +577,7 @@ def _heaviest_haze(band: Band) -> None:
 
 @pytest.mark.render
 @pytest.mark.parametrize("band", ["eo", "ir"])
-@pytest.mark.parametrize("hulls", [0, 1])
+@pytest.mark.parametrize("hulls", [0, 1, CROWD])
 def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
     capfd: pytest.CaptureFixture[str],
     tmp_path: Path,

@@ -54,15 +54,13 @@ An EO camera can model its sensor, lens and image processing. Leave them out and
 
 ```toml
 [rigs.bow.cameras.eo]
-preset = "basler_daa3840_ar0821"   # the sensor; the lens is yours
+preset = "basler_daa3840_ar0821"   # the sensor and its presets; the lens is yours
 hfov_deg = 45.0
 width_px = 1920
 height_px = 1080
 sensor.gain_db = 12.0
-sensor.hdr_ratio = 16.0
 lens.vignetting = true
 lens.f_number = 5.6
-processing.white_balance_k = 800
 processing.tone = "emor"
 ```
 
@@ -107,7 +105,7 @@ Each draw comes from a stream named for the field, so a new draw leaves the othe
 
 ## Skies
 
-By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/assets/skies.toml`](../seascape/assets/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the one it was photographed at, or none where the photo's sun shows no disc, so a scenario with `hdri` leaves `sun_elevation_deg` out. Set `sky.sun_diffuse_fraction` to put a sun behind a photo's cloud; it then takes `sun_elevation_deg`. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`, seen through the air under it. Each photo's cloud genus sets `cloud_base_m` unless the scenario does; a cirrus sky is LOWTRAN's standard cirrus and ignores it. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.
+By default the sky is Blender's Sky Texture: clear, at any sun elevation down to twilight. `sky.hdri` puts a photographed sky in its place, one of Poly Haven's pure skies listed in [`seascape/assets/skies.toml`](../seascape/assets/skies.toml), fetched into the asset cache on first use. The photo turns so its sun sits at `sun_bearing_deg`. Its elevation is the photographed one, or none where no disc shows, so a scenario with `hdri` leaves `sun_elevation_deg` out. Set `sky.sun_diffuse_fraction` to put a sun behind a photo's cloud; it then takes `sun_elevation_deg`. LWIR keeps its own clear sky and takes the photo's sun and clouds, each cloud a blackbody as warm as the air at `cloud_base_m`, seen through the air under it. `seascape assets list` labels each sky by cloud cover and sun band, such as "clear low sun"; the server's `catalog` gives them as fields. Each photo's cloud genus sets `cloud_base_m` unless the scenario does; a cirrus sky is LOWTRAN's standard cirrus and ignores it. A photo's radiance is in its own exposure, so an exr build compares only with builds of the same sky.
 
 ```bash
 uv run seascape render scenarios/baseline.toml --set 'sky.hdri = "table_mountain_1"' --set 'sky.sun_bearing_deg = 20'
@@ -149,7 +147,7 @@ uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "mul
 
 ## Wear
 
-`wear` lays grime, runoff streaks, a waterline stain, soot and faded paint over an object, a ring or a farm, from 0 as delivered to 1 heavily weathered. Steel also rusts at its edges, and its streaks run rust instead of grime. In LWIR rust and soot emit at their own emissivity, the stain stays at the water's temperature, and off steel grime absorbs more sun; on bare metal it also raises the emissivity. An asset whose textures already show wear is `weathered` and takes none. Grime gathers in crevices. The first worn build of an asset at each size it is fitted to bakes them into an image, cached beside the asset. Copies of one asset wear apart:
+`wear` lays grime, runoff streaks, a waterline stain, fouling, soot, bird droppings and faded paint over an object, a ring or a farm, from 0 as delivered to 1 heavily weathered. Edges rust on steel and scuff on anything else; steel's streaks run rust instead of grime. Fouling, weed and slime, climbs from the waterline up anything never under way: a buoy, a turbine, debris. A hull keeps only a thin film, at high wear. In LWIR rust and soot emit at their own emissivity, the stain and fouling stay at the water's temperature, and off steel grime absorbs more sun; on bare metal it also raises the emissivity. An asset whose textures already show wear is `weathered` and takes none. Grime gathers in crevices. The first worn build of an asset at each size it is fitted to bakes them into an image, cached beside the asset. Copies of one asset wear apart:
 
 ```bash
 uv run seascape render scenarios/baseline.toml --set 'objects = [{ preset = "multipurpose_freighter", range_m = 2000.0, bearing_deg = 8.0, wear = 0.8 }]'
@@ -204,6 +202,6 @@ uv run seascape video out/
 uv run seascape recording out/                           # out/recordings/<rig>/<model>_recordings_<ts>/
 ```
 
-`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target or ownship cannot be underway; give a target a `drift`, as `scenarios/drifting.toml` does.
+`outputs.loop = true` makes a seamless clip: every period, each wave's included, rounds to a whole fraction of `duration_s`. A looping target or ownship cannot be underway; give a target a `fishtail`, as `scenarios/fishtailing.toml` does.
 
 Every frame has its own entry in `calibration.json` and `labels.json`, stamped with `time_s`. `seascape video` paces the frames by it, so a clip re-encodes without re-rendering. The `.blend` from `seascape build` carries the motion as keyframes. `montage` and `panorama` take stills.

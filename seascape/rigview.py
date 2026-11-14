@@ -10,11 +10,13 @@ from mathutils import Vector
 from PIL import Image, ImageDraw
 
 from seascape.blender import workbench
-from seascape.blender.meshes import box_corners, mesh_objects
-from seascape.blender.rigs import add_rigs, boresight_deg
+from seascape.blender.blend import BLENDER_TO_CV, mesh_objects
+from seascape.blender.meshes import box_corners
+from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
-from seascape.outputs import canvas
+from seascape.motion import ownship_up_m, tilted, track
+from seascape.outputs import brand, canvas
 from seascape.physics import earth, fisheye
 
 VIEWS = (
@@ -38,18 +40,21 @@ def _frustum(
 ) -> bpy.types.Object:
     """A wireframe pyramid from `camera` along its view: nested ones stay visible."""
     spec = mount.camera
-    corners_px = np.array([(-1, -1), (1, -1), (1, 1), (-1, 1)]) / 2
+    # In image axes: x right, y down.
+    corners_px = np.array([(-1, 1), (1, 1), (1, -1), (-1, -1)]) / 2
     corners_px = corners_px * (spec.width_px, spec.height_px)
     if spec.lens.fisheye is not None:
         k, fx = spec.lens.fisheye, spec.fisheye_focal_px
         rays = fisheye.direction(corners_px[:, 0], corners_px[:, 1], k, fx)
-        far = rays * length_m / -rays[:, 2:]
+        far_cv = rays * length_m / rays[:, 2:]
     else:
         across = math.tan(math.radians(spec.hfov_deg) / 2)
-        far = (
-            np.column_stack([corners_px * 2 * across / spec.width_px, -np.ones(4)])
+        far_cv = (
+            np.column_stack([corners_px * 2 * across / spec.width_px, np.ones(4)])
             * length_m
         )
+    # Parented to the camera, so in Blender's camera axes.
+    far = far_cv @ np.array(BLENDER_TO_CV.to_3x3()).T
     mesh = bpy.data.meshes.new(camera.name)
     mesh.from_pydata(
         [(0.0, 0.0, 0.0), *map(tuple, far)],
@@ -68,11 +73,11 @@ def _hit_m(frame: bpy.types.Object, origin: Vector, up: bool) -> float | None:
     """Height in `frame` of the first surface along its vertical above or below
     `origin`, if any.
     """
-    to_frame = frame.matrix_world.inverted()
+    T_frame_world = frame.matrix_world.inverted()
     axis = frame.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0 if up else -1.0))
     depsgraph = bpy.context.evaluated_depsgraph_get()
     hit, location, *_ = bpy.context.scene.ray_cast(depsgraph, origin, axis)
-    return (to_frame @ location).z if hit else None
+    return (T_frame_world @ location).z if hit else None
 
 
 def _rig_line(
@@ -116,7 +121,7 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
             tile = canvas.on_backdrop(Image.open(path))
             tile = tile.resize(TILE, Image.Resampling.LANCZOS)
             ImageDraw.Draw(tile).text(
-                (10, 8), pose.name, font=canvas.font(FONT_PX + 2), fill=canvas.INK
+                (10, 8), pose.name, font=brand.font(FONT_PX + 2), fill=canvas.INK
             )
             tiles.append(tile)
     return tiles
@@ -127,7 +132,7 @@ def _caption(lines: list[Line], width_px: int) -> Image.Image:
     caption = Image.new("RGB", (width_px, 16 + LINE_PX * len(lines)), canvas.MATTE)
     pen = ImageDraw.Draw(caption)
     for k, (text, ink) in enumerate(lines):
-        pen.text((10, 8 + LINE_PX * k), text, font=canvas.font(FONT_PX), fill=ink)
+        pen.text((10, 8 + LINE_PX * k), text, font=brand.font(FONT_PX), fill=ink)
     return caption
 
 
@@ -137,18 +142,27 @@ def draw(scenario: Scenario, out: Path) -> None:
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     built = add_rigs(scenario)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    # The hull does not ride here, so the deck tilts by its script alone.
+    stabilise(built.heads, scenario, tilted(path, None, (), ()))
     vessel = add_ownship(
         scenario.ownship,
+        path,
+        ownship_up_m(
+            scenario.ownship,
+            scenario.outputs,
+            (),
+            earth.earth_radius_m(scenario.sea.refraction_k),
+        ),
         built.root,
         Hulls(scenario.sky, None),  # Workbench draws no wear
-        scenario.outputs,
-        (),
-        earth.earth_radius_m(scenario.sea.refraction_k),
+        scenario.outputs.times_s,
+        [],
     )
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     hull = mesh_objects([vessel])
     lines = [
-        _rig_line(name, scenario, rig, built.root) for name, rig in built.rigs.items()
+        _rig_line(name, scenario, rig, built.root) for name, rig in built.heads.items()
     ]
 
     corners = np.array([tuple(c) for c in box_corners(hull)])

@@ -1,25 +1,25 @@
+# Cameras are named as the recorder's sensors file names them.
 # The design geometry: two thermal cameras toed out by 11.4 deg, one colour camera
 # between them. The calibrated tilts of a unit (up to 0.5 deg) and the lens offsets
-# are left out. The colour camera balances white continuously, as it ships.
+# are left out.
 model = "Watchkeeper"
+# Watchkeeper 1280 Gen 1.
+hardware_version = "Oscar_V10_1280_Gen_1"
 
-[cameras.eo]
+[cameras.rgb1]
 preset = "basler_daa3840_ar0821"
 # An ideal equidistant fisheye, r = f theta, at the design field of 136 x 76.5 deg.
 hfov_deg = 136.0
 lens = { fisheye = [0.0, 0.0, 0.0, 0.0] }
-processing = { white_balance = "grey_world" }
-# The AR0821's eHDR (datasheet) at Basler HDR Beyond's default ratio.
-sensor = { hdr_ratio = 16.0 }
 
-[cameras.ir_l]
+[cameras.t2]
 preset = "boson_640_24deg"
 yaw_deg = -11.4
 
-[cameras.ir_r]
+[cameras.t1]
 preset = "boson_640_24deg"
 yaw_deg = 11.4
 
 [videos]
-RGB1 = { kind = "undistortion", camera = "eo", hfov_deg = 130.0, vfov_deg = 65.5, downscale = 2 }
-T1 = { kind = "horizontal_stitching", cameras = ["ir_l", "ir_r"] }
+RGB1 = { kind = "undistortion", camera = "rgb1", hfov_deg = 130.0, vfov_deg = 65.5, downscale = 2 }
+T1 = { kind = "horizontal_stitching", cameras = ["t2", "t1"] }

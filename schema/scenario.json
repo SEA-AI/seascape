@@ -295,7 +295,7 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Relative to the rig's axis, positive to starboard.",
+          "description": "Relative to its rig's head, positive to starboard.",
           "default": 0.0,
           "anyOf": [
             {
@@ -320,7 +320,7 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "Relative to the rig, negative is down.",
+          "description": "Relative to its rig's head, negative is down.",
           "default": 0.0,
           "anyOf": [
             {
@@ -706,94 +706,6 @@
       "title": "Crop",
       "type": "object"
     },
-    "Drift": {
-      "additionalProperties": false,
-      "description": "A hull at single anchor fishtails: across its heading once a period, along it\ntwice. Starts at its pose; the heading holds.",
-      "properties": {
-        "sway_m": {
-          "title": "Sway M",
-          "description": "Peak, across the heading.",
-          "anyOf": [
-            {
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "surge_m": {
-          "title": "Surge M",
-          "description": "Peak, along the heading.",
-          "anyOf": [
-            {
-              "minimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        },
-        "period_s": {
-          "title": "Period S",
-          "description": "One full figure-eight.",
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0.0,
-              "type": "number"
-            },
-            {
-              "$ref": "#/$defs/Uniform"
-            },
-            {
-              "$ref": "#/$defs/LogUniform"
-            },
-            {
-              "$ref": "#/$defs/Triangular"
-            },
-            {
-              "$ref": "#/$defs/Integer"
-            },
-            {
-              "$ref": "#/$defs/Choice"
-            }
-          ]
-        }
-      },
-      "required": [
-        "sway_m",
-        "surge_m",
-        "period_s"
-      ],
-      "title": "Drift",
-      "type": "object"
-    },
     "Farm": {
       "additionalProperties": false,
       "description": "Turbines in rows of equal length, each to starboard of the last along\n`row_bearing_deg`. One row of one is a lone turbine.",
@@ -853,7 +765,7 @@
         },
         "bearing_deg": {
           "title": "Bearing Deg",
-          "description": "Of the first turbine, clockwise from the ownship's bow.",
+          "description": "Of the first turbine, clockwise from world +Y, the ownship's bow at the start.",
           "anyOf": [
             {
               "type": "number"
@@ -967,7 +879,7 @@
         },
         "row_bearing_deg": {
           "title": "Row Bearing Deg",
-          "description": "Where a row runs from its first turbine, clockwise from the ownship's bow.",
+          "description": "Where a row runs from its first turbine, clockwise from world +Y, the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -1047,7 +959,7 @@
         },
         "wear": {
           "title": "Wear",
-          "description": "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 heavily weathered. In IR a hull given `t_k` is that one temperature and shows none. A `weathered` asset ignores it: its textures are its wear.",
+          "description": "Grime, rust, waterline stain, fouling, soot and faded paint: 0 is as delivered, 1 heavily weathered. In IR a hull given `t_k` is that one temperature and shows none. A `weathered` asset ignores it: its textures are its wear.",
           "default": 0.0,
           "anyOf": [
             {
@@ -1079,6 +991,94 @@
         "bearing_deg"
       ],
       "title": "Farm",
+      "type": "object"
+    },
+    "Fishtail": {
+      "additionalProperties": false,
+      "description": "A hull at single anchor fishtails (UFC 4-159-03, \"fishtailing\"): across its\nheading once a period, along it\ntwice. Starts at its pose; the heading holds.",
+      "properties": {
+        "sway_m": {
+          "title": "Sway M",
+          "description": "Peak, across the heading.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "surge_m": {
+          "title": "Surge M",
+          "description": "Peak, along the heading.",
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "period_s": {
+          "title": "Period S",
+          "description": "One full figure-eight.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sway_m",
+        "surge_m",
+        "period_s"
+      ],
+      "title": "Fishtail",
       "type": "object"
     },
     "Heave": {
@@ -1436,6 +1436,96 @@
       "title": "Microbolometer",
       "type": "object"
     },
+    "Move": {
+      "additionalProperties": false,
+      "description": "Turn to `to_deg` from where the last move left off, then hold.",
+      "properties": {
+        "to_deg": {
+          "title": "To Deg",
+          "description": "Clockwise: the ownship's turn from its start heading, its yaw swing aside, or a ptu's pan from its base.",
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "rate_deg_s": {
+          "title": "Rate Deg S",
+          "description": "Its cruising rate; a short move peaks below it. None is the top rate.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "hold_s": {
+          "title": "Hold S",
+          "description": "Held still at `to_deg` before the next move.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "to_deg"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
     "Name": {
       "pattern": "^[A-Za-z0-9_-]+$",
       "type": "string"
@@ -1531,7 +1621,7 @@
         },
         "bearing_deg": {
           "title": "Bearing Deg",
-          "description": "Clockwise from the ownship's bow.",
+          "description": "Clockwise from world +Y, the ownship's bow at the start.",
           "anyOf": [
             {
               "type": "number"
@@ -1633,12 +1723,12 @@
             }
           ]
         },
-        "drift": {
+        "fishtail": {
           "description": "A figure-eight about its pose.",
           "default": null,
           "anyOf": [
             {
-              "$ref": "#/$defs/Drift"
+              "$ref": "#/$defs/Fishtail"
             },
             {
               "type": "null"
@@ -1775,13 +1865,41 @@
         },
         "wear": {
           "title": "Wear",
-          "description": "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 heavily weathered. In IR a hull given `t_k` is that one temperature and shows none. A `weathered` asset ignores it: its textures are its wear.",
+          "description": "Grime, rust, waterline stain, fouling, soot and faded paint: 0 is as delivered, 1 heavily weathered. In IR a hull given `t_k` is that one temperature and shows none. A `weathered` asset ignores it: its textures are its wear.",
           "default": 0.0,
           "anyOf": [
             {
               "maximum": 1.0,
               "minimum": 0.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "colour": {
+          "title": "Colour",
+          "description": "One of the colours its asset lists in `colours`, or its own `colour`; None keeps its own too. EO only.",
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -1840,6 +1958,31 @@
             {
               "minimum": 0,
               "type": "integer"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "spacing_deg": {
+          "title": "Spacing Deg",
+          "description": "Between one copy of a count and the next, clockwise. `load` spaces the copies, so a loaded scenario holds 0.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "type": "number"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2148,7 +2291,7 @@
     },
     "Ownship": {
       "additionalProperties": false,
-      "description": "The vessel the rig is bolted to, rolling and pitching about its origin at the\nwaterline. Without an asset it is the motion alone; a hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
+      "description": "The vessel the rigs are bolted to, rolling and pitching about its floating\nwaterline, which `draught_m` sets below its origin. Without an asset it is the\nmotion alone; a hull also rides the sea.\n\nIt sails from the origin along its heading; the sea and sky stay put, and every\nbearing in a scenario is from its bow at t = 0.",
       "properties": {
         "asset": {
           "title": "Asset",
@@ -2642,6 +2785,41 @@
       "title": "Processing",
       "type": "object"
     },
+    "Ptu": {
+      "additionalProperties": false,
+      "description": "A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu.",
+      "properties": {
+        "elevation_deg": {
+          "title": "Elevation Deg",
+          "description": "The pitch it holds its head at, above the horizon, the rig's `pitch_deg` included. Negative is down.",
+          "default": 0.0,
+          "anyOf": [
+            {
+              "maximum": 20.0,
+              "minimum": -20.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "title": "Ptu",
+      "type": "object"
+    },
     "Rig": {
       "additionalProperties": false,
       "description": "One installed product: the frame its cameras sit in, at one mount point.\n\nRigs a beam apart overlap in angle before they overlap in space, which leaves a\nblind wedge over the bow; coincident cameras would hide it.",
@@ -2674,9 +2852,37 @@
             }
           ]
         },
+        "hardware_version": {
+          "title": "Hardware Version",
+          "description": "The unit's hardware version, such as Oscar_V10_1280_Gen_1, which picks the recorder's profile when a recording is replayed.",
+          "default": null,
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
         "height_m": {
           "title": "Height M",
-          "description": "Above the asset's own waterline.",
+          "description": "Above the ownship's origin: its asset's design waterline, or the sea under a bare ownship.",
           "anyOf": [
             {
               "exclusiveMinimum": 0.0,
@@ -2701,7 +2907,7 @@
         },
         "yaw_deg": {
           "title": "Yaw Deg",
-          "description": "Its axis relative to the bow, positive to starboard.",
+          "description": "Its base's turn from the bow, where its pan reads zero; positive to starboard.",
           "default": 0.0,
           "anyOf": [
             {
@@ -2726,13 +2932,40 @@
         },
         "pitch_deg": {
           "title": "Pitch Deg",
-          "description": "About its own transverse axis, after its yaw and before its cameras'. Negative is down.",
+          "description": "Its head's pitch before any tilt: after the pan, before its cameras' pitch. A pan-tilt unit's tilt axis holds it, so a recording's tilt counts it. Negative is down.",
           "default": 0.0,
           "anyOf": [
             {
               "exclusiveMaximum": 90.0,
               "exclusiveMinimum": -90.0,
               "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "ptu": {
+          "description": "What it sits on, if anything.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ptu"
+            },
+            {
+              "type": "null"
             },
             {
               "$ref": "#/$defs/Uniform"
@@ -2778,7 +3011,7 @@
         },
         "offset_y_m": {
           "title": "Offset Y M",
-          "description": "From midships, positive forward.",
+          "description": "From the ownship's origin, positive forward.",
           "default": 0.0,
           "anyOf": [
             {
@@ -3017,7 +3250,7 @@
         },
         "wind_from_deg": {
           "title": "Wind From Deg",
-          "description": "Where the wind blows from, clockwise from the ownship's bow.",
+          "description": "Where the wind blows from, clockwise from world +Y: the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -3417,7 +3650,7 @@
         },
         "sun_bearing_deg": {
           "title": "Sun Bearing Deg",
-          "description": "Clockwise from the ownship's bow.",
+          "description": "Clockwise from world +Y: the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -3796,7 +4029,7 @@
         },
         "from_deg": {
           "title": "From Deg",
-          "description": "Where it comes from, clockwise from the ownship's bow.",
+          "description": "Where it comes from, clockwise from world +Y: the ownship's bow at the start.",
           "default": 0.0,
           "anyOf": [
             {
@@ -4043,7 +4276,7 @@
         },
         "bearing_deg": {
           "title": "Bearing Deg",
-          "description": "First and last, clockwise from the ownship's bow. Both ends get a target.",
+          "description": "First and last, clockwise from world +Y, the ownship's bow at the start. Both ends get a target.",
           "anyOf": [
             {
               "maxItems": 2,
@@ -4139,12 +4372,12 @@
             }
           ]
         },
-        "drift": {
+        "fishtail": {
           "description": "A figure-eight about its pose.",
           "default": null,
           "anyOf": [
             {
-              "$ref": "#/$defs/Drift"
+              "$ref": "#/$defs/Fishtail"
             },
             {
               "type": "null"
@@ -4254,7 +4487,7 @@
         },
         "wear": {
           "title": "Wear",
-          "description": "Grime, rust, waterline stain, soot and faded paint: 0 is as delivered, 1 heavily weathered. In IR a hull given `t_k` is that one temperature and shows none. A `weathered` asset ignores it: its textures are its wear.",
+          "description": "Grime, rust, waterline stain, fouling, soot and faded paint: 0 is as delivered, 1 heavily weathered. In IR a hull given `t_k` is that one temperature and shows none. A `weathered` asset ignores it: its textures are its wear.",
           "default": 0.0,
           "anyOf": [
             {
@@ -4295,6 +4528,127 @@
         "emor"
       ],
       "type": "string"
+    },
+    "Turn": {
+      "additionalProperties": false,
+      "description": "A scripted turn of the ownship from its start heading, or of a rig's ptu from\nits base. Each move ramps up to its rate and down to rest at the acceleration.",
+      "properties": {
+        "ptu": {
+          "description": "The rig whose ptu turns; None turns the ownship.",
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Name"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "top_rate_deg_s": {
+          "title": "Top Rate Deg S",
+          "description": "As fast as it turns; a move's rate when it sets none.",
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "accel_deg_s2": {
+          "title": "Accel Deg S2",
+          "description": "Of every ramp up and down; None steps to each rate at once.",
+          "default": null,
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        },
+        "moves": {
+          "title": "Moves",
+          "description": "One after another from t = 0, each from where the last held.",
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Move"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/Uniform"
+            },
+            {
+              "$ref": "#/$defs/LogUniform"
+            },
+            {
+              "$ref": "#/$defs/Triangular"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            }
+          ]
+        }
+      },
+      "required": [
+        "top_rate_deg_s",
+        "moves"
+      ],
+      "title": "Turn",
+      "type": "object"
     },
     "Undistortion": {
       "additionalProperties": false,
@@ -4949,6 +5303,33 @@
             "$ref": "#/$defs/Farm"
           },
           "type": "array"
+        },
+        {
+          "$ref": "#/$defs/Uniform"
+        },
+        {
+          "$ref": "#/$defs/LogUniform"
+        },
+        {
+          "$ref": "#/$defs/Triangular"
+        },
+        {
+          "$ref": "#/$defs/Integer"
+        },
+        {
+          "$ref": "#/$defs/Choice"
+        }
+      ]
+    },
+    "turn": {
+      "description": "Turns the ownship, or a rig's ptu, through scripted moves from t = 0. It ends within outputs.duration_s, with outputs.loop false.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Turn"
+        },
+        {
+          "type": "null"
         },
         {
           "$ref": "#/$defs/Uniform"

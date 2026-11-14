@@ -122,8 +122,8 @@ def test_a_preset_supplies_optics_and_the_block_supplies_the_mount(twin) -> None
     )
 
 
-def test_a_nominal_bearing_is_its_rig_plus_its_fan(twin) -> None:
-    bearings = {m.name: m.nominal_bearing_deg for m in twin.mounts}
+def test_a_nominal_azimuth_is_its_rig_plus_its_fan(twin) -> None:
+    bearings = {m.name: m.nominal_azimuth_deg for m in twin.mounts}
 
     assert [bearings[f"port_{c}"] for c in ("a", "b", "c", "ir")] == [
         -90.0,
@@ -443,15 +443,15 @@ def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
         'asset = { choice = ["yacht", "cargo_ship"] }\n'
         "range_m = 500.0\n"
         "bearing_deg = 0.0\n"
-        "drift = { choice = [{ sway_m = { uniform = [1.0, 2.0] }, surge_m = 1.0, "
+        "fishtail = { choice = [{ sway_m = { uniform = [1.0, 2.0] }, surge_m = 1.0, "
         "period_s = 30.0 }] }\n",
     )
     assets, sways = set(), set()
     for seed in range(20):
         (ship,) = load(path, [f"seed = {seed}"]).objects
-        assert ship.drift is not None
+        assert ship.fishtail is not None
         assets.add(ship.asset)
-        sways.add(ship.drift.sway_m)
+        sways.add(ship.fishtail.sway_m)
     assert assets == {"yacht", "cargo_ship"}
     assert all(1.0 <= sway <= 2.0 for sway in sways)
     assert len(sways) == 20
@@ -508,7 +508,10 @@ def test_a_draw_is_validated_as_the_field_it_lands_in() -> None:
         load(BASELINE, ["sky.sun_elevation_deg = { uniform = [100.0, 120.0] }"])
 
 
-@pytest.mark.parametrize("path", [BASELINE, HERO, RANDOMIZED, DATASET, AUTONOMICS])
+@pytest.mark.parametrize(
+    "path",
+    [BASELINE, HERO, RANDOMIZED, DATASET, AUTONOMICS, SCENARIOS / "showcase.toml"],
+)
 def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     """The `#:schema` line is a comment, so nothing else would ever notice it rot."""
     line = path.read_text().splitlines()[0]
@@ -600,7 +603,7 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
     ("name", "overrides", "match"),
     [
         ("baseline.toml", ["outputs.loop = true"], "duration_s > 0"),
-        ("underway.toml", ["outputs.loop = true"], "drift"),
+        ("underway.toml", ["outputs.loop = true"], "fishtail"),
         (
             "baseline.toml",
             [
@@ -629,15 +632,19 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
             "ownship.yaw's 9.0 s",
         ),
         (
-            "drifting.toml",
+            "fishtailing.toml",
             [
                 'targets = { asset = "multipurpose_freighter", count = 2,'
                 " range_m = 900.0, bearing_deg = [-5.0, 5.0], speed_mps = 1.0 }"
             ],
-            "drift",
+            "fishtail",
         ),
-        ("drifting.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
-        ("drifting.toml", ["outputs.duration_s = 20"], "multipurpose_freighter drift"),
+        ("fishtailing.toml", ["outputs.duration_s = 8"], "ownship.roll's 9.0 s"),
+        (
+            "fishtailing.toml",
+            ["outputs.duration_s = 20"],
+            "multipurpose_freighter fishtail",
+        ),
         (
             "baseline.toml",
             [
@@ -649,7 +656,7 @@ def test_a_loop_rounds_each_period_to_a_whole_fraction_of_the_clip() -> None:
             "yacht orbit's 40.0 s",
         ),
         (
-            "drifting.toml",
+            "fishtailing.toml",
             ["sea.swell = { height_m = 1.0, period_s = 40.0 }"],
             "sea.swell's 40.0 s",
         ),
@@ -679,10 +686,10 @@ def test_an_ownship_that_only_turns_can_loop() -> None:
 
 def test_a_loop_too_short_for_its_waves_says_so() -> None:
     with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
-        load(SCENARIOS / "drifting.toml", ["sea.wind_speed_mps = 20"])
+        load(SCENARIOS / "fishtailing.toml", ["sea.wind_speed_mps = 20"])
     with pytest.warns(UserWarning, match="shifts the waves' frequencies"):
         load(
-            SCENARIOS / "drifting.toml",
+            SCENARIOS / "fishtailing.toml",
             ["sea.swell = { height_m = 1.0, period_s = 13.0 }"],
         )
 
@@ -844,6 +851,11 @@ def test_an_hdri_s_cloud_genus_sets_its_cloud_base() -> None:
         assert Sky.model_validate({"hdri": name}).cloud_base_m == base
     given = Sky.model_validate({"hdri": "sunflowers", "cloud_base_m": 1500.0})
     assert given.cloud_base_m == 1500.0
+
+
+def test_a_key_the_schema_does_not_know_is_refused_by_its_path() -> None:
+    with pytest.raises(ValidationError, match=r"rigs\.bow\.pitch_degs\n.*Extra inputs"):
+        load(BASELINE, ["rigs.bow.pitch_degs = -5"])
 
 
 def test_an_unknown_hdri_names_the_library() -> None:
@@ -1045,7 +1057,7 @@ def test_a_heading_turns_from_what_heading_from_names(heading_from, course) -> N
         heading_deg=180.0,
         heading_from=heading_from,
     )
-    assert spec.course_deg == course
+    assert spec.heading_from_bow_deg == course
 
 
 @pytest.mark.parametrize(
@@ -1177,8 +1189,8 @@ def test_a_boson_preset_extends_another() -> None:
 @pytest.mark.parametrize(
     ("rig", "model", "cameras"),
     [
-        ("sentry", "Sentry", {"t_w", "t_n", "eo_w", "eo_n"}),
-        ("watchkeeper", "Watchkeeper", {"eo", "ir_l", "ir_r"}),
+        ("sentry", "Sentry", {"t1", "t2", "rgb1", "rgb2"}),
+        ("watchkeeper", "Watchkeeper", {"rgb1", "t1", "t2"}),
     ],
 )
 def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> None:
@@ -1212,14 +1224,14 @@ def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
 def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
     lines = ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
     scenario = load(BASELINE, lines)
-    (eo,) = (m.camera for m in scenario.mounts if m.camera_name == "eo")
+    (eo,) = (m.camera for m in scenario.mounts if m.camera_name == "rgb1")
     # A recorded Watchkeeper's RGB1.
     fx = eo.width_px / 2 / math.tan(math.radians(eo.hfov_deg) / 2)
     assert (eo.width_px, eo.height_px, eo.lens.fisheye) == (3600, 1080, None)
     assert fx == pytest.approx(839.3537846789975)
     exr = load(BASELINE, [*lines, 'outputs.format = "exr"'])
-    (raw,) = (m.camera for m in exr.mounts if m.camera_name == "eo")
-    assert raw == scenario.rigs["bow"].cameras["eo"]
+    (raw,) = (m.camera for m in exr.mounts if m.camera_name == "rgb1")
+    assert raw == scenario.rigs["bow"].cameras["rgb1"]
 
 
 @pytest.mark.parametrize(
@@ -1262,9 +1274,9 @@ def test_a_rig_refuses_a_video_it_cannot_record(videos: str, match: str) -> None
 def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:
     line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
     rig = load(BASELINE, [line]).rigs["bow"]
-    left, right = rig.cameras["ir_l"], rig.cameras["ir_r"]
-    assert left.yaw_deg == -right.yaw_deg != 0.0
-    assert rig.cameras["eo"].lens.fisheye is not None
+    left, right = rig.cameras["t2"], rig.cameras["t1"]
+    assert left.yaw_deg == -right.yaw_deg < 0.0
+    assert rig.cameras["rgb1"].lens.fisheye is not None
 
 
 GRADE = (
@@ -1596,3 +1608,36 @@ def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed(
     for seed in range(3):
         with pytest.raises(ValueError, match="no draught_range_m"):
             load(BASELINE, [{"seed": seed, "objects": [spec]}])
+
+
+def test_the_showcase_is_a_worn_hull_under_a_photographed_sky() -> None:
+    showcase = load(SCENARIOS / "showcase.toml")
+    assert showcase.sky.hdri is not None
+    assert showcase.worn == {"multipurpose_freighter"}
+
+
+def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
+    showcase = load(SCENARIOS / "showcase.toml")
+    camera = next(m.camera for m in showcase.mounts if m.camera.band == "eo")
+    assert (camera.width_px, camera.height_px) == (1920, 1080)
+    assert camera.sensor.full_well_e == 12600.0
+    assert camera.lens.vignetting
+
+
+@pytest.mark.parametrize(
+    ("asset", "colour", "error"),
+    [
+        ("mooring_buoy", "purple", r"in \['orange', 'white', 'yellow'\], not purple"),
+        ("zodiac", "orange", "zodiac comes in its own colour only, not orange"),
+    ],
+)
+def test_an_object_takes_only_a_colour_its_asset_is_sold_in(
+    asset: str, colour: str, error: str
+) -> None:
+    with pytest.raises(ValidationError, match=error):
+        Object(asset=asset, range_m=10.0, bearing_deg=0.0, colour=colour)
+
+
+def test_an_object_may_ask_for_its_assets_own_colour() -> None:
+    buoy = Object(asset="mooring_buoy", range_m=10.0, bearing_deg=0.0, colour="white")
+    assert buoy.colour == "white"

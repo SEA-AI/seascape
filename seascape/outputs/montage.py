@@ -7,11 +7,12 @@ frame, never on it: in an exr they would corrupt radiance.
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
+from seascape.angles import wrapped_deg
 from seascape.config import Mount, Scenario
-from seascape.outputs import canvas, preview
+from seascape.outputs import brand, canvas, preview
 
 TILE_H = 260
 CAPTION_H = 26
@@ -22,12 +23,8 @@ SHADE = (88, 88, 88)
 LIT = (255, 200, 60)
 
 
-def _wrapped(deg: float) -> float:
-    return (deg + 180.0) % 360.0 - 180.0
-
-
 def _apart_deg(a: Mount, b: Mount) -> float:
-    return abs(_wrapped(a.nominal_bearing_deg - b.nominal_bearing_deg))
+    return abs(wrapped_deg(a.nominal_azimuth_deg - b.nominal_azimuth_deg))
 
 
 def _fan(
@@ -40,13 +37,13 @@ def _fan(
     for mount, fill in [*((m, SHADE) for m in others), (lit, LIT)]:
         half = mount.camera.hfov_deg / 2
         # Pillow turns clockwise from 3 o'clock, so the bow sits at -90.
-        start = mount.nominal_bearing_deg - half - 90.0
+        start = mount.nominal_azimuth_deg - half - 90.0
         draw.pieslice(box, start, start + 2 * half, fill=fill)
 
 
 def _tile(
     path: Path,
-    typeface: FreeTypeFont | ImageFont.ImageFont,
+    typeface: FreeTypeFont,
     mount: Mount,
     mounts: Sequence[Mount],
 ) -> Image.Image:
@@ -57,7 +54,7 @@ def _tile(
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
     _fan(draw, GUTTER + FAN_R, middle, mounts, mount)
-    bearing = _wrapped(mount.nominal_bearing_deg)
+    bearing = wrapped_deg(mount.nominal_azimuth_deg)
     caption = f"{mount.name}  {bearing:+.0f}°  {mount.camera.hfov_deg:.0f}° wide"
     text_px = draw.textlength(caption, font=typeface)
     x = max((tile.width - text_px) / 2, 2 * (GUTTER + FAN_R))
@@ -94,26 +91,27 @@ def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
         else:
             laid.append([mount])
 
-    cut_deg = _cut_deg([column[0].nominal_bearing_deg for column in laid])
+    cut_deg = _cut_deg([column[0].nominal_azimuth_deg for column in laid])
 
     def rightward(mount: Mount) -> float:
-        return (mount.nominal_bearing_deg - cut_deg) % 360.0
+        return (mount.nominal_azimuth_deg - cut_deg) % 360.0
 
     laid.sort(key=lambda column: rightward(column[0]))
     return [sorted(column, key=rightward) for column in laid]
 
 
-def compose(scenario: Scenario, into: Path) -> Path:
-    """Write `montage.png` in `into`: a row per band, a column per bearing."""
+def sheet(scenario: Scenario, into: Path) -> Image.Image:
+    """The frames in `into` as one picture, a clip by its middle frame: a row per band,
+    a column per bearing.
+    """
     bands = [band for band in scenario.outputs.bands if scenario.band_mounts(band)]
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
     mounts = [m for band in bands for m in scenario.band_mounts(band)]
-    typeface = canvas.font()
+    typeface = brand.font()
     tiles: dict[str, Image.Image] = {}
-    for mount in mounts:
+    for mount, frame in preview.shown(scenario, into):
         # An exr is radiance; making it a picture is the render's job.
-        frame = into / f"{mount.name}.{scenario.outputs.format}"
         if scenario.outputs.format == "exr" or not frame.exists():
             raise FileNotFoundError(f"{frame}: render it, as png or jpg")
         tiles[mount.name] = _tile(frame, typeface, mount, mounts)
@@ -125,6 +123,11 @@ def compose(scenario: Scenario, into: Path) -> Path:
 
     laid = columns(mounts)
     cells = [[cell(column, band) for column in laid] for band in bands]
+    return canvas.table(cells, gap_px=GUTTER)
+
+
+def compose(scenario: Scenario, into: Path) -> Path:
+    """Write `montage.png` in `into`."""
     out = into / "montage.png"
-    canvas.table(cells, gap_px=GUTTER).save(out)
+    sheet(scenario, into).save(out)
     return out

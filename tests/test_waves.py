@@ -7,7 +7,7 @@ import pytest
 
 from seascape.physics import earth, lwir, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
-from seascape.physics.waves import sea
+from seascape.physics.waves import sea, surface
 from tests import gerstner
 
 
@@ -35,6 +35,29 @@ def test_published_values_have_not_drifted() -> None:
     # 2 pi U^2 / (g 0.84^2), 44.5 m.
     peak = waves.peak_omega_rad_s(7.0, None)
     assert 2 * math.pi * earth.GRAVITY_MS2 / peak**2 == pytest.approx(44.5, abs=0.2)
+
+
+@pytest.mark.parametrize("north_m", [0.0, 7000.0])
+def test_a_ray_stops_where_it_meets_the_curved_sea(north_m: float) -> None:
+    """From 20 m over the sea, at the origin and 7 km out, where the sea has dropped
+    under the tangent plane.
+    """
+    radius_m = earth.earth_radius_m(0.13)
+    up_m = earth.sea_z_m(0.0, north_m, radius_m) + 20.0
+    toward = np.array([0.0, 1.0, -0.01]) / math.hypot(1.0, 0.01)
+    run_m = earth.sea_run_m((0.0, north_m, up_m), tuple(toward), radius_m)
+
+    assert run_m is not None
+    hit = np.array([0.0, north_m, up_m]) + toward * run_m / toward[1]
+    assert hit[2] == pytest.approx(earth.sea_z_m(*hit[:2], radius_m), abs=1e-6)
+    assert run_m > 20.0 / 0.01
+
+
+def test_a_ray_above_the_dip_of_the_horizon_meets_no_sea() -> None:
+    radius_m = earth.earth_radius_m(0.13)
+    # The horizon dips sqrt(2 h / R), 1.6 mrad from 10 m: 0.1 mrad passes over it.
+    toward = (0.0, 1.0, -1e-4)
+    assert earth.sea_run_m((0.0, 0.0, 10.0), toward, radius_m) is None
 
 
 def test_the_wind_rises_with_height_as_the_log_profile_over_the_sea() -> None:
@@ -221,6 +244,15 @@ def test_the_tallest_waves_are_the_fewest_carrying_the_share() -> None:
 def test_waves_run_away_from_the_wind() -> None:
     from_east = field(7.0, wind_from_deg=90.0)
     assert np.mean([w.k_east_rad_m for w in from_east]) < 0.0
+
+
+def test_a_wind_off_every_axis_runs_its_sea_downwind() -> None:
+    """From 60, off both axes, so a sign slip in east or north shows."""
+    built = field(7.0, wind_from_deg=60.0)
+    k_east = sum(w.k_east_rad_m * w.amplitude_m**2 for w in built)
+    k_north = sum(w.k_north_rad_m * w.amplitude_m**2 for w in built)
+    # The spread's random strata leave the energy-weighted mean a few degrees off.
+    assert math.degrees(math.atan2(k_east, k_north)) == pytest.approx(-120.0, abs=5.0)
 
 
 def test_a_crest_travels_at_its_phase_speed() -> None:
@@ -598,10 +630,20 @@ def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected
     heading = math.radians(heading_deg)
     rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
     rise_starboard = d_east * math.cos(heading) - d_north * math.sin(heading)
+    # Water rising to starboard rolls the hull port down, a negative roll.
     assert (pitch, roll) == pytest.approx(
-        (math.atan(rise_along), math.atan(rise_starboard)), abs=1e-5
+        (math.atan(rise_along), -math.atan(rise_starboard)), abs=1e-5
     )
     assert abs({"pitch": pitch, "roll": roll}[expected]) > 1e-4
+
+
+def test_an_oblique_wave_meets_an_oblique_hull_ahead_and_from_port() -> None:
+    """Toward 30 on a heading of 75: 45 to port of the bow."""
+    wave = waves.Wave(0.5, 0.2, math.radians(30.0), 1.0)
+    hull = waves.Waterplane(heading_rad=math.radians(75.0))
+    along, across = surface._along_across((wave,), hull)
+    k = wave.k_rad_m * math.sqrt(0.5)
+    assert (along[0], across[0]) == pytest.approx((k, -k))
 
 
 @pytest.mark.parametrize("length_m", [0.0, 20.0, 90.0])
@@ -646,6 +688,74 @@ def test_a_hull_rides_over_a_wave_much_shorter_than_itself() -> None:
     )
     own_slope = ripple.amplitude_m * ripple.k_rad_m
     assert max(abs(pitch), abs(roll)) < 0.01 * own_slope
+
+
+@pytest.mark.parametrize(
+    ("omega_rad_s", "length_m", "beam_m"),
+    [
+        (0.6, 60.0, 10.0),  # 171 m long
+        (1.2, 60.0, 10.0),  # 43 m: the hull's lever turns over
+        (3.0, 10.0, 10.0),  # 6.8 m: a square turns once the wave bends over it
+    ],
+)
+def test_a_hull_yaws_with_the_water_under_it(
+    omega_rad_s: float, length_m: float, beam_m: float
+) -> None:
+    """The least-squares turn of the Gerstner offset, integrated over a 301 x 101
+    grid.
+    """
+    wave = waves.Wave(
+        amplitude_m=0.8 * (0.6 / omega_rad_s) ** 2,
+        omega_rad_s=omega_rad_s,
+        toward_rad=0.7,
+        phase_rad=1.0,
+    )
+    hull = waves.Waterplane(
+        rest_east_m=30.0,
+        rest_north_m=-40.0,
+        heading_rad=math.radians(100.0),
+        length_m=length_m,
+        beam_m=beam_m,
+    )
+    x, y = np.meshgrid(
+        np.linspace(-length_m / 2, length_m / 2, 301),
+        np.linspace(-beam_m / 2, beam_m / 2, 101),
+        indexing="ij",
+    )
+    sin, cos = math.sin(hull.heading_rad), math.cos(hull.heading_rad)
+    east, north, _ = waves.gerstner_offset_m(
+        (wave,), 30.0 + x * sin + y * cos, -40.0 + x * cos - y * sin, 2.0
+    )
+    along, starboard = east * sin + north * cos, east * cos - north * sin
+
+    def integral(f: np.ndarray) -> float:
+        return float(np.trapezoid(np.trapezoid(f, axis=1), axis=0))
+
+    # atan2 takes a ratio, so the integrals stand in for the means.
+    turn = integral(x * starboard - y * along)
+    yaw = waves.yaw_rad((wave,), hull, 2.0)
+    assert yaw == pytest.approx(
+        math.atan2(turn, integral(x * x + y * y + x * along + y * starboard)), abs=1e-6
+    )
+    assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
+
+
+def test_a_square_barely_yaws_in_a_long_wave() -> None:
+    """The offset is a gradient: over a square, its turn falls with (k L)^2."""
+    wave = waves.Wave(amplitude_m=0.8, omega_rad_s=0.6, toward_rad=0.7, phase_rad=1.0)
+    square = waves.Waterplane(
+        rest_east_m=30.0,
+        rest_north_m=-40.0,
+        heading_rad=1.7,
+        length_m=10.0,
+        beam_m=10.0,
+    )
+    long = square._replace(length_m=60.0)
+    # Measured 5e-4, so 1e-3 is a margin over it; a square that turned with the water
+    # as the long hull does would sit near 1.
+    assert abs(waves.yaw_rad((wave,), square, 2.0)) < 1e-3 * abs(
+        waves.yaw_rad((wave,), long, 2.0)
+    )
 
 
 def _jensen(wave: waves.Wave, hull: waves.Waterplane) -> tuple[float, float]:
@@ -757,7 +867,7 @@ def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
     hull = waves.Waterplane(float(rest_east), float(rest_north), heading, length, beam)
     pitch, roll = waves.attitude(sea, hull, t)
     assert (pitch, roll) == pytest.approx(
-        (math.atan(rise_along), math.atan(rise_across)), abs=1e-5
+        (math.atan(rise_along), -math.atan(rise_across)), abs=1e-5
     )
 
 

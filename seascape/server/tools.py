@@ -16,23 +16,25 @@ from pydantic import Field
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import schema_section, schema_sections
+from seascape.outputs import preview as pictures
+from seascape.outputs import provenance
 from seascape.server.jobs import (
-    PREVIEW_STEM,
+    SHEET,
     Job,
     State,
     drop,
-    files,
     load,
+    marked_jpeg,
     prune,
     run,
 )
 
+# Judgement: each image costs the client tokens.
+PREVIEWS = 8
 # A client may end a tool call after a minute.
 WAIT_S = 45.0
 # Progress report interval; keeps a client's idle timeout from ending the wait.
 PROGRESS_S = 5.0
-# Judgement: a result a client can read; the archive holds the rest.
-MAX_LISTED = 200
 # Judgement: far more and longer than a scenario's overrides.
 MAX_OVERRIDES = 50
 MAX_OVERRIDE_CHARS = 1000
@@ -62,7 +64,15 @@ def catalog(ctx: Context[State, Any]) -> dict[str, Any]:
             name: f"{mesh.kind}, {mesh.category}, {mesh.size}"
             for name, mesh in assets.manifest().items()
         },
-        "skies": {name: photo.sun for name, photo in skies.library().items()},
+        "skies": {
+            name: {
+                "cover": photo.cover,
+                "cover_oktas": photo.cover_oktas,
+                "sun_band": photo.band,
+                "sun_elevation_deg": photo.sun_elevation_deg,
+            }
+            for name, photo in skies.library().items()
+        },
     }
 
 
@@ -86,7 +96,7 @@ def schema(section: str) -> dict[str, Any]:
 
 async def render(
     ctx: Context[State, Any],
-    scenario: str = "baseline",
+    scenario: str = "showcase",
     overrides: Annotated[
         list[Annotated[str, Field(max_length=MAX_OVERRIDE_CHARS)]],
         Field(max_length=MAX_OVERRIDES),
@@ -96,11 +106,11 @@ async def render(
 ) -> dict[str, Any]:
     """Queue a render of a scenario from `catalog` and return its job at once.
 
-    `overrides` are TOML lines merged over the scenario: `sky.sun_elevation_deg = 5`,
-    `sea.wind_speed_mps = { uniform = [2, 12] }`. A list such as `objects` replaces the
-    whole list. `variants` renders that many seeds from the scenario's own, each drawn
-    anew, skipping a seed whose hulls meet, up to the server's variant and image
-    limits. Every seed it may try must fit the clip, sample and camera limits.
+    The default, `showcase`, is a worn freighter at sunset; `baseline` takes
+    `sky.sun_elevation_deg`. `overrides` are TOML lines merged over the scenario:
+    `sky.sun_bearing_deg = 90`, `sea.wind_speed_mps = { uniform = [2, 12] }`. A list
+    such as `objects` replaces the whole list. `variants` renders that many seeds,
+    skipping one whose hulls meet. `warnings` lists what the scenario ignored.
     """
     state = _state(ctx)
     settings = state.settings
@@ -122,12 +132,12 @@ async def render(
     name = uuid.uuid4().hex
     # Queued while it loads, so a burst fills the queue before any call pays for a
     # load.
-    job = Job(state.renders / name, scenario, [])
+    job = Job(state.renders / name, scenario, [], overrides=lines)
     state.jobs[name] = job
     loading = asyncio.create_task(load(state, path, lines, variants))
     try:
         try:
-            job.scenes, job.worst_bytes = await asyncio.shield(loading)
+            job.scenes, job.worst_bytes, warned = await asyncio.shield(loading)
         # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
         except ValueError as error:
             raise ToolError(str(error)) from error
@@ -148,7 +158,12 @@ async def render(
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
         job.task = asyncio.create_task(run(state, job, path, lines, variants))
-        return {"job": name, "images": job.total, "jobs_ahead": ahead}
+        return {
+            "job": name,
+            "images": job.total,
+            "jobs_ahead": ahead,
+            "warnings": warned,
+        }
     finally:
         # Refused, failed or abandoned. The load thread cannot be stopped, so the
         # place is kept until it ends.
@@ -156,19 +171,31 @@ async def render(
             loading.add_done_callback(partial(drop, state, name))
 
 
-async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
+def _job(state: State, name: str) -> Job:
+    found = state.jobs.get(name)
+    if found is None:
+        raise ToolError(
+            f"no job {name!r}: a job is forgotten when it expires or the server "
+            "restarts"
+        )
+    return found
+
+
+def _sheets(found: Job) -> list[Path]:
+    return [f / SHEET for f in found.folders if (f / SHEET).exists()]
+
+
+async def get_job(job: str, ctx: Context[State, Any]) -> list[Any]:
     """Wait briefly for a job from `render`, then report it: its progress, its error,
-    or its files as URLs with a preview per camera of the first variant (none for exr).
+    or its archive URL, the cameras, and a watermarked sheet per variant (none for
+    exr). `preview` shows one frame.
     """
     state = _state(ctx)
-    found = state.jobs.get(job)
-    if found is None or found.task is None:
-        raise ToolError(
-            f"no job {job!r}: a job is forgotten when it expires or the server restarts"
-        )
+    found = _job(state, job)
+    task = found.task
     deadline = time.monotonic() + WAIT_S
-    while not found.task.done() and (left := deadline - time.monotonic()) > 0:
-        await asyncio.wait({found.task}, timeout=min(PROGRESS_S, left))
+    while task and not task.done() and (left := deadline - time.monotonic()) > 0:
+        await asyncio.wait({task}, timeout=min(PROGRESS_S, left))
         await ctx.report_progress(
             await asyncio.to_thread(lambda: found.images), found.total
         )
@@ -178,18 +205,12 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
         report["error"] = found.error
     elif found.state == "done":
         url = _url(state, ctx)
-        listed = await asyncio.to_thread(files, found, state.renders)
-        # A sequence's frames are in the archive only.
-        report["files"] = [
-            f"{url}/{job}.zip",
-            *(f"{url}/{path}" for path in listed[:MAX_LISTED]),
-        ]
-        if len(listed) > MAX_LISTED:
-            report["more_in_the_archive"] = len(listed) - MAX_LISTED
-        previews = [
-            Image(path=path)
-            for path in sorted(found.folders[0].glob(f"{PREVIEW_STEM}*.jpg"))
-        ]
+        report["archive"] = f"{url}/{job}.zip"
+        report["cameras"] = [m.name for m in pictures.cameras(found.scenes[0])]
+        sheets = await asyncio.to_thread(_sheets, found)
+        report["sheets"] = [f"{url}/{s.relative_to(state.renders)}" for s in sheets]
+        previews = [Image(path=sheet) for sheet in sheets[:PREVIEWS]]
+        report["sheets_not_shown"] = len(sheets) - len(previews)
     elif found.state == "queued":
         names = list(state.jobs)
         report["jobs_ahead"] = sum(
@@ -202,6 +223,43 @@ async def render_result(job: str, ctx: Context[State, Any]) -> list[Any]:
             pace_s = (time.time() - found.started_s) / done
             report["remaining_s"] = round(pace_s * (total - done))
     return [json.dumps(report, indent=1), *previews]
+
+
+def _view(found: Job, variant: int, camera: str | None) -> Image:
+    folders = found.folders
+    if not 0 <= variant < len(folders):
+        raise ToolError(f"variant {variant} is not in 0 to {len(folders) - 1}")
+    if camera is None:
+        return Image(data=(folders[variant] / SHEET).read_bytes(), format="jpeg")
+    scene = found.scenes[variant]
+    frames = {m.name: (m, p) for m, p in pictures.shown(scene, folders[variant])}
+    if camera not in frames:
+        raise ToolError(f"no camera {camera!r} in {list(frames)}")
+    mount, path = frames[camera]
+    exif = provenance.exif(found.scenario, scene.seed, found.overrides, camera)
+    return Image(
+        data=marked_jpeg(pictures.picture(path, mount.camera.agc), exif), format="jpeg"
+    )
+
+
+async def preview(
+    job: str, ctx: Context[State, Any], variant: int = 0, camera: str | None = None
+) -> Image:
+    """A watermarked `camera` frame of `variant` (from 0) from a finished job of
+    `render`, or the variant's sheet when no camera is named.
+    """
+    found = _job(_state(ctx), job)
+    if found.state != "done":
+        raise ToolError(f"job {job!r} is {found.state}")
+    if found.scenes[0].outputs.format == "exr":
+        raise ToolError("an exr holds radiance and has no preview")
+    try:
+        return await asyncio.to_thread(_view, found, variant, camera)
+    # The trace holds this server's paths.
+    except OSError as error:
+        raise ToolError(
+            f"{type(error).__name__}: the picture could not be read"
+        ) from error
 
 
 async def cancel(job: str, ctx: Context[State, Any]) -> dict[str, Any]:

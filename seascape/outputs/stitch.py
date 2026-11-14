@@ -1,30 +1,30 @@
-"""Two pinholes' frames stitched side by side, as the recorder's horizontal stitching
-does (Core-Backend's `ThermalFusion`).
+"""Two pinholes' frames stitched side by side, as Oceanus's horizontal stitching
+does.
 """
-
-import math
 
 import cv2
 import numpy as np
 
-from seascape.outputs.calibration import TO_CV, CameraCalibration
+from seascape import angles
+from seascape.outputs.calibration import CameraCalibration
 
 
-def _turn(camera: CameraCalibration) -> np.ndarray:
-    return np.array(camera.extrinsics["rig"])[:3, :3]
+def _in_head(camera: CameraCalibration) -> np.ndarray:
+    """R_head_camera: the camera's rotation in its head."""
+    return np.array(camera.extrinsics["head"])[:3, :3]
 
 
 def homography(source: CameraCalibration, onto: CameraCalibration) -> np.ndarray:
     """Maps `onto`'s pixels to `source`'s, as cameras that turn about one point."""
-    turn = _turn(source).T @ _turn(onto)
-    return np.array(source.K) @ turn @ np.linalg.inv(onto.K)
+    R_source_onto = _in_head(source).T @ _in_head(onto)
+    return np.array(source.K) @ R_source_onto @ np.linalg.inv(onto.K)
 
 
 def fused(
     left: CameraCalibration, right: CameraCalibration, name: str, image: str
 ) -> CameraCalibration:
     """The pinhole the recorder stitches `left` and `right` onto: their mean focal
-    length and pitch, along the rig's axis, cropped to where both frames reach and
+    length and pitch, along the head's axis, cropped to where both frames reach and
     rounded down to even.
 
     Args:
@@ -36,18 +36,19 @@ def fused(
     fx = (left.K[0][0] + right.K[0][0]) / 2
     fy = (left.K[1][1] + right.K[1][1]) / 2
     w, h = 2 * left.width_px, left.height_px
-    # Each optical axis's elevation over the rig's horizontal.
-    pitch = np.mean([math.asin(_turn(c)[2, 2]) for c in (left, right)])
-    c, s = math.cos(pitch), math.sin(pitch)
-    turn = np.array([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]) @ TO_CV.T
-    at = (np.array(left.extrinsics["rig"]) + np.array(right.extrinsics["rig"])) / 2
-    rig = np.eye(4)
-    rig[:3, :3], rig[:3, 3] = turn, at[:3, 3]
-    # The rig's pose in each frame, from the left camera's.
-    to_rig = np.linalg.inv(left.extrinsics["rig"])
+    # Each optical axis's elevation over the head's horizontal.
+    elevation_deg = float(
+        np.mean(angles.elevation_deg([_in_head(c)[2, 2] for c in (left, right)]))
+    )
+    at = (np.array(left.extrinsics["head"]) + np.array(right.extrinsics["head"])) / 2
+    T_head_stitched = np.eye(4)
+    T_head_stitched[:3, :3] = angles.turned(0.0, elevation_deg) @ angles.TO_CV.T
+    T_head_stitched[:3, 3] = at[:3, 3]
+    # The head's pose in each frame, from the left camera's.
+    T_left_head = np.linalg.inv(left.extrinsics["head"])
     extrinsics = {
-        frame: tuple(map(tuple, np.array(pose) @ to_rig @ rig))
-        for frame, pose in left.extrinsics.items()
+        frame: tuple(map(tuple, np.array(T_frame_left) @ T_left_head @ T_head_stitched))
+        for frame, T_frame_left in left.extrinsics.items()
     }
     whole = left.model_copy(
         update={
@@ -75,7 +76,7 @@ def fused(
     def across(a: np.ndarray, b: np.ndarray, y: float) -> float:
         return a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
 
-    # Left and right alike, so the rig's axis stays at the centre.
+    # Left and right alike, so the head's axis stays at the centre.
     side = max(
         *(across(top_left, bottom_left, y) for y in (top, bottom)),
         *(w - across(right_top, right_bottom, y) for y in (top, bottom)),

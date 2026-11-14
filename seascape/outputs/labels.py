@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 from pydantic import Field
 
+from seascape import angles
 from seascape.config import (
     Agc,
     Camera,
@@ -51,7 +52,7 @@ class Target(NamedTuple):
     supercategory: str
     centre_m: tuple[float, float]  # world east, north
     waterline_m: np.ndarray  # (N, 2) world east, north along the hull's waterline
-    heading_deg: float  # true, clockwise from north
+    heading_deg: float  # clockwise from world +Y
     dims_m: tuple[float, float, float]  # length, beam, height above the waterline
     engine_off_min: float = 0.0  # 0 is running
 
@@ -108,8 +109,8 @@ class Annotation(Model):
     # waterline, which is what a range from the horizon measures.
     range_m: float
     waterline_range_m: float
-    bearing_deg: float  # true, clockwise from north
-    heading_deg: float  # true, clockwise from north
+    bearing_deg: float  # clockwise from world +Y, in [0, 360)
+    heading_deg: float  # clockwise from world +Y, in [0, 360)
     # length, beam, height above the waterline, as floated
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
@@ -122,7 +123,7 @@ class Dropped(Model):
     image_id: int
     name: str
     range_m: float
-    bearing_deg: float  # true, clockwise from north
+    bearing_deg: float  # clockwise from world +Y, in [0, 360)
     reason: Literal["no_pixels", "low_contrast"]
     # For "low_contrast" only; bbox and area as an annotation's.
     excess_de: float | None = None
@@ -205,7 +206,7 @@ class Labels(Model):
                 "image_id": image.id,
                 "name": target.name,
                 "range_m": math.hypot(east, north),
-                "bearing_deg": math.degrees(math.atan2(east, north)),
+                "bearing_deg": angles.bearing_deg(east, north) % 360.0,
             }
             if not len(xs):
                 self.dropped.append(Dropped(**where, reason="no_pixels"))
@@ -465,13 +466,13 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
     """
     if camera.distortion is not None:
         return _fisheye_horizon(camera, radius_m)
-    pose = np.array(camera.extrinsics["world"])
-    rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
+    T_world_camera = np.array(camera.extrinsics["world"])
+    R_world_camera, (cx, cy, cz) = T_world_camera[:3, :3], T_world_camera[:3, 3]
     k_inv = np.linalg.inv(camera.K)
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     # The world ray through (u, v) is p + v q, in calibration.json's pixels.
-    p = rotation @ k_inv @ np.stack([u - 0.5, np.zeros_like(u), np.ones_like(u)])
-    q = rotation @ k_inv @ np.array([0.0, 1.0, 0.0])
+    p = R_world_camera @ k_inv @ np.stack([u - 0.5, np.zeros_like(u), np.ones_like(u)])
+    q = R_world_camera @ k_inv @ np.array([0.0, 1.0, 0.0])
     b0 = p[2] + (cx * p[0] + cy * p[1]) / radius_m
     b1 = q[2] + (cx * q[0] + cy * q[1]) / radius_m
     s = 2 * (cz + (cx * cx + cy * cy) / (2 * radius_m)) / radius_m
@@ -492,16 +493,15 @@ def _fisheye_horizon(
     """`horizon_px` for a fisheye, whose rays are not linear down a column: each column
     is walked a row at a time, and the graze is where b^2 - 4 a c changes sign.
     """
-    pose = np.array(camera.extrinsics["world"])
-    rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
+    T_world_camera = np.array(camera.extrinsics["world"])
+    R_world_camera, (cx, cy, cz) = T_world_camera[:3, :3], T_world_camera[:3, 3]
     assert camera.distortion is not None
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     v = np.arange(camera.height_px + 1, dtype=float)
     columns, rows = np.meshgrid(u, v)
-    # Blender's camera frame is right, up, back; OpenCV's is right, down, forward.
     right, down = columns - 0.5 - camera.K[0][2], rows - 0.5 - camera.K[1][2]
-    ray = fisheye.direction(right, -down, camera.distortion, camera.K[0][0])
-    d = (ray * np.array([1.0, -1.0, -1.0])) @ rotation.T
+    ray = fisheye.direction(right, down, camera.distortion, camera.K[0][0])
+    d = ray @ R_world_camera.T
     a = (d[..., 0] ** 2 + d[..., 1] ** 2) / (2 * radius_m)
     b = d[..., 2] + (cx * d[..., 0] + cy * d[..., 1]) / radius_m
     c = cz + (cx * cx + cy * cy) / (2 * radius_m)

@@ -1,0 +1,33 @@
+#:schema ../schema/scenario.json
+
+# The server's `render` default: the baseline's rig and freighter at sunset, close
+# enough to read its wear, lit from behind the camera.
+extends = "baseline.toml"
+
+[sky]
+hdri = "table_mountain_2"
+# Behind the rig, so the low sun lights the hull. In frame it backlights it.
+sun_bearing_deg = 160.0
+
+[rigs.bow.cameras.eo]
+# A preset replaces the baseline's camera block, so the field of view is restated,
+# and the size at half the sensor's for render cost.
+preset = "basler_daa3840_ar0821"
+hfov_deg = 45.0
+width_px = 1920
+height_px = 1080
+# The cos^4 falloff of a lens at its field angle.
+lens = { vignetting = true }
+
+[[objects]]
+preset = "multipurpose_freighter"
+range_m = 550.0
+# Centred, so the hull is whole in the IR frame.
+bearing_deg = 0.0
+heading_deg = 250.0
+# Judgement: rust, grime and a waterline stain a viewer sees at this range.
+wear = 0.8
+
+[outputs.samples]
+# Judgement: the default leaves grain on the sea; more samples stop helping past this.
+eo = 64

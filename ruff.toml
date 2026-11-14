@@ -41,6 +41,11 @@ convention = "google"
 [lint.pylint]
 max-args = 8
 
+[lint.pep8-naming]
+# The frames skill's notation: T_a_b a pose (b in a), R_a_b a rotation, H a homography,
+# K a camera's intrinsics, B a change of basis.
+extend-ignore-names = ["T", "R", "H", "K", "B", "T_*", "R_*", "H_*", "K_*", "B_*"]
+
 [lint.flake8-tidy-imports.banned-api]
 "sys.path".msg = "Import by package, not by editing the import path."
 "site.addsitedir".msg = "Import by package, not by editing the import path."

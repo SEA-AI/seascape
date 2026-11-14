@@ -9,6 +9,7 @@ from seascape.blender.blend import (
     combine,
     feed,
     node,
+    node_group,
     place,
     scalar,
     separate,
@@ -26,7 +27,7 @@ DISPLACED_HEIGHT_SHARE = 0.999
 # surface and displacement share, at 7 m/s in eo, 2 m fits.
 DISPLACED_MIN_M = 4.0
 # A judgement: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
-DICING_PX = 2.0
+DICING_PX = 3.0
 # A judgement: the longest edge it dices to near the camera, an eighth of the shortest
 # displaced wave, where a straight edge strays from a cosine by at most 1 - cos(pi / 8),
 # 8 % of its amplitude.
@@ -48,8 +49,7 @@ def sea_reach_m(scenario: Scenario) -> float:
     """Half-width of the sea: a margin past the highest rig's horizon, plus the run
     `speed_mps * duration_s`, which a turn only shortens.
     """
-    height_m = max(rig.height_m for rig in scenario.rigs.values())
-    height_m += scenario.ownship.rise_m  # a lighter hull lifts its rigs
+    height_m = max(map(scenario.head_height_m, scenario.rigs))
     run_m = scenario.ownship.speed_mps * scenario.outputs.duration_s
     return SEA_MARGIN * horizon_m(height_m, scenario.sea.refraction_k) + run_m
 
@@ -66,24 +66,6 @@ def _triples(field: tuple[Wave, ...]) -> list[Triple]:
         tuple(field[i : i + LANES]) + (None,) * (LANES - len(field[i : i + LANES]))
         for i in range(0, len(field), LANES)
     ]
-
-
-def _group(
-    name: str,
-    inputs: tuple[tuple[str, str], ...],
-    outputs: tuple[tuple[str, str], ...],
-) -> tuple[bpy.types.NodeTree, bpy.types.NodeOutputs, bpy.types.NodeInputs]:
-    """A node group with these (name, socket kind) inputs and outputs; its Group Input's
-    outputs and Group Output's inputs.
-    """
-    group = bpy.data.node_groups.new(name, "ShaderNodeTree")
-    for sockets, in_out in ((inputs, "INPUT"), (outputs, "OUTPUT")):
-        for socket, kind in sockets:
-            group.interface.new_socket(
-                socket, in_out=in_out, socket_type=f"NodeSocket{kind}"
-            )
-    given = group.nodes.new("NodeGroupInput").outputs
-    return group, given, group.nodes.new("NodeGroupOutput").inputs
 
 
 def _total(
@@ -161,7 +143,7 @@ def _wave_group(calm: bool) -> bpy.types.NodeTree:
     name = "waves_calm" if calm else "waves"
     if name in bpy.data.node_groups:
         return bpy.data.node_groups[name]
-    group, given, out = _group(
+    group, given, out = node_group(
         name,
         (
             ("Position", "Vector"),
@@ -262,7 +244,7 @@ def _normal_group(
         wind_triples: How many of the triples are the wind sea's.
         damped: The waves `Calm` scales.
     """
-    group, given, out = _group(
+    group, given, out = node_group(
         "sea_waves",
         (("Position", "Vector"), *_FOOTPRINT, ("Calm", "Float")),
         (("Gradient", "Vector"), ("Acceleration", "Float")),

@@ -52,6 +52,7 @@ PHOTO = skies.Photo(
     sun_elevation_deg=SUN_DEG[1],
     sun_floor=1.0,
     cloud_genus="cumulus",
+    cover_oktas=4,
     licence="CC0-1.0",
     attribution="a test sky",
 )
@@ -124,7 +125,7 @@ def test_a_glow_redder_than_grey_is_no_cloud_and_a_bank_in_it_is() -> None:
 
 
 def test_an_overcast_photo_is_cloud_down_to_the_horizon() -> None:
-    cloud = skies.cloud(_clear_sky(), PHOTO.model_copy(update={"overcast": True}))
+    cloud = skies.cloud(_clear_sky(), PHOTO.model_copy(update={"cover_oktas": 8}))
     assert cloud[: CH // 2].min() == 1.0
     assert cloud[CH // 2 :].max() == 0.0
 
@@ -158,3 +159,46 @@ def test_a_uniform_sky_lights_a_horizontal_surface_with_pi_times_its_radiance() 
     radiance = np.ones((64, 128, 3), np.float32)
     radiance[32:] = 100.0
     assert skies.diffuse_irradiance(radiance) == pytest.approx(math.pi, rel=1e-3)
+
+
+NO_DISC = {
+    "sun_elevation_deg": None,
+    "sun_floor": None,
+    "diffuse_irradiance": 1.0,
+}
+
+
+@pytest.mark.parametrize(
+    ("changes", "words"),
+    [
+        ({}, "partly cloudy day"),
+        ({"sun_elevation_deg": 45.0, "cover_oktas": 1}, "clear day"),
+        ({"sun_elevation_deg": 15.0}, "partly cloudy low sun"),
+        ({"sun_elevation_deg": 15.1}, "partly cloudy day"),
+        ({"sun_elevation_deg": 5.0, "cover_oktas": 6}, "mostly cloudy low sun"),
+        ({**NO_DISC, "cover_oktas": 6}, "mostly cloudy, sun hidden"),
+        ({**NO_DISC, "cover_oktas": 8}, "overcast, sun hidden"),
+    ],
+)
+def test_a_photo_is_named_by_its_cover_and_sun(
+    changes: dict[str, object], words: str
+) -> None:
+    assert PHOTO.model_copy(update=changes).label == words
+
+
+@pytest.mark.parametrize(
+    ("changes", "words"),
+    [
+        ({"cover_oktas": 0}, "clear"),
+        ({"cover_oktas": 2}, "clear"),
+        ({"cover_oktas": 3}, "partly cloudy"),
+        ({"cover_oktas": 4}, "partly cloudy"),
+        ({"cover_oktas": 5}, "mostly cloudy"),
+        ({"cover_oktas": 7}, "mostly cloudy"),
+        ({"cover_oktas": 8}, "overcast"),
+    ],
+)
+def test_the_cover_words_hold_the_aviation_codes_ranges(
+    changes: dict[str, object], words: str
+) -> None:
+    assert PHOTO.model_copy(update=changes).cover == words

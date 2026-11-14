@@ -1,0 +1,576 @@
+{
+ "fixed": {
+  "POWER_Const/camera_parameters.json": {
+   "EO": {
+    "roll": 0.0,
+    "pitch": 10.0,
+    "yaw": -40.0,
+    "barrel": 0.0
+   }
+  },
+  "POWER_Const/pod_sensors.json": {
+   "calibration_info": {
+    "setup_date": "2026-09-29 03:55:21.000000",
+    "json_version": 3,
+    "calibrated_by": "seascape",
+    "camera_calibration_version": 2,
+    "imu_calibration_version": 1
+   },
+   "imu": {
+    "bno055": {
+     "offset_xyz": {
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "unit": "g"
+     },
+     "gain_xyz": {
+      "value": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "unit": "1"
+     },
+     "yaw": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "roll": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "t_mean": {
+      "value": 0.0,
+      "unit": "\u00b0C"
+     },
+     "gyro_offset": {
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "unit": "rad/s"
+     }
+    },
+    "mti2": {
+     "yaw": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "roll": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "yaw_err": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch_err": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "roll_err": {
+      "value": 0.0,
+      "unit": "deg"
+     }
+    }
+   },
+   "cameras": {
+    "EO": {
+     "camera_type": "Blender EO",
+     "position": {
+      "value": [
+       100.0,
+       0.0,
+       0.0
+      ],
+      "unit": "mm"
+     },
+     "focal_length": {
+      "value": 3.45,
+      "unit": "mm"
+     },
+     "barrel_distortion": {
+      "value": null,
+      "unit": "1"
+     },
+     "distortion_model": "pinhole",
+     "roll": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch": {
+      "value": 10.0,
+      "unit": "deg"
+     },
+     "yaw": {
+      "value": -40.0,
+      "unit": "deg"
+     },
+     "pixel_size": {
+      "value": 0.00345,
+      "unit": "mm"
+     },
+     "resolution": {
+      "value": [
+       640,
+       480
+      ],
+      "unit": "1"
+     },
+     "camera_orientation": {
+      "value": 0,
+      "unit": "deg"
+     },
+     "camera_serial_number": "EO",
+     "border_cut": {
+      "value": [
+       0,
+       0
+      ],
+      "unit": "px"
+     },
+     "border_shift": {
+      "value": [
+       0,
+       0
+      ],
+      "unit": "px"
+     },
+     "center_x": {
+      "value": 319.5,
+      "unit": "1"
+     },
+     "center_y": {
+      "value": 239.5,
+      "unit": "1"
+     },
+     "focal_length_x": {
+      "value": 1000.0,
+      "unit": "1"
+     },
+     "focal_length_y": {
+      "value": 1000.0,
+      "unit": "1"
+     },
+     "fisheye_distortion": {
+      "value": [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "unit": "1"
+     }
+    }
+   }
+  },
+  "Pod_EO_metadata_2026_09_29_03_55_21.csv": [
+   "counter,roll,pitch,yaw,pan,tilt,lati,longi,timestp,heading,rateofturn,cog,sog2,sow,sog,temp,humidity,pressure,wind_speed,wind_angle,bb_roll,bb_pitch,bb_yaw,proc_ptu_mode,proc_nav_mode,proc_colav_limit,proc_colav_speed,proc_surveil_speed",
+   "0,0.567100,-1.982025,-59.998918,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,10.000000,0.000000,0.000000,7.000000,5.759587,0.034907,0.008727,0.000000,1,0.000000,0.000000,0.000000,0.000000",
+   "1,-1.616153,0.798743,-59.975643,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,10.000000,0.000000,0.000000,7.000000,5.759587,-0.026180,0.017453,0.000000,1,0.000000,0.000000,0.000000,0.000000",
+   ""
+  ],
+  "serialized_parameters.json": {
+   "product_name": "Pod",
+   "cameras": [
+    {
+     "name": "EO",
+     "camera_type": "Blender EO",
+     "position": [
+      100.0,
+      0.0,
+      0.0
+     ],
+     "focal_length": 3.45,
+     "barrel_distortion": null,
+     "distortion_model": "pinhole",
+     "roll": 0.0,
+     "pitch": 10.0,
+     "yaw": -40.0,
+     "pixel_size": 0.00345,
+     "resolution": [
+      640,
+      480
+     ],
+     "camera_orientation": 0,
+     "camera_serial_number": "EO",
+     "border_cut": [
+      0,
+      0
+     ],
+     "border_shift": [
+      0,
+      0
+     ],
+     "center_x": 319.5,
+     "center_y": 239.5,
+     "focal_length_x": 1000.0,
+     "focal_length_y": 1000.0,
+     "fisheye_distortion": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "transformation_type": "identity",
+     "transformation_parameters": null,
+     "camera_sources": [
+      {
+       "name": "EO",
+       "device_name": "EO",
+       "camera_type": "Blender EO",
+       "position": [
+        100.0,
+        0.0,
+        0.0
+       ],
+       "focal_length": 3.45,
+       "barrel_distortion": null,
+       "distortion_model": "pinhole",
+       "roll": 0.0,
+       "pitch": 10.0,
+       "yaw": -40.0,
+       "pixel_size": 0.00345,
+       "resolution": [
+        640,
+        480
+       ],
+       "camera_orientation": 0,
+       "camera_serial_number": "EO",
+       "border_cut": [
+        0,
+        0
+       ],
+       "border_shift": [
+        0,
+        0
+       ],
+       "center_x": 319.5,
+       "center_y": 239.5,
+       "focal_length_x": 1000.0,
+       "focal_length_y": 1000.0,
+       "fisheye_distortion": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "user_settings.json": {
+   "boat_setup": {
+    "mounting_height": 51.8,
+    "mast_to_bow_length": 0.0
+   }
+  }
+ },
+ "ptu": {
+  "POWER_Const/camera_parameters.json": {
+   "RGB": {
+    "roll": 0.0,
+    "pitch": 10.0,
+    "yaw": -40.0,
+    "barrel": 0.0
+   }
+  },
+  "POWER_Const/module_info.json": {
+   "hardware_version": "Oscar_V7_Gen_3_1",
+   "setup_date": "2026-09-29 03:55:21.000000",
+   "serial_number": "seascape",
+   "jetson_serial_number": 0,
+   "json_version": 1
+  },
+  "POWER_Const/pod_sensors.json": {
+   "calibration_info": {
+    "setup_date": "2026-09-29 03:55:21.000000",
+    "json_version": 3,
+    "calibrated_by": "seascape",
+    "camera_calibration_version": 2,
+    "imu_calibration_version": 1
+   },
+   "imu": {
+    "bno055": {
+     "offset_xyz": {
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "unit": "g"
+     },
+     "gain_xyz": {
+      "value": [
+       1.0,
+       1.0,
+       1.0
+      ],
+      "unit": "1"
+     },
+     "yaw": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "roll": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "t_mean": {
+      "value": 0.0,
+      "unit": "\u00b0C"
+     },
+     "gyro_offset": {
+      "value": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "unit": "rad/s"
+     }
+    },
+    "mti2": {
+     "yaw": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "roll": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "yaw_err": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch_err": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "roll_err": {
+      "value": 0.0,
+      "unit": "deg"
+     }
+    }
+   },
+   "cameras": {
+    "EO": {
+     "camera_type": "Blender EO",
+     "position": {
+      "value": [
+       100.0,
+       0.0,
+       0.0
+      ],
+      "unit": "mm"
+     },
+     "focal_length": {
+      "value": 3.45,
+      "unit": "mm"
+     },
+     "barrel_distortion": {
+      "value": null,
+      "unit": "1"
+     },
+     "distortion_model": "pinhole",
+     "roll": {
+      "value": 0.0,
+      "unit": "deg"
+     },
+     "pitch": {
+      "value": 10.0,
+      "unit": "deg"
+     },
+     "yaw": {
+      "value": -40.0,
+      "unit": "deg"
+     },
+     "pixel_size": {
+      "value": 0.00345,
+      "unit": "mm"
+     },
+     "resolution": {
+      "value": [
+       640,
+       480
+      ],
+      "unit": "1"
+     },
+     "camera_orientation": {
+      "value": 0,
+      "unit": "deg"
+     },
+     "camera_serial_number": "EO",
+     "border_cut": {
+      "value": [
+       0,
+       0
+      ],
+      "unit": "px"
+     },
+     "border_shift": {
+      "value": [
+       0,
+       0
+      ],
+      "unit": "px"
+     },
+     "center_x": {
+      "value": 319.5,
+      "unit": "1"
+     },
+     "center_y": {
+      "value": 239.5,
+      "unit": "1"
+     },
+     "focal_length_x": {
+      "value": 1000.0,
+      "unit": "1"
+     },
+     "focal_length_y": {
+      "value": 1000.0,
+      "unit": "1"
+     },
+     "fisheye_distortion": {
+      "value": [
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "unit": "1"
+     }
+    }
+   }
+  },
+  "Pod_RGB_metadata_2026_09_29_03_55_21.csv": [
+   "counter,roll,pitch,yaw,pan,tilt,lati,longi,timestp,heading,rateofturn,cog,sog2,sow,sog,temp,humidity,pressure,wind_speed,wind_angle,bb_roll,bb_pitch,bb_yaw,proc_ptu_mode,proc_nav_mode,proc_colav_limit,proc_colav_speed,proc_surveil_speed",
+   "0,0.569864,-5.981829,-44.959143,40.000000,-4.000000,0.000000,0.000000,0.000000,0.261799,0.000000,0.261799,0.000000,0.000000,0.000000,10.000000,0.000000,0.000000,7.000000,5.497788,0.034907,0.008727,0.261799,3,0.000000,0.000000,0.016667,0.000000",
+   "1,-1.618520,-3.199665,-45.088541,40.000000,-4.000000,0.000000,0.000000,0.000000,0.261799,0.000000,0.261799,0.000000,0.000000,0.000000,10.000000,0.000000,0.000000,7.000000,5.497788,-0.026180,0.017453,0.261799,3,0.000000,0.000000,0.016667,0.000000",
+   ""
+  ],
+  "serialized_parameters.json": {
+   "product_name": "Pod",
+   "cameras": [
+    {
+     "name": "RGB",
+     "camera_type": "Blender EO",
+     "position": [
+      100.0,
+      0.0,
+      0.0
+     ],
+     "focal_length": 3.45,
+     "barrel_distortion": null,
+     "distortion_model": "pinhole",
+     "roll": 0.0,
+     "pitch": 10.0,
+     "yaw": -40.0,
+     "pixel_size": 0.00345,
+     "resolution": [
+      560,
+      480
+     ],
+     "camera_orientation": 0,
+     "camera_serial_number": "port_RGB",
+     "border_cut": [
+      0,
+      0
+     ],
+     "border_shift": [
+      0,
+      0
+     ],
+     "center_x": 279.5,
+     "center_y": 239.5,
+     "focal_length_x": 1000.0,
+     "focal_length_y": 1000.0,
+     "fisheye_distortion": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "transformation_type": "crop",
+     "transformation_parameters": {
+      "pixel_sacrifice": [
+       40,
+       40,
+       0,
+       0
+      ]
+     },
+     "camera_sources": [
+      {
+       "name": "EO",
+       "device_name": "RGB",
+       "camera_type": "Blender EO",
+       "position": [
+        100.0,
+        0.0,
+        0.0
+       ],
+       "focal_length": 3.45,
+       "barrel_distortion": null,
+       "distortion_model": "pinhole",
+       "roll": 0.0,
+       "pitch": 10.0,
+       "yaw": -40.0,
+       "pixel_size": 0.00345,
+       "resolution": [
+        640,
+        480
+       ],
+       "camera_orientation": 0,
+       "camera_serial_number": "EO",
+       "border_cut": [
+        0,
+        0
+       ],
+       "border_shift": [
+        0,
+        0
+       ],
+       "center_x": 319.5,
+       "center_y": 239.5,
+       "focal_length_x": 1000.0,
+       "focal_length_y": 1000.0,
+       "fisheye_distortion": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "user_settings.json": {
+   "boat_setup": {
+    "mounting_height": 51.8,
+    "mast_to_bow_length": 0.0
+   }
+  }
+ }
+}

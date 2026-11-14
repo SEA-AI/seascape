@@ -14,9 +14,10 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 
+from seascape import angles
 from seascape.config import Agc
 from seascape.outputs import agc, canvas
-from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration, Frame
 from seascape.outputs.labels import agcs
 
 # CLI name to cv2.PyRotationWarper type.
@@ -30,27 +31,29 @@ TICK_DEG = 10
 LABEL_DEG = 30
 
 
-def _rotation(camera: CameraCalibration, frame: str) -> np.ndarray:
+def _rotation(camera: CameraCalibration, frame: Frame) -> np.ndarray:
     return np.array(camera.extrinsics[frame])[:3, :3]
 
 
-def axis(cameras: list[CameraCalibration], frame: str) -> float:
+def axis_deg(cameras: list[CameraCalibration], frame: Frame) -> float:
     """Bearing of the summed optical axes, which cannot wrap as a mean of angles can."""
     x, y, _ = np.sum([_rotation(camera, frame)[:, 2] for camera in cameras], axis=0)
-    return float(np.arctan2(x, y))
+    return angles.bearing_deg(float(x), float(y))
 
 
 def pose(
-    camera: CameraCalibration, frame: str, bearing: float
+    camera: CameraCalibration, frame: Frame, bearing_deg: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """K and R as the stitcher takes them, turned so `bearing` is straight ahead."""
+    """K and R as the stitcher takes them, turned so `bearing_deg` is straight ahead."""
     if camera.distortion is not None:
         raise ValueError(f"{camera.name}: a panorama stitches pinhole cameras")
-    c, s = np.cos(bearing), np.sin(bearing)
-    turn = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    # The panorama's frame: +Y along the bearing.
+    R_panorama_frame = angles.turned(bearing_deg, 0.0).T
     return (
         np.array(camera.K, np.float32),
-        np.array(TO_CV @ turn @ _rotation(camera, frame), np.float32),
+        np.array(
+            angles.TO_CV @ R_panorama_frame @ _rotation(camera, frame), np.float32
+        ),
     )
 
 
@@ -59,7 +62,7 @@ class Layout(NamedTuple):
 
     kind: str
     scale: float
-    axis: float  # the bearing the panorama is turned to, radians, in its frame
+    axis_deg: float  # the bearing the panorama is turned to, in its frame
     left: int  # projection x of column 0
     top: int  # projection y of row 0
     resize: float  # the final shrink to max_width, 1.0 when none
@@ -77,11 +80,12 @@ def column(layout: Layout, bearing_deg: float) -> float | None:
         layout: Where the panorama sits in its projection.
         bearing_deg: Clockwise from the frame's +Y, north in the world frame.
     """
-    b = math.radians(bearing_deg) - layout.axis
-    if layout.kind == "plane" and math.cos(b) <= 0.0:
+    off_deg = bearing_deg - layout.axis_deg
+    if layout.kind == "plane" and math.cos(math.radians(off_deg)) <= 0.0:
         return None
-    c, s = math.cos(b), math.sin(b)
-    r = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]], np.float32)
+    # The same turn, in the stitcher's camera axes.
+    turn = angles.TO_CV @ angles.turned(off_deg, 0.0) @ angles.TO_CV.T
+    r = np.array(turn, np.float32)
     u, _ = _warper(layout.kind, layout.scale).warpPoint(
         (0.0, 0.0), np.eye(3, dtype=np.float32), r
     )
@@ -147,7 +151,7 @@ def stitch(
     folder: Path,
     cameras: list[CameraCalibration],
     projection: str,
-    frame: str,
+    frame: Frame,
     max_width: int | None = None,
 ) -> tuple[np.ndarray, Layout]:
     """One panorama of the cameras' frames, and where it sits in its projection.
@@ -168,8 +172,8 @@ def stitch(
     if missing := [c.name for c in cameras if frame not in c.extrinsics]:
         raise ValueError(f"no {frame!r} extrinsics for {', '.join(missing)}")
     kind = PROJECTIONS[projection]
-    bearing = axis(cameras, frame)
-    poses = [pose(camera, frame, bearing) for camera in cameras]
+    bearing_deg = axis_deg(cameras, frame)
+    poses = [pose(camera, frame, bearing_deg) for camera in cameras]
     sizes = [(camera.width_px, camera.height_px) for camera in cameras]
     if kind == "plane" and not all(
         _faces_ahead(k, r, size) for (k, r), size in zip(poses, sizes, strict=True)
@@ -230,7 +234,7 @@ def stitch(
         resize = max_width / w
         size = (max_width, round(h * resize))
         image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
-    return image, Layout(kind, scale, bearing, roi[0], roi[1], resize)
+    return image, Layout(kind, scale, bearing_deg, roi[0], roi[1], resize)
 
 
 def _faces_ahead(k: np.ndarray, r: np.ndarray, size: tuple[int, int]) -> bool:
@@ -271,7 +275,7 @@ def _shrink(
 def panoramas(
     folder: Path,
     projection: str,
-    frame: str,
+    frame: Frame,
     max_width: int | None = None,
     ruler: bool = False,
 ) -> list[Path]:
@@ -292,7 +296,7 @@ def panoramas(
         except cv2.error as error:
             raise RuntimeError(f"{path.name}: {error.err}") from error
         if ruler:
-            # World bearings are true bearings; every other frame's are relative.
+            # Bearings from world +Y read as true; every other frame's are relative.
             image = ruled(image, layout, true=frame == "world")
         if not cv2.imwrite(str(path), image):
             raise OSError(f"cannot write {path}")

@@ -4,8 +4,9 @@ import pytest
 
 from seascape.assets import Material
 from seascape.blender import blend, faces, wear
+from seascape.blender.blend import mesh_objects
 from seascape.blender.heat import surroundings, zone_skin
-from seascape.blender.meshes import import_asset, mesh_objects
+from seascape.blender.meshes import import_asset
 from seascape.blender.vessels import Condition, Hulls, _vessel, add_vessels
 from seascape.config import load
 from seascape.physics import earth, thermal
@@ -44,7 +45,7 @@ def box() -> tuple[bpy.types.Object, np.ndarray]:
 
 def test_a_point_is_tagged_where_it_sits_in_the_hull_frame(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     position_m = _read(obj.data, "wear_position_m")
     corner = np.array(obj.matrix_world) @ np.append(obj.data.vertices[0].co, 1.0)
     np.testing.assert_allclose(position_m[0], corner[:3], atol=1e-5)
@@ -55,7 +56,7 @@ def test_a_point_is_tagged_where_it_sits_in_the_hull_frame(box) -> None:
 
 def test_a_face_normal_turns_with_the_fit(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     normal = _read(obj.data, "wear_normal")
     # The faces facing +y as authored face west once turned.
     facing = _normals(obj.data)[:, 1] > 0.5
@@ -68,7 +69,7 @@ def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
     """
     obj, zone = box
     obj.scale.x = -1.0
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     world = obj.data.copy()
     world.transform(obj.matrix_world)
     np.testing.assert_allclose(
@@ -78,7 +79,7 @@ def test_a_mirrored_part_keeps_the_normals_blender_renders(box) -> None:
 
 def test_a_side_is_as_deep_as_it_sits_below_the_sheer(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     below_m = _read(obj.data, "wear_below_m")
     position_m = _read(obj.data, "wear_position_m")
     z = position_m[[loop.vertex_index for loop in obj.data.loops], 2]
@@ -100,41 +101,46 @@ def test_a_flared_side_finds_its_sheer_a_patch_outboard() -> None:
     )
 
 
-def test_each_face_weighs_its_zone_and_only_steel_rusts(box) -> None:
+@pytest.mark.parametrize(("material", "gone"), [("grp", "rust"), ("steel", "scuff")])
+def test_each_face_weighs_its_zone_and_a_chip_rusts_on_steel_else_scuffs(
+    box, material: Material, gone: str
+) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "grp")
     deck = zone == ZONE_NAMES.index("deck")
+    wear.tag([obj], [zone], material, still=False)
     for i, layer in enumerate(wear.LAYERS):
         got = _read(obj.data, f"wear_{layer}")
-        want = 0.0 if layer == "rust" else wear.PROFILE["deck"][i]
+        want = 0.0 if layer == gone else wear.PROFILE["deck"][i]
         np.testing.assert_allclose(got[deck], want)
-    wear.tag([obj], [zone], "steel")
-    np.testing.assert_allclose(
-        _read(obj.data, "wear_rust")[deck],
-        wear.PROFILE["deck"][wear.LAYERS.index("rust")],
-    )
 
 
 def test_each_face_knows_its_asset_length_and_whether_it_is_steel(box) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     # Turned a quarter, the box's 4 m runs along the fitted bow, north.
     np.testing.assert_allclose(_read(obj.data, "wear_length_m"), 4.0, atol=1e-5)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 1.0)
-    wear.tag([obj], [zone], "grp")
+    wear.tag([obj], [zone], "grp", still=False)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 0.0)
+
+
+def test_each_face_knows_whether_its_asset_is_still(box) -> None:
+    obj, zone = box
+    for still in (False, True):
+        wear.tag([obj], [zone], "grp", still=still)
+        np.testing.assert_array_equal(_read(obj.data, "wear_still"), float(still))
 
 
 def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
     obj, zone = box
     zone[:] = ZONE_NAMES.index("paint_hull")
     zone[0] = ZONE_NAMES.index("fabric")
-    wear.tag([obj], [zone], "steel")
+    wear.tag([obj], [zone], "steel", still=False)
     np.testing.assert_array_equal(_read(obj.data, "wear_runoff"), zone != zone[0])
 
 
 def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
-    wear.tag([skinned], [np.zeros(1, dtype=np.int64)], "steel")
+    wear.tag([skinned], [np.zeros(1, dtype=np.int64)], "steel", still=False)
     np.testing.assert_allclose(
         _read(skinned.data, "wear_position_m")[:, 2], 5.0, atol=1e-5
     )
@@ -142,14 +148,24 @@ def test_a_skinned_mesh_is_tagged_as_posed(skinned) -> None:
 
 def _zodiacs(worn: frozenset[str], count: int = 1) -> list[bpy.types.Object]:
     hulls = Hulls(load(BASELINE).sky, None, worn)
-    return [_vessel("zodiac", condition=Condition(), hulls=hulls) for _ in range(count)]
+    return [
+        _vessel("zodiac", condition=Condition(), hulls=hulls)[0] for _ in range(count)
+    ]
 
 
 def test_a_build_tags_a_worn_asset_once_and_prefixes_their_names() -> None:
-    for anchor in _zodiacs(frozenset({"zodiac"}), 2):
-        meshes = mesh_objects([anchor])
+    for root in _zodiacs(frozenset({"zodiac"}), 2):
+        meshes = mesh_objects([root])
         assert all("wear_position_m" in o.data.attributes for o in meshes)
         assert all(o.name.startswith("zodiac/") for o in meshes)
+        # A hull is under way: its fouling is polished off.
+        assert not any(_read(o.data, "wear_still").any() for o in meshes)
+
+
+def test_an_eo_hull_lifted_off_its_draught_tells_its_wear_where_the_water_is() -> None:
+    hulls = Hulls(load(BASELINE).sky, None, frozenset({"zodiac"}))
+    lifted = _vessel("zodiac", condition=Condition(), hulls=hulls, rise_m=0.4)[0]
+    assert all(o["rise_m"] == 0.4 for o in mesh_objects([lifted]))
 
 
 def test_a_clean_build_is_not_tagged() -> None:
@@ -158,8 +174,8 @@ def test_a_clean_build_is_not_tagged() -> None:
     assert not any("wear_position_m" in o.data.attributes for o in meshes)
 
 
-def _materials(anchor: bpy.types.Object) -> set[bpy.types.Material]:
-    slots = [s for o in mesh_objects([anchor]) for s in o.material_slots]
+def _materials(root: bpy.types.Object) -> set[bpy.types.Material]:
+    slots = [s for o in mesh_objects([root]) for s in o.material_slots]
     return {s.material for s in slots} - {None}
 
 
@@ -200,7 +216,7 @@ def test_copies_wear_apart_alike_on_every_build_and_unworn_ones_not_at_all() -> 
     def parts() -> list[bpy.types.Object]:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         vessels, _ = add_vessels(
-            scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), []
+            scenario, radius_m, Hulls(scenario.sky, None, scenario.worn), [], []
         )
         return [mesh_objects([a])[0] for a in vessels["zodiac"]]
 
@@ -225,6 +241,18 @@ def test_dirt_keeps_the_surface_s_alpha_and_paint_fades_but_metal_does_not() -> 
     (paint,) = (n for n in nodes if n.type == "MATH" and n.operation == "SUBTRACT")
     assert paint.inputs[1].default_value == 1.0
     assert paint.outputs[0].links[0].to_node.operation == "MULTIPLY"
+
+
+def test_a_dropping_darkens_where_the_masks_put_its_core() -> None:
+    material = bpy.data.materials.new("paint")
+    wear._dirty(material, bpy.data.images.new("crevice", 16, 16))
+    (group,) = (n for n in material.node_tree.nodes if n.type == "GROUP")
+    (link,) = group.outputs[wear.CORE].links
+    (colour,) = link.to_node.outputs["Result"].links
+    covered = colour.to_node
+    assert colour.to_socket == covered.inputs["B"]
+    (cover,) = covered.inputs["Factor"].links
+    assert cover.from_socket == group.outputs["dropping"]
 
 
 def test_the_atlas_lies_in_the_unit_square_and_leaves_the_uv_maps_alone(box) -> None:
@@ -302,8 +330,8 @@ def _chain(material: bpy.types.Material) -> list[tuple[str, float]]:
 @pytest.mark.parametrize(
     ("material", "laid"),
     [
-        ("grp", ["grime", "rust", "stain", "soot"]),
-        ("steel", ["rust", "stain", "soot"]),  # grime keeps paint's emissivity
+        ("grp", ["grime", "rust", "stain", "fouling", "soot"]),
+        ("steel", ["rust", "stain", "fouling", "soot"]),  # grime keeps paint's
     ],
 )
 def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
@@ -318,6 +346,7 @@ def test_a_worn_lwir_skin_lays_each_layer_in_eo_order_at_its_emissivity(
         "grime": thermal.ZONES["paint_hull"].emissivity,
         "rust": thermal.RUST_EMISSIVITY,
         "stain": thermal.SEA_EMISSIVITY,
+        "fouling": thermal.SEA_EMISSIVITY,
         "soot": thermal.SOOT_EMISSIVITY,
     }
     assert _chain(skin) == [(layer, emissivity[layer]) for layer in laid]

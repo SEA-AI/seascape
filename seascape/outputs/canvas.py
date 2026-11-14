@@ -5,8 +5,7 @@ from collections.abc import Sequence
 from itertools import batched
 
 import numpy as np
-from PIL import Image, ImageFont, ImageOps
-from PIL.ImageFont import FreeTypeFont
+from PIL import Image, ImageOps
 
 # JPEG holds no alpha.
 _MODE = "RGB"
@@ -14,11 +13,6 @@ MATTE = (24, 24, 24)
 INK = (232, 232, 232)
 
 type Colour = str | tuple[int, int, int]
-
-
-def font(size: int = 16) -> FreeTypeFont | ImageFont.ImageFont:
-    """Pillow's default font at `size` pixels."""
-    return ImageFont.load_default(size=size)
 
 
 def beside(

@@ -1,20 +1,21 @@
 """Build a Blender scene from a scenario. Nothing here renders."""
 
 import math
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import chain
 
 import bpy
 import numpy as np
-from mathutils import Matrix
 
 from seascape.blender import sea
+from seascape.blender.blend import empty
 from seascape.blender.compositor import respond, set_output
 from seascape.blender.heat import surroundings
-from seascape.blender.rigs import View, add_rigs, views
+from seascape.blender.rigs import View, add_rigs, stabilise, views
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.blender.vessels import (
+    Afloat,
     Hulls,
     OverlapError,
     add_ownship,
@@ -28,39 +29,44 @@ from seascape.config import (
     Scenario,
     substream,
 )
-from seascape.outputs.calibration import CameraCalibration, Matrix4
+from seascape.motion import (
+    Path,
+    at_sea_level,
+    lifted,
+    ownship_up_m,
+    tilted,
+    track,
+    waterline_pose,
+)
+from seascape.outputs.calibration import CameraCalibration, intrinsics, matrix4
 from seascape.physics import earth, wakes
 
-# Blender's camera looks down -Z with +Y up; OpenCV's looks down +Z with +Y down.
-_BLENDER_TO_CV = Matrix.Diagonal((1.0, -1.0, -1.0, 1.0))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Built:
     """What `build` made, by role, valid until the next build. A name in `bpy.data`
     belongs to whoever took it first, and an imported asset can carry any name.
     """
 
-    vessel: bpy.types.Object
-    deck: (
-        bpy.types.Object
-    )  # what the rigs are bolted to: a hull's draught lift, which rides the sea
-    rigs: dict[str, bpy.types.Object]
+    # The hull's root, named ownship in Blender: `motion.waterline_pose`, heave
+    # included.
+    root: bpy.types.Object
+    ownship: bpy.types.Object  # the rigs' parent: a hull's draught, or the root
+    heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
     targets: dict[str, list[bpy.types.Object]]  # by asset
+    # What Blender was keyed from, at a frame's time: `T_world_ownship`, and each
+    # rig's `T_ownship_head` by name.
+    ownship_pose: Callable[[float], np.ndarray]
+    head_poses: dict[str, Callable[[float], np.ndarray]]
 
 
-def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
-    """A built camera's geometry, read off the scene."""
-    camera = built.cameras[mount.name]
-    world = camera.matrix_world @ _BLENDER_TO_CV
-    vessel = built.deck.matrix_world
-    rig = built.rigs[mount.rig_name].matrix_world
+def calibrate(built: Built, mount: Mount, image: str, t_s: float) -> CameraCalibration:
+    """A built camera's geometry at `t_s`, a frame's time."""
+    T_head_camera = mount.camera.pose()
+    T_ownship_camera = built.head_poses[mount.rig_name](t_s) @ T_head_camera
+    T_world_camera = built.ownship_pose(t_s) @ T_ownship_camera
     width, height = mount.camera.width_px, mount.camera.height_px
-    if mount.camera.lens.fisheye is None:
-        f = (width / 2) / math.tan(camera.data.angle_x / 2)
-    else:
-        f = mount.camera.fisheye_focal_px
     return CameraCalibration(
         name=mount.name,
         band=mount.camera.band,
@@ -70,14 +76,12 @@ def calibrate(built: Built, mount: Mount, image: str) -> CameraCalibration:
         pitch_um=mount.camera.pitch_um,
         width_px=width,
         height_px=height,
-        # Blender's frame spans pixel edges, so its centre is half a pixel past
-        # OpenCV's.
-        K=((f, 0.0, (width - 1) / 2), (0.0, f, (height - 1) / 2), (0.0, 0.0, 1.0)),
+        K=intrinsics(mount.camera),
         distortion=mount.camera.lens.fisheye,
         extrinsics={
-            "world": _rows(world),
-            "vessel": _rows(vessel.inverted() @ world),
-            "rig": _rows(rig.inverted() @ world),
+            "world": matrix4(T_world_camera),
+            "ownship": matrix4(T_ownship_camera),
+            "head": matrix4(T_head_camera),
         },
     )
 
@@ -93,11 +97,6 @@ def look_through(
     respond(mount, rng)
 
 
-def _rows(m: Matrix) -> Matrix4:
-    x, y, z, w = map(tuple, m)
-    return x, y, z, w
-
-
 def _viewport(far_m: float) -> None:
     """Blender's view clip ends at 1000 m, short of a sea reaching tens of km."""
     for screen in bpy.data.screens:
@@ -109,19 +108,17 @@ def _viewport(far_m: float) -> None:
                     space.clip_end = far_m
 
 
-def _sightline_m(scenario: Scenario, anchors: Iterable[bpy.types.Object]) -> float:
+def _sightline_m(scenario: Scenario, roots: Iterable[bpy.types.Object]) -> float:
     """Past the camera's horizon plus the tallest hull's own, every hull is below the
     horizon.
     """
     # Stored at import, blade up: measured now, a rotor's top follows its spin.
-    tops_m = [anchor["height_m"] for anchor in anchors]
+    tops_m = [root["height_m"] for root in roots]
     if not tops_m:
         return 0.0
     heave = scenario.ownship.heave
-    eye_m = (
-        max(rig.height_m for rig in scenario.rigs.values())
-        + scenario.ownship.rise_m
-        + (heave.amplitude_m if heave is not None else 0.0)
+    eye_m = max(map(scenario.head_height_m, scenario.rigs)) + (
+        heave.amplitude_m if heave is not None else 0.0
     )
     k = scenario.sea.refraction_k
     return earth.horizon_m(eye_m, k) + earth.horizon_m(max(tops_m), k)
@@ -145,6 +142,34 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
         height_m = max(up - earth.sea_z_m(east, north, radius_m) - crest_m, 0.0)
         finest = min(finest, height_m * view.pixel_rad)
     return finest
+
+
+def ownship_afloat(scenario: Scenario, path: Path) -> Callable[[float], np.ndarray]:
+    """`T_world_waterline` at a time: the ownship's hull, measured from its imported
+    mesh, riding the sea along `path`; no rigs, no targets. Its height is sea level
+    plus the sea's heave, without the scripted heave or the earth's curve.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    afloat: list[Afloat] = []
+    up_m = ownship_up_m(
+        scenario.ownship,
+        scenario.outputs,
+        (),
+        earth.earth_radius_m(scenario.sea.refraction_k),
+    )
+    vessel = add_ownship(
+        scenario.ownship,
+        path,
+        up_m,
+        empty("rigs"),
+        Hulls(scenario.sky, None),
+        scenario.outputs.times_s,
+        afloat,
+    )
+    wind, swell = scenario.wind_waves(), scenario.swell_waves()
+    tall, _ = sea.displaced((wind, swell))
+    hull = next((a.hull for a in afloat if a.root is vessel), None)
+    return waterline_pose(path, at_sea_level, hull, wind + swell, tall)
 
 
 def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
@@ -179,19 +204,25 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     hulls = Hulls(scenario.sky, heat, scenario.worn)
     tall, _ = sea.displaced((wind, swell))
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
-    vessel = add_ownship(scenario.ownship, rigs.root, hulls, outputs, tall, radius_m)
+    afloat: list[Afloat] = []
+    path = track(scenario.ownship, outputs, scenario.turn)
+    up_m = ownship_up_m(scenario.ownship, outputs, tall, radius_m)
+    vessel = add_ownship(
+        scenario.ownship, path, up_m, rigs.root, hulls, outputs.times_s, afloat
+    )
     trails: list[wakes.Wake] = []
-    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails)
+    vessels, turbines = add_vessels(scenario, radius_m, hulls, trails, afloat)
     targets = {**vessels, **turbines}  # no asset is both
     # Before `views`, which reads where the cameras look as the hulls rock.
     # Limitation: a floating turbine stands still; give it its platform's motion
     # if a sea rocks one visibly.
-    afloat = list(chain(*vessels.values()))
-    # Limitation: a hull-less ownship has no footprint, so it sails through targets.
-    if scenario.ownship.asset is not None:
-        afloat.append(vessel)
     ride(afloat, wind + swell, tall, outputs)
-    solid = afloat + list(chain(*turbines.values()))
+    hull = next((a.hull for a in afloat if a.root is vessel), None)
+    tilt = tilted(path, hull, wind + swell, tall)
+    head_poses = stabilise(rigs.heads, scenario, tilt)
+    T_waterline_ownship = lifted(scenario.ownship.rise_m)
+    waterline = waterline_pose(path, up_m, hull, wind + swell, tall)
+    solid = [a.root for a in afloat] + list(chain(*turbines.values()))
     if meeting := overlaps(solid, len(outputs.times_s)):
         raise OverlapError(f"hulls inside each other: {meeting}")
     far_m = max(far_m, _sightline_m(scenario, chain(*targets.values())))
@@ -221,9 +252,9 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     add_haze(scenario.sky, band, far_m)
     # The object-index pass reads 0 for sky and sea. The ownship takes the index after
     # the targets: no box, and no target's background.
-    anchors = [*chain(*targets.values()), vessel]
-    for index, anchor in enumerate(anchors, start=1):
-        for part in [anchor, *anchor.children_recursive]:
+    roots = [*chain(*targets.values()), vessel]
+    for index, root in enumerate(roots, start=1):
+        for part in [root, *root.children_recursive]:
             part.pass_index = index
     # The first camera may belong to the other band, whose optics this build lacks.
     first = mounts[0]
@@ -236,4 +267,12 @@ def build(scenario: Scenario, band: Band = "eo", cull: bool = False) -> Built:
     sc.frame_end = len(outputs.times_s) - 1
     sc.render.fps, sc.render.fps_base = outputs.fps, 1.0
     sc.frame_set(0)
-    return Built(vessel, rigs.root.parent, rigs.rigs, rigs.cameras, targets)
+    return Built(
+        root=vessel,
+        ownship=rigs.root.parent,
+        heads=rigs.heads,
+        cameras=rigs.cameras,
+        targets=targets,
+        ownship_pose=lambda t_s: waterline(t_s) @ T_waterline_ownship,
+        head_poses=head_poses,
+    )

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,12 +18,14 @@ import httpx2
 import pytest
 from mcp import Client
 from mcp.types import TextContent
-from PIL import Image
+from PIL import ExifTags, Image
 from pydantic import ValidationError
 
-from seascape.config import json_schema
-from seascape.server import Settings, State, jobs, tools, transport
-from seascape.server.jobs import Job
+from seascape.assets import skies
+from seascape.config import Scenario, json_schema, load
+from seascape.model import ScenarioWarning
+from seascape.server import Settings, State, guide, jobs, tools, transport
+from seascape.server.jobs import Job, JobState
 from tests.scenarios import BASELINE, OPEN_SEA, SCENARIOS, load_variants
 
 SECRET = "s" * 32
@@ -65,7 +68,7 @@ def _call(state: State, tool: str, **arguments: Any) -> Any:
     return asyncio.run(call())
 
 
-def test_only_the_tools_that_change_state_ask_a_client_for_approval(
+def test_only_cancel_asks_a_client_for_approval(
     tmp_path: Path,
 ) -> None:
     async def listed() -> dict[str, bool]:
@@ -81,8 +84,9 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         "scenario": True,
         "schema": True,
         "jobs": True,
-        "render_result": True,
-        "render": False,
+        "get_job": True,
+        "preview": True,
+        "render": True,
         "cancel": False,
     }
 
@@ -94,7 +98,7 @@ def test_only_the_tools_that_change_state_ask_a_client_for_approval(
         'objects = [{ preset = "no_such_preset" }]',
         "objects = [{ preset = 5 }]",
         'extends = "baseline.toml"',
-        "sky.sun_elevation_deg = 100.0",
+        "sea.wind_speed_mps = -1.0",
         "sky.sun_elevation_deg =",
     ],
 )
@@ -102,6 +106,33 @@ def test_a_bad_override_is_refused_before_any_job(line: str, state: State) -> No
     result = _call(state, "render", overrides=[line])
     assert result.is_error
     assert not state.jobs
+
+
+@pytest.mark.parametrize("wish", guide.WISHES)
+def test_each_wish_the_guide_offers_loads_over_the_default_scenario(wish: str) -> None:
+    *_, heard = jobs._tried(
+        SCENARIOS / "showcase.toml",
+        guide.WISHES[wish],
+        1,
+        Settings(scenarios=SCENARIOS),
+    )
+    assert heard == []
+
+
+def test_a_client_is_told_the_wishes_and_a_user_can_pick_the_prompt(
+    tmp_path: Path,
+) -> None:
+    async def asked() -> tuple[str, str]:
+        async with Client(transport.mcp(_state(tmp_path))) as client:
+            got = await client.get_prompt("getting_started")
+            content = got.messages[0].content
+            assert isinstance(content, TextContent)
+            return client.instructions or "", content.text
+
+    instructions, prompt = asyncio.run(asked())
+    for wish, lines in guide.WISHES.items():
+        assert all(line in instructions for line in lines)
+        assert wish in prompt
 
 
 def test_an_unknown_scenario_is_refused(state: State) -> None:
@@ -117,6 +148,18 @@ def test_the_catalog_names_what_render_takes(state: State) -> None:
     assert set(listed["schema_sections"]) == set(json_schema()["properties"])
     assert all(listed["schema_sections"].values())
     assert "schema" not in listed
+
+
+def test_the_catalog_describes_each_sky_in_fields_a_client_can_match(
+    state: State,
+) -> None:
+    listed = _call(state, "catalog").structured_content["skies"]
+
+    assert listed.keys() == skies.library().keys()
+    rocky = listed["rocky_ridge"]
+    assert (rocky["cover"], rocky["sun_band"]) == ("partly cloudy", "low sun")
+    assert listed["mud_road"]["sun_band"] is None
+    assert listed["mud_road"]["cover"] == "overcast"
 
 
 def test_a_scenario_is_its_file(state: State) -> None:
@@ -305,10 +348,11 @@ def test_a_finishing_job_is_not_ahead_of_the_next(tmp_path: Path) -> None:
     assert not job.waiting
 
 
-def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
-    state: State, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def render(*_args: str) -> None:  # Blender's frames, without Blender
+@pytest.fixture
+def blenderless(state: State, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`render` writes each variant's frames as blank pictures."""
+
+    async def render(*_args: str) -> None:
         (job,) = state.jobs.values()
         for scene in job.scenes:
             folder = job.folder / str(scene.seed)  # as `render --variants` names it
@@ -319,23 +363,104 @@ def test_a_finished_job_reports_its_files_and_a_preview_per_camera(
 
     monkeypatch.setattr(jobs, "_seascape", render)
 
-    async def call() -> Any:
+
+def _rendered(state: State, *then: tuple[str, dict[str, Any]]) -> list[Any]:
+    """Render 2 variants, then call each of `then` on the job."""
+
+    async def call() -> list[Any]:
         async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {"variants": 2})
             job = started.structured_content["job"]
-            return await client.call_tool("render_result", {"job": job})
+            return [
+                await client.call_tool(tool, {"job": job, **arguments})
+                for tool, arguments in then
+            ]
 
-    result = asyncio.run(call())
+    return asyncio.run(call())
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
+    state: State,
+) -> None:
+    (result,) = _rendered(state, ("get_job", {}))
     report = json.loads(result.content[0].text)
     assert report["status"] == "done", report
-    assert report["files"][0].endswith(".zip")
+    assert report["archive"].endswith(".zip")
     (job,) = state.jobs.values()
-    (scene, *_) = job.scenes
-    cameras = len(scene.mounts)
-    assert sum("/preview_" in url for url in report["files"]) == cameras
+    assert report["cameras"] == [m.name for m in job.scenes[0].mounts]
+    assert len(report["sheets"]) == len(job.scenes) == 2
     assert [(c.type, c.mime_type) for c in result.content[1:]] == [
         ("image", "image/jpeg")
-    ] * cameras
+    ] * 2
+    description = Image.open(job.folders[1] / jobs.SHEET).getexif()[
+        ExifTags.Base.ImageDescription
+    ]
+    assert json.loads(description) == {
+        "scenario": "showcase",
+        "seed": job.scenes[1].seed,
+        "overrides": [],
+    }
+    assert report["sheets_not_shown"] == 0
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
+    mounts = load_variants(BASELINE)[0].mounts
+    camera = mounts[0].name
+    _, sheet, frame, *refused = _rendered(
+        state,
+        ("get_job", {}),
+        ("preview", {"variant": 1}),
+        ("preview", {"camera": camera}),
+        ("preview", {"variant": 2}),
+        ("preview", {"camera": "nope"}),
+    )
+    assert [r.content[0].mime_type for r in (sheet, frame)] == ["image/jpeg"] * 2
+    assert "variant 2 is not in 0 to 1" in refused[0].content[0].text
+    assert "no camera 'nope'" in refused[1].content[0].text
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_a_sheet_that_cannot_be_made_leaves_the_render_done(
+    state: State, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*_args: Any) -> None:
+        raise FileNotFoundError("/server/path/frame.png")
+
+    monkeypatch.setattr(jobs.montage, "sheet", refuse)
+    report, sheet = _rendered(state, ("get_job", {}), ("preview", {}))
+    report = json.loads(report.content[0].text)
+    assert report["status"] == "done"
+    assert report["sheets"] == []
+    assert sheet.is_error
+    assert "could not be read" in sheet.content[0].text
+    assert "/server/path" not in sheet.content[0].text
+
+
+def _preview_of(state: State, scene: Scenario, job_state: JobState) -> Any:
+    """What `preview` answers for a stored job in `job_state`, with no render."""
+
+    async def call() -> Any:
+        job = Job(state.renders / "stored", "open-sea", [scene], state=job_state)
+        job.task = asyncio.create_task(asyncio.sleep(0))
+        state.jobs["stored"] = job
+        async with Client(transport.mcp(state)) as client:
+            return await client.call_tool("preview", {"job": "stored"})
+
+    return asyncio.run(call())
+
+
+def test_preview_refuses_an_exr_job(state: State) -> None:
+    refused = _preview_of(state, load(OPEN_SEA, ['outputs.format = "exr"']), "done")
+    assert refused.is_error
+    assert "exr" in refused.content[0].text
+
+
+def test_preview_refuses_a_job_that_is_not_done(state: State) -> None:
+    refused = _preview_of(state, load(OPEN_SEA), "running")
+    assert refused.is_error
+    assert "is running" in refused.content[0].text
 
 
 def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any) -> State:
@@ -377,7 +502,7 @@ def test_cancel_stops_a_job_and_hands_the_gpu_on(
             with pytest.raises(ProcessLookupError):
                 os.kill(pid, 0)
             assert not state.jobs[first].folder.exists()
-            reported = await client.call_tool("render_result", {"job": first})
+            reported = await client.call_tool("get_job", {"job": first})
             assert isinstance(report := reported.content[0], TextContent)
             assert json.loads(report.text) == {"status": "cancelled"}
 
@@ -479,9 +604,7 @@ def test_a_waiting_result_reports_progress(
         async with Client(transport.mcp(state)) as client:
             started = await client.call_tool("render", {})
             name = started.structured_content["job"]
-            await client.call_tool(
-                "render_result", {"job": name}, progress_callback=progress
-            )
+            await client.call_tool("get_job", {"job": name}, progress_callback=progress)
             await client.call_tool("cancel", {"job": name})
 
     asyncio.run(call())
@@ -638,10 +761,10 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     state = _state(tmp_path, max_queued=2)
     loads: list[object] = []
 
-    def slow_load(*args: object) -> tuple[list[object], float]:
+    def slow_load(*args: object) -> tuple[list[object], float, list[str]]:
         loads.append(args)
         time.sleep(0.3)
-        return [], 1.0
+        return [], 1.0, []
 
     async def idle(*_: object) -> None:
         await asyncio.sleep(0)
@@ -693,11 +816,13 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
     [
         ({"variants": 101}, "at most 100 variants"),
         ({"overrides": ["outputs.duration_s = 61.0"]}, "a clip lasts"),
+        # On the baseline: the showcase's 3840-wide sensor fails a wider image first.
         (
             {
+                "scenario": "baseline",
                 "overrides": [
                     "rigs.bow.cameras.eo = { width_px = 7680, height_px = 4320 }"
-                ]
+                ],
             },
             "pixels",
         ),
@@ -790,3 +915,29 @@ def test_render_says_a_list_override_replaces_the_scenarios_list(
             return tools["render"].description or ""
 
     assert "replaces the whole list" in " ".join(asyncio.run(described()).split())
+
+
+@pytest.mark.usefixtures("blenderless")
+def test_an_override_the_scenario_ignores_is_reported_with_the_job(
+    state: State,
+) -> None:
+    ignored = _call(state, "render", overrides=["sky.sun_elevation_deg = 5.0"])
+    honoured = _call(state, "render", scenario="baseline")
+    assert "sun_elevation_deg is ignored" in str(ignored.structured_content["warnings"])
+    assert honoured.structured_content["warnings"] == []
+
+
+def test_a_load_reports_each_scenario_warning_once_and_restores_the_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def checked(*_: object) -> tuple[list[object], float]:
+        warnings.warn("ignored", ScenarioWarning, stacklevel=2)
+        warnings.warn("ignored", ScenarioWarning, stacklevel=2)
+        warnings.warn("somebody else's", stacklevel=2)
+        return [], 0.0
+
+    monkeypatch.setattr(jobs, "_checked", checked)
+    before = list(warnings.filters)
+    *_, heard = jobs._tried(Path(), [], 1, Settings(scenarios=SCENARIOS))
+    assert heard == ["ignored"]
+    assert warnings.filters == before

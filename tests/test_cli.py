@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import bpy
+import click
 import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
@@ -15,7 +16,8 @@ from seascape import assets, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
-from tests.scenarios import BASELINE, OPEN_SEA
+from seascape.sync import staging
+from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
 
 type Run = Callable[..., Result]
 
@@ -284,7 +286,9 @@ def test_rig_view_needs_a_hull_to_draw_on(run: Run, tmp_path: Path) -> None:
 
 @pytest.mark.render
 def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
-    scenario = Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper.toml"
+    scenario = (
+        Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper-1280-gen1.toml"
+    )
     out = tmp_path / "rig.png"
     drawn = run("rig-view", scenario, "-o", out)
     assert drawn.exit_code == 0, drawn.stderr
@@ -294,3 +298,66 @@ def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
     built = load(scenario)
     lines = len(built.rigs) + len(built.mounts)
     assert drawn_px[1] == rigview.TILE[1] + 16 + rigview.LINE_PX * lines
+
+
+@pytest.mark.render
+def test_a_shader_cycles_draws_black_fails_the_command(tmp_path: Path) -> None:
+    """Nested Mix Shaders each hold their factor on the SVM stack, past its end."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = 1
+    sc.render.resolution_x = sc.render.resolution_y = 8
+    bpy.ops.mesh.primitive_plane_add()
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 5.0))
+    sc.camera = bpy.context.object
+    material = bpy.data.materials.new("deep")
+    bpy.data.objects["Plane"].data.materials.append(material)
+    tree = material.node_tree
+    x = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(
+        tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"], x.inputs[0]
+    )
+    surface = tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"]
+    for i in range(300):
+        # Not a constant, or Cycles folds the Mix away.
+        factor = tree.nodes.new("ShaderNodeMath")
+        factor.operation = "MULTIPLY"
+        tree.links.new(x.outputs["X"], factor.inputs[0])
+        factor.inputs[1].default_value = 1e-12 * (i + 1)
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        tree.links.new(factor.outputs[0], mix.inputs[0])
+        tree.links.new(surface, mix.inputs[1])
+        tree.links.new(
+            tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"], mix.inputs[2]
+        )
+        surface = mix.outputs[0]
+    output = tree.nodes["Material Output"]
+    tree.links.new(surface, output.inputs["Surface"])
+    with (
+        pytest.raises(click.ClickException, match=r"see blender\.log"),
+        cli._blender_log(tmp_path / "blender.log"),
+    ):
+        bpy.ops.render.render()
+
+
+def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
+    run: Run, tmp_path: Path
+) -> None:
+    out = tmp_path / "preview"
+    refused = run("sync", SYNC_SENTRY, "--preview", "--set", "objects = []", "-o", out)
+
+    assert refused.exit_code == 1
+    assert "holds no buoys" in refused.stderr
+    assert staging.suggested(load(SYNC_SENTRY)) in refused.stderr
+    assert not out.exists()
+
+
+def test_a_course_sheet_is_one_image(run: Run, tmp_path: Path) -> None:
+    out = tmp_path / f"{SYNC_SENTRY.stem}-course.png"
+
+    drawn = run("sync", SYNC_SENTRY, "--sheet", "-o", tmp_path)
+
+    assert drawn.exit_code == 0, drawn.stderr
+    assert drawn.stdout == f"{out}\n"
+    Image.open(out).verify()

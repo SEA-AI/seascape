@@ -3,11 +3,13 @@
 import math
 from typing import Annotated, Literal, NamedTuple
 
+import numpy as np
 from pydantic import (
     Field,
     model_validator,
 )
 
+from seascape import angles
 from seascape.model import Model
 from seascape.physics import fisheye
 from seascape.physics.colour import Tone
@@ -242,13 +244,13 @@ class Camera(Model):
 
     band: Band = Field(description="The band it sees in: eo visible, ir LWIR.")
     yaw_deg: float = Field(
-        default=0.0, description="Relative to the rig's axis, positive to starboard."
+        default=0.0, description="Relative to its rig's head, positive to starboard."
     )
     pitch_deg: float = Field(
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="Relative to the rig, negative is down.",
+        description="Relative to its rig's head, negative is down.",
     )
     hfov_deg: float = Field(
         gt=0.0,
@@ -310,6 +312,21 @@ class Camera(Model):
             return None
         sites_per_px = (self.sensor.width_px or self.width_px) / self.width_px
         return self.sensor.pitch_um * sites_per_px
+
+    @property
+    def focal_px(self) -> float:
+        """Its `fx`: a pinhole's, or a fisheye's scale of its distorted angle."""
+        if self.lens.fisheye is not None:
+            return self.fisheye_focal_px
+        return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
+
+    def pose(self) -> np.ndarray:
+        """(4, 4) `T_head_camera`, in OpenCV's axes: yawed, then pitched about its own
+        transverse axis, at the head's origin.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(self.yaw_deg, self.pitch_deg) @ angles.TO_CV.T
+        return pose
 
     @property
     def fisheye_focal_px(self) -> float:
@@ -403,6 +420,22 @@ def sources(video: Video) -> tuple[Name, ...]:
     return video.cameras if isinstance(video, Stitch) else (video.camera,)
 
 
+# The elevation Oceanus accepts for a ptu to hold.
+PTU_ELEVATION_DEG = (-20.0, 20.0)
+
+
+class Ptu(Model):
+    """A pan-tilt unit: it holds its head's pitch, and pans in a turn by the ptu."""
+
+    elevation_deg: float = Field(
+        default=0.0,
+        ge=PTU_ELEVATION_DEG[0],
+        le=PTU_ELEVATION_DEG[1],
+        description="The pitch it holds its head at, above the horizon, the rig's "
+        "`pitch_deg` included. Negative is down.",
+    )
+
+
 class Rig(Model):
     """One installed product: the frame its cameras sit in, at one mount point.
 
@@ -413,22 +446,35 @@ class Rig(Model):
     model: str | None = Field(
         default=None, description="The product, such as Pod. A recording needs it."
     )
-    height_m: float = Field(gt=0.0, description="Above the asset's own waterline.")
+    hardware_version: str | None = Field(
+        default=None,
+        description="The unit's hardware version, such as Oscar_V10_1280_Gen_1, which "
+        "picks the recorder's profile when a recording is replayed.",
+    )
+    height_m: float = Field(
+        gt=0.0,
+        description="Above the ownship's origin: its asset's design waterline, or "
+        "the sea under a bare ownship.",
+    )
     yaw_deg: float = Field(
-        default=0.0, description="Its axis relative to the bow, positive to starboard."
+        default=0.0,
+        description="Its base's turn from the bow, where its pan reads zero; "
+        "positive to starboard.",
     )
     pitch_deg: float = Field(
         default=0.0,
         gt=-90.0,
         lt=90.0,
-        description="About its own transverse axis, after its yaw and before its "
-        "cameras'. Negative is down.",
+        description="Its head's pitch before any tilt: after the pan, before its "
+        "cameras' pitch. A pan-tilt unit's tilt axis holds it, so a recording's tilt "
+        "counts it. Negative is down.",
     )
+    ptu: Ptu | None = Field(default=None, description="What it sits on, if anything.")
     offset_x_m: float = Field(
         default=0.0, description="From the centreline, positive to starboard."
     )
     offset_y_m: float = Field(
-        default=0.0, description="From midships, positive forward."
+        default=0.0, description="From the ownship's origin, positive forward."
     )
     cameras: dict[Name, Camera] = Field(
         min_length=1, description="Its cameras, by name."
@@ -439,6 +485,26 @@ class Rig(Model):
         "two, which then go unlabelled. Unset, it records each camera whole. An exr "
         "ignores it.",
     )
+
+    def azimuth_deg(self, off_deg: float = 0.0) -> float:
+        """The azimuth `off_deg` clockwise of its base, from the bow: a pan, or a
+        camera's or a buoy's azimuth off the base. Unwrapped, so a turn's sweep reads
+        off the difference of two.
+        """
+        return self.yaw_deg + off_deg
+
+    def pose(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> np.ndarray:
+        """(4, 4) `T_ownship_head`: at `(offset_x_m, offset_y_m, height_m)`, yawed and
+        panned, then pitched
+        and tilted about its own transverse axis, so a pitched head rolls its
+        off-axis cameras.
+        """
+        pose = np.eye(4)
+        pose[:3, :3] = angles.turned(
+            self.azimuth_deg(pan_deg), self.pitch_deg + tilt_deg
+        )
+        pose[:3, 3] = self.offset_x_m, self.offset_y_m, self.height_m
+        return pose
 
     @model_validator(mode="after")
     def _each_video_records_a_camera(self) -> "Rig":
@@ -482,6 +548,11 @@ class Rig(Model):
         return cameras
 
 
+def recorded_name(rig_name: str, name: str) -> str:
+    """The name a rig's camera or video is recorded and labelled under."""
+    return f"{rig_name}_{name}"
+
+
 class Mount(NamedTuple):
     """A camera and the rig carrying it."""
 
@@ -493,12 +564,12 @@ class Mount(NamedTuple):
     @property
     def name(self) -> str:
         """The camera's name, unique in the scenario."""
-        return f"{self.rig_name}_{self.camera_name}"
+        return recorded_name(self.rig_name, self.camera_name)
 
     @property
-    def nominal_bearing_deg(self) -> float:
+    def nominal_azimuth_deg(self) -> float:
         """Not the achieved boresight: the rig's pitch sits between the two yaws, so
         an off-axis camera points elsewhere. `rigs.boresight_deg` measures the
         built camera.
         """
-        return self.rig.yaw_deg + self.camera.yaw_deg
+        return self.rig.azimuth_deg(self.camera.yaw_deg)

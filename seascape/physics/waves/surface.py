@@ -7,6 +7,9 @@ along a box hull; roll is the same slope across it.
 
 Limitation: roll follows the water at once; Jensen et al.'s roll needs a natural
 period and metacentric height no asset has.
+Limitation: yaw has no hydrostatic restoring moment, so no static yaw to take from
+them. Judgement: a hull yaws at once by the least-squares turn of the water under it;
+a wave yaw moment and the hull's yaw inertia would replace it.
 Limitation: their box is strip theory, checked to Fn 0.84; a planing hull rides on
 lift it lacks.
 """
@@ -104,12 +107,12 @@ def gerstner_rest_m(
 class Waterplane(NamedTuple):
     """A hull's waterplane, centred where the water under it was at rest, `length_m`
     along `heading_rad` and `beam_m` across, sailing at (`east_mps`, `north_mps`);
-    a point at rest by default. Below it, the box `response` moves, `length_m` long:
-    none by default, which follows the water.
+    a point at rest at the origin by default. Below it, the box `response` moves,
+    `length_m` long: none by default, which follows the water.
     """
 
-    rest_east_m: float
-    rest_north_m: float
+    rest_east_m: float = 0.0
+    rest_north_m: float = 0.0
     heading_rad: float = 0.0
     length_m: float = 0.0
     beam_m: float = 0.0
@@ -123,7 +126,7 @@ class Waterplane(NamedTuple):
 def attitude(
     field: tuple[Wave, ...], hull: Waterplane, t_s: float
 ) -> tuple[float, float]:
-    """Bow-up pitch and starboard-up roll of the plane fitted to the sea under a hull:
+    """Bow-up pitch and starboard-down roll of the plane fitted to the sea under a hull:
     each wave's least-squares slope at its phase at the hull's rest. The pitch is that
     times `response`; the roll follows it at once.
 
@@ -135,16 +138,47 @@ def attitude(
     """
     if not field:
         return 0.0, 0.0
-    amplitude, *_ = columns(field)
-    k_along, k_across = _along_across(field, hull)
-    u, v = k_along * hull.length_m / 2, k_across * hull.beam_m / 2
-    at = phases(field, np.array(hull.rest_east_m), np.array(hull.rest_north_m), t_s)
+    w = _under(field, hull, t_s)
     # 1, x, y are orthogonal over a hull centred at the rest position, so each wave's
     # slope separates. -sin(at) is Im(e^{-i at}).
-    rise_along = amplitude * k_along * _lever(u) * np.sinc(v / math.pi)
-    rise_along = rise_along * (response(field, hull) * np.exp(-1j * at)).imag
-    rise_across = -amplitude * np.sin(at) * k_across * _lever(v) * np.sinc(u / math.pi)
-    return math.atan(float(rise_along.sum())), math.atan(float(rise_across.sum()))
+    rise_along = w.amplitude * w.k_along * _lever(w.u) * np.sinc(w.v / math.pi)
+    rise_along = rise_along * (response(field, hull) * np.exp(-1j * w.at)).imag
+    # Water higher to port rolls the hull starboard down.
+    drop_across = w.amplitude * np.sin(w.at) * w.k_across * _lever(w.v)
+    drop_across = drop_across * np.sinc(w.u / math.pi)
+    return math.atan(float(rise_along.sum())), math.atan(float(drop_across.sum()))
+
+
+def yaw_rad(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
+    """The turn, bow to starboard, that best fits the water's horizontal Gerstner
+    offset over a hull's waterplane: the least-squares rigid turn about its rest
+    centre, atan2 of the means of x d_across - y d_along and of x^2 + y^2 + x d_along
+    + y d_across over the rectangle, x along the bow and y to starboard: the 2D case
+    of Umeyama, "Least-squares estimation of transformation parameters between two
+    point patterns", IEEE TPAMI 13(4) 376-380, 1991.
+
+    The offset is a gradient, so the water strains and never turns: a point yaws by
+    nothing, and a square by next to nothing in waves much longer than it.
+
+    Args:
+        field: Gerstner waves, whose offsets add.
+        hull: The rectangle the turn is fitted over; a wave much shorter than it
+            averages out.
+        t_s: Time; each wave's phase advances at its angular frequency.
+    """
+    length2, beam2 = hull.length_m**2, hull.beam_m**2
+    if not field or length2 + beam2 == 0.0:
+        return 0.0
+    w = _under(field, hull, t_s)
+    # The offset across is -a k_across / k sin(phase), along -a k_along / k sin(phase);
+    # each one's mean moment against x or y is `_lever`'s slope times x^2's mean,
+    # here times 12.
+    along = length2 * _lever(w.u) * np.sinc(w.v / math.pi)
+    across = beam2 * _lever(w.v) * np.sinc(w.u / math.pi)
+    offset = -w.amplitude / w.k * np.cos(w.at)
+    turn = offset * w.k_along * w.k_across * (along - across)
+    stretch = offset * (w.k_along**2 * along + w.k_across**2 * across)
+    return math.atan2(float(turn.sum()), length2 + beam2 + float(stretch.sum()))
 
 
 def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
@@ -161,12 +195,9 @@ def heave_m(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> float:
     """
     if not field:
         return 0.0
-    amplitude, *_ = columns(field)
-    k_along, k_across = _along_across(field, hull)
-    u, v = k_along * hull.length_m / 2, k_across * hull.beam_m / 2
-    at = phases(field, np.array(hull.rest_east_m), np.array(hull.rest_north_m), t_s)
-    under = amplitude * np.sinc(u / math.pi) * np.sinc(v / math.pi)
-    return float((under * (response(field, hull) * np.exp(-1j * at)).real).sum())
+    w = _under(field, hull, t_s)
+    under = w.amplitude * np.sinc(w.u / math.pi) * np.sinc(w.v / math.pi)
+    return float((under * (response(field, hull) * np.exp(-1j * w.at)).real).sum())
 
 
 def response(field: tuple[Wave, ...], hull: Waterplane) -> np.ndarray:
@@ -194,6 +225,29 @@ def response(field: tuple[Wave, ...], hull: Waterplane) -> np.ndarray:
     gain = np.exp(-np.abs(k_along) * draught_m) * excite / respond
     # The wave overtaken turns the other way at the hull.
     return np.where(met < 0, gain.conj(), gain)
+
+
+class _Under(NamedTuple):
+    """Each wave's amplitude, wavenumber, wavenumber along the bow and to starboard,
+    half the hull's length and beam in radians of it, and its phase at the hull's rest.
+    """
+
+    amplitude: np.ndarray
+    k: np.ndarray
+    k_along: np.ndarray
+    k_across: np.ndarray
+    u: np.ndarray
+    v: np.ndarray
+    at: np.ndarray
+
+
+def _under(field: tuple[Wave, ...], hull: Waterplane, t_s: float) -> _Under:
+    """What `attitude`, `yaw_rad` and `heave_m` read of each wave under a hull."""
+    amplitude, k, *_ = columns(field)
+    k_along, k_across = _along_across(field, hull)
+    u, v = k_along * hull.length_m / 2, k_across * hull.beam_m / 2
+    at = phases(field, np.array(hull.rest_east_m), np.array(hull.rest_north_m), t_s)
+    return _Under(amplitude, k, k_along, k_across, u, v, at)
 
 
 def _along_across(

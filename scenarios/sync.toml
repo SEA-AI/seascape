@@ -1,6 +1,7 @@
 #:schema ../schema/scenario.json
 
-# Shared by `sync-<product>.toml`, which sets the ownship, the rig and the containers.
+# Shared by `sync-<product>.toml`, which sets the ownship, the rig, what turns and how
+# fast, and the objects `seascape sync` places for them.
 seed = 20261106
 
 # A stand-in, so this file validates alone.
@@ -9,9 +10,19 @@ height_m = 3.0
 cameras.eo = { preset = "eo_4k_49deg" }
 cameras.ir = { preset = "ir_vga_24deg" }
 
-# With the waves' rocking, gives every IMU axis a signal.
-[ownship]
-yaw = { amplitude_deg = 0.5, period_s = 10.0 }
+# 6 deg/s is the collision-avoidance sweep rate SEA.AI's internal sync specification
+# assumes. Judgement: reversals at +-60 deg, 3 s holds, and a slew at
+# the product's top rate. A stand-in top rate, which each product sets.
+[turn]
+top_rate_deg_s = 30.0
+moves = [
+    { to_deg = 0.0, hold_s = 3.0 },
+    { to_deg = 60.0, rate_deg_s = 6.0 },
+    { to_deg = -60.0, rate_deg_s = 6.0 },
+    { to_deg = 0.0, rate_deg_s = 6.0, hold_s = 3.0 },
+    { to_deg = 60.0, hold_s = 3.0 },
+    { to_deg = 0.0, hold_s = 3.0 },
+]
 
 [sea]
 wind_speed_mps = 3.5
@@ -24,6 +35,6 @@ sun_bearing_deg = 150.0
 
 [outputs]
 fps = 30
-duration_s = 30.0
+duration_s = 60.0
 format = "png"
 samples = { eo = 8, ir = 8 }

@@ -1,5 +1,6 @@
 """A whole scenario, and what its render writes."""
 
+import math
 import warnings
 from typing import Literal
 
@@ -11,9 +12,9 @@ from pydantic import (
 from seascape.assets import manifest
 from seascape.config.cameras import Band, Mount, Name, Rig
 from seascape.config.draws import substream
-from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets
+from seascape.config.objects import MAX_HULLS, Farm, Object, Ownship, Targets, Turn
 from seascape.config.world import Sea, Sky
-from seascape.model import Model
+from seascape.model import Model, ScenarioWarning
 from seascape.physics import waves
 from seascape.physics.atmosphere import SURFACE_SEA_K
 
@@ -130,6 +131,12 @@ class Scenario(Model):
     farms: list[Farm] = Field(
         default_factory=list, description="Wind turbines, in rows or alone."
     )
+    turn: Turn | None = Field(
+        default=None,
+        description="Turns the ownship, or a rig's ptu, through scripted moves from "
+        "t = 0. "
+        "It ends within outputs.duration_s, with outputs.loop false.",
+    )
     outputs: Outputs = Field(default_factory=Outputs)
 
     @property
@@ -145,6 +152,12 @@ class Scenario(Model):
     def band_mounts(self, band: Band) -> list[Mount]:
         """The cameras that see in `band`."""
         return [m for m in self.mounts if m.camera.band == band]
+
+    def head_height_m(self, rig: str) -> float:
+        """The head of rig `rig` above a calm sea: its height on the hull, which a
+        lighter hull lifts by its rise.
+        """
+        return self.rigs[rig].height_m + self.ownship.rise_m
 
     @property
     def images(self) -> int:
@@ -234,6 +247,54 @@ class Scenario(Model):
         return self
 
     @model_validator(mode="after")
+    def _a_ptu_stays_below_the_zenith(self) -> "Scenario":
+        # A pitch the IMU reads folds past the zenith, and the tilt loop then holds
+        # the head on the wrong side of it, so the scripted deck must stay short of it.
+        ship = self.ownship
+        swing = sum(
+            abs(a) + (s.amplitude_deg if s else 0.0)
+            for a, s in ((ship.pitch_deg, ship.pitch), (ship.roll_deg, ship.roll))
+        )
+        for name, rig in self.rigs.items():
+            if rig.ptu is not None and swing + abs(rig.pitch_deg) >= 90.0:
+                raise ValueError(
+                    f"rigs.{name}: the ownship's pitch and roll and the rig's "
+                    f"pitch_deg reach {swing + abs(rig.pitch_deg):.0f} deg, so its "
+                    "ptu can pass the zenith: keep them under 90 between them"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _a_turn_fits(self) -> "Scenario":
+        if self.turn is None:
+            return self
+        if self.outputs.loop:
+            raise ValueError(
+                "outputs.loop cannot close a scripted turn: set outputs.loop to false "
+                "or remove turn"
+            )
+        if (name := self.turn.ptu) is not None and (
+            name not in self.rigs or self.rigs[name].ptu is None
+        ):
+            on_ptu = [n for n, rig in self.rigs.items() if rig.ptu is not None]
+            raise ValueError(
+                f"turn.ptu {name!r} is no rig on a ptu: set it to one of {on_ptu}"
+            )
+        last_s = self.outputs.times_s[-1]
+        # isclose: the legs' times sum in floats, and a turn ending on the last frame
+        # can come out an ulp past it.
+        turn_s = self.turn.duration_s
+        if turn_s > last_s and not math.isclose(turn_s, last_s):
+            fps = self.outputs.fps
+            # The last frame falls a frame before duration_s.
+            frames = math.ceil(turn_s * fps) + 1
+            raise ValueError(
+                f"the turn ends at {turn_s:.3f} s, after the last frame at "
+                f"{last_s:.3f} s: make outputs.duration_s at least {frames / fps:g}"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _a_loop_can_close(self) -> "Scenario":
         if not self.outputs.loop:
             return self
@@ -243,7 +304,7 @@ class Scenario(Model):
             if spec is not None and spec.speed_mps > 0.0:
                 raise ValueError(
                     f"{spec.asset} has speed_mps > 0, and a straight run never comes "
-                    "back to close a loop: give it a drift instead"
+                    "back to close a loop: give it a fishtail instead"
                 )
         if self.ownship.speed_mps > 0.0:
             raise ValueError(
@@ -255,8 +316,8 @@ class Scenario(Model):
             ("ownship.roll", self.ownship.roll),
             ("ownship.pitch", self.ownship.pitch),
             ("ownship.heave", self.ownship.heave),
-            *((f"{spec.asset} drift", spec.drift) for spec in self.objects),
-            ("targets.drift", self.targets.drift if self.targets else None),
+            *((f"{spec.asset} fishtail", spec.fishtail) for spec in self.objects),
+            ("targets.fishtail", self.targets.fishtail if self.targets else None),
             ("sea.swell", self.sea.swell),
         ]
         periods = [(n, m.period_s) for n, m in motions if m is not None] + [
@@ -287,6 +348,7 @@ class Scenario(Model):
             warnings.warn(
                 f"a {span_s} s loop shifts the waves' frequencies by {error:.1%}; a "
                 "longer outputs.duration_s shifts them less",
+                ScenarioWarning,
                 stacklevel=2,
             )
         return self

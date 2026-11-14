@@ -5,12 +5,13 @@ Imports no Blender, so a consumer reads it without the bpy wheel.
 
 import math
 from pathlib import Path
+from typing import Literal, cast
 
 import numpy as np
 from pydantic import ConfigDict, Field
 
 from seascape import atomic
-from seascape.config import Crop
+from seascape.config import Camera, Crop
 from seascape.model import Model
 from seascape.physics import fisheye
 
@@ -20,9 +21,15 @@ type Row3 = tuple[float, float, float]
 type Row4 = tuple[float, float, float, float]
 type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
+type Frame = Literal["world", "ownship", "head"]
 
-# A +X right, +Y ahead, +Z up frame's axes as OpenCV's: +X right, +Y down, +Z ahead.
-TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
+
+def intrinsics(camera: Camera) -> Matrix3:
+    """`camera`'s K. Blender's frame spans pixel edges, so its centre is half a pixel
+    past OpenCV's.
+    """
+    f, w, h = camera.focal_px, camera.width_px, camera.height_px
+    return (f, 0.0, (w - 1) / 2), (0.0, f, (h - 1) / 2), (0.0, 0.0, 1.0)
 
 
 def write_json(model: Model, path: Path) -> Path:
@@ -30,6 +37,11 @@ def write_json(model: Model, path: Path) -> Path:
     with atomic.replacing(path) as partial:
         partial.write_text(model.model_dump_json(indent=2) + "\n")
     return path
+
+
+def matrix4(m: np.ndarray) -> Matrix4:
+    """A (4, 4) array as the rows a calibration stores."""
+    return cast(Matrix4, tuple(map(tuple, m.tolist())))
 
 
 class _Record(Model):
@@ -64,8 +76,8 @@ class CameraCalibration(_Record):
         min_length=1,
         description=(
             "camera to each named frame: world (+X east, +Y north, +Z up, at sea "
-            "level), vessel (+X starboard, +Y bow, +Z up, moving with "
-            "the hull) and rig (the product, +Y along its axis)"
+            "level under the ownship's start), ownship (+X starboard, +Y bow, +Z up, "
+            "moving with the hull) and head (+Y along its axis, panned and tilted)"
         ),
     )
 
@@ -79,6 +91,24 @@ class CameraCalibration(_Record):
             return math.degrees(np.arctan(reach / fx).sum())
         angles = fisheye.theta(reach, self.distortion, fx)
         return math.degrees(angles.sum())
+
+    @classmethod
+    def planned(cls, name: str, camera: Camera, rig: str) -> "CameraCalibration":
+        """`camera` as a render of rig `rig` calibrates it, in that rig's head's frame
+        only: what a video's footprint needs before anything is built.
+        """
+        T_head_camera = matrix4(camera.pose())
+        return cls(
+            name=name,
+            band=camera.band,
+            image="",
+            rig=rig,
+            width_px=camera.width_px,
+            height_px=camera.height_px,
+            K=intrinsics(camera),
+            distortion=camera.lens.fisheye,
+            extrinsics={"head": T_head_camera},
+        )
 
     def cropped(self, crop: Crop) -> "CameraCalibration":
         """The camera that sees what `crop` leaves of this one's frame."""

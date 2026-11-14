@@ -16,9 +16,10 @@ from typing import Any
 import numpy as np
 from pydantic import TypeAdapter
 
-from seascape.config import Crop, Undistortion, Video, sources
+from seascape.angles import TO_CV, attitude_deg, wrapped_deg
+from seascape.config import Crop, Ownship, Turn, Undistortion, Video, sources
 from seascape.outputs import labels
-from seascape.outputs.calibration import TO_CV, Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration, Frame
 
 COLUMNS = [
     "counter",
@@ -54,51 +55,84 @@ COLUMNS = [
 # Nominal pitches, not a datasheet's, for a camera with no pitch set.
 PIXEL_SIZE_MM = {"eo": 0.00345, "ir": 0.012}
 _VIDEO = TypeAdapter(Video)
+# Oceanus's `proc_ptu_mode`: collision avoidance while a ptu
+# turns, else manual, as a replay reads a recording without the column. It has no 0.
+MANUAL_MODE, COLAV_MODE = 1, 3
+# Roll, pitch and yaw signs in FLU (ROS REP 103) against `attitude_deg`'s: pitch
+# counts nose down, yaw to port.
+FLU_SIGNS = (1.0, -1.0, -1.0)
+# The recording's IMU pitch counts nose down, its roll and yaw as `attitude_deg`'s;
+# no change of basis gives that mix.
+IMU_PITCH_SIGN = -1.0
 
 
-def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
-    """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
-    roll: roll positive starboard down, pitch bow up, yaw clockwise in [-180, 180).
+def _in_world(camera: CameraCalibration, frame: Frame) -> np.ndarray:
+    """T_world_frame: the named frame's pose in world."""
+    T_world_camera = np.array(camera.extrinsics["world"])
+    return T_world_camera @ np.linalg.inv(np.array(camera.extrinsics[frame]))
+
+
+def _attitude_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
+    """`angles.attitude_deg`, its yaw rounded to the CSV's precision first, so float32
+    noise at 180 cannot wrap.
     """
-    x, y, z = body_to_frame[:3, :3].T
-    roll = math.atan2(-x[2], z[2])
-    pitch = math.asin(max(-1.0, min(1.0, y[2])))
-    yaw = math.atan2(y[0], y[1])
-    # Rounded to the CSV's precision first, so float32 noise at 180 cannot wrap.
-    return (
-        math.degrees(roll),
-        math.degrees(pitch),
-        (round(math.degrees(yaw), 6) + 180.0) % 360.0 - 180.0,
+    roll, pitch, yaw = attitude_deg(R_frame_body)
+    return roll, pitch, wrapped_deg(round(yaw, 6))
+
+
+def _flu_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
+    """`_attitude_deg` in FLU."""
+    roll, pitch, yaw = (
+        s * a for s, a in zip(FLU_SIGNS, _attitude_deg(R_frame_body), strict=True)
     )
+    # Wrapped after the sign, so a yaw of 180 stays 180.
+    return roll, pitch, wrapped_deg(yaw)
 
 
-def _to(camera: CameraCalibration, frame: str) -> np.ndarray:
-    """The named frame's own axes in world: camera-to-world after frame-to-camera."""
-    world = np.array(camera.extrinsics["world"])
-    return world @ np.linalg.inv(np.array(camera.extrinsics[frame]))
-
-
-def _row(camera: CameraCalibration, counter: int, scenario: dict[str, Any]) -> dict:
-    roll, pitch, yaw = attitude_deg(_to(camera, "rig"))
+def _row(
+    camera: CameraCalibration,
+    counter: int,
+    scenario: dict[str, Any],
+    rig: dict[str, Any],
+    scan_deg_s: float | None,
+) -> dict:
+    roll, pitch, yaw = _attitude_deg(_in_world(camera, "head"))
     # NMEA 2000 attitude and heading, in radians: roll positive starboard down, pitch
     # bow up.
-    bb_roll, bb_pitch, bb_yaw = np.radians(attitude_deg(_to(camera, "vessel")))
-    # Rounded first, as in attitude_deg.
+    bb_roll, bb_pitch, bb_yaw = np.radians(_attitude_deg(_in_world(camera, "ownship")))
+    # Rounded first, as in _attitude_deg.
     heading = round(float(bb_yaw), 6) % math.tau
-    # pan and tilt stay 0: a rig is bolted on, with no pan-tilt unit.
     row = dict.fromkeys(COLUMNS, 0.0)
+    row["proc_ptu_mode"] = MANUAL_MODE
+    # A run from before ptus has no key.
+    if rig.get("ptu") is not None:
+        # The head in its base, as a ptu's encoders count: subtracting the base's yaw
+        # undoes Rig.pose's exactly, and the tilt is `pitch_deg` + tilt from level.
+        T_ownship_head = np.linalg.inv(_in_world(camera, "ownship")) @ _in_world(
+            camera, "head"
+        )
+        _, tilt, pan = _attitude_deg(T_ownship_head[:3, :3])
+        row["pan"] = wrapped_deg(FLU_SIGNS[2] * (pan - rig["yaw_deg"]))
+        row["tilt"] = FLU_SIGNS[1] * tilt
+        if scan_deg_s is not None:
+            row["proc_ptu_mode"] = COLAV_MODE
+            # Revolutions per second, as the worker's setting.
+            row["proc_colav_speed"] = scan_deg_s / 360.0
     row |= {
         "counter": counter,
-        # The recording's IMU: degrees, pitch positive nose down.
+        # The recording's IMU, in degrees.
         "roll": roll,
-        "pitch": -pitch,
+        "pitch": IMU_PITCH_SIGN * pitch,
         "yaw": yaw,
         "heading": heading,
+        # The bow's heading: the run records no track, and sog is 0.
         "cog": heading,
         "temp": scenario["sky"]["t_air_k"] - 273.15,
         "wind_speed": scenario["sea"]["wind_speed_mps"],
-        # NMEA 2000: radians in [0, 2 pi). Relative to the bow, as the scenario's.
-        "wind_angle": math.radians(scenario["sea"]["wind_from_deg"]) % math.tau,
+        # NMEA 2000 PGN 130306, true wind referenced to the boat: radians in [0, 2 pi)
+        # from the current bow. The scenario's is from world +Y.
+        "wind_angle": (math.radians(scenario["sea"]["wind_from_deg"]) - heading)
+        % math.tau,
         "bb_roll": float(bb_roll),
         "bb_pitch": float(bb_pitch),
         "bb_yaw": float(bb_yaw),
@@ -115,23 +149,21 @@ def _unit(value: Any, unit: str) -> dict[str, Any]:
 
 
 def _sensor(camera: CameraCalibration) -> dict[str, Any]:
-    rig = np.array(camera.extrinsics["rig"])
-    roll, pitch, yaw = attitude_deg(rig[:3, :3] @ TO_CV)
-    # The recording's camera rpy turn +X forward, +Y left, +Z up: yaw positive to
-    # port, pitch positive down.
-    pitch, yaw = -pitch, -yaw
+    T_head_camera = np.array(camera.extrinsics["head"])
+    # The camera's OpenCV axes as a body's: right, ahead, up.
+    rpy = zip(
+        ("roll", "pitch", "yaw"), _flu_deg(T_head_camera[:3, :3] @ TO_CV), strict=True
+    )
     (fx, _, cx), (_, fy, cy), _ = camera.K
     pixel_mm = camera.pitch_um / 1000 if camera.pitch_um else PIXEL_SIZE_MM[camera.band]
     return {
         # Never a hardware model's name: a live pipeline picks its driver by it.
         "camera_type": f"Blender {camera.band.upper()}",
-        "position": _unit([float(v) * 1000.0 for v in rig[:3, 3]], "mm"),
+        "position": _unit([float(v) * 1000.0 for v in T_head_camera[:3, 3]], "mm"),
         "focal_length": _unit(fx * pixel_mm, "mm"),
         "barrel_distortion": _unit(None, "1"),
         "distortion_model": "pinhole" if camera.distortion is None else "fisheye",
-        "roll": _unit(roll, "deg"),
-        "pitch": _unit(pitch, "deg"),
-        "yaw": _unit(yaw, "deg"),
+        **{k: _unit(v, "deg") for k, v in rpy},
         "pixel_size": _unit(pixel_mm, "mm"),
         "resolution": _unit([camera.width_px, camera.height_px], "1"),
         "camera_orientation": _unit(0, "deg"),
@@ -244,6 +276,7 @@ def _write_settings(
     into: Path,
     model: str,
     rig: dict[str, Any],
+    height_m: float,
     firsts: dict[str, CameraCalibration],
     raw: dict[str, CameraCalibration] | None,
     created: datetime,
@@ -253,7 +286,9 @@ def _write_settings(
     Args:
         into: The recording's folder.
         model: The product, which names its sensors file.
-        rig: The rig as the scenario set it.
+        rig: The rig as the scenario set it. Its hardware version, when set, goes to
+            `module_info.json`, by which a replay picks its profile.
+        height_m: The rig's head above a calm sea.
         firsts: Each video's first frame, by its name in the recording.
         raw: Each camera the videos were made from, by its name in the recording;
             None when the rig has no videos.
@@ -262,7 +297,7 @@ def _write_settings(
     settings = into / "user_settings.json"
     _write_json(
         settings,
-        {"boat_setup": {"mounting_height": rig["height_m"], "mast_to_bow_length": 0.0}},
+        {"boat_setup": {"mounting_height": height_m, "mast_to_bow_length": 0.0}},
     )
     parameters = into / "POWER_Const" / "camera_parameters.json"
     _write_json(parameters, _camera_parameters(firsts))
@@ -275,7 +310,21 @@ def _write_settings(
     serialized = into / "serialized_parameters.json"
     entries = _parameters(firsts, raw, videos)
     _write_json(serialized, {"product_name": model, "cameras": entries})
-    return [settings, parameters, sensors, serialized]
+    written = [settings, parameters, sensors, serialized]
+    if rig.get("hardware_version"):
+        module = into / "POWER_Const" / "module_info.json"
+        _write_json(
+            module,
+            {
+                "hardware_version": rig["hardware_version"],
+                "setup_date": created.strftime("%Y-%m-%d %H:%M:%S.%f"),
+                "serial_number": "seascape",
+                "jetson_serial_number": 0,
+                "json_version": 1,
+            },
+        )
+        written.append(module)
+    return written
 
 
 def export(run: Path) -> list[Path]:
@@ -288,6 +337,10 @@ def export(run: Path) -> list[Path]:
     # Read, not validated: a dump carries every default, and a validator that rejects
     # a field set alongside another rejects the dump.
     scenario = truth.info["scenario"]
+    turn = (
+        None if scenario.get("turn") is None else Turn.model_validate(scenario["turn"])
+    )
+    rise_m = Ownship.model_validate(scenario["ownship"]).rise_m
     created = datetime.fromisoformat(truth.info["date_created"])
     ts = created.strftime("%Y_%m_%d_%H_%M_%S")
     time_s = {image.file_name: image.time_s for image in truth.images}
@@ -319,12 +372,11 @@ def export(run: Path) -> list[Path]:
         model = models[rig]
         assert model is not None  # refused above
         into = run / "recordings" / rig / f"{model}_recordings_{ts}"
-        (into / "POWER_Const").mkdir(parents=True, exist_ok=True)
+        _empty(into / "POWER_Const")
         for name, shots in cameras.items():
             shots.sort(key=lambda shot: time_s[shot.image])
             short = _short(shots[0])
             video = into / f"{model}_{short}_record_{ts}.mp4"
-            video.unlink(missing_ok=True)
             # A hard link keeps the render's own layout valid without a copy; a
             # filesystem without them gets the copy.
             try:
@@ -335,13 +387,36 @@ def export(run: Path) -> list[Path]:
             with table.open("w", newline="") as f:
                 writer = csv.DictWriter(f, COLUMNS, lineterminator="\n")
                 writer.writeheader()
-                writer.writerows(_row(s, i, scenario) for i, s in enumerate(shots))
+                head = scenario["rigs"][rig]
+                scan = (
+                    turn.scan_rate_deg_s
+                    if turn is not None and turn.pans(rig)
+                    else None
+                )
+                writer.writerows(
+                    _row(s, i, scenario, head, scan) for i, s in enumerate(shots)
+                )
             written += [video, table]
         firsts = {_short(shots[0]): shots[0] for shots in cameras.values()}
         written += _write_settings(
-            into, model, scenario["rigs"][rig], firsts, raw.get(rig), created
+            into,
+            model,
+            scenario["rigs"][rig],
+            scenario["rigs"][rig]["height_m"] + rise_m,
+            firsts,
+            raw.get(rig),
+            created,
         )
     return written
+
+
+def _empty(folder: Path) -> None:
+    """`folder` made afresh under an empty parent, so nothing an earlier export wrote
+    outlives a re-export.
+    """
+    if folder.parent.exists():
+        shutil.rmtree(folder.parent)
+    folder.mkdir(parents=True)
 
 
 def _short(camera: CameraCalibration) -> str:

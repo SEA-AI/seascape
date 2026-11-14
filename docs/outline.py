@@ -5,8 +5,7 @@ import numpy as np
 import supervision as sv
 from PIL import Image
 
-from docs.brand import FOCUS_RED
-from seascape.outputs import labels
+from seascape.outputs import brand, labels
 
 
 def masks(
@@ -35,7 +34,7 @@ def outlined(pic: np.ndarray, found: sv.Detections) -> np.ndarray:
     """`pic` with each target haloed, boxed and outlined."""
     if not len(found):
         return pic
-    red = sv.Color.from_hex(FOCUS_RED)
+    red = sv.Color.from_hex(brand.FOCUS_RED)
     # `found` carries no class ids, which the default lookup needs.
     by_index = sv.ColorLookup.INDEX
     grown = sv.Detections(

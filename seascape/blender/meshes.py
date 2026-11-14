@@ -12,10 +12,11 @@ from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 from seascape import atomic
+from seascape.angles import yaw
 from seascape.assets import Asset, Turbine, Zones, fetch, manifest
 from seascape.blender import faces, wear
 from seascape.blender.blend import (
-    yaw,
+    mesh_objects,
 )
 from seascape.config import (
     Band,
@@ -61,11 +62,11 @@ def _joined(
         bpy.ops.object.join()
     hull = meshes[0]
     frame = Matrix.Identity(4) if frame is None else frame
-    baked = frame.inverted() @ hull.matrix_world
+    T_frame_hull = frame.inverted() @ hull.matrix_world
     hull.parent = None
     hull.matrix_parent_inverse.identity()
-    hull.data.transform(baked)
-    if baked.determinant() < 0:  # a mirrored part turns inside out
+    hull.data.transform(T_frame_hull)
+    if T_frame_hull.determinant() < 0:  # a mirrored part turns inside out
         hull.data.flip_normals()
     hull.matrix_basis = frame
     for obj in others:
@@ -143,8 +144,8 @@ def box_corners(
         evaluated.to_mesh_clear()
         if not co.size:
             continue
-        to = np.array((into or Matrix()) @ obj.matrix_world)
-        moved = co.reshape(-1, 3) @ to[:3, :3].T + to[:3, 3]
+        T_into_object = np.array((into or Matrix()) @ obj.matrix_world)
+        moved = co.reshape(-1, 3) @ T_into_object[:3, :3].T + T_into_object[:3, 3]
         points += [moved.min(axis=0), moved.max(axis=0)]
     if not points:
         return []
@@ -175,16 +176,6 @@ def _fit(corners: Iterable[Vector], asset: Asset) -> Matrix:
     )
 
 
-def mesh_objects(parts: Iterable[bpy.types.Object]) -> list[bpy.types.Object]:
-    """The meshes in `parts` and their descendants."""
-    return [
-        obj
-        for part in parts
-        for obj in [part, *part.children_recursive]
-        if obj.type == "MESH"
-    ]
-
-
 def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
     """Every triangle of `objects` as evaluated, in world metres: (n, corner, xyz)."""
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -206,7 +197,7 @@ def triangles(objects: Iterable[bpy.types.Object]) -> np.ndarray:
 
 def top(name: str, step_m: float) -> list[tuple[float, float, float]]:
     """`top_per_station` of an asset as fitted, in an emptied scene: y forward of
-    midships, z above the waterline.
+    its origin, z above the waterline.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     parts = import_asset(name, "eo")
@@ -369,7 +360,7 @@ def import_asset(name: str, band: Band, worn: bool = False) -> list[bpy.types.Ob
         found = faces.found(mesh_objects(parts))
         per_face = _face_zones(name, found, asset.zones)
     if worn:
-        wear.tag(found.objects, per_face, asset.material)
+        wear.tag(found.objects, per_face, asset.material, still=asset.still)
         _crevice(name, found.objects, fit.to_scale().x, _cached(path))
     if band == "ir":
         _zone_slots(found, per_face)

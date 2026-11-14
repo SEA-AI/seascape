@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**The tall waves are geometry, the rest shading; neither is the Ocean modifier.** The waves carrying the sea's height, down to 4 m, displace the sea as Gerstner waves, diced by adaptive subdivision to 2 px, so no micropolygon goes sub-pixel and none aliases. Each pixel draws the shorter waves longer than its footprint as normals and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. In LWIR the rest's slope variance varies per cell by the spread the short waves' groups give a footprint, so rough patches read warm at grazing views. Everything the shader reads off the waves, it reads at the water's rest position, the UV map. A displaced wave occludes: a crest can hide a target, and the labels follow. Run the render checks before touching the sea shader.
+**The tall waves are geometry, the rest shading; neither is the Ocean modifier.** The waves carrying the sea's height, down to 4 m, displace the sea as Gerstner waves, diced by adaptive subdivision to 3 px, so no micropolygon goes sub-pixel and none aliases. Each pixel draws the shorter waves longer than its footprint as normals and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. In LWIR the rest's slope variance varies per cell by the spread the short waves' groups give a footprint, so rough patches read warm at grazing views. Everything the shader reads off the waves, it reads at the water's rest position, the UV map. A displaced wave occludes: a crest can hide a target, and the labels follow. Run the render checks before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -55,16 +55,16 @@ Building fresh each time is also what keeps a long-lived session from accumulati
 
 These produce wrong output with no error. They are the reason this file exists.
 
-- **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `blend.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
+- **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `angles.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
 - **Wind and swell are named for where they come from; waves run the other way.** `wind_from_deg` and `swell.from_deg` are bearings of origin, and `waves` turns them by 180 once. A second turn looks right in a still.
-- **A camera's bearing is not `rig yaw + camera yaw`.** In the chain `rigs.add_rigs` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `rigs.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
+- **A camera's bearing is not `rig yaw + camera yaw`.** In the chain `rigs.add_rigs` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `rigs.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_azimuth_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha is sqrt(2) sigma per axis; `lwir.emissivity_curve` and `Sky.reflected` take sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
 - **`model_copy` skips validation, and validation is what gives the air and sea their atmosphere's temperatures.** Swap `sky.atmosphere` with `model_copy` and the old profile's air and sea stay. Validate a dict instead.
 - **A Math node's unlinked inputs default to 0.5.** A `MULTIPLY_ADD` chain picks up 0.5 from the first addend unless it is set to 0. Vector Math defaults to 0. Its `DOT_PRODUCT` and `LENGTH` answer on `Value`; their `Vector` output is disabled, so `outputs["Vector"]` raises and `outputs[0]` reads 0.
 - **Address shader sockets by name, never by index.** `inputs["Distance"]` raises if Blender renames it; `inputs[1]` happily writes to whatever now sits in that slot.
 - **Map Range's vector sockets share names with its float ones.** A name finds whichever is enabled, so `inputs["From Min"]` taken before `data_type = "FLOAT_VECTOR"` is the float socket, which the vector mode never reads. Set the data type first.
-- **A shader past Cycles' SVM stack renders black.** Cycles logs `out of SVM stack space, shader "sea" too big` and draws the material black, with no exception. Every wave the sea draws holds stack, so more waves, headings or chains can cross the limit; the render checks build the heaviest shipped sea.
+- **A shader past Cycles' SVM stack renders black.** Cycles logs `out of SVM stack space, shader "sea" too big` and draws the material black, with no exception; every `seascape` command that renders reads its log and fails. Every wave the sea draws holds stack, so more waves, headings or chains can cross the limit; the render checks build the heaviest shipped sea.
 - **Objects can share a mesh datablock.** Material slots link to mesh data by default, so assigning a material to one object silently changes the other. Use `slot.link = "OBJECT"` when they must differ.
 - **LWIR waves do not need `t_sea_k - t_air_k`.** A tilted facet reflects a different elevation of a sky that runs cold overhead to ambient at the horizon, so relief shows with the sea exactly at air temperature. Under a uniform ambient world it does not.
 - **The engine identifier is version-dependent.** `BLENDER_EEVEE` means EEVEE Legacy on ≤4.1 and EEVEE Next on ≥5.0, with `BLENDER_EEVEE_NEXT` in between. The Sky Texture's `NISHITA` is `SINGLE_SCATTERING` on ≥5.0; `MULTIPLE_SCATTERING` is a new model.
@@ -83,7 +83,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **The sun is the world's custom properties.** `sun_elevation`, `sun_rotation` and `aerosol_density` on `scene.world` drive the Sky Texture and the haze; one set on the node is overwritten. Set one from Python and call `world.update_tag()`, or every render after the first keeps the old sun in the haze and the sea's glint. With `sky.hdri` the world has none: the photo's turn is baked at build, and nothing set on the world moves it.
 - **A surface with an Emission node is a light Cycles samples.** `emission_sampling` defaults to `AUTO`, so the haze's airlight makes every triangle of the sea a light, and each light sample runs the sea's whole shader. The frame converges to the same picture, only slower. `sky.haze` turns it off.
 - **Persistent data keeps the first render's light sampling.** `build` turns it on, and a change between renders to `world.cycles.sampling_method` or `material.cycles.emission_sampling` is ignored; one to `scene.cycles.samples` applies. Set light sampling before the first render, or turn persistent data off.
-- **Blender's GPU compositor keeps memory from every render**, about 65 MB a 1080p frame even through a tree that only passes the render on. A clip dies with SIGKILL and nothing in the log. `build` puts the compositor on the CPU; `read_factory_settings` puts it back, and on a machine without a GPU the render aborts.
+- **The GPU compositor aborts the render without a GPU or `libEGL.so.1`**: exit 134, one log line. `build` puts it where Cycles renders, or on the CPU when it finds no `libEGL`; `read_factory_settings` puts it back on the GPU.
 - **The compositor is the camera, and the build picks it by format.** An 8-bit EO build puts glare, blur and auto-exposure there; an exr build passes the radiance through. Switch the file format after `build` and an exr holds the look, a png the raw frame.
 - **`view_settings.exposure` is part of the display transform.** A png carries it, a float EXR ignores it. Same scene, same knob, two formats, and nothing reports the difference.
 - **EEVEE caps reflected world light at 10.** `world.sun_threshold` moves anything
@@ -111,7 +111,7 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Units in field names.** `height_m`, `t_sea_k`, `range_m`. No units library.
 - **Randomness comes from named substreams** off the scenario seed — `substream(seed, "sea/surface")`. Never `np.random` module functions. Named streams mean adding a component doesn't perturb an existing one.
 - **Poses are functions of time.** Ground truth records a timestamp, not a frame index: sensors run at different rates, so frame *n* is not one instant.
-- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo. The exception is the SEA.AI logo PNGs in `seascape/outputs/brand/`.
+- **Never commit a `.blend` or an asset.** `.blend` files are build artifacts; assets are fetched from `assets.toml` into a cache outside the repo. The exception is `seascape/outputs/brand/`: the logo PNGs, the Barlow Semi Condensed font and its licence.
 - **Components are pydantic models; a second kind of one makes a discriminated union**, registered in one place. Not a registry dict, not entry points.
 - Annotate every function signature outside tests.
 
@@ -124,7 +124,7 @@ These produce wrong output with no error. They are the reason this file exists.
 
 ## Checks — run before committing
 
-These mirror CI; all must pass.
+These mirror CI, which runs them all. Locally, run the linters and only the tests the change touches, such as `uv run pytest tests/test_wear.py`; leave the whole suite to CI.
 
 ```bash
 uvx ruff check .
@@ -137,18 +137,14 @@ uv run pytest
 
 The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but pytest.
 
-The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. While iterating, `-m "not render"` leaves them out, or run only the tests the change touches. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
+The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
 A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 
 ## Working here
 
-- **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`).
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Be concise.** Commit messages, PR descriptions, comments and docs state the fact, not the journey. No debugging narration, no restating the diff, no closing paragraph that repeats what was just said.
-- **Comments are for what the code cannot say.** A better name beats a comment explaining a worse one. Write one for a non-obvious constraint, a unit, a workaround, a source — never to restate the line. `# negate the bearing` is noise; `# Blender's +Z turns to port` is the reason.
-- **Nothing that can go stale, nothing from outside the code.** No numbers derived from values elsewhere, no lists or values copied from another file, no names of tests, no PRs, reviews, conversations or history, no hardware, specs or consumers the repo does not model. If a claim matters, a test asserts it; the comment does not point there. When in doubt, delete the line.
-- **Avoid the machine cadence.** `X, not just Y` for emphasis, lists of exactly three, uniformly long sentences, hedges like "it's worth noting". Prefer the specific: a number, a file name or a flag beats an adjective.
+- **Prose**, commits included, follows the `prose` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
-- **Make PRs scannable.** A table, a before/after, or a rendered frame beats a paragraph. Attach frames with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
+- **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.

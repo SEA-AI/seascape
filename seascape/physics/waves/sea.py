@@ -178,8 +178,7 @@ def wind_sea(
         _inverse_cdf(cdf, _DOWNWIND_RAD, share / SPREAD_STRATA),
         _inverse_cdf(cdf, _DOWNWIND_RAD, (share + 1) / SPREAD_STRATA),
     )
-    # Wind is named for where it blows from; waves run the other way.
-    toward = math.radians(wind_from_deg + 180.0) + off
+    toward = toward_rad(wind_from_deg) + off
     phase = rng.uniform(0.0, 2 * math.pi, len(omega))
     # Limitation: a loop rounds each period to a whole fraction of its span, so
     # neighbouring waves can land on the same frequency again, more so in a short loop.
@@ -201,6 +200,11 @@ def wind_sea(
     return tuple(replace(w, amplitude_m=w.amplitude_m * math.sqrt(held)) for w in field)
 
 
+def toward_rad(from_deg: float) -> float:
+    """The bearing waves run toward, from the one their wind or swell comes from."""
+    return math.radians(from_deg + 180.0)
+
+
 def swell(
     height_m: float,
     period_s: float,
@@ -211,7 +215,7 @@ def swell(
     """One period, its height split over directions: Hs = 4 sqrt(sum a^2 / 2)."""
     omega = 2 * math.pi / snap(period_s)
     spread = np.full(SWELL_HEADINGS, SWELL_S_MAX)
-    toward = math.radians(from_deg + 180.0) + _off_mean_rad(
+    toward = toward_rad(from_deg) + _off_mean_rad(
         spread, rng.uniform(size=SWELL_HEADINGS)
     )
     phase = rng.uniform(0.0, 2 * math.pi, SWELL_HEADINGS)

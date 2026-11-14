@@ -68,6 +68,13 @@ def srgb_decode(encoded: np.ndarray) -> np.ndarray:
     )
 
 
+def srgb_hex_decode(srgb_hex: str) -> tuple[float, float, float]:
+    """A `#rrggbb` sRGB colour's linear RGB."""
+    encoded = np.frombuffer(bytes.fromhex(srgb_hex.removeprefix("#")), np.uint8)
+    r, g, b = (float(c) for c in srgb_decode(encoded / 255.0))
+    return r, g, b
+
+
 def srgb_encode(linear: np.ndarray) -> np.ndarray:
     """IEC 61966-2-1's sRGB transfer function: linear value to encoded."""
     linear = np.clip(linear, 0.0, 1.0)

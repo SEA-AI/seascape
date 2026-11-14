@@ -1,22 +1,26 @@
+# Cameras are named as the recorder's sensors file names them.
 # The design geometry: four cameras on one boresight. The calibrated tilts of a unit
 # (under 1 deg) and the lens offsets (under 150 mm) are left out. The colour cameras
 # balance white continuously, as they ship.
 model = "Sentry"
+# Sentry Gen 3.1.
+hardware_version = "Oscar_V7_Gen_3_1"
+ptu = {}
 
-[cameras.t_w]
+[cameras.t1]
 preset = "boson_640_32deg"
 
-[cameras.t_n]
+[cameras.t2]
 preset = "boson_640_8deg"
 
-[cameras.eo_w]
+[cameras.rgb1]
 preset = "econ_ecam50_cunx"
 hfov_deg = 40.5
 width_px = 1280
 height_px = 960
 processing = { white_balance = "grey_world" }
 
-[cameras.eo_n]
+[cameras.rgb2]
 preset = "econ_ecam50_cunx"
 hfov_deg = 9.3
 width_px = 1280
@@ -25,7 +29,7 @@ processing = { white_balance = "grey_world" }
 
 # What it records, named and cropped as its recorder's pixel_sacrifice does.
 [videos]
-TwFoV = { kind = "identity", camera = "t_w" }
-TnFoV = { kind = "identity", camera = "t_n" }
-RGBwFoV = { kind = "crop", camera = "eo_w", left_px = 40, right_px = 40 }
-RGBnFoV = { kind = "crop", camera = "eo_n", left_px = 40, right_px = 40 }
+TwFoV = { kind = "identity", camera = "t1" }
+TnFoV = { kind = "identity", camera = "t2" }
+RGBwFoV = { kind = "crop", camera = "rgb1", left_px = 40, right_px = 40 }
+RGBnFoV = { kind = "crop", camera = "rgb2", left_px = 40, right_px = 40 }

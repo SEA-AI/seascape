@@ -6,7 +6,6 @@ is rendered float and written here as a thermal camera writes one: a png as 16-b
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
-import math
 import os
 import shutil
 import subprocess
@@ -25,7 +24,7 @@ from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
 from seascape.blender.blend import node
 from seascape.blender.compositor import INDEX_ROLL, JPEG_QUALITY, unroll
-from seascape.blender.vessels import heading_rad, waterline_m
+from seascape.blender.vessels import heading_deg, waterline_m
 from seascape.config import (
     Camera,
     Crop,
@@ -33,6 +32,7 @@ from seascape.config import (
     Mount,
     Scenario,
     Stitch,
+    recorded_name,
     sources,
     substream,
 )
@@ -155,19 +155,19 @@ def _cut(name: str, width_px: int, height_px: int, crop: Crop | None) -> None:
 def _targets(built: scene.Built) -> list[labels.Target]:
     return [
         labels.Target(
-            pass_index=anchor.pass_index,
-            name=anchor.name,
+            pass_index=root.pass_index,
+            name=root.name,
             category_id=manifest()[asset].category_id,
             category=manifest()[asset].category,
             supercategory=manifest()[asset].supercategory,
-            centre_m=tuple(anchor.matrix_world.translation.xy),
-            waterline_m=waterline_m(anchor),
-            heading_deg=math.degrees(heading_rad(anchor)) % 360.0,
-            dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
-            engine_off_min=anchor["engine_off_min"],
+            centre_m=tuple(root.matrix_world.translation.xy),
+            waterline_m=waterline_m(root),
+            heading_deg=heading_deg(root) % 360.0,
+            dims_m=(root["length_m"], root["beam_m"], root["height_m"]),
+            engine_off_min=root["engine_off_min"],
         )
-        for asset, anchors in built.targets.items()
-        for anchor in anchors
+        for asset, roots in built.targets.items()
+        for root in roots
     ]
 
 
@@ -260,7 +260,7 @@ def _stitch(
                 continue
             pair = [by_camera.pop((rig_name, c)) for c in video.cameras]
             (mount, left, *_), (_, right, *_) = pair
-            out = f"{rig_name}_{name}"
+            out = recorded_name(rig_name, name)
             camera = stitch.fused(left, right, out, f"{_stem(out, frame)}.{fmt}")
             image, index = stitch.stitch(
                 (pair[0][3], pair[1][3]),
@@ -284,7 +284,7 @@ def _shoot(
     built: scene.Built,
     mount: Mount,
     rng: np.random.Generator,
-    frame: int | None,
+    frame: tuple[int | None, float],
     fmt: ImageFormat,
     thermal: tuple[agc.Agc, np.random.Generator] | None,
     into: Path,
@@ -296,7 +296,7 @@ def _shoot(
         built: The scene, at the frame's time.
         mount: The camera to render through.
         rng: Draws its sensor's noise.
-        frame: The frame's number in a sequence; None for a still.
+        frame: The frame's number in a sequence, None for a still, and its time.
         fmt: The format written.
         thermal: The AGC and NETD noise an ir frame is written through; None keeps
             the render.
@@ -307,12 +307,13 @@ def _shoot(
         The labelled frame as its mount, calibration, object index and image; the
         camera as rendered, if a video records it; and the files written.
     """
+    number, time_s = frame
     scene.look_through(built.cameras, mount, rng)
     # An exr is the radiance the cameras saw, before any recorder.
     videos = mount.rig.videos if fmt != "exr" else {}
     video = next(
         (
-            (f"{mount.rig_name}_{name}", recorded)
+            (recorded_name(mount.rig_name, name), recorded)
             for name, recorded in videos.items()
             if mount.camera_name in sources(recorded)
         ),
@@ -323,14 +324,14 @@ def _shoot(
     tree = bpy.context.scene.compositing_node_group
     tree.nodes["index.output"].file_name = f"{mount.name}."
     _cut(mount.name, width, height, crop)
-    bpy.context.scene.render.filepath = str(into / _stem(mount.name, frame))
+    bpy.context.scene.render.filepath = str(into / _stem(mount.name, number))
     ext = "exr" if thermal else fmt
-    rendered = into / f"{_stem(mount.name, frame)}.{ext}"
+    rendered = into / f"{_stem(mount.name, number)}.{ext}"
     _render_still(rendered, f"camera {mount.name}'s frame")
-    camera = scene.calibrate(built, mount, f"{_stem(mount.name, frame)}.{fmt}")
+    camera = scene.calibrate(built, mount, f"{_stem(mount.name, number)}.{fmt}", time_s)
     # An undistortion renders its pinhole; the camera recorded is the rig's.
     own = mount._replace(camera=mount.rig.cameras[mount.camera_name])
-    source = scene.calibrate(built, own, camera.image)
+    source = scene.calibrate(built, own, camera.image, time_s)
     index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
     written = []
     # A stitch's cameras keep their names; `_stitch` names what it makes of them.
@@ -340,11 +341,11 @@ def _shoot(
         if crop is not None:
             # The camera's own frame stays, unlabelled.
             written.append(rendered)
-            rendered = into / f"{_stem(out, frame)}.{ext}"
+            rendered = into / f"{_stem(out, number)}.{ext}"
             rendered.parent.mkdir(exist_ok=True)
             # The passes' temporary folder can sit on another filesystem.
             shutil.move(passes / f"{mount.name}.video.{ext}", rendered)
-            image = f"{_stem(out, frame)}.{fmt}"
+            image = f"{_stem(out, number)}.{fmt}"
             camera = camera.model_copy(update={"image": image}).cropped(crop)
             rows = slice(crop.top_px, height - crop.bottom_px)
             index = index[rows, crop.left_px : width - crop.right_px]
@@ -402,7 +403,7 @@ def render(
             }
             for frame, time_s in enumerate(outputs.times_s):
                 sc.frame_set(frame)
-                # Both read matrix_world, which moves with the frame.
+                # Reads matrix_world, which moves with the frame.
                 targets = _targets(built)
                 shot = []
                 for mount in mounts:
@@ -410,7 +411,7 @@ def render(
                         built,
                         mount,
                         substream(scenario.seed, f"sensor/{mount.name}"),
-                        frame if sequence else None,
+                        (frame if sequence else None, time_s),
                         outputs.format,
                         (tones[mount.name], noises[mount.name]) if thermal else None,
                         into,

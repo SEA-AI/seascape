@@ -15,6 +15,7 @@ from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
+from seascape.outputs.calibration import Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -62,6 +63,9 @@ def _blender_log(path: Path) -> Generator[None]:
     file descriptor 1 from C, where either would tear the progress bar and mix into
     stdout.
 
+    Fails where Cycles drew a shader black: past its SVM stack it logs, renders on,
+    and returns no error.
+
     Args:
         path: The log, appended to; its folder is made if missing.
     """
@@ -69,6 +73,7 @@ def _blender_log(path: Path) -> Generator[None]:
     sys.stdout.flush()
     stdout = os.dup(1)
     with path.open("a") as log, redirect_stdout(log):
+        start = log.tell()
         os.dup2(log.fileno(), 1)
         try:
             yield
@@ -76,6 +81,12 @@ def _blender_log(path: Path) -> Generator[None]:
             log.flush()
             os.dup2(stdout, 1)
             os.close(stdout)
+    with path.open(errors="replace") as log:
+        log.seek(start)
+        if "out of SVM stack space" in log.read():
+            raise click.ClickException(
+                f"Cycles ran out of SVM stack and drew a shader black: see {path.name}"
+            )
 
 
 def _progress(length: int, label: str) -> Any:
@@ -140,7 +151,7 @@ def build(
         bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()), relative_remap=False)
     mounts = built.mounts
     bands = ", ".join(sorted({mount.camera.band for mount in mounts}))
-    heights = ", ".join(f"{rig.height_m} m" for rig in built.rigs.values())
+    heights = ", ".join(f"{built.head_height_m(name)} m" for name in built.rigs)
     click.echo(f"{path}: {band}, {len(mounts)} cameras ({bands}) at {heights}")
 
 
@@ -202,28 +213,58 @@ def render(
 @click.option(
     "--preview",
     is_flag=True,
-    help="Render at 1 fps, a quarter the size and one sample, and check every video "
-    "keeps its containers whole in every frame; nothing is encoded.",
+    help="Render at 1 fps and one sample, and check every video sees a buoy of each "
+    "of its rings whole and the container at both ends; nothing is encoded.",
+)
+@click.option(
+    "--sheet",
+    is_flag=True,
+    help="Draw the course on one image, <scenario>-course.png in the directory, and "
+    "render nothing.",
 )
 def sync(
-    scenario: Path, output: Path | None, overrides: tuple[str, ...], preview: bool
+    scenario: Path,
+    output: Path | None,
+    overrides: tuple[str, ...],
+    preview: bool,
+    sheet: bool,
 ) -> None:
-    """Render, encode and record a sync scenario, or preview it."""
-    from seascape import sync as checks
+    """Render, encode and record a sync scenario, preview it, or draw its course."""
+    from seascape.sync import preview as checks
 
-    built = load(scenario, list(overrides))
+    if sheet and preview:
+        raise click.UsageError("--sheet and --preview are exclusive")
+    if sheet:
+        from seascape.sync.sheet import draw
+
+        built = load(scenario, list(overrides))
+        into = output or scenario.parent
+        into.mkdir(parents=True, exist_ok=True)
+        path = into / f"{scenario.stem}-course.png"
+        with _blender_log(Path(os.devnull)):
+            drawn = draw(built, path)
+        click.echo(drawn)
+        return
     if not preview:
+        built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
         _render(built, into)
         _encode(into, _QUALITY)
         for path in recording.export(into):
             click.echo(path)
         return
-    built = load(scenario, [*overrides, checks.preview(built)])
+    built = load(scenario, [*overrides, checks.PREVIEW])
+    if not checks.placed(built):
+        raise click.ClickException(checks.advice(built, f"{scenario} holds no buoys"))
     into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
     _render(built, into)
-    checks.check(labels.Labels.read(into))
-    click.echo(f"every video keeps its containers whole: {into}")
+    try:
+        checks.check(labels.Labels.read(into), built)
+    except ValueError as missed:
+        raise click.ClickException(
+            checks.advice(built, f"{scenario}: {missed}")
+        ) from missed
+    click.echo(f"every video sees the course: {into}")
 
 
 @main.command("montage")
@@ -259,15 +300,16 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
 )
 @click.option(
     "--frame",
+    type=click.Choice(get_args(Frame.__value__)),
     default="world",
     show_default=True,
     help="An extrinsics frame in calibration.json, which sets what is level: world "
-    "the horizon, vessel the deck, rig the product.",
+    "the horizon, ownship the hull, head the rig's head, panned and tilted.",
 )
 @click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
 @click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
 def panorama_(
-    folder: Path, projection: str, frame: str, max_width: int | None, ruler: bool
+    folder: Path, projection: str, frame: Frame, max_width: int | None, ruler: bool
 ) -> None:
     """Stitch each rig's frames, from calibration.json."""
     for path in panorama.panoramas(folder, projection, frame, max_width, ruler):
@@ -372,10 +414,11 @@ def list_() -> None:
         key=lambda n: math.inf if (e := photos[n].sun_elevation_deg) is None else -e,
     )
     _table(
-        ("SKY", "SUN ELEV", "LICENCE", "CACHED"),
+        ("SKY", "LOOK", "SUN ELEV", "LICENCE", "CACHED"),
         [
             (
                 name,
+                photos[name].label,
                 photos[name].sun,
                 photos[name].licence,
                 _cached(assets.cache_path(name, photos[name].url).exists()),
@@ -415,6 +458,8 @@ def show(name: str) -> None:
         photo = skies.library()[name]
         path = assets.cache_path(name, photo.url)
         fields = {
+            "look": photo.label,
+            "cloud cover": f"{photo.cover_oktas} oktas, {photo.cloud_genus}",
             "sun elevation": photo.sun,
             "sun bearing": f"{photo.sun_bearing_deg:.1f} deg",
             "licence": photo.licence,

@@ -18,13 +18,15 @@ from starlette.responses import PlainTextResponse
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from seascape.server.guide import INSTRUCTIONS, getting_started
 from seascape.server.jobs import State, sweep
 from seascape.server.tools import (
     cancel,
     catalog,
+    get_job,
     jobs,
+    preview,
     render,
-    render_result,
     scenario,
     schema,
 )
@@ -45,29 +47,24 @@ def mcp(state: State) -> MCPServer:
 
     served = MCPServer(
         "seascape",
-        instructions="Synthetic maritime camera frames with exact ground truth. Read "
-        "`catalog` once, then `scenario` and `schema` for what you will change. Start "
-        "a job with `render`, then call `render_result` until it is done. Without "
-        "draws, variants differ only in their waves: for varied images, render "
-        "`randomized`, or draw fields in `overrides`.",
+        instructions=INSTRUCTIONS,
         lifespan=lifespan,
     )
-    # Only `render` and `cancel` change what the server holds.
+    served.prompt()(getting_started)
+    # Only `cancel` asks for approval; `render` writes only expiring job files.
     read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
     served.add_tool(catalog, annotations=read_only)
     served.add_tool(jobs, annotations=read_only)
     served.add_tool(scenario, annotations=read_only)
     served.add_tool(schema, annotations=read_only)
-    served.add_tool(
-        render,
-        annotations=ToolAnnotations(destructive_hint=False, open_world_hint=False),
-    )
+    served.add_tool(render, annotations=read_only)
     served.add_tool(
         cancel,
         annotations=ToolAnnotations(destructive_hint=True, open_world_hint=False),
     )
-    # Unstructured: the previews are images, which structured content cannot carry.
-    served.add_tool(render_result, annotations=read_only, structured_output=False)
+    # Unstructured: the sheets are images, which structured content cannot carry.
+    served.add_tool(get_job, annotations=read_only, structured_output=False)
+    served.add_tool(preview, annotations=read_only, structured_output=False)
     return served
 
 

@@ -5,10 +5,12 @@ import math
 import numpy as np
 import pytest
 
+from seascape import angles
+from seascape.config import Camera
 from seascape.outputs import stitch
-from seascape.outputs.calibration import TO_CV, CameraCalibration
+from seascape.outputs.calibration import CameraCalibration
 
-# Core-Backend's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
+# Oceanus's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
 HALF_TURN = np.diag([-1.0, -1.0, 1.0])
 
 
@@ -26,18 +28,18 @@ def camera(
         width_px=640,
         height_px=512,
         K=((fx, 0.0, cx), (0.0, fy, cy), (0.0, 0.0, 1.0)),
-        extrinsics={"rig": tuple(map(tuple, pose)), "world": tuple(map(tuple, pose))},
+        extrinsics={"head": tuple(map(tuple, pose)), "world": tuple(map(tuple, pose))},
     )
 
 
 def core(rpy_deg: tuple[float, float, float]) -> np.ndarray:
-    """A camera's turn from Core-Backend's roll, pitch and yaw, Ry Rx Rz."""
+    """A camera's turn from Oceanus's roll, pitch and yaw, Ry Rx Rz."""
     roll, pitch, yaw = map(math.radians, rpy_deg)
     c, s = math.cos, math.sin
     rx = np.array([[1, 0, 0], [0, c(pitch), -s(pitch)], [0, s(pitch), c(pitch)]])
     ry = np.array([[c(yaw), 0, s(yaw)], [0, 1, 0], [-s(yaw), 0, c(yaw)]])
     rz = np.array([[c(roll), -s(roll), 0], [s(roll), c(roll), 0], [0, 0, 1]])
-    return TO_CV.T @ HALF_TURN @ ry @ rx @ rz @ HALF_TURN
+    return angles.TO_CV.T @ HALF_TURN @ ry @ rx @ rz @ HALF_TURN
 
 
 def toward(yaw_deg: float) -> np.ndarray:
@@ -47,7 +49,7 @@ def toward(yaw_deg: float) -> np.ndarray:
         np.array(
             [[math.cos(a), -math.sin(a), 0], [math.sin(a), math.cos(a), 0], [0, 0, 1]]
         )
-        @ TO_CV.T
+        @ angles.TO_CV.T
     )
 
 
@@ -80,7 +82,7 @@ def test_a_stitch_puts_each_ray_where_the_fused_camera_sees_it() -> None:
         """Each pixel's bearing in the rig, degrees to starboard."""
         v, u = np.mgrid[: c.height_px, : c.width_px]
         rays = np.stack([u, v, np.ones_like(u)], axis=-1) @ np.linalg.inv(c.K).T
-        x, y, _ = np.moveaxis(rays @ np.array(c.extrinsics["rig"])[:3, :3].T, -1, 0)
+        x, y, _ = np.moveaxis(rays @ np.array(c.extrinsics["head"])[:3, :3].T, -1, 0)
         return np.degrees(np.arctan2(x, y))
 
     def counts(c: CameraCalibration) -> np.ndarray:
@@ -114,3 +116,23 @@ def test_two_frames_meet_halfway_between_their_levels() -> None:
     frame, _ = stitch.stitch(frames, indices, cameras, fused)
 
     assert (frame == 110).all()
+
+
+@pytest.mark.parametrize(("yaw_deg", "pitch_deg"), [(30.0, -5.0), (-90.0, 10.0)])
+def test_a_camera_looks_along_its_yaw_clockwise_and_up_its_pitch(
+    yaw_deg: float, pitch_deg: float
+) -> None:
+    camera = Camera(
+        band="eo",
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        hfov_deg=60.0,
+        width_px=640,
+        height_px=480,
+    )
+
+    # The optical axis in the rig: +X starboard, +Y along its axis, +Z up.
+    x, y, z = camera.pose()[:3, 2]
+
+    assert math.degrees(math.atan2(x, y)) == pytest.approx(yaw_deg)
+    assert math.degrees(math.asin(z)) == pytest.approx(pitch_deg)
