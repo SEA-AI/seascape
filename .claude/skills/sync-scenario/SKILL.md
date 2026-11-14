@@ -1,6 +1,6 @@
 ---
 name: sync-scenario
-description: Write or change a product's `scenarios/sync-<product>.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, or when its preview fails.
+description: Write, record or upload a product's `scenarios/sync-<product>.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, when its preview fails, or to upload its recording to W&B.
 ---
 
 # Sync scenario
@@ -28,7 +28,33 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 
 5. **Sheet.** Check the course on `uv run seascape sync scenarios/sync-<product>.toml --sheet`: every ring crosses every video it serves, and each camera's centre sits between the horizon and the nearest waterline.
 6. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
-7. **Record.** `uv run seascape sync scenarios/sync-<product>.toml`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
+7. **Record.** `uv run seascape sync scenarios/sync-<product>.toml` renders, encodes and writes `recordings/<rig>/<Model>_recordings_<timestamp>/`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
+8. **Upload.** Commit first, so the hash names code that exists. Then, logged in to W&B (`uvx wandb login`), upload the recording with the scenario files that made it, and link it into the W&B Dataset registry, where the team's datasets are listed:
+
+   ```bash
+   uvx --from wandb python - <<'EOF'
+   import json, subprocess
+   from pathlib import Path
+   import wandb
+   name, rec = "sync-<product>", "scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>"
+   run_dir = Path(rec).parents[2]  # the run: labels.json, recordings/<rig>/<recording>
+   info = json.loads((run_dir / "labels.json").read_text())["info"]
+   info["exported_commit"] = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+   with wandb.init(entity="sea-ai", project="dataset-registry", job_type="upload-sync") as run:
+       art = wandb.Artifact(name, type="dataset", description=f"seascape {info['commit']}", metadata=info)
+       art.add_dir(rec, name=rec.rsplit("/", 1)[1])
+       for toml in (f"{name}.toml", "sync.toml"):  # the scenario and the file it extends
+           art.add_file(f"scenarios/{toml}")
+       run.log_artifact(art).wait()
+       print(art.qualified_name, "->", art.link(f"wandb-registry-dataset/{name}").qualified_name)
+   EOF
+   ```
+
+   Its metadata is the render's `info` block from `labels.json`: the commit, Blender, the GPU and the resolved scenario, plus `exported_commit`, the code that wrote the recording. It prints the project's version and the registry's, which counts its own links and can differ. The artifact takes the scenario's name, variant included (`sync-watchkeeper-1280-gen1`), so each variant versions apart. W&B never reuses a version number: deleting a version leaves the next one higher. A consumer fetches the registry's exact version, never `latest`:
+
+   ```bash
+   uvx wandb artifact get --root sync-<product> wandb-registry-dataset/sync-<product>:v<m>
+   ```
 
 ## When it fails
 
