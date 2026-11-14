@@ -146,7 +146,8 @@ def _finest_footprint_m(scenario: Scenario, seen: list[View]) -> float:
 
 def ownship_afloat(scenario: Scenario, path: Path) -> Callable[[float], np.ndarray]:
     """`T_world_waterline` at a time: the ownship's hull, measured from its imported
-    mesh, riding the sea along `path`; no rigs, no targets.
+    mesh, riding the sea along `path`; no rigs, no targets. Its height is sea level
+    plus the sea's heave, without the scripted heave or the earth's curve.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     afloat: list[Afloat] = []

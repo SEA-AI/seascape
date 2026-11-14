@@ -704,8 +704,19 @@ def test_a_hull_yaws_with_the_water_under_it(
     """The least-squares turn of the Gerstner offset, integrated over a 301 x 101
     grid.
     """
-    wave = waves.Wave(0.8 * (0.6 / omega_rad_s) ** 2, omega_rad_s, 0.7, 1.0)
-    hull = waves.Waterplane(30.0, -40.0, math.radians(100.0), length_m, beam_m)
+    wave = waves.Wave(
+        amplitude_m=0.8 * (0.6 / omega_rad_s) ** 2,
+        omega_rad_s=omega_rad_s,
+        toward_rad=0.7,
+        phase_rad=1.0,
+    )
+    hull = waves.Waterplane(
+        rest_east_m=30.0,
+        rest_north_m=-40.0,
+        heading_rad=math.radians(100.0),
+        length_m=length_m,
+        beam_m=beam_m,
+    )
     x, y = np.meshgrid(
         np.linspace(-length_m / 2, length_m / 2, 301),
         np.linspace(-beam_m / 2, beam_m / 2, 101),
@@ -731,9 +742,17 @@ def test_a_hull_yaws_with_the_water_under_it(
 
 def test_a_square_barely_yaws_in_a_long_wave() -> None:
     """The offset is a gradient: over a square, its turn falls with (k L)^2."""
-    wave = waves.Wave(0.8, 0.6, 0.7, 1.0)  # 171 m long
-    square = waves.Waterplane(30.0, -40.0, 1.7, 10.0, 10.0)
+    wave = waves.Wave(amplitude_m=0.8, omega_rad_s=0.6, toward_rad=0.7, phase_rad=1.0)
+    square = waves.Waterplane(
+        rest_east_m=30.0,
+        rest_north_m=-40.0,
+        heading_rad=1.7,
+        length_m=10.0,
+        beam_m=10.0,
+    )
     long = square._replace(length_m=60.0)
+    # Measured 5e-4, so 1e-3 is a margin over it; a square that turned with the water
+    # as the long hull does would sit near 1.
     assert abs(waves.yaw_rad((wave,), square, 2.0)) < 1e-3 * abs(
         waves.yaw_rad((wave,), long, 2.0)
     )

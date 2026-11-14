@@ -933,7 +933,7 @@ def test_an_ownship_hull_rides_the_sea_under_its_script() -> None:
         yawed.append(abs(yaw_deg))
         track_deg = math.degrees(path(t_s).heading_rad)
         assert angles.wrapped_deg(
-            _bow_deg(built.root) - track_deg - yaw_deg
+            heading_deg(built.root) - track_deg - yaw_deg
         ) == pytest.approx(0.0, abs=1e-4)
         script = 0.2 * math.sin(math.tau * t_s / heave_s)
         heave = waves.heave_m(tall, plane, t_s)
@@ -1437,9 +1437,9 @@ def _ridden_m(
 
 
 def _sea_yaw_deg(
-    scenario: Scenario, root: bpy.types.Object, heading_deg: float, t_s: float
+    scenario: Scenario, root: bpy.types.Object, track_deg: float, t_s: float
 ) -> float:
-    """The sea's yaw of the hull drawn at `root` on `heading_deg`, as `waves.yaw_rad`
+    """The sea's yaw of the hull drawn at `root` on `track_deg`, as `waves.yaw_rad`
     fits it over the hull's box at the water's rest under it.
     """
     corners = box_corners(mesh_objects([root]), root.matrix_world.inverted())
@@ -1447,14 +1447,8 @@ def _sea_yaw_deg(
     beam = max(c.x for c in corners) - min(c.x for c in corners)
     east, north, _ = root.matrix_world.translation
     rest = waves.gerstner_rest_m(_tall(scenario), np.array(east), np.array(north), t_s)
-    plane = waves.Waterplane(*map(float, rest), math.radians(heading_deg), length, beam)
+    plane = waves.Waterplane(*map(float, rest), math.radians(track_deg), length, beam)
     return math.degrees(waves.yaw_rad(wave_field(scenario), plane, t_s))
-
-
-def _bow_deg(root: bpy.types.Object) -> float:
-    """The bearing the drawn hull's bow points along."""
-    bow = root.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
-    return math.degrees(math.atan2(bow.x, bow.y))
 
 
 class TestOwnshipMotion:
@@ -1929,7 +1923,7 @@ class TestOrbitingYachts:
                 t_s = self.SCENARIO.outputs.times_s[frame]
                 yaw_deg = _sea_yaw_deg(self.SCENARIO, hull, lap_deg, t_s)
                 assert angles.wrapped_deg(
-                    _bow_deg(hull) - lap_deg - yaw_deg
+                    heading_deg(hull) - lap_deg - yaw_deg
                 ) == pytest.approx(0.0, abs=1e-4)
 
 
@@ -2004,12 +1998,11 @@ class TestDrifting:
             spec.fishtail,
             scenario.outputs,
         )
+        heading = math.radians(spec.heading_deg)
         sc = bpy.context.scene
         for frame in (0, 7, 31):
             sc.frame_set(frame)
             east, north, up = root.matrix_world.translation
-            bow = root.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))
-            heading = math.radians(spec.heading_deg)
             t_s = scenario.outputs.times_s[frame]
             # Only the tall waves move the water the hull sits on.
             assert len(_tall(scenario)) < len(wave_field(scenario))
@@ -2034,7 +2027,7 @@ class TestDrifting:
             )
             yaw = waves.yaw_rad(wave_field(scenario), hull, t_s)
             assert angles.wrapped_deg(
-                math.degrees(math.atan2(bow.x, bow.y) - heading - yaw)
+                heading_deg(root) - math.degrees(heading + yaw)
             ) == pytest.approx(0.0, abs=1e-4)
             radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
             assert up - earth.sea_z_m(east, north, radius_m) == pytest.approx(
@@ -2360,7 +2353,7 @@ def test_a_heading_from_the_line_of_sight_turns_from_the_bearing() -> None:
     (root,) = built.targets["yacht"]
     t_s = scenario.outputs.times_s[bpy.context.scene.frame_current]
     yaw_deg = _sea_yaw_deg(scenario, root, 210.0, t_s)
-    assert angles.wrapped_deg(_bow_deg(root) - 210.0 - yaw_deg) == pytest.approx(
+    assert angles.wrapped_deg(heading_deg(root) - 210.0 - yaw_deg) == pytest.approx(
         0.0, abs=1e-4
     )
 
