@@ -46,8 +46,9 @@ class Journal:
         self._truth = truth
         self._seen = (0, 0, 0, 0)  # images, annotations, dropped, categories
         self._info_written = False
-        # Not appended to: a folder's journal is its render's alone.
-        self._file = self.path.open("w")
+        # Not appended to: a folder's journal is its render's alone. Bytes, so the
+        # locale's encoding never applies and only LF ends a line.
+        self._file = self.path.open("wb")
 
     def append(
         self, cameras: list[CameraCalibration], raw: list[CameraCalibration]
@@ -66,7 +67,7 @@ class Journal:
             dropped=truth.dropped[dropped:],
             categories=truth.categories[categories:],
         )
-        self._file.write(step.model_dump_json() + "\n")
+        self._file.write(step.model_dump_json().encode() + b"\n")
         # Flushed per frame, so a killed render leaves at most its last line torn.
         self._file.flush()
         self._info_written = self._info_written or bool(truth.info)
@@ -86,8 +87,9 @@ class Journal:
         error: BaseException | None,
         trace: TracebackType | None,
     ) -> None:
-        self._file.close()
         try:
+            # Closing flushes, and can fail as the append before it did.
+            self._file.close()
             self.written = finish(self.path.parent)
         except Exception as failed:
             if error is None:
@@ -100,7 +102,9 @@ def _steps(folder: Path) -> list[Step]:
     """The journal's lines; a torn last one, from a render killed mid-write, is left
     out.
     """
-    lines = (folder / FILENAME).read_text().splitlines()
+    # Split as bytes: a value may hold U+2028, which str.splitlines also splits at,
+    # and a torn last line may end inside a character.
+    lines = (folder / FILENAME).read_bytes().splitlines()
     steps = []
     for number, line in enumerate(lines, 1):
         try:

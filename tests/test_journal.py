@@ -124,14 +124,27 @@ def test_each_frame_is_one_line_holding_only_what_it_added(tmp_path: Path) -> No
 
 
 def test_a_torn_last_line_is_left_out(tmp_path: Path) -> None:
-    """What a render killed mid-write leaves."""
+    """What a render killed mid-write leaves, here inside a two-byte character."""
     _leftover(tmp_path, 2)
     path = tmp_path / journal.FILENAME
-    path.write_text(path.read_text() + '{"cameras": [{"na')
+    path.write_bytes(path.read_bytes() + '{"info": {"sea": "ö'.encode()[:-1])
 
     _, read = journal.read(tmp_path)
 
     assert len(read.images) == 2
+
+
+def test_text_any_locale_or_line_separator_would_break_reads_back(
+    tmp_path: Path,
+) -> None:
+    truth = labels.Labels(info={"note": "海\u2028sea"})
+
+    with journal.Journal(tmp_path, truth) as appended:
+        _label(truth, 0.0)
+        appended.append([CAMERA], [])
+        _, read = journal.read(tmp_path)
+
+    assert read == truth
 
 
 def test_a_torn_line_before_the_last_is_an_error(tmp_path: Path) -> None:
