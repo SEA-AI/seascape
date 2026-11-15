@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from seascape.outputs import journal, labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
@@ -61,47 +62,70 @@ def _label(truth: labels.Labels, time_s: float) -> None:
     )
 
 
-def _journalled(folder: Path, frames: int) -> labels.Labels:
-    """The truth of `frames` frames, each appended as the render appends it, with
-    the journal still in `folder`.
+def _leftover(folder: Path, frames: int) -> labels.Labels:
+    """The truth of `frames` frames, and in `folder` the journal a render killed
+    outright leaves of them: the lines `Journal` writes, never finished.
     """
     truth = labels.Labels(info=INFO)
-    appended = journal.Journal(folder, truth)
+    steps = []
     for frame in range(frames):
+        before = len(truth.images), len(truth.annotations), len(truth.dropped)
         _label(truth, frame / 10)
-        appended.append([CAMERA], [CAMERA] if frame == 0 else [])
-    # Closed without its block's end, as a render killed outright leaves it.
-    appended._file.close()
+        images, annotations, dropped = before
+        steps.append(
+            journal.Step(
+                info=INFO if frame == 0 else {},
+                cameras=[CAMERA],
+                raw=[CAMERA] if frame == 0 else [],
+                images=truth.images[images:],
+                annotations=truth.annotations[annotations:],
+                dropped=truth.dropped[dropped:],
+                categories=truth.categories if frame == 0 else [],
+            )
+        )
+    (folder / journal.FILENAME).write_text(
+        "".join(step.model_dump_json() + "\n" for step in steps)
+    )
     return truth
 
 
 def test_the_journal_reads_back_as_the_truth_it_was_appended_from(
     tmp_path: Path,
 ) -> None:
-    truth = _journalled(tmp_path, 3)
+    truth = labels.Labels(info=INFO)
 
-    calibration, read = journal.read(tmp_path)
+    with journal.Journal(tmp_path, truth) as appended:
+        _label(truth, 0.0)
+        appended.append([CAMERA], [CAMERA])
+        _label(truth, 0.1)
+        appended.append([CAMERA], [])
+        calibration, read = journal.read(tmp_path)
 
     assert read == truth
-    assert calibration == Calibration(cameras=[CAMERA] * 3, raw=[CAMERA])
+    assert calibration == Calibration(cameras=[CAMERA] * 2, raw=[CAMERA])
 
 
 def test_each_frame_is_one_line_holding_only_what_it_added(tmp_path: Path) -> None:
-    _journalled(tmp_path, 3)
+    truth = labels.Labels(info=INFO)
 
-    lines = (tmp_path / journal.FILENAME).read_text().splitlines()
-
+    with journal.Journal(tmp_path, truth) as appended:
+        _label(truth, 0.0)
+        appended.append([CAMERA], [])
+        _label(truth, 0.1)
+        appended.append([CAMERA], [])
+        lines = (tmp_path / journal.FILENAME).read_text().splitlines()
     steps = [journal.Step.model_validate_json(line) for line in lines]
-    assert [len(s.images) for s in steps] == [1, 1, 1]
-    assert [len(s.annotations) for s in steps] == [1, 1, 1]
-    assert [len(s.dropped) for s in steps] == [1, 1, 1]
-    assert [len(s.categories) for s in steps] == [1, 0, 0]
-    assert [s.info for s in steps] == [INFO, {}, {}]
+
+    assert [len(s.images) for s in steps] == [1, 1]
+    assert [len(s.annotations) for s in steps] == [1, 1]
+    assert [len(s.dropped) for s in steps] == [1, 1]
+    assert [len(s.categories) for s in steps] == [1, 0]
+    assert [s.info for s in steps] == [INFO, {}]
 
 
 def test_a_torn_last_line_is_left_out(tmp_path: Path) -> None:
     """What a render killed mid-write leaves."""
-    _journalled(tmp_path, 2)
+    _leftover(tmp_path, 2)
     path = tmp_path / journal.FILENAME
     path.write_text(path.read_text() + '{"cameras": [{"na')
 
@@ -111,16 +135,16 @@ def test_a_torn_last_line_is_left_out(tmp_path: Path) -> None:
 
 
 def test_a_torn_line_before_the_last_is_an_error(tmp_path: Path) -> None:
-    _journalled(tmp_path, 1)
+    _leftover(tmp_path, 1)
     path = tmp_path / journal.FILENAME
     path.write_text('{"cameras": [{"na\n' + path.read_text())
 
-    with pytest.raises(ValueError, match="Step"):
+    with pytest.raises(ValidationError):
         journal.read(tmp_path)
 
 
 def test_finish_writes_both_files_and_deletes_the_journal(tmp_path: Path) -> None:
-    truth = _journalled(tmp_path, 2)
+    truth = _leftover(tmp_path, 2)
 
     written = journal.finish(tmp_path)
 
@@ -131,7 +155,7 @@ def test_finish_writes_both_files_and_deletes_the_journal(tmp_path: Path) -> Non
 
 
 def test_a_journal_without_a_frame_writes_nothing(tmp_path: Path) -> None:
-    _journalled(tmp_path, 0)
+    _leftover(tmp_path, 0)
 
     written = journal.finish(tmp_path)
 
@@ -178,7 +202,7 @@ def test_a_journal_that_cannot_finish_notes_it_on_the_blocks_own_error(
 
 
 def test_a_journal_left_by_an_earlier_render_is_replaced(tmp_path: Path) -> None:
-    _journalled(tmp_path, 2)
+    _leftover(tmp_path, 2)
     truth = labels.Labels(info=INFO)
 
     with journal.Journal(tmp_path, truth) as appended:
