@@ -56,7 +56,7 @@ def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
     return (mono * weight).sum(axis=-1) / weight.sum()
 
 
-# maxsize: a few cameras. An entry is about 90 MB for a 640 x 512 frame.
+# maxsize: a few cameras. An entry is the shape below x 8 B, about 90 MB at 640 x 512.
 @functools.lru_cache(maxsize=4)
 def _frame_mtfs(shape: tuple[int, int], f_number: float, pitch_m: float) -> FloatArray:
     """`_band_mtfs` at the rfft2 frequencies of a padded frame of `shape`, the same

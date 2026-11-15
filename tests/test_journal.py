@@ -6,9 +6,11 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+from seascape.config import load
 from seascape.outputs import journal, labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import earth
+from tests.scenarios import OPEN_SEA
 
 INFO = {"scenario": {"seed": 7}}
 # Facing north, level, 50 m up; the pose that puts a horizon in its frame.
@@ -236,7 +238,7 @@ def _part(folder: Path, name: str) -> None:
     _label(truth, 0.0, camera)
     folder.mkdir()
     truth.write(folder)
-    Calibration(cameras=[camera]).write(folder)
+    Calibration(cameras=[camera], raw=[camera]).write(folder)
     (folder / camera.image).write_bytes(b"frame")
     (folder / "blender.log").write_text(f"{name}\n")
 
@@ -246,13 +248,17 @@ def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
     _part(parts[0], "A")
     _part(parts[1], "B")
 
-    written = journal.gather(tmp_path, parts, {"seed": 1})
+    scene = load(OPEN_SEA)
+
+    written = journal.gather(tmp_path, parts, scene)
 
     truth = labels.Labels.read(tmp_path)
     assert [(i.id, i.file_name) for i in truth.images] == [(1, "A.png"), (2, "B.png")]
     assert [(a.id, a.image_id) for a in truth.annotations] == [(1, 1), (2, 2)]
-    assert truth.info["scenario"] == {"seed": 1}
-    assert [c.name for c in Calibration.read(tmp_path).cameras] == ["A", "B"]
+    assert truth.info["scenario"] == scene.model_dump(mode="json")
+    calibration = Calibration.read(tmp_path)
+    assert [c.name for c in calibration.cameras] == ["A", "B"]
+    assert [c.name for c in calibration.raw] == ["A", "B"]
     assert written == [
         tmp_path / "A.png",
         tmp_path / "B.png",
@@ -278,7 +284,19 @@ def test_a_file_of_one_name_moves_nothing(tmp_path: Path, held_by: str) -> None:
         (tmp_path / "A.png").write_bytes(b"an earlier frame")
 
     with pytest.raises(FileExistsError, match=r"A\.png"):
-        journal.gather(tmp_path, parts, {})
+        journal.gather(tmp_path, parts, load(OPEN_SEA))
 
     assert (parts[0] / "A.png").exists()
     assert not (tmp_path / "labels.json").exists()
+
+
+def test_a_part_whose_truth_does_not_read_moves_nothing(tmp_path: Path) -> None:
+    parts = [tmp_path / ".eo", tmp_path / ".ir"]
+    _part(parts[0], "A")
+    _part(parts[1], "B")
+    (parts[1] / "labels.json").unlink()
+
+    with pytest.raises(FileNotFoundError):
+        journal.gather(tmp_path, parts, load(OPEN_SEA))
+
+    assert (parts[0] / "A.png").exists()

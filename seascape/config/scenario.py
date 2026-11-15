@@ -2,6 +2,7 @@
 
 import math
 import warnings
+from itertools import chain
 from typing import Literal
 
 from pydantic import (
@@ -155,10 +156,15 @@ class Scenario(Model):
 
     @property
     def rendered_bands(self) -> list[Band]:
-        """The bands a render renders, in the order it renders them: those of
-        `outputs.bands` some camera sees in.
+        """The bands of `outputs.bands` that some camera sees, in render order; the
+        defaults can name one no rig has.
         """
         return [band for band in self.outputs.bands if self.band_mounts(band)]
+
+    @property
+    def rendered_mounts(self) -> list[Mount]:
+        """The cameras a render renders, band by band in render order."""
+        return list(chain.from_iterable(map(self.band_mounts, self.rendered_bands)))
 
     def head_height_m(self, rig: str) -> float:
         """The head of rig `rig` above a calm sea: its height on the hull, which a
@@ -169,8 +175,7 @@ class Scenario(Model):
     @property
     def images(self) -> int:
         """How many images a render writes."""
-        rendered = sum(m.camera.band in self.outputs.bands for m in self.mounts)
-        return rendered * self.outputs.frames
+        return len(self.rendered_mounts) * self.outputs.frames
 
     @property
     def worn(self) -> frozenset[str]:

@@ -15,8 +15,9 @@ from typing import Any, Self
 
 from pydantic import Field, ValidationError
 
+from seascape.config import Scenario
 from seascape.model import Model
-from seascape.outputs import BLENDER_LOG
+from seascape.outputs import BLENDER_LOG, scenario_record
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import FILENAME as LABELS
@@ -151,11 +152,12 @@ def finish(folder: Path) -> list[Path]:
     return written
 
 
-def gather(folder: Path, parts: Sequence[Path], scenario: dict[str, Any]) -> list[Path]:
+def gather(folder: Path, parts: Sequence[Path], scenario: Scenario) -> list[Path]:
     """Move `parts`, finished renders of a scene's bands, into `folder` as one render
-    of `scenario` writes it, then delete them; returns every file it put there.
+    of `scenario` writes it, then delete them; returns every file it put there, the
+    labelled frames in label order first.
 
-    Their labels number on in the order of `parts`, as one render numbers its bands.
+    Labels renumber in `parts` order, as one render numbers its bands.
 
     Raises:
         FileExistsError: Two parts, or a part and `folder`, hold a file of one name;
@@ -163,7 +165,7 @@ def gather(folder: Path, parts: Sequence[Path], scenario: dict[str, Any]) -> lis
     """
     joined = concat({part.name: Labels.read(part) for part in parts})
     # Each part's scenario renders some bands; the truth records the whole scene's.
-    joined.info["scenario"] = scenario
+    joined.info["scenario"] = scenario_record(scenario)
     cameras = Calibration.concat([Calibration.read(part) for part in parts])
     truth = {LABELS, CALIBRATION, BLENDER_LOG}
     moves = []
@@ -174,14 +176,18 @@ def gather(folder: Path, parts: Sequence[Path], scenario: dict[str, Any]) -> lis
         raise FileExistsError(f"{folder}: more than one part holds {twice}")
     if there := sorted(name for name in counts if (folder / name).exists()):
         raise FileExistsError(f"{folder} already holds {there}")
-    written = []
+    placed = []
     for item in moves:
-        item.rename(folder / item.name)
-        moved = folder / item.name
-        written += sorted(p for p in moved.rglob("*") if p.is_file()) or [moved]
+        moved = item.rename(folder / item.name)
+        if moved.is_dir():
+            placed += sorted(p for p in moved.rglob("*") if p.is_file())
+        else:
+            placed.append(moved)
+    labelled = [folder / image.file_name for image in joined.images]
+    rest = sorted(set(placed) - set(labelled))
     with (folder / BLENDER_LOG).open("a") as log:
         for part in parts:
             log.write((part / BLENDER_LOG).read_text(errors="replace"))
     for part in parts:
         shutil.rmtree(part)
-    return [*written, cameras.write(folder), joined.write(folder)]
+    return [*labelled, *rest, cameras.write(folder), joined.write(folder)]

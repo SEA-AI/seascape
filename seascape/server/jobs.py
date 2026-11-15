@@ -189,8 +189,7 @@ def _bytes(scene: Scenario) -> float:
         * mount.camera.width_px
         * mount.camera.height_px
         * BYTES_PER_PX[mount.camera.band, scene.outputs.format]
-        for mount in scene.mounts
-        if mount.camera.band in scene.outputs.bands
+        for mount in scene.rendered_mounts
     )
 
 

@@ -36,7 +36,14 @@ from seascape.config import (
     sources,
     substream,
 )
-from seascape.outputs import agc, journal, labels, microbolometer, stitch
+from seascape.outputs import (
+    agc,
+    journal,
+    labels,
+    microbolometer,
+    scenario_record,
+    stitch,
+)
 from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import earth
 
@@ -213,7 +220,7 @@ def _info(scenario: Scenario) -> dict[str, Any]:
         # One card is listed under CUDA and OPTIX alike, by the same name.
         "backend": preferences.compute_device_type if gpu else "CPU",
         "devices": [d.name for d in preferences.devices if d.use] if gpu else ["CPU"],
-        "scenario": scenario.model_dump(mode="json"),
+        "scenario": scenario_record(scenario),
     }
 
 
@@ -382,7 +389,6 @@ def render(
         journal.Journal(into, truth) as frames,
     ):
         passes = Path(tmp)
-        # The default bands can name one no rig has a camera for.
         for band in scenario.rendered_bands:
             mounts = scenario.band_mounts(band)
             thermal = band == "ir" and outputs.format != "exr"

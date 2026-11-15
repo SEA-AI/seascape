@@ -1,6 +1,7 @@
 """The command line."""
 
 import os
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
@@ -434,21 +435,13 @@ def test_each_band_renders_the_scene_with_the_user_s_overrides(
     own band, and their parts end as one folder.
     """
     rendered: dict[str, object] = {}
-    temporary: set[str] = set()
 
-    def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
-        temporary.add(env["TMPDIR"])
+    def start(command: list[str], **_: object) -> _Band:
         sets = [command[i + 1] for i, arg in enumerate(command) if arg == "--set"]
         scene = load(Path(command[command.index("render") + 1]), sets)
         (band,) = scene.outputs.bands
         rendered[band] = scene.outputs.fps
-        part = Path(command[command.index("-o") + 1])
-        truth = labels.Labels(info={"scenario": {}})
-        part.mkdir()
-        truth.write(part)
-        Calibration(cameras=[_camera(band)]).write(part)
-        (part / f"{band}.png").write_bytes(b"frame")
-        (part / "blender.log").write_text(f"{band}\n")
+        _write_part(command, band)
         return _Band(0)
 
     monkeypatch.setattr(subprocess, "Popen", start)
@@ -457,9 +450,6 @@ def test_each_band_renders_the_scene_with_the_user_s_overrides(
     written = cli._render_apart(SYNC_SENTRY, ("outputs.fps = 3",), built, tmp_path)
 
     assert rendered == {"eo": 3, "ir": 3}
-    # A killed band's temporary files go with the run's own folder.
-    assert len(temporary) == 1
-    assert not Path(temporary.pop()).exists()
     assert [p.name for p in written] == [
         "eo.png",
         "ir.png",
@@ -475,7 +465,92 @@ def test_each_band_renders_the_scene_with_the_user_s_overrides(
     ]
 
 
+def _write_part(command: list[str], band: str) -> None:
+    """The folder a band's render leaves at the command's `-o`: a frame named for
+    `band`, its truth and its log.
+    """
+    part = Path(command[command.index("-o") + 1])
+    part.mkdir()
+    labels.Labels(info={"scenario": {}}).write(part)
+    Calibration(cameras=[_camera(band)]).write(part)
+    (part / f"{band}.png").write_bytes(b"frame")
+    (part / "blender.log").write_text(f"{band}\n")
+
+
+def _band_of(command: list[str]) -> str:
+    return next(a for a in command if a.startswith("outputs.bands")).split('"')[1]
+
+
 def _camera(band: str) -> CameraCalibration:
     """A calibration that only has to be one, named for `band`."""
     mount = next(m for m in load(SYNC_SENTRY).mounts if m.camera.band == band)
     return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)
+
+
+def test_the_bands_share_one_temporary_folder_removed_after(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A killed Blender leaves its temporary files; the run's own folder takes them."""
+    temporary: set[str] = set()
+
+    def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
+        temporary.add(env["TMPDIR"])
+        _write_part(command, _band_of(command))
+        return _Band(0)
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+
+    cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+
+    (folder,) = temporary
+    assert not Path(folder).exists()
+
+
+def test_a_sigterm_kills_every_band_and_leaves_the_handler_as_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    before = signal.getsignal(signal.SIGTERM)
+    started: dict[str, _Band] = {}
+
+    class _Terminated(_Band):
+        """A render during which the parent is sent SIGTERM, once."""
+
+        def poll(self) -> int | None:
+            # The handler, not a real signal: without one, a SIGTERM would end pytest.
+            handler = signal.getsignal(signal.SIGTERM)
+            if not self.killed and callable(handler):
+                handler(signal.SIGTERM, None)
+            return super().poll()
+
+    def start(command: list[str], **_: object) -> _Band:
+        band = _band_of(command)
+        started[band] = _Terminated(0, polls=5) if band == "eo" else _Band(0, polls=5)
+        return started[band]
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+
+    with pytest.raises(SystemExit) as stopped:
+        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+
+    assert stopped.value.code == 143
+    assert all(band.killed for band in started.values())
+    assert signal.getsignal(signal.SIGTERM) == before
+
+
+def test_render_parallel_prints_every_file_it_writes(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def start(command: list[str], **_: object) -> _Band:
+        _write_part(command, _band_of(command))
+        return _Band(0)
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    out = tmp_path / "render"
+
+    rendered = run("render", SYNC_SENTRY, "--parallel", "-o", out)
+
+    assert rendered.exit_code == 0, rendered.output
+    assert rendered.stdout.split() == [
+        str(out / name)
+        for name in ("eo.png", "ir.png", "calibration.json", "labels.json")
+    ]

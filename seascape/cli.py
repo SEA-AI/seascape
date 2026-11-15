@@ -120,11 +120,12 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
     """
     runs: dict[Band, subprocess.Popen[bytes]] = {}
     failed: list[Band] = []
-    # A SIGTERM ends Python without unwinding; raised instead, it runs the finally.
-    stop = signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    stop = signal.getsignal(signal.SIGTERM)
     # A killed Blender leaves its temporary files, the foam's frames among them.
     with tempfile.TemporaryDirectory() as tmp:
         try:
+            # A SIGTERM ends Python without unwinding; raised instead, it runs finally.
+            signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
             for band, command in commands.items():
                 with logs[band].open("w") as log:
                     runs[band] = subprocess.Popen(
@@ -142,11 +143,15 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
                 if pending and not done:
                     time.sleep(1)
         finally:
-            signal.signal(signal.SIGTERM, stop)
+            # A second SIGTERM must not cut the clean-up short: every band is killed
+            # before any is waited on.
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
             for run in runs.values():
                 if run.poll() is None:
                     run.kill()
-                    run.wait()
+            for run in runs.values():
+                run.wait()
+            signal.signal(signal.SIGTERM, stop)
     return failed
 
 
@@ -179,7 +184,7 @@ def _render_apart(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
         )
-    written = journal.gather(into, list(parts.values()), built.model_dump(mode="json"))
+    written = journal.gather(into, list(parts.values()), built)
     for log in logs.values():
         log.unlink()
     return written

@@ -69,26 +69,39 @@ def test_the_noise_is_the_netd_s_radiance(t_k: float) -> None:
     assert seen.std() == pytest.approx(netd_k * sigma / slope, rel=0.02)
 
 
-def _filtered(radiance: np.ndarray, pitch_m: float, t_k: float) -> np.ndarray:
+def _filtered(
+    radiance: np.ndarray, f_number: float, pitch_m: float, t_k: float
+) -> np.ndarray:
     """`radiance` through `diffraction_mtf` at its padded frame's frequencies."""
-    pad = optics.airy_reach_px(lwir.BAND_M[1], 1.0, pitch_m)
+    pad = optics.airy_reach_px(lwir.BAND_M[1], f_number, pitch_m)
     padded = np.pad(radiance, pad, mode="reflect")
     fy = np.fft.fftfreq(padded.shape[0])[:, None]
     fx = np.fft.rfftfreq(padded.shape[1])[None, :]
-    mtf = microbolometer.diffraction_mtf(np.hypot(fx, fy) / pitch_m, 1.0, t_k)
+    mtf = microbolometer.diffraction_mtf(np.hypot(fx, fy) / pitch_m, f_number, t_k)
     return np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)[pad:-pad, pad:-pad]
 
 
-@pytest.mark.parametrize("shape", [(40, 72), (72, 40)], ids=["wide", "tall"])
-def test_each_frame_is_filtered_by_the_band_s_mtf_at_its_own_pitch_and_temperature(
-    shape: tuple[int, int],
-) -> None:
-    """Frames of one size in turn, as cameras and scenes change: none reads another's
-    MTF.
+def test_each_frame_is_filtered_by_its_own_camera_s_band_mtf() -> None:
+    """Frames in turn, as cameras and scenes change: none reads another's MTF. 11.5 um
+    and f/1.05 pad a frame as 12 um at f/1 does, so only the key tells their MTFs
+    apart.
     """
-    radiance = substream(1, "test/radiance").normal(3.0, 1.0, shape)
-    # 11.5 um pads a frame as 12 um does, so only the key tells their MTFs apart.
-    for pitch_m, t_k in [(PITCH_M, 290.0), (PITCH_M, 290.0), (11.5e-6, 240.0)]:
-        seen = microbolometer.diffract(radiance, 1.0, pitch_m, t_k)
+    frames = [
+        ((40, 72), 1.0, PITCH_M, 290.0),
+        ((40, 72), 1.0, PITCH_M, 290.0),
+        ((40, 72), 1.0, 11.5e-6, 240.0),
+        ((40, 72), 1.05, PITCH_M, 240.0),
+        ((72, 40), 1.0, PITCH_M, 290.0),
+    ]
+    draws = substream(1, "test/radiance")
+    radiances = [draws.normal(3.0, 1.0, shape) for shape, *_ in frames]
 
-        np.testing.assert_array_equal(seen, _filtered(radiance, pitch_m, t_k))
+    seen = [
+        microbolometer.diffract(r, *camera)
+        for r, (_, *camera) in zip(radiances, frames, strict=True)
+    ]
+
+    expected = [
+        _filtered(r, *camera) for r, (_, *camera) in zip(radiances, frames, strict=True)
+    ]
+    assert [f.tobytes() for f in seen] == [f.tobytes() for f in expected]

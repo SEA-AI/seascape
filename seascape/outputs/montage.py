@@ -107,7 +107,7 @@ def sheet(scenario: Scenario, into: Path) -> Image.Image:
     bands = scenario.rendered_bands
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
-    mounts = [m for band in bands for m in scenario.band_mounts(band)]
+    mounts = scenario.rendered_mounts
     typeface = brand.font()
     tiles: dict[str, Image.Image] = {}
     for mount, frame in preview.shown(scenario, into):
