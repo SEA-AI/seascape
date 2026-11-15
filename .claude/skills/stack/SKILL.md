@@ -5,16 +5,20 @@ description: Gives this repo's idiom for Python, numpy and image arrays, pydanti
 
 # Stack
 
-Read the section for the code you are touching. Each practice names the failure it prevents; check the code for that failure. The silent traps specific to this repo are in `AGENTS.md`. Also check [references/python-basics.md](references/python-basics.md), which holds general Python, numeric and CLI practice; its CLI section covers CLI code.
+Read the section for the code you are touching. Each practice names the failure it prevents; check the code for that failure. The silent traps specific to this repo are in `AGENTS.md`.
 
 ## Python
 
 - **A closed set is an `Enum`, `StrEnum` or `Literal`**, never a string compared with `==`. A typo then fails at the type check.
 - **Raise instead of returning `None` for failure.** Callers forget to check, and the failure surfaces somewhere else. Where the absence is normal, say so in the type.
 - **Keep `try` to the one call that can fail**, catch what you can handle, and chain with `raise X from err`. `except:` and `except Exception:` hide unrelated bugs.
+- **Default arguments are evaluated once.** `None` plus a body check, or `field(default_factory=...)`.
 - **A boolean flag that changes what a function does is two functions.** At minimum make it keyword-only so the call site reads.
+- **Loop over items, not indices:** `enumerate`, `zip(strict=True)`, `.items()`. Needing an index usually means the structure is wrong.
 - **A comprehension stops at one `for` and one filter.** Past that, write the loop or a named helper.
+- **A generator beats a list the caller only iterates.**
 - **No import-time side effects and no mutable module state.** Otherwise behaviour depends on import order, and tests leak state into each other. Build objects in functions; module constants are immutable.
+- **`@override` on overrides**, so a renamed parent method fails the checker.
 - **Do not golf.** If a walrus, `reduce` or nested expression needs a comment to decode, write the loop. "Practicality beats purity" and "readability counts" are the tiebreak.
 - **Lint limits.** `ruff.toml` enforces the counting rules (`C90`, `PL`) too, so CI fails them. Meet a limit by finding the decision that belongs elsewhere, not by splitting one coherent algorithm into one-use helpers, which reads worse than the original.
 
@@ -44,6 +48,7 @@ Pick the container by what the data is:
 
 - **State shape, dtype and frame** of each array argument in the docstring: `(N, 3)`, `float64`, row-major. The annotation does not carry it.
 - **Randomness:** named substreams, as `AGENTS.md` asks; never `seed + i`. Record the seed with the output.
+- **Rewrite formulas that lose precision.** `log1p` and `expm1` keep the digits `log(1 + x)` and `exp(x) - 1` drop for a small `x`; `hypot` avoids overflow in `sqrt(x*x + y*y)`; `arctan2` keeps the quadrant `arctan(y / x)` loses.
 - **Be explicit about dtype** at creation and at I/O. Under NEP 50 the array dtype wins over a Python scalar, so `uint8 + 200` wraps with no warning. OpenCV's `add` saturates and NumPy wraps, so mixing them gives two answers.
 - **Decide view or copy.** Basic slices return views, and `reshape` does where it can, so a write mutates the caller's array. `.copy()` where a function must not.
 - **NaN and inf are signals.** Wrap code that should never produce them in `np.errstate(invalid="raise")`. Integer overflow in an array is never flagged.
@@ -60,6 +65,10 @@ Pick the container by what the data is:
 - **One function per sub-graph:** it takes the tree and input sockets and returns the output socket. Raw `links.new` calls live in a few helpers, which also set defaults you depend on explicitly.
 - **Properties with order dependence are set in the documented order**, since the wrong order is accepted without error. `AGENTS.md`'s traps list the known ones.
 - **Bulk data goes through `foreach_set` and `foreach_get` on flat numpy arrays**, not per-item loops.
+
+## CLI
+
+- **A CLI command writes data to stdout**, diagnostics to stderr, and exits 0 on success.
 
 ## Errors
 
