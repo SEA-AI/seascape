@@ -16,6 +16,7 @@ from seascape import assets, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.sync import staging
 from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
 
@@ -414,13 +415,67 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
 def test_parallel_refuses_what_it_would_ignore(
     run: Run, args: tuple, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def rendered(*_: object) -> None:
-        raise RuntimeError("went on past the flags")
+    def loaded(*_: object) -> None:
+        raise RuntimeError("loaded past the flags")
 
     # Refused before the scenario loads, so a missing refusal fails here, unrendered.
-    monkeypatch.setattr(cli, "load", rendered)
+    monkeypatch.setattr(cli, "load", loaded)
 
     refused = run(*args)
 
     assert refused.exit_code == 2
     assert "--parallel" in refused.output
+
+
+def test_each_band_renders_the_scene_with_the_user_s_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bands' commands, gathered: each loads the scene as the user set it, in its
+    own band, and their parts end as one folder.
+    """
+    rendered: dict[str, object] = {}
+    temporary: set[str] = set()
+
+    def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
+        temporary.add(env["TMPDIR"])
+        sets = [command[i + 1] for i, arg in enumerate(command) if arg == "--set"]
+        scene = load(Path(command[command.index("render") + 1]), sets)
+        (band,) = scene.outputs.bands
+        rendered[band] = scene.outputs.fps
+        part = Path(command[command.index("-o") + 1])
+        truth = labels.Labels(info={"scenario": {}})
+        part.mkdir()
+        truth.write(part)
+        Calibration(cameras=[_camera(band)]).write(part)
+        (part / f"{band}.png").write_bytes(b"frame")
+        (part / "blender.log").write_text(f"{band}\n")
+        return _Band(0)
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    built = load(SYNC_SENTRY, ["outputs.fps = 3"])
+
+    written = cli._render_apart(SYNC_SENTRY, ("outputs.fps = 3",), built, tmp_path)
+
+    assert rendered == {"eo": 3, "ir": 3}
+    # A killed band's temporary files go with the run's own folder.
+    assert len(temporary) == 1
+    assert not Path(temporary.pop()).exists()
+    assert [p.name for p in written] == [
+        "eo.png",
+        "ir.png",
+        "calibration.json",
+        "labels.json",
+    ]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "blender.log",
+        "calibration.json",
+        "eo.png",
+        "ir.png",
+        "labels.json",
+    ]
+
+
+def _camera(band: str) -> CameraCalibration:
+    """A calibration that only has to be one, named for `band`."""
+    mount = next(m for m in load(SYNC_SENTRY).mounts if m.camera.band == band)
+    return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)

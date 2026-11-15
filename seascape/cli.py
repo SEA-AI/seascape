@@ -3,8 +3,10 @@
 import json
 import math
 import os
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
@@ -16,7 +18,7 @@ import click
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
-from seascape.outputs import journal, labels, montage, panorama, recording
+from seascape.outputs import BLENDER_LOG, journal, labels, montage, panorama, recording
 from seascape.outputs.calibration import Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
@@ -107,9 +109,45 @@ def _render(built: Scenario, into: Path) -> list[Path]:
 
     with (
         _progress(built.images, "Rendering") as bar,
-        _blender_log(into / "blender.log"),
+        _blender_log(into / BLENDER_LOG),
     ):
         return renderer.render(built, into, lambda: bar.update(1))
+
+
+def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> list[Band]:
+    """Run `commands` at once, each logging to its log; the bands that failed. The
+    first to fail stops the rest, and leaving, by any error or signal, kills them.
+    """
+    runs: dict[Band, subprocess.Popen[bytes]] = {}
+    failed: list[Band] = []
+    # A SIGTERM ends Python without unwinding; raised instead, it runs the finally.
+    stop = signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+    # A killed Blender leaves its temporary files, the foam's frames among them.
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            for band, command in commands.items():
+                with logs[band].open("w") as log:
+                    runs[band] = subprocess.Popen(
+                        command,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        env={**os.environ, "TMPDIR": tmp},
+                    )
+            pending = dict(runs)
+            while pending and not failed:
+                done = {b: run for b, run in pending.items() if run.poll() is not None}
+                failed = [b for b, run in done.items() if run.returncode != 0]
+                for band in done:
+                    del pending[band]
+                if pending and not done:
+                    time.sleep(1)
+        finally:
+            signal.signal(signal.SIGTERM, stop)
+            for run in runs.values():
+                if run.poll() is None:
+                    run.kill()
+                    run.wait()
+    return failed
 
 
 def _render_apart(
@@ -119,43 +157,24 @@ def _render_apart(
     their frames and truth in `into` as one render writes them.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
-    a frame; another band's render fills that time. Each band holds its own scene:
-    about one render's memory per band.
+    a frame; another band's render fills that time.
     """
-    bands = [band for band in built.outputs.bands if built.band_mounts(band)]
+    bands = built.rendered_bands
     if len(bands) < 2:
         return _render(built, into)
-    sets = [arg for override in overrides for arg in ("--set", override)]
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
     logs = {band: into / f".{band}.log" for band in bands}
+    commands = {}
+    for band, part in parts.items():
+        command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
+        for override in overrides:
+            command += ["--set", override]
+        command += ["--set", f'outputs.bands = ["{band}"]', "-o", str(part)]
+        commands[band] = command
     shown = ", ".join(map(str, logs.values()))
     click.echo(f"Rendering {', '.join(bands)} at once; see {shown}", err=True)
-    runs: dict[Band, subprocess.Popen[bytes]] = {}
-    try:
-        for band, part in parts.items():
-            command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
-            command += [*sets, "--set", f'outputs.bands = ["{band}"]', "-o", str(part)]
-            with logs[band].open("w") as log:
-                runs[band] = subprocess.Popen(
-                    command, stdout=log, stderr=subprocess.STDOUT
-                )
-        # The first band to fail stops the rest, rather than letting them render on.
-        pending = dict(runs)
-        failed: list[Band] = []
-        while pending and not failed:
-            done = {b: run for b, run in pending.items() if run.poll() is not None}
-            failed = [b for b, run in done.items() if run.returncode != 0]
-            for band in done:
-                del pending[band]
-            if pending and not done:
-                time.sleep(1)
-    finally:
-        for run in runs.values():
-            if run.poll() is None:
-                run.kill()
-                run.wait()
-    if failed:
+    if failed := _run_at_once(commands, logs):
         raise click.ClickException(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
@@ -174,7 +193,7 @@ def _encode(folder: Path, quality: str) -> list[Path]:
 
     with (
         _progress(len(encoder.cameras(folder)), "Encoding") as bar,
-        _blender_log(folder / "blender.log"),
+        _blender_log(folder / BLENDER_LOG),
     ):
         return encoder.encode(folder, quality.upper(), lambda: bar.update(1))
 
@@ -254,7 +273,7 @@ def render(
         written, folders = [], []
         with (
             _progress(variants, "Rendering") as bar,
-            _blender_log(into / "blender.log"),
+            _blender_log(into / BLENDER_LOG),
         ):
             tries = seeds(built.seed, variants)
             for seed in tries:
@@ -644,7 +663,7 @@ def zones(
     into = output or Path("zones") / asset
     if not contact:
         _empty(into)
-    with _blender_log(into / "blender.log"):
+    with _blender_log(into / BLENDER_LOG):
         if contact:
             written = [sheets.contact(asset, into / "zones.png")]
         else:

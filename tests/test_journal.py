@@ -228,8 +228,8 @@ def test_a_journal_left_by_an_earlier_render_is_replaced(tmp_path: Path) -> None
 
 
 def _part(folder: Path, name: str) -> None:
-    """A finished render of camera `name` in `folder`, as `sync --parallel` leaves
-    one band's: its frame, truth and log.
+    """A finished render of camera `name` in `folder`, as `--parallel` leaves one
+    band's: its frame, truth and log.
     """
     camera = CAMERA.model_copy(update={"name": name, "image": f"{name}.png"})
     truth = labels.Labels(info=INFO)
@@ -253,7 +253,13 @@ def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
     assert [(a.id, a.image_id) for a in truth.annotations] == [(1, 1), (2, 2)]
     assert truth.info["scenario"] == {"seed": 1}
     assert [c.name for c in Calibration.read(tmp_path).cameras] == ["A", "B"]
-    assert written == [tmp_path / "calibration.json", tmp_path / "labels.json"]
+    assert written == [
+        tmp_path / "A.png",
+        tmp_path / "B.png",
+        tmp_path / "calibration.json",
+        tmp_path / "labels.json",
+    ]
+    assert (tmp_path / "blender.log").read_text() == "A\nB\n"
     assert sorted(p.name for p in tmp_path.iterdir()) == [
         "A.png",
         "B.png",
@@ -263,13 +269,16 @@ def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
     ]
 
 
-def test_parts_holding_a_file_of_one_name_move_nothing(tmp_path: Path) -> None:
+@pytest.mark.parametrize("held_by", ["another part", "the folder"])
+def test_a_file_of_one_name_moves_nothing(tmp_path: Path, held_by: str) -> None:
     parts = [tmp_path / ".eo", tmp_path / ".ir"]
     _part(parts[0], "A")
-    _part(parts[1], "A")
+    _part(parts[1], "A" if held_by == "another part" else "B")
+    if held_by == "the folder":
+        (tmp_path / "A.png").write_bytes(b"an earlier frame")
 
     with pytest.raises(FileExistsError, match=r"A\.png"):
         journal.gather(tmp_path, parts, {})
 
     assert (parts[0] / "A.png").exists()
-    assert not (tmp_path / "A.png").exists()
+    assert not (tmp_path / "labels.json").exists()

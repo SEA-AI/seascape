@@ -69,26 +69,26 @@ def test_the_noise_is_the_netd_s_radiance(t_k: float) -> None:
     assert seen.std() == pytest.approx(netd_k * sigma / slope, rel=0.02)
 
 
-@pytest.mark.parametrize(
-    ("shape", "pitch_m", "t_k"),
-    [((40, 72), PITCH_M, 290.0), ((72, 40), 17e-6, 240.0)],
-    ids=["wide", "tall"],
-)
-def test_a_frame_is_filtered_by_the_band_s_mtf_at_its_frequencies(
-    shape: tuple[int, int], pitch_m: float, t_k: float
-) -> None:
-    """The relation `diffract` applies, frame after frame of one camera."""
-    radiance = substream(1, "test/radiance").normal(3.0, 1.0, shape)
+def _filtered(radiance: np.ndarray, pitch_m: float, t_k: float) -> np.ndarray:
+    """`radiance` through `diffraction_mtf` at its padded frame's frequencies."""
     pad = optics.airy_reach_px(lwir.BAND_M[1], 1.0, pitch_m)
     padded = np.pad(radiance, pad, mode="reflect")
     fy = np.fft.fftfreq(padded.shape[0])[:, None]
     fx = np.fft.rfftfreq(padded.shape[1])[None, :]
     mtf = microbolometer.diffraction_mtf(np.hypot(fx, fy) / pitch_m, 1.0, t_k)
-    expected = np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)
+    return np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)[pad:-pad, pad:-pad]
 
-    # Twice: the second frame reads the camera's cached MTFs.
-    microbolometer.diffract(radiance, 1.0, pitch_m, t_k)
-    seen = microbolometer.diffract(radiance, 1.0, pitch_m, t_k)
 
-    # Only the order of the float sums may differ.
-    np.testing.assert_allclose(seen, expected[pad:-pad, pad:-pad], rtol=0, atol=1e-12)
+@pytest.mark.parametrize("shape", [(40, 72), (72, 40)], ids=["wide", "tall"])
+def test_each_frame_is_filtered_by_the_band_s_mtf_at_its_own_pitch_and_temperature(
+    shape: tuple[int, int],
+) -> None:
+    """Frames of one size in turn, as cameras and scenes change: none reads another's
+    MTF.
+    """
+    radiance = substream(1, "test/radiance").normal(3.0, 1.0, shape)
+    # 11.5 um pads a frame as 12 um does, so only the key tells their MTFs apart.
+    for pitch_m, t_k in [(PITCH_M, 290.0), (PITCH_M, 290.0), (11.5e-6, 240.0)]:
+        seen = microbolometer.diffract(radiance, 1.0, pitch_m, t_k)
+
+        np.testing.assert_array_equal(seen, _filtered(radiance, pitch_m, t_k))

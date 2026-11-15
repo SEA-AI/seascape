@@ -153,6 +153,13 @@ class Scenario(Model):
         """The cameras that see in `band`."""
         return [m for m in self.mounts if m.camera.band == band]
 
+    @property
+    def rendered_bands(self) -> list[Band]:
+        """The bands a render renders, in the order it renders them: those of
+        `outputs.bands` some camera sees in.
+        """
+        return [band for band in self.outputs.bands if self.band_mounts(band)]
+
     def head_height_m(self, rig: str) -> float:
         """The head of rig `rig` above a calm sea: its height on the hull, which a
         lighter hull lifts by its rise.

@@ -7,6 +7,7 @@ are written once from the lines.
 """
 
 import shutil
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
@@ -15,9 +16,11 @@ from typing import Any, Self
 from pydantic import Field, ValidationError
 
 from seascape.model import Model
-from seascape.outputs import calibration, labels
+from seascape.outputs import BLENDER_LOG
+from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, CameraCalibration
-from seascape.outputs.labels import Annotation, Category, Dropped, Image, Labels
+from seascape.outputs.labels import FILENAME as LABELS
+from seascape.outputs.labels import Annotation, Category, Dropped, Image, Labels, concat
 
 FILENAME = "truth.jsonl"
 
@@ -149,9 +152,8 @@ def finish(folder: Path) -> list[Path]:
 
 
 def gather(folder: Path, parts: Sequence[Path], scenario: dict[str, Any]) -> list[Path]:
-    """Move the finished renders in `parts`, each of some of a scene's bands, into
-    `folder` as one render of `scenario` writes it, then delete `parts`; the truth
-    files written.
+    """Move `parts`, finished renders of a scene's bands, into `folder` as one render
+    of `scenario` writes it, then delete them; returns every file it put there.
 
     Their labels number on in the order of `parts`, as one render numbers its bands.
 
@@ -159,27 +161,27 @@ def gather(folder: Path, parts: Sequence[Path], scenario: dict[str, Any]) -> lis
         FileExistsError: Two parts, or a part and `folder`, hold a file of one name;
             nothing has moved.
     """
-    truth = {labels.FILENAME, calibration.FILENAME, "blender.log"}
-    moves = [
-        item for part in parts for item in part.iterdir() if item.name not in truth
-    ]
-    names = [item.name for item in moves]
-    if clash := sorted(
-        {n for n in names if names.count(n) > 1 or (folder / n).exists()}
-    ):
-        raise FileExistsError(f"{folder}: the parts both hold {clash}")
-    for item in moves:
-        item.rename(folder / item.name)
-    with (folder / "blender.log").open("a") as log:
-        for part in parts:
-            log.write((part / "blender.log").read_text(errors="replace"))
-    joined = labels.concat([Labels.read(part) for part in parts])
+    joined = concat({part.name: Labels.read(part) for part in parts})
     # Each part's scenario renders some bands; the truth records the whole scene's.
     joined.info["scenario"] = scenario
-    written = [
-        Calibration.concat([Calibration.read(part) for part in parts]).write(folder),
-        joined.write(folder),
-    ]
+    cameras = Calibration.concat([Calibration.read(part) for part in parts])
+    truth = {LABELS, CALIBRATION, BLENDER_LOG}
+    moves = []
+    for part in parts:
+        moves += [item for item in part.iterdir() if item.name not in truth]
+    counts = Counter(item.name for item in moves)
+    if twice := sorted(name for name, count in counts.items() if count > 1):
+        raise FileExistsError(f"{folder}: more than one part holds {twice}")
+    if there := sorted(name for name in counts if (folder / name).exists()):
+        raise FileExistsError(f"{folder} already holds {there}")
+    written = []
+    for item in moves:
+        item.rename(folder / item.name)
+        moved = folder / item.name
+        written += sorted(p for p in moved.rglob("*") if p.is_file()) or [moved]
+    with (folder / BLENDER_LOG).open("a") as log:
+        for part in parts:
+            log.write((part / BLENDER_LOG).read_text(errors="replace"))
     for part in parts:
         shutil.rmtree(part)
-    return written
+    return [*written, cameras.write(folder), joined.write(folder)]

@@ -382,11 +382,9 @@ def render(
         journal.Journal(into, truth) as frames,
     ):
         passes = Path(tmp)
-        for band in outputs.bands:
-            # The default bands can name one no rig has a camera for.
+        # The default bands can name one no rig has a camera for.
+        for band in scenario.rendered_bands:
             mounts = scenario.band_mounts(band)
-            if not mounts:
-                continue
             thermal = band == "ir" and outputs.format != "exr"
             # Every frame here is one of the scenario's cameras, at its resolution.
             built = scene.build(scenario, band, cull=True)

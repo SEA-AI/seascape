@@ -540,7 +540,7 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
 
 
 def test_parts_rendered_into_one_folder_number_on_as_one_render() -> None:
-    """What `sync --parallel` gathers: a band per part, each numbered from 1."""
+    """What `--parallel` gathers: a band per part, each numbered from 1."""
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
     eo, ir = (
@@ -548,7 +548,7 @@ def test_parts_rendered_into_one_folder_number_on_as_one_render() -> None:
     )
     eo.info = {"version": "x"}
 
-    joined = labels.concat([eo, ir])
+    joined = labels.concat({".eo": eo, ".ir": ir})
 
     assert [(i.id, i.file_name) for i in joined.images] == [(1, "C.png"), (2, "C.png")]
     assert [(a.id, a.image_id, a.category_id) for a in joined.annotations] == [

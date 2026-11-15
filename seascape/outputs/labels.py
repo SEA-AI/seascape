@@ -284,13 +284,14 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
     return merged
 
 
-def concat(parts: Sequence[Labels]) -> Labels:
-    """Join `parts`, renders of one scene's bands, renumbered in order as one render
-    numbers its frames; info from the first part.
+def concat(parts: Mapping[str, Labels]) -> Labels:
+    """Join `parts`, renders of one scene's bands by name, renumbered in order as one
+    render numbers its frames; info from the first part. An error names its part.
     """
-    joined = Labels(info=parts[0].info if parts else {})
-    for number, part in enumerate(parts):
-        _append(joined, part, "", f"part {number}")
+    first = next(iter(parts.values()), None)
+    joined = Labels(info=first.info if first else {})
+    for name, part in parts.items():
+        _append(joined, part, "", name)
     return joined
 
 

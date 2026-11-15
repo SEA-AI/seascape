@@ -41,8 +41,8 @@ def diffraction_mtf(
 
 
 def _band_mtfs(freq_per_m: npt.ArrayLike, f_number: float) -> FloatArray:
-    """Each band wavelength's `optics.pupil_mtf` at `freq_per_m`, float64, the
-    wavelengths, `_BAND_LAM`, on a new last axis.
+    """`optics.pupil_mtf` at `freq_per_m` for each of `_BAND_LAM`, on a new last
+    axis; float64.
     """
     freq = np.asarray(freq_per_m, dtype=np.float64)
     return optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
@@ -56,8 +56,7 @@ def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
     return (mono * weight).sum(axis=-1) / weight.sum()
 
 
-# A few cameras' worth: each entry is (H, W // 2 + 1, 64) float64, about 90 MB at
-# 640 x 512.
+# maxsize: a few cameras. An entry is about 90 MB for a 640 x 512 frame.
 @functools.lru_cache(maxsize=4)
 def _frame_mtfs(shape: tuple[int, int], f_number: float, pitch_m: float) -> FloatArray:
     """`_band_mtfs` at the rfft2 frequencies of a padded frame of `shape`, the same
