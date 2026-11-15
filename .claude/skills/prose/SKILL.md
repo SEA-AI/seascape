@@ -1,6 +1,6 @@
 ---
 name: prose
-description: Write or review seascape prose: comments, docstrings, docs, `assets.toml` notes, commit messages and PR bodies. Use whenever a change adds or edits any of them; `review-pr` runs it as one reviewer. Code logic is out of scope.
+description: Write or review the repo's prose: comments, docstrings, docs, `assets.toml` notes, commit messages and PR bodies. Use whenever a change adds or edits any of them; `review-pr` runs it as one reviewer. Code logic is out of scope.
 ---
 
 # Prose
@@ -19,7 +19,7 @@ Delete first. A line stays only if the reader loses something without it.
 ## Keep
 
 - What the code can't say: a non-obvious constraint, a unit, a workaround and what removes it.
-- A number's source beside it: a published relation, a derivation from one, or a pinned measurement of Blender. A judgement says "Judgement:".
+- A number's source beside it, as `AGENTS.md` asks. A judgement says "Judgement:".
 - The specific over the general: a number, a file name, a flag.
 - A table, a before/after or a frame over a paragraph.
 
@@ -27,11 +27,10 @@ A rephrase is never longer than what it replaces, unless it corrects a stale fac
 
 ## Where it applies
 
-- **Comments:** the why, never the what.
 - **Docstrings:** match the current signature; a backticked name that no longer exists is stale. Each `Args:` entry says what the name does not: the quantity, its unit, a typical range, its source. Single backticks; no Sphinx roles.
 - **Docs:** how to use the thing as it is, not how it came to be.
 - **Commits:** a Conventional Commit (`feat:`, `fix:`, `chore:`, `ci:`), imperative subject, a body that says why. Tidying and behaviour change are separate commits.
-- **PR bodies:** the final state against the base. Their shape is the PR template's.
+- **PR bodies:** the final state against the base. Sections: What, Why, How, Testing.
 
 ## Reviewing
 
@@ -39,14 +38,16 @@ Review the prose in the final diff, the commit messages and the PR body. Be pick
 
 Report a table, one row per line or passage, deletes first:
 
-| # | Where | Verdict | Old -> new | Why |
+| # | Where | Verdict | Finding | Fix |
 |---|---|---|---|---|
-| 1 | `file:line` | delete | `old` | restates the code |
-| 2 | `body:3` | rephrase | `old` -> `new` | verbose |
+| 1 | `file:line` | delete | `old`: restates the code | |
+| 2 | `body:3` | rephrase | `old`: verbose | `new` |
 | 3 | `abc1234` | keep | | the unit's only source |
 
 - **Where:** `file:line`, a commit's hash, or `body:line`.
-- **Verdict:** delete, rephrase or keep. A keep names what the reader would lose.
-- **Why:** the category from Delete or Keep above, in a few words.
+- **Verdict:** delete, rephrase or keep. A keep names in Fix what the reader would lose.
+- **Finding:** the text, then the category from Delete or Keep above, in a few words.
 
-End with the net prose lines: added minus removed, after the edits.
+End with what you did not read.
+
+Sources are in [references/sources.md](references/sources.md).

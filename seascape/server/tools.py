@@ -137,7 +137,7 @@ async def render(
     loading = asyncio.create_task(load(state, path, lines, variants))
     try:
         try:
-            job.scenes, job.worst_bytes, warned = await asyncio.shield(loading)
+            job.scenes, job.worst_bytes, warned, tree = await asyncio.shield(loading)
         # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
         except ValueError as error:
             raise ToolError(str(error)) from error
@@ -157,7 +157,14 @@ async def render(
                 f"{free_gb:.0f} GB free after the jobs queued; this job needs "
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
-        job.task = asyncio.create_task(run(state, job, path, lines, variants))
+        try:
+            job.pin(tree)
+            job.save()
+        except OSError as error:  # as above, without the server's paths
+            raise ToolError(
+                f"{type(error).__name__}: the job could not be saved"
+            ) from error
+        job.task = asyncio.create_task(run(state, job))
         return {
             "job": name,
             "images": job.total,
@@ -174,10 +181,7 @@ async def render(
 def _job(state: State, name: str) -> Job:
     found = state.jobs.get(name)
     if found is None:
-        raise ToolError(
-            f"no job {name!r}: a job is forgotten when it expires or the server "
-            "restarts"
-        )
+        raise ToolError(f"no job {name!r}: a job is forgotten when it expires")
     return found
 
 
@@ -265,14 +269,19 @@ async def preview(
 async def cancel(job: str, ctx: Context[State, Any]) -> dict[str, Any]:
     """Stop a queued or running job from `render`, and delete what it wrote."""
     found = _state(ctx).jobs.get(job)
-    if found is None or found.task is None:
+    if found is None:
         raise ToolError(f"no job {job!r}")
     if not found.waiting:
         raise ToolError(f"job {job!r} is {found.state}")
+    # Still loading: not yet the client's.
+    if found.task is None:
+        raise ToolError(f"no job {job!r}")
     found.task.cancel()
     found.state = "cancelled"
-    # Once the task ends, the process is gone and the GPU free.
+    # Once the task ends, the process is gone and the GPU free. Saved here too: a job
+    # queued on a draining server has already ended.
     await asyncio.wait({found.task})
+    found.save()
     await asyncio.to_thread(shutil.rmtree, found.folder, ignore_errors=True)
     return {"job": job, "status": found.state}
 

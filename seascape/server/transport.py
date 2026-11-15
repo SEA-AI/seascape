@@ -6,7 +6,8 @@ import subprocess
 import sys
 from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager, suppress
-from typing import Any
+from types import FrameType
+from typing import Any, override
 
 import uvicorn
 from mcp.server.mcpserver import MCPServer
@@ -19,8 +20,9 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from seascape.server.guide import INSTRUCTIONS, getting_started
-from seascape.server.jobs import State, sweep
+from seascape.server.jobs import State, resume, sweep
 from seascape.server.tools import (
+    WAIT_S,
     cancel,
     catalog,
     get_job,
@@ -34,6 +36,8 @@ from seascape.server.tools import (
 # A judgement: longer than a driver takes to answer, short of a hung one.
 PROBE_S = 60.0
 MCP_PATH = "/mcp"
+# Judgement: 15 s past `get_job`'s wait, so a waiting client gets its answer.
+CLOSE_S = round(WAIT_S) + 15
 
 
 def mcp(state: State) -> MCPServer:
@@ -96,7 +100,38 @@ def serve(state: State, host: str, port: int) -> None:
             f"Cycles renders on {'the CPU' if backend == 'None' else backend}",
             flush=True,
         )
-    uvicorn.run(app(state, host), host=host, port=port)
+    config = uvicorn.Config(
+        app(state, host), host=host, port=port, timeout_graceful_shutdown=CLOSE_S
+    )
+    _Draining(config, state).run()
+
+
+class _Draining(uvicorn.Server):
+    """A server that, asked to stop, first lets its running job end; a second signal
+    stops it at once.
+    """
+
+    def __init__(self, config: uvicorn.Config, state: State) -> None:
+        super().__init__(config)
+        self.state = state
+
+    @override
+    def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        if self.state.draining:
+            super().handle_exit(sig, frame)
+            self.force_exit = True  # or it waits `CLOSE_S` on open streams
+            return
+        self.state.draining = True
+        print(
+            "Stopping once the running job ends; signal again to stop now", flush=True
+        )
+
+    @override
+    async def on_tick(self, counter: int) -> bool:
+        jobs = list(self.state.jobs.values())
+        if self.state.draining and not any(job.started for job in jobs):
+            self.should_exit = True
+        return await super().on_tick(counter)
 
 
 class _BearerOnly:
@@ -138,6 +173,7 @@ def app(state: State, host: str) -> Starlette:
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncGenerator[Mapping[str, Any]]:
+        resume(state)
         sweeping = asyncio.create_task(sweep(state))
         try:
             async with mcp_lifespan(app) as held:
