@@ -58,6 +58,7 @@ from seascape.blender.vessels import (
     Hulls,
     _vessel,
     heading_deg,
+    waterline_crossings,
     waterline_m,
 )
 from seascape.config import (
@@ -1050,10 +1051,27 @@ def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
     """The waves lift the hull past its draught."""
     root, _ = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
     bpy.context.view_layer.update()
-    level = waterline_m(root)
+    level = waterline_m(root, waterline_crossings(root))
     root.location.z = 2.0
     bpy.context.view_layer.update()
-    assert waterline_m(root) == pytest.approx(level, abs=1e-4)
+    assert waterline_m(root, waterline_crossings(root)) == pytest.approx(
+        level, abs=1e-4
+    )
+
+
+@pytest.mark.usefixtures("empty_blend")
+def test_a_hull_moved_keeps_the_waterline_it_was_read_with() -> None:
+    """`render` reads the crossings once and moves them with the hull."""
+    root, _ = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
+    bpy.context.view_layer.update()
+    crossings = waterline_crossings(root)
+    root.location = (30.0, -12.0, 0.4)
+    root.rotation_euler = (0.1, -0.05, 1.2)
+    bpy.context.view_layer.update()
+    again = waterline_crossings(root)
+    assert waterline_m(root, crossings) == pytest.approx(
+        waterline_m(root, again), abs=1e-4
+    )
 
 
 @pytest.mark.usefixtures("empty_blend")
@@ -1078,7 +1096,7 @@ def test_a_lighter_draught_raises_the_hull_and_its_waterline() -> None:
     # Both hulls stand at the origin, so their waterlines are comparable as they are.
     # Wall-sided amidships, it keeps its beam; its bulb and stern change its length.
     (beam_m, length_m), (raised_beam_m, raised_length_m) = (
-        np.ptp(waterline_m(a), axis=0) for a in (level, raised)
+        np.ptp(waterline_m(a, waterline_crossings(a)), axis=0) for a in (level, raised)
     )
     assert raised_beam_m == pytest.approx(beam_m, abs=0.1)
     assert abs(raised_length_m - length_m) > 1.0, "the waterline stayed where it was"
