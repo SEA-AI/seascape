@@ -1,11 +1,9 @@
 ---
 name: architecture
-description: Decides whether code should exist and which layer owns it (SOLID, information hiding, the import-linter layers). Use before writing a helper, flag, special case, constant, retry, module, record field, callback, Blender custom property or a second home for a formula; when choosing where code goes, when one feature touches many layers, before refactoring across layers, or to audit a package for reinvented helpers, uncited constants and dead code. `review-pr` runs it as one reviewer.
+description: Decides whether code should exist and which layer owns it (SOLID, information hiding, the import-linter layers). Use before writing a helper, flag, special case, constant, retry, module, record field, callback, Blender custom property or a second home for a formula; when choosing where code goes, when one feature touches many layers, before refactoring across layers, or to audit a package for reinvented helpers, uncited constants and dead code. `review-pr` runs it as one reviewer. Language and library practice is `stack`'s, comments `prose`'s, tests `tests`', bugs `/code-review`'s.
 ---
 
 # Architecture
-
-Language and library practice is `stack`'s, comments `prose`'s, tests `tests`', bugs `/code-review`'s.
 
 Each piece earns its place, lands where its decision lives, and the whole reads as a reusable library.
 

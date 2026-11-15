@@ -7,8 +7,6 @@ description: Writes and reviews the repo's prose: comments, docstrings, docs, `a
 
 Delete first. A line stays only if the reader loses something without it.
 
-When writing, say only what the code can't: a constraint, a unit, a source, in the fewest words; a review strips everything under Delete.
-
 ## Keep
 
 - What the code can't say: a non-obvious constraint, a unit, a workaround and what removes it.
@@ -39,7 +37,7 @@ A rephrase is never longer than what it replaces, unless it corrects a stale fac
 - **Docstrings:** match the current signature; a backticked name that no longer exists is stale. Each `Args:` entry says what the name does not: the quantity, its unit, a typical range, its source. Single backticks; no Sphinx roles.
 - **Docs:** how to use the thing as it is, not how it came to be.
 - **Commits:** a Conventional Commit (`feat:`, `fix:`, `chore:`, `ci:`), imperative subject, a body that says why. Tidying and behaviour change are separate commits.
-- **PR bodies:** the final state against the base. Sections: What, Why, How, Testing (the `pull-request` template).
+- **PR bodies:** the final state against the base. Sections: What, Why, How, Testing.
 
 ## Reviewing
 

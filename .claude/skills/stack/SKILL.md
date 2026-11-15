@@ -1,11 +1,11 @@
 ---
 name: stack
-description: Gives this repo's idiom for Python, numpy and image arrays, pydantic models, bpy node trees and datablocks, and the CLI; not PR stacks, which are `gh-stack`'s. Use before writing or changing such code, even mid-task; where it differs from general Python guidance, it wins. `review-pr` runs it as one reviewer. Whether code should exist and where it lives is `architecture`'s, its comments `prose`'s, its tests `tests`'.
+description: Gives this repo's idiom for Python, numpy and image arrays, pydantic models, bpy node trees and datablocks, and the CLI; not PR stacks, which are `gh-stack`'s. Use before writing or changing such code, even mid-task; it overrides general Python guidance where they differ. `review-pr` runs it as one reviewer. Whether code should exist and where it lives is `architecture`'s, its comments `prose`'s, its tests `tests`'.
 ---
 
 # Stack
 
-Read the section for the code you are touching. Each practice names the failure it prevents; check the code for that failure. The silent traps specific to this repo are in `AGENTS.md`; general Python, numeric and CLI practice is in [references/python-basics.md](references/python-basics.md).
+Read the section for the code you are touching. Each practice names the failure it prevents; check the code for that failure. The silent traps specific to this repo are in `AGENTS.md`. Also check [references/python-basics.md](references/python-basics.md), which holds general Python, numeric and CLI practice; its CLI section covers CLI code.
 
 ## Python
 
@@ -43,7 +43,7 @@ Pick the container by what the data is:
 ## Numeric and image code
 
 - **State shape, dtype and frame** of each array argument in the docstring: `(N, 3)`, `float64`, row-major. The annotation does not carry it.
-- **Randomness:** derive each stream with `substream(seed, name)` (AGENTS.md); `seed + i` gives streams that are not independent. Record the seed with the output.
+- **Randomness:** named substreams, as `AGENTS.md` asks; never `seed + i`. Record the seed with the output.
 - **Be explicit about dtype** at creation and at I/O. Under NEP 50 the array dtype wins over a Python scalar, so `uint8 + 200` wraps with no warning. OpenCV's `add` saturates and NumPy wraps, so mixing them gives two answers.
 - **Decide view or copy.** Basic slices return views, and `reshape` does where it can, so a write mutates the caller's array. `.copy()` where a function must not.
 - **NaN and inf are signals.** Wrap code that should never produce them in `np.errstate(invalid="raise")`. Integer overflow in an array is never flagged.
@@ -56,7 +56,7 @@ Pick the container by what the data is:
 
 - **Write through `bpy.data`; use `bpy.ops` only when there is no data API.** Operators take context, not arguments, and fail with a bare `RuntimeError`. If one is needed, supply context with `Context.temp_override()`.
 - **Keep the object a creator returns and do not look it up by name again.** A requested name gets a `.001` suffix when taken, and a later lookup finds the wrong datablock.
-- **Re-fetch bpy references after undo, a mode change, or adding and removing in the same collection:** Blender reallocates the data, and an old reference points at freed memory and can crash. Or keep them inside one function. Copy a collection to a list before mutating it in a loop.
+- **Re-fetch bpy references after undo, a mode change, or adding and removing in the same collection, or keep them inside one function:** Blender reallocates the data, and an old reference points at freed memory and can crash. Copy a collection to a list before mutating it in a loop.
 - **One function per sub-graph:** it takes the tree and input sockets and returns the output socket. Raw `links.new` calls live in a few helpers, which also set defaults you depend on explicitly.
 - **Properties with order dependence are set in the documented order**, since the wrong order is accepted without error. `AGENTS.md`'s traps list the known ones.
 - **Bulk data goes through `foreach_set` and `foreach_get` on flat numpy arrays**, not per-item loops.

@@ -32,6 +32,6 @@ Decide by the preview's printed check: a frame looks right at one turn and misse
 
 ## When it fails
 
-- **Fails, printing the course:** if it differs from the stored objects, the rig, hull or turn changed. Paste it whole; never edit it by hand: the stored course must equal what `seascape sync` computes, or the next preview fails.
+- **Fails, printing the course:** if it differs from the stored objects, the rig, hull or turn changed. Paste it whole, never edited by hand: the preview fails unless the stored course equals what `seascape sync` computes.
 - **Fails, naming `pitch_deg`:** a fixed mount loses the near ring or the horizon. Set the rig's `pitch_deg` to the value it names.
-- **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/staging.py`'s rule, for every product. Never place one by hand: placement is `staging.py`'s rule for every product, and a hand-placed object drifts from it.
+- **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/staging.py`'s rule, for every product. Never place one by hand: it drifts from that rule.

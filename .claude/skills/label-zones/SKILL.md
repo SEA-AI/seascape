@@ -43,8 +43,8 @@ Trust the evidence in this order:
    metallic map often marks painted steel, and an alpha texture is a cutout as often
    as it is glass; opaque glass exists too, as a dark, flat band of windows on a house.
 
-Zone each face by what the model shows, because the LWIR build renders the zone, not
-the intent: a vessel without a stack has no funnel zone, and windows painted into a
+Zone only what the model shows, since the LWIR render shows each face's zone as
+written: a vessel without a stack has no funnel zone, and windows painted into a
 wall's texture take the wall's zone.
 
 ## Describing it as simply as is right
@@ -88,13 +88,13 @@ zone, `material` or `weathered`, not wrong masks: fix the label first.
 
 1. `uv run seascape zones ASSET`, then read the sheets and the JSON beside them. Add
    `--islands`, or `--material NAME`, where one slot holds two zones.
-2. Search for the class's build material and photographs of it in service, and note
-   the sources for the PR.
+2. Find the material and wear as "What it is made of" and "What real wear looks like"
+   say.
 3. Write the `zones` table, `material` and `weathered` into `assets.toml`, by the
    sections above.
 4. `uv run seascape zones ASSET --preview`, and look at every view: each surface in
    the zone it should be, nothing in a zone it should not, and the worn row worn where
    the class wears. A part shown wrong sends you back to step 3.
 5. `uv run pytest tests/test_zones.py`, which checks the table against the import.
-6. Hand the preview to a person, say which parts, material and wear you were unsure
-   of, and why, and cite what decided material and wear.
+6. Hand the preview to a person, and say which parts, material and wear you were
+   unsure of, and why.

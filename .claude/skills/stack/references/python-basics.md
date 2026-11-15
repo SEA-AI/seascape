@@ -1,6 +1,6 @@
 # Python basics
 
-General practice the `stack` skill expects; its body holds the repo-specific rules.
+General practice any Python reviewer knows; the `stack` body holds the rules this repo's code breaks most.
 
 ## Python
 

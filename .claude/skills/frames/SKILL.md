@@ -1,6 +1,6 @@
 ---
 name: frames
-description: Defines the repo's coordinate frames, poses and angle conventions, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing, an Euler angle, a `matrix_world`, PTU pan/tilt or camera extrinsics, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
+description: Defines the repo's coordinate frames, poses and angle conventions, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing, an Euler angle, a `matrix_world` read as a pose, PTU pan/tilt or camera extrinsics, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
 ---
 
 # Frames
