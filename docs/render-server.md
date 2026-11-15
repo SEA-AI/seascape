@@ -63,7 +63,7 @@ docker compose up -d
 docker compose logs   # names the GPU backend
 ```
 
-To update, `curl -fsSLO https://raw.githubusercontent.com/SEA-AI/seascape/main/compose.yaml && docker compose pull && docker compose up -d`; `.env` keeps your settings. The old server first lets its running job end, up to `stop_grace_period`; the new one runs the jobs left queued and reports one cut off as failed. From a checkout, `SEASCAPE_COMMIT=$(git describe --always --dirty --abbrev=40 --exclude='*') docker compose up -d --build` builds it instead, and its labels name that commit, marked `-dirty` if the tree has changes.
+To update, `curl -fsSLO https://raw.githubusercontent.com/SEA-AI/seascape/main/compose.yaml && docker compose pull && docker compose up -d --timeout 46800`. The fetch replaces `compose.yaml`, so keep settings in `.env`. The old server first lets its running job end, for up to 13 h: Docker stops it with the grace period it was started with, which `--timeout` overrules. The new one runs the jobs left queued and reports one cut off as failed. From a checkout, `SEASCAPE_COMMIT=$(git describe --always --dirty --abbrev=40 --exclude='*') docker compose up -d --build` builds it instead, and its labels name that commit, marked `-dirty` if the tree has changes.
 
 Compose reads these from the shell or from a `.env` beside `compose.yaml`:
 
