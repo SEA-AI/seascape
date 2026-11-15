@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Decides whether each piece of the code should exist, and where it lives, through SOLID, information hiding and the layer order. Use before writing a helper, flag, special case, constant or retry; when deciding where new code goes, when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; before a refactor that moves code between layers; or to audit a package for reinvented helpers, uncited constants and dead code; `review-pr` runs it as one reviewer. Language and library practice is `stack`'s, comments `prose`'s, tests `tests`', bugs `/code-review`'s.
+description: Decides whether code should exist and which layer owns it (SOLID, information hiding, the import-linter layers). Use before writing a helper, flag, special case, constant, retry, module, record field, callback, Blender custom property or a second home for a formula; when choosing where code goes, when one feature touches many layers, before refactoring across layers, or to audit a package for reinvented helpers, uncited constants and dead code. `review-pr` runs it as one reviewer. Language and library practice is `stack`'s, comments `prose`'s, tests `tests`', bugs `/code-review`'s.
 ---
 
 # Architecture
@@ -8,6 +8,13 @@ description: Decides whether each piece of the code should exist, and where it l
 Each piece earns its place, lands where its decision lives, and the whole reads as a reusable library.
 
 `AGENTS.md` and the import-linter contract record project decisions. A review may find one that a principle rejects: report it as an issue for the owner, not as a reason.
+
+## Before writing
+
+1. Ask "Should it exist?" below.
+2. Place it on the map.
+3. Count the homes of the formula or rule it touches.
+4. Ask the principle questions below of each new module, union member, interface or call across layers.
 
 ## Should it exist?
 
@@ -19,7 +26,7 @@ Each piece earns its place, lands where its decision lives, and the whole reads 
 
 Only a documented constraint justifies an odd shape: an `AGENTS.md` trap, a Blender limit or a measured cost. That the codebase does it elsewhere is never a reason; it is a second finding.
 
-A limitation found gets a real attempt at the fix first; the repo often holds the data that removes the need for a workaround. If it does not fit the change, fix it in its own change or open an issue; never leave it to memory. Mark a kept limitation in code with `Limitation:` and the condition that removes it.
+A limitation found gets a real attempt at the fix first; the repo often holds the data that removes the need for a workaround. If it does not fit the change, fix it in its own change or open an issue, so it survives the session. Mark a kept limitation in code with `Limitation:` and the condition that removes it.
 
 ## The map
 
@@ -77,7 +84,7 @@ Each names its usual root fix.
 3. Place each on the map. Ask whether a lower layer could own it.
 4. Trace each value the diff introduces or reroutes: where it is computed, where it is stored, where it is read. Every hop through Blender, a closure or a recomputation needs a reason.
 5. Count homes. For each action, conversion and formula the diff touches, count the places that perform it.
-6. Ask the principle questions only where steps 1 to 5 found friction. Do not grade the diff against every principle.
+6. Ask the principle questions where steps 1 to 5 found friction.
 7. Before reporting, find why the code is as it is. "Should it exist?" says which reasons justify an odd shape.
 
 To audit a whole package, follow [references/audit.md](references/audit.md).
