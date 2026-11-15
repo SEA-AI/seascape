@@ -36,8 +36,8 @@ from seascape.config import (
     sources,
     substream,
 )
-from seascape.outputs import agc, labels, microbolometer, stitch
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs import agc, journal, labels, microbolometer, stitch
+from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import earth
 
 
@@ -177,15 +177,6 @@ def _targets(
         for asset, roots in built.targets.items()
         for root in roots
     ]
-
-
-def _write_truth(
-    into: Path,
-    cameras: list[CameraCalibration],
-    raw: list[CameraCalibration],
-    truth: labels.Labels,
-) -> list[Path]:
-    return [Calibration(cameras=cameras, raw=raw).write(into), truth.write(into)]
 
 
 def _commit() -> str | None:
@@ -384,10 +375,12 @@ def render(
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     sequence = len(outputs.times_s) > 1
     written: list[Path] = []
-    cameras: list[CameraCalibration] = []
-    raw: list[CameraCalibration] = []
     truth = labels.Labels()
-    with tempfile.TemporaryDirectory() as tmp:
+    # The journal writes the truth as the block ends, also when it raises.
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        journal.Journal(into, truth) as frames,
+    ):
         passes = Path(tmp)
         for band in outputs.bands:
             # The default bands can name one no rig has a camera for.
@@ -419,7 +412,7 @@ def render(
                 sc.frame_set(frame)
                 # Reads matrix_world, which moves with the frame.
                 targets = _targets(built, crossings)
-                shot = []
+                shot, raw = [], []
                 for mount in mounts:
                     taken, source, files = _shoot(
                         built,
@@ -439,7 +432,6 @@ def render(
                     shot, into, frame if sequence else None, outputs.format
                 )
                 written += files
-                cameras += [camera for _, camera, _, _ in shot]
                 faints = [labels.faint(i, f, targets) for _, _, i, f in shot]
                 if outputs.keep_if_any_sees:
                     presents = [labels.present(i, targets) for _, _, i, _ in shot]
@@ -457,10 +449,9 @@ def render(
                         mount.camera,
                         faint=low,
                     )
-                # Every frame, so a render that dies keeps what it wrote.
-                _write_truth(into, cameras, raw, truth)
+                frames.append([camera for _, camera, _, _ in shot], raw)
     if not written:
         raise ValueError(
             f"no rig has a camera in any of {outputs.bands}: nothing to render"
         )
-    return written + _write_truth(into, cameras, raw, truth)
+    return written + frames.written
