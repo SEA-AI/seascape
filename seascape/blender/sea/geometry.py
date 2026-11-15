@@ -27,7 +27,7 @@ DISPLACED_HEIGHT_SHARE = 0.999
 # surface and displacement share, at 7 m/s in eo, 2 m fits.
 DISPLACED_MIN_M = 4.0
 # A judgement: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
-DICING_PX = 3.0
+DICING_PX = 4.0
 # A judgement: the longest edge it dices to near the camera, an eighth of the shortest
 # displaced wave, where a straight edge strays from a cosine by at most 1 - cos(pi / 8),
 # 8 % of its amplitude.
@@ -280,8 +280,9 @@ def _displacement(
 ) -> bpy.types.NodeSocket:
     """The offset of a Gerstner surface from the flat sea, each wave faded by the
     footprint of the micropolygon there: up a cos(phase), and -k_hat a sin(phase)
-    along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with lambda = 1). Adaptive
-    subdivision dices at about a pixel, so the micropolygon's footprint is the pixel's.
+    along the sea (Gerstner 1802; Tessendorf 2001, eq. 29, with lambda = 1), by the
+    pixel's footprint, not the coarser micropolygon's: a crest finer than the dicing
+    still occludes.
 
     Args:
         tree: The sea material's shader tree.
