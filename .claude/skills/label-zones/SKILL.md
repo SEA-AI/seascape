@@ -83,10 +83,15 @@ of the class in service and for accounts of how its surface fails, and cite in t
 what decided each call. A worn row the class would not show usually means a wrong
 zone, `material` or `weathered`, not wrong masks: fix the label first.
 
-## Proving it
+## Steps
 
-Render the zones sheet and look at every view: each surface in the zone it should be,
-nothing in a zone it should not, and the worn row worn where the class wears. Run
-`uv run pytest tests/test_zones.py`, which checks the table against the import. Hand
-the sheet to a person, and say which parts, material and wear you were unsure of, and
-why.
+1. `uv run seascape zones ASSET`, then read the sheets and the JSON beside them. Add
+   `--islands`, or `--material NAME`, where one slot holds two zones.
+2. Write the `zones` table, `material` and `weathered` into `assets.toml`, by the
+   sections above.
+3. `uv run seascape zones ASSET --preview`, and look at every view: each surface in
+   the zone it should be, nothing in a zone it should not, and the worn row worn where
+   the class wears. A part shown wrong sends you back to step 2.
+4. `uv run pytest tests/test_zones.py`, which checks the table against the import.
+5. Hand the preview to a person, and say which parts, material and wear you were
+   unsure of, and why.
