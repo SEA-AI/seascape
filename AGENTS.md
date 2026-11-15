@@ -128,9 +128,9 @@ The full guide is the `prose` skill.
 
 - A line stays only if the reader loses something without it.
 - Say what the code can't: a constraint, a unit.
-- No context spill: what was tried, reviews, other PRs, "now" or "no longer".
-- Don't restate the code or the diff.
-- Don't copy what goes stale: a number derived elsewhere, a list from another file.
+- Write comments for someone who reads the code later and never saw how it came about: say what it does and why. The history (what was tried, reviews, other PRs, "now" or "no longer") belongs in git and the PR, where it can't go stale.
+- Add only what the code and the diff can't show.
+- Point to a value's home instead of copying it: a copied number or list goes stale.
 - Commits: a Conventional Commit, an imperative subject, a body that says why.
 
 ## Engineering
@@ -138,7 +138,7 @@ The full guide is the `prose` skill.
 The full guides are the `architecture`, `stack` and `tests` skills.
 
 - Before writing a helper, search the standard library, installed packages and this repo for one.
-- Fix the mechanism, not the symptom: a flag, special case, sleep or retry is usually the wrong fix.
+- Fix the mechanism behind a symptom. A flag, special case, sleep or retry hides the cause and breaks again elsewhere.
 - One home per rule or formula; delete dead code.
 - Every behaviour a change adds or fixes has a test, seen to fail with the behaviour broken. Test outputs, never config literals or internals.
 
