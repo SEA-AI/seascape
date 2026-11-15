@@ -1,6 +1,10 @@
 version = 1
 revision = 5
 requires-python = "==3.13.*"
+resolution-markers = [
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "platform_machine != 'aarch64' or sys_platform != 'linux'",
+]
 
 [[package]]
 name = "annotated-types"
@@ -37,6 +41,9 @@ wheels = [
 name = "bpy"
 version = "5.2.2"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "platform_machine != 'aarch64' or sys_platform != 'linux'",
+]
 dependencies = [
     { name = "cattrs" },
     { name = "cython" },
@@ -49,6 +56,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/a7/a26dc1a04934445b1f549969dee2ad3313d4ee1df5205c166df0e336a9ae/bpy-5.2.2-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:3dfd1a9e7a5aec0f0fe95a1b01d10cd66e212b16ea38b77d132159dc9a666d45", size = 401697653, upload-time = "2026-09-15T12:01:03.162Z" },
     { url = "https://files.pythonhosted.org/packages/3f/43/07ffaf5f8cc23a02258d03d972784e93e1fdacbd5422fd75fc9dd7c1738b/bpy-5.2.2-cp313-cp313-win_amd64.whl", hash = "sha256:a2d29dca205e094f8f501544c73009ab15b643fb611a27ddc1155dce2fc6995d", size = 338211575, upload-time = "2026-09-15T11:59:28.292Z" },
     { url = "https://files.pythonhosted.org/packages/f1/30/6417c20eec4f4dafe5cb4ea97b398cd777be9ff27e8775e6dfae12d79021/bpy-5.2.2-cp313-cp313-win_arm64.whl", hash = "sha256:cbec727afdade8ddc0e53edb290acc1cc4cca37a20c7cf1d72dd6b044b20f556", size = 210628942, upload-time = "2026-09-15T11:56:45.883Z" },
+]
+
+[[package]]
+name = "bpy"
+version = "5.2.2"
+source = { registry = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" }
+resolution-markers = [
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "cattrs" },
+    { name = "cython" },
+    { name = "numpy" },
+    { name = "requests" },
+    { name = "zstandard" },
+]
+wheels = [
+    { url = "https://github.com/SEA-AI/bpy-linux-aarch64/releases/download/v5.2.2/bpy-5.2.2-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:9e7fc3cc86cb4a61c9c11d55b5927c75954cf0e9511a026c153f21c1a50c97b9" },
 ]
 
 [[package]]
@@ -672,7 +697,8 @@ dependencies = [
 
 [package.dev-dependencies]
 blender = [
-    { name = "bpy" },
+    { name = "bpy", version = "5.2.2", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
+    { name = "bpy", version = "5.2.2", source = { registry = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" }, marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
 dev = [
     { name = "pytest" },
@@ -696,7 +722,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-blender = [{ name = "bpy", specifier = ">=5.2" }]
+blender = [
+    { name = "bpy", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'", specifier = ">=5.2" },
+    { name = "bpy", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = ">=5.2", index = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" },
+]
 dev = [
     { name = "pytest", specifier = ">=9.0" },
     { name = "pytest-xdist", specifier = ">=3.8" },

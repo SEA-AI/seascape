@@ -87,3 +87,15 @@ testpaths = ["tests"]
 
 [tool.uv]
 default-groups = ["dev", "blender", "serve"]
+
+# PyPI's bpy has no Linux aarch64 wheel (the DGX Spark); SEA-AI/bpy-linux-aarch64
+# builds one the way Blender's buildbot does, on a PEP 503 index of its own.
+[tool.uv.sources]
+bpy = [
+    { index = "bpy-aarch64", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
+]
+
+[[tool.uv.index]]
+name = "bpy-aarch64"
+url = "https://sea-ai.github.io/bpy-linux-aarch64/simple/"
+explicit = true
