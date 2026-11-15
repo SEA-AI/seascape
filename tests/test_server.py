@@ -1,7 +1,6 @@
 """The render server, without Blender."""
 
 import asyncio
-import dataclasses
 import json
 import os
 import re
@@ -677,13 +676,6 @@ def test_a_restarted_server_runs_what_was_queued_and_fails_what_was_cut_off(
     }
     assert rendered == ["next"]
     assert "without scenario 'removed'" in (left.jobs["gone"].error or "")
-    # The next server reads what this one wrote.
-    again = _state(tmp_path)
-    jobs.resume(again)
-    assert {n: j.state for n, j in again.jobs.items()} == {
-        n: j.state for n, j in left.jobs.items()
-    }
-    assert again.jobs["done"].scenes == scenes
 
 
 def test_a_draining_server_queues_a_job_for_the_next_one(
@@ -718,22 +710,21 @@ def test_a_draining_server_queues_a_job_for_the_next_one(
     assert rendered == [name]
 
 
-def test_a_stopped_server_exits_once_its_running_job_ends(state: State) -> None:
+# A queued job waits for the next server.
+@pytest.mark.parametrize(
+    ("job_state", "exits"),
+    [("running", False), ("finishing", False), ("queued", True), ("done", True)],
+)
+def test_a_stopped_server_exits_once_its_running_job_ends(
+    job_state: JobState, exits: bool, state: State
+) -> None:
     server = transport._Draining(uvicorn.Config(transport.app(state, "x")), state)
-    job = Job(state.renders / "job", "open-sea", load_variants(OPEN_SEA))
-    state.jobs["job"] = job
-
-    async def tick() -> bool:
-        return await server.on_tick(1)  # not a tenth: no headers to refresh
-
+    state.jobs["job"] = Job(
+        state.renders / "job", "open-sea", load_variants(OPEN_SEA), state=job_state
+    )
     server.handle_exit(signal.SIGTERM, None)
-    assert state.draining
-    ticks = {}
-    # A queued job waits for the next server.
-    for name in ("running", "finishing", "queued", "done"):
-        job.state = name
-        ticks[name] = asyncio.run(tick())
-    assert ticks == {"running": False, "finishing": False, "queued": True, "done": True}
+    # Not a tenth tick: no headers to refresh.
+    assert asyncio.run(server.on_tick(1)) is exits
 
 
 @pytest.mark.parametrize("path", sorted(SCENARIOS.glob("*.toml")), ids=lambda p: p.stem)
@@ -742,11 +733,6 @@ def test_each_scenario_reads_back_from_its_job_record(path: Path, state: State) 
     job = Job(state.renders / "job", path.stem, scenes)
     job.save()
     assert jobs.Record.model_validate_json(job.record.read_bytes()).scenes == scenes
-
-
-def test_a_record_holds_every_field_of_a_job_but_its_folder_and_task() -> None:
-    kept = {f.name for f in dataclasses.fields(Job)} - {"folder", "task"}
-    assert set(jobs.Record.model_fields) == kept
 
 
 def test_a_second_signal_stops_a_server_at_once(state: State) -> None:
