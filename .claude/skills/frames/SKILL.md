@@ -1,6 +1,6 @@
 ---
 name: frames
-description: Coordinate frames, poses and angle conventions, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
+description: Defines the repo's coordinate frames, poses and angle conventions, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing, an Euler angle, a `matrix_world`, PTU pan/tilt or camera extrinsics, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
 ---
 
 # Frames
@@ -45,9 +45,9 @@ Internally an elevation is up from the horizon. The `angles` module holds the co
 | OpenCV | right, down, forward | calibration files: an extrinsic is `T_f_camera`, the inverse of OpenCV's `[R\|t]` |
 | COCO | pixel edges: OpenCV + 0.5 | labels |
 | Blender camera | right, up, backward | a matrix handed to Blender |
-| FLU (ROS REP 103) | forward, left, up: yaw to port, pitch nose down | an Oceanus recording's pan, tilt and camera rpy |
-| Oceanus IMU | roll starboard down, pitch nose down, yaw clockwise: no change of basis gives it | the recording's IMU columns |
-| NED (NMEA 2000) | forward, right, down: yaw clockwise, pitch nose up | NMEA attitude and heading |
+| FLU (ROS REP 103) | forward, left, up: yaw to port, pitch bow down | an Oceanus recording's pan, tilt and camera rpy |
+| Oceanus IMU | roll starboard down, pitch bow down, yaw clockwise: no change of basis gives it | the recording's IMU columns |
+| NED (NMEA 2000) | forward, right, down: yaw clockwise, pitch bow up | NMEA attitude and heading |
 
 ## Rules
 

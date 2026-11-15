@@ -1,13 +1,13 @@
 ---
 name: sync-scenario
-description: Write or change a product's `scenarios/sync-PRODUCT.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, or when its preview fails.
+description: Writes or changes a product's `scenarios/sync-PRODUCT.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, or when its `seascape sync --preview` fails.
 ---
 
 # Sync scenario
 
 `scenarios/sync.toml` holds the turn, sea and outputs every product shares; `sync-<product>.toml` extends it with the ownship, rig and course. The existing product files are the working examples.
 
-Decide by numbers, never by looking at frames. The preview's check is the verdict.
+Decide by the preview's printed check: a frame looks right at one turn and misses the course at another, and the preview tests every frame.
 
 ## Steps
 
@@ -32,6 +32,6 @@ Decide by numbers, never by looking at frames. The preview's check is the verdic
 
 ## When it fails
 
-- **Fails, printing the course:** if it differs from the stored objects, the rig, hull or turn changed. Paste it whole; never edit it by hand.
+- **Fails, printing the course:** if it differs from the stored objects, the rig, hull or turn changed. Paste it whole; never edit it by hand: the stored course must equal what `seascape sync` computes, or the next preview fails.
 - **Fails, naming `pitch_deg`:** a fixed mount loses the near ring or the horizon. Set the rig's `pitch_deg` to the value it names.
-- **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/staging.py`'s rule, for every product. Never place one by hand.
+- **A video misses a buoy or the container:** read the frames at that turn through `seascape.outputs.agc.Agc` for thermal, find what hides it (a crest, the hull, the frame's edge) and fix the cause in the scene or in `seascape/sync/staging.py`'s rule, for every product. Never place one by hand: placement is `staging.py`'s rule for every product, and a hand-placed object drifts from it.
