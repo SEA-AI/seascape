@@ -278,39 +278,51 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
         prefix = folder.relative_to(root).as_posix()
         merged.info = merged.info or part.info
         scenarios[prefix] = part.info["scenario"]
-        ids: dict[int, int] = {}
-        for image in part.images:
-            ids[image.id] = len(merged.images) + 1
-            merged.images.append(
-                image.model_copy(
-                    update={
-                        "id": ids[image.id],
-                        "file_name": f"{prefix}/{image.file_name}",
-                    }
-                )
-            )
-        for annotation in part.annotations:
-            merged.annotations.append(
-                annotation.model_copy(
-                    update={
-                        "id": len(merged.annotations) + 1,
-                        "image_id": ids[annotation.image_id],
-                    }
-                )
-            )
-        for gone in part.dropped:
-            merged.dropped.append(
-                gone.model_copy(update={"image_id": ids[gone.image_id]})
-            )
-        for category in part.categories:
-            known = next((c for c in merged.categories if c.id == category.id), None)
-            if known is None:
-                merged.categories.append(category)
-            elif known != category:
-                raise ValueError(f"{folder}: category {category.id} is {known.name}")
+        _append(merged, part, f"{prefix}/", folder)
     merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
     merged.info["scenarios"] = scenarios
     return merged
+
+
+def concat(parts: Sequence[Labels]) -> Labels:
+    """`parts`, renders of one scene's cameras into one folder, as one set, numbered
+    in their order as one render numbers its frames; the first part's info.
+    """
+    joined = Labels(info=parts[0].info if parts else {})
+    for number, part in enumerate(parts):
+        _append(joined, part, "", f"part {number}")
+    return joined
+
+
+def _append(into: Labels, part: Labels, prefix: str, source: Path | str) -> None:
+    """Add `part`'s labels to `into`, renumbered after it, each file name under
+    `prefix`.
+    """
+    ids: dict[int, int] = {}
+    for image in part.images:
+        ids[image.id] = len(into.images) + 1
+        into.images.append(
+            image.model_copy(
+                update={"id": ids[image.id], "file_name": prefix + image.file_name}
+            )
+        )
+    for annotation in part.annotations:
+        into.annotations.append(
+            annotation.model_copy(
+                update={
+                    "id": len(into.annotations) + 1,
+                    "image_id": ids[annotation.image_id],
+                }
+            )
+        )
+    for gone in part.dropped:
+        into.dropped.append(gone.model_copy(update={"image_id": ids[gone.image_id]}))
+    for category in part.categories:
+        known = next((c for c in into.categories if c.id == category.id), None)
+        if known is None:
+            into.categories.append(category)
+        elif known != category:
+            raise ValueError(f"{source}: category {category.id} is {known.name}")
 
 
 def _run_lengths(mask: np.ndarray) -> RunLengths:
@@ -345,8 +357,16 @@ def faint(
     if frame.dtype != np.uint8:
         return {}
     low = {}
+    # Every target's pixels in one pass, not one scan of the frame per target. The
+    # stable sort keeps each target's pixels in np.nonzero's row-major order.
+    all_ys, all_xs = np.nonzero(index)
+    passes = index[all_ys, all_xs]
+    order = np.argsort(passes, kind="stable")
+    passes, all_ys, all_xs = passes[order], all_ys[order], all_xs[order]
     for target in targets:
-        ys, xs = np.nonzero(index == target.pass_index)
+        first = np.searchsorted(passes, target.pass_index, "left")
+        last = np.searchsorted(passes, target.pass_index, "right")
+        ys, xs = all_ys[first:last], all_xs[first:last]
         if not len(xs):
             continue
         reach = FLANK_GAP_PX + flank_px(xs.max() - xs.min() + 1)

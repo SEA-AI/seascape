@@ -6,6 +6,7 @@ quoted in kelvin act here, between the float render and `agc`.
 Limitation: no bolometer lag; the Boson's time constant is unpublished.
 """
 
+import functools
 import math
 
 import numpy as np
@@ -37,9 +38,26 @@ def diffraction_mtf(
         t_k: The temperature whose Planck spectrum weights the wavelengths.
     """
     freq = np.asarray(freq_per_m, dtype=np.float64)
-    mono = optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
+    return _weighted(optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number), t_k)
+
+
+def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
+    """Each wavelength's MTF, the last axis of `mono`, weighted by `t_k`'s Planck
+    spectrum.
+    """
     weight = lwir.planck(_BAND_LAM, t_k)
     return (mono * weight).sum(axis=-1) / weight.sum()
+
+
+@functools.cache
+def _frame_mtfs(shape: tuple[int, int], f_number: float, pitch_m: float) -> FloatArray:
+    """Each band wavelength's MTF at a padded frame's rfft2 frequencies: the same for
+    every frame of a camera, and most of the cost of diffracting one.
+    """
+    fy = np.fft.fftfreq(shape[0])[:, None]
+    fx = np.fft.rfftfreq(shape[1])[None, :]
+    freq = np.hypot(fx, fy) / pitch_m
+    return optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
 
 
 def diffract(
@@ -48,9 +66,7 @@ def diffract(
     """`radiance` through the lens's diffraction, the frame mirrored at its edges."""
     pad = optics.airy_reach_px(lwir.BAND_M[1], f_number, pitch_m)
     padded = np.pad(radiance, pad, mode="reflect")
-    fy = np.fft.fftfreq(padded.shape[0])[:, None]
-    fx = np.fft.rfftfreq(padded.shape[1])[None, :]
-    mtf = diffraction_mtf(np.hypot(fx, fy) / pitch_m, f_number, t_k)
+    mtf = _weighted(_frame_mtfs(padded.shape, f_number, pitch_m), t_k)
     out = np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)
     return out[pad:-pad, pad:-pad]
 

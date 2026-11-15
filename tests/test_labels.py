@@ -539,6 +539,26 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
     }
 
 
+def test_parts_rendered_into_one_folder_number_on_as_one_render() -> None:
+    """What `sync --parallel` gathers: a band per part, each numbered from 1."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    eo, ir = (
+        added(index, [target(1, *category)]) for category in (("ship", 1), ("buoy", 6))
+    )
+    eo.info = {"version": "x"}
+
+    joined = labels.concat([eo, ir])
+
+    assert [(i.id, i.file_name) for i in joined.images] == [(1, "C.png"), (2, "C.png")]
+    assert [(a.id, a.image_id, a.category_id) for a in joined.annotations] == [
+        (1, 1, 1),
+        (2, 2, 6),
+    ]
+    assert [c.id for c in joined.categories] == [1, 6]
+    assert joined.info == {"version": "x"}
+
+
 def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1

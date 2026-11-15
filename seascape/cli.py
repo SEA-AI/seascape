@@ -3,6 +3,8 @@
 import json
 import math
 import os
+import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
@@ -15,7 +17,7 @@ from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
-from seascape.outputs.calibration import Frame
+from seascape.outputs.calibration import Calibration, Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -108,6 +110,58 @@ def _render(built: Scenario, into: Path) -> list[Path]:
         _blender_log(into / "blender.log"),
     ):
         return renderer.render(built, into, lambda: bar.update(1))
+
+
+def _render_apart(
+    scenario: Path, overrides: tuple[str, ...], built: Scenario, into: Path
+) -> None:
+    """Render each band in a `seascape render` of its own, all at once, then gather
+    their frames and truth in `into` as one render writes them.
+
+    One render leaves the GPU idle while Cycles readies the scene and seascape labels
+    a frame; another band's render fills that time. Each holds its own scene, so the
+    memory is about one render's per band.
+    """
+    bands = [band for band in built.outputs.bands if built.band_mounts(band)]
+    if len(bands) < 2:
+        _render(built, into)
+        return
+    sets = [arg for override in overrides for arg in ("--set", override)]
+    into.mkdir(parents=True, exist_ok=True)
+    parts = {band: into / f".{band}" for band in bands}
+    runs = {}
+    click.echo(f"Rendering {', '.join(bands)} at once", err=True)
+    for band, part in parts.items():
+        with (into / f".{band}.log").open("w") as log:
+            command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
+            runs[band] = subprocess.Popen(
+                [*command, *sets, "--set", f'outputs.bands = ["{band}"]', "-o", part],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+    failed = [band for band, run in runs.items() if run.wait() != 0]
+    if failed:
+        logs = ", ".join(str(into / f".{band}.log") for band in failed)
+        raise click.ClickException(f"rendering {', '.join(failed)} failed: see {logs}")
+    kept = {labels.FILENAME, "calibration.json", "blender.log"}
+    with (into / "blender.log").open("a") as log:
+        for part in parts.values():
+            for item in part.iterdir():
+                if item.name not in kept:
+                    item.rename(into / item.name)
+            log.write((part / "blender.log").read_text(errors="replace"))
+    truth = labels.concat([labels.Labels.read(part) for part in parts.values()])
+    # Each part's scenario renders one band; the truth records the one asked for.
+    truth.info["scenario"] = built.model_dump(mode="json")
+    truth.write(into)
+    calibrations = [Calibration.read(part) for part in parts.values()]
+    Calibration(
+        cameras=[c for calibration in calibrations for c in calibration.cameras],
+        raw=[c for calibration in calibrations for c in calibration.raw],
+    ).write(into)
+    for band, part in parts.items():
+        shutil.rmtree(part)
+        (into / f".{band}.log").unlink()
 
 
 _QUALITY = "perc_lossless"
@@ -222,12 +276,19 @@ def render(
     help="Draw the course on one image, <scenario>-course.png in the directory, and "
     "render nothing.",
 )
+@click.option(
+    "--parallel",
+    is_flag=True,
+    help="Render each band in its own process, at once: faster where one band leaves "
+    "the GPU idle, with a render's memory per band.",
+)
 def sync(
     scenario: Path,
     output: Path | None,
     overrides: tuple[str, ...],
     preview: bool,
     sheet: bool,
+    parallel: bool,
 ) -> None:
     """Render, encode and record a sync scenario, preview it, or draw its course."""
     from seascape.sync import preview as checks
@@ -248,7 +309,10 @@ def sync(
     if not preview:
         built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
-        _render(built, into)
+        if parallel:
+            _render_apart(scenario, overrides, built, into)
+        else:
+            _render(built, into)
         _encode(into, _QUALITY)
         for path in recording.export(into):
             click.echo(path)
