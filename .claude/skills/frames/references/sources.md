@@ -1,7 +1,9 @@
 # Sources
 
+## Published
+
 - ROS REP 103, *Standard Units of Measure and Coordinate Conventions*: body frames forward-left-up, world frames east-north-up, a `_ned` suffix for frames that differ: https://reps.openrobotics.org/rep-0103/
-- ROS REP 105, *Coordinate Frames for Mobile Platforms*: named frames and the chain between them: https://www.ros.org/reps/rep-0105.html
+- ROS REP 105, *Coordinate Frames for Mobile Platforms*: named frames (`map`, `base_link`) and the chain between them: https://www.ros.org/reps/rep-0105.html
 - Paul Furgale, *Representing Robot Pose: The good, the bad, and the ugly*, 2014: draw the frame diagram, name every transform by its frames, document the frames each function uses: https://rpg.ifi.uzh.ch/docs/teaching/2024/FurgaleTutorial.pdf
 - Drake, monogram notation: `X_AB` is frame B's pose in A, and products check by matching letters, `X_WC = X_WA * X_AB * X_BC`: https://drake.mit.edu/doxygen_cxx/group__multibody__notation.html
 - *A Standard Rigid Transformation Notation Convention for Robotics Research*, 2024: https://arxiv.org/abs/2405.07351
@@ -11,3 +13,18 @@
 - `flir_ptu_description`, the URDF for FLIR pan-tilt units: a base link, then pan, tilt and mount links: https://github.com/ros-drivers/flir_ptu
 - FLIR, *E Series Pan-Tilt Command Reference Manual*, 2017, §4.1 and §8.1: positions count from the home that reset calibration finds, and pan is positive to the right.
 - Signal K, `navigation` schema: attitude roll positive to starboard, pitch positive bow up, yaw positive to starboard, matching NMEA 2000 PGN 127257: https://github.com/SignalK/specification
+
+## Repo decisions
+
+- Bodies are RFU, where REP 103 is FLU and Fossen FRD.
+- Bearings clockwise from +Y; compose matrices, never angles: `AGENTS.md`'s traps.
+- Conversions live in `angles`; `ruff.toml`'s pep8-naming exceptions.
+- The findings table, shared by every reviewer.
+
+## Judgement
+
+- Name frame kinds, never instances.
+- A per-field sign flip is the symptom of a missing basis.
+- Euler angles are a readout; convert at the boundary.
+- Test a chain off-axis and pitched together.
+- Dump every scenario's `matrix_world` before and after a chain refactor.
