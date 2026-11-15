@@ -98,11 +98,39 @@ jobs:
 
       - run: uv run pytest --shard ${{ matrix.shard }} --durations=20
 
+  # Linux aarch64 takes bpy from SEA-AI's own index, which no x86 job downloads.
+  aarch64:
+    name: Linux aarch64
+    needs: changes
+    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked
+      - run: uv run python -c "import bpy; print(bpy.app.version_string)"
+      # Each platform resolves bpy on its own: a new one on PyPI but not on the index
+      # locks Linux aarch64 to an older Blender, in silence.
+      - name: One bpy for every platform
+        run: |
+          uv run python - <<'EOF'
+          import tomllib
+          lock = tomllib.load(open("uv.lock", "rb"))
+          versions = {p["version"] for p in lock["package"] if p["name"] == "bpy"}
+          assert len(versions) == 1, f"uv.lock takes bpy {sorted(versions)}"
+          EOF
+
   # The one check a pull request requires, whatever the jobs above are called.
   checks:
     name: Checks
     if: always()
-    needs: [changes, lint, tests]
+    needs: [changes, lint, tests, aarch64]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

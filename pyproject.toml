@@ -88,8 +88,10 @@ testpaths = ["tests"]
 [tool.uv]
 default-groups = ["dev", "blender", "serve"]
 
-# PyPI's bpy has no Linux aarch64 wheel (the DGX Spark); SEA-AI/bpy-linux-aarch64
-# builds one the way Blender's buildbot does, on a PEP 503 index of its own.
+# Limitation: PyPI's bpy has no Linux aarch64 wheel; SEA-AI/bpy-linux-aarch64 builds
+# one the way Blender's buildbot does. Publish its wheel before taking a new bpy, or
+# Linux aarch64 locks to the old one; a re-lock needs its index reachable. Delete
+# this source and index once PyPI ships the wheel.
 [tool.uv.sources]
 bpy = [
     { index = "bpy-aarch64", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
