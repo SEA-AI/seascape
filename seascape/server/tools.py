@@ -157,8 +157,8 @@ async def render(
                 f"{free_gb:.0f} GB free after the jobs queued; this job needs "
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
-        job.task = asyncio.create_task(run(state, job, path, lines, variants))
         job.save()
+        job.task = asyncio.create_task(run(state, job, path, lines, variants))
         return {
             "job": name,
             "images": job.total,

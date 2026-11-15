@@ -399,10 +399,7 @@ def resume(state: State) -> None:
         state.jobs[job.folder.name] = job
         scenario = state.scenarios().get(job.scenario)
         if job.state == "queued" and scenario is not None:
-            # As many variants as it asked.
-            job.task = asyncio.create_task(
-                run(state, job, scenario, job.overrides, len(job.scenes))
-            )
+            job.task = asyncio.create_task(_rerun(state, job, scenario))
         elif job.state == "queued":
             job.state = "failed"
             job.error = f"the server restarted without scenario {job.scenario!r}"
@@ -410,6 +407,32 @@ def resume(state: State) -> None:
         elif job.started:
             job.state, job.error = "failed", "the server restarted while it ran"
             job.save()
+
+
+async def _rerun(state: State, job: Job, path: Path) -> None:
+    """`run` a job queued before a restart, unless its scenario now reads otherwise:
+    the update that restarted the server may have changed it.
+    """
+    # As many variants as it asked.
+    variants = len(job.scenes)
+    try:
+        # Shielded as in `render`: a cancel leaves the slot held until the load ends.
+        scenes, _, _ = await asyncio.shield(load(state, path, job.overrides, variants))
+    # Worded as `render` refuses it: an OSError names the server's paths.
+    except OSError as error:
+        job.state = "failed"
+        job.error = (
+            f"{type(error).__name__}: a file the scenario names could not be read"
+        )
+    except Exception as error:
+        job.state, job.error = "failed", f"{type(error).__name__}: {error}"
+    else:
+        if scenes == job.scenes:
+            await run(state, job, path, job.overrides, variants)
+            return
+        job.state = "failed"
+        job.error = f"scenario {job.scenario!r} changed while the server restarted"
+    job.save()
 
 
 def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:

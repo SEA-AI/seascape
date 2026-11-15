@@ -678,6 +678,43 @@ def test_a_restarted_server_runs_what_was_queued_and_fails_what_was_cut_off(
     assert "without scenario 'removed'" in (left.jobs["gone"].error or "")
 
 
+def test_a_restarted_server_fails_a_job_whose_scenario_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = _folders_only(monkeypatch)
+    # Queued as open-sea's scenes; "baseline" now reads otherwise.
+    Job(tmp_path / "changed", "baseline", load_variants(OPEN_SEA)).save()
+    restarted = _state(tmp_path)
+
+    async def restart() -> Job:
+        jobs.resume(restarted)
+        job = restarted.jobs["changed"]
+        assert job.task
+        await job.task
+        return job
+
+    job = asyncio.run(restart())
+    assert (job.state, rendered) == ("failed", [])
+    assert "changed while the server restarted" in (job.error or "")
+
+
+def test_a_restarted_server_fails_a_job_its_limits_now_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = _folders_only(monkeypatch)
+    Job(tmp_path / "big", "open-sea", load_variants(OPEN_SEA)).save()
+    restarted = _state(tmp_path, max_pixels=1)
+
+    async def restart() -> JobState:
+        jobs.resume(restarted)
+        job = restarted.jobs["big"]
+        assert job.task
+        await job.task
+        return job.state
+
+    assert (asyncio.run(restart()), rendered) == ("failed", [])
+
+
 def test_a_draining_server_queues_a_job_for_the_next_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
