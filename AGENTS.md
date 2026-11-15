@@ -128,7 +128,7 @@ The full guide is the `prose` skill.
 
 - A line stays only if the reader loses something without it.
 - Say what the code can't: a constraint, a unit.
-- Write comments for someone who reads the code later and never saw how it came about: say what it does and why. The history (what was tried, reviews, other PRs, "now" or "no longer") belongs in git and the PR, where it can't go stale.
+- Write comments for someone who reads the code later and never saw how it came about: say why, and what the code can't show. The history (what was tried, reviews, other PRs, "now" or "no longer") belongs in git and the PR, where it can't go stale.
 - Add only what the code and the diff can't show.
 - Point to a value's home instead of copying it: a copied number or list goes stale.
 - Commits: a Conventional Commit, an imperative subject, a body that says why.
