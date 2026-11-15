@@ -137,14 +137,12 @@ uv run pytest
 
 The linters go through `uvx` deliberately: never add them to a dependency group and never pin them, `.pre-commit-config.yaml` included. `uvx pre-commit install` automates all but pytest.
 
-The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
-
-A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
+The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI.
 
 ## Working here
 
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Prose**, commits included, follows the `prose` skill.
+- **Prose**, commits included, follows the `prose` skill; **tests** follow the `tests` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
 - **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.

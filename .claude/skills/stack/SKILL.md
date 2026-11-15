@@ -1,6 +1,6 @@
 ---
 name: stack
-description: The practice of each part of seascape's stack: Python, numpy, images, pydantic, bpy, the CLI and tests. Use when writing code in one of them, for its idiom; `review-pr` runs it as one reviewer. Where code lives is `architecture`'s, whether it should exist `anti-hack`'s, its comments `prose`'s.
+description: The practice of each part of seascape's stack: Python, numpy, images, pydantic, bpy and the CLI. Use when writing code in one of them, for its idiom; `review-pr` runs it as one reviewer. Where code lives is `architecture`'s, whether it should exist `anti-hack`'s, its comments `prose`'s, its tests `tests`'.
 ---
 
 # Stack
@@ -48,7 +48,7 @@ Pick the container by what the data is:
 ## Numeric and image code
 
 - **State shape, dtype and frame** of each array argument in the docstring: `(N, 3)`, `float64`, row-major. The annotation does not carry it.
-- **Randomness:** never `seed + i`; record the seed with the output. A seeded stream is not stable across NumPy releases, so test statistics and properties, not exact draws.
+- **Randomness:** never `seed + i`; record the seed with the output. A seeded stream is not stable across NumPy releases.
 - **Rewrite formulas that subtract nearby values.** `log1p`, `expm1`, `hypot` and `arctan2` exist for this; `1 + x` drops the digits of a small `x`.
 - **Be explicit about dtype** at creation and at I/O. Under NEP 50 the array dtype wins over a Python scalar, so `uint8 + 200` wraps with no warning. OpenCV's `add` saturates and NumPy wraps, so mixing them gives two answers.
 - **Decide view or copy.** Basic slices and `reshape` return views, so a write mutates the caller's array. `.copy()` where a function must not.
@@ -56,7 +56,7 @@ Pick the container by what the data is:
 - **Do arithmetic in linear radiance**; store gamma-encoded values only at the file edge. Averaging or resizing encoded values blends wrong.
 - **Axis order:** arrays are `(row, col, channel)`; Pillow `size` and OpenCV `dsize` are `(width, height)`. OpenCV reads BGR, Pillow RGB. A swap still renders plausibly.
 - **Resizing a label or index image with a smoothing filter invents classes.** Use nearest.
-- **Vectorise over independent data axes; loop over axes that carry state or are tiny.** A broadcast that needs more than two or three `newaxis` tricks is harder to read than the loop. Write the loop first, vectorise when it is measurably slow, and keep the loop as the test oracle.
+- **Vectorise over independent data axes; loop over axes that carry state or are tiny.** A broadcast that needs more than two or three `newaxis` tricks is harder to read than the loop. Write the loop first, and vectorise when it is measurably slow.
 
 ## Blender and bpy
 
@@ -67,18 +67,10 @@ Pick the container by what the data is:
 - **Isolate every version-dependent name behind one small adapter** or a table keyed on `bpy.app.version`, so a Blender release breaks one test, not the build.
 - **Properties with order dependence are set in the documented order**, since the wrong order is accepted without error.
 - **Bulk data goes through `foreach_set` and `foreach_get` on flat numpy arrays**, not per-item loops.
-- **Test cheaply:** the pure layer needs no Blender. Assert graph structure on a fresh scene. Evaluate a graph with one small probe render per property and compare with the pure function's value. Share one built scene across tests.
 
-## CLI and tests
+## CLI
 
 - **A CLI command writes data to stdout**, diagnostics to stderr, and exits 0 on success.
-- **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does.
-- **A test fails when the code is wrong.** A check that cannot fail is dead. Propose the smallest test that pins the behaviour.
-- **Test what the code promises:** outputs, visible state, an invariant or a published relation with its source. Do not assert private names, call order, mock arguments, log wording or tuned numbers.
-- **One reason to fail per test**, a name that states the behaviour, `parametrize` for a table of cases. DAMP beats DRY in tests: a test reads top to bottom.
-- **Prefer real collaborators.** Double only what is slow, nondeterministic or foreign, and wrap a third-party API in a thin facade you own rather than mocking its objects.
-- **Test a physical formula** by analytic limits, invariants (symmetry, monotonicity, scaling), and an independent reference. Justify every tolerance in a comment and set `atol` explicitly for values near zero. Golden images only on tiny fixtures with a tolerance.
-- **A helper, fixture or `conftest` layer used by fewer than three tests** is not yet worth its indirection.
 
 ## Errors
 
@@ -91,7 +83,7 @@ Report a table, the likeliest failure first:
 
 | # | Where | Practice | Failure it prevents | Fix |
 |---|---|---|---|---|
-| 1 | `file:line` | a test fails when the code is wrong | a regression passes in silence | assert the keyed yaw steps |
+| 1 | `file:line` | a mutable default is shared across calls | a list shared across calls grows | default `None`, built in the body |
 
 End with what you did not read.
 
@@ -104,9 +96,6 @@ End with what you did not read.
 - pydantic validation docs: https://pydantic.dev/docs/validation/latest/
 - Typing best practices: https://typing.python.org/en/latest/reference/best_practices.html
 - Hynek, subclassing redux: https://hynek.me/articles/python-subclassing-redux/
-- Hynek, what to mock: https://hynek.me/articles/what-to-mock-in-5-mins/
-- Fowler, mocks aren't stubs: https://martinfowler.com/articles/mocksArentStubs.html
-- pytest good practices: https://docs.pytest.org/en/stable/explanation/goodpractices.html
 - clig.dev: https://clig.dev/
 - NumPy: parallel RNG, NEP 19, NEP 50, copies and views, `errstate`, `isclose`
 - Goldberg, floating point: https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
