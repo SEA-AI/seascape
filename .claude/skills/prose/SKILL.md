@@ -1,6 +1,6 @@
 ---
 name: prose
-description: Write or review the repo's prose: comments, docstrings, docs, `assets.toml` notes, commit messages and PR bodies. Use whenever a change adds or edits any of them; `review-pr` runs it as one reviewer. Code logic is out of scope.
+description: Writes and reviews the repo's prose: comments, docstrings, docs, `assets.toml` notes, commit messages and PR bodies. Use before writing or editing any of them, even mid-task, such as a comment added while fixing a bug; `review-pr` runs it as one reviewer. Code logic is out of scope.
 ---
 
 # Prose

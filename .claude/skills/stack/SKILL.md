@@ -1,6 +1,6 @@
 ---
 name: stack
-description: The idiom of each technology in the code: Python, numpy, images, pydantic, bpy and the CLI; not PR stacks, which are `gh-stack`'s. Use when writing code in one of them; `review-pr` runs it as one reviewer. Whether code should exist and where it lives is `architecture`'s, its comments `prose`'s, its tests `tests`'.
+description: Gives the idiom of each technology in the code: Python, numpy, images, pydantic, bpy and the CLI; not PR stacks, which are `gh-stack`'s. Use before writing or changing code in one of them, even mid-task; `review-pr` runs it as one reviewer. Whether code should exist and where it lives is `architecture`'s, its comments `prose`'s, its tests `tests`'.
 ---
 
 # Stack

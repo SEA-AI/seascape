@@ -1,6 +1,6 @@
 ---
 name: tests
-description: What a test checks and what it costs. Use when writing or changing a test, or when a change adds behaviour a test should pin; `review-pr` runs it as one reviewer. The idiom of the code under test is `stack`'s.
+description: Decides what a test checks and what it costs. Use before writing or changing a test, even mid-task, and whenever a change adds or fixes behaviour a test should pin; `review-pr` runs it as one reviewer. The idiom of the code under test is `stack`'s.
 ---
 
 # Tests

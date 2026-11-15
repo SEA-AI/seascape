@@ -122,6 +122,26 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 
+## Writing comments, docs and commits
+
+The full guide is the `prose` skill.
+
+- A line stays only if the reader loses something without it.
+- Say what the code can't: a constraint, a unit.
+- No context spill: what was tried, reviews, other PRs, "now" or "no longer".
+- Don't restate the code or the diff.
+- Don't copy what goes stale: a number derived elsewhere, a list from another file.
+- Commits: a Conventional Commit, an imperative subject, a body that says why.
+
+## Engineering
+
+The full guides are the `architecture`, `stack` and `tests` skills.
+
+- Before writing a helper, search the standard library, installed packages and this repo for one.
+- Fix the mechanism, not the symptom: a flag, special case, sleep or retry is usually the wrong fix.
+- One home per rule or formula; delete dead code.
+- Every behaviour a change adds or fixes has a test, seen to fail with the behaviour broken. Test outputs, never config literals or internals.
+
 ## Checks — run before committing
 
 These mirror CI, which runs them all. Locally, run the linters and only the tests the change touches, such as `uv run pytest tests/test_wear.py`; leave the whole suite to CI.
@@ -142,7 +162,7 @@ The suite includes the render checks, marked `render`. Cycles takes a GPU where 
 ## Working here
 
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Prose**, commits included, follows the `prose` skill; **tests** follow the `tests` skill.
+- **Before handing over a PR**, run the `review-pr` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
 - **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.
