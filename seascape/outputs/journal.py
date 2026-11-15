@@ -6,6 +6,8 @@ written some 3600 times. Each frame is appended here once instead, and the two f
 are written once from the lines.
 """
 
+import shutil
+from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -13,6 +15,7 @@ from typing import Any, Self
 from pydantic import Field, ValidationError
 
 from seascape.model import Model
+from seascape.outputs import calibration, labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Annotation, Category, Dropped, Image, Labels
 
@@ -142,4 +145,41 @@ def finish(folder: Path) -> list[Path]:
         calibration, labels = _assemble(steps)
         written = [calibration.write(folder), labels.write(folder)]
     (folder / FILENAME).unlink()
+    return written
+
+
+def gather(folder: Path, parts: Sequence[Path], scenario: dict[str, Any]) -> list[Path]:
+    """Move the finished renders in `parts`, each of some of a scene's bands, into
+    `folder` as one render of `scenario` writes it, then delete `parts`; the truth
+    files written.
+
+    Their labels number on in the order of `parts`, as one render numbers its bands.
+
+    Raises:
+        FileExistsError: Two parts, or a part and `folder`, hold a file of one name;
+            nothing has moved.
+    """
+    truth = {labels.FILENAME, calibration.FILENAME, "blender.log"}
+    moves = [
+        item for part in parts for item in part.iterdir() if item.name not in truth
+    ]
+    names = [item.name for item in moves]
+    if clash := sorted(
+        {n for n in names if names.count(n) > 1 or (folder / n).exists()}
+    ):
+        raise FileExistsError(f"{folder}: the parts both hold {clash}")
+    for item in moves:
+        item.rename(folder / item.name)
+    with (folder / "blender.log").open("a") as log:
+        for part in parts:
+            log.write((part / "blender.log").read_text(errors="replace"))
+    joined = labels.concat([Labels.read(part) for part in parts])
+    # Each part's scenario renders some bands; the truth records the whole scene's.
+    joined.info["scenario"] = scenario
+    written = [
+        Calibration.concat([Calibration.read(part) for part in parts]).write(folder),
+        joined.write(folder),
+    ]
+    for part in parts:
+        shutil.rmtree(part)
     return written

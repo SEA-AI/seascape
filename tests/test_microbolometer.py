@@ -7,7 +7,7 @@ import pytest
 
 from seascape.config import Camera, Microbolometer, substream
 from seascape.outputs import microbolometer
-from seascape.physics import lwir
+from seascape.physics import lwir, optics
 
 PITCH_M = 12e-6
 
@@ -67,3 +67,28 @@ def test_the_noise_is_the_netd_s_radiance(t_k: float) -> None:
     slope = lwir.band_radiance(t_k + netd_k) - lwir.band_radiance(t_k)
     assert seen.mean() == pytest.approx(t_k, abs=1e-3)
     assert seen.std() == pytest.approx(netd_k * sigma / slope, rel=0.02)
+
+
+@pytest.mark.parametrize(
+    ("shape", "pitch_m", "t_k"),
+    [((40, 72), PITCH_M, 290.0), ((72, 40), 17e-6, 240.0)],
+    ids=["wide", "tall"],
+)
+def test_a_frame_is_filtered_by_the_band_s_mtf_at_its_frequencies(
+    shape: tuple[int, int], pitch_m: float, t_k: float
+) -> None:
+    """The relation `diffract` applies, frame after frame of one camera."""
+    radiance = substream(1, "test/radiance").normal(3.0, 1.0, shape)
+    pad = optics.airy_reach_px(lwir.BAND_M[1], 1.0, pitch_m)
+    padded = np.pad(radiance, pad, mode="reflect")
+    fy = np.fft.fftfreq(padded.shape[0])[:, None]
+    fx = np.fft.rfftfreq(padded.shape[1])[None, :]
+    mtf = microbolometer.diffraction_mtf(np.hypot(fx, fy) / pitch_m, 1.0, t_k)
+    expected = np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)
+
+    # Twice: the second frame reads the camera's cached MTFs.
+    microbolometer.diffract(radiance, 1.0, pitch_m, t_k)
+    seen = microbolometer.diffract(radiance, 1.0, pitch_m, t_k)
+
+    # Only the order of the float sums may differ.
+    np.testing.assert_allclose(seen, expected[pad:-pad, pad:-pad], rtol=0, atol=1e-12)

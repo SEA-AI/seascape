@@ -37,8 +37,15 @@ def diffraction_mtf(
         f_number: Focal length over aperture diameter; a higher one diffracts more.
         t_k: The temperature whose Planck spectrum weights the wavelengths.
     """
+    return _weighted(_band_mtfs(freq_per_m, f_number), t_k)
+
+
+def _band_mtfs(freq_per_m: npt.ArrayLike, f_number: float) -> FloatArray:
+    """Each band wavelength's `optics.pupil_mtf` at `freq_per_m`, float64, the
+    wavelengths, `_BAND_LAM`, on a new last axis.
+    """
     freq = np.asarray(freq_per_m, dtype=np.float64)
-    return _weighted(optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number), t_k)
+    return optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
 
 
 def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
@@ -49,15 +56,19 @@ def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
     return (mono * weight).sum(axis=-1) / weight.sum()
 
 
-@functools.cache
+# A few cameras' worth: each entry is (H, W // 2 + 1, 64) float64, about 90 MB at
+# 640 x 512.
+@functools.lru_cache(maxsize=4)
 def _frame_mtfs(shape: tuple[int, int], f_number: float, pitch_m: float) -> FloatArray:
-    """Each band wavelength's MTF at a padded frame's rfft2 frequencies: the same for
-    every frame of a camera, and most of the cost of diffracting one.
+    """`_band_mtfs` at the rfft2 frequencies of a padded frame of `shape`, the same
+    for every frame of a camera: (shape[0], shape[1] // 2 + 1, len(_BAND_LAM))
+    float64, read-only, as every caller shares it.
     """
     fy = np.fft.fftfreq(shape[0])[:, None]
     fx = np.fft.rfftfreq(shape[1])[None, :]
-    freq = np.hypot(fx, fy) / pitch_m
-    return optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
+    mtfs = _band_mtfs(np.hypot(fx, fy) / pitch_m, f_number)
+    mtfs.flags.writeable = False
+    return mtfs
 
 
 def diffract(

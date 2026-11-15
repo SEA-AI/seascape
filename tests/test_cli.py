@@ -361,3 +361,66 @@ def test_a_course_sheet_is_one_image(run: Run, tmp_path: Path) -> None:
     assert drawn.exit_code == 0, drawn.stderr
     assert drawn.stdout == f"{out}\n"
     Image.open(out).verify()
+
+
+class _Band:
+    """A band's render that exits with `code` on its `polls`-th poll, unless killed."""
+
+    def __init__(self, code: int, polls: int = 1) -> None:
+        self.code, self.polls, self.killed, self.returncode = code, polls, False, None
+
+    def poll(self) -> int | None:
+        self.polls -= 1
+        if self.killed or self.polls <= 0:
+            self.returncode = -9 if self.killed else self.code
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self) -> int | None:
+        return self.poll()
+
+
+def test_a_failed_band_stops_the_others_and_names_its_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: dict[str, _Band] = {}
+
+    def start(command: list[str], **_: object) -> _Band:
+        band = next(a for a in command if a.startswith("outputs.bands")).split('"')[1]
+        # eo would render on for a while; ir fails at once.
+        started[band] = _Band(1) if band == "ir" else _Band(0, polls=5)
+        return started[band]
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+
+    with pytest.raises(click.ClickException, match=r"\.ir\.log"):
+        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+
+    assert started["eo"].killed
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("sync", SYNC_SENTRY, "--parallel", "--preview"),
+        ("sync", SYNC_SENTRY, "--parallel", "--sheet"),
+        ("render", SYNC_SENTRY, "--parallel", "--variants", "2"),
+    ],
+    ids=["preview", "sheet", "variants"],
+)
+def test_parallel_refuses_what_it_would_ignore(
+    run: Run, args: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def rendered(*_: object) -> None:
+        raise RuntimeError("went on past the flags")
+
+    # Refused before the scenario loads, so a missing refusal fails here, unrendered.
+    monkeypatch.setattr(cli, "load", rendered)
+
+    refused = run(*args)
+
+    assert refused.exit_code == 2
+    assert "--parallel" in refused.output

@@ -143,3 +143,11 @@ class Calibration(_Record):
     def read(cls, folder: Path) -> "Calibration":
         """The calibration in `folder`."""
         return cls.model_validate_json((folder / FILENAME).read_text())
+
+    @classmethod
+    def concat(cls, parts: list["Calibration"]) -> "Calibration":
+        """`parts`' cameras and raw cameras, in their order."""
+        return cls(
+            cameras=[c for part in parts for c in part.cameras],
+            raw=[c for part in parts for c in part.raw],
+        )

@@ -285,8 +285,8 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
 
 
 def concat(parts: Sequence[Labels]) -> Labels:
-    """`parts`, renders of one scene's cameras into one folder, as one set, numbered
-    in their order as one render numbers its frames; the first part's info.
+    """Join `parts`, renders of one scene's bands, renumbered in order as one render
+    numbers its frames; info from the first part.
     """
     joined = Labels(info=parts[0].info if parts else {})
     for number, part in enumerate(parts):
@@ -296,7 +296,7 @@ def concat(parts: Sequence[Labels]) -> Labels:
 
 def _append(into: Labels, part: Labels, prefix: str, source: Path | str) -> None:
     """Add `part`'s labels to `into`, renumbered after it, each file name under
-    `prefix`.
+    `prefix`; `source` names `part` in errors.
     """
     ids: dict[int, int] = {}
     for image in part.images:
@@ -357,11 +357,9 @@ def faint(
     if frame.dtype != np.uint8:
         return {}
     low = {}
-    # Every target's pixels in one pass, not one scan of the frame per target. The
-    # stable sort keeps each target's pixels in np.nonzero's row-major order.
     all_ys, all_xs = np.nonzero(index)
     passes = index[all_ys, all_xs]
-    order = np.argsort(passes, kind="stable")
+    order = np.argsort(passes)
     passes, all_ys, all_xs = passes[order], all_ys[order], all_xs[order]
     for target in targets:
         first = np.searchsorted(passes, target.pass_index, "left")

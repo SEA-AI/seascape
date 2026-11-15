@@ -3,9 +3,9 @@
 import json
 import math
 import os
-import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
@@ -16,8 +16,8 @@ import click
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
-from seascape.outputs import labels, montage, panorama, recording
-from seascape.outputs.calibration import Calibration, Frame
+from seascape.outputs import journal, labels, montage, panorama, recording
+from seascape.outputs.calibration import Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -114,54 +114,56 @@ def _render(built: Scenario, into: Path) -> list[Path]:
 
 def _render_apart(
     scenario: Path, overrides: tuple[str, ...], built: Scenario, into: Path
-) -> None:
+) -> list[Path]:
     """Render each band in a `seascape render` of its own, all at once, then gather
     their frames and truth in `into` as one render writes them.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
-    a frame; another band's render fills that time. Each holds its own scene, so the
-    memory is about one render's per band.
+    a frame; another band's render fills that time. Each band holds its own scene:
+    about one render's memory per band.
     """
     bands = [band for band in built.outputs.bands if built.band_mounts(band)]
     if len(bands) < 2:
-        _render(built, into)
-        return
+        return _render(built, into)
     sets = [arg for override in overrides for arg in ("--set", override)]
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
-    runs = {}
-    click.echo(f"Rendering {', '.join(bands)} at once", err=True)
-    for band, part in parts.items():
-        with (into / f".{band}.log").open("w") as log:
+    logs = {band: into / f".{band}.log" for band in bands}
+    shown = ", ".join(map(str, logs.values()))
+    click.echo(f"Rendering {', '.join(bands)} at once; see {shown}", err=True)
+    runs: dict[Band, subprocess.Popen[bytes]] = {}
+    try:
+        for band, part in parts.items():
             command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
-            runs[band] = subprocess.Popen(
-                [*command, *sets, "--set", f'outputs.bands = ["{band}"]', "-o", part],
-                stdout=log,
-                stderr=subprocess.STDOUT,
-            )
-    failed = [band for band, run in runs.items() if run.wait() != 0]
+            command += [*sets, "--set", f'outputs.bands = ["{band}"]', "-o", str(part)]
+            with logs[band].open("w") as log:
+                runs[band] = subprocess.Popen(
+                    command, stdout=log, stderr=subprocess.STDOUT
+                )
+        # The first band to fail stops the rest, rather than letting them render on.
+        pending = dict(runs)
+        failed: list[Band] = []
+        while pending and not failed:
+            done = {b: run for b, run in pending.items() if run.poll() is not None}
+            failed = [b for b, run in done.items() if run.returncode != 0]
+            for band in done:
+                del pending[band]
+            if pending and not done:
+                time.sleep(1)
+    finally:
+        for run in runs.values():
+            if run.poll() is None:
+                run.kill()
+                run.wait()
     if failed:
-        logs = ", ".join(str(into / f".{band}.log") for band in failed)
-        raise click.ClickException(f"rendering {', '.join(failed)} failed: see {logs}")
-    kept = {labels.FILENAME, "calibration.json", "blender.log"}
-    with (into / "blender.log").open("a") as log:
-        for part in parts.values():
-            for item in part.iterdir():
-                if item.name not in kept:
-                    item.rename(into / item.name)
-            log.write((part / "blender.log").read_text(errors="replace"))
-    truth = labels.concat([labels.Labels.read(part) for part in parts.values()])
-    # Each part's scenario renders one band; the truth records the one asked for.
-    truth.info["scenario"] = built.model_dump(mode="json")
-    truth.write(into)
-    calibrations = [Calibration.read(part) for part in parts.values()]
-    Calibration(
-        cameras=[c for calibration in calibrations for c in calibration.cameras],
-        raw=[c for calibration in calibrations for c in calibration.raw],
-    ).write(into)
-    for band, part in parts.items():
-        shutil.rmtree(part)
-        (into / f".{band}.log").unlink()
+        raise click.ClickException(
+            f"rendering {', '.join(failed)} failed: see "
+            f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
+        )
+    written = journal.gather(into, list(parts.values()), built.model_dump(mode="json"))
+    for log in logs.values():
+        log.unlink()
+    return written
 
 
 _QUALITY = "perc_lossless"
@@ -209,8 +211,17 @@ def build(
     click.echo(f"{path}: {band}, {len(mounts)} cameras ({bands}) at {heights}")
 
 
+_PARALLEL = click.option(
+    "--parallel",
+    is_flag=True,
+    help="Render each band in its own process at once. Faster when one band leaves "
+    "the GPU idle; needs one render's memory per band.",
+)
+
+
 @main.command()
 @_scenario("A directory. Default: beside the scenario.")
+@_PARALLEL
 @click.option(
     "--variants",
     type=click.IntRange(min=1),
@@ -219,17 +230,25 @@ def build(
     help="Scenes from consecutive seeds, in a folder per seed when there are several.",
 )
 def render(
-    scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
+    scenario: Path,
+    output: Path | None,
+    overrides: tuple[str, ...],
+    parallel: bool,
+    variants: int,
 ) -> None:
     """Write one image per camera and frame, and their labels. With --variants, a seed
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
+    if parallel and variants > 1:
+        raise click.UsageError("--parallel renders one scene: drop --variants")
     built = load(scenario, list(overrides))
     into = _empty(output or scenario.with_suffix(""))
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
-    if variants == 1:
+    if parallel:
+        written = _render_apart(scenario, overrides, built, into)
+    elif variants == 1:
         written = _render(built, into)
     else:
         written, folders = [], []
@@ -276,12 +295,7 @@ def render(
     help="Draw the course on one image, <scenario>-course.png in the directory, and "
     "render nothing.",
 )
-@click.option(
-    "--parallel",
-    is_flag=True,
-    help="Render each band in its own process, at once: faster where one band leaves "
-    "the GPU idle, with a render's memory per band.",
-)
+@_PARALLEL
 def sync(
     scenario: Path,
     output: Path | None,
@@ -295,6 +309,8 @@ def sync(
 
     if sheet and preview:
         raise click.UsageError("--sheet and --preview are exclusive")
+    if parallel and (sheet or preview):
+        raise click.UsageError("--parallel takes neither --sheet nor --preview")
     if sheet:
         from seascape.sync.sheet import draw
 
