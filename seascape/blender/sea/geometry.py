@@ -26,8 +26,10 @@ DISPLACED_HEIGHT_SHARE = 0.999
 # Measured: the shortest wave drawn as geometry; 1 m overflows Cycles' SVM stack, which
 # surface and displacement share, at 7 m/s in eo, 2 m fits.
 DISPLACED_MIN_M = 4.0
-# A judgement: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
-DICING_PX = 3.0
+# Measured: the micropolygon edge adaptive subdivision dices the sea to, in pixels.
+# Against 1 px, on sync-sentry-gen3-1 at 14 and 21 m/s, 4 px moves a target's
+# silhouette 0.06 px at the 99th percentile, as 3 px does, and renders 14 % faster.
+DICING_PX = 4.0
 # A judgement: the longest edge it dices to near the camera, an eighth of the shortest
 # displaced wave, where a straight edge strays from a cosine by at most 1 - cos(pi / 8),
 # 8 % of its amplitude.
