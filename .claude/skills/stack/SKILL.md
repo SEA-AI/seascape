@@ -1,6 +1,6 @@
 ---
 name: stack
-description: The practice of each part of seascape's stack: Python, numpy, images, pydantic, bpy, the CLI and tests. Use when writing code in one of them, for its idiom; `review-pr` runs it as one reviewer. Where code lives is `architecture`'s, whether it should exist `anti-hack`'s, its comments `prose`'s.
+description: The idiom of each technology in the code: Python, numpy, images, pydantic, bpy and the CLI; not PR stacks, which are `gh-stack`'s. Use when writing code in one of them; `review-pr` runs it as one reviewer. Where code lives is `architecture`'s, whether it should exist `anti-hack`'s, its comments `prose`'s, its tests `tests`'.
 ---
 
 # Stack
@@ -17,11 +17,10 @@ Read the section for the code you are touching. Each practice names the failure 
 - **Loop over items, not indices:** `enumerate`, `zip(strict=True)`, `.items()`. Needing an index usually means the structure is wrong.
 - **A comprehension stops at one `for` and one filter.** Past that, write the loop or a named helper.
 - **A generator beats a list the caller only iterates.**
-- **`match` destructures; a plain `if` tests.** Use it where it reads better.
 - **No import-time side effects and no mutable module state.** Build objects in functions; module constants are immutable.
 - **`@override` on overrides**, so a renamed parent method fails the checker.
 - **Do not golf.** If a walrus, `reduce` or nested expression needs a comment to decode, write the loop. "Practicality beats purity" and "readability counts" are the tiebreak.
-- **Lint limits.** Rules that detect bugs (`B`, `F`, undefined names, `raise` without `from`) are obeyed. Rules that count (arguments, branches, statements, complexity, magic numbers) are prompts: pandas ignores them and fastapi ignores `C901`. One coherent algorithm split into five one-use helpers reads worse than the original.
+- **Lint limits.** `ruff.toml` enforces the counting rules (`C90`, `PL`) too, so CI fails them. Meet a limit by finding the decision that belongs elsewhere, not by splitting one coherent algorithm into one-use helpers, which reads worse than the original.
 
 ## Data modeling and pydantic
 
@@ -29,8 +28,8 @@ Pick the container by what the data is:
 
 | Data | Use |
 |---|---|
-| Untrusted input (TOML, JSON, CLI), or config that needs validation | pydantic `BaseModel`, `frozen=True`, `extra="forbid"` |
-| Trusted in-process record | `@dataclass(frozen=True, slots=True, kw_only=True)` |
+| Untrusted input (TOML, JSON, CLI), or config that needs validation | the repo's pydantic base model, which forbids extra keys, or its frozen variant |
+| Trusted in-process record | `@dataclass(frozen=True)` |
 | Small fixed record unpacked by position | `NamedTuple` |
 | A dict shape you must keep as a dict | `TypedDict` |
 | One value with meaning or rules | `NewType`, or a value object if it has behaviour |
@@ -48,37 +47,28 @@ Pick the container by what the data is:
 ## Numeric and image code
 
 - **State shape, dtype and frame** of each array argument in the docstring: `(N, 3)`, `float64`, row-major. The annotation does not carry it.
-- **Randomness:** never `seed + i`; record the seed with the output. A seeded stream is not stable across NumPy releases, so test statistics and properties, not exact draws.
-- **Rewrite formulas that subtract nearby values.** `log1p`, `expm1`, `hypot` and `arctan2` exist for this; `1 + x` drops the digits of a small `x`.
+- **Randomness:** never `seed + i`; record the seed with the output.
+- **Rewrite formulas that lose precision.** `log1p` and `expm1` keep the digits `log(1 + x)` and `exp(x) - 1` drop for a small `x`; `hypot` avoids overflow in `sqrt(x*x + y*y)`; `arctan2` keeps the quadrant `arctan(y / x)` loses.
 - **Be explicit about dtype** at creation and at I/O. Under NEP 50 the array dtype wins over a Python scalar, so `uint8 + 200` wraps with no warning. OpenCV's `add` saturates and NumPy wraps, so mixing them gives two answers.
-- **Decide view or copy.** Basic slices and `reshape` return views, so a write mutates the caller's array. `.copy()` where a function must not.
-- **NaN and inf are signals.** Wrap code that should never produce them in `np.errstate(invalid="raise")`. Integer overflow is never flagged.
+- **Decide view or copy.** Basic slices return views, and `reshape` does where it can, so a write mutates the caller's array. `.copy()` where a function must not.
+- **NaN and inf are signals.** Wrap code that should never produce them in `np.errstate(invalid="raise")`. Integer overflow in an array is never flagged.
 - **Do arithmetic in linear radiance**; store gamma-encoded values only at the file edge. Averaging or resizing encoded values blends wrong.
 - **Axis order:** arrays are `(row, col, channel)`; Pillow `size` and OpenCV `dsize` are `(width, height)`. OpenCV reads BGR, Pillow RGB. A swap still renders plausibly.
 - **Resizing a label or index image with a smoothing filter invents classes.** Use nearest.
-- **Vectorise over independent data axes; loop over axes that carry state or are tiny.** A broadcast that needs more than two or three `newaxis` tricks is harder to read than the loop. Write the loop first, vectorise when it is measurably slow, and keep the loop as the test oracle.
+- **Vectorise over independent data axes; loop over axes that carry state or are tiny.** A broadcast that needs more than two or three `newaxis` tricks is harder to read than the loop. Write the loop first, and vectorise when it is measurably slow.
 
 ## Blender and bpy
 
 - **Write through `bpy.data`; use `bpy.ops` only when there is no data API.** Operators take context, not arguments, and fail with a bare `RuntimeError`. If one is needed, supply context with `Context.temp_override()`.
 - **Keep the object a creator returns and do not look it up by name again.** A requested name gets a `.001` suffix when taken, and a later lookup finds the wrong datablock.
 - **Do not hold bpy references across undo, mode changes or adding and removing in the same collection.** Re-fetch or keep them inside one function. Copy a collection to a list before mutating it in a loop.
-- **One function per sub-graph:** it takes the tree and input sockets and returns the output socket. Raw `links.new` calls live in a few helpers, which also set defaults you depend on explicitly. Name and label every node by intent, use a Frame per stage, and put the layout rule in one place.
-- **Isolate every version-dependent name behind one small adapter** or a table keyed on `bpy.app.version`, so a Blender release breaks one test, not the build.
-- **Properties with order dependence are set in the documented order**, since the wrong order is accepted without error.
+- **One function per sub-graph:** it takes the tree and input sockets and returns the output socket. Raw `links.new` calls live in a few helpers, which also set defaults you depend on explicitly.
+- **Properties with order dependence are set in the documented order**, since the wrong order is accepted without error. `AGENTS.md`'s traps list the known ones.
 - **Bulk data goes through `foreach_set` and `foreach_get` on flat numpy arrays**, not per-item loops.
-- **Test cheaply:** the pure layer needs no Blender. Assert graph structure on a fresh scene. Evaluate a graph with one small probe render per property and compare with the pure function's value. Share one built scene across tests.
 
-## CLI and tests
+## CLI
 
 - **A CLI command writes data to stdout**, diagnostics to stderr, and exits 0 on success.
-- **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does.
-- **A test fails when the code is wrong.** A check that cannot fail is dead. Propose the smallest test that pins the behaviour.
-- **Test what the code promises:** outputs, visible state, an invariant or a published relation with its source. Do not assert private names, call order, mock arguments, log wording or tuned numbers.
-- **One reason to fail per test**, a name that states the behaviour, `parametrize` for a table of cases. DAMP beats DRY in tests: a test reads top to bottom.
-- **Prefer real collaborators.** Double only what is slow, nondeterministic or foreign, and wrap a third-party API in a thin facade you own rather than mocking its objects.
-- **Test a physical formula** by analytic limits, invariants (symmetry, monotonicity, scaling), and an independent reference. Justify every tolerance in a comment and set `atol` explicitly for values near zero. Golden images only on tiny fixtures with a tolerance.
-- **A helper, fixture or `conftest` layer used by fewer than three tests** is not yet worth its indirection.
 
 ## Errors
 
@@ -89,27 +79,13 @@ Pick the container by what the data is:
 
 Report a table, the likeliest failure first:
 
-| # | Where | Practice | Failure it prevents | Fix |
+| # | Where | Verdict | Finding | Fix |
 |---|---|---|---|---|
-| 1 | `file:line` | a test fails when the code is wrong | a regression passes in silence | assert the keyed yaw steps |
+| 1 | `file:line` | fix | a mutable default is shared across calls, so the list grows | default `None`, built in the body |
+
+- **Verdict:** **fix** or **keep**. A keep gives its reason in Fix.
+- **Finding:** the practice broken and the failure it causes.
 
 End with what you did not read.
 
-## Sources
-
-- Google engineering practices: https://google.github.io/eng-practices/
-- Google Python style guide: https://google.github.io/styleguide/pyguide.html
-- PEP 20, 257, 387, 698: https://peps.python.org/
-- King, parse don't validate: https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/
-- pydantic validation docs: https://pydantic.dev/docs/validation/latest/
-- Typing best practices: https://typing.python.org/en/latest/reference/best_practices.html
-- Hynek, subclassing redux: https://hynek.me/articles/python-subclassing-redux/
-- Hynek, what to mock: https://hynek.me/articles/what-to-mock-in-5-mins/
-- Fowler, mocks aren't stubs: https://martinfowler.com/articles/mocksArentStubs.html
-- pytest good practices: https://docs.pytest.org/en/stable/explanation/goodpractices.html
-- clig.dev: https://clig.dev/
-- NumPy: parallel RNG, NEP 19, NEP 50, copies and views, `errstate`, `isclose`
-- Goldberg, floating point: https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
-- Wilson et al., best practices for scientific computing: https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1001745
-- Blender Python API gotchas and the 4.0 and 5.0 Python release notes: https://docs.blender.org/api/current/info_gotcha.html
-- Ruff configs of pandas, fastapi, pydantic and httpx, read from each `pyproject.toml`
+Sources are in [references/sources.md](references/sources.md).

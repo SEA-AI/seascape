@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Where each piece of seascape lives, through SOLID, information hiding and the layer order. Use when deciding where new code goes, when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers; `review-pr` runs it as one reviewer. Language and library practice is `stack`'s; whether code should exist at all is `anti-hack`'s.
+description: Where each piece of the code lives, through SOLID, information hiding and the layer order. Use when deciding where new code goes, when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; or before a refactor that moves code between layers; `review-pr` runs it as one reviewer. Language and library practice is `stack`'s; whether code should exist at all is `anti-hack`'s.
 ---
 
 # Architecture
@@ -19,7 +19,7 @@ Each piece lands where its decision lives, and the whole reads as a reusable lib
 - The Blender layers are the imperative shell. They turn values into datablocks, nodes and keyframes. A branch there may choose how Blender stores a value (keyed or constant, which channel); a branch that chooses which value, kind or object belongs below it.
 - Entry points parse arguments, call and print. They hold no decision; code that drives `bpy` belongs in the shell.
 
-Dependencies point from volatile code to stable code: the shell depends on the core, never the reverse (Martin's stable dependencies). A violation means the code is in the wrong layer, or the contract is wrong; it never earns an exception. A contract states generic rules (layers, forbidden, independence); one that lists seascape's own modules is a finding. Naming an outside package such as `bpy`, and who may import it, is a rule.
+Dependencies point inward, from the shell to the core, never the reverse (Martin's dependency rule). A violation means the code is in the wrong layer, or the contract is wrong; it never earns an exception. An exception in the contract (`ignore_imports`) is a finding.
 
 ## Questions per principle
 
@@ -31,7 +31,7 @@ Dependencies point from volatile code to stable code: the shell depends on the c
 - **Interface segregation.** Does a caller depend on a type wider than the slice it uses, so unrelated changes reach it? Pass the narrowest existing type that carries what it reads: a sub-model, or a field when it reads one. Never break a cohesive record into loose primitives.
 - **Dependency inversion (Martin).** When the core must call out, to Blender, a file or a clock, the core owns the interface it needs: a `Callable` type in the core's layer, which the shell implements. Better still, pass values so no port is needed.
 - **Functional core, imperative shell (Bernhardt).** Could this branch run on plain values and be tested without Blender? Then it belongs below the shell.
-- **Connascence (Page-Jones, Weirich).** Name the form and rate it: strength (name < type < meaning < position < algorithm, dynamic worse than static), degree (how many places), locality (how far apart). A string key shared across layers is connascence of name that no tool checks: one constant or one typed field. A key order is connascence of position: named fields. A formula in two places is connascence of algorithm: one home. Strong forms belong inside one function.
+- **Connascence (Page-Jones, Weirich).** Name the form and rate it: strength (name is the weakest, and dynamic is worse than static), degree (how many places), locality (how far apart). A string key shared across layers is connascence of name that no tool checks: one constant or one typed field. A key order is connascence of position: named fields. A formula in two places is connascence of algorithm: one home. Strong forms belong inside one function.
 - **Package interface.** Does a module import another module's `_private` name? The name is either public, or the caller is in the wrong place. import-linter does not see this.
 - **Error boundaries.** The shell turns an engine failure into a domain error; an entry point decides the exit code. No core function catches a shell's error.
 
@@ -56,7 +56,7 @@ Each names its usual root fix.
 | Deduplication against the wrong abstraction (Metz) | Merge what must change together. Leave look-alikes. If a shared helper grew a flag per caller, inline it and look again. |
 | A variation point against YAGNI | It arrives with the second kind, in the same change. A hook for an imagined case is inventory. |
 | Layer purity against a one-line shortcut | The layer wins. |
-| Moving code against a small diff | Report the misplacement. Move it in its own commit, never inside a behaviour change. |
+| Moving code against a small diff | Report the misplacement; the move is tidying, a commit of its own as `prose` says. |
 
 ## Reviewing
 
@@ -72,15 +72,15 @@ Each names its usual root fix.
 
 Report a table, the finding whose fix removes the most coupling first:
 
-| # | Where | Verdict | Smell | Cost | Root fix |
+| # | Where | Verdict | Finding | Cost | Fix |
 |---|---|---|---|---|---|
 | 1 | `a.py:12`, `b.py:40` | merge | one formula, two homes | the next unit change drifts | one function in `physics` |
 
 - **Where:** the symptom, and the code it duplicates or depends on.
-- **Verdict:** **move**, **merge**, **split**, **pass** (hand over the value instead of recomputing or reading it back), **delete**, **keep** or **open an issue**. A keep gives its reason in the Root fix column.
-- **Smell:** the smell or principle, named in the words above.
+- **Verdict:** **move**, **merge**, **split**, **pass** (hand over the value instead of recomputing or reading it back), **delete**, **keep** or **open an issue**. A keep gives its reason in Fix.
+- **Finding:** the smell or principle, named in the words above.
 - **Cost:** the next change that will go wrong, or the two places that will drift. "Unclean" is not a cost.
-- **Root fix:** the fix, and the layer it belongs in. A fix that adds a layer, flag or wrapper is suspect; prefer deleting, moving or passing a value.
+- **Fix:** the root fix, and the layer it belongs in. A fix that adds a layer, flag or wrapper is suspect; prefer deleting, moving or passing a value.
 
 End with what you did not read.
 
