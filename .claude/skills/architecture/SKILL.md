@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Whether each piece of the code should exist, and where it lives, through SOLID, information hiding and the layer order. Use before writing a helper, flag, special case, constant or retry; when deciding where new code goes, when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; before a refactor that moves code between layers; or to audit a package for reinvented helpers, uncited constants and dead code; `review-pr` runs it as one reviewer. Language and library practice is `stack`'s, comments `prose`'s, tests `tests`', bugs `/code-review`'s.
+description: Decides whether each piece of the code should exist, and where it lives, through SOLID, information hiding and the layer order. Use before writing a helper, flag, special case, constant or retry; when deciding where new code goes, when a change adds a module, a record field, a callback, a Blender custom property or a second home for a formula; when one feature touched many layers; before a refactor that moves code between layers; or to audit a package for reinvented helpers, uncited constants and dead code; `review-pr` runs it as one reviewer. Language and library practice is `stack`'s, comments `prose`'s, tests `tests`', bugs `/code-review`'s.
 ---
 
 # Architecture
