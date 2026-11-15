@@ -137,7 +137,7 @@ async def render(
     loading = asyncio.create_task(load(state, path, lines, variants))
     try:
         try:
-            job.scenes, job.worst_bytes, warned = await asyncio.shield(loading)
+            job.scenes, job.worst_bytes, warned, tree = await asyncio.shield(loading)
         # The loader, pydantic and tomllib raise ValueError; a missing file OSError.
         except ValueError as error:
             raise ToolError(str(error)) from error
@@ -157,8 +157,14 @@ async def render(
                 f"{free_gb:.0f} GB free after the jobs queued; this job needs "
                 f"{needs_gb:.0f}, {settings.min_free_gb:.0f} of it kept free"
             )
-        job.save()
-        job.task = asyncio.create_task(run(state, job, path, lines, variants))
+        try:
+            job.pin(tree)
+            job.save()
+        except OSError as error:  # as above, without the server's paths
+            raise ToolError(
+                f"{type(error).__name__}: the job could not be saved"
+            ) from error
+        job.task = asyncio.create_task(run(state, job))
         return {
             "job": name,
             "images": job.total,

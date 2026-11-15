@@ -24,7 +24,7 @@ from PIL import ExifTags, Image
 from pydantic import ValidationError
 
 from seascape.assets import skies
-from seascape.config import Scenario, json_schema, load
+from seascape.config import Scenario, json_schema, load, resolve
 from seascape.model import ScenarioWarning
 from seascape.server import Settings, State, guide, jobs, tools, transport
 from seascape.server.jobs import Job, JobState
@@ -112,7 +112,7 @@ def test_a_bad_override_is_refused_before_any_job(line: str, state: State) -> No
 
 @pytest.mark.parametrize("wish", guide.WISHES)
 def test_each_wish_the_guide_offers_loads_over_the_default_scenario(wish: str) -> None:
-    *_, heard = jobs._tried(
+    _, _, heard, _ = jobs._tried(
         SCENARIOS / "showcase.toml",
         guide.WISHES[wish],
         1,
@@ -262,7 +262,8 @@ def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
     (tmp_path / "labels.json").touch()
     job = Job(tmp_path, "open-sea", scenes)
     assert job.folders == [tmp_path / str(first), tmp_path / str(first + 2)]
-    assert [s.seed for s in jobs._written(job, OPEN_SEA, [])] == [
+    job.pin(resolve(OPEN_SEA))
+    assert [s.seed for s in jobs._written(job)] == [
         first,
         first + 2,
     ]
@@ -582,7 +583,7 @@ def test_a_job_waiting_for_the_gpu_keeps_its_whole_run_limit(
     async def run() -> str:
         job = Job(tmp_path / "a", "open-sea", load_variants(OPEN_SEA))
         async with state.gpu:
-            task = asyncio.create_task(jobs.run(state, job, tmp_path, [], 1))
+            task = asyncio.create_task(jobs.run(state, job))
             # Longer than the run limit.
             await asyncio.sleep(0.3)
         await task
@@ -659,8 +660,9 @@ def test_a_restarted_server_runs_what_was_queued_and_fails_what_was_cut_off(
         ("next", "queued"),
     ]
     for name, job_state in stored:
-        Job(tmp_path / name, "open-sea", scenes, state=job_state).save()
-    Job(tmp_path / "gone", "removed", scenes).save()
+        job = Job(tmp_path / name, "open-sea", scenes, state=job_state)
+        job.pin(resolve(OPEN_SEA))
+        job.save()
     (tmp_path / "torn.json").write_text("{")
 
     async def restart() -> dict[str, JobState]:
@@ -668,51 +670,28 @@ def test_a_restarted_server_runs_what_was_queued_and_fails_what_was_cut_off(
         await asyncio.gather(*(j.task for j in left.jobs.values() if j.task))
         return {name: job.state for name, job in left.jobs.items()}
 
-    assert asyncio.run(restart()) == {
-        "done": "done",
-        "cut": "failed",
-        "next": "done",
-        "gone": "failed",
-    }
+    assert asyncio.run(restart()) == {"done": "done", "cut": "failed", "next": "done"}
     assert rendered == ["next"]
-    assert "without scenario 'removed'" in (left.jobs["gone"].error or "")
 
 
-def test_a_restarted_server_fails_a_job_whose_scenario_changed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_a_job_renders_its_scenario_as_it_was_queued(tmp_path: Path) -> None:
+    shutil.copytree(SCENARIOS, tmp_path / "scenarios")
+    path = tmp_path / "scenarios" / "open-sea.toml"
+    job = Job(tmp_path / "job", "open-sea", [])
+    job.pin(resolve(path, ["seed = 7"]))
+    queued = load(path, ["seed = 7"])
+    # An update rewrites what it extends.
+    (tmp_path / "scenarios" / "baseline.toml").write_text("")
+    assert load(job.source) == queued
+
+
+@pytest.mark.parametrize("path", sorted(SCENARIOS.glob("*.toml")), ids=lambda p: p.stem)
+def test_each_scenario_draws_the_same_variants_from_its_pinned_copy(
+    path: Path, tmp_path: Path
 ) -> None:
-    rendered = _folders_only(monkeypatch)
-    # Queued as open-sea's scenes; "baseline" now reads otherwise.
-    Job(tmp_path / "changed", "baseline", load_variants(OPEN_SEA)).save()
-    restarted = _state(tmp_path)
-
-    async def restart() -> Job:
-        jobs.resume(restarted)
-        job = restarted.jobs["changed"]
-        assert job.task
-        await job.task
-        return job
-
-    job = asyncio.run(restart())
-    assert (job.state, rendered) == ("failed", [])
-    assert "changed while the server restarted" in (job.error or "")
-
-
-def test_a_restarted_server_fails_a_job_its_limits_now_refuse(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    rendered = _folders_only(monkeypatch)
-    Job(tmp_path / "big", "open-sea", load_variants(OPEN_SEA)).save()
-    restarted = _state(tmp_path, max_pixels=1)
-
-    async def restart() -> JobState:
-        jobs.resume(restarted)
-        job = restarted.jobs["big"]
-        assert job.task
-        await job.task
-        return job.state
-
-    assert (asyncio.run(restart()), rendered) == ("failed", [])
+    job = Job(tmp_path / "job", path.stem, [])
+    job.pin(resolve(path))
+    assert load_variants(job.source, 2) == load_variants(path, 2)
 
 
 def test_a_draining_server_queues_a_job_for_the_next_one(
@@ -916,10 +895,12 @@ def test_a_burst_of_renders_is_refused_before_it_loads_past_the_queue(
     state = _state(tmp_path, max_queued=2)
     loads: list[object] = []
 
-    def slow_load(*args: object) -> tuple[list[object], float, list[str]]:
+    def slow_load(
+        *args: object,
+    ) -> tuple[list[object], float, list[str], dict[str, Any]]:
         loads.append(args)
         time.sleep(0.3)
-        return [], 1.0, []
+        return [], 1.0, [], {}
 
     async def idle(*_: object) -> None:
         await asyncio.sleep(0)
@@ -1085,14 +1066,14 @@ def test_an_override_the_scenario_ignores_is_reported_with_the_job(
 def test_a_load_reports_each_scenario_warning_once_and_restores_the_filters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def checked(*_: object) -> tuple[list[object], float]:
+    def checked(*_: object) -> tuple[list[object], float, dict[str, Any]]:
         warnings.warn("ignored", ScenarioWarning, stacklevel=2)
         warnings.warn("ignored", ScenarioWarning, stacklevel=2)
         warnings.warn("somebody else's", stacklevel=2)
-        return [], 0.0
+        return [], 0.0, {}
 
     monkeypatch.setattr(jobs, "_checked", checked)
     before = list(warnings.filters)
-    *_, heard = jobs._tried(Path(), [], 1, Settings(scenarios=SCENARIOS))
+    _, _, heard, _ = jobs._tried(Path(), [], 1, Settings(scenarios=SCENARIOS))
     assert heard == ["ignored"]
     assert warnings.filters == before
