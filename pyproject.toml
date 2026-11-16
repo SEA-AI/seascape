@@ -33,7 +33,11 @@ Repository = "https://github.com/SEA-AI/seascape"
 seascape = "seascape.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=9.0", "pytest-xdist>=3.8"]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8",
+]
 blender = ["bpy>=5.2"]
 serve = [
     "mcp>=2.3",
