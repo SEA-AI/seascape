@@ -38,7 +38,6 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8",
 ]
-# 5.2 is Blender's LTS series, the one the Linux aarch64 index below builds.
 blender = ["bpy>=5.2,<5.3"]
 serve = [
     "mcp>=2.3",
@@ -93,9 +92,7 @@ testpaths = ["tests"]
 [tool.uv]
 default-groups = ["dev", "blender", "serve"]
 
-# Limitation: PyPI's bpy has no Linux aarch64 wheel, so it comes from this index,
-# whose newest 5.2 patch may trail PyPI's; a re-lock needs the index reachable.
-# Delete this source and the index once PyPI ships the wheel.
+# PyPI has no Linux aarch64 bpy wheel; delete this once it does.
 [tool.uv.sources]
 bpy = [
     { index = "bpy-aarch64", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
