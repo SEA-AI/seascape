@@ -26,6 +26,7 @@ from seascape.outputs.calibration import Calibration, Frame
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
 _FOLDER = click.Path(exists=True, file_okay=False, path_type=Path)
+_BLENDER_LOG = "blender.log"
 
 
 class _Seascape(click.Group):
@@ -111,7 +112,7 @@ def _render(built: Scenario, into: Path) -> list[Path]:
 
     with (
         _progress(built.images, "Rendering") as bar,
-        _blender_log(into / "blender.log"),
+        _blender_log(into / _BLENDER_LOG),
     ):
         return renderer.render(built, into, lambda: bar.update(1))
 
@@ -169,7 +170,7 @@ def _render_apart(
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
     logs = {band: into / f".{band}.log" for band in bands}
-    commands = {}
+    commands: dict[Band, list[str]] = {}
     for band, part in parts.items():
         command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
         for override in overrides:
@@ -198,12 +199,12 @@ def _render_apart(
         raw=list(chain.from_iterable(c.raw for c in calibrations)),
     ).write(into)
     truth.write(into)
-    with (into / "blender.log").open("ab") as joined:
+    with (into / _BLENDER_LOG).open("ab") as joined:
         for band, part in parts.items():
-            with (part / "blender.log").open("rb") as log:
+            with (part / _BLENDER_LOG).open("rb") as log:
                 shutil.copyfileobj(log, joined)
             for item in part.iterdir():
-                if item.name not in {labels.FILENAME, CALIBRATION, "blender.log"}:
+                if item.name not in {labels.FILENAME, CALIBRATION, _BLENDER_LOG}:
                     item.rename(into / item.name)
             shutil.rmtree(part)
             logs[band].unlink()
@@ -217,7 +218,7 @@ def _encode(folder: Path, quality: str) -> list[Path]:
 
     with (
         _progress(len(encoder.cameras(folder)), "Encoding") as bar,
-        _blender_log(folder / "blender.log"),
+        _blender_log(folder / _BLENDER_LOG),
     ):
         return encoder.encode(folder, quality.upper(), lambda: bar.update(1))
 
@@ -280,7 +281,7 @@ def render(
         written, folders = [], []
         with (
             _progress(variants, "Rendering") as bar,
-            _blender_log(into / "blender.log"),
+            _blender_log(into / _BLENDER_LOG),
         ):
             tries = seeds(built.seed, variants)
             for seed in tries:
@@ -675,7 +676,7 @@ def zones(
     into = output or Path("zones") / asset
     if not contact:
         _empty(into)
-    with _blender_log(into / "blender.log"):
+    with _blender_log(into / _BLENDER_LOG):
         if contact:
             written = [sheets.contact(asset, into / "zones.png")]
         else:

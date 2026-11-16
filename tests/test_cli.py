@@ -425,24 +425,33 @@ def test_an_interrupt_kills_every_band(
     assert [band.killed for band in started] == [True, True]
 
 
-def test_sync_parallel_renders_the_bands_apart(
+def test_sync_parallel_renders_each_band_apart_with_the_user_s_overrides(
     run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    called = []
+    rendered: dict[str, object] = {}
 
-    def apart(*args: object) -> None:
-        called.append(args)
-        raise click.ClickException("stopped before rendering")
+    def start(command: list[str], **_: object) -> _Band:
+        sets = [command[i + 1] for i, arg in enumerate(command) if arg == "--set"]
+        scene = load(Path(command[command.index("render") + 1]), sets)
+        (band,) = scene.outputs.bands
+        rendered[band] = scene.outputs.fps
+        return _Band(1)
 
     def together(*_: object) -> None:
         raise AssertionError("rendered the bands together")
 
-    monkeypatch.setattr(cli, "_render_apart", apart)
+    monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli, "_render", together)
 
-    run("sync", SYNC_SENTRY, "--parallel", "-o", tmp_path)
+    run(
+        "sync",
+        SYNC_SENTRY,
+        "--parallel",
+        *("--set", "outputs.fps = 3", "--set", 'outputs.bands = ["eo", "ir"]'),
+        *("-o", tmp_path),
+    )
 
-    assert len(called) == 1
+    assert rendered == {"eo": 3, "ir": 3}
 
 
 @pytest.mark.parametrize(
@@ -499,38 +508,21 @@ def test_parallel_refuses_what_it_would_ignore(
     assert "--parallel" in refused.output
 
 
-def test_each_band_renders_the_scene_with_the_user_s_overrides(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    rendered: dict[str, object] = {}
-
-    def start(command: list[str], **_: object) -> _Band:
-        sets = [command[i + 1] for i, arg in enumerate(command) if arg == "--set"]
-        scene = load(Path(command[command.index("render") + 1]), sets)
-        (band,) = scene.outputs.bands
-        rendered[band] = scene.outputs.fps
-        _write_part(command, band)
-        return _Band(0)
-
-    monkeypatch.setattr(subprocess, "Popen", start)
-    built = load(SYNC_SENTRY, ["outputs.fps = 3"])
-
-    cli._render_apart(SYNC_SENTRY, ("outputs.fps = 3",), built, tmp_path)
-
-    assert rendered == {"eo": 3, "ir": 3}
-
-
 def test_the_bands_end_as_one_render_of_the_scene(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     temporary = set()
+    started: list[_Band] = []
 
     def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
         temporary.add(env["TMPDIR"])
         _write_part(command, _band_of(command))
-        return _Band(0)
+        # eo finishes while ir still renders.
+        started.append(_Band(0, polls=1 if _band_of(command) == "eo" else 3))
+        return started[-1]
 
     monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
     built = load(SYNC_SENTRY)
 
     cli._render_apart(SYNC_SENTRY, (), built, tmp_path)
@@ -548,6 +540,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
         "ir.png",
         "labels.json",
     ]
+    assert not any(band.killed for band in started)
     # Both bands share one temporary folder, gone after the run.
     assert [Path(folder).exists() for folder in temporary] == [False]
 
