@@ -1,6 +1,0 @@
-# One report per test shard in ci.yml; a partial merge would read as lost coverage.
-codecov:
-  notify:
-    after_n_builds: 4
-comment:
-  after_n_builds: 4
