@@ -135,10 +135,10 @@ jobs:
         with:
           use_oidc: true
 
-  # Linux aarch64 takes bpy from SEA-AI's own index, which no x86 job downloads.
+  # Linux aarch64 installs bpy from SEA-AI/bpy-linux-aarch64, which no x86 job does.
   aarch64:
     name: Linux aarch64
-    needs: changes
+    needs: [changes, lint]
     if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
     runs-on: ubuntu-24.04-arm
     steps:
@@ -151,17 +151,19 @@ jobs:
           enable-cache: true
 
       - run: uv sync --locked
-      - run: uv run python -c "import bpy; print(bpy.app.version_string)"
-      # Each platform resolves bpy on its own: a new one on PyPI but not on the index
-      # locks Linux aarch64 to an older Blender, in silence.
-      - name: One bpy for every platform
-        run: |
-          uv run python - <<'EOF'
-          import tomllib
-          lock = tomllib.load(open("uv.lock", "rb"))
-          versions = {p["version"] for p in lock["package"] if p["name"] == "bpy"}
-          assert len(versions) == 1, f"uv.lock takes bpy {sorted(versions)}"
-          EOF
+
+      # bpy links X11 and GL, which the ARM image does not ship; Mesa's llvmpipe draws
+      # Workbench in software, as in the tests job.
+      - run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          libx11-6 libxrender1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libgl1-mesa-dri
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/seascape
+          key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
+
+      - run: uv run pytest tests/test_render.py tests/test_scene.py tests/test_blend.py --durations=10
 
   # The one check a pull request requires, whatever the jobs above are called.
   checks:
