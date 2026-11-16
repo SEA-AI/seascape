@@ -559,7 +559,7 @@ def test_parts_rendered_into_one_folder_number_on_as_one_render() -> None:
     assert joined.info == {"version": "x"}
 
 
-def test_parts_with_two_names_for_one_category_name_the_part() -> None:
+def test_a_concat_refuses_two_names_for_one_category_naming_the_part() -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
     ship, buoy = (added(index, [target(1, name, 1)]) for name in ("ship", "buoy"))
