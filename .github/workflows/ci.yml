@@ -68,7 +68,7 @@ jobs:
     name: Tests (${{ matrix.shard }})
     # A lint failure is cheaper to fix first than a test run is to wait for.
     needs: [changes, lint]
-    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
+    if: &run-tests ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
     runs-on: ubuntu-latest
     strategy:
       # Every shard reports its failures, not only the first to fail.
@@ -86,12 +86,14 @@ jobs:
 
       - run: uv sync --locked
 
-      # Workbench, which `seascape zones` renders with, needs OpenGL; the runner has no
-      # GPU, and Mesa's llvmpipe draws it in software.
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1-mesa-dri
+      # Workbench and the GPU compositor need OpenGL; the runners have no GPU, and
+      # Mesa's llvmpipe draws both in software.
+      - &gl-libs
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1-mesa-dri
 
       # fetch downloads again any cached asset that misses its sha256.
-      - uses: actions/cache@v6
+      - &assets-cache
+        uses: actions/cache@v6
         with:
           path: ~/.cache/seascape
           key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
@@ -139,7 +141,7 @@ jobs:
   aarch64:
     name: Linux aarch64
     needs: [changes, lint]
-    if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
+    if: *run-tests
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
@@ -152,18 +154,9 @@ jobs:
 
       - run: uv sync --locked
 
-      # bpy links X11 and GL, which the ARM image does not ship; Mesa's llvmpipe draws
-      # Workbench in software, as in the tests job.
-      - run: >-
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          libx11-6 libxrender1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libegl1 libgl1-mesa-dri
-
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/seascape
-          key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
-
-      - run: uv run pytest tests/test_render.py tests/test_scene.py tests/test_blend.py --durations=10
+      - *gl-libs
+      - *assets-cache
+      - run: uv run pytest -m render --durations=10
 
   # The one check a pull request requires, whatever the jobs above are called.
   checks:

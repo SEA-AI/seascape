@@ -36,7 +36,7 @@ cd seascape
 uv sync
 ```
 
-Blender ships as a Python package, so there is nothing else to install. On Linux aarch64, which PyPI's `bpy` lacks, `uv sync` installs it from [SEA-AI/bpy-linux-aarch64](https://github.com/SEA-AI/bpy-linux-aarch64).
+Blender ships as a Python package, so there is nothing else to install. On Linux aarch64, where PyPI has no `bpy`, `uv sync` installs it from [SEA-AI/bpy-linux-aarch64](https://github.com/SEA-AI/bpy-linux-aarch64).
 
 ## Quickstart
 
