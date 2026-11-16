@@ -104,6 +104,8 @@ jobs:
 
       # Codecov merges the shards' reports; codecov.yml holds its verdict until all arrive. A failed upload never fails CI.
       - uses: codecov/codecov-action@v5
+        # A fork's run gets no OIDC token, and the action fails asking for one.
+        continue-on-error: true
         with:
           use_oidc: true
 
