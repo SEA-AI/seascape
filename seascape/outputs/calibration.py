@@ -4,8 +4,6 @@ Imports no Blender, so a consumer reads it without the bpy wheel.
 """
 
 import math
-from collections.abc import Sequence
-from itertools import chain
 from pathlib import Path
 from typing import Literal, cast
 
@@ -145,11 +143,3 @@ class Calibration(_Record):
     def read(cls, folder: Path) -> "Calibration":
         """The calibration in `folder`."""
         return cls.model_validate_json((folder / FILENAME).read_text())
-
-    @classmethod
-    def concat(cls, parts: Sequence["Calibration"]) -> "Calibration":
-        """`parts`' cameras and raw cameras, in their order."""
-        return cls(
-            cameras=list(chain.from_iterable(part.cameras for part in parts)),
-            raw=list(chain.from_iterable(part.raw for part in parts)),
-        )

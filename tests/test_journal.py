@@ -6,11 +6,9 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from seascape.config import load
 from seascape.outputs import journal, labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import earth
-from tests.scenarios import OPEN_SEA
 
 INFO = {"scenario": {"seed": 7}}
 # Facing north, level, 50 m up; the pose that puts a horizon in its frame.
@@ -47,16 +45,14 @@ def _target(pass_index: int) -> labels.Target:
     )
 
 
-def _label(
-    truth: labels.Labels, time_s: float, camera: CameraCalibration = CAMERA
-) -> None:
+def _label(truth: labels.Labels, time_s: float) -> None:
     """One frame where t1 is seen and t2 is not, so it adds to images, annotations,
     dropped and, the first time, categories.
     """
     index = np.zeros((48, 64), dtype=int)
     index[20:24, 30:34] = 1
     truth.add(
-        camera,
+        CAMERA,
         time_s,
         index,
         np.ones((48, 64, 3)),
@@ -227,70 +223,3 @@ def test_a_journal_left_by_an_earlier_render_is_replaced(tmp_path: Path) -> None
         appended.append([CAMERA], [])
 
     assert len(labels.Labels.read(tmp_path).images) == 1
-
-
-def _part(folder: Path, name: str) -> None:
-    """A finished render of camera `name` in `folder`, as `--parallel` leaves one
-    band's: its frame, truth and Blender log.
-    """
-    camera = CAMERA.model_copy(update={"name": name, "image": f"{name}.png"})
-    truth = labels.Labels(info=INFO)
-    _label(truth, 0.0, camera)
-    folder.mkdir()
-    truth.write(folder)
-    Calibration(cameras=[camera], raw=[camera]).write(folder)
-    (folder / camera.image).write_bytes(b"frame")
-    (folder / "blender.log").write_text(f"{name}\n")
-
-
-def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
-    parts = [tmp_path / ".eo", tmp_path / ".ir"]
-    _part(parts[0], "A")
-    _part(parts[1], "B")
-
-    scene = load(OPEN_SEA)
-
-    written = journal.gather(tmp_path, parts, scene)
-
-    truth = labels.Labels.read(tmp_path)
-    assert [(i.id, i.file_name) for i in truth.images] == [(1, "A.png"), (2, "B.png")]
-    assert truth.info["scenario"] == scene.model_dump(mode="json")
-    calibration = Calibration.read(tmp_path)
-    assert [c.name for c in calibration.cameras] == ["A", "B"]
-    assert [c.name for c in calibration.raw] == ["A", "B"]
-    assert written == [tmp_path / "calibration.json", tmp_path / "labels.json"]
-    assert sorted(p.name for p in tmp_path.iterdir()) == [
-        "A.png",
-        "B.png",
-        "blender.log",
-        "calibration.json",
-        "labels.json",
-    ]
-    assert (tmp_path / "blender.log").read_text() == "A\nB\n"
-
-
-@pytest.mark.parametrize("held_by", ["another part", "the folder"])
-def test_a_file_of_one_name_moves_nothing(tmp_path: Path, held_by: str) -> None:
-    parts = [tmp_path / ".eo", tmp_path / ".ir"]
-    _part(parts[0], "A")
-    _part(parts[1], "A" if held_by == "another part" else "B")
-    if held_by == "the folder":
-        (tmp_path / "A.png").write_bytes(b"an earlier frame")
-
-    with pytest.raises(FileExistsError, match=r"A\.png"):
-        journal.gather(tmp_path, parts, load(OPEN_SEA))
-
-    assert (parts[0] / "A.png").exists()
-    assert not (tmp_path / "labels.json").exists()
-
-
-def test_a_part_whose_truth_does_not_read_moves_nothing(tmp_path: Path) -> None:
-    parts = [tmp_path / ".eo", tmp_path / ".ir"]
-    _part(parts[0], "A")
-    _part(parts[1], "B")
-    (parts[1] / "labels.json").unlink()
-
-    with pytest.raises(FileNotFoundError):
-        journal.gather(tmp_path, parts, load(OPEN_SEA))
-
-    assert (parts[0] / "A.png").exists()

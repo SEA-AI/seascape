@@ -3,8 +3,10 @@
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
@@ -16,8 +18,9 @@ import click
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
-from seascape.outputs import journal, labels, montage, panorama, recording
-from seascape.outputs.calibration import Frame
+from seascape.outputs import labels, montage, panorama, recording
+from seascape.outputs.calibration import FILENAME as CALIBRATION
+from seascape.outputs.calibration import Calibration, Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -116,29 +119,35 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
     """Run `commands` at once, each logging to its log; the bands that failed. The
     first to fail stops the rest, and an error or Ctrl-C kills them.
     """
-    # Limitation: a SIGKILL to this process leaves them running; Linux's
+    # Limitation: a SIGTERM or SIGKILL to this process leaves them running; Linux's
     # PR_SET_PDEATHSIG in each child would end them.
     runs: dict[Band, subprocess.Popen[bytes]] = {}
     failed: list[Band] = []
-    try:
-        for band, command in commands.items():
-            with logs[band].open("w") as log:
-                runs[band] = subprocess.Popen(
-                    command, stdout=log, stderr=subprocess.STDOUT
-                )
-        pending = dict(runs)
-        while pending and not failed:
-            done = {b: run for b, run in pending.items() if run.poll() is not None}
-            failed = [b for b, run in done.items() if run.returncode != 0]
-            for band in done:
-                del pending[band]
-            if pending and not done:
-                time.sleep(1)
-    finally:
-        for run in runs.values():
-            if run.poll() is None:
-                run.kill()
-                run.wait()
+    # A killed Blender leaves its temporary files, the foam memory's frames among them;
+    # here they go with the run.
+    with tempfile.TemporaryDirectory(prefix="seascape-bands-") as tmp:
+        try:
+            for band, command in commands.items():
+                with logs[band].open("w") as log:
+                    runs[band] = subprocess.Popen(
+                        command,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        env={**os.environ, "TMPDIR": tmp},
+                    )
+            pending = dict(runs)
+            while pending and not failed:
+                done = {b: run for b, run in pending.items() if run.poll() is not None}
+                failed = [b for b, run in done.items() if run.returncode != 0]
+                for band in done:
+                    del pending[band]
+                if pending and not done:
+                    time.sleep(1)
+        finally:
+            for run in runs.values():
+                if run.poll() is None:
+                    run.kill()
+                    run.wait()
     return failed
 
 
@@ -177,9 +186,25 @@ def _render_apart(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
         )
-    journal.gather(into, list(parts.values()), built)
-    for log in logs.values():
-        log.unlink()
+    # One render loops band by band, so the parts join in `bands` order.
+    truth = labels.concat({b: labels.Labels.read(part) for b, part in parts.items()})
+    # Each part's scenario renders one band; the truth records the whole scene's.
+    truth.info["scenario"] = built.model_dump(mode="json")
+    cameras = [Calibration.read(part) for part in parts.values()]
+    Calibration(
+        cameras=[camera for part in cameras for camera in part.cameras],
+        raw=[camera for part in cameras for camera in part.raw],
+    ).write(into)
+    truth.write(into)
+    with (into / "blender.log").open("ab") as joined:
+        for band, part in parts.items():
+            with (part / "blender.log").open("rb") as log:
+                shutil.copyfileobj(log, joined)
+            for item in part.iterdir():
+                if item.name not in {labels.FILENAME, CALIBRATION, "blender.log"}:
+                    item.rename(into / item.name)
+            shutil.rmtree(part)
+            logs[band].unlink()
 
 
 _QUALITY = "perc_lossless"

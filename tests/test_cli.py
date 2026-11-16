@@ -403,6 +403,64 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
     assert started["eo"].killed
 
 
+def test_an_interrupt_kills_every_band(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: list[_Band] = []
+
+    def start(*_: object, **__: object) -> _Band:
+        started.append(_Band(0, polls=5))
+        return started[-1]
+
+    def interrupted(_: float) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli.time, "sleep", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+
+    assert [band.killed for band in started] == [True, True]
+
+
+def test_sync_parallel_renders_the_bands_apart(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called = []
+
+    def apart(*args: object) -> None:
+        called.append(args)
+        raise click.ClickException("stopped before rendering")
+
+    def together(*_: object) -> None:
+        raise AssertionError("rendered the bands together")
+
+    monkeypatch.setattr(cli, "_render_apart", apart)
+    monkeypatch.setattr(cli, "_render", together)
+
+    run("sync", SYNC_SENTRY, "--parallel", "-o", tmp_path)
+
+    assert len(called) == 1
+
+
+def test_a_one_band_scene_renders_in_this_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = []
+
+    def start(*_: object, **__: object) -> None:
+        raise AssertionError("started a process for one band")
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args))
+    built = load(SYNC_SENTRY, ['outputs.bands = ["eo"]'])
+
+    cli._render_apart(SYNC_SENTRY, ('outputs.bands = ["eo"]',), built, tmp_path)
+
+    assert rendered == [(built, tmp_path)]
+
+
 @pytest.mark.parametrize(
     "args",
     [
@@ -429,9 +487,7 @@ def test_parallel_refuses_what_it_would_ignore(
 def test_each_band_renders_the_scene_with_the_user_s_overrides(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The bands' commands, gathered: each loads the scene as the user set it, in its
-    own band, and their parts end as one folder.
-    """
+    """Each band's command loads the scene as the user set it, in its own band."""
     rendered: dict[str, object] = {}
 
     def start(command: list[str], **_: object) -> _Band:
@@ -448,6 +504,28 @@ def test_each_band_renders_the_scene_with_the_user_s_overrides(
     cli._render_apart(SYNC_SENTRY, ("outputs.fps = 3",), built, tmp_path)
 
     assert rendered == {"eo": 3, "ir": 3}
+
+
+def test_the_bands_end_as_one_render_of_the_scene(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temporary = set()
+
+    def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
+        temporary.add(env["TMPDIR"])
+        _write_part(command, _band_of(command))
+        return _Band(0)
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    built = load(SYNC_SENTRY)
+
+    cli._render_apart(SYNC_SENTRY, (), built, tmp_path)
+
+    assert labels.Labels.read(tmp_path).info["scenario"] == built.model_dump(
+        mode="json"
+    )
+    calibration = Calibration.read(tmp_path)
+    assert calibration.cameras == calibration.raw == [_camera("eo"), _camera("ir")]
     assert (tmp_path / "blender.log").read_text() == "eo\nir\n"
     assert sorted(p.name for p in tmp_path.iterdir()) == [
         "blender.log",
@@ -456,6 +534,8 @@ def test_each_band_renders_the_scene_with_the_user_s_overrides(
         "ir.png",
         "labels.json",
     ]
+    # Blender's temporary files go with the run.
+    assert [Path(folder).exists() for folder in temporary] == [False]
 
 
 def _write_part(command: list[str], band: str) -> None:
@@ -465,7 +545,7 @@ def _write_part(command: list[str], band: str) -> None:
     part = Path(command[command.index("-o") + 1])
     part.mkdir()
     labels.Labels(info={"scenario": {}}).write(part)
-    Calibration(cameras=[_camera(band)]).write(part)
+    Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
     (part / f"{band}.png").write_bytes(b"frame")
     (part / "blender.log").write_text(f"{band}\n")
 
