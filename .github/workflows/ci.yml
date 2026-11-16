@@ -70,6 +70,10 @@ jobs:
     needs: [changes, lint]
     if: ${{ !failure() && !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.tests == 'true') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Codecov authenticates the upload by the run's OIDC token: no secret to rotate.
+      id-token: write
     strategy:
       # Every shard reports its failures, not only the first to fail.
       fail-fast: false
@@ -96,7 +100,12 @@ jobs:
           path: ~/.cache/seascape
           key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
 
-      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20
+      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20 --cov=seascape --cov-report=xml
+
+      # Codecov merges the shards' reports; codecov.yml holds its verdict until all arrive. A failed upload never fails CI.
+      - uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
 
   # The one check a pull request requires, whatever the jobs above are called.
   checks:
