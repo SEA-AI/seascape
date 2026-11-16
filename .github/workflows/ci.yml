@@ -148,7 +148,31 @@ jobs:
         with:
           use_oidc: true
 
-  # The one check a pull request requires, whatever the jobs above are called.
+  # Codecov's statuses are required, so a commit whose tests were skipped still
+  # reports to Codecov, which then passes them.
+  no-coverage:
+    name: Coverage (no tests)
+    needs: tests
+    if: ${{ !cancelled() && needs.tests.result == 'skipped' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: codecov/codecov-action@v7
+        continue-on-error: true
+        with:
+          run_command: empty-upload
+          # The paths filter already decided no tested file changed.
+          force: true
+          use_oidc: true
+
+  # The one check of this workflow a pull request requires, whatever the jobs above
+  # are called.
   checks:
     name: Checks
     if: always()
