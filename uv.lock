@@ -6,12 +6,6 @@ resolution-markers = [
     "platform_machine != 'aarch64' or sys_platform != 'linux'",
 ]
 
-[manifest]
-constraints = [
-    { name = "bpy", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'", specifier = "==5.2.2" },
-    { name = "bpy", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = "==5.2.2", index = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" },
-]
-
 [[package]]
 name = "annotated-types"
 version = "0.8.0"
@@ -772,8 +766,8 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 blender = [
-    { name = "bpy", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'", specifier = ">=5.2" },
-    { name = "bpy", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = ">=5.2", index = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" },
+    { name = "bpy", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'", specifier = ">=5.2,<5.3" },
+    { name = "bpy", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = ">=5.2,<5.3", index = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" },
 ]
 dev = [
     { name = "pytest", specifier = ">=9.0" },
