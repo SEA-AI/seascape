@@ -72,7 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Codecov authenticates the upload by the run's OIDC token: no secret to rotate.
       id-token: write
     strategy:
       # Every shard reports its failures, not only the first to fail.
@@ -102,7 +101,6 @@ jobs:
 
       - run: uv run pytest --shard ${{ matrix.shard }} --durations=20 --cov=seascape --cov-report=xml
 
-      # Codecov merges the shards' reports; codecov.yml holds its verdict until all arrive. A failed upload never fails CI.
       - uses: codecov/codecov-action@v5
         # A fork's run gets no OIDC token, and the action fails asking for one.
         continue-on-error: true
