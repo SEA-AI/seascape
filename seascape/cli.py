@@ -177,12 +177,9 @@ def _render_apart(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
         )
-    with (into / "blender.log").open("a") as joined:
-        for band, part in parts.items():
-            joined.write((part / "blender.log").read_text(errors="replace"))
-            (part / "blender.log").unlink()
-            logs[band].unlink()
     journal.gather(into, list(parts.values()), built)
+    for log in logs.values():
+        log.unlink()
 
 
 _QUALITY = "perc_lossless"

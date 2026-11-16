@@ -389,7 +389,7 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
     started: dict[str, _Band] = {}
 
     def start(command: list[str], **_: object) -> _Band:
-        band = next(a for a in command if a.startswith("outputs.bands")).split('"')[1]
+        band = _band_of(command)
         # eo would render on for a while; ir fails at once.
         started[band] = _Band(1) if band == "ir" else _Band(0, polls=5)
         return started[band]

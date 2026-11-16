@@ -3,7 +3,8 @@
 Rewriting calibration.json and labels.json after every frame costs time and disk in
 the square of the frame count: at 30 fps a minute of four cameras ends near 200 MB,
 written some 3600 times. Each frame is appended here once instead, and the two files
-are written once from the lines.
+are written once from the lines. Renders of a scene's bands apart gather into one
+folder here too, as one render writes it.
 """
 
 import shutil
@@ -23,6 +24,8 @@ from seascape.outputs.labels import FILENAME as LABELS
 from seascape.outputs.labels import Annotation, Category, Dropped, Image, Labels, concat
 
 FILENAME = "truth.jsonl"
+
+_BLENDER_LOG = "blender.log"
 
 
 class Step(Model):
@@ -153,9 +156,8 @@ def finish(folder: Path) -> list[Path]:
 
 def gather(folder: Path, parts: Sequence[Path], scenario: Scenario) -> list[Path]:
     """Move `parts`, finished renders of a scene's bands, into `folder` as one render
-    of `scenario` writes it, then delete them; the truth files written.
-
-    Labels renumber in `parts` order, as one render numbers its bands.
+    of `scenario` writes it, then delete them; the truth files written. Each part's
+    Blender log appends to the folder's.
 
     Raises:
         FileExistsError: Two parts, or a part and `folder`, hold a file of one name;
@@ -168,7 +170,9 @@ def gather(folder: Path, parts: Sequence[Path], scenario: Scenario) -> list[Path
     moves = []
     for part in parts:
         moves += [
-            item for item in part.iterdir() if item.name not in {LABELS, CALIBRATION}
+            item
+            for item in part.iterdir()
+            if item.name not in {LABELS, CALIBRATION, _BLENDER_LOG}
         ]
     counts = Counter(item.name for item in moves)
     if twice := sorted(name for name, count in counts.items() if count > 1):
@@ -177,6 +181,11 @@ def gather(folder: Path, parts: Sequence[Path], scenario: Scenario) -> list[Path
         raise FileExistsError(f"{folder} already holds {there}")
     for item in moves:
         item.rename(folder / item.name)
+    with (folder / _BLENDER_LOG).open("a") as log:
+        for part in parts:
+            if (part / _BLENDER_LOG).exists():
+                log.write((part / _BLENDER_LOG).read_text(errors="replace"))
+    written = [cameras.write(folder), joined.write(folder)]
     for part in parts:
         shutil.rmtree(part)
-    return [cameras.write(folder), joined.write(folder)]
+    return written

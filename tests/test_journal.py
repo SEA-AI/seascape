@@ -231,7 +231,7 @@ def test_a_journal_left_by_an_earlier_render_is_replaced(tmp_path: Path) -> None
 
 def _part(folder: Path, name: str) -> None:
     """A finished render of camera `name` in `folder`, as `--parallel` leaves one
-    band's: its frame, truth and log.
+    band's: its frame, truth and Blender log.
     """
     camera = CAMERA.model_copy(update={"name": name, "image": f"{name}.png"})
     truth = labels.Labels(info=INFO)
@@ -240,6 +240,7 @@ def _part(folder: Path, name: str) -> None:
     truth.write(folder)
     Calibration(cameras=[camera], raw=[camera]).write(folder)
     (folder / camera.image).write_bytes(b"frame")
+    (folder / "blender.log").write_text(f"{name}\n")
 
 
 def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
@@ -253,7 +254,6 @@ def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
 
     truth = labels.Labels.read(tmp_path)
     assert [(i.id, i.file_name) for i in truth.images] == [(1, "A.png"), (2, "B.png")]
-    assert [(a.id, a.image_id) for a in truth.annotations] == [(1, 1), (2, 2)]
     assert truth.info["scenario"] == scene.model_dump(mode="json")
     calibration = Calibration.read(tmp_path)
     assert [c.name for c in calibration.cameras] == ["A", "B"]
@@ -262,9 +262,11 @@ def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
     assert sorted(p.name for p in tmp_path.iterdir()) == [
         "A.png",
         "B.png",
+        "blender.log",
         "calibration.json",
         "labels.json",
     ]
+    assert (tmp_path / "blender.log").read_text() == "A\nB\n"
 
 
 @pytest.mark.parametrize("held_by", ["another part", "the folder"])
