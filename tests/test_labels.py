@@ -566,7 +566,7 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
     for truth in parts.values():
         truth.info = {"scenario": {}}
 
-    with pytest.raises(ValueError, match="category 1 is ship"):
+    with pytest.raises(ValueError, match="buoy: category 1 is ship"):
         labels.merge(tmp_path, written(tmp_path, parts))
 
 

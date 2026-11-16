@@ -10,6 +10,7 @@ import tempfile
 import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
+from itertools import chain
 from pathlib import Path
 from typing import Any, get_args
 
@@ -124,7 +125,7 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
     runs: dict[Band, subprocess.Popen[bytes]] = {}
     failed: list[Band] = []
     # A killed Blender leaves its temporary files, the foam memory's frames among them;
-    # here they go with the run.
+    # this folder is deleted when the bands end.
     with tempfile.TemporaryDirectory(prefix="seascape-bands-") as tmp:
         try:
             for band, command in commands.items():
@@ -155,7 +156,8 @@ def _render_apart(
     scenario: Path, overrides: tuple[str, ...], built: Scenario, into: Path
 ) -> None:
     """Render each band in a `seascape render` of its own, all at once, then gather
-    their frames and truth in `into` as one render writes them.
+    their frames and truth in `into` as one render writes them. A scene with one band
+    renders here.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
     a frame; another band's render fills that time.
@@ -190,10 +192,10 @@ def _render_apart(
     truth = labels.concat({b: labels.Labels.read(part) for b, part in parts.items()})
     # Each part's scenario renders one band; the truth records the whole scene's.
     truth.info["scenario"] = built.model_dump(mode="json")
-    cameras = [Calibration.read(part) for part in parts.values()]
+    calibrations = [Calibration.read(part) for part in parts.values()]
     Calibration(
-        cameras=[camera for part in cameras for camera in part.cameras],
-        raw=[camera for part in cameras for camera in part.raw],
+        cameras=list(chain.from_iterable(c.cameras for c in calibrations)),
+        raw=list(chain.from_iterable(c.raw for c in calibrations)),
     ).write(into)
     truth.write(into)
     with (into / "blender.log").open("ab") as joined:

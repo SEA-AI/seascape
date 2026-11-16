@@ -397,9 +397,10 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
 
-    with pytest.raises(click.ClickException, match=r"\.ir\.log"):
+    with pytest.raises(click.ClickException, match=r"\.ir\.log") as failed:
         cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
 
+    assert ".eo.log" not in str(failed.value)
     assert started["eo"].killed
 
 
@@ -444,8 +445,16 @@ def test_sync_parallel_renders_the_bands_apart(
     assert len(called) == 1
 
 
+@pytest.mark.parametrize(
+    ("overrides", "ir_cameras"),
+    [(('outputs.bands = ["eo"]',), True), ((), False)],
+    ids=["one band listed", "one band with cameras"],
+)
 def test_a_one_band_scene_renders_in_this_process(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: tuple[str, ...],
+    ir_cameras: bool,
 ) -> None:
     rendered = []
 
@@ -454,9 +463,15 @@ def test_a_one_band_scene_renders_in_this_process(
 
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args))
-    built = load(SYNC_SENTRY, ['outputs.bands = ["eo"]'])
+    built = load(SYNC_SENTRY, list(overrides))
+    mounts = type(built).band_mounts
+    monkeypatch.setattr(
+        type(built),
+        "band_mounts",
+        lambda scene, band: mounts(scene, band) if ir_cameras or band != "ir" else [],
+    )
 
-    cli._render_apart(SYNC_SENTRY, ('outputs.bands = ["eo"]',), built, tmp_path)
+    cli._render_apart(SYNC_SENTRY, overrides, built, tmp_path)
 
     assert rendered == [(built, tmp_path)]
 
@@ -487,7 +502,6 @@ def test_parallel_refuses_what_it_would_ignore(
 def test_each_band_renders_the_scene_with_the_user_s_overrides(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Each band's command loads the scene as the user set it, in its own band."""
     rendered: dict[str, object] = {}
 
     def start(command: list[str], **_: object) -> _Band:
@@ -521,9 +535,9 @@ def test_the_bands_end_as_one_render_of_the_scene(
 
     cli._render_apart(SYNC_SENTRY, (), built, tmp_path)
 
-    assert labels.Labels.read(tmp_path).info["scenario"] == built.model_dump(
-        mode="json"
-    )
+    truth = labels.Labels.read(tmp_path)
+    assert truth.info["scenario"] == built.model_dump(mode="json")
+    assert [i.file_name for i in truth.images] == ["eo.png", "ir.png"]
     calibration = Calibration.read(tmp_path)
     assert calibration.cameras == calibration.raw == [_camera("eo"), _camera("ir")]
     assert (tmp_path / "blender.log").read_text() == "eo\nir\n"
@@ -534,7 +548,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
         "ir.png",
         "labels.json",
     ]
-    # Blender's temporary files go with the run.
+    # Both bands share one temporary folder, gone after the run.
     assert [Path(folder).exists() for folder in temporary] == [False]
 
 
@@ -544,7 +558,18 @@ def _write_part(command: list[str], band: str) -> None:
     """
     part = Path(command[command.index("-o") + 1])
     part.mkdir()
-    labels.Labels(info={"scenario": {}}).write(part)
+    image = labels.Image(
+        id=1,
+        file_name=f"{band}.png",
+        width=1,
+        height=1,
+        camera=band,
+        band=band,
+        hfov_deg=1.0,
+        time_s=0.0,
+        horizon_px=[],
+    )
+    labels.Labels(info={"scenario": {}}, images=[image]).write(part)
     Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
     (part / f"{band}.png").write_bytes(b"frame")
     (part / "blender.log").write_text(f"{band}\n")
@@ -555,6 +580,6 @@ def _band_of(command: list[str]) -> str:
 
 
 def _camera(band: str) -> CameraCalibration:
-    """A calibration that only has to be one, named for `band`."""
+    """Any valid calibration of `band`'s camera."""
     mount = next(m for m in load(SYNC_SENTRY).mounts if m.camera.band == band)
     return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)
