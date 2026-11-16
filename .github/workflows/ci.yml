@@ -122,7 +122,6 @@ jobs:
   coverage:
     name: Coverage
     needs: tests
-    # A skipped `changes`, as on a push, would skip this job under the default `if`.
     if: ${{ !cancelled() && needs.tests.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
@@ -151,7 +150,6 @@ jobs:
           use_oidc: true
           # Codecov posts no status without an upload; an empty one passes it.
           run_command: ${{ needs.tests.result == 'success' && 'upload-coverage' || 'empty-upload' }}
-          # The paths filter has already judged the change untested.
           force: true
 
   # The one check of this workflow a pull request requires, whatever the jobs above
