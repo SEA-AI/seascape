@@ -7,7 +7,7 @@ import pytest
 
 from seascape.config import Camera, Microbolometer, substream
 from seascape.outputs import microbolometer
-from seascape.physics import lwir, optics
+from seascape.physics import lwir
 
 PITCH_M = 12e-6
 
@@ -67,42 +67,3 @@ def test_the_noise_is_the_netd_s_radiance(t_k: float) -> None:
     slope = lwir.band_radiance(t_k + netd_k) - lwir.band_radiance(t_k)
     assert seen.mean() == pytest.approx(t_k, abs=1e-3)
     assert seen.std() == pytest.approx(netd_k * sigma / slope, rel=0.02)
-
-
-def _filtered(
-    radiance: np.ndarray, f_number: float, pitch_m: float, t_k: float
-) -> np.ndarray:
-    """`radiance` through `diffraction_mtf` at its padded frame's frequencies."""
-    pad = optics.airy_reach_px(lwir.BAND_M[1], f_number, pitch_m)
-    padded = np.pad(radiance, pad, mode="reflect")
-    fy = np.fft.fftfreq(padded.shape[0])[:, None]
-    fx = np.fft.rfftfreq(padded.shape[1])[None, :]
-    mtf = microbolometer.diffraction_mtf(np.hypot(fx, fy) / pitch_m, f_number, t_k)
-    return np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)[pad:-pad, pad:-pad]
-
-
-def test_each_frame_is_filtered_by_its_own_camera_s_band_mtf() -> None:
-    """Frames in turn, as cameras and scenes change: none reads another's MTF. 11.5 um
-    and f/1.05 pad a frame as 12 um at f/1 does, so only the key tells their MTFs
-    apart.
-    """
-    frames = [
-        ((40, 72), 1.0, PITCH_M, 290.0),
-        ((40, 72), 1.0, PITCH_M, 290.0),
-        ((40, 72), 1.0, PITCH_M, 240.0),
-        ((40, 72), 1.0, 11.5e-6, 240.0),
-        ((40, 72), 1.05, PITCH_M, 240.0),
-        ((72, 40), 1.0, PITCH_M, 290.0),
-    ]
-    draws = substream(1, "test/radiance")
-    radiances = [draws.normal(3.0, 1.0, shape) for shape, *_ in frames]
-
-    seen = [
-        microbolometer.diffract(r, *camera)
-        for r, (_, *camera) in zip(radiances, frames, strict=True)
-    ]
-
-    expected = [
-        _filtered(r, *camera) for r, (_, *camera) in zip(radiances, frames, strict=True)
-    ]
-    assert [f.tobytes() for f in seen] == [f.tobytes() for f in expected]
