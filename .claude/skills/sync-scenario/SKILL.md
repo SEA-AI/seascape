@@ -40,7 +40,7 @@ Decide by the preview's printed check: a frame looks right at one turn and misse
    run_dir = Path(rec).parents[2]  # the run: labels.json, recordings/<rig>/<recording>
    info = json.loads((run_dir / "labels.json").read_text())["info"]
    info["exported_commit"] = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
-   with wandb.init(project="dataset-registry", job_type="upload-sync") as run:
+   with wandb.init(project="dataset-registry", job_type="dataset-upload", name=name) as run:
        art = wandb.Artifact(name, type="dataset", description=f"seascape {info['commit']}", metadata=info)
        art.add_dir(rec, name=rec.rsplit("/", 1)[1])
        for toml in (f"{name}.toml", "sync.toml"):  # the scenario and the file it extends
