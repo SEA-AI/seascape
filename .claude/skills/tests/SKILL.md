@@ -1,6 +1,6 @@
 ---
 name: tests
-description: What a test checks and what it costs. Use when writing or changing a test, or when a change adds behaviour a test should pin; `review-pr` runs it as one reviewer. The idiom of the code under test is `stack`'s.
+description: Decides what a pytest test in `tests/` checks and what it costs: dead tests, `parametrize` over loops, fixtures and real collaborators, tolerances, render tests. Use before writing or changing a test, even mid-task, and whenever a change adds or fixes behaviour a test should pin; `review-pr` runs it as one reviewer. The idiom of the code under test is `stack`'s.
 ---
 
 # Tests
@@ -8,18 +8,18 @@ description: What a test checks and what it costs. Use when writing or changing 
 ## Does it fail when the code is wrong?
 
 - **Break it and run.** See each test the change adds or relies on fail with its behaviour broken. Undoing purely added code only proves an `ImportError`. For each behaviour the change adds or fixes:
-  1. `git worktree add --detach "$TMPDIR/<name>" HEAD`, then `uv sync` in it. Never edit the PR's own worktree.
+  1. `git worktree add --detach "${TMPDIR:-/tmp}/<name>" HEAD`, then `uv sync` in it. Never edit the PR's own worktree: a break left there can be committed.
   2. Break the behaviour there: revert the fix, or change the condition or value it adds.
-  3. `uv run pytest <test ids> -x -m "not render"` on the tests that claim it. A test that still passes is dead. A render test is reported not run, with its command.
-  4. `git worktree remove --force "$TMPDIR/<name>"`.
+  3. `uv run pytest <test ids> -x -m "not render"` on the tests that claim it. A test that still passes is dead. A render test takes minutes, so it is reported not run, with its command; when the behaviour is the sea shader's, run its render check as AGENTS.md asks.
+  4. `git worktree remove --force "${TMPDIR:-/tmp}/<name>"`.
 
   On a re-review, run only the tests the fix touched.
 - **Every behaviour the change adds or fixes has a test**, or the finding names the smallest one that would pin it.
-- **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does.
+- **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does: not `assert Sea().wind_speed_mps == 7.0`, but the sea that wind builds.
 
 ## What it checks
 
-- **Test what the code promises:** outputs, visible state, an invariant or a published relation with its source. Do not assert private names, call order, mock arguments, log wording or tuned numbers.
+- **Test what the code promises:** outputs, visible state, an invariant or a published relation with its source. Do not assert private names, call order, mock arguments, log wording or tuned numbers: they change when the behaviour does not, so the test fails for the wrong reason.
 - **One reason to fail per test**, a name that states the behaviour. A table of cases is `parametrize`, never a `for` or `if` around an assert. Prefer DAMP to DRY: a test reads top to bottom.
 - **Prefer real collaborators.** Double only what is slow, nondeterministic or foreign, and wrap a third-party API in a thin facade you own rather than mocking its objects.
 - **Test a physical formula** by analytic limits, invariants (symmetry, monotonicity, scaling), and an independent reference. Justify every tolerance in a comment and set `atol` explicitly for values near zero. Golden images only on tiny fixtures with a tolerance.

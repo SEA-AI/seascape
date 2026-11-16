@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**The tall waves are geometry, the rest shading; neither is the Ocean modifier.** The waves carrying the sea's height, down to 4 m, displace the sea as Gerstner waves, diced by adaptive subdivision to 3 px, so no micropolygon goes sub-pixel and none aliases. Each pixel draws the shorter waves longer than its footprint as normals and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. In LWIR the rest's slope variance varies per cell by the spread the short waves' groups give a footprint, so rough patches read warm at grazing views. Everything the shader reads off the waves, it reads at the water's rest position, the UV map. A displaced wave occludes: a crest can hide a target, and the labels follow. Run the render checks before touching the sea shader.
+**The tall waves are geometry, the rest shading; neither is the Ocean modifier.** The waves carrying the sea's height, down to 4 m, displace the sea as Gerstner waves, diced by adaptive subdivision to `DICING_PX`, so no micropolygon goes sub-pixel and none aliases. Each pixel draws the shorter waves longer than its footprint as normals and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. In LWIR the rest's slope variance varies per cell by the spread the short waves' groups give a footprint, so rough patches read warm at grazing views. Everything the shader reads off the waves, it reads at the water's rest position, the UV map. A displaced wave occludes: a crest can hide a target, and the labels follow. Run the render checks before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -122,6 +122,25 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 
+## Writing comments, docs and commits
+
+The full guide is the `prose` skill.
+
+- A line stays only if the reader loses something without it.
+- Write comments for someone who reads the code later and never saw how it came about: say why. The history (what was tried, reviews, other PRs, "now" or "no longer") belongs in git and the PR, where it can't go stale.
+- Add only what the code and the diff can't show: a constraint, a unit.
+- Point to a value's home instead of copying it: a copied number or list goes stale.
+- Commits: a Conventional Commit, an imperative subject, a body that says why.
+
+## Engineering
+
+The full guides are the `architecture`, `stack` and `tests` skills.
+
+- Before writing a helper, search the standard library, installed packages and this repo for one.
+- Fix the mechanism behind a symptom. A flag, special case, sleep or retry hides the cause and breaks again elsewhere.
+- One home per rule or formula; delete dead code.
+- Every behaviour a change adds or fixes has a test, seen to fail with the behaviour broken. Test outputs, never config literals or internals.
+
 ## Checks — run before committing
 
 These mirror CI, which runs them all. Locally, run the linters and only the tests the change touches, such as `uv run pytest tests/test_wear.py`; leave the whole suite to CI.
@@ -142,7 +161,7 @@ The suite includes the render checks, marked `render`. Cycles takes a GPU where 
 ## Working here
 
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Prose**, commits included, follows the `prose` skill; **tests** follow the `tests` skill.
+- **Before handing over a PR**, run the `review-pr` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
 - **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.

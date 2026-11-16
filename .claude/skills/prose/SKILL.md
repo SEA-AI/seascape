@@ -1,20 +1,11 @@
 ---
 name: prose
-description: Write or review the repo's prose: comments, docstrings, docs, `assets.toml` notes, commit messages and PR bodies. Use whenever a change adds or edits any of them; `review-pr` runs it as one reviewer. Code logic is out of scope.
+description: Writes and reviews the repo's prose: comments, docstrings, docs, `assets.toml` notes, commit messages and PR bodies. Use before writing or editing any of them, even mid-task, such as a comment added while fixing a bug; `review-pr` runs it as one reviewer. Code logic is out of scope.
 ---
 
 # Prose
 
 Delete first. A line stays only if the reader loses something without it.
-
-## Delete
-
-- **Restating the code.** A comment or docstring that says what the next line does, or what its name already says. A better name beats the comment.
-- **Restating the diff.** A PR body or commit that lists the files touched or walks through the change line by line.
-- **Context spill.** The journey: debugging narration, what was tried, reviews, conversations, other PRs, "now" or "no longer" about an earlier state.
-- **Redundancy.** The same fact in two places, a summary of what was just said, a closing recap, an intro that announces what follows.
-- **Verbosity.** Hedges ("it's worth noting"), filler, "X, not just Y" emphasis, lists padded to three, tacked-on "-ing" clauses, em-dash habits.
-- **What goes stale.** Numbers derived from values elsewhere, lists copied from another file, test names, hardware, specs or consumers the repo doesn't model. If a claim matters, a test asserts it.
 
 ## Keep
 
@@ -23,7 +14,23 @@ Delete first. A line stays only if the reader loses something without it.
 - The specific over the general: a number, a file name, a flag.
 - A table, a before/after or a frame over a paragraph.
 
+## Delete
+
+- **Restating the code.** A comment or docstring that says what the next line does, or what its name already says. A better name beats the comment.
+- **Restating the diff.** A PR body or commit that lists the files touched or walks through the change line by line.
+- **Context spill.** The journey: debugging narration, what was tried, reviews, conversations, other PRs, "now" or "no longer" about an earlier state.
+- **Redundancy.** The same fact in two places, a summary of what was just said, a closing recap, an intro that announces what follows.
+- **Verbosity.** Hedges ("it's worth noting"), filler, "X, not just Y" emphasis, lists padded to three, tacked-on "-ing" clauses (", ensuring X" becomes its own sentence), em-dash habits ("A — B" becomes "A: B" or two sentences).
+- **What goes stale.** Numbers derived from values elsewhere, lists copied from another file, test names, hardware, specs or consumers the repo doesn't model. If a claim matters, a test asserts it.
+
 A rephrase is never longer than what it replaces, unless it corrects a stale fact.
+
+## Examples
+
+| Before | After |
+|---|---|
+| `# set colorspace first` | `# Blender re-reads the buffer when the colorspace changes, leaving the image black.` |
+| `fix: update foam` | `fix: write foam beside the saved .blend`, with the body `Blender's temp folder is deleted on exit, so a reopened file read every grid as magenta.` |
 
 ## Where it applies
 

@@ -1,6 +1,6 @@
 ---
 name: label-zones
-description: Set an asset's LWIR thermal zones, its `material` and whether its textures are `weathered` in seascape/assets/assets.toml, from the sheets `seascape zones` renders, then render the contact sheet with its worn row for a person to approve. Use when an asset is added or has no `zones` table, or a zone or worn row shows a part, rust or stain wrong.
+description: Sets an asset's LWIR thermal zones, its `material` and whether its textures are `weathered` in seascape/assets/assets.toml, from the sheets `seascape zones` renders, then renders the contact sheet with its worn row for a person to approve. Use when an asset is added or has no `zones` table, or a zone or worn row shows a part, rust or stain wrong.
 ---
 
 # Label thermal zones
@@ -43,8 +43,9 @@ Trust the evidence in this order:
    metallic map often marks painted steel, and an alpha texture is a cutout as often
    as it is glass; opaque glass exists too, as a dark, flat band of windows on a house.
 
-Do not add what the model does not show: no funnel on a vessel without a stack, no
-glass where windows are only painted into a wall's texture.
+Zone only what the model shows, since the LWIR render shows each face's zone as
+written: a vessel without a stack has no funnel zone, and windows painted into a
+wall's texture take the wall's zone.
 
 ## Describing it as simply as is right
 
@@ -87,11 +88,13 @@ zone, `material` or `weathered`, not wrong masks: fix the label first.
 
 1. `uv run seascape zones ASSET`, then read the sheets and the JSON beside them. Add
    `--islands`, or `--material NAME`, where one slot holds two zones.
-2. Write the `zones` table, `material` and `weathered` into `assets.toml`, by the
+2. Find the material and wear as "What it is made of" and "What real wear looks like"
+   say.
+3. Write the `zones` table, `material` and `weathered` into `assets.toml`, by the
    sections above.
-3. `uv run seascape zones ASSET --preview`, and look at every view: each surface in
+4. `uv run seascape zones ASSET --preview`, and look at every view: each surface in
    the zone it should be, nothing in a zone it should not, and the worn row worn where
-   the class wears. A part shown wrong sends you back to step 2.
-4. `uv run pytest tests/test_zones.py`, which checks the table against the import.
-5. Hand the preview to a person, and say which parts, material and wear you were
+   the class wears. A part shown wrong sends you back to step 3.
+5. `uv run pytest tests/test_zones.py`, which checks the table against the import.
+6. Hand the preview to a person, and say which parts, material and wear you were
    unsure of, and why.
