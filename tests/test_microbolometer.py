@@ -45,12 +45,13 @@ def test_the_lens_spreads_a_point_and_keeps_its_power() -> None:
     ("spread", "sharp"),
     [
         ((1.4, PITCH_M, 290.0), (1.0, PITCH_M, 290.0)),
+        ((1.05, PITCH_M, 290.0), (1.0, PITCH_M, 290.0)),
         ((1.0, PITCH_M, 290.0), (1.0, 17e-6, 290.0)),
         ((1.0, PITCH_M, 250.0), (1.0, PITCH_M, 400.0)),
     ],
-    ids=["a slower lens", "a finer pixel", "a colder scene"],
+    ids=["a slower lens", "a slightly slower lens", "a finer pixel", "a colder scene"],
 )
-def test_a_point_spreads_more_through_a_slower_lens_finer_pixels_or_longer_waves(
+def test_a_point_spreads_more_through_a_slower_lens_finer_pixels_or_a_colder_scene(
     spread: tuple[float, float, float], sharp: tuple[float, float, float]
 ) -> None:
     """A colder scene's Planck spectrum weights the longer, more diffracted waves."""

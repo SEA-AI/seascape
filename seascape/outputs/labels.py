@@ -320,8 +320,11 @@ def _run_lengths(mask: np.ndarray) -> RunLengths:
 def _pixels(
     index: np.ndarray, targets: Sequence[Target]
 ) -> Iterator[tuple[Target, np.ndarray, np.ndarray]]:
-    """Each of `targets` with the rows and columns of its pixels in the pass index
-    image `index`, in raster order; one pass over the frame for all of them.
+    """Each of `targets` with the rows and columns of its pixels in `index`, in
+    raster order; one pass over the frame for all of them.
+
+    `index` is (H, W) integer pass indices, 0 for sky and sea; the rows and columns
+    are (K,) int64.
     """
     rows, columns = np.nonzero(index)
     seen = index[rows, columns]
