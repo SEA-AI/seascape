@@ -1,6 +1,6 @@
 ---
 name: stack
-description: The idiom of each technology in the code: Python, numpy, images, pydantic, bpy and the CLI; not PR stacks, which are `gh-stack`'s. Use when writing code in one of them; `review-pr` runs it as one reviewer. Whether code should exist and where it lives is `architecture`'s, its comments `prose`'s, its tests `tests`'.
+description: Gives this repo's idiom for Python, numpy and image arrays, pydantic models, bpy node trees and datablocks, and the CLI; not PR stacks, which are `gh-stack`'s. Use before writing or changing such code, even mid-task; it overrides general Python guidance where they differ. `review-pr` runs it as one reviewer. Whether code should exist and where it lives is `architecture`'s, its comments `prose`'s, its tests `tests`'.
 ---
 
 # Stack
@@ -17,7 +17,7 @@ Read the section for the code you are touching. Each practice names the failure 
 - **Loop over items, not indices:** `enumerate`, `zip(strict=True)`, `.items()`. Needing an index usually means the structure is wrong.
 - **A comprehension stops at one `for` and one filter.** Past that, write the loop or a named helper.
 - **A generator beats a list the caller only iterates.**
-- **No import-time side effects and no mutable module state.** Build objects in functions; module constants are immutable.
+- **No import-time side effects and no mutable module state.** Otherwise behaviour depends on import order, and tests leak state into each other. Build objects in functions; module constants are immutable.
 - **`@override` on overrides**, so a renamed parent method fails the checker.
 - **Do not golf.** If a walrus, `reduce` or nested expression needs a comment to decode, write the loop. "Practicality beats purity" and "readability counts" are the tiebreak.
 - **Lint limits.** `ruff.toml` enforces the counting rules (`C90`, `PL`) too, so CI fails them. Meet a limit by finding the decision that belongs elsewhere, not by splitting one coherent algorithm into one-use helpers, which reads worse than the original.
@@ -38,7 +38,7 @@ Pick the container by what the data is:
 - **Make the illegal state unrepresentable.** One record per state beats a record with a tag and optional fields.
 - **Put each invariant in one place**: the validator or constructor. Scattered `if` checks get missed.
 - **Forbid unknown keys at config boundaries**, or a misspelled key is ignored in silence.
-- **Know what skips validation:** `model_construct` and `model_copy(update=...)`. To change a model safely, validate a modified dict. Anything that relies on a validator's derived fields breaks otherwise.
+- **Know what skips validation:** `model_construct` and `model_copy(update=...)` (an `AGENTS.md` trap). To change a model safely, validate a modified dict. Anything that relies on a validator's derived fields breaks otherwise.
 - **Raise `ValueError` in a validator, never `assert`**, which `-O` removes.
 - **Choose strict or lax coercion on purpose.** Lax turns `"123"` into `123`.
 - **Accept abstract types (`Mapping`, `Sequence`, `Iterable`), return concrete ones.** Contain `Any`; `object` means "accepts anything".
@@ -47,7 +47,7 @@ Pick the container by what the data is:
 ## Numeric and image code
 
 - **State shape, dtype and frame** of each array argument in the docstring: `(N, 3)`, `float64`, row-major. The annotation does not carry it.
-- **Randomness:** never `seed + i`; record the seed with the output.
+- **Randomness:** named substreams, as `AGENTS.md` asks; never `seed + i`. Record the seed with the output.
 - **Rewrite formulas that lose precision.** `log1p` and `expm1` keep the digits `log(1 + x)` and `exp(x) - 1` drop for a small `x`; `hypot` avoids overflow in `sqrt(x*x + y*y)`; `arctan2` keeps the quadrant `arctan(y / x)` loses.
 - **Be explicit about dtype** at creation and at I/O. Under NEP 50 the array dtype wins over a Python scalar, so `uint8 + 200` wraps with no warning. OpenCV's `add` saturates and NumPy wraps, so mixing them gives two answers.
 - **Decide view or copy.** Basic slices return views, and `reshape` does where it can, so a write mutates the caller's array. `.copy()` where a function must not.
@@ -61,7 +61,7 @@ Pick the container by what the data is:
 
 - **Write through `bpy.data`; use `bpy.ops` only when there is no data API.** Operators take context, not arguments, and fail with a bare `RuntimeError`. If one is needed, supply context with `Context.temp_override()`.
 - **Keep the object a creator returns and do not look it up by name again.** A requested name gets a `.001` suffix when taken, and a later lookup finds the wrong datablock.
-- **Do not hold bpy references across undo, mode changes or adding and removing in the same collection.** Re-fetch or keep them inside one function. Copy a collection to a list before mutating it in a loop.
+- **Re-fetch bpy references after undo, a mode change, or adding and removing in the same collection, or keep them inside one function:** Blender reallocates the data, and an old reference points at freed memory and can crash. Copy a collection to a list before mutating it in a loop.
 - **One function per sub-graph:** it takes the tree and input sockets and returns the output socket. Raw `links.new` calls live in a few helpers, which also set defaults you depend on explicitly.
 - **Properties with order dependence are set in the documented order**, since the wrong order is accepted without error. `AGENTS.md`'s traps list the known ones.
 - **Bulk data goes through `foreach_set` and `foreach_get` on flat numpy arrays**, not per-item loops.

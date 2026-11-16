@@ -1,6 +1,6 @@
 ---
 name: frames
-description: Coordinate frames, poses and angle conventions, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing or an Euler angle, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
+description: Defines the repo's coordinate frames, poses and angle conventions, the robotics way: one internal convention, transforms named by their frames and composed by matching names, other conventions reached by a change of basis where a file is written. Use when code builds, composes or reads back a rotation, a pose, a bearing, an Euler angle, a `matrix_world` read as a pose, PTU pan/tilt or camera extrinsics, or writes one to a format with its own convention (OpenCV, Blender, an Oceanus recording, NMEA). Where code lives is `architecture`'s.
 ---
 
 # Frames
@@ -13,7 +13,7 @@ Every body is RFU (+X starboard or right, +Y bow or forward, +Z up); `world` is 
 
 | Frame | Standard | Origin | Axes |
 |---|---|---|---|
-| world | REP 105 `map`; Fossen {n}, with ENU axes | the tangent plane at mean sea level under the ownship's origin at the start | +X east, +Y north at the origin (the ownship's bow at the start), +Z up |
+| world | REP 105 `map`; Fossen {n}, with ENU axes | the tangent plane at mean sea level under the ownship's origin at the start | +X east, +Y north, +Z up; the ownship starts heading north, so +Y is its bow at t = 0 |
 | level | REP 120 `base_footprint` | a hull's track point on the curved sea | world turned by the hull's heading |
 | ownship, target | REP 105 `base_link` (FLU there), Fossen {b} | the asset's centre (its bounding box's; a turbine's own origin), on the design waterline | RFU, fixed to the hull |
 | base | `ptu_base_link` | the rig's mount point in the ownship | ownship turned by the rig's yaw |
@@ -23,7 +23,7 @@ Every body is RFU (+X starboard or right, +Y bow or forward, +Z up); `world` is 
 
 - **ownship and target are one kind of frame,** a hull.
 - **level to hull** carries the sea's tilt, the scripted trim and list, and heave. It pivots at the floating waterline, not the hull's origin.
-- **`base` is where the PTU's pan reads zero.** A scenario's tilt counts from the rig's pitch; the PTU's encoder, and so a recording's tilt, from level. A mount bolted off the bow and a moved home are the same base, and any value renders right.
+- **`base` is where the PTU's pan reads zero.** A scenario's tilt counts from the rig's pitch; the PTU's encoder, and so a recording's tilt, from level. A rig's `yaw_deg` is the base's turn from the bow, whether the mount is bolted turned or the PTU's home is set away from the bow: a recording's pan counts from that home, so either renders right.
 - **A fixed rig** is a head with pan and tilt at 0.
 
 Any other frame is local to the module that owns it and is named there.
@@ -45,9 +45,9 @@ Internally an elevation is up from the horizon. The `angles` module holds the co
 | OpenCV | right, down, forward | calibration files: an extrinsic is `T_f_camera`, the inverse of OpenCV's `[R\|t]` |
 | COCO | pixel edges: OpenCV + 0.5 | labels |
 | Blender camera | right, up, backward | a matrix handed to Blender |
-| FLU (ROS REP 103) | forward, left, up: yaw to port, pitch nose down | an Oceanus recording's pan, tilt and camera rpy |
-| Oceanus IMU | roll starboard down, pitch nose down, yaw clockwise: no change of basis gives it | the recording's IMU columns |
-| NED (NMEA 2000) | forward, right, down: yaw clockwise, pitch nose up | NMEA attitude and heading |
+| FLU (ROS REP 103) | forward, left, up: yaw to port, pitch bow down | an Oceanus recording's pan, tilt and camera rpy |
+| Oceanus IMU | roll starboard down, pitch bow down, yaw clockwise: no change of basis gives it | the recording's IMU columns |
+| NED (NMEA 2000) | forward, right, down: yaw clockwise, pitch bow up | NMEA attitude and heading |
 
 ## Rules
 
