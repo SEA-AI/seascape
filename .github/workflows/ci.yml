@@ -101,7 +101,7 @@ jobs:
 
       - run: uv run pytest --shard ${{ matrix.shard }} --durations=20 --cov=seascape --cov-report=xml
 
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         # A fork's run gets no OIDC token, and the action fails asking for one.
         continue-on-error: true
         with:
