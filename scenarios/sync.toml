@@ -37,4 +37,4 @@ sun_bearing_deg = 150.0
 fps = 30
 duration_s = 60.0
 format = "png"
-samples = { eo = 16, ir = 8 }
+samples = { eo = 16 }
