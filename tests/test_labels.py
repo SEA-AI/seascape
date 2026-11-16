@@ -598,6 +598,23 @@ def test_only_a_target_in_its_backgrounds_noise_is_faint(
     assert ("t1" in found) is faint
 
 
+def test_each_target_in_a_frame_is_judged_as_if_alone() -> None:
+    """Targets out of raster order, one faint, one bright, one off the frame."""
+    index = np.zeros((48, 160), dtype=int)
+    index[30:38, 20:30] = 1
+    index[8:16, 110:120] = 2
+    frame = eight_bit(index, {1: 250, 2: 121})
+    targets = [target(1), target(2), target(3)]
+
+    together = labels.faint(index, frame, targets)
+
+    alone = {}
+    for each in targets:
+        alone |= labels.faint(index, frame, [each])
+    assert together.keys() == {"t2"}
+    assert together == alone
+
+
 def test_a_faint_target_is_dropped_with_its_excess_and_box() -> None:
     truth = added(patch(4), [target(1)], faint={"t1": 0.3})
 
