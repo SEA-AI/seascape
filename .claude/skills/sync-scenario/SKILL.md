@@ -3,8 +3,8 @@ name: sync-scenario
 description: >-
   Writes, records and uploads a product's sync scenario, `scenarios/sync-<product>.toml`: a rendered
   recording that Oceanus's sync check replays to confirm the product's frames and IMU rows line up.
-  Use when a product joins the sync check, when its ownship, mount or turn changes, when
-  `seascape sync --preview` fails, or to upload a recording to W&B.
+  Use to add a product to the sync check, or to render and upload its recording to W&B. Also when
+  its ownship, mount or turn changes, or `seascape sync --preview` fails after a change elsewhere.
 ---
 
 # Sync scenario
