@@ -1,6 +1,7 @@
 ---
 name: sync-scenario
-description: Writes, records or uploads a product's `scenarios/sync-PRODUCT.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, when its `seascape sync --preview` fails, or to upload its recording to W&B.
+description: >-
+  Writes, records or uploads a product's `scenarios/sync-PRODUCT.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, when its `seascape sync --preview` fails, or to upload its recording to W&B.
 ---
 
 # Sync scenario
