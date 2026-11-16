@@ -38,7 +38,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8",
 ]
-blender = ["bpy>=5.2"]
+blender = ["bpy>=5.2,<5.3"]
 serve = [
     "mcp>=2.3",
     "pydantic-settings>=2.16",
@@ -92,8 +92,7 @@ testpaths = ["tests"]
 [tool.uv]
 default-groups = ["dev", "blender", "serve"]
 
-# PyPI's bpy has no Linux aarch64 wheel (the DGX Spark); SEA-AI/bpy-linux-aarch64
-# builds one the way Blender's buildbot does, on a PEP 503 index of its own.
+# PyPI has no Linux aarch64 bpy wheel.
 [tool.uv.sources]
 bpy = [
     { index = "bpy-aarch64", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
