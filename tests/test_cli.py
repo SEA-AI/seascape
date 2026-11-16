@@ -16,6 +16,7 @@ from seascape import assets, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import load, loader
 from seascape.outputs import labels
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.sync import staging
 from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
 
@@ -361,3 +362,217 @@ def test_a_course_sheet_is_one_image(run: Run, tmp_path: Path) -> None:
     assert drawn.exit_code == 0, drawn.stderr
     assert drawn.stdout == f"{out}\n"
     Image.open(out).verify()
+
+
+class _Band:
+    """A band's render that exits with `code` on its `polls`-th poll, unless killed."""
+
+    def __init__(self, code: int, polls: int = 1) -> None:
+        self.code, self.polls, self.killed, self.returncode = code, polls, False, None
+
+    def poll(self) -> int | None:
+        self.polls -= 1
+        if self.killed or self.polls <= 0:
+            self.returncode = -9 if self.killed else self.code
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def wait(self) -> int | None:
+        return self.poll()
+
+
+def test_a_failed_band_stops_the_others_and_names_its_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: dict[str, _Band] = {}
+
+    def start(command: list[str], **_: object) -> _Band:
+        band = _band_of(command)
+        # eo would render on for a while; ir fails at once.
+        started[band] = _Band(1) if band == "ir" else _Band(0, polls=5)
+        return started[band]
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+
+    with pytest.raises(click.ClickException, match=r"\.ir\.log") as failed:
+        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+
+    assert ".eo.log" not in str(failed.value)
+    assert started["eo"].killed
+
+
+def test_an_interrupt_kills_every_band(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: list[_Band] = []
+
+    def start(*_: object, **__: object) -> _Band:
+        started.append(_Band(0, polls=5))
+        return started[-1]
+
+    def interrupted(_: float) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli.time, "sleep", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+
+    assert [band.killed for band in started] == [True, True]
+
+
+def test_sync_parallel_renders_each_band_apart_with_the_user_s_overrides(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered: dict[str, object] = {}
+
+    def start(command: list[str], **_: object) -> _Band:
+        sets = [command[i + 1] for i, arg in enumerate(command) if arg == "--set"]
+        scene = load(Path(command[command.index("render") + 1]), sets)
+        (band,) = scene.outputs.bands
+        rendered[band] = scene.outputs.fps
+        return _Band(1)
+
+    def together(*_: object) -> None:
+        raise AssertionError("rendered the bands together")
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli, "_render", together)
+
+    run(
+        "sync",
+        SYNC_SENTRY,
+        "--parallel",
+        *("--set", "outputs.fps = 3", "--set", 'outputs.bands = ["eo", "ir"]'),
+        *("-o", tmp_path),
+    )
+
+    assert rendered == {"eo": 3, "ir": 3}
+
+
+@pytest.mark.parametrize(
+    ("overrides", "ir_cameras"),
+    [(('outputs.bands = ["eo"]',), True), ((), False)],
+    ids=["one band listed", "one band with cameras"],
+)
+def test_a_one_band_scene_renders_in_this_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: tuple[str, ...],
+    ir_cameras: bool,
+) -> None:
+    rendered = []
+
+    def start(*_: object, **__: object) -> None:
+        raise AssertionError("started a process for one band")
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args))
+    built = load(SYNC_SENTRY, list(overrides))
+    mounts = type(built).band_mounts
+    monkeypatch.setattr(
+        type(built),
+        "band_mounts",
+        lambda scene, band: mounts(scene, band) if ir_cameras or band != "ir" else [],
+    )
+
+    cli._render_apart(SYNC_SENTRY, overrides, built, tmp_path)
+
+    assert rendered == [(built, tmp_path)]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("sync", SYNC_SENTRY, "--parallel", "--preview"),
+        ("sync", SYNC_SENTRY, "--parallel", "--sheet"),
+    ],
+    ids=["preview", "sheet"],
+)
+def test_parallel_refuses_what_it_would_ignore(
+    run: Run, args: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def loaded(*_: object) -> None:
+        raise RuntimeError("loaded past the flags")
+
+    # Refused before the scenario loads, so a missing refusal fails here, unrendered.
+    monkeypatch.setattr(cli, "load", loaded)
+
+    refused = run(*args)
+
+    assert refused.exit_code == 2
+    assert "--parallel" in refused.output
+
+
+def test_the_bands_end_as_one_render_of_the_scene(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temporary = set()
+    started: list[_Band] = []
+
+    def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
+        temporary.add(env["TMPDIR"])
+        _write_part(command, _band_of(command))
+        # eo finishes while ir still renders.
+        started.append(_Band(0, polls=1 if _band_of(command) == "eo" else 3))
+        return started[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+    built = load(SYNC_SENTRY)
+
+    cli._render_apart(SYNC_SENTRY, (), built, tmp_path)
+
+    truth = labels.Labels.read(tmp_path)
+    assert truth.info["scenario"] == built.model_dump(mode="json")
+    assert [i.file_name for i in truth.images] == ["eo.png", "ir.png"]
+    calibration = Calibration.read(tmp_path)
+    assert calibration.cameras == calibration.raw == [_camera("eo"), _camera("ir")]
+    assert (tmp_path / "blender.log").read_text() == "eo\nir\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "blender.log",
+        "calibration.json",
+        "eo.png",
+        "ir.png",
+        "labels.json",
+    ]
+    assert not any(band.killed for band in started)
+    # Both bands share one temporary folder, gone after the run.
+    assert [Path(folder).exists() for folder in temporary] == [False]
+
+
+def _write_part(command: list[str], band: str) -> None:
+    """The folder a band's render leaves at the command's `-o`: a frame named for
+    `band`, its truth and its log.
+    """
+    part = Path(command[command.index("-o") + 1])
+    part.mkdir()
+    image = labels.Image(
+        id=1,
+        file_name=f"{band}.png",
+        width=1,
+        height=1,
+        camera=band,
+        band=band,
+        hfov_deg=1.0,
+        time_s=0.0,
+        horizon_px=[],
+    )
+    labels.Labels(info={"scenario": {}}, images=[image]).write(part)
+    Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
+    (part / f"{band}.png").write_bytes(b"frame")
+    (part / "blender.log").write_text(f"{band}\n")
+
+
+def _band_of(command: list[str]) -> str:
+    return next(a for a in command if a.startswith("outputs.bands")).split('"')[1]
+
+
+def _camera(band: str) -> CameraCalibration:
+    """Any valid calibration of `band`'s camera."""
+    mount = next(m for m in load(SYNC_SENTRY).mounts if m.camera.band == band)
+    return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)

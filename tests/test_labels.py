@@ -539,6 +539,35 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
     }
 
 
+def test_parts_rendered_into_one_folder_number_on_as_one_render() -> None:
+    """What `--parallel` gathers: a band per part, each numbered from 1."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    eo, ir = (
+        added(index, [target(1, *category)]) for category in (("ship", 1), ("buoy", 6))
+    )
+    eo.info = {"version": "x"}
+
+    joined = labels.concat({".eo": eo, ".ir": ir})
+
+    assert [(i.id, i.file_name) for i in joined.images] == [(1, "C.png"), (2, "C.png")]
+    assert [(a.id, a.image_id, a.category_id) for a in joined.annotations] == [
+        (1, 1, 1),
+        (2, 2, 6),
+    ]
+    assert [c.id for c in joined.categories] == [1, 6]
+    assert joined.info == {"version": "x"}
+
+
+def test_a_concat_refuses_two_names_for_one_category_naming_the_part() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    ship, buoy = (added(index, [target(1, name, 1)]) for name in ("ship", "buoy"))
+
+    with pytest.raises(ValueError, match=r"\.ir: category 1 is ship"):
+        labels.concat({".eo": ship, ".ir": buoy})
+
+
 def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
@@ -546,7 +575,7 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
     for truth in parts.values():
         truth.info = {"scenario": {}}
 
-    with pytest.raises(ValueError, match="category 1 is ship"):
+    with pytest.raises(ValueError, match="buoy: category 1 is ship"):
         labels.merge(tmp_path, written(tmp_path, parts))
 
 
