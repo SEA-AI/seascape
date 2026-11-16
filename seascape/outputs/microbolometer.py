@@ -49,19 +49,20 @@ def _band_mtfs(freq_per_m: npt.ArrayLike, f_number: float) -> FloatArray:
 
 
 def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
-    """Each wavelength's MTF, the last axis of `mono`, weighted by `t_k`'s Planck
-    spectrum.
+    """The mean of the per-wavelength MTFs on `mono`'s last axis, weighted by
+    `t_k`'s Planck spectrum.
     """
     weight = lwir.planck(_BAND_LAM, t_k)
     return (mono * weight).sum(axis=-1) / weight.sum()
 
 
-# Judgement: a rig's few camera models. An entry is about 90 MB at 640 x 512.
+# Judgement: a rig's few camera models. An entry holds len(_BAND_LAM) float64s per
+# rfft2 bin of the padded frame: about 90 MB at 640 x 512.
 @functools.lru_cache(maxsize=4)
 def _frame_mtfs(shape: tuple[int, int], f_number: float, pitch_m: float) -> FloatArray:
-    """`_band_mtfs` at the rfft2 frequencies of a padded frame of `shape`, the same
-    for every frame of a camera: (shape[0], shape[1] // 2 + 1, len(_BAND_LAM))
-    float64, read-only, as every caller shares it.
+    """`_band_mtfs` at the rfft2 frequencies of a padded frame of `shape`:
+    (shape[0], shape[1] // 2 + 1, len(_BAND_LAM)) float64, read-only, as every
+    caller shares it.
     """
     fy = np.fft.fftfreq(shape[0])[:, None]
     fx = np.fft.rfftfreq(shape[1])[None, :]
