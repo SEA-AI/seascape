@@ -123,7 +123,7 @@ jobs:
     name: Coverage
     needs: tests
     # A skipped `changes`, as on a push, would skip this job under the default `if`.
-    if: ${{ !cancelled() && needs.tests.result == 'success' }}
+    if: ${{ !cancelled() && needs.tests.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -133,42 +133,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - if: needs.tests.result == 'success'
+        uses: actions/download-artifact@v8
         with:
           pattern: coverage-*
           merge-multiple: true
 
       - uses: astral-sh/setup-uv@v10.3.3
 
-      - run: uvx coverage combine && uvx coverage xml
+      - if: needs.tests.result == 'success'
+        run: uvx coverage combine && uvx coverage xml
 
       - uses: codecov/codecov-action@v7
         # A fork's run gets no OIDC token, and the action fails asking for one.
         continue-on-error: true
         with:
           use_oidc: true
-
-  # A required Codecov status never posts on a commit without an upload.
-  no-coverage:
-    name: Coverage (no tests)
-    needs: tests
-    if: ${{ !cancelled() && needs.tests.result == 'skipped' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: codecov/codecov-action@v7
-        continue-on-error: true
-        with:
-          run_command: empty-upload
-          # The paths filter already decided no tested file changed.
+          # Codecov posts no status without an upload; an empty one passes it.
+          run_command: ${{ needs.tests.result == 'success' && 'upload-coverage' || 'empty-upload' }}
+          # The paths filter has already judged the change untested.
           force: true
-          use_oidc: true
 
   # The one check of this workflow a pull request requires, whatever the jobs above
   # are called.
