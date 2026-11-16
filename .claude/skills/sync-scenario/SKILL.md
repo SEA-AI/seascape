@@ -28,7 +28,7 @@ Decide by the preview's printed check: a frame looks right at one turn and misse
 
 5. **Sheet.** Check the course on `uv run seascape sync scenarios/sync-<product>.toml --sheet`: every ring crosses every video it serves, and each camera's centre sits between the horizon and the nearest waterline.
 6. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
-7. **Record.** `uv run seascape sync scenarios/sync-<product>.toml` renders, encodes and writes `recordings/<rig>/<Model>_recordings_<timestamp>/`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
+7. **Record.** `uv run seascape sync --parallel scenarios/sync-<product>.toml` renders the bands at once, encodes and writes `recordings/<rig>/<Model>_recordings_<timestamp>/`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
 8. **Upload.** Commit first, so the hash names code that exists. Then, logged in to W&B (`uvx wandb login`) with `WANDB_ENTITY` set to the team that owns the registry, upload the recording with the scenario files that made it, and link it into the W&B Dataset registry, where the team's datasets are listed:
 
    ```bash
