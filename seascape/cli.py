@@ -3,10 +3,8 @@
 import json
 import math
 import os
-import signal
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
@@ -18,7 +16,7 @@ import click
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
-from seascape.outputs import BLENDER_LOG, journal, labels, montage, panorama, recording
+from seascape.outputs import journal, labels, montage, panorama, recording
 from seascape.outputs.calibration import Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
@@ -109,64 +107,54 @@ def _render(built: Scenario, into: Path) -> list[Path]:
 
     with (
         _progress(built.images, "Rendering") as bar,
-        _blender_log(into / BLENDER_LOG),
+        _blender_log(into / "blender.log"),
     ):
         return renderer.render(built, into, lambda: bar.update(1))
 
 
 def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> list[Band]:
     """Run `commands` at once, each logging to its log; the bands that failed. The
-    first to fail stops the rest, and leaving, by any error or signal, kills them.
+    first to fail stops the rest, and an error or Ctrl-C kills them.
     """
+    # Limitation: a SIGKILL to this process leaves them running; Linux's
+    # PR_SET_PDEATHSIG in each child would end them.
     runs: dict[Band, subprocess.Popen[bytes]] = {}
     failed: list[Band] = []
-    stop = signal.getsignal(signal.SIGTERM)
-    # A killed Blender leaves its temporary files, the foam's frames among them.
-    with tempfile.TemporaryDirectory() as tmp:
-        try:
-            # A SIGTERM ends Python without unwinding; raised instead, it runs finally.
-            signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
-            for band, command in commands.items():
-                with logs[band].open("w") as log:
-                    runs[band] = subprocess.Popen(
-                        command,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        env={**os.environ, "TMPDIR": tmp},
-                    )
-            pending = dict(runs)
-            while pending and not failed:
-                done = {b: run for b, run in pending.items() if run.poll() is not None}
-                failed = [b for b, run in done.items() if run.returncode != 0]
-                for band in done:
-                    del pending[band]
-                if pending and not done:
-                    time.sleep(1)
-        finally:
-            # A second SIGTERM must not cut the clean-up short: every band is killed
-            # before any is waited on.
-            signal.signal(signal.SIGTERM, signal.SIG_IGN)
-            for run in runs.values():
-                if run.poll() is None:
-                    run.kill()
-            for run in runs.values():
+    try:
+        for band, command in commands.items():
+            with logs[band].open("w") as log:
+                runs[band] = subprocess.Popen(
+                    command, stdout=log, stderr=subprocess.STDOUT
+                )
+        pending = dict(runs)
+        while pending and not failed:
+            done = {b: run for b, run in pending.items() if run.poll() is not None}
+            failed = [b for b, run in done.items() if run.returncode != 0]
+            for band in done:
+                del pending[band]
+            if pending and not done:
+                time.sleep(1)
+    finally:
+        for run in runs.values():
+            if run.poll() is None:
+                run.kill()
                 run.wait()
-            signal.signal(signal.SIGTERM, stop)
     return failed
 
 
 def _render_apart(
     scenario: Path, overrides: tuple[str, ...], built: Scenario, into: Path
-) -> list[Path]:
+) -> None:
     """Render each band in a `seascape render` of its own, all at once, then gather
     their frames and truth in `into` as one render writes them.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
     a frame; another band's render fills that time.
     """
-    bands = built.rendered_bands
+    bands = [band for band in built.outputs.bands if built.band_mounts(band)]
     if len(bands) < 2:
-        return _render(built, into)
+        _render(built, into)
+        return
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
     logs = {band: into / f".{band}.log" for band in bands}
@@ -175,8 +163,13 @@ def _render_apart(
         command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
         for override in overrides:
             command += ["--set", override]
-        command += ["--set", f'outputs.bands = ["{band}"]', "-o", str(part)]
-        commands[band] = command
+        commands[band] = [
+            *command,
+            "--set",
+            f'outputs.bands = ["{band}"]',
+            "-o",
+            str(part),
+        ]
     shown = ", ".join(map(str, logs.values()))
     click.echo(f"Rendering {', '.join(bands)} at once; see {shown}", err=True)
     if failed := _run_at_once(commands, logs):
@@ -184,10 +177,12 @@ def _render_apart(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
         )
-    written = journal.gather(into, list(parts.values()), built)
-    for log in logs.values():
-        log.unlink()
-    return written
+    with (into / "blender.log").open("a") as joined:
+        for band, part in parts.items():
+            joined.write((part / "blender.log").read_text(errors="replace"))
+            (part / "blender.log").unlink()
+            logs[band].unlink()
+    journal.gather(into, list(parts.values()), built)
 
 
 _QUALITY = "perc_lossless"
@@ -198,7 +193,7 @@ def _encode(folder: Path, quality: str) -> list[Path]:
 
     with (
         _progress(len(encoder.cameras(folder)), "Encoding") as bar,
-        _blender_log(folder / BLENDER_LOG),
+        _blender_log(folder / "blender.log"),
     ):
         return encoder.encode(folder, quality.upper(), lambda: bar.update(1))
 
@@ -235,17 +230,8 @@ def build(
     click.echo(f"{path}: {band}, {len(mounts)} cameras ({bands}) at {heights}")
 
 
-_PARALLEL = click.option(
-    "--parallel",
-    is_flag=True,
-    help="Render each band in its own process at once. Faster when one band leaves "
-    "the GPU idle; needs one render's memory per band.",
-)
-
-
 @main.command()
 @_scenario("A directory. Default: beside the scenario.")
-@_PARALLEL
 @click.option(
     "--variants",
     type=click.IntRange(min=1),
@@ -254,31 +240,23 @@ _PARALLEL = click.option(
     help="Scenes from consecutive seeds, in a folder per seed when there are several.",
 )
 def render(
-    scenario: Path,
-    output: Path | None,
-    overrides: tuple[str, ...],
-    parallel: bool,
-    variants: int,
+    scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
 ) -> None:
     """Write one image per camera and frame, and their labels. With --variants, a seed
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
-    if parallel and variants > 1:
-        raise click.UsageError("--parallel renders one scene: drop --variants")
     built = load(scenario, list(overrides))
     into = _empty(output or scenario.with_suffix(""))
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
-    if parallel:
-        written = _render_apart(scenario, overrides, built, into)
-    elif variants == 1:
+    if variants == 1:
         written = _render(built, into)
     else:
         written, folders = [], []
         with (
             _progress(variants, "Rendering") as bar,
-            _blender_log(into / BLENDER_LOG),
+            _blender_log(into / "blender.log"),
         ):
             tries = seeds(built.seed, variants)
             for seed in tries:
@@ -319,7 +297,12 @@ def render(
     help="Draw the course on one image, <scenario>-course.png in the directory, and "
     "render nothing.",
 )
-@_PARALLEL
+@click.option(
+    "--parallel",
+    is_flag=True,
+    help="Render each band in its own process at once. Faster when one band leaves "
+    "the GPU idle; needs one render's memory per band.",
+)
 def sync(
     scenario: Path,
     output: Path | None,
@@ -668,7 +651,7 @@ def zones(
     into = output or Path("zones") / asset
     if not contact:
         _empty(into)
-    with _blender_log(into / BLENDER_LOG):
+    with _blender_log(into / "blender.log"):
         if contact:
             written = [sheets.contact(asset, into / "zones.png")]
         else:

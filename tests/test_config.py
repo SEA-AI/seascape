@@ -41,7 +41,6 @@ from seascape.config.draws import DRAWS, Choice, Integer, LogUniform, Triangular
 from seascape.config.objects import Orbit
 from seascape.config.scenario import Samples
 from seascape.physics import atmosphere, lwir
-from tests import scenarios
 
 SCENARIOS = Path(__file__).parents[1] / "scenarios"
 BASELINE = SCENARIOS / "baseline.toml"
@@ -1642,12 +1641,3 @@ def test_an_object_takes_only_a_colour_its_asset_is_sold_in(
 def test_an_object_may_ask_for_its_assets_own_colour() -> None:
     buoy = Object(asset="mooring_buoy", range_m=10.0, bearing_deg=0.0, colour="white")
     assert buoy.colour == "white"
-
-
-def test_a_render_takes_the_bands_some_camera_sees_in_the_order_asked() -> None:
-    reordered = scenarios.variant(outputs={"bands": ["ir", "eo"]})
-    unseen = scenarios.variant(cameras={"ir": {"band": "eo"}})
-
-    assert reordered.rendered_bands == ["ir", "eo"]
-    assert [m.name for m in reordered.rendered_mounts] == ["bow_ir", "bow_eo"]
-    assert unseen.rendered_bands == ["eo"]

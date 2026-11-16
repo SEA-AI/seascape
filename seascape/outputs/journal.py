@@ -17,7 +17,6 @@ from pydantic import Field, ValidationError
 
 from seascape.config import Scenario
 from seascape.model import Model
-from seascape.outputs import BLENDER_LOG, scenario_record
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import FILENAME as LABELS
@@ -154,8 +153,7 @@ def finish(folder: Path) -> list[Path]:
 
 def gather(folder: Path, parts: Sequence[Path], scenario: Scenario) -> list[Path]:
     """Move `parts`, finished renders of a scene's bands, into `folder` as one render
-    of `scenario` writes it, then delete them; returns every file it put there, the
-    labelled frames in label order first.
+    of `scenario` writes it, then delete them; the truth files written.
 
     Labels renumber in `parts` order, as one render numbers its bands.
 
@@ -165,29 +163,20 @@ def gather(folder: Path, parts: Sequence[Path], scenario: Scenario) -> list[Path
     """
     joined = concat({part.name: Labels.read(part) for part in parts})
     # Each part's scenario renders some bands; the truth records the whole scene's.
-    joined.info["scenario"] = scenario_record(scenario)
+    joined.info["scenario"] = scenario.model_dump(mode="json")
     cameras = Calibration.concat([Calibration.read(part) for part in parts])
-    truth = {LABELS, CALIBRATION, BLENDER_LOG}
     moves = []
     for part in parts:
-        moves += [item for item in part.iterdir() if item.name not in truth]
+        moves += [
+            item for item in part.iterdir() if item.name not in {LABELS, CALIBRATION}
+        ]
     counts = Counter(item.name for item in moves)
     if twice := sorted(name for name, count in counts.items() if count > 1):
         raise FileExistsError(f"{folder}: more than one part holds {twice}")
     if there := sorted(name for name in counts if (folder / name).exists()):
         raise FileExistsError(f"{folder} already holds {there}")
-    placed = []
     for item in moves:
-        moved = item.rename(folder / item.name)
-        if moved.is_dir():
-            placed += sorted(p for p in moved.rglob("*") if p.is_file())
-        else:
-            placed.append(moved)
-    labelled = [folder / image.file_name for image in joined.images]
-    rest = sorted(set(placed) - set(labelled))
-    with (folder / BLENDER_LOG).open("a") as log:
-        for part in parts:
-            log.write((part / BLENDER_LOG).read_text(errors="replace"))
+        item.rename(folder / item.name)
     for part in parts:
         shutil.rmtree(part)
-    return [*labelled, *rest, cameras.write(folder), joined.write(folder)]
+    return [cameras.write(folder), joined.write(folder)]

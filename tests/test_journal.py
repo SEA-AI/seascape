@@ -240,7 +240,6 @@ def _part(folder: Path, name: str) -> None:
     truth.write(folder)
     Calibration(cameras=[camera], raw=[camera]).write(folder)
     (folder / camera.image).write_bytes(b"frame")
-    (folder / "blender.log").write_text(f"{name}\n")
 
 
 def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
@@ -259,17 +258,10 @@ def test_gathered_parts_read_as_one_render_of_the_scene(tmp_path: Path) -> None:
     calibration = Calibration.read(tmp_path)
     assert [c.name for c in calibration.cameras] == ["A", "B"]
     assert [c.name for c in calibration.raw] == ["A", "B"]
-    assert written == [
-        tmp_path / "A.png",
-        tmp_path / "B.png",
-        tmp_path / "calibration.json",
-        tmp_path / "labels.json",
-    ]
-    assert (tmp_path / "blender.log").read_text() == "A\nB\n"
+    assert written == [tmp_path / "calibration.json", tmp_path / "labels.json"]
     assert sorted(p.name for p in tmp_path.iterdir()) == [
         "A.png",
         "B.png",
-        "blender.log",
         "calibration.json",
         "labels.json",
     ]

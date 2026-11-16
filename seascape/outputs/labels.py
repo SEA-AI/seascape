@@ -359,14 +359,8 @@ def faint(
     if frame.dtype != np.uint8:
         return {}
     low = {}
-    all_ys, all_xs = np.nonzero(index)
-    passes = index[all_ys, all_xs]
-    order = np.argsort(passes)
-    passes, all_ys, all_xs = passes[order], all_ys[order], all_xs[order]
     for target in targets:
-        first = np.searchsorted(passes, target.pass_index, "left")
-        last = np.searchsorted(passes, target.pass_index, "right")
-        ys, xs = all_ys[first:last], all_xs[first:last]
+        ys, xs = np.nonzero(index == target.pass_index)
         if not len(xs):
             continue
         reach = FLANK_GAP_PX + flank_px(xs.max() - xs.min() + 1)

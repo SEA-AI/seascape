@@ -104,10 +104,10 @@ def sheet(scenario: Scenario, into: Path) -> Image.Image:
     """The frames in `into` as one picture, a clip by its middle frame: a row per band,
     a column per bearing.
     """
-    bands = scenario.rendered_bands
+    bands = [band for band in scenario.outputs.bands if scenario.band_mounts(band)]
     if not bands:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
-    mounts = scenario.rendered_mounts
+    mounts = [m for band in bands for m in scenario.band_mounts(band)]
     typeface = brand.font()
     tiles: dict[str, Image.Image] = {}
     for mount, frame in preview.shown(scenario, into):

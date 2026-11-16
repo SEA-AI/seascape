@@ -57,7 +57,7 @@ def watermark(image: Image.Image, *, below: bool = False) -> Image.Image:
 
 def cameras(scenario: Scenario) -> list[Mount]:
     """The cameras of `scenario`'s bands, band by band."""
-    return scenario.rendered_mounts
+    return [m for band in scenario.outputs.bands for m in scenario.band_mounts(band)]
 
 
 def shown(scenario: Scenario, folder: Path) -> list[tuple[Mount, Path]]:
