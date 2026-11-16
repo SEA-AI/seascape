@@ -17,11 +17,19 @@ import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
-from seascape import angles
+from seascape import angles, motion
 from seascape.assets import Buoy, Debris
-from seascape.blender.scene import Posed, posed_at_start
+from seascape.blender.scene import ownship_afloat
 from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import axis_deg, drifting, held_tilt_deg, panned_deg, rig_track
+from seascape.motion import (
+    azimuth_deg,
+    cameras_at_start,
+    head_path,
+    held_tilt_deg,
+    panned_deg,
+    target_path,
+    track,
+)
 from seascape.outputs import brand, canvas
 from seascape.sync import preview
 from seascape.sync.staging import (
@@ -32,7 +40,7 @@ from seascape.sync.staging import (
     asset,
     buoy_above_m,
     buoy_half_deg,
-    elevation_deg,
+    elevation_from_head_deg,
     half_deg,
     one_rig,
     overlap_deg,
@@ -110,8 +118,8 @@ class _Course:
     scenario: Scenario
     name: str
     rig: Rig
-    # The rig's axis at the start, clockwise from the bow.
-    axis_deg: float
+    # The head's azimuth at the start, clockwise from the bow.
+    azimuth_deg: float
     videos: list[View]
     rings: list[Ring]
     objects: list[Object]
@@ -130,7 +138,7 @@ def _course(scenario: Scenario) -> _Course:
         scenario=scenario,
         name=name,
         rig=rig,
-        axis_deg=axis_deg(scenario, name)(0.0),
+        azimuth_deg=azimuth_deg(scenario, name)(0.0),
         videos=videos,
         rings=sorted(rings(videos), key=lambda r: r.range_m),
         objects=scenario.objects,
@@ -140,16 +148,21 @@ def _course(scenario: Scenario) -> _Course:
 
 
 def _sightlines(scenario: Scenario) -> Callable[[Object], list[tuple[float, float]]]:
-    """An object's range from the one rig at each frame, and its bearing off the
-    rig's axis, wrapped to [-180, 180).
+    """An object's range from the one rig at each frame, and its azimuth off the
+    head's axis, wrapped to (-180, 180].
     """
     outputs = scenario.outputs
-    rig_at = rig_track(scenario, one_rig(scenario)[0])
-    seen_from = [rig_at(t) for t in outputs.times_s]
+    head_at = head_path(scenario, one_rig(scenario)[0])
+    seen_from = [head_at(t) for t in outputs.times_s]
 
     def at(o: Object) -> list[tuple[float, float]]:
-        path = drifting(
-            o.range_m, o.bearing_deg, o.course_deg, o.speed_mps, o.drift, outputs
+        path = target_path(
+            o.range_m,
+            o.bearing_deg,
+            o.heading_from_bow_deg,
+            o.speed_mps,
+            o.fishtail,
+            outputs,
         )
         found = []
         for t, rig in zip(outputs.times_s, seen_from, strict=True):
@@ -306,7 +319,7 @@ def _objects(tile: Image.Image, disc: _Disc, course: _Course) -> None:
     half_m = asset(CONTAINER, Debris).length_m / 2
     for o in course.objects:
         range_m, off_deg = course.sight(o)[0]
-        bearing_deg = course.axis_deg + off_deg
+        bearing_deg = course.azimuth_deg + off_deg
         if o.asset == BUOY:
             _dot(draw, *disc.px(range_m, bearing_deg), o)
             continue
@@ -334,7 +347,7 @@ def _from_above(course: _Course) -> Image.Image:
     cone ends where a buoy drops below `BUOY_PX`; grey is what both videos of a pair
     see. Range is on a square-root scale, so a near ring and a far one both show.
     """
-    axis, videos = course.axis_deg, course.videos
+    axis, videos = course.azimuth_deg, course.videos
     edges = [axis + d for v in videos for d in (v.left_deg, v.right_deg)]
     # A course turned past the beam places objects behind the starting bow.
     edges += [axis + course.sight(o)[0][1] for o in course.objects]
@@ -439,7 +452,7 @@ def _bearing_deg(rays: np.ndarray, near_deg: float) -> np.ndarray:
     """Each of (n, 3) unit rays' bearing, unwrapped along the edge it rounds from
     the turn of `near_deg`, so the edges of a stern pair stay together.
     """
-    b = np.degrees(np.unwrap(np.arctan2(rays[:, 0], rays[:, 1])))
+    b = np.unwrap(angles.bearing_deg(rays[:, 0], rays[:, 1]), period=360.0)
     return b - 360.0 * round((b[0] - near_deg) / 360.0)
 
 
@@ -528,10 +541,13 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
         "2  Panorama",
         "outline: at the start  ·  shade: the bearings the turn sweeps",
     )
-    rig_at = rig_track(course.scenario, course.name)
-    heading_deg = math.degrees(rig_at(0.0).heading_rad)
+    head_at = head_path(course.scenario, course.name)
     times = course.scenario.outputs.times_s
-    turned = [math.degrees(rig_at(t).heading_rad) - heading_deg for t in times]
+    # Unwrapped, as the turn can pass astern; wrong if it turns 180 or more between
+    # two frames.
+    headings = np.unwrap([head_at(t).heading_rad for t in times])
+    heading_deg = math.degrees(headings[0])
+    turned = np.degrees(headings - headings[0]).tolist()
     # The turn is continuous, so it passes every whole degree between its ends,
     # whatever it covers between two frames: one per degree, as a frame is wider than
     # a degree, leaves the shade no gaps, and a long hold draws once.
@@ -539,11 +555,10 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     frames = frame_edges(course.rig, cameras)
     edges = [rays for rays_of in frames.values() for rays in rays_of]
     elevations = np.concatenate([angles.elevation_deg(rays[:, 2]) for rays in edges])
-    # The posed cameras ride `rise_m` above the rig's height, and so do these.
-    rise_m = course.scenario.ownship.rise_m
+    height_m = course.scenario.head_height_m(course.name)
 
     def up_deg(range_m: float, above_m: float) -> float:
-        return elevation_deg(course.rig, range_m, above_m - rise_m)
+        return elevation_from_head_deg(height_m, range_m, above_m)
 
     lowest = min(up_deg(r.range_m, 0.0) for r in course.rings)
     low_e = min(float(elevations.min()), lowest) - UP_PAD_DEG
@@ -597,19 +612,29 @@ def _panorama(course: _Course, cameras: dict[str, np.ndarray]) -> Image.Image:
     return tile
 
 
-def _signals(course: _Course, posed: Posed) -> dict[str, np.ndarray]:
+def _signals(
+    course: _Course, waterline: Callable[[float], np.ndarray]
+) -> dict[str, np.ndarray]:
     """The ownship's heading, pitch and roll, and a pan-tilt unit's pan and tilt, at
-    each frame.
+    each frame, from `scene.ownship_afloat`.
     """
     times = course.scenario.outputs.times_s
-    heading = np.unwrap([posed.path(t).heading_rad for t in times])
-    # Read off the deck as the recording reads the vessel's bb_roll and bb_pitch.
-    roll, pitch, _ = np.array([angles.attitude_deg(posed.deck(t)) for t in times]).T
-    signals = {"heading": np.degrees(heading), "pitch": pitch, "roll": roll}
+    # As the recording reads the vessel's bb_roll, bb_pitch and heading.
+    roll, pitch, heading = np.array(
+        [angles.attitude_deg(waterline(t)[:3, :3]) for t in times]
+    ).T
+    signals = {
+        # From [0, 360), as recording.csv writes it.
+        "heading": np.unwrap(heading % 360.0, period=360.0),
+        "pitch": pitch,
+        "roll": roll,
+    }
     if course.rig.ptu is not None:
         panned = panned_deg(course.scenario.turn, course.name)
         signals["pan"] = np.array([panned(t) for t in times])
-        signals["tilt"] = held_tilt_deg(course.scenario, course.name, posed.deck)
+        signals["tilt"] = held_tilt_deg(
+            course.scenario, course.name, motion.levelled(waterline)
+        )
     return signals
 
 
@@ -673,16 +698,19 @@ def _over_time(course: _Course, signals: dict[str, np.ndarray]) -> Image.Image:
 def draw(scenario: Scenario, out: Path) -> Path:
     """Draw the course `scenario` stores."""
     course = _course(scenario)
-    posed = posed_at_start(scenario, course.name)
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
     sheet = canvas.above(
         [
             _header(course),
             canvas.beside(
-                [_from_above(course), _panorama(course, posed.cameras)],
+                [
+                    _from_above(course),
+                    _panorama(course, cameras_at_start(scenario, course.name)),
+                ],
                 gap_px=GAP_PX,
                 matte=MATTE,
             ),
-            _over_time(course, _signals(course, posed)),
+            _over_time(course, _signals(course, ownship_afloat(scenario, path))),
         ],
         gap_px=GAP_PX,
         matte=MATTE,

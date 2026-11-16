@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from seascape import angles
-from seascape.config import Crop, Stitch, Undistortion, Video
+from seascape.config import Crop, Ownship, Stitch, Undistortion, Video
 from seascape.outputs import recording
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -51,6 +51,7 @@ PTU_TILT_DEG, SCAN_DEG_S, TOP_DEG_S = 4.0, 6.0, 50.0
 MOUNT_YAW_DEG, MOUNT_PITCH_DEG, SCANNING_HULL_YAW_DEG = -20.0, -2.0, 15.0
 WIDTH, HEIGHT, F = 640, 480, 1000.0
 RADIUS_M = earth.earth_radius_m(0.13)
+GOLDEN = Path(__file__).with_name("recording_golden.json")
 
 
 def make_run(
@@ -93,8 +94,8 @@ def make_run(
                 ),
                 extrinsics={
                     "world": rows(vessel_to_world @ camera_to_vessel),
-                    "vessel": rows(camera_to_vessel),
-                    "rig": rows(camera_to_pod),
+                    "ownship": rows(camera_to_vessel),
+                    "head": rows(camera_to_pod),
                 },
             )
         )
@@ -113,6 +114,7 @@ def make_run(
         )
     Calibration(cameras=cameras[::-1]).write(into)
     scenario = {
+        "ownship": {},
         "rigs": {"port": {"height_m": 51.8, "videos": {}}},
         "sky": {"t_air_k": 283.15},
         "sea": {"wind_speed_mps": 7.0, "wind_from_deg": -30.0},
@@ -170,7 +172,7 @@ def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
         assert float(row["proc_ptu_mode"]) == 1
         assert float(row["yaw"]) == pytest.approx(POD_YAW_DEG, abs=0.05)
         assert float(row["temp"]) == pytest.approx(10.0)
-        assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0))
+        assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0), abs=1e-6)
 
 
 def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
@@ -182,9 +184,11 @@ def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
         table_rows = list(csv.DictReader(f))
 
     for row in table_rows:
-        # Core-Backend's manual mode, at no scan speed.
+        # Oceanus's manual mode, at no scan speed.
         assert float(row["proc_ptu_mode"]) == 1
         assert float(row["proc_colav_speed"]) == 0.0
+        # The hull has turned 15 to starboard, so the wind from -30 is 45 to port.
+        assert float(row["wind_angle"]) == pytest.approx(math.radians(315.0), abs=1e-5)
 
 
 @pytest.mark.parametrize(
@@ -202,18 +206,19 @@ def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
 
     for row in table_rows:
         # The pod sits at POD_YAW_DEG and PTU_TILT_DEG on the deck, past its mount.
+        # Pan to port.
         pan = float(row["pan"])
-        assert pan == pytest.approx(POD_YAW_DEG - MOUNT_YAW_DEG, abs=1e-5)
-        # Nose down positive, as the IMU's pitch.
-        tilt = -(PTU_TILT_DEG - MOUNT_PITCH_DEG)
-        assert float(row["tilt"]) == pytest.approx(tilt, abs=1e-5)
+        assert pan == pytest.approx(MOUNT_YAW_DEG - POD_YAW_DEG, abs=1e-5)
+        # From level, as the encoder counts, and nose down positive, as the IMU's
+        # pitch.
+        assert float(row["tilt"]) == pytest.approx(-PTU_TILT_DEG, abs=1e-5)
         # The head's IMU turns with the hull, its mount and its pan; the hull's roll
         # and pitch tip it a little.
         hull_deg = math.degrees(float(row["bb_yaw"]))
-        assert float(row["yaw"]) - pan == pytest.approx(
+        assert float(row["yaw"]) + pan == pytest.approx(
             hull_deg + MOUNT_YAW_DEG, abs=0.2
         )
-        # Core-Backend's collision avoidance mode.
+        # Oceanus's collision avoidance mode.
         assert float(row["proc_ptu_mode"]) == 3
         assert float(row["proc_colav_speed"]) == pytest.approx(
             recorded_deg_s / 360.0, abs=1e-6
@@ -381,7 +386,7 @@ def test_a_rig_without_a_model_writes_nothing(run: Path) -> None:
 
 
 def _core_rotation(roll: float, pitch: float, yaw: float) -> np.ndarray:
-    """Core-Backend's `rotation_matrix(..., roll_axis="x")`: Rz @ Ry @ Rx, radians."""
+    """Oceanus's rotation order, Rz @ Ry @ Rx, in radians."""
     c, s = np.cos([roll, pitch, yaw]), np.sin([roll, pitch, yaw])
     about_x = np.array([[1, 0, 0], [0, c[0], -s[0]], [0, s[0], c[0]]])
     about_y = np.array([[c[1], 0, s[1]], [0, 1, 0], [-s[1], 0, c[1]]])
@@ -392,8 +397,8 @@ def _core_rotation(roll: float, pitch: float, yaw: float) -> np.ndarray:
 def _core_imu_horizon(
     row: dict, sensor: dict, x: np.ndarray, dip: float = 0.0
 ) -> np.ndarray:
-    """Core-Backend's IMU horizon, ported: the CSV's roll and pitch with its yaw
-    zeroed, turned by the camera's rpy, and projected. Core leaves out the horizon's
+    """Oceanus's horizon from the IMU, ported: the CSV's roll and pitch with its yaw
+    zeroed, turned by the camera's rpy, and projected. Oceanus leaves out the horizon's
     `dip`, which reads as the camera pitched up by it.
     """
     imu = _core_rotation(
@@ -459,6 +464,17 @@ def test_a_hardware_version_is_written_where_a_replay_reads_it(run: Path) -> Non
     )
 
 
+def test_a_lighter_hull_raises_its_mounting_height(run: Path) -> None:
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    ship = Ownship(asset="cargo_ship", draught_m=5.24)
+    truth.info["scenario"]["ownship"] = ship.model_dump()
+    truth.write(run)
+    recording.export(run)
+    (settings,) = run.glob("recordings/port/*/user_settings.json")
+    height_m = json.loads(settings.read_text())["boat_setup"]["mounting_height"]
+    assert height_m == pytest.approx(51.8 + ship.rise_m)
+
+
 def test_a_re_export_leaves_only_what_it_wrote(run: Path) -> None:
     truth = Labels.model_validate_json((run / "labels.json").read_text())
     truth.info["scenario"]["rigs"]["port"]["hardware_version"] = "Oscar_V7_Gen_3_1"
@@ -469,3 +485,59 @@ def test_a_re_export_leaves_only_what_it_wrote(run: Path) -> None:
     written = recording.export(run)
     (into,) = run.glob("recordings/port/*")
     assert sorted(p for p in into.rglob("*") if p.is_file()) == sorted(written)
+
+
+def _cropped_for_hardware(run: Path) -> Path:
+    """The rig as a cropped video on a named hardware version: the branches a bare
+    camera leaves out of `serialized_parameters.json` and `module_info.json`.
+    """
+    video = Crop(kind="crop", camera="EO", left_px=40, right_px=40)
+    calibration = Calibration.read(run)
+    cropped = [
+        camera.model_copy(update={"name": "port_RGB"}).cropped(video)
+        for camera in calibration.cameras
+    ]
+    Calibration(cameras=cropped, raw=calibration.cameras).write(run)
+    truth = Labels.model_validate_json((run / "labels.json").read_text())
+    rig = truth.info["scenario"]["rigs"]["port"]
+    rig |= {
+        "videos": {"RGB": video.model_dump()},
+        "hardware_version": "Oscar_V7_Gen_3_1",
+    }
+    truth.write(run)
+    (run / "EO.mp4").rename(run / "port_RGB.mp4")
+    return run
+
+
+def _written(run: Path) -> dict[str, object]:
+    """Each table and setting, with JSON floats to 9 decimals: libm's last digits
+    differ across machines.
+    """
+    (into,) = {p.parent for p in recording.export(run) if p.suffix == ".csv"}
+    files = {}
+    for p in sorted(into.rglob("*")):
+        if p.suffix == ".csv":
+            files[p.relative_to(into).as_posix()] = p.read_text(newline="").split("\n")
+        elif p.suffix == ".json":
+            text = p.read_text()
+            files[p.relative_to(into).as_posix()] = json.loads(
+                text, parse_float=lambda f: round(float(f), 9) + 0.0
+            )
+    return files
+
+
+def test_a_recording_stays_as_written(tmp_path: Path) -> None:
+    """Every table and setting a fixed rig, and a cropped PTU rig, write, as the
+    text of `recording_golden.json`, so an int turned float shows. To change the
+    recording on purpose, delete the file and rerun.
+    """
+    written = {}
+    for key in ("fixed", "ptu"):
+        (tmp_path / key).mkdir()
+        run = make_run(tmp_path / key, CAMERA_YAW_DEG, ptu=key == "ptu")
+        written[key] = _written(_cropped_for_hardware(run) if key == "ptu" else run)
+    text = json.dumps(written, indent=1) + "\n"
+    if not GOLDEN.exists():
+        GOLDEN.write_text(text)
+        pytest.fail(f"wrote {GOLDEN.name}; rerun")
+    assert text == GOLDEN.read_text()

@@ -19,6 +19,9 @@ services:
       - cache:/root/.cache/seascape
       - ${SEASCAPE_RENDERS:-./renders}:/root/.cache/seascape/renders
     restart: unless-stopped
+    # Stopped, the server lets its running job end first. Judgement: an hour past
+    # SEASCAPE_MAX_RUN_S's default, which leaves out the zip after it.
+    stop_grace_period: 13h
     deploy:
       resources:
         reservations:

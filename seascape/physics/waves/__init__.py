@@ -43,6 +43,7 @@ from seascape.physics.waves.sea import (
     snap_error,
     spreading_delta,
     swell,
+    toward_rad,
     wind_sea,
 )
 from seascape.physics.waves.slopes import (
@@ -81,6 +82,7 @@ from seascape.physics.waves.surface import (
     gerstner_rest_m,
     heave_m,
     tallest,
+    yaw_rad,
 )
 from seascape.physics.waves.wind import (
     BEAUFORT_7_MPS,
@@ -151,6 +153,7 @@ __all__ = [
     "spreading_delta",
     "swell",
     "tallest",
+    "toward_rad",
     "turbulence_intensity",
     "twinkle_hz",
     "unresolved_slope_variances",
@@ -159,4 +162,5 @@ __all__ = [
     "whitecap_fraction",
     "wind_at_m",
     "wind_sea",
+    "yaw_rad",
 ]

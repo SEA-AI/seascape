@@ -46,5 +46,5 @@ uv run seascape montage scenarios/twin-pod.toml -o out/   # out/montage.png
 `seascape panorama` stitches each rig's frames, per band, from `calibration.json`:
 
 ```bash
-uv run seascape panorama out/ --projection rectilinear --frame rig --ruler
+uv run seascape panorama out/ --projection rectilinear --frame head --ruler
 ```

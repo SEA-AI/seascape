@@ -14,8 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  # No check reads an image. Lint formats the code in every Markdown file, skills
-  # included; the tests read the docs' Markdown but not the agents' skills.
+  # No check reads an image, or a file only Codecov, pre-commit or the image build
+  # reads. Lint formats the code in every Markdown file, skills included; the
+  # tests read the docs' Markdown but not the agents' skills.
   changes:
     name: Changes
     if: github.event_name == 'pull_request'
@@ -35,10 +36,22 @@ jobs:
               - '**'
               - '!**/*.jpg'
               - '!**/*.png'
+              - '!codecov.yml'
+              - '!.pre-commit-config.yaml'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!compose*.yaml'
+              - '!.github/workflows/image.yml'
             tests:
               - '**'
               - '!**/*.jpg'
               - '!**/*.png'
+              - '!codecov.yml'
+              - '!.pre-commit-config.yaml'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!compose*.yaml'
+              - '!.github/workflows/image.yml'
               - '!.claude/**'
 
   lint:
@@ -96,9 +109,51 @@ jobs:
           path: ~/.cache/seascape
           key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
 
-      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20
+      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20 --cov=seascape
+        env:
+          COVERAGE_FILE: .coverage.${{ strategy.job-index }}
 
-  # The one check a pull request requires, whatever the jobs above are called.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ strategy.job-index }}
+          path: .coverage.${{ strategy.job-index }}
+          include-hidden-files: true
+
+  coverage:
+    name: Coverage
+    needs: tests
+    if: ${{ !cancelled() && needs.tests.result != 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - if: needs.tests.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - if: needs.tests.result == 'success'
+        run: uvx coverage combine && uvx coverage xml
+
+      - uses: codecov/codecov-action@v7
+        # A fork's run gets no OIDC token, and the action fails asking for one.
+        continue-on-error: true
+        with:
+          use_oidc: true
+          # Codecov posts no status without an upload; an empty one passes it.
+          run_command: ${{ needs.tests.result == 'success' && 'upload-coverage' || 'empty-upload' }}
+          force: true
+
+  # The one check of this workflow a pull request requires, whatever the jobs above
+  # are called.
   checks:
     name: Checks
     if: always()

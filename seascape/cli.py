@@ -3,9 +3,14 @@
 import json
 import math
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, redirect_stdout
+from itertools import chain
 from pathlib import Path
 from typing import Any, get_args
 
@@ -15,10 +20,13 @@ from seascape import assets
 from seascape.assets import skies
 from seascape.config import Band, Scenario, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
+from seascape.outputs.calibration import FILENAME as CALIBRATION
+from seascape.outputs.calibration import Calibration, Frame
 
 _BANDS = click.Choice(get_args(Band.__value__))
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
 _FOLDER = click.Path(exists=True, file_okay=False, path_type=Path)
+_BLENDER_LOG = "blender.log"
 
 
 class _Seascape(click.Group):
@@ -104,9 +112,102 @@ def _render(built: Scenario, into: Path) -> list[Path]:
 
     with (
         _progress(built.images, "Rendering") as bar,
-        _blender_log(into / "blender.log"),
+        _blender_log(into / _BLENDER_LOG),
     ):
         return renderer.render(built, into, lambda: bar.update(1))
+
+
+def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> list[Band]:
+    """Run `commands` at once, each logging to its log; the bands that failed. The
+    first to fail stops the rest, and an error or Ctrl-C kills them.
+    """
+    # Limitation: a SIGTERM or SIGKILL to this process leaves them running; Linux's
+    # PR_SET_PDEATHSIG in each child would end them.
+    runs: dict[Band, subprocess.Popen[bytes]] = {}
+    failed: list[Band] = []
+    # A killed Blender leaves its temporary files, the foam memory's frames among them;
+    # this folder is deleted when the bands end.
+    with tempfile.TemporaryDirectory(prefix="seascape-bands-") as tmp:
+        try:
+            for band, command in commands.items():
+                with logs[band].open("w") as log:
+                    runs[band] = subprocess.Popen(
+                        command,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        env={**os.environ, "TMPDIR": tmp},
+                    )
+            pending = dict(runs)
+            while pending and not failed:
+                done = {b: run for b, run in pending.items() if run.poll() is not None}
+                failed = [b for b, run in done.items() if run.returncode != 0]
+                for band in done:
+                    del pending[band]
+                if pending and not done:
+                    time.sleep(1)
+        finally:
+            for run in runs.values():
+                if run.poll() is None:
+                    run.kill()
+                    run.wait()
+    return failed
+
+
+def _render_apart(
+    scenario: Path, overrides: tuple[str, ...], built: Scenario, into: Path
+) -> None:
+    """Render each band in a `seascape render` of its own, all at once, then gather
+    their frames and truth in `into` as one render writes them. A scene with one band
+    renders here.
+
+    One render leaves the GPU idle while Cycles readies the scene and seascape labels
+    a frame; another band's render fills that time.
+    """
+    bands = [band for band in built.outputs.bands if built.band_mounts(band)]
+    if len(bands) < 2:
+        _render(built, into)
+        return
+    into.mkdir(parents=True, exist_ok=True)
+    parts = {band: into / f".{band}" for band in bands}
+    logs = {band: into / f".{band}.log" for band in bands}
+    commands: dict[Band, list[str]] = {}
+    for band, part in parts.items():
+        command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
+        for override in overrides:
+            command += ["--set", override]
+        commands[band] = [
+            *command,
+            "--set",
+            f'outputs.bands = ["{band}"]',
+            "-o",
+            str(part),
+        ]
+    shown = ", ".join(map(str, logs.values()))
+    click.echo(f"Rendering {', '.join(bands)} at once; see {shown}", err=True)
+    if failed := _run_at_once(commands, logs):
+        raise click.ClickException(
+            f"rendering {', '.join(failed)} failed: see "
+            f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
+        )
+    # One render loops band by band, so the parts join in `bands` order.
+    truth = labels.concat({b: labels.Labels.read(part) for b, part in parts.items()})
+    # Each part's scenario renders one band; the truth records the whole scene's.
+    truth.info["scenario"] = built.model_dump(mode="json")
+    calibrations = [Calibration.read(part) for part in parts.values()]
+    Calibration(
+        cameras=list(chain.from_iterable(c.cameras for c in calibrations)),
+        raw=list(chain.from_iterable(c.raw for c in calibrations)),
+    ).write(into)
+    truth.write(into)
+    with (into / _BLENDER_LOG).open("ab") as joined:
+        for band, part in parts.items():
+            with (part / _BLENDER_LOG).open("rb") as log:
+                shutil.copyfileobj(log, joined)
+            for item in part.iterdir():
+                if item.name not in {labels.FILENAME, CALIBRATION, _BLENDER_LOG}:
+                    item.rename(into / item.name)
+            shutil.rmtree(part)
+            logs[band].unlink()
 
 
 _QUALITY = "perc_lossless"
@@ -117,7 +218,7 @@ def _encode(folder: Path, quality: str) -> list[Path]:
 
     with (
         _progress(len(encoder.cameras(folder)), "Encoding") as bar,
-        _blender_log(folder / "blender.log"),
+        _blender_log(folder / _BLENDER_LOG),
     ):
         return encoder.encode(folder, quality.upper(), lambda: bar.update(1))
 
@@ -150,7 +251,7 @@ def build(
         bpy.ops.wm.save_as_mainfile(filepath=str(path.resolve()), relative_remap=False)
     mounts = built.mounts
     bands = ", ".join(sorted({mount.camera.band for mount in mounts}))
-    heights = ", ".join(f"{rig.height_m} m" for rig in built.rigs.values())
+    heights = ", ".join(f"{built.head_height_m(name)} m" for name in built.rigs)
     click.echo(f"{path}: {band}, {len(mounts)} cameras ({bands}) at {heights}")
 
 
@@ -180,7 +281,7 @@ def render(
         written, folders = [], []
         with (
             _progress(variants, "Rendering") as bar,
-            _blender_log(into / "blender.log"),
+            _blender_log(into / _BLENDER_LOG),
         ):
             tries = seeds(built.seed, variants)
             for seed in tries:
@@ -221,18 +322,27 @@ def render(
     help="Draw the course on one image, <scenario>-course.png in the directory, and "
     "render nothing.",
 )
+@click.option(
+    "--parallel",
+    is_flag=True,
+    help="Render each band in its own process at once. Faster when one band leaves "
+    "the GPU idle; needs one render's memory per band.",
+)
 def sync(
     scenario: Path,
     output: Path | None,
     overrides: tuple[str, ...],
     preview: bool,
     sheet: bool,
+    parallel: bool,
 ) -> None:
     """Render, encode and record a sync scenario, preview it, or draw its course."""
     from seascape.sync import preview as checks
 
     if sheet and preview:
         raise click.UsageError("--sheet and --preview are exclusive")
+    if parallel and (sheet or preview):
+        raise click.UsageError("--parallel takes neither --sheet nor --preview")
     if sheet:
         from seascape.sync.sheet import draw
 
@@ -247,7 +357,10 @@ def sync(
     if not preview:
         built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
-        _render(built, into)
+        if parallel:
+            _render_apart(scenario, overrides, built, into)
+        else:
+            _render(built, into)
         _encode(into, _QUALITY)
         for path in recording.export(into):
             click.echo(path)
@@ -299,15 +412,16 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
 )
 @click.option(
     "--frame",
+    type=click.Choice(get_args(Frame.__value__)),
     default="world",
     show_default=True,
     help="An extrinsics frame in calibration.json, which sets what is level: world "
-    "the horizon, vessel the deck, rig the product.",
+    "the horizon, ownship the hull, head the rig's head, panned and tilted.",
 )
 @click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
 @click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
 def panorama_(
-    folder: Path, projection: str, frame: str, max_width: int | None, ruler: bool
+    folder: Path, projection: str, frame: Frame, max_width: int | None, ruler: bool
 ) -> None:
     """Stitch each rig's frames, from calibration.json."""
     for path in panorama.panoramas(folder, projection, frame, max_width, ruler):
@@ -562,7 +676,7 @@ def zones(
     into = output or Path("zones") / asset
     if not contact:
         _empty(into)
-    with _blender_log(into / "blender.log"):
+    with _blender_log(into / _BLENDER_LOG):
         if contact:
             written = [sheets.contact(asset, into / "zones.png")]
         else:

@@ -5,7 +5,7 @@ Imports no Blender, so a consumer reads it without the bpy wheel.
 
 import math
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import numpy as np
 from pydantic import ConfigDict, Field
@@ -21,6 +21,7 @@ type Row3 = tuple[float, float, float]
 type Row4 = tuple[float, float, float, float]
 type Matrix3 = tuple[Row3, Row3, Row3]
 type Matrix4 = tuple[Row4, Row4, Row4, Row4]
+type Frame = Literal["world", "ownship", "head"]
 
 
 def intrinsics(camera: Camera) -> Matrix3:
@@ -36,6 +37,11 @@ def write_json(model: Model, path: Path) -> Path:
     with atomic.replacing(path) as partial:
         partial.write_text(model.model_dump_json(indent=2) + "\n")
     return path
+
+
+def matrix4(m: np.ndarray) -> Matrix4:
+    """A (4, 4) array as the rows a calibration stores."""
+    return cast(Matrix4, tuple(map(tuple, m.tolist())))
 
 
 class _Record(Model):
@@ -70,8 +76,8 @@ class CameraCalibration(_Record):
         min_length=1,
         description=(
             "camera to each named frame: world (+X east, +Y north, +Z up, at sea "
-            "level), vessel (+X starboard, +Y bow, +Z up, moving with "
-            "the hull) and rig (the product, +Y along its axis)"
+            "level under the ownship's start), ownship (+X starboard, +Y bow, +Z up, "
+            "moving with the hull) and head (+Y along its axis, panned and tilted)"
         ),
     )
 
@@ -88,10 +94,10 @@ class CameraCalibration(_Record):
 
     @classmethod
     def planned(cls, name: str, camera: Camera, rig: str) -> "CameraCalibration":
-        """`camera` as a render of rig `rig` calibrates it, in that rig's frame
+        """`camera` as a render of rig `rig` calibrates it, in that rig's head's frame
         only: what a video's footprint needs before anything is built.
         """
-        pose = cast(Matrix4, tuple(map(tuple, camera.pose().tolist())))
+        T_head_camera = matrix4(camera.pose())
         return cls(
             name=name,
             band=camera.band,
@@ -101,7 +107,7 @@ class CameraCalibration(_Record):
             height_px=camera.height_px,
             K=intrinsics(camera),
             distortion=camera.lens.fisheye,
-            extrinsics={"rig": pose},
+            extrinsics={"head": T_head_camera},
         )
 
     def cropped(self, crop: Crop) -> "CameraCalibration":

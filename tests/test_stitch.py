@@ -10,7 +10,7 @@ from seascape.config import Camera
 from seascape.outputs import stitch
 from seascape.outputs.calibration import CameraCalibration
 
-# Core-Backend's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
+# Oceanus's cameras take -fx and -fy: OpenCV's frame half a turn about the axis.
 HALF_TURN = np.diag([-1.0, -1.0, 1.0])
 
 
@@ -28,12 +28,12 @@ def camera(
         width_px=640,
         height_px=512,
         K=((fx, 0.0, cx), (0.0, fy, cy), (0.0, 0.0, 1.0)),
-        extrinsics={"rig": tuple(map(tuple, pose)), "world": tuple(map(tuple, pose))},
+        extrinsics={"head": tuple(map(tuple, pose)), "world": tuple(map(tuple, pose))},
     )
 
 
 def core(rpy_deg: tuple[float, float, float]) -> np.ndarray:
-    """A camera's turn from Core-Backend's roll, pitch and yaw, Ry Rx Rz."""
+    """A camera's turn from Oceanus's roll, pitch and yaw, Ry Rx Rz."""
     roll, pitch, yaw = map(math.radians, rpy_deg)
     c, s = math.cos, math.sin
     rx = np.array([[1, 0, 0], [0, c(pitch), -s(pitch)], [0, s(pitch), c(pitch)]])
@@ -82,7 +82,7 @@ def test_a_stitch_puts_each_ray_where_the_fused_camera_sees_it() -> None:
         """Each pixel's bearing in the rig, degrees to starboard."""
         v, u = np.mgrid[: c.height_px, : c.width_px]
         rays = np.stack([u, v, np.ones_like(u)], axis=-1) @ np.linalg.inv(c.K).T
-        x, y, _ = np.moveaxis(rays @ np.array(c.extrinsics["rig"])[:3, :3].T, -1, 0)
+        x, y, _ = np.moveaxis(rays @ np.array(c.extrinsics["head"])[:3, :3].T, -1, 0)
         return np.degrees(np.arctan2(x, y))
 
     def counts(c: CameraCalibration) -> np.ndarray:

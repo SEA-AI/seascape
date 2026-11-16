@@ -24,7 +24,7 @@ LIT = (255, 200, 60)
 
 
 def _apart_deg(a: Mount, b: Mount) -> float:
-    return abs(wrapped_deg(a.nominal_bearing_deg - b.nominal_bearing_deg))
+    return abs(wrapped_deg(a.nominal_azimuth_deg - b.nominal_azimuth_deg))
 
 
 def _fan(
@@ -37,7 +37,7 @@ def _fan(
     for mount, fill in [*((m, SHADE) for m in others), (lit, LIT)]:
         half = mount.camera.hfov_deg / 2
         # Pillow turns clockwise from 3 o'clock, so the bow sits at -90.
-        start = mount.nominal_bearing_deg - half - 90.0
+        start = mount.nominal_azimuth_deg - half - 90.0
         draw.pieslice(box, start, start + 2 * half, fill=fill)
 
 
@@ -54,7 +54,7 @@ def _tile(
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
     _fan(draw, GUTTER + FAN_R, middle, mounts, mount)
-    bearing = wrapped_deg(mount.nominal_bearing_deg)
+    bearing = wrapped_deg(mount.nominal_azimuth_deg)
     caption = f"{mount.name}  {bearing:+.0f}°  {mount.camera.hfov_deg:.0f}° wide"
     text_px = draw.textlength(caption, font=typeface)
     x = max((tile.width - text_px) / 2, 2 * (GUTTER + FAN_R))
@@ -91,10 +91,10 @@ def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
         else:
             laid.append([mount])
 
-    cut_deg = _cut_deg([column[0].nominal_bearing_deg for column in laid])
+    cut_deg = _cut_deg([column[0].nominal_azimuth_deg for column in laid])
 
     def rightward(mount: Mount) -> float:
-        return (mount.nominal_bearing_deg - cut_deg) % 360.0
+        return (mount.nominal_azimuth_deg - cut_deg) % 360.0
 
     laid.sort(key=lambda column: rightward(column[0]))
     return [sorted(column, key=rightward) for column in laid]

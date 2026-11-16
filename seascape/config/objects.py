@@ -84,11 +84,12 @@ _DRAUGHT = (
 )
 _RANGE = "Horizontal, from the ownship's origin at t = 0."
 _SPEED = "Along its heading."
-_DRIFT = "A figure-eight about its pose."
+_FISHTAIL = "A figure-eight about its pose."
 
 
-class Drift(Model):
-    """A hull at single anchor fishtails: across its heading once a period, along it
+class Fishtail(Model):
+    """A hull at single anchor fishtails (UFC 4-159-03, "fishtailing"): across its
+    heading once a period, along it
     twice. Starts at its pose; the heading holds.
     """
 
@@ -115,7 +116,9 @@ class Object(Model):
 
     asset: VesselName = Field(description=_ASSET)
     range_m: float = Field(gt=0.0, description=_RANGE)
-    bearing_deg: float = Field(description="Clockwise from the ownship's bow.")
+    bearing_deg: float = Field(
+        description="Clockwise from world +Y, the ownship's bow at the start."
+    )
     heading_deg: float = Field(
         default=0.0, description="Where its bow points, clockwise."
     )
@@ -125,7 +128,7 @@ class Object(Model):
         "from the ownship to it at t = 0, where 0 points away and 180 towards.",
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
-    drift: Drift | None = Field(default=None, description=_DRIFT)
+    fishtail: Fishtail | None = Field(default=None, description=_FISHTAIL)
     orbit: Orbit | None = Field(default=None, description="Round the ownship.")
     t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
@@ -151,7 +154,7 @@ class Object(Model):
     )
 
     @property
-    def course_deg(self) -> float:
+    def heading_from_bow_deg(self) -> float:
         """`heading_deg` from the ownship's bow, whatever it was given from."""
         if self.heading_from == "line_of_sight":
             return self.bearing_deg + self.heading_deg
@@ -189,7 +192,7 @@ class Object(Model):
 
     @model_validator(mode="after")
     def _an_orbit_steers(self) -> "Object":
-        steered = {"heading_deg", "heading_from", "speed_mps", "drift"}
+        steered = {"heading_deg", "heading_from", "speed_mps", "fishtail"}
         steered &= self.model_fields_set
         if self.orbit is not None and steered:
             raise ValueError(
@@ -208,7 +211,10 @@ class Swing(Model):
 class Move(Model):
     """Turn to `to_deg` from where the last move left off, then hold."""
 
-    to_deg: float = Field(description="Clockwise from the bow at t = 0.")
+    to_deg: float = Field(
+        description="Clockwise: the ownship's turn from its start heading, its yaw "
+        "swing aside, or a ptu's pan from its base."
+    )
     rate_deg_s: float | None = Field(
         default=None,
         gt=0.0,
@@ -221,8 +227,8 @@ class Move(Model):
 
 
 class Turn(Model):
-    """A scripted turn of the ownship or a rig's ptu, from the bow at t = 0. Each
-    move ramps up to its rate and down to rest at the acceleration.
+    """A scripted turn of the ownship from its start heading, or of a rig's ptu from
+    its base. Each move ramps up to its rate and down to rest at the acceleration.
     """
 
     ptu: Name | None = Field(
@@ -321,8 +327,9 @@ def _check_draught(asset: str | None, draught_m: float | None) -> None:
 
 
 class Ownship(Model):
-    """The vessel the rig is bolted to, rolling and pitching about its origin at the
-    waterline. Without an asset it is the motion alone; a hull also rides the sea.
+    """The vessel the rigs are bolted to, rolling and pitching about its floating
+    waterline, which `draught_m` sets below its origin. Without an asset it is the
+    motion alone; a hull also rides the sea.
 
     It sails from the origin along its heading; the sea and sky stay put, and every
     bearing in a scenario is from its bow at t = 0.
@@ -369,8 +376,8 @@ class Targets(Model):
     count: int = Field(gt=0, description="How many.")
     range_m: float = Field(gt=0.0, description=_RANGE)
     bearing_deg: tuple[float, float] = Field(
-        description="First and last, clockwise from the ownship's bow. Both ends get "
-        "a target."
+        description="First and last, clockwise from world +Y, the ownship's bow at "
+        "the start. Both ends get a target."
     )
     # Spread so aspect varies between targets.
     heading_deg: tuple[float, float] = Field(
@@ -378,7 +385,7 @@ class Targets(Model):
         description="First and last, spread evenly, clockwise from the ownship's bow.",
     )
     speed_mps: float = Field(default=0.0, ge=0.0, description=_SPEED)
-    drift: Drift | None = Field(default=None, description=_DRIFT)
+    fishtail: Fishtail | None = Field(default=None, description=_FISHTAIL)
     t_k: HullTemperatureK = None
     engine_off_min: float = Field(default=0.0, ge=0.0, description=_ENGINE_OFF)
     paint_absorptance: PaintAbsorptance = None
@@ -403,7 +410,8 @@ class Farm(Model):
     asset: TurbineName = Field(description=f"{_ASSET} A turbine.")
     range_m: float = Field(gt=0.0, description="To the first turbine of the first row.")
     bearing_deg: float = Field(
-        description="Of the first turbine, clockwise from the ownship's bow."
+        description="Of the first turbine, clockwise from world +Y, the ownship's bow "
+        "at the start."
     )
     rows: int = Field(default=1, gt=0, description="How many rows.")
     columns: int = Field(default=1, gt=0, description="Turbines in a row.")
@@ -414,8 +422,8 @@ class Farm(Model):
     )
     row_bearing_deg: float = Field(
         default=0.0,
-        description="Where a row runs from its first turbine, clockwise from the "
-        "ownship's bow.",
+        description="Where a row runs from its first turbine, clockwise from world "
+        "+Y, the ownship's bow at the start.",
     )
     staggered: bool = Field(
         default=False, description="Every other row shifted half a spacing along."
@@ -438,24 +446,14 @@ class Farm(Model):
     def positions(self) -> list[tuple[float, float]]:
         """Range and bearing, row by row."""
         along_m, across_m = (d * self.turbine.rotor.diameter_m for d in self.spacing_d)
-        bearing = math.radians(self.bearing_deg)
-        row = math.radians(self.row_bearing_deg)
+        first = self.range_m * angles.direction(self.bearing_deg, 0.0)[:2]
+        # Columns: a row's starboard and ahead, in (east, north).
+        row = angles.turned(self.row_bearing_deg, 0.0)[:2, :2]
         placed = []
         for r in range(self.rows):
             shift = 0.5 if self.staggered and r % 2 else 0.0
             for c in range(self.columns):
-                ahead_m = along_m * (c + shift)
-                # Starboard of a row's bearing is (cos, -sin).
-                east = (
-                    self.range_m * math.sin(bearing)
-                    + ahead_m * math.sin(row)
-                    + r * across_m * math.cos(row)
-                )
-                north = (
-                    self.range_m * math.cos(bearing)
-                    + ahead_m * math.cos(row)
-                    - r * across_m * math.sin(row)
-                )
+                east, north = first + row @ (r * across_m, along_m * (c + shift))
                 placed.append(
                     (math.hypot(east, north), angles.bearing_deg(east, north))
                 )

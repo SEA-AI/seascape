@@ -33,8 +33,8 @@ def test_a_pixel_off_the_axis_looks_that_far_off_it() -> None:
     fx, theta = 1900.0, math.radians(40.0)
     x = fisheye.radius_px(np.array([0.0, theta]), K, fx)
     ray = fisheye.direction(x, np.zeros(2), K, fx)
-    assert ray[0] == pytest.approx((0.0, 0.0, -1.0))
-    assert ray[1] == pytest.approx((math.sin(theta), 0.0, -math.cos(theta)))
+    assert ray[0] == pytest.approx((0.0, 0.0, 1.0))
+    assert ray[1] == pytest.approx((math.sin(theta), 0.0, math.cos(theta)))
 
 
 @pytest.mark.parametrize("size", [(3840, 2160), (3600, 1080), (640, 360)])

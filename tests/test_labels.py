@@ -539,6 +539,35 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
     }
 
 
+def test_parts_rendered_into_one_folder_number_on_as_one_render() -> None:
+    """What `--parallel` gathers: a band per part, each numbered from 1."""
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    eo, ir = (
+        added(index, [target(1, *category)]) for category in (("ship", 1), ("buoy", 6))
+    )
+    eo.info = {"version": "x"}
+
+    joined = labels.concat({".eo": eo, ".ir": ir})
+
+    assert [(i.id, i.file_name) for i in joined.images] == [(1, "C.png"), (2, "C.png")]
+    assert [(a.id, a.image_id, a.category_id) for a in joined.annotations] == [
+        (1, 1, 1),
+        (2, 2, 6),
+    ]
+    assert [c.id for c in joined.categories] == [1, 6]
+    assert joined.info == {"version": "x"}
+
+
+def test_a_concat_refuses_two_names_for_one_category_naming_the_part() -> None:
+    index = np.zeros((48, 64), dtype=int)
+    index[10, 10] = 1
+    ship, buoy = (added(index, [target(1, name, 1)]) for name in ("ship", "buoy"))
+
+    with pytest.raises(ValueError, match=r"\.ir: category 1 is ship"):
+        labels.concat({".eo": ship, ".ir": buoy})
+
+
 def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
@@ -546,7 +575,7 @@ def test_a_merge_refuses_two_names_for_one_category(tmp_path) -> None:
     for truth in parts.values():
         truth.info = {"scenario": {}}
 
-    with pytest.raises(ValueError, match="category 1 is ship"):
+    with pytest.raises(ValueError, match="buoy: category 1 is ship"):
         labels.merge(tmp_path, written(tmp_path, parts))
 
 
@@ -596,6 +625,36 @@ def test_only_a_target_in_its_backgrounds_noise_is_faint(
     found = labels.faint(index, noisy(index, offset), [target(1)])
 
     assert ("t1" in found) is faint
+
+
+def test_the_targets_present_are_those_with_a_pixel_in_the_frame() -> None:
+    index = np.zeros((8, 8), dtype=int)
+    index[2, 2] = 3
+    index[5, 5] = 1
+
+    found = labels.present(index, [target(1), target(2), target(3)])
+
+    assert found == {"t1", "t3"}
+
+
+def test_each_target_in_a_frame_is_judged_as_if_alone() -> None:
+    """Targets out of raster order: one bright, one faint, one off the frame and
+    one faint pixel.
+    """
+    index = np.zeros((48, 160), dtype=int)
+    index[30:38, 20:30] = 1
+    index[8:16, 110:120] = 2
+    index[24, 70] = 4
+    frame = eight_bit(index, {1: 250, 2: 121, 4: 121})
+    targets = [target(1), target(2), target(3), target(4)]
+
+    together = labels.faint(index, frame, targets)
+
+    alone = {}
+    for each in targets:
+        alone |= labels.faint(index, frame, [each])
+    assert together.keys() == {"t2", "t4"}
+    assert together == alone
 
 
 def test_a_faint_target_is_dropped_with_its_excess_and_box() -> None:

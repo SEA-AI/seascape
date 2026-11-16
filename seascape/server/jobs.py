@@ -1,7 +1,8 @@
 """Jobs: what a render may ask for, how they queue, and how one runs.
 
 A job runs the CLI in a process of its own, so Blender's crashes and leaks end with
-it. Its files are deleted after `KEEP_S`.
+it. Its files are deleted after `KEEP_S`. Each job keeps its state in a record beside
+its files, so a restarted server still answers for it, and runs it if it was queued.
 """
 
 import asyncio
@@ -19,6 +20,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
+import tomli_w
 from mcp.server.mcpserver.exceptions import ToolError
 from PIL import Image as Picture
 
@@ -31,7 +33,7 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.model import ScenarioWarning
+from seascape.model import Model, ScenarioWarning
 from seascape.outputs import montage, preview, provenance
 from seascape.server.settings import Settings
 
@@ -106,6 +108,37 @@ class Job:
         return min(written, self.total)
 
     @property
+    def record(self) -> Path:
+        """The job's state, for the next server; `_expire` deletes it with the job's
+        files.
+        """
+        return self.folder.with_suffix(".json")
+
+    @property
+    def source(self) -> Path:
+        """The scenario as `pin` wrote it, which the job renders."""
+        return self.folder.with_suffix(".toml")
+
+    def pin(self, tree: dict[str, Any]) -> None:
+        """Write the `resolve`d scenario `_checked` passed to `source`: an update that
+        changes the files cannot change the job.
+        """
+        self.source.write_text(tomli_w.dumps(tree))
+
+    def save(self) -> None:
+        """Write the job's state to `record`, whole: a crash leaves the old one."""
+        part = self.folder.with_suffix(".part")
+        record = Record.model_validate(self, from_attributes=True)
+        # Unset: a scenario refuses a default set beside what overrules it.
+        part.write_text(record.model_dump_json(exclude_unset=True))
+        part.replace(self.record)
+
+    @property
+    def started(self) -> bool:
+        """Whether the job is running or finishing."""
+        return self.state in ("running", "finishing")
+
+    @property
     def waiting(self) -> bool:
         """Whether the job is queued or running."""
         return self.state in ("queued", "running")
@@ -116,14 +149,30 @@ class Job:
         return self.waiting or self.state == "finishing"
 
 
+class Record(Model):
+    """A job as a restarted server reads it back: `Job` without its folder and task."""
+
+    scenario: str
+    scenes: list[Scenario]
+    created_s: float
+    started_s: float | None
+    state: JobState
+    error: str | None
+    worst_bytes: float
+    overrides: list[str]
+
+
 @dataclass
 class State:
-    """What the tools share; jobs take turns on `gpu`."""
+    """What the tools share; jobs take turns on `gpu`. A `draining` server starts no
+    job: it is about to exit, and the next one runs what is queued.
+    """
 
     settings: Settings
     renders: Path = assets.CACHE / "renders"
     jobs: dict[str, Job] = field(default_factory=dict)
     gpu: asyncio.Lock = field(default_factory=asyncio.Lock)
+    draining: bool = False
     loading: asyncio.Semaphore = field(
         default_factory=partial(asyncio.Semaphore, LOADING)
     )
@@ -147,21 +196,22 @@ def _bytes(scene: Scenario) -> float:
 
 def _tried(
     path: Path, lines: list[str], variants: int, settings: Settings
-) -> tuple[list[Scenario], float, list[str]]:
+) -> tuple[list[Scenario], float, list[str], dict[str, Any]]:
     """`_checked`, and what the scenario warned of while loading, so the client hears
     of what it ignored. Other threads' warnings inside the window are swallowed.
     """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        scenes, worst_bytes = _checked(path, lines, variants, settings)
+        scenes, worst_bytes, tree = _checked(path, lines, variants, settings)
     heard = (str(w.message) for w in caught if issubclass(w.category, ScenarioWarning))
-    return scenes, worst_bytes, list(dict.fromkeys(heard))
+    return scenes, worst_bytes, list(dict.fromkeys(heard)), tree
 
 
 def _checked(
     path: Path, lines: list[str], variants: int, settings: Settings
-) -> tuple[list[Scenario], float]:
-    """The first scenes, and the most bytes the seeds `render` may try can write.
+) -> tuple[list[Scenario], float, dict[str, Any]]:
+    """The first scenes, the most bytes the seeds `render` may try can write, and the
+    `resolve`d tree they were drawn from.
     Refuses any of those seeds past a clip, sample or camera limit, and the largest
     of them past the image limit.
 
@@ -199,7 +249,7 @@ def _checked(
         sizes.append(_bytes(scene))
     if (most := sum(heapq.nlargest(variants, images))) > settings.max_images:
         raise ToolError(f"{most} images; a job writes at most {settings.max_images}")
-    return scenes, sum(heapq.nlargest(variants, sizes))
+    return scenes, sum(heapq.nlargest(variants, sizes)), tree
 
 
 def _expire(state: State) -> list[str]:
@@ -255,7 +305,7 @@ async def sweep(state: State) -> None:
 
 async def load(
     state: State, path: Path, lines: list[str], variants: int
-) -> tuple[list[Scenario], float, list[str]]:
+) -> tuple[list[Scenario], float, list[str], dict[str, Any]]:
     """`_tried` in a thread under a `state.loading` slot, held until the thread ends."""
     async with state.loading:
         return await asyncio.to_thread(_tried, path, lines, variants, state.settings)
@@ -301,26 +351,30 @@ async def _seascape(*args: str) -> None:
         )
 
 
-async def run(
-    state: State, job: Job, path: Path, overrides: list[str], variants: int
-) -> None:
-    """Take the GPU in turn, render and encode the job, then zip it, with its sheets."""
-    sets = [arg for line in overrides for arg in ("--set", line)]
+async def run(state: State, job: Job) -> None:
+    """Take the GPU in turn, render the job's `source` and encode it, then zip it,
+    with its sheets.
+    """
+    variants = len(job.scenes)
     max_run_s = state.settings.max_run_s
     limit: asyncio.Timeout | None = None
     try:
         async with state.gpu:
+            if state.draining:
+                return  # still queued, for the next server
             job.state, job.started_s = "running", time.time()
+            # Killed from here on, the next server reads the job back as cut off.
+            job.save()
             # Made after the GPU wait, which the deadline must not count. Past it, the
             # awaited process is killed as on `cancel`.
             limit = asyncio.timeout(max_run_s)
             async with limit:
                 await _seascape(
-                    "render", str(path), "-o", str(job.folder), "--variants",
-                    str(variants), *sets,
+                    "render", str(job.source), "-o", str(job.folder), "--variants",
+                    str(variants),
                 )  # fmt: skip
                 if variants > 1:
-                    job.scenes = await asyncio.to_thread(_written, job, path, overrides)
+                    job.scenes = await asyncio.to_thread(_written, job)
                 for scene, folder in zip(job.scenes, job.folders, strict=True):
                     if scene.outputs.frames > 1:
                         await _seascape("video", str(folder))
@@ -336,11 +390,36 @@ async def run(
     except Exception as error:  # whatever it was, the client polling is told
         log.exception("job %s failed", job.folder.name)
         job.state, job.error = "failed", f"{type(error).__name__}: {error}"
+    finally:
+        job.save()
 
 
-def _written(job: Job, path: Path, overrides: list[str]) -> list[Scenario]:
+def resume(state: State) -> None:
+    """Read back the jobs the last server left in `state.renders`: run each one
+    still queued, under the limits it was accepted with, and fail each one it was
+    running. Call it on the event loop: it starts their tasks.
+    """
+    records = []
+    for path in state.renders.glob("*.json"):
+        try:
+            records.append((path, Record.model_validate_json(path.read_bytes())))
+        # pydantic's ValidationError is a ValueError: a record of another version.
+        except (OSError, ValueError):
+            log.exception("cannot read the job record %s", path.name)
+    # In the order they queued, which `get_job` counts the jobs ahead by.
+    for path, record in sorted(records, key=lambda found: found[1].created_s):
+        job = Job(path.with_suffix(""), **dict(record))
+        state.jobs[job.folder.name] = job
+        if job.state == "queued":
+            job.task = asyncio.create_task(run(state, job))
+        elif job.started:
+            job.state, job.error = "failed", "the server restarted while it ran"
+            job.save()
+
+
+def _written(job: Job) -> list[Scenario]:
     """The scenario of each variant `render` wrote, by the seed its folder names."""
-    tree = resolve(path, overrides, files=False)
+    tree = resolve(job.source)
     return [instantiate(tree, int(f.name)) for f in job.folders]
 
 

@@ -8,9 +8,9 @@ from typing import NamedTuple
 import numpy as np
 
 from seascape import angles
-from seascape.config import Drift, Outputs, Ownship, Scenario, Turn
+from seascape.config import Fishtail, Outputs, Ownship, Scenario, Turn
 from seascape.config.objects import Swing
-from seascape.physics import ptu, slew, waves
+from seascape.physics import earth, ptu, slew, waves
 
 # Judgement: trapezoid steps per yaw period; the error falls with the square.
 STEPS_PER_YAW = 64
@@ -39,9 +39,8 @@ class Pose(NamedTuple):
 
 
 type Path = Callable[[float], Pose]
-# (3, 3): the deck's starboard, bow and up axes in the world's, as columns, at a time,
-# its heading aside.
-type Deck = Callable[[float], np.ndarray]
+# (3, 3) `R_level_ownship` at a time: the hull's tilt, its heading aside.
+type Tilt = Callable[[float], np.ndarray]
 
 
 def sine(mean: float, amplitude: float, period_s: float) -> Callable[[float], float]:
@@ -107,7 +106,7 @@ def turned_deg(turn: Turn) -> Callable[[float], float]:
 
 
 def panned_deg(turn: Turn | None, rig: str) -> Callable[[float], float]:
-    """The pan of the rig named `rig` at a time, clockwise from its yaw: the turn's
+    """The pan of the rig named `rig` at a time, clockwise from its base: the turn's
     when it turns that rig's ptu, else none.
     """
     if turn is None or not turn.pans(rig):
@@ -159,52 +158,60 @@ def track(ownship: Ownship, outputs: Outputs, turn: Turn | None = None) -> Path:
     return at
 
 
-def axis_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
-    """The axis of the rig `name` at a time, clockwise from the bow: its yaw and its
-    pan.
+def azimuth_deg(scenario: Scenario, name: str) -> Callable[[float], float]:
+    """The azimuth of the head of rig `name` at a time, clockwise from the bow: its
+    base's yaw and its pan.
     """
     rig, panned = scenario.rigs[name], panned_deg(scenario.turn, name)
-    return lambda t_s: rig.axis_deg(panned(t_s))
+    return lambda t_s: rig.azimuth_deg(panned(t_s))
 
 
-def rig_track(scenario: Scenario, name: str) -> Path:
-    """Where the rig `name` is at a time, east and north of the ownship's origin,
-    and its axis: the ownship's heading, the rig's yaw and its pan.
+def head_path(scenario: Scenario, name: str) -> Path:
+    """Where the head of rig `name` is at a time, in world east and north, and the
+    bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
+
+    Limitation: leaves out the sea's rocking, its yaw included, and a ptu's tilt;
+    staging and the sheet still aim the course along the base's yaw on a level hull.
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
-    axis = axis_deg(scenario, name)
+    waterline = waterline_pose(path, at_sea_level)
+    T_waterline_ownship = lifted(scenario.ownship.rise_m)
+    pan = panned_deg(scenario.turn, name)
 
     def at(t_s: float) -> Pose:
-        pose = path(t_s)
-        h, x, y = pose.heading_rad, rig.offset_x_m, rig.offset_y_m
+        T_world_head = waterline(t_s) @ T_waterline_ownship @ rig.pose(pan(t_s))
+        east, north, _ = T_world_head[:3, 1]
         return Pose(
-            pose.east_m + x * math.cos(h) + y * math.sin(h),
-            pose.north_m - x * math.sin(h) + y * math.cos(h),
-            h + math.radians(axis(t_s)),
+            float(T_world_head[0, 3]),
+            float(T_world_head[1, 3]),
+            math.radians(angles.bearing_deg(east, north)),
         )
 
     return at
 
 
-def drifting(
+def target_path(
     range_m: float,
     bearing_deg: float,
     heading_deg: float,
     speed_mps: float,
-    drift: Drift | None,
+    fishtail: Fishtail | None,
     outputs: Outputs,
 ) -> Path:
     """From `range_m` out along `bearing_deg` at t = 0, under way along its heading
-    and drifting about that pose: a sway across it, and a surge along it at twice the
-    rate.
+    and fishtailing about that pose: a sway across it, and a surge along it at twice the
+    rate. Bearings are from the ownship's bow at the start.
     """
-    bearing, heading = math.radians(bearing_deg), math.radians(heading_deg)
+    start = range_m * angles.direction(bearing_deg, 0.0)[:2]
+    # Columns: the hull's starboard and bow, in (east, north).
+    R_world_target = angles.turned(heading_deg, 0.0)[:2, :2]
+    heading = math.radians(heading_deg)
     sway_m = surge_m = 0.0
     period_s = 1.0
-    if drift is not None:
-        sway_m, surge_m = drift.sway_m, drift.surge_m
-        period_s = outputs.period_s(drift.period_s)
+    if fishtail is not None:
+        sway_m, surge_m = fishtail.sway_m, fishtail.surge_m
+        period_s = outputs.period_s(fishtail.period_s)
     sway = sine(0.0, sway_m, period_s)
     surge = sine(0.0, surge_m, period_s / 2.0)
     rate = 2.0 * math.pi / period_s
@@ -214,14 +221,10 @@ def drifting(
         along, across = speed_mps * t_s + surge(t_s), sway(t_s)
         along_mps = speed_mps + 2.0 * rate * surge_m * math.cos(2.0 * phase)
         across_mps = rate * sway_m * math.cos(phase)
-        # Starboard of the heading is (cos, -sin).
-        sin, cos = math.sin(heading), math.cos(heading)
+        east, north = start + R_world_target @ (across, along)
+        east_mps, north_mps = R_world_target @ (across_mps, along_mps)
         return Pose(
-            range_m * math.sin(bearing) + along * sin + across * cos,
-            range_m * math.cos(bearing) + along * cos - across * sin,
-            heading,
-            along_mps * sin + across_mps * cos,
-            along_mps * cos - across_mps * sin,
+            float(east), float(north), heading, float(east_mps), float(north_mps)
         )
 
     return at
@@ -272,13 +275,14 @@ def waterplane(
 
 
 class Rocking(NamedTuple):
-    """What the sea does to a hull: its pitch, bow up, its roll, starboard down, and
-    its heave.
+    """What the sea does to a hull: its pitch, bow up, its roll, starboard down, its
+    heave, and its yaw, bow to starboard, off its track.
     """
 
     pitch_rad: float
     roll_rad: float
     heave_m: float
+    yaw_rad: float
 
 
 def rocking(
@@ -294,14 +298,16 @@ def rocking(
     Args:
         pose: Where it is, where its bow points and how it moves.
         hull: Its size; its pose is ignored.
-        field: Every wave, which it pitches and rolls on.
+        field: Every wave, which it pitches, rolls and yaws on.
         tall: The waves that are geometry, which alone heave it: the rest are
             shading, which a heaving hull would break its waterline on.
         t_s: Seconds on the scenario's clock, when it is at `pose`.
     """
     plane = waterplane(pose, tall, t_s, hull)
     pitch, roll = waves.attitude(field, plane, t_s)
-    return Rocking(pitch, roll, waves.heave_m(tall, plane, t_s))
+    return Rocking(
+        pitch, roll, waves.heave_m(tall, plane, t_s), waves.yaw_rad(field, plane, t_s)
+    )
 
 
 def _pitched(rad: float) -> np.ndarray:
@@ -316,15 +322,36 @@ def _rolled(rad: float) -> np.ndarray:
     return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
 
 
+def tilt_rad(pose: Pose, sea: Rocking | None) -> tuple[float, float]:
+    """A hull's pitch, bow up, and roll, starboard down, in radians: the sea's tilt
+    `sea` outside the trim and list `pose` scripts, which are relative to the water.
+    Two tilts composed also yaw the hull (Fossen, Handbook of Marine Craft
+    Hydrodynamics, 2011, §2.2: yaw of the whole attitude); that yaw is dropped, as
+    `Rocking.yaw_rad` sets the heading.
+    """
+    if sea is None:
+        return pose.pitch_rad, pose.roll_rad
+    R_level_hull = (
+        _pitched(sea.pitch_rad)
+        @ _rolled(sea.roll_rad)
+        @ _pitched(pose.pitch_rad)
+        @ _rolled(pose.roll_rad)
+    )
+    # As `angles.attitude_deg` reads them: the up row, which a yaw leaves alone.
+    return (
+        math.asin(R_level_hull[2, 1]),
+        math.atan2(-R_level_hull[2, 0], R_level_hull[2, 2]),
+    )
+
+
 def tilted(
     path: Path,
     hull: waves.Waterplane | None,
     field: tuple[waves.Wave, ...],
     tall: tuple[waves.Wave, ...],
-) -> Deck:
-    """The deck tilted by the pitch and roll `path` scripts, then, under `hull`, by
-    the sea's, each with roll innermost as the anchor's and the attitude empty's YXZ
-    eulers key them.
+) -> Tilt:
+    """`R_level_ownship` at a time: its `tilt_rad` by the pitch and roll `path` scripts
+    and, under `hull`, the sea's.
 
     Args:
         path: Where it is, where its bow points and how it is tilted.
@@ -332,28 +359,106 @@ def tilted(
         field: Every wave, which a hull pitches and rolls on.
         tall: The waves that are geometry, the ones it floats on.
     """
+    return lambda t_s: _afloat(path, hull, field, tall, t_s)[0]
+
+
+def _afloat(
+    path: Path,
+    hull: waves.Waterplane | None,
+    field: tuple[waves.Wave, ...],
+    tall: tuple[waves.Wave, ...],
+    t_s: float,
+) -> tuple[np.ndarray, Rocking]:
+    """`R_level_waterline` and the sea's rocking at `t_s`; `tilted`'s arguments."""
+    pose = path(t_s)
+    if hull is None:
+        still = Rocking(pitch_rad=0.0, roll_rad=0.0, heave_m=0.0, yaw_rad=0.0)
+        return _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad), still
+    sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
+    pitch_rad, roll_rad = tilt_rad(pose, sea)
+    return _pitched(pitch_rad) @ _rolled(roll_rad), sea
+
+
+def waterline_pose(
+    path: Path,
+    up_m: Callable[[Pose, float], float],
+    hull: waves.Waterplane | None = None,
+    field: tuple[waves.Wave, ...] = (),
+    tall: tuple[waves.Wave, ...] = (),
+) -> Callable[[float], np.ndarray]:
+    """(4, 4) `T_world_waterline` at a time: the point on a hull's floating waterline
+    it pitches and rolls about, `up_m` high plus the sea's heave, turned by `path`'s
+    heading and the sea's yaw, and tilted as `tilted`. The hull's origin is
+    `lifted(rise_m)` above it.
+
+    Args:
+        path: Where it is, where its bow points and how it is tilted.
+        up_m: The point's height at a pose and time, the sea's heave aside.
+        hull: Its size, or None for a bare rig, which the sea does not tilt.
+        field: Every wave, which a hull pitches, rolls and yaws on.
+        tall: The waves that are geometry, the ones it floats on.
+    """
 
     def at(t_s: float) -> np.ndarray:
         pose = path(t_s)
-        deck = _pitched(pose.pitch_rad) @ _rolled(pose.roll_rad)
-        if hull is not None:
-            sea = rocking(pose, hull=hull, field=field, tall=tall, t_s=t_s)
-            deck = deck @ _pitched(sea.pitch_rad) @ _rolled(sea.roll_rad)
-        return deck
+        R_level_waterline, sea = _afloat(path, hull, field, tall, t_s)
+        heading_deg = math.degrees(pose.heading_rad + sea.yaw_rad)
+        T_world_waterline = np.eye(4)
+        T_world_waterline[:3, :3] = angles.turned(heading_deg, 0.0) @ R_level_waterline
+        T_world_waterline[:3, 3] = (
+            pose.east_m,
+            pose.north_m,
+            up_m(pose, t_s) + sea.heave_m,
+        )
+        return T_world_waterline
 
     return at
 
 
-def elevation_deg(deck: np.ndarray, toward: np.ndarray) -> float:
-    """The elevation in the world of `toward`, a unit (3,) in the deck's frame, on a
-    deck tilted `deck`, (3, 3) deck to world.
+def levelled(waterline: Callable[[float], np.ndarray]) -> Tilt:
+    """`R_level_ownship` at a time, read off `waterline_pose`: its heading, the bow's
+    bearing, which its pitch and roll leave be, turned back out.
     """
-    return float(angles.elevation_deg(deck[2] @ toward))
+
+    def at(t_s: float) -> np.ndarray:
+        R_world_waterline = waterline(t_s)[:3, :3]
+        heading_deg = angles.attitude_deg(R_world_waterline)[2]
+        return angles.turned(heading_deg, 0.0).T @ R_world_waterline
+
+    return at
 
 
-def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
-    """The tilt the pan-tilt unit of rig `name` adds to its mount's pitch at each
-    frame, holding its inclination on a deck tilted `deck`.
+def lifted(rise_m: float) -> np.ndarray:
+    """(4, 4) a hull's origin on its waterline pivot, `rise_m` up the hull."""
+    T = np.eye(4)
+    T[2, 3] = rise_m
+    return T
+
+
+def on_sea(radius_m: float) -> Callable[[Pose, float], float]:
+    """The curved sea's height under a pose: a hull left at z = 0 flies above it.
+
+    Not tilted to the local vertical: at any range the sea reaches, range / R moves a
+    hull's ends far less than its draught.
+    """
+    return lambda pose, _t_s: earth.sea_z_m(pose.east_m, pose.north_m, radius_m)
+
+
+def at_sea_level(_pose: Pose, _t_s: float) -> float:
+    """A waterline at the world's z = 0, as on a flat sea at the start."""
+    return 0.0
+
+
+def world_elevation_deg(R_level_ownship: np.ndarray, toward: np.ndarray) -> float:
+    """The elevation in the world of `toward`, a unit (3,) in the ownship's frame,
+    on a hull tilted `R_level_ownship`, (3, 3).
+    """
+    return float(angles.elevation_deg(R_level_ownship[2] @ toward))
+
+
+def held_tilt_deg(scenario: Scenario, name: str, tilt: Tilt) -> np.ndarray:
+    """The tilt the pan-tilt unit of rig `name` adds to the rig's `pitch_deg` at each
+    frame, holding its elevation on a hull tilted `tilt`.
 
     Raises:
         ValueError: The rig has no pan-tilt unit, or the deck tips its untilted head
@@ -373,7 +478,7 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
     for t_s in times:
         # Past the zenith, the head's horizontal part turns against its bearing; the
         # deck turns no heading, so the bearing on a level deck is the reference.
-        tipped = deck(t_s) @ head(t_s)
+        tipped = tilt(t_s) @ head(t_s)
         if tipped[:2] @ head(t_s, -rig.pitch_deg)[:2] < 0.0:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s the deck and the rig's pitch_deg tip its "
@@ -382,18 +487,86 @@ def held_tilt_deg(scenario: Scenario, name: str, deck: Deck) -> np.ndarray:
         # Tilting sweeps the head through the deck's vertical plane at its bearing;
         # the world's up projects onto that plane with length `reach`, the sine of
         # the steepest elevation any tilt gives.
-        up = deck(t_s)[2]
+        up = tilt(t_s)[2]
         reach = math.hypot(up @ head(t_s, -rig.pitch_deg), up[2])
-        if abs(math.sin(math.radians(rig.ptu.inclination_deg))) > reach:
+        if abs(math.sin(math.radians(rig.ptu.elevation_deg))) > reach:
             raise ValueError(
                 f"rigs.{name}: at {t_s:g} s no tilt brings the ptu's head to "
-                f"inclination_deg {rig.ptu.inclination_deg:g}: lower the ownship's "
+                f"elevation_deg {rig.ptu.elevation_deg:g}: lower the ownship's "
                 "roll or the sea"
             )
 
-    # The firmware's IMU sits on the head, so the loop holds the head itself, its
-    # mount included.
+    # The firmware's IMU sits on the head, so the loop holds the head itself,
+    # `pitch_deg` included.
     def head_deg(t_s: float, tilt_deg: float) -> float:
-        return elevation_deg(deck(t_s), head(t_s, tilt_deg))
+        return world_elevation_deg(tilt(t_s), head(t_s, tilt_deg))
 
-    return ptu.tilt_deg(head_deg, times, rig.ptu.inclination_deg)
+    return ptu.tilt_deg(head_deg, times, rig.ptu.elevation_deg)
+
+
+def head_pose(
+    scenario: Scenario, name: str, tilt: Tilt
+) -> Callable[[float], np.ndarray]:
+    """(4, 4) `T_ownship_head` of rig `name` at a frame's time: its pan, and a pan-tilt
+    unit's tilt holding its elevation on a hull tilted `tilt`.
+
+    Raises:
+        KeyError: On a pan-tilt unit, called at a time that is no frame's, where the
+            loop holds no tilt.
+    """
+    rig = scenario.rigs[name]
+    pan = panned_deg(scenario.turn, name)
+    if rig.ptu is None:
+        return lambda t_s: rig.pose(pan(t_s))
+    times = scenario.outputs.times_s
+    held = dict(
+        zip(times, map(float, held_tilt_deg(scenario, name, tilt)), strict=True)
+    )
+    return lambda t_s: rig.pose(pan(t_s), held[t_s])
+
+
+def cameras_at_start(scenario: Scenario, name: str) -> dict[str, np.ndarray]:
+    """Each camera rig `name` renders, by name, as `R_world_camera` in OpenCV's axes
+    at the start: a pan-tilt unit holds its elevation against the ownship's scripted
+    tilt on a level sea.
+    """
+    path = track(scenario.ownship, scenario.outputs, scenario.turn)
+    tilt = tilted(path, hull=None, field=(), tall=())
+    T_world_head = (
+        waterline_pose(path, at_sea_level)(0.0)
+        @ lifted(scenario.ownship.rise_m)
+        @ head_pose(scenario, name, tilt)(0.0)
+    )
+    return {
+        camera_name: (T_world_head @ camera.pose())[:3, :3]
+        for camera_name, camera in scenario.rigs[name].rendered.items()
+    }
+
+
+def ownship_up_m(
+    ownship: Ownship, outputs: Outputs, tall: tuple[waves.Wave, ...], radius_m: float
+) -> Callable[[Pose, float], float]:
+    """The ownship's waterline height at a pose and time, the sea's heave aside: the
+    curved sea under it and its scripted heave, and a bare rig's heave on `tall`.
+
+    Args:
+        ownship: Its hull, if any, and heave.
+        outputs: The periods its heave loops on.
+        tall: The waves that are geometry, which heave a bare rig.
+        radius_m: Earth's effective radius, which drops it to the curved sea.
+    """
+    scripted = sine(0.0, 0.0, 1.0)
+    if (heave := ownship.heave) is not None:
+        scripted = sine(0.0, heave.amplitude_m, outputs.period_s(heave.period_s))
+    # A bare rig is a point: it heaves, but would tilt with every ripple.
+    bare = ownship.asset is None and bool(tall)
+    sea = on_sea(radius_m)
+
+    def up_m(pose: Pose, t_s: float) -> float:
+        z = sea(pose, t_s) + scripted(t_s)
+        if bare:
+            point = waterplane(pose, tall, t_s, waves.Waterplane())
+            z += waves.heave_m(tall, point, t_s)
+        return z
+
+    return up_m

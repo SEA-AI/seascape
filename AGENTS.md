@@ -10,7 +10,7 @@ Before writing a module, check whether Blender already has the feature. The sky 
 
 Two things are **not** Blender's, both documented so nobody helpfully puts them back.
 
-**The tall waves are geometry, the rest shading; neither is the Ocean modifier.** The waves carrying the sea's height, down to 4 m, displace the sea as Gerstner waves, diced by adaptive subdivision to 3 px, so no micropolygon goes sub-pixel and none aliases. Each pixel draws the shorter waves longer than its footprint as normals and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. In LWIR the rest's slope variance varies per cell by the spread the short waves' groups give a footprint, so rough patches read warm at grazing views. Everything the shader reads off the waves, it reads at the water's rest position, the UV map. A displaced wave occludes: a crest can hide a target, and the labels follow. Run the render checks before touching the sea shader.
+**The tall waves are geometry, the rest shading; neither is the Ocean modifier.** The waves carrying the sea's height, down to 4 m, displace the sea as Gerstner waves, diced by adaptive subdivision to `DICING_PX`, so no micropolygon goes sub-pixel and none aliases. Each pixel draws the shorter waves longer than its footprint as normals and takes the rest as roughness; in EO, where a facet could mirror the sun, part of the rest is a random tilt per cell of one specular point, so the sun glitters. In LWIR the rest's slope variance varies per cell by the spread the short waves' groups give a footprint, so rough patches read warm at grazing views. Everything the shader reads off the waves, it reads at the water's rest position, the UV map. A displaced wave occludes: a crest can hide a target, and the labels follow. Run the render checks before touching the sea shader.
 
 **LWIR radiometry lives in numpy.** Blender has no concept of an 8–14 µm band, and its Fresnel node takes a scalar IOR where seawater emissivity needs complex IOR (n + i·k).
 
@@ -57,7 +57,7 @@ These produce wrong output with no error. They are the reason this file exists.
 
 - **A bearing is negated only when it becomes a rotation.** Blender's +Z rotation turns a forward-facing object to port, so `angles.yaw` negates, and nothing else does. A direction is `(sin, cos)` of the bearing and `atan2(x, y)` reads one back; neither negates. The Sky Texture's `sun_rotation` is a direction, whatever its name says.
 - **Wind and swell are named for where they come from; waves run the other way.** `wind_from_deg` and `swell.from_deg` are bearings of origin, and `waves` turns them by 180 once. A second turn looks right in a still.
-- **A camera's bearing is not `rig yaw + camera yaw`.** In the chain `rigs.add_rigs` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `rigs.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_bearing_deg` is only what the scenario asked for.
+- **A camera's bearing is not `rig yaw + camera yaw`.** In the chain `rigs.add_rigs` builds, the rig's pitch sits between the two yaws and shifts an off-axis camera's azimuth. A centre camera on a level hull is exact, which is why the sum looks right. `rigs.boresight_deg` reads the achieved bearing off `matrix_world`; `Mount.nominal_azimuth_deg` is only what the scenario asked for.
 - **A glTF import sets `rotation_mode` to `QUATERNION`.** Assigning `rotation_euler` is then ignored entirely — no exception, no warning, object doesn't move. Set the mode first.
 - **A slope sigma is total or per axis.** Cox & Munk's is total; a Beckmann alpha is sqrt(2) sigma per axis; `lwir.emissivity_curve` and `Sky.reflected` take sigma per axis. Swapping them is off by sqrt(2) and renders plausibly.
 - **`model_copy` skips validation, and validation is what gives the air and sea their atmosphere's temperatures.** Swap `sky.atmosphere` with `model_copy` and the old profile's air and sea stay. Validate a dict instead.
@@ -122,6 +122,25 @@ These produce wrong output with no error. They are the reason this file exists.
 - **Pass a `np.random.Generator`, never a seed;** the caller names the substream.
 - **No Protocol or ABC before a second implementation.**
 
+## Writing comments, docs and commits
+
+The full guide is the `prose` skill.
+
+- A line stays only if the reader loses something without it.
+- Write comments for someone who reads the code later and never saw how it came about: say why. The history (what was tried, reviews, other PRs, "now" or "no longer") belongs in git and the PR, where it can't go stale.
+- Add only what the code and the diff can't show: a constraint, a unit.
+- Point to a value's home instead of copying it: a copied number or list goes stale.
+- Commits: a Conventional Commit, an imperative subject, a body that says why.
+
+## Engineering
+
+The full guides are the `architecture`, `stack` and `tests` skills.
+
+- Before writing a helper, search the standard library, installed packages and this repo for one.
+- Fix the mechanism behind a symptom. A flag, special case, sleep or retry hides the cause and breaks again elsewhere.
+- One home per rule or formula; delete dead code.
+- Every behaviour a change adds or fixes has a test, seen to fail with the behaviour broken. Test outputs, never config literals or internals.
+
 ## Checks — run before committing
 
 These mirror CI, which runs them all. Locally, run the linters and only the tests the change touches, such as `uv run pytest tests/test_wear.py`; leave the whole suite to CI.
@@ -139,12 +158,10 @@ The linters go through `uvx` deliberately: never add them to a dependency group 
 
 The suite includes the render checks, marked `render`. Cycles takes a GPU where there is one and the CPU otherwise, as on CI. A test that probes only the sea or sky builds `scenarios/open-sea.toml`, which imports no hull.
 
-A test pays only for what it checks. Check its cost with `pytest --durations`, then cut what it doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
-
 ## Working here
 
 - **Branches:** matching prefixes (`feat/...`, `fix/...`).
-- **Prose**, commits included, follows the `prose` skill.
+- **Before handing over a PR**, run the `review-pr` skill.
 - **Settle a tooling or convention question by what established projects do.** Read the config of a few popular projects facing the same trade-off, and cite them in the PR. A lint rule most of them ignore is likely noise; one they configure rather than ignore is likely a smell.
 - **Attach frames** with `gh pr create --attach ./frame.png` or `gh pr edit --attach ./frame.png`: a matching body reference `![alt](./frame.png)` becomes the upload.
 - Renders are cheap and settle arguments. If a change affects what the camera sees, show it.

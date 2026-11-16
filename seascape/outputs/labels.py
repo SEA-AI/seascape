@@ -7,7 +7,7 @@ integers, half a pixel off.
 
 import math
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -52,7 +52,7 @@ class Target(NamedTuple):
     supercategory: str
     centre_m: tuple[float, float]  # world east, north
     waterline_m: np.ndarray  # (N, 2) world east, north along the hull's waterline
-    heading_deg: float  # true, clockwise from north
+    heading_deg: float  # clockwise from world +Y
     dims_m: tuple[float, float, float]  # length, beam, height above the waterline
     engine_off_min: float = 0.0  # 0 is running
 
@@ -109,8 +109,8 @@ class Annotation(Model):
     # waterline, which is what a range from the horizon measures.
     range_m: float
     waterline_range_m: float
-    bearing_deg: float  # true, clockwise from north
-    heading_deg: float  # true, clockwise from north
+    bearing_deg: float  # clockwise from world +Y, in [0, 360)
+    heading_deg: float  # clockwise from world +Y, in [0, 360)
     # length, beam, height above the waterline, as floated
     dims_m: tuple[float, float, float]
     truncated: bool  # the box touches the frame's edge
@@ -123,7 +123,7 @@ class Dropped(Model):
     image_id: int
     name: str
     range_m: float
-    bearing_deg: float  # true, clockwise from north
+    bearing_deg: float  # clockwise from world +Y, in [0, 360)
     reason: Literal["no_pixels", "low_contrast"]
     # For "low_contrast" only; bbox and area as an annotation's.
     excess_de: float | None = None
@@ -196,17 +196,13 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        rows, columns = np.nonzero(index)
-        seen = index[rows, columns]
-        for target in targets:
-            mine = seen == target.pass_index
-            ys, xs = rows[mine], columns[mine]
+        for target, ys, xs in _pixels(index, targets):
             east, north = np.subtract(target.centre_m, at)
             where: dict[str, Any] = {
                 "image_id": image.id,
                 "name": target.name,
                 "range_m": math.hypot(east, north),
-                "bearing_deg": angles.bearing_deg(east, north),
+                "bearing_deg": angles.bearing_deg(east, north) % 360.0,
             }
             if not len(xs):
                 self.dropped.append(Dropped(**where, reason="no_pixels"))
@@ -278,39 +274,53 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
         prefix = folder.relative_to(root).as_posix()
         merged.info = merged.info or part.info
         scenarios[prefix] = part.info["scenario"]
-        ids: dict[int, int] = {}
-        for image in part.images:
-            ids[image.id] = len(merged.images) + 1
-            merged.images.append(
-                image.model_copy(
-                    update={
-                        "id": ids[image.id],
-                        "file_name": f"{prefix}/{image.file_name}",
-                    }
-                )
-            )
-        for annotation in part.annotations:
-            merged.annotations.append(
-                annotation.model_copy(
-                    update={
-                        "id": len(merged.annotations) + 1,
-                        "image_id": ids[annotation.image_id],
-                    }
-                )
-            )
-        for gone in part.dropped:
-            merged.dropped.append(
-                gone.model_copy(update={"image_id": ids[gone.image_id]})
-            )
-        for category in part.categories:
-            known = next((c for c in merged.categories if c.id == category.id), None)
-            if known is None:
-                merged.categories.append(category)
-            elif known != category:
-                raise ValueError(f"{folder}: category {category.id} is {known.name}")
+        _append(merged, part, f"{prefix}/", folder)
     merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
     merged.info["scenarios"] = scenarios
     return merged
+
+
+def concat(parts: Mapping[str, Labels]) -> Labels:
+    """Join `parts`, one scene's band renders keyed by part name, renumbered in order
+    as one render numbers its frames; info from the first part. An error names its
+    part.
+    """
+    first = next(iter(parts.values()), None)
+    joined = Labels(info=dict(first.info) if first else {})
+    for name, part in parts.items():
+        _append(joined, part, "", name)
+    return joined
+
+
+def _append(into: Labels, part: Labels, prefix: str, source: Path | str) -> None:
+    """Add `part`'s labels to `into`, renumbered after it, each file name under
+    `prefix`; `source` names `part` in errors.
+    """
+    ids: dict[int, int] = {}
+    for image in part.images:
+        ids[image.id] = len(into.images) + 1
+        into.images.append(
+            image.model_copy(
+                update={"id": ids[image.id], "file_name": prefix + image.file_name}
+            )
+        )
+    for annotation in part.annotations:
+        into.annotations.append(
+            annotation.model_copy(
+                update={
+                    "id": len(into.annotations) + 1,
+                    "image_id": ids[annotation.image_id],
+                }
+            )
+        )
+    for gone in part.dropped:
+        into.dropped.append(gone.model_copy(update={"image_id": ids[gone.image_id]}))
+    for category in part.categories:
+        known = next((c for c in into.categories if c.id == category.id), None)
+        if known is None:
+            into.categories.append(category)
+        elif known != category:
+            raise ValueError(f"{source}: category {category.id} is {known.name}")
 
 
 def _run_lengths(mask: np.ndarray) -> RunLengths:
@@ -321,9 +331,25 @@ def _run_lengths(mask: np.ndarray) -> RunLengths:
     return RunLengths(size=mask.shape, counts=[0, *runs] if column_major[0] else runs)
 
 
+def _pixels(
+    index: np.ndarray, targets: Sequence[Target]
+) -> Iterator[tuple[Target, np.ndarray, np.ndarray]]:
+    """Each of `targets` with the rows and columns of its pixels in `index`, in
+    raster order; one pass over the frame for all of them.
+
+    `index` is (H, W) integer pass indices, 0 for sky and sea; the rows and columns
+    are (K,) int64.
+    """
+    rows, columns = np.nonzero(index)
+    seen = index[rows, columns]
+    for target in targets:
+        mine = seen == target.pass_index
+        yield target, rows[mine], columns[mine]
+
+
 def present(index: np.ndarray, targets: Sequence[Target]) -> set[str]:
     """The targets with a pixel in the pass index image `index`."""
-    return {t.name for t in targets if (index == t.pass_index).any()}
+    return {target.name for target, _, xs in _pixels(index, targets) if len(xs)}
 
 
 def agreed(
@@ -345,8 +371,7 @@ def faint(
     if frame.dtype != np.uint8:
         return {}
     low = {}
-    for target in targets:
-        ys, xs = np.nonzero(index == target.pass_index)
+    for target, ys, xs in _pixels(index, targets):
         if not len(xs):
             continue
         reach = FLANK_GAP_PX + flank_px(xs.max() - xs.min() + 1)
@@ -466,13 +491,13 @@ def horizon_px(camera: CameraCalibration, radius_m: float) -> list[tuple[float, 
     """
     if camera.distortion is not None:
         return _fisheye_horizon(camera, radius_m)
-    pose = np.array(camera.extrinsics["world"])
-    rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
+    T_world_camera = np.array(camera.extrinsics["world"])
+    R_world_camera, (cx, cy, cz) = T_world_camera[:3, :3], T_world_camera[:3, 3]
     k_inv = np.linalg.inv(camera.K)
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     # The world ray through (u, v) is p + v q, in calibration.json's pixels.
-    p = rotation @ k_inv @ np.stack([u - 0.5, np.zeros_like(u), np.ones_like(u)])
-    q = rotation @ k_inv @ np.array([0.0, 1.0, 0.0])
+    p = R_world_camera @ k_inv @ np.stack([u - 0.5, np.zeros_like(u), np.ones_like(u)])
+    q = R_world_camera @ k_inv @ np.array([0.0, 1.0, 0.0])
     b0 = p[2] + (cx * p[0] + cy * p[1]) / radius_m
     b1 = q[2] + (cx * q[0] + cy * q[1]) / radius_m
     s = 2 * (cz + (cx * cx + cy * cy) / (2 * radius_m)) / radius_m
@@ -493,16 +518,15 @@ def _fisheye_horizon(
     """`horizon_px` for a fisheye, whose rays are not linear down a column: each column
     is walked a row at a time, and the graze is where b^2 - 4 a c changes sign.
     """
-    pose = np.array(camera.extrinsics["world"])
-    rotation, (cx, cy, cz) = pose[:3, :3], pose[:3, 3]
+    T_world_camera = np.array(camera.extrinsics["world"])
+    R_world_camera, (cx, cy, cz) = T_world_camera[:3, :3], T_world_camera[:3, 3]
     assert camera.distortion is not None
     u = np.linspace(0.0, camera.width_px, HORIZON_POINTS)
     v = np.arange(camera.height_px + 1, dtype=float)
     columns, rows = np.meshgrid(u, v)
-    # Blender's camera frame is right, up, back; OpenCV's is right, down, forward.
     right, down = columns - 0.5 - camera.K[0][2], rows - 0.5 - camera.K[1][2]
-    ray = fisheye.direction(right, -down, camera.distortion, camera.K[0][0])
-    d = (ray * np.array([1.0, -1.0, -1.0])) @ rotation.T
+    ray = fisheye.direction(right, down, camera.distortion, camera.K[0][0])
+    d = ray @ R_world_camera.T
     a = (d[..., 0] ** 2 + d[..., 1] ** 2) / (2 * radius_m)
     b = d[..., 2] + (cx * d[..., 0] + cy * d[..., 1]) / radius_m
     c = cz + (cx * cx + cy * cy) / (2 * radius_m)

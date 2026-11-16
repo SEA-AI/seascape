@@ -3,6 +3,7 @@ the horizon, and the rotations and frames they turn.
 """
 
 import math
+from typing import overload
 
 import numpy as np
 import numpy.typing as npt
@@ -12,8 +13,8 @@ TO_CV = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
 def wrapped_deg(angle_deg: float) -> float:
-    """The same direction in [-180, 180)."""
-    return (angle_deg + 180.0) % 360.0 - 180.0
+    """The same direction in (-180, 180], the range `bearing_deg` returns."""
+    return 180.0 - (180.0 - angle_deg) % 360.0
 
 
 def yaw(bearing_deg: float) -> float:
@@ -34,9 +35,17 @@ def turned(bearing_deg: float, elevation_deg: float) -> np.ndarray:
     return about_z @ about_x
 
 
-def bearing_deg(east: float, north: float) -> float:
-    """The compass bearing towards a point `east` and `north`, in (-180, 180]."""
-    return math.degrees(math.atan2(east, north))
+@overload
+def bearing_deg(east: float, north: float) -> float: ...
+@overload
+def bearing_deg(east: np.ndarray, north: np.ndarray) -> np.ndarray: ...
+def bearing_deg(
+    east: float | np.ndarray, north: float | np.ndarray
+) -> float | np.ndarray:
+    """The compass bearing towards points `east` and `north`, in (-180, 180]."""
+    # + 0.0 turns an east of -0.0 into 0.0, which atan2 would read as -180 due south.
+    bearing = np.degrees(np.arctan2(east + 0.0, north))
+    return float(bearing) if np.ndim(bearing) == 0 else bearing
 
 
 def elevation_deg(up: npt.ArrayLike) -> np.ndarray:
@@ -56,16 +65,16 @@ def direction(bearing_deg: npt.ArrayLike, elevation_deg: npt.ArrayLike) -> np.nd
     )
 
 
-def attitude_deg(body_to_frame: np.ndarray) -> tuple[float, float, float]:
+def attitude_deg(R_frame_body: np.ndarray) -> tuple[float, float, float]:
     """Roll, pitch, yaw of a +X starboard, +Y bow, +Z up body, yaw then pitch then
     roll: roll positive starboard down, pitch bow up, yaw clockwise in (-180, 180].
     """
-    x, y, z = body_to_frame[:3, :3].T
+    x, y, z = R_frame_body[:3, :3].T
     roll = math.atan2(-x[2], z[2])
     return (
         math.degrees(roll),
         float(elevation_deg(y[2])),
-        math.degrees(math.atan2(y[0], y[1])),
+        bearing_deg(float(y[0]), float(y[1])),
     )
 
 

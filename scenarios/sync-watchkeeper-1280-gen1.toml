@@ -35,4 +35,4 @@ colour = { choice = ["orange", "white", "yellow"] }
 wear = 0.5
 heading_deg = 90.0
 heading_from = "line_of_sight"
-drift = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }
+fishtail = { sway_m = 0.5, surge_m = 0.25, period_s = { uniform = [45.0, 75.0] } }

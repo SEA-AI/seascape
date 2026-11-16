@@ -276,7 +276,7 @@ def resolvable(field: tuple[Wave, ...], footprint_m: float) -> tuple[Wave, ...]:
 
 
 def drawn_slope_variances(
-    field: tuple[Wave, ...], footprint_m: float, downwind_rad: float
+    field: tuple[Wave, ...], footprint_m: float, wind_axis_rad: float
 ) -> tuple[float, float]:
     """The slope variance a pixel draws of a wave field, along and across the wind:
     the waves' own variance, each scaled by its visibility, without building them.
@@ -285,12 +285,12 @@ def drawn_slope_variances(
         field: The waves whole; each is scaled here by its visibility at the
             footprint.
         footprint_m: The pixel's length on the sea; 0 draws every wave whole.
-        downwind_rad: The wind's axis, a bearing; from or toward is the same axis.
+        wind_axis_rad: The wind's axis, a bearing; from or toward is the same axis.
     """
     if not field:
         return 0.0, 0.0
     a, k, *_ = columns(field)
-    along = np.cos(np.array([w.toward_rad for w in field]) - downwind_rad) ** 2
+    along = np.cos(np.array([w.toward_rad for w in field]) - wind_axis_rad) ** 2
     shown = (a * k * visibility(2 * math.pi / k, footprint_m)) ** 2 / 2
     return float(np.sum(shown * along)), float(np.sum(shown * (1 - along)))
 
@@ -321,7 +321,7 @@ def slick_survivors(
 
 def unresolved_slope_variances(
     wind_speed_mps: float,
-    downwind_rad: float,
+    wind_axis_rad: float,
     wind: tuple[Wave, ...],
     swell: tuple[Wave, ...],
     footprint_m: float,
@@ -334,16 +334,16 @@ def unresolved_slope_variances(
 
     Args:
         wind_speed_mps: The wind at 10 m the total is fitted at.
-        downwind_rad: The wind's axis, a bearing; from or toward is the same axis.
+        wind_axis_rad: The wind's axis, a bearing; from or toward is the same axis.
         wind: The wind sea's waves; those the footprint resolves are subtracted.
         swell: The swell's waves, whose undrawn part adds to the total.
         footprint_m: The pixel's length on the sea.
         fit: Upwind and crosswind slope variance at a wind speed, each axis's own;
             Cox & Munk's clean sea by default.
     """
-    drawn = drawn_slope_variances(wind, footprint_m, downwind_rad)
-    swell_all = drawn_slope_variances(swell, 0.0, downwind_rad)
-    swell_drawn = drawn_slope_variances(swell, footprint_m, downwind_rad)
+    drawn = drawn_slope_variances(wind, footprint_m, wind_axis_rad)
+    swell_all = drawn_slope_variances(swell, 0.0, wind_axis_rad)
+    swell_drawn = drawn_slope_variances(swell, footprint_m, wind_axis_rad)
     up, cross = (
         max(total - d, 0.0) + a - s
         for total, d, a, s in zip(

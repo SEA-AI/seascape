@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 import bpy
 import numpy as np
-from mathutils import Euler, Matrix, Vector
+from mathutils import Euler, Matrix
 
 from seascape import angles
 from seascape.blender.blend import (
@@ -17,16 +17,15 @@ from seascape.blender.blend import (
 from seascape.config import (
     Band,
     Mount,
-    Rig,
     Scenario,
 )
-from seascape.motion import Deck, held_tilt_deg, panned_deg
+from seascape.motion import Tilt, head_pose
 from seascape.physics import fisheye
 
 
 class _RigObjects(NamedTuple):
     root: bpy.types.Object
-    rigs: dict[str, bpy.types.Object]
+    heads: dict[str, bpy.types.Object]
     cameras: dict[str, bpy.types.Object]
 
 
@@ -34,11 +33,11 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
     """The scenario's rigs and cameras under one root."""
     root = empty("rigs")
 
-    rigs: dict[str, bpy.types.Object] = {}
+    heads: dict[str, bpy.types.Object] = {}
     for name, rig in scenario.rigs.items():
-        rig_root = empty(f"rig_{name}", root)
-        rig_root.matrix_basis = Matrix(rig.pose().tolist())
-        rigs[name] = rig_root
+        head = empty(f"head_{name}", root)
+        head.matrix_basis = Matrix(rig.pose().tolist())
+        heads[name] = head
 
     cameras: dict[str, bpy.types.Object] = {}
     for mount in scenario.mounts:
@@ -61,46 +60,45 @@ def add_rigs(scenario: Scenario) -> _RigObjects:
             data.angle_x = width / fx
         camera = bpy.data.objects.new(data.name, data)
         bpy.context.collection.objects.link(camera)
-        camera.parent = rigs[mount.rig_name]
+        camera.parent = heads[mount.rig_name]
         camera.rotation_mode = "XYZ"
         # A Blender camera looks down its local -Z, OpenCV's down +Z.
         camera.matrix_basis = Matrix(mount.camera.pose().tolist()) @ BLENDER_TO_CV
         cameras[mount.name] = camera
-    return _RigObjects(root, rigs, cameras)
+    return _RigObjects(root, heads, cameras)
 
 
 def stabilise(
-    rigs: dict[str, bpy.types.Object],
+    heads: dict[str, bpy.types.Object],
     scenario: Scenario,
-    deck: Deck,
-) -> None:
-    """Key each rig on a pan-tilt unit: its pan to a turn by the ptu, and its tilt to
-    the unit's loop holding its pitch against the base under it.
+    tilt: Tilt,
+) -> dict[str, Callable[[float], np.ndarray]]:
+    """Key each rig on a pan-tilt unit to `motion.head_pose`: its pan to a turn by
+    the ptu, and its tilt to the unit's loop holding its pitch against the base under
+    it. Returns every rig's `T_ownship_head` at a frame's time, by name.
 
     Args:
-        rigs: The rig empties `add_rigs` made, by name.
+        heads: The head empties `add_rigs` made, by name.
         scenario: Its rigs, its turn and the times keyed.
-        deck: The ownship's deck rotation at a time, heading aside.
+        tilt: The ownship's `R_level_ownship` at a time, heading aside.
     """
-    times = scenario.outputs.times_s
+    poses = {name: head_pose(scenario, name, tilt) for name in scenario.rigs}
     for name, rig in scenario.rigs.items():
         if rig.ptu is not None:
-            tilt = held_tilt_deg(scenario, name, deck)
-            _hold(rigs[name], rig, panned_deg(scenario.turn, name), tilt, times)
+            _hold(heads[name], poses[name], scenario.outputs.times_s)
+    return poses
 
 
 def _hold(
     head: bpy.types.Object,
-    rig: Rig,
-    pan_deg: Callable[[float], float],
-    tilt_deg: np.ndarray,
+    T_ownship_head: Callable[[float], np.ndarray],
     times_s: Sequence[float],
 ) -> None:
     # Each frame's euler nearest the last, so a pan past the stern keys no spin back.
     eulers: dict[float, Euler] = {}
     last: Euler | None = None
-    for t_s, tilt in zip(times_s, tilt_deg, strict=True):
-        turn = Matrix(rig.pose(pan_deg(t_s), float(tilt))[:3, :3].tolist())
+    for t_s in times_s:
+        turn = Matrix(T_ownship_head(t_s)[:3, :3].tolist())
         last = turn.to_euler("XYZ") if last is None else turn.to_euler("XYZ", last)
         eulers[t_s] = last
     animate(head, "rotation_euler", times_s, lambda t: tuple(eulers[t]))
@@ -145,8 +143,8 @@ def boresight_deg(camera: bpy.types.Object) -> tuple[float, float]:
     """Bearing and elevation a built camera points at, in degrees, in the world.
     `matrix_world` is stale until the depsgraph runs, so build first.
     """
-    forward = camera.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))
-    forward.normalize()
+    # OpenCV's camera looks along +Z.
+    forward = (camera.matrix_world @ BLENDER_TO_CV).to_3x3().col[2].normalized()
     return angles.bearing_deg(forward.x, forward.y), float(
         angles.elevation_deg(forward.z)
     )

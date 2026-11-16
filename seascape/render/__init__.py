@@ -6,12 +6,11 @@ is rendered float and written here as a thermal camera writes one: a png as 16-b
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
-import math
 import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
@@ -25,7 +24,7 @@ from seascape.assets import manifest
 from seascape.blender import blend, scene, sea
 from seascape.blender.blend import node
 from seascape.blender.compositor import INDEX_ROLL, JPEG_QUALITY, unroll
-from seascape.blender.vessels import heading_rad, waterline_m
+from seascape.blender.vessels import heading_deg, waterline_crossings, waterline_m
 from seascape.config import (
     Camera,
     Crop,
@@ -37,8 +36,8 @@ from seascape.config import (
     sources,
     substream,
 )
-from seascape.outputs import agc, labels, microbolometer, stitch
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs import agc, journal, labels, microbolometer, stitch
+from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import earth
 
 
@@ -153,32 +152,31 @@ def _cut(name: str, width_px: int, height_px: int, crop: Crop | None) -> None:
     sockets["Height"].default_value = height_px - crop.top_px - crop.bottom_px
 
 
-def _targets(built: scene.Built) -> list[labels.Target]:
+def _targets(
+    built: scene.Built, crossings: Mapping[str, np.ndarray]
+) -> list[labels.Target]:
+    """Each target as the frame shows it.
+
+    Args:
+        built: The scene, at the frame's time.
+        crossings: Each hull's `waterline_crossings`, by name.
+    """
     return [
         labels.Target(
-            pass_index=anchor.pass_index,
-            name=anchor.name,
+            pass_index=root.pass_index,
+            name=root.name,
             category_id=manifest()[asset].category_id,
             category=manifest()[asset].category,
             supercategory=manifest()[asset].supercategory,
-            centre_m=tuple(anchor.matrix_world.translation.xy),
-            waterline_m=waterline_m(anchor),
-            heading_deg=math.degrees(heading_rad(anchor)) % 360.0,
-            dims_m=(anchor["length_m"], anchor["beam_m"], anchor["height_m"]),
-            engine_off_min=anchor["engine_off_min"],
+            centre_m=tuple(root.matrix_world.translation.xy),
+            waterline_m=waterline_m(root, crossings[root.name]),
+            heading_deg=heading_deg(root) % 360.0,
+            dims_m=(root["length_m"], root["beam_m"], root["height_m"]),
+            engine_off_min=root["engine_off_min"],
         )
-        for asset, anchors in built.targets.items()
-        for anchor in anchors
+        for asset, roots in built.targets.items()
+        for root in roots
     ]
-
-
-def _write_truth(
-    into: Path,
-    cameras: list[CameraCalibration],
-    raw: list[CameraCalibration],
-    truth: labels.Labels,
-) -> list[Path]:
-    return [Calibration(cameras=cameras, raw=raw).write(into), truth.write(into)]
 
 
 def _commit() -> str | None:
@@ -285,7 +283,7 @@ def _shoot(
     built: scene.Built,
     mount: Mount,
     rng: np.random.Generator,
-    frame: int | None,
+    frame: tuple[int | None, float],
     fmt: ImageFormat,
     thermal: tuple[agc.Agc, np.random.Generator] | None,
     into: Path,
@@ -297,7 +295,7 @@ def _shoot(
         built: The scene, at the frame's time.
         mount: The camera to render through.
         rng: Draws its sensor's noise.
-        frame: The frame's number in a sequence; None for a still.
+        frame: The frame's number in a sequence, None for a still, and its time.
         fmt: The format written.
         thermal: The AGC and NETD noise an ir frame is written through; None keeps
             the render.
@@ -308,6 +306,7 @@ def _shoot(
         The labelled frame as its mount, calibration, object index and image; the
         camera as rendered, if a video records it; and the files written.
     """
+    number, time_s = frame
     scene.look_through(built.cameras, mount, rng)
     # An exr is the radiance the cameras saw, before any recorder.
     videos = mount.rig.videos if fmt != "exr" else {}
@@ -324,14 +323,14 @@ def _shoot(
     tree = bpy.context.scene.compositing_node_group
     tree.nodes["index.output"].file_name = f"{mount.name}."
     _cut(mount.name, width, height, crop)
-    bpy.context.scene.render.filepath = str(into / _stem(mount.name, frame))
+    bpy.context.scene.render.filepath = str(into / _stem(mount.name, number))
     ext = "exr" if thermal else fmt
-    rendered = into / f"{_stem(mount.name, frame)}.{ext}"
+    rendered = into / f"{_stem(mount.name, number)}.{ext}"
     _render_still(rendered, f"camera {mount.name}'s frame")
-    camera = scene.calibrate(built, mount, f"{_stem(mount.name, frame)}.{fmt}")
+    camera = scene.calibrate(built, mount, f"{_stem(mount.name, number)}.{fmt}", time_s)
     # An undistortion renders its pinhole; the camera recorded is the rig's.
     own = mount._replace(camera=mount.rig.cameras[mount.camera_name])
-    source = scene.calibrate(built, own, camera.image)
+    source = scene.calibrate(built, own, camera.image, time_s)
     index = blend.read(passes / f"{mount.name}.index.exr")[::-1, :, 0]
     written = []
     # A stitch's cameras keep their names; `_stitch` names what it makes of them.
@@ -341,11 +340,11 @@ def _shoot(
         if crop is not None:
             # The camera's own frame stays, unlabelled.
             written.append(rendered)
-            rendered = into / f"{_stem(out, frame)}.{ext}"
+            rendered = into / f"{_stem(out, number)}.{ext}"
             rendered.parent.mkdir(exist_ok=True)
             # The passes' temporary folder can sit on another filesystem.
             shutil.move(passes / f"{mount.name}.video.{ext}", rendered)
-            image = f"{_stem(out, frame)}.{fmt}"
+            image = f"{_stem(out, number)}.{fmt}"
             camera = camera.model_copy(update={"image": image}).cropped(crop)
             rows = slice(crop.top_px, height - crop.bottom_px)
             index = index[rows, crop.left_px : width - crop.right_px]
@@ -376,10 +375,12 @@ def render(
     radius_m = earth.earth_radius_m(scenario.sea.refraction_k)
     sequence = len(outputs.times_s) > 1
     written: list[Path] = []
-    cameras: list[CameraCalibration] = []
-    raw: list[CameraCalibration] = []
     truth = labels.Labels()
-    with tempfile.TemporaryDirectory() as tmp:
+    # The journal writes the truth as the block ends, also when it raises.
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        journal.Journal(into, truth) as frames,
+    ):
         passes = Path(tmp)
         for band in outputs.bands:
             # The default bands can name one no rig has a camera for.
@@ -401,17 +402,23 @@ def render(
                 m.name: substream(scenario.seed, f"microbolometer/{m.name}")
                 for m in mounts
             }
+            # Once: reading a hull's meshes costs more than a frame's other labels.
+            crossings = {
+                root.name: waterline_crossings(root)
+                for roots in built.targets.values()
+                for root in roots
+            }
             for frame, time_s in enumerate(outputs.times_s):
                 sc.frame_set(frame)
-                # Both read matrix_world, which moves with the frame.
-                targets = _targets(built)
-                shot = []
+                # Reads matrix_world, which moves with the frame.
+                targets = _targets(built, crossings)
+                shot, raw = [], []
                 for mount in mounts:
                     taken, source, files = _shoot(
                         built,
                         mount,
                         substream(scenario.seed, f"sensor/{mount.name}"),
-                        frame if sequence else None,
+                        (frame if sequence else None, time_s),
                         outputs.format,
                         (tones[mount.name], noises[mount.name]) if thermal else None,
                         into,
@@ -425,7 +432,6 @@ def render(
                     shot, into, frame if sequence else None, outputs.format
                 )
                 written += files
-                cameras += [camera for _, camera, _, _ in shot]
                 faints = [labels.faint(i, f, targets) for _, _, i, f in shot]
                 if outputs.keep_if_any_sees:
                     presents = [labels.present(i, targets) for _, _, i, _ in shot]
@@ -443,10 +449,9 @@ def render(
                         mount.camera,
                         faint=low,
                     )
-                # Every frame, so a render that dies keeps what it wrote.
-                _write_truth(into, cameras, raw, truth)
+                frames.append([camera for _, camera, _, _ in shot], raw)
     if not written:
         raise ValueError(
             f"no rig has a camera in any of {outputs.bands}: nothing to render"
         )
-    return written + _write_truth(into, cameras, raw, truth)
+    return written + frames.written

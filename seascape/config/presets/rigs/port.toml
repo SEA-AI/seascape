@@ -7,6 +7,5 @@ yaw_deg = -60.0
 offset_x_m = -14.5
 offset_y_m = -61.5
 
-# Inboard, square to the side window, as the prototype assembly ("Anschütz Milestone
-# 1", Onshape) mounts it.
+# Inboard, square to the side window, as the prototype assembly mounts it.
 cameras.ir.yaw_deg = 47.5
