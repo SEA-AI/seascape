@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  # No check reads an image or the files that only Codecov, pre-commit or the image
-  # build read. Lint formats the code in every Markdown file, skills included; the
+  # No check reads an image, or a file only Codecov, pre-commit or the image build
+  # reads. Lint formats the code in every Markdown file, skills included; the
   # tests read the docs' Markdown but not the agents' skills.
   changes:
     name: Changes
@@ -148,8 +148,7 @@ jobs:
         with:
           use_oidc: true
 
-  # Codecov's statuses are required, so a commit whose tests were skipped still
-  # reports to Codecov, which then passes them.
+  # A required Codecov status never posts on a commit without an upload.
   no-coverage:
     name: Coverage (no tests)
     needs: tests
