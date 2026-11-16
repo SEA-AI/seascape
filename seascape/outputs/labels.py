@@ -274,39 +274,53 @@ def merge(root: Path, folders: Sequence[Path]) -> Labels:
         prefix = folder.relative_to(root).as_posix()
         merged.info = merged.info or part.info
         scenarios[prefix] = part.info["scenario"]
-        ids: dict[int, int] = {}
-        for image in part.images:
-            ids[image.id] = len(merged.images) + 1
-            merged.images.append(
-                image.model_copy(
-                    update={
-                        "id": ids[image.id],
-                        "file_name": f"{prefix}/{image.file_name}",
-                    }
-                )
-            )
-        for annotation in part.annotations:
-            merged.annotations.append(
-                annotation.model_copy(
-                    update={
-                        "id": len(merged.annotations) + 1,
-                        "image_id": ids[annotation.image_id],
-                    }
-                )
-            )
-        for gone in part.dropped:
-            merged.dropped.append(
-                gone.model_copy(update={"image_id": ids[gone.image_id]})
-            )
-        for category in part.categories:
-            known = next((c for c in merged.categories if c.id == category.id), None)
-            if known is None:
-                merged.categories.append(category)
-            elif known != category:
-                raise ValueError(f"{folder}: category {category.id} is {known.name}")
+        _append(merged, part, f"{prefix}/", folder)
     merged.info = {k: v for k, v in merged.info.items() if k != "scenario"}
     merged.info["scenarios"] = scenarios
     return merged
+
+
+def concat(parts: Mapping[str, Labels]) -> Labels:
+    """Join `parts`, one scene's band renders keyed by part name, renumbered in order
+    as one render numbers its frames; info from the first part. An error names its
+    part.
+    """
+    first = next(iter(parts.values()), None)
+    joined = Labels(info=dict(first.info) if first else {})
+    for name, part in parts.items():
+        _append(joined, part, "", name)
+    return joined
+
+
+def _append(into: Labels, part: Labels, prefix: str, source: Path | str) -> None:
+    """Add `part`'s labels to `into`, renumbered after it, each file name under
+    `prefix`; `source` names `part` in errors.
+    """
+    ids: dict[int, int] = {}
+    for image in part.images:
+        ids[image.id] = len(into.images) + 1
+        into.images.append(
+            image.model_copy(
+                update={"id": ids[image.id], "file_name": prefix + image.file_name}
+            )
+        )
+    for annotation in part.annotations:
+        into.annotations.append(
+            annotation.model_copy(
+                update={
+                    "id": len(into.annotations) + 1,
+                    "image_id": ids[annotation.image_id],
+                }
+            )
+        )
+    for gone in part.dropped:
+        into.dropped.append(gone.model_copy(update={"image_id": ids[gone.image_id]}))
+    for category in part.categories:
+        known = next((c for c in into.categories if c.id == category.id), None)
+        if known is None:
+            into.categories.append(category)
+        elif known != category:
+            raise ValueError(f"{source}: category {category.id} is {known.name}")
 
 
 def _run_lengths(mask: np.ndarray) -> RunLengths:
