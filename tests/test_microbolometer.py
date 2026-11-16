@@ -41,6 +41,29 @@ def test_the_lens_spreads_a_point_and_keeps_its_power() -> None:
     assert blurred[32, 33] > 3.0
 
 
+@pytest.mark.parametrize(
+    ("spread", "sharp"),
+    [
+        ((1.4, PITCH_M, 290.0), (1.0, PITCH_M, 290.0)),
+        ((1.0, PITCH_M, 290.0), (1.0, 17e-6, 290.0)),
+        ((1.0, PITCH_M, 250.0), (1.0, PITCH_M, 400.0)),
+    ],
+    ids=["a slower lens", "a finer pixel", "a colder scene"],
+)
+def test_a_point_spreads_more_through_a_slower_lens_finer_pixels_or_longer_waves(
+    spread: tuple[float, float, float], sharp: tuple[float, float, float]
+) -> None:
+    """A colder scene's Planck spectrum weights the longer, more diffracted waves."""
+    radiance = np.full((64, 64), 3.0)
+    radiance[32, 32] = 30.0
+
+    peaks = [
+        microbolometer.diffract(radiance, *lens)[32, 32] for lens in (spread, sharp)
+    ]
+
+    assert peaks[0] < peaks[1]
+
+
 def test_vignetting_falls_as_the_fourth_power_of_the_cosine() -> None:
     hfov = math.radians(32.0)
     shade = microbolometer.falloff((512, 640), hfov)

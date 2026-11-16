@@ -598,6 +598,16 @@ def test_only_a_target_in_its_backgrounds_noise_is_faint(
     assert ("t1" in found) is faint
 
 
+def test_the_targets_present_are_those_with_a_pixel_in_the_frame() -> None:
+    index = np.zeros((8, 8), dtype=int)
+    index[2, 2] = 3
+    index[5, 5] = 1
+
+    found = labels.present(index, [target(1), target(2), target(3)])
+
+    assert found == {"t1", "t3"}
+
+
 def test_each_target_in_a_frame_is_judged_as_if_alone() -> None:
     """Targets out of raster order: one bright, one faint, one off the frame and
     one faint pixel.
