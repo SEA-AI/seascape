@@ -96,7 +96,44 @@ jobs:
           path: ~/.cache/seascape
           key: assets-${{ hashFiles('seascape/assets/assets.toml') }}
 
-      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20
+      - run: uv run pytest --shard ${{ matrix.shard }} --durations=20 --cov=seascape
+        env:
+          COVERAGE_FILE: .coverage.${{ strategy.job-index }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ strategy.job-index }}
+          path: .coverage.${{ strategy.job-index }}
+          include-hidden-files: true
+
+  coverage:
+    name: Coverage
+    needs: tests
+    # A skipped `changes`, as on a push, would skip this job under the default `if`.
+    if: ${{ !cancelled() && needs.tests.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - run: uvx coverage combine && uvx coverage xml
+
+      - uses: codecov/codecov-action@v7
+        # A fork's run gets no OIDC token, and the action fails asking for one.
+        continue-on-error: true
+        with:
+          use_oidc: true
 
   # The one check a pull request requires, whatever the jobs above are called.
   checks:

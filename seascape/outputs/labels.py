@@ -7,7 +7,7 @@ integers, half a pixel off.
 
 import math
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -196,11 +196,7 @@ class Labels(Model):
         )
         self.images.append(image)
         at = np.array(camera.extrinsics["world"])[:2, 3]
-        rows, columns = np.nonzero(index)
-        seen = index[rows, columns]
-        for target in targets:
-            mine = seen == target.pass_index
-            ys, xs = rows[mine], columns[mine]
+        for target, ys, xs in _pixels(index, targets):
             east, north = np.subtract(target.centre_m, at)
             where: dict[str, Any] = {
                 "image_id": image.id,
@@ -335,9 +331,25 @@ def _run_lengths(mask: np.ndarray) -> RunLengths:
     return RunLengths(size=mask.shape, counts=[0, *runs] if column_major[0] else runs)
 
 
+def _pixels(
+    index: np.ndarray, targets: Sequence[Target]
+) -> Iterator[tuple[Target, np.ndarray, np.ndarray]]:
+    """Each of `targets` with the rows and columns of its pixels in `index`, in
+    raster order; one pass over the frame for all of them.
+
+    `index` is (H, W) integer pass indices, 0 for sky and sea; the rows and columns
+    are (K,) int64.
+    """
+    rows, columns = np.nonzero(index)
+    seen = index[rows, columns]
+    for target in targets:
+        mine = seen == target.pass_index
+        yield target, rows[mine], columns[mine]
+
+
 def present(index: np.ndarray, targets: Sequence[Target]) -> set[str]:
     """The targets with a pixel in the pass index image `index`."""
-    return {t.name for t in targets if (index == t.pass_index).any()}
+    return {target.name for target, _, xs in _pixels(index, targets) if len(xs)}
 
 
 def agreed(
@@ -359,8 +371,7 @@ def faint(
     if frame.dtype != np.uint8:
         return {}
     low = {}
-    for target in targets:
-        ys, xs = np.nonzero(index == target.pass_index)
+    for target, ys, xs in _pixels(index, targets):
         if not len(xs):
             continue
         reach = FLANK_GAP_PX + flank_px(xs.max() - xs.min() + 1)

@@ -6,6 +6,7 @@ quoted in kelvin act here, between the float render and `agc`.
 Limitation: no bolometer lag; the Boson's time constant is unpublished.
 """
 
+import functools
 import math
 
 import numpy as np
@@ -36,10 +37,38 @@ def diffraction_mtf(
         f_number: Focal length over aperture diameter; a higher one diffracts more.
         t_k: The temperature whose Planck spectrum weights the wavelengths.
     """
+    return _weighted(_band_mtfs(freq_per_m, f_number), t_k)
+
+
+def _band_mtfs(freq_per_m: npt.ArrayLike, f_number: float) -> FloatArray:
+    """`optics.pupil_mtf` at `freq_per_m` for each of `_BAND_LAM`, on a new last
+    axis; float64.
+    """
     freq = np.asarray(freq_per_m, dtype=np.float64)
-    mono = optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
+    return optics.pupil_mtf(freq[..., None], _BAND_LAM, f_number)
+
+
+def _weighted(mono: FloatArray, t_k: float) -> FloatArray:
+    """The mean of the per-wavelength MTFs on `mono`'s last axis, weighted by
+    `t_k`'s Planck spectrum.
+    """
     weight = lwir.planck(_BAND_LAM, t_k)
     return (mono * weight).sum(axis=-1) / weight.sum()
+
+
+# Judgement: a rig's few camera models. An entry holds len(_BAND_LAM) float64s per
+# rfft2 bin of the padded frame: about 90 MB at 640 x 512.
+@functools.lru_cache(maxsize=4)
+def _frame_mtfs(shape: tuple[int, int], f_number: float, pitch_m: float) -> FloatArray:
+    """`_band_mtfs` at the rfft2 frequencies of a padded frame of `shape`:
+    (shape[0], shape[1] // 2 + 1, len(_BAND_LAM)) float64, read-only, as every
+    caller shares it.
+    """
+    fy = np.fft.fftfreq(shape[0])[:, None]
+    fx = np.fft.rfftfreq(shape[1])[None, :]
+    mtfs = _band_mtfs(np.hypot(fx, fy) / pitch_m, f_number)
+    mtfs.flags.writeable = False
+    return mtfs
 
 
 def diffract(
@@ -48,9 +77,7 @@ def diffract(
     """`radiance` through the lens's diffraction, the frame mirrored at its edges."""
     pad = optics.airy_reach_px(lwir.BAND_M[1], f_number, pitch_m)
     padded = np.pad(radiance, pad, mode="reflect")
-    fy = np.fft.fftfreq(padded.shape[0])[:, None]
-    fx = np.fft.rfftfreq(padded.shape[1])[None, :]
-    mtf = diffraction_mtf(np.hypot(fx, fy) / pitch_m, f_number, t_k)
+    mtf = _weighted(_frame_mtfs(padded.shape, f_number, pitch_m), t_k)
     out = np.fft.irfft2(np.fft.rfft2(padded) * mtf, s=padded.shape)
     return out[pad:-pad, pad:-pad]
 
