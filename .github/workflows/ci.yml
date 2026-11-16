@@ -106,7 +106,6 @@ jobs:
           path: .coverage.${{ strategy.job-index }}
           include-hidden-files: true
 
-  # One upload of every shard's coverage: Codecov never reports a partial merge.
   coverage:
     name: Coverage
     needs: tests
