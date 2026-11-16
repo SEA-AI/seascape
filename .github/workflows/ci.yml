@@ -14,8 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  # No check reads an image. Lint formats the code in every Markdown file, skills
-  # included; the tests read the docs' Markdown but not the agents' skills.
+  # No check reads an image, or a file only Codecov, pre-commit or the image build
+  # reads. Lint formats the code in every Markdown file, skills included; the
+  # tests read the docs' Markdown but not the agents' skills.
   changes:
     name: Changes
     if: github.event_name == 'pull_request'
@@ -35,10 +36,22 @@ jobs:
               - '**'
               - '!**/*.jpg'
               - '!**/*.png'
+              - '!codecov.yml'
+              - '!.pre-commit-config.yaml'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!compose*.yaml'
+              - '!.github/workflows/image.yml'
             tests:
               - '**'
               - '!**/*.jpg'
               - '!**/*.png'
+              - '!codecov.yml'
+              - '!.pre-commit-config.yaml'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!compose*.yaml'
+              - '!.github/workflows/image.yml'
               - '!.claude/**'
 
   lint:
@@ -109,8 +122,7 @@ jobs:
   coverage:
     name: Coverage
     needs: tests
-    # A skipped `changes`, as on a push, would skip this job under the default `if`.
-    if: ${{ !cancelled() && needs.tests.result == 'success' }}
+    if: ${{ !cancelled() && needs.tests.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -120,22 +132,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - if: needs.tests.result == 'success'
+        uses: actions/download-artifact@v8
         with:
           pattern: coverage-*
           merge-multiple: true
 
       - uses: astral-sh/setup-uv@v10.3.3
 
-      - run: uvx coverage combine && uvx coverage xml
+      - if: needs.tests.result == 'success'
+        run: uvx coverage combine && uvx coverage xml
 
       - uses: codecov/codecov-action@v7
         # A fork's run gets no OIDC token, and the action fails asking for one.
         continue-on-error: true
         with:
           use_oidc: true
+          # Codecov posts no status without an upload; an empty one passes it.
+          run_command: ${{ needs.tests.result == 'success' && 'upload-coverage' || 'empty-upload' }}
+          force: true
 
-  # The one check a pull request requires, whatever the jobs above are called.
+  # The one check of this workflow a pull request requires, whatever the jobs above
+  # are called.
   checks:
     name: Checks
     if: always()
