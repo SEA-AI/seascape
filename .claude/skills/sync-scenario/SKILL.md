@@ -46,14 +46,14 @@ Decide by the preview's printed check: a frame looks right at one turn and misse
        for toml in (f"{name}.toml", "sync.toml"):  # the scenario and the file it extends
            art.add_file(f"scenarios/{toml}")
        run.log_artifact(art).wait()
-       print(art.qualified_name, "->", art.link(f"wandb-registry-dataset/{name}").qualified_name)
+       print(art.qualified_name, "->", art.link(f"sea-ai-org/wandb-registry-dataset/{name}").qualified_name)
    EOF
    ```
 
    Its metadata is the render's `info` block from `labels.json`: the commit, Blender, the GPU and the resolved scenario, plus `exported_commit`, the code that wrote the recording. It prints the project's version and the registry's, which counts its own links and can differ. The artifact takes the scenario's name, variant included (`sync-watchkeeper-1280-gen1`), so each variant versions apart. W&B never reuses a version number: deleting a version leaves the next one higher. A consumer fetches the registry's exact version, never `latest`:
 
    ```bash
-   uvx wandb artifact get --root sync-<product> wandb-registry-dataset/sync-<product>:v<m>
+   uvx wandb artifact get --root sync-<product> sea-ai-org/wandb-registry-dataset/sync-<product>:v<m>
    ```
 
 ## When it fails
