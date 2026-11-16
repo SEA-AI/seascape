@@ -33,5 +33,5 @@ sun_bearing_deg = 150.0
 
 [outputs]
 fps = 30
-duration_s = 47.0
+duration_s = 48.0
 format = "png"
