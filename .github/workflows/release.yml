@@ -8,6 +8,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}
+  # Every push keeps its run: Release Please tags a release PR's merge commit, and
+  # Image looks for the tag on the commit whose Release run ended.
+  queue: max
 
 permissions:
   contents: read
