@@ -17,6 +17,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Recognition",
 ]
 dependencies = [
+    "bpy>=5.2,<5.3",
     "click>=8.2",
     "numpy>=2.0",
     "opencv-python-headless>=5.0.0.93",
@@ -38,7 +39,6 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8",
 ]
-blender = ["bpy>=5.2,<5.3"]
 serve = [
     "mcp>=2.3",
     "pydantic-settings>=2.16",
@@ -90,7 +90,7 @@ pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.uv]
-default-groups = ["dev", "blender", "serve"]
+default-groups = ["dev", "serve"]
 
 # PyPI has no Linux aarch64 bpy wheel.
 [tool.uv.sources]
