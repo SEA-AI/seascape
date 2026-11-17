@@ -1,6 +1,12 @@
 ---
 name: publish-dataset
-description: Publishes a seascape render to W&B as a dataset, in the `synthetic-datasets` project and the Dataset registry, with the scenario that made it as one standalone TOML. Use after rendering anything another team consumes (a sync recording, a tracker or fusion scenario), when a re-render of the same TOML needs publishing, or to fetch or reproduce a published dataset.
+description: >-
+  Publishes a seascape render to W&B as a dataset, in the `synthetic-datasets` project and
+  the Dataset registry, with the scenario that made it as one standalone TOML. Use whenever
+  a render is to reach W&B, wandb, an artifact or the registry, even when the request only
+  says upload, push or share a render: after rendering anything another team consumes (a
+  sync recording, a tracker or fusion scenario), to publish a re-render of the same TOML,
+  or to fetch or reproduce a published dataset.
 ---
 
 # Publish a dataset
@@ -29,14 +35,14 @@ A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off datase
 2. **Upload**, logged in (`uvx wandb login`) with `WANDB_ENTITY` set to the team that owns the registry:
 
    ```bash
-   uv run --with wandb .claude/skills/publish-dataset/upload.py <purpose> <scenario.toml> <data>
+   uv run --with wandb .claude/skills/publish-dataset/scripts/upload.py <purpose> <scenario.toml> <data>
    ```
 
    `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
 
 ## Fetch and reproduce
 
-A consumer fetches the registry's exact version, never `latest`:
+A consumer fetches the registry's exact version: `latest` moves to the next upload, so a result pinned to it changes under the consumer.
 
 ```bash
 uvx wandb artifact get --root <dir> wandb-registry-dataset/<stem>:v<m>
