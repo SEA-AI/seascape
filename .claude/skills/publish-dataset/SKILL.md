@@ -1,0 +1,45 @@
+---
+name: publish-dataset
+description: Publishes a seascape render to W&B as a dataset, in the `synthetic-datasets` project and the Dataset registry, with the scenario that made it as one standalone TOML. Use after rendering anything another team consumes (a sync recording, a tracker or fusion scenario), when a re-render of the same TOML needs publishing, or to fetch or reproduce a published dataset.
+---
+
+# Publish a dataset
+
+| What | Where |
+|---|---|
+| The upload | a run in the `synthetic-datasets` project, named `<stem>`, `job_type` `dataset-upload` as the registry's other uploads, tagged with the purpose (`sync`, `tracker`, …), `config` = `labels.json`'s `info` |
+| The scenario | the run's input, artifact `<stem>-scenario` of type `scenario`: one TOML with `extends` and presets resolved, which renders on its own |
+| The data | the run's output, artifact `<stem>` of type `dataset`, linked into `wandb-registry-dataset/<stem>` |
+
+`<stem>` is the scenario file's name without `.toml`.
+
+## Collections
+
+An artifact's name is its collection, and each upload under it adds a version: v0, v1, and so on. Content identical to an existing version reuses it. W&B never reuses a number, even after a deletion.
+
+- **One collection per TOML.** Re-render the same TOML, after a fix or on a newer seascape, and publish it again: it becomes the next version of the same collection. A new TOML starts a new collection, so name it for what it tests and unique across the team: `tracker-crossing-ferries`, never `test2`.
+- **The scenario versions alongside.** An unchanged TOML reuses its `<stem>-scenario` version, so the lineage shows every dataset rendered from it.
+- **The registry counts its own links.** `wandb-registry-dataset/<stem>:v<m>` can differ from the project's `<stem>:v<n>`. Consumers use the registry's.
+
+A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off dataset's TOML needs no home in the repo: its scenario artifact is that home.
+
+## Steps
+
+1. **Render from a clean commit**, so `info.commit` names code that exists. Render from the TOML alone, without `--set`: the published TOML is then exactly what rendered.
+2. **Upload**, logged in (`uvx wandb login`) with `WANDB_ENTITY` set to the team that owns the registry:
+
+   ```bash
+   uv run --with wandb .claude/skills/publish-dataset/upload.py <purpose> <scenario.toml> <data>
+   ```
+
+   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
+
+## Fetch and reproduce
+
+A consumer fetches the registry's exact version, never `latest`:
+
+```bash
+uvx wandb artifact get --root <dir> wandb-registry-dataset/<stem>:v<m>
+```
+
+To reproduce one, check out its run's `config.commit` (or its seascape version), fetch the `<stem>-scenario` it used, and render that TOML with the purpose's command.
