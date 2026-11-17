@@ -17,6 +17,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Recognition",
 ]
 dependencies = [
+    "bpy>=5.2,<5.3",
     "click>=8.2",
     "numpy>=2.0",
     "opencv-python-headless>=5.0.0.93",
@@ -32,19 +33,22 @@ Repository = "https://github.com/SEA-AI/seascape"
 [project.scripts]
 seascape = "seascape.cli:main"
 
-[dependency-groups]
-dev = [
-    "pytest>=9.0",
-    "pytest-cov>=7.1.0",
-    "pytest-xdist>=3.8",
-]
-blender = ["bpy>=5.2,<5.3"]
+[project.optional-dependencies]
 serve = [
     "mcp>=2.3",
     "pydantic-settings>=2.16",
     "starlette>=1.8",
     "tomli-w>=1.2.0",
     "uvicorn>=0.54",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8",
+    # The server's tests run in a checkout too.
+    "seascape[serve]",
 ]
 
 [build-system]
@@ -88,9 +92,6 @@ addopts = "-n 4 --dist worksteal"
 markers = ["render: renders a frame in Cycles; -m \"not render\" leaves it out"]
 pythonpath = ["."]
 testpaths = ["tests"]
-
-[tool.uv]
-default-groups = ["dev", "blender", "serve"]
 
 # PyPI has no Linux aarch64 bpy wheel.
 [tool.uv.sources]

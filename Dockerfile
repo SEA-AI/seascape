@@ -17,9 +17,9 @@ ENV OPTIX_CACHE_PATH=/root/.cache/seascape/optix
 
 WORKDIR /seascape
 COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --extra serve --no-install-project
 COPY . .
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --extra serve
 
 # Last, so a new commit rebuilds no layer above.
 ARG SEASCAPE_COMMIT

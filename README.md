@@ -38,6 +38,8 @@ uv sync
 
 Blender ships as a Python package, so there is nothing else to install. On Linux aarch64, where PyPI has no `bpy`, `uv sync` installs it from [SEA-AI/bpy-linux-aarch64](https://github.com/SEA-AI/bpy-linux-aarch64).
 
+Without a checkout, `uv tool install "seascape[serve] @ git+https://github.com/SEA-AI/seascape"` installs the CLI and, with `[serve]`, the [render server](docs/render-server.md); uv takes the aarch64 `bpy` from the same index. pip does not: there, add `--extra-index-url https://sea-ai.github.io/bpy-linux-aarch64/simple/`.
+
 ## Quickstart
 
 ```bash
