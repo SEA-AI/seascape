@@ -24,7 +24,13 @@ description: >-
 An artifact's name is its collection, and each upload under it adds a version: v0, v1, and so on. Content identical to an existing version reuses it. W&B never reuses a number, even after a deletion.
 
 - **One collection per TOML.** Re-render the same TOML, after a fix or on a newer seascape, and publish it again: it becomes the next version of the same collection. A new TOML starts a new collection, so name it for what it tests and unique across the team: `tracker-crossing-ferries`, never `test2`.
-- **The scenario versions alongside.** An unchanged TOML reuses its `<stem>-scenario` version, so the lineage shows every dataset rendered from it.
+- **The scenario versions alongside.** An unchanged TOML reuses its `<stem>-scenario` version, so the lineage shows every dataset rendered from it:
+
+  | Upload | Scenario | Dataset |
+  |---|---|---|
+  | first render | `<stem>-scenario:v0` | `<stem>:v0` |
+  | re-render, same TOML | `<stem>-scenario:v0` | `<stem>:v1` |
+  | TOML edited, rendered again | `<stem>-scenario:v1` | `<stem>:v2` |
 - **The registry counts its own links.** `wandb-registry-dataset/<stem>:v<m>` can differ from the project's `<stem>:v<n>`. Consumers use the registry's.
 
 A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off dataset's TOML needs no home in the repo: its scenario artifact is that home.
