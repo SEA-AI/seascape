@@ -60,7 +60,7 @@ wheels = [
 
 [[package]]
 name = "bpy"
-version = "5.2.4"
+version = "5.2.4+patch.1"
 source = { registry = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" }
 resolution-markers = [
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
@@ -73,7 +73,7 @@ dependencies = [
     { name = "zstandard" },
 ]
 wheels = [
-    { url = "https://github.com/SEA-AI/bpy-linux-aarch64/releases/download/v5.2.4/bpy-5.2.4-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:782d4d7c1fde33fbe5b09b5f1ed4eb4f130ebaba2ccc9d4086ce3828467f3bab" },
+    { url = "https://github.com/SEA-AI/bpy-linux-aarch64/releases/download/v5.2.4%2Bpatch.1/bpy-5.2.4%2Bpatch.1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:546fcf1c1cf8bddd9c37708efa6776de91f0ebd413042683070c2ff3c1daf34d" },
 ]
 
 [[package]]
@@ -740,7 +740,7 @@ dependencies = [
 [package.dev-dependencies]
 blender = [
     { name = "bpy", version = "5.2.4", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
-    { name = "bpy", version = "5.2.4", source = { registry = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" }, marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "bpy", version = "5.2.4+patch.1", source = { registry = "https://sea-ai.github.io/bpy-linux-aarch64/simple/" }, marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
 dev = [
     { name = "pytest" },
