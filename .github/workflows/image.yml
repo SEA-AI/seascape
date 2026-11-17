@@ -54,10 +54,11 @@ jobs:
           if [ "$(gh api "repos/$GH_REPO/commits/main" --jq .sha)" = "$SHA" ]; then
             tags="$tags,ghcr.io/sea-ai/seascape:latest"
           fi
-          # Release Please tags a release's commit within a minute of its push, long
-          # before CI ends.
-          for version in $(gh api "repos/$GH_REPO/git/matching-refs/tags/v" \
-              --jq ".[] | select(.object.sha == \"$SHA\") | .ref | ltrimstr(\"refs/tags/v\")"); do
+          # Alone, so a failed lookup fails the step; Release runs this again once it
+          # tags a release, in case CI ended first.
+          versions=$(gh api "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq ".[] | select(.object.sha == \"$SHA\") | .ref | ltrimstr(\"refs/tags/v\")")
+          for version in $versions; do
             tags="$tags,ghcr.io/sea-ai/seascape:$version"
           done
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
