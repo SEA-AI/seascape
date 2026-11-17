@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "8332a5b65bd23955953576cf0b2e7d162c92678d",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": false,
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value==='seascape')].version"
+        }
+      ]
+    }
+  }
+}

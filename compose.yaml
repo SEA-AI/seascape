@@ -1,6 +1,6 @@
 services:
   seascape:
-    image: ghcr.io/sea-ai/seascape:latest
+    image: ghcr.io/sea-ai/seascape:${SEASCAPE_TAG:-latest}
     ports: ["${SEASCAPE_PORT:-8765}:8765"]
     # Unset or empty, each keeps its default.
     environment:
@@ -22,6 +22,13 @@ services:
     # Stopped, the server lets its running job end first. Judgement: an hour past
     # SEASCAPE_MAX_RUN_S's default, which leaves out the zip after it.
     stop_grace_period: 13h
+    # Any HTTP answer: the event loop that serves MCP is alive. The GPU probe runs
+    # first, for up to a minute.
+    healthcheck:
+      test: [CMD, python3, -c, "import http.client as h; c = h.HTTPConnection('localhost', 8765, timeout=10); c.request('GET', '/renders/'); c.getresponse()"]
+      start_period: 2m
+    # json-file, Docker's default, never rotates.
+    logging: { driver: local }
     deploy:
       resources:
         reservations:
@@ -47,6 +54,7 @@ services:
       - source: ngrok-policy
         target: /policy.yaml
     restart: unless-stopped
+    logging: { driver: local }
 
 configs:
   # Anthropic's outbound ranges: https://platform.claude.com/docs/en/api/ip-addresses
