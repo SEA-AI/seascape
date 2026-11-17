@@ -1,9 +1,10 @@
 name: Image
 
 on:
-  # Only a commit that passed CI is published.
+  # Only a commit that passed CI is published. Release Please may tag a release's
+  # commit before or after its CI ends, so each workflow's end tries.
   workflow_run:
-    workflows: [CI]
+    workflows: [CI, Release]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -32,6 +33,7 @@ jobs:
        github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       packages: write
     steps:
@@ -44,25 +46,49 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # `latest` is main's tip only: a manual run from a branch, or a CI run that
-      # finished after a newer commit's, publishes just its SHA.
+      # finished after a newer commit's, publishes just its SHA and its release.
       - id: tags
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
         run: |
+          # Any Release run may tag any earlier release commit, so after one the
+          # newest release is published, once, and only if CI passed its commit.
+          if [ "$WORKFLOW" = Release ]; then
+            tag=$(gh api "repos/$GH_REPO/releases" --jq '.[0].tag_name // empty')
+            if [ -z "$tag" ] || docker buildx imagetools inspect \
+                "ghcr.io/sea-ai/seascape:${tag#v}" > /dev/null 2>&1; then
+              exit 0
+            fi
+            SHA=$(gh api "repos/$GH_REPO/commits/$tag" --jq .sha)
+            ci=$(gh run list --workflow ci.yml --commit "$SHA" --event push \
+              --json conclusion --jq '.[0].conclusion')
+            if [ "$ci" != success ]; then
+              exit 0
+            fi
+          fi
+          # Alone, so a failed lookup fails the step.
+          versions=$(gh api "repos/$GH_REPO/git/matching-refs/tags/v" \
+            --jq ".[] | select(.object.sha == \"$SHA\") | .ref | ltrimstr(\"refs/tags/v\")")
           tags="ghcr.io/sea-ai/seascape:$SHA"
           if [ "$(gh api "repos/$GH_REPO/commits/main" --jq .sha)" = "$SHA" ]; then
             tags="$tags,ghcr.io/sea-ai/seascape:latest"
           fi
+          for version in $versions; do
+            tags="$tags,ghcr.io/sea-ai/seascape:$version"
+          done
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@v7
+      - if: steps.tags.outputs.tags
+        uses: docker/build-push-action@v7
         with:
-          context: ${{ github.server_url }}/${{ github.repository }}.git#${{ env.SHA }}
+          context: ${{ github.server_url }}/${{ github.repository }}.git#${{ steps.tags.outputs.sha }}
           push: true
-          build-args: SEASCAPE_COMMIT=${{ env.SHA }}
+          build-args: SEASCAPE_COMMIT=${{ steps.tags.outputs.sha }}
           labels: |
-            org.opencontainers.image.revision=${{ env.SHA }}
+            org.opencontainers.image.revision=${{ steps.tags.outputs.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           tags: ${{ steps.tags.outputs.tags }}
           # In the registry: the Actions cache is shared with CI's and holds 10 GB.
