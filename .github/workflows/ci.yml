@@ -14,9 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  # No check reads an image, or a file only Codecov, pre-commit or the image build
-  # reads. Lint formats the code in every Markdown file, skills included; the
-  # tests read the docs' Markdown but not the agents' skills.
+  # No check reads an image, or a file only Codecov, pre-commit, the image build or
+  # Release Please reads. Lint formats the code in every Markdown file, skills
+  # included; the tests read the docs' Markdown but not the agents' skills.
   changes:
     name: Changes
     if: github.event_name == 'pull_request'
@@ -42,6 +42,9 @@ jobs:
               - '!.dockerignore'
               - '!compose*.yaml'
               - '!.github/workflows/image.yml'
+              - '!.github/workflows/release.yml'
+              - '!release-please-config.json'
+              - '!.release-please-manifest.json'
             tests:
               - '**'
               - '!**/*.jpg'
@@ -52,6 +55,9 @@ jobs:
               - '!.dockerignore'
               - '!compose*.yaml'
               - '!.github/workflows/image.yml'
+              - '!.github/workflows/release.yml'
+              - '!release-please-config.json'
+              - '!.release-please-manifest.json'
               - '!.claude/**'
 
   lint:

@@ -1,0 +1,34 @@
+name: Release
+
+# Keeps a release pull request open with the version and changelog that main's
+# Conventional Commits imply; merging it tags `v<version>` and publishes the release.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}
+  # Every push keeps its run: Release Please tags a release PR's merge commit, and
+  # Image looks for the tag on the commit whose Release run ended.
+  queue: max
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    steps:
+      # As the sea-ai-release app: a pull request or tag pushed with the workflow's
+      # own token starts no workflow, and the release PR needs CI to merge. The
+      # token reaches this repository only and expires within the hour.
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.app.outputs.token }}
