@@ -19,14 +19,16 @@ jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
+      # As the sea-ai-release app: a pull request or tag pushed with the workflow's
+      # own token starts no workflow, and the release PR needs CI to merge. The
+      # token reaches this repository only and expires within the hour.
+      - uses: actions/create-github-app-token@v3
+        id: app
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@v5
         with:
-          # A pull request opened with the workflow's own token starts no CI, and
-          # `Checks` is required: without RELEASE_TOKEN, close and reopen it.
-          token: ${{ secrets.RELEASE_TOKEN || github.token }}
-
+          token: ${{ steps.app.outputs.token }}
