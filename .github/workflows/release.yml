@@ -18,21 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write
       issues: write
       pull-requests: write
     steps:
       - uses: googleapis/release-please-action@v5
-        id: release
         with:
           # A pull request opened with the workflow's own token starts no CI, and
           # `Checks` is required: without RELEASE_TOKEN, close and reopen it.
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
-      # A tag pushed with this token starts no workflow, so Image is asked directly.
-      - if: steps.release.outputs.release_created
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.release.outputs.tag_name }}
-        run: gh workflow run image.yml --ref "$TAG"
