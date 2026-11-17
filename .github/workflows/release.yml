@@ -1,0 +1,28 @@
+name: Release
+
+# Keeps a release pull request open with the version and changelog that main's
+# Conventional Commits imply; merging it tags `v<version>` and publishes the release.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          # A pull request opened with the workflow's own token starts no CI, and
+          # `Checks` is required: without RELEASE_TOKEN, close and reopen it.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
