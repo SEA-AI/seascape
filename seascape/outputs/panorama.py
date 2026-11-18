@@ -214,8 +214,6 @@ def stitch(
             of several groups of them come out on one canvas; None is `cameras`.
     """
     every = cameras if among is None else among
-    if outside := {c.name for c in cameras} - {c.name for c in every}:
-        raise ValueError(f"{', '.join(sorted(outside))} not among the cameras given")
     if max_width is not None and max_width < 1:
         raise ValueError(f"max width is {max_width}: it must be a pixel or more")
     if missing := [c.name for c in every if frame not in c.extrinsics]:

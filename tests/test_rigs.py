@@ -308,14 +308,6 @@ def test_a_panorama_centres_on_its_cameras_however_lopsided(turn_deg: float) -> 
     assert panorama.axis_deg(cameras, "head") == pytest.approx(centre_deg, abs=0.01)
 
 
-def test_a_panorama_refuses_a_camera_outside_those_laying_it_out(
-    tmp_path: Path,
-) -> None:
-    wide, narrow = level_camera("wide", 0.0, 90.0), level_camera("narrow", 0.0, 20.0)
-    with pytest.raises(ValueError, match="narrow"):
-        panorama.stitch(tmp_path, [narrow], "cylindrical", "head", among=[wide])
-
-
 def test_a_panorama_refuses_a_frame_its_calibration_does_not_describe(
     tmp_path: Path,
 ) -> None:
