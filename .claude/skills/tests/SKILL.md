@@ -8,14 +8,15 @@ description: >-
 
 ## Does it fail when the code is wrong?
 
-- **Break it and run.** See each test the change adds or relies on fail with its behaviour broken. Undoing purely added code only proves an `ImportError`. For each behaviour the change adds or fixes:
+- **Mutation-test it by hand.** Each behaviour the change adds or fixes gets a mutant, and the tests that claim it must kill it. Undoing purely added code only proves an `ImportError`. For each behaviour:
   1. `git worktree add --detach "${TMPDIR:-/tmp}/<name>" HEAD`, then `uv sync` in it. Never edit the PR's own worktree: a break left there can be committed.
-  2. Break the behaviour there: revert the fix, or change the condition or value it adds.
-  3. `uv run pytest <test ids> -x -m "not render"` on the tests that claim it. A test that still passes is dead. A render test takes minutes, so it is reported not run, with its command; when the behaviour is the sea shader's, run its render check as AGENTS.md asks.
+  2. Make the mutant there: revert the fix, or change the condition or value it adds.
+  3. `uv run pytest <test ids> -m "not render"` on every test the change adds, by id and without `-x`, so each runs. A test that passes does not kill the mutant. A render test takes minutes, so it is reported not run, with its command; when the behaviour is the sea shader's, run its render check as AGENTS.md asks.
   4. `git worktree remove --force "${TMPDIR:-/tmp}/<name>"`.
 
   On a re-review, run only the tests the fix touched.
 - **Every behaviour the change adds or fixes has a test**, or the finding names the smallest one that would pin it.
+- **Keep only tests with a unique kill.** A test or parametrized case that kills no mutant alone adds no safety: trim it to what only it checks, or delete it, after looking for a mutant only it would kill. A fixture that raises asserts nothing, so its error is no kill; a test not run is unresolved, not dead.
 - **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does: not `assert Sea().wind_speed_mps == 7.0`, but the sea that wind builds.
 
 ## What it checks
@@ -31,9 +32,13 @@ description: >-
 
 - **A test pays only for what it checks.** Run `pytest --durations=10` on the tests the change touches, then cut what a slow one doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 
+## Reviewing
+
+More tests are not more safety. Two that kill the same mutants cost twice to read and keep for one behaviour pinned, so every test the change adds earns its place with a kill only it makes.
+
 ## What a finding contains
 
-Report a table, dead tests first:
+Report the kill matrix first, one row per mutant and the tests that kill it, then a table, dead tests first:
 
 | # | Where | Verdict | Finding | Evidence | Fix |
 |---|---|---|---|---|---|
