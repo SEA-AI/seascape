@@ -24,7 +24,7 @@ from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_crossings, waterline_m
 from seascape.config import BANDS, Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
-from seascape.outputs.calibration import Calibration, CameraCalibration
+from seascape.outputs.calibration import Calibration, CameraCalibration, matrix4
 from seascape.physics import waves
 from tests.scenarios import two_rigs
 
@@ -285,6 +285,67 @@ def overlay(tmp_path_factory: pytest.TempPathFactory, built: scene.Built) -> Ove
     return Overlay(image, layout, image[:, round(centre)].astype(int), folder, cameras)
 
 
+def level_camera(name: str, bearing_deg: float, hfov_deg: float) -> CameraCalibration:
+    """A level 640x480 pinhole looking along `bearing_deg` in the head frame."""
+    w, h = 640, 480
+    f = w / 2 / math.tan(math.radians(hfov_deg / 2))
+    pose = np.eye(4)
+    pose[:3, :3] = angles.turned(bearing_deg, 0.0) @ angles.TO_CV.T
+    return CameraCalibration(
+        name=name,
+        band="eo",
+        image="",
+        rig="mast",
+        width_px=w,
+        height_px=h,
+        K=((f, 0.0, (w - 1) / 2), (0.0, f, (h - 1) / 2), (0.0, 0.0, 1.0)),
+        extrinsics={"head": matrix4(pose)},
+    )
+
+
+@pytest.mark.parametrize("turn_deg", [0.0, 150.0])
+def test_a_panorama_centres_on_its_cameras_however_lopsided(turn_deg: float) -> None:
+    """A 150 deg camera and two 20 deg ones 150 deg round from it: they see -75 to
+    160 deg from the wide one's axis, while their axes sum to 126 deg, past which
+    its rays wrap. Turned 150 deg, what they see straddles 180.
+    """
+    cameras = [
+        level_camera("wide", turn_deg, 150.0),
+        level_camera("narrow_a", turn_deg + 150.0, 20.0),
+        level_camera("narrow_b", turn_deg + 150.0, 20.0),
+    ]
+
+    centre_deg = angles.wrapped_deg(turn_deg + 42.5)
+    # The border is pixel centres, half a pixel inside each frame's edge: 0.02 deg.
+    assert panorama.axis_deg(cameras, "head") == pytest.approx(centre_deg, abs=0.01)
+
+
+def test_a_panorama_refuses_a_camera_outside_those_laying_it_out(
+    tmp_path: Path,
+) -> None:
+    wide, narrow = level_camera("wide", 0.0, 90.0), level_camera("narrow", 0.0, 20.0)
+    with pytest.raises(ValueError, match="narrow"):
+        panorama.stitch(tmp_path, [narrow], "cylindrical", "head", among=[wide])
+
+
+def test_a_panorama_refuses_a_frame_its_calibration_does_not_describe(
+    tmp_path: Path,
+) -> None:
+    camera = level_camera("cam", 0.0, 60.0).model_copy(update={"image": "cam.png"})
+    cv2.imwrite(str(tmp_path / "cam.png"), np.zeros((10, 10, 3), np.uint8))
+    with pytest.raises(ValueError, match="calibration says"):
+        panorama.stitch(tmp_path, [camera], "cylindrical", "head")
+
+
+def test_a_frame_shrunk_to_nothing_keeps_a_pixel() -> None:
+    k = np.array([[320.0, 0.0, 319.5], [0.0, 320.0, 239.5], [0.0, 0.0, 1.0]])
+
+    (w, h), small = panorama._shrunk((640, 480), k, 1e-4)
+
+    assert (w, h) == (1, 1)
+    assert np.linalg.det(small) != 0
+
+
 def test_groups_stitched_among_their_rig_share_one_canvas(overlay: Overlay) -> None:
     """Alone, the eo pair and the ir would each get their own axis and extent."""
     eo, ir = ([c for c in overlay.cameras if c.band == b] for b in ("eo", "ir"))
@@ -322,11 +383,17 @@ def test_an_overlay_keeps_the_ir_within_its_frame(overlay: Overlay) -> None:
 
 
 def test_an_overlay_names_a_later_band_over_its_bottom_edge(overlay: Overlay) -> None:
-    c = round(panorama.column(overlay.layout, 0.0) or 0)  # the IR's name is centred
-    rows = np.flatnonzero((overlay.image[:, c] == IR_COLOUR).all(axis=1))
-    top, bottom = rows[0], rows[-1]  # its outline
-    # Judgement: 3 px clears the outline's stroke, 2 px wide here.
+    name_column = panorama.column(overlay.layout, 0.0)  # the IR's name is centred
+    beside = panorama.column(overlay.layout, -10.0)  # inside the IR, past its name
+    assert name_column is not None and beside is not None
+    ink = (overlay.image == IR_COLOUR).all(axis=2)
+    edges = np.flatnonzero(ink[:, round(beside)])
+    top, bottom = edges[0], edges[-1]  # the IR's outline
+    rows = np.flatnonzero(ink[:, round(name_column)])
+    # Judgement: 3 px clears the outline's stroke, 2 px wide here, and the edges'
+    # bow between the two columns, under a pixel.
     name = rows[(rows > top + 3) & (rows < bottom - 3)]
+    assert not (rows > bottom + 3).any(), "a name below the frame"
     assert name.size and name.mean() > (top + bottom) / 2
 
 

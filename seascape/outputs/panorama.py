@@ -38,17 +38,15 @@ def _rotation(camera: CameraCalibration, frame: Frame) -> np.ndarray:
 
 
 def axis_deg(cameras: list[CameraCalibration], frame: Frame) -> float:
-    """Azimuth in `frame` halfway between the cameras' outermost rays, so the
-    panorama is centred on what they see. Offsets are taken from the summed optical
-    axes, so the span cannot wrap while the cameras cover less than 360 deg.
+    """Azimuth in `frame` halfway across what the cameras see: the middle of the arc
+    their rays cover, which ends where the widest gap between them begins.
     """
-    x, y, _ = np.sum([_rotation(camera, frame)[:, 2] for camera in cameras], axis=0)
-    summed_deg = angles.bearing_deg(float(x), float(y))
-    R_summed_frame = angles.turned(summed_deg, 0.0).T
-    right, ahead, _ = R_summed_frame @ np.hstack([_rays(c, frame) for c in cameras])
-    offsets_deg = angles.bearing_deg(right, ahead)
-    middle_deg = (offsets_deg.min() + offsets_deg.max()) / 2
-    return angles.wrapped_deg(summed_deg + middle_deg)
+    rays = np.hstack([_rays(c, frame) for c in cameras])
+    azimuths_deg = np.sort(angles.bearing_deg(rays[0], rays[1]))
+    gaps_deg = np.diff(azimuths_deg, append=azimuths_deg[0] + 360.0)
+    widest = int(np.argmax(gaps_deg))
+    start_deg = azimuths_deg[(widest + 1) % len(azimuths_deg)]
+    return angles.wrapped_deg(start_deg + (360.0 - gaps_deg[widest]) / 2)
 
 
 def _border(camera: CameraCalibration, n: int = 32) -> np.ndarray:
@@ -216,6 +214,8 @@ def stitch(
             of several groups of them come out on one canvas; None is `cameras`.
     """
     every = cameras if among is None else among
+    if outside := {c.name for c in cameras} - {c.name for c in every}:
+        raise ValueError(f"{', '.join(sorted(outside))} not among the cameras given")
     if max_width is not None and max_width < 1:
         raise ValueError(f"max width is {max_width}: it must be a pixel or more")
     if missing := [c.name for c in every if frame not in c.extrinsics]:
@@ -259,7 +259,7 @@ def stitch(
     shared = _curve(folder, cameras, temps)
     warped = []
     for camera, t_k in zip(cameras, temps, strict=True):
-        image = _frame(folder / camera.image, t_k, shared)
+        image = _frame(folder / camera.image, camera, t_k, shared)
         size, k, r = shrunk[camera.name]
         if size != image.shape[1::-1]:
             image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
@@ -281,10 +281,11 @@ def stitch(
 
 def _frame(
     path: Path,
+    camera: CameraCalibration,
     t_k: np.ndarray | None,
     shared: tuple[np.ndarray, Agc] | None,
 ) -> np.ndarray:
-    """A frame, 8-bit BGR, a thermal one toned through `shared`."""
+    """`camera`'s frame, 8-bit BGR, a thermal one toned through `shared`."""
     image = (
         cv2.imread(str(path), cv2.IMREAD_COLOR)
         if t_k is None or shared is None
@@ -294,6 +295,12 @@ def _frame(
         raise ValueError(
             f"cannot read {path}: panorama takes the frames that "
             'outputs.format = "png" or "jpg" writes'
+        )
+    h, w = image.shape[:2]
+    if (w, h) != (camera.width_px, camera.height_px):
+        raise ValueError(
+            f"{path} is {w}x{h} px; its calibration says "
+            f"{camera.width_px}x{camera.height_px}"
         )
     return image
 
@@ -412,7 +419,7 @@ def _shrunk(
     if factor >= 1.0:
         return size, k
     w, h = size
-    small = (round(w * factor), round(h * factor))
+    small = (max(1, round(w * factor)), max(1, round(h * factor)))
     sx, sy = small[0] / w, small[1] / h
     # Pixel centres sit at integers, so the principal point scales about -0.5.
     k = np.array(
