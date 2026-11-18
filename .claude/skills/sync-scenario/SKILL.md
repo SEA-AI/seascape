@@ -1,6 +1,10 @@
 ---
 name: sync-scenario
-description: Writes or changes a product's `scenarios/sync-PRODUCT.toml`, the fake recording the sync check sends through Oceanus: its ownship, where the rig sits on it, what turns the cameras and how fast, and the course's buoys and container that `seascape sync` places. Use when a product joins the sync check, when its ownship, mount or turn changes, or when its `seascape sync --preview` fails.
+description: >-
+  Writes, records and uploads a product's sync scenario, `scenarios/sync-<product>.toml`: a rendered
+  recording that Oceanus's sync check replays to confirm the product's frames and IMU rows line up.
+  Use to add a product to the sync check, or to render and upload its recording to W&B. Also when
+  its ownship, mount or turn changes, or `seascape sync --preview` fails after a change elsewhere.
 ---
 
 # Sync scenario
@@ -28,7 +32,12 @@ Decide by the preview's printed check: a frame looks right at one turn and misse
 
 5. **Sheet.** Check the course on `uv run seascape sync scenarios/sync-<product>.toml --sheet`: every ring crosses every video it serves, and each camera's centre sits between the horizon and the nearest waterline.
 6. **Preview.** Run the preview again. It renders at 1 fps and one sample, and passes only when it prints `every video sees the course`.
-7. **Record.** `uv run seascape sync scenarios/sync-<product>.toml`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
+7. **Record.** Commit first, so the render records a commit that exists rather than one marked `-dirty`. To record a product again, move its earlier run out of `scenarios/sync-<product>/` first: `seascape sync` refuses a folder that isn't empty, so an old run's frames never pass for the new one's. `uv run seascape sync --parallel scenarios/sync-<product>.toml` renders the bands at once, encodes and writes `recordings/<rig>/<Model>_recordings_<timestamp>/`. Compare its file names with a real recording of the product: `<Model>_<video>_record_<ts>.mp4`, one `<Model>_<video>_metadata_<ts>.csv` per video, and `POWER_Const/<model>_sensors.json`.
+8. **Publish** with the `publish-dataset` skill, from the commit that recorded it, purpose `sync`, the recording's folder as the data:
+
+   ```bash
+   uv run --with wandb .claude/skills/publish-dataset/scripts/upload.py sync scenarios/sync-<product>.toml scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>
+   ```
 
 ## When it fails
 

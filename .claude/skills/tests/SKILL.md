@@ -1,6 +1,7 @@
 ---
 name: tests
-description: Decides what a pytest test in `tests/` checks and what it costs: dead tests, `parametrize` over loops, fixtures and real collaborators, tolerances, render tests. Use before writing or changing a test, even mid-task, and whenever a change adds or fixes behaviour a test should pin; `review-pr` runs it as one reviewer. The idiom of the code under test is `stack`'s.
+description: >-
+  Decides what a pytest test in `tests/` checks and what it costs: dead tests, `parametrize` over loops, fixtures and real collaborators, tolerances, render tests. Use before writing or changing a test, even mid-task, and whenever a change adds or fixes behaviour a test should pin; `review-pr` runs it as one reviewer. The idiom of the code under test is `stack`'s.
 ---
 
 # Tests

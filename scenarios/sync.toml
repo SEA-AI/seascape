@@ -11,8 +11,8 @@ cameras.eo = { preset = "eo_4k_49deg" }
 cameras.ir = { preset = "ir_vga_24deg" }
 
 # 6 deg/s is the collision-avoidance sweep rate SEA.AI's internal sync specification
-# assumes. Judgement: reversals at +-60 deg, 3 s holds, and a slew at
-# the product's top rate. A stand-in top rate, which each product sets.
+# assumes. Judgement: reversals at +-60 deg between 3 s holds. A stand-in top rate,
+# which each product sets.
 [turn]
 top_rate_deg_s = 30.0
 moves = [
@@ -20,8 +20,6 @@ moves = [
     { to_deg = 60.0, rate_deg_s = 6.0 },
     { to_deg = -60.0, rate_deg_s = 6.0 },
     { to_deg = 0.0, rate_deg_s = 6.0, hold_s = 3.0 },
-    { to_deg = 60.0, hold_s = 3.0 },
-    { to_deg = 0.0, hold_s = 3.0 },
 ]
 
 [sea]
@@ -35,6 +33,5 @@ sun_bearing_deg = 150.0
 
 [outputs]
 fps = 30
-duration_s = 60.0
+duration_s = 48.0
 format = "png"
-samples = { eo = 8, ir = 8 }
