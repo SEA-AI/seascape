@@ -262,6 +262,22 @@ def test_a_render_s_folder_holds_the_scenario_it_rendered(
     assert again.outputs.fps == 3
 
 
+def test_a_sync_recording_s_folder_holds_the_scenario_it_rendered(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered: list[Scenario] = []
+    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built))
+    monkeypatch.setattr(cli, "_encode", lambda *_: None)
+    monkeypatch.setattr(cli.recording, "export", lambda _: [])
+
+    result = run("sync", SYNC_SENTRY, "-o", tmp_path, "--set", "outputs.fps = 3")
+
+    assert result.exit_code == 0, result.output
+    again = load(tmp_path / loader.FILENAME)
+    assert again.model_dump() == rendered[0].model_dump()
+    assert again.outputs.fps == 3
+
+
 def test_a_folder_holding_an_earlier_run_is_refused_and_kept(
     run: Run, tmp_path: Path
 ) -> None:
@@ -423,7 +439,7 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
 
     with pytest.raises(click.ClickException, match=r"\.ir\.log") as failed:
-        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+        cli._render_apart(load(SYNC_SENTRY), tmp_path)
 
     assert ".eo.log" not in str(failed.value)
     assert started["eo"].killed
@@ -445,7 +461,7 @@ def test_an_interrupt_kills_every_band(
     monkeypatch.setattr(cli.time, "sleep", interrupted)
 
     with pytest.raises(KeyboardInterrupt):
-        cli._render_apart(SYNC_SENTRY, (), load(SYNC_SENTRY), tmp_path)
+        cli._render_apart(load(SYNC_SENTRY), tmp_path)
 
     assert [band.killed for band in started] == [True, True]
 
@@ -505,7 +521,7 @@ def test_a_one_band_scene_renders_in_this_process(
         lambda scene, band: mounts(scene, band) if ir_cameras or band != "ir" else [],
     )
 
-    cli._render_apart(SYNC_SENTRY, overrides, built, tmp_path)
+    cli._render_apart(built, tmp_path)
 
     assert rendered == [(built, tmp_path)]
 
@@ -551,7 +567,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
     built = load(SYNC_SENTRY)
     (tmp_path / loader.FILENAME).write_text("the whole scene's\n")
 
-    cli._render_apart(SYNC_SENTRY, (), built, tmp_path)
+    cli._render_apart(built, tmp_path)
 
     assert (tmp_path / loader.FILENAME).read_text() == "the whole scene's\n"
     truth = labels.Labels.read(tmp_path)

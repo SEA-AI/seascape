@@ -25,13 +25,16 @@ def main() -> None:
     # `seascape render` and `sync` write it, so it is what rendered.
     scenario = labels.with_name("scenario.toml")
     if not scenario.is_file():
-        raise SystemExit(f"no {scenario}: publish a seed's folder of a --variants run")
+        raise SystemExit(f"no {scenario}: render again, or publish a --variants seed")
     info = json.loads(labels.read_text())["info"]
     info["commit"] = args.commit or info["commit"]
     if not info["commit"] or info["commit"].endswith("-dirty"):
         raise SystemExit(f"{labels} names no clean commit: pass the one that rendered")
 
-    name = args.name or labels.resolve().parent.name
+    folder = labels.resolve().parent
+    # A --variants seed's folder is named for its seed alone, which scenarios share.
+    seed = folder.name.isdigit()
+    name = args.name or (f"{folder.parent.name}-{folder.name}" if seed else folder.name)
     with wandb.init(
         project=PROJECT,
         job_type="dataset-upload",

@@ -381,12 +381,11 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
 FILENAME = "scenario.toml"
 
 
-def dump(tree: Mapping[str, Any], path: Path) -> Path:
+def dump(tree: Mapping[str, Any], path: Path) -> None:
     """Write a `resolve`d tree as TOML that loads to the same scenario, free of the
     files it came from.
     """
     path.write_text(tomli_w.dumps(tree))
-    return path
 
 
 def load(
