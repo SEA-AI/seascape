@@ -6,6 +6,7 @@ import itertools
 import json
 import math
 from pathlib import Path
+from typing import NamedTuple
 
 import bpy
 import cv2
@@ -21,7 +22,7 @@ from seascape.blender import scene, sea
 from seascape.blender.blend import mesh_objects
 from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_crossings, waterline_m
-from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
+from seascape.config import BANDS, Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import waves
@@ -243,16 +244,102 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
 
 
 def test_a_panorama_centres_on_what_its_cameras_see(built: scene.Built) -> None:
-    """The bow's 49 deg eo at 0 and 40 deg and its 24 deg ir at 0: their optical axes
-    sum to 13 deg, the middle of what they see is 20 deg.
+    """The bow's eo at 0 and 40 deg and its ir at 0: their optical axes sum to 13 deg,
+    the middle of what they see is 20 deg.
     """
     mounts = [
         m for m in SCENARIO.mounts if m.rig_name == "bow" and m.camera.yaw_deg >= 0.0
     ]
     cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
 
-    # Judgement: 0.5 deg holds the bow's pitch and roll, which tilt the frames' edges.
-    assert panorama.axis_deg(cameras, "head") == pytest.approx(20.0, abs=0.5)
+    assert panorama.axis_deg(cameras, "head") == pytest.approx(20.0)
+
+
+class Overlay(NamedTuple):
+    image: np.ndarray
+    layout: panorama.Layout
+    ir: np.ndarray  # the IR's column, BGR as int
+
+
+@pytest.fixture(scope="module")
+def overlay(tmp_path_factory: pytest.TempPathFactory, built: scene.Built) -> Overlay:
+    """The bow's eo at 0 and 40 deg in blue and its ir at 0 in red, given IR first:
+    the bands' own axes differ, so only one canvas lines them up, and the stack is
+    the overlay's order, not the cameras'.
+    """
+    folder = tmp_path_factory.mktemp("overlay")
+    mounts = [
+        m for m in SCENARIO.mounts if m.rig_name == "bow" and m.camera.yaw_deg >= 0.0
+    ]
+    for mount in mounts:
+        frame = black_frame(mount)
+        frame[..., 0 if mount.camera.band == "eo" else 2] = 255
+        cv2.imwrite(str(folder / f"{mount.name}.png"), frame)
+    cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
+    cameras.sort(key=lambda c: c.band != "ir")
+    image, layout = panorama.overlaid(folder, cameras, "cylindrical", "head", 600)
+    centre = panorama.column(layout, 0.0)  # the IR looks along the head's +Y
+    assert centre is not None
+    return Overlay(image, layout, image[:, round(centre)].astype(int))
+
+
+# 1 is the blender's and addWeighted's rounding to uint8.
+MIXED = np.array([255 * (1 - panorama.OPACITY), 0, 255 * panorama.OPACITY])  # BGR
+IR_COLOUR = canvas.palette(len(BANDS))[BANDS.index("ir")][::-1]
+
+
+def test_an_overlay_mixes_the_ir_over_the_eo(overlay: Overlay) -> None:
+    # Outlines and names are other colours, so only the mix matches.
+    assert (np.abs(overlay.ir - MIXED).max(axis=1) <= 1).any()
+
+
+def test_an_overlay_lays_the_ir_opaque_where_no_eo_lies_beneath(
+    overlay: Overlay,
+) -> None:
+    """The ir is level and the eo pitched down, so the ir reaches above them."""
+    assert (np.abs(overlay.ir - (0, 0, 255)).max(axis=1) <= 1).any()
+
+
+def test_an_overlay_keeps_the_ir_within_its_frame(overlay: Overlay) -> None:
+    eo_only = panorama.column(overlay.layout, 40.0)  # eo_s's boresight
+    assert eo_only is not None
+    blue, _, red = overlay.image[overlay.image.shape[0] // 2, round(eo_only)]
+    assert blue > 127 and red == 0
+
+
+def test_an_overlay_names_a_later_band_over_its_bottom_edge(overlay: Overlay) -> None:
+    c = round(panorama.column(overlay.layout, 0.0) or 0)  # the IR's name is centred
+    rows = np.flatnonzero((overlay.image[:, c] == IR_COLOUR).all(axis=1))
+    top, bottom = rows[0], rows[-1]  # its outline
+    # Judgement: 3 px clears the outline's stroke, 2 px wide here.
+    name = rows[(rows > top + 3) & (rows < bottom - 3)]
+    assert name.size and name.mean() > (top + bottom) / 2
+
+
+def test_an_overlay_outlines_each_frame(overlay: Overlay) -> None:
+    beside = panorama.column(overlay.layout, -10.0)  # inside the IR, past its name
+    assert beside is not None
+    assert (overlay.image[:, round(beside)] == IR_COLOUR).all(axis=1).any()
+
+
+def test_an_overlay_writes_one_file_per_rig_whatever_the_rigs_are_called(
+    tmp_path: Path, built: scene.Built
+) -> None:
+    """Rig `bow` with eo and ir, and rig `bow_eo` with ir: a name of rig and bands
+    would give both `bow_eo_ir`.
+    """
+    first = SCENARIO.mounts[0]
+    mounts = [m for m in SCENARIO.mounts if m.rig_name == first.rig_name]
+    for mount in mounts:
+        cv2.imwrite(str(tmp_path / f"{mount.name}.png"), black_frame(mount))
+    cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
+    ir = next(c for c in cameras if c.band == "ir")
+    twin = ir.model_copy(update={"rig": f"{ir.rig}_eo", "name": f"{ir.name}_twin"})
+    Calibration(cameras=[*cameras, twin]).write(tmp_path)
+
+    paths = panorama.panoramas(tmp_path, "cylindrical", "head", 400, overlay=True)
+
+    assert len(set(paths)) == 2
 
 
 def test_a_calibration_refuses_a_band_seascape_has_not(built: scene.Built) -> None:
@@ -405,12 +492,10 @@ def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
     built: scene.Built,
 ) -> None:
     camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
-    frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)
     k, _ = panorama.pose(camera, "head", 0.0)
 
-    small, k = panorama._shrink(frame, k, 0.25)
+    (w, h), k = panorama._shrunk((camera.width_px, camera.height_px), k, 0.25)
 
-    h, w = small.shape[:2]
     assert (k[0, 2], k[1, 2]) == pytest.approx(((w - 1) / 2, (h - 1) / 2))
     assert k[0, 0] == pytest.approx(camera.K[0][0] * w / camera.width_px)
 

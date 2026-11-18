@@ -48,3 +48,5 @@ uv run seascape montage scenarios/twin-pod.toml -o out/   # out/montage.png
 ```bash
 uv run seascape panorama out/ --projection rectilinear --frame head --ruler
 ```
+
+`--overlay` puts each rig's bands in one image instead, every frame outlined and named, to show how they cover each other.

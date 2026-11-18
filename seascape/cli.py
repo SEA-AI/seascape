@@ -420,11 +420,24 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
 )
 @click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
 @click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
+@click.option(
+    "--overlay",
+    is_flag=True,
+    help="One image per rig: every band laid over the first, each frame outlined "
+    "and named.",
+)
 def panorama_(
-    folder: Path, projection: str, frame: Frame, max_width: int | None, ruler: bool
+    folder: Path,
+    projection: str,
+    frame: Frame,
+    max_width: int | None,
+    ruler: bool,
+    overlay: bool,
 ) -> None:
     """Stitch each rig's frames, from calibration.json."""
-    for path in panorama.panoramas(folder, projection, frame, max_width, ruler):
+    for path in panorama.panoramas(
+        folder, projection, frame, max_width, ruler, overlay=overlay
+    ):
         click.echo(path)
 
 
