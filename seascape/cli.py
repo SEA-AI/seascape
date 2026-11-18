@@ -19,6 +19,7 @@ import click
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import (
+    BANDS,
     Band,
     Scenario,
     dump,
@@ -32,7 +33,7 @@ from seascape.outputs import labels, montage, panorama, recording
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
 
-_BANDS = click.Choice(get_args(Band.__value__))
+_BANDS = click.Choice(BANDS)
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
 _FOLDER = click.Path(exists=True, file_okay=False, path_type=Path)
 _BLENDER_LOG = "blender.log"
@@ -445,11 +446,24 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
 )
 @click.option("--max-width", type=int, help="Pixels; native resolution when absent.")
 @click.option("--ruler", is_flag=True, help="A strip of bearing ticks under the image.")
+@click.option(
+    "--overlay",
+    is_flag=True,
+    help="One image per rig: every band laid over the first, each frame outlined "
+    "and named.",
+)
 def panorama_(
-    folder: Path, projection: str, frame: Frame, max_width: int | None, ruler: bool
+    folder: Path,
+    projection: str,
+    frame: Frame,
+    max_width: int | None,
+    ruler: bool,
+    overlay: bool,
 ) -> None:
     """Stitch each rig's frames, from calibration.json."""
-    for path in panorama.panoramas(folder, projection, frame, max_width, ruler):
+    for path in panorama.panoramas(
+        folder, projection, frame, max_width, ruler, overlay=overlay
+    ):
         click.echo(path)
 
 

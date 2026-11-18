@@ -6,6 +6,7 @@ import itertools
 import json
 import math
 from pathlib import Path
+from typing import NamedTuple
 
 import bpy
 import cv2
@@ -20,9 +21,9 @@ from seascape.blender import scene, sea
 from seascape.blender.blend import mesh_objects
 from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_crossings, waterline_m
-from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
+from seascape.config import BANDS, Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
-from seascape.outputs.calibration import Calibration
+from seascape.outputs.calibration import Calibration, CameraCalibration, matrix4
 from seascape.physics import waves
 from tests.scenarios import two_rigs
 
@@ -241,6 +242,140 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
     assert columns == sorted(columns)
 
 
+class Overlay(NamedTuple):
+    image: np.ndarray
+    layout: panorama.Layout
+    ir: np.ndarray  # the IR's column, BGR as int
+
+
+@pytest.fixture(scope="module")
+def overlay(tmp_path_factory: pytest.TempPathFactory, built: scene.Built) -> Overlay:
+    """The bow's eo at 0 and 40 deg in blue and its ir at 0 in red, given IR first:
+    the bands' own axes differ, so only one canvas lines them up, and the stack is
+    the overlay's order, not the cameras'.
+    """
+    folder = tmp_path_factory.mktemp("overlay")
+    mounts = [
+        m for m in SCENARIO.mounts if m.rig_name == "bow" and m.camera.yaw_deg >= 0.0
+    ]
+    for mount in mounts:
+        frame = black_frame(mount)
+        frame[..., 0 if mount.camera.band == "eo" else 2] = 255
+        cv2.imwrite(str(folder / f"{mount.name}.png"), frame)
+    cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
+    cameras.sort(key=lambda c: c.band != "ir")
+    image, layout = panorama.overlaid(folder, cameras, "cylindrical", "head", 600)
+    centre = panorama.column(layout, 0.0)  # the IR looks along the head's +Y
+    assert centre is not None
+    return Overlay(image, layout, image[:, round(centre)].astype(int))
+
+
+def level_camera(name: str, bearing_deg: float, hfov_deg: float) -> CameraCalibration:
+    """A level 640x480 pinhole looking along `bearing_deg` in the head frame."""
+    w, h = 640, 480
+    f = w / 2 / math.tan(math.radians(hfov_deg / 2))
+    pose = np.eye(4)
+    pose[:3, :3] = angles.turned(bearing_deg, 0.0) @ angles.TO_CV.T
+    return CameraCalibration(
+        name=name,
+        band="eo",
+        image="",
+        rig="mast",
+        width_px=w,
+        height_px=h,
+        K=((f, 0.0, (w - 1) / 2), (0.0, f, (h - 1) / 2), (0.0, 0.0, 1.0)),
+        extrinsics={"head": matrix4(pose)},
+    )
+
+
+def test_a_panorama_centres_on_its_cameras_however_lopsided() -> None:
+    """A 150 deg camera at 150 and two 20 deg ones at 300: they see 75 to 310 deg,
+    across 180, while their axes sum to 276 deg.
+    """
+    cameras = [
+        level_camera("wide", 150.0, 150.0),
+        level_camera("narrow_a", 300.0, 20.0),
+        level_camera("narrow_b", 300.0, 20.0),
+    ]
+
+    # The border is pixel centres, half a pixel inside each frame's edge: 0.02 deg.
+    assert panorama.axis_deg(cameras, "head") == pytest.approx(-167.5, abs=0.01)
+
+
+def test_a_panorama_refuses_a_frame_its_calibration_does_not_describe(
+    tmp_path: Path,
+) -> None:
+    camera = level_camera("cam", 0.0, 60.0).model_copy(update={"image": "cam.png"})
+    cv2.imwrite(str(tmp_path / "cam.png"), np.zeros((10, 10, 3), np.uint8))
+    with pytest.raises(ValueError, match="calibration says"):
+        panorama.stitch(tmp_path, [camera], "cylindrical", "head")
+
+
+def test_an_overlay_lays_out_a_frame_too_narrow_for_a_pixel(tmp_path: Path) -> None:
+    """At 50 px wide, the 1 deg ir's frame shrinks below a pixel."""
+    cameras = [
+        level_camera(band, 0.0, hfov_deg).model_copy(
+            update={"band": band, "image": f"{band}.png"}
+        )
+        for band, hfov_deg in (("eo", 150.0), ("ir", 1.0))
+    ]
+    for camera in cameras:
+        cv2.imwrite(str(tmp_path / camera.image), np.zeros((480, 640, 3), np.uint8))
+
+    image, _ = panorama.overlaid(tmp_path, cameras, "cylindrical", "head", 50)
+
+    assert image.shape[1] <= 50
+
+
+MIXED = np.array([255 * (1 - panorama.OPACITY), 0, 255 * panorama.OPACITY])  # BGR
+IR_COLOUR = canvas.palette(len(BANDS))[BANDS.index("ir")][::-1]
+
+
+@pytest.mark.parametrize(
+    "colour", [MIXED, (0, 0, 255)], ids=["mixed over the eo", "opaque above it"]
+)
+def test_an_overlay_lays_the_ir_over_the_eo(overlay: Overlay, colour: tuple) -> None:
+    """The ir is level and the eo pitched down, so the ir reaches above them."""
+    # Outlines and names are other colours, so only the ir's own pixels match; 1 is
+    # the blender's and addWeighted's rounding to uint8.
+    assert (np.abs(overlay.ir - colour).max(axis=1) <= 1).any()
+
+
+def test_an_overlay_names_a_later_band_over_its_bottom_edge(overlay: Overlay) -> None:
+    name_column = panorama.column(overlay.layout, 0.0)  # the IR's name is centred
+    beside = panorama.column(overlay.layout, -10.0)  # inside the IR, past its name
+    assert name_column is not None and beside is not None
+    ink = (overlay.image == IR_COLOUR).all(axis=2)
+    edges = np.flatnonzero(ink[:, round(beside)])
+    top, bottom = edges[0], edges[-1]  # the IR's outline
+    rows = np.flatnonzero(ink[:, round(name_column)])
+    # Judgement: 3 px clears the outline's stroke, 2 px wide here, and the edges'
+    # bow between the two columns, under a pixel.
+    name = rows[(rows > top + 3) & (rows < bottom - 3)]
+    assert not (rows > bottom + 3).any(), "a name below the frame"
+    assert name.size and name.mean() > (top + bottom) / 2
+
+
+def test_an_overlay_writes_one_file_per_rig_whatever_the_rigs_are_called(
+    tmp_path: Path, built: scene.Built
+) -> None:
+    """Rig `bow` with eo and ir, and rig `bow_eo` with ir: a name of rig and bands
+    would give both `bow_eo_ir`.
+    """
+    first = SCENARIO.mounts[0]
+    mounts = [m for m in SCENARIO.mounts if m.rig_name == first.rig_name]
+    for mount in mounts:
+        cv2.imwrite(str(tmp_path / f"{mount.name}.png"), black_frame(mount))
+    cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
+    ir = next(c for c in cameras if c.band == "ir")
+    twin = ir.model_copy(update={"rig": f"{ir.rig}_eo", "name": f"{ir.name}_twin"})
+    Calibration(cameras=[*cameras, twin]).write(tmp_path)
+
+    paths = panorama.panoramas(tmp_path, "cylindrical", "head", 400, overlay=True)
+
+    assert len(set(paths)) == 2
+
+
 def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
     mount = SCENARIO.mounts[0]
     Calibration(
@@ -384,12 +519,10 @@ def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
     built: scene.Built,
 ) -> None:
     camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
-    frame = np.zeros((camera.height_px, camera.width_px, 3), np.uint8)
     k, _ = panorama.pose(camera, "head", 0.0)
 
-    small, k = panorama._shrink(frame, k, 0.25)
+    (w, h), k = panorama._shrunk((camera.width_px, camera.height_px), k, 0.25)
 
-    h, w = small.shape[:2]
     assert (k[0, 2], k[1, 2]) == pytest.approx(((w - 1) / 2, (h - 1) / 2))
     assert k[0, 0] == pytest.approx(camera.K[0][0] * w / camera.width_px)
 
