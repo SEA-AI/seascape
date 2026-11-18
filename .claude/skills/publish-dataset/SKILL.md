@@ -17,7 +17,7 @@ description: >-
 | The scenario | the run's input, artifact `<stem>-scenario` of type `scenario`: the `scenario.toml` beside `labels.json`, with `extends`, presets and `--set` resolved; at the run's commit it renders on its own |
 | The data | the run's output, artifact `<stem>` of type `dataset`, linked into `wandb-registry-dataset/<stem>` |
 
-`<stem>` is the name of the folder holding `labels.json`, `<run>-<seed>` for a `--variants` seed's, or `--name`.
+`<stem>` is the name of the folder holding `labels.json`, or `--name`.
 
 ## Collections
 
@@ -44,7 +44,7 @@ A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off datase
    uvx --from wandb python .claude/skills/publish-dataset/scripts/upload.py <purpose> <data>
    ```
 
-   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it, and `scenario.toml` beside that. It needs a checkout and wandb, not the image. A `--variants` render publishes each seed's folder: its merged root has no one scenario. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
+   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it, and `scenario.toml` beside that. It needs a checkout and wandb, not the image. A `--variants` render publishes whole, from its root. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
 
 ## Fetch and reproduce
 

@@ -287,14 +287,14 @@ def render(
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
     into = _empty(output or scenario.with_suffix(""))
+    # Once, at the root: the seeds' own values are in their labels.
+    built = _pin(scenario, overrides, into)
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
     if variants == 1:
-        written = _render(_pin(scenario, overrides, into), into)
+        written = _render(built, into)
     else:
-        tree = resolve(scenario, overrides)
-        built = instantiate(tree)
         written, folders = [], []
         with (
             _progress(variants, "Rendering") as bar,
@@ -303,16 +303,11 @@ def render(
             tries = seeds(built.seed, variants)
             for seed in tries:
                 folder = into / str(seed)
-                variant = instantiate(tree, seed)
-                folder.mkdir(parents=True)
-                # In each seed's folder, none at the merged root: one renders each.
-                dump({**tree, "seed": seed}, folder / SCENARIO)
+                variant = load(scenario, [*overrides, f"seed = {seed}"])
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
-                    # The build refuses before it writes anything but the scenario.
-                    (folder / SCENARIO).unlink()
-                    folder.rmdir()
+                    folder.rmdir()  # the build refuses before anything is written
                     click.echo(f"\nseed {variant.seed} skipped: {error}", err=True)
                     continue
                 folders.append(folder)

@@ -206,12 +206,9 @@ def test_variants_skip_a_seed_whose_hulls_meet_and_merge_the_rest(
     assert f"seed {first} skipped" in result.stderr
     folders = sorted(p.name for p in tmp_path.iterdir() if p.is_dir())
     assert folders == [str(first + 1), str(first + 2)]
-    # Each folder renders again on its own; the merged root has no one scenario.
-    assert [load(tmp_path / f / loader.FILENAME).seed for f in folders] == [
-        first + 1,
-        first + 2,
-    ]
-    assert not (tmp_path / loader.FILENAME).exists()
+    # One recipe for the run, at the root; each seed's values are in its labels.
+    assert load(tmp_path / loader.FILENAME).seed == first
+    assert not any((tmp_path / f / loader.FILENAME).exists() for f in folders)
     merged = labels.Labels.model_validate_json((tmp_path / "labels.json").read_text())
     assert sorted(merged.info["scenarios"]) == folders
     assert all((tmp_path / image.file_name).exists() for image in merged.images)
