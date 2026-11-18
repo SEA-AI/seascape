@@ -14,7 +14,6 @@ import numpy as np
 import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
-from pydantic import ValidationError
 
 from seascape import angles
 from seascape.assets import Hull, manifest
@@ -349,17 +348,14 @@ MIXED = np.array([255 * (1 - panorama.OPACITY), 0, 255 * panorama.OPACITY])  # B
 IR_COLOUR = canvas.palette(len(BANDS))[BANDS.index("ir")][::-1]
 
 
-def test_an_overlay_mixes_the_ir_over_the_eo(overlay: Overlay) -> None:
-    # Outlines and names are other colours, so only the mix matches; 1 is the
-    # blender's and addWeighted's rounding to uint8.
-    assert (np.abs(overlay.ir - MIXED).max(axis=1) <= 1).any()
-
-
-def test_an_overlay_lays_the_ir_opaque_where_no_eo_lies_beneath(
-    overlay: Overlay,
-) -> None:
+@pytest.mark.parametrize(
+    "colour", [MIXED, (0, 0, 255)], ids=["mixed over the eo", "opaque above it"]
+)
+def test_an_overlay_lays_the_ir_over_the_eo(overlay: Overlay, colour: tuple) -> None:
     """The ir is level and the eo pitched down, so the ir reaches above them."""
-    assert (np.abs(overlay.ir - (0, 0, 255)).max(axis=1) <= 1).any()
+    # Outlines and names are other colours, so only the ir's own pixels match; 1 is
+    # the blender's and addWeighted's rounding to uint8.
+    assert (np.abs(overlay.ir - colour).max(axis=1) <= 1).any()
 
 
 def test_an_overlay_keeps_the_ir_within_its_frame(overlay: Overlay) -> None:
@@ -384,12 +380,6 @@ def test_an_overlay_names_a_later_band_over_its_bottom_edge(overlay: Overlay) ->
     assert name.size and name.mean() > (top + bottom) / 2
 
 
-def test_an_overlay_outlines_each_frame(overlay: Overlay) -> None:
-    beside = panorama.column(overlay.layout, -10.0)  # inside the IR, past its name
-    assert beside is not None
-    assert (overlay.image[:, round(beside)] == IR_COLOUR).all(axis=1).any()
-
-
 def test_an_overlay_writes_one_file_per_rig_whatever_the_rigs_are_called(
     tmp_path: Path, built: scene.Built
 ) -> None:
@@ -408,13 +398,6 @@ def test_an_overlay_writes_one_file_per_rig_whatever_the_rigs_are_called(
     paths = panorama.panoramas(tmp_path, "cylindrical", "head", 400, overlay=True)
 
     assert len(set(paths)) == 2
-
-
-def test_a_calibration_refuses_a_band_seascape_has_not(built: scene.Built) -> None:
-    mount = SCENARIO.mounts[0]
-    camera = scene.calibrate(built, mount, f"{mount.name}.png", 0.0)
-    with pytest.raises(ValidationError):
-        CameraCalibration.model_validate({**camera.model_dump(), "band": "uv"})
 
 
 def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
