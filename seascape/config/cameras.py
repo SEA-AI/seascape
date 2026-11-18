@@ -1,7 +1,7 @@
 """Cameras, and the rigs that carry them."""
 
 import math
-from typing import Annotated, Literal, NamedTuple
+from typing import Annotated, Literal, NamedTuple, get_args
 
 import numpy as np
 from pydantic import (
@@ -15,6 +15,7 @@ from seascape.physics import fisheye
 from seascape.physics.colour import Tone
 
 type Band = Literal["eo", "ir"]
+BANDS: tuple[Band, ...] = get_args(Band.__value__)
 
 
 # Path text would write outside the output directory.

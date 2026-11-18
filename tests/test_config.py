@@ -6,15 +6,15 @@ import statistics
 import tomllib
 import warnings
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from seascape.assets import manifest, skies
 from seascape.config import (
+    BANDS,
     PRESETS,
-    Band,
     Camera,
     Crop,
     Farm,
@@ -146,7 +146,7 @@ def test_samples_covers_every_band() -> None:
     """`compositor.set_output` reads this with `getattr(samples, band)`, so a band added
     to the Literal without a field here fails mid-build rather than in validation.
     """
-    assert set(Samples.model_fields) == set(get_args(Band.__value__))
+    assert set(Samples.model_fields) == set(BANDS)
 
 
 def test_an_override_is_the_toml_line_it_would_be_written_as(baseline) -> None:

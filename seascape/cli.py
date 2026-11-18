@@ -18,12 +18,12 @@ import click
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import Band, Scenario, json_schema, load, seeds
+from seascape.config import BANDS, Band, Scenario, json_schema, load, seeds
 from seascape.outputs import labels, montage, panorama, recording
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
 
-_BANDS = click.Choice(get_args(Band.__value__))
+_BANDS = click.Choice(BANDS)
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
 _FOLDER = click.Path(exists=True, file_okay=False, path_type=Path)
 _BLENDER_LOG = "blender.log"
