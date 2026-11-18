@@ -16,6 +16,7 @@ description: >-
 
   On a re-review, run only the tests the fix touched.
 - **Every behaviour the change adds or fixes has a test**, or the finding names the smallest one that would pin it.
+- **One test per break.** When a break fails two tests, the one that adds nothing else is dead: run each break against its neighbours too.
 - **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does: not `assert Sea().wind_speed_mps == 7.0`, but the sea that wind builds.
 
 ## What it checks
