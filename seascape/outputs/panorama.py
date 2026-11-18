@@ -36,9 +36,38 @@ def _rotation(camera: CameraCalibration, frame: Frame) -> np.ndarray:
 
 
 def axis_deg(cameras: list[CameraCalibration], frame: Frame) -> float:
-    """Bearing of the summed optical axes, which cannot wrap as a mean of angles can."""
+    """Bearing halfway between the cameras' outermost rays, so the panorama is
+    centred on what they see. Bearings are measured from the summed optical axes,
+    where the span cannot wrap as a mean of angles can.
+    """
     x, y, _ = np.sum([_rotation(camera, frame)[:, 2] for camera in cameras], axis=0)
-    return angles.bearing_deg(float(x), float(y))
+    summed = angles.bearing_deg(float(x), float(y))
+    R_summed_frame = angles.turned(summed, 0.0).T
+    east, north, _ = R_summed_frame @ np.hstack([_rays(c, frame) for c in cameras])
+    offsets = angles.bearing_deg(east, north)
+    return angles.wrapped_deg(summed + (offsets.min() + offsets.max()) / 2)
+
+
+def _border(camera: CameraCalibration, n: int = 32) -> np.ndarray:
+    """(4n, 2) pixels around a frame's edge, clockwise from its top-left corner."""
+    w, h = camera.width_px - 1, camera.height_px - 1
+    t = np.linspace(0.0, 1.0, n, endpoint=False)
+    zero, one = np.zeros(n), np.ones(n)
+    return np.concatenate(
+        [
+            np.c_[t * w, zero],
+            np.c_[one * w, t * h],
+            np.c_[(1 - t) * w, one * h],
+            np.c_[zero, (1 - t) * h],
+        ]
+    )
+
+
+def _rays(camera: CameraCalibration, frame: Frame) -> np.ndarray:
+    """(3, 4n) rays through a pinhole's `_border`, in `frame`."""
+    border = _border(camera)
+    pixels = np.c_[border, np.ones(len(border))].T
+    return _rotation(camera, frame) @ np.linalg.inv(np.array(camera.K)) @ pixels
 
 
 def pose(

@@ -241,6 +241,19 @@ def test_a_panorama_lays_its_cameras_out_in_yaw_order(
     assert columns == sorted(columns)
 
 
+def test_a_panorama_centres_on_what_its_cameras_see(built: scene.Built) -> None:
+    """The bow's 49 deg eo at 0 and 40 deg and its 24 deg ir at 0: their optical axes
+    sum to 13 deg, the middle of what they see is 20 deg.
+    """
+    mounts = [
+        m for m in SCENARIO.mounts if m.rig_name == "bow" and m.camera.yaw_deg >= 0.0
+    ]
+    cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
+
+    # Judgement: 0.5 deg holds the bow's pitch and roll, which tilt the frames' edges.
+    assert panorama.axis_deg(cameras, "head") == pytest.approx(20.0, abs=0.5)
+
+
 def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
     mount = SCENARIO.mounts[0]
     Calibration(
