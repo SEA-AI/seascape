@@ -30,6 +30,8 @@ Every target left without a box is listed under `dropped`, with its image, range
 
 ![A ship too faint to box](visibility.png)
 
+`scenario.toml` beside `labels.json` is the scenario as rendered: `extends`, presets and `--set` resolved. At the same commit it renders the same scene again on its own. At a `--variants` root it is the run's template; each seed's draws are under `info.scenarios`.
+
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder. `video` and `panorama` take one seed folder: a merged root has no `calibration.json`, and its seeds repeat each camera's times.
 
 An LWIR jpg is what a thermal camera shows: 8-bit grey through the camera's `agc`, its curve damped so a clip does not flicker. An LWIR png is what it measures: 16-bit centikelvin, the unit radiometric thermal cameras write, so `cv2.imread(path, cv2.IMREAD_UNCHANGED) / 100` is kelvin. A viewer shows that as flat grey; `montage`, `panorama` and `video` tone it through the same AGC as the jpg.

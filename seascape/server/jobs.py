@@ -20,7 +20,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
-import tomli_w
 from mcp.server.mcpserver.exceptions import ToolError
 from PIL import Image as Picture
 
@@ -29,6 +28,7 @@ from seascape.config import (
     Band,
     ImageFormat,
     Scenario,
+    dump,
     instantiate,
     resolve,
     seeds,
@@ -123,7 +123,7 @@ class Job:
         """Write the `resolve`d scenario `_checked` passed to `source`: an update that
         changes the files cannot change the job.
         """
-        self.source.write_text(tomli_w.dumps(tree))
+        dump(tree, self.source)
 
     def save(self) -> None:
         """Write the job's state to `record`, whole: a crash leaves the old one."""

@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager, redirect_stdout
 from itertools import chain
 from pathlib import Path
@@ -18,7 +18,16 @@ import click
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import Band, Scenario, json_schema, load, seeds
+from seascape.config import (
+    Band,
+    Scenario,
+    dump,
+    instantiate,
+    json_schema,
+    load,
+    resolve,
+    seeds,
+)
 from seascape.outputs import labels, montage, panorama, recording
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
@@ -107,6 +116,20 @@ def _empty(into: Path) -> Path:
     return into
 
 
+SCENARIO = "scenario.toml"
+
+
+def _pin(
+    scenario: Path, overrides: Iterable[str], into: Path
+) -> tuple[dict[str, Any], Scenario]:
+    """Load `scenario` with `overrides`, and write its resolved tree into `into`."""
+    tree = resolve(scenario, overrides)
+    built = instantiate(tree)
+    into.mkdir(parents=True, exist_ok=True)
+    dump(tree, into / SCENARIO)
+    return tree, built
+
+
 def _render(built: Scenario, into: Path) -> list[Path]:
     from seascape import render as renderer
 
@@ -153,12 +176,10 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
     return failed
 
 
-def _render_apart(
-    scenario: Path, overrides: tuple[str, ...], built: Scenario, into: Path
-) -> None:
-    """Render each band in a `seascape render` of its own, all at once, then gather
-    their frames and truth in `into` as one render writes them. A scene with one band
-    renders here.
+def _render_apart(built: Scenario, into: Path) -> None:
+    """Render each band of `into`'s `scenario.toml` in a `seascape render` of its own,
+    all at once, then gather their frames and truth in `into` as one render writes
+    them. A scene with one band renders here.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
     a frame; another band's render fills that time.
@@ -172,11 +193,12 @@ def _render_apart(
     logs = {band: into / f".{band}.log" for band in bands}
     commands: dict[Band, list[str]] = {}
     for band, part in parts.items():
-        command = [sys.executable, "-m", "seascape.cli", "render", str(scenario)]
-        for override in overrides:
-            command += ["--set", override]
         commands[band] = [
-            *command,
+            sys.executable,
+            "-m",
+            "seascape.cli",
+            "render",
+            str(into / SCENARIO),
             "--set",
             f'outputs.bands = ["{band}"]',
             "-o",
@@ -199,12 +221,14 @@ def _render_apart(
         raw=list(chain.from_iterable(c.raw for c in calibrations)),
     ).write(into)
     truth.write(into)
+    # The whole scene's copies are already in `into`.
+    own = {labels.FILENAME, CALIBRATION, SCENARIO, _BLENDER_LOG}
     with (into / _BLENDER_LOG).open("ab") as joined:
         for band, part in parts.items():
             with (part / _BLENDER_LOG).open("rb") as log:
                 shutil.copyfileobj(log, joined)
             for item in part.iterdir():
-                if item.name not in {labels.FILENAME, CALIBRATION, _BLENDER_LOG}:
+                if item.name not in own:
                     item.rename(into / item.name)
             shutil.rmtree(part)
             logs[band].unlink()
@@ -270,8 +294,9 @@ def render(
     """Write one image per camera and frame, and their labels. With --variants, a seed
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
-    built = load(scenario, list(overrides))
     into = _empty(output or scenario.with_suffix(""))
+    # Once, at the root: the seeds' own values are in their labels.
+    tree, built = _pin(scenario, overrides, into)
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
@@ -286,7 +311,7 @@ def render(
             tries = seeds(built.seed, variants)
             for seed in tries:
                 folder = into / str(seed)
-                variant = load(scenario, [*overrides, f"seed = {seed}"])
+                variant = instantiate(tree, seed)
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
@@ -355,10 +380,10 @@ def sync(
         click.echo(drawn)
         return
     if not preview:
-        built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
+        _, built = _pin(scenario, overrides, into)
         if parallel:
-            _render_apart(scenario, overrides, built, into)
+            _render_apart(built, into)
         else:
             _render(built, into)
         _encode(into, _QUALITY)

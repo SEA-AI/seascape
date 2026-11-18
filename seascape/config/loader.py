@@ -24,6 +24,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
+import tomli_w
+
 from seascape import assets
 from seascape.config.draws import (
     DRAWS,
@@ -373,6 +375,14 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
+
+
+def dump(tree: Mapping[str, Any], path: Path) -> None:
+    """Write a `resolve`d tree as TOML that loads to the same scenario, free of the
+    files it came from.
+    """
+    with path.open("wb") as toml:  # TOML is UTF-8 whatever the locale
+        tomli_w.dump(tree, toml)
 
 
 def load(
