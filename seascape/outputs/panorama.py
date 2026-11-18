@@ -1,8 +1,7 @@
 """Stitch a render's frames into panoramas, from its calibration.json.
 
 The poses are known, so this is OpenCV's stitching pipeline with its estimation
-stages skipped: warp each frame and its mask, blend, and draw on what the blender and
-masks give back. No Blender.
+stages skipped: warp each frame and its mask once, then blend. No Blender.
 
 Frames are stitched as they are, with no exposure compensation.
 """
@@ -40,7 +39,15 @@ class Layout(NamedTuple):
     kind: str
     scale: float
     axis_deg: float  # the bearing the panorama is turned to, in its frame
-    left: int  # projection x of column 0
+    roi: tuple[int, int, int, int]  # the canvas in projection pixels: x, y, w, h
+
+
+class Warp(NamedTuple):
+    """One frame on the canvas."""
+
+    corner: Sequence[int]  # projection pixels of its top left, x and y
+    pixels: np.ndarray  # (h, w, 3) uint8 BGR
+    mask: np.ndarray  # (h, w) uint8, 255 where the frame lands
 
 
 def _rotation(camera: CameraCalibration, frame: Frame) -> np.ndarray:
@@ -51,6 +58,7 @@ def _rays(camera: CameraCalibration, frame: Frame) -> np.ndarray:
     """(3, N) rays through a grid of a pinhole's pixel centres, edges included, in
     `frame`.
     """
+    # Judgement: the edges decide a pinhole's extent; 32 a side keeps it to a pixel.
     u, v = np.meshgrid(
         np.linspace(0, camera.width_px - 1, 32),
         np.linspace(0, camera.height_px - 1, 32),
@@ -79,8 +87,8 @@ def pose(
         raise ValueError(f"{camera.name}: a panorama stitches pinhole cameras")
     # The panorama's frame: +Y along the bearing.
     R_panorama_frame = angles.turned(bearing_deg, 0.0).T
-    R = angles.TO_CV @ R_panorama_frame @ _rotation(camera, frame)
-    return np.array(camera.K, np.float32), np.array(R, np.float32)
+    R_stitcher_camera = angles.TO_CV @ R_panorama_frame @ _rotation(camera, frame)
+    return np.array(camera.K, np.float32), np.array(R_stitcher_camera, np.float32)
 
 
 def column(layout: Layout, bearing_deg: float) -> float | None:
@@ -95,15 +103,16 @@ def column(layout: Layout, bearing_deg: float) -> float | None:
         layout: Where the panorama sits in its projection.
         bearing_deg: Clockwise from the frame's +Y, north in the world frame.
     """
-    off = math.radians(bearing_deg - layout.axis_deg)
-    if layout.kind == "plane" and math.cos(off) <= 0.0:
+    off_deg = bearing_deg - layout.axis_deg
+    if layout.kind == "plane" and math.cos(math.radians(off_deg)) <= 0.0:
         return None
-    turn, _ = cv2.Rodrigues(np.array([0.0, off, 0.0]))
+    # The same turn, in the stitcher's camera axes.
+    R_stitcher_ray = angles.TO_CV @ angles.turned(off_deg, 0.0) @ angles.TO_CV.T
     warper = cv2.PyRotationWarper(layout.kind, layout.scale)
     u, _ = warper.warpPoint(
-        (0.0, 0.0), np.eye(3, dtype=np.float32), turn.astype(np.float32)
+        (0.0, 0.0), np.eye(3, dtype=np.float32), R_stitcher_ray.astype(np.float32)
     )
-    return u - layout.left
+    return u - layout.roi[0]
 
 
 def _ink(width_px: int) -> float:
@@ -194,15 +203,14 @@ def _shrunk(
     return small, (resize @ k).astype(np.float32)
 
 
-def _warped(
-    folder: Path,
+def _layout(
     cameras: list[CameraCalibration],
     projection: str,
     frame: Frame,
     max_width: int | None,
-) -> tuple[Layout, Sequence[int], list[tuple]]:
-    """Every camera's frame and mask warped onto one canvas, centred on what they see
-    and scaled to `max_width`; the layout, the canvas's roi and the warps.
+) -> tuple[Layout, list[tuple[tuple[int, int], np.ndarray, np.ndarray]]]:
+    """Where the cameras land on one canvas, centred on what they see and scaled to
+    `max_width`, and each frame's size, K and R at that scale.
     """
     if max_width is not None and max_width < 1:
         raise ValueError(f"max width is {max_width}: it must be a pixel or more")
@@ -219,17 +227,18 @@ def _warped(
                 "use cylindrical or equirectangular"
             )
 
-    def canvas_of(scale: float) -> tuple[list, Sequence[int]]:
+    def canvas_of(scale: float) -> tuple[list, tuple[int, int, int, int]]:
         warper = cv2.PyRotationWarper(kind, scale)
         shrunk = [
             (*_shrunk((c.width_px, c.height_px), k, scale / float(k[0, 0])), r)
             for c, (k, r) in zip(cameras, poses, strict=True)
         ]
         rois = [warper.warpRoi(size, k, r) for size, k, r in shrunk]
-        roi = cv2.detail.resultRoi(
+        x, y, w, h = cv2.detail.resultRoi(
             corners=[roi[:2] for roi in rois], sizes=[roi[2:] for roi in rois]
         )
-        return shrunk, roi
+        # The warper rounds each extent outward, which can pass the cap by a pixel.
+        return shrunk, (x, y, min(w, max_width or w), h)
 
     # Native resolution is the largest fx: pixels per radian on axis, where every
     # projection here runs at one unit per radian.
@@ -237,23 +246,37 @@ def _warped(
     if max_width is not None:
         scale *= min(1.0, max_width / canvas_of(scale)[1][2])
     shrunk, roi = canvas_of(scale)
-    warper = cv2.PyRotationWarper(kind, scale)
-    warped = []
+    return Layout(kind, scale, bearing_deg, roi), shrunk
+
+
+def _warped(
+    folder: Path,
+    cameras: list[CameraCalibration],
+    layout: Layout,
+    shrunk: list[tuple[tuple[int, int], np.ndarray, np.ndarray]],
+) -> list[Warp]:
+    """Every camera's frame and mask warped onto the layout's canvas."""
+    warper = cv2.PyRotationWarper(layout.kind, layout.scale)
+    warps = []
     for full, (size, k, r) in zip(_frames(folder, cameras), shrunk, strict=True):
-        image = cv2.resize(full, size, interpolation=cv2.INTER_AREA)
+        image = full
+        if size != full.shape[1::-1]:
+            image = cv2.resize(full, size, interpolation=cv2.INTER_AREA)
         corner, pixels = warper.warp(image, k, r, cv2.INTER_LINEAR, cv2.BORDER_REFLECT)
         mask = np.full(image.shape[:2], 255, np.uint8)
         _, mask = warper.warp(mask, k, r, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT)
-        warped.append((corner, pixels, mask))
-    return Layout(kind, scale, bearing_deg, roi[0]), roi, warped
+        warps.append(Warp(corner, pixels, mask))
+    return warps
 
 
-def _blend(roi: Sequence[int], warped: list[tuple]) -> tuple[np.ndarray, np.ndarray]:
+def _blend(
+    roi: tuple[int, int, int, int], warps: list[Warp]
+) -> tuple[np.ndarray, np.ndarray]:
     """The warps blended on the canvas, 8-bit BGR, and where they cover it."""
     blender = cv2.detail.MultiBandBlender()
     blender.prepare(roi)
-    for corner, pixels, mask in warped:
-        blender.feed(pixels.astype(np.int16), mask, corner)
+    for warp in warps:
+        blender.feed(warp.pixels.astype(np.int16), warp.mask, warp.corner)
     image, mask = blender.blend(np.empty(0, np.int16), np.empty(0, np.uint8))
     # The pyramid overshoots at edges; clip, where convertScaleAbs would fold it back.
     return np.clip(image, 0, 255).astype(np.uint8), mask
@@ -278,10 +301,9 @@ def stitch(
         max_width: The widest the panorama may be, in pixels; None keeps native
             resolution.
     """
-    layout, roi, warped = _warped(folder, cameras, projection, frame, max_width)
-    image, _ = _blend(roi, warped)
-    # The warper rounds its extent a pixel outward.
-    return image[:, :max_width], layout
+    layout, shrunk = _layout(cameras, projection, frame, max_width)
+    image, _ = _blend(layout.roi, _warped(folder, cameras, layout, shrunk))
+    return image, layout
 
 
 def overlaid(
@@ -305,14 +327,16 @@ def overlaid(
         frame: As `stitch` takes it.
         max_width: As `stitch` takes it, across every band.
     """
-    layout, roi, warped = _warped(folder, cameras, projection, frame, max_width)
-    left, top, w, h = roi
+    layout, shrunk = _layout(cameras, projection, frame, max_width)
+    warps = _warped(folder, cameras, layout, shrunk)
+    left, top, w, h = layout.roi
     image = np.full((h, w, 3), canvas.MATTE, np.uint8)
     covered = np.zeros((h, w), bool)
     bands = [b for b in BANDS if any(c.band == b for c in cameras)]
     for band in bands:
         layer, mask = _blend(
-            roi, [x for c, x in zip(cameras, warped, strict=True) if c.band == band]
+            layout.roi,
+            [w for c, w in zip(cameras, warps, strict=True) if c.band == band],
         )
         seen = mask > 0
         mixed = cv2.addWeighted(layer, OPACITY, image, 1 - OPACITY, 0)
@@ -327,9 +351,13 @@ def overlaid(
         b: c[::-1].tolist()
         for b, c in zip(BANDS, canvas.palette(len(BANDS)), strict=True)
     }
-    for camera, ((x, y), _, mask) in zip(cameras, warped, strict=True):
+    for camera, warp in zip(cameras, warps, strict=True):
+        x, y = warp.corner
         edge, _ = cv2.findContours(
-            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE, offset=(x - left, y - top)
+            warp.mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_NONE,
+            offset=(x - left, y - top),
         )
         # Judgement: a pixel's tolerance straightens the mask's staircase.
         edge = [cv2.approxPolyDP(e, 1.0, closed=True) for e in edge]
@@ -347,7 +375,7 @@ def overlaid(
         )
         colour = colours[camera.band]
         cv2.putText(image, camera.name, origin, font, scale, colour, line, cv2.LINE_AA)
-    return image[:, :max_width], layout
+    return image, layout
 
 
 def panoramas(
