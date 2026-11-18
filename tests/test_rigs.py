@@ -337,13 +337,18 @@ def test_a_panorama_refuses_a_frame_its_calibration_does_not_describe(
         panorama.stitch(tmp_path, [camera], "cylindrical", "head")
 
 
-def test_a_frame_shrunk_to_nothing_keeps_a_pixel() -> None:
-    k = np.array([[320.0, 0.0, 319.5], [0.0, 320.0, 239.5], [0.0, 0.0, 1.0]])
+def test_an_overlay_lays_out_a_frame_too_narrow_for_a_pixel(tmp_path: Path) -> None:
+    """At 50 px wide, the 1 deg camera's frame shrinks below a pixel."""
+    cameras = [
+        level_camera(name, 0.0, hfov_deg).model_copy(update={"image": f"{name}.png"})
+        for name, hfov_deg in (("wide", 150.0), ("narrow", 1.0))
+    ]
+    for camera in cameras:
+        cv2.imwrite(str(tmp_path / camera.image), np.zeros((480, 640, 3), np.uint8))
 
-    (w, h), small = panorama._shrunk((640, 480), k, 1e-4)
+    image, _ = panorama.overlaid(tmp_path, cameras, "cylindrical", "head", 50)
 
-    assert (w, h) == (1, 1)
-    assert np.linalg.det(small) != 0
+    assert image.shape[1] <= 50
 
 
 def test_groups_stitched_among_their_rig_share_one_canvas(overlay: Overlay) -> None:
