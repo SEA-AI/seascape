@@ -297,13 +297,13 @@ def test_groups_stitched_among_their_rig_share_one_canvas(overlay: Overlay) -> N
     assert (ir_image.shape, ir_layout) == (eo_image.shape, eo_layout)
 
 
-# 1 is the blender's and addWeighted's rounding to uint8.
 MIXED = np.array([255 * (1 - panorama.OPACITY), 0, 255 * panorama.OPACITY])  # BGR
 IR_COLOUR = canvas.palette(len(BANDS))[BANDS.index("ir")][::-1]
 
 
 def test_an_overlay_mixes_the_ir_over_the_eo(overlay: Overlay) -> None:
-    # Outlines and names are other colours, so only the mix matches.
+    # Outlines and names are other colours, so only the mix matches; 1 is the
+    # blender's and addWeighted's rounding to uint8.
     assert (np.abs(overlay.ir - MIXED).max(axis=1) <= 1).any()
 
 

@@ -121,8 +121,13 @@ def column(layout: Layout, bearing_deg: float) -> float | None:
     u, _ = _warper(layout.kind, layout.scale).warpPoint(
         (0.0, 0.0), np.eye(3, dtype=np.float32), r
     )
+    return float(_pixel(layout, np.array([u, 0.0]))[0])
+
+
+def _pixel(layout: Layout, uv: np.ndarray) -> np.ndarray:
+    """Projection coordinates `uv`, (..., 2), as pixels of the laid-out panorama."""
     # Pixel centres sit at integers, so the resize scales about -0.5.
-    return (u - layout.left + 0.5) * layout.resize - 0.5
+    return (uv - (layout.left, layout.top) + 0.5) * layout.resize - 0.5
 
 
 @cache
@@ -227,7 +232,7 @@ def stitch(
             "use cylindrical or equirectangular"
         )
 
-    scale = max(float(k[0, 0]) for k, _ in poses)  # every camera at native size
+    scale = max(float(k[0, 0]) for k, _ in poses)
     if max_width is not None:
         native = cv2.PyRotationWarper(kind, scale)
         rois = [
@@ -242,13 +247,10 @@ def stitch(
     # Each frame shrunk to the scale before warping; the warp covers what warpRoi
     # gives for that size and K, so `every`'s rois are the canvas.
     shrunk = {
-        camera.name: _shrunk(size, k, scale / float(k[0, 0]))
-        for camera, size, (k, _) in zip(every, sizes, poses, strict=True)
+        camera.name: (*_shrunk(size, k, scale / float(k[0, 0])), r)
+        for camera, size, (k, r) in zip(every, sizes, poses, strict=True)
     }
-    rois = [
-        warper.warpRoi(*shrunk[camera.name], r)
-        for camera, (_, r) in zip(every, poses, strict=True)
-    ]
+    rois = [warper.warpRoi(size, k, r) for size, k, r in shrunk.values()]
     roi = cv2.detail.resultRoi(
         corners=[roi[:2] for roi in rois], sizes=[roi[2:] for roi in rois]
     )
@@ -257,20 +259,10 @@ def stitch(
     shared = _curve(folder, cameras, temps)
     warped = []
     for camera, t_k in zip(cameras, temps, strict=True):
-        path = folder / camera.image
-        image = (
-            cv2.imread(str(path), cv2.IMREAD_COLOR)
-            if t_k is None or shared is None
-            else cv2.cvtColor(agc.grey(t_k, *shared), cv2.COLOR_GRAY2BGR)
-        )
-        if image is None:
-            raise ValueError(
-                f"cannot read {path}: panorama takes the frames that "
-                'outputs.format = "png" or "jpg" writes'
-            )
-        size, k = shrunk[camera.name]
-        _, r = pose(camera, frame, bearing_deg)
-        image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+        image = _frame(folder / camera.image, t_k, shared)
+        size, k, r = shrunk[camera.name]
+        if size != image.shape[1::-1]:
+            image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
         corner, pixels = warper.warp(image, k, r, cv2.INTER_LINEAR, cv2.BORDER_REFLECT)
         mask = np.full(image.shape[:2], 255, np.uint8)
         _, mask = warper.warp(mask, k, r, cv2.INTER_NEAREST, cv2.BORDER_CONSTANT)
@@ -285,6 +277,25 @@ def stitch(
     image = np.clip(image, 0, 255).astype(np.uint8)
     image, resize = _fitted(image, max_width)
     return image, Layout(kind, scale, bearing_deg, roi[0], roi[1], resize)
+
+
+def _frame(
+    path: Path,
+    t_k: np.ndarray | None,
+    shared: tuple[np.ndarray, Agc] | None,
+) -> np.ndarray:
+    """A frame, 8-bit BGR, a thermal one toned through `shared`."""
+    image = (
+        cv2.imread(str(path), cv2.IMREAD_COLOR)
+        if t_k is None or shared is None
+        else cv2.cvtColor(agc.grey(t_k, *shared), cv2.COLOR_GRAY2BGR)
+    )
+    if image is None:
+        raise ValueError(
+            f"cannot read {path}: panorama takes the frames that "
+            'outputs.format = "png" or "jpg" writes'
+        )
+    return image
 
 
 def _fitted(image: np.ndarray, max_width: int | None) -> tuple[np.ndarray, float]:
@@ -320,7 +331,11 @@ def overlaid(
         frame: As `stitch` takes it.
         max_width: As `stitch` takes it, across every band.
     """
-    groups = [g for band in BANDS if (g := [c for c in cameras if c.band == band])]
+    groups = []
+    for band in BANDS:
+        group = [c for c in cameras if c.band == band]
+        if group:
+            groups.append(group)
     stitched = [
         stitch(folder, group, projection, frame, max_width, among=cameras)
         for group in groups
@@ -333,9 +348,7 @@ def overlaid(
     def landed(camera: CameraCalibration, pixels: np.ndarray) -> np.ndarray:
         """(N, 2) pixels of `camera`'s frame, where they land on the overlay."""
         k, r = pose(camera, frame, layout.axis_deg)
-        uv = np.array([warper.warpPoint(p, k, r) for p in pixels])
-        # Pixel centres sit at integers, so the resize scales about -0.5.
-        return (uv - (layout.left, layout.top) + 0.5) * layout.resize - 0.5
+        return _pixel(layout, np.array([warper.warpPoint(p, k, r) for p in pixels]))
 
     image = np.full_like(layers[0], canvas.MATTE)
     covered = np.zeros(image.shape[:2], bool)
