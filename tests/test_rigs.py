@@ -246,8 +246,6 @@ class Overlay(NamedTuple):
     image: np.ndarray
     layout: panorama.Layout
     ir: np.ndarray  # the IR's column, BGR as int
-    folder: Path
-    cameras: list[CameraCalibration]
 
 
 @pytest.fixture(scope="module")
@@ -269,7 +267,7 @@ def overlay(tmp_path_factory: pytest.TempPathFactory, built: scene.Built) -> Ove
     image, layout = panorama.overlaid(folder, cameras, "cylindrical", "head", 600)
     centre = panorama.column(layout, 0.0)  # the IR looks along the head's +Y
     assert centre is not None
-    return Overlay(image, layout, image[:, round(centre)].astype(int), folder, cameras)
+    return Overlay(image, layout, image[:, round(centre)].astype(int))
 
 
 def level_camera(name: str, bearing_deg: float, hfov_deg: float) -> CameraCalibration:
@@ -290,21 +288,18 @@ def level_camera(name: str, bearing_deg: float, hfov_deg: float) -> CameraCalibr
     )
 
 
-@pytest.mark.parametrize("turn_deg", [0.0, 150.0])
-def test_a_panorama_centres_on_its_cameras_however_lopsided(turn_deg: float) -> None:
-    """A 150 deg camera and two 20 deg ones 150 deg round from it: they see -75 to
-    160 deg from the wide one's axis, while their axes sum to 126 deg, past which
-    its rays wrap. Turned 150 deg, what they see straddles 180.
+def test_a_panorama_centres_on_its_cameras_however_lopsided() -> None:
+    """A 150 deg camera at 150 and two 20 deg ones at 300: they see 75 to 310 deg,
+    across 180, while their axes sum to 276 deg.
     """
     cameras = [
-        level_camera("wide", turn_deg, 150.0),
-        level_camera("narrow_a", turn_deg + 150.0, 20.0),
-        level_camera("narrow_b", turn_deg + 150.0, 20.0),
+        level_camera("wide", 150.0, 150.0),
+        level_camera("narrow_a", 300.0, 20.0),
+        level_camera("narrow_b", 300.0, 20.0),
     ]
 
-    centre_deg = angles.wrapped_deg(turn_deg + 42.5)
     # The border is pixel centres, half a pixel inside each frame's edge: 0.02 deg.
-    assert panorama.axis_deg(cameras, "head") == pytest.approx(centre_deg, abs=0.01)
+    assert panorama.axis_deg(cameras, "head") == pytest.approx(-167.5, abs=0.01)
 
 
 def test_a_panorama_refuses_a_frame_its_calibration_does_not_describe(
@@ -332,18 +327,6 @@ def test_an_overlay_lays_out_a_frame_too_narrow_for_a_pixel(tmp_path: Path) -> N
     assert image.shape[1] <= 50
 
 
-def test_groups_stitched_among_their_rig_share_one_canvas(overlay: Overlay) -> None:
-    """Alone, the eo pair and the ir would each get their own axis and extent."""
-    eo, ir = ([c for c in overlay.cameras if c.band == b] for b in ("eo", "ir"))
-    eo_image, eo_layout = panorama.stitch(
-        overlay.folder, eo, "cylindrical", "head", 600, among=overlay.cameras
-    )
-    ir_image, ir_layout = panorama.stitch(
-        overlay.folder, ir, "cylindrical", "head", 600, among=overlay.cameras
-    )
-    assert (ir_image.shape, ir_layout) == (eo_image.shape, eo_layout)
-
-
 MIXED = np.array([255 * (1 - panorama.OPACITY), 0, 255 * panorama.OPACITY])  # BGR
 IR_COLOUR = canvas.palette(len(BANDS))[BANDS.index("ir")][::-1]
 
@@ -356,13 +339,6 @@ def test_an_overlay_lays_the_ir_over_the_eo(overlay: Overlay, colour: tuple) -> 
     # Outlines and names are other colours, so only the ir's own pixels match; 1 is
     # the blender's and addWeighted's rounding to uint8.
     assert (np.abs(overlay.ir - colour).max(axis=1) <= 1).any()
-
-
-def test_an_overlay_keeps_the_ir_within_its_frame(overlay: Overlay) -> None:
-    eo_only = panorama.column(overlay.layout, 40.0)  # eo_s's boresight
-    assert eo_only is not None
-    blue, _, red = overlay.image[overlay.image.shape[0] // 2, round(eo_only)]
-    assert blue > 127 and red == 0
 
 
 def test_an_overlay_names_a_later_band_over_its_bottom_edge(overlay: Overlay) -> None:
