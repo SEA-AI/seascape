@@ -326,10 +326,12 @@ def test_a_panorama_refuses_a_frame_its_calibration_does_not_describe(
 
 
 def test_an_overlay_lays_out_a_frame_too_narrow_for_a_pixel(tmp_path: Path) -> None:
-    """At 50 px wide, the 1 deg camera's frame shrinks below a pixel."""
+    """At 50 px wide, the 1 deg ir's frame shrinks below a pixel."""
     cameras = [
-        level_camera(name, 0.0, hfov_deg).model_copy(update={"image": f"{name}.png"})
-        for name, hfov_deg in (("wide", 150.0), ("narrow", 1.0))
+        level_camera(band, 0.0, hfov_deg).model_copy(
+            update={"band": band, "image": f"{band}.png"}
+        )
+        for band, hfov_deg in (("eo", 150.0), ("ir", 1.0))
     ]
     for camera in cameras:
         cv2.imwrite(str(tmp_path / camera.image), np.zeros((480, 640, 3), np.uint8))
