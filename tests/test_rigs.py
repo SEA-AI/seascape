@@ -255,6 +255,28 @@ def test_a_panorama_centres_on_what_its_cameras_see(built: scene.Built) -> None:
     assert panorama.axis_deg(cameras, "head") == pytest.approx(20.0)
 
 
+def test_groups_stitched_among_their_rig_share_one_canvas(
+    tmp_path: Path, built: scene.Built
+) -> None:
+    """The bow's eo fan and its ir alone would each get their own axis and extent."""
+    mounts = [m for m in SCENARIO.mounts if m.rig_name == "bow"]
+    for mount in mounts:
+        cv2.imwrite(str(tmp_path / f"{mount.name}.png"), black_frame(mount))
+    cameras = [scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
+    eo = [c for c in cameras if c.band == "eo"]
+    ir = [c for c in cameras if c.band == "ir"]
+
+    eo_image, eo_layout = panorama.stitch(
+        tmp_path, eo, "cylindrical", "head", 600, among=cameras
+    )
+    ir_image, ir_layout = panorama.stitch(
+        tmp_path, ir, "cylindrical", "head", 600, among=cameras
+    )
+
+    assert ir_image.shape == eo_image.shape
+    assert ir_layout == eo_layout
+
+
 class Overlay(NamedTuple):
     image: np.ndarray
     layout: panorama.Layout
