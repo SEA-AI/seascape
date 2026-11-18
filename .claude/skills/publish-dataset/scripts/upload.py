@@ -22,16 +22,16 @@ def main() -> None:
     labels = next((f for f in found if f.is_file()), None)
     if labels is None:
         raise SystemExit(f"no labels.json in {args.data} or above it")
-    # `seascape render` and `sync` write it: what rendered, never a copy made later.
+    # `seascape render` and `sync` write it, so it is what rendered.
     scenario = labels.with_name("scenario.toml")
     if not scenario.is_file():
-        raise SystemExit(f"no {scenario}: render with a seascape that writes it")
+        raise SystemExit(f"no {scenario}: publish a seed's folder of a --variants run")
     info = json.loads(labels.read_text())["info"]
     info["commit"] = args.commit or info["commit"]
     if not info["commit"] or info["commit"].endswith("-dirty"):
         raise SystemExit(f"{labels} names no clean commit: pass the one that rendered")
 
-    name = args.name or labels.parent.name
+    name = args.name or labels.resolve().parent.name
     with wandb.init(
         project=PROJECT,
         job_type="dataset-upload",

@@ -40,10 +40,10 @@ Blender ships as a Python package, so there is nothing else to install. On Linux
 
 Without a checkout, `uv tool install "seascape[serve] @ git+https://github.com/SEA-AI/seascape"` installs the CLI and, with `[serve]`, the [render server](docs/render-server.md); uv takes the aarch64 `bpy` from the same index. pip does not: there, add `--extra-index-url https://sea-ai.github.io/bpy-linux-aarch64/simple/`.
 
-On an NVIDIA GPU with Docker, the image runs any command, `serve` without one:
+With Docker and an NVIDIA GPU, the image runs any seascape command, or `serve` without one. The volume keeps assets and compiled kernels between runs:
 
 ```bash
-docker run --rm --gpus all -v "$PWD/out:/out" ghcr.io/sea-ai/seascape render scenarios/baseline.toml -o /out/baseline
+docker run --rm --gpus all -v seascape-cache:/root/.cache/seascape -v "$PWD/out:/out" ghcr.io/sea-ai/seascape render scenarios/baseline.toml -o /out/baseline
 ```
 
 ## Quickstart
@@ -58,6 +58,7 @@ out/
 ├── bow_ir.jpg
 ├── calibration.json
 ├── labels.json
+├── scenario.toml
 └── blender.log
 ```
 
