@@ -36,7 +36,7 @@ Decide by the preview's printed check: a frame looks right at one turn and misse
 8. **Publish** with the `publish-dataset` skill, from the commit that recorded it, purpose `sync`, the recording's folder as the data:
 
    ```bash
-   uv run --with wandb .claude/skills/publish-dataset/scripts/upload.py sync scenarios/sync-<product>.toml scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>
+   uvx --from wandb python .claude/skills/publish-dataset/scripts/upload.py sync scenarios/sync-<product>/recordings/<rig>/<Model>_recordings_<timestamp>
    ```
 
 ## When it fails

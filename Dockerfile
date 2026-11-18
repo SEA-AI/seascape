@@ -26,4 +26,5 @@ ARG SEASCAPE_COMMIT
 ENV SEASCAPE_COMMIT=$SEASCAPE_COMMIT
 
 EXPOSE 8765
-CMD ["uv", "run", "--no-sync", "seascape", "serve", "--host", "0.0.0.0"]
+ENTRYPOINT ["uv", "run", "--no-sync", "seascape"]
+CMD ["serve", "--host", "0.0.0.0"]
