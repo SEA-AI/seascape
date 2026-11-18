@@ -14,10 +14,10 @@ description: >-
 | What | Where |
 |---|---|
 | The upload | a run in the `synthetic-datasets` project, named `<stem>`, `job_type` `dataset-upload` as the registry's other uploads, tagged with the purpose (`sync`, `tracker`, …), `config` = `labels.json`'s `info` |
-| The scenario | the run's input, artifact `<stem>-scenario` of type `scenario`: one TOML with `extends` and presets resolved, which renders on its own |
+| The scenario | the run's input, artifact `<stem>-scenario` of type `scenario`: the `scenario.toml` the render wrote beside `labels.json`, with `extends`, presets and `--set` resolved, which renders on its own |
 | The data | the run's output, artifact `<stem>` of type `dataset`, linked into `wandb-registry-dataset/<stem>` |
 
-`<stem>` is the scenario file's name without `.toml`.
+`<stem>` is the render's folder name, which defaults to the scenario file's name without `.toml`.
 
 ## Collections
 
@@ -37,14 +37,14 @@ A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off datase
 
 ## Steps
 
-1. **Render from a clean commit**, so `info.commit` names code that exists. Render from the TOML alone, without `--set`: the published TOML is then exactly what rendered.
+1. **Render from a clean commit**, so `info.commit` names code that exists: a checkout, or the image at a main commit's tag, `docker run --gpus all -v <out>:/out ghcr.io/sea-ai/seascape:<sha> render <scenario> -o /out/<stem>`. `seascape render` and `sync` write `scenario.toml` beside `labels.json`: the scene as rendered, overrides included.
 2. **Upload**, logged in (`uvx wandb login`) with `WANDB_ENTITY` set to the team that owns the registry:
 
    ```bash
-   uv run --with wandb .claude/skills/publish-dataset/scripts/upload.py <purpose> <scenario.toml> <data>
+   uvx --from wandb python .claude/skills/publish-dataset/scripts/upload.py <purpose> <data>
    ```
 
-   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
+   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` and `scenario.toml` in it or above it, so it needs only the output folder, not seascape: run it where the render is. `--name` sets the collection when the folder's name isn't the scenario's. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
 
 ## Fetch and reproduce
 
