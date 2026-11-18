@@ -16,7 +16,7 @@ description: >-
 
   On a re-review, run only the tests the fix touched.
 - **Every behaviour the change adds or fixes has a test**, or the finding names the smallest one that would pin it.
-- **One test per break.** When a break fails two tests, the one that adds nothing else is dead: run each break against its neighbours too.
+- **Keep only the tests a break needs.** Run every break against every test the change adds, by test id, not `-k`, and count an error as a failure: a broken module fixture errors its tests instead of failing them. A test or parametrized case that no break fails alone is dead.
 - **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does: not `assert Sea().wind_speed_mps == 7.0`, but the sea that wind builds.
 
 ## What it checks
@@ -32,9 +32,13 @@ description: >-
 
 - **A test pays only for what it checks.** Run `pytest --durations=10` on the tests the change touches, then cut what a slow one doesn't need: a smaller unit, a smaller input (lower resolution, fewer samples, fewer frames), a setup shared with a test that already pays for it.
 
+## Reviewing
+
+Be demanding: every test the change adds earns its place, and when in doubt the verdict is dead. Fewer tests that each pin one behaviour beat more that overlap.
+
 ## What a finding contains
 
-Report a table, dead tests first:
+Report the break matrix first, one row per break and the tests it fails, then a table, dead tests first:
 
 | # | Where | Verdict | Finding | Evidence | Fix |
 |---|---|---|---|---|---|
