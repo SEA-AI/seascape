@@ -14,7 +14,7 @@ from PIL import Image
 
 from seascape import assets, cli, rigview, server
 from seascape.assets import skies
-from seascape.config import load, loader
+from seascape.config import Scenario, load, loader
 from seascape.outputs import labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.sync import staging
@@ -206,6 +206,12 @@ def test_variants_skip_a_seed_whose_hulls_meet_and_merge_the_rest(
     assert f"seed {first} skipped" in result.stderr
     folders = sorted(p.name for p in tmp_path.iterdir() if p.is_dir())
     assert folders == [str(first + 1), str(first + 2)]
+    # Each folder renders again on its own; the merged root has no one scenario.
+    assert [load(tmp_path / f / loader.FILENAME).seed for f in folders] == [
+        first + 1,
+        first + 2,
+    ]
+    assert not (tmp_path / loader.FILENAME).exists()
     merged = labels.Labels.model_validate_json((tmp_path / "labels.json").read_text())
     assert sorted(merged.info["scenarios"]) == folders
     assert all((tmp_path / image.file_name).exists() for image in merged.images)
@@ -240,13 +246,18 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
 def test_a_render_s_folder_holds_the_scenario_it_rendered(
     run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    rendered = []
-    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built) or [])
+    rendered: list[Scenario] = []
+
+    def render(built: Scenario, _: Path) -> list[Path]:
+        rendered.append(built)
+        return []
+
+    monkeypatch.setattr(cli, "_render", render)
 
     result = run("render", OPEN_SEA, "-o", tmp_path, "--set", "outputs.fps = 3")
 
     assert result.exit_code == 0, result.output
-    again = load(tmp_path / cli.SCENARIO)
+    again = load(tmp_path / loader.FILENAME)
     assert again.model_dump() == rendered[0].model_dump()
     assert again.outputs.fps == 3
 
@@ -538,9 +549,11 @@ def test_the_bands_end_as_one_render_of_the_scene(
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
     built = load(SYNC_SENTRY)
+    (tmp_path / loader.FILENAME).write_text("the whole scene's\n")
 
     cli._render_apart(SYNC_SENTRY, (), built, tmp_path)
 
+    assert (tmp_path / loader.FILENAME).read_text() == "the whole scene's\n"
     truth = labels.Labels.read(tmp_path)
     assert truth.info["scenario"] == built.model_dump(mode="json")
     assert [i.file_name for i in truth.images] == ["eo.png", "ir.png"]
@@ -553,6 +566,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
         "eo.png",
         "ir.png",
         "labels.json",
+        loader.FILENAME,
     ]
     assert not any(band.killed for band in started)
     # Both bands share one temporary folder, gone after the run.
@@ -561,7 +575,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
 
 def _write_part(command: list[str], band: str) -> None:
     """The folder a band's render leaves at the command's `-o`: a frame named for
-    `band`, its truth and its log.
+    `band`, its truth, its scenario and its log.
     """
     part = Path(command[command.index("-o") + 1])
     part.mkdir()
@@ -580,6 +594,7 @@ def _write_part(command: list[str], band: str) -> None:
     Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
     (part / f"{band}.png").write_bytes(b"frame")
     (part / "blender.log").write_text(f"{band}\n")
+    (part / loader.FILENAME).write_text(f'outputs.bands = ["{band}"]\n')
 
 
 def _band_of(command: list[str]) -> str:

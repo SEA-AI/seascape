@@ -24,6 +24,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
+import tomli_w
+
 from seascape import assets
 from seascape.config.draws import (
     DRAWS,
@@ -373,6 +375,18 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
     if isinstance(objects := data.get("objects"), list):
         data["objects"] = _copies(objects, seed, data.get("sky"))
     return Scenario.model_validate(_draw(data, seed, "draw"))
+
+
+# Beside a render's labels: the scenario as it rendered, which renders again alone.
+FILENAME = "scenario.toml"
+
+
+def dump(tree: Mapping[str, Any], path: Path) -> Path:
+    """Write a `resolve`d tree as TOML that loads to the same scenario, free of the
+    files it came from.
+    """
+    path.write_text(tomli_w.dumps(tree))
+    return path
 
 
 def load(
