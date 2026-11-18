@@ -6,7 +6,7 @@ from pathlib import Path
 
 import wandb
 
-PROJECT, REGISTRY = "synthetic-datasets", "wandb-registry-dataset"
+PROJECT = "synthetic-datasets"
 
 
 def main() -> None:
@@ -51,8 +51,7 @@ def main() -> None:
         )
         dataset.add_dir(str(args.data), name=args.data.name)
         run.log_artifact(dataset).wait()
-        linked = dataset.link(f"{REGISTRY}/{name}")
-        print(dataset.qualified_name, "->", linked.qualified_name)
+        print(dataset.qualified_name)
 
 
 if __name__ == "__main__":

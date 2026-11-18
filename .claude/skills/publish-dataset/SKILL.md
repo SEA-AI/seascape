@@ -1,10 +1,10 @@
 ---
 name: publish-dataset
 description: >-
-  Publishes a seascape render to W&B as a dataset, in the `synthetic-datasets` project and
-  the Dataset registry, with the scenario that made it as one standalone TOML. Use whenever
-  a render is to reach W&B, wandb, an artifact or the registry, even when the request only
-  says upload, push or share a render: after rendering anything another team consumes (a
+  Publishes a seascape render to W&B as a dataset, in the `synthetic-datasets` project, with
+  the scenario that made it as one standalone TOML. Use whenever a render is to reach W&B,
+  wandb, an artifact or the registry, even when the request only says upload, push or share
+  a render: after rendering anything another team consumes (a
   sync recording, a tracker or fusion scenario), to publish a re-render of the same TOML,
   or to fetch or reproduce a published dataset.
 ---
@@ -15,7 +15,7 @@ description: >-
 |---|---|
 | The upload | a run in the `synthetic-datasets` project, named `<stem>`, `job_type` `dataset-upload` as the registry's other uploads, tagged with the purpose (`sync`, `tracker`, …), `config` = `labels.json`'s `info` |
 | The scenario | the run's input, artifact `<stem>-scenario` of type `scenario`: the `scenario.toml` beside `labels.json`, with `extends`, presets and `--set` resolved; at the run's commit it renders on its own |
-| The data | the run's output, artifact `<stem>` of type `dataset`, linked into `wandb-registry-dataset/<stem>` |
+| The data | the run's output, artifact `<stem>` of type `dataset`. Linking a version into `wandb-registry-dataset/<stem>` is a person's call, made by hand in W&B |
 
 `<stem>` is the name of the folder holding `labels.json`, or `--name`.
 
@@ -44,7 +44,7 @@ A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off datase
    uvx --from wandb python .claude/skills/publish-dataset/scripts/upload.py <purpose> <data>
    ```
 
-   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it, and `scenario.toml` beside that. It needs a checkout and wandb, not the image. A `--variants` render publishes whole, from its root. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the project's version and the registry's.
+   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it, and `scenario.toml` beside that. It needs a checkout and wandb, not the image. A `--variants` render publishes whole, from its root. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the artifact's version.
 
 ## Fetch and reproduce
 
