@@ -34,7 +34,7 @@ description: >-
 
 ## Reviewing
 
-Be demanding: two tests that fail on the same breaks cost twice to read and keep for one behaviour pinned. Every test the change adds earns its place with a break only it fails.
+More tests are not more safety. Two that fail on the same breaks cost twice to read and keep for one behaviour pinned, so every test the change adds earns its place with a break only it fails.
 
 ## What a finding contains
 
