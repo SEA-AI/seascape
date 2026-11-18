@@ -127,6 +127,13 @@ def _warper(kind: str, scale: float) -> cv2.PyRotationWarper:
     return cv2.PyRotationWarper(kind, scale)
 
 
+def _ink(width_px: int) -> float:
+    """Scale of lines and text on a panorama `width_px` wide: 1 to 2000 px, then in
+    proportion.
+    """
+    return max(1.0, width_px / 2000)
+
+
 def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
     """A panorama over a strip of bearing ticks, in degrees of its frame.
 
@@ -137,7 +144,7 @@ def ruled(image: np.ndarray, layout: Layout, true: bool = False) -> np.ndarray:
             frame's axis.
     """
     w = image.shape[1]
-    size = max(1.0, w / 2000)
+    size = _ink(w)
     strip = np.full((round(36 * size), w, 3), canvas.MATTE, np.uint8)
     tick = round(8 * size)
     font, scale = cv2.FONT_HERSHEY_SIMPLEX, 0.5 * size
@@ -256,14 +263,20 @@ def stitch(
     image, _ = blender.blend(np.empty(0, np.int16), np.empty(0, np.uint8))
     # The pyramid overshoots at edges; clip, where convertScaleAbs would fold it back.
     image = np.clip(image, 0, 255).astype(np.uint8)
-    h, w = image.shape[:2]
-    resize = 1.0
-    if max_width is not None and w > max_width:
-        # The warper rounds its extent outward, a pixel past the scale asked for.
-        resize = max_width / w
-        size = (max_width, round(h * resize))
-        image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+    image, resize = _fitted(image, max_width)
     return image, Layout(kind, scale, bearing_deg, roi[0], roi[1], resize)
+
+
+def _fitted(image: np.ndarray, max_width: int | None) -> tuple[np.ndarray, float]:
+    """`image` shrunk to `max_width`, and the factor. The warp is scaled to
+    `max_width` already, but the warper rounds its extent a pixel outward.
+    """
+    h, w = image.shape[:2]
+    if max_width is None or w <= max_width:
+        return image, 1.0
+    resize = max_width / w
+    size = (max_width, round(h * resize))
+    return cv2.resize(image, size, interpolation=cv2.INTER_AREA), resize
 
 
 def _faces_ahead(k: np.ndarray, r: np.ndarray, size: tuple[int, int]) -> bool:
