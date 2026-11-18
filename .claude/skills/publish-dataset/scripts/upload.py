@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+import wandb
+
 PROJECT, REGISTRY = "synthetic-datasets", "wandb-registry-dataset"
 
 
@@ -28,8 +30,6 @@ def main() -> None:
     info["commit"] = args.commit or info["commit"]
     if not info["commit"] or info["commit"].endswith("-dirty"):
         raise SystemExit(f"{labels} names no clean commit: pass the one that rendered")
-
-    import wandb
 
     folder = labels.resolve().parent
     # A --variants seed's folder is named for its seed alone, which scenarios share.
