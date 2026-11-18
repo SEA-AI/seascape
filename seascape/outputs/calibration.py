@@ -11,7 +11,7 @@ import numpy as np
 from pydantic import ConfigDict, Field
 
 from seascape import atomic
-from seascape.config import Camera, Crop
+from seascape.config import Band, Camera, Crop
 from seascape.model import Model
 from seascape.physics import fisheye
 
@@ -57,7 +57,7 @@ class CameraCalibration(_Record):
     """
 
     name: str
-    band: str
+    band: Band
     image: str = Field(description="relative to the calibration file's folder")
     rig: str
     model: str | None = None

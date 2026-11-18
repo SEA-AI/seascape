@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
+from pydantic import ValidationError
 
 from seascape import angles
 from seascape.assets import Hull, manifest
@@ -22,7 +23,7 @@ from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_crossings, waterline_m
 from seascape.config import Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
-from seascape.outputs.calibration import Calibration
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import waves
 from tests.scenarios import two_rigs
 
@@ -252,6 +253,13 @@ def test_a_panorama_centres_on_what_its_cameras_see(built: scene.Built) -> None:
 
     # Judgement: 0.5 deg holds the bow's pitch and roll, which tilt the frames' edges.
     assert panorama.axis_deg(cameras, "head") == pytest.approx(20.0, abs=0.5)
+
+
+def test_a_calibration_refuses_a_band_seascape_has_not(built: scene.Built) -> None:
+    mount = SCENARIO.mounts[0]
+    camera = scene.calibrate(built, mount, f"{mount.name}.png", 0.0)
+    with pytest.raises(ValidationError):
+        CameraCalibration.model_validate({**camera.model_dump(), "band": "uv"})
 
 
 def test_a_panorama_refuses_a_sequence(tmp_path: Path, built: scene.Built) -> None:
