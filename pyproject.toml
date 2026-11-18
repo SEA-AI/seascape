@@ -23,6 +23,7 @@ dependencies = [
     "opencv-python-headless>=5.0.0.93",
     "pillow>=12.3.0",
     "pydantic>=2.9",
+    "tomli-w>=1.2.0",
 ]
 
 [project.urls]
@@ -38,7 +39,6 @@ serve = [
     "mcp>=2.3",
     "pydantic-settings>=2.16",
     "starlette>=1.8",
-    "tomli-w>=1.2.0",
     "uvicorn>=0.54",
 ]
 

@@ -736,6 +736,7 @@ dependencies = [
     { name = "opencv-python-headless" },
     { name = "pillow" },
     { name = "pydantic" },
+    { name = "tomli-w" },
 ]
 
 [package.optional-dependencies]
@@ -743,7 +744,6 @@ serve = [
     { name = "mcp" },
     { name = "pydantic-settings" },
     { name = "starlette" },
-    { name = "tomli-w" },
     { name = "uvicorn" },
 ]
 
@@ -767,7 +767,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", marker = "extra == 'serve'", specifier = ">=2.16" },
     { name = "starlette", marker = "extra == 'serve'", specifier = ">=1.8" },
-    { name = "tomli-w", marker = "extra == 'serve'", specifier = ">=1.2.0" },
+    { name = "tomli-w", specifier = ">=1.2.0" },
     { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.54" },
 ]
 provides-extras = ["serve"]

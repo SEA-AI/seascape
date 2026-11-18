@@ -15,10 +15,19 @@ from pathlib import Path
 from typing import Any, get_args
 
 import click
+import tomli_w
 
 from seascape import assets
 from seascape.assets import skies
-from seascape.config import Band, Scenario, json_schema, load, seeds
+from seascape.config import (
+    Band,
+    Scenario,
+    instantiate,
+    json_schema,
+    load,
+    resolve,
+    seeds,
+)
 from seascape.outputs import labels, montage, panorama, recording
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
@@ -105,6 +114,22 @@ def _empty(into: Path) -> Path:
     if into.is_dir() and any(into.iterdir()):
         raise click.ClickException(f"{into} is not empty: remove it or pick another")
     return into
+
+
+# Beside the labels, so an output folder renders again without the files it came from.
+SCENARIO = "scenario.toml"
+
+
+def _pin(scenario: Path, overrides: list[str], into: Path) -> Scenario:
+    """Load `scenario` with `overrides`, and write into `into` the tree it resolved to:
+    `extends`, presets and overrides applied, draws left to the seed.
+    """
+    tree = resolve(scenario, overrides)
+    built = instantiate(tree)
+    into.mkdir(parents=True, exist_ok=True)
+    # The seed pinned, so a later default cannot redraw the scene.
+    (into / SCENARIO).write_text(tomli_w.dumps({**tree, "seed": built.seed}))
+    return built
 
 
 def _render(built: Scenario, into: Path) -> list[Path]:
@@ -270,8 +295,8 @@ def render(
     """Write one image per camera and frame, and their labels. With --variants, a seed
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
-    built = load(scenario, list(overrides))
     into = _empty(output or scenario.with_suffix(""))
+    built = _pin(scenario, list(overrides), into)
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
@@ -286,11 +311,12 @@ def render(
             tries = seeds(built.seed, variants)
             for seed in tries:
                 folder = into / str(seed)
-                variant = load(scenario, [*overrides, f"seed = {seed}"])
+                variant = _pin(scenario, [*overrides, f"seed = {seed}"], folder)
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
-                    folder.rmdir()  # the build refuses before anything is written
+                    # The build refuses before it writes anything but the scenario.
+                    shutil.rmtree(folder)
                     click.echo(f"\nseed {variant.seed} skipped: {error}", err=True)
                     continue
                 folders.append(folder)
@@ -355,8 +381,8 @@ def sync(
         click.echo(drawn)
         return
     if not preview:
-        built = load(scenario, list(overrides))
         into = _empty(output or scenario.with_suffix(""))
+        built = _pin(scenario, list(overrides), into)
         if parallel:
             _render_apart(scenario, overrides, built, into)
         else:

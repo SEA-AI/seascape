@@ -237,6 +237,20 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
     assert not [p for p in tmp_path.iterdir() if p.is_dir()]
 
 
+def test_a_render_s_folder_holds_the_scenario_it_rendered(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rendered = []
+    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built) or [])
+
+    result = run("render", OPEN_SEA, "-o", tmp_path, "--set", "outputs.fps = 3")
+
+    assert result.exit_code == 0, result.output
+    again = load(tmp_path / cli.SCENARIO)
+    assert again.model_dump() == rendered[0].model_dump()
+    assert again.outputs.fps == 3
+
+
 def test_a_folder_holding_an_earlier_run_is_refused_and_kept(
     run: Run, tmp_path: Path
 ) -> None:
