@@ -11,7 +11,7 @@ A brief for reviewers 2 to 6: You are the `<skill>` reviewer. Read `.claude/skil
 
 ## The reviewers
 
-1. **Correctness.** Run `/code-review high` on the PR, so its depth does not depend on the last level used. Point it at `AGENTS.md`'s traps that fail silently first.
+1. **Correctness.** Run `/code-review medium` on the PR, or at the level the user names: without one, it reuses the last level typed. Point it at `AGENTS.md`'s traps that fail silently first.
 2. **Architecture.** Follow the `architecture` skill on the diff.
 3. **Stack.** Follow the `stack` skill on the diff.
 4. **Tests.** Follow the `tests` skill on the diff.

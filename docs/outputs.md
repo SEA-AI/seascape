@@ -30,7 +30,7 @@ Every target left without a box is listed under `dropped`, with its image, range
 
 ![A ship too faint to box](visibility.png)
 
-`scenario.toml` beside `labels.json` is the scenario as rendered: `extends`, presets and `--set` resolved. At the same commit it renders the same scene again on its own.
+`scenario.toml` beside `labels.json` is the scenario as rendered: `extends`, presets and `--set` resolved. At the same commit it renders the same scene again on its own. At a `--variants` root it is the run's template; each seed's draws are under `info.scenarios`.
 
 `render --variants` writes one `labels.json` per seed folder and merges them into one beside the folders: ids renumbered, each `file_name` from there, and each seed's scenario, every drawn value in it, under `info.scenarios` by its folder. `video` and `panorama` take one seed folder: a merged root has no `calibration.json`, and its seeds repeat each camera's times.
 

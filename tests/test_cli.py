@@ -206,9 +206,8 @@ def test_variants_skip_a_seed_whose_hulls_meet_and_merge_the_rest(
     assert f"seed {first} skipped" in result.stderr
     folders = sorted(p.name for p in tmp_path.iterdir() if p.is_dir())
     assert folders == [str(first + 1), str(first + 2)]
-    # One recipe for the run, at the root; each seed's values are in its labels.
-    assert load(tmp_path / loader.FILENAME).seed == first
-    assert not any((tmp_path / f / loader.FILENAME).exists() for f in folders)
+    assert load(tmp_path / cli.SCENARIO).seed == first
+    assert not any((tmp_path / f / cli.SCENARIO).exists() for f in folders)
     merged = labels.Labels.model_validate_json((tmp_path / "labels.json").read_text())
     assert sorted(merged.info["scenarios"]) == folders
     assert all((tmp_path / image.file_name).exists() for image in merged.images)
@@ -254,7 +253,7 @@ def test_a_render_s_folder_holds_the_scenario_it_rendered(
     result = run("render", OPEN_SEA, "-o", tmp_path, "--set", "outputs.fps = 3")
 
     assert result.exit_code == 0, result.output
-    again = load(tmp_path / loader.FILENAME)
+    again = load(tmp_path / cli.SCENARIO)
     assert again.model_dump() == rendered[0].model_dump()
     assert again.outputs.fps == 3
 
@@ -270,7 +269,7 @@ def test_a_sync_recording_s_folder_holds_the_scenario_it_rendered(
     result = run("sync", SYNC_SENTRY, "-o", tmp_path, "--set", "outputs.fps = 3")
 
     assert result.exit_code == 0, result.output
-    again = load(tmp_path / loader.FILENAME)
+    again = load(tmp_path / cli.SCENARIO)
     assert again.model_dump() == rendered[0].model_dump()
     assert again.outputs.fps == 3
 
@@ -549,11 +548,12 @@ def test_parallel_refuses_what_it_would_ignore(
 def test_the_bands_end_as_one_render_of_the_scene(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    temporary = set()
+    temporary, scenarios = set(), set()
     started: list[_Band] = []
 
     def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
         temporary.add(env["TMPDIR"])
+        scenarios.add(command[command.index("render") + 1])
         _write_part(command, _band_of(command))
         # eo finishes while ir still renders.
         started.append(_Band(0, polls=1 if _band_of(command) == "eo" else 3))
@@ -562,11 +562,13 @@ def test_the_bands_end_as_one_render_of_the_scene(
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
     built = load(SYNC_SENTRY)
-    (tmp_path / loader.FILENAME).write_text("the whole scene's\n")
+    (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
 
     cli._render_apart(built, tmp_path)
 
-    assert (tmp_path / loader.FILENAME).read_text() == "the whole scene's\n"
+    assert (tmp_path / cli.SCENARIO).read_text() == "the whole scene's\n"
+    # Each band renders the scene the parent pinned, never the source's files.
+    assert scenarios == {str(tmp_path / cli.SCENARIO)}
     truth = labels.Labels.read(tmp_path)
     assert truth.info["scenario"] == built.model_dump(mode="json")
     assert [i.file_name for i in truth.images] == ["eo.png", "ir.png"]
@@ -579,7 +581,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
         "eo.png",
         "ir.png",
         "labels.json",
-        loader.FILENAME,
+        cli.SCENARIO,
     ]
     assert not any(band.killed for band in started)
     # Both bands share one temporary folder, gone after the run.
@@ -607,7 +609,7 @@ def _write_part(command: list[str], band: str) -> None:
     Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
     (part / f"{band}.png").write_bytes(b"frame")
     (part / "blender.log").write_text(f"{band}\n")
-    (part / loader.FILENAME).write_text(f'outputs.bands = ["{band}"]\n')
+    (part / cli.SCENARIO).write_text(f'outputs.bands = ["{band}"]\n')
 
 
 def _band_of(command: list[str]) -> str:

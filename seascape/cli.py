@@ -28,7 +28,6 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.config.loader import FILENAME as SCENARIO
 from seascape.outputs import labels, montage, panorama, recording
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
@@ -117,13 +116,18 @@ def _empty(into: Path) -> Path:
     return into
 
 
-def _pin(scenario: Path, overrides: Iterable[str], into: Path) -> Scenario:
-    """Load `scenario` with `overrides`; write the tree it resolved to into `into`."""
+SCENARIO = "scenario.toml"
+
+
+def _pin(
+    scenario: Path, overrides: Iterable[str], into: Path
+) -> tuple[dict[str, Any], Scenario]:
+    """Load `scenario` with `overrides`, and write its resolved tree into `into`."""
     tree = resolve(scenario, overrides)
     built = instantiate(tree)
     into.mkdir(parents=True, exist_ok=True)
     dump(tree, into / SCENARIO)
-    return built
+    return tree, built
 
 
 def _render(built: Scenario, into: Path) -> list[Path]:
@@ -190,7 +194,11 @@ def _render_apart(built: Scenario, into: Path) -> None:
     commands: dict[Band, list[str]] = {}
     for band, part in parts.items():
         commands[band] = [
-            *(sys.executable, "-m", "seascape.cli", "render", str(into / SCENARIO)),
+            sys.executable,
+            "-m",
+            "seascape.cli",
+            "render",
+            str(into / SCENARIO),
             "--set",
             f'outputs.bands = ["{band}"]',
             "-o",
@@ -213,7 +221,7 @@ def _render_apart(built: Scenario, into: Path) -> None:
         raw=list(chain.from_iterable(c.raw for c in calibrations)),
     ).write(into)
     truth.write(into)
-    # Each part's own: the whole scene's are in `into`.
+    # The whole scene's copies are already in `into`.
     own = {labels.FILENAME, CALIBRATION, SCENARIO, _BLENDER_LOG}
     with (into / _BLENDER_LOG).open("ab") as joined:
         for band, part in parts.items():
@@ -288,7 +296,7 @@ def render(
     """
     into = _empty(output or scenario.with_suffix(""))
     # Once, at the root: the seeds' own values are in their labels.
-    built = _pin(scenario, overrides, into)
+    tree, built = _pin(scenario, overrides, into)
     from seascape import render as renderer
     from seascape.blender.vessels import OverlapError
 
@@ -303,7 +311,7 @@ def render(
             tries = seeds(built.seed, variants)
             for seed in tries:
                 folder = into / str(seed)
-                variant = load(scenario, [*overrides, f"seed = {seed}"])
+                variant = instantiate(tree, seed)
                 try:
                     written += renderer.render(variant, folder)
                 except OverlapError as error:
@@ -373,7 +381,7 @@ def sync(
         return
     if not preview:
         into = _empty(output or scenario.with_suffix(""))
-        built = _pin(scenario, overrides, into)
+        _, built = _pin(scenario, overrides, into)
         if parallel:
             _render_apart(built, into)
         else:

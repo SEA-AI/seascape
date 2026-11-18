@@ -377,15 +377,12 @@ def instantiate(tree: dict[str, Any], seed: int | None = None) -> Scenario:
     return Scenario.model_validate(_draw(data, seed, "draw"))
 
 
-# Beside a render's labels: the scenario as it rendered, which renders again alone.
-FILENAME = "scenario.toml"
-
-
 def dump(tree: Mapping[str, Any], path: Path) -> None:
     """Write a `resolve`d tree as TOML that loads to the same scenario, free of the
     files it came from.
     """
-    path.write_text(tomli_w.dumps(tree))
+    with path.open("wb") as toml:  # TOML is UTF-8 whatever the locale
+        tomli_w.dump(tree, toml)
 
 
 def load(

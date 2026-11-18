@@ -25,7 +25,7 @@ def main() -> None:
     # `seascape render` and `sync` write it, so it is what rendered.
     scenario = labels.with_name("scenario.toml")
     if not scenario.is_file():
-        raise SystemExit(f"no {scenario}: render it again")
+        raise SystemExit(f"no {scenario}: publish a --variants run from its root")
     info = json.loads(labels.read_text())["info"]
     info["commit"] = args.commit or info["commit"]
     if not info["commit"] or info["commit"].endswith("-dirty"):
