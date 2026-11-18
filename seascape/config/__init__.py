@@ -1,6 +1,7 @@
 """Scenario config: pydantic models, and a TOML loader that never guesses."""
 
 from seascape.config.cameras import (
+    BANDS,
     Agc,
     Band,
     Camera,
@@ -36,6 +37,7 @@ from seascape.config.scenario import ImageFormat, Outputs, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
 __all__ = [
+    "BANDS",
     "PRESETS",
     "Agc",
     "Band",

@@ -29,6 +29,7 @@ from seascape.blender.heat import Heat, zone_skin
 from seascape.blender.sea import memory
 from seascape.blender.sky import add_haze, add_world, sea_light
 from seascape.config import (
+    BANDS,
     Agc,
     Band,
     Camera,
@@ -282,7 +283,7 @@ class TestIrAsPng:
 class TestEachBand:
     """What a default build sets, whichever band."""
 
-    @pytest.fixture(scope="class", params=get_args(Band.__value__))
+    @pytest.fixture(scope="class", params=BANDS)
     @classmethod
     def band(cls, request: pytest.FixtureRequest) -> Band:
         return request.param
