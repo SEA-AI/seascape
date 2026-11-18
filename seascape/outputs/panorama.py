@@ -237,8 +237,7 @@ def _layout(
         x, y, w, h = cv2.detail.resultRoi(
             corners=[roi[:2] for roi in rois], sizes=[roi[2:] for roi in rois]
         )
-        # The warper rounds each extent outward, which can pass the cap by a pixel.
-        return shrunk, (x, y, min(w, max_width or w), h)
+        return shrunk, (x, y, w, h)
 
     # Native resolution is the largest fx: pixels per radian on axis, where every
     # projection here runs at one unit per radian.
@@ -303,7 +302,7 @@ def stitch(
     """
     layout, shrunk = _layout(cameras, projection, frame, max_width)
     image, _ = _blend(layout.roi, _warped(folder, cameras, layout, shrunk))
-    return image, layout
+    return _capped(image, max_width), layout
 
 
 def overlaid(
@@ -375,7 +374,14 @@ def overlaid(
         )
         colour = colours[camera.band]
         cv2.putText(image, camera.name, origin, font, scale, colour, line, cv2.LINE_AA)
-    return image, layout
+    return _capped(image, max_width), layout
+
+
+def _capped(image: np.ndarray, max_width: int | None) -> np.ndarray:
+    """`image` no wider than `max_width`: the warper rounds each frame's extent
+    outward, so the canvas can pass the cap by a few pixels.
+    """
+    return image[:, :max_width]
 
 
 def panoramas(
