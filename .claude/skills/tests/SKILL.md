@@ -11,7 +11,7 @@ description: >-
 - **Break it and run.** See each test the change adds or relies on fail with its behaviour broken. Undoing purely added code only proves an `ImportError`. For each behaviour the change adds or fixes:
   1. `git worktree add --detach "${TMPDIR:-/tmp}/<name>" HEAD`, then `uv sync` in it. Never edit the PR's own worktree: a break left there can be committed.
   2. Break the behaviour there: revert the fix, or change the condition or value it adds.
-  3. `uv run pytest <test ids> -x -m "not render"` on the tests that claim it. A test that still passes is dead. A render test takes minutes, so it is reported not run, with its command; when the behaviour is the sea shader's, run its render check as AGENTS.md asks.
+  3. `uv run pytest <test ids> -m "not render"` on the tests that claim it, without `-x`, so every one runs. A test that still passes does not pin the behaviour it claims. A render test takes minutes, so it is reported not run, with its command; when the behaviour is the sea shader's, run its render check as AGENTS.md asks.
   4. `git worktree remove --force "${TMPDIR:-/tmp}/<name>"`.
 
   On a re-review, run only the tests the fix touched.
