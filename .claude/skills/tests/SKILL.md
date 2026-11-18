@@ -16,7 +16,7 @@ description: >-
 
   On a re-review, run only the tests the fix touched.
 - **Every behaviour the change adds or fixes has a test**, or the finding names the smallest one that would pin it.
-- **Keep only the tests a break needs.** Run every break against every test the change adds, by test id, not `-k`, and count an error as a failure: a broken module fixture errors its tests instead of failing them. A test or parametrized case that no break fails alone is dead.
+- **Keep only the tests a break needs.** Run every break against every test the change adds, by test id: `-k` can skip one by its name. A test or parametrized case is needed when some break fails it alone; before calling one dead, look for a break only it would fail. A fixture that raises runs no assertion, so its error shows the test was reached, not that it catches the break. A test not run, such as a render test, is unresolved, not dead.
 - **A test never restates config.** Asserting that a default, a preset or a TOML field equals the literal written there checks nothing and changes with it. Test what the value does: not `assert Sea().wind_speed_mps == 7.0`, but the sea that wind builds.
 
 ## What it checks
@@ -34,7 +34,7 @@ description: >-
 
 ## Reviewing
 
-Be demanding: every test the change adds earns its place, and when in doubt the verdict is dead. Fewer tests that each pin one behaviour beat more that overlap.
+Be demanding: two tests that fail on the same breaks cost twice to read and keep for one behaviour pinned. Every test the change adds earns its place with a break only it fails.
 
 ## What a finding contains
 
