@@ -1,5 +1,3 @@
-"""The pan-tilt unit's tilt loop."""
-
 import math
 
 import numpy as np

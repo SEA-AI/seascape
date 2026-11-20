@@ -1,5 +1,3 @@
-"""A hull painted another colour its asset is sold in."""
-
 import bpy
 import pytest
 

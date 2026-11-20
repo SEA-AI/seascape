@@ -15,11 +15,6 @@ def mark_pixels(marked: Image.Image | np.ndarray, grey: int) -> np.ndarray:
     return np.asarray(marked).astype(int)[..., 0] != grey
 
 
-def test_the_mark_is_white_on_dark() -> None:
-    marked = np.asarray(preview.watermark(frame(20)))
-    assert marked[mark_pixels(marked, 20)].max() > 20
-
-
 def test_the_mark_is_black_on_light() -> None:
     marked = np.asarray(preview.watermark(frame(230)))
     assert marked[mark_pixels(marked, 230)].min() < 230

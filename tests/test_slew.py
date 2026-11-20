@@ -1,5 +1,3 @@
-"""A slew from rest to rest. No Blender."""
-
 import pytest
 
 from seascape.physics import slew
