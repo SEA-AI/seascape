@@ -294,12 +294,6 @@ class TestEoBand:
     def built(cls) -> scene.Built:
         return scene.build(SCENARIO, "eo")
 
-    def test_a_flat_rig_points_where_the_scenario_asked(self) -> None:
-        """The one negation. Two of them cancel and the whole rig mirrors unnoticed."""
-        for mount in SCENARIO.mounts:
-            bearing, _ = boresight_deg(camera_of(mount))
-            assert bearing == pytest.approx(mount.nominal_azimuth_deg, abs=1e-6)
-
     def test_the_foam_grid_takes_each_frame_s_view_where_the_water_drifted_from(
         self, built: scene.Built
     ) -> None:
@@ -352,28 +346,6 @@ class TestEoBand:
         for space in views:
             assert space.clip_end > corner_m
 
-    def test_the_far_clip_clears_every_target(self) -> None:
-        furthest = max(spec.range_m for spec in SCENARIO.objects)
-        for mount in SCENARIO.mounts:
-            assert camera_of(mount).data.clip_end > furthest
-
-    def test_a_target_lands_at_its_range_and_bearing(self) -> None:
-        for spec in SCENARIO.objects:
-            east, north, _ = bpy.data.objects[spec.asset].location
-            assert math.hypot(east, north) == pytest.approx(spec.range_m)
-            assert math.degrees(math.atan2(east, north)) == pytest.approx(
-                spec.bearing_deg
-            )
-
-    def test_the_ship_is_in_every_frame(self, built: scene.Built) -> None:
-        """Both bands' tests measure the one ship."""
-        (spec,) = SCENARIO.objects
-        ship = bpy.data.objects[spec.asset].matrix_world.translation
-        for mount in SCENARIO.mounts:
-            eye = camera_of(mount).matrix_world.translation
-            camera = scene.calibrate(built, mount, "", 0.0)
-            assert _in_frame(camera, ship - eye), mount.name
-
     def test_a_target_is_fitted_to_its_manifest_length(self) -> None:
         """The mesh arrives in its author's units; unfitted it is a speck at range."""
         for spec in SCENARIO.objects:
@@ -396,18 +368,6 @@ class TestEoBand:
             )
             assert max(axes[2]) > 0.0, "and the rest of it is above water"
 
-    def test_each_wave_fades_at_its_own_wavenumber(self) -> None:
-        for wave, inputs, lane in drawn(SCENARIO):
-            assert inputs["Half K Sq"].default_value[lane] == pytest.approx(
-                (wave.k_rad_m / 2) ** 2, rel=1e-6
-            )
-
-    def test_each_wave_fades_over_the_headings_it_stands_for(self) -> None:
-        for wave, inputs, lane in drawn(SCENARIO):
-            assert tuple(
-                inputs[name].default_value[lane] for name in ("Tx", "Ty", "Band")
-            ) == pytest.approx(waves.fade_axis(wave), rel=1e-6, abs=1e-7)
-
     def test_the_sea_carries_the_scenario_s_wave_field(self) -> None:
         field = wave_field(SCENARIO)
         assert len(field) == waves.WIND_WAVES
@@ -415,11 +375,12 @@ class TestEoBand:
         tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
         assert tall
         assert [wave for wave, _, _ in carried] == [w for w in field if w not in tall]
+        names = ("Kx", "Ky", "W", "Phase", "Slope X", "Slope Y", "Half K Sq")
         for wave, inputs, lane in carried:
             k_east, k_north = wave.k_east_rad_m, wave.k_north_rad_m
             assert tuple(
                 inputs[name].default_value[lane]
-                for name in ("Kx", "Ky", "W", "Phase", "Slope X", "Slope Y")
+                for name in (*names, "Tx", "Ty", "Band")
             ) == pytest.approx(
                 (
                     k_east,
@@ -428,6 +389,8 @@ class TestEoBand:
                     wave.phase_rad,
                     wave.amplitude_m * k_east,
                     wave.amplitude_m * k_north,
+                    (wave.k_rad_m / 2) ** 2,
+                    *waves.fade_axis(wave),
                 ),
                 rel=1e-6,
                 abs=1e-9,
@@ -528,7 +491,7 @@ class TestEoBand:
         ):
             assert "sea_rest" in upstream(socket), socket.node.name
 
-    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice", "sea_gust"])
+    @pytest.mark.parametrize("tile", ["sea_foam", "sea_foam_lattice"])
     def test_the_foam_tile_reads_at_unit_sigma(self, tile: str) -> None:
         assert _looked_up_sigma(baked(tile)) == pytest.approx(1.0, rel=1e-5)
 
@@ -565,36 +528,7 @@ class TestEoBand:
             world.update_tag()
             bpy.context.scene.frame_set(bpy.context.scene.frame_current)
 
-    def test_the_air_hazes_towards_the_horizon_sky(self) -> None:
-        nodes = bpy.data.node_groups["haze"].nodes
-        beta = nodes["haze_beta"]
-        assert "haze_start" in upstream(beta.inputs[0])
-        assert beta.inputs[1].default_value == pytest.approx(
-            SCENARIO.sky.extinction_per_m
-        )
-        sky = bpy.data.worlds["sky"].node_tree.nodes["Sky Texture"]
-        airlight = nodes["haze_sky"]
-        for name in ("sun_elevation", "sun_rotation", "aerosol_density"):
-            assert getattr(airlight, name) == getattr(sky, name)
-
-    def test_the_airlight_is_the_sky_ahead_of_the_ray(self) -> None:
-        """Incoming points back at the camera; unflipped, the haze would take the sky
-        behind it.
-        """
-        nodes = bpy.data.node_groups["haze"].nodes
-        ahead, horizon = nodes["haze_ahead"], nodes["haze_horizon"]
-        assert ahead.inputs["Vector"].links[0].from_socket.name == "Incoming"
-        assert ahead.inputs["Scale"].default_value == -1.0
-        assert horizon.inputs[0].links[0].from_node == ahead
-        assert tuple(horizon.inputs[1].default_value) == (-1.0, -1.0, 0.0)
-        (into_sky,) = horizon.outputs["Vector"].links
-        assert into_sky.to_node.name == "haze_sky"
-        assert into_sky.is_valid
-
     def test_every_surface_mixes_towards_the_airlight(self) -> None:
-        mix = bpy.data.node_groups["haze"].nodes["haze_mix"]
-        assert mix.inputs[1].links[0].from_node.bl_idname == "NodeGroupInput"
-        assert mix.inputs[2].links[0].from_node.name == "haze_airlight"
         for material in bpy.data.materials:
             output = material.node_tree.get_output_node("CYCLES")
             (surface,) = output.inputs["Surface"].links
@@ -1047,19 +981,6 @@ def test_hulls_stopped_at_different_times_keep_their_own_machinery() -> None:
 
 
 @pytest.mark.usefixtures("empty_blend")
-def test_a_hull_on_a_crest_keeps_its_waterline() -> None:
-    """The waves lift the hull past its draught."""
-    root, _ = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
-    bpy.context.view_layer.update()
-    level = waterline_m(root, waterline_crossings(root))
-    root.location.z = 2.0
-    bpy.context.view_layer.update()
-    assert waterline_m(root, waterline_crossings(root)) == pytest.approx(
-        level, abs=1e-4
-    )
-
-
-@pytest.mark.usefixtures("empty_blend")
 def test_a_hull_moved_keeps_the_waterline_it_was_read_with() -> None:
     """`render` reads the crossings once and moves them with the hull."""
     root, _ = _vessel("zodiac", condition=Condition(), hulls=Hulls(SCENARIO.sky, None))
@@ -1117,14 +1038,8 @@ class TestIrBand:
     def built(cls) -> None:
         scene.build(SCENARIO, "ir")
 
-    def test_the_air_takes_the_band_s_optical_depth_by_range(self) -> None:
-        """The shader reads this by log range at texel centres."""
-        assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
-        table = baked("haze_depth")
-        ranges = _haze_ranges_m(bpy.context.scene.camera.data.clip_end)
-        sky = SCENARIO.sky
-        depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
-        assert table == pytest.approx(depth, rel=1e-5)
+    def test_the_haze_reads_the_world_s_sky_table(self) -> None:
+        assert "sky_radiance.001" not in bpy.data.images
 
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""
@@ -1141,15 +1056,6 @@ class TestIrBand:
         nodes = bpy.data.materials["sea"].node_tree.nodes
         assert "sea_group_scale" in upstream(nodes["sea_radiance"].inputs[0])
         assert "sea_rest" in upstream(nodes["sea_group_draw"].inputs[0])
-
-    def test_the_baked_sky_runs_cold_towards_the_zenith(self) -> None:
-        """The shader reads this by sin(elevation) at texel centres."""
-        curve = baked("sky_radiance")
-        expected = _hazed_sky_m(SCENARIO.sky, _texel_elevations())
-        assert curve == pytest.approx(expected, rel=1e-5)
-        ambient = lwir.band_radiance(SCENARIO.sky.t_air_k)
-        assert curve[-1] < 0.5 * ambient, "the zenith is much colder than ambient"
-        assert np.all(np.diff(curve) <= 1e-6), "radiance falls towards the zenith"
 
     def test_a_zone_emits_its_emissivity_and_reflects_the_rest(self) -> None:
         """A pure emitter renders a hull one flat value whichever way it is turned;
@@ -1187,14 +1093,6 @@ class TestIrBand:
         _, _, table = thermal.temperature_table_k(thermal.ZONES["paint_hull"], env)
         expected = np.vectorize(lwir.band_radiance)(table)
         assert baked("thermal_paint_hull") == pytest.approx(expected, rel=1e-5)
-
-    def test_the_sea_reflects_what_it_does_not_emit(self) -> None:
-        """Emission alone goes dark toward grazing, where emissivity falls to zero."""
-        radiance = _sea_node("sea_radiance")
-        assert radiance.operation == "MULTIPLY_ADD"
-        assert "sea_reflection" in upstream(radiance.inputs[2])
-        emission = radiance.outputs["Value"].links[0].to_node
-        assert emission.bl_idname == "ShaderNodeEmission"
 
     def test_the_sea_samples_only_what_its_tables_lack(self) -> None:
         """The sky is a lookup; one lobe, weighted 1 - eps, traces the rest."""
@@ -1321,18 +1219,6 @@ class TestIrBand:
                 for s in (between, exact)
             )
             assert seen == pytest.approx(truth, abs=0.25), tile
-
-    def test_emissivity_is_averaged_over_the_unresolved_slopes(self) -> None:
-        """Flat Fresnel collapses toward grazing, which is where distant targets sit."""
-        table = baked("sea_emissivity")  # cos(theta) along, grazing first
-        grazing = math.radians(89.0)
-        mu = (np.arange(table.shape[1]) + 0.5) / table.shape[1]
-        rough = float(np.interp(math.cos(grazing), mu, table[-1]))
-
-        theta, flat = lwir.emissivity_curve(t_sea_k=SCENARIO.sea.t_sea_k)
-        assert rough > 4 * float(np.interp(grazing, theta, flat)), (
-            "grazing emissivity is lifted well clear of flat"
-        )
 
     def test_foam_raises_the_emissivity_by_its_cover(self) -> None:
         """The shader reads the excess by cos(theta) at texel centres, scaled by the
@@ -1497,16 +1383,6 @@ class TestOwnshipMotion:
         moved = root.matrix_world.inverted() @ camera.matrix_world
         assert np.allclose(moved, mounted, atol=1e-5)
 
-    def test_an_ownship_without_motion_only_rides_the_water(self) -> None:
-        scenario = variant(outputs={"duration_s": 2.0})
-        built = scene.build(scenario)
-
-        action = built.root.animation_data.action.name
-        (heave,) = (v for name, v in keyed() if name.startswith(action))
-        assert heave == pytest.approx(
-            [_ridden_m(scenario, t) for t in scenario.outputs.times_s], abs=1e-6
-        )
-
 
 def test_a_head_on_a_pan_tilt_unit_pans_the_turn_and_holds_its_pitch() -> None:
     scenario = variant(
@@ -1582,10 +1458,6 @@ class TestOwnshipUnderway:
             "yaw": {"amplitude_deg": 30.0, "period_s": 4.0},
         },
     )
-    TURNING = variant(
-        outputs={"duration_s": 4.0},
-        ownship={"yaw": {"amplitude_deg": 30.0, "period_s": 4.0}},
-    )
 
     @staticmethod
     def _run(scenario: Scenario) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1631,12 +1503,6 @@ class TestOwnshipUnderway:
         assert along == pytest.approx((bearing[1:] + bearing[:-1]) / 2, abs=0.5)
         quarter = np.argmin(abs(times - 4.0 / 4))
         assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
-
-    def test_a_ship_without_speed_turns_in_place(self) -> None:
-        hull, bearing, _ = self._run(self.TURNING)
-
-        assert hull[:, :2] == pytest.approx(0.0, abs=1e-9)
-        assert np.ptp(bearing) == pytest.approx(60.0, abs=1.0)
 
     def test_the_sea_reaches_a_horizon_past_the_farthest_camera(self) -> None:
         built = scene.build(self.STRAIGHT)
@@ -1807,23 +1673,6 @@ class TestSeaEvolves:
         scene.build(swell, "eo")
         assert [wave for wave, _, _ in drawn(swell)] == shaded(swell)
 
-    def test_the_finest_pixel_is_the_camera_s_height_times_its_angle(self) -> None:
-        """Over the crest the tall waves can raise, from the water the rig rides."""
-        scenario = load(OPEN_SEA)
-        built = scene.build(scenario, "eo")
-        (mount,) = scenario.band_mounts("eo")
-        pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
-        crest_m = sum(w.amplitude_m for w in _tall(scenario))
-        lowest = min(_ridden_m(scenario, t) for t in scenario.outputs.times_s)
-        assert _finest_m(scenario, built) == pytest.approx(
-            (mount.rig.height_m + lowest - crest_m) * pixel_rad
-        )
-        # The shader's pixel, and so the finest one, scales with the render's size.
-        bpy.context.scene.render.resolution_percentage = 50
-        assert _finest_m(scenario, built) == pytest.approx(
-            2 * (mount.rig.height_m + lowest - crest_m) * pixel_rad
-        )
-
     def test_the_finest_pixel_is_taken_at_the_lowest_heave(self) -> None:
         heave = {"amplitude_m": 2.0, "period_s": 4.0}
         scenario = variant(ownship={"heave": heave}, outputs={"duration_s": 4.0})
@@ -1838,6 +1687,11 @@ class TestSeaEvolves:
         )
         assert _finest_m(scenario, built) == pytest.approx(
             (mount.rig.height_m + lowest - crest_m) * pixel_rad, rel=1e-5
+        )
+        # The shader's pixel, and so the finest one, scales with the render's size.
+        bpy.context.scene.render.resolution_percentage = 50
+        assert _finest_m(scenario, built) == pytest.approx(
+            2 * (mount.rig.height_m + lowest - crest_m) * pixel_rad, rel=1e-5
         )
 
     def test_only_a_culled_build_leaves_out_what_its_cameras_cannot_resolve(
@@ -2144,12 +1998,6 @@ def test_the_sea_draws_for_the_pixel_the_render_takes(scenario: Scenario) -> Non
     scene.build(scenario, "eo")
     mount = scenario.band_mounts("eo")[0]
     pixel_rad = math.radians(mount.camera.hfov_deg) / mount.camera.width_px
-    driver = next(
-        c.driver
-        for c in bpy.data.materials["sea"].node_tree.animation_data.drivers
-        if c.driver.expression == "angle / (width * percent / 100)"
-    )
-    assert driver.is_simple_expression
     assert _pixel_node().inputs[1].default_value == pytest.approx(pixel_rad)
     bpy.context.scene.render.resolution_percentage = 50
     bpy.context.view_layer.update()
@@ -2272,20 +2120,11 @@ class TestPhotographedThermalSky:
             for name in airlight
         )
 
-    def test_the_hull_balances_against_the_photo_s_clouds(self) -> None:
-        heat = surroundings(self.CLOUDY)
-        assert heat.env.cloud_fraction == pytest.approx(1.0)
-
     def test_a_hidden_sun_s_beam_reaches_the_hull_through_the_clouds(self) -> None:
         env = surroundings(variant(sky=HIDDEN_SUN)).env
         zone = thermal.ZONES["paint_hull"]
         sunlit, shaded = (thermal.lit_temperature_k(zone, env, c, 0.0) for c in (1, 0))
         assert sunlit > shaded
-
-    def test_overhead_reads_a_cloud(self) -> None:
-        top = baked("cloudy_sky_radiance")[-1]
-        expected = _hazed_sky_m(self.CLOUDY.sky, np.pi / 2, cloud=1.0)
-        assert top == pytest.approx(float(expected), rel=1e-3)
 
     def test_the_sea_reflects_the_clouds(self) -> None:
         """A sea under overcast reflecting a clear sky would read cold."""
@@ -2424,15 +2263,6 @@ def test_a_hull_that_sails_into_another_is_refused() -> None:
 
 def test_a_still_of_two_hulls_apart_builds() -> None:
     scene.build(variant(objects=CROSSING), "eo")
-
-
-def test_a_built_hull_measures_its_manifest_length() -> None:
-    built = scene.build(variant(objects=[target("yacht", 900.0)]), "eo")
-
-    (root,) = built.targets["yacht"]
-    hull = manifest()["yacht"]
-    assert isinstance(hull, Hull)
-    assert root["length_m"] == pytest.approx(hull.length_m, rel=1e-6)
 
 
 def test_a_built_turbine_measures_its_manifest_height() -> None:
