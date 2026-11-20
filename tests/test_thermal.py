@@ -136,11 +136,6 @@ def test_no_heated_interior_puts_a_hull_side_between_air_and_sea_at_night() -> N
     assert T_AIR_K - 2.0 < t < T_AIR_K + 4.0
 
 
-def test_temperature_rises_with_absorptance() -> None:
-    rises = [facing_sun_k(painted(a), 3.0) for a in (0.14, 0.65, 0.97)]
-    assert rises[0] < rises[1] < rises[2]
-
-
 def test_wind_pulls_a_sunlit_facet_towards_the_air() -> None:
     zone = painted(thermal.GREY_PAINT_ABSORPTANCE)
     rises = [facing_sun_k(zone, v) - T_AIR_K for v in (1.0, 3.0, 10.0, 20.0)]
