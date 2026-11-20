@@ -1,6 +1,6 @@
 [project]
 name = "seascape"
-version = "0.2.0"
+version = "0.3.0"
 description = "Maritime scene generator for sensor validation."
 readme = "README.md"
 # bpy ships 3.13-only wheels, and the lock must resolve on every version claimed.
