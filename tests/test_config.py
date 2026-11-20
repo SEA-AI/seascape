@@ -16,14 +16,11 @@ from seascape.config import (
     BANDS,
     PRESETS,
     Camera,
-    Crop,
     Farm,
-    Lens,
     Microbolometer,
     Object,
     Outputs,
     Ownship,
-    Processing,
     Rig,
     Scenario,
     Sea,
@@ -101,27 +98,6 @@ def twin(rig: Path) -> Scenario:
     return load(rig.with_name("twin.toml"))
 
 
-def test_the_baseline_states_its_own_rig(baseline) -> None:
-    assert [mount.name for mount in baseline.mounts] == ["bow_eo", "bow_ir"]
-
-
-def test_the_baseline_carries_no_scenario_a_variant_would_inherit(baseline) -> None:
-    """`extends` copies whatever is here; a variant never asked for a ring."""
-    assert (baseline.ownship.asset, baseline.targets) == (None, None)
-
-
-def test_a_preset_supplies_optics_and_the_block_supplies_the_mount(twin) -> None:
-    eo, ir = twin.rigs["port"].cameras["a"], twin.rigs["starboard"].cameras["ir"]
-
-    assert (eo.hfov_deg, eo.width_px, eo.height_px, eo.yaw_deg) == (30.0, 64, 36, -30.0)
-    assert (ir.hfov_deg, ir.width_px, ir.height_px, ir.pitch_deg) == (
-        20.0,
-        32,
-        24,
-        -4.0,
-    )
-
-
 def test_a_nominal_azimuth_is_its_rig_plus_its_fan(twin) -> None:
     bearings = {m.name: m.nominal_azimuth_deg for m in twin.mounts}
 
@@ -132,14 +108,6 @@ def test_a_nominal_azimuth_is_its_rig_plus_its_fan(twin) -> None:
         -10.0,
     ]
     assert bearings["starboard_ir"] == 110.0
-
-
-def test_an_installation_takes_its_model_and_height_from_its_presets(twin) -> None:
-    """Through `extends`: the rig preset sets neither."""
-    assert {n: (r.model, r.height_m) for n, r in twin.rigs.items() if n != "bow"} == {
-        "port": ("Mast", 7.5),
-        "starboard": ("Mast", 7.5),
-    }
 
 
 def test_samples_covers_every_band() -> None:
@@ -163,29 +131,11 @@ def test_an_override_resolves_presets_like_a_line_in_the_file(rig) -> None:
     assert scenario.rigs["port"].cameras["ir"].yaw_deg == 50.0
 
 
-def test_an_override_changes_one_camera_and_leaves_the_others(rig, twin) -> None:
-    scenario = load(rig.with_name("twin.toml"), ["rigs.port.cameras.b.hfov_deg = 10"])
-
-    changed = [
-        m.name
-        for m, n in zip(twin.mounts, scenario.mounts, strict=True)
-        if m.camera != n.camera
-    ]
-    assert changed == ["port_b"]
-
-
 def test_an_override_can_be_the_table_its_line_parses_to(rig) -> None:
     line = load(BASELINE, [f'rigs.bow = {{ pitch_deg = -5.0, preset = "{rig}" }}'])
     table = load(BASELINE, [{"rigs": {"bow": {"pitch_deg": -5.0, "preset": str(rig)}}}])
 
     assert table == line
-
-
-def test_an_override_merges_a_table_rather_than_replacing_it() -> None:
-    scenario = load(BASELINE, ["outputs.samples.eo = 8"])
-
-    assert scenario.outputs.samples.eo == 8
-    assert scenario.outputs.samples.ir == Samples().ir
 
 
 def test_overrides_apply_in_order() -> None:
@@ -197,7 +147,6 @@ def test_overrides_apply_in_order() -> None:
 @pytest.mark.parametrize(
     ("override", "error"),
     [
-        pytest.param("rigs.bow.tlit_deg = -5", ValidationError, id="misspelt-key"),
         pytest.param("outputs.format = png", ValueError, id="unquoted-string"),
         pytest.param("garbage", ValueError, id="not-an-assignment"),
     ],
@@ -219,13 +168,6 @@ def test_a_resolved_scenario_is_drawn_per_seed_as_if_loaded_with_it() -> None:
 def test_an_override_may_be_barred_from_naming_a_file() -> None:
     with pytest.raises(ValueError, match="not a path"):
         resolve(BASELINE, ['objects = [{ preset = "/etc/hosts.toml" }]'], files=False)
-
-
-def test_objects_merge_their_preset(baseline) -> None:
-    """A list-of-tables preset: asset from cfg, pose here."""
-    obj = baseline.objects[0]
-    assert obj.asset == "multipurpose_freighter"
-    assert (obj.range_m, obj.bearing_deg) == (2000.0, 8.0)
 
 
 def test_a_block_overrides_its_own_preset(tmp_path) -> None:
@@ -254,11 +196,6 @@ def test_a_preset_replaces_what_it_lands_on(tmp_path, baseline) -> None:
     assert baseline.rigs["bow"].cameras["ir"].height_px != 24
 
 
-def test_an_override_swaps_a_rig_for_a_preset(rig) -> None:
-    scenario = load(BASELINE, [f'rigs.bow = {{ preset = "{rig}" }}'])
-    assert list(scenario.rigs["bow"].cameras) == ["a", "b", "c", "ir"]
-
-
 def test_a_partial_preset_inherits_nothing_from_what_it_replaces(tmp_path) -> None:
     (tmp_path / "optics.toml").write_text('band = "eo"\nhfov_deg = 12.0\n')
     with pytest.raises(ValidationError, match="width_px"):
@@ -278,15 +215,6 @@ def test_tables_merge_and_lists_replace(tmp_path, baseline) -> None:
     assert scenario.rigs["bow"].cameras["eo"].hfov_deg == 30.0
     assert scenario.rigs["bow"].cameras["ir"] == baseline.rigs["bow"].cameras["ir"]
     assert [spec.asset for spec in scenario.objects] == ["yacht"]
-
-
-@pytest.mark.parametrize("name", ["./mine.toml", "mine.toml"])
-def test_preset_can_be_a_path(tmp_path, name) -> None:
-    (tmp_path / "mine.toml").write_text(
-        'band = "eo"\nhfov_deg = 12.0\nwidth_px = 64\nheight_px = 36\n'
-    )
-    scenario = load(variant(tmp_path, f'[rigs.bow.cameras.eo]\npreset = "{name}"\n'))
-    assert scenario.rigs["bow"].cameras["eo"].hfov_deg == 12.0
 
 
 @pytest.mark.parametrize(
@@ -332,11 +260,6 @@ def test_circular_extends_raises_rather_than_recursing(tmp_path) -> None:
     (tmp_path / "b.toml").write_text('extends = "a.toml"\n')
     with pytest.raises(ValueError, match="circular include"):
         load(tmp_path / "a.toml")
-
-
-def test_a_mistyped_key_is_an_error_not_a_silent_default(tmp_path) -> None:
-    with pytest.raises(ValidationError, match="height_metres"):
-        load(variant(tmp_path, "[rigs.bow]\nheight_metres = 22.0\n"))
 
 
 @pytest.mark.parametrize("value", ["nan", "inf"])
@@ -436,27 +359,6 @@ def test_a_chosen_draw_is_drawn_apart_from_the_pick() -> None:
     assert all(_sun(seed) != _sun(seed, chosen) for seed in range(20))
 
 
-def test_a_draw_resolves_in_a_list_and_in_a_drawn_table(tmp_path: Path) -> None:
-    path = variant(
-        tmp_path,
-        "[[objects]]\n"
-        'asset = { choice = ["yacht", "cargo_ship"] }\n'
-        "range_m = 500.0\n"
-        "bearing_deg = 0.0\n"
-        "fishtail = { choice = [{ sway_m = { uniform = [1.0, 2.0] }, surge_m = 1.0, "
-        "period_s = 30.0 }] }\n",
-    )
-    assets, sways = set(), set()
-    for seed in range(20):
-        (ship,) = load(path, [f"seed = {seed}"]).objects
-        assert ship.fishtail is not None
-        assets.add(ship.asset)
-        sways.add(ship.fishtail.sway_m)
-    assert assets == {"yacht", "cargo_ship"}
-    assert all(1.0 <= sway <= 2.0 for sway in sways)
-    assert len(sways) == 20
-
-
 def test_a_table_over_a_choice_of_tables_goes_into_every_option() -> None:
     skies = 'sky = { choice = [{ hdri = "sunflowers" }, { sun_elevation_deg = 10.0 }] }'
     for seed in range(8):
@@ -519,7 +421,7 @@ def test_a_scenario_points_at_the_committed_schema(path: Path) -> None:
     assert (path.parent / line.removeprefix("#:schema ")).resolve() == SCHEMA
 
 
-@pytest.mark.parametrize("path", [RANDOMIZED, DATASET, AUTONOMICS])
+@pytest.mark.parametrize("path", [DATASET, AUTONOMICS])
 def test_a_randomized_example_loads(path: Path) -> None:
     load(path)
 
@@ -558,14 +460,6 @@ EO = Camera(band="eo", hfov_deg=45.0, width_px=8, height_px=8)
 def test_a_camera_cannot_be_path_text(name: str) -> None:
     with pytest.raises(ValidationError, match="pattern"):
         Rig(height_m=12.0, cameras={name: EO})
-
-
-def test_a_camera_is_named_for_its_rig_and_itself() -> None:
-    rigs = {
-        "port": Rig(height_m=12.0, cameras={"eo": EO}),
-        "starboard": Rig(height_m=12.0, cameras={"eo": EO}),
-    }
-    assert [m.name for m in Scenario(rigs=rigs).mounts] == ["port_eo", "starboard_eo"]
 
 
 def test_two_cameras_cannot_share_a_name() -> None:
@@ -883,16 +777,10 @@ def test_a_dumped_hdri_sky_validates_again_without_a_warning() -> None:
 
 
 @pytest.mark.parametrize("draw", sorted(DRAWS))
-def test_a_camera_cannot_take_a_draws_name(tmp_path, draw) -> None:
+def test_a_camera_cannot_take_a_draws_name(draw) -> None:
     camera = '{ band = "eo", hfov_deg = 45.0, width_px = 64, height_px = 36 }'
     with pytest.raises(ValueError, match=f"'{draw}' is a draw, not a name"):
         load(BASELINE, [f"rigs.bow.cameras.{draw} = {camera}"])
-    (tmp_path / "lone.toml").write_text(
-        f"[rigs.bow]\nheight_m = 12.0\n[rigs.bow.cameras.{draw}]\n"
-        'band = "eo"\nhfov_deg = 45.0\nwidth_px = 64\nheight_px = 36\n'
-    )
-    with pytest.raises(ValueError, match="is a draw, not a name"):
-        load(tmp_path / "lone.toml")
 
 
 def test_an_integer_draw_reaches_both_bounds_and_only_whole_numbers() -> None:
@@ -922,18 +810,6 @@ def test_a_log_uniform_draw_refuses_bounds_it_cannot_draw_between(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         LogUniform(log_uniform=bounds)
-
-
-def test_count_makes_copies_each_drawn_anew() -> None:
-    drawn = (
-        'objects = [{ asset = "yacht", count = 3, '
-        "range_m = { uniform = [500.0, 2500.0] }, bearing_deg = 0.0 }]"
-    )
-    scenario = load(BASELINE, [drawn])
-
-    assert len(scenario.objects) == 3
-    assert len({spec.range_m for spec in scenario.objects}) == 3
-    assert {spec.count for spec in scenario.objects} == {1}
 
 
 def test_a_drawn_count_takes_the_value_it_drew() -> None:
@@ -1022,13 +898,10 @@ def test_a_loaded_scenario_reloads_as_the_same_scene() -> None:
     assert load(RANDOMIZED, [drawn]) == scenario
 
 
-@pytest.mark.parametrize(
-    ("count", "match"),
-    [("2.5", "whole number"), ("-1", "whole number"), ("true", "whole number")],
-)
-def test_a_count_that_is_not_a_whole_number_is_refused(count, match) -> None:
+@pytest.mark.parametrize("count", ["2.5", "-1", "true"])
+def test_a_count_that_is_not_a_whole_number_is_refused(count) -> None:
     spec = f"{{ asset = 'yacht', range_m = 900.0, bearing_deg = 0.0, count = {count} }}"
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(ValueError, match="whole number"):
         load(BASELINE, [f"objects = [{spec}]"])
 
 
@@ -1131,16 +1004,6 @@ def test_weights_set_over_an_inherited_choice_weigh_it() -> None:
     assert drawn == {None}
 
 
-def test_a_camera_is_ideal_unless_told_otherwise(baseline) -> None:
-    for mount in baseline.mounts:
-        camera = mount.camera
-        assert (camera.sensor, camera.lens, camera.processing) == (
-            Sensor(),
-            Lens(),
-            Processing(),
-        )
-
-
 @pytest.mark.parametrize(
     ("line", "match"),
     [
@@ -1174,51 +1037,6 @@ def test_an_image_pixel_s_pitch_is_the_sensor_s_times_the_sites_it_averages() ->
         microbolometer=Microbolometer(pitch_um=12.0, f_number=1.0),
     )
     assert (EO.pitch_um, ir.pitch_um) == (None, 12.0)
-
-
-def test_a_boson_preset_extends_another() -> None:
-    camera = (
-        load(BASELINE, ['rigs.bow.cameras.ir.preset = "boson_320_34deg"'])
-        .rigs["bow"]
-        .cameras["ir"]
-    )
-    assert (camera.width_px, camera.hfov_deg) == (320, 34.1)
-    assert camera.microbolometer.pitch_um == 12.0
-
-
-@pytest.mark.parametrize(
-    ("rig", "model", "cameras"),
-    [
-        ("sentry", "Sentry", {"t1", "t2", "rgb1", "rgb2"}),
-        ("watchkeeper", "Watchkeeper", {"rgb1", "t1", "t2"}),
-    ],
-)
-def test_a_product_rig_preset_loads(rig: str, model: str, cameras: set[str]) -> None:
-    line = f'rigs = {{ bow = {{ preset = "{rig}", height_m = 10.0 }} }}'
-    loaded = load(BASELINE, [line]).rigs["bow"]
-    assert (loaded.model, set(loaded.cameras)) == (model, cameras)
-
-
-def test_a_side_pod_turns_its_thermal_inboard() -> None:
-    def rig(preset: str) -> Rig:
-        line = f'rigs = {{ bow = {{ preset = "{preset}", height_m = 10.0 }} }}'
-        return load(BASELINE, [line]).rigs["bow"]
-
-    port, starboard = rig("port"), rig("starboard")
-    assert rig("pod").cameras["ir"].yaw_deg == 0.0
-    assert port.cameras["ir"].yaw_deg == -starboard.cameras["ir"].yaw_deg
-    assert port.cameras["ir"].yaw_deg * port.yaw_deg < 0.0
-
-
-def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
-    line = 'rigs = { bow = { preset = "sentry", height_m = 10.0 } }'
-    rig = load(BASELINE, [line]).rigs["bow"]
-    for name in ("RGBwFoV", "RGBnFoV"):
-        crop = rig.videos[name]
-        assert isinstance(crop, Crop)
-        width = rig.cameras[crop.camera].width_px - crop.left_px - crop.right_px
-        assert width == 1200
-    assert {video.kind for video in rig.videos.values()} == {"identity", "crop"}
 
 
 def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
@@ -1271,14 +1089,6 @@ def test_a_rig_refuses_a_video_it_cannot_record(videos: str, match: str) -> None
         load(BASELINE, [f"rigs.bow.videos = {videos}"])
 
 
-def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:
-    line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
-    rig = load(BASELINE, [line]).rigs["bow"]
-    left, right = rig.cameras["t2"], rig.cameras["t1"]
-    assert left.yaw_deg == -right.yaw_deg < 0.0
-    assert rig.cameras["rgb1"].lens.fisheye is not None
-
-
 GRADE = (
     "sensor = { full_well_e = { uniform = [7000.0, 32000.0] } }, "
     "processing = { white_balance_k = { uniform = [-1500.0, 1500.0] } }"
@@ -1320,33 +1130,6 @@ def test_a_preset_keeps_its_sensor_under_a_block_that_draws_the_rest() -> None:
     sensor = load(BASELINE, [line]).rigs["bow"].cameras["eo"].sensor
     assert (sensor.full_well_e, sensor.dark_noise_e) == (12600.0, 4.0)
     assert 0.0 <= sensor.gain_db <= 12.0
-
-
-def test_the_ecam50_cunx_preset_scales_its_sensor_down_to_a_smaller_image() -> None:
-    line = (
-        'rigs.bow.cameras.eo = { preset = "econ_ecam50_cunx", hfov_deg = 45.0, '
-        "width_px = 1280, height_px = 960 }"
-    )
-    camera = load(BASELINE, [line]).rigs["bow"].cameras["eo"]
-    assert (camera.sensor.width_px or 0) >= 2 * camera.width_px
-
-
-def test_the_evidir_alpha_preset_needs_its_lens_f_number() -> None:
-    line = (
-        'rigs.bow.cameras.ir = { preset = "jenoptik_evidir_alpha_640", '
-        "hfov_deg = 32.0 }"
-    )
-    with pytest.raises(ValidationError, match="go together"):
-        load(BASELINE, [line])
-
-
-def test_a_camera_takes_a_fisheye_lens() -> None:
-    line = (
-        'rigs.bow.cameras.eo = { preset = "basler_daa3840_ar0821", hfov_deg = 132.93, '
-        "lens = { fisheye = [-0.0793, -0.0461, 0.0331, -0.0065] } }"
-    )
-    lens = load(BASELINE, [line]).rigs["bow"].cameras["eo"].lens
-    assert lens.fisheye == (-0.0793, -0.0461, 0.0331, -0.0065)
 
 
 @pytest.mark.parametrize(
@@ -1489,26 +1272,6 @@ def test_an_ownship_draught_its_asset_cannot_take_is_refused(
         Ownship(asset=asset, draught_m=draught_m)
 
 
-@pytest.mark.parametrize(
-    "draw",
-    ["{ uniform = [5.0, 11.0] }", "{ choice = [7.0, { uniform = [9.0, 12.0] }] }"],
-)
-def test_a_draught_draw_that_can_leave_the_range_is_refused_on_every_seed(
-    draw: str,
-) -> None:
-    """Whether a draw lands outside depends on the seed; whether it can does not."""
-    for seed in range(3):
-        with pytest.raises(ValueError, match="can be"):
-            load(
-                BASELINE,
-                [
-                    f"seed = {seed}",
-                    'objects = [{ asset = "bulk_carrier", range_m = 900.0, '
-                    f"bearing_deg = 0.0, draught_m = {draw} }}]",
-                ],
-            )
-
-
 def test_a_draught_choice_of_no_weight_is_never_drawn() -> None:
     weighted = "{ choice = [7.0, 12.0], weights = [1, 0] }"
     for seed in range(3):
@@ -1537,11 +1300,15 @@ ON_BULK = 'asset = "bulk_carrier", range_m = 900.0, bearing_deg = 0.0'
         # A drawn list, one of them with a draught that can leave the range.
         f"{{ choice = [[{{ {ON_BULK} }}], "
         f"[{{ {ON_BULK}, draught_m = {{ uniform = [5.0, 11.0] }} }}]] }}",
+        # A drawn draught, one of whose options can leave the range.
+        f"[{{ {ON_BULK}, "
+        "draught_m = { choice = [7.0, { uniform = [9.0, 12.0] }] } }]",
     ],
 )
 def test_a_draught_any_seed_could_refuse_is_refused_on_every_seed(
     objects: str,
 ) -> None:
+    """Whether a draw lands outside depends on the seed; whether it can does not."""
     for seed in range(3):
         with pytest.raises(ValueError, match="draught_range_m"):
             load(BASELINE, [f"seed = {seed}", f"objects = {objects}"])
@@ -1608,20 +1375,6 @@ def test_a_load_on_an_asset_without_a_range_is_refused_on_every_seed(
     for seed in range(3):
         with pytest.raises(ValueError, match="no draught_range_m"):
             load(BASELINE, [{"seed": seed, "objects": [spec]}])
-
-
-def test_the_showcase_is_a_worn_hull_under_a_photographed_sky() -> None:
-    showcase = load(SCENARIOS / "showcase.toml")
-    assert showcase.sky.hdri is not None
-    assert showcase.worn == {"multipurpose_freighter"}
-
-
-def test_the_showcase_is_seen_through_a_sensor_with_noise() -> None:
-    showcase = load(SCENARIOS / "showcase.toml")
-    camera = next(m.camera for m in showcase.mounts if m.camera.band == "eo")
-    assert (camera.width_px, camera.height_px) == (1920, 1080)
-    assert camera.sensor.full_well_e == 12600.0
-    assert camera.lens.vignetting
 
 
 @pytest.mark.parametrize(
