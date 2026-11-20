@@ -19,6 +19,7 @@ from seascape import render
 from seascape.blender import blend, compositor, scene, sea
 from seascape.blender.compositor import (
     FORMATS,
+    JPEG_QUALITY,
     MID_GREY,
     _compositor,
     respond,
@@ -104,6 +105,30 @@ class TestThermalImage:
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
+
+    @pytest.mark.parametrize(
+        ("fmt", "params"),
+        [("png", []), ("jpg", [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])],
+    )
+    def test_only_a_jpg_takes_the_jpeg_quality(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        fmt: ImageFormat,
+        params: list[int],
+    ) -> None:
+        """OpenCV warns once per frame on a png given a jpeg flag."""
+        seen: list[list[int]] = []
+
+        def imwrite(_path: str, _image: np.ndarray, flags: list[int]) -> bool:
+            seen.append(flags)
+            return True
+
+        monkeypatch.setattr(cv2, "imwrite", imwrite)
+        render._write_thermal(
+            exr_of(tmp_path, [lwir.band_radiance(285.0)]), fmt, agc.Agc(LINEAR), *IDEAL
+        )
+        assert seen == [params]
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
@@ -432,9 +457,14 @@ def _svm_errors(
     scenario: Scenario,
     trails: tuple[Wake, ...],
     band: Band,
+    pad: int = 0,
     seen: sea.Seen = UNSEEN,
 ) -> list[str]:
-    """The SVM lines in Cycles' log after rendering `sea.water` alone."""
+    """The SVM lines in Cycles' log after rendering `sea.water` alone.
+
+    `pad` wraps the surface in that many Mix Shaders, each holding a factor on the SVM
+    stack.
+    """
     bpy.ops.wm.read_factory_settings(use_empty=True)
     set_output(scenario.outputs, band, 16)
     sc = bpy.context.scene
@@ -457,6 +487,27 @@ def _svm_errors(
     )
     sea.water(scenario.sea, 300.0, material)
     add_haze(scenario.sky, band, 300.0)
+    tree = material.node_tree
+    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    surface = output.inputs["Surface"].links[0].from_socket
+    x = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(
+        tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"], x.inputs[0]
+    )
+    for i in range(pad):
+        # Not a constant, or Cycles folds the Mix away.
+        factor = tree.nodes.new("ShaderNodeMath")
+        factor.operation = "MULTIPLY"
+        tree.links.new(x.outputs["X"], factor.inputs[0])
+        factor.inputs[1].default_value = 1e-12 * (i + 1)
+        mix = tree.nodes.new("ShaderNodeMixShader")
+        tree.links.new(factor.outputs[0], mix.inputs[0])
+        tree.links.new(surface, mix.inputs[1])
+        tree.links.new(
+            tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"], mix.inputs[2]
+        )
+        surface = mix.outputs[0]
+    tree.links.new(surface, output.inputs["Surface"])
     probe(at=(0.0, -50.0, 10.0), pitch_deg=85.0)
     sc.render.resolution_x = sc.render.resolution_y = 16
     return _render_svm_errors(capfd)
@@ -579,6 +630,14 @@ def test_the_wakes_a_build_lays_fit_cycles_svm_stack(
     sc.cycles.samples = 1
     sc.render.resolution_x = sc.render.resolution_y = 16
     assert _render_svm_errors(capfd) == []
+
+
+@pytest.mark.render
+def test_the_svm_check_sees_an_overflow(capfd: pytest.CaptureFixture[str]) -> None:
+    """A build that keeps Cycles off its SVM, as OSL does, would pass the checks above
+    on any shader.
+    """
+    assert _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(0), "eo", pad=64)
 
 
 @pytest.mark.render

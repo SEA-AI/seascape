@@ -838,6 +838,11 @@ class TestCamera:
         # undisplayed.
         return shoot(size, "camera")
 
+    def test_auto_exposure_takes_a_brighter_sky_to_the_same_picture(self) -> None:
+        assert self.through_the_camera(4.0, 4.0) == pytest.approx(
+            self.through_the_camera(1.0, 1.0), rel=1e-3
+        )
+
     def test_auto_exposure_meters_the_log_average(self) -> None:
         """Halves of 1 and 4 average 2 in log and 2.5 in linear, so a linear meter reads
         each half 20% darker.

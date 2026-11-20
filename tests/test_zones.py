@@ -14,6 +14,11 @@ from seascape.physics.thermal import ZONE_NAMES
 pytestmark = pytest.mark.usefixtures("empty_blend")
 
 
+def test_every_asset_has_zones() -> None:
+    """Without them an import is all paint_hull, in silence."""
+    assert [n for n, asset in manifest().items() if asset.zones is None] == []
+
+
 DIGEST = "0123456789abcdef"
 NUMBERED = {"island_count": 3, "island_digest": DIGEST}
 
@@ -22,10 +27,12 @@ NUMBERED = {"island_count": 3, "island_digest": DIGEST}
     "body",
     [
         {"materials": {"hull": "paint"}},
+        {"materials": {"hull": "deck"}, "islands": {"0": "glass"}},
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"3": "glass"}},
         {"materials": {"hull": "deck"}, "island_count": 2, "islands": {"0": "glass"}},
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"00": "glass"}},
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"+1": "glass"}},
+        {"materials": {"hull": "deck"}, **NUMBERED},
         {"materials": {"hull": "deck"}, "island_count": 3},
         {"materials": {"hull": "deck"}, "island_digest": DIGEST},
         {"materials": {"hull": "deck"}, **NUMBERED, "islands": {"0": "glass"}}
