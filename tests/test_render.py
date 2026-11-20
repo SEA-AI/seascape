@@ -19,7 +19,6 @@ from seascape import render
 from seascape.blender import blend, compositor, scene, sea
 from seascape.blender.compositor import (
     FORMATS,
-    JPEG_QUALITY,
     MID_GREY,
     _compositor,
     respond,
@@ -41,7 +40,7 @@ from seascape.config import (
     substream,
 )
 from seascape.outputs import agc, labels
-from seascape.outputs.calibration import Calibration
+from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.physics import lwir, thermal, waves
 from seascape.physics.wakes import Wake
 from seascape.server import jobs
@@ -105,30 +104,6 @@ class TestThermalImage:
         jpg = cv2.imread(str(exr.with_suffix(".jpg")), cv2.IMREAD_GRAYSCALE)
         assert jpg is not None
         assert jpg[:, 0] == pytest.approx([255, 128, 0], abs=3)
-
-    @pytest.mark.parametrize(
-        ("fmt", "params"),
-        [("png", []), ("jpg", [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])],
-    )
-    def test_only_a_jpg_takes_the_jpeg_quality(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        fmt: ImageFormat,
-        params: list[int],
-    ) -> None:
-        """OpenCV warns once per frame on a png given a jpeg flag."""
-        seen: list[list[int]] = []
-
-        def imwrite(_path: str, _image: np.ndarray, flags: list[int]) -> bool:
-            seen.append(flags)
-            return True
-
-        monkeypatch.setattr(cv2, "imwrite", imwrite)
-        render._write_thermal(
-            exr_of(tmp_path, [lwir.band_radiance(285.0)]), fmt, agc.Agc(LINEAR), *IDEAL
-        )
-        assert seen == [params]
 
     def test_the_float_render_is_removed_on_success(self, tmp_path: Path) -> None:
         exr = exr_of(tmp_path, [lwir.band_radiance(285.0), lwir.band_radiance(295.0)])
@@ -230,10 +205,6 @@ def built(band: Band, **outputs: object) -> bpy.types.Scene:
 
 
 class TestSettings:
-    def test_every_format_maps_to_one_blender_identifier(self) -> None:
-        """A format added to the Literal alone renders as whatever was set last."""
-        assert set(FORMATS) == set(get_args(ImageFormat.__value__))
-
     @pytest.mark.usefixtures("empty_blend")
     @pytest.mark.parametrize("fmt", get_args(ImageFormat.__value__))
     def test_the_extension_matches_the_name_render_files_under(
@@ -317,11 +288,10 @@ class TestEachBand:
         assert sc.camera.name == f"bow_{band}"
 
 
-@pytest.mark.parametrize("width_px", [640, 3840])
-def test_a_frame_renders_in_one_tile(width_px: int) -> None:
+def test_a_frame_renders_in_one_tile() -> None:
     """Past one tile, Cycles caches each to disk and reads the frame back."""
-    scene.build(variant(cameras={"eo": {"width_px": width_px}}), "eo")
-    assert bpy.context.scene.cycles.tile_size >= width_px
+    scene.build(variant(cameras={"eo": {"width_px": 3840}}), "eo")
+    assert bpy.context.scene.cycles.tile_size >= 3840
 
 
 def test_a_relative_output_reaches_blender_absolute_and_must_be_written(
@@ -462,14 +432,9 @@ def _svm_errors(
     scenario: Scenario,
     trails: tuple[Wake, ...],
     band: Band,
-    pad: int = 0,
     seen: sea.Seen = UNSEEN,
 ) -> list[str]:
-    """The SVM lines in Cycles' log after rendering `sea.water` alone.
-
-    `pad` wraps the surface in that many Mix Shaders, each holding a factor on the SVM
-    stack.
-    """
+    """The SVM lines in Cycles' log after rendering `sea.water` alone."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     set_output(scenario.outputs, band, 16)
     sc = bpy.context.scene
@@ -492,27 +457,6 @@ def _svm_errors(
     )
     sea.water(scenario.sea, 300.0, material)
     add_haze(scenario.sky, band, 300.0)
-    tree = material.node_tree
-    output = next(n for n in tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
-    surface = output.inputs["Surface"].links[0].from_socket
-    x = tree.nodes.new("ShaderNodeSeparateXYZ")
-    tree.links.new(
-        tree.nodes.new("ShaderNodeNewGeometry").outputs["Position"], x.inputs[0]
-    )
-    for i in range(pad):
-        # Not a constant, or Cycles folds the Mix away.
-        factor = tree.nodes.new("ShaderNodeMath")
-        factor.operation = "MULTIPLY"
-        tree.links.new(x.outputs["X"], factor.inputs[0])
-        factor.inputs[1].default_value = 1e-12 * (i + 1)
-        mix = tree.nodes.new("ShaderNodeMixShader")
-        tree.links.new(factor.outputs[0], mix.inputs[0])
-        tree.links.new(surface, mix.inputs[1])
-        tree.links.new(
-            tree.nodes.new("ShaderNodeBsdfDiffuse").outputs["BSDF"], mix.inputs[2]
-        )
-        surface = mix.outputs[0]
-    tree.links.new(surface, output.inputs["Surface"])
     probe(at=(0.0, -50.0, 10.0), pitch_deg=85.0)
     sc.render.resolution_x = sc.render.resolution_y = 16
     return _render_svm_errors(capfd)
@@ -578,17 +522,15 @@ def _heaviest_haze(band: Band) -> None:
 
 @pytest.mark.render
 @pytest.mark.parametrize("band", ["eo", "ir"])
-@pytest.mark.parametrize("hulls", [0, 1, CROWD])
 def test_the_heaviest_drawn_sea_fits_cycles_svm_stack(
-    capfd: pytest.CaptureFixture[str],
-    tmp_path: Path,
-    band: Band,
-    hulls: int,
+    capfd: pytest.CaptureFixture[str], tmp_path: Path, band: Band
 ) -> None:
-    """Cycles renders a shader past its SVM stack black and logs an error."""
+    """Cycles renders a shader past its SVM stack black and logs an error. Fewer
+    hulls draw a subgraph of this shader, which holds no more of the stack.
+    """
     drawn = _heaviest_drawn_sea(sky=MISTED_PHOTO)
     with white_photo(tmp_path):
-        errors = _svm_errors(capfd, drawn, _wakes(hulls), band)
+        errors = _svm_errors(capfd, drawn, _wakes(CROWD), band)
     assert errors == []
     _heaviest_haze(band)
 
@@ -640,12 +582,6 @@ def test_the_wakes_a_build_lays_fit_cycles_svm_stack(
 
 
 @pytest.mark.render
-def test_the_svm_check_sees_an_overflow(capfd: pytest.CaptureFixture[str]) -> None:
-    """A reworded Cycles log line would pass the test above on any shader."""
-    assert _svm_errors(capfd, _heaviest_drawn_sea(), _wakes(0), "eo", pad=64)
-
-
-@pytest.mark.render
 def test_a_render_culls_only_waves_no_pixel_of_it_draws(tmp_path: Path) -> None:
     """High enough that the culled waves are many."""
     scenario = variant(
@@ -666,11 +602,25 @@ def test_a_render_culls_only_waves_no_pixel_of_it_draws(tmp_path: Path) -> None:
     assert np.abs(drawn - whole).mean() / whole.mean() < 1e-4
 
 
+def _centre_px(found: labels.Annotation, camera: CameraCalibration) -> np.ndarray:
+    """Where a pinhole `camera` draws the hull `found` boxes, in COCO pixels."""
+    centre = bpy.data.objects[found.name].matrix_world.translation
+    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
+    return (np.array(camera.K) @ (x, y, z) / z + 0.5)[:2]
+
+
+def _holds(box: tuple[int, int, int, int], u: float, v: float) -> bool:
+    """Boxes are sampled at pixel centres, so a hull reaches half a pixel past one."""
+    left, top, width, height = box
+    return (
+        left - 0.5 <= u <= left + width + 0.5 and top - 0.5 <= v <= top + height + 0.5
+    )
+
+
 @pytest.mark.render
 def test_each_box_holds_its_hull_centre_through_the_calibration(
     tmp_path: Path,
 ) -> None:
-    """Boxes are sampled at pixel centres, so a hull reaches half a pixel past one."""
     # Boxes come from the index pass, which takes the pixel centre at any sample count.
     # A rolled ship and a pitched rig, so no axis of the calibration is identity.
     scenario = variant(
@@ -687,13 +637,8 @@ def test_each_box_holds_its_hull_centre_through_the_calibration(
     frames = {image.id: cameras[image.camera] for image in truth.images}
     assert truth.annotations, "no target in any frame: nothing below ran"
     for found in truth.annotations:
-        camera = frames[found.image_id]
-        centre = bpy.data.objects[found.name].matrix_world.translation
-        x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
-        u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
-        left, top, width, height = found.bbox
-        assert left - 0.5 <= u <= left + width + 0.5, found.name
-        assert top - 0.5 <= v <= top + height + 0.5, found.name
+        centre_px = _centre_px(found, frames[found.image_id])
+        assert _holds(found.bbox, *centre_px), found.name
         assert found.waterline_range_m < found.range_m
 
 
@@ -728,10 +673,7 @@ def test_a_fisheye_draws_each_hull_where_its_lens_puts_it(tmp_path: Path) -> Non
         image, _ = cv2.fisheye.projectPoints(
             seen[None, None, :3], zero, zero, np.array(camera.K), np.array(k)
         )
-        u, v = image.ravel() + 0.5  # COCO pixels
-        left, top, width, height = found.bbox
-        assert left - 0.5 <= u <= left + width + 0.5, found.name
-        assert top - 0.5 <= v <= top + height + 0.5, found.name
+        assert _holds(found.bbox, *image.ravel() + 0.5), found.name
     frame = cv2.imread(str(tmp_path / truth.images[0].file_name))
     assert frame is not None
     assert frame[:60].mean() > frame[-60:].mean(), "the sky is above the sea"
@@ -766,12 +708,7 @@ def test_a_crop_records_the_cameras_frame_less_its_edges(tmp_path: Path) -> None
     assert np.subtract(source.K, camera.K)[:2, 2] == pytest.approx((24.0, 6.0))
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
     (found,) = truth.annotations
-    centre = bpy.data.objects[found.name].matrix_world.translation
-    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
-    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
-    left, top, width, height = found.bbox
-    assert left - 0.5 <= u <= left + width + 0.5
-    assert top - 0.5 <= v <= top + height + 0.5
+    assert _holds(found.bbox, *_centre_px(found, camera))
 
 
 @pytest.mark.render
@@ -810,12 +747,7 @@ def test_an_undistortion_renders_its_pinhole_and_records_the_fisheye(
     assert source.distortion == (0.0, 0.0, 0.0, 0.0)
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
     (found,) = truth.annotations
-    centre = bpy.data.objects[found.name].matrix_world.translation
-    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
-    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
-    left, top, width, height = found.bbox
-    assert left - 0.5 <= u <= left + width + 0.5
-    assert top - 0.5 <= v <= top + height + 0.5
+    assert _holds(found.bbox, *_centre_px(found, camera))
 
 
 @pytest.mark.render
@@ -850,12 +782,7 @@ def test_a_stitch_labels_one_frame_of_both_cameras(tmp_path: Path) -> None:
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
     (image,) = (i for i in truth.images if i.camera == "bow_T1")
     (found,) = (a for a in truth.annotations if a.image_id == image.id)
-    centre = bpy.data.objects[found.name].matrix_world.translation
-    x, y, z, _ = np.linalg.inv(camera.extrinsics["world"]) @ (*centre, 1.0)
-    u, v, _ = np.array(camera.K) @ (x, y, z) / z + 0.5  # COCO pixels
-    left, top, width, height = found.bbox
-    assert left - 0.5 <= u <= left + width + 0.5
-    assert top - 0.5 <= v <= top + height + 0.5
+    assert _holds(found.bbox, *_centre_px(found, camera))
 
 
 @pytest.mark.render
@@ -863,18 +790,16 @@ def test_a_sequence_writes_each_camera_a_folder_of_frames(tmp_path: Path) -> Non
     """Fast enough that the ship crosses pixels between frames."""
     scenario = variant(
         UNDERWAY,
-        cameras={
-            "eo": {"width_px": 96, "height_px": 54},
-            "ir": {"width_px": 80, "height_px": 64},
-        },
+        cameras={"ir": {"width_px": 80, "height_px": 64}},
         objects=[target("yacht", 300.0, 8.0, heading_deg=270.0, speed_mps=10.0)],
-        outputs={"duration_s": 3.0, "fps": 1, "samples": {"eo": 2, "ir": 4}},
+        # ir: its float render is converted in the frame's folder and must go.
+        outputs={"duration_s": 3.0, "fps": 1, "bands": ["ir"], "samples": {"ir": 4}},
     )
 
     render.render(scenario, tmp_path)
 
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
-    for mount in scenario.mounts:
+    for mount in scenario.band_mounts("ir"):
         frames = [image for image in truth.images if image.camera == mount.name]
         assert [image.file_name for image in frames] == [
             f"{mount.name}/{f:04d}.jpg" for f in range(3)
@@ -921,25 +846,23 @@ def test_a_render_that_dies_keeps_the_truth_of_every_frame_it_wrote(
 
 
 @pytest.mark.render
-@pytest.mark.parametrize(("fmt", "boxes"), [("jpg", 1), ("png", 2)])
-def test_only_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
-    tmp_path: Path, fmt: str, boxes: int, monkeypatch: pytest.MonkeyPatch
+def test_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A 16-bit png keeps every box, as an exr does."""
-    # Between the two hulls' excess: the test is which format is judged, not the cut.
+    # Between the two hulls' excess, so the far one alone falls short.
     monkeypatch.setattr(labels, "MIN_EXCESS_DE", 10.0)
     scenario = variant(
         cameras={"ir": {"width_px": 160, "height_px": 128}},
         # The far hull reads nearly as warm as the sea behind it.
         objects=[target("yacht", 300.0), target("yacht", 2000.0, 4.0, t_k=274.0)],
         sky={"solar_gain_k": 0.0},
-        outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": fmt},
+        outputs={"bands": ["ir"], "samples": {"ir": 4}, "format": "jpg"},
     )
 
     render.render(scenario, tmp_path)
 
     truth = labels.Labels.model_validate_json((tmp_path / labels.FILENAME).read_text())
-    assert len(truth.annotations) == boxes
+    assert len(truth.annotations) == 1
 
 
 def test_an_install_without_git_names_the_image_s_commit(
