@@ -112,6 +112,36 @@ def test_a_fixed_mount_that_loses_a_ring_names_the_pitch_to_set() -> None:
         staging.stage(load(SYNC_WATCHKEEPER, [{"rigs": {name: {"pitch_deg": 20.0}}}]))
 
 
+def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
+    scenario = load(SYNC_SENTRY)
+    (rig,) = scenario.rigs.values()
+    buoy = manifest()[staging.BUOY]
+    assert isinstance(buoy, Buoy)
+    focal_px = {
+        v: min(rig.rendered[c].focal_px for c in sources(video))
+        for v, video in rig.videos.items()
+    }
+    off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
+    # A stored range is rounded to half a last decimal.
+    rounding_m = 0.5 * 10.0**-staging.DECIMALS
+
+    for ring in staging.rings(staging.views(rig)):
+        coarsest_px = min(focal_px[v] for v in ring.videos)
+        for o in scenario.objects:
+            if o.asset != staging.BUOY or o.range_m != staging.stored_m(ring, rig):
+                continue
+            # The cameras turn about the rig, not the origin.
+            b = math.radians(o.bearing_deg)
+            east = o.range_m * math.sin(b) - rig.offset_x_m
+            north = o.range_m * math.cos(b) - rig.offset_y_m
+            above_px = (buoy.height_m - buoy.draught_m) * coarsest_px
+            above_px /= math.hypot(east, north)
+            # From the ring's range, out to rounding, in to two offsets nearer.
+            low = staging.BUOY_PX * ring.range_m / (ring.range_m + rounding_m)
+            near_m = ring.range_m - 2 * off_m - rounding_m
+            assert low <= above_px <= staging.BUOY_PX * ring.range_m / near_m
+
+
 def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     entries = staging.stage(load(SYNC_SENTRY)).entries
     ring = next(e for e in entries if e["asset"] == staging.BUOY)

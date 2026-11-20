@@ -77,6 +77,8 @@ assert "bpy" not in sys.modules
 @pytest.mark.parametrize(
     ("args", "says"),
     [
+        (("render", "no_such.toml"), "does not exist"),
+        (("build", BASELINE, "--band", "uv"), "'uv' is not one of"),
         (("assets", "show", "no_such"), "no mesh or sky"),
         (("assets", "top", "no_such"), "no mesh 'no_such'"),
     ],
