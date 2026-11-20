@@ -1037,8 +1037,14 @@ class TestIrBand:
     def built(cls) -> None:
         scene.build(SCENARIO, "ir")
 
-    def test_the_haze_reads_the_world_s_sky_table(self) -> None:
-        assert "sky_radiance.001" not in bpy.data.images
+    def test_the_air_takes_the_band_s_optical_depth_by_range(self) -> None:
+        """The shader reads this by log range at texel centres."""
+        assert "sky_radiance.001" not in bpy.data.images, "the haze reads the world's"
+        table = baked("haze_depth")
+        ranges = _haze_ranges_m(bpy.context.scene.camera.data.clip_end)
+        sky = SCENARIO.sky
+        depth = lwir.path_optical_depth(ranges, sky.visibility_km, sky.atmosphere)
+        assert table == pytest.approx(depth, rel=1e-5)
 
     def test_the_sea_does_not_glitter(self) -> None:
         """The emissivity table already takes the whole unresolved slope."""
@@ -1457,6 +1463,10 @@ class TestOwnshipUnderway:
             "yaw": {"amplitude_deg": 30.0, "period_s": 4.0},
         },
     )
+    TURNING = variant(
+        outputs={"duration_s": 4.0},
+        ownship={"yaw": {"amplitude_deg": 30.0, "period_s": 4.0}},
+    )
 
     @staticmethod
     def _run(scenario: Scenario) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1502,6 +1512,12 @@ class TestOwnshipUnderway:
         assert along == pytest.approx((bearing[1:] + bearing[:-1]) / 2, abs=0.5)
         quarter = np.argmin(abs(times - 4.0 / 4))
         assert bearing[quarter] == pytest.approx(30.0, abs=1e-3)
+
+    def test_a_ship_without_speed_turns_in_place(self) -> None:
+        hull, bearing, _ = self._run(self.TURNING)
+
+        assert hull[:, :2] == pytest.approx(0.0, abs=1e-9)
+        assert np.ptp(bearing) == pytest.approx(60.0, abs=1.0)
 
     def test_the_sea_reaches_a_horizon_past_the_farthest_camera(self) -> None:
         built = scene.build(self.STRAIGHT)
