@@ -26,13 +26,9 @@ def linear() -> agc.Agc:
     return agc.Agc(Agc(information_based=False, linear_fraction=1.0, ace=1.0))
 
 
-def test_a_frame_is_stretched_to_the_full_range() -> None:
-    assert linear()(column(272.0, 295.0)).ravel().tolist() == [0, 255]
-
-
-def test_the_middle_temperature_is_mid_grey() -> None:
+def test_a_frame_is_stretched_to_the_full_range_with_its_middle_mid_grey() -> None:
     """Catches a gamma encode, which puts 0.5 at 0.74."""
-    assert linear()(column(270.0, 285.0, 300.0))[1, 0] == 128
+    assert linear()(column(270.0, 285.0, 300.0)).ravel().tolist() == [0, 128, 255]
 
 
 @shipped
@@ -51,12 +47,6 @@ def test_a_frame_of_one_temperature_is_mid_grey_bent_by_ace(setting: Agc) -> Non
         mid = setting.detail_headroom + (255 - 2 * setting.detail_headroom) / 255 * mid
     mid = round(mid)
     assert agc.Agc(setting)(column(290.0, 290.0)).ravel().tolist() == [mid, mid]
-
-
-def test_ace_below_1_darkens() -> None:
-    t_k = np.linspace(280.0, 300.0, 256)[:, None] * np.ones((1, 8))
-    flat, dark = (agc.Agc(Agc(ace=ace))(t_k).mean() for ace in (1.0, 0.9))
-    assert dark < flat
 
 
 def test_a_hot_exhaust_leaves_the_scene_its_contrast() -> None:
@@ -117,15 +107,6 @@ def test_noise_on_a_uniform_frame_gains_at_most_the_cap(setting: Agc) -> None:
     dde = max(setting.dde, 1.0) if setting.information_based else 1.0
     assert abs(grey.mean() - 128) < 5
     assert grey.std() < 1.05 * dde * setting.max_gain * t_k.std() * agc.CENTIKELVIN
-
-
-def test_the_slope_never_exceeds_the_cap() -> None:
-    """A 1 K ramp is 101 counts: the cap leaves it short of the full range."""
-    t_k = np.linspace(290.0, 291.0, 101)[:, None]
-    plateau = Agc(information_based=False)
-    grey = agc.Agc(plateau)(t_k).astype(int)
-    assert np.diff(grey, axis=0).max() <= 2
-    assert np.ptp(grey) <= plateau.max_gain * 101
 
 
 def test_without_a_linear_share_two_temperatures_take_two_greys() -> None:

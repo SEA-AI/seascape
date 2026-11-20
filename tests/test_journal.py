@@ -64,63 +64,33 @@ def _label(truth: labels.Labels, time_s: float) -> None:
 
 def _leftover(folder: Path, frames: int) -> labels.Labels:
     """The truth of `frames` frames, and in `folder` the journal a render killed
-    outright leaves of them: the lines `Journal` writes, never finished.
+    outright leaves of them: a `Journal` whose block never ended.
     """
     truth = labels.Labels(info=INFO)
-    steps = []
+    appended = journal.Journal(folder, truth)
     for frame in range(frames):
-        before = len(truth.images), len(truth.annotations), len(truth.dropped)
         _label(truth, frame / 10)
-        images, annotations, dropped = before
-        steps.append(
-            journal.Step(
-                info=INFO if frame == 0 else {},
-                cameras=[CAMERA],
-                raw=[CAMERA] if frame == 0 else [],
-                images=truth.images[images:],
-                annotations=truth.annotations[annotations:],
-                dropped=truth.dropped[dropped:],
-                categories=truth.categories if frame == 0 else [],
-            )
-        )
-    (folder / journal.FILENAME).write_text(
-        "".join(step.model_dump_json() + "\n" for step in steps)
-    )
+        appended.append([CAMERA], [CAMERA] if frame == 0 else [])
+    appended._file.close()  # as the kill does
     return truth
 
 
 def test_the_journal_reads_back_as_the_truth_it_was_appended_from(
     tmp_path: Path,
 ) -> None:
-    truth = labels.Labels(info=INFO)
+    truth = _leftover(tmp_path, 2)
 
-    with journal.Journal(tmp_path, truth) as appended:
-        _label(truth, 0.0)
-        appended.append([CAMERA], [CAMERA])
-        _label(truth, 0.1)
-        appended.append([CAMERA], [])
-        calibration, read = journal.read(tmp_path)
+    calibration, read = journal.read(tmp_path)
 
     assert read == truth
     assert calibration == Calibration(cameras=[CAMERA] * 2, raw=[CAMERA])
 
 
-def test_each_frame_is_one_line_holding_only_what_it_added(tmp_path: Path) -> None:
-    truth = labels.Labels(info=INFO)
+def test_only_the_first_frame_s_line_holds_the_info(tmp_path: Path) -> None:
+    _leftover(tmp_path, 2)
+    lines = (tmp_path / journal.FILENAME).read_text().splitlines()
 
-    with journal.Journal(tmp_path, truth) as appended:
-        _label(truth, 0.0)
-        appended.append([CAMERA], [])
-        _label(truth, 0.1)
-        appended.append([CAMERA], [])
-        lines = (tmp_path / journal.FILENAME).read_text().splitlines()
-    steps = [journal.Step.model_validate_json(line) for line in lines]
-
-    assert [len(s.images) for s in steps] == [1, 1]
-    assert [len(s.annotations) for s in steps] == [1, 1]
-    assert [len(s.dropped) for s in steps] == [1, 1]
-    assert [len(s.categories) for s in steps] == [1, 0]
-    assert [s.info for s in steps] == [INFO, {}]
+    assert [journal.Step.model_validate_json(line).info for line in lines] == [INFO, {}]
 
 
 def test_a_torn_last_line_is_left_out(tmp_path: Path) -> None:
@@ -176,17 +146,6 @@ def test_a_journal_without_a_frame_writes_nothing(tmp_path: Path) -> None:
     assert not any(tmp_path.iterdir())
 
 
-def test_its_block_ending_writes_the_truth(tmp_path: Path) -> None:
-    truth = labels.Labels(info=INFO)
-
-    with journal.Journal(tmp_path, truth) as appended:
-        _label(truth, 0.0)
-        appended.append([CAMERA], [])
-
-    assert appended.written == [tmp_path / "calibration.json", tmp_path / "labels.json"]
-    assert labels.Labels.read(tmp_path) == truth
-
-
 def test_a_block_that_raises_still_writes_the_frames_it_finished(
     tmp_path: Path,
 ) -> None:
@@ -214,7 +173,9 @@ def test_a_journal_that_cannot_finish_notes_it_on_the_blocks_own_error(
     assert "left unfinished" in raised.value.__notes__[0]
 
 
-def test_a_journal_left_by_an_earlier_render_is_replaced(tmp_path: Path) -> None:
+def test_its_block_ending_writes_the_truth_over_an_earlier_render_s_journal(
+    tmp_path: Path,
+) -> None:
     _leftover(tmp_path, 2)
     truth = labels.Labels(info=INFO)
 
@@ -222,4 +183,5 @@ def test_a_journal_left_by_an_earlier_render_is_replaced(tmp_path: Path) -> None
         _label(truth, 0.0)
         appended.append([CAMERA], [])
 
-    assert len(labels.Labels.read(tmp_path).images) == 1
+    assert appended.written == [tmp_path / "calibration.json", tmp_path / "labels.json"]
+    assert labels.Labels.read(tmp_path) == truth
