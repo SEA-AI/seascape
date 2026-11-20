@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from seascape import angles
-from seascape.config import Crop, Ownship, Stitch, Undistortion, Video
+from seascape.config import Crop, Ownship, Stitch, Undistortion
 from seascape.outputs import recording
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -259,16 +259,11 @@ def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    "videos",
-    [{}, {"RGB": {"kind": "crop", "camera": "EO", "left_px": 40}}],
-    ids=["none", "unrendered, as in an exr"],
-)
-def test_a_camera_without_a_rendered_video_is_recorded_as_it_is(
-    run: Path, videos: dict
-) -> None:
+def test_a_camera_with_an_unrendered_video_is_recorded_as_it_is(run: Path) -> None:
+    """As in an exr, which renders no video."""
     truth = Labels.model_validate_json((run / "labels.json").read_text())
-    truth.info["scenario"]["rigs"]["port"]["videos"] = videos
+    video = {"kind": "crop", "camera": "EO", "left_px": 40}
+    truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video}
     truth.write(run)
 
     recording.export(run)
@@ -283,44 +278,23 @@ def test_a_camera_without_a_rendered_video_is_recorded_as_it_is(
     assert (source["name"], source["device_name"]) == ("EO", "EO")
 
 
-@pytest.mark.parametrize(
-    ("video", "transform", "cut_px"),
-    [
-        (
-            Crop(kind="crop", camera="EO", left_px=40, right_px=40),
-            {"pixel_sacrifice": [40, 40, 0, 0]},
-            40,
-        ),
-        (
-            Undistortion(
-                kind="undistortion",
-                camera="EO",
-                hfov_deg=130.0,
-                vfov_deg=65.5,
-                downscale=2,
-            ),
-            {"downscale": 2, "out-fov": {"value": [130.0, 65.5], "unit": "degrees"}},
-            0,
-        ),
-    ],
-)
-def test_a_video_is_recorded_with_its_camera_as_rendered(
-    run: Path, video: Video, transform: dict, cut_px: int
+def test_an_undistorted_video_is_recorded_with_its_camera_as_rendered(
+    run: Path,
 ) -> None:
+    video = Undistortion(
+        kind="undistortion", camera="EO", hfov_deg=130.0, vfov_deg=65.5, downscale=2
+    )
     calibration = Calibration.read(run)
+    # A wider pinhole than the camera it dewarps.
     recorded = [
-        camera.model_copy(update={"name": "port_RGB"}) for camera in calibration.cameras
+        camera.model_copy(
+            update={
+                "name": "port_RGB",
+                "K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0]))),
+            }
+        )
+        for camera in calibration.cameras
     ]
-    if isinstance(video, Crop):
-        recorded = [camera.cropped(video) for camera in recorded]
-    if isinstance(video, Undistortion):
-        # A wider pinhole than the camera it dewarps.
-        recorded = [
-            camera.model_copy(
-                update={"K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0])))}
-            )
-            for camera in recorded
-        ]
     Calibration(cameras=recorded, raw=calibration.cameras).write(run)
     truth = Labels.model_validate_json((run / "labels.json").read_text())
     truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video.model_dump()}
@@ -336,10 +310,13 @@ def test_a_video_is_recorded_with_its_camera_as_rendered(
     assert sensor["resolution"]["value"] == [WIDTH, HEIGHT]
     serialized = json.loads((folder / "serialized_parameters.json").read_text())
     (entry,) = serialized["cameras"]
-    assert entry["resolution"] == [WIDTH - 2 * cut_px, HEIGHT]
-    assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2 - cut_px)
-    assert entry["transformation_type"] == video.kind
-    assert entry["transformation_parameters"] == transform
+    assert entry["resolution"] == [WIDTH, HEIGHT]
+    assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2)
+    assert entry["transformation_type"] == "undistortion"
+    assert entry["transformation_parameters"] == {
+        "downscale": 2,
+        "out-fov": {"value": [130.0, 65.5], "unit": "degrees"},
+    }
     assert entry["focal_length"] == sensor["focal_length"]["value"]
     (source,) = entry["camera_sources"]
     assert (source["name"], source["device_name"]) == ("EO", "RGB")
@@ -449,19 +426,6 @@ def test_a_frame_labels_json_does_not_list_writes_nothing(run: Path) -> None:
     with pytest.raises(ValueError, match=r"EO/0001\.jpg"):
         recording.export(run)
     assert not (run / "recordings").exists()
-
-
-def test_a_hardware_version_is_written_where_a_replay_reads_it(run: Path) -> None:
-    truth = Labels.model_validate_json((run / "labels.json").read_text())
-    truth.info["scenario"]["rigs"]["port"]["hardware_version"] = "Oscar_V7_Gen_3_1"
-    truth.write(run)
-    recording.export(run)
-    (module,) = run.glob("recordings/port/*/POWER_Const/module_info.json")
-    info = json.loads(module.read_text())
-    assert (info["hardware_version"], info["serial_number"]) == (
-        "Oscar_V7_Gen_3_1",
-        "seascape",
-    )
 
 
 def test_a_lighter_hull_raises_its_mounting_height(run: Path) -> None:

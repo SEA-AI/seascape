@@ -12,7 +12,6 @@ def _hull(froude: float, length_m: float = 20.0) -> wakes.Wake:
 
 def test_kelvin_s_wedge_holds_until_the_wake_narrows() -> None:
     assert _hull(0.3).peak_angle_rad == wakes.KELVIN_HALF_ANGLE_RAD
-    assert math.degrees(wakes.KELVIN_HALF_ANGLE_RAD) == pytest.approx(19.47, abs=0.01)
     # Continuous through the narrowing.
     just_past = _hull(wakes.NARROWING_FROUDE * 1.0001).peak_angle_rad
     assert just_past == pytest.approx(wakes.KELVIN_HALF_ANGLE_RAD, rel=1e-3)

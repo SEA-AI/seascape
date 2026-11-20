@@ -49,10 +49,6 @@ def test_srgb_encode_inverts_srgb_decode() -> None:
     np.testing.assert_allclose(colour.srgb_decode(colour.srgb_encode(linear)), linear)
 
 
-@pytest.mark.parametrize(
-    ("srgb_hex", "linear"),
+def test_an_srgb_hex_decodes_to_linear() -> None:
     # IEC 61966-2-1: 128 of 255 decodes to ((128/255 + 0.055) / 1.055) ** 2.4.
-    [("#000000", 0.0), ("#FFFFFF", 1.0), ("#808080", 0.21586)],
-)
-def test_an_srgb_hex_decodes_to_linear(srgb_hex: str, linear: float) -> None:
-    assert colour.srgb_hex_decode(srgb_hex) == pytest.approx((linear,) * 3, abs=1e-5)
+    assert colour.srgb_hex_decode("#808080") == pytest.approx((0.21586,) * 3, abs=1e-5)

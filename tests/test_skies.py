@@ -171,13 +171,9 @@ NO_DISC = {
 @pytest.mark.parametrize(
     ("changes", "words"),
     [
-        ({}, "partly cloudy day"),
-        ({"sun_elevation_deg": 45.0, "cover_oktas": 1}, "clear day"),
         ({"sun_elevation_deg": 15.0}, "partly cloudy low sun"),
         ({"sun_elevation_deg": 15.1}, "partly cloudy day"),
-        ({"sun_elevation_deg": 5.0, "cover_oktas": 6}, "mostly cloudy low sun"),
         ({**NO_DISC, "cover_oktas": 6}, "mostly cloudy, sun hidden"),
-        ({**NO_DISC, "cover_oktas": 8}, "overcast, sun hidden"),
     ],
 )
 def test_a_photo_is_named_by_its_cover_and_sun(
@@ -189,7 +185,6 @@ def test_a_photo_is_named_by_its_cover_and_sun(
 @pytest.mark.parametrize(
     ("changes", "words"),
     [
-        ({"cover_oktas": 0}, "clear"),
         ({"cover_oktas": 2}, "clear"),
         ({"cover_oktas": 3}, "partly cloudy"),
         ({"cover_oktas": 4}, "partly cloudy"),

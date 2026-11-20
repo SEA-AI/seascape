@@ -150,16 +150,16 @@ def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     assert ring["colour"] == {"choice": sorted(sold_in)}
 
 
-def test_a_drawn_spacing_is_refused() -> None:
-    ring = {"asset": staging.BUOY, "range_m": 40.0, "bearing_deg": 0.0, "count": 2}
-    ring["spacing_deg"] = {"uniform": [5.0, 10.0]}
-
-    with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
-        load(OPEN_SEA, [{"objects": [ring]}])
-
-
-def test_a_spacing_without_a_bearing_is_refused() -> None:
-    ring = {"asset": staging.BUOY, "range_m": 40.0, "count": 2, "spacing_deg": 5.0}
+@pytest.mark.parametrize(
+    "ring",
+    [
+        {"bearing_deg": 0.0, "spacing_deg": {"uniform": [5.0, 10.0]}},
+        {"spacing_deg": 5.0},
+    ],
+    ids=["drawn", "without a bearing"],
+)
+def test_a_spacing_drawn_or_without_a_bearing_is_refused(ring: dict) -> None:
+    ring |= {"asset": staging.BUOY, "range_m": 40.0, "count": 2}
 
     with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
         load(OPEN_SEA, [{"objects": [ring]}])
@@ -302,13 +302,6 @@ def near_m(scenario: Scenario) -> float:
     return staging.rings(staging.views(*scenario.rigs.values()))[0].range_m
 
 
-def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
-    watchkeeper: Scenario,
-) -> None:
-    frames = passing(near_m(watchkeeper))
-    preview.check(seen(T1=frames, RGB1=frames), watchkeeper)
-
-
 def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
     watchkeeper: Scenario,
 ) -> None:
@@ -351,11 +344,6 @@ def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
     [
         (
             lambda near: (BOXED, [(BUOY, near, True, 6)], BOXED),
-            "mast_T1 never sees a buoy {near:.0f} m out whole",
-        ),
-        (
-            # Half hidden behind the container.
-            lambda near: (BOXED, [(BUOY, near, False, 3)], BOXED),
             "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (

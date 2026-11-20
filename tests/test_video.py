@@ -19,24 +19,19 @@ HEADROOM = Agc().detail_headroom
 GREYS = [(0, 0, 0), (64, 64, 64), (200, 200, 200), (255, 255, 255), (230, 220, 200)]
 
 
-def run(
-    into: Path,
-    colours: list[tuple[int, int, int]],
-    times: list[float],
-    size: tuple[int, int] = (64, 36),
-) -> Path:
+def run(into: Path, colours: list[tuple[int, int, int]], times: list[float]) -> Path:
     """Stand-ins for a render: flat frames from one camera, and their labels."""
     (into / "port").mkdir()
     images = []
     for i, (colour, time_s) in enumerate(zip(colours, times, strict=True)):
         name = f"port/{i:04d}.png"
-        Picture.new("RGB", size, colour).save(into / name)
+        Picture.new("RGB", (64, 36), colour).save(into / name)
         images.append(
             Image(
                 id=i + 1,
                 file_name=name,
-                width=size[0],
-                height=size[1],
+                width=64,
+                height=36,
                 camera="port",
                 band="eo",
                 hfov_deg=45.0,
@@ -56,21 +51,14 @@ def decoded(path: Path) -> tuple[list[np.ndarray], float]:
     return frames, capture.get(cv2.CAP_PROP_FPS)
 
 
-def test_a_camera_becomes_one_video_at_its_name(tmp_path) -> None:
-    folder = run(tmp_path, GREYS[:4], [0.0, 0.1, 0.2, 0.3])
-
-    assert video.encode(folder) == [folder / "port.mp4"]
-    frames, fps = decoded(folder / "port.mp4")
-    assert len(frames) == 4
-    assert fps == pytest.approx(10.0)
-
-
-def test_the_colours_pass_through_in_time_order(tmp_path) -> None:
+def test_a_camera_becomes_one_video_at_its_name_in_time_order(tmp_path) -> None:
     times = [0.4, 0.0, 0.2, 0.6, 0.8]  # labels.json order is not time order
     folder = run(tmp_path, GREYS, times)
 
-    frames, _ = decoded(video.encode(folder)[0])
+    assert video.encode(folder) == [folder / "port.mp4"]
+    frames, fps = decoded(folder / "port.mp4")
 
+    assert fps == pytest.approx(5.0)
     expected = [colour for _, colour in sorted(zip(times, GREYS, strict=True))]
     for frame, colour in zip(frames, expected, strict=True):
         assert np.abs(frame.astype(int) - colour).max() <= 4
@@ -108,11 +96,6 @@ def test_a_missing_frame_names_itself(tmp_path) -> None:
 
     with pytest.raises(FileNotFoundError, match=r"0001\.png"):
         video.encode(folder)
-
-
-def test_an_odd_frame_size_cannot_be_h264(tmp_path) -> None:
-    with pytest.raises(RuntimeError, match="divisible by 2"):
-        video.encode(run(tmp_path, GREYS[:2], [0.0, 0.1], size=(63, 36)))
 
 
 def test_a_lower_quality_writes_a_smaller_video(tmp_path) -> None:

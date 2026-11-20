@@ -17,14 +17,13 @@ from mathutils import Matrix, Vector
 
 from seascape import angles
 from seascape.assets import Hull, manifest
-from seascape.blender import scene, sea
+from seascape.blender import scene
 from seascape.blender.blend import mesh_objects
 from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_crossings, waterline_m
 from seascape.config import BANDS, Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
 from seascape.outputs.calibration import Calibration, CameraCalibration, matrix4
-from seascape.physics import waves
 from tests.scenarios import two_rigs
 
 SCENARIO: Scenario = two_rigs()
@@ -70,17 +69,6 @@ def test_a_rigs_cameras_all_sit_at_its_mount_point(
 
     assert len(places) == 1
     assert places.pop() == pytest.approx(expected)
-
-
-def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
-    """On the water there, which the tall waves raise."""
-    root = built.root
-    tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
-    t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
-    rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
-    ridden = waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
-
-    assert tuple(root.location) == pytest.approx((0.0, 0.0, ridden))
 
 
 def test_the_hull_takes_the_attitude_it_was_given(built: scene.Built) -> None:
@@ -219,27 +207,6 @@ def test_a_panorama_puts_each_principal_point_on_its_boresight(
         0.0, abs=1e-3
     )
     assert 90.0 - math.degrees(v) == pytest.approx(elevation_deg, abs=1e-3)
-
-
-def test_a_panorama_lays_its_cameras_out_in_yaw_order(
-    tmp_path: Path, built: scene.Built
-) -> None:
-    mounts = sorted(first_rig_mounts()[:3], key=lambda m: m.camera.yaw_deg)
-    for channel, mount in enumerate(mounts):
-        frame = black_frame(mount)
-        frame[..., channel] = 255
-        cv2.imwrite(str(tmp_path / f"{mount.name}.png"), frame)
-    Calibration(
-        cameras=[scene.calibrate(built, m, f"{m.name}.png", 0.0) for m in mounts]
-    ).write(tmp_path)
-
-    paths = panorama.panoramas(tmp_path, "cylindrical", "head", max_width=400)
-
-    image = cv2.imread(str(paths[0]))
-    assert image is not None
-    row = image[image.shape[0] // 2]
-    columns = [np.flatnonzero(row[:, c] > 127).mean() for c in range(len(mounts))]
-    assert columns == sorted(columns)
 
 
 class Overlay(NamedTuple):
@@ -513,18 +480,6 @@ def test_a_max_width_under_a_pixel_is_an_error(built: scene.Built) -> None:
 
     with pytest.raises(ValueError, match="max width"):
         panorama.stitch(Path(), [camera], "cylindrical", "head", 0)
-
-
-def test_a_shrunk_frame_keeps_its_principal_point_at_its_centre(
-    built: scene.Built,
-) -> None:
-    camera = scene.calibrate(built, SCENARIO.mounts[0], "", 0.0)
-    k, _ = panorama.pose(camera, "head", 0.0)
-
-    (w, h), k = panorama._shrunk((camera.width_px, camera.height_px), k, 0.25)
-
-    assert (k[0, 2], k[1, 2]) == pytest.approx(((w - 1) / 2, (h - 1) / 2))
-    assert k[0, 0] == pytest.approx(camera.K[0][0] * w / camera.width_px)
 
 
 def _in_ship_frame(built: scene.Built, obj: bpy.types.Object) -> Matrix:

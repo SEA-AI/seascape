@@ -1,5 +1,3 @@
-"""The brand module: its typeface and logos."""
-
 import numpy as np
 import pytest
 

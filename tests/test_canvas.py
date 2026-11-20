@@ -1,5 +1,3 @@
-"""Laying pictures out for a person to look at."""
-
 import numpy as np
 from PIL import Image
 

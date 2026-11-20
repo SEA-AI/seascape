@@ -1,5 +1,3 @@
-"""The rig view's drawing of a camera's field of view."""
-
 import bpy
 import numpy as np
 import pytest

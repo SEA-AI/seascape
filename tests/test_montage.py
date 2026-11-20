@@ -48,15 +48,10 @@ def test_a_frame_joins_the_column_nearest_its_bearing() -> None:
     assert names([*AHEAD, ir]) == [["bow_eo_p"], ["bow_eo"], ["bow_ir", "bow_eo_s"]]
 
 
-def test_a_frame_no_column_sees_takes_its_own() -> None:
-    """Abeam to port, the stern thermal sees what no colour camera does."""
-    ir = mount("stern", "ir", -90.0, 24.0)
-
-    assert ["stern_ir"] in names([*AHEAD, ir])
-
-
-def test_frames_either_side_of_astern_sit_together() -> None:
-    """Cut at astern, they would land at opposite ends of the sheet."""
+def test_frames_either_side_of_astern_sit_together_in_their_own_columns() -> None:
+    """Cut at astern, they would land at opposite ends of the sheet. No colour camera
+    ahead sees either.
+    """
     eo, ir = mount("stern", "eo", 165.0, 49.0), mount("stern", "ir", 195.0, 24.0)
 
     laid = names([*AHEAD, eo, ir])

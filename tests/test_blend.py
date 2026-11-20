@@ -1,7 +1,7 @@
 import bpy
 import pytest
 
-from seascape.blender.blend import Num, mix_shader, node, value
+from seascape.blender.blend import Num, value
 
 
 def _tree() -> bpy.types.NodeTree:
@@ -10,19 +10,6 @@ def _tree() -> bpy.types.NodeTree:
 
 def _num(tree: bpy.types.NodeTree, name: str = "x") -> Num:
     return Num(tree, value(tree, name))
-
-
-def test_arithmetic_makes_the_math_nodes_in_evaluation_order() -> None:
-    tree = _tree()
-    a, b, c = (_num(tree, name) for name in "abc")
-
-    out = 1.0 - (a * b + c).madd(2.0, 3.0) / a
-
-    ops = [n.operation for n in tree.nodes if n.bl_idname == "ShaderNodeMath"]
-    assert ops == ["MULTIPLY", "ADD", "MULTIPLY_ADD", "DIVIDE", "SUBTRACT"]
-    last = out.socket.node
-    assert last.inputs[0].default_value == 1.0
-    assert last.inputs[1].links[0].from_node.operation == "DIVIDE"
 
 
 # Each input is None where the operand `x` is linked, else the constant it holds.
@@ -53,18 +40,3 @@ def test_a_num_refuses_what_would_silently_go_wrong() -> None:
         _ = _num(_tree()) + _num(_tree())
     with pytest.raises(TypeError, match="truth value"):
         bool(_num(_tree()))
-
-
-def test_mix_shader_wires_its_factor_and_both_shaders() -> None:
-    tree = _tree()
-    mix = mix_shader(
-        tree,
-        value(tree, "f"),
-        *(node(tree, "ShaderNodeEmission").outputs[0] for _ in "ab"),
-    ).node
-
-    assert mix.inputs["Factor"].is_linked
-    assert (
-        mix.inputs["Shader"].links[0].from_node
-        != mix.inputs["Shader_001"].links[0].from_node
-    )

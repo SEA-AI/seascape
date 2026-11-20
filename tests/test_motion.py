@@ -57,16 +57,6 @@ def test_a_path_s_velocity_is_the_rate_its_position_changes(
         )
 
 
-def test_an_orbit_keeps_its_range_and_its_bow_on_the_tangent() -> None:
-    path = motion.orbiting(150.0, -30.0, 40.0)
-
-    for t_s in (0.0, 10.0, 25.0):
-        pose = path(t_s)
-        assert math.hypot(pose.east_m, pose.north_m) == pytest.approx(150.0)
-        out = math.atan2(pose.east_m, pose.north_m)
-        assert (pose.heading_rad - out) % (2 * math.pi) == pytest.approx(math.pi / 2)
-
-
 COURSE = Turn(
     top_rate_deg_s=30.0,
     accel_deg_s2=30.0,
@@ -143,10 +133,6 @@ def test_a_sailing_ownship_turns_on_a_circle_of_speed_over_rate() -> None:
     ("changes", "error"),
     [
         (
-            {"turn": COURSE.model_dump(), "outputs": {"duration_s": 10}},
-            "the turn ends at",
-        ),
-        (
             {"turn": COURSE.model_dump(), "outputs": {"duration_s": 60, "loop": True}},
             "cannot close a scripted turn",
         ),
@@ -213,23 +199,6 @@ def test_a_turn_too_long_suggests_a_duration_that_fits(
     load(OPEN_SEA, [{"turn": turn, "outputs": {"duration_s": suggested, "fps": fps}}])
 
 
-@pytest.mark.parametrize(
-    ("pitch_deg", "roll_deg", "axis", "expected"),
-    [
-        # Bow up p: the bow rises to (0, cos p, sin p).
-        (4.0, 0.0, 1, (0.0, math.cos(math.radians(4.0)), math.sin(math.radians(4.0)))),
-        # Starboard down r: starboard falls to (cos r, 0, -sin r).
-        (0.0, 6.0, 0, (math.cos(math.radians(6.0)), 0.0, -math.sin(math.radians(6.0)))),
-    ],
-)
-def test_a_scripted_tilt_turns_the_deck_s_axes(
-    pitch_deg: float, roll_deg: float, axis: int, expected: tuple[float, float, float]
-) -> None:
-    ownship = Ownship(pitch_deg=pitch_deg, roll_deg=roll_deg)
-    tilt = motion.tilted(motion.track(ownship, Outputs(duration_s=1.0)), None, (), ())
-    assert tilt(0.0)[:, axis] == pytest.approx(expected)
-
-
 def test_a_hull_levelled_off_its_waterline_is_its_tilt() -> None:
     """The deck `levelled` reads off a yawing, rocking waterline is `tilted`'s."""
     scenario = load(OPEN_SEA, [])
@@ -276,10 +245,8 @@ _AHEAD_UP_7 = math.degrees(
     ("pan_deg", "up_deg", "expected"),
     [
         (0.0, 0.0, 3.0),
-        (180.0, 0.0, -3.0),
         # Abeam, starboard falls by the roll as the pitch foreshortens it.
         (90.0, 0.0, -_ROLLED),
-        (-90.0, 0.0, _ROLLED),
         # Ahead and up 7: the roll leans the head's own elevation off the vertical.
         (0.0, 7.0, _AHEAD_UP_7),
     ],

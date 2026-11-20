@@ -7,6 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/SEA-AI/seascape/actions/workflows/ci.yml"><img src="https://github.com/SEA-AI/seascape/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/SEA-AI/seascape"><img src="https://codecov.io/gh/SEA-AI/seascape/graph/badge.svg" alt="Coverage"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/SEA-AI/seascape" alt="License"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.13-blue" alt="Python 3.13"></a>
   <a href="https://www.blender.org/"><img src="https://img.shields.io/badge/blender-5.2%20LTS-orange" alt="Blender 5.2 LTS"></a>

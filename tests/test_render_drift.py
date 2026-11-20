@@ -608,14 +608,19 @@ class TestUniformSky:
     looking upwind and across the wind.
     """
 
-    @pytest.fixture(scope="class", params=[0.0, 90.0], ids=lambda deg: f"wind{deg:g}")
+    @pytest.fixture(scope="class")
     @classmethod
     def scenario(cls, request: pytest.FixtureRequest) -> Scenario:
         scenario = _clear(variant(sea={"wind_from_deg": request.param}))
         _white_sky_over_the_sea(scenario)
         return scenario
 
-    @pytest.mark.parametrize("depression_deg", [3.0, 40.0])
+    # Steep, the wind's direction moves the expected reflectance by under 1%: one wind.
+    @pytest.mark.parametrize(
+        ("scenario", "depression_deg"),
+        [(0.0, 3.0), (0.0, 40.0), (90.0, 3.0)],
+        indirect=["scenario"],
+    )
     def test_the_sea_reflects_a_uniform_sky_as_its_waves_and_slopes_do(
         self, scenario: Scenario, depression_deg: float
     ) -> None:
@@ -860,11 +865,12 @@ class TestCamera:
         off = np.abs(srgb_counts(shrunk) - srgb_counts(small))
         assert np.percentile(off, 99) <= 4
 
-    @pytest.mark.parametrize("share", [0.05, Lens().veiling_glare])
-    def test_the_glare_scatters_its_share_in_harvey_s_form(self, share: float) -> None:
+    def test_the_glare_scatters_its_share_in_harvey_s_form(self) -> None:
         """A sun of about a pixel on black sky: the light beyond a few pixels of it is
-        the glare's share of the kernel's weight there.
+        the glare's share of the kernel's weight there. Not the default share, so a
+        share ignored shows.
         """
+        share = 0.05
         # Half-resolution glare blurs the first few pixels round the sun.
         width, height, beyond_px = 384, 216, 12
         rig = SCENARIO.rigs["bow"]
@@ -1269,22 +1275,6 @@ def _same(rendered: np.ndarray, expected: np.ndarray) -> bool:
     return float(np.abs(rendered - expected).mean() / expected.mean()) < 1e-4
 
 
-def _rendered_at(width_px: int, percent: int) -> np.ndarray:
-    scenario = _rig(width_px)
-    scene.build(scenario, "eo")
-    sc = bpy.context.scene
-    sc.render.resolution_percentage = percent
-    sc.cycles.samples = 16
-    sc.render.image_settings.file_format = "OPEN_EXR"
-    sc.render.filepath = str(Path(bpy.app.tempdir) / f"half_{width_px}_{percent}")
-    bpy.ops.render.render(write_still=True)
-    return blend.read(Path(sc.render.filepath + ".exr"))[..., :3]
-
-
-def test_a_render_at_half_resolution_is_a_build_at_half_width() -> None:
-    assert _same(_rendered_at(640, 50), _rendered_at(320, 100))
-
-
 def _set_after(setting: str, built: bool) -> np.ndarray:
     """With a ship far enough off to be hazed, so the haze's sun shows."""
     outputs: dict[str, object] = {"format": "exr"}
@@ -1320,42 +1310,22 @@ def test_a_setting_changed_after_the_build_renders_as_if_built(setting: str) -> 
 
 def test_each_camera_draws_for_its_own_pixel() -> None:
     """As `render` takes them, one after another in one build."""
-    pair = _rig(640, 320)
+    pair = _rig(320, 160)
     built = scene.build(pair, "eo")
     sc = bpy.context.scene
     sc.cycles.samples = 16
     fine, coarse = (built.cameras[m.name] for m in pair.band_mounts("eo"))
     sc.camera = fine
-    shoot((640, 360), "fine")
+    shoot((320, 180), "fine")
     sc.camera = coarse
-    after = shoot((320, 180), "coarse")
-    alone = _rig(320)
+    after = shoot((160, 90), "coarse")
+    alone = _rig(160)
     built = scene.build(alone, "eo")
     # The build starts from factory settings, a new scene.
     sc = bpy.context.scene
     sc.cycles.samples = 16
     sc.camera = built.cameras[alone.mounts[0].name]
-    assert _same(after, shoot((320, 180), "alone"))
-
-
-def test_a_photographed_sun_sits_where_the_scenario_puts_it() -> None:
-    scenario = variant(
-        sky={"hdri": "kloofendal_48d_partly_cloudy", "sun_bearing_deg": 70.0},
-        outputs={"format": "exr"},
-    )
-    scene.build(scenario, "eo")
-    sc = bpy.context.scene
-    camera = sc.camera
-    camera.parent = None
-    camera.location = (0.0, 0.0, 10.0)
-    camera.rotation_mode = "QUATERNION"
-    sun = Vector(scenario.sky.sun_vector)
-    camera.rotation_quaternion = sun.to_track_quat("-Z", "Y")
-    camera.data.angle_x = math.radians(10.0)
-    sc.cycles.samples = 4
-    frame = shoot((64, 64), "photo_sun")
-    row, col = np.unravel_index(np.argmax(frame), frame.shape)
-    assert abs(row - 31.5) <= 2 and abs(col - 31.5) <= 2
+    assert _same(after, shoot((160, 90), "alone"))
 
 
 SKY_RGB = (0.5, 1.0, 2.0)

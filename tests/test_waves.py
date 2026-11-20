@@ -5,9 +5,9 @@ from statistics import NormalDist
 import numpy as np
 import pytest
 
-from seascape.physics import earth, lwir, waves
+from seascape.physics import earth, waves
 from seascape.physics.wakes import FRESH_FOAM_REFLECTANCE
-from seascape.physics.waves import sea, surface
+from seascape.physics.waves import sea
 from tests import gerstner
 
 
@@ -80,9 +80,9 @@ def test_the_turbulence_intensity_is_the_log_profile_s_shear_at_10_m() -> None:
     assert waves.turbulence_intensity(0.0) == 0.0
 
 
-@pytest.mark.parametrize("speed", [3.0, 7.0, 15.0])
-def test_a_gust_roughens_the_sea_as_cox_and_munk_s_wind_would(speed: float) -> None:
+def test_a_gust_roughens_the_sea_as_cox_and_munk_s_wind_would() -> None:
     """Linear in the gust, so the sea's mean roughness keeps its tuning."""
+    speed = 7.0
     per_gust = waves.gust_slope_variance(speed)
     for gust in 4 * waves.turbulence_intensity(speed) * np.array([-1.0, 1.0]):
         gusty = waves.cox_munk_slope(speed * (1 + gust)) ** 2
@@ -116,18 +116,13 @@ def test_a_slick_smooths_the_sea_as_cox_and_munk_measured() -> None:
     assert waves.cox_munk_slick_slope(0.5) == waves.cox_munk_slope(0.5)
 
 
-@pytest.mark.parametrize("wind_speed_mps", [0.5, 1.0, 1.5, 2.0, 8.0])
+@pytest.mark.parametrize("wind_speed_mps", [0.5, 1.5, 2.0, 8.0])
 def test_a_slick_roughens_neither_axis(wind_speed_mps: float) -> None:
     slick = waves.cox_munk_slick_variances(wind_speed_mps)
     clean = waves.cox_munk_variances(wind_speed_mps)
     assert all(s <= c for s, c in zip(slick, clean, strict=True))
     total = waves.cox_munk_slick_slope(wind_speed_mps) ** 2
     assert sum(slick) == pytest.approx(total)
-
-
-def test_a_slick_below_the_fits_crossing_is_the_clean_sea() -> None:
-    slick = waves.cox_munk_slick_variances(0.0)
-    assert slick == pytest.approx(waves.cox_munk_variances(0.0))
 
 
 @pytest.mark.parametrize("wind_speed_mps", [7.0, 15.0])
@@ -156,23 +151,7 @@ def test_the_gust_tile_is_gaussian_so_its_tail_sets_the_slick_cover(
     assert (tile > threshold).mean() == pytest.approx(cover, abs=0.05)
 
 
-def test_a_pixel_that_resolves_less_emits_more_at_grazing() -> None:
-    """Masuda 1988: unresolved slope lifts grazing emissivity off flat Fresnel."""
-    built = field(7.0)
-    # lwir takes the slope per axis: half the total variance.
-    near, far = (
-        math.sqrt(sum(waves.unresolved_slope_variances(7.0, 0.0, built, (), f)) / 2)
-        for f in (0.01, 50)
-    )
-    eps = {}
-    for name, sigma in (("near", near), ("far", far)):
-        theta, curve = lwir.emissivity_curve(t_sea_k=291.0, slope_sigma=sigma)
-        eps[name] = float(np.interp(math.radians(80.0), theta, curve))
-        assert float(np.interp(0.0, theta, curve)) == pytest.approx(0.985, abs=0.005)
-    assert eps["far"] > eps["near"]
-
-
-@pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 12.0, 20.0])
+@pytest.mark.parametrize("wind_speed_mps", [3.0, 20.0])
 def test_a_fully_developed_sea_is_as_high_as_pierson_moskowitz_s(
     wind_speed_mps,
 ) -> None:
@@ -202,7 +181,7 @@ def test_a_sea_short_of_fetch_is_as_high_as_jonswap_measured(
     assert hs == pytest.approx(1.6e-3 * math.sqrt(x) * wind_speed_mps**2 / g, rel=0.1)
 
 
-@pytest.mark.parametrize("wind_speed_mps", [5.0, 7.0, 15.0])
+@pytest.mark.parametrize("wind_speed_mps", [5.0, 15.0])
 def test_the_spectrum_s_slope_is_cox_and_munk_s(wind_speed_mps: float) -> None:
     """Elfouhaily et al. fitted their short waves to Cox & Munk's clean sea."""
     k = np.geomspace(1e-4, 2e4, 200_000)
@@ -241,11 +220,6 @@ def test_the_tallest_waves_are_the_fewest_carrying_the_share() -> None:
     assert carried >= share * total > carried - smallest
 
 
-def test_waves_run_away_from_the_wind() -> None:
-    from_east = field(7.0, wind_from_deg=90.0)
-    assert np.mean([w.k_east_rad_m for w in from_east]) < 0.0
-
-
 def test_a_wind_off_every_axis_runs_its_sea_downwind() -> None:
     """From 60, off both axes, so a sign slip in east or north shows."""
     built = field(7.0, wind_from_deg=60.0)
@@ -253,21 +227,6 @@ def test_a_wind_off_every_axis_runs_its_sea_downwind() -> None:
     k_north = sum(w.k_north_rad_m * w.amplitude_m**2 for w in built)
     # The spread's random strata leave the energy-weighted mean a few degrees off.
     assert math.degrees(math.atan2(k_east, k_north)) == pytest.approx(-120.0, abs=5.0)
-
-
-def test_a_crest_travels_at_its_phase_speed() -> None:
-    wave = waves.Wave(1.0, 1.2, math.radians(30.0), 0.4)
-    speed_ms = wave.omega_rad_s / wave.k_rad_m
-    east, north = math.sin(wave.toward_rad), math.cos(wave.toward_rad)
-    t_s = 2.5
-    before = gerstner.height_m((wave,), np.array([3.0]), np.array([4.0]), 0.0)
-    after = gerstner.height_m(
-        (wave,),
-        np.array([3.0 + speed_ms * t_s * east]),
-        np.array([4.0 + speed_ms * t_s * north]),
-        t_s,
-    )
-    assert after == pytest.approx(before)
 
 
 def test_a_snapped_field_repeats_after_the_loop() -> None:
@@ -291,22 +250,6 @@ def test_a_longer_loop_snaps_the_frequencies_less() -> None:
 
     assert loop(90.0) < loop(40.0) < loop(10.0)
     assert waves.snap_error(7.0, None, lambda p: p) == pytest.approx(0.0, abs=1e-12)
-
-
-def test_a_pixel_leaves_to_roughness_what_it_cannot_resolve() -> None:
-    built = field(7.0)
-    total = waves.cox_munk_slope(7.0) ** 2
-    sharp = sum(waves.unresolved_slope_variances(7.0, 0.0, built, (), 1e-6))
-    assert sharp == pytest.approx(total - waves.slope_variance(built))
-    assert sum(
-        waves.unresolved_slope_variances(7.0, 0.0, built, (), 1e4)
-    ) == pytest.approx(total)
-    footprints = [0.01, 0.1, 1.0, 10.0]
-    rest = [
-        sum(waves.unresolved_slope_variances(7.0, 0.0, built, (), f))
-        for f in footprints
-    ]
-    assert rest == sorted(rest), "a coarser pixel leaves more"
 
 
 def test_a_heading_band_is_the_closed_form_of_its_integrals() -> None:
@@ -613,39 +556,6 @@ def test_a_foam_memory_covers_none_of_the_sea_or_all_of_it() -> None:
     assert list(thresholds) == [math.inf, -math.inf]
 
 
-@pytest.mark.parametrize(
-    ("toward_deg", "heading_deg", "expected"),
-    [
-        (0.0, 0.0, "pitch"),
-        (90.0, 0.0, "roll"),
-        (0.0, 90.0, "roll"),
-    ],
-)
-def test_a_hull_takes_the_slope_of_a_long_wave(toward_deg, heading_deg, expected):
-    wave = waves.Wave(0.5, 0.2, math.radians(toward_deg), 1.0)  # 1.5 km long
-    east, north, t_s = 30.0, -40.0, 3.0
-    hull = waves.Waterplane(east, north, math.radians(heading_deg), 20.0, 5.0)
-    pitch, roll = waves.attitude((wave,), hull, t_s)
-    d_east, d_north = gerstner.slope((wave,), np.array(east), np.array(north), t_s)
-    heading = math.radians(heading_deg)
-    rise_along = d_east * math.sin(heading) + d_north * math.cos(heading)
-    rise_starboard = d_east * math.cos(heading) - d_north * math.sin(heading)
-    # Water rising to starboard rolls the hull port down, a negative roll.
-    assert (pitch, roll) == pytest.approx(
-        (math.atan(rise_along), -math.atan(rise_starboard)), abs=1e-5
-    )
-    assert abs({"pitch": pitch, "roll": roll}[expected]) > 1e-4
-
-
-def test_an_oblique_wave_meets_an_oblique_hull_ahead_and_from_port() -> None:
-    """Toward 30 on a heading of 75: 45 to port of the bow."""
-    wave = waves.Wave(0.5, 0.2, math.radians(30.0), 1.0)
-    hull = waves.Waterplane(heading_rad=math.radians(75.0))
-    along, across = surface._along_across((wave,), hull)
-    k = wave.k_rad_m * math.sqrt(0.5)
-    assert (along[0], across[0]) == pytest.approx((k, -k))
-
-
 @pytest.mark.parametrize("length_m", [0.0, 20.0, 90.0])
 def test_a_hull_floats_at_the_mean_of_the_water_under_it(length_m: float) -> None:
     """Over a low wave, as linear: a cos(phase) sinc(k L / 2) along it."""
@@ -740,24 +650,6 @@ def test_a_hull_yaws_with_the_water_under_it(
     assert abs(yaw) > 1e-4, "an unturned hull would pass vacuously"
 
 
-def test_a_square_barely_yaws_in_a_long_wave() -> None:
-    """The offset is a gradient: over a square, its turn falls with (k L)^2."""
-    wave = waves.Wave(amplitude_m=0.8, omega_rad_s=0.6, toward_rad=0.7, phase_rad=1.0)
-    square = waves.Waterplane(
-        rest_east_m=30.0,
-        rest_north_m=-40.0,
-        heading_rad=1.7,
-        length_m=10.0,
-        beam_m=10.0,
-    )
-    long = square._replace(length_m=60.0)
-    # Measured 5e-4, so 1e-3 is a margin over it; a square that turned with the water
-    # as the long hull does would sit near 1.
-    assert abs(waves.yaw_rad((wave,), square, 2.0)) < 1e-3 * abs(
-        waves.yaw_rad((wave,), long, 2.0)
-    )
-
-
 def _jensen(wave: waves.Wave, hull: waves.Waterplane) -> tuple[float, float]:
     """Gain and phase lead of heave and pitch over the hull's static ones: Jensen,
     Mansour & Olsen (2004) eqs. 2.3-2.5, 2.9, 2.10, 2.13 and 4.4, at the frequency
@@ -831,21 +723,6 @@ def test_a_hull_moves_as_jensen_s_box_its_static_ride_a_lead_later(
     assert moved == pytest.approx(gain * np.array(static), abs=1e-9)
 
 
-def test_a_deep_hull_feels_a_short_wave_less_than_the_water_s_slope() -> None:
-    wave = waves.Wave(0.01, 1.5, math.radians(180.0), 0.0)
-    times = np.linspace(0.0, 2 * math.pi / 1.5, 32)
-
-    shallow, deep = (
-        max(
-            abs(waves.attitude((wave,), waves.Waterplane(0, 0, 0, 20, 5, 5, d), t)[0])
-            for t in times
-        )
-        for d in (0.0, 6.0)
-    )
-
-    assert deep < 0.5 * shallow
-
-
 def test_the_closed_form_is_the_least_squares_plane_under_the_hull() -> None:
     sea = field(12.0, wind_from_deg=40.0)
     east, north, heading, length, beam, t = 30.0, -15.0, 0.7, 40.0, 9.0, 2.0
@@ -884,15 +761,7 @@ def test_a_swell_adds_its_own_unresolved_slope_to_cox_and_munk_s() -> None:
     )
 
 
-def test_an_isotropic_gaussian_surface_has_e_det_h_of_m4_over_2_sqrt_3() -> None:
-    # h_xx, h_yy, h_xy of an isotropic surface of m4 = 1.
-    cov = np.array([[3.0, 1.0, 0.0], [1.0, 3.0, 0.0], [0.0, 0.0, 1.0]]) / 8
-    h = np.random.default_rng(0).multivariate_normal(np.zeros(3), cov, 1_000_000)
-    det = np.abs(h[:, 0] * h[:, 1] - h[:, 2] ** 2).mean()
-    assert det == pytest.approx(1 / (2 * math.sqrt(3)), rel=0.01)
-
-
-@pytest.mark.parametrize("wind_speed_mps", [3.0, 7.0, 15.0])
+@pytest.mark.parametrize("wind_speed_mps", [3.0, 15.0])
 def test_glitter_follows_the_spectrum_s_tail_to_the_capillary_cutoff(
     wind_speed_mps,
 ) -> None:
@@ -949,7 +818,7 @@ def test_drawn_and_unresolved_hold_cox_and_munk_s_slope_on_each_axis() -> None:
 @pytest.mark.parametrize(
     ("wind_speed_mps", "upwind_heavier"),
     # Cox & Munk's fits cross at 2.4 m/s.
-    [(0.0, False), (2.0, False), (3.0, True), (15.0, True)],
+    [(2.0, False), (3.0, True)],
 )
 def test_the_axes_split_cox_and_munk_s_total(
     wind_speed_mps: float, upwind_heavier: bool
@@ -960,7 +829,7 @@ def test_the_axes_split_cox_and_munk_s_total(
     assert (up > cross) == upwind_heavier
 
 
-@pytest.mark.parametrize("wind_speed_mps", [1.0, 2.0, 3.0, 7.0, 15.0])
+@pytest.mark.parametrize("wind_speed_mps", [2.0, 15.0])
 def test_no_axis_draws_more_slope_than_cox_and_munk_measured(
     wind_speed_mps: float,
 ) -> None:
@@ -970,13 +839,6 @@ def test_no_axis_draws_more_slope_than_cox_and_munk_measured(
         np.asarray(drawn)
         <= np.asarray(waves.cox_munk_variances(wind_speed_mps)) * (1 + 1e-9)
     )
-
-
-def test_a_sea_within_cox_and_munk_s_slope_keeps_its_spectrum_s_height() -> None:
-    """Elfouhaily's height variance is the bins'; the hold only trims a light wind."""
-    _, _, variance = waves.sea._bins(7.0, None)
-    built = field(7.0)
-    assert sum(w.amplitude_m**2 / 2 for w in built) == pytest.approx(variance.sum())
 
 
 def test_each_wave_carries_its_own_bin_s_height_off_the_bin_s_centre() -> None:

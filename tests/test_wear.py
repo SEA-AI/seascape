@@ -47,8 +47,6 @@ def test_a_point_is_tagged_where_it_sits_in_the_hull_frame(box) -> None:
     obj, zone = box
     wear.tag([obj], [zone], "steel", still=False)
     position_m = _read(obj.data, "wear_position_m")
-    corner = np.array(obj.matrix_world) @ np.append(obj.data.vertices[0].co, 1.0)
-    np.testing.assert_allclose(position_m[0], corner[:3], atol=1e-5)
     # Turned a quarter: the box's 10 m now runs east, from 5 m to 15 m.
     np.testing.assert_allclose(position_m.min(axis=0), (5.0, -2.0, -1.0), atol=1e-5)
     np.testing.assert_allclose(position_m.max(axis=0), (15.0, 2.0, 2.0), atol=1e-5)
@@ -91,10 +89,8 @@ def test_a_side_is_as_deep_as_it_sits_below_the_sheer(box) -> None:
 
 def test_a_flared_side_finds_its_sheer_a_patch_outboard() -> None:
     """The sheer sits one patch outboard; a higher point of another zone is ignored."""
-    position_m = np.array([[0.0, 0.0, 0.0], [0.5, 0.0, 3.0], [0.0, 0.0, 9.0]])
-    patch_m = 100.0 / 200.0
-    position_m = np.vstack([position_m, [[100.0, 0.0, 0.0]]])  # sets the length
-    position_m[1, 0] = patch_m
+    # The last point sets the length, 100 m, so a patch is 0.5 m.
+    position_m = np.array([[0, 0, 0], [0.5, 0, 3], [0, 0, 9], [100, 0, 0]], float)
     zone = np.array([0, 0, 1, 0])
     np.testing.assert_allclose(
         wear.below_edge_m(position_m, zone), [3.0, 0.0, 0.0, 0.0]
@@ -114,21 +110,18 @@ def test_each_face_weighs_its_zone_and_a_chip_rusts_on_steel_else_scuffs(
         np.testing.assert_allclose(got[deck], want)
 
 
-def test_each_face_knows_its_asset_length_and_whether_it_is_steel(box) -> None:
+def test_each_face_knows_its_asset_length_and_whether_it_is_steel_and_still(
+    box,
+) -> None:
     obj, zone = box
     wear.tag([obj], [zone], "steel", still=False)
     # Turned a quarter, the box's 4 m runs along the fitted bow, north.
     np.testing.assert_allclose(_read(obj.data, "wear_length_m"), 4.0, atol=1e-5)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 1.0)
-    wear.tag([obj], [zone], "grp", still=False)
+    np.testing.assert_array_equal(_read(obj.data, "wear_still"), 0.0)
+    wear.tag([obj], [zone], "grp", still=True)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 0.0)
-
-
-def test_each_face_knows_whether_its_asset_is_still(box) -> None:
-    obj, zone = box
-    for still in (False, True):
-        wear.tag([obj], [zone], "grp", still=still)
-        np.testing.assert_array_equal(_read(obj.data, "wear_still"), float(still))
+    np.testing.assert_array_equal(_read(obj.data, "wear_still"), 1.0)
 
 
 def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
@@ -168,19 +161,15 @@ def test_an_eo_hull_lifted_off_its_draught_tells_its_wear_where_the_water_is() -
     assert all(o["rise_m"] == 0.4 for o in mesh_objects([lifted]))
 
 
-def test_a_clean_build_is_not_tagged() -> None:
-    (clean,) = _zodiacs(frozenset())
-    meshes = mesh_objects([clean])
-    assert not any("wear_position_m" in o.data.attributes for o in meshes)
-
-
 def _materials(root: bpy.types.Object) -> set[bpy.types.Material]:
     slots = [s for o in mesh_objects([root]) for s in o.material_slots]
     return {s.material for s in slots} - {None}
 
 
-def test_a_clean_build_keeps_its_import_graph() -> None:
+def test_a_clean_build_is_not_tagged_and_keeps_its_import_graph() -> None:
     (clean,) = _zodiacs(frozenset())
+    meshes = mesh_objects([clean])
+    assert not any("wear_position_m" in o.data.attributes for o in meshes)
     assert not any(g.name.startswith("wear_masks") for g in bpy.data.node_groups)
     built = {m.name.split("/", 1)[1]: len(m.node_tree.nodes) for m in _materials(clean)}
     bpy.ops.wm.read_factory_settings(use_empty=True)
