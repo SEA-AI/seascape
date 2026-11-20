@@ -114,14 +114,14 @@ def test_each_face_knows_its_asset_length_and_whether_it_is_steel_and_still(
     box,
 ) -> None:
     obj, zone = box
-    wear.tag([obj], [zone], "steel", still=True)
+    wear.tag([obj], [zone], "steel", still=False)
     # Turned a quarter, the box's 4 m runs along the fitted bow, north.
     np.testing.assert_allclose(_read(obj.data, "wear_length_m"), 4.0, atol=1e-5)
     np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 1.0)
-    np.testing.assert_array_equal(_read(obj.data, "wear_still"), 1.0)
-    wear.tag([obj], [zone], "grp", still=False)
-    np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 0.0)
     np.testing.assert_array_equal(_read(obj.data, "wear_still"), 0.0)
+    wear.tag([obj], [zone], "grp", still=True)
+    np.testing.assert_array_equal(_read(obj.data, "wear_steel"), 0.0)
+    np.testing.assert_array_equal(_read(obj.data, "wear_still"), 1.0)
 
 
 def test_cloth_sheds_runoff_and_a_hull_streaks(box) -> None:
