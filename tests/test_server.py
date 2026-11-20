@@ -140,6 +140,7 @@ def test_the_catalog_names_what_render_takes(state: State) -> None:
     assert listed["skies"].keys() == skies.library().keys()
     rocky = listed["skies"]["rocky_ridge"]
     assert (rocky["cover"], rocky["sun_band"]) == ("partly cloudy", "low sun")
+    assert listed["skies"]["mud_road"]["sun_band"] is None
 
 
 def test_a_scenario_is_its_file(state: State) -> None:
@@ -294,9 +295,15 @@ def test_jobs_lists_a_finished_job_whose_archive_is_gone(
     assert "archive" not in listed
 
 
-def test_a_limit_set_empty_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SEASCAPE_MIN_FREE_GB", "")
-    assert Settings(scenarios=SCENARIOS).min_free_gb > 0
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("", Settings.model_fields["min_free_gb"].default), ("2.5", 2.5)],
+)
+def test_a_limit_reads_the_environment(
+    value: str, expected: float, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SEASCAPE_MIN_FREE_GB", value)
+    assert Settings(scenarios=SCENARIOS).min_free_gb == expected
 
 
 @pytest.mark.parametrize("value", ["4k", "inf", "0"])
@@ -674,7 +681,7 @@ def test_a_draining_server_queues_a_job_for_the_next_one(
 # A queued job waits for the next server.
 @pytest.mark.parametrize(
     ("job_state", "exits"),
-    [("running", False), ("finishing", False), ("queued", True)],
+    [("running", False), ("finishing", False), ("queued", True), ("done", True)],
 )
 def test_a_stopped_server_exits_once_its_running_job_ends(
     job_state: JobState, exits: bool, state: State
@@ -746,9 +753,20 @@ def test_a_secret_is_the_bearer_token_mcp_needs(
 
 
 def test_renders_need_no_token(tmp_path: Path) -> None:
+    (tmp_path / "job").mkdir()
+    (tmp_path / "job" / "a.txt").write_text("hi")
     served = transport.app(_state(tmp_path, mcp_secret=SECRET), "0.0.0.0")
-    [status] = asyncio.run(_statuses(served, "/renders/a.txt", "localhost"))
-    assert status == 405  # StaticFiles' answer to a POST
+
+    async def fetch() -> int:
+        transport_ = httpx2.ASGITransport(app=served)
+        async with httpx2.AsyncClient(
+            transport=transport_, base_url="http://test"
+        ) as c:
+            return (
+                await c.get("/renders/job/a.txt", headers={"host": "localhost"})
+            ).status_code
+
+    assert asyncio.run(fetch()) == 200
 
 
 @pytest.mark.parametrize(
@@ -875,6 +893,7 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
     ("arguments", "message"),
     [
         ({"variants": 101}, "at most 100 variants"),
+        ({"overrides": ["outputs.duration_s = 61.0"]}, "a clip lasts"),
         # On the baseline: the showcase's 3840-wide sensor fails a wider image first.
         (
             {
@@ -960,6 +979,17 @@ def test_a_failed_render_tells_the_client_only_its_last_line(
     with pytest.raises(RuntimeError) as error:
         asyncio.run(jobs._seascape("render"))
     assert str(error.value) == "ValueError: bad scenario"
+
+
+def test_render_says_a_list_override_replaces_the_scenarios_list(
+    state: State,
+) -> None:
+    async def described() -> str:
+        async with Client(transport.mcp(state)) as client:
+            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+            return tools["render"].description or ""
+
+    assert "replaces the whole list" in " ".join(asyncio.run(described()).split())
 
 
 @pytest.mark.usefixtures("blenderless")

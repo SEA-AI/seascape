@@ -38,6 +38,10 @@ def test_a_subcommand_s_help_exits_0(run: Run) -> None:
     assert not helped.stderr
 
 
+def test_version(run: Run) -> None:
+    assert run("--version").stdout.startswith("seascape, version ")
+
+
 def test_serve_takes_its_scenarios_folder(
     run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -269,6 +273,12 @@ def test_an_invalid_setting_is_an_error_without_the_secret(
     assert result.exit_code == 1
     assert "SEASCAPE_MCP_SECRET needs 32 or more" in result.output
     assert "tooshort" not in result.output
+
+
+def test_an_invalid_setting_names_the_field(run: Run, tmp_path: Path) -> None:
+    result = run("serve", "--scenarios", tmp_path, env={"SEASCAPE_MAX_RUN_S": "-1"})
+    assert result.exit_code == 1
+    assert "max_run_s" in result.output
 
 
 def test_serve_keeps_the_secret_out_of_the_environment(

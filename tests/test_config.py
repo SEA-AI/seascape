@@ -16,6 +16,7 @@ from seascape.config import (
     BANDS,
     PRESETS,
     Camera,
+    Crop,
     Farm,
     Microbolometer,
     Object,
@@ -1025,6 +1026,39 @@ def test_an_image_pixel_s_pitch_is_the_sensor_s_times_the_sites_it_averages() ->
     assert (EO.pitch_um, ir.pitch_um) == (None, 12.0)
 
 
+def test_a_boson_preset_extends_another() -> None:
+    """No shipped rig mounts it, so only this load sees it break."""
+    load(BASELINE, ['rigs.bow.cameras.ir.preset = "boson_320_34deg"'])
+
+
+def test_a_side_pod_turns_its_thermal_inboard() -> None:
+    def rig(preset: str) -> Rig:
+        line = f'rigs = {{ bow = {{ preset = "{preset}", height_m = 10.0 }} }}'
+        return load(BASELINE, [line]).rigs["bow"]
+
+    port, starboard = rig("port"), rig("starboard")
+    assert rig("pod").cameras["ir"].yaw_deg == 0.0
+    assert port.cameras["ir"].yaw_deg == -starboard.cameras["ir"].yaw_deg
+    assert port.cameras["ir"].yaw_deg * port.yaw_deg < 0.0
+
+
+def test_a_sentry_records_its_colour_cameras_1200_wide() -> None:
+    line = 'rigs = { bow = { preset = "sentry", height_m = 10.0 } }'
+    rig = load(BASELINE, [line]).rigs["bow"]
+    for name in ("RGBwFoV", "RGBnFoV"):
+        crop = rig.videos[name]
+        assert isinstance(crop, Crop)
+        width = rig.cameras[crop.camera].width_px - crop.left_px - crop.right_px
+        assert width == 1200
+
+
+def test_the_watchkeeper_thermals_toe_out_symmetrically() -> None:
+    line = 'rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }'
+    rig = load(BASELINE, [line]).rigs["bow"]
+    left, right = rig.cameras["t2"], rig.cameras["t1"]
+    assert left.yaw_deg == -right.yaw_deg < 0.0
+
+
 def test_an_undistortion_renders_the_pinhole_its_recorder_dewarps_to() -> None:
     lines = ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
     scenario = load(BASELINE, lines)
@@ -1106,6 +1140,15 @@ def test_a_rigs_cameras_draw_one_grade_and_rigs_draw_their_own() -> None:
         }
         assert [len(g) for g in grades.values()] == [1, 1]
         assert grades["port"] != grades["starboard"]
+
+
+def test_the_ecam50_cunx_preset_scales_its_sensor_down_to_a_smaller_image() -> None:
+    line = (
+        'rigs.bow.cameras.eo = { preset = "econ_ecam50_cunx", hfov_deg = 45.0, '
+        "width_px = 1280, height_px = 960 }"
+    )
+    camera = load(BASELINE, [line]).rigs["bow"].cameras["eo"]
+    assert (camera.sensor.width_px or 0) >= 2 * camera.width_px
 
 
 def test_a_preset_keeps_its_sensor_under_a_block_that_draws_the_rest() -> None:
