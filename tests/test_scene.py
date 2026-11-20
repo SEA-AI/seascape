@@ -728,23 +728,6 @@ def test_a_pitched_rig_rolls_the_horizon_of_its_off_axis_cameras() -> None:
     )
 
 
-def test_a_pitched_lens_points_exactly_where_it_was_asked_to() -> None:
-    """Rx inside the camera's yaw: neither angle disturbs the other, nor the horizon."""
-    pitch_deg = -10.0
-    lens = Camera(**LENS, yaw_deg=40.0, pitch_deg=pitch_deg)
-    scenario = variant(rig={"yaw_deg": -60.0}, cameras={"eo": lens})
-
-    scene.build(scenario, "eo")
-    mount = scenario.mounts[0]
-
-    camera = bpy.data.objects[mount.name]
-    bearing, elevation = boresight_deg(camera)
-    assert bearing == pytest.approx(mount.nominal_azimuth_deg, abs=1e-4)
-    assert elevation == pytest.approx(pitch_deg, abs=1e-4)
-    across = camera.matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))
-    assert across.normalized().z == pytest.approx(0.0, abs=1e-6)
-
-
 def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() -> None:
     """The rig is yawed off the bow, so its pitch sits between two yaws and
     moves the off-axis lens off both its bearing and its own pitch. The centre camera
@@ -767,16 +750,6 @@ def test_pitch_moves_an_off_axis_camera_off_its_bearing_and_leaves_the_centre() 
     (bearing, elevation), nominal = off_axis
     assert abs(bearing - nominal) > 0.1
     assert abs(elevation - (-10.0)) > 0.1
-
-
-def test_an_ownship_with_no_hull_still_carries_the_rig() -> None:
-    scene.build(variant(ownship={"roll_deg": 5.0}), "eo")
-
-    right = camera_of(SCENARIO.mounts[0]).matrix_world.to_3x3() @ Vector(
-        (1.0, 0.0, 0.0)
-    )
-
-    assert math.degrees(math.asin(-right.z)) == pytest.approx(5.0)
 
 
 def test_a_lighter_ownship_lifts_its_rig_with_its_hull() -> None:

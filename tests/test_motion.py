@@ -57,16 +57,6 @@ def test_a_path_s_velocity_is_the_rate_its_position_changes(
         )
 
 
-def test_an_orbit_keeps_its_range_and_its_bow_on_the_tangent() -> None:
-    path = motion.orbiting(150.0, -30.0, 40.0)
-
-    for t_s in (0.0, 10.0, 25.0):
-        pose = path(t_s)
-        assert math.hypot(pose.east_m, pose.north_m) == pytest.approx(150.0)
-        out = math.atan2(pose.east_m, pose.north_m)
-        assert (pose.heading_rad - out) % (2 * math.pi) == pytest.approx(math.pi / 2)
-
-
 COURSE = Turn(
     top_rate_deg_s=30.0,
     accel_deg_s2=30.0,

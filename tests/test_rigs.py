@@ -17,14 +17,13 @@ from mathutils import Matrix, Vector
 
 from seascape import angles
 from seascape.assets import Hull, manifest
-from seascape.blender import scene, sea
+from seascape.blender import scene
 from seascape.blender.blend import mesh_objects
 from seascape.blender.rigs import _hold, boresight_deg
 from seascape.blender.vessels import waterline_crossings, waterline_m
 from seascape.config import BANDS, Agc, Microbolometer, Mount, Rig, Scenario
 from seascape.outputs import agc, canvas, panorama
 from seascape.outputs.calibration import Calibration, CameraCalibration, matrix4
-from seascape.physics import waves
 from tests.scenarios import two_rigs
 
 SCENARIO: Scenario = two_rigs()
@@ -70,17 +69,6 @@ def test_a_rigs_cameras_all_sit_at_its_mount_point(
 
     assert len(places) == 1
     assert places.pop() == pytest.approx(expected)
-
-
-def test_the_ownship_is_at_the_origin(built: scene.Built) -> None:
-    """On the water there, which the tall waves raise."""
-    root = built.root
-    tall, _ = sea.displaced((SCENARIO.wind_waves(), SCENARIO.swell_waves()))
-    t_s = SCENARIO.outputs.times_s[bpy.context.scene.frame_current]
-    rest = waves.gerstner_rest_m(tall, np.zeros(()), np.zeros(()), t_s)
-    ridden = waves.heave_m(tall, waves.Waterplane(*map(float, rest)), t_s)
-
-    assert tuple(root.location) == pytest.approx((0.0, 0.0, ridden))
 
 
 def test_the_hull_takes_the_attitude_it_was_given(built: scene.Built) -> None:

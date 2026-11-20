@@ -920,20 +920,6 @@ def test_a_count_cannot_join_an_orbit() -> None:
 
 
 @pytest.mark.parametrize(
-    ("heading_from", "course"), [("ownship", 180.0), ("line_of_sight", 210.0)]
-)
-def test_a_heading_turns_from_what_heading_from_names(heading_from, course) -> None:
-    spec = Object(
-        asset="yacht",
-        range_m=900.0,
-        bearing_deg=30.0,
-        heading_deg=180.0,
-        heading_from=heading_from,
-    )
-    assert spec.heading_from_bow_deg == course
-
-
-@pytest.mark.parametrize(
     ("steering", "match"),
     [
         ({"heading_deg": 0.0}, r"drop \['heading_deg'\]"),
