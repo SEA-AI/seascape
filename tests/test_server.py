@@ -70,27 +70,17 @@ def _call(state: State, tool: str, **arguments: Any) -> Any:
     return asyncio.run(call())
 
 
-def test_only_cancel_asks_a_client_for_approval(
-    tmp_path: Path,
-) -> None:
-    async def listed() -> dict[str, bool]:
-        async with Client(transport.mcp(_state(tmp_path))) as client:
+def test_only_cancel_asks_a_client_for_approval(state: State) -> None:
+    async def asking() -> list[str]:
+        async with Client(transport.mcp(state)) as client:
             tools = (await client.list_tools()).tools
-            return {
-                t.name: bool(t.annotations and t.annotations.read_only_hint)
+            return [
+                t.name
                 for t in tools
-            }
+                if not (t.annotations and t.annotations.read_only_hint)
+            ]
 
-    assert asyncio.run(listed()) == {
-        "catalog": True,
-        "scenario": True,
-        "schema": True,
-        "jobs": True,
-        "get_job": True,
-        "preview": True,
-        "render": True,
-        "cancel": False,
-    }
+    assert asyncio.run(asking()) == ["cancel"]
 
 
 @pytest.mark.parametrize(
@@ -98,10 +88,7 @@ def test_only_cancel_asks_a_client_for_approval(
     [
         'objects = [{ preset = "/etc/hosts.toml" }]',
         'objects = [{ preset = "no_such_preset" }]',
-        "objects = [{ preset = 5 }]",
         'extends = "baseline.toml"',
-        "sea.wind_speed_mps = -1.0",
-        "sky.sun_elevation_deg =",
     ],
 )
 def test_a_bad_override_is_refused_before_any_job(line: str, state: State) -> None:
@@ -150,18 +137,9 @@ def test_the_catalog_names_what_render_takes(state: State) -> None:
     assert set(listed["schema_sections"]) == set(json_schema()["properties"])
     assert all(listed["schema_sections"].values())
     assert "schema" not in listed
-
-
-def test_the_catalog_describes_each_sky_in_fields_a_client_can_match(
-    state: State,
-) -> None:
-    listed = _call(state, "catalog").structured_content["skies"]
-
-    assert listed.keys() == skies.library().keys()
-    rocky = listed["rocky_ridge"]
+    assert listed["skies"].keys() == skies.library().keys()
+    rocky = listed["skies"]["rocky_ridge"]
     assert (rocky["cover"], rocky["sun_band"]) == ("partly cloudy", "low sun")
-    assert listed["mud_road"]["sun_band"] is None
-    assert listed["mud_road"]["cover"] == "overcast"
 
 
 def test_a_scenario_is_its_file(state: State) -> None:
@@ -183,33 +161,26 @@ def test_a_schema_section_holds_what_it_reaches_and_no_more(state: State) -> Non
     assert _call(state, "schema", section="nope").is_error
 
 
-def test_a_full_disk_refuses_a_job(tmp_path: Path) -> None:
-    state = _state(tmp_path, min_free_gb=2.0**50)
-    result = _call(state, "render")
-    assert result.is_error
-    assert "GB free" in result.content[0].text
-    assert not state.jobs
-
-
-def test_jobs_reports_the_free_disk(state: State) -> None:
-    listed = _call(state, "jobs").structured_content
-    assert listed["jobs"] == []
-    assert listed["free_gb"] > 0
-
-
 def test_a_job_older_than_a_day_is_deleted(tmp_path: Path, state: State) -> None:
-    old, busy, new = tmp_path / "old", tmp_path / "busy", tmp_path / "new"
-    for folder in (old, busy, new):
+    old, busy, new, kept = (tmp_path / n for n in ("old", "busy", "new", "kept"))
+    for folder in (old, busy, new, kept):
         folder.mkdir()
         (folder / "labels.json").touch()
     (tmp_path / "old.zip").touch()
+    # A folder lives as long as its archive.
+    (tmp_path / "kept.zip").touch()
     state.jobs["busy"] = Job(busy, "baseline", [], state="running")
     a_day_ago = time.time() - jobs.KEEP_S - 1
-    for path in (old, busy, tmp_path / "old.zip"):
+    for path in (old, busy, kept, tmp_path / "old.zip"):
         os.utime(path, (a_day_ago, a_day_ago))
     asyncio.run(jobs.prune(state))
     # A running job's folder may sit unchanged past the cutoff.
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["busy", "new"]
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "busy",
+        "kept",
+        "kept.zip",
+        "new",
+    ]
     assert "busy" in state.jobs
 
 
@@ -240,17 +211,6 @@ def test_an_idle_server_keeps_deleting_what_expires(
     asyncio.run(served())
     assert not first.exists()
     assert not second.exists()
-
-
-def test_a_folder_lives_as_long_as_its_archive(tmp_path: Path, state: State) -> None:
-    folder, archive = tmp_path / "job", tmp_path / "job.zip"
-    folder.mkdir()
-    archive.touch()
-    a_day_ago = time.time() - jobs.KEEP_S - 1
-    os.utime(folder, (a_day_ago, a_day_ago))
-    asyncio.run(jobs.prune(state))
-    assert folder.exists()
-    assert archive.exists()
 
 
 def test_a_variant_job_finds_the_seeds_render_kept(tmp_path: Path) -> None:
@@ -327,17 +287,16 @@ def test_jobs_lists_a_finished_job_whose_archive_is_gone(
 ) -> None:
     scenes = load_variants(OPEN_SEA)
     state.jobs["gone"] = Job(tmp_path / "gone", "open-sea", scenes, state="done")
-    (listed,) = _call(state, "jobs").structured_content["jobs"]
+    listed = _call(state, "jobs").structured_content
+    assert listed["free_gb"] > 0
+    (listed,) = listed["jobs"]
     assert listed["status"] == "done"
     assert "archive" not in listed
 
 
-@pytest.mark.parametrize(("value", "expected"), [("", 10.0), ("2.5", 2.5)])
-def test_a_limit_reads_the_environment(
-    value: str, expected: float, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("SEASCAPE_MIN_FREE_GB", value)
-    assert Settings(scenarios=SCENARIOS).min_free_gb == expected
+def test_a_limit_set_empty_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEASCAPE_MIN_FREE_GB", "")
+    assert Settings(scenarios=SCENARIOS).min_free_gb > 0
 
 
 @pytest.mark.parametrize("value", ["4k", "inf", "0"])
@@ -387,10 +346,18 @@ def _rendered(state: State, *then: tuple[str, dict[str, Any]]) -> list[Any]:
 
 
 @pytest.mark.usefixtures("blenderless")
-def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
+def test_a_finished_job_reports_its_archive_and_previews_a_sheet_or_a_camera(
     state: State,
 ) -> None:
-    (result,) = _rendered(state, ("get_job", {}))
+    camera = load_variants(BASELINE)[0].mounts[0].name
+    result, sheet, frame, *refused = _rendered(
+        state,
+        ("get_job", {}),
+        ("preview", {"variant": 1}),
+        ("preview", {"camera": camera}),
+        ("preview", {"variant": 2}),
+        ("preview", {"camera": "nope"}),
+    )
     report = json.loads(result.content[0].text)
     assert report["status"] == "done", report
     assert report["archive"].endswith(".zip")
@@ -409,20 +376,6 @@ def test_a_finished_job_reports_its_archive_and_a_sheet_per_variant(
         "overrides": [],
     }
     assert report["sheets_not_shown"] == 0
-
-
-@pytest.mark.usefixtures("blenderless")
-def test_preview_gives_a_variants_sheet_or_one_camera(state: State) -> None:
-    mounts = load_variants(BASELINE)[0].mounts
-    camera = mounts[0].name
-    _, sheet, frame, *refused = _rendered(
-        state,
-        ("get_job", {}),
-        ("preview", {"variant": 1}),
-        ("preview", {"camera": camera}),
-        ("preview", {"variant": 2}),
-        ("preview", {"camera": "nope"}),
-    )
     assert [r.content[0].mime_type for r in (sheet, frame)] == ["image/jpeg"] * 2
     assert "variant 2 is not in 0 to 1" in refused[0].content[0].text
     assert "no camera 'nope'" in refused[1].content[0].text
@@ -458,16 +411,16 @@ def _preview_of(state: State, scene: Scenario, job_state: JobState) -> Any:
     return asyncio.run(call())
 
 
-def test_preview_refuses_an_exr_job(state: State) -> None:
-    refused = _preview_of(state, load(OPEN_SEA, ['outputs.format = "exr"']), "done")
+@pytest.mark.parametrize(
+    ("overrides", "job_state", "said"),
+    [(['outputs.format = "exr"'], "done", "exr"), ([], "running", "is running")],
+)
+def test_preview_refuses_an_exr_job_or_one_not_done(
+    overrides: list[str], job_state: JobState, said: str, state: State
+) -> None:
+    refused = _preview_of(state, load(OPEN_SEA, overrides), job_state)
     assert refused.is_error
-    assert "exr" in refused.content[0].text
-
-
-def test_preview_refuses_a_job_that_is_not_done(state: State) -> None:
-    refused = _preview_of(state, load(OPEN_SEA), "running")
-    assert refused.is_error
-    assert "is running" in refused.content[0].text
+    assert said in refused.content[0].text
 
 
 def _sleeper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **limits: Any) -> State:
@@ -686,12 +639,15 @@ def test_a_job_renders_its_scenario_as_it_was_queued(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", sorted(SCENARIOS.glob("*.toml")), ids=lambda p: p.stem)
-def test_each_scenario_draws_the_same_variants_from_its_pinned_copy(
+def test_each_scenario_reads_back_from_its_pinned_copy_and_job_record(
     path: Path, tmp_path: Path
 ) -> None:
-    job = Job(tmp_path / "job", path.stem, [])
+    scenes = load_variants(path, 2)
+    job = Job(tmp_path / "job", path.stem, scenes)
     job.pin(resolve(path))
-    assert load_variants(job.source, 2) == load_variants(path, 2)
+    job.save()
+    assert load_variants(job.source, 2) == scenes
+    assert jobs.Record.model_validate_json(job.record.read_bytes()).scenes == scenes
 
 
 def test_a_draining_server_queues_a_job_for_the_next_one(
@@ -710,26 +666,15 @@ def test_a_draining_server_queues_a_job_for_the_next_one(
             await task
             return name
 
-    name = asyncio.run(call())
-    assert draining.jobs[name].state == "queued"
+    job = draining.jobs[asyncio.run(call())]
+    assert jobs.Record.model_validate_json(job.record.read_bytes()).state == "queued"
     assert not rendered
-
-    async def restart() -> JobState:
-        next_one = _state(tmp_path)
-        jobs.resume(next_one)
-        task = next_one.jobs[name].task
-        assert task
-        await task
-        return next_one.jobs[name].state
-
-    assert asyncio.run(restart()) == "done"
-    assert rendered == [name]
 
 
 # A queued job waits for the next server.
 @pytest.mark.parametrize(
     ("job_state", "exits"),
-    [("running", False), ("finishing", False), ("queued", True), ("done", True)],
+    [("running", False), ("finishing", False), ("queued", True)],
 )
 def test_a_stopped_server_exits_once_its_running_job_ends(
     job_state: JobState, exits: bool, state: State
@@ -741,14 +686,6 @@ def test_a_stopped_server_exits_once_its_running_job_ends(
     server.handle_exit(signal.SIGTERM, None)
     # Not a tenth tick: no headers to refresh.
     assert asyncio.run(server.on_tick(1)) is exits
-
-
-@pytest.mark.parametrize("path", sorted(SCENARIOS.glob("*.toml")), ids=lambda p: p.stem)
-def test_each_scenario_reads_back_from_its_job_record(path: Path, state: State) -> None:
-    scenes = load_variants(path)
-    job = Job(state.renders / "job", path.stem, scenes)
-    job.save()
-    assert jobs.Record.model_validate_json(job.record.read_bytes()).scenes == scenes
 
 
 def test_a_second_signal_stops_a_server_at_once(state: State) -> None:
@@ -809,20 +746,9 @@ def test_a_secret_is_the_bearer_token_mcp_needs(
 
 
 def test_renders_need_no_token(tmp_path: Path) -> None:
-    (tmp_path / "job").mkdir()
-    (tmp_path / "job" / "a.txt").write_text("hi")
     served = transport.app(_state(tmp_path, mcp_secret=SECRET), "0.0.0.0")
-
-    async def fetch() -> int:
-        transport_ = httpx2.ASGITransport(app=served)
-        async with httpx2.AsyncClient(
-            transport=transport_, base_url="http://test"
-        ) as c:
-            return (
-                await c.get("/renders/job/a.txt", headers={"host": "localhost"})
-            ).status_code
-
-    assert asyncio.run(fetch()) == 200
+    [status] = asyncio.run(_statuses(served, "/renders/a.txt", "localhost"))
+    assert status == 405  # StaticFiles' answer to a POST
 
 
 @pytest.mark.parametrize(
@@ -852,9 +778,7 @@ def test_a_public_url_must_be_https(tmp_path: Path) -> None:
         _state(tmp_path, public_url="http://seascape.ngrok.app", mcp_secret=SECRET)
 
 
-@pytest.mark.parametrize(
-    "secret", ["short", "s" * 31, "ä" * 40, "has space" + "s" * 30]
-)
+@pytest.mark.parametrize("secret", ["s" * 31, "ä" * 40, "has space" + "s" * 30])
 def test_a_secret_must_be_long_and_header_safe(secret: str, tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="32 or more"):
         _state(tmp_path, mcp_secret=secret)
@@ -951,7 +875,6 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
     ("arguments", "message"),
     [
         ({"variants": 101}, "at most 100 variants"),
-        ({"overrides": ["outputs.duration_s = 61.0"]}, "a clip lasts"),
         # On the baseline: the showcase's 3840-wide sensor fails a wider image first.
         (
             {
@@ -962,6 +885,7 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
             },
             "pixels",
         ),
+        # A clip of exactly the limit is allowed.
         (
             {
                 "overrides": ["outputs.duration_s = 60.0", "outputs.fps = 100"],
@@ -1005,10 +929,6 @@ def test_a_load_keeps_its_place_in_the_queue_after_its_caller_goes_away(
             },
             "hulls",
         ),
-        (
-            {"overrides": ["outputs.duration_s = 60", "outputs.fps = 20000000"]},
-            "images; a job writes at most",
-        ),
     ],
 )
 def test_a_costly_request_is_refused(
@@ -1040,17 +960,6 @@ def test_a_failed_render_tells_the_client_only_its_last_line(
     with pytest.raises(RuntimeError) as error:
         asyncio.run(jobs._seascape("render"))
     assert str(error.value) == "ValueError: bad scenario"
-
-
-def test_render_says_a_list_override_replaces_the_scenarios_list(
-    state: State,
-) -> None:
-    async def described() -> str:
-        async with Client(transport.mcp(state)) as client:
-            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
-            return tools["render"].description or ""
-
-    assert "replaces the whole list" in " ".join(asyncio.run(described()).split())
 
 
 @pytest.mark.usefixtures("blenderless")

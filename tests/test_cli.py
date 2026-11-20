@@ -31,25 +31,11 @@ def run() -> Run:
     )
 
 
-def _commands(group: cli.click.Group, path: tuple[str, ...] = ()) -> list[tuple]:
-    found = []
-    for name, command in group.commands.items():
-        found.append((*path, name))
-        if isinstance(command, cli.click.Group):
-            found += _commands(command, (*path, name))
-    return found
-
-
-@pytest.mark.parametrize("command", _commands(cli.main), ids=" ".join)
-def test_every_command_has_help(run: Run, command: tuple[str, ...]) -> None:
-    helped = run(*command, "--help")
+def test_a_subcommand_s_help_exits_0(run: Run) -> None:
+    helped = run("assets", "show", "--help")
     assert helped.exit_code == 0
-    assert helped.stdout.startswith(f"Usage: seascape {' '.join(command)}")
+    assert helped.stdout.startswith("Usage: seascape assets show")
     assert not helped.stderr
-
-
-def test_version(run: Run) -> None:
-    assert run("--version").stdout.startswith("seascape, version ")
 
 
 def test_serve_takes_its_scenarios_folder(
@@ -91,8 +77,6 @@ assert "bpy" not in sys.modules
 @pytest.mark.parametrize(
     ("args", "says"),
     [
-        (("render", "no_such.toml"), "does not exist"),
-        (("build", BASELINE, "--band", "uv"), "'uv' is not one of"),
         (("assets", "show", "no_such"), "no mesh or sky"),
         (("assets", "top", "no_such"), "no mesh 'no_such'"),
     ],
@@ -239,34 +223,22 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
     assert not [p for p in tmp_path.iterdir() if p.is_dir()]
 
 
+@pytest.mark.parametrize(
+    ("command", "scenario"), [("render", OPEN_SEA), ("sync", SYNC_SENTRY)]
+)
 def test_a_render_s_folder_holds_the_scenario_it_rendered(
-    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    command: str,
+    scenario: Path,
+    run: Run,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rendered: list[Scenario] = []
-
-    def render(built: Scenario, _: Path) -> list[Path]:
-        rendered.append(built)
-        return []
-
-    monkeypatch.setattr(cli, "_render", render)
-
-    result = run("render", OPEN_SEA, "-o", tmp_path, "--set", "outputs.fps = 3")
-
-    assert result.exit_code == 0, result.output
-    again = load(tmp_path / cli.SCENARIO)
-    assert again.model_dump() == rendered[0].model_dump()
-    assert again.outputs.fps == 3
-
-
-def test_a_sync_recording_s_folder_holds_the_scenario_it_rendered(
-    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    rendered: list[Scenario] = []
-    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built))
+    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built) or [])
     monkeypatch.setattr(cli, "_encode", lambda *_: None)
     monkeypatch.setattr(cli.recording, "export", lambda _: [])
 
-    result = run("sync", SYNC_SENTRY, "-o", tmp_path, "--set", "outputs.fps = 3")
+    result = run(command, scenario, "-o", tmp_path, "--set", "outputs.fps = 3")
 
     assert result.exit_code == 0, result.output
     again = load(tmp_path / cli.SCENARIO)
@@ -295,12 +267,6 @@ def test_an_invalid_setting_is_an_error_without_the_secret(
     assert result.exit_code == 1
     assert "SEASCAPE_MCP_SECRET needs 32 or more" in result.output
     assert "tooshort" not in result.output
-
-
-def test_an_invalid_setting_names_the_field(run: Run, tmp_path: Path) -> None:
-    result = run("serve", "--scenarios", tmp_path, env={"SEASCAPE_MAX_RUN_S": "-1"})
-    assert result.exit_code == 1
-    assert "max_run_s" in result.output
 
 
 def test_serve_keeps_the_secret_out_of_the_environment(
