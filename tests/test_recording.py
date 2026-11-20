@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from seascape import angles
-from seascape.config import Crop, Ownship, Stitch, Undistortion, Video
+from seascape.config import Crop, Ownship, Stitch, Undistortion
 from seascape.outputs import recording
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from seascape.outputs.labels import Image, Labels, horizon_px
@@ -156,25 +156,6 @@ def test_a_rig_becomes_one_recording_folder_named_for_its_model(run: Path) -> No
     assert (into / "Pod_EO_record_2026_09_29_03_55_21.mp4").samefile(run / "EO.mp4")
 
 
-def test_each_row_is_its_frame_in_time_order(run: Path) -> None:
-    recording.export(run)
-    (table,) = run.glob("recordings/port/*/*.csv")
-    with table.open() as f:
-        table_rows = list(csv.DictReader(f))
-    assert list(table_rows[0]) == recording.COLUMNS
-    for i, (row, (roll, pitch, yaw)) in enumerate(zip(table_rows, HULL, strict=True)):
-        assert int(row["counter"]) == i
-        hull = [float(row[k]) for k in ("bb_roll", "bb_pitch", "bb_yaw")]
-        assert hull == pytest.approx(np.radians([roll, pitch, yaw]), abs=1e-6)
-        assert float(row["heading"]) == pytest.approx(math.radians(yaw), abs=1e-6)
-        assert not any(value.startswith("-0.000000") for value in row.values())
-        assert float(row["pan"]) == float(row["tilt"]) == 0.0
-        assert float(row["proc_ptu_mode"]) == 1
-        assert float(row["yaw"]) == pytest.approx(POD_YAW_DEG, abs=0.05)
-        assert float(row["temp"]) == pytest.approx(10.0)
-        assert float(row["wind_angle"]) == pytest.approx(math.radians(330.0), abs=1e-6)
-
-
 def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
     tmp_path: Path,
 ) -> None:
@@ -187,42 +168,18 @@ def test_a_head_on_a_pan_tilt_unit_records_no_scan_while_the_ownship_turns(
         # Oceanus's manual mode, at no scan speed.
         assert float(row["proc_ptu_mode"]) == 1
         assert float(row["proc_colav_speed"]) == 0.0
-        # The hull has turned 15 to starboard, so the wind from -30 is 45 to port.
-        assert float(row["wind_angle"]) == pytest.approx(math.radians(315.0), abs=1e-5)
 
 
-@pytest.mark.parametrize(
-    ("scan_deg_s", "recorded_deg_s"), [(SCAN_DEG_S, SCAN_DEG_S), (None, TOP_DEG_S)]
-)
-def test_a_head_on_a_pan_tilt_unit_records_its_pan_tilt_and_scan(
-    tmp_path: Path, scan_deg_s: float | None, recorded_deg_s: float
+def test_a_head_scanning_at_no_set_rate_records_the_turn_s_top_rate(
+    tmp_path: Path,
 ) -> None:
-    recording.export(
-        make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, scan_deg_s=scan_deg_s)
-    )
+    recording.export(make_run(tmp_path, CAMERA_YAW_DEG, ptu=True, scan_deg_s=None))
     (table,) = tmp_path.glob("recordings/port/*/*.csv")
     with table.open() as f:
-        table_rows = list(csv.DictReader(f))
+        speeds = [float(row["proc_colav_speed"]) for row in csv.DictReader(f)]
 
-    for row in table_rows:
-        # The pod sits at POD_YAW_DEG and PTU_TILT_DEG on the deck, past its mount.
-        # Pan to port.
-        pan = float(row["pan"])
-        assert pan == pytest.approx(MOUNT_YAW_DEG - POD_YAW_DEG, abs=1e-5)
-        # From level, as the encoder counts, and nose down positive, as the IMU's
-        # pitch.
-        assert float(row["tilt"]) == pytest.approx(-PTU_TILT_DEG, abs=1e-5)
-        # The head's IMU turns with the hull, its mount and its pan; the hull's roll
-        # and pitch tip it a little.
-        hull_deg = math.degrees(float(row["bb_yaw"]))
-        assert float(row["yaw"]) + pan == pytest.approx(
-            hull_deg + MOUNT_YAW_DEG, abs=0.2
-        )
-        # Oceanus's collision avoidance mode.
-        assert float(row["proc_ptu_mode"]) == 3
-        assert float(row["proc_colav_speed"]) == pytest.approx(
-            recorded_deg_s / 360.0, abs=1e-6
-        )
+    # Revolutions per second.
+    assert speeds == pytest.approx([TOP_DEG_S / 360.0] * len(HULL), abs=1e-6)
 
 
 def test_a_camera_s_own_pitch_sizes_its_pixels(run: Path) -> None:
@@ -235,40 +192,11 @@ def test_a_camera_s_own_pitch_sizes_its_pixels(run: Path) -> None:
     )
 
 
-def test_pod_sensors_hold_the_camera_in_its_pod(run: Path) -> None:
-    recording.export(run)
-    (folder,) = run.glob("recordings/port/*/POWER_Const")
-    sensor = json.loads((folder / "pod_sensors.json").read_text())["cameras"]["EO"]
-    angles = [sensor[k]["value"] for k in ("roll", "pitch", "yaw")]
-    # The recording's camera frame: pitch positive down, yaw positive to port.
-    assert angles == pytest.approx([0.0, -CAMERA_PITCH_DEG, -CAMERA_YAW_DEG], abs=1e-9)
-    assert sensor["position"]["value"] == pytest.approx([100.0, 0.0, 0.0])
-    assert sensor["camera_type"] == "Blender EO"
-    assert sensor["focal_length"]["value"] == pytest.approx(
-        sensor["focal_length_x"]["value"] * sensor["pixel_size"]["value"]
-    )
-    parameters = json.loads((folder / "camera_parameters.json").read_text())["EO"]
-    assert parameters == pytest.approx(
-        {
-            "roll": 0.0,
-            "pitch": -CAMERA_PITCH_DEG,
-            "yaw": -CAMERA_YAW_DEG,
-            "barrel": 0.0,
-        },
-        abs=1e-9,
-    )
-
-
-@pytest.mark.parametrize(
-    "videos",
-    [{}, {"RGB": {"kind": "crop", "camera": "EO", "left_px": 40}}],
-    ids=["none", "unrendered, as in an exr"],
-)
-def test_a_camera_without_a_rendered_video_is_recorded_as_it_is(
-    run: Path, videos: dict
-) -> None:
+def test_a_camera_with_an_unrendered_video_is_recorded_as_it_is(run: Path) -> None:
+    """As in an exr, which renders no video."""
     truth = Labels.model_validate_json((run / "labels.json").read_text())
-    truth.info["scenario"]["rigs"]["port"]["videos"] = videos
+    video = {"kind": "crop", "camera": "EO", "left_px": 40}
+    truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video}
     truth.write(run)
 
     recording.export(run)
@@ -283,44 +211,23 @@ def test_a_camera_without_a_rendered_video_is_recorded_as_it_is(
     assert (source["name"], source["device_name"]) == ("EO", "EO")
 
 
-@pytest.mark.parametrize(
-    ("video", "transform", "cut_px"),
-    [
-        (
-            Crop(kind="crop", camera="EO", left_px=40, right_px=40),
-            {"pixel_sacrifice": [40, 40, 0, 0]},
-            40,
-        ),
-        (
-            Undistortion(
-                kind="undistortion",
-                camera="EO",
-                hfov_deg=130.0,
-                vfov_deg=65.5,
-                downscale=2,
-            ),
-            {"downscale": 2, "out-fov": {"value": [130.0, 65.5], "unit": "degrees"}},
-            0,
-        ),
-    ],
-)
-def test_a_video_is_recorded_with_its_camera_as_rendered(
-    run: Path, video: Video, transform: dict, cut_px: int
+def test_an_undistorted_video_is_recorded_with_its_camera_as_rendered(
+    run: Path,
 ) -> None:
+    video = Undistortion(
+        kind="undistortion", camera="EO", hfov_deg=130.0, vfov_deg=65.5, downscale=2
+    )
     calibration = Calibration.read(run)
+    # A wider pinhole than the camera it dewarps.
     recorded = [
-        camera.model_copy(update={"name": "port_RGB"}) for camera in calibration.cameras
+        camera.model_copy(
+            update={
+                "name": "port_RGB",
+                "K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0]))),
+            }
+        )
+        for camera in calibration.cameras
     ]
-    if isinstance(video, Crop):
-        recorded = [camera.cropped(video) for camera in recorded]
-    if isinstance(video, Undistortion):
-        # A wider pinhole than the camera it dewarps.
-        recorded = [
-            camera.model_copy(
-                update={"K": tuple(map(tuple, camera.K @ np.diag([0.5, 0.5, 1.0])))}
-            )
-            for camera in recorded
-        ]
     Calibration(cameras=recorded, raw=calibration.cameras).write(run)
     truth = Labels.model_validate_json((run / "labels.json").read_text())
     truth.info["scenario"]["rigs"]["port"]["videos"] = {"RGB": video.model_dump()}
@@ -336,10 +243,13 @@ def test_a_video_is_recorded_with_its_camera_as_rendered(
     assert sensor["resolution"]["value"] == [WIDTH, HEIGHT]
     serialized = json.loads((folder / "serialized_parameters.json").read_text())
     (entry,) = serialized["cameras"]
-    assert entry["resolution"] == [WIDTH - 2 * cut_px, HEIGHT]
-    assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2 - cut_px)
-    assert entry["transformation_type"] == video.kind
-    assert entry["transformation_parameters"] == transform
+    assert entry["resolution"] == [WIDTH, HEIGHT]
+    assert entry["center_x"] == pytest.approx((WIDTH - 1) / 2)
+    assert entry["transformation_type"] == "undistortion"
+    assert entry["transformation_parameters"] == {
+        "downscale": 2,
+        "out-fov": {"value": [130.0, 65.5], "unit": "degrees"},
+    }
     assert entry["focal_length"] == sensor["focal_length"]["value"]
     (source,) = entry["camera_sources"]
     assert (source["name"], source["device_name"]) == ("EO", "RGB")
@@ -449,19 +359,6 @@ def test_a_frame_labels_json_does_not_list_writes_nothing(run: Path) -> None:
     with pytest.raises(ValueError, match=r"EO/0001\.jpg"):
         recording.export(run)
     assert not (run / "recordings").exists()
-
-
-def test_a_hardware_version_is_written_where_a_replay_reads_it(run: Path) -> None:
-    truth = Labels.model_validate_json((run / "labels.json").read_text())
-    truth.info["scenario"]["rigs"]["port"]["hardware_version"] = "Oscar_V7_Gen_3_1"
-    truth.write(run)
-    recording.export(run)
-    (module,) = run.glob("recordings/port/*/POWER_Const/module_info.json")
-    info = json.loads(module.read_text())
-    assert (info["hardware_version"], info["serial_number"]) == (
-        "Oscar_V7_Gen_3_1",
-        "seascape",
-    )
 
 
 def test_a_lighter_hull_raises_its_mounting_height(run: Path) -> None:

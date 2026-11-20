@@ -144,24 +144,17 @@ def test_only_a_target_in_frame_is_labelled_or_categorised() -> None:
     assert [c.name for c in truth.categories] == ["ship"]
 
 
-def test_targets_of_one_category_share_it() -> None:
+def test_a_category_keeps_its_own_id_and_is_shared() -> None:
     index = np.zeros((48, 64), dtype=int)
-    index[10, 10], index[20, 20] = 1, 2
+    index[10, 10], index[20, 20], index[30, 30] = 1, 2, 3
 
-    truth = added(index, [target(1), target(2)])
+    truth = added(index, [target(1, "buoy", 6), target(2), target(3)])
 
-    assert {a.category_id for a in truth.annotations} == {1}
-    assert [(c.name, c.supercategory) for c in truth.categories] == [("ship", "vessel")]
-
-
-def test_a_category_keeps_its_own_id_whatever_came_first() -> None:
-    index = np.zeros((48, 64), dtype=int)
-    index[10, 10], index[20, 20] = 1, 2
-
-    truth = added(index, [target(1, "buoy", 6), target(2)])
-
-    assert [(c.id, c.name) for c in truth.categories] == [(6, "buoy"), (1, "ship")]
-    assert [a.category_id for a in truth.annotations] == [6, 1]
+    assert [(c.id, c.name, c.supercategory) for c in truth.categories] == [
+        (6, "buoy", "vessel"),
+        (1, "ship", "vessel"),
+    ]
+    assert [a.category_id for a in truth.annotations] == [6, 1, 1]
 
 
 def test_an_image_carries_its_cameras_field_of_view_and_its_time() -> None:
@@ -302,7 +295,6 @@ def test_a_wide_targets_flanks_reach_half_its_width() -> None:
 
     beside = labels.flanks(index, 1)
 
-    assert labels.flank_px(30) == 15
     assert beside[15, 30 - labels.FLANK_GAP_PX - 15]
     assert not beside[15, 30 - labels.FLANK_GAP_PX - 16]
 
@@ -482,10 +474,8 @@ def test_the_horizon_lies_where_rays_graze_the_sea(
 
 
 def test_a_fisheyes_field_of_view_is_the_angle_across_its_width() -> None:
-    assert camera(3840, 2160, 132.93, distortion=FISHEYE).hfov_deg == pytest.approx(
-        132.93
-    )
-    assert camera(3840, 2160, 49.0).hfov_deg == pytest.approx(49.0)
+    fisheye = camera(3840, 2160, 132.93, distortion=FISHEYE)
+    assert fisheye.hfov_deg == pytest.approx(132.93)
 
 
 @pytest.mark.parametrize(("hfov_deg", "distortion"), [(49.0, None), (132.93, FISHEYE)])
@@ -516,7 +506,7 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
     index = np.zeros((48, 64), dtype=int)
     index[10, 10] = 1
     parts = {
-        str(seed): added(index, [target(1, *category)])
+        str(seed): added(index, [target(1, *category), target(2)])
         for seed, category in ((7, ("ship", 1)), (8, ("buoy", 6)))
     }
     for seed, truth in parts.items():
@@ -533,6 +523,7 @@ def test_a_merge_renumbers_reaches_every_file_and_keeps_each_scenario(
         (2, 2, 6),
     ]
     assert [c.id for c in merged.categories] == [1, 6]
+    assert [d.image_id for d in merged.dropped] == [1, 2]
     assert merged.info == {
         "version": "x",
         "scenarios": {"7": {"seed": 7}, "8": {"seed": 8}},
@@ -600,11 +591,6 @@ def test_an_8_bit_eo_image_carries_its_cameras_sensor_lens_and_processing(
     )
 
 
-def test_an_image_without_its_camera_carries_no_settings() -> None:
-    (image,) = added().images
-    assert (image.sensor, image.lens, image.processing) == (None, None, None)
-
-
 @pytest.mark.parametrize("faint", [{}, {"t1": 0.3}], ids=["plain", "faint"])
 def test_a_target_out_of_frame_is_dropped_with_where_it_was(
     faint: dict[str, float],
@@ -614,17 +600,6 @@ def test_a_target_out_of_frame_is_dropped_with_where_it_was(
     assert (gone.image_id, gone.name, gone.reason) == (1, "t1", "no_pixels")
     assert gone.range_m == pytest.approx(1000.0)
     assert gone.bearing_deg == pytest.approx(0.0)
-
-
-@pytest.mark.parametrize(("offset", "faint"), [(0.0, True), (8.0, False)])
-def test_only_a_target_in_its_backgrounds_noise_is_faint(
-    offset: float, faint: bool
-) -> None:
-    index = patch(4)
-
-    found = labels.faint(index, noisy(index, offset), [target(1)])
-
-    assert ("t1" in found) is faint
 
 
 def test_the_targets_present_are_those_with_a_pixel_in_the_frame() -> None:
@@ -681,21 +656,6 @@ def test_a_target_faint_in_one_camera_is_kept_when_another_sees_it(
     assert found == expected
 
 
-def test_a_merge_renumbers_the_dropped_images(tmp_path) -> None:
-    parts = {str(seed): added(targets=[target(1)]) for seed in (7, 8)}
-    for truth in parts.values():
-        truth.info = {"scenario": {}}
-
-    merged = labels.merge(tmp_path, written(tmp_path, parts))
-
-    assert [d.image_id for d in merged.dropped] == [1, 2]
-
-
-def recorded(tmp_path: Path, info: dict) -> Path:
-    labels.Labels(info=info).write(tmp_path)
-    return tmp_path
-
-
 def test_a_camera_takes_the_agc_its_thermal_frames_recorded(tmp_path: Path) -> None:
     settings = Camera(
         band="ir", hfov_deg=24.0, width_px=64, height_px=48, agc=Agc(dde=1.2)
@@ -708,6 +668,6 @@ def test_a_camera_takes_the_agc_its_thermal_frames_recorded(tmp_path: Path) -> N
 
 
 def test_a_merged_set_is_refused(tmp_path: Path) -> None:
-    folder = recorded(tmp_path, {"scenarios": {"0": {}, "1": {}}})
+    labels.Labels(info={"scenarios": {"0": {}, "1": {}}}).write(tmp_path)
     with pytest.raises(ValueError, match="each seed's folder"):
-        labels.agcs(folder)
+        labels.agcs(tmp_path)

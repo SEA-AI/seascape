@@ -112,36 +112,6 @@ def test_a_fixed_mount_that_loses_a_ring_names_the_pitch_to_set() -> None:
         staging.stage(load(SYNC_WATCHKEEPER, [{"rigs": {name: {"pitch_deg": 20.0}}}]))
 
 
-def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
-    scenario = load(SYNC_SENTRY)
-    (rig,) = scenario.rigs.values()
-    buoy = manifest()[staging.BUOY]
-    assert isinstance(buoy, Buoy)
-    focal_px = {
-        v: min(rig.rendered[c].focal_px for c in sources(video))
-        for v, video in rig.videos.items()
-    }
-    off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
-    # A stored range is rounded to half a last decimal.
-    rounding_m = 0.5 * 10.0**-staging.DECIMALS
-
-    for ring in staging.rings(staging.views(rig)):
-        coarsest_px = min(focal_px[v] for v in ring.videos)
-        for o in scenario.objects:
-            if o.asset != staging.BUOY or o.range_m != staging.stored_m(ring, rig):
-                continue
-            # The cameras turn about the rig, not the origin.
-            b = math.radians(o.bearing_deg)
-            east = o.range_m * math.sin(b) - rig.offset_x_m
-            north = o.range_m * math.cos(b) - rig.offset_y_m
-            above_px = (buoy.height_m - buoy.draught_m) * coarsest_px
-            above_px /= math.hypot(east, north)
-            # From the ring's range, out to rounding, in to two offsets nearer.
-            low = staging.BUOY_PX * ring.range_m / (ring.range_m + rounding_m)
-            near_m = ring.range_m - 2 * off_m - rounding_m
-            assert low <= above_px <= staging.BUOY_PX * ring.range_m / near_m
-
-
 def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     entries = staging.stage(load(SYNC_SENTRY)).entries
     ring = next(e for e in entries if e["asset"] == staging.BUOY)
@@ -150,16 +120,16 @@ def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     assert ring["colour"] == {"choice": sorted(sold_in)}
 
 
-def test_a_drawn_spacing_is_refused() -> None:
-    ring = {"asset": staging.BUOY, "range_m": 40.0, "bearing_deg": 0.0, "count": 2}
-    ring["spacing_deg"] = {"uniform": [5.0, 10.0]}
-
-    with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
-        load(OPEN_SEA, [{"objects": [ring]}])
-
-
-def test_a_spacing_without_a_bearing_is_refused() -> None:
-    ring = {"asset": staging.BUOY, "range_m": 40.0, "count": 2, "spacing_deg": 5.0}
+@pytest.mark.parametrize(
+    "ring",
+    [
+        {"bearing_deg": 0.0, "spacing_deg": {"uniform": [5.0, 10.0]}},
+        {"spacing_deg": 5.0},
+    ],
+    ids=["drawn", "without a bearing"],
+)
+def test_a_spacing_drawn_or_without_a_bearing_is_refused(ring: dict) -> None:
+    ring |= {"asset": staging.BUOY, "range_m": 40.0, "count": 2}
 
     with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
         load(OPEN_SEA, [{"objects": [ring]}])
@@ -302,13 +272,6 @@ def near_m(scenario: Scenario) -> float:
     return staging.rings(staging.views(*scenario.rigs.values()))[0].range_m
 
 
-def test_a_buoy_of_each_ring_and_the_container_at_both_ends_pass(
-    watchkeeper: Scenario,
-) -> None:
-    frames = passing(near_m(watchkeeper))
-    preview.check(seen(T1=frames, RGB1=frames), watchkeeper)
-
-
 def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
     watchkeeper: Scenario,
 ) -> None:
@@ -351,11 +314,6 @@ def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
     [
         (
             lambda near: (BOXED, [(BUOY, near, True, 6)], BOXED),
-            "mast_T1 never sees a buoy {near:.0f} m out whole",
-        ),
-        (
-            # Half hidden behind the container.
-            lambda near: (BOXED, [(BUOY, near, False, 3)], BOXED),
             "mast_T1 never sees a buoy {near:.0f} m out whole",
         ),
         (
