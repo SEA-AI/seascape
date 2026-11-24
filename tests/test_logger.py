@@ -380,20 +380,28 @@ def test_publishing_into_a_folder_not_empty_starts_no_run(
 
 
 @pytest.mark.parametrize(
-    "after", ["abc1234-dirty", "def5678"], ids=["a file edited", "another commit"]
+    ("built_at", "after", "moved"),
+    [
+        ("abc1234", "abc1234-dirty", "abc1234-dirty"),
+        ("abc1234", "def5678", "def5678"),
+        ("abc1234-dirty", "abc1234", "abc1234-dirty"),
+    ],
+    ids=["a file edited", "another commit", "an edit undone before the end"],
 )
 def test_a_render_whose_checkout_moved_is_not_published(
     wandb: SimpleNamespace,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    built_at: str,
     after: str,
+    moved: str,
 ) -> None:
     commits = iter(["abc1234", after])
     monkeypatch.setattr(provenance, "commit", lambda: next(commits))
     monkeypatch.setattr(cli, "_previews", lambda *_: None)
 
     def rendered(_: object, folder: Path, *__: object) -> list[Path]:
-        labels.Labels(info={"commit": "abc1234"}).write(folder)
+        labels.Labels(info={"commit": built_at}).write(folder)
         return []
 
     monkeypatch.setattr(cli, "_render", rendered)
@@ -404,7 +412,7 @@ def test_a_render_whose_checkout_moved_is_not_published(
     result = cli_run("recording", OPEN_SEA, "-o", tmp_path / "x", "--publish")
 
     assert result.exit_code == 1
-    assert after in result.output
+    assert f"to {moved} while" in result.output
     (run,) = wandb.runs
     assert not run.outputs
 

@@ -650,10 +650,17 @@ def _record(
         _previews(built, folder, run)
     (_render_apart if parallel else _render)(built, folder, run)
     _encode(folder, _QUALITY)
-    if run is not None and (now := provenance.commit()) != commit:
-        raise click.ClickException(
-            f"the checkout went from {commit} to {now} while it rendered: not published"
-        )
+    if run is None:
+        return
+    # The labels hold the checkout as the render built its scene, which an edit
+    # undone by the end shows and the checkout then does not.
+    built_at = labels.Labels.read(folder).info.get("commit")
+    for seen in (built_at, provenance.commit()):
+        if seen != commit:
+            raise click.ClickException(
+                f"the checkout went from {commit} to {seen} while it rendered: "
+                "not published"
+            )
 
 
 def _log_montage(folder: Path, run: logger.Run) -> None:

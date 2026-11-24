@@ -10,7 +10,7 @@ import pytest
 from PIL import Image
 
 from seascape.config import Camera, Mount, Rig, Scenario, load
-from seascape.outputs import labels, montage
+from seascape.outputs import agc, labels, montage
 from seascape.render import video
 from tests.scenarios import SWEEP_WATCHKEEPER, two_rigs
 
@@ -210,6 +210,26 @@ def test_the_preview_video_lays_out_every_camera_as_the_sheet_does(
     }
     assert rows["bow_eo"].max() < rows["bow_ir"].min()  # a row per band
     assert rows["bow_eo"].size == pytest.approx(montage.TILE_H, abs=2)
+
+
+def test_a_thermal_clip_keeps_its_tone_from_frame_to_frame(rigs, tmp_path) -> None:
+    """Its AGC eases toward each frame: a frame after a hotter one shows apart from
+    the same frame after itself.
+    """
+    ramp = np.linspace(280.0, 300.0, 64) * np.ones((48, 1))
+    shown = []
+    for name, first in (("after_hotter", ramp + 30.0), ("after_itself", ramp)):
+        into = tmp_path / name
+        into.mkdir()
+        videos(into, [m.name for m in rigs.mounts], [0.0, 0.1])
+        # Each camera's frames are numbered in turn: its first is the even one.
+        for path in into.glob("*/*.png"):
+            t_k = first if int(path.stem) % 2 == 0 else ramp
+            cv2.imwrite(str(path), agc.counts(t_k))
+        shown.append(played(montage.video_frames(rigs, into, into / "out"))[1])
+
+    after_hotter, after_itself = shown
+    assert not np.array_equal(after_hotter, after_itself)
 
 
 @pytest.mark.parametrize("video", ["mast_RGB1", "mast_T1"])

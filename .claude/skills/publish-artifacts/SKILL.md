@@ -37,4 +37,4 @@ A consumer fetches an exact version, since `latest` moves with the next publish:
 uvx wandb artifact get --root <dir> wandb-registry-dataset/<x>:v<m>
 ```
 
-To reproduce one, check out its run's `config.commit`, fetch the `<x>-scenario` it used, and render that TOML with `uv run seascape recording <toml>`: a commit from before `--publish` has no such flag, and reproducing publishes nothing.
+To reproduce one, check out its run's `config.commit` and fetch the `<x>-scenario` it used. Render that TOML with `uv run seascape recording <toml>`; where `recording` at that commit takes only a folder, run `uv run seascape render <toml> -o <folder>`, `uv run seascape video <folder>`, then `uv run seascape recording <folder>`. Reproducing publishes nothing, so leave out `--publish`, which older commits lack.
