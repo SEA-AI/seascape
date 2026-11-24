@@ -1,10 +1,12 @@
 import bpy
 import numpy as np
 import pytest
+from PIL import ImageColor
 
 from seascape import rigview
 from seascape.blender.blend import BLENDER_TO_CV
 from seascape.config import load
+from seascape.outputs import brand
 from seascape.physics import fisheye
 from tests.scenarios import BASELINE
 
@@ -33,3 +35,50 @@ def test_a_fisheye_frustum_reaches_the_corners_its_lens_sees() -> None:
     drawn = np.array([v.co.normalized() for v in frustum.data.vertices[1:]])
     for ray in seen:
         assert max(drawn @ ray) == pytest.approx(1.0, abs=1e-6)
+
+
+WIDE = len(rigview.VIEWS) * rigview.TILE[0]
+LINES: list[rigview.Line] = [("hull below it at 3.74 m", brand.WHITE)] * 3
+
+
+def test_rigs_sit_side_by_side_while_they_fit() -> None:
+    one = rigview._caption({"bow": LINES}, WIDE)
+    two = rigview._caption({"port": LINES, "stbd": LINES}, WIDE)
+    stacked = rigview._caption({"port": LINES, "stbd": LINES}, rigview.TILE[0])
+    assert two.size == one.size
+    assert stacked.height > one.height
+
+
+def test_rigs_take_a_view_each_so_a_fourth_starts_a_row() -> None:
+    three = rigview._caption(dict.fromkeys("abc", LINES), WIDE)
+    four = rigview._caption(dict.fromkeys("abcd", LINES), WIDE)
+    assert four.height > three.height
+
+
+def test_stacked_rigs_leave_more_room_between_them_than_between_lines() -> None:
+    stacked = rigview._caption({"port": LINES, "stbd": LINES}, rigview.TILE[0])
+    rows = np.asarray(stacked)[rigview.RULE_PX :]
+    inked = np.flatnonzero(
+        (rows != ImageColor.getrgb(brand.NIGHT_BLUE)).any(axis=(1, 2))
+    )
+    assert (np.diff(inked) - 1).max() > rigview.LINE_PX
+
+
+def test_a_rig_under_the_hull_has_none_below_and_hull_above() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=2.0)  # from z -1 m to 1 m
+    frame, rig = (bpy.data.objects.new(name, None) for name in ("frame", "rig"))
+    for obj in (frame, rig):
+        bpy.context.scene.collection.objects.link(obj)
+    rig.location.z = -5.0
+    bpy.context.view_layer.update()
+    scenario = load(
+        BASELINE, ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
+    )
+
+    lines = rigview._rig_lines("bow", scenario, rig, frame)
+
+    assert [text for text, _ in lines[1:]] == [
+        "no hull below it",
+        "hull ABOVE it at -1.00 m",
+    ]

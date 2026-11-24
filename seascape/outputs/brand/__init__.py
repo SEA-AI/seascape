@@ -14,6 +14,7 @@ NIGHT_BLUE = "#0B1731"
 OCEAN_TEAL = "#06404C"
 SKY_GREY = "#7B9194"
 FOG_WHITE = "#DFDED9"
+WHITE = "#FFFFFF"
 # For matplotlib, which looks fonts up by name.
 FONT_FAMILY = "Barlow Semi Condensed"
 

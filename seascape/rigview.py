@@ -1,5 +1,6 @@
 """Where a scenario's rigs sit on its ownship, to confirm a mount."""
 
+import math
 import tempfile
 from pathlib import Path
 
@@ -30,8 +31,12 @@ REACH = 0.15
 WIRE = 1 / 30
 FONT_PX = 18
 LINE_PX = FONT_PX + 4
+PAD_PX = 10
+COLUMN_GAP_PX = 48
+# Brand Book 2026: a red line structures the page; judgement: 3 px reads at 3 tiles.
+RULE_PX = 3
 
-type Line = tuple[str, tuple[int, ...]]
+type Line = tuple[str, canvas.Colour]
 
 
 def _frustum(
@@ -71,9 +76,9 @@ def _hit_m(frame: bpy.types.Object, origin: Vector, up: bool) -> float | None:
     return (T_frame_world @ location).z if hit else None
 
 
-def _rig_line(
+def _rig_lines(
     name: str, scenario: Scenario, rig: bpy.types.Object, frame: bpy.types.Object
-) -> Line:
+) -> list[Line]:
     """The rig's numbers and what of the hull lies straight below and above it in
     `frame`, the hull's, so a trimmed or heeled ownship measures along its own mast.
     Cast before the frusta exist, which a ray would hit.
@@ -81,18 +86,20 @@ def _rig_line(
     spec = scenario.rigs[name]
     at = rig.matrix_world.translation
     height_m = (frame.matrix_world.inverted() @ at).z
-    text = (
-        f"rig {name}: height_m {spec.height_m:g}, offset_y_m {spec.offset_y_m:g}, "
+    texts = [
+        f"height_m {spec.height_m:g}, offset_y_m {spec.offset_y_m:g}, "
         f"offset_x_m {spec.offset_x_m:g}"
-    )
+    ]
     below_m = _hit_m(frame, at, up=False)
     if below_m is None:
-        text += "; no hull below it"
+        texts.append("no hull below it")
     else:
-        text += f"; hull below it at {below_m:.2f} m, {height_m - below_m:.2f} m clear"
+        texts.append(
+            f"hull below it at {below_m:.2f} m, {height_m - below_m:.2f} m clear"
+        )
     if (above_m := _hit_m(frame, at, up=True)) is not None:
-        text += f"; hull ABOVE it at {above_m:.2f} m"
-    return text, canvas.INK
+        texts.append(f"hull ABOVE it at {above_m:.2f} m")
+    return [(text, brand.WHITE) for text in texts]
 
 
 def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
@@ -109,21 +116,50 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
             workbench.aim(objects, pose.bearing_deg, pose.elevation_deg)
             path = Path(tmp) / f"{pose.name}.png"
             workbench.shoot(path, "OBJECT", "STUDIO", "FXAA", exr=False)
-            tile = canvas.on_backdrop(Image.open(path))
+            tile = canvas.on_backdrop(Image.open(path), brand.SKY_GREY)
             tile = tile.resize(TILE, Image.Resampling.LANCZOS)
             ImageDraw.Draw(tile).text(
-                (10, 8), pose.name, font=brand.font(FONT_PX + 2), fill=canvas.INK
+                (PAD_PX, 8),
+                pose.name.upper(),
+                font=brand.font(FONT_PX + 2, "Medium"),
+                fill=brand.NIGHT_BLUE,
             )
             tiles.append(tile)
     return tiles
 
 
-def _caption(lines: list[Line], width_px: int) -> Image.Image:
-    """`lines` top to bottom, each in its own ink, on the matte."""
-    caption = Image.new("RGB", (width_px, 16 + LINE_PX * len(lines)), canvas.MATTE)
-    pen = ImageDraw.Draw(caption)
-    for k, (text, ink) in enumerate(lines):
-        pen.text((10, 8 + LINE_PX * k), text, font=brand.font(FONT_PX), fill=ink)
+def _column(rig: str, lines: list[Line], width_px: int) -> Image.Image:
+    """The rig's name over `lines`, each in its own ink, and a gap to the next row."""
+    height_px = LINE_PX * (1 + len(lines)) + 2 * PAD_PX
+    column = Image.new("RGB", (width_px, height_px), brand.NIGHT_BLUE)
+    pen = ImageDraw.Draw(column)
+    pen.text(
+        (0, 0),
+        f"RIG {rig.upper()}",
+        font=brand.font(FONT_PX, "Medium"),
+        fill=brand.WHITE,
+    )
+    for k, (text, ink) in enumerate(lines, start=1):
+        pen.text((0, LINE_PX * k), text, font=brand.font(FONT_PX), fill=ink)
+    return column
+
+
+def _caption(rigs: dict[str, list[Line]], width_px: int) -> Image.Image:
+    """A column per rig, whole tiles wide to line up under the views, as many to a
+    row as fit.
+    """
+    face = brand.font(FONT_PX)
+    widest = max(face.getlength(text) for lines in rigs.values() for text, _ in lines)
+    column_px = TILE[0] * math.ceil((widest + COLUMN_GAP_PX) / TILE[0])
+    fit = max(1, width_px // column_px)
+    columns = [_column(rig, lines, column_px) for rig, lines in rigs.items()]
+    body = canvas.grid(columns, min(fit, len(columns)), matte=brand.NIGHT_BLUE)
+    height_px = RULE_PX + PAD_PX + body.height
+    caption = Image.new("RGB", (width_px, height_px), brand.NIGHT_BLUE)
+    caption.paste(body, (PAD_PX, RULE_PX + PAD_PX))
+    ImageDraw.Draw(caption).rectangle(
+        (0, 0, width_px, RULE_PX - 1), fill=brand.FOCUS_RED
+    )
     return caption
 
 
@@ -152,9 +188,10 @@ def draw(scenario: Scenario, out: Path) -> None:
     )
     bpy.context.scene.frame_set(0)  # runs the depsgraph: matrix_world is stale before
     hull = mesh_objects([vessel])
-    lines = [
-        _rig_line(name, scenario, rig, built.root) for name, rig in built.heads.items()
-    ]
+    rigs = {
+        name: _rig_lines(name, scenario, rig, built.root)
+        for name, rig in built.heads.items()
+    }
 
     corners = np.array([tuple(c) for c in box_corners(hull)])
     length_m = REACH * float(np.linalg.norm(corners.max(axis=0) - corners.min(axis=0)))
@@ -166,16 +203,16 @@ def draw(scenario: Scenario, out: Path) -> None:
         frustum.color = (*(rgb / 255), 1.0)
         frusta.append(frustum)
         bearing, elevation = boresight_deg(camera)
-        lines.append(
+        rigs[mount.rig_name].append(
             (
                 f"{mount.name}: bearing {bearing:+.1f} deg, "
                 f"elevation {elevation:+.1f} deg, hfov {mount.camera.hfov_deg:g} deg",
-                tuple(int(c) for c in rgb),
+                (int(rgb[0]), int(rgb[1]), int(rgb[2])),
             )
         )
     bpy.context.view_layer.update()
 
     tiles = _tiles(hull + frusta)
     out.parent.mkdir(parents=True, exist_ok=True)
-    caption = _caption(lines, TILE[0] * len(tiles))
+    caption = _caption(rigs, TILE[0] * len(tiles))
     canvas.above([canvas.beside(tiles), caption]).save(out)
