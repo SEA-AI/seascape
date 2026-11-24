@@ -595,9 +595,10 @@ def test_a_previs_video_is_drawn_beside_the_scenario_at_its_rate(
         _: Scenario,
         folder: Path,
         title: str,
+        *,
         video_fps: float,
-        __: object,
         views: tuple[str, ...],
+        **__: object,
     ) -> previs.Drawn:
         calls.append((folder, title, video_fps, views))
         return previs.Drawn({"top": folder / "top.png"}, {"top": folder / "top.mp4"})
