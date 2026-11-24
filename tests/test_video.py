@@ -107,3 +107,13 @@ def test_a_lower_quality_writes_a_smaller_video(tmp_path) -> None:
     sizes = [video.encode(folder, q)[0].stat().st_size for q in ("LOSSLESS", "LOWEST")]
 
     assert sizes[0] > sizes[1]
+
+
+def test_a_name_with_braces_is_written_as_given(tmp_path) -> None:
+    """Blender reads `{fps}` in an output path as a template."""
+    folder = run(tmp_path, GREYS[:2], [0.0, 0.1])
+    out = tmp_path / "trial-{fps}.mp4"
+
+    video.sequence(sorted((folder / "port").iterdir()), (64, 36), 0.1, out)
+
+    assert out.exists()

@@ -1,6 +1,5 @@
 """Where a scenario's rigs sit on its ownship, to confirm a mount."""
 
-import math
 import tempfile
 from pathlib import Path
 
@@ -17,7 +16,7 @@ from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
 from seascape.motion import ownship_up_m, tilted, track
 from seascape.outputs import brand, canvas
-from seascape.physics import earth, fisheye
+from seascape.physics import earth
 
 VIEWS = (
     workbench.Aim("starboard beam", 90.0, 0.0),
@@ -43,16 +42,8 @@ def _frustum(
     # In image axes: x right, y down.
     corners_px = np.array([(-1, 1), (1, 1), (1, -1), (-1, -1)]) / 2
     corners_px = corners_px * (spec.width_px, spec.height_px)
-    if spec.lens.fisheye is not None:
-        k, fx = spec.lens.fisheye, spec.fisheye_focal_px
-        rays = fisheye.direction(corners_px[:, 0], corners_px[:, 1], k, fx)
-        far_cv = rays * length_m / rays[:, 2:]
-    else:
-        across = math.tan(math.radians(spec.hfov_deg) / 2)
-        far_cv = (
-            np.column_stack([corners_px * 2 * across / spec.width_px, np.ones(4)])
-            * length_m
-        )
+    rays = spec.rays(corners_px[:, 0], corners_px[:, 1])
+    far_cv = rays * length_m / rays[:, 2:]
     # Parented to the camera, so in Blender's camera axes.
     far = far_cv @ np.array(BLENDER_TO_CV.to_3x3()).T
     mesh = bpy.data.meshes.new(camera.name)

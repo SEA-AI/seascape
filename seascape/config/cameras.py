@@ -321,6 +321,25 @@ class Camera(Model):
             return self.fisheye_focal_px
         return self.width_px / (2.0 * math.tan(math.radians(self.hfov_deg) / 2.0))
 
+    def rays(self, x_px: np.ndarray, y_px: np.ndarray) -> np.ndarray:
+        """Rays through pixels, in OpenCV's camera axes.
+
+        Args:
+            x_px: Pixels right of the image's centre, shape (n,).
+            y_px: Pixels down from it, shape (n,).
+
+        Returns:
+            (n, 3) rays; a pinhole's at unit depth, a fisheye's of unit length.
+        """
+        if self.lens.fisheye is not None:
+            k, fx = self.lens.fisheye, self.fisheye_focal_px
+            return fisheye.direction(x_px, y_px, k, fx)
+        return np.column_stack([x_px, y_px, np.ones_like(x_px)]) / (
+            self.focal_px,
+            self.focal_px,
+            1.0,
+        )
+
     def pose(self) -> np.ndarray:
         """(4, 4) `T_head_camera`, in OpenCV's axes: yawed, then pitched about its own
         transverse axis, at the head's origin.

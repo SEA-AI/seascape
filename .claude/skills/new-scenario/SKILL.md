@@ -2,7 +2,7 @@
 name: new-scenario
 description: >-
   Writes a new scenario under `scenarios/`, checks its mount and what its cameras see on
-  `seascape rig-view`, and records it. Use to stage any new scene for a product: a test
+  `seascape rig-view` and `seascape previs`, and records it. Use to stage any new scene for a product: a test
   for a tracker, a fusion or a detector, or a sweep, `scenarios/sweep-<product>.toml`,
   the turn past moored buoys and a container that the sync test replays to confirm a
   product's frames and IMU rows line up. Also when a sweep's ownship, mount or turn
@@ -24,7 +24,7 @@ Start from the shipped scenario nearest the scene and extend it: `extends` keeps
 
    On the highest part of its station (a hardtop, a radar arch, a masthead), set `offset_y_m` and `offset_x_m` to that station's `y_m` and `x_m`, and `height_m` just above its `top_z_m`, as the sweep scenarios do; when in doubt, ask the user for the product's mount-to-camera height. Anywhere else, ask the user where the product sits. Name the part and its numbers in a comment.
 3. **Objects and motion.** Place `[[objects]]`, a `[turn]` or the ownship's speed for what the scenario tests.
-4. **Look.** `uv run seascape rig-view <scenario>` draws the hull with each camera's frustum. Check each frustum points where the test needs it.
+4. **Look.** `uv run seascape rig-view <scenario>` draws the hull with each camera's frustum. `uv run seascape previs <scenario> --video` replays the run from above and from behind the ownship. Its fans shade each camera's bearings only, not its vertical field or what the hull hides: check there that every object the test needs lies in the bearings that should see it, then in the rendered frames that the camera sees it.
 5. **Record.** Commit first, so the render records a commit that exists rather than one marked `-dirty`. `uv run seascape recording <scenario> --parallel` renders the bands at once, encodes and lays the videos out as the rig's `model` records them, in `<scenario>/` beside the TOML; it refuses a folder that isn't empty, so an old run's frames never pass for the new one's.
 6. **Publish** with the `publish-dataset` skill.
 
@@ -39,7 +39,7 @@ Start from the shipped scenario nearest the scene and extend it: `extends` keeps
    uv run python .claude/skills/new-scenario/scripts/buoyage.py scenarios/sweep-<product>.toml
    ```
 
-3. **Look** on `rig-view`: each camera's centre sits between the horizon and the nearest waterline.
+3. **Look** on `previs --video`: every ring crosses every field it serves as the turn sweeps it; on `rig-view`, each camera's centre sits between the horizon and the nearest waterline.
 4. **Check.** `check.py` renders at 1 fps and one sample into `scenarios/sweep-<product>-preview/`; it passes only when it prints `every video sees the course`.
 
    ```bash
