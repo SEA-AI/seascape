@@ -63,7 +63,20 @@ def clean(commit: str | None) -> TypeGuard[str]:
     return commit is not None and not commit.endswith("-dirty")
 
 
+# Each names a repository in place of the one Git finds from its working directory;
+# a Git hook exports some of them.
+_ELSEWHERE = {
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+}
+
+
 def _git(cwd: Path, *args: str) -> str:
+    env = {k: v for k, v in os.environ.items() if k not in _ELSEWHERE}
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
     ).stdout.strip()

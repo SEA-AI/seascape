@@ -162,22 +162,24 @@ def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
     """
     from seascape import previs, rigview
 
-    with tempfile.TemporaryDirectory() as tmp, _blender_log(into / _BLENDER_LOG):
+    with tempfile.TemporaryDirectory() as tmp:
         image = None
         try:
-            if built.ownship.asset is not None:
-                image = Path(tmp) / "rig-view.png"
-                rigview.draw(built, image)
-            with _progress(0, "Drawing") as bar:
-                drawn = previs.draw(
-                    built,
-                    Path(tmp),
-                    "preview",
-                    video_fps=built.outputs.fps,
-                    progress=_steps(bar),
-                )
-        # The render is what is published; it goes on without its previews.
-        except (OSError, RuntimeError, ValueError) as error:
+            with _blender_log(into / _BLENDER_LOG):
+                if built.ownship.asset is not None:
+                    image = Path(tmp) / "rig-view.png"
+                    rigview.draw(built, image)
+                with _progress(0, "Drawing") as bar:
+                    drawn = previs.draw(
+                        built,
+                        Path(tmp),
+                        "preview",
+                        video_fps=built.outputs.fps,
+                        progress=_steps(bar),
+                    )
+        # The render is what is published; it goes on without its previews. A
+        # shader Cycles drew black fails `_blender_log` as it closes.
+        except (OSError, RuntimeError, ValueError, click.ClickException) as error:
             click.echo(f"no previews logged: {error}", err=True)
             return
         if image is not None:
@@ -274,8 +276,17 @@ def _render_apart(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
         )
+    parted: dict[str, labels.Labels] = {
+        b: labels.Labels.read(part) for b, part in parts.items()
+    }
+    # Each band records the checkout it was built at; the joined truth keeps one.
+    if len(built_at := {str(p.info.get("commit")) for p in parted.values()}) > 1:
+        raise click.ClickException(
+            f"the bands were built at {', '.join(sorted(built_at))}: {into} keeps "
+            "every part"
+        )
     # One render loops band by band, so the parts join in `bands` order.
-    truth = labels.concat({b: labels.Labels.read(part) for b, part in parts.items()})
+    truth = labels.concat(parted)
     # Each part's scenario renders one band; the truth records the whole scene's.
     truth.info["scenario"] = built.model_dump(mode="json")
     calibrations = [Calibration.read(part) for part in parts.values()]
@@ -642,12 +653,13 @@ def _log_montage(folder: Path, run: logger.Run) -> None:
     """
     from seascape.render import video as encoder
 
-    with tempfile.TemporaryDirectory() as tmp, _blender_log(folder / _BLENDER_LOG):
+    with tempfile.TemporaryDirectory() as tmp:
         try:
-            shown = load(folder / SCENARIO)
-            out = encoder.montage_video(shown, folder, Path(tmp) / "montage.mp4")
-        # A failed encode raises RuntimeError.
-        except (OSError, RuntimeError, ValueError) as error:
+            with _blender_log(folder / _BLENDER_LOG):
+                shown = load(folder / SCENARIO)
+                out = encoder.montage_video(shown, folder, Path(tmp) / "montage.mp4")
+        # A failed encode raises RuntimeError, a shader drawn black ClickException.
+        except (OSError, RuntimeError, ValueError, click.ClickException) as error:
             click.echo(f"no montage video logged: {error}", err=True)
             return
         run.log("montage", out)

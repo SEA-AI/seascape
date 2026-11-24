@@ -348,19 +348,37 @@ def test_the_previews_log_the_rig_view_and_both_previs_views(
     ]
 
 
-def test_a_preview_that_fails_is_skipped_with_a_warning(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
-) -> None:
-    def failed(*_: object, **__: object) -> None:
-        raise RuntimeError("drawing top failed")
+def _raises(*_: object, **__: object) -> None:
+    raise RuntimeError("drawing top failed")
 
-    monkeypatch.setattr(previs, "draw", failed)
+
+def _draws_black(_: object, folder: Path, *__: object, **___: object) -> previs.Drawn:
+    # What Cycles logs, and goes on, when a shader is past its SVM stack.
+    print('out of SVM stack space, shader "sea" too big')
+    return previs.Drawn({"top": folder / "top.png"}, {})
+
+
+@pytest.mark.parametrize(
+    ("draw", "warned"),
+    [(_raises, "drawing top failed"), (_draws_black, "SVM stack")],
+    ids=["raised", "drawn black"],
+)
+def test_a_preview_that_fails_is_skipped_with_a_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    draw: Any,
+    warned: str,
+) -> None:
+    monkeypatch.setattr(previs, "draw", draw)
     run = FakeRun()
 
     cli._previews(load(OPEN_SEA), tmp_path, live(run))
 
     assert run.logged == []
-    assert "no previews logged: drawing top failed" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "no previews logged" in err
+    assert warned in err
 
 
 def test_a_video_is_logged_by_its_file_name(tmp_path: Path) -> None:

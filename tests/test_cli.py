@@ -579,9 +579,9 @@ def test_the_bands_log_their_progress_to_the_run(
     assert done == [eo, len(built.mounts), built.images]
 
 
-def _write_part(part: Path, band: str) -> None:
-    """The folder `part` a band's render leaves: a frame named for `band`, its truth,
-    its scenario and its log.
+def _write_part(part: Path, band: str, commit: str | None = None) -> None:
+    """The folder `part` a band's render leaves, built at `commit`: a frame named for
+    `band`, its truth, its scenario and its log.
     """
     part.mkdir(exist_ok=True)
     image = labels.Image(
@@ -595,7 +595,7 @@ def _write_part(part: Path, band: str) -> None:
         time_s=0.0,
         horizon_px=[],
     )
-    labels.Labels(info={"scenario": {}}, images=[image]).write(part)
+    labels.Labels(info={"scenario": {}, "commit": commit}, images=[image]).write(part)
     Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
     (part / f"{band}.png").write_bytes(b"frame")
     (part / "blender.log").write_text(f"{band}\n")
@@ -667,3 +667,19 @@ def test_a_quality_reads_in_either_case(
 
     assert result.exit_code == 0, result.output
     assert asked == ["LOWEST"]
+
+
+def test_bands_built_at_two_checkouts_are_not_joined(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def render_band(_: Path, band: str, part: Path) -> None:
+        _write_part(part, band, "abc1234" if band == "eo" else "abc1234-dirty")
+
+    monkeypatch.setattr(processes, "at_once", _in_turn)
+    monkeypatch.setattr(cli, "_band", render_band)
+    (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
+
+    with pytest.raises(click.ClickException, match="abc1234, abc1234-dirty"):
+        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
+
+    assert (tmp_path / ".ir").is_dir()
