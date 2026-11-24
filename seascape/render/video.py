@@ -8,24 +8,19 @@ from pathlib import Path
 
 import bpy
 import cv2
+import PIL.Image
 
-from seascape.config import Agc
-from seascape.outputs import agc
-from seascape.outputs.labels import FILENAME, Image, Labels, agcs
+from seascape.config import RECORDED, Agc, Quality, Scenario
+from seascape.outputs import agc, montage
+from seascape.outputs.labels import Image, agcs, cameras
 
-
-def cameras(run: Path) -> dict[str, list[Image]]:
-    """Each camera's frames in a render, in time order."""
-    images = Labels.model_validate_json((run / FILENAME).read_text()).images
-    found: dict[str, list[Image]] = {}
-    for image in sorted(images, key=lambda image: image.time_s):
-        found.setdefault(image.camera, []).append(image)
-    return found
+# Judgement: small enough to upload while it plays.
+PREVIEW: Quality = "HIGH"
 
 
 def encode(
     run: Path,
-    quality: str = "PERC_LOSSLESS",
+    quality: Quality = RECORDED,
     advance: Callable[[], None] = lambda: None,
 ) -> list[Path]:
     """Write each camera's video, `<camera>.mp4`, into the run's folder.
@@ -62,7 +57,7 @@ def _toned(paths: list[Path], setting: Agc, step_s: float, into: Path) -> list[P
 
 
 def _encode(
-    run: Path, camera: str, frames: list[Image], quality: str, setting: Agc
+    run: Path, camera: str, frames: list[Image], quality: Quality, setting: Agc
 ) -> Path:
     if len(frames) < 2:
         raise ValueError(f"{camera}: one frame is a still, not a video")
@@ -88,7 +83,7 @@ def sequence(
     size_px: tuple[int, int],
     step_s: float,
     out: Path,
-    quality: str = "PERC_LOSSLESS",
+    quality: Quality = RECORDED,
 ) -> Path:
     """Encode frames as H.264. Resets Blender to its factory settings.
 
@@ -121,3 +116,27 @@ def sequence(
     r.filepath = str(out).replace("{", "{{").replace("}", "}}")
     bpy.ops.render.render(animation=True)
     return out
+
+
+def montage_video(scenario: Scenario, run: Path, out: Path) -> Path:
+    """Every camera's frames in `run` laid out as `montage.sheet` lays them out, as
+    one video at `PREVIEW` quality, at `out`. Resets Blender to its factory settings.
+
+    Args:
+        scenario: The scenario `run` rendered.
+        run: The render's folder, holding labels.json.
+        out: The mp4 to write.
+
+    Returns:
+        `out`.
+
+    Raises:
+        FileNotFoundError: No camera has frames, or a frame is missing.
+        ValueError: The clips differ in length.
+        RuntimeError: Blender failed to encode.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        pictures = montage.video_frames(scenario, run, Path(tmp))
+        with PIL.Image.open(pictures[0]) as first:
+            size = first.size
+        return sequence(pictures, size, 1.0 / scenario.outputs.fps, out, PREVIEW)

@@ -4,13 +4,15 @@ import colorsys
 from collections.abc import Sequence
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 from PIL import Image
 
-from seascape.config import Camera, Mount, Rig, Scenario
-from seascape.outputs import montage
-from tests.scenarios import two_rigs
+from seascape.config import Camera, Mount, Rig, Scenario, load
+from seascape.outputs import agc, labels, montage
+from seascape.render import video
+from tests.scenarios import SWEEP_WATCHKEEPER, two_rigs
 
 type Rgb = tuple[int, int, int]
 
@@ -154,3 +156,121 @@ def test_a_missing_frame_names_itself(rigs, tmp_path) -> None:
 
     with pytest.raises(FileNotFoundError, match=absent.stem):
         montage.compose(rigs, tmp_path)
+
+
+def videos(
+    into: Path, names: Sequence[str], times_s: Sequence[float]
+) -> dict[str, Rgb]:
+    """64 x 48 frames per name, each its own colour, and labels.json timing them."""
+    colours, images = {}, []
+    for i, name in enumerate(names):
+        r, g, b = colorsys.hsv_to_rgb(i / len(names), 1.0, 1.0)
+        colours[name] = (round(255 * r), round(255 * g), round(255 * b))
+        (into / name).mkdir()
+        for time_s in times_s:
+            Image.new("RGB", (64, 48), colours[name]).save(
+                into / f"{name}/{len(images):04d}.png"
+            )
+            images.append(
+                labels.Image(
+                    id=len(images) + 1,
+                    file_name=f"{name}/{len(images):04d}.png",
+                    width=64,
+                    height=48,
+                    camera=name,
+                    band="eo",
+                    hfov_deg=1.0,
+                    time_s=time_s,
+                    horizon_px=[],
+                )
+            )
+    labels.Labels(images=images).write(into)
+    return colours
+
+
+def played(paths: list[Path]) -> list[np.ndarray]:
+    return [np.asarray(Image.open(path).convert("RGB")) for path in paths]
+
+
+def showing(picture: np.ndarray, colour: Rgb) -> np.ndarray:
+    """Where `picture` shows `colour`."""
+    return (picture == colour).all(axis=2)
+
+
+def test_the_preview_video_lays_out_every_camera_as_the_sheet_does(
+    rigs, tmp_path
+) -> None:
+    colours = videos(tmp_path, [m.name for m in rigs.mounts], [0.0, 0.1, 0.2])
+
+    shown = played(montage.video_frames(rigs, tmp_path, tmp_path / "out"))
+
+    assert len(shown) == 3
+    rows = {
+        n: np.flatnonzero(showing(shown[0], c).any(axis=1)) for n, c in colours.items()
+    }
+    assert rows["bow_eo"].max() < rows["bow_ir"].min()  # a row per band
+    assert rows["bow_eo"].size == pytest.approx(montage.TILE_H, abs=2)
+
+
+def test_a_thermal_clip_keeps_its_tone_from_frame_to_frame(rigs, tmp_path) -> None:
+    """Its AGC eases toward each frame: a frame after a hotter one shows apart from
+    the same frame after itself.
+    """
+    ramp = np.linspace(280.0, 300.0, 64) * np.ones((48, 1))
+    shown = []
+    for name, first in (("after_hotter", ramp + 30.0), ("after_itself", ramp)):
+        into = tmp_path / name
+        into.mkdir()
+        videos(into, [m.name for m in rigs.mounts], [0.0, 0.1])
+        # Each camera's frames are numbered in turn: its first is the even one.
+        for path in into.glob("*/*.png"):
+            t_k = first if int(path.stem) % 2 == 0 else ramp
+            cv2.imwrite(str(path), agc.counts(t_k))
+        shown.append(played(montage.video_frames(rigs, into, into / "out"))[1])
+
+    after_hotter, after_itself = shown
+    assert not np.array_equal(after_hotter, after_itself)
+
+
+@pytest.mark.parametrize("video", ["mast_RGB1", "mast_T1"])
+def test_the_preview_video_shows_a_rig_s_videos_not_its_cameras(
+    tmp_path, video: str
+) -> None:
+    """Watchkeeper records an undistortion of rgb1 and a stitch of t2 and t1: one
+    tile each.
+    """
+    colours = videos(tmp_path, ["mast_RGB1", "mast_T1"], [0.0, 0.1])
+
+    out = montage.video_frames(load(SWEEP_WATCHKEEPER), tmp_path, tmp_path / "out")
+
+    columns = np.flatnonzero(showing(played(out)[0], colours[video]).any(axis=0))
+    assert columns.size == columns.max() - columns.min() + 1
+
+
+def test_preview_frames_have_even_sides_for_h264(
+    rigs, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(montage, "_sheet", lambda *_: Image.new("RGB", (63, 47)))
+    videos(tmp_path, [m.name for m in rigs.mounts], [0.0])
+
+    (frame,) = montage.video_frames(rigs, tmp_path, tmp_path / "out")
+
+    assert Image.open(frame).size == (64, 48)
+
+
+def test_a_render_without_frames_has_no_preview_video(rigs, tmp_path) -> None:
+    labels.Labels(images=[]).write(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="no frames"):
+        montage.video_frames(rigs, tmp_path, tmp_path / "out")
+
+
+def test_the_preview_video_plays_a_sheet_per_frame(rigs, tmp_path) -> None:
+    videos(tmp_path, [m.name for m in rigs.mounts], [0.0, 0.1, 0.2])
+
+    out = video.montage_video(rigs, tmp_path, tmp_path / "montage.mp4")
+
+    capture, count = cv2.VideoCapture(str(out)), 0
+    while capture.read()[0]:
+        count += 1
+    assert count == 3

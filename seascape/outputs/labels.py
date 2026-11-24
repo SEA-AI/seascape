@@ -265,6 +265,14 @@ class Labels(Model):
         return cls.model_validate_json((folder / FILENAME).read_text())
 
 
+def cameras(run: Path) -> dict[str, list[Image]]:
+    """Each camera's frames in a render, in time order."""
+    found: dict[str, list[Image]] = {}
+    for image in sorted(Labels.read(run).images, key=lambda image: image.time_s):
+        found.setdefault(image.camera, []).append(image)
+    return found
+
+
 def merge(root: Path, folders: Sequence[Path]) -> Labels:
     """The labels in `folders` as one set for `root`."""
     merged = Labels()

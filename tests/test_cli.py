@@ -5,6 +5,8 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import bpy
 import click
@@ -12,7 +14,7 @@ import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
 
-from seascape import assets, cli, previs, processes, rigview, server
+from seascape import assets, cli, logger, previs, processes, rigview, server
 from seascape import render as renderer
 from seascape.assets import skies
 from seascape.config import Scenario, load, loader
@@ -240,7 +242,7 @@ def test_a_render_s_folder_holds_the_scenario_it_rendered(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rendered: list[Scenario] = []
-    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built) or [])
+    monkeypatch.setattr(cli, "_render", lambda built, *_: rendered.append(built) or [])
     monkeypatch.setattr(cli, "_encode", lambda *_: None)
     monkeypatch.setattr(cli.recording, "export", lambda _: [])
 
@@ -361,11 +363,14 @@ def _in_turn(
     logs: dict[str, Path],
     tick: Callable[[], None],
 ) -> list[str]:
-    """`processes.at_once`, one job after the other in this process, none failing."""
+    """`processes.at_once`, one job after the other in this process, none failing,
+    with a tick before the first and after each.
+    """
+    tick()
     for key, args in jobs.items():
         logs[key].touch()
         work(*args)
-    tick()
+        tick()
     return []
 
 
@@ -440,7 +445,7 @@ def test_a_one_band_scene_renders_in_this_process(
     )
 
     assert cli._render_apart(built, tmp_path) == files
-    assert rendered == [(built, tmp_path)]
+    assert rendered == [(built, tmp_path, logger.UNLOGGED)]
 
 
 @pytest.mark.parametrize(
@@ -475,7 +480,7 @@ def test_a_scenario_s_recording_is_rendered_and_encoded_beside_it(
     scenario.write_text(f"extends = {str(SWEEP_SENTRY)!r}\n")
     steps: list[tuple[str, Path]] = []
     monkeypatch.setattr(
-        cli, "_render", lambda _, into: steps.append(("render", into)) or []
+        cli, "_render", lambda _, into, *__: steps.append(("render", into)) or []
     )
     monkeypatch.setattr(
         cli, "_encode", lambda into, quality: steps.append((quality, into)) or []
@@ -488,7 +493,7 @@ def test_a_scenario_s_recording_is_rendered_and_encoded_beside_it(
 
     assert result.exit_code == 0, result.output
     into = tmp_path / "sweep"
-    assert steps == [("render", into), (cli._QUALITY, into), ("export", into)]
+    assert steps == [("render", into), (cli.RECORDED, into), ("export", into)]
 
 
 def test_a_render_s_folder_is_only_exported(
@@ -548,9 +553,35 @@ def test_the_bands_end_as_one_render_of_the_scene(
     ]
 
 
-def _write_part(part: Path, band: str) -> None:
-    """The folder `part` a band's render leaves: a frame named for `band`, its truth,
-    its scenario and its log.
+def test_the_bands_log_their_progress_to_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built = load(SWEEP_SENTRY)
+    fmt = built.outputs.format
+
+    def render_band(_: Path, band: str, part: Path) -> None:
+        _write_part(part, band)
+        for mount in (m for m in built.mounts if m.camera.band == band):
+            (part / f"{mount.name}.{fmt}").touch()
+
+    monkeypatch.setattr(processes, "at_once", _in_turn)
+    monkeypatch.setattr(cli, "_band", render_band)
+    done: list[int] = []
+    run = cast(
+        "logger.Run", SimpleNamespace(progress=lambda **v: done.append(v["done"]))
+    )
+    (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
+
+    cli._render_apart(built, tmp_path, run)
+
+    # A tick logs only a band's new frames, then the rest once the bands end.
+    eo = sum(m.camera.band == "eo" for m in built.mounts)
+    assert done == [eo, len(built.mounts), built.images]
+
+
+def _write_part(part: Path, band: str, commit: str | None = None) -> None:
+    """The folder `part` a band's render leaves, built at `commit`: a frame named for
+    `band`, its truth, its scenario and its log.
     """
     part.mkdir(exist_ok=True)
     image = labels.Image(
@@ -564,7 +595,7 @@ def _write_part(part: Path, band: str) -> None:
         time_s=0.0,
         horizon_px=[],
     )
-    labels.Labels(info={"scenario": {}}, images=[image]).write(part)
+    labels.Labels(info={"scenario": {}, "commit": commit}, images=[image]).write(part)
     Calibration(cameras=[_camera(band)], raw=[_camera(band)]).write(part)
     (part / f"{band}.png").write_bytes(b"frame")
     (part / "blender.log").write_text(f"{band}\n")
@@ -624,3 +655,31 @@ def test_a_previs_rate_without_a_video_is_refused(
 
     assert refused.exit_code == 2
     assert "--video" in refused.output
+
+
+def test_a_quality_reads_in_either_case(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+    monkeypatch.setattr(cli, "_encode", lambda _, quality: asked.append(quality) or [])
+
+    result = run("video", tmp_path, "--quality", "lowest")
+
+    assert result.exit_code == 0, result.output
+    assert asked == ["LOWEST"]
+
+
+def test_bands_built_at_two_checkouts_are_not_joined(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def render_band(_: Path, band: str, part: Path) -> None:
+        _write_part(part, band, "abc1234" if band == "eo" else "abc1234-dirty")
+
+    monkeypatch.setattr(processes, "at_once", _in_turn)
+    monkeypatch.setattr(cli, "_band", render_band)
+    (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
+
+    with pytest.raises(click.ClickException, match="abc1234, abc1234-dirty"):
+        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
+
+    assert (tmp_path / ".ir").is_dir()

@@ -5,19 +5,23 @@ import math
 import os
 import shutil
 import sys
+import tempfile
 from collections.abc import Callable, Generator, Iterable
-from contextlib import contextmanager, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stdout
 from itertools import chain
 from pathlib import Path
 from typing import Any, get_args
 
 import click
 
-from seascape import assets, outputs, processes
+from seascape import assets, logger, outputs, processes
 from seascape.assets import skies
 from seascape.config import (
     BANDS,
+    RECORDED,
     Band,
+    Mount,
+    Quality,
     Scenario,
     dump,
     instantiate,
@@ -26,7 +30,13 @@ from seascape.config import (
     resolve,
     seeds,
 )
-from seascape.outputs import labels, montage, panorama, recording
+from seascape.outputs import (
+    labels,
+    montage,
+    panorama,
+    provenance,
+    recording,
+)
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
 from seascape.outputs.previs import VIEWS, View
@@ -143,14 +153,67 @@ def _pin(
     return tree, built
 
 
-def _render(built: Scenario, into: Path) -> list[Path]:
+def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
+    """Log what `rig-view` draws, when the ownship has a hull to draw it on, and what
+    `previs --video` draws.
+
+    Drawn before the render builds its scene: each resets Blender to its factory
+    settings, and so does every build, which then picks its render device.
+    """
+    from seascape import previs, rigview
+
+    with tempfile.TemporaryDirectory() as tmp:
+        image = None
+        try:
+            with _blender_log(into / _BLENDER_LOG):
+                if built.ownship.asset is not None:
+                    image = Path(tmp) / "rig-view.png"
+                    rigview.draw(built, image)
+                with _progress(0, "Drawing") as bar:
+                    drawn = previs.draw(
+                        built,
+                        Path(tmp),
+                        "preview",
+                        video_fps=built.outputs.fps,
+                        progress=_steps(bar),
+                    )
+        # The render is what is published; it goes on without its previews. A
+        # shader Cycles drew black fails `_blender_log` as it closes.
+        except (OSError, RuntimeError, ValueError, click.ClickException) as error:
+            click.echo(f"no previews logged: {error}", err=True)
+            return
+        if image is not None:
+            run.log("rig_view", image)
+        for view, path in drawn.stills.items():
+            run.log(view, path)
+        for view, path in drawn.videos.items():
+            run.log(f"{view}_video", path)
+
+
+def _advance(bar: Any, run: logger.Log, done: int) -> None:
+    """Show `done` images on `bar`, and log its pace to `run`."""
+    bar.update(done - bar.pos)
+    run.progress(done=bar.pos, s_per_image=bar.time_per_iteration, eta_s=bar.eta)
+
+
+def _render(
+    built: Scenario, into: Path, run: logger.Log = logger.UNLOGGED
+) -> list[Path]:
     from seascape import render as renderer
+
+    # About one frame a second of the scenario's time.
+    every = max(1, round(built.outputs.fps))
+
+    def advance(mount: Mount, image: Path, frame: int) -> None:
+        _advance(bar, run, bar.pos + 1)
+        if frame % every == 0:
+            run.frame(mount, image)
 
     with (
         _progress(built.images, "Rendering") as bar,
         _blender_log(into / _BLENDER_LOG),
     ):
-        return renderer.render(built, into, lambda: bar.update(1))
+        return renderer.render(built, into, advance)
 
 
 def _band(scenario: Path, band: Band, part: Path) -> None:
@@ -172,7 +235,9 @@ _PARALLEL = click.option(
 )
 
 
-def _render_apart(built: Scenario, into: Path) -> list[Path]:
+def _render_apart(
+    built: Scenario, into: Path, run: logger.Log = logger.UNLOGGED
+) -> list[Path]:
     """Render each band of `into`'s `scenario.toml` in a process of its own, all at
     once, then gather their frames and truth in `into` as one render writes
     them; the files written. A scene with one band renders here.
@@ -182,7 +247,7 @@ def _render_apart(built: Scenario, into: Path) -> list[Path]:
     """
     bands = [band for band in built.outputs.bands if built.band_mounts(band)]
     if len(bands) < 2:
-        return _render(built, into)
+        return _render(built, into, run)
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
     logs = {band: into / f".{band}.log" for band in bands}
@@ -198,18 +263,30 @@ def _render_apart(built: Scenario, into: Path) -> list[Path]:
                 for b in bands
                 for m in built.band_mounts(b)
             )
-            bar.update(done - bar.pos)
+            # --parallel logs progress only: a band's newest frame may be half
+            # written.
+            if done > bar.pos:
+                _advance(bar, run, done)
 
         failed = processes.at_once(_band, jobs, logs, tick)
         if not failed:
-            bar.update(built.images - bar.pos)
+            _advance(bar, run, built.images)
     if failed:
         raise click.ClickException(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
         )
+    parted: dict[str, labels.Labels] = {
+        b: labels.Labels.read(part) for b, part in parts.items()
+    }
+    # Each band records the checkout it was built at; the joined truth keeps one.
+    if len(built_at := {str(p.info.get("commit")) for p in parted.values()}) > 1:
+        raise click.ClickException(
+            f"the bands were built at {', '.join(sorted(built_at))}: {into} keeps "
+            "every part"
+        )
     # One render loops band by band, so the parts join in `bands` order.
-    truth = labels.concat({b: labels.Labels.read(part) for b, part in parts.items()})
+    truth = labels.concat(parted)
     # Each part's scenario renders one band; the truth records the whole scene's.
     truth.info["scenario"] = built.model_dump(mode="json")
     calibrations = [Calibration.read(part) for part in parts.values()]
@@ -234,17 +311,14 @@ def _render_apart(built: Scenario, into: Path) -> list[Path]:
     return written
 
 
-_QUALITY = "perc_lossless"
-
-
-def _encode(folder: Path, quality: str) -> list[Path]:
+def _encode(folder: Path, quality: Quality) -> list[Path]:
     from seascape.render import video as encoder
 
     with (
         _progress(len(encoder.cameras(folder)), "Encoding") as bar,
         _blender_log(folder / _BLENDER_LOG),
     ):
-        return encoder.encode(folder, quality.upper(), lambda: bar.update(1))
+        return encoder.encode(folder, quality, lambda: bar.update(1))
 
 
 @click.group(cls=_Seascape)
@@ -456,14 +530,12 @@ def panorama_(
 @click.argument("folder", type=_FOLDER)
 @click.option(
     "--quality",
-    type=click.Choice(
-        ["lossless", "perc_lossless", "high", "medium", "low", "verylow", "lowest"]
-    ),
-    default=_QUALITY,
+    type=click.Choice(get_args(Quality.__value__), case_sensitive=False),
+    default=RECORDED,
     show_default=True,
     help="Blender's H.264 constant-quality preset.",
 )
-def video(folder: Path, quality: str) -> None:
+def video(folder: Path, quality: Quality) -> None:
     """Encode each camera's frames as an mp4, from labels.json."""
     for path in _encode(folder, quality):
         click.echo(path)
@@ -475,24 +547,122 @@ def video(folder: Path, quality: str) -> None:
     click.Path(exists=True, path_type=Path),
 )
 @_PARALLEL
+@click.option(
+    "--publish",
+    is_flag=True,
+    help="Also log the recording, and the scenario as its input, as W&B artifacts. "
+    "Needs a render from a clean commit.",
+)
+@click.option(
+    "--project",
+    envvar="WANDB_PROJECT",
+    default="seascape",
+    show_default=True,
+    help="With --publish, the W&B project.",
+)
+@click.option(
+    "--entity",
+    envvar="WANDB_ENTITY",
+    help="With --publish, the W&B team or user. Default: wandb's default entity.",
+)
+@click.option(
+    "--name",
+    help="With --publish, the W&B run's and artifacts' name. Default: the render's "
+    "folder's.",
+)
 def recording_(
-    scenario: Path, output: Path | None, overrides: tuple[str, ...], parallel: bool
+    scenario: Path,
+    output: Path | None,
+    overrides: tuple[str, ...],
+    parallel: bool,
+    publish: bool,
+    project: str,
+    entity: str | None,
+    name: str | None,
 ) -> None:
     """Lay each rig's videos out as a recording. SCENARIO is a render's folder, after
     video, or a scenario to render and encode first.
     """
-    folder = scenario
-    if scenario.is_file():
-        folder = _empty(output or scenario.with_suffix(""))
-        _, built = _pin(scenario, overrides, folder)
-        (_render_apart if parallel else _render)(built, folder)
-        _encode(folder, _QUALITY)
-    elif output or overrides or parallel:
+    rendering = scenario.is_file()
+    if not rendering and (output or overrides or parallel):
         raise click.UsageError(
             "a render's folder takes neither -o, --set nor --parallel"
         )
-    for path in recording.export(folder):
-        click.echo(path)
+    if name is not None and not publish:
+        raise click.UsageError("--name needs --publish")
+    folder = (output or scenario.with_suffix("")) if rendering else scenario
+    commit = _publishable(folder, rendering) if publish else None
+    if rendering:
+        _empty(folder)
+    # `Path(".").name` is empty.
+    title = name or folder.resolve().name
+    with logger.run(project, entity, title) if publish else nullcontext() as live:
+        if rendering:
+            _, built = _pin(scenario, overrides, folder)
+            if live:
+                _previews(built, folder, live)
+            render = _render_apart if parallel else _render
+            render(built, folder, live or logger.UNLOGGED)
+            _encode(folder, RECORDED)
+            if live:
+                _unmoved(folder, commit)
+        written = recording.export(folder)
+        for path in written:
+            click.echo(path)
+        if live:
+            _log_montage(folder, live)
+            recorded = sorted({p.parent for p in written if p.suffix == ".mp4"})
+            info = labels.Labels.read(folder).info
+            live.publish(info, folder / SCENARIO, recorded)
+
+
+def _publishable(folder: Path, rendering: bool) -> str:
+    """The clean commit `folder`'s render records, or this checkout's when it is yet
+    to render: refused before hours of rendering when there is none.
+    """
+    commit = (
+        provenance.commit()
+        if rendering
+        else labels.Labels.read(folder).info.get("commit")
+    )
+    if not provenance.clean(commit):
+        raise click.UsageError(
+            f"--publish needs a render from a clean commit, not {commit}"
+        )
+    return commit
+
+
+def _unmoved(folder: Path, commit: str | None) -> None:
+    """Refuse to publish `folder`'s render if the checkout left `commit` while it
+    rendered, by an edit or a checkout.
+    """
+    # The labels record the commit the scene was built at: an edit undone before the
+    # end shows only there.
+    built_at = labels.Labels.read(folder).info.get("commit")
+    for seen in (built_at, provenance.commit()):
+        if seen != commit:
+            raise click.ClickException(
+                f"the checkout went from {commit} to {seen} while it rendered: "
+                "not published"
+            )
+
+
+def _log_montage(folder: Path, run: logger.Run) -> None:
+    """Log every video in `folder` laid out in one, warning rather than failing: the
+    recording publishes without it.
+    """
+    from seascape.render import video as encoder
+
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            with _blender_log(folder / _BLENDER_LOG):
+                shown = load(folder / SCENARIO)
+                out = encoder.montage_video(shown, folder, Path(tmp) / "montage.mp4")
+        # A failed encode raises RuntimeError, a shader drawn black ClickException.
+        except (OSError, RuntimeError, ValueError, click.ClickException) as error:
+            click.echo(f"no montage video logged: {error}", err=True)
+            return
+        run.log("montage", out)
 
 
 @main.command()

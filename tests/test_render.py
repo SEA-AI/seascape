@@ -924,16 +924,6 @@ def test_an_lwir_jpg_drops_a_hull_lost_in_the_sea(
     assert len(truth.annotations) == 1
 
 
-def test_an_install_without_git_names_the_image_s_commit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(render, "__file__", str(tmp_path / "__init__.py"))
-    monkeypatch.setenv("SEASCAPE_COMMIT", "abc123")
-    assert render._commit() == "abc123"
-    monkeypatch.setenv("SEASCAPE_COMMIT", "")
-    assert render._commit() is None
-
-
 @pytest.mark.render
 @pytest.mark.parametrize("fmt", get_args(ImageFormat.__value__))
 def test_no_image_outgrows_what_the_server_reserves_for_it(

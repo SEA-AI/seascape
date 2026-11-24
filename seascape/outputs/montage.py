@@ -4,15 +4,15 @@ No Blender: this reads the images `render` already wrote. Captions sit under eac
 frame, never on it: in an exr they would corrupt radiance.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 from PIL.ImageFont import FreeTypeFont
 
 from seascape.angles import wrapped_deg
-from seascape.config import Mount, Scenario
-from seascape.outputs import brand, canvas, preview
+from seascape.config import Mount, Scenario, sources
+from seascape.outputs import agc, brand, canvas, labels, preview
 
 TILE_H = 260
 CAPTION_H = 26
@@ -42,14 +42,11 @@ def _fan(
 
 
 def _tile(
-    path: Path,
+    frame: Image.Image,
     typeface: FreeTypeFont,
     mount: Mount,
     mounts: Sequence[Mount],
 ) -> Image.Image:
-    frame = preview.picture(path, mount.camera.agc)
-    frame = ImageOps.scale(frame, TILE_H / frame.height, Image.Resampling.LANCZOS)
-
     tile = ImageOps.expand(frame, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
@@ -103,18 +100,37 @@ def columns(mounts: Iterable[Mount]) -> list[list[Mount]]:
 def sheet(scenario: Scenario, into: Path) -> Image.Image:
     """The frames in `into` as one picture, a clip by its middle frame: a row per band,
     a column per bearing.
+
+    Raises:
+        ValueError: No band has a camera.
+        FileNotFoundError: A frame is missing, or the render is exr.
     """
-    bands = [band for band in scenario.outputs.bands if scenario.band_mounts(band)]
-    if not bands:
+    mounts = preview.cameras(scenario)
+    if not mounts:
         raise ValueError(f"no frames for any of {scenario.outputs.bands} in {into}")
-    mounts = [m for band in bands for m in scenario.band_mounts(band)]
-    typeface = brand.font()
-    tiles: dict[str, Image.Image] = {}
+    pictures = {}
     for mount, frame in preview.shown(scenario, into):
         # An exr is radiance; making it a picture is the render's job.
         if scenario.outputs.format == "exr" or not frame.exists():
             raise FileNotFoundError(f"{frame}: render it, as png or jpg")
-        tiles[mount.name] = _tile(frame, typeface, mount, mounts)
+        pictures[mount.name] = _tile_high(frame, agc.Agc(mount.camera.agc))
+    return _sheet(mounts, pictures)
+
+
+def _tile_high(frame: Path, tone: agc.Agc) -> Image.Image:
+    """`frame` as a picture `TILE_H` tall: scaled as it loads, so a sheet holds no
+    full-size frame.
+    """
+    picture = preview.picture(frame, tone)
+    return ImageOps.scale(picture, TILE_H / picture.height, Image.Resampling.LANCZOS)
+
+
+def _sheet(mounts: Sequence[Mount], pictures: Mapping[str, Image.Image]) -> Image.Image:
+    """`pictures`, by their mount's name, tiled a row per band and a column per
+    bearing.
+    """
+    typeface = brand.font()
+    tiles = {m.name: _tile(pictures[m.name], typeface, m, mounts) for m in mounts}
 
     def cell(column: list[Mount], band: str) -> Image.Image:
         return canvas.beside(
@@ -122,8 +138,66 @@ def sheet(scenario: Scenario, into: Path) -> Image.Image:
         )
 
     laid = columns(mounts)
-    cells = [[cell(column, band) for column in laid] for band in bands]
-    return canvas.table(cells, gap_px=GUTTER)
+    bands = dict.fromkeys(m.camera.band for m in mounts)
+    return canvas.table(
+        [[cell(c, band) for c in laid] for band in bands], gap_px=GUTTER
+    )
+
+
+def _recorded(mount: Mount) -> str | None:
+    """The video `mount` shows in, as `render` names it: its rig's video of it, or its
+    own. None for a stitch's right camera, whose frames show in its left's.
+    """
+    if (recorded := mount.video) is None:
+        return mount.name
+    name, video = recorded
+    return name if mount.camera_name == sources(video)[0] else None
+
+
+def video_frames(scenario: Scenario, into: Path, folder: Path) -> list[Path]:
+    """Every camera's video in `into`, frame by frame as labels.json lists them, laid
+    out as `sheet` lays out its frames, as numbered pngs in `folder`, padded to even
+    sides for H.264. A thermal clip is toned as its video is.
+
+    Limitation: a stitch's tile is fanned and captioned as its left camera.
+
+    Args:
+        scenario: The scenario `into` rendered.
+        into: The render's folder, holding labels.json.
+        folder: Where the pngs go; made if missing.
+
+    Returns:
+        The pngs, in order.
+
+    Raises:
+        FileNotFoundError: No camera has frames in labels.json, or a frame is missing.
+        ValueError: The clips differ in length.
+    """
+    clips = labels.cameras(into)
+    shown, mounts = {}, []
+    for m in preview.cameras(scenario):
+        if (v := _recorded(m)) in clips:
+            shown[m.name] = v
+            mounts.append(m)
+    if not mounts:
+        raise FileNotFoundError(f"{into}: no frames of any camera")
+    settings = labels.agcs(into)
+    tones = {
+        n: agc.Agc(settings[v], 1 / scenario.outputs.fps) for n, v in shown.items()
+    }
+    folder.mkdir(parents=True, exist_ok=True)
+    written = []
+    for i, frames in enumerate(zip(*(clips[v] for v in shown.values()), strict=True)):
+        pictures = {
+            n: _tile_high(into / f.file_name, tones[n])
+            for n, f in zip(shown, frames, strict=True)
+        }
+        picture = _sheet(mounts, pictures)
+        w, h = picture.size
+        path = folder / f"{i:05d}.png"
+        ImageOps.expand(picture, (0, 0, w % 2, h % 2), fill=canvas.MATTE).save(path)
+        written.append(path)
+    return written
 
 
 def compose(scenario: Scenario, into: Path) -> Path:

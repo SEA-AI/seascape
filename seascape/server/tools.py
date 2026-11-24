@@ -16,8 +16,8 @@ from pydantic import Field
 from seascape import assets
 from seascape.assets import skies
 from seascape.config import schema_section, schema_sections
+from seascape.outputs import agc, provenance
 from seascape.outputs import preview as pictures
-from seascape.outputs import provenance
 from seascape.server.jobs import (
     SHEET,
     Job,
@@ -242,7 +242,8 @@ def _view(found: Job, variant: int, camera: str | None) -> Image:
     mount, path = frames[camera]
     exif = provenance.exif(found.scenario, scene.seed, found.overrides, camera)
     return Image(
-        data=marked_jpeg(pictures.picture(path, mount.camera.agc), exif), format="jpeg"
+        data=marked_jpeg(pictures.picture(path, agc.Agc(mount.camera.agc)), exif),
+        format="jpeg",
     )
 
 

@@ -41,14 +41,15 @@ serve = [
     "starlette>=1.8",
     "uvicorn>=0.54",
 ]
+wandb = ["wandb>=0.23"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8",
-    # The server's tests run in a checkout too.
-    "seascape[serve]",
+    # The server's tests need the serve extra, and ty checks the logger against wandb.
+    "seascape[serve,wandb]",
 ]
 
 [build-system]
@@ -76,7 +77,7 @@ type = "layers"
 containers = ["seascape"]
 layers = [
     "cli",
-    "server | catalog | zones | rigview | previs",
+    "server | catalog | zones | rigview | previs | logger",
     "render | processes",
     "blender",
     "buoyage",
