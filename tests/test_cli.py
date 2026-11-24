@@ -706,12 +706,10 @@ def test_a_render_s_pace_is_logged_before_its_bar_redraws() -> None:
     run = cast("logger.Run", SimpleNamespace(progress=lambda **v: logged.append(v)))
 
     with cli._progress(4, "Rendering") as bar:
-        for done in (1, 2):
-            time.sleep(0.05)
-            cli._advance(bar, run, done)
+        bar._time = lambda: bar.start_t + 10.0  # 10 s since the bar began
+        cli._advance(bar, run, 2)
 
-    assert all(v["s_per_image"] >= 0.04 for v in logged)
-    assert logged[-1]["eta_s"] == pytest.approx(2 * logged[-1]["s_per_image"])
+    assert logged == [{"done": 2, "s_per_image": 5.0, "eta_s": 10.0}]
 
 
 def test_a_bar_whose_length_comes_later_takes_it_from_its_steps() -> None:
