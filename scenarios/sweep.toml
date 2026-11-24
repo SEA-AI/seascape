@@ -1,7 +1,7 @@
 #:schema ../schema/scenario.json
 
-# Shared by `sync-<product>.toml`, which sets the ownship, the rig, what turns and how
-# fast, and the objects `seascape sync` places for them.
+# Shared by `sweep-<product>.toml`, which sets the ownship, the rig, what turns and how
+# fast, and the objects `seascape.buoyage` places for them.
 seed = 20261106
 
 # A stand-in, so this file validates alone.

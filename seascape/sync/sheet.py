@@ -20,19 +20,7 @@ from PIL.ImageFont import FreeTypeFont
 from seascape import angles, motion
 from seascape.assets import Buoy, Debris
 from seascape.blender.scene import ownship_afloat
-from seascape.config import Crop, Object, Rig, Scenario, Video, sources
-from seascape.motion import (
-    azimuth_deg,
-    cameras_at_start,
-    head_path,
-    held_tilt_deg,
-    panned_deg,
-    target_path,
-    track,
-)
-from seascape.outputs import brand, canvas
-from seascape.sync import preview
-from seascape.sync.staging import (
+from seascape.buoyage import (
     BUOY,
     CONTAINER,
     Ring,
@@ -48,6 +36,18 @@ from seascape.sync.staging import (
     rings,
     views,
 )
+from seascape.config import Crop, Object, Rig, Scenario, Video, sources
+from seascape.motion import (
+    azimuth_deg,
+    cameras_at_start,
+    head_path,
+    held_tilt_deg,
+    panned_deg,
+    target_path,
+    track,
+)
+from seascape.outputs import brand, canvas
+from seascape.sync import preview
 
 # Drawn K times the size, then shrunk: Pillow anti-aliases no line or polygon.
 K = 2

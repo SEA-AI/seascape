@@ -74,6 +74,7 @@ layers = [
     "server | catalog | zones | sync | rigview",
     "render",
     "blender",
+    "buoyage",
     "outputs | motion",
     "config",
     "assets",

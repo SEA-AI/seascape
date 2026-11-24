@@ -12,13 +12,12 @@ import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
 
-from seascape import assets, cli, rigview, server
+from seascape import assets, buoyage, cli, rigview, server
 from seascape.assets import skies
 from seascape.config import Scenario, load, loader
 from seascape.outputs import labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
-from seascape.sync import staging
-from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
+from tests.scenarios import BASELINE, OPEN_SEA, SWEEP_SENTRY
 
 type Run = Callable[..., Result]
 
@@ -230,7 +229,7 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
 
 
 @pytest.mark.parametrize(
-    ("command", "scenario"), [("render", OPEN_SEA), ("sync", SYNC_SENTRY)]
+    ("command", "scenario"), [("render", OPEN_SEA), ("sync", SWEEP_SENTRY)]
 )
 def test_a_render_s_folder_holds_the_scenario_it_rendered(
     command: str,
@@ -303,7 +302,7 @@ def test_rig_view_needs_a_hull_to_draw_on(run: Run, tmp_path: Path) -> None:
 @pytest.mark.render
 def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
     scenario = (
-        Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper-1280-gen1.toml"
+        Path(cli.__file__).parents[1] / "scenarios" / "sweep-watchkeeper-1280-gen1.toml"
     )
     out = tmp_path / "rig.png"
     drawn = run("rig-view", scenario, "-o", out)
@@ -361,18 +360,18 @@ def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
     run: Run, tmp_path: Path
 ) -> None:
     out = tmp_path / "preview"
-    refused = run("sync", SYNC_SENTRY, "--preview", "--set", "objects = []", "-o", out)
+    refused = run("sync", SWEEP_SENTRY, "--preview", "--set", "objects = []", "-o", out)
 
     assert refused.exit_code == 1
     assert "holds no buoys" in refused.stderr
-    assert staging.suggested(load(SYNC_SENTRY)) in refused.stderr
+    assert buoyage.suggested(load(SWEEP_SENTRY)) in refused.stderr
     assert not out.exists()
 
 
 def test_a_course_sheet_is_one_image(run: Run, tmp_path: Path) -> None:
-    out = tmp_path / f"{SYNC_SENTRY.stem}-course.png"
+    out = tmp_path / f"{SWEEP_SENTRY.stem}-course.png"
 
-    drawn = run("sync", SYNC_SENTRY, "--sheet", "-o", tmp_path)
+    drawn = run("sync", SWEEP_SENTRY, "--sheet", "-o", tmp_path)
 
     assert drawn.exit_code == 0, drawn.stderr
     assert drawn.stdout == f"{out}\n"
@@ -413,7 +412,7 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
 
     with pytest.raises(click.ClickException, match=r"\.ir\.log") as failed:
-        cli._render_apart(load(SYNC_SENTRY), tmp_path)
+        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
 
     assert ".eo.log" not in str(failed.value)
     assert started["eo"].killed
@@ -435,7 +434,7 @@ def test_an_interrupt_kills_every_band(
     monkeypatch.setattr(cli.time, "sleep", interrupted)
 
     with pytest.raises(KeyboardInterrupt):
-        cli._render_apart(load(SYNC_SENTRY), tmp_path)
+        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
 
     assert [band.killed for band in started] == [True, True]
 
@@ -460,7 +459,7 @@ def test_sync_parallel_renders_each_band_apart_with_the_user_s_overrides(
 
     run(
         "sync",
-        SYNC_SENTRY,
+        SWEEP_SENTRY,
         "--parallel",
         *("--set", "outputs.fps = 3", "--set", 'outputs.bands = ["eo", "ir"]'),
         *("-o", tmp_path),
@@ -487,7 +486,7 @@ def test_a_one_band_scene_renders_in_this_process(
 
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args))
-    built = load(SYNC_SENTRY, list(overrides))
+    built = load(SWEEP_SENTRY, list(overrides))
     mounts = type(built).band_mounts
     monkeypatch.setattr(
         type(built),
@@ -503,8 +502,8 @@ def test_a_one_band_scene_renders_in_this_process(
 @pytest.mark.parametrize(
     "args",
     [
-        ("sync", SYNC_SENTRY, "--parallel", "--preview"),
-        ("sync", SYNC_SENTRY, "--parallel", "--sheet"),
+        ("sync", SWEEP_SENTRY, "--parallel", "--preview"),
+        ("sync", SWEEP_SENTRY, "--parallel", "--sheet"),
     ],
     ids=["preview", "sheet"],
 )
@@ -539,7 +538,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
 
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
-    built = load(SYNC_SENTRY)
+    built = load(SWEEP_SENTRY)
     (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
 
     cli._render_apart(built, tmp_path)
@@ -596,5 +595,5 @@ def _band_of(command: list[str]) -> str:
 
 def _camera(band: str) -> CameraCalibration:
     """Any valid calibration of `band`'s camera."""
-    mount = next(m for m in load(SYNC_SENTRY).mounts if m.camera.band == band)
+    mount = next(m for m in load(SWEEP_SENTRY).mounts if m.camera.band == band)
     return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)

@@ -22,8 +22,8 @@ BASELINE = SCENARIOS / "baseline.toml"
 OPEN_SEA = SCENARIOS / "open-sea.toml"
 FISHTAILING = SCENARIOS / "fishtailing.toml"
 UNDERWAY = SCENARIOS / "underway.toml"
-SYNC_SENTRY = SCENARIOS / "sync-sentry-gen3-1.toml"
-SYNC_WATCHKEEPER = SCENARIOS / "sync-watchkeeper-1280-gen1.toml"
+SWEEP_SENTRY = SCENARIOS / "sweep-sentry-gen3-1.toml"
+SWEEP_WATCHKEEPER = SCENARIOS / "sweep-watchkeeper-1280-gen1.toml"
 
 
 @contextmanager

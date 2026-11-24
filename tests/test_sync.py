@@ -10,30 +10,30 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from seascape import angles
+from seascape import angles, buoyage
 from seascape.assets import Buoy, manifest
 from seascape.config import Scenario, load, sources
 from seascape.motion import cameras_at_start, head_path
 from seascape.outputs.calibration import CameraCalibration
 from seascape.outputs.labels import Annotation, Image, Labels
-from seascape.sync import preview, sheet, staging
-from tests.scenarios import OPEN_SEA, SYNC_SENTRY, SYNC_WATCHKEEPER
+from seascape.sync import preview, sheet
+from tests.scenarios import OPEN_SEA, SWEEP_SENTRY, SWEEP_WATCHKEEPER
 
-PRODUCTS = [SYNC_SENTRY, SYNC_WATCHKEEPER]
+PRODUCTS = [SWEEP_SENTRY, SWEEP_WATCHKEEPER]
 
 
 def test_printed_entries_read_back_as_themselves() -> None:
-    entries = staging.stage(load(SYNC_SENTRY)).entries
+    entries = buoyage.stage(load(SWEEP_SENTRY)).entries
 
-    read = tomllib.loads(staging.objects_toml(entries))["objects"]
+    read = tomllib.loads(buoyage.objects_toml(entries))["objects"]
 
     assert read == entries
 
 
 def test_a_ring_loads_evenly_spaced_with_a_drift_drawn_per_buoy() -> None:
-    ring: dict[str, object] = {"asset": staging.BUOY, "range_m": 40.0}
+    ring: dict[str, object] = {"asset": buoyage.BUOY, "range_m": 40.0}
     ring |= {"bearing_deg": -10.0, "count": 3, "spacing_deg": 7.5}
-    ring["fishtail"] = staging.BUOY_FISHTAIL
+    ring["fishtail"] = buoyage.BUOY_FISHTAIL
 
     buoys = load(OPEN_SEA, [{"objects": [ring]}]).objects
 
@@ -43,9 +43,9 @@ def test_a_ring_loads_evenly_spaced_with_a_drift_drawn_per_buoy() -> None:
 
 
 def test_each_pair_s_coarser_video_sets_a_ring() -> None:
-    (rig,) = load(SYNC_SENTRY).rigs.values()
+    (rig,) = load(SWEEP_SENTRY).rigs.values()
 
-    rings = staging.rings(staging.views(rig))
+    rings = buoyage.rings(buoyage.views(rig))
 
     # Each video pairs with every other; the wide thermal is the coarsest of all,
     # then the wide RGB, then the narrow thermal against the narrow RGB.
@@ -57,7 +57,7 @@ def test_each_pair_s_coarser_video_sets_a_ring() -> None:
 
 
 def test_videos_either_side_of_the_stern_overlap() -> None:
-    stern = staging.View(
+    stern = buoyage.View(
         name="STERN",
         left_deg=132.5,
         right_deg=227.5,
@@ -68,8 +68,8 @@ def test_videos_either_side_of_the_stern_overlap() -> None:
     port = dataclasses.replace(stern, name="PORT", left_deg=-137.5, right_deg=-42.5)
     bow = dataclasses.replace(stern, left_deg=0.0, right_deg=95.0)
 
-    assert staging.overlap_deg(stern, port) == (222.5, 227.5)
-    assert staging.overlap_deg(port, bow) is None
+    assert buoyage.overlap_deg(stern, port) == (222.5, 227.5)
+    assert buoyage.overlap_deg(port, bow) is None
 
 
 @pytest.mark.parametrize("path", PRODUCTS)
@@ -77,7 +77,7 @@ def test_every_ring_crosses_every_camera_it_serves(path: Path) -> None:
     scenario = load(path)
     assert scenario.turn is not None
     (rig,) = scenario.rigs.values()
-    buoys = [o for o in scenario.objects if o.asset == staging.BUOY]
+    buoys = [o for o in scenario.objects if o.asset == buoyage.BUOY]
     stops = [0.0, *(move.to_deg for move in scenario.turn.moves)]
 
     # Each camera of a stitch gets its own crossings.
@@ -85,8 +85,8 @@ def test_every_ring_crosses_every_camera_it_serves(path: Path) -> None:
         v: min(rig.rendered[c].hfov_deg for c in sources(video))
         for v, video in rig.videos.items()
     }
-    for ring in staging.rings(staging.views(rig)):
-        out_m = staging.stored_m(ring, rig)
+    for ring in buoyage.rings(buoyage.views(rig)):
+        out_m = buoyage.stored_m(ring, rig)
         bearings = sorted(o.bearing_deg for o in buoys if o.range_m == out_m)
         narrowest = min(span_deg[v] for v in ring.videos)
         assert bearings[0] - min(stops) < narrowest
@@ -95,27 +95,27 @@ def test_every_ring_crosses_every_camera_it_serves(path: Path) -> None:
 
 
 def test_a_pan_tilt_unit_holds_its_elevation_whatever_its_mount_s_pitch() -> None:
-    scenario = load(SYNC_SENTRY)
+    scenario = load(SWEEP_SENTRY)
     (name,) = scenario.rigs
-    pitched = load(SYNC_SENTRY, [{"rigs": {name: {"pitch_deg": -3.0}}}])
+    pitched = load(SWEEP_SENTRY, [{"rigs": {name: {"pitch_deg": -3.0}}}])
 
-    assert staging.stage(pitched).elevation_deg == pytest.approx(
-        staging.stage(scenario).elevation_deg
+    assert buoyage.stage(pitched).elevation_deg == pytest.approx(
+        buoyage.stage(scenario).elevation_deg
     )
 
 
 def test_a_fixed_mount_that_loses_a_ring_names_the_pitch_to_set() -> None:
-    scenario = load(SYNC_WATCHKEEPER)
+    scenario = load(SWEEP_WATCHKEEPER)
     (name,) = scenario.rigs
 
     with pytest.raises(ValueError, match="set the rig's pitch_deg to"):
-        staging.stage(load(SYNC_WATCHKEEPER, [{"rigs": {name: {"pitch_deg": 20.0}}}]))
+        buoyage.stage(load(SWEEP_WATCHKEEPER, [{"rigs": {name: {"pitch_deg": 20.0}}}]))
 
 
 def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
-    scenario = load(SYNC_SENTRY)
+    scenario = load(SWEEP_SENTRY)
     (rig,) = scenario.rigs.values()
-    buoy = manifest()[staging.BUOY]
+    buoy = manifest()[buoyage.BUOY]
     assert isinstance(buoy, Buoy)
     focal_px = {
         v: min(rig.rendered[c].focal_px for c in sources(video))
@@ -123,12 +123,12 @@ def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
     }
     off_m = math.hypot(rig.offset_x_m, rig.offset_y_m)
     # A stored range is rounded to half a last decimal.
-    rounding_m = 0.5 * 10.0**-staging.DECIMALS
+    rounding_m = 0.5 * 10.0**-buoyage.DECIMALS
 
-    for ring in staging.rings(staging.views(rig)):
+    for ring in buoyage.rings(buoyage.views(rig)):
         coarsest_px = min(focal_px[v] for v in ring.videos)
         for o in scenario.objects:
-            if o.asset != staging.BUOY or o.range_m != staging.stored_m(ring, rig):
+            if o.asset != buoyage.BUOY or o.range_m != buoyage.stored_m(ring, rig):
                 continue
             # The cameras turn about the rig, not the origin.
             b = math.radians(o.bearing_deg)
@@ -137,15 +137,15 @@ def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
             above_px = (buoy.height_m - buoy.draught_m) * coarsest_px
             above_px /= math.hypot(east, north)
             # From the ring's range, out to rounding, in to two offsets nearer.
-            low = staging.BUOY_PX * ring.range_m / (ring.range_m + rounding_m)
+            low = buoyage.BUOY_PX * ring.range_m / (ring.range_m + rounding_m)
             near_m = ring.range_m - 2 * off_m - rounding_m
-            assert low <= above_px <= staging.BUOY_PX * ring.range_m / near_m
+            assert low <= above_px <= buoyage.BUOY_PX * ring.range_m / near_m
 
 
 def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
-    entries = staging.stage(load(SYNC_SENTRY)).entries
-    ring = next(e for e in entries if e["asset"] == staging.BUOY)
-    sold_in = staging.asset(staging.BUOY, Buoy).sold_in
+    entries = buoyage.stage(load(SWEEP_SENTRY)).entries
+    ring = next(e for e in entries if e["asset"] == buoyage.BUOY)
+    sold_in = buoyage.asset(buoyage.BUOY, Buoy).sold_in
 
     assert ring["colour"] == {"choice": sorted(sold_in)}
 
@@ -159,7 +159,7 @@ def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     ids=["drawn", "without a bearing"],
 )
 def test_a_spacing_drawn_or_without_a_bearing_is_refused(ring: dict) -> None:
-    ring |= {"asset": staging.BUOY, "range_m": 40.0, "count": 2}
+    ring |= {"asset": buoyage.BUOY, "range_m": 40.0, "count": 2}
 
     with pytest.raises(ValueError, match="spacing_deg is a fixed step"):
         load(OPEN_SEA, [{"objects": [ring]}])
@@ -167,13 +167,13 @@ def test_a_spacing_drawn_or_without_a_bearing_is_refused(ring: dict) -> None:
 
 def test_a_course_needs_a_turn() -> None:
     with pytest.raises(ValueError, match="needs a turn and one rig"):
-        staging.stage(load(OPEN_SEA))
+        buoyage.stage(load(OPEN_SEA))
 
 
 def test_a_course_needs_a_still_ownship() -> None:
     under_way = load(PRODUCTS[0], [{"ownship": {"speed_mps": 2.0}}])
     with pytest.raises(ValueError, match="a course needs it still"):
-        staging.stage(under_way)
+        buoyage.stage(under_way)
 
 
 def test_advice_without_a_course_that_fits_says_why() -> None:
@@ -183,13 +183,13 @@ def test_advice_without_a_course_that_fits_says_why() -> None:
 
 
 def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
-    scenario = load(SYNC_SENTRY)
+    scenario = load(SWEEP_SENTRY)
     ((name, rig),) = scenario.rigs.items()
     heading_deg = math.degrees(head_path(scenario, name)(0.0).heading_rad)
     n = sheet.EDGE_POINTS
     edges = sheet.frame_edges(rig, cameras_at_start(scenario, name))
 
-    for view in staging.views(rig):
+    for view in buoyage.views(rig):
         rays = edges[view.name]
         bearings = [np.degrees(np.arctan2(r[:, 0], r[:, 1])) for r in rays]
         elevations = [np.degrees(np.arcsin(r[:, 2])) for r in rays]
@@ -206,7 +206,7 @@ def test_a_rig_on_a_rolled_deck_leans_and_turns_with_it() -> None:
     and leans to starboard.
     """
     scenario = load(
-        SYNC_SENTRY,
+        SWEEP_SENTRY,
         [{"ownship": {"roll_deg": 20.0}, "rigs": {"mast": {"yaw_deg": 45.0}}}],
     )
     rig = scenario.rigs["mast"]
@@ -224,7 +224,7 @@ def test_a_lighter_hull_lifts_its_rig_along_its_tilted_mast() -> None:
     """The hull rolls about its floating waterline, so its rise leans with it."""
     roll_deg = 20.0
     ownship = {"asset": "cargo_ship", "draught_m": 5.24, "roll_deg": roll_deg}
-    scenario = load(SYNC_SENTRY, [{"ownship": ownship}])
+    scenario = load(SWEEP_SENTRY, [{"ownship": ownship}])
     start = head_path(scenario, "mast")(0.0)
 
     height_m = scenario.head_height_m("mast")
@@ -254,11 +254,11 @@ def test_a_pitched_camera_s_span_is_read_at_the_head_s_level() -> None:
 
     x = (width / 2) / f
     edge = math.degrees(math.atan(x * math.cos(pitch)))
-    assert staging._span(camera) == pytest.approx((-edge, edge))
+    assert buoyage._span(camera) == pytest.approx((-edge, edge))
 
 
-BOX = manifest()[staging.CONTAINER].category_id
-BUOY = manifest()[staging.BUOY].category_id
+BOX = manifest()[buoyage.CONTAINER].category_id
+BUOY = manifest()[buoyage.BUOY].category_id
 type Seen = list[tuple[int, float, bool, int] | tuple[int, float, bool, int, int]]
 BOXED: Seen = [(BOX, 300.0, False, 40)]
 
@@ -294,12 +294,12 @@ def passing(near_m: float) -> tuple[Seen, ...]:
 
 @pytest.fixture(scope="module")
 def watchkeeper() -> Scenario:
-    return load(SYNC_WATCHKEEPER)
+    return load(SWEEP_WATCHKEEPER)
 
 
 def near_m(scenario: Scenario) -> float:
     """The range of the scenario's nearest ring."""
-    return staging.rings(staging.views(*scenario.rigs.values()))[0].range_m
+    return buoyage.rings(buoyage.views(*scenario.rigs.values()))[0].range_m
 
 
 def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
@@ -313,8 +313,8 @@ def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
 
 @pytest.mark.parametrize("drop_farthest", [False, True])
 def test_every_ring_of_a_rig_with_several_must_be_seen(drop_farthest: bool) -> None:
-    sentry = load(SYNC_SENTRY)
-    circles = staging.rings(staging.views(*sentry.rigs.values()))
+    sentry = load(SWEEP_SENTRY)
+    circles = buoyage.rings(buoyage.views(*sentry.rigs.values()))
     videos = sorted({v for r in circles for v in r.videos})
     if drop_farthest:
         circles = circles[:-1]
