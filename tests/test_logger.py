@@ -243,6 +243,13 @@ def test_publishing_a_scenario_from_no_clean_commit_renders_nothing(
     assert not wandb.runs
 
 
+def test_a_render_published_nowhere_reads_no_frame(tmp_path: Path) -> None:
+    """A live run would open the frame; one logged nowhere never does."""
+    built = load(OPEN_SEA)
+
+    logger.UNLOGGED.frame(built.mounts[0], tmp_path / "absent.png", every=1)
+
+
 def test_a_render_logs_each_camera_s_frame_each_second(
     tmp_path: Path,
 ) -> None:
@@ -253,10 +260,9 @@ def test_a_render_logs_each_camera_s_frame_each_second(
     for path in frames:
         Image.new("RGB", (4, 3)).save(path)
     run = FakeRun()
-    log = cli._logging(live(run), built)
 
     for path in [*frames, tmp_path / "radiance.exr"]:
-        log(built.mounts[0], path)
+        live(run).frame(built.mounts[0], path, every=5)
 
     # Frames 0 and 5: one a second at 5 fps.
     assert run.logged == [{f"frame/{camera}": ("image", (4, 3))}] * 2

@@ -442,7 +442,7 @@ def test_a_one_band_scene_renders_in_this_process(
     )
 
     assert cli._render_apart(built, tmp_path) == files
-    assert rendered == [(built, tmp_path, None)]
+    assert rendered == [(built, tmp_path, logger.UNLOGGED)]
 
 
 @pytest.mark.parametrize(

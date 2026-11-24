@@ -6,23 +6,55 @@ from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from PIL import Image
+
+from seascape.config import Mount
+from seascape.outputs import agc, preview
 
 if TYPE_CHECKING:
     import wandb
 
 
-class Run:
+class Log:
+    """Where a render's progress and frames go: nowhere. `Run` sends them to W&B."""
+
+    def progress(self, *, done: int, s_per_image: float, eta_s: float) -> None:
+        """Log `done` images, the wall time per image and the time left."""
+
+    def frame(self, mount: Mount, image: Path, every: int) -> None:
+        """Log `mount`'s frame at `image` if its number is a multiple of `every`."""
+
+
+# What a render logs to when it publishes nothing.
+UNLOGGED = Log()
+
+
+class Run(Log):
     """One command's live W&B run, named `name`, and the wandb module that opened it."""
 
     def __init__(self, live: "wandb.Run", wandb: ModuleType, name: str) -> None:
         self._run, self._wandb, self.name = live, wandb, name
 
+    @override
     def progress(self, *, done: int, s_per_image: float, eta_s: float) -> None:
-        """Log `done` images, the wall time per image and the time left."""
         self._run.log({"images_done": done, "s_per_image": s_per_image, "eta_s": eta_s})
+
+    @override
+    def frame(self, mount: Mount, image: Path, every: int) -> None:
+        """Log the frame under `frame/<camera>`, a thermal one toned as its camera's
+        AGC sets; radiance, an exr, is no picture.
+        """
+        if image.suffix == ".exr":
+            return
+        # A sequence's frame is `<camera>/<frame>`, a still `<camera>`: `stem`. A
+        # cropped video's frames carry the video's name.
+        stem = image.stem
+        camera, number = (image.parent.name, int(stem)) if stem.isdigit() else (stem, 0)
+        if number % every == 0:
+            picture = preview.picture(image, agc.Agc(mount.camera.agc))
+            self.log(f"frame/{camera}", picture)
 
     def log(self, key: str, shown: Path | Image.Image) -> None:
         """Log `shown` under `key`: an mp4 at its path as a video, W&B copying it as it

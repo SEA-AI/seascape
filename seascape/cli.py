@@ -31,11 +31,9 @@ from seascape.config import (
     seeds,
 )
 from seascape.outputs import (
-    agc,
     labels,
     montage,
     panorama,
-    preview,
     provenance,
     recording,
 )
@@ -184,43 +182,23 @@ def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
             run.log(f"{view}_video", path)
 
 
-def _logging(run: logger.Run | None, built: Scenario) -> Callable[[Mount, Path], None]:
-    """Log each camera's frame about once a second of the scenario's time, under
-    `frame/<camera>`: a thermal one toned as its camera's AGC sets.
-    """
-    every = max(1, round(built.outputs.fps))
-
-    def log(mount: Mount, image: Path) -> None:
-        if run is None or image.suffix == ".exr":  # radiance, not a picture
-            return
-        # A sequence's frame is `<camera>/<frame>`, a still `<camera>`: `stem`. A
-        # cropped video's frames carry the video's name.
-        frame = image.stem
-        camera, number = (
-            (image.parent.name, int(frame)) if frame.isdigit() else (frame, 0)
-        )
-        if number % every == 0:
-            picture = preview.picture(image, agc.Agc(mount.camera.agc))
-            run.log(f"frame/{camera}", picture)
-
-    return log
-
-
-def _advance(bar: Any, run: logger.Run | None, done: int) -> None:
+def _advance(bar: Any, run: logger.Log, done: int) -> None:
     """Show `done` images on `bar`, and log its pace to `run`."""
     bar.update(done - bar.pos)
-    if run is not None:
-        run.progress(done=bar.pos, s_per_image=bar.time_per_iteration, eta_s=bar.eta)
+    run.progress(done=bar.pos, s_per_image=bar.time_per_iteration, eta_s=bar.eta)
 
 
-def _render(built: Scenario, into: Path, run: logger.Run | None = None) -> list[Path]:
+def _render(
+    built: Scenario, into: Path, run: logger.Log = logger.UNLOGGED
+) -> list[Path]:
     from seascape import render as renderer
 
-    log = _logging(run, built)
+    # About one frame a second of the scenario's time.
+    every = max(1, round(built.outputs.fps))
 
     def advance(mount: Mount, image: Path) -> None:
         _advance(bar, run, bar.pos + 1)
-        log(mount, image)
+        run.frame(mount, image, every)
 
     with (
         _progress(built.images, "Rendering") as bar,
@@ -249,7 +227,7 @@ _PARALLEL = click.option(
 
 
 def _render_apart(
-    built: Scenario, into: Path, run: logger.Run | None = None
+    built: Scenario, into: Path, run: logger.Log = logger.UNLOGGED
 ) -> list[Path]:
     """Render each band of `into`'s `scenario.toml` in a process of its own, all at
     once, then gather their frames and truth in `into` as one render writes
@@ -620,13 +598,14 @@ def recording_(
         raise click.UsageError(
             f"{title!r} cannot name an artifact: use letters, digits, '-', '_' or '.'"
         )
-    with logger.run(project, entity, title) if publish else nullcontext() as run:
+    unlogged = nullcontext(logger.UNLOGGED)
+    with logger.run(project, entity, title) if publish else unlogged as run:
         if rendering:
             _record(scenario, overrides, folder, parallel, run, commit)
         written = recording.export(folder)
         for path in written:
             click.echo(path)
-        if run is not None:
+        if isinstance(run, logger.Run):
             _log_montage(folder, run)
             recorded = sorted({p.parent for p in written if p.suffix == ".mp4"})
             info = labels.Labels.read(folder).info
@@ -638,19 +617,19 @@ def _record(
     overrides: tuple[str, ...],
     folder: Path,
     parallel: bool,
-    run: logger.Run | None,
+    run: logger.Log,
     commit: str | None,
 ) -> None:
-    """Render `scenario` into `folder` and encode its videos; with `run`, log the
-    previews and progress, then refuse to publish if the checkout left `commit`, by
-    an edit or a checkout, while it rendered.
+    """Render `scenario` into `folder` and encode its videos, logging progress to
+    `run`; a live one also gets the previews, then refuses to publish if the
+    checkout left `commit`, by an edit or a checkout, while it rendered.
     """
     _, built = _pin(scenario, overrides, folder)
-    if run is not None:
+    if isinstance(run, logger.Run):
         _previews(built, folder, run)
     (_render_apart if parallel else _render)(built, folder, run)
     _encode(folder, _QUALITY)
-    if run is None:
+    if not isinstance(run, logger.Run):
         return
     # The labels hold the checkout as the render built its scene, which an edit
     # undone by the end shows and the checkout then does not.
