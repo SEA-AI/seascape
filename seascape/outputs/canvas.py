@@ -77,7 +77,7 @@ def _centred(image: Image.Image, width: int, matte: Colour) -> Image.Image:
 
 
 def on_backdrop(image: Image.Image, colour: Colour = (110, 110, 110)) -> Image.Image:
-    """A dark hull shows on mid grey, not on the matte."""
+    """A dark hull shows on `colour`, not on the matte."""
     backdrop = Image.new("RGBA", image.size, colour)
     return Image.alpha_composite(backdrop, image.convert("RGBA")).convert("RGB")
 

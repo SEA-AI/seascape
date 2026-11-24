@@ -31,14 +31,12 @@ REACH = 0.15
 WIRE = 1 / 30
 FONT_PX = 18
 LINE_PX = FONT_PX + 4
-# Left of the views' names, so the columns line up with them.
 PAD_PX = 10
 COLUMN_GAP_PX = 48
-# Brand Book 2026: a red line structures the page, with visible weight.
+# Brand Book 2026: a red line structures the page; judgement: 3 px reads at 3 tiles.
 RULE_PX = 3
-WHITE = (255, 255, 255)
 
-type Line = tuple[str, tuple[int, ...]]
+type Line = tuple[str, canvas.Colour]
 
 
 def _frustum(
@@ -101,7 +99,7 @@ def _rig_lines(
         )
     if (above_m := _hit_m(frame, at, up=True)) is not None:
         texts.append(f"hull ABOVE it at {above_m:.2f} m")
-    return [(text, WHITE) for text in texts]
+    return [(text, brand.WHITE) for text in texts]
 
 
 def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
@@ -121,7 +119,7 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
             tile = canvas.on_backdrop(Image.open(path), brand.SKY_GREY)
             tile = tile.resize(TILE, Image.Resampling.LANCZOS)
             ImageDraw.Draw(tile).text(
-                (10, 8),
+                (PAD_PX, 8),
                 pose.name.upper(),
                 font=brand.font(FONT_PX + 2, "Medium"),
                 fill=brand.NIGHT_BLUE,
@@ -136,7 +134,10 @@ def _column(rig: str, lines: list[Line], width_px: int) -> Image.Image:
     column = Image.new("RGB", (width_px, height_px), brand.NIGHT_BLUE)
     pen = ImageDraw.Draw(column)
     pen.text(
-        (0, 0), f"RIG {rig.upper()}", font=brand.font(FONT_PX, "Medium"), fill=WHITE
+        (0, 0),
+        f"RIG {rig.upper()}",
+        font=brand.font(FONT_PX, "Medium"),
+        fill=brand.WHITE,
     )
     for k, (text, ink) in enumerate(lines, start=1):
         pen.text((0, LINE_PX * k), text, font=brand.font(FONT_PX), fill=ink)
@@ -144,8 +145,8 @@ def _column(rig: str, lines: list[Line], width_px: int) -> Image.Image:
 
 
 def _caption(rigs: dict[str, list[Line]], width_px: int) -> Image.Image:
-    """A column per rig, a whole number of tiles wide, as many to a row as fit, on
-    Night Blue under a red rule.
+    """A column per rig, whole tiles wide to line up under the views, as many to a
+    row as fit.
     """
     face = brand.font(FONT_PX)
     widest = max(face.getlength(text) for lines in rigs.values() for text, _ in lines)
@@ -206,7 +207,7 @@ def draw(scenario: Scenario, out: Path) -> None:
             (
                 f"{mount.name}: bearing {bearing:+.1f} deg, "
                 f"elevation {elevation:+.1f} deg, hfov {mount.camera.hfov_deg:g} deg",
-                tuple(int(c) for c in rgb),
+                (int(rgb[0]), int(rgb[1]), int(rgb[2])),
             )
         )
     bpy.context.view_layer.update()
