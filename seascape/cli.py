@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -608,13 +609,20 @@ def recording_(
             raise click.UsageError(
                 f"--publish needs a render from a clean commit, not {commit}"
             )
+    else:
+        commit = None
     if rendering:
         _empty(folder)
     # `Path(".").name` is empty.
     title = name or folder.resolve().name
+    # W&B's rule for an artifact's name, checked before hours of rendering.
+    if publish and not re.fullmatch(r"[A-Za-z0-9_.-]+", title):
+        raise click.UsageError(
+            f"{title!r} cannot name an artifact: use letters, digits, '-', '_' or '.'"
+        )
     with logger.run(project, entity, title) if publish else nullcontext() as run:
         if rendering:
-            _record(scenario, overrides, folder, parallel, run)
+            _record(scenario, overrides, folder, parallel, run, commit)
         written = recording.export(folder)
         for path in written:
             click.echo(path)
@@ -631,19 +639,20 @@ def _record(
     folder: Path,
     parallel: bool,
     run: logger.Run | None,
+    commit: str | None,
 ) -> None:
     """Render `scenario` into `folder` and encode its videos; with `run`, log the
-    previews and progress, then refuse to publish if an edit to a tracked file left
-    the checkout `-dirty` while it rendered.
+    previews and progress, then refuse to publish if the checkout left `commit`, by
+    an edit or a checkout, while it rendered.
     """
     _, built = _pin(scenario, overrides, folder)
     if run is not None:
         _previews(built, folder, run)
     (_render_apart if parallel else _render)(built, folder, run)
     _encode(folder, _QUALITY)
-    if run is not None and not provenance.clean(now := provenance.commit()):
+    if run is not None and (now := provenance.commit()) != commit:
         raise click.ClickException(
-            f"the checkout went {now} while it rendered: not published"
+            f"the checkout went from {commit} to {now} while it rendered: not published"
         )
 
 

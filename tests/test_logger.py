@@ -43,8 +43,8 @@ class Config:
 class FakeRun:
     """What a run records, in place of sending it."""
 
-    def __init__(self, **init: Any) -> None:
-        self.init = init
+    def __init__(self, offline: bool = False, **init: Any) -> None:
+        self.init, self.offline = init, offline
         self.logged: list[dict[str, Any]] = []
         self.config = Config()
         self.summary: dict[str, Any] = {}
@@ -72,14 +72,14 @@ class WandbError(Exception):
     pass
 
 
-def fake_wandb(refusal: str | None = None) -> SimpleNamespace:
+def fake_wandb(refusal: str | None = None, offline: bool = False) -> SimpleNamespace:
     """A wandb whose runs are in `runs`, or whose `init` raises `refusal`."""
     runs: list[FakeRun] = []
 
     def init(**kwargs: Any) -> FakeRun:
         if refusal is not None:
             raise WandbError(refusal)
-        runs.append(FakeRun(**kwargs))
+        runs.append(FakeRun(offline, **kwargs))
         return runs[-1]
 
     return SimpleNamespace(
@@ -359,11 +359,16 @@ def test_publishing_into_a_folder_not_empty_starts_no_run(
     assert not wandb.runs
 
 
-def test_a_render_left_dirty_is_not_published(
-    wandb: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "after", ["abc1234-dirty", "def5678"], ids=["a file edited", "another commit"]
+)
+def test_a_render_whose_checkout_moved_is_not_published(
+    wandb: SimpleNamespace,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    after: str,
 ) -> None:
-    # A tracked file edited while it rendered.
-    commits = iter(["abc1234", "abc1234-dirty"])
+    commits = iter(["abc1234", after])
     monkeypatch.setattr(provenance, "commit", lambda: next(commits))
     monkeypatch.setattr(cli, "_previews", lambda *_: None)
 
@@ -379,6 +384,50 @@ def test_a_render_left_dirty_is_not_published(
     result = cli_run("recording", OPEN_SEA, "-o", tmp_path / "x", "--publish")
 
     assert result.exit_code == 1
-    assert "abc1234-dirty" in result.output
+    assert after in result.output
     (run,) = wandb.runs
     assert not run.outputs
+
+
+@pytest.mark.parametrize(
+    ("folder", "flags"),
+    [("sweep", ("--name", "sweep test")), ("sweep test", ())],
+    ids=["--name", "the folder's name"],
+)
+def test_a_name_w_and_b_refuses_renders_nothing(
+    wandb: SimpleNamespace,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    folder: str,
+    flags: tuple[str, ...],
+) -> None:
+    def rendered(*_: object) -> list[Path]:
+        raise AssertionError("rendered a scene it cannot publish")
+
+    monkeypatch.setattr(provenance, "commit", lambda: "abc1234")
+    monkeypatch.setattr(cli, "_render", rendered)
+
+    result = cli_run(
+        "recording", OPEN_SEA, "-o", tmp_path / folder, "--publish", *flags
+    )
+
+    assert result.exit_code == 2
+    assert "cannot name an artifact" in result.output
+    assert not wandb.runs
+
+
+def test_an_offline_run_is_refused_before_the_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb(offline=True))
+    rendered(tmp_path, "abc1234")
+
+    def exported(_: Path) -> list[Path]:
+        raise AssertionError("exported a recording it cannot publish")
+
+    monkeypatch.setattr(cli.recording, "export", exported)
+
+    result = cli_run("recording", tmp_path, "--publish")
+
+    assert result.exit_code == 1
+    assert "offline" in result.output

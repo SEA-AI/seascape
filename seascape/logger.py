@@ -93,4 +93,7 @@ def run(project: str, entity: str | None, name: str) -> Generator[Run]:
     except wandb.errors.Error as error:
         raise ValueError(f"W&B started no run: {error}") from error
     with live:
+        # Offline, a run starts but cannot use an artifact: refuse before the render.
+        if live.offline:
+            raise ValueError("W&B is offline: publishing needs WANDB_MODE online")
         yield Run(live, wandb, name)

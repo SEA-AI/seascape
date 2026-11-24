@@ -24,7 +24,7 @@ Prerequisites:
 
 An artifact's name is its collection, and each publish under it adds a version: v0, v1, and so on. Content identical to an existing version reuses it. W&B never reuses a number, even after a deletion.
 
-- **One collection per TOML.** Re-render the same TOML, after a fix or on a newer seascape, and publish it again: it becomes the next version of the same collection. A new TOML starts a new collection, so name it for what it tests and unique across the team: `tracker-crossing-ferries`, never `test2`.
+- **One collection per TOML.** Re-render the same TOML, after a fix or on a newer seascape, and publish it again: it becomes the next version of the same collection. The first render's folder is not empty, so give the next its own, with the collection's name: `-o scenarios/<x>-v2 --name <x>`. A new TOML starts a new collection, so name it for what it tests and unique across the team: `tracker-crossing-ferries`, never `test2`.
 - **The scenario versions alongside.** An unchanged TOML reuses its `<x>-scenario` version, so the lineage shows every recording rendered from it.
 
 ## Registry
@@ -37,4 +37,4 @@ A consumer fetches an exact version, since `latest` moves with the next publish:
 uvx wandb artifact get --root <dir> wandb-registry-dataset/<x>:v<m>
 ```
 
-To reproduce one, check out its run's `config.commit`, fetch the `<x>-scenario` it used, and run the command above on that TOML.
+To reproduce one, check out its run's `config.commit`, fetch the `<x>-scenario` it used, and render that TOML with `uv run seascape recording <toml>`: a commit from before `--publish` has no such flag, and reproducing publishes nothing.
