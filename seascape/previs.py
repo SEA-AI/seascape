@@ -35,7 +35,7 @@ from seascape.blender.vessels import Hulls, add_ownship, add_vessels
 from seascape.config import Mount, Scenario
 from seascape.motion import cameras_at_start, head_path, ownship_up_m, track
 from seascape.outputs import canvas
-from seascape.outputs.plan import (
+from seascape.outputs.previs import (
     LABEL_PX,
     LINE_PX,
     TICK_LABEL_PX,
@@ -57,7 +57,6 @@ VIEWS: tuple[View, ...] = ("top", "chase")
 # Square from above, as range rings are round.
 SIZE_PX: dict[View, tuple[int, int]] = {"top": (720, 720), "chase": (1280, 720)}
 # Each view's picture, `<title>-<name>.png`.
-NAMES: dict[View, str] = {"top": "plan", "chase": "chase"}
 
 
 def _linear(srgb_hex: str) -> tuple[float, float, float, float]:
@@ -409,7 +408,7 @@ def _eevee(heading_deg: float, view: View) -> None:
 def _build(scenario: Scenario, view: View) -> _Scene:
     """Every hull at its pose, keyed per output frame, on a flat sea under EEVEE.
 
-    The sea is flat and Earth too: the plan is a map, and a curved sea would sink a
+    The sea is flat and Earth too: the top view is a map, and a curved sea would sink a
     far hull below the flat plane.
     """
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -417,10 +416,10 @@ def _build(scenario: Scenario, view: View) -> _Scene:
     # Colours as drawn: the factory AgX and dither would shift them.
     sc.view_settings.view_transform = "Standard"
     sc.render.dither_intensity = 0.0
-    sc.world = bpy.data.worlds.new("plan")
+    sc.world = bpy.data.worlds.new("previs")
     times = scenario.outputs.times_s
     path = track(scenario.ownship, scenario.outputs, scenario.turn)
-    hulls = Hulls(scenario.sky, None)  # a plan draws no wear
+    hulls = Hulls(scenario.sky, None)  # a previs draws no wear
     ownship = add_ownship(
         scenario.ownship,
         path,
@@ -813,7 +812,7 @@ def draw(
         RuntimeError: A view failed; the message holds the end of its log.
     """
     folder.mkdir(parents=True, exist_ok=True)
-    stills = {v: folder / f"{title}-{NAMES[v]}.png" for v in VIEWS}
+    stills = {v: folder / f"{title}-{v}.png" for v in VIEWS}
     frames, play_fps, total = None, 0.0, 0
     if video_fps is not None:
         outputs = scenario.outputs

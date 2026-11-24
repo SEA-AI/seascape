@@ -1,4 +1,4 @@
-"""What a plan of a scenario labels and when it samples the run, and its HUD."""
+"""What a previs of a scenario labels and when it samples the run, and its HUD."""
 
 import math
 from collections.abc import Iterable, Sequence

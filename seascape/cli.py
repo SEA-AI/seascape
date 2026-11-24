@@ -362,7 +362,7 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
     click.echo(path)
 
 
-@main.command("plan")
+@main.command("previs")
 @_scenario("The folder the pictures go in. Default: beside the scenario.")
 @click.option(
     "--video",
@@ -375,7 +375,7 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
     help="With --video, frames a second, rounded to a whole step of the scenario's "
     "rate. Default: the scenario's rate.",
 )
-def plan_view(
+def previs_(
     scenario: Path,
     output: Path | None,
     overrides: tuple[str, ...],
@@ -388,11 +388,11 @@ def plan_view(
     if fps is not None and not video:
         raise click.UsageError("--fps needs --video")
     built = load(scenario, list(overrides))
-    from seascape import plan
+    from seascape import previs
 
     video_fps = (fps or built.outputs.fps) if video else None
     with _blender_log(Path(os.devnull)), _progress(0, "Drawing") as bar:
-        drawn = plan.draw(
+        drawn = previs.draw(
             built, output or scenario.parent, scenario.stem, video_fps, _steps(bar)
         )
     for path in [*drawn.stills.values(), *drawn.videos.values()]:

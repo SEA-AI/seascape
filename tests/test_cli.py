@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
 
-from seascape import assets, cli, plan, processes, rigview, server
+from seascape import assets, cli, previs, processes, rigview, server
 from seascape import render as renderer
 from seascape.assets import skies
 from seascape.config import Scenario, load, loader
@@ -586,28 +586,28 @@ def test_a_plan_video_is_drawn_beside_the_scenario_at_its_rate(
 
     def draw(
         _: Scenario, folder: Path, title: str, video_fps: float, *__: object
-    ) -> plan.Drawn:
+    ) -> previs.Drawn:
         calls.append((folder, title, video_fps))
-        return plan.Drawn({"top": folder / "plan.png"}, {"top": folder / "plan.mp4"})
+        return previs.Drawn({"top": folder / "top.png"}, {"top": folder / "top.mp4"})
 
-    monkeypatch.setattr(plan, "draw", draw)
+    monkeypatch.setattr(previs, "draw", draw)
 
-    drawn = run("plan", scenario, "--video")
+    drawn = run("previs", scenario, "--video")
 
     assert drawn.exit_code == 0, drawn.output
     assert calls == [(tmp_path, "sweep", load(SWEEP_SENTRY).outputs.fps)]
-    assert drawn.stdout == f"{tmp_path / 'plan.png'}\n{tmp_path / 'plan.mp4'}\n"
+    assert drawn.stdout == f"{tmp_path / 'top.png'}\n{tmp_path / 'top.mp4'}\n"
 
 
 def test_a_plan_rate_without_a_video_is_refused(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def draw(*_: object, **__: object) -> None:
-        raise AssertionError("drew a plan it should refuse")
+        raise AssertionError("drew a previs it should refuse")
 
-    monkeypatch.setattr(plan, "draw", draw)
+    monkeypatch.setattr(previs, "draw", draw)
 
-    refused = run("plan", SWEEP_SENTRY, "--fps", "5")
+    refused = run("previs", SWEEP_SENTRY, "--fps", "5")
 
     assert refused.exit_code == 2
     assert "--video" in refused.output
