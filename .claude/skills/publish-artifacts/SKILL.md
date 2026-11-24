@@ -2,8 +2,8 @@
 name: publish-artifacts
 description: >-
   Publishes a seascape recording to W&B as an artifact, with the scenario that made it
-  as its input. Use whenever a recording is to reach W&B, wandb, an artifact or
-  the registry, even when the request only says upload, push or share it, and to fetch
+  as its input. Use whenever a recording is to reach W&B, wandb or an artifact,
+  even when the request only says upload, push or share it, and to fetch
   or reproduce a published one.
 ---
 
@@ -27,14 +27,12 @@ An artifact's name is its collection, and each publish under it adds a version: 
 - **One collection per TOML.** Re-render the same TOML, after a fix or on a newer seascape, and publish it again: it becomes the next version of the same collection. The first render's folder is not empty, so give the next its own, with the collection's name: `-o scenarios/<x>-v2 --name <x>`. A new TOML starts a new collection, so name it for what it tests and unique across the team: `tracker-crossing-ferries`, never `test2`.
 - **The scenario versions alongside.** An unchanged TOML reuses its `<x>-scenario` version, so the lineage shows every recording rendered from it.
 
-## Registry
+## Fetch
 
-Linking a version into `wandb-registry-dataset/<x>` is a person's call, made by hand in W&B. Check first that `wandb-registry-dataset` accepts type `recording`. The registry counts its own links: `wandb-registry-dataset/<x>:v<m>` can differ from the project's `<x>:v<n>`, and consumers use the registry's.
-
-A consumer fetches an exact version, since `latest` moves with the next publish:
+`:latest` moves with the next publish; pin `:v<n>` to hold one:
 
 ```bash
-uvx wandb artifact get --root <dir> wandb-registry-dataset/<x>:v<m>
+uvx wandb artifact get --root <dir> sea-ai/synthetic-recordings/<x>:v<n>
 ```
 
 To reproduce one, check out its run's `config.commit` and fetch the `<x>-scenario` it used. Render that TOML with `uv run seascape recording <toml>`; where `recording` at that commit takes only a folder, run `uv run seascape render <toml> -o <folder>`, `uv run seascape video <folder>`, then `uv run seascape recording <folder>`. Reproducing publishes nothing, so leave out `--publish`, which older commits lack.
