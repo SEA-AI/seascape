@@ -22,7 +22,7 @@ def main() -> None:
     labels = next((f for f in found if f.is_file()), None)
     if labels is None:
         raise SystemExit(f"no labels.json in {args.data} or above it")
-    # `seascape render` and `sync` write it, so it is what rendered.
+    # `seascape render` and `recording` write it, so it is what rendered.
     scenario = labels.with_name("scenario.toml")
     if not scenario.is_file():
         raise SystemExit(f"no {scenario}: publish a --variants run from its root")

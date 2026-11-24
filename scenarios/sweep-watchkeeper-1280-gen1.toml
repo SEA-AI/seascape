@@ -1,6 +1,6 @@
 #:schema ../schema/scenario.json
 
-extends = "sync.toml"
+extends = "sweep.toml"
 
 # Watchkeeper rides on small motorboats.
 [ownship]
@@ -17,7 +17,7 @@ offset_y_m = -2.6
 top_rate_deg_s = 30.0
 accel_deg_s2 = 30.0
 
-# Placed by `seascape sync` for this rig and turn.
+# Placed by `seascape.buoyage` for this rig and turn.
 [[objects]]
 asset = "container"
 range_m = 18.3

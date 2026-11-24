@@ -71,9 +71,10 @@ type = "layers"
 containers = ["seascape"]
 layers = [
     "cli",
-    "server | catalog | zones | sync | rigview",
+    "server | catalog | zones | rigview",
     "render",
     "blender",
+    "buoyage",
     "outputs | motion",
     "config",
     "assets",

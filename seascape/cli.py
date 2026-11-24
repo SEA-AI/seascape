@@ -16,7 +16,7 @@ from typing import Any, get_args
 
 import click
 
-from seascape import assets
+from seascape import assets, outputs
 from seascape.assets import skies
 from seascape.config import (
     BANDS,
@@ -55,8 +55,12 @@ class _Seascape(click.Group):
             raise click.ClickException(str(error)) from error
 
 
-def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None]]:
-    """The scenario argument and its `--output` and `--set`; `output` is its help."""
+def _scenario(
+    output: str, kind: click.Path = _FILE
+) -> Callable[[Callable[..., None]], Callable[..., None]]:
+    """The scenario argument and its `--output` and `--set`; `output` is its help,
+    `kind` what the argument may name.
+    """
 
     def add(command: Callable[..., None]) -> Callable[..., None]:
         command = click.option(
@@ -69,7 +73,7 @@ def _scenario(output: str) -> Callable[[Callable[..., None]], Callable[..., None
         command = click.option(
             "-o", "--output", type=click.Path(path_type=Path), help=output
         )(command)
-        return click.argument("scenario", type=_FILE)(command)
+        return click.argument("scenario", type=kind)(command)
 
     return add
 
@@ -141,9 +145,14 @@ def _render(built: Scenario, into: Path) -> list[Path]:
         return renderer.render(built, into, lambda: bar.update(1))
 
 
-def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> list[Band]:
-    """Run `commands` at once, each logging to its log; the bands that failed. The
-    first to fail stops the rest, and an error or Ctrl-C kills them.
+def _run_at_once(
+    commands: dict[Band, list[str]],
+    logs: dict[Band, Path],
+    tick: Callable[[], None] = lambda: None,
+) -> list[Band]:
+    """Run `commands` at once, each logging to its log, calling `tick` each second;
+    the bands that failed. The first to fail stops the rest, and an error or Ctrl-C
+    kills them.
     """
     # Limitation: a SIGTERM or SIGKILL to this process leaves them running; Linux's
     # PR_SET_PDEATHSIG in each child would end them.
@@ -168,6 +177,7 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
                 for band in done:
                     del pending[band]
                 if pending and not done:
+                    tick()
                     time.sleep(1)
         finally:
             for run in runs.values():
@@ -177,18 +187,25 @@ def _run_at_once(commands: dict[Band, list[str]], logs: dict[Band, Path]) -> lis
     return failed
 
 
-def _render_apart(built: Scenario, into: Path) -> None:
+_PARALLEL = click.option(
+    "--parallel",
+    is_flag=True,
+    help="Render each band in its own process at once. Faster when one band leaves "
+    "the GPU idle; needs one render's memory per band.",
+)
+
+
+def _render_apart(built: Scenario, into: Path) -> list[Path]:
     """Render each band of `into`'s `scenario.toml` in a `seascape render` of its own,
     all at once, then gather their frames and truth in `into` as one render writes
-    them. A scene with one band renders here.
+    them; the files written. A scene with one band renders here.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
     a frame; another band's render fills that time.
     """
     bands = [band for band in built.outputs.bands if built.band_mounts(band)]
     if len(bands) < 2:
-        _render(built, into)
-        return
+        return _render(built, into)
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
     logs = {band: into / f".{band}.log" for band in bands}
@@ -207,7 +224,21 @@ def _render_apart(built: Scenario, into: Path) -> None:
         ]
     shown = ", ".join(map(str, logs.values()))
     click.echo(f"Rendering {', '.join(bands)} at once; see {shown}", err=True)
-    if failed := _run_at_once(commands, logs):
+    fmt = built.outputs.format
+    with _progress(built.images, "Rendering") as bar:
+
+        def tick() -> None:
+            done = sum(
+                len(outputs.written(parts[b], m.name, fmt))
+                for b in bands
+                for m in built.band_mounts(b)
+            )
+            bar.update(done - bar.pos)
+
+        failed = _run_at_once(commands, logs, tick)
+        if not failed:
+            bar.update(built.images - bar.pos)
+    if failed:
         raise click.ClickException(
             f"rendering {', '.join(failed)} failed: see "
             f"{', '.join(str(logs[b]) for b in failed)}; {into} keeps every part"
@@ -217,11 +248,13 @@ def _render_apart(built: Scenario, into: Path) -> None:
     # Each part's scenario renders one band; the truth records the whole scene's.
     truth.info["scenario"] = built.model_dump(mode="json")
     calibrations = [Calibration.read(part) for part in parts.values()]
-    Calibration(
-        cameras=list(chain.from_iterable(c.cameras for c in calibrations)),
-        raw=list(chain.from_iterable(c.raw for c in calibrations)),
-    ).write(into)
-    truth.write(into)
+    written = [
+        Calibration(
+            cameras=list(chain.from_iterable(c.cameras for c in calibrations)),
+            raw=list(chain.from_iterable(c.raw for c in calibrations)),
+        ).write(into),
+        truth.write(into),
+    ]
     # The whole scene's copies are already in `into`.
     own = {labels.FILENAME, CALIBRATION, SCENARIO, _BLENDER_LOG}
     with (into / _BLENDER_LOG).open("ab") as joined:
@@ -230,9 +263,10 @@ def _render_apart(built: Scenario, into: Path) -> None:
                 shutil.copyfileobj(log, joined)
             for item in part.iterdir():
                 if item.name not in own:
-                    item.rename(into / item.name)
+                    written.append(item.rename(into / item.name))
             shutil.rmtree(part)
             logs[band].unlink()
+    return written
 
 
 _QUALITY = "perc_lossless"
@@ -289,12 +323,19 @@ def build(
     show_default=True,
     help="Scenes from consecutive seeds, in a folder per seed when there are several.",
 )
+@_PARALLEL
 def render(
-    scenario: Path, output: Path | None, overrides: tuple[str, ...], variants: int
+    scenario: Path,
+    output: Path | None,
+    overrides: tuple[str, ...],
+    variants: int,
+    parallel: bool,
 ) -> None:
     """Write one image per camera and frame, and their labels. With --variants, a seed
     whose hulls meet is skipped for the next, and the labels merge into one file.
     """
+    if parallel and variants > 1:
+        raise click.UsageError("--parallel renders one variant")
     into = _empty(output or scenario.with_suffix(""))
     # Once, at the root: the seeds' own values are in their labels.
     tree, built = _pin(scenario, overrides, into)
@@ -302,7 +343,7 @@ def render(
     from seascape.blender.vessels import OverlapError
 
     if variants == 1:
-        written = _render(built, into)
+        written = (_render_apart if parallel else _render)(built, into)
     else:
         written, folders = [], []
         with (
@@ -332,77 +373,6 @@ def render(
     for path in written:
         click.echo(path)
     click.echo(f"{len(written)} files in {into}", err=True)
-
-
-@main.command()
-@_scenario("A directory. Default: beside the scenario.")
-@click.option(
-    "--preview",
-    is_flag=True,
-    help="Render at 1 fps and one sample, and check every video sees a buoy of each "
-    "of its rings whole and the container at both ends; nothing is encoded.",
-)
-@click.option(
-    "--sheet",
-    is_flag=True,
-    help="Draw the course on one image, <scenario>-course.png in the directory, and "
-    "render nothing.",
-)
-@click.option(
-    "--parallel",
-    is_flag=True,
-    help="Render each band in its own process at once. Faster when one band leaves "
-    "the GPU idle; needs one render's memory per band.",
-)
-def sync(
-    scenario: Path,
-    output: Path | None,
-    overrides: tuple[str, ...],
-    preview: bool,
-    sheet: bool,
-    parallel: bool,
-) -> None:
-    """Render, encode and record a sync scenario, preview it, or draw its course."""
-    from seascape.sync import preview as checks
-
-    if sheet and preview:
-        raise click.UsageError("--sheet and --preview are exclusive")
-    if parallel and (sheet or preview):
-        raise click.UsageError("--parallel takes neither --sheet nor --preview")
-    if sheet:
-        from seascape.sync.sheet import draw
-
-        built = load(scenario, list(overrides))
-        into = output or scenario.parent
-        into.mkdir(parents=True, exist_ok=True)
-        path = into / f"{scenario.stem}-course.png"
-        with _blender_log(Path(os.devnull)):
-            drawn = draw(built, path)
-        click.echo(drawn)
-        return
-    if not preview:
-        into = _empty(output or scenario.with_suffix(""))
-        _, built = _pin(scenario, overrides, into)
-        if parallel:
-            _render_apart(built, into)
-        else:
-            _render(built, into)
-        _encode(into, _QUALITY)
-        for path in recording.export(into):
-            click.echo(path)
-        return
-    built = load(scenario, [*overrides, checks.PREVIEW])
-    if not checks.placed(built):
-        raise click.ClickException(checks.advice(built, f"{scenario} holds no buoys"))
-    into = _empty(output or scenario.with_name(f"{scenario.stem}-preview"))
-    _render(built, into)
-    try:
-        checks.check(labels.Labels.read(into), built)
-    except ValueError as missed:
-        raise click.ClickException(
-            checks.advice(built, f"{scenario}: {missed}")
-        ) from missed
-    click.echo(f"every video sees the course: {into}")
 
 
 @main.command("montage")
@@ -485,9 +455,27 @@ def video(folder: Path, quality: str) -> None:
 
 
 @main.command("recording")
-@click.argument("folder", type=_FOLDER)
-def recording_(folder: Path) -> None:
-    """Lay each rig's videos out as a recording, after video."""
+@_scenario(
+    "A directory. Default: beside the scenario.",
+    click.Path(exists=True, path_type=Path),
+)
+@_PARALLEL
+def recording_(
+    scenario: Path, output: Path | None, overrides: tuple[str, ...], parallel: bool
+) -> None:
+    """Lay each rig's videos out as a recording. SCENARIO is a render's folder, after
+    video, or a scenario to render and encode first.
+    """
+    folder = scenario
+    if scenario.is_file():
+        folder = _empty(output or scenario.with_suffix(""))
+        _, built = _pin(scenario, overrides, folder)
+        (_render_apart if parallel else _render)(built, folder)
+        _encode(folder, _QUALITY)
+    elif output or overrides or parallel:
+        raise click.UsageError(
+            "a render's folder takes neither -o, --set nor --parallel"
+        )
     for path in recording.export(folder):
         click.echo(path)
 

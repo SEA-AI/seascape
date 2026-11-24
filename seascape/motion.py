@@ -171,7 +171,7 @@ def head_path(scenario: Scenario, name: str) -> Path:
     bearing of its axis, on a hull tilted by the ownship's scripted pitch and roll.
 
     Limitation: leaves out the sea's rocking, its yaw included, and a ptu's tilt;
-    staging and the sheet still aim the course along the base's yaw on a level hull.
+    buoyage aims along the base's yaw on a level hull.
     """
     rig = scenario.rigs[name]
     path = track(scenario.ownship, scenario.outputs, scenario.turn)

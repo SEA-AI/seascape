@@ -17,8 +17,7 @@ from seascape.assets import skies
 from seascape.config import Scenario, load, loader
 from seascape.outputs import labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
-from seascape.sync import staging
-from tests.scenarios import BASELINE, OPEN_SEA, SYNC_SENTRY
+from tests.scenarios import BASELINE, OPEN_SEA, SWEEP_SENTRY, SWEEP_WATCHKEEPER
 
 type Run = Callable[..., Result]
 
@@ -230,7 +229,7 @@ def test_variants_give_up_when_every_seed_has_hulls_meeting(
 
 
 @pytest.mark.parametrize(
-    ("command", "scenario"), [("render", OPEN_SEA), ("sync", SYNC_SENTRY)]
+    ("command", "scenario"), [("render", OPEN_SEA), ("recording", SWEEP_SENTRY)]
 )
 def test_a_render_s_folder_holds_the_scenario_it_rendered(
     command: str,
@@ -302,9 +301,7 @@ def test_rig_view_needs_a_hull_to_draw_on(run: Run, tmp_path: Path) -> None:
 
 @pytest.mark.render
 def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
-    scenario = (
-        Path(cli.__file__).parents[1] / "scenarios" / "sync-watchkeeper-1280-gen1.toml"
-    )
+    scenario = SWEEP_WATCHKEEPER
     out = tmp_path / "rig.png"
     drawn = run("rig-view", scenario, "-o", out)
     assert drawn.exit_code == 0, drawn.stderr
@@ -357,28 +354,6 @@ def test_a_shader_cycles_draws_black_fails_the_command(tmp_path: Path) -> None:
         bpy.ops.render.render()
 
 
-def test_a_preview_with_no_buoys_prints_the_course_and_renders_nothing(
-    run: Run, tmp_path: Path
-) -> None:
-    out = tmp_path / "preview"
-    refused = run("sync", SYNC_SENTRY, "--preview", "--set", "objects = []", "-o", out)
-
-    assert refused.exit_code == 1
-    assert "holds no buoys" in refused.stderr
-    assert staging.suggested(load(SYNC_SENTRY)) in refused.stderr
-    assert not out.exists()
-
-
-def test_a_course_sheet_is_one_image(run: Run, tmp_path: Path) -> None:
-    out = tmp_path / f"{SYNC_SENTRY.stem}-course.png"
-
-    drawn = run("sync", SYNC_SENTRY, "--sheet", "-o", tmp_path)
-
-    assert drawn.exit_code == 0, drawn.stderr
-    assert drawn.stdout == f"{out}\n"
-    Image.open(out).verify()
-
-
 class _Band:
     """A band's render that exits with `code` on its `polls`-th poll, unless killed."""
 
@@ -413,7 +388,7 @@ def test_a_failed_band_stops_the_others_and_names_its_log(
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
 
     with pytest.raises(click.ClickException, match=r"\.ir\.log") as failed:
-        cli._render_apart(load(SYNC_SENTRY), tmp_path)
+        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
 
     assert ".eo.log" not in str(failed.value)
     assert started["eo"].killed
@@ -435,13 +410,14 @@ def test_an_interrupt_kills_every_band(
     monkeypatch.setattr(cli.time, "sleep", interrupted)
 
     with pytest.raises(KeyboardInterrupt):
-        cli._render_apart(load(SYNC_SENTRY), tmp_path)
+        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
 
     assert [band.killed for band in started] == [True, True]
 
 
-def test_sync_parallel_renders_each_band_apart_with_the_user_s_overrides(
-    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("command", ["render", "recording"])
+def test_parallel_renders_each_band_apart_with_the_user_s_overrides(
+    command: str, run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rendered: dict[str, object] = {}
 
@@ -459,8 +435,8 @@ def test_sync_parallel_renders_each_band_apart_with_the_user_s_overrides(
     monkeypatch.setattr(cli, "_render", together)
 
     run(
-        "sync",
-        SYNC_SENTRY,
+        command,
+        SWEEP_SENTRY,
         "--parallel",
         *("--set", "outputs.fps = 3", "--set", 'outputs.bands = ["eo", "ir"]'),
         *("-o", tmp_path),
@@ -481,13 +457,14 @@ def test_a_one_band_scene_renders_in_this_process(
     ir_cameras: bool,
 ) -> None:
     rendered = []
+    files = [tmp_path / "frame.png"]
 
     def start(*_: object, **__: object) -> None:
         raise AssertionError("started a process for one band")
 
     monkeypatch.setattr(subprocess, "Popen", start)
-    monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args))
-    built = load(SYNC_SENTRY, list(overrides))
+    monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args) or files)
+    built = load(SWEEP_SENTRY, list(overrides))
     mounts = type(built).band_mounts
     monkeypatch.setattr(
         type(built),
@@ -495,32 +472,72 @@ def test_a_one_band_scene_renders_in_this_process(
         lambda scene, band: mounts(scene, band) if ir_cameras or band != "ir" else [],
     )
 
-    cli._render_apart(built, tmp_path)
-
+    assert cli._render_apart(built, tmp_path) == files
     assert rendered == [(built, tmp_path)]
 
 
 @pytest.mark.parametrize(
     "args",
     [
-        ("sync", SYNC_SENTRY, "--parallel", "--preview"),
-        ("sync", SYNC_SENTRY, "--parallel", "--sheet"),
+        ("render", SWEEP_SENTRY, "--parallel", "--variants", 2),
+        ("recording", SWEEP_SENTRY.parent, "--parallel"),
+        ("recording", SWEEP_SENTRY.parent, "-o", "x"),
+        ("recording", SWEEP_SENTRY.parent, "--set", "seed = 1"),
     ],
-    ids=["preview", "sheet"],
+    ids=["--parallel with variants", "--parallel", "-o", "--set"],
 )
-def test_parallel_refuses_what_it_would_ignore(
+def test_flags_it_would_ignore_are_refused(
     run: Run, args: tuple, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def loaded(*_: object) -> None:
-        raise RuntimeError("loaded past the flags")
+    def rendered(*_: object) -> None:
+        raise AssertionError("went on past the flags")
 
-    # Refused before the scenario loads, so a missing refusal fails here, unrendered.
-    monkeypatch.setattr(cli, "load", loaded)
+    monkeypatch.setattr(cli, "_pin", rendered)
+    monkeypatch.setattr(cli.recording, "export", rendered)
 
     refused = run(*args)
 
     assert refused.exit_code == 2
-    assert "--parallel" in refused.output
+    assert args[2] in refused.output
+
+
+def test_a_scenario_s_recording_is_rendered_and_encoded_beside_it(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = tmp_path / "sweep.toml"
+    scenario.write_text(f"extends = {str(SWEEP_SENTRY)!r}\n")
+    steps: list[tuple[str, Path]] = []
+    monkeypatch.setattr(
+        cli, "_render", lambda _, into: steps.append(("render", into)) or []
+    )
+    monkeypatch.setattr(
+        cli, "_encode", lambda into, quality: steps.append((quality, into)) or []
+    )
+    monkeypatch.setattr(
+        cli.recording, "export", lambda into: steps.append(("export", into)) or []
+    )
+
+    result = run("recording", scenario)
+
+    assert result.exit_code == 0, result.output
+    into = tmp_path / "sweep"
+    assert steps == [("render", into), (cli._QUALITY, into), ("export", into)]
+
+
+def test_a_render_s_folder_is_only_exported(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exported: list[Path] = []
+
+    def never(*_: object) -> None:
+        raise AssertionError("rendered or encoded a render's folder")
+
+    monkeypatch.setattr(cli, "_render", never)
+    monkeypatch.setattr(cli, "_encode", never)
+    monkeypatch.setattr(cli.recording, "export", lambda f: exported.append(f) or [])
+
+    assert run("recording", tmp_path).exit_code == 0
+    assert exported == [tmp_path]
 
 
 def test_the_bands_end_as_one_render_of_the_scene(
@@ -539,11 +556,17 @@ def test_the_bands_end_as_one_render_of_the_scene(
 
     monkeypatch.setattr(subprocess, "Popen", start)
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
-    built = load(SYNC_SENTRY)
+    built = load(SWEEP_SENTRY)
     (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
 
-    cli._render_apart(built, tmp_path)
+    written = cli._render_apart(built, tmp_path)
 
+    assert sorted(p.name for p in written) == [
+        "calibration.json",
+        "eo.png",
+        "ir.png",
+        "labels.json",
+    ]
     assert (tmp_path / cli.SCENARIO).read_text() == "the whole scene's\n"
     # Each band renders the scene the parent pinned, never the source's files.
     assert scenarios == {str(tmp_path / cli.SCENARIO)}
@@ -596,5 +619,5 @@ def _band_of(command: list[str]) -> str:
 
 def _camera(band: str) -> CameraCalibration:
     """Any valid calibration of `band`'s camera."""
-    mount = next(m for m in load(SYNC_SENTRY).mounts if m.camera.band == band)
+    mount = next(m for m in load(SWEEP_SENTRY).mounts if m.camera.band == band)
     return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)

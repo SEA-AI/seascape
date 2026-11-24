@@ -1,6 +1,6 @@
 #:schema ../schema/scenario.json
 
-extends = "sync.toml"
+extends = "sweep.toml"
 
 # Sentry rides on motor yachts.
 [ownship]
@@ -19,7 +19,7 @@ ptu = { elevation_deg = -2.1 }
 ptu = "mast"
 top_rate_deg_s = 50.0
 
-# Placed by `seascape sync` for this rig and turn.
+# Placed by `seascape.buoyage` for this rig and turn.
 [[objects]]
 asset = "container"
 range_m = 128.2

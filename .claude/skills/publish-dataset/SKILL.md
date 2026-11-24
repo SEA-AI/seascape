@@ -5,7 +5,7 @@ description: >-
   the scenario that made it as one standalone TOML. Use whenever a render is to reach W&B,
   wandb, an artifact or the registry, even when the request only says upload, push or share
   a render: after rendering anything another team consumes (a
-  sync recording, a tracker or fusion scenario), to publish a re-render of the same TOML,
+  sweep recording, a tracker or fusion scenario), to publish a re-render of the same TOML,
   or to fetch or reproduce a published dataset.
 ---
 
@@ -33,7 +33,7 @@ An artifact's name is its collection, and each upload under it adds a version: v
   | TOML edited, rendered again | `<stem>-scenario:v1` | `<stem>:v2` |
 - **The registry counts its own links.** `wandb-registry-dataset/<stem>:v<m>` can differ from the project's `<stem>:v<n>`. Consumers use the registry's.
 
-A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off dataset's TOML needs no home in the repo: its scenario artifact is that home.
+A TOML a test reads stays in `scenarios/`, as the sweep ones do. A one-off dataset's TOML needs no home in the repo: its scenario artifact is that home.
 
 ## Steps
 
@@ -44,7 +44,7 @@ A TOML a test reads stays in `scenarios/`, as the sync ones do. A one-off datase
    uvx --from wandb python .claude/skills/publish-dataset/scripts/upload.py <purpose> <data>
    ```
 
-   `<data>` is the folder a consumer downloads: a sync recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it, and `scenario.toml` beside that. It needs a checkout and wandb, not the image. A `--variants` render publishes whole, from its root. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the artifact's version.
+   `<data>` is the folder a consumer downloads: a sweep recording's folder, or a render's `-o` folder. The script finds `labels.json` in it or above it, and `scenario.toml` beside that. It needs a checkout and wandb, not the image. A `--variants` render publishes whole, from its root. A render without `.git` records no commit; pass `--commit <sha>` of the code it rendered. It prints the artifact's version.
 
 ## Fetch and reproduce
 

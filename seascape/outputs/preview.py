@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from seascape.config import Agc, Mount, Scenario
-from seascape.outputs import agc, brand, canvas
+from seascape.outputs import agc, brand, canvas, written
 
 # Never redraw the mark: it is the Brand Book's PNG.
 MIN_MARK_PX = 15  # Brand Book 2026 minimum height
@@ -62,14 +62,10 @@ def cameras(scenario: Scenario) -> list[Mount]:
 
 def shown(scenario: Scenario, folder: Path) -> list[tuple[Mount, Path]]:
     """The frame to show of each camera in `folder`: the still, or a clip's middle."""
-    ext = scenario.outputs.format
     found: list[tuple[Mount, Path]] = []
     for mount in cameras(scenario):
-        if scenario.outputs.frames == 1:
-            found.append((mount, folder / f"{mount.name}.{ext}"))
-        else:
-            clip = sorted((folder / mount.name).glob(f"*.{ext}"))
-            if not clip:
-                raise FileNotFoundError(f"{folder / mount.name}: no frames")
-            found.append((mount, clip[len(clip) // 2]))
+        clip = written(folder, mount.name, scenario.outputs.format)
+        if not clip:
+            raise FileNotFoundError(f"{folder / mount.name}: no frames")
+        found.append((mount, clip[len(clip) // 2]))
     return found
