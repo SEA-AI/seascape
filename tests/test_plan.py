@@ -43,6 +43,13 @@ def test_ranges_within_merge_of_the_smallest_share_a_ring(
     assert ring_ranges_m(ranges_m) == pytest.approx(rings_m)
 
 
+def test_the_top_view_frames_a_lone_hull_whole() -> None:
+    """A 40.8 m yacht alone, longer than the floor's frame."""
+    view = top_view(np.zeros((1, 2)), 0.3, (720, 720), 20.4)
+
+    assert view.m_per_px * 720 >= 40.8
+
+
 def test_the_top_view_puts_the_bow_up_and_starboard_right() -> None:
     heading_rad = math.radians(30.0)
     bow = np.array([math.sin(heading_rad), math.cos(heading_rad)])

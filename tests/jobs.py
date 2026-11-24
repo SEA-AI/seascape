@@ -17,7 +17,10 @@ def job(kind: Kind, out: Path) -> None:
     temporary folder, wait to be killed, or, once every job beside it has written
     its id, raise or abort.
     """
-    out.write_text(str(os.getpid()))
+    # Named once whole, so a job that waits on it never reads it half written.
+    written = out.with_suffix(".tmp")
+    written.write_text(str(os.getpid()))
+    written.replace(out)
     if kind in ("fail", "crash"):
         while len(list(out.parent.glob("*.pid"))) < 2:
             time.sleep(0.05)

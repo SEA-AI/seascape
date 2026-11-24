@@ -89,14 +89,18 @@ class TopView:
 
 
 def top_view(
-    points_m: np.ndarray, heading_rad: float, size_px: tuple[int, int]
+    points_m: np.ndarray,
+    heading_rad: float,
+    size_px: tuple[int, int],
+    radius_m: np.ndarray | float = 0.0,
 ) -> TopView:
-    """The top view that frames points with `MARGIN` round them.
+    """The top view that frames circles with `MARGIN` round them.
 
     Args:
-        points_m: (n, 2) east and north.
+        points_m: (n, 2) east and north of their centres.
         heading_rad: The bearing that runs up the view.
         size_px: The view's width and height.
+        radius_m: Their radii, (n,) or one for all.
 
     Returns:
         The view, centred on the points.
@@ -104,10 +108,10 @@ def top_view(
     R = angles.turned(math.degrees(heading_rad), 0.0)
     starboard, bow = R[:2, 0], R[:2, 1]
     across, along = points_m @ starboard, points_m @ bow
-    span = np.array([np.ptp(across), np.ptp(along)]) * (1.0 + 2.0 * MARGIN)
-    mid = (across.min() + across.max()) / 2 * starboard + (
-        along.min() + along.max()
-    ) / 2 * bow
+    low = np.array([(across - radius_m).min(), (along - radius_m).min()])
+    high = np.array([(across + radius_m).max(), (along + radius_m).max()])
+    span = (high - low) * (1.0 + 2.0 * MARGIN)
+    mid = (low[0] + high[0]) / 2 * starboard + (low[1] + high[1]) / 2 * bow
     # Judgement: a floor, so a lone point still frames a few tens of metres.
     m_per_px = max(float(span[0]) / size_px[0], float(span[1]) / size_px[1], 0.05)
     return TopView(mid, heading_rad, m_per_px)

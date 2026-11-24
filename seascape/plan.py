@@ -576,35 +576,48 @@ def _camera(scene: _Scene, view: View) -> _Lens:
     return _Lens(view, camera, SIZE_PX[view], label_deg)
 
 
-def _frame_points(scene: _Scene, frames: np.ndarray) -> np.ndarray:
-    """Every hull's east and north over `frames`, (n, 2)."""
+def _hulls(scene: _Scene, frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Every hull's east and north over `frames`, (n, 2), and the footprint it spans
+    there, (n,): the ownship's length, an object's length or beam ungrown.
+    """
     sc = bpy.context.scene
+    span_m = [scene.length_m] + [
+        max(r["length_m"], r["beam_m"]) for r in scene.roots[1:]
+    ]
     found = []
     for k in frames:
         sc.frame_set(int(k))
         found += [tuple(r.matrix_world.translation.xy) for r in scene.roots]
-    return np.array(found)
+    return np.array(found), np.tile(span_m, len(frames))
 
 
 def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
-    """Frame every hull over `frames`, every ring's label and the compass; the
-    metres a pixel spans.
+    """Frame every hull whole over `frames`, objects as grown, every ring's label and
+    the compass with room for its labels; the metres a pixel spans.
     """
     compass_deg = math.degrees(scene.heading_rad) + np.arange(0.0, 360.0, 90.0)
     outer = max(scene.rings, default=0.0)
     labels = _on_water(lens.label_deg, np.array(list(scene.rings)), 0.0)
-    compass = _on_water(compass_deg, outer, 0.0)
-    # The ownship's bow and stern at the start: one lone hull is no more than a point.
-    ends = _on_water(compass_deg[::2], scene.length_m / 2, 0.0)
-    points = np.concatenate(
-        [_frame_points(scene, frames), labels[:, :2], compass[:, :2], ends[:, :2]]
-    )
-    view = top_view(points, scene.heading_rad, lens.size_px)
-    # Room for the compass's labels past the outer ring.
-    pad_m = (TICK_LABEL_PX + LABEL_PX) * lens.k * view.m_per_px
-    if scene.rings:
-        past = _on_water(compass_deg, outer + pad_m, 0.0)[:, :2]
-        view = top_view(np.concatenate([points, past]), scene.heading_rad, lens.size_px)
+    hulls, span_m = _hulls(scene, frames)
+    # The ownship never grows.
+    objects = np.tile(np.arange(len(scene.roots)) > 0, len(frames))
+    m_per_px = 0.0
+    # How far objects grow and the compass's labels reach both follow the scale, so
+    # each pass fits what the last one's scale draws. ponytail: three passes settle
+    # any scene seen so far; iterate to a tolerance if one does not.
+    for _ in range(3):
+        grow = np.where(objects, [grown(m_per_px, f) for f in span_m], 1.0)
+        pad_m = (TICK_LABEL_PX + LABEL_PX) * lens.k * m_per_px if scene.rings else 0.0
+        marks = np.concatenate(
+            [labels[:, :2], _on_water(compass_deg, outer + pad_m, 0.0)[:, :2]]
+        )
+        view = top_view(
+            np.concatenate([hulls, marks]),
+            scene.heading_rad,
+            lens.size_px,
+            np.concatenate([grow * span_m / 2, np.zeros(len(marks))]),
+        )
+        m_per_px = view.m_per_px
     lens.camera.data.ortho_scale = view.m_per_px * lens.size_px[0]
     lens.camera.matrix_world = Matrix(view.matrix(0.5 * lens.camera.data.clip_end))
     return view.m_per_px
