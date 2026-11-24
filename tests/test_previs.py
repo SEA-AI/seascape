@@ -45,11 +45,10 @@ def test_ranges_within_merge_of_the_smallest_share_a_ring(
     assert ring_ranges_m(ranges_m) == pytest.approx(rings_m)
 
 
-def test_the_top_view_frames_a_lone_hull_whole() -> None:
-    """A 40.8 m yacht alone, longer than the floor's frame."""
-    view = top_view(np.zeros((1, 2)), 0.3, (720, 720), 20.4)
+def test_a_lone_point_seen_from_above_frames_tens_of_metres() -> None:
+    view = top_view(np.zeros((1, 2)), 0.3, (720, 720))
 
-    assert view.m_per_px * 720 >= 40.8
+    assert view.m_per_px * 720 == pytest.approx(36.0)
 
 
 def test_the_top_view_puts_the_bow_up_and_starboard_right() -> None:
@@ -119,6 +118,12 @@ def test_the_hud_rounds_the_heading_within_a_turn(
     _, nav, _ = hud_lines(0.0, math.radians(heading_deg), 0.0, None)
 
     assert nav.startswith(shown)
+
+
+def test_the_hud_reads_the_speed_in_knots() -> None:
+    _, nav, _ = hud_lines(0.0, 0.0, 1852.0 / 3600.0, None)
+
+    assert nav.endswith("1.0 kn")
 
 
 def test_the_chase_camera_sits_astern_and_above_along_its_look() -> None:
@@ -196,6 +201,39 @@ def test_a_fan_reaches_where_a_pixel_spans_its_footprint() -> None:
     assert widths_deg == pytest.approx(hfovs_deg, rel=0.01)
 
 
+def test_a_fan_points_along_its_camera_and_turns_with_its_head() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scenario = load(SWEEP_SENTRY)
+    built = scene._fans(scenario)
+    [(path, fans)] = built.values()
+    # The run ends on its start heading: turn the fans where it is furthest off.
+    far_s = max(scenario.outputs.times_s, key=lambda t: abs(path(t).heading_rad))
+
+    def mids_deg() -> list[float]:
+        bpy.context.view_layer.update()
+        mids = [f.fan.matrix_world @ ((f.far[0] + f.far[1]) / 2) for f in fans]
+        heads = [f.fan.matrix_world @ f.near for f in fans]
+        return [
+            angles.bearing_deg(*(m - h).xy) for m, h in zip(mids, heads, strict=True)
+        ]
+
+    start_deg = mids_deg()
+    scene.turn_fans(built, far_s)
+    turn_deg = math.degrees(path(far_s).heading_rad - path(0.0).heading_rad)
+
+    # The ptu's tilt shifts a pinhole's mid bearing by a hair.
+    assert start_deg == pytest.approx(
+        [
+            math.degrees(path(0.0).heading_rad) + m.nominal_azimuth_deg
+            for m in scenario.mounts
+        ],
+        abs=0.5,
+    )
+    assert [(d - s) % 360.0 for d, s in zip(mids_deg(), start_deg, strict=True)] == (
+        pytest.approx([turn_deg % 360.0] * len(fans))
+    )
+
+
 @pytest.mark.parametrize(
     ("m", "shown"), [(104.0, "100 m"), (1500.0, "1.5 km"), (996.0, "1 km")]
 )
@@ -265,6 +303,23 @@ def test_only_the_views_asked_for_are_drawn(
     assert result.stills == {"chase": tmp_path / "sweep-chase.png"}
 
 
+def test_each_view_has_a_lens_and_each_lens_a_view() -> None:
+    assert set(previs.LENSES) == set(previs.VIEWS)
+
+
+def test_a_view_that_fails_raises_with_the_end_of_its_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(_: object, __: object, logs: dict[str, Path], *___: object) -> list[str]:
+        logs["top"].write_text("Traceback\nValueError: no GPU")
+        return ["top"]
+
+    monkeypatch.setattr(previs.processes, "at_once", fail)
+
+    with pytest.raises(RuntimeError, match="drawing top failed:\nTraceback"):
+        previs.draw(load(SWEEP_SENTRY), tmp_path, "sweep", views=("top",))
+
+
 def _frames(path: Path) -> int:
     video, count = cv2.VideoCapture(str(path)), 0
     while video.read()[0]:
@@ -279,7 +334,7 @@ def test_each_video_holds_a_frame_per_sample(tmp_path: Path) -> None:
         outputs={"duration_s": 2.0, "fps": 10},
     )
 
-    drawn = previs.draw(scenario, tmp_path, "usv", 2.0)
+    drawn = previs.draw(scenario, tmp_path, "usv", video_fps=2.0)
 
     assert all(path.exists() for path in drawn.stills.values())
     # Every fifth of 20 output frames: 0, 0.5, 1 and 1.5 s.

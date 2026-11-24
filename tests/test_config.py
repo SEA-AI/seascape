@@ -8,6 +8,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -1175,6 +1176,23 @@ def test_a_fisheye_refuses_what_it_cannot_draw(lens: str, match: str) -> None:
     )
     with pytest.raises(ValidationError, match=match):
         load(BASELINE, [line])
+
+
+@pytest.mark.parametrize(
+    "lens",
+    [", lens = { fisheye = [0.0, 0.0, 0.0, 0.0] }", ""],
+    ids=["fisheye", "pinhole"],
+)
+def test_a_ray_through_the_image_s_side_lies_half_its_field_off_axis(lens: str) -> None:
+    line = (
+        f'rigs.bow.cameras.eo = {{ preset = "basler_daa3840_ar0821", hfov_deg = 130.0'
+        f"{lens} }}"
+    )
+    eo = load(BASELINE, [line]).rigs["bow"].cameras["eo"]
+
+    [ray] = eo.rays(np.array([eo.width_px / 2]), np.array([0.0]))
+
+    assert math.degrees(math.atan2(math.hypot(*ray[:2]), ray[2])) == pytest.approx(65.0)
 
 
 def test_a_rigs_cameras_share_a_draw_through_nested_picks() -> None:
