@@ -332,7 +332,7 @@ def test_a_published_scenario_publishes_without_its_previews_or_montage(
     assert [a.name for a in run.outputs] == ["x"]
 
 
-def test_the_previews_log_the_rig_view_and_both_previs_views(
+def test_the_previews_log_the_rig_view_and_both_previs_videos(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def draw(_: object, folder: Path, *__: object, **___: object) -> previs.Drawn:
@@ -349,8 +349,6 @@ def test_the_previews_log_the_rig_view_and_both_previs_views(
 
     assert [next(iter(v)) for v in run.logged] == [
         "rig_view",
-        "top",
-        "chase",
         "top_video",
         "chase_video",
     ]

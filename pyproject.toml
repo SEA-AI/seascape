@@ -24,6 +24,7 @@ dependencies = [
     "pillow>=12.3.0",
     "pydantic>=2.9",
     "tomli-w>=1.2.0",
+    "tqdm>=4.67",
 ]
 
 [project.urls]
