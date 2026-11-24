@@ -54,11 +54,16 @@ def test_a_sweep_requires_each_ring_in_its_videos_and_the_box_in_every_one() -> 
 
     needs = buoyage.requirements(scenario, {"raw"})
 
+    assets = manifest()
     *buoys, box = needs
     assert [n.range_m for n in buoys] == [r.range_m for r in rings]
     assert [n.videos for n in buoys] == [
         {recorded_name(name, v) for v in r.videos} for r in rings
     ]
+    assert {n.category_id for n in buoys} == {assets[buoyage.BUOY].category_id}
+    assert {n.min_px for n in buoys} == {buoyage.BUOY_PX}
+    assert box.category_id == assets[buoyage.CONTAINER].category_id
+    assert box.frames == "first+last"
     assert box.videos == {recorded_name(name, v) for v in rig.videos} | {"raw"}
 
 
