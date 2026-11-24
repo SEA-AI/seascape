@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import chain, repeat
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import bpy
 import numpy as np
@@ -40,7 +40,9 @@ from seascape.outputs.previs import (
     LINE_PX,
     TICK_LABEL_PX,
     TICK_STEP_DEG,
+    VIEWS,
     Px,
+    View,
     grown,
     hud,
     hud_lines,
@@ -52,8 +54,6 @@ from seascape.outputs.previs import (
 from seascape.physics.colour import srgb_hex_decode
 from seascape.render import video
 
-type View = Literal["top", "chase"]
-VIEWS: tuple[View, ...] = ("top", "chase")
 # Square from above, as range rings are round.
 SIZE_PX: dict[View, tuple[int, int]] = {"top": (720, 720), "chase": (1280, 720)}
 # Each view's picture, `<title>-<name>.png`.
@@ -792,8 +792,9 @@ def draw(
     title: str,
     video_fps: float | None = None,
     progress: Callable[[int, int], None] = lambda *_: None,
+    views: Sequence[View] = VIEWS,
 ) -> Drawn:
-    """Draw the scenario from above and from behind its ownship, both views at once.
+    """Draw the scenario from above and from behind its ownship, the views at once.
 
     Args:
         scenario: The scenario to draw.
@@ -803,7 +804,8 @@ def draw(
         video_fps: Frames a second of the run in each video, as `samples` takes
             them, played in real time; None draws no video.
         progress: Called about once a second with the video frames rendered so far
-            and their total, of both views.
+            and their total, of every view.
+        views: The views to draw.
 
     Returns:
         The pictures and videos written.
@@ -812,16 +814,16 @@ def draw(
         RuntimeError: A view failed; the message holds the end of its log.
     """
     folder.mkdir(parents=True, exist_ok=True)
-    stills = {v: folder / f"{title}-{v}.png" for v in VIEWS}
+    stills = {v: folder / f"{title}-{v}.png" for v in views}
     frames, play_fps, total = None, 0.0, 0
     if video_fps is not None:
         outputs = scenario.outputs
         frames, play_fps = samples(outputs.fps, len(outputs.times_s), video_fps)
-        total = len(VIEWS) * len(frames)
+        total = len(views) * len(frames)
     with tempfile.TemporaryDirectory() as tmp:
-        work = {v: Path(tmp, v) for v in VIEWS}
-        logs = {v: Path(tmp, f"{v}.log") for v in VIEWS}
-        jobs = {v: (scenario, v, frames, play_fps, stills[v], work[v]) for v in VIEWS}
+        work = {v: Path(tmp, v) for v in views}
+        logs = {v: Path(tmp, f"{v}.log") for v in views}
+        jobs = {v: (scenario, v, frames, play_fps, stills[v], work[v]) for v in views}
 
         def tick() -> None:
             done = sum(len(list(w.glob("frames/*.png"))) for w in work.values())

@@ -41,17 +41,16 @@ def at_once[K](
     with tempfile.TemporaryDirectory(prefix="seascape-jobs-") as tmp:
         try:
             for key, args in jobs.items():
-                with logs[key].open("w") as log:
-                    run = subprocess.Popen(
+                with logs[key].open("w") as log, tempfile.TemporaryFile() as job:
+                    pickle.dump((work, args), job)
+                    job.seek(0)
+                    runs[key] = subprocess.Popen(
                         [sys.executable, "-m", __name__],
-                        stdin=subprocess.PIPE,
+                        stdin=job,
                         stdout=log,
                         stderr=subprocess.STDOUT,
                         env={**os.environ, "TMPDIR": tmp},
                     )
-                runs[key] = run
-                with run.stdin as job:  # ty: ignore[invalid-context-manager]
-                    pickle.dump((work, args), job)
             pending = dict(runs)
             while pending and not failed:
                 done = {k: run for k, run in pending.items() if run.poll() is not None}

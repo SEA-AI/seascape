@@ -250,6 +250,20 @@ def test_a_ring_label_over_an_earlier_one_is_left_out(tmp_path: Path) -> None:
     assert np.array_equal(both, alone)
 
 
+def test_only_the_views_asked_for_are_drawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    drawn: list[str] = []
+    monkeypatch.setattr(
+        previs.processes, "at_once", lambda _, jobs, *__: drawn.extend(jobs) or []
+    )
+
+    result = previs.draw(load(SWEEP_SENTRY), tmp_path, "sweep", views=("chase",))
+
+    assert drawn == ["chase"]
+    assert result.stills == {"chase": tmp_path / "sweep-chase.png"}
+
+
 def _frames(path: Path) -> int:
     video, count = cv2.VideoCapture(str(path)), 0
     while video.read()[0]:

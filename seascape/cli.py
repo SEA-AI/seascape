@@ -29,6 +29,7 @@ from seascape.config import (
 from seascape.outputs import labels, montage, panorama, recording
 from seascape.outputs.calibration import FILENAME as CALIBRATION
 from seascape.outputs.calibration import Calibration, Frame
+from seascape.outputs.previs import VIEWS, View
 
 _BANDS = click.Choice(BANDS)
 _FILE = click.Path(exists=True, dir_okay=False, path_type=Path)
@@ -367,7 +368,14 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
 @click.option(
     "--video",
     is_flag=True,
-    help="Also replay both views over the run as mp4s beside them, in real time.",
+    help="Also replay each view over the run as an mp4 beside it, in real time.",
+)
+@click.option(
+    "--view",
+    "views",
+    type=click.Choice(VIEWS),
+    multiple=True,
+    help="A view to draw; repeat for more. Default: every view.",
 )
 @click.option(
     "--fps",
@@ -381,6 +389,7 @@ def previs_(
     overrides: tuple[str, ...],
     video: bool,
     fps: float | None,
+    views: tuple[View, ...],
 ) -> None:
     """Draw the scenario from above and from behind the ownship, each object's range
     ringed and each camera's field shaded.
@@ -393,7 +402,12 @@ def previs_(
     video_fps = (fps or built.outputs.fps) if video else None
     with _blender_log(Path(os.devnull)), _progress(0, "Drawing") as bar:
         drawn = previs.draw(
-            built, output or scenario.parent, scenario.stem, video_fps, _steps(bar)
+            built,
+            output or scenario.parent,
+            scenario.stem,
+            video_fps,
+            _steps(bar),
+            views or VIEWS,
         )
     for path in [*drawn.stills.values(), *drawn.videos.values()]:
         click.echo(path)

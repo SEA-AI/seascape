@@ -577,29 +577,41 @@ def _camera(band: str) -> CameraCalibration:
     return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)
 
 
-def test_a_plan_video_is_drawn_beside_the_scenario_at_its_rate(
-    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("chosen", "views"), [([], ("top", "chase")), (["--view", "top"], ("top",))]
+)
+def test_a_previs_video_is_drawn_beside_the_scenario_at_its_rate(
+    run: Run,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    chosen: list[str],
+    views: tuple[str, ...],
 ) -> None:
     scenario = tmp_path / "sweep.toml"
     scenario.write_text(f"extends = {str(SWEEP_SENTRY)!r}\n")
-    calls: list[tuple[Path, str, float]] = []
+    calls: list[tuple[Path, str, float, tuple[str, ...]]] = []
 
     def draw(
-        _: Scenario, folder: Path, title: str, video_fps: float, *__: object
+        _: Scenario,
+        folder: Path,
+        title: str,
+        video_fps: float,
+        __: object,
+        views: tuple[str, ...],
     ) -> previs.Drawn:
-        calls.append((folder, title, video_fps))
+        calls.append((folder, title, video_fps, views))
         return previs.Drawn({"top": folder / "top.png"}, {"top": folder / "top.mp4"})
 
     monkeypatch.setattr(previs, "draw", draw)
 
-    drawn = run("previs", scenario, "--video")
+    drawn = run("previs", scenario, "--video", *chosen)
 
     assert drawn.exit_code == 0, drawn.output
-    assert calls == [(tmp_path, "sweep", load(SWEEP_SENTRY).outputs.fps)]
+    assert calls == [(tmp_path, "sweep", load(SWEEP_SENTRY).outputs.fps, views)]
     assert drawn.stdout == f"{tmp_path / 'top.png'}\n{tmp_path / 'top.mp4'}\n"
 
 
-def test_a_plan_rate_without_a_video_is_refused(
+def test_a_previs_rate_without_a_video_is_refused(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def draw(*_: object, **__: object) -> None:

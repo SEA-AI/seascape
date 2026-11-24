@@ -5,12 +5,16 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from PIL import Image, ImageDraw
 
 from seascape import angles
 from seascape.outputs import brand
+
+type View = Literal["top", "chase"]
+VIEWS: tuple[View, ...] = ("top", "chase")
 
 # Judgement: the top view's room round everything it frames, as a share of its span.
 MARGIN = 0.12
