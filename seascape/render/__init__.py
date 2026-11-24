@@ -36,7 +36,7 @@ from seascape.config import (
     sources,
     substream,
 )
-from seascape.outputs import agc, journal, labels, microbolometer, stitch
+from seascape.outputs import agc, journal, labels, microbolometer, stem, stitch
 from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import earth
 
@@ -230,10 +230,6 @@ def _render_still(path: Path, what: str) -> None:
 type Shot = tuple[Mount, CameraCalibration, np.ndarray, np.ndarray]
 
 
-def _stem(camera: str, frame: int | None) -> str:
-    return camera if frame is None else f"{camera}/{frame:04d}"
-
-
 def _stitch(
     shots: list[Shot], into: Path, frame: int | None, fmt: ImageFormat
 ) -> tuple[list[Shot], list[Path]]:
@@ -260,7 +256,7 @@ def _stitch(
             pair = [by_camera.pop((rig_name, c)) for c in video.cameras]
             (mount, left, *_), (_, right, *_) = pair
             out = recorded_name(rig_name, name)
-            camera = stitch.fused(left, right, out, f"{_stem(out, frame)}.{fmt}")
+            camera = stitch.fused(left, right, out, f"{stem(out, frame)}.{fmt}")
             image, index = stitch.stitch(
                 (pair[0][3], pair[1][3]),
                 (pair[0][2], pair[1][2]),
@@ -323,11 +319,11 @@ def _shoot(
     tree = bpy.context.scene.compositing_node_group
     tree.nodes["index.output"].file_name = f"{mount.name}."
     _cut(mount.name, width, height, crop)
-    bpy.context.scene.render.filepath = str(into / _stem(mount.name, number))
+    bpy.context.scene.render.filepath = str(into / stem(mount.name, number))
     ext = "exr" if thermal else fmt
-    rendered = into / f"{_stem(mount.name, number)}.{ext}"
+    rendered = into / f"{stem(mount.name, number)}.{ext}"
     _render_still(rendered, f"camera {mount.name}'s frame")
-    camera = scene.calibrate(built, mount, f"{_stem(mount.name, number)}.{fmt}", time_s)
+    camera = scene.calibrate(built, mount, f"{stem(mount.name, number)}.{fmt}", time_s)
     # An undistortion renders its pinhole; the camera recorded is the rig's.
     own = mount._replace(camera=mount.rig.cameras[mount.camera_name])
     source = scene.calibrate(built, own, camera.image, time_s)
@@ -340,11 +336,11 @@ def _shoot(
         if crop is not None:
             # The camera's own frame stays, unlabelled.
             written.append(rendered)
-            rendered = into / f"{_stem(out, number)}.{ext}"
+            rendered = into / f"{stem(out, number)}.{ext}"
             rendered.parent.mkdir(exist_ok=True)
             # The passes' temporary folder can sit on another filesystem.
             shutil.move(passes / f"{mount.name}.video.{ext}", rendered)
-            image = f"{_stem(out, number)}.{fmt}"
+            image = f"{stem(out, number)}.{fmt}"
             camera = camera.model_copy(update={"image": image}).cropped(crop)
             rows = slice(crop.top_px, height - crop.bottom_px)
             index = index[rows, crop.left_px : width - crop.right_px]

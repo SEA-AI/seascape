@@ -1,17 +1,20 @@
-"""The sync course: where its buoys and container go for a rig.
+"""The course for a rig's turn: a ring of buoys for each pair of overlapping videos,
+and a container every video holds whole at both ends of the turn. Needs one rig, a
+turn, and every video looking one way.
 
-The course turns the cameras past moored objects, so a delay between a video and its
-metadata, or between two videos, moves where they see one.
+The turn sweeps the cameras past these moored objects, so a delay between a video and
+its metadata, or between two videos, moves where they see one.
 """
 
 import itertools
-import json
 import math
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+import tomli_w
 
 from seascape import angles
 from seascape.assets import Buoy, Debris, manifest
@@ -21,11 +24,12 @@ from seascape.config import (
     Scenario,
     Stitch,
     Turn,
+    recorded_name,
     sources,
 )
 from seascape.config.cameras import PTU_ELEVATION_DEG
 from seascape.motion import head_path
-from seascape.outputs import stitch
+from seascape.outputs import coverage, stitch
 from seascape.outputs.calibration import CameraCalibration
 
 BUOY, CONTAINER = "mooring_buoy", "container"
@@ -379,35 +383,74 @@ def stage(scenario: Scenario) -> Staging:
     return Staging(elevation_deg=elevation_deg, entries=entries)
 
 
-def suggested(scenario: Scenario) -> str:
-    """The course for `scenario`'s rig, as the TOML to paste: its pan-tilt unit's
-    elevation, if it has one, and its `[[objects]]` tables.
+def course(scenario: Scenario) -> dict[str, Any]:
+    """The course for `scenario`'s rig as a scenario's tables: its pan-tilt unit's
+    elevation, if it has one, and its `objects`.
 
     Raises:
         ValueError: No course fits the rig, and the setting to change.
     """
     name, _, _ = one_rig(scenario)
     placed = stage(scenario)
-    toml = objects_toml(placed.entries)
     if placed.elevation_deg is None:
-        return toml
-    return f"[rigs.{name}.ptu]\nelevation_deg = {placed.elevation_deg}\n\n{toml}"
+        return {"objects": placed.entries}
+    ptu = {"ptu": {"elevation_deg": placed.elevation_deg}}
+    return {"rigs": {name: ptu}, "objects": placed.entries}
 
 
-def objects_toml(entries: list[dict[str, Any]]) -> str:
-    """`entries` as a scenario's `[[objects]]` tables."""
-    return "\n\n".join(
-        "[[objects]]\n"
-        + "\n".join(f"{key} = {_toml(value)}" for key, value in e.items())
-        for e in entries
+def suggested(scenario: Scenario) -> str:
+    """`course` as the TOML to paste."""
+    return tomli_w.dumps(course(scenario))
+
+
+def holds(tree: Mapping[str, Any], scenario: Scenario) -> bool:
+    """Whether a `resolve`d scenario `tree` stores the `course` for `scenario`, with
+    exactly its objects.
+    """
+    return _within(course(scenario), tree)
+
+
+def _within(part: object, whole: object) -> bool:
+    if isinstance(part, dict):
+        return isinstance(whole, Mapping) and all(
+            k in whole and _within(v, whole[k]) for k, v in part.items()
+        )
+    return part == whole
+
+
+def requirements(
+    scenario: Scenario, cameras: Iterable[str]
+) -> list[coverage.Requirement]:
+    """What a render of `scenario`'s course must see, `cameras` the ones it wrote: a
+    buoy of each ring whole in a frame of every video it serves, `BUOY_PX` tall, then
+    the container whole in the first and last frames of every video and camera.
+
+    Raises:
+        ValueError: No course fits the rig, or no two of its videos overlap.
+    """
+    name, rig, _ = one_rig(scenario)
+    videos = views(rig)
+    if not (circles := rings(videos)):
+        raise ValueError("no two videos overlap, so the course has no ring to check")
+    assets = manifest()
+    needs = [
+        coverage.Requirement(
+            category_id=assets[BUOY].category_id,
+            videos=frozenset(recorded_name(name, v) for v in ring.videos),
+            frames="any",
+            what=f"a buoy {ring.range_m:.0f} m out",
+            min_px=BUOY_PX,
+            range_m=ring.range_m,
+        )
+        for ring in circles
+    ]
+    every = {recorded_name(name, v.name) for v in videos}
+    needs.append(
+        coverage.Requirement(
+            category_id=assets[CONTAINER].category_id,
+            videos=frozenset(every.union(cameras)),
+            frames="first+last",
+            what="the container",
+        )
     )
-
-
-def _toml(value: object) -> str:
-    """`value` as a TOML value, a table inline."""
-    if isinstance(value, dict):
-        return "{ " + ", ".join(f"{k} = {_toml(v)}" for k, v in value.items()) + " }"
-    if isinstance(value, list):
-        return "[" + ", ".join(_toml(v) for v in value) + "]"
-    # A JSON string, number or boolean is TOML's too.
-    return json.dumps(value)
+    return needs

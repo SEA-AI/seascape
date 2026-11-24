@@ -1,10 +1,9 @@
-"""The sync course's placement, the preview's settings and its check of the labels."""
+"""Where the buoys and container go for a rig and its turn."""
 
 import dataclasses
 import itertools
 import math
 import tomllib
-from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -12,22 +11,60 @@ import pytest
 
 from seascape import angles, buoyage
 from seascape.assets import Buoy, manifest
-from seascape.config import Scenario, load, sources
-from seascape.motion import cameras_at_start, head_path
+from seascape.config import load, recorded_name, sources
+from seascape.config.loader import resolve
+from seascape.motion import head_path
 from seascape.outputs.calibration import CameraCalibration
-from seascape.outputs.labels import Annotation, Image, Labels
-from seascape.sync import preview, sheet
 from tests.scenarios import OPEN_SEA, SWEEP_SENTRY, SWEEP_WATCHKEEPER
 
 PRODUCTS = [SWEEP_SENTRY, SWEEP_WATCHKEEPER]
 
 
-def test_printed_entries_read_back_as_themselves() -> None:
-    entries = buoyage.stage(load(SWEEP_SENTRY)).entries
+def test_the_printed_course_reads_back_as_itself() -> None:
+    scenario = load(SWEEP_SENTRY)
 
-    read = tomllib.loads(buoyage.objects_toml(entries))["objects"]
+    assert tomllib.loads(buoyage.suggested(scenario)) == buoyage.course(scenario)
 
-    assert read == entries
+
+@pytest.mark.parametrize("path", PRODUCTS)
+def test_each_product_stores_its_course(path: Path) -> None:
+    assert buoyage.holds(resolve(path), load(path))
+
+
+@pytest.mark.parametrize(
+    ("overrides", "turn_deg"),
+    [([], 1.0), (["rigs.mast.ptu.elevation_deg = 0.0"], 0.0)],
+    ids=["a buoy moved", "the ptu pitched"],
+)
+def test_a_course_edited_by_hand_is_not_held(
+    overrides: list[str], turn_deg: float
+) -> None:
+    scenario = load(SWEEP_SENTRY)
+    edited = resolve(SWEEP_SENTRY, overrides)
+    edited["objects"][1]["bearing_deg"] += turn_deg
+
+    assert not buoyage.holds(edited, scenario)
+
+
+def test_a_sweep_requires_each_ring_in_its_videos_and_the_box_in_every_one() -> None:
+    scenario = load(SWEEP_SENTRY)
+    (name,) = scenario.rigs
+    (rig,) = scenario.rigs.values()
+    rings = buoyage.rings(buoyage.views(rig))
+
+    needs = buoyage.requirements(scenario, {"raw"})
+
+    assets = manifest()
+    *buoys, box = needs
+    assert [n.range_m for n in buoys] == [r.range_m for r in rings]
+    assert [n.videos for n in buoys] == [
+        {recorded_name(name, v) for v in r.videos} for r in rings
+    ]
+    assert {n.category_id for n in buoys} == {assets[buoyage.BUOY].category_id}
+    assert {n.min_px for n in buoys} == {buoyage.BUOY_PX}
+    assert box.category_id == assets[buoyage.CONTAINER].category_id
+    assert box.frames == "first+last"
+    assert box.videos == {recorded_name(name, v) for v in rig.videos} | {"raw"}
 
 
 def test_a_ring_loads_evenly_spaced_with_a_drift_drawn_per_buoy() -> None:
@@ -176,31 +213,6 @@ def test_a_course_needs_a_still_ownship() -> None:
         buoyage.stage(under_way)
 
 
-def test_advice_without_a_course_that_fits_says_why() -> None:
-    said = preview.advice(load(OPEN_SEA), "missed")
-
-    assert said.startswith("missed; and no course fits its rig: ")
-
-
-def test_the_sheet_unrolls_each_frame_where_its_camera_looks() -> None:
-    scenario = load(SWEEP_SENTRY)
-    ((name, rig),) = scenario.rigs.items()
-    heading_deg = math.degrees(head_path(scenario, name)(0.0).heading_rad)
-    n = sheet.EDGE_POINTS
-    edges = sheet.frame_edges(rig, cameras_at_start(scenario, name))
-
-    for view in buoyage.views(rig):
-        rays = edges[view.name]
-        bearings = [np.degrees(np.arctan2(r[:, 0], r[:, 1])) for r in rays]
-        elevations = [np.degrees(np.arcsin(r[:, 2])) for r in rays]
-        # Clockwise from the top left: the right edge's middle, then the left's.
-        left = min(b[3 * n + n // 2] for b in bearings)
-        right = max(b[n + n // 2] for b in bearings)
-        assert left == pytest.approx(heading_deg + view.left_deg, abs=0.1)
-        assert right == pytest.approx(heading_deg + view.right_deg, abs=0.1)
-        assert all(e[0] > e[2 * n - 1] for e in elevations)
-
-
 def test_a_rig_on_a_rolled_deck_leans_and_turns_with_it() -> None:
     """A rig yawed 45 on a deck rolled 20 starboard down points 43.2 from the bow
     and leans to starboard.
@@ -255,134 +267,3 @@ def test_a_pitched_camera_s_span_is_read_at_the_head_s_level() -> None:
     x = (width / 2) / f
     edge = math.degrees(math.atan(x * math.cos(pitch)))
     assert buoyage._span(camera) == pytest.approx((-edge, edge))
-
-
-BOX = manifest()[buoyage.CONTAINER].category_id
-BUOY = manifest()[buoyage.BUOY].category_id
-type Seen = list[tuple[int, float, bool, int] | tuple[int, float, bool, int, int]]
-BOXED: Seen = [(BOX, 300.0, False, 40)]
-
-
-def seen(**videos: tuple[Seen, ...]) -> Labels:
-    """Each video's frames, an object per (category, range, cut, tall_px) and its
-    wide_px when it is not as wide as tall.
-    """
-    shots = [(v, frame) for v, frames in videos.items() for frame in frames]
-    images = [
-        Image.model_construct(id=i, camera=f"mast_{v}", time_s=i / 3)
-        for i, (v, _) in enumerate(shots)
-    ]
-    annotations = [
-        Annotation.model_construct(
-            image_id=i,
-            category_id=category,
-            range_m=range_m,
-            truncated=cut,
-            bbox=(0, 0, wide[0] if wide else tall_px, tall_px),
-            name=f"{category}-{range_m}",
-        )
-        for i, (_, frame) in enumerate(shots)
-        for category, range_m, cut, tall_px, *wide in frame
-    ]
-    return Labels.model_construct(images=images, annotations=annotations)
-
-
-def passing(near_m: float) -> tuple[Seen, ...]:
-    """The container at both ends, and a buoy of the nearest ring whole between."""
-    return (BOXED, [(BUOY, near_m, False, 6)], BOXED)
-
-
-@pytest.fixture(scope="module")
-def watchkeeper() -> Scenario:
-    return load(SWEEP_WATCHKEEPER)
-
-
-def near_m(scenario: Scenario) -> float:
-    """The range of the scenario's nearest ring."""
-    return buoyage.rings(buoyage.views(*scenario.rigs.values()))[0].range_m
-
-
-def test_a_container_drawn_wider_off_its_axis_between_the_ends_passes(
-    watchkeeper: Scenario,
-) -> None:
-    near = near_m(watchkeeper)
-    # A pinhole draws it wider off the frame's axis.
-    frames = (BOXED, [(BUOY, near, False, 6), (BOX, 300.0, False, 40, 60)], BOXED)
-    preview.check(seen(T1=frames, RGB1=frames), watchkeeper)
-
-
-@pytest.mark.parametrize("drop_farthest", [False, True])
-def test_every_ring_of_a_rig_with_several_must_be_seen(drop_farthest: bool) -> None:
-    sentry = load(SWEEP_SENTRY)
-    circles = buoyage.rings(buoyage.views(*sentry.rigs.values()))
-    videos = sorted({v for r in circles for v in r.videos})
-    if drop_farthest:
-        circles = circles[:-1]
-
-    def turned(video: str) -> tuple[Seen, ...]:
-        """The container at both ends, and a buoy of each ring the video serves."""
-        held: Seen = [(BUOY, r.range_m, False, 6) for r in circles if video in r.videos]
-        return (BOXED, held, BOXED)
-
-    frames = {v: turned(v) for v in videos}
-
-    if drop_farthest:
-        with pytest.raises(ValueError, match="never sees a buoy"):
-            preview.check(seen(**frames), sentry)
-    else:
-        preview.check(seen(**frames), sentry)
-
-
-def test_a_video_the_preview_left_out_fails(watchkeeper: Scenario) -> None:
-    only_t1 = seen(T1=passing(near_m(watchkeeper)))
-    with pytest.raises(ValueError, match="mast_RGB1 has no frames"):
-        preview.check(only_t1, watchkeeper)
-
-
-@pytest.mark.parametrize(
-    ("frames", "error"),
-    [
-        (
-            lambda near: (BOXED, [(BUOY, near, True, 6)], BOXED),
-            "mast_T1 never sees a buoy {near:.0f} m out whole",
-        ),
-        (
-            # A pixel short of the smallest box a detector takes.
-            lambda near: (BOXED, [(BUOY, near, False, 5)], BOXED),
-            "mast_T1 never sees a buoy {near:.0f} m out whole",
-        ),
-        (
-            # Full height in one frame, but for a sliver; full width in the next,
-            # but sunk in a trough.
-            lambda near: (
-                BOXED,
-                [(BUOY, near, False, 6, 1)],
-                [(BUOY, near, False, 4, 6)],
-                BOXED,
-            ),
-            "mast_T1 never sees a buoy {near:.0f} m out whole",
-        ),
-        (
-            lambda near: ([(BOX, 300.0, True, 40), (BUOY, near, False, 6)], BOXED),
-            "mast_T1 misses the container in its first frame",
-        ),
-        (
-            lambda near: ([*BOXED, (BUOY, near, False, 6)], []),
-            "mast_T1 misses the container in its last frame",
-        ),
-        (
-            # Hidden but for a sliver in the last frame.
-            lambda near: (
-                [*BOXED, (BUOY, near, False, 6)],
-                [(BOX, 300.0, False, 40, 4)],
-            ),
-            "mast_T1 misses the container in its last frame",
-        ),
-    ],
-)
-def test_a_video_that_misses_a_ring_or_the_container_fails(
-    frames: Callable[[float], tuple[Seen, ...]], error: str, watchkeeper: Scenario
-) -> None:
-    near = near_m(watchkeeper)
-    with pytest.raises(ValueError, match=error.format(near=near)):
-        preview.check(seen(T1=frames(near), RGB1=passing(near)), watchkeeper)
