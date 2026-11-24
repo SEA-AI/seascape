@@ -576,12 +576,9 @@ def _camera(scene: _Scene, view: View) -> _Lens:
     return _Lens(view, camera, SIZE_PX[view], label_deg)
 
 
-def _hulls(
-    scene: _Scene, frames: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Every hull's east and north over `frames`, (n, 2); its longest side, which
-    `grown` takes, (n,); and half its diagonal, the circle that holds it however it
-    turns, (n,): ungrown.
+def _hulls(scene: _Scene, frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Every hull's east and north over `frames`, (n, 2), and half its diagonal, the
+    circle that holds it however it turns, (n,).
     """
     sc = bpy.context.scene
     sides = np.array(
@@ -591,30 +588,23 @@ def _hulls(
     for k in frames:
         sc.frame_set(int(k))
         found += [tuple(r.matrix_world.translation.xy) for r in scene.roots]
-    count = len(frames)
-    return (
-        np.array(found),
-        np.tile(sides.max(axis=1), count),
-        np.tile(np.hypot(*sides.T) / 2, count),
-    )
+    return np.array(found), np.tile(np.hypot(*sides.T) / 2, len(frames))
 
 
 def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
-    """Frame every hull whole over `frames`, objects as grown, every ring's label and
-    the compass with room for its labels; the metres a pixel spans.
+    """Frame every hull whole over `frames`, every ring's label and the compass with
+    room for its labels; the metres a pixel spans. An object grows to at most
+    `OBJECT_PX` across, well inside `MARGIN`, so its true size is fitted.
     """
     compass_deg = math.degrees(scene.heading_rad) + np.arange(0.0, 360.0, 90.0)
     outer = max(scene.rings, default=0.0)
     labels = _on_water(lens.label_deg, np.array(list(scene.rings)), 0.0)
-    hulls, side_m, reach_m = _hulls(scene, frames)
-    # The ownship never grows.
-    objects = np.tile(np.arange(len(scene.roots)) > 0, len(frames))
+    hulls, reach_m = _hulls(scene, frames)
     m_per_px = 0.0
-    # How far objects grow and the compass's labels reach both follow the scale, so
-    # each pass fits what the last one's scale draws. ponytail: three passes settle
-    # any scene seen so far; iterate to a tolerance if one does not.
+    # How far the compass's labels reach follows the scale, so each pass fits what
+    # the last one's scale draws. ponytail: three passes settle any scene seen so
+    # far; iterate to a tolerance if one does not.
     for _ in range(3):
-        grow = np.where(objects, [grown(m_per_px, f) for f in side_m], 1.0)
         pad_m = (TICK_LABEL_PX + LABEL_PX) * lens.k * m_per_px if scene.rings else 0.0
         marks = np.concatenate(
             [labels[:, :2], _on_water(compass_deg, outer + pad_m, 0.0)[:, :2]]
@@ -623,7 +613,7 @@ def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
             np.concatenate([hulls, marks]),
             scene.heading_rad,
             lens.size_px,
-            np.concatenate([grow * reach_m, np.zeros(len(marks))]),
+            np.concatenate([reach_m, np.zeros(len(marks))]),
         )
         m_per_px = view.m_per_px
     lens.camera.data.ortho_scale = view.m_per_px * lens.size_px[0]

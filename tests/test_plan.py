@@ -101,10 +101,9 @@ def test_the_top_view_holds_every_hull_whole_as_it_moves() -> None:
 
     T_camera_world = lens.camera.matrix_world.inverted()
     half_m = np.array(lens.size_px) * m_per_px / 2
-    grow = grown(m_per_px, 40.8)
     for frame in (0, 1):
         bpy.context.scene.frame_set(frame)
-        for root, reach_m in ((own, 6.0), (yacht, grow * math.hypot(40.8, 9.0) / 2)):
+        for root, reach_m in ((own, 6.0), (yacht, math.hypot(40.8, 9.0) / 2)):
             seen = np.array((T_camera_world @ root.matrix_world.translation).xy)
             assert (np.abs(seen) + reach_m <= half_m + 1e-6).all()
 
