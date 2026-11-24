@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, get_args
 
 import click
+from tqdm import tqdm
 
 from seascape import assets, logger, outputs, processes
 from seascape.assets import skies
@@ -118,16 +119,28 @@ def _blender_log(path: Path) -> Generator[None]:
             )
 
 
-def _progress(length: int, label: str) -> Any:
-    return click.progressbar(length=length, label=label, file=sys.stderr)
+def _progress(length: int, label: str) -> tqdm:
+    """A bar of `length` steps on stderr, 0 for one whose length comes later. Off a
+    terminal, in a log or W&B's Logs tab, every redraw is kept, so it redraws only
+    every half minute, as Ultralytics' bar does off one.
+    """
+    every_s = 0.1 if sys.stderr.isatty() else 30.0
+    # miniters=1: past one, tqdm's monitor thread redraws between those.
+    return tqdm(
+        total=length or None,
+        desc=label,
+        file=sys.stderr,
+        mininterval=every_s,
+        miniters=1,
+    )
 
 
-def _steps(bar: Any) -> Callable[[int, int], None]:
+def _steps(bar: tqdm) -> Callable[[int, int], None]:
     """Show `done` of `total` steps on `bar`, whose length need not be known yet."""
 
     def step(done: int, total: int) -> None:
-        bar.length = total
-        bar.update(done - bar.pos)
+        bar.total = total
+        bar.update(done - bar.n)
 
     return step
 
@@ -154,8 +167,8 @@ def _pin(
 
 
 def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
-    """Log what `rig-view` draws, when the ownship has a hull to draw it on, and what
-    `previs --video` draws.
+    """Log what `rig-view` draws, when the ownship has a hull to draw it on, and the
+    videos `previs --video` draws.
 
     Drawn before the render builds its scene: each resets Blender to its factory
     settings, and so does every build, which then picks its render device.
@@ -184,16 +197,18 @@ def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
             return
         if image is not None:
             run.log("rig_view", image)
-        for view, path in drawn.stills.items():
-            run.log(view, path)
         for view, path in drawn.videos.items():
             run.log(f"{view}_video", path)
 
 
-def _advance(bar: Any, run: logger.Log, done: int) -> None:
+def _advance(bar: tqdm, run: logger.Log, done: int) -> None:
     """Show `done` images on `bar`, and log its pace to `run`."""
-    bar.update(done - bar.pos)
-    run.progress(done=bar.pos, s_per_image=bar.time_per_iteration, eta_s=bar.eta)
+    bar.update(done - bar.n)
+    # The mean since the bar began, the scene's build included: tqdm's own rate moves
+    # only when it redraws, every half minute off a terminal.
+    s_per_image = bar.format_dict["elapsed"] / bar.n if bar.n else 0.0
+    left = (bar.total or bar.n) - bar.n
+    run.progress(done=bar.n, s_per_image=s_per_image, eta_s=s_per_image * left)
 
 
 def _render(
@@ -205,7 +220,7 @@ def _render(
     every = max(1, round(built.outputs.fps))
 
     def advance(mount: Mount, image: Path, frame: int) -> None:
-        _advance(bar, run, bar.pos + 1)
+        _advance(bar, run, bar.n + 1)
         if frame % every == 0:
             run.frame(mount, image)
 
@@ -265,7 +280,7 @@ def _render_apart(
             )
             # --parallel logs progress only: a band's newest frame may be half
             # written.
-            if done > bar.pos:
+            if done > bar.n:
                 _advance(bar, run, done)
 
         failed = processes.at_once(_band, jobs, logs, tick)

@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -683,3 +684,36 @@ def test_bands_built_at_two_checkouts_are_not_joined(
         cli._render_apart(load(SWEEP_SENTRY), tmp_path)
 
     assert (tmp_path / ".ir").is_dir()
+
+
+def test_a_bar_off_a_terminal_redraws_only_at_its_ends_within_half_a_minute(
+    capsys: pytest.CaptureFixture,
+) -> None:
+    with cli._progress(5, "Rendering") as bar:
+        for _ in range(5):
+            # Past a terminal's redraw interval.
+            time.sleep(0.15)
+            bar.update(1)
+
+    err = capsys.readouterr().err
+    assert "Rendering:" in err
+    assert "5/5" in err
+    assert "3/5" not in err
+
+
+def test_a_render_s_pace_is_logged_before_its_bar_redraws() -> None:
+    logged: list[dict[str, float]] = []
+    run = cast("logger.Run", SimpleNamespace(progress=lambda **v: logged.append(v)))
+
+    with cli._progress(4, "Rendering") as bar:
+        bar._time = lambda: bar.start_t + 10.0  # 10 s since the bar began
+        cli._advance(bar, run, 2)
+
+    assert logged == [{"done": 2, "s_per_image": 5.0, "eta_s": 10.0}]
+
+
+def test_a_bar_whose_length_comes_later_takes_it_from_its_steps() -> None:
+    with cli._progress(0, "Building") as bar:
+        cli._steps(bar)(3, 5)
+
+    assert (bar.n, bar.total) == (3, 5)
