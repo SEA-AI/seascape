@@ -311,11 +311,18 @@ def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
     assert drawn.stdout == f"{out}\n"
     drawn_px = Image.open(out).size
     assert drawn_px[0] == len(rigview.VIEWS) * rigview.TILE[0]
-    built = load(scenario)
-    lines = len(built.rigs) + len(built.mounts)
-    assert drawn_px[1] == rigview.TILE[1] + 16 + rigview.LINE_PX * lines
+    assert drawn_px[1] > rigview.TILE[1]
     rule = Image.open(out).convert("RGB").getpixel((0, rigview.TILE[1]))
     assert rule == ImageColor.getrgb(brand.FOCUS_RED)
+
+
+def test_rig_view_sets_rigs_side_by_side_while_they_fit() -> None:
+    lines: list[rigview.Line] = [("hull below it at 3.74 m", rigview.WHITE)] * 3
+    one = rigview._caption({"bow": lines}, 2400)
+    two = rigview._caption({"port": lines, "stbd": lines}, 2400)
+    narrow = rigview._caption({"port": lines, "stbd": lines}, 400)
+    assert two.size == one.size
+    assert narrow.height > one.height
 
 
 @pytest.mark.render
