@@ -1,5 +1,6 @@
 import math
 from pathlib import Path
+from typing import Any, cast
 
 import bpy
 import cv2
@@ -71,6 +72,41 @@ def test_the_top_view_puts_the_bow_up_and_starboard_right() -> None:
     assert (own[0] + right[0]) / 2 == pytest.approx(0.0, abs=1e-9)
     assert (own[1] + seen[1]) / 2 == pytest.approx(0.0, abs=1e-9)
     assert view.m_per_px == pytest.approx(100.0 * (1 + 2 * MARGIN) / size_px[1])
+
+
+def test_the_top_view_holds_every_hull_whole_as_it_moves() -> None:
+    """A 40.8 x 9 m yacht passing close astern of a 12 m ownship: its size, not its
+    track, sets the frame.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    own, yacht = (bpy.data.objects.new(n, None) for n in ("own", "yacht"))
+    yacht["length_m"], yacht["beam_m"] = 40.8, 9.0
+    for frame, east_m in ((0, -10.0), (1, 10.0)):
+        yacht.location = (east_m, -25.0, 0.0)
+        yacht.keyframe_insert("location", frame=frame)
+    for root in (own, yacht):
+        bpy.context.scene.collection.objects.link(root)
+    scene = plan._Scene(
+        roots=[own, yacht],
+        fans={},
+        rings={},
+        path=cast("Any", None),  # the top view never reads it
+        heading_rad=0.3,
+        length_m=12.0,
+        reach_m=400.0,
+    )
+    lens = plan._camera(scene, "top")
+
+    m_per_px = plan._aim_top(scene, lens, np.array([0, 1]))
+
+    T_camera_world = lens.camera.matrix_world.inverted()
+    half_m = np.array(lens.size_px) * m_per_px / 2
+    grow = grown(m_per_px, 40.8)
+    for frame in (0, 1):
+        bpy.context.scene.frame_set(frame)
+        for root, reach_m in ((own, 6.0), (yacht, grow * math.hypot(40.8, 9.0) / 2)):
+            seen = np.array((T_camera_world @ root.matrix_world.translation).xy)
+            assert (np.abs(seen) + reach_m <= half_m + 1e-6).all()
 
 
 @pytest.mark.parametrize(
