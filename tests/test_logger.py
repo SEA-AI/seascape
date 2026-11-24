@@ -49,7 +49,6 @@ class FakeRun:
         self.offline, self.disabled = mode == "offline", mode == "disabled"
         self.logged: list[dict[str, Any]] = []
         self.config = Config()
-        self.summary: dict[str, Any] = {}
         self.used: list[Artifact] = []
         self.outputs: list[Artifact] = []
 
@@ -247,25 +246,32 @@ def test_a_render_published_nowhere_reads_no_frame(tmp_path: Path) -> None:
     """A live run would open the frame; one logged nowhere never does."""
     built = load(OPEN_SEA)
 
-    logger.UNLOGGED.frame(built.mounts[0], tmp_path / "absent.png", every=1)
+    logger.UNLOGGED.frame(built.mounts[0], tmp_path / "absent.png")
 
 
 def test_a_render_logs_each_camera_s_frame_each_second(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     built = load(OPEN_SEA, ["outputs.duration_s = 2", "outputs.fps = 5"])
-    camera = built.mounts[0].name
-    frames = [tmp_path / camera / f"{n:04d}.png" for n in range(10)]
-    frames[0].parent.mkdir()
-    for path in frames:
-        Image.new("RGB", (4, 3)).save(path)
+    mount = built.mounts[0]
+
+    def render(_: object, into: Path, advance: Any) -> list[Path]:
+        (into / mount.name).mkdir()
+        for frame in range(10):
+            path = into / mount.name / f"{frame:04d}.png"
+            Image.new("RGB", (4, 3)).save(path)
+            advance(mount, path, frame)
+        advance(mount, into / "radiance.exr", 0)
+        return []
+
+    monkeypatch.setattr(renderer, "render", render)
     run = FakeRun()
 
-    for path in [*frames, tmp_path / "radiance.exr"]:
-        live(run).frame(built.mounts[0], path, every=5)
+    cli._render(built, tmp_path, live(run))
 
-    # Frames 0 and 5: one a second at 5 fps.
-    assert run.logged == [{f"frame/{camera}": ("image", (4, 3))}] * 2
+    # Frames 0 and 5, one a second at 5 fps; radiance is no picture.
+    frames = [v for v in run.logged if "images_done" not in v]
+    assert frames == [{f"frame/{mount.name}": ("image", (4, 3))}] * 2
 
 
 def test_a_render_logs_its_progress_image_by_image(
@@ -275,7 +281,7 @@ def test_a_render_logs_its_progress_image_by_image(
 
     def render(_: object, into: Path, advance: Any) -> list[Path]:
         for _ in range(built.images):
-            advance(built.mounts[0], into / "radiance.exr")
+            advance(built.mounts[0], into / "radiance.exr", 0)
         return []
 
     monkeypatch.setattr(renderer, "render", render)
@@ -321,7 +327,7 @@ def test_a_published_scenario_logs_its_previews_and_publishes_without_a_montage(
 def test_the_previews_log_the_rig_view_and_both_previs_views(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def draw(_: object, folder: Path, *__: object) -> previs.Drawn:
+    def draw(_: object, folder: Path, *__: object, **___: object) -> previs.Drawn:
         return previs.Drawn(
             {v: folder / f"{v}.png" for v in previs.VIEWS},
             {v: folder / f"{v}.mp4" for v in previs.VIEWS},
@@ -345,7 +351,7 @@ def test_the_previews_log_the_rig_view_and_both_previs_views(
 def test_a_preview_that_fails_is_skipped_with_a_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:
-    def failed(*_: object) -> None:
+    def failed(*_: object, **__: object) -> None:
         raise RuntimeError("drawing top failed")
 
     monkeypatch.setattr(previs, "draw", failed)
@@ -445,7 +451,7 @@ def test_a_name_w_and_b_refuses_renders_nothing(
         "recording", OPEN_SEA, "-o", tmp_path / folder, "--publish", *flags
     )
 
-    assert result.exit_code == 2
+    assert result.exit_code == 1
     assert "cannot name an artifact" in result.output
     assert not wandb.runs
 
@@ -462,7 +468,7 @@ def test_a_run_that_cannot_publish_is_refused_before_the_render(
     def started(*_: object) -> list[Path]:
         raise AssertionError("went on with a run that cannot publish")
 
-    monkeypatch.setattr(cli, "_record", started)
+    monkeypatch.setattr(cli, "_pin", started)
     monkeypatch.setattr(cli.recording, "export", started)
     args = (OPEN_SEA, "-o", tmp_path / "x") if source == "scenario" else (tmp_path,)
 
@@ -470,3 +476,11 @@ def test_a_run_that_cannot_publish_is_refused_before_the_render(
 
     assert result.exit_code == 1
     assert mode in result.output
+
+
+def test_a_disabled_wandb_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Against wandb itself, whose disabled run is a stand-in that sends nothing."""
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+
+    with pytest.raises(ValueError, match="disabled"), logger.run("p", None, "n"):
+        pass

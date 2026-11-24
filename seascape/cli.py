@@ -3,7 +3,6 @@
 import json
 import math
 import os
-import re
 import shutil
 import sys
 import tempfile
@@ -19,6 +18,7 @@ from seascape import assets, logger, outputs, processes
 from seascape.assets import skies
 from seascape.config import (
     BANDS,
+    RECORDED,
     Band,
     Mount,
     Quality,
@@ -163,19 +163,25 @@ def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
     from seascape import previs, rigview
 
     with tempfile.TemporaryDirectory() as tmp, _blender_log(into / _BLENDER_LOG):
+        image = None
         try:
             if built.ownship.asset is not None:
                 image = Path(tmp) / "rig-view.png"
                 rigview.draw(built, image)
-                run.log("rig_view", image)
             with _progress(0, "Drawing") as bar:
                 drawn = previs.draw(
-                    built, Path(tmp), "preview", built.outputs.fps, _steps(bar)
+                    built,
+                    Path(tmp),
+                    "preview",
+                    video_fps=built.outputs.fps,
+                    progress=_steps(bar),
                 )
         # The render is what is published; it goes on without its previews.
         except (OSError, RuntimeError, ValueError) as error:
             click.echo(f"no previews logged: {error}", err=True)
             return
+        if image is not None:
+            run.log("rig_view", image)
         for view, path in drawn.stills.items():
             run.log(view, path)
         for view, path in drawn.videos.items():
@@ -196,9 +202,10 @@ def _render(
     # About one frame a second of the scenario's time.
     every = max(1, round(built.outputs.fps))
 
-    def advance(mount: Mount, image: Path) -> None:
+    def advance(mount: Mount, image: Path, frame: int) -> None:
         _advance(bar, run, bar.pos + 1)
-        run.frame(mount, image, every)
+        if frame % every == 0:
+            run.frame(mount, image)
 
     with (
         _progress(built.images, "Rendering") as bar,
@@ -291,9 +298,6 @@ def _render_apart(
             shutil.rmtree(part)
             logs[band].unlink()
     return written
-
-
-_QUALITY: Quality = "PERC_LOSSLESS"
 
 
 def _encode(folder: Path, quality: Quality) -> list[Path]:
@@ -516,7 +520,7 @@ def panorama_(
 @click.option(
     "--quality",
     type=click.Choice(get_args(Quality.__value__), case_sensitive=False),
-    default=_QUALITY,
+    default=RECORDED,
     show_default=True,
     help="Blender's H.264 constant-quality preset.",
 )
@@ -576,63 +580,53 @@ def recording_(
     if name is not None and not publish:
         raise click.UsageError("--name needs --publish")
     folder = (output or scenario.with_suffix("")) if rendering else scenario
-    if publish:
-        # A render records this commit: refuse before hours of rendering.
-        commit = (
-            provenance.commit()
-            if rendering
-            else labels.Labels.read(folder).info.get("commit")
-        )
-        if not provenance.clean(commit):
-            raise click.UsageError(
-                f"--publish needs a render from a clean commit, not {commit}"
-            )
-    else:
-        commit = None
+    commit = _publishable(folder, rendering) if publish else None
     if rendering:
         _empty(folder)
     # `Path(".").name` is empty.
     title = name or folder.resolve().name
-    # W&B's rule for an artifact's name, checked before hours of rendering.
-    if publish and not re.fullmatch(r"[A-Za-z0-9_.-]+", title):
-        raise click.UsageError(
-            f"{title!r} cannot name an artifact: use letters, digits, '-', '_' or '.'"
-        )
-    unlogged = nullcontext(logger.UNLOGGED)
-    with logger.run(project, entity, title) if publish else unlogged as run:
+    with logger.run(project, entity, title) if publish else nullcontext() as live:
         if rendering:
-            _record(scenario, overrides, folder, parallel, run, commit)
+            _, built = _pin(scenario, overrides, folder)
+            if live:
+                _previews(built, folder, live)
+            render = _render_apart if parallel else _render
+            render(built, folder, live or logger.UNLOGGED)
+            _encode(folder, RECORDED)
+            if live:
+                _unmoved(folder, commit)
         written = recording.export(folder)
         for path in written:
             click.echo(path)
-        if isinstance(run, logger.Run):
-            _log_montage(folder, run)
+        if live:
+            _log_montage(folder, live)
             recorded = sorted({p.parent for p in written if p.suffix == ".mp4"})
             info = labels.Labels.read(folder).info
-            run.publish(info, folder / SCENARIO, recorded)
+            live.publish(info, folder / SCENARIO, recorded)
 
 
-def _record(
-    scenario: Path,
-    overrides: tuple[str, ...],
-    folder: Path,
-    parallel: bool,
-    run: logger.Log,
-    commit: str | None,
-) -> None:
-    """Render `scenario` into `folder` and encode its videos, logging progress to
-    `run`; a live one also gets the previews, then refuses to publish if the
-    checkout left `commit`, by an edit or a checkout, while it rendered.
+def _publishable(folder: Path, rendering: bool) -> str:
+    """The clean commit `folder`'s render records, or this checkout's when it is yet
+    to render: refused before hours of rendering when there is none.
     """
-    _, built = _pin(scenario, overrides, folder)
-    if isinstance(run, logger.Run):
-        _previews(built, folder, run)
-    (_render_apart if parallel else _render)(built, folder, run)
-    _encode(folder, _QUALITY)
-    if not isinstance(run, logger.Run):
-        return
-    # The labels hold the checkout as the render built its scene, which an edit
-    # undone by the end shows and the checkout then does not.
+    commit = (
+        provenance.commit()
+        if rendering
+        else labels.Labels.read(folder).info.get("commit")
+    )
+    if not provenance.clean(commit):
+        raise click.UsageError(
+            f"--publish needs a render from a clean commit, not {commit}"
+        )
+    return commit
+
+
+def _unmoved(folder: Path, commit: str | None) -> None:
+    """Refuse to publish `folder`'s render if the checkout left `commit` while it
+    rendered, by an edit or a checkout.
+    """
+    # The labels record the commit the scene was built at: an edit undone before the
+    # end shows only there.
     built_at = labels.Labels.read(folder).info.get("commit")
     for seen in (built_at, provenance.commit()):
         if seen != commit:
@@ -652,10 +646,11 @@ def _log_montage(folder: Path, run: logger.Run) -> None:
         try:
             shown = load(folder / SCENARIO)
             out = encoder.montage_video(shown, folder, Path(tmp) / "montage.mp4")
-            run.log("montage", out)
         # A failed encode raises RuntimeError.
         except (OSError, RuntimeError, ValueError) as error:
             click.echo(f"no montage video logged: {error}", err=True)
+            return
+        run.log("montage", out)
 
 
 @main.command()

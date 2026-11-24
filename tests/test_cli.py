@@ -363,11 +363,14 @@ def _in_turn(
     logs: dict[str, Path],
     tick: Callable[[], None],
 ) -> list[str]:
-    """`processes.at_once`, one job after the other in this process, none failing."""
+    """`processes.at_once`, one job after the other in this process, none failing,
+    with a tick before the first and after each.
+    """
+    tick()
     for key, args in jobs.items():
         logs[key].touch()
         work(*args)
-    tick()
+        tick()
     return []
 
 
@@ -490,7 +493,7 @@ def test_a_scenario_s_recording_is_rendered_and_encoded_beside_it(
 
     assert result.exit_code == 0, result.output
     into = tmp_path / "sweep"
-    assert steps == [("render", into), (cli._QUALITY, into), ("export", into)]
+    assert steps == [("render", into), (cli.RECORDED, into), ("export", into)]
 
 
 def test_a_render_s_folder_is_only_exported(
@@ -571,8 +574,9 @@ def test_the_bands_log_their_progress_to_the_run(
 
     cli._render_apart(built, tmp_path, run)
 
-    # Each camera's first frame by the tick, then the rest once the bands end.
-    assert done == [len(built.mounts), built.images]
+    # A tick logs only a band's new frames, then the rest once the bands end.
+    eo = sum(m.camera.band == "eo" for m in built.mounts)
+    assert done == [eo, len(built.mounts), built.images]
 
 
 def _write_part(part: Path, band: str) -> None:
@@ -651,3 +655,15 @@ def test_a_previs_rate_without_a_video_is_refused(
 
     assert refused.exit_code == 2
     assert "--video" in refused.output
+
+
+def test_a_quality_reads_in_either_case(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+    monkeypatch.setattr(cli, "_encode", lambda _, quality: asked.append(quality) or [])
+
+    result = run("video", tmp_path, "--quality", "lowest")
+
+    assert result.exit_code == 0, result.output
+    assert asked == ["LOWEST"]

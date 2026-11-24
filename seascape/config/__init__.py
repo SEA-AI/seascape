@@ -33,12 +33,13 @@ from seascape.config.loader import (
     seeds,
 )
 from seascape.config.objects import Farm, Fishtail, Move, Object, Ownship, Targets, Turn
-from seascape.config.scenario import ImageFormat, Outputs, Quality, Scenario
+from seascape.config.scenario import RECORDED, ImageFormat, Outputs, Quality, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
 __all__ = [
     "BANDS",
     "PRESETS",
+    "RECORDED",
     "Agc",
     "Band",
     "Camera",

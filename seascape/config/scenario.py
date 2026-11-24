@@ -23,6 +23,8 @@ type ImageFormat = Literal["exr", "png", "jpg"]
 type Quality = Literal[
     "LOSSLESS", "PERC_LOSSLESS", "HIGH", "MEDIUM", "LOW", "VERYLOW", "LOWEST"
 ]
+# What a recording's videos are encoded at unless told otherwise.
+RECORDED: Quality = "PERC_LOSSLESS"
 
 
 class Samples(Model):

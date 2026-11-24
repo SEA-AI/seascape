@@ -2,7 +2,8 @@
 artifacts it publishes.
 """
 
-from collections.abc import Generator, Iterable
+import re
+from collections.abc import Generator, Iterable, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
@@ -23,11 +24,10 @@ class Log:
     def progress(self, *, done: int, s_per_image: float, eta_s: float) -> None:
         """Log `done` images, the wall time per image and the time left."""
 
-    def frame(self, mount: Mount, image: Path, every: int) -> None:
-        """Log `mount`'s frame at `image` if its number is a multiple of `every`."""
+    def frame(self, mount: Mount, image: Path) -> None:
+        """Log `mount`'s frame at `image`."""
 
 
-# What a render logs to when it publishes nothing.
 UNLOGGED = Log()
 
 
@@ -42,19 +42,13 @@ class Run(Log):
         self._run.log({"images_done": done, "s_per_image": s_per_image, "eta_s": eta_s})
 
     @override
-    def frame(self, mount: Mount, image: Path, every: int) -> None:
+    def frame(self, mount: Mount, image: Path) -> None:
         """Log the frame under `frame/<camera>`, a thermal one toned as its camera's
         AGC sets; radiance, an exr, is no picture.
         """
-        if image.suffix == ".exr":
-            return
-        # A sequence's frame is `<camera>/<frame>`, a still `<camera>`: `stem`. A
-        # cropped video's frames carry the video's name.
-        stem = image.stem
-        camera, number = (image.parent.name, int(stem)) if stem.isdigit() else (stem, 0)
-        if number % every == 0:
+        if image.suffix != ".exr":
             picture = preview.picture(image, agc.Agc(mount.camera.agc))
-            self.log(f"frame/{camera}", picture)
+            self.log(f"frame/{mount.name}", picture)
 
     def log(self, key: str, shown: Path | Image.Image) -> None:
         """Log `shown` under `key`: an mp4 at its path as a video, W&B copying it as it
@@ -68,7 +62,7 @@ class Run(Log):
 
     def publish(
         self,
-        info: dict[str, Any],
+        info: Mapping[str, Any],
         scenario: Path,
         recordings: Iterable[Path],
     ) -> None:
@@ -111,9 +105,13 @@ def run(project: str, entity: str | None, name: str) -> Generator[Run]:
         The live run.
 
     Raises:
-        ValueError: wandb is not installed, or starts no run: logged out, offline or
-            a wrong entity.
+        ValueError: `name` breaks W&B's rule for an artifact's name, wandb is not
+            installed, or it starts no run: logged out, offline or a wrong entity.
     """
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+        raise ValueError(
+            f"{name!r} cannot name an artifact: use letters, digits, '-', '_' or '.'"
+        )
     try:
         import wandb  # noqa: PLC0415 - an optional extra
     except ImportError as error:

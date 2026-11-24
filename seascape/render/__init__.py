@@ -331,7 +331,7 @@ def _shoot(
 def render(
     scenario: Scenario,
     into: Path,
-    advance: Callable[[Mount, Path], None] = lambda *_: None,
+    advance: Callable[[Mount, Path, int], None] = lambda *_: None,
 ) -> list[Path]:
     """Write one image per camera and frame, their calibration and their labels. A
     sequence puts each camera's frames in a folder of its own.
@@ -340,7 +340,7 @@ def render(
         scenario: What to render; each band is built culled to its own cameras at
             their resolution.
         into: Where the images and their truth go; made if missing.
-        advance: Runs after each image, given its camera and path.
+        advance: Runs after each image, given its camera, path and frame.
     """
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
@@ -401,7 +401,7 @@ def render(
                     shot.append(taken)
                     raw += [source] if source else []
                     written += files
-                    advance(mount, files[-1])
+                    advance(mount, files[-1], frame)
                 shot, files = _stitch(
                     shot, into, frame if sequence else None, outputs.format
                 )

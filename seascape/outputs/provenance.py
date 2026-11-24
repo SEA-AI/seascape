@@ -7,6 +7,7 @@ import os
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TypeGuard
 
 from PIL import ExifTags
 from PIL import Image as Picture
@@ -55,7 +56,7 @@ def commit() -> str | None:
         return os.environ.get("SEASCAPE_COMMIT") or None
 
 
-def clean(commit: str | None) -> bool:
+def clean(commit: str | None) -> TypeGuard[str]:
     """Whether `commit`, as `commit()` names one, can be checked out to render the
     same again.
     """

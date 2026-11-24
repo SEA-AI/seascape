@@ -10,7 +10,7 @@ import bpy
 import cv2
 import PIL.Image
 
-from seascape.config import Agc, Quality, Scenario
+from seascape.config import RECORDED, Agc, Quality, Scenario
 from seascape.outputs import agc, montage
 from seascape.outputs.labels import Image, agcs, cameras
 
@@ -20,7 +20,7 @@ PREVIEW: Quality = "HIGH"
 
 def encode(
     run: Path,
-    quality: Quality = "PERC_LOSSLESS",
+    quality: Quality = RECORDED,
     advance: Callable[[], None] = lambda: None,
 ) -> list[Path]:
     """Write each camera's video, `<camera>.mp4`, into the run's folder.
@@ -83,7 +83,7 @@ def sequence(
     size_px: tuple[int, int],
     step_s: float,
     out: Path,
-    quality: Quality = "PERC_LOSSLESS",
+    quality: Quality = RECORDED,
 ) -> Path:
     """Encode frames as H.264. Resets Blender to its factory settings.
 

@@ -4,7 +4,7 @@ No Blender: this reads the images `render` already wrote. Captions sit under eac
 frame, never on it: in an exr they would corrupt radiance.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
@@ -125,7 +125,7 @@ def _tile_high(frame: Path, tone: agc.Agc) -> Image.Image:
     return ImageOps.scale(picture, TILE_H / picture.height, Image.Resampling.LANCZOS)
 
 
-def _sheet(mounts: Sequence[Mount], pictures: dict[str, Image.Image]) -> Image.Image:
+def _sheet(mounts: Sequence[Mount], pictures: Mapping[str, Image.Image]) -> Image.Image:
     """`pictures`, by their mount's name, tiled a row per band and a column per
     bearing.
     """
@@ -174,10 +174,11 @@ def video_frames(scenario: Scenario, into: Path, folder: Path) -> list[Path]:
         ValueError: The clips differ in length.
     """
     clips = labels.cameras(into)
-    shown = {
-        m.name: v for m in preview.cameras(scenario) if (v := _recorded(m)) in clips
-    }
-    mounts = [m for m in preview.cameras(scenario) if m.name in shown]
+    shown, mounts = {}, []
+    for m in preview.cameras(scenario):
+        if (v := _recorded(m)) in clips:
+            shown[m.name] = v
+            mounts.append(m)
     if not mounts:
         raise FileNotFoundError(f"{into}: no frames of any camera")
     settings = labels.agcs(into)
