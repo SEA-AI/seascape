@@ -31,7 +31,7 @@ An artifact's name is its collection, and each publish under it adds a version: 
 
 Linking a version into `wandb-registry-dataset/<x>` is optional, a person's call made by hand in W&B: worth it for a recording shared beyond one consumer. Check first that `wandb-registry-dataset` accepts type `recording`. The registry counts its own links, so `wandb-registry-dataset/<x>:v<m>` can differ from the project's `<x>:v<n>`.
 
-A consumer fetches from the registry if the version is linked, or from the project otherwise. `:latest` moves with the next publish; pin `:v<n>` (or `:v<m>`) to hold one:
+A consumer fetches from the registry if the version is linked, or from the project otherwise. The project's `:latest` moves with the next publish, the registry's with the next link; pin `:v<n>` (or `:v<m>`) to hold one:
 
 ```bash
 uvx wandb artifact get --root <dir> sea-ai/synthetic-recordings/<x>:v<n>
