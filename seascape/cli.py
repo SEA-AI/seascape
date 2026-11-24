@@ -154,8 +154,8 @@ def _pin(
 
 
 def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
-    """Log what `rig-view` draws, when the ownship has a hull to draw it on, and what
-    `previs --video` draws.
+    """Log what `rig-view` draws, when the ownship has a hull to draw it on, and the
+    videos `previs --video` draws.
 
     Drawn before the render builds its scene: each resets Blender to its factory
     settings, and so does every build, which then picks its render device.
@@ -184,8 +184,6 @@ def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
             return
         if image is not None:
             run.log("rig_view", image)
-        for view, path in drawn.stills.items():
-            run.log(view, path)
         for view, path in drawn.videos.items():
             run.log(f"{view}_video", path)
 

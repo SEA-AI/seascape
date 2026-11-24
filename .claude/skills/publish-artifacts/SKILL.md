@@ -13,7 +13,7 @@ description: >-
 uv run seascape recording scenarios/<x>.toml --parallel --publish --entity sea-ai --project synthetic-recordings
 ```
 
-One run renders, encodes and exports, then logs artifact `<x>-scenario` (type `scenario`, the resolved `scenario.toml` as `<x>.toml`) as the input of artifact `<x>` (type `recording`, each recording folder as `<rig>/<recording>`). `--name` renames the run and both artifacts. The run also shows the render as it goes: progress, each camera's frame about once a scenario second (not with `--parallel`), the rig-view, the previs views and their videos, then the recording's videos laid out in one. A render's folder publishes the same way: `uv run seascape recording scenarios/<x> --publish ...`.
+One run renders, encodes and exports, then logs artifact `<x>-scenario` (type `scenario`, the resolved `scenario.toml` as `<x>.toml`) as the input of artifact `<x>` (type `recording`, each recording folder as `<rig>/<recording>`). `--name` renames the run and both artifacts. The run also shows the render as it goes: progress, each camera's frame about once a scenario second (not with `--parallel`), the rig-view, the previs videos, then the recording's videos laid out in one. A render's folder publishes the same way: `uv run seascape recording scenarios/<x> --publish ...`.
 
 Prerequisites:
 
