@@ -15,7 +15,7 @@ from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
 from seascape.motion import ownship_up_m, tilted, track
-from seascape.outputs import brand, canvas, preview
+from seascape.outputs import brand, canvas
 from seascape.physics import earth
 
 VIEWS = (
@@ -185,4 +185,4 @@ def draw(scenario: Scenario, out: Path) -> None:
     tiles = _tiles(hull + frusta)
     out.parent.mkdir(parents=True, exist_ok=True)
     caption = _caption(lines, TILE[0] * len(tiles))
-    preview.watermark(canvas.above([canvas.beside(tiles), caption])).save(out)
+    canvas.above([canvas.beside(tiles), caption]).save(out)
