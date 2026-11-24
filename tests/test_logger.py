@@ -418,18 +418,22 @@ def test_a_name_w_and_b_refuses_renders_nothing(
 
 
 @pytest.mark.parametrize("mode", ["offline", "disabled"])
+@pytest.mark.parametrize("source", ["scenario", "folder"])
 def test_a_run_that_cannot_publish_is_refused_before_the_render(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, source: str
 ) -> None:
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb(mode=mode))
+    monkeypatch.setattr(provenance, "commit", lambda: "abc1234")
     rendered(tmp_path, "abc1234")
 
-    def exported(_: Path) -> list[Path]:
-        raise AssertionError("exported a recording it cannot publish")
+    def started(*_: object) -> list[Path]:
+        raise AssertionError("went on with a run that cannot publish")
 
-    monkeypatch.setattr(cli.recording, "export", exported)
+    monkeypatch.setattr(cli, "_record", started)
+    monkeypatch.setattr(cli.recording, "export", started)
+    args = (OPEN_SEA, "-o", tmp_path / "x") if source == "scenario" else (tmp_path,)
 
-    result = cli_run("recording", tmp_path, "--publish")
+    result = cli_run("recording", *args, "--publish")
 
     assert result.exit_code == 1
     assert mode in result.output
