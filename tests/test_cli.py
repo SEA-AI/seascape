@@ -5,6 +5,8 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import bpy
 import click
@@ -12,7 +14,7 @@ import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
 
-from seascape import assets, cli, previs, processes, rigview, server
+from seascape import assets, cli, logger, previs, processes, rigview, server
 from seascape import render as renderer
 from seascape.assets import skies
 from seascape.config import Scenario, load, loader
@@ -240,7 +242,7 @@ def test_a_render_s_folder_holds_the_scenario_it_rendered(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rendered: list[Scenario] = []
-    monkeypatch.setattr(cli, "_render", lambda built, _: rendered.append(built) or [])
+    monkeypatch.setattr(cli, "_render", lambda built, *_: rendered.append(built) or [])
     monkeypatch.setattr(cli, "_encode", lambda *_: None)
     monkeypatch.setattr(cli.recording, "export", lambda _: [])
 
@@ -440,7 +442,7 @@ def test_a_one_band_scene_renders_in_this_process(
     )
 
     assert cli._render_apart(built, tmp_path) == files
-    assert rendered == [(built, tmp_path)]
+    assert rendered == [(built, tmp_path, None)]
 
 
 @pytest.mark.parametrize(
@@ -475,7 +477,7 @@ def test_a_scenario_s_recording_is_rendered_and_encoded_beside_it(
     scenario.write_text(f"extends = {str(SWEEP_SENTRY)!r}\n")
     steps: list[tuple[str, Path]] = []
     monkeypatch.setattr(
-        cli, "_render", lambda _, into: steps.append(("render", into)) or []
+        cli, "_render", lambda _, into, *__: steps.append(("render", into)) or []
     )
     monkeypatch.setattr(
         cli, "_encode", lambda into, quality: steps.append((quality, into)) or []
@@ -546,6 +548,31 @@ def test_the_bands_end_as_one_render_of_the_scene(
         "labels.json",
         cli.SCENARIO,
     ]
+
+
+def test_the_bands_log_their_progress_to_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built = load(SWEEP_SENTRY)
+    fmt = built.outputs.format
+
+    def render_band(_: Path, band: str, part: Path) -> None:
+        _write_part(part, band)
+        for mount in (m for m in built.mounts if m.camera.band == band):
+            (part / f"{mount.name}.{fmt}").touch()
+
+    monkeypatch.setattr(processes, "at_once", _in_turn)
+    monkeypatch.setattr(cli, "_band", render_band)
+    done: list[int] = []
+    run = cast(
+        "logger.Run", SimpleNamespace(progress=lambda **v: done.append(v["done"]))
+    )
+    (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
+
+    cli._render_apart(built, tmp_path, run)
+
+    # Each camera's first frame by the tick, then the rest once the bands end.
+    assert done == [len(built.mounts), built.images]
 
 
 def _write_part(part: Path, band: str) -> None:

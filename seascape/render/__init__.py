@@ -6,9 +6,7 @@ is rendered float and written here as a thermal camera writes one: a png as 16-b
 centikelvin, a jpg as 8-bit grey through `agc.Agc`.
 """
 
-import os
 import shutil
-import subprocess
 import tempfile
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -33,10 +31,17 @@ from seascape.config import (
     Scenario,
     Stitch,
     recorded_name,
-    sources,
     substream,
 )
-from seascape.outputs import agc, journal, labels, microbolometer, stem, stitch
+from seascape.outputs import (
+    agc,
+    journal,
+    labels,
+    microbolometer,
+    provenance,
+    stem,
+    stitch,
+)
 from seascape.outputs.calibration import CameraCalibration
 from seascape.physics import earth
 
@@ -179,27 +184,6 @@ def _targets(
     ]
 
 
-def _commit() -> str | None:
-    """This module's commit, else the image's, else None."""
-    here = Path(__file__)
-    try:
-        # A wheel in another project's .venv sits in a work tree that does not track it.
-        _git(here.parent, "ls-files", "--error-unmatch", here.name)
-        # --exclude: a tag would otherwise replace the hash with its own name.
-        return _git(
-            here.parent, "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"
-        )
-    except (OSError, subprocess.CalledProcessError):
-        # The Dockerfile's build arg: an image carries no .git.
-        return os.environ.get("SEASCAPE_COMMIT") or None
-
-
-def _git(cwd: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    ).stdout.strip()
-
-
 def _info(scenario: Scenario) -> dict[str, Any]:
     """COCO's info block, and what it takes to reproduce the render."""
     preferences = bpy.context.preferences.addons["cycles"].preferences
@@ -207,7 +191,7 @@ def _info(scenario: Scenario) -> dict[str, Any]:
     return {
         "version": version("seascape"),
         "date_created": datetime.now(UTC).isoformat(timespec="seconds"),
-        "commit": _commit(),
+        "commit": provenance.commit(),
         "blender": bpy.app.version_string,
         "blender_build": bpy.app.build_hash.decode(),
         # One card is listed under CUDA and OPTIX alike, by the same name.
@@ -305,15 +289,7 @@ def _shoot(
     number, time_s = frame
     scene.look_through(built.cameras, mount, rng)
     # An exr is the radiance the cameras saw, before any recorder.
-    videos = mount.rig.videos if fmt != "exr" else {}
-    video = next(
-        (
-            (recorded_name(mount.rig_name, name), recorded)
-            for name, recorded in videos.items()
-            if mount.camera_name in sources(recorded)
-        ),
-        None,
-    )
+    video = mount.video if fmt != "exr" else None
     crop = video[1] if video and isinstance(video[1], Crop) else None
     width, height = mount.camera.width_px, mount.camera.height_px
     tree = bpy.context.scene.compositing_node_group
@@ -353,7 +329,9 @@ def _shoot(
 
 
 def render(
-    scenario: Scenario, into: Path, advance: Callable[[], None] = lambda: None
+    scenario: Scenario,
+    into: Path,
+    advance: Callable[[Mount, Path], None] = lambda *_: None,
 ) -> list[Path]:
     """Write one image per camera and frame, their calibration and their labels. A
     sequence puts each camera's frames in a folder of its own.
@@ -362,7 +340,7 @@ def render(
         scenario: What to render; each band is built culled to its own cameras at
             their resolution.
         into: Where the images and their truth go; made if missing.
-        advance: Runs after each image.
+        advance: Runs after each image, given its camera and path.
     """
     # Blender resolves a relative render.filepath against the .blend, not the shell.
     into = into.resolve()
@@ -423,7 +401,7 @@ def render(
                     shot.append(taken)
                     raw += [source] if source else []
                     written += files
-                    advance()
+                    advance(mount, files[-1])
                 shot, files = _stitch(
                     shot, into, frame if sequence else None, outputs.format
                 )

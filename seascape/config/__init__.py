@@ -33,7 +33,7 @@ from seascape.config.loader import (
     seeds,
 )
 from seascape.config.objects import Farm, Fishtail, Move, Object, Ownship, Targets, Turn
-from seascape.config.scenario import ImageFormat, Outputs, Scenario
+from seascape.config.scenario import ImageFormat, Outputs, Quality, Scenario
 from seascape.config.world import Sea, Sky, WarmLayer
 
 __all__ = [
@@ -56,6 +56,7 @@ __all__ = [
     "Ownship",
     "Processing",
     "Ptu",
+    "Quality",
     "Rig",
     "Scenario",
     "Sea",

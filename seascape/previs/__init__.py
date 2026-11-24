@@ -180,8 +180,7 @@ def _view(
         frames, play_fps = sampled
         pictures = _frames(scenario, scene, lens, frames, work / "frames")
         out = still.with_suffix(".mp4")
-        # A preview's quality, small enough to upload as it plays.
-        video.sequence(pictures, lens.size_px, 1.0 / play_fps, out, "HIGH")
+        video.sequence(pictures, lens.size_px, 1.0 / play_fps, out, video.PREVIEW)
 
 
 def draw(

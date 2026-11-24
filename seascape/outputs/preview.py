@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 
-from seascape.config import Agc, Mount, Scenario
+from seascape.config import Mount, Scenario
 from seascape.outputs import agc, brand, canvas, written
 
 # Never redraw the mark: it is the Brand Book's PNG.
@@ -19,10 +19,10 @@ CURSOR_SHARE = 0.179
 DARK = 128  # luma below this takes the white mark
 
 
-def picture(path: Path, setting: Agc) -> Image.Image:
-    """The frame at `path` as an RGB picture: a thermal one through `setting`."""
+def picture(path: Path, tone: agc.Agc) -> Image.Image:
+    """The frame at `path` as an RGB picture: a thermal one through `tone`."""
     t_k = agc.kelvin(path)
-    frame = Image.open(path) if t_k is None else Image.fromarray(agc.Agc(setting)(t_k))
+    frame = Image.open(path) if t_k is None else Image.fromarray(tone(t_k))
     return frame.convert("RGB")
 
 

@@ -587,6 +587,16 @@ class Mount(NamedTuple):
         return recorded_name(self.rig_name, self.camera_name)
 
     @property
+    def video(self) -> tuple[str, Video] | None:
+        """The rig's video of this camera, by the name it is recorded under, if one
+        records it.
+        """
+        for name, video in self.rig.videos.items():
+            if self.camera_name in sources(video):
+                return recorded_name(self.rig_name, name), video
+        return None
+
+    @property
     def nominal_azimuth_deg(self) -> float:
         """Not the achieved boresight: the rig's pitch sits between the two yaws, so
         an off-axis camera points elsewhere. `rigs.boresight_deg` measures the

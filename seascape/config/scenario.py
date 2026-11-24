@@ -19,6 +19,10 @@ from seascape.physics import waves
 from seascape.physics.atmosphere import SURFACE_SEA_K
 
 type ImageFormat = Literal["exr", "png", "jpg"]
+# Blender's H.264 constant-quality presets.
+type Quality = Literal[
+    "LOSSLESS", "PERC_LOSSLESS", "HIGH", "MEDIUM", "LOW", "VERYLOW", "LOWEST"
+]
 
 
 class Samples(Model):

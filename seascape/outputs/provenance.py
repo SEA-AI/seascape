@@ -1,7 +1,12 @@
-"""EXIF naming how a render was made, for a picture that leaves the server."""
+"""How a render was made: the commit that reproduces it, and EXIF naming it for a
+picture that leaves the server.
+"""
 
 import json
+import os
+import subprocess
 from collections.abc import Sequence
+from pathlib import Path
 
 from PIL import ExifTags
 from PIL import Image as Picture
@@ -33,3 +38,31 @@ def exif(
     tags[ExifTags.Base.Software] = "seascape"
     tags[ExifTags.Base.ImageDescription] = text
     return tags
+
+
+def commit() -> str | None:
+    """The commit this module's work tree is at, else the image's, else None."""
+    here = Path(__file__)
+    try:
+        # A wheel in another project's .venv sits in a work tree that does not track it.
+        _git(here.parent, "ls-files", "--error-unmatch", here.name)
+        # --exclude: a tag would otherwise replace the hash with its own name.
+        return _git(
+            here.parent, "describe", "--always", "--dirty", "--abbrev=40", "--exclude=*"
+        )
+    except (OSError, subprocess.CalledProcessError):
+        # The Dockerfile's build arg: an image carries no .git.
+        return os.environ.get("SEASCAPE_COMMIT") or None
+
+
+def clean(commit: str | None) -> bool:
+    """Whether `commit`, as `commit()` names one, can be checked out to render the
+    same again.
+    """
+    return commit is not None and not commit.endswith("-dirty")
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+    ).stdout.strip()
