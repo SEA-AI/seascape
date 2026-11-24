@@ -292,13 +292,20 @@ def test_a_render_logs_its_progress_image_by_image(
     assert [v["images_done"] for v in run.logged] == list(range(1, built.images + 1))
 
 
-def test_a_published_scenario_logs_its_previews_and_publishes_without_a_montage(
+def test_a_published_scenario_publishes_without_its_previews_or_montage(
     wandb: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     into = tmp_path / "x"
     steps: list[str] = []
     monkeypatch.setattr(provenance, "commit", lambda: "abc1234")
-    monkeypatch.setattr(cli, "_previews", lambda *_: steps.append("previews"))
+
+    def drawn_black(*_: object, **__: object) -> previs.Drawn:
+        steps.append("previews")
+        # What Cycles logs, and goes on, when a shader is past its SVM stack.
+        print('out of SVM stack space, shader "sea" too big')
+        return previs.Drawn({}, {})
+
+    monkeypatch.setattr(previs, "draw", drawn_black)
 
     def rendered(_: object, folder: Path, run: object) -> list[Path]:
         assert isinstance(run, logger.Run)
@@ -319,6 +326,7 @@ def test_a_published_scenario_logs_its_previews_and_publishes_without_a_montage(
 
     assert result.exit_code == 0, result.output
     assert steps == ["previews", "render"]
+    assert "no previews logged" in result.stderr
     assert "no montage video logged: x: no frames of any camera" in result.stderr
     (run,) = wandb.runs
     assert [a.name for a in run.outputs] == ["x"]
