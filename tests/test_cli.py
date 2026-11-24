@@ -712,3 +712,10 @@ def test_a_render_s_pace_is_logged_before_its_bar_redraws() -> None:
 
     assert all(v["s_per_image"] >= 0.04 for v in logged)
     assert logged[-1]["eta_s"] == pytest.approx(2 * logged[-1]["s_per_image"])
+
+
+def test_a_bar_whose_length_comes_later_takes_it_from_its_steps() -> None:
+    with cli._progress(0, "Building") as bar:
+        cli._steps(bar)(3, 5)
+
+    assert (bar.n, bar.total) == (3, 5)
