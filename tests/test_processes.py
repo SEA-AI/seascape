@@ -1,6 +1,9 @@
 """Functions run side by side, each in a fresh Python."""
 
+import importlib.util
 import os
+import sys
+import types
 from collections.abc import Callable
 from pathlib import Path
 
@@ -63,3 +66,15 @@ def test_an_interrupt_kills_every_job(tmp_path: Path) -> None:
         _run(tmp_path, {"eo": "wait"}, interrupt)
 
     assert _gone(pid_file)
+
+
+def test_a_job_from_a_module_run_with_m_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `python -m seascape.cli` names the module of each function it holds `__main__`.
+    main = types.ModuleType("__main__")
+    main.__spec__ = importlib.util.find_spec("tests.jobs")
+    monkeypatch.setitem(sys.modules, "__main__", main)
+    monkeypatch.setattr(job, "__module__", "__main__")
+
+    assert _run(tmp_path, {"top": "blender"}) == []
