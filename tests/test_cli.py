@@ -12,13 +12,13 @@ import bpy
 import click
 import pytest
 from click.testing import CliRunner, Result
-from PIL import Image
+from PIL import Image, ImageColor
 
 from seascape import assets, cli, logger, previs, processes, rigview, server
 from seascape import render as renderer
 from seascape.assets import skies
 from seascape.config import Scenario, load, loader
-from seascape.outputs import labels
+from seascape.outputs import brand, labels
 from seascape.outputs.calibration import Calibration, CameraCalibration
 from tests.scenarios import BASELINE, OPEN_SEA, SWEEP_SENTRY, SWEEP_WATCHKEEPER
 
@@ -314,6 +314,8 @@ def test_rig_view_writes_one_image(run: Run, tmp_path: Path) -> None:
     built = load(scenario)
     lines = len(built.rigs) + len(built.mounts)
     assert drawn_px[1] == rigview.TILE[1] + 16 + rigview.LINE_PX * lines
+    rule = Image.open(out).convert("RGB").getpixel((0, rigview.TILE[1]))
+    assert rule == ImageColor.getrgb(brand.FOCUS_RED)
 
 
 @pytest.mark.render

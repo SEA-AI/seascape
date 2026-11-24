@@ -15,7 +15,7 @@ from seascape.blender.rigs import add_rigs, boresight_deg, stabilise
 from seascape.blender.vessels import Hulls, add_ownship
 from seascape.config import Mount, Scenario
 from seascape.motion import ownship_up_m, tilted, track
-from seascape.outputs import brand, canvas
+from seascape.outputs import brand, canvas, preview
 from seascape.physics import earth
 
 VIEWS = (
@@ -30,6 +30,9 @@ REACH = 0.15
 WIRE = 1 / 30
 FONT_PX = 18
 LINE_PX = FONT_PX + 4
+# Brand Book 2026: a red line structures the page, with visible weight.
+RULE_PX = 3
+WHITE = (255, 255, 255)
 
 type Line = tuple[str, tuple[int, ...]]
 
@@ -92,7 +95,7 @@ def _rig_line(
         text += f"; hull below it at {below_m:.2f} m, {height_m - below_m:.2f} m clear"
     if (above_m := _hit_m(frame, at, up=True)) is not None:
         text += f"; hull ABOVE it at {above_m:.2f} m"
-    return text, canvas.INK
+    return text, WHITE
 
 
 def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
@@ -109,19 +112,23 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
             workbench.aim(objects, pose.bearing_deg, pose.elevation_deg)
             path = Path(tmp) / f"{pose.name}.png"
             workbench.shoot(path, "OBJECT", "STUDIO", "FXAA", exr=False)
-            tile = canvas.on_backdrop(Image.open(path))
+            tile = canvas.on_backdrop(Image.open(path), brand.SKY_GREY)
             tile = tile.resize(TILE, Image.Resampling.LANCZOS)
             ImageDraw.Draw(tile).text(
-                (10, 8), pose.name, font=brand.font(FONT_PX + 2), fill=canvas.INK
+                (10, 8),
+                pose.name.upper(),
+                font=brand.font(FONT_PX + 2, "Medium"),
+                fill=brand.NIGHT_BLUE,
             )
             tiles.append(tile)
     return tiles
 
 
 def _caption(lines: list[Line], width_px: int) -> Image.Image:
-    """`lines` top to bottom, each in its own ink, on the matte."""
-    caption = Image.new("RGB", (width_px, 16 + LINE_PX * len(lines)), canvas.MATTE)
+    """`lines` top to bottom, each in its own ink, on Night Blue under a red rule."""
+    caption = Image.new("RGB", (width_px, 16 + LINE_PX * len(lines)), brand.NIGHT_BLUE)
     pen = ImageDraw.Draw(caption)
+    pen.rectangle((0, 0, width_px, RULE_PX - 1), fill=brand.FOCUS_RED)
     for k, (text, ink) in enumerate(lines):
         pen.text((10, 8 + LINE_PX * k), text, font=brand.font(FONT_PX), fill=ink)
     return caption
@@ -178,4 +185,4 @@ def draw(scenario: Scenario, out: Path) -> None:
     tiles = _tiles(hull + frusta)
     out.parent.mkdir(parents=True, exist_ok=True)
     caption = _caption(lines, TILE[0] * len(tiles))
-    canvas.above([canvas.beside(tiles), caption]).save(out)
+    preview.watermark(canvas.above([canvas.beside(tiles), caption])).save(out)
