@@ -17,7 +17,7 @@ from seascape.config.loader import resolve
 from seascape.outputs import coverage
 from seascape.outputs.labels import Labels
 
-# Full size, so a buoy stands `buoyage.BUOY_PX` tall; 1 fps and one sample.
+# Full size, so a buoy stands `buoyage.BUOY_PX` tall.
 PREVIEW = ("outputs.fps = 1", "outputs.samples = { eo = 1, ir = 1 }")
 
 

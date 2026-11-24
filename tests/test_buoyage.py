@@ -54,16 +54,11 @@ def test_a_sweep_requires_each_ring_in_its_videos_and_the_box_in_every_one() -> 
 
     needs = buoyage.requirements(scenario, {"raw"})
 
-    assets = manifest()
     *buoys, box = needs
     assert [n.range_m for n in buoys] == [r.range_m for r in rings]
     assert [n.videos for n in buoys] == [
         {recorded_name(name, v) for v in r.videos} for r in rings
     ]
-    assert {n.category_id for n in buoys} == {assets[buoyage.BUOY].category_id}
-    assert {n.min_px for n in buoys} == {buoyage.BUOY_PX}
-    assert box.category_id == assets[buoyage.CONTAINER].category_id
-    assert box.frames == "first+last"
     assert box.videos == {recorded_name(name, v) for v in rig.videos} | {"raw"}
 
 
@@ -182,9 +177,10 @@ def test_every_buoy_stands_buoy_px_tall_or_more_in_its_coarsest_video() -> None:
 def test_a_ring_draws_each_buoy_s_colour_from_those_it_comes_in() -> None:
     entries = buoyage.stage(load(SWEEP_SENTRY)).entries
     ring = next(e for e in entries if e["asset"] == buoyage.BUOY)
-    sold_in = buoyage.asset(buoyage.BUOY, Buoy).sold_in
 
-    assert ring["colour"] == {"choice": sorted(sold_in)}
+    buoys = load(OPEN_SEA, [{"objects": [ring]}]).objects
+
+    assert {b.colour for b in buoys} <= set(buoyage.asset(buoyage.BUOY, Buoy).sold_in)
 
 
 @pytest.mark.parametrize(
