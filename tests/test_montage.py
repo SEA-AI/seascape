@@ -4,12 +4,14 @@ import colorsys
 from collections.abc import Sequence
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 from PIL import Image
 
 from seascape.config import Camera, Mount, Rig, Scenario, load
 from seascape.outputs import labels, montage
+from seascape.render import video
 from tests.scenarios import SWEEP_WATCHKEEPER, two_rigs
 
 type Rgb = tuple[int, int, int]
@@ -234,3 +236,21 @@ def test_preview_frames_have_even_sides_for_h264(
     (frame,) = montage.video_frames(rigs, tmp_path, tmp_path / "out")
 
     assert Image.open(frame).size == (64, 48)
+
+
+def test_a_render_without_frames_has_no_preview_video(rigs, tmp_path) -> None:
+    labels.Labels(images=[]).write(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="no frames"):
+        montage.video_frames(rigs, tmp_path, tmp_path / "out")
+
+
+def test_the_preview_video_plays_a_sheet_per_frame(rigs, tmp_path) -> None:
+    videos(tmp_path, [m.name for m in rigs.mounts], [0.0, 0.1, 0.2])
+
+    out = video.montage_video(rigs, tmp_path, tmp_path / "montage.mp4")
+
+    capture, count = cv2.VideoCapture(str(out)), 0
+    while capture.read()[0]:
+        count += 1
+    assert count == 3

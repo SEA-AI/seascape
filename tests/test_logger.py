@@ -10,6 +10,7 @@ from click.testing import CliRunner, Result
 from PIL import Image
 
 from seascape import cli, logger, previs, rigview
+from seascape import render as renderer
 from seascape.config import load
 from seascape.outputs import labels, provenance
 from seascape.render import video
@@ -259,6 +260,24 @@ def test_a_render_logs_each_camera_s_frame_each_second(
 
     # Frames 0 and 5: one a second at 5 fps.
     assert run.logged == [{f"frame/{camera}": ("image", (4, 3))}] * 2
+
+
+def test_a_render_logs_its_progress_image_by_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built = load(OPEN_SEA, ["outputs.duration_s = 1", "outputs.fps = 2"])
+
+    def render(_: object, into: Path, advance: Any) -> list[Path]:
+        for _ in range(built.images):
+            advance(built.mounts[0], into / "radiance.exr")
+        return []
+
+    monkeypatch.setattr(renderer, "render", render)
+    run = FakeRun()
+
+    cli._render(built, tmp_path, live(run))
+
+    assert [v["images_done"] for v in run.logged] == list(range(1, built.images + 1))
 
 
 def test_a_published_scenario_logs_its_previews_and_publishes_without_a_montage(
