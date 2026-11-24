@@ -48,7 +48,7 @@ dev = [
     "pytest>=9.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8",
-    # The server's tests run in a checkout too, and ty checks the logger against wandb.
+    # The server's tests need the serve extra, and ty checks the logger against wandb.
     "seascape[serve,wandb]",
 ]
 
