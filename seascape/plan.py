@@ -576,19 +576,27 @@ def _camera(scene: _Scene, view: View) -> _Lens:
     return _Lens(view, camera, SIZE_PX[view], label_deg)
 
 
-def _hulls(scene: _Scene, frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Every hull's east and north over `frames`, (n, 2), and the footprint it spans
-    there, (n,): the ownship's length, an object's length or beam ungrown.
+def _hulls(
+    scene: _Scene, frames: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Every hull's east and north over `frames`, (n, 2); its longest side, which
+    `grown` takes, (n,); and half its diagonal, the circle that holds it however it
+    turns, (n,): ungrown.
     """
     sc = bpy.context.scene
-    span_m = [scene.length_m] + [
-        max(r["length_m"], r["beam_m"]) for r in scene.roots[1:]
-    ]
+    sides = np.array(
+        [(r.get("length_m", scene.length_m), r.get("beam_m", 0.0)) for r in scene.roots]
+    )
     found = []
     for k in frames:
         sc.frame_set(int(k))
         found += [tuple(r.matrix_world.translation.xy) for r in scene.roots]
-    return np.array(found), np.tile(span_m, len(frames))
+    count = len(frames)
+    return (
+        np.array(found),
+        np.tile(sides.max(axis=1), count),
+        np.tile(np.hypot(*sides.T) / 2, count),
+    )
 
 
 def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
@@ -598,7 +606,7 @@ def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
     compass_deg = math.degrees(scene.heading_rad) + np.arange(0.0, 360.0, 90.0)
     outer = max(scene.rings, default=0.0)
     labels = _on_water(lens.label_deg, np.array(list(scene.rings)), 0.0)
-    hulls, span_m = _hulls(scene, frames)
+    hulls, side_m, reach_m = _hulls(scene, frames)
     # The ownship never grows.
     objects = np.tile(np.arange(len(scene.roots)) > 0, len(frames))
     m_per_px = 0.0
@@ -606,7 +614,7 @@ def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
     # each pass fits what the last one's scale draws. ponytail: three passes settle
     # any scene seen so far; iterate to a tolerance if one does not.
     for _ in range(3):
-        grow = np.where(objects, [grown(m_per_px, f) for f in span_m], 1.0)
+        grow = np.where(objects, [grown(m_per_px, f) for f in side_m], 1.0)
         pad_m = (TICK_LABEL_PX + LABEL_PX) * lens.k * m_per_px if scene.rings else 0.0
         marks = np.concatenate(
             [labels[:, :2], _on_water(compass_deg, outer + pad_m, 0.0)[:, :2]]
@@ -615,7 +623,7 @@ def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
             np.concatenate([hulls, marks]),
             scene.heading_rad,
             lens.size_px,
-            np.concatenate([grow * span_m / 2, np.zeros(len(marks))]),
+            np.concatenate([grow * reach_m, np.zeros(len(marks))]),
         )
         m_per_px = view.m_per_px
     lens.camera.data.ortho_scale = view.m_per_px * lens.size_px[0]
