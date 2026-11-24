@@ -8,7 +8,7 @@ scales; everything else is drawn the same for both.
 
 import shutil
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import repeat
@@ -36,7 +36,7 @@ from seascape.render import video
 
 __all__ = ["VIEWS", "Drawn", "View", "draw"]
 
-LENSES: dict[View, type[Lens]] = {lens.view: lens for lens in (Top, Chase)}
+LENSES: Mapping[View, type[Lens]] = {lens.view: lens for lens in (Top, Chase)}
 
 
 def _sizes(scene: Scene, lens: Lens) -> float | None:
@@ -129,7 +129,7 @@ def _frames(
     for k in frames:
         t_s = times[int(k)]
         sc.frame_set(int(k))
-        turn_fans(scene, t_s)
+        turn_fans(scene.fans, t_s)
         pose = scene.path(t_s)
         label_deg = lens.follow(scene, t_s)
         most = _sizes(scene, lens)
@@ -163,13 +163,12 @@ class Drawn:
 def _view(
     scenario: Scenario,
     view: View,
-    frames: np.ndarray | None,
-    play_fps: float,
+    sampled: tuple[np.ndarray, float] | None,
     still: Path,
     work: Path,
 ) -> None:
-    """Draw `view` at the start to `still` and, with `frames`, its mp4 beside it,
-    rendering in `work`.
+    """Draw `view` at the start to `still` and, with `sampled`'s frames and the rate
+    they play at, its mp4 beside it, rendering in `work`.
     """
     kind = LENSES[view]
     scene = build(scenario, framed=kind.framed)
@@ -177,7 +176,8 @@ def _view(
     [start] = _frames(scenario, scene, lens, np.array([0]), work / "still")
     # The work folder can sit on another filesystem.
     shutil.move(start, still)
-    if frames is not None:
+    if sampled is not None:
+        frames, play_fps = sampled
         pictures = _frames(scenario, scene, lens, frames, work / "frames")
         out = still.with_suffix(".mp4")
         # A preview's quality, small enough to upload as it plays.
@@ -188,6 +188,7 @@ def draw(
     scenario: Scenario,
     folder: Path,
     title: str,
+    *,
     video_fps: float | None = None,
     progress: Callable[[int, int], None] = lambda *_: None,
     views: Sequence[View] = VIEWS,
@@ -213,15 +214,15 @@ def draw(
     """
     folder.mkdir(parents=True, exist_ok=True)
     stills = {v: folder / f"{title}-{v}.png" for v in views}
-    frames, play_fps, total = None, 0.0, 0
+    sampled, total = None, 0
     if video_fps is not None:
         outputs = scenario.outputs
-        frames, play_fps = samples(outputs.fps, len(outputs.times_s), video_fps)
-        total = len(views) * len(frames)
+        sampled = samples(outputs.fps, len(outputs.times_s), video_fps)
+        total = len(views) * len(sampled[0])
     with tempfile.TemporaryDirectory() as tmp:
         work = {v: Path(tmp, v) for v in views}
         logs = {v: Path(tmp, f"{v}.log") for v in views}
-        jobs = {v: (scenario, v, frames, play_fps, stills[v], work[v]) for v in views}
+        jobs = {v: (scenario, v, sampled, stills[v], work[v]) for v in views}
 
         def tick() -> None:
             done = sum(len(list(w.glob("frames/*.png"))) for w in work.values())
@@ -231,6 +232,6 @@ def draw(
             tails = "\n".join(logs[v].read_text()[-2000:] for v in failed)
             raise RuntimeError(f"drawing {', '.join(failed)} failed:\n{tails}")
     videos = (
-        {} if frames is None else {v: s.with_suffix(".mp4") for v, s in stills.items()}
+        {} if sampled is None else {v: s.with_suffix(".mp4") for v, s in stills.items()}
     )
     return Drawn(stills, videos)

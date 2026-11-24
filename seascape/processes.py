@@ -9,10 +9,11 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import FunctionType
 from typing import Any
 
 
-def _importable(work: Callable[..., object]) -> str:
+def _importable(work: FunctionType) -> str:
     """`work`'s `module:name` as a fresh Python imports it: a module run with
     `python -m` is `__main__` here and its own name there.
     """
@@ -26,7 +27,7 @@ def _importable(work: Callable[..., object]) -> str:
 
 
 def at_once[K](
-    work: Callable[..., object],
+    work: FunctionType,
     jobs: Mapping[K, tuple[Any, ...]],
     logs: Mapping[K, Path],
     tick: Callable[[], None] = lambda: None,

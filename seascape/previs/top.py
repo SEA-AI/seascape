@@ -71,8 +71,8 @@ class Top(Lens):
         hulls, reach_m = _hulls(scene, frames)
         m_per_px, k = 0.0, self.k
         # How far the compass's labels reach follows the scale, so each pass fits what
-        # the last one's scale draws. ponytail: three passes settle any scene seen so
-        # far; iterate to a tolerance if one does not.
+        # the last one's scale draws. Judgement: three passes settle every shipped
+        # scenario; iterate to a tolerance if one does not.
         for _ in range(3):
             pad_m = (TICK_LABEL_PX + LABEL_PX) * k * m_per_px if scene.rings else 0.0
             marks = np.concatenate(

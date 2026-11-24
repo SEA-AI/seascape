@@ -405,9 +405,9 @@ def previs_(
             built,
             output or scenario.parent,
             scenario.stem,
-            video_fps,
-            _steps(bar),
-            views or VIEWS,
+            video_fps=video_fps,
+            progress=_steps(bar),
+            views=views or VIEWS,
         )
     for path in [*drawn.stills.values(), *drawn.videos.values()]:
         click.echo(path)

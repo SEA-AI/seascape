@@ -3,7 +3,7 @@ camera's field as a fan and each object's range as a ring.
 """
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -449,16 +449,16 @@ def build(scenario: Scenario, *, framed: bool) -> Scene:
     )
 
 
-def turn_fans(scene: Scene, t_s: float) -> None:
-    """Each rig's fans to its head's place and turn at `t_s`.
+def turn_fans(fans: Mapping[str, tuple[motion.Path, list[_Fan]]], t_s: float) -> None:
+    """Each rig's `fans`, with its head's path, to its head's place and turn at `t_s`.
 
     Limitation: a fan turns by its head's heading since the start, about the vertical,
     which is exact on a level hull; a pitched or rolled one shifts an off-axis
     camera's bearing too, as `rigs.boresight_deg` reads it.
     """
-    for at, fans in scene.fans.values():
+    for at, rig in fans.values():
         head = at(t_s)
         turn = head.heading_rad - at(0.0).heading_rad
-        for f in fans:
+        for f in rig:
             f.fan.location.xy = (head.east_m, head.north_m)
             f.fan.rotation_euler.z = angles.yaw(math.degrees(turn))

@@ -10,7 +10,7 @@ from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 from seascape import angles
-from seascape.outputs.previs import Px, View, label_bearing_deg
+from seascape.outputs.previs import Px, View, label_bearing_deg, scale
 from seascape.previs.scene import Scene
 
 
@@ -49,7 +49,7 @@ class Lens(ABC):
     @property
     def k(self) -> float:
         """Pixels of this view per pixel of a 1000 px tall one."""
-        return self.size_px[1] / 1000.0
+        return scale(self.size_px[1])
 
     def px(self, at: npt.ArrayLike) -> Px | None:
         """Where `at` falls in the picture, in pixels from its top left; none behind

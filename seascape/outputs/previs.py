@@ -56,6 +56,13 @@ def ring_ranges_m(ranges_m: Iterable[float], merge: float = 0.05) -> list[float]
     return [float(np.mean(g)) for g in groups]
 
 
+def scale(height_px: int) -> float:
+    """Pixels of a view `height_px` tall per pixel of a 1000 px tall one, in which
+    every pixel size here is given.
+    """
+    return height_px / 1000.0
+
+
 def distance(m: float) -> str:
     """A distance as a label.
 
@@ -249,7 +256,7 @@ def hud(
     with Image.open(path) as f:
         image = f.convert("RGB")
     w, h = image.size
-    k = h / 1000.0
+    k = scale(h)
     pen = ImageDraw.Draw(image)
     thin = max(1, round(LINE_PX * k))
 
