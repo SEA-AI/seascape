@@ -47,8 +47,6 @@ def _tile(
     mount: Mount,
     mounts: Sequence[Mount],
 ) -> Image.Image:
-    frame = ImageOps.scale(frame, TILE_H / frame.height, Image.Resampling.LANCZOS)
-
     tile = ImageOps.expand(frame, border=(0, 0, 0, CAPTION_H), fill=canvas.MATTE)
     draw = ImageDraw.Draw(tile)
     middle = TILE_H + CAPTION_H // 2
@@ -115,8 +113,16 @@ def sheet(scenario: Scenario, into: Path) -> Image.Image:
         # An exr is radiance; making it a picture is the render's job.
         if scenario.outputs.format == "exr" or not frame.exists():
             raise FileNotFoundError(f"{frame}: render it, as png or jpg")
-        pictures[mount.name] = preview.picture(frame, agc.Agc(mount.camera.agc))
+        pictures[mount.name] = _tile_high(frame, agc.Agc(mount.camera.agc))
     return _sheet(mounts, pictures)
+
+
+def _tile_high(frame: Path, tone: agc.Agc) -> Image.Image:
+    """`frame` as a picture `TILE_H` tall: scaled as it loads, so a sheet holds no
+    full-size frame.
+    """
+    picture = preview.picture(frame, tone)
+    return ImageOps.scale(picture, TILE_H / picture.height, Image.Resampling.LANCZOS)
 
 
 def _sheet(mounts: Sequence[Mount], pictures: dict[str, Image.Image]) -> Image.Image:
@@ -182,7 +188,7 @@ def video_frames(scenario: Scenario, into: Path, folder: Path) -> list[Path]:
     written = []
     for i, frames in enumerate(zip(*(clips[v] for v in shown.values()), strict=True)):
         pictures = {
-            n: preview.picture(into / f.file_name, tones[n])
+            n: _tile_high(into / f.file_name, tones[n])
             for n, f in zip(shown, frames, strict=True)
         }
         picture = _sheet(mounts, pictures)

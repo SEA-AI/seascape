@@ -43,8 +43,9 @@ class Config:
 class FakeRun:
     """What a run records, in place of sending it."""
 
-    def __init__(self, offline: bool = False, **init: Any) -> None:
-        self.init, self.offline = init, offline
+    def __init__(self, mode: str = "online", **init: Any) -> None:
+        self.init = init
+        self.offline, self.disabled = mode == "offline", mode == "disabled"
         self.logged: list[dict[str, Any]] = []
         self.config = Config()
         self.summary: dict[str, Any] = {}
@@ -72,14 +73,14 @@ class WandbError(Exception):
     pass
 
 
-def fake_wandb(refusal: str | None = None, offline: bool = False) -> SimpleNamespace:
+def fake_wandb(refusal: str | None = None, mode: str = "online") -> SimpleNamespace:
     """A wandb whose runs are in `runs`, or whose `init` raises `refusal`."""
     runs: list[FakeRun] = []
 
     def init(**kwargs: Any) -> FakeRun:
         if refusal is not None:
             raise WandbError(refusal)
-        runs.append(FakeRun(offline, **kwargs))
+        runs.append(FakeRun(mode, **kwargs))
         return runs[-1]
 
     return SimpleNamespace(
@@ -416,10 +417,11 @@ def test_a_name_w_and_b_refuses_renders_nothing(
     assert not wandb.runs
 
 
-def test_an_offline_run_is_refused_before_the_render(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("mode", ["offline", "disabled"])
+def test_a_run_that_cannot_publish_is_refused_before_the_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
-    monkeypatch.setitem(sys.modules, "wandb", fake_wandb(offline=True))
+    monkeypatch.setitem(sys.modules, "wandb", fake_wandb(mode=mode))
     rendered(tmp_path, "abc1234")
 
     def exported(_: Path) -> list[Path]:
@@ -430,4 +432,4 @@ def test_an_offline_run_is_refused_before_the_render(
     result = cli_run("recording", tmp_path, "--publish")
 
     assert result.exit_code == 1
-    assert "offline" in result.output
+    assert mode in result.output
