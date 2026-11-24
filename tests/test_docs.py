@@ -17,6 +17,7 @@ RUNS = {
     **{f"hero {sky}": (SCENARIO, sets) for sky, sets in SKIES.items()},
     "crops": (PRIMER, [FULL_HD]),
     "visibility": (DOCS / "visibility.toml", []),
+    "matching a photo": (DOCS / "matching-a-photo.toml", []),
     **{
         f"{name}: {caption}": (PRIMER, shared + sets)
         for name, (shared, panels) in FIGURES.items()
