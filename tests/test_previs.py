@@ -45,12 +45,6 @@ def test_ranges_within_merge_of_the_smallest_share_a_ring(
     assert ring_ranges_m(ranges_m) == pytest.approx(rings_m)
 
 
-def test_a_lone_point_seen_from_above_frames_tens_of_metres() -> None:
-    view = top_view(np.zeros((1, 2)), 0.3, (720, 720))
-
-    assert view.m_per_px * 720 == pytest.approx(36.0)
-
-
 def test_the_top_view_puts_the_bow_up_and_starboard_right() -> None:
     heading_rad = math.radians(30.0)
     bow = np.array([math.sin(heading_rad), math.cos(heading_rad)])

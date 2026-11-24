@@ -150,7 +150,7 @@ def _edge(
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class _Fan:
+class Fan:
     """A camera's horizontal field from its rig, and the lines along its sides."""
 
     fan: bpy.types.Object
@@ -161,6 +161,10 @@ class _Fan:
     reach_m: float
 
 
+# A rig's head's path, and its cameras' fans.
+type Rig = tuple[motion.Path, list[Fan]]
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Scene:
     """What a view moves between frames."""
@@ -168,7 +172,7 @@ class Scene:
     # The ownship's root first, then each object's.
     roots: list[bpy.types.Object]
     # Each rig's fans, and where its head is at a time.
-    fans: dict[str, tuple[motion.Path, list[_Fan]]]
+    fans: dict[str, Rig]
     # Each ring by its range.
     rings: dict[float, bpy.types.Object]
     path: motion.Path
@@ -185,7 +189,7 @@ class Scene:
         return (first[0] if first else self.path)(t_s).heading_rad
 
 
-def _fans(scenario: Scenario) -> dict[str, tuple[motion.Path, list[_Fan]]]:
+def _fans(scenario: Scenario) -> dict[str, Rig]:
     """Each camera's horizontal field as a fan from its rig, fading out where a pixel
     spans `FOOTPRINT_M`, with a line along each side; by rig, with its head's path.
     """
@@ -194,7 +198,7 @@ def _fans(scenario: Scenario) -> dict[str, tuple[motion.Path, list[_Fan]]]:
     # Judgement: the height between stacked fans, well under a pixel from either
     # camera.
     gap_m = 0.01
-    fans: dict[str, tuple[motion.Path, list[_Fan]]] = {}
+    fans: dict[str, Rig] = {}
     for i, (mount, rgb) in enumerate(
         zip(scenario.mounts, canvas.palette(len(scenario.mounts)), strict=True)
     ):
@@ -224,7 +228,7 @@ def _fans(scenario: Scenario) -> dict[str, tuple[motion.Path, list[_Fan]]]:
         if name not in fans:
             fans[name] = (head_path(scenario, name), [])
         fans[name][1].append(
-            _Fan(fan=fan, edges=edges, near=near, far=(far[0], far[1]), reach_m=reach_m)
+            Fan(fan=fan, edges=edges, near=near, far=(far[0], far[1]), reach_m=reach_m)
         )
     return fans
 
@@ -449,7 +453,7 @@ def build(scenario: Scenario, *, framed: bool) -> Scene:
     )
 
 
-def turn_fans(fans: Mapping[str, tuple[motion.Path, list[_Fan]]], t_s: float) -> None:
+def turn_fans(fans: Mapping[str, Rig], t_s: float) -> None:
     """Each rig's `fans`, with its head's path, to its head's place and turn at `t_s`.
 
     Limitation: a fan turns by its head's heading since the start, about the vertical,
