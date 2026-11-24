@@ -5,6 +5,7 @@ scenario stores another course than `seascape.buoyage` computes, or a check fail
 prints the course for the rig and exits 1.
 """
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +41,8 @@ def main() -> None:
     if not stored:
         fail(scenario, f"{path} stores another course")
     into = path.with_name(f"{path.stem}-preview")
+    # The last check's preview: `render` refuses a folder that is not empty.
+    shutil.rmtree(into, ignore_errors=True)
     sets = [arg for line in overrides for arg in ("--set", line)]
     render = [sys.executable, "-m", "seascape.cli", "render", str(path), *sets]
     if code := subprocess.run([*render, "-o", str(into)], check=False).returncode:
