@@ -1,24 +1,20 @@
-"""A scenario's ownship, objects and cameras on a flat sea, from above and from
-behind the ownship, with each object's range ringed.
+"""What every previs view draws: the scenario's hulls on a flat sea under EEVEE, each
+camera's field as a fan and each object's range as a ring.
 """
 
 import math
-import shutil
-import tempfile
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from itertools import chain, repeat
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
 import bpy
 import numpy as np
 import numpy.typing as npt
-from bpy_extras.object_utils import world_to_camera_view
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
-from seascape import angles, motion, processes
+from seascape import angles, motion
 from seascape.blender import faces
 from seascape.blender.blend import (
     Num,
@@ -36,27 +32,9 @@ from seascape.config import Mount, Scenario
 from seascape.motion import cameras_at_start, head_path, ownship_up_m, track
 from seascape.outputs import canvas
 from seascape.outputs.previs import (
-    LABEL_PX,
-    LINE_PX,
-    TICK_LABEL_PX,
-    TICK_STEP_DEG,
-    VIEWS,
-    Px,
-    View,
-    grown,
-    hud,
-    hud_lines,
-    label_bearing_deg,
     ring_ranges_m,
-    samples,
-    top_view,
 )
 from seascape.physics.colour import srgb_hex_decode
-from seascape.render import video
-
-# Square from above, as range rings are round.
-SIZE_PX: dict[View, tuple[int, int]] = {"top": (720, 720), "chase": (1280, 720)}
-# Each view's picture, `<title>-<name>.png`.
 
 
 def _linear(srgb_hex: str) -> tuple[float, float, float, float]:
@@ -80,10 +58,6 @@ FOOTPRINT_M = 0.1
 FAN_Z, EDGE_Z, RING_Z = 0.1, 0.15, 0.2
 # A line's shape key widens it by this much at value 1; `_widening` caps the value.
 WIDTH_UNIT_M = 10.0
-# Judgement: the chase camera, in ownship lengths behind and above its waterline, and
-# its pitch down.
-CHASE_BACK, CHASE_UP = 2.2, 1.32
-CHASE_PITCH_DEG = -18.5
 # Judgement: points round a circle, smooth at any size it is drawn.
 RING_STEPS = 256
 
@@ -123,7 +97,7 @@ def _widening(obj: bpy.types.Object, name: str, verts: np.ndarray) -> None:
     key.slider_max = 10.0
 
 
-def _on_water(
+def on_water(
     bearing_deg: npt.ArrayLike, range_m: npt.ArrayLike, z_m: float
 ) -> np.ndarray:
     """The points `range_m` from the ownship's start, where its track begins at the
@@ -139,7 +113,7 @@ def _circle(radius_m: np.ndarray, z_m: float = RING_Z) -> np.ndarray:
     within each radius.
     """
     a = np.linspace(0.0, 360.0, RING_STEPS, endpoint=False)
-    return _on_water(a, radius_m[:, None], z_m).reshape(-1, 3)
+    return on_water(a, radius_m[:, None], z_m).reshape(-1, 3)
 
 
 def _ring(name: str, radius_m: float) -> bpy.types.Object:
@@ -188,8 +162,8 @@ class _Fan:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class _Scene:
-    """What `draw` moves between frames."""
+class Scene:
+    """What a view moves between frames."""
 
     # The ownship's root first, then each object's.
     roots: list[bpy.types.Object]
@@ -229,7 +203,7 @@ def _fans(scenario: Scenario) -> dict[str, tuple[motion.Path, list[_Fan]]]:
         fan = empty(mount.name)
         # Apart in height, or overlapping fans fight for depth in stripes.
         fan.location.z = gap_m * i
-        verts = [(0.0, 0.0, FAN_Z), *_on_water(bearings_deg, reach_m, FAN_Z)]
+        verts = [(0.0, 0.0, FAN_Z), *on_water(bearings_deg, reach_m, FAN_Z)]
         # As rig-view colours its frusta.
         fill = _flat(
             f"{mount.name}_fill",
@@ -238,7 +212,7 @@ def _fans(scenario: Scenario) -> dict[str, tuple[motion.Path, list[_Fan]]]:
             (*rgb / 255, fill_alpha),
         )
         near = Vector((0.0, 0.0, EDGE_Z))
-        far = [Vector(p) for p in _on_water(bearings_deg[[0, -1]], reach_m, EDGE_Z)]
+        far = [Vector(p) for p in on_water(bearings_deg[[0, -1]], reach_m, EDGE_Z)]
         edges = [
             _edge(f"{mount.name}_{side}", near, end, (*rgb / 255, edge_alpha))
             for side, end in zip(("left", "right"), far, strict=True)
@@ -333,10 +307,11 @@ def _drown(material: bpy.types.Material) -> None:
     feed(t, out.inputs["Surface"], drowned)
 
 
-def _eevee(heading_deg: float, view: View) -> None:
+def _eevee(heading_deg: float, *, framed: bool) -> None:
     """EEVEE without shadows, rays or motion blur. The camera sees `WATER` below the
     horizon and `SKY` above; hulls are lit by Blender's studio light and a sun off a
-    bow heading `heading_deg`; drawn marks are unlit in their object colour.
+    bow heading `heading_deg`; drawn marks are unlit in their object colour, and a
+    fan fades over the frame's border when `framed`.
     """
     sc = bpy.context.scene
     sc.render.engine = "BLENDER_EEVEE"
@@ -397,16 +372,16 @@ def _eevee(heading_deg: float, view: View) -> None:
             rough.default_value = max(rough.default_value, roughness)
         _drown(material)
     solid = _material("flat", _emission, blended=False)
-    top = view == "top"
-    fading = _material("fade", lambda t: _fading(t, framed=top), blended=True)
+    fading = _material("fade", lambda t: _fading(t, framed=framed), blended=True)
     for obj in sc.objects:
         if obj.type == "MESH" and not obj.material_slots:
             obj.data.materials.append(fading if obj.color[3] < 1.0 else solid)
             obj.visible_shadow = False
 
 
-def _build(scenario: Scenario, view: View) -> _Scene:
-    """Every hull at its pose, keyed per output frame, on a flat sea under EEVEE.
+def build(scenario: Scenario, *, framed: bool) -> Scene:
+    """Every hull at its pose, keyed per output frame, on a flat sea under EEVEE; a
+    fan fades over the frame's border when `framed`.
 
     The sea is flat and Earth too: the top view is a map, and a curved sea would sink a
     far hull below the flat plane.
@@ -459,11 +434,11 @@ def _build(scenario: Scenario, view: View) -> _Scene:
     sea.location.z = -sink_m
     sea.data.materials.append(_material("sea", _sea, blended=True))
     start = path(0.0)
-    _eevee(math.degrees(start.heading_rad), view)
+    _eevee(math.degrees(start.heading_rad), framed=framed)
     # Judgement: an ownship without a hull is drawn as one this long.
     bare_length_m = 10.0
     asset = scenario.ownship.asset
-    return _Scene(
+    return Scene(
         roots=roots,
         fans=fans,
         rings=rings,
@@ -474,7 +449,7 @@ def _build(scenario: Scenario, view: View) -> _Scene:
     )
 
 
-def _turn_fans(scene: _Scene, t_s: float) -> None:
+def turn_fans(scene: Scene, t_s: float) -> None:
     """Each rig's fans to its head's place and turn at `t_s`.
 
     Limitation: a fan turns by its head's heading since the start, about the vertical,
@@ -487,352 +462,3 @@ def _turn_fans(scene: _Scene, t_s: float) -> None:
         for f in fans:
             f.fan.location.xy = (head.east_m, head.north_m)
             f.fan.rotation_euler.z = angles.yaw(math.degrees(turn))
-
-
-def _chase(length_m: float, east_m: float, north_m: float, look_rad: float) -> Matrix:
-    """`T_world_camera`, in Blender's camera axes, behind and above an ownship
-    `length_m` long at `east_m`, `north_m`, looking along the bearing `look_rad`.
-    """
-    bow = Vector(angles.direction(math.degrees(look_rad), 0.0))
-    at = Vector((east_m, north_m, 0.0)) - CHASE_BACK * length_m * bow
-    at.z = CHASE_UP * length_m
-    toward = Vector(angles.direction(math.degrees(look_rad), CHASE_PITCH_DEG))
-    return Matrix.LocRotScale(at, toward.to_track_quat("-Z", "Y"), None)
-
-
-@dataclass(frozen=True)
-class _Lens:
-    """A view's camera, its size, the bearing its rings' labels sit at at the start,
-    and what a pixel of it spans on the water.
-    """
-
-    view: View
-    camera: bpy.types.Object
-    size_px: tuple[int, int]
-    label_deg: float
-
-    @property
-    def top(self) -> bool:
-        return self.view == "top"
-
-    @property
-    def k(self) -> float:
-        """Pixels of this view per pixel of a 1000 px tall one."""
-        return self.size_px[1] / 1000.0
-
-    def m_per_px(self, at: Vector) -> float:
-        data = self.camera.data
-        if self.top:
-            return data.ortho_scale / self.size_px[0]
-        eye = self.camera.matrix_world.translation
-        return (at - eye).length * 2.0 * math.tan(data.angle_x / 2) / self.size_px[0]
-
-    def slant(self, at: Vector) -> float:
-        """A flat mark at `at` seen at a slant is foreshortened by this much: the
-        sine of its elevation. Judgement: no less than 0.15, past which it is a line.
-        """
-        if self.top:
-            return 1.0
-        return max((self.camera.matrix_world.translation - at).normalized().z, 0.15)
-
-    def up(self) -> Vector:
-        """The unit direction on the water that runs up the view: the camera's +Y
-        from above, the way it looks from behind.
-        """
-        axis = (0.0, 1.0, 0.0) if self.top else (0.0, 0.0, -1.0)
-        along = self.camera.matrix_world.to_3x3() @ Vector(axis)
-        return Vector((along.x, along.y, 0.0)).normalized()
-
-
-def _camera(scene: _Scene, view: View) -> _Lens:
-    """`view`'s camera, its rings' labels where no hull is at the start: from above
-    astern, which the chase camera does not see, between the compass ticks; from
-    behind, inside its field.
-    """
-    sc = bpy.context.scene
-    camera = bpy.data.objects.new(view, bpy.data.cameras.new(view))
-    if view == "top":
-        camera.data.type = "ORTHO"
-    else:
-        # Judgement: the chase camera's field of view.
-        camera.data.angle_x = math.radians(75.0)
-    sc.collection.objects.link(camera)
-    camera.data.sensor_fit = "HORIZONTAL"
-    camera.data.clip_start = 1.0
-    # The far clip plane cuts in silence: past the sea's edge, from either camera.
-    camera.data.clip_end = 2.0 * scene.reach_m
-    sc.frame_set(0)
-    hulls_deg = [
-        angles.bearing_deg(*r.matrix_world.translation.xy) for r in scene.roots[1:]
-    ]
-    if view == "top":
-        about_deg = math.degrees(scene.heading_rad)
-        off_deg = np.arange(105.0, 256.0, TICK_STEP_DEG)
-    else:
-        about_deg = math.degrees(scene.look_rad(0.0))
-        off_deg = np.arange(-30.0, 31.0, 5.0)
-    label_deg = label_bearing_deg(about_deg + off_deg, hulls_deg)
-    return _Lens(view, camera, SIZE_PX[view], label_deg)
-
-
-def _hulls(scene: _Scene, frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Every hull's east and north over `frames`, (n, 2), and half its diagonal, the
-    circle that holds it however it turns, (n,).
-    """
-    sc = bpy.context.scene
-    sides = np.array(
-        [(r.get("length_m", scene.length_m), r.get("beam_m", 0.0)) for r in scene.roots]
-    )
-    found = []
-    for k in frames:
-        sc.frame_set(int(k))
-        found += [tuple(r.matrix_world.translation.xy) for r in scene.roots]
-    return np.array(found), np.tile(np.hypot(*sides.T) / 2, len(frames))
-
-
-def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
-    """Frame every hull whole over `frames`, every ring's label and the compass with
-    room for its labels; the metres a pixel spans. An object grows to at most
-    `OBJECT_PX` across, well inside `MARGIN`, so its true size is fitted.
-    """
-    compass_deg = math.degrees(scene.heading_rad) + np.arange(0.0, 360.0, 90.0)
-    outer = max(scene.rings, default=0.0)
-    labels = _on_water(lens.label_deg, np.array(list(scene.rings)), 0.0)
-    hulls, reach_m = _hulls(scene, frames)
-    m_per_px = 0.0
-    # How far the compass's labels reach follows the scale, so each pass fits what
-    # the last one's scale draws. ponytail: three passes settle any scene seen so
-    # far; iterate to a tolerance if one does not.
-    for _ in range(3):
-        pad_m = (TICK_LABEL_PX + LABEL_PX) * lens.k * m_per_px if scene.rings else 0.0
-        marks = np.concatenate(
-            [labels[:, :2], _on_water(compass_deg, outer + pad_m, 0.0)[:, :2]]
-        )
-        view = top_view(
-            np.concatenate([hulls, marks]),
-            scene.heading_rad,
-            lens.size_px,
-            np.concatenate([reach_m, np.zeros(len(marks))]),
-        )
-        m_per_px = view.m_per_px
-    lens.camera.data.ortho_scale = view.m_per_px * lens.size_px[0]
-    lens.camera.matrix_world = Matrix(view.matrix(0.5 * lens.camera.data.clip_end))
-    return view.m_per_px
-
-
-def _sizes(scene: _Scene, lens: _Lens) -> float | None:
-    """Size everything drawn on the water for `lens`: each line to its pixel width
-    where it lies, and each object. Returns the most an object in view is grown, if
-    any is.
-    """
-    bpy.context.view_layer.update()
-    most = _grow(scene, lens)
-    k, up = lens.k, lens.up()
-    for radius_m, ring in scene.rings.items():
-        # Where the camera looks across it, which a chase view sees at its slantest.
-        at = radius_m * up
-        wide_m = LINE_PX * k * lens.m_per_px(at) / lens.slant(at)
-        ring.data.shape_keys.key_blocks["wide"].value = wide_m / WIDTH_UNIT_M
-    for _, fans in scene.fans.values():
-        for f in fans:
-            for edge, far in zip(f.edges, f.far, strict=True):
-                keys = edge.data.shape_keys.key_blocks
-                for name, end in (("near", f.near), ("far", far)):
-                    at = edge.matrix_world @ end
-                    keys[name].value = EDGE_PX * k * lens.m_per_px(at) / WIDTH_UNIT_M
-    return most
-
-
-def _grow(scene: _Scene, lens: _Lens) -> float | None:
-    """Scale each object but the ownship about its origin, uniformly so it keeps its
-    proportions, by `grown`. Returns the largest factor among those whose origin is
-    in view, if any is.
-    """
-    seen = []
-    for root in scene.roots[1:]:
-        at = root.matrix_world.translation
-        grow = grown(lens.m_per_px(at), max(root["length_m"], root["beam_m"]))
-        root.scale = (grow,) * 3
-        p = _px(lens, at)
-        if p and 0.0 <= p[0] <= lens.size_px[0] and 0.0 <= p[1] <= lens.size_px[1]:
-            seen.append(grow)
-    return max(seen, default=None)
-
-
-def _px(lens: _Lens, at: npt.ArrayLike) -> Px | None:
-    """Where `at` falls in `lens`'s picture, in pixels from its top left; none behind
-    the camera.
-    """
-    p = world_to_camera_view(bpy.context.scene, lens.camera, Vector(at))
-    if p.z <= 0.0:
-        return None
-    return p.x * lens.size_px[0], (1.0 - p.y) * lens.size_px[1]
-
-
-def _key(scene: _Scene, lens: _Lens, frame: int) -> None:
-    """Key at `frame` what `_sizes`, `_turn_fans` and the chase camera set. The top
-    camera, still over the run, stays unkeyed.
-    """
-    for root in scene.roots[1:]:
-        root.keyframe_insert("scale", frame=frame)
-    if not lens.top:
-        for path in ("location", "rotation_euler"):
-            lens.camera.keyframe_insert(path, frame=frame)
-    lines = list(scene.rings.values())
-    for _, fans in scene.fans.values():
-        for f in fans:
-            f.fan.keyframe_insert("location", frame=frame)
-            f.fan.keyframe_insert("rotation_euler", frame=frame)
-            lines += f.edges
-    for line in lines:
-        for key in line.data.shape_keys.key_blocks[1:]:
-            key.keyframe_insert("value", frame=frame)
-
-
-def _shoot(folder: Path, frames: np.ndarray) -> None:
-    """Render the scene's camera at `frames`, evenly spaced, in one call, to `folder`
-    named by frame.
-    """
-    sc = bpy.context.scene
-    sc.frame_start, sc.frame_end = int(frames[0]), int(frames[-1])
-    sc.frame_step = int(frames[1] - frames[0]) if len(frames) > 1 else 1
-    settings = sc.render.image_settings
-    settings.file_format, settings.color_mode = "PNG", "RGB"
-    sc.render.filepath = str(folder / "#######")
-    bpy.ops.render.render(animation=True)
-
-
-def _frames(
-    scenario: Scenario,
-    scene: _Scene,
-    lens: _Lens,
-    frames: np.ndarray,
-    folder: Path,
-) -> list[Path]:
-    """Render `lens` at `frames` into `folder`, with the HUD; the pictures in order."""
-    sc = bpy.context.scene
-    m_per_px = _aim_top(scene, lens, frames) if lens.top else None
-    sc.camera = lens.camera
-    sc.render.resolution_x, sc.render.resolution_y = lens.size_px
-    times = scenario.outputs.times_s
-    look_0 = scene.look_rad(0.0)
-    # From above, the compass round the outer ring, still over the run.
-    compass = None
-    if lens.top and scene.rings and m_per_px is not None:
-        centre = _px(lens, (0.0, 0.0, 0.0))
-        compass = None if centre is None else (centre, max(scene.rings) / m_per_px)
-    huds, labels = [], []
-    for k in frames:
-        t_s = times[int(k)]
-        sc.frame_set(int(k))
-        _turn_fans(scene, t_s)
-        pose = scene.path(t_s)
-        label_deg = lens.label_deg
-        if not lens.top:
-            look = scene.look_rad(t_s)
-            lens.camera.matrix_world = _chase(
-                scene.length_m, pose.east_m, pose.north_m, look
-            )
-            # The labels turn with the view, to stay in its field.
-            label_deg += math.degrees(look - look_0)
-        most = _sizes(scene, lens)
-        _key(scene, lens, int(k))
-        huds.append(hud_lines(t_s, pose.heading_rad, pose.speed_mps, most))
-        anchors = {r: _px(lens, _on_water(label_deg, r, RING_Z)) for r in scene.rings}
-        labels.append([(xy, r) for r, xy in anchors.items() if xy is not None])
-    folder.mkdir(parents=True)
-    _shoot(folder, frames)
-    pictures = sorted(folder.glob("*.png"))
-    with ThreadPoolExecutor() as threads:
-        list(
-            threads.map(hud, pictures, huds, repeat(m_per_px), labels, repeat(compass))
-        )
-    return pictures
-
-
-@dataclass(frozen=True, slots=True)
-class Drawn:
-    """What `draw` wrote.
-
-    Attributes:
-        stills: Each view's picture at the start, by view.
-        videos: Each view's mp4, by view; empty when no frames were asked for.
-    """
-
-    stills: dict[View, Path]
-    videos: dict[View, Path]
-
-
-def _view(
-    scenario: Scenario,
-    view: View,
-    frames: np.ndarray | None,
-    play_fps: float,
-    still: Path,
-    work: Path,
-) -> None:
-    """Draw `view` at the start to `still` and, with `frames`, its mp4 beside it,
-    rendering in `work`.
-    """
-    scene = _build(scenario, view)
-    lens = _camera(scene, view)
-    [start] = _frames(scenario, scene, lens, np.array([0]), work / "still")
-    # The work folder can sit on another filesystem.
-    shutil.move(start, still)
-    if frames is not None:
-        pictures = _frames(scenario, scene, lens, frames, work / "frames")
-        out = still.with_suffix(".mp4")
-        # A preview's quality, small enough to upload as it plays.
-        video.sequence(pictures, SIZE_PX[view], 1.0 / play_fps, out, "HIGH")
-
-
-def draw(
-    scenario: Scenario,
-    folder: Path,
-    title: str,
-    video_fps: float | None = None,
-    progress: Callable[[int, int], None] = lambda *_: None,
-    views: Sequence[View] = VIEWS,
-) -> Drawn:
-    """Draw the scenario from above and from behind its ownship, the views at once.
-
-    Args:
-        scenario: The scenario to draw.
-        folder: Where each view's picture goes and, with `video_fps`, an H.264 mp4 of
-            each beside it.
-        title: The pictures' name before the view's.
-        video_fps: Frames a second of the run in each video, as `samples` takes
-            them, played in real time; None draws no video.
-        progress: Called about once a second with the video frames rendered so far
-            and their total, of every view.
-        views: The views to draw.
-
-    Returns:
-        The pictures and videos written.
-
-    Raises:
-        RuntimeError: A view failed; the message holds the end of its log.
-    """
-    folder.mkdir(parents=True, exist_ok=True)
-    stills = {v: folder / f"{title}-{v}.png" for v in views}
-    frames, play_fps, total = None, 0.0, 0
-    if video_fps is not None:
-        outputs = scenario.outputs
-        frames, play_fps = samples(outputs.fps, len(outputs.times_s), video_fps)
-        total = len(views) * len(frames)
-    with tempfile.TemporaryDirectory() as tmp:
-        work = {v: Path(tmp, v) for v in views}
-        logs = {v: Path(tmp, f"{v}.log") for v in views}
-        jobs = {v: (scenario, v, frames, play_fps, stills[v], work[v]) for v in views}
-
-        def tick() -> None:
-            done = sum(len(list(w.glob("frames/*.png"))) for w in work.values())
-            progress(done, total)
-
-        if failed := processes.at_once(_view, jobs, logs, tick):
-            tails = "\n".join(logs[v].read_text()[-2000:] for v in failed)
-            raise RuntimeError(f"drawing {', '.join(failed)} failed:\n{tails}")
-    videos = (
-        {} if frames is None else {v: s.with_suffix(".mp4") for v, s in stills.items()}
-    )
-    return Drawn(stills, videos)

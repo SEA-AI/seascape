@@ -26,6 +26,7 @@ from seascape.outputs.previs import (
     samples,
     top_view,
 )
+from seascape.previs import chase, scene, top
 from tests.scenarios import SWEEP_SENTRY, target, variant
 
 
@@ -86,7 +87,7 @@ def test_the_top_view_holds_every_hull_whole_as_it_moves() -> None:
         yacht.keyframe_insert("location", frame=frame)
     for root in (own, yacht):
         bpy.context.scene.collection.objects.link(root)
-    scene = previs._Scene(
+    built = scene.Scene(
         roots=[own, yacht],
         fans={},
         rings={},
@@ -95,9 +96,9 @@ def test_the_top_view_holds_every_hull_whole_as_it_moves() -> None:
         length_m=12.0,
         reach_m=400.0,
     )
-    lens = previs._camera(scene, "top")
+    lens = top.Top(built)
 
-    m_per_px = previs._aim_top(scene, lens, np.array([0, 1]))
+    m_per_px = lens.aim(built, np.array([0, 1]))
 
     T_camera_world = lens.camera.matrix_world.inverted()
     half_m = np.array(lens.size_px) * m_per_px / 2
@@ -122,18 +123,18 @@ def test_the_hud_rounds_the_heading_within_a_turn(
 
 def test_the_chase_camera_sits_astern_and_above_along_its_look() -> None:
     heading_deg, length_m = 60.0, 20.0
-    T = previs._chase(length_m, 100.0, 50.0, math.radians(heading_deg))
+    T = chase.pose(length_m, 100.0, 50.0, math.radians(heading_deg))
 
     bow = Vector((*angles.direction(heading_deg, 0.0)[:2], 0.0))
     eye = T.translation
     assert tuple((Vector((100.0, 50.0, 0.0)) - eye).xy.normalized()) == pytest.approx(
         tuple(bow.xy)
     )
-    assert eye.z == pytest.approx(previs.CHASE_UP * length_m)
+    assert eye.z == pytest.approx(chase.CHASE_UP * length_m)
     # A Blender camera looks down its -Z, its +Y up the image.
     look = T.to_3x3() @ Vector((0.0, 0.0, -1.0))
     assert angles.bearing_deg(look.x, look.y) == pytest.approx(heading_deg)
-    assert math.degrees(math.asin(look.z)) == pytest.approx(previs.CHASE_PITCH_DEG)
+    assert math.degrees(math.asin(look.z)) == pytest.approx(chase.CHASE_PITCH_DEG)
     # Upright and level: +X to starboard of the look; mathutils is single precision.
     starboard = T.to_3x3() @ Vector((1.0, 0.0, 0.0))
     assert tuple(starboard) == pytest.approx((bow.y, -bow.x, 0.0), abs=1e-6)
@@ -175,11 +176,11 @@ def test_a_fan_reaches_where_a_pixel_spans_its_footprint() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scenario = load(SWEEP_SENTRY)
 
-    fans = [f for _, rig in previs._fans(scenario).values() for f in rig]
+    fans = [f for _, rig in scene._fans(scenario).values() for f in rig]
 
     focal_px = [m.camera.focal_px for m in scenario.mounts]
     reach_m = [f.reach_m for f in fans]
-    assert reach_m == pytest.approx([previs.FOOTPRINT_M * f for f in focal_px])
+    assert reach_m == pytest.approx([scene.FOOTPRINT_M * f for f in focal_px])
     sides_m = [[(far - f.near).length for far in f.far] for f in fans]
     assert sides_m == [pytest.approx([f.reach_m] * 2) for f in fans]
     # Edge to edge, a level pinhole's field; the ptu's tilt widens it a hair.
