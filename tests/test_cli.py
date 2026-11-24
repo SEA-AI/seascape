@@ -386,9 +386,10 @@ def test_parallel_renders_each_band_apart_with_the_user_s_overrides(
 ) -> None:
     rendered: dict[str, object] = {}
 
-    def render(scene: Scenario, _: Path) -> None:
+    def render(scene: Scenario, part: Path) -> None:
         (band,) = scene.outputs.bands
         rendered[band] = scene.outputs.fps
+        _write_part(part, band)
 
     def together(*_: object) -> None:
         raise AssertionError("rendered the bands together")
@@ -396,8 +397,10 @@ def test_parallel_renders_each_band_apart_with_the_user_s_overrides(
     monkeypatch.setattr(processes, "at_once", _in_turn)
     monkeypatch.setattr(renderer, "render", render)
     monkeypatch.setattr(cli, "_render", together)
+    monkeypatch.setattr(cli, "_encode", lambda *_: [])
+    monkeypatch.setattr(cli.recording, "export", lambda _: [])
 
-    run(
+    result = run(
         command,
         SWEEP_SENTRY,
         "--parallel",
@@ -405,6 +408,7 @@ def test_parallel_renders_each_band_apart_with_the_user_s_overrides(
         *("-o", tmp_path),
     )
 
+    assert result.exit_code == 0, result.output
     assert rendered == {"eo": 3, "ir": 3}
 
 
@@ -548,7 +552,7 @@ def _write_part(part: Path, band: str) -> None:
     """The folder `part` a band's render leaves: a frame named for `band`, its truth,
     its scenario and its log.
     """
-    part.mkdir()
+    part.mkdir(exist_ok=True)
     image = labels.Image(
         id=1,
         file_name=f"{band}.png",

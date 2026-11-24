@@ -14,9 +14,13 @@ type Kind = Literal["blender", "wait", "fail", "crash"]
 
 def job(kind: Kind, out: Path) -> None:
     """Write this process's id to `out`, then by `kind`: load Blender and print its
-    temporary folder, wait to be killed, raise, or abort.
+    temporary folder, wait to be killed, or, once every job beside it has written
+    its id, raise or abort.
     """
     out.write_text(str(os.getpid()))
+    if kind in ("fail", "crash"):
+        while len(list(out.parent.glob("*.pid"))) < 2:
+            time.sleep(0.05)
     match kind:
         case "blender":
             bpy.ops.wm.read_factory_settings(use_empty=True)

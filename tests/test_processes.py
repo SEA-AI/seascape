@@ -47,7 +47,7 @@ def test_a_job_that_fails_or_crashes_stops_the_rest(tmp_path: Path, kind: Kind) 
 
 
 def test_a_failed_job_logs_its_traceback(tmp_path: Path) -> None:
-    _run(tmp_path, {"ir": "fail"})
+    _run(tmp_path, {"ir": "fail", "eo": "wait"})
 
     assert "ValueError: no GPU" in (tmp_path / "ir.log").read_text()
 
