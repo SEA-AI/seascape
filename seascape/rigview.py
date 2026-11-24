@@ -131,8 +131,9 @@ def _tiles(objects: list[bpy.types.Object]) -> list[Image.Image]:
 
 
 def _column(rig: str, lines: list[Line], width_px: int) -> Image.Image:
-    """The rig's name over `lines`, each in its own ink."""
-    column = Image.new("RGB", (width_px, LINE_PX * (1 + len(lines))), brand.NIGHT_BLUE)
+    """The rig's name over `lines`, each in its own ink, and a gap to the next row."""
+    height_px = LINE_PX * (1 + len(lines)) + 2 * PAD_PX
+    column = Image.new("RGB", (width_px, height_px), brand.NIGHT_BLUE)
     pen = ImageDraw.Draw(column)
     pen.text(
         (0, 0), f"RIG {rig.upper()}", font=brand.font(FONT_PX, "Medium"), fill=WHITE
@@ -152,7 +153,7 @@ def _caption(rigs: dict[str, list[Line]], width_px: int) -> Image.Image:
     fit = max(1, width_px // column_px)
     columns = [_column(rig, lines, column_px) for rig, lines in rigs.items()]
     body = canvas.grid(columns, min(fit, len(columns)), matte=brand.NIGHT_BLUE)
-    height_px = RULE_PX + 2 * PAD_PX + body.height
+    height_px = RULE_PX + PAD_PX + body.height
     caption = Image.new("RGB", (width_px, height_px), brand.NIGHT_BLUE)
     caption.paste(body, (PAD_PX, RULE_PX + PAD_PX))
     ImageDraw.Draw(caption).rectangle(
