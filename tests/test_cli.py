@@ -699,3 +699,16 @@ def test_a_bar_off_a_terminal_redraws_only_at_its_ends_within_half_a_minute(
     assert "Rendering:" in err
     assert "5/5" in err
     assert "3/5" not in err
+
+
+def test_a_render_s_pace_is_logged_before_its_bar_redraws() -> None:
+    logged: list[dict[str, float]] = []
+    run = cast("logger.Run", SimpleNamespace(progress=lambda **v: logged.append(v)))
+
+    with cli._progress(4, "Rendering") as bar:
+        for done in (1, 2):
+            time.sleep(0.05)
+            cli._advance(bar, run, done)
+
+    assert all(v["s_per_image"] >= 0.04 for v in logged)
+    assert logged[-1]["eta_s"] == pytest.approx(2 * logged[-1]["s_per_image"])

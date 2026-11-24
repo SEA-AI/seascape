@@ -125,7 +125,14 @@ def _progress(length: int, label: str) -> tqdm:
     every half minute, as Ultralytics' bar does off one.
     """
     every_s = 0.1 if sys.stderr.isatty() else 30.0
-    return tqdm(total=length or None, desc=label, file=sys.stderr, mininterval=every_s)
+    # miniters=1: past one, tqdm's monitor thread redraws between those.
+    return tqdm(
+        total=length or None,
+        desc=label,
+        file=sys.stderr,
+        mininterval=every_s,
+        miniters=1,
+    )
 
 
 def _steps(bar: tqdm) -> Callable[[int, int], None]:
@@ -197,10 +204,11 @@ def _previews(built: Scenario, into: Path, run: logger.Run) -> None:
 def _advance(bar: tqdm, run: logger.Log, done: int) -> None:
     """Show `done` images on `bar`, and log its pace to `run`."""
     bar.update(done - bar.n)
-    # Images a second, smoothed; None before the first.
-    rate = bar.format_dict["rate"] or math.inf
+    # The mean since the bar began, the scene's build included: tqdm's own rate moves
+    # only when it redraws, every half minute off a terminal.
+    s_per_image = bar.format_dict["elapsed"] / bar.n if bar.n else 0.0
     left = (bar.total or bar.n) - bar.n
-    run.progress(done=bar.n, s_per_image=1.0 / rate, eta_s=left / rate)
+    run.progress(done=bar.n, s_per_image=s_per_image, eta_s=s_per_image * left)
 
 
 def _render(
