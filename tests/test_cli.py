@@ -12,7 +12,8 @@ import pytest
 from click.testing import CliRunner, Result
 from PIL import Image
 
-from seascape import assets, cli, rigview, server
+from seascape import assets, cli, plan, processes, rigview, server
+from seascape import render as renderer
 from seascape.assets import skies
 from seascape.config import Scenario, load, loader
 from seascape.outputs import labels
@@ -354,65 +355,29 @@ def test_a_shader_cycles_draws_black_fails_the_command(tmp_path: Path) -> None:
         bpy.ops.render.render()
 
 
-class _Band:
-    """A band's render that exits with `code` on its `polls`-th poll, unless killed."""
-
-    def __init__(self, code: int, polls: int = 1) -> None:
-        self.code, self.polls, self.killed, self.returncode = code, polls, False, None
-
-    def poll(self) -> int | None:
-        self.polls -= 1
-        if self.killed or self.polls <= 0:
-            self.returncode = -9 if self.killed else self.code
-        return self.returncode
-
-    def kill(self) -> None:
-        self.killed = True
-
-    def wait(self) -> int | None:
-        return self.poll()
+def _in_turn(
+    work: Callable[..., object],
+    jobs: dict[str, tuple[object, ...]],
+    logs: dict[str, Path],
+    tick: Callable[[], None],
+) -> list[str]:
+    """`processes.at_once`, one job after the other in this process, none failing."""
+    for key, args in jobs.items():
+        logs[key].touch()
+        work(*args)
+    tick()
+    return []
 
 
-def test_a_failed_band_stops_the_others_and_names_its_log(
+def test_a_failed_band_names_its_log(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    started: dict[str, _Band] = {}
-
-    def start(command: list[str], **_: object) -> _Band:
-        band = _band_of(command)
-        # eo would render on for a while; ir fails at once.
-        started[band] = _Band(1) if band == "ir" else _Band(0, polls=5)
-        return started[band]
-
-    monkeypatch.setattr(subprocess, "Popen", start)
-    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+    monkeypatch.setattr(processes, "at_once", lambda *_: ["ir"])
 
     with pytest.raises(click.ClickException, match=r"\.ir\.log") as failed:
         cli._render_apart(load(SWEEP_SENTRY), tmp_path)
 
     assert ".eo.log" not in str(failed.value)
-    assert started["eo"].killed
-
-
-def test_an_interrupt_kills_every_band(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    started: list[_Band] = []
-
-    def start(*_: object, **__: object) -> _Band:
-        started.append(_Band(0, polls=5))
-        return started[-1]
-
-    def interrupted(_: float) -> None:
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(subprocess, "Popen", start)
-    monkeypatch.setattr(cli.time, "sleep", interrupted)
-
-    with pytest.raises(KeyboardInterrupt):
-        cli._render_apart(load(SWEEP_SENTRY), tmp_path)
-
-    assert [band.killed for band in started] == [True, True]
 
 
 @pytest.mark.parametrize("command", ["render", "recording"])
@@ -421,17 +386,15 @@ def test_parallel_renders_each_band_apart_with_the_user_s_overrides(
 ) -> None:
     rendered: dict[str, object] = {}
 
-    def start(command: list[str], **_: object) -> _Band:
-        sets = [command[i + 1] for i, arg in enumerate(command) if arg == "--set"]
-        scene = load(Path(command[command.index("render") + 1]), sets)
+    def render(scene: Scenario, _: Path) -> None:
         (band,) = scene.outputs.bands
         rendered[band] = scene.outputs.fps
-        return _Band(1)
 
     def together(*_: object) -> None:
         raise AssertionError("rendered the bands together")
 
-    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(processes, "at_once", _in_turn)
+    monkeypatch.setattr(renderer, "render", render)
     monkeypatch.setattr(cli, "_render", together)
 
     run(
@@ -459,10 +422,10 @@ def test_a_one_band_scene_renders_in_this_process(
     rendered = []
     files = [tmp_path / "frame.png"]
 
-    def start(*_: object, **__: object) -> None:
+    def apart(*_: object) -> None:
         raise AssertionError("started a process for one band")
 
-    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(processes, "at_once", apart)
     monkeypatch.setattr(cli, "_render", lambda *args: rendered.append(args) or files)
     built = load(SWEEP_SENTRY, list(overrides))
     mounts = type(built).band_mounts
@@ -543,19 +506,14 @@ def test_a_render_s_folder_is_only_exported(
 def test_the_bands_end_as_one_render_of_the_scene(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    temporary, scenarios = set(), set()
-    started: list[_Band] = []
+    scenarios: set[Path] = set()
 
-    def start(command: list[str], env: dict[str, str], **_: object) -> _Band:
-        temporary.add(env["TMPDIR"])
-        scenarios.add(command[command.index("render") + 1])
-        _write_part(command, _band_of(command))
-        # eo finishes while ir still renders.
-        started.append(_Band(0, polls=1 if _band_of(command) == "eo" else 3))
-        return started[-1]
+    def render_band(scenario: Path, band: str, part: Path) -> None:
+        scenarios.add(scenario)
+        _write_part(part, band)
 
-    monkeypatch.setattr(subprocess, "Popen", start)
-    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+    monkeypatch.setattr(processes, "at_once", _in_turn)
+    monkeypatch.setattr(cli, "_band", render_band)
     built = load(SWEEP_SENTRY)
     (tmp_path / cli.SCENARIO).write_text("the whole scene's\n")
 
@@ -569,7 +527,7 @@ def test_the_bands_end_as_one_render_of_the_scene(
     ]
     assert (tmp_path / cli.SCENARIO).read_text() == "the whole scene's\n"
     # Each band renders the scene the parent pinned, never the source's files.
-    assert scenarios == {str(tmp_path / cli.SCENARIO)}
+    assert scenarios == {tmp_path / cli.SCENARIO}
     truth = labels.Labels.read(tmp_path)
     assert truth.info["scenario"] == built.model_dump(mode="json")
     assert [i.file_name for i in truth.images] == ["eo.png", "ir.png"]
@@ -584,16 +542,12 @@ def test_the_bands_end_as_one_render_of_the_scene(
         "labels.json",
         cli.SCENARIO,
     ]
-    assert not any(band.killed for band in started)
-    # Both bands share one temporary folder, gone after the run.
-    assert [Path(folder).exists() for folder in temporary] == [False]
 
 
-def _write_part(command: list[str], band: str) -> None:
-    """The folder a band's render leaves at the command's `-o`: a frame named for
-    `band`, its truth, its scenario and its log.
+def _write_part(part: Path, band: str) -> None:
+    """The folder `part` a band's render leaves: a frame named for `band`, its truth,
+    its scenario and its log.
     """
-    part = Path(command[command.index("-o") + 1])
     part.mkdir()
     image = labels.Image(
         id=1,
@@ -613,11 +567,43 @@ def _write_part(command: list[str], band: str) -> None:
     (part / cli.SCENARIO).write_text(f'outputs.bands = ["{band}"]\n')
 
 
-def _band_of(command: list[str]) -> str:
-    return next(a for a in command if a.startswith("outputs.bands")).split('"')[1]
-
-
 def _camera(band: str) -> CameraCalibration:
     """Any valid calibration of `band`'s camera."""
     mount = next(m for m in load(SWEEP_SENTRY).mounts if m.camera.band == band)
     return CameraCalibration.planned(mount.name, mount.camera, mount.rig_name)
+
+
+def test_a_plan_video_is_drawn_beside_the_scenario_at_its_rate(
+    run: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = tmp_path / "sweep.toml"
+    scenario.write_text(f"extends = {str(SWEEP_SENTRY)!r}\n")
+    calls: list[tuple[Path, str, float]] = []
+
+    def draw(
+        _: Scenario, folder: Path, title: str, video_fps: float, *__: object
+    ) -> plan.Drawn:
+        calls.append((folder, title, video_fps))
+        return plan.Drawn({"top": folder / "plan.png"}, {"top": folder / "plan.mp4"})
+
+    monkeypatch.setattr(plan, "draw", draw)
+
+    drawn = run("plan", scenario, "--video")
+
+    assert drawn.exit_code == 0, drawn.output
+    assert calls == [(tmp_path, "sweep", load(SWEEP_SENTRY).outputs.fps)]
+    assert drawn.stdout == f"{tmp_path / 'plan.png'}\n{tmp_path / 'plan.mp4'}\n"
+
+
+def test_a_plan_rate_without_a_video_is_refused(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def draw(*_: object, **__: object) -> None:
+        raise AssertionError("drew a plan it should refuse")
+
+    monkeypatch.setattr(plan, "draw", draw)
+
+    refused = run("plan", SWEEP_SENTRY, "--fps", "5")
+
+    assert refused.exit_code == 2
+    assert "--video" in refused.output

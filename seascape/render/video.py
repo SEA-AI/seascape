@@ -79,24 +79,44 @@ def _encode(
 
     with tempfile.TemporaryDirectory() as tmp:
         paths = _toned(paths, setting, step, Path(tmp))
-        bpy.ops.wm.read_factory_settings(use_empty=True)
-        sc = bpy.context.scene
-        strip = sc.sequence_editor_create().strips.new_image(
-            camera, str(paths[0]), 1, 1
-        )
-        for path in paths[1:]:
-            strip.elements.append(str(path.relative_to(paths[0].parent)))
-        sc.frame_end = len(paths)
-        r = sc.render
-        r.resolution_x, r.resolution_y = frames[0].width, frames[0].height
-        r.fps, r.fps_base = 1, step
-        # The factory AgX would tone the frames a second time.
-        sc.view_settings.view_transform = "Standard"
-        r.image_settings.media_type = "VIDEO"
-        r.ffmpeg.format, r.ffmpeg.codec = "MPEG4", "H264"
-        r.ffmpeg.constant_rate_factor = quality
-        # With its extension: without one Blender appends the frame range to the name.
-        out = run / f"{camera}.mp4"
-        r.filepath = str(out)
-        bpy.ops.render.render(animation=True)
-        return out
+        size = (frames[0].width, frames[0].height)
+        return sequence(paths, size, step, run / f"{camera}.mp4", quality)
+
+
+def sequence(
+    paths: list[Path],
+    size_px: tuple[int, int],
+    step_s: float,
+    out: Path,
+    quality: str = "PERC_LOSSLESS",
+) -> Path:
+    """Encode frames as H.264. Resets Blender to its factory settings.
+
+    Args:
+        paths: 8-bit frames in order, all in one folder.
+        size_px: Their width and height.
+        step_s: The time between frames.
+        out: The mp4 to write, with its extension.
+        quality: A Blender `constant_rate_factor` preset.
+
+    Returns:
+        `out`.
+    """
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    sc = bpy.context.scene
+    strip = sc.sequence_editor_create().strips.new_image(out.stem, str(paths[0]), 1, 1)
+    for path in paths[1:]:
+        strip.elements.append(str(path.relative_to(paths[0].parent)))
+    sc.frame_end = len(paths)
+    r = sc.render
+    r.resolution_x, r.resolution_y = size_px
+    r.fps, r.fps_base = 1, step_s
+    # The factory AgX would tone the frames a second time.
+    sc.view_settings.view_transform = "Standard"
+    r.image_settings.media_type = "VIDEO"
+    r.ffmpeg.format, r.ffmpeg.codec = "MPEG4", "H264"
+    r.ffmpeg.constant_rate_factor = quality
+    # With its extension: without one Blender appends the frame range to the name.
+    r.filepath = str(out)
+    bpy.ops.render.render(animation=True)
+    return out

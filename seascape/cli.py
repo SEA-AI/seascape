@@ -4,10 +4,7 @@ import json
 import math
 import os
 import shutil
-import subprocess
 import sys
-import tempfile
-import time
 from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager, redirect_stdout
 from itertools import chain
@@ -16,7 +13,7 @@ from typing import Any, get_args
 
 import click
 
-from seascape import assets, outputs
+from seascape import assets, outputs, processes
 from seascape.assets import skies
 from seascape.config import (
     BANDS,
@@ -114,6 +111,16 @@ def _progress(length: int, label: str) -> Any:
     return click.progressbar(length=length, label=label, file=sys.stderr)
 
 
+def _steps(bar: Any) -> Callable[[int, int], None]:
+    """Show `done` of `total` steps on `bar`, whose length need not be known yet."""
+
+    def step(done: int, total: int) -> None:
+        bar.length = total
+        bar.update(done - bar.pos)
+
+    return step
+
+
 def _empty(into: Path) -> Path:
     # An earlier run's frames would pass for this one's.
     if into.is_dir() and any(into.iterdir()):
@@ -145,46 +152,15 @@ def _render(built: Scenario, into: Path) -> list[Path]:
         return renderer.render(built, into, lambda: bar.update(1))
 
 
-def _run_at_once(
-    commands: dict[Band, list[str]],
-    logs: dict[Band, Path],
-    tick: Callable[[], None] = lambda: None,
-) -> list[Band]:
-    """Run `commands` at once, each logging to its log, calling `tick` each second;
-    the bands that failed. The first to fail stops the rest, and an error or Ctrl-C
-    kills them.
+def _band(scenario: Path, band: Band, part: Path) -> None:
+    """Render `band` of the scene pinned at `scenario` into `part`, as `seascape
+    render` would.
     """
-    # Limitation: a SIGTERM or SIGKILL to this process leaves them running; Linux's
-    # PR_SET_PDEATHSIG in each child would end them.
-    runs: dict[Band, subprocess.Popen[bytes]] = {}
-    failed: list[Band] = []
-    # A killed Blender leaves its temporary files, the foam memory's frames among them;
-    # this folder is deleted when the bands end.
-    with tempfile.TemporaryDirectory(prefix="seascape-bands-") as tmp:
-        try:
-            for band, command in commands.items():
-                with logs[band].open("w") as log:
-                    runs[band] = subprocess.Popen(
-                        command,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        env={**os.environ, "TMPDIR": tmp},
-                    )
-            pending = dict(runs)
-            while pending and not failed:
-                done = {b: run for b, run in pending.items() if run.poll() is not None}
-                failed = [b for b, run in done.items() if run.returncode != 0]
-                for band in done:
-                    del pending[band]
-                if pending and not done:
-                    tick()
-                    time.sleep(1)
-        finally:
-            for run in runs.values():
-                if run.poll() is None:
-                    run.kill()
-                    run.wait()
-    return failed
+    from seascape import render as renderer
+
+    _, built = _pin(scenario, [f'outputs.bands = ["{band}"]'], part)
+    with _blender_log(part / _BLENDER_LOG):
+        renderer.render(built, part)
 
 
 _PARALLEL = click.option(
@@ -196,8 +172,8 @@ _PARALLEL = click.option(
 
 
 def _render_apart(built: Scenario, into: Path) -> list[Path]:
-    """Render each band of `into`'s `scenario.toml` in a `seascape render` of its own,
-    all at once, then gather their frames and truth in `into` as one render writes
+    """Render each band of `into`'s `scenario.toml` in a process of its own, all at
+    once, then gather their frames and truth in `into` as one render writes
     them; the files written. A scene with one band renders here.
 
     One render leaves the GPU idle while Cycles readies the scene and seascape labels
@@ -209,19 +185,7 @@ def _render_apart(built: Scenario, into: Path) -> list[Path]:
     into.mkdir(parents=True, exist_ok=True)
     parts = {band: into / f".{band}" for band in bands}
     logs = {band: into / f".{band}.log" for band in bands}
-    commands: dict[Band, list[str]] = {}
-    for band, part in parts.items():
-        commands[band] = [
-            sys.executable,
-            "-m",
-            "seascape.cli",
-            "render",
-            str(into / SCENARIO),
-            "--set",
-            f'outputs.bands = ["{band}"]',
-            "-o",
-            str(part),
-        ]
+    jobs = {band: (into / SCENARIO, band, part) for band, part in parts.items()}
     shown = ", ".join(map(str, logs.values()))
     click.echo(f"Rendering {', '.join(bands)} at once; see {shown}", err=True)
     fmt = built.outputs.format
@@ -235,7 +199,7 @@ def _render_apart(built: Scenario, into: Path) -> list[Path]:
             )
             bar.update(done - bar.pos)
 
-        failed = _run_at_once(commands, logs, tick)
+        failed = processes.at_once(_band, jobs, logs, tick)
         if not failed:
             bar.update(built.images - bar.pos)
     if failed:
@@ -396,6 +360,43 @@ def rig_view(scenario: Path, output: Path | None, overrides: tuple[str, ...]) ->
     with _blender_log(Path(os.devnull)):
         rigview.draw(built, path)
     click.echo(path)
+
+
+@main.command("plan")
+@_scenario("The folder the pictures go in. Default: beside the scenario.")
+@click.option(
+    "--video",
+    is_flag=True,
+    help="Also replay both views over the run as mp4s beside them, in real time.",
+)
+@click.option(
+    "--fps",
+    type=click.FloatRange(min=0.0, min_open=True),
+    help="With --video, frames a second, rounded to a whole step of the scenario's "
+    "rate. Default: the scenario's rate.",
+)
+def plan_view(
+    scenario: Path,
+    output: Path | None,
+    overrides: tuple[str, ...],
+    video: bool,
+    fps: float | None,
+) -> None:
+    """Draw the scenario from above and from behind the ownship, each object's range
+    ringed and each camera's field shaded.
+    """
+    if fps is not None and not video:
+        raise click.UsageError("--fps needs --video")
+    built = load(scenario, list(overrides))
+    from seascape import plan
+
+    video_fps = (fps or built.outputs.fps) if video else None
+    with _blender_log(Path(os.devnull)), _progress(0, "Drawing") as bar:
+        drawn = plan.draw(
+            built, output or scenario.parent, scenario.stem, video_fps, _steps(bar)
+        )
+    for path in [*drawn.stills.values(), *drawn.videos.values()]:
+        click.echo(path)
 
 
 @main.command("panorama")
