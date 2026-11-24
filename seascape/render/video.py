@@ -117,6 +117,7 @@ def sequence(
     r.ffmpeg.format, r.ffmpeg.codec = "MPEG4", "H264"
     r.ffmpeg.constant_rate_factor = quality
     # With its extension: without one Blender appends the frame range to the name.
-    r.filepath = str(out)
+    # Doubled braces are literal: Blender reads `{name}` as a path template.
+    r.filepath = str(out).replace("{", "{{").replace("}", "}}")
     bpy.ops.render.render(animation=True)
     return out

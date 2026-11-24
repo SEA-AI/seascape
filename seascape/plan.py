@@ -594,8 +594,10 @@ def _aim_top(scene: _Scene, lens: _Lens, frames: np.ndarray) -> float:
     outer = max(scene.rings, default=0.0)
     labels = _on_water(lens.label_deg, np.array(list(scene.rings)), 0.0)
     compass = _on_water(compass_deg, outer, 0.0)
+    # The ownship's bow and stern at the start: one lone hull is no more than a point.
+    ends = _on_water(compass_deg[::2], scene.length_m / 2, 0.0)
     points = np.concatenate(
-        [_frame_points(scene, frames), labels[:, :2], compass[:, :2]]
+        [_frame_points(scene, frames), labels[:, :2], compass[:, :2], ends[:, :2]]
     )
     view = top_view(points, scene.heading_rad, lens.size_px)
     # Room for the compass's labels past the outer ring.
