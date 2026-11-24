@@ -873,7 +873,7 @@ wheels = [
 
 [[package]]
 name = "seascape"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "bpy", version = "5.2.4", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
