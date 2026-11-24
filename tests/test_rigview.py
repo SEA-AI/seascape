@@ -62,3 +62,23 @@ def test_stacked_rigs_leave_more_room_between_them_than_between_lines() -> None:
         (rows != ImageColor.getrgb(brand.NIGHT_BLUE)).any(axis=(1, 2))
     )
     assert (np.diff(inked) - 1).max() > rigview.LINE_PX
+
+
+def test_a_rig_under_the_hull_has_none_below_and_hull_above() -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.mesh.primitive_cube_add(size=2.0)  # from z -1 m to 1 m
+    frame, rig = (bpy.data.objects.new(name, None) for name in ("frame", "rig"))
+    for obj in (frame, rig):
+        bpy.context.scene.collection.objects.link(obj)
+    rig.location.z = -5.0
+    bpy.context.view_layer.update()
+    scenario = load(
+        BASELINE, ['rigs = { bow = { preset = "watchkeeper", height_m = 10.0 } }']
+    )
+
+    lines = rigview._rig_lines("bow", scenario, rig, frame)
+
+    assert [text for text, _ in lines[1:]] == [
+        "no hull below it",
+        "hull ABOVE it at -1.00 m",
+    ]
